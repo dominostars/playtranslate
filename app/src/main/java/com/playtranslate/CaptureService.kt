@@ -825,6 +825,17 @@ class CaptureService : Service() {
     private val oneShotManager = OneShotManager(this)
     private var oneShotCaptureJob: Job? = null
 
+    /** Single aggregate "a translation session is in progress" predicate: live
+     *  mode, the region/menu one-shot ([oneShotCaptureJob]), OR the
+     *  press-and-hold overlay ([oneShotManager]). The Yomitan auto-updater gates
+     *  its DB-mutating apply on this so an update never disrupts an in-progress
+     *  session. Defined once here so a future capture entry point can't silently
+     *  re-open the gate. Read cross-thread (these fields mutate on Main) —
+     *  best-effort by design; the ingest transaction's atomicity is the real
+     *  safety net. */
+    val isCapturing: Boolean
+        get() = isLive || oneShotCaptureJob?.isActive == true || oneShotManager.hasActive()
+
     // ── MediaProjection backend state ─────────────────────────────────────
     //
     // Lazily created; untouched until the MediaProjection backend is the

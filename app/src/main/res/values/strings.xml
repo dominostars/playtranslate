@@ -2194,6 +2194,10 @@
     <string name="yomitan_single_dict_title">Only show definitions from one dictionary</string>
     <!-- Subtitle of the single-dictionary toggle, explaining which dictionary wins. -->
     <string name="yomitan_single_dict_subtitle">Definitions come from the highest-priority dictionary with results; the built-in dictionary is the final fallback</string>
+    <!-- Title of the per-dictionary auto-update toggle on the dictionary detail page (shown only for dictionaries that support updates). -->
+    <string name="yomitan_auto_update_label">Auto-update</string>
+    <!-- Subtitle of the auto-update toggle. -->
+    <string name="yomitan_auto_update_subtitle">Automatically download and install new versions of this dictionary</string>
     <!-- Title of the alert shown when the import fails for storage/IO reasons (file may be fine). -->
     <string name="yomitan_io_error_title">Import Failed</string>
     <!-- Body of the storage/IO import-failure alert. -->

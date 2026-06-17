@@ -18,10 +18,13 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.R
 import com.playtranslate.themeColor
+import com.playtranslate.yomitan.YomitanDictionary
 import com.playtranslate.yomitan.YomitanDictionaryStore
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
@@ -43,6 +46,11 @@ class YomitanDictionaryDetailActivity : SettingsSubPageActivity() {
     /** Current per-dictionary accent override (ARGB), or null for the default
      *  (subtitle text color). Drives the swatch selection ring. */
     private var accentColor: Int? = null
+
+    /** Chains auto-update toggle writes (on appScope so they survive this
+     *  activity finishing) so rapid taps persist in tap order, not whichever
+     *  IO write happens to win the store mutex. */
+    private var autoUpdateWriteJob: Job? = null
 
     override fun onContentCreated(savedInstanceState: Bundle?) {
         val id = intent.getStringExtra(EXTRA_ID)
@@ -91,6 +99,39 @@ class YomitanDictionaryDetailActivity : SettingsSubPageActivity() {
             aliasLoaded = true
             accentColor = dict?.accentColor
             buildAccentPicker()
+            bindAutoUpdateToggle(dict)
+        }
+    }
+
+    /** Wires the auto-update switch. Visible ONLY for a dictionary that declares
+     *  update capability (isUpdatable + an indexUrl to check); hidden otherwise,
+     *  along with its divider. Default ON; the row tap toggles and persists via
+     *  [YomitanDictionaryStore.setAutoUpdate]. */
+    private fun bindAutoUpdateToggle(dict: YomitanDictionary?) {
+        val row = findViewById<View>(R.id.rowYomitanAutoUpdate)
+        val divider = findViewById<View>(R.id.autoUpdateDivider)
+        val updatable = dict != null && dict.isUpdatable && dict.indexUrl != null
+        row.isVisible = updatable
+        divider.isVisible = updatable
+        if (!updatable) return
+        row.findViewById<TextView>(R.id.tvRowTitle).setText(R.string.yomitan_auto_update_label)
+        row.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            setText(R.string.yomitan_auto_update_subtitle)
+            isVisible = true
+        }
+        val toggle = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        toggle.isChecked = dict.autoUpdate
+        val id = dict.id
+        // The row is the tap target (the switch is non-clickable by layout
+        // contract); capture the new value at tap time.
+        row.setOnClickListener {
+            val enabled = !toggle.isChecked
+            toggle.isChecked = enabled
+            val previous = autoUpdateWriteJob
+            autoUpdateWriteJob = (application as PlayTranslateApplication).appScope.launch {
+                previous?.join()
+                YomitanDictionaryStore.setAutoUpdate(applicationContext, id, enabled)
+            }
         }
     }
 

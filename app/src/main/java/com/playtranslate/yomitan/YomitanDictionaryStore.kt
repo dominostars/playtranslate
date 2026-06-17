@@ -68,6 +68,17 @@ data class YomitanDictionary(
      *  dictionary's text chips; null = the default (subtitle text color).
      *  User-set on the dictionary detail page. */
     val accentColor: Int? = null,
+    /** Yomitan self-update metadata from index.json: whether the deck opts into
+     *  updates, the URL of its canonical index.json (to check `revision`), and
+     *  the URL of the latest .zip (to fetch). False/null on decks that omit them
+     *  and on registry entries imported before these fields existed (populated
+     *  for the latter by [YomitanDictionaryStore.backfillUpdateMetadata]). */
+    val isUpdatable: Boolean = false,
+    val indexUrl: String? = null,
+    val downloadUrl: String? = null,
+    /** Per-dictionary auto-update opt-out (default ON). Flipped on the detail
+     *  page; read only by the auto-updater, never by a capability cache. */
+    val autoUpdate: Boolean = true,
 )
 
 /**
@@ -137,6 +148,11 @@ sealed class YomitanImportResult {
 
     /** Copy or disk failure unrelated to the file's contents. */
     object IoError : YomitanImportResult()
+
+    /** A replacement (auto-update) was deliberately NOT applied — the target
+     *  deck was deleted or opted out of auto-update during the update. Not an
+     *  error; the auto-updater logs it at info. Never produced by manual import. */
+    data class Skipped(val reason: String) : YomitanImportResult()
 }
 
 /**
@@ -266,95 +282,379 @@ object YomitanDictionaryStore {
                 Log.w(TAG, "copy from SAF failed", e)
                 return@withContext YomitanImportResult.IoError
             }
-
-            // Disk guard: the zip is kept whole (1×) and the derived term
-            // rows from a flattened glossary can exceed the compressed
-            // source — 3× the zip leaves headroom for both. The temp copy
-            // already landed, so this checks what's left AFTER it.
-            val required = temp.length() * 3
-            val available = rootDir(ctx).apply { mkdirs() }.usableSpace
-            if (available < required) {
-                return@withContext YomitanImportResult.InsufficientSpace(
-                    requiredBytes = required,
-                    availableBytes = available,
-                )
-            }
-
-            val sha256 = PackIntegrity.sha256Hex(temp)
-            val id = sha256.take(16)
-
-            val parsed = try {
-                ZipFile(temp).use { zip -> parseAndValidate(zip) }
-            } catch (e: CancellationException) {
-                throw e // validation runs ensureActive — don't fold cancel into InvalidFormat
-            } catch (e: InvalidDictionaryException) {
-                Log.w(TAG, "invalid dictionary: ${e.message}", e.cause)
-                return@withContext YomitanImportResult.InvalidFormat(e.message)
-            } catch (e: Exception) {
-                Log.w(TAG, "not a readable zip", e)
-                return@withContext YomitanImportResult.InvalidFormat("Not a readable zip file")
-            }
-
-            val success = mutex.withLock {
-                val registry = readRegistry(ctx)
-                    ?: return@withContext YomitanImportResult.IoError
-                registry.dictionaries.firstOrNull { it.title == parsed.title }?.let {
-                    return@withContext YomitanImportResult.Duplicate(it.title)
-                }
-
-                val dictionary = YomitanDictionary(
-                    id = id,
-                    title = parsed.title,
-                    revision = parsed.revision,
-                    description = parsed.description,
-                    author = parsed.author,
-                    format = parsed.format,
-                    categories = parsed.categories,
-                    sizeBytes = temp.length(),
-                    importedAtMs = System.currentTimeMillis(),
-                    sourceLanguage = parsed.sourceLanguage,
-                    targetLanguage = parsed.targetLanguage,
-                    frequencyMode = parsed.frequencyMode,
-                )
-
-                try {
-                    dictionaryDir(ctx, id).mkdirs()
-                    PackIntegrity.atomicReplace(temp, zipFile(ctx, id))
-                    // copy(), never a fresh YomitanRegistry(...): rebuilding
-                    // from scratch silently resets every field this mutation
-                    // doesn't touch (e.g. termsSingleDictionary).
-                    writeRegistry(
-                        ctx,
-                        registry.copy(
-                            dictionaries = registry.dictionaries + dictionary,
-                            sectionOrder = registry.sectionOrder.toMutableMap().apply {
-                                for (cat in dictionary.categories) {
-                                    // filterNot: a stale occurrence of this id
-                                    // (same content re-imported after a racy
-                                    // delete) must not yield duplicate rows.
-                                    put(
-                                        cat.name,
-                                        (get(cat.name) ?: emptyList()).filterNot { it == id } + id,
-                                    )
-                                }
-                            },
-                        ),
-                    )
-                } catch (e: Exception) {
-                    Log.w(TAG, "install failed", e)
-                    dictionaryDir(ctx, id).deleteRecursively()
-                    return@withContext YomitanImportResult.IoError
-                }
-                YomitanImportResult.Success(dictionary)
-            }
-            // Outside the registry mutex: derive runtime data (e.g. pitch
-            // rows) so it's queryable before the first lookup. Failures are
-            // logged inside and retried by the data store's reconcile.
-            YomitanDataStore.onDictImported(ctx, success.dictionary)
-            success
+            installZip(ctx, temp, replacing = null)
         } finally {
             temp.delete()
         }
+    }
+
+    /**
+     * Re-imports [newZip] as a replacement for an already-installed [old] deck
+     * (Yomitan auto-update). Preserves the user's alias, accent color, and
+     * auto-update opt-out, swaps the registry entry atomically, and persists
+     * [remoteRevision] as the installed revision so the next update check
+     * converges instead of re-downloading forever (the standalone indexUrl
+     * revision and the zip's bundled revision can differ). The caller owns
+     * [newZip]'s lifecycle. [YomitanImportResult.Duplicate] is impossible here —
+     * the title-collision check is skipped for replacements.
+     */
+    suspend fun applyUpdate(
+        ctx: Context,
+        old: YomitanDictionary,
+        newZip: File,
+        remoteRevision: String?,
+    ): YomitanImportResult = installZip(ctx, newZip, replacing = old, revisionOverride = remoteRevision)
+
+    /**
+     * Validates [temp] as a Yomitan dictionary and registers it. When
+     * [replacing] is null this is a fresh import (the duplicate-title check
+     * applies, new dicts append at the end of each section). When [replacing] is
+     * non-null this is an update: the duplicate-title check is skipped, the
+     * user's alias/accent/autoUpdate carry over, [revisionOverride] (if given)
+     * becomes the stored revision, and the old entry + files are swapped out
+     * atomically — the new content-derived id takes the old id's priority slot.
+     * The caller owns [temp]'s lifecycle (a successful install MOVES it into
+     * place; failures leave it for the caller's finally to delete).
+     */
+    private suspend fun installZip(
+        ctx: Context,
+        temp: File,
+        replacing: YomitanDictionary?,
+        revisionOverride: String? = null,
+    ): YomitanImportResult = withContext(Dispatchers.IO) {
+        // Disk guard: the zip is kept whole (1×) and the derived term rows from
+        // a flattened glossary can exceed the compressed source — 3× leaves
+        // headroom. The local copy already landed, so this checks what's left.
+        val required = temp.length() * 3
+        val available = rootDir(ctx).apply { mkdirs() }.usableSpace
+        if (available < required) {
+            return@withContext YomitanImportResult.InsufficientSpace(
+                requiredBytes = required,
+                availableBytes = available,
+            )
+        }
+
+        val sha256 = PackIntegrity.sha256Hex(temp)
+        val id = sha256.take(16)
+
+        val parsed = try {
+            ZipFile(temp).use { zip -> parseAndValidate(zip) }
+        } catch (e: CancellationException) {
+            throw e // validation runs ensureActive — don't fold cancel into InvalidFormat
+        } catch (e: InvalidDictionaryException) {
+            Log.w(TAG, "invalid dictionary: ${e.message}", e.cause)
+            return@withContext YomitanImportResult.InvalidFormat(e.message)
+        } catch (e: Exception) {
+            Log.w(TAG, "not a readable zip", e)
+            return@withContext YomitanImportResult.InvalidFormat("Not a readable zip file")
+        }
+
+        if (replacing == null) {
+            commitFreshInstall(ctx, temp, id, parsed)
+        } else {
+            commitReplacement(ctx, temp, id, parsed, replacing, revisionOverride)
+        }
+    }
+
+    /** Fresh import: refuse a same-title duplicate, stage the zip, append the new
+     *  id at the end of each of its sections, then ingest. Ingest failure is
+     *  swallowed + retried by reconcile — there is no prior deck to lose here,
+     *  unlike [commitReplacement]. */
+    private suspend fun commitFreshInstall(
+        ctx: Context,
+        temp: File,
+        id: String,
+        parsed: ParsedDictionary,
+    ): YomitanImportResult {
+        val dictionary = mutex.withLock {
+            val registry = readRegistry(ctx) ?: return YomitanImportResult.IoError
+            registry.dictionaries.firstOrNull { it.title == parsed.title }?.let {
+                return YomitanImportResult.Duplicate(it.title)
+            }
+            val dictionary = newDictionary(id, parsed, temp.length(), carryFrom = null, revisionOverride = null)
+            try {
+                dictionaryDir(ctx, id).mkdirs()
+                PackIntegrity.atomicReplace(temp, zipFile(ctx, id))
+                writeRegistry(ctx, buildRegistryAfterInstall(registry, dictionary, replacing = null))
+            } catch (e: Exception) {
+                Log.w(TAG, "install failed", e)
+                dictionaryDir(ctx, id).deleteRecursively()
+                return YomitanImportResult.IoError
+            }
+            dictionary
+        }
+        YomitanDataStore.onDictImported(ctx, dictionary)
+        return YomitanImportResult.Success(dictionary)
+    }
+
+    /** Post-lock outcome of [commitReplacement]'s registry decision, so the
+     *  suspend cleanup/purge runs AFTER the registry lock releases — symmetric
+     *  across abort + success, and the lock does pure (non-suspend) registry IO. */
+    private sealed interface ReplaceCommit {
+        /** Not applied; clean up the staged new id ([stagedId], null when nothing
+         *  was staged) after the lock, then return [result]. */
+        data class Aborted(val result: YomitanImportResult, val stagedId: String?) : ReplaceCommit
+        /** Applied as a same-bytes metadata refresh; no old deck to purge. */
+        data class Refreshed(val dictionary: YomitanDictionary) : ReplaceCommit
+        /** Applied; purge the replaced [oldId] after the lock to make the new
+         *  deck live. */
+        data class Swapped(val dictionary: YomitanDictionary, val oldId: String) : ReplaceCommit
+    }
+
+    /**
+     * Auto-update replacement, structured to NEVER lose the working deck:
+     *  1. stage the new zip beside the old (different content ⇒ different id ⇒
+     *     different dir, so the old deck stays intact);
+     *  2. PROVE the new deck ingests into the shared DB before discarding the old
+     *     — the Yomitan analog of the language-pack validate-before-swap (the
+     *     code differs: packs swap a directory, here the proof is a successful
+     *     [YomitanDataStore.tryIngest]). On failure the old deck is untouched;
+     *  3. commit atomically against the CURRENT registry — the scan object is
+     *     stale (the deck may have been deleted, opted out, or re-edited during
+     *     the download + ingest), so re-resolve and abort rather than resurrect
+     *     a deleted deck or clobber newer user state; then purge the old deck,
+     *     which also makes the proven-good new deck live by clearing the caches.
+     */
+    private suspend fun commitReplacement(
+        ctx: Context,
+        temp: File,
+        id: String,
+        parsed: ParsedDictionary,
+        replacing: YomitanDictionary,
+        revisionOverride: String?,
+    ): YomitanImportResult {
+        val candidate = newDictionary(id, parsed, temp.length(), carryFrom = null, revisionOverride = revisionOverride)
+        // Identical bytes ⇒ same id as the deck being replaced: no new rows to
+        // prove and no swap — handled as a metadata-only refresh in the commit
+        // section below. Otherwise stage + prove the new id first.
+        val sameContent = id == replacing.id
+        if (!sameContent) {
+            // Identity guard (pure, no IO): a new revision must still be the SAME
+            // dictionary. If the update URL resolved to a different deck (author
+            // misconfiguration), skip and keep the installed deck rather than
+            // silently swap unrelated content in under its alias + priority slot.
+            if (!isSameDictionaryIdentity(
+                    parsed.title, parsed.sourceLanguage, parsed.targetLanguage,
+                    replacing.title, replacing.sourceLanguage, replacing.targetLanguage,
+                )
+            ) {
+                Log.w(
+                    TAG,
+                    "update for ${replacing.id}: replacement is a different dictionary " +
+                        "(title/language mismatch); skipping",
+                )
+                return YomitanImportResult.Skipped("update content is a different dictionary")
+            }
+            // Collision guard BEFORE touching disk/DB. The id is content-derived,
+            // and BOTH dictionaryDir(id) and the ingested rows key on it. Here
+            // id != replacing.id, so id already being registered means the
+            // update's bytes are identical to a DIFFERENT installed deck — staging
+            // would overwrite that deck's zip and re-ingest-then-purge its rows
+            // under the shared id, and the abort path below would delete its dir.
+            // Astronomically rare (a sha256-prefix match), but corruption-grade,
+            // so skip the update rather than clobber an unrelated deck.
+            val collidesWithOtherDeck = mutex.withLock {
+                readRegistry(ctx)?.dictionaries?.any { it.id == id } == true
+            }
+            if (collidesWithOtherDeck) {
+                Log.w(TAG, "update for ${replacing.id}: new content id $id already belongs to another installed deck; skipping")
+                return YomitanImportResult.Skipped("update content matches another installed dictionary")
+            }
+            try {
+                dictionaryDir(ctx, id).mkdirs()
+                PackIntegrity.atomicReplace(temp, zipFile(ctx, id))
+            } catch (e: Exception) {
+                Log.w(TAG, "update: staging new zip failed for ${replacing.id}", e)
+                dictionaryDir(ctx, id).deleteRecursively()
+                return YomitanImportResult.IoError
+            }
+            // Prove-before-swap. tryIngest is transactional, so a failure rolls
+            // back cleanly (no rows, not marked ingested); drop the staged zip
+            // and leave the old deck fully intact and queryable.
+            if (!YomitanDataStore.tryIngest(ctx, candidate)) {
+                dictionaryDir(ctx, id).deleteRecursively()
+                return YomitanImportResult.IoError
+            }
+        }
+
+        // The locked block makes ONLY the registry decision (pure, non-suspend
+        // IO); the suspend DB purge/cleanup runs after the lock releases.
+        val commit = mutex.withLock {
+            val registry = readRegistry(ctx)
+                ?: return@withLock ReplaceCommit.Aborted(
+                    YomitanImportResult.IoError, stagedId = if (sameContent) null else id,
+                )
+            // Re-resolve against the CURRENT registry — never trust the stale
+            // scan object for the swap decision or the carried-over user state.
+            val current = registry.dictionaries.firstOrNull { it.id == replacing.id }
+            if (current == null || !current.autoUpdate) {
+                // Deleted or opted out during the update: don't resurrect or
+                // override. The old deck is untouched; the staged new id is
+                // dropped after the lock.
+                return@withLock ReplaceCommit.Aborted(
+                    YomitanImportResult.Skipped(
+                        if (current == null) "replaced dictionary removed during update"
+                        else "auto-update disabled during update",
+                    ),
+                    stagedId = if (sameContent) null else id,
+                )
+            }
+            val committed = candidate.copy(
+                alias = current.alias,
+                accentColor = current.accentColor,
+                autoUpdate = current.autoUpdate,
+            )
+            if (sameContent) {
+                // Metadata-only refresh in place (revision/urls); rows unchanged.
+                writeRegistry(
+                    ctx,
+                    registry.copy(
+                        dictionaries = registry.dictionaries.map { if (it.id == id) committed else it },
+                    ),
+                )
+                return@withLock ReplaceCommit.Refreshed(committed)
+            }
+            writeRegistry(ctx, buildRegistryAfterInstall(registry, committed, replacing = current))
+            ReplaceCommit.Swapped(committed, current.id)
+        }
+
+        return when (commit) {
+            is ReplaceCommit.Aborted -> {
+                commit.stagedId?.let { staged ->
+                    dictionaryDir(ctx, staged).deleteRecursively()
+                    YomitanDataStore.onDictDeleted(ctx, staged) // purge rows tryIngest added
+                }
+                commit.result
+            }
+            is ReplaceCommit.Refreshed -> YomitanImportResult.Success(commit.dictionary)
+            is ReplaceCommit.Swapped -> {
+                // Old id is out of the registry now; purge its rows + delete its
+                // dir. onDictDeleted clears the caches, making the proven-good
+                // new deck live.
+                dictionaryDir(ctx, commit.oldId).deleteRecursively()
+                YomitanDataStore.onDictDeleted(ctx, commit.oldId)
+                YomitanImportResult.Success(commit.dictionary)
+            }
+        }
+    }
+
+    /** Builds a [YomitanDictionary] from a validated [parsed], carrying the
+     *  user-set alias/accent/autoUpdate from [carryFrom] (the CURRENT registry
+     *  entry on an update; null on a fresh import → defaults). [revisionOverride]
+     *  wins over the zip's bundled revision (update convergence). */
+    private fun newDictionary(
+        id: String,
+        parsed: ParsedDictionary,
+        sizeBytes: Long,
+        carryFrom: YomitanDictionary?,
+        revisionOverride: String?,
+    ) = YomitanDictionary(
+        id = id,
+        title = parsed.title,
+        revision = revisionOverride ?: parsed.revision,
+        description = parsed.description,
+        author = parsed.author,
+        format = parsed.format,
+        categories = parsed.categories,
+        sizeBytes = sizeBytes,
+        importedAtMs = System.currentTimeMillis(),
+        sourceLanguage = parsed.sourceLanguage,
+        targetLanguage = parsed.targetLanguage,
+        frequencyMode = parsed.frequencyMode,
+        isUpdatable = parsed.isUpdatable,
+        indexUrl = parsed.indexUrl,
+        downloadUrl = parsed.downloadUrl,
+        alias = carryFrom?.alias,
+        accentColor = carryFrom?.accentColor,
+        autoUpdate = carryFrom?.autoUpdate ?: true,
+    )
+
+    /**
+     * Identity invariant for an auto-update REPLACEMENT: a new revision must
+     * still be the SAME dictionary. The title (trimmed, case-insensitive) must
+     * match, and any DECLARED source/target language must agree on its primary
+     * subtag. A null/blank language on either side is tolerated — adding or
+     * dropping language metadata across a revision is not a different dictionary.
+     *
+     * This catches an `indexUrl`/`downloadUrl` that resolves to a DIFFERENT deck
+     * (author misconfiguration) and keeps the installed deck rather than swap in
+     * unrelated content under the user's alias + priority slot. It is deliberately
+     * NOT an anti-tampering control: a hostile endpoint controls every field in
+     * its own zip, so it can always make these match. The accepted trust boundary
+     * is "you trusted the author at import time" — the same model as Yomitan.
+     */
+    internal fun isSameDictionaryIdentity(
+        newTitle: String,
+        newSource: String?,
+        newTarget: String?,
+        installedTitle: String,
+        installedSource: String?,
+        installedTarget: String?,
+    ): Boolean {
+        if (!newTitle.trim().equals(installedTitle.trim(), ignoreCase = true)) return false
+        return languageCompatible(newSource, installedSource) &&
+            languageCompatible(newTarget, installedTarget)
+    }
+
+    /** True unless BOTH sides declare a language and their primary subtags differ. */
+    private fun languageCompatible(a: String?, b: String?): Boolean {
+        val pa = primarySubtag(a)
+        val pb = primarySubtag(b)
+        return pa == null || pb == null || pa == pb
+    }
+
+    private fun primarySubtag(lang: String?): String? =
+        lang?.trim()?.lowercase()?.takeUnless { it.isEmpty() }
+            ?.substringBefore('-')?.substringBefore('_')
+
+    /**
+     * Registry after installing [dictionary]. Fresh import ([replacing] null):
+     * appends the new id at the end of each of its sections (lowest priority),
+     * de-duping any stale occurrence — the original import behavior. Update
+     * ([replacing] non-null): swaps the old id → new id IN PLACE in each section
+     * (preserving the user's priority slot), drops the old id from sections the
+     * update no longer matches, de-dupes any stale new id, and appends to any
+     * section the update newly gained. `copy()` so untouched registry fields
+     * (e.g. termsSingleDictionary) survive.
+     */
+    internal fun buildRegistryAfterInstall(
+        registry: YomitanRegistry,
+        dictionary: YomitanDictionary,
+        replacing: YomitanDictionary?,
+    ): YomitanRegistry {
+        val newId = dictionary.id
+        val oldId = replacing?.id
+        val newCats = dictionary.categories.mapTo(mutableSetOf()) { it.name }
+
+        val dictionaries = if (oldId != null) {
+            val mapped = registry.dictionaries.map { if (it.id == oldId) dictionary else it }
+            if (mapped.any { it.id == newId }) mapped else mapped + dictionary
+        } else {
+            registry.dictionaries + dictionary
+        }
+
+        val sectionOrder = registry.sectionOrder.toMutableMap()
+        if (oldId != null) {
+            for ((cat, ids) in registry.sectionOrder) {
+                sectionOrder[cat] = ids.flatMap { existing ->
+                    when {
+                        existing == oldId && cat in newCats -> listOf(newId) // swap in place
+                        existing == oldId -> emptyList()                     // section dropped
+                        existing == newId -> emptyList()                     // de-dupe stale new id
+                        else -> listOf(existing)
+                    }
+                }
+            }
+        }
+        for (cat in dictionary.categories) {
+            val list = sectionOrder[cat.name] ?: emptyList()
+            sectionOrder[cat.name] = when {
+                oldId == null -> list.filterNot { it == newId } + newId // fresh: append at end
+                newId in list -> list                                   // update: already in slot
+                else -> list + newId                                    // update: newly-gained section
+            }
+        }
+        return registry.copy(dictionaries = dictionaries, sectionOrder = sectionOrder)
     }
 
     /** Removes the dictionary's files and every registry reference. No-op
@@ -469,6 +769,93 @@ object YomitanDictionaryStore {
             if (changed) YomitanDataStore.invalidate()
         }
 
+    /** Sets the per-dictionary auto-update opt-out for dictionary [id]. No-op
+     *  when the registry is unreadable, the dictionary is gone, or unchanged.
+     *  Deliberately does NOT call [YomitanDataStore.invalidate] — unlike alias
+     *  and accent color, `autoUpdate` feeds no capability cache (only the
+     *  auto-updater reads it), so invalidating would drop every per-language
+     *  cache for nothing. */
+    suspend fun setAutoUpdate(ctx: Context, id: String, enabled: Boolean) =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                val registry = readRegistry(ctx) ?: return@withLock
+                val current = registry.dictionaries.firstOrNull { it.id == id }
+                    ?: return@withLock
+                if (current.autoUpdate == enabled) return@withLock
+                writeRegistry(
+                    ctx,
+                    registry.copy(
+                        dictionaries = registry.dictionaries.map {
+                            if (it.id == id) it.copy(autoUpdate = enabled) else it
+                        },
+                    ),
+                )
+            }
+        }
+
+    /**
+     * One-time migration: populate [YomitanDictionary.isUpdatable]/[indexUrl]/
+     * [downloadUrl] on registry entries imported before those fields existed, by
+     * re-reading each stored zip's index.json (capped, typed). Idempotent and
+     * cheap (a few-KB capped read per deck); the caller gates it behind a
+     * one-time [com.playtranslate.Prefs] flag so it runs once. No cache
+     * invalidation — these fields feed the updater only, never a capability
+     * cache. Other fields (alias/accent/autoUpdate) are preserved.
+     */
+    suspend fun backfillUpdateMetadata(ctx: Context) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val registry = readRegistry(ctx) ?: return@withLock
+            var changed = false
+            val updated = registry.dictionaries.map { dict ->
+                val meta = readUpdateMetadata(ctx, dict.id) ?: return@map dict
+                if (dict.isUpdatable == meta.isUpdatable &&
+                    dict.indexUrl == meta.indexUrl &&
+                    dict.downloadUrl == meta.downloadUrl
+                ) {
+                    dict
+                } else {
+                    changed = true
+                    dict.copy(
+                        isUpdatable = meta.isUpdatable,
+                        indexUrl = meta.indexUrl,
+                        downloadUrl = meta.downloadUrl,
+                    )
+                }
+            }
+            if (changed) writeRegistry(ctx, registry.copy(dictionaries = updated))
+        }
+    }
+
+    private class UpdateMetadata(
+        val isUpdatable: Boolean,
+        val indexUrl: String?,
+        val downloadUrl: String?,
+    )
+
+    /** Reads just the update-relevant fields from [id]'s stored zip index.json
+     *  (capped + typed — the same primitive [parseAndValidate] uses, NOT the
+     *  uncapped [readIndexJson] display reader). Null when unreadable. */
+    private fun readUpdateMetadata(ctx: Context, id: String): UpdateMetadata? {
+        val zip = zipFile(ctx, id)
+        if (!zip.exists()) return null
+        return try {
+            ZipFile(zip).use { z ->
+                val entry = z.getEntry("index.json") ?: return null
+                val text = z.getInputStream(entry).use { it.readUtf8Capped(MAX_INDEX_JSON_BYTES) }
+                    ?: return null
+                val index = PtJson.lenient.decodeFromString<IndexJson>(text)
+                UpdateMetadata(
+                    isUpdatable = index.isUpdatable,
+                    indexUrl = index.indexUrl?.trim()?.takeIf { it.isNotEmpty() },
+                    downloadUrl = index.downloadUrl?.trim()?.takeIf { it.isNotEmpty() },
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "backfill: index.json read failed for $id", e)
+            null
+        }
+    }
+
     // ── Validation ──────────────────────────────────────────────────────
 
     /** Structural-validation failure. [message] is the user-visible (debug
@@ -489,6 +876,9 @@ object YomitanDictionaryStore {
         val sourceLanguage: String?,
         val targetLanguage: String?,
         val frequencyMode: String?,
+        val isUpdatable: Boolean,
+        val indexUrl: String?,
+        val downloadUrl: String?,
     )
 
     /** index.json shape — extra fields ignored, [format]/[version] aliased. */
@@ -503,6 +893,9 @@ object YomitanDictionaryStore {
         val sourceLanguage: String? = null,
         val targetLanguage: String? = null,
         val frequencyMode: String? = null,
+        val isUpdatable: Boolean = false,
+        val indexUrl: String? = null,
+        val downloadUrl: String? = null,
     )
 
     private val TERM_BANK = Regex("""term_bank_\d+\.json""")
@@ -572,6 +965,9 @@ object YomitanDictionaryStore {
             sourceLanguage = index.sourceLanguage?.trim()?.takeIf { it.isNotEmpty() },
             targetLanguage = index.targetLanguage?.trim()?.takeIf { it.isNotEmpty() },
             frequencyMode = index.frequencyMode?.trim()?.takeIf { it.isNotEmpty() },
+            isUpdatable = index.isUpdatable,
+            indexUrl = index.indexUrl?.trim()?.takeIf { it.isNotEmpty() },
+            downloadUrl = index.downloadUrl?.trim()?.takeIf { it.isNotEmpty() },
         )
     }
 

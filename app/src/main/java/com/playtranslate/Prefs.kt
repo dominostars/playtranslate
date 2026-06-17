@@ -949,6 +949,19 @@ class Prefs internal constructor(
         get() = sp.getLong(KEY_LAST_UPDATE_CHECK, 0L)
         set(v) = sp.edit { putLong(KEY_LAST_UPDATE_CHECK, v) }
 
+    /** Timestamp (ms) of the most recent Yomitan dictionary auto-update scan.
+     *  Debounced to ~24h (mirrors [lastUpdateCheckTime]). */
+    var lastYomitanUpdateCheckMs: Long
+        get() = sp.getLong(KEY_LAST_YOMITAN_UPDATE_CHECK, 0L)
+        set(v) = sp.edit { putLong(KEY_LAST_YOMITAN_UPDATE_CHECK, v) }
+
+    /** Whether the one-time backfill of Yomitan update metadata
+     *  (isUpdatable/indexUrl/downloadUrl onto pre-existing registry entries)
+     *  has run. */
+    var yomitanUpdateBackfillDone: Boolean
+        get() = sp.getBoolean(KEY_YOMITAN_UPDATE_BACKFILL_DONE, false)
+        set(v) = sp.edit { putBoolean(KEY_YOMITAN_UPDATE_BACKFILL_DONE, v) }
+
     /** Tag (e.g. "v1.2.0") the user explicitly skipped; suppresses re-prompting
      *  until a newer tag is published. */
     var updateCheckSkippedTag: String
@@ -1103,6 +1116,8 @@ class Prefs internal constructor(
         const val KEY_HOTKEY_FURIGANA                      = "hotkey_furigana"
         const val KEY_QUICK_TILE_ADDED                     = "quick_tile_added"
         private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"
+        private const val KEY_LAST_YOMITAN_UPDATE_CHECK    = "last_yomitan_update_check"
+        private const val KEY_YOMITAN_UPDATE_BACKFILL_DONE = "yomitan_update_backfill_done"
         private const val KEY_UPDATE_SKIP_TAG              = "update_skip_tag"
         private const val KEY_TARGET_PACK_MIGRATION_DISMISSED = "target_pack_migration_dismissed"
 

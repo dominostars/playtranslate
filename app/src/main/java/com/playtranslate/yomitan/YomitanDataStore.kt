@@ -22,12 +22,14 @@ import java.util.zip.ZipFile
  * App-wide read facade over the runtime data derived from imported Yomitan
  * dictionaries.
  *
- * ARCHITECTURE RULE: this is the ONLY Yomitan type that code outside the
- * `yomitan` package may import. The word "Yomitan" appears in this package,
- * the source-language engines' enrichment call sites, and the settings page —
- * nowhere else. UI consumes plain model fields (e.g. `Headword.pitch`).
- * Future data types (terms, kanji) add a table + an ingestor + a typed
- * query method HERE — never a new store class with its own lifecycle.
+ * ARCHITECTURE RULE: outside the `yomitan` package, the only importable Yomitan
+ * symbols are this store (the data facade — UI consumes plain model fields like
+ * `Headword.pitch`), the source-language engines' enrichment call sites, the
+ * settings page, and the launch-time auto-update trigger
+ * (`YomitanAutoUpdateOrchestrator.maybeRun`, wired from `MainActivity.onResume` —
+ * fire-and-forget orchestration, not data-type leakage). Nowhere else.
+ * Future DATA types (terms, kanji) add a table + an ingestor + a typed query
+ * method HERE — never a new store class with its own lifecycle.
  *
  * Storage: one SQLite DB (`noBackupFilesDir/yomitan/yomitan.sqlite`) holding
  * every derived table, ingested from the zips [YomitanDictionaryStore] keeps
@@ -464,6 +466,28 @@ object YomitanDataStore {
                     // the lock, so ordering vs. the projection is irrelevant.
                     registrySnapshot = null
                     caches.clear()
+                }
+            }
+        }
+
+    /** Ingests [dictionary]'s derived rows and REPORTS success, WITHOUT touching
+     *  the capability caches. The auto-update replace path uses this to PROVE the
+     *  new deck is queryable before the registry swap purges the old one (see
+     *  [com.playtranslate.yomitan.YomitanDictionaryStore.applyUpdate]).
+     *  [ingestLocked] is transactional, so a failure rolls back cleanly (no
+     *  partial rows, not marked ingested). Caches are deliberately NOT cleared
+     *  here: the not-yet-registered new id would otherwise look like an orphan to
+     *  a [reconcileLocked] triggered between this and the swap; the swap's
+     *  onDictDeleted(oldId) clears them once the registry is consistent. */
+    suspend fun tryIngest(ctx: Context, dictionary: YomitanDictionary): Boolean =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                try {
+                    ingestLocked(ctx, openDb(ctx), dictionary)
+                    true
+                } catch (e: Exception) {
+                    Log.w(TAG, "ingest failed for ${dictionary.id}", e)
+                    false
                 }
             }
         }

@@ -643,6 +643,11 @@ class MainActivity :
         CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
         refreshReadiness()
         maybeCheckForUpdates()
+        // Silent, debounced, launch-time Yomitan dictionary auto-update. Runs on
+        // appScope (no UI), gates its apply on CaptureService.isCapturing.
+        com.playtranslate.yomitan.YomitanAutoUpdateOrchestrator.maybeRun(
+            application as PlayTranslateApplication
+        )
         // The dual-screen live-hint surface applies only when fully Ready on
         // dual. Read the gate's freshly-refreshed state (refreshReadiness()
         // updated it synchronously) rather than the onboardingContainer view,

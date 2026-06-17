@@ -84,6 +84,7 @@ class LanguagePackDownloader(
         url: String,
         destination: File,
         requestIdentityEncoding: Boolean = false,
+        maxBytes: Long? = null,
         onProgress: (DownloadProgress.Downloading) -> Unit,
     ) = withContext(Dispatchers.IO) {
         destination.parentFile?.mkdirs()
@@ -109,7 +110,13 @@ class LanguagePackDownloader(
                     // and start over from byte 0.
                     val body = response.body
                     val total = body.contentLength().coerceAtLeast(0L)
-                    streamToFile(body, destination, append = false, startBytes = 0L, totalBytes = total, onProgress)
+                    // Reject early on an honestly-declared oversized payload (the
+                    // streaming counter below is the backstop for a lying/absent
+                    // Content-Length). [maxBytes] is set only for untrusted URLs.
+                    if (maxBytes != null && total > maxBytes) {
+                        error("download size $total exceeds cap $maxBytes for $url")
+                    }
+                    streamToFile(body, destination, append = false, startBytes = 0L, totalBytes = total, maxBytes = maxBytes, onProgress)
                 }
                 206 -> {
                     // Partial Content. Validate Content-Range and append.
@@ -118,7 +125,10 @@ class LanguagePackDownloader(
                         ?: error("206 with no Content-Range for $url")
                     val total = parseContentRangeTotal(cr)
                         ?: (body.contentLength().coerceAtLeast(0L) + resumeFrom)
-                    streamToFile(body, destination, append = true, startBytes = resumeFrom, totalBytes = total, onProgress)
+                    if (maxBytes != null && total > maxBytes) {
+                        error("download size $total exceeds cap $maxBytes for $url")
+                    }
+                    streamToFile(body, destination, append = true, startBytes = resumeFrom, totalBytes = total, maxBytes = maxBytes, onProgress)
                 }
                 416 -> {
                     // Range Not Satisfiable — usually means the partial file is already
@@ -138,6 +148,7 @@ class LanguagePackDownloader(
         append: Boolean,
         startBytes: Long,
         totalBytes: Long,
+        maxBytes: Long?,
         onProgress: (DownloadProgress.Downloading) -> Unit,
     ) {
         var received = startBytes
@@ -150,6 +161,12 @@ class LanguagePackDownloader(
                     if (n <= 0) break
                     output.write(buf, 0, n)
                     received += n
+                    // Hard cap for an untrusted/lying endpoint: bounded at
+                    // maxBytes + one 64 KB chunk before we abort (the caller
+                    // deletes the partial file). Null ⇒ no cap (trusted packs).
+                    if (maxBytes != null && received > maxBytes) {
+                        error("download exceeded $maxBytes-byte cap for $destination")
+                    }
                     onProgress(DownloadProgress.Downloading(received, totalBytes))
                 }
             }
@@ -190,9 +207,11 @@ class LanguagePackDownloader(
         /**
          * [Dns] implementation that returns IPv4 addresses before IPv6 for
          * any hostname, leaning on [Dns.SYSTEM] for the actual resolution.
-         * See [defaultClient] for the rationale.
+         * See [defaultClient] for the rationale. `internal` so other
+         * short-lived clients (e.g. the Yomitan index.json fetch) can reuse the
+         * same v6-broken-CDN workaround rather than duplicating it.
          */
-        private val Ipv4PreferredDns: Dns = object : Dns {
+        internal val Ipv4PreferredDns: Dns = object : Dns {
             override fun lookup(hostname: String): List<InetAddress> {
                 val all = Dns.SYSTEM.lookup(hostname)
                 // sortedBy boolean: false (v4) comes before true (v6),

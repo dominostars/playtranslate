@@ -202,6 +202,9 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
                 getString(R.string.yomitan_io_error_title),
                 getString(R.string.yomitan_io_error_message),
             )
+            // Auto-update-only outcome (deck deleted/opted-out mid-update); the
+            // manual import path here never produces it.
+            is YomitanImportResult.Skipped -> Unit
         }
     }
 

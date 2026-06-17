@@ -43,6 +43,11 @@ class OneShotManager(private val service: CaptureService) {
      *  [CaptureService.serviceScope], which runs on Dispatchers.Main. */
     private var currentGeneration: Long = 0
 
+    /** True while any press-and-hold capture cycle is still running. [activeJobs]
+     *  is cleared only on cancel/supersede, never on completion, so test job
+     *  liveness rather than map emptiness. Feeds [CaptureService.isCapturing]. */
+    fun hasActive(): Boolean = activeJobs.values.any { it.isActive }
+
     /** Single-display variant retained for the floating-icon path, where
      *  hold should only run on the icon's display. */
     fun runHoldOverlay(

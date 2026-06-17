@@ -54,6 +54,16 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
+                    <!-- Per-dictionary auto-update toggle; shown by the activity
+                         only for dictionaries that declare update capability. -->
+                    <include
+                        android:id="@+id/rowYomitanAutoUpdate"
+                        layout="@layout/settings_row_switch" />
+
+                    <include
+                        android:id="@+id/autoUpdateDivider"
+                        layout="@layout/settings_row_divider" />
+
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
