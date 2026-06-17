@@ -43,6 +43,15 @@ enum class SourceLangId(val code: String) {
         else -> this
     }
 
+    /** The bare primary subtag this language consumes Yomitan data under
+     *  (ZH_HANT's "zh-Hant" → "zh"), case-folded with [java.util.Locale.ROOT]
+     *  since codes are ASCII. Used as the per-language Yomitan capability-cache
+     *  key and as [com.playtranslate.yomitan.matchesSourceLanguage]'s argument,
+     *  so ZH and ZH_HANT share one "zh" cache and consume the same dictionaries
+     *  (they already share the pack via [packId]). */
+    fun yomitanConsumingLang(): String =
+        code.split('-', '_').first().lowercase(java.util.Locale.ROOT)
+
     /** The [java.util.Locale] for this language. Drives locale-sensitive
      *  string operations — most importantly Turkish case mapping, where
      *  `"IŞIK".lowercase()` yields `"işik"` under the default locale but

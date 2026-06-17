@@ -181,19 +181,24 @@ data class KanjiDetail(
 
 /**
  * Per-hanzi detail reconstituted from the Chinese pack's single-character
- * CC-CEDICT entries. Pinyin is tone-marked; [freqScore] matches the 0-5 star
- * scale used by [DictionaryEntry.freqScore]. CC-CEDICT is Chinese↔English so
- * [meaningsLang] is always "en" — non-English UIs rely on MT fallback.
+ * CC-CEDICT entries, optionally enriched by an imported zh-source Yomitan
+ * kanji dictionary. Pinyin is tone-marked; [freqScore] matches the 0-5 star
+ * scale used by [DictionaryEntry.freqScore]. [meaningsLang] is "en" for the
+ * CC-CEDICT (Chinese↔English) glosses but carries an imported dictionary's
+ * declared language when its meanings win, so the breakdown's MT fallback
+ * behaves correctly; non-English UIs without a match rely on MT fallback.
  */
 data class HanziDetail(
     override val literal: Char,
     override val meanings: List<String>,
     val pinyin: String?,
     val isCommon: Boolean,
-    val freqScore: Int
-) : CharacterDetail {
-    override val meaningsLang: String get() = "en"
-}
+    val freqScore: Int,
+    override val meaningsLang: String = "en",
+    /** Per-dictionary frequency chips from imported Yomitan kanji-frequency
+     *  dictionaries, in the user's section order. Empty without imports. */
+    val frequencies: List<FrequencyTag> = emptyList(),
+) : CharacterDetail
 
 /**
  * Returns the headword whose [Headword.written] or [Headword.reading]

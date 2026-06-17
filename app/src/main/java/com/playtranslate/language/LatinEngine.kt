@@ -49,6 +49,7 @@ class LatinEngine(
     override val profile: SourceLanguageProfile = SourceLanguageProfiles[langId]
 
     private val dict: WiktionaryDictionaryManager = WiktionaryDictionaryManager.get(appContext, langId)
+    private val yomitan = YomitanEnrichment(appContext, langId.yomitanConsumingLang())
     private val locale: Locale = langId.locale
     private val breakIterator: BreakIterator = BreakIterator.getWordInstance(locale)
     private val stemmer: SnowballProgram? = stemmerFor(langId)
@@ -96,11 +97,16 @@ class LatinEngine(
 
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? {
         val w = normalizeForLookup(word)
+        val lower = w.lowercase(locale)
         val stem = stemOf(w)
         // Arabic gets a folded lookup key (casual/variant spellings) as a
         // fallback the dictionary tries after surface and before stem.
         val folded = if (langId == SourceLangId.AR) ArabicFold.fold(w) else null
-        return dict.lookup(surface = w, stemmed = stem, folded = folded)
+        return yomitan.applyTo(
+            dict.lookup(surface = w, stemmed = stem, folded = folded),
+            w, reading = null,
+            fallbackForms = importedTermFallbacks(w, lower, stem, folded),
+        )
     }
 
     override fun close() {
@@ -139,6 +145,29 @@ class LatinEngine(
     }
 
     companion object {
+        /** Imported-term Yomitan lookup keys to try after the direct
+         *  (original-case) surface [w] — which already matches dictionaries
+         *  that store capitalized headwords (e.g. German nouns). In order,
+         *  deduped against [w] and one another:
+         *   - [lower]: the locale-lowercased surface. [WiktionaryDictionaryManager]
+         *     queries this FIRST, so a sentence-initial capital still resolves a
+         *     lowercase lemma (English-style dicts store lowercase) the built-in
+         *     pack would find — without it, enrichment silently misses common
+         *     capitalized words.
+         *   - [stem]: the Snowball stem (when distinct from [w] and [lower]).
+         *   - [folded]: the Arabic casual/variant-spelling fold.
+         *  Pure + internal so the ordering is unit-testable without a pack. */
+        internal fun importedTermFallbacks(
+            w: String,
+            lower: String,
+            stem: String,
+            folded: String?,
+        ): List<String> = listOfNotNull(
+            lower.takeIf { it != w },
+            stem.takeIf { it != w && it != lower },
+            folded,
+        )
+
         /** Returns a fresh Snowball stemmer instance, or null for isolating
          *  languages with no useful stemming rules. English is the default
          *  catch-all only for unknown IDs — callers should route through

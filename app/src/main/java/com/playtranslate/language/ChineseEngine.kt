@@ -67,6 +67,8 @@ class ChineseEngine(
 
     private val dict: ChineseDictionaryManager = ChineseDictionaryManager.get(appContext)
 
+    private val yomitan = YomitanEnrichment(appContext, langId.yomitanConsumingLang())
+
     init {
         // Redirect HanLP's file reads to our pack's tokenizer/ dir BEFORE
         // any HanLP.segment() / convertToPinyinList() call, closing the
@@ -149,7 +151,13 @@ class ChineseEngine(
             .map { TokenSpan(surface = it, lookupForm = it, reading = null) }
 
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? =
-        dict.lookup(word, profile.preferTraditional)?.preferReading(reading)
+        yomitan.applyTo(
+            // Verbatim former body — the ?.preferReading(reading) heteronym
+            // reorder must survive the wrap. CC-CEDICT reading is pinyin, not
+            // a Yomitan reading key, so the imported term lookup keys on null.
+            dict.lookup(word, profile.preferTraditional)?.preferReading(reading),
+            word, reading = null, fallbackForms = emptyList(),
+        )
 
     /**
      * CC-CEDICT contains most common hanzi as single-character entries with
@@ -158,23 +166,35 @@ class ChineseEngine(
      * wins when a character has multiple senses under different readings.
      */
     override suspend fun lookupCharacter(literal: Char, targetLang: String): CharacterDetail? {
-        val response = dict.lookup(literal.toString(), profile.preferTraditional) ?: return null
-        val entry = response.entries.firstOrNull() ?: return null
-        val meanings = entry.senses.flatMap { it.targetDefinitions }
+        val entry = dict.lookup(literal.toString(), profile.preferTraditional)?.entries?.firstOrNull()
+        val imported = yomitan.importedKanji(literal)
+        // Imported zh-source kanji meanings win when present (the user installed
+        // the dict and ordered it), carrying their declared language; else the
+        // CC-CEDICT single-char glosses. Mirrors JapaneseEngine.lookupCharacter.
+        val meanings: List<String>
+        val meaningsLang: String
+        if (imported != null && imported.meanings.isNotEmpty()) {
+            meanings = imported.meanings
+            meaningsLang = imported.meaningsLang
+        } else {
+            meanings = entry?.senses?.flatMap { it.targetDefinitions }.orEmpty()
+            meaningsLang = "en"
+        }
         if (meanings.isEmpty()) return null
-        // Headword.reading comes through buildEntry already tone-marked; run
-        // it through PinyinFormatter anyway (idempotent) so the hanzi row is
-        // guaranteed to match the definition's tone-mark format even if the
-        // upstream contract ever changes.
-        val pinyin = entry.headwords.firstOrNull()?.reading
+        // Pinyin/readings stay CC-CEDICT — Yomitan kanji on/kun readings don't
+        // map to pinyin. Headword.reading is already tone-marked; reformat
+        // (idempotent) so the hanzi row matches the definition's tone format.
+        val pinyin = entry?.headwords?.firstOrNull()?.reading
             ?.takeIf { it.isNotBlank() }
             ?.let { PinyinFormatter.numberedToToneMarks(it) }
         return HanziDetail(
             literal = literal,
             meanings = meanings,
             pinyin = pinyin,
-            isCommon = entry.isCommon == true,
-            freqScore = entry.freqScore,
+            isCommon = entry?.isCommon == true,
+            freqScore = entry?.freqScore ?: 0,
+            meaningsLang = meaningsLang,
+            frequencies = yomitan.kanjiFrequencies(literal),
         )
     }
 

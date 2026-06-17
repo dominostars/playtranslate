@@ -5,11 +5,8 @@ import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.dictionary.SudachiJapaneseTokenizer
 import com.playtranslate.model.CharacterDetail
-import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
-import com.playtranslate.model.Headword
 import com.playtranslate.model.KanjiDetail
-import com.playtranslate.yomitan.YomitanDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -30,6 +27,8 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
     override val profile: SourceLanguageProfile = SourceLanguageProfiles[SourceLangId.JA]
 
     private val dict: DictionaryManager = DictionaryManager.get(appContext)
+
+    private val yomitan = YomitanEnrichment(appContext, SourceLangId.JA.yomitanConsumingLang())
 
     init {
         // Point the Sudachi tokenizer at the pack's tokenizer/ directory BEFORE
@@ -74,10 +73,7 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
         // them as a second phrase gate for the n-gram re-glob. Null (not a
         // no-op lambda) when no term dict is installed, so the tokenizer
         // skips the whole oracle pass.
-        val phraseOracle: (suspend (Set<String>) -> Set<String>)? =
-            if (YomitanDataStore.hasTermDictionaries(appContext)) {
-                { candidates -> YomitanDataStore.batchTermsExist(appContext, candidates) }
-            } else null
+        val phraseOracle = yomitan.phraseOracle()
         return dict.tokenizeWithSurfaces(text, phraseOracle).map {
             TokenSpan(
                 surface = it.surface, lookupForm = it.lookupForm,
@@ -91,122 +87,16 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
             TokenSpan(surface = it.surface, lookupForm = it.lookupForm, reading = it.reading)
         }
 
-    override suspend fun lookup(word: String, reading: String?): DictionaryResponse? {
-        val packResponse = dict.lookup(word, reading)
-        val imported = lookupImportedTerms(word, reading)
-        val merged = when {
-            // The pack entry anchors the word's identity (headword display,
-            // TTS reading, badges, POS); imported groups attach to the first
-            // entry — the one every surface renders.
-            packResponse != null -> {
-                if (imported.groups.isEmpty()) packResponse
-                else {
-                    // Single-dictionary mode: the pack is the lowest-priority
-                    // source, so a winning imported group excludes its senses
-                    // too. Stripped across ALL entries (surfaces flatMap
-                    // senses over them); the entry keeps anchoring identity —
-                    // the already-supported synthesized-entry shape.
-                    val entries =
-                        if (imported.lookup.suppressesPackSenses) {
-                            packResponse.entries.map { it.copy(senses = emptyList()) }
-                        } else {
-                            packResponse.entries
-                        }
-                    packResponse.copy(
-                        entries = listOf(
-                            entries.first().copy(importedSenses = imported.groups)
-                        ) + entries.drop(1),
-                    )
-                }
-            }
-            // Pack miss but an imported dict has the word: synthesize an
-            // entry so it resolves everywhere. No senses/POS/badges — the
-            // imported groups are the content.
-            imported.groups.isNotEmpty() -> {
-                val resolvedTerm = imported.resolvedTerm ?: word
-                DictionaryResponse(
-                    entries = listOf(
-                        DictionaryEntry(
-                            slug = resolvedTerm,
-                            isCommon = null,
-                            tags = emptyList(),
-                            jlpt = emptyList(),
-                            headwords = listOf(
-                                Headword(
-                                    written = resolvedTerm,
-                                    reading = imported.lookup.resolvedReading
-                                        ?.takeIf { it != resolvedTerm },
-                                )
-                            ),
-                            senses = emptyList(),
-                            importedSenses = imported.groups,
-                        )
-                    ),
-                )
-            }
-            else -> return null
-        }
-        return enrichWithYomitan(merged)
-    }
-
-    private class ImportedTerms(
-        val lookup: YomitanDataStore.TermLookup,
-        /** The candidate form that hit, when any did. */
-        val resolvedTerm: String?,
-    ) {
-        val groups get() = lookup.groups
-    }
-
-    /** Imported-term resolution mirrors the pack's candidate tiers
-     *  independently (Yomitan semantics — sources don't need to agree on a
-     *  lemma): the word as passed first, then deinflection candidates. */
-    private suspend fun lookupImportedTerms(word: String, reading: String?): ImportedTerms {
-        if (!YomitanDataStore.hasTermDictionaries(appContext)) {
-            return ImportedTerms(YomitanDataStore.TermLookup(emptyList(), reading), null)
-        }
-        val direct = YomitanDataStore.termSensesFor(appContext, word, reading)
-        if (direct.groups.isNotEmpty()) return ImportedTerms(direct, word)
-        for (candidate in Deinflector.candidates(word)) {
-            val hit = YomitanDataStore.termSensesFor(appContext, candidate.text, null)
-            if (hit.groups.isNotEmpty()) return ImportedTerms(hit, candidate.text)
-        }
-        return ImportedTerms(direct, null)
-    }
-
-    /** Attaches pitch-accent downsteps and per-dictionary frequency tags
-     *  from imported Yomitan dictionaries to each headword — one batched
-     *  query per data type per lookup, over the same (term, reading) pairs.
-     *  The facade gates each on "any such dictionary installed", so this is
-     *  a no-op map lookup for everyone else. */
-    private suspend fun enrichWithYomitan(response: DictionaryResponse): DictionaryResponse {
-        val pairs = response.entries
-            .flatMap { it.headwords }
-            .mapNotNull { hw ->
-                val term = hw.written ?: hw.reading ?: return@mapNotNull null
-                term to (hw.reading ?: term)
-            }
-            .distinct()
-        val pitch = YomitanDataStore.pitchFor(appContext, pairs)
-        val frequencies = YomitanDataStore.frequencyFor(appContext, pairs)
-        if (pitch.isEmpty() && frequencies.isEmpty()) return response
-        return response.copy(
-            entries = response.entries.map { entry ->
-                entry.copy(
-                    headwords = entry.headwords.map { hw ->
-                        val term = hw.written ?: hw.reading ?: return@map hw
-                        val key = term to (hw.reading ?: term)
-                        val downsteps = pitch[key]
-                        val tags = frequencies[key]
-                        if (downsteps.isNullOrEmpty() && tags.isNullOrEmpty()) hw
-                        else hw.copy(
-                            pitch = downsteps ?: hw.pitch,
-                            frequencies = tags ?: hw.frequencies,
-                        )
-                    },
-                )
-            },
+    /** Pack lookup, then shared Yomitan enrichment: imported term groups merge
+     *  in (deinflection candidates are the fallback forms), with pitch +
+     *  frequency attached. Behaviour is identical to the pre-extraction inline
+     *  path — [YomitanEnrichment] is a verbatim move of it. */
+    override suspend fun lookup(word: String, reading: String?): DictionaryResponse? =
+        yomitan.applyTo(
+            dict.lookup(word, reading),
+            word, reading,
+            fallbackForms = Deinflector.candidates(word).map { it.text },
         )
-    }
 
     /**
      * Per-character detail merged from two sources: the first imported
@@ -220,7 +110,7 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
      */
     override suspend fun lookupCharacter(literal: Char, targetLang: String): CharacterDetail? {
         val base = dict.lookupKanji(literal, targetLang)
-        val imported = YomitanDataStore.kanjiFor(appContext, listOf(literal))[literal]
+        val imported = yomitan.importedKanji(literal)
         val meanings: List<String>
         val meaningsLang: String
         if (imported != null && imported.meanings.isNotEmpty()) {
@@ -246,7 +136,7 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
             jlpt = base?.jlpt ?: 0,
             grade = base?.grade ?: 0,
             strokeCount = base?.strokeCount ?: 0,
-            frequencies = YomitanDataStore.kanjiFrequencyFor(appContext, listOf(literal))[literal].orEmpty(),
+            frequencies = yomitan.kanjiFrequencies(literal),
             combinedReadings = combined,
         )
     }
@@ -263,7 +153,7 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
                 .distinct()
             val pitch =
                 if (eligible.isEmpty()) emptyMap()
-                else YomitanDataStore.pitchFor(appContext, eligible)
+                else yomitan.pitchFor(eligible)
             tokens.map {
                 HintTextAnnotation(
                     baseStart = it.startOffset,

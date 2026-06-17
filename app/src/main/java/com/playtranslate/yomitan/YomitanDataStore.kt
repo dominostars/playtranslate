@@ -42,13 +42,10 @@ object YomitanDataStore {
 
     /** Bump to force a drop-and-reingest of all derived tables on next use.
      *  Flattening-rule changes need a bump too — flattened text is baked
-     *  into the term rows at ingest. */
-    private const val SCHEMA_VERSION = 6
-
-    /** The source language imported data currently serves: all consumers
-     *  are the Japanese engine, so the capability cache filters
-     *  dictionaries to JA-source packs at build. */
-    private const val CONSUMING_SOURCE_LANG = "ja"
+     *  into the term rows at ingest. v7: term ingest now gates the JA-only
+     *  headword-echo strip on source language, so non-JA dicts re-ingest with
+     *  their leading-headword text preserved. */
+    private const val SCHEMA_VERSION = 7
 
     private val TERM_BANK = Regex("""term_bank_\d+\.json""")
     private val TAG_BANK = Regex("""tag_bank_\d+\.json""")
@@ -62,10 +59,22 @@ object YomitanDataStore {
 
     private var db: SQLiteDatabase? = null
 
-    /** Registry-derived state for fast query gating; null until first use or
-     *  after [invalidate]. */
+    /** Per-consuming-language capability caches, keyed by the normalized
+     *  primary subtag ("ja","zh","ko",…). Built under [mutex]; a
+     *  ConcurrentHashMap so the fast path in [ready] reads without the lock.
+     *  Empty until first use; cleared on [invalidate] and the import/delete
+     *  hooks. */
+    private val caches = java.util.concurrent.ConcurrentHashMap<String, CapabilityCache>()
+
+    /** Language-INDEPENDENT init, guarded by [mutex]: the registry snapshot and
+     *  the per-dict on/kun split, computed once after [reconcileLocked] and
+     *  reused across every language key (so reconcile doesn't re-run per
+     *  language). [registrySnapshot] is volatile because [invalidate] nulls it
+     *  outside the lock; [splitsByDict] is only touched under the lock and is
+     *  recomputed whenever the snapshot is rebuilt. */
     @Volatile
-    private var cache: CapabilityCache? = null
+    private var registrySnapshot: YomitanRegistry? = null
+    private var splitsByDict: Map<String, Boolean> = emptyMap()
 
     private class CapabilityCache(
         /** PITCH_ACCENT section's dict ids, priority order. Empty → no pitch
@@ -130,10 +139,11 @@ object YomitanDataStore {
      */
     suspend fun pitchFor(
         ctx: Context,
+        sourceLanguage: String,
         pairs: Collection<Pair<String, String>>,
     ): Map<Pair<String, String>, List<Int>> = withContext(Dispatchers.IO) {
         if (pairs.isEmpty()) return@withContext emptyMap()
-        val (database, caps) = ready(ctx)
+        val (database, caps) = ready(ctx, sourceLanguage)
         if (caps.pitchPriority.isEmpty()) return@withContext emptyMap()
 
         // One query over the distinct terms; reading filtering + priority
@@ -181,10 +191,11 @@ object YomitanDataStore {
      */
     suspend fun frequencyFor(
         ctx: Context,
+        sourceLanguage: String,
         pairs: Collection<Pair<String, String>>,
     ): Map<Pair<String, String>, List<FrequencyTag>> = withContext(Dispatchers.IO) {
         if (pairs.isEmpty()) return@withContext emptyMap()
-        val (database, caps) = ready(ctx)
+        val (database, caps) = ready(ctx, sourceLanguage)
         if (caps.freqDicts.isEmpty()) return@withContext emptyMap()
 
         // rows[term] = (readingOrNull, dictId, display) in rowid (bank) order;
@@ -235,10 +246,11 @@ object YomitanDataStore {
      */
     suspend fun kanjiFor(
         ctx: Context,
+        sourceLanguage: String,
         chars: Collection<Char>,
     ): Map<Char, ImportedKanji> = withContext(Dispatchers.IO) {
         if (chars.isEmpty()) return@withContext emptyMap()
-        val (database, caps) = ready(ctx)
+        val (database, caps) = ready(ctx, sourceLanguage)
         if (caps.kanjiDicts.isEmpty()) return@withContext emptyMap()
 
         // rows[character] = dictId -> (onyomi, kunyomi, encodedMeanings)
@@ -288,10 +300,11 @@ object YomitanDataStore {
      */
     suspend fun kanjiFrequencyFor(
         ctx: Context,
+        sourceLanguage: String,
         chars: Collection<Char>,
     ): Map<Char, List<FrequencyTag>> = withContext(Dispatchers.IO) {
         if (chars.isEmpty()) return@withContext emptyMap()
-        val (database, caps) = ready(ctx)
+        val (database, caps) = ready(ctx, sourceLanguage)
         if (caps.kanjiFreqDicts.isEmpty()) return@withContext emptyMap()
 
         // rows[character] = (dictId, display) in rowid (bank) order.
@@ -331,9 +344,10 @@ object YomitanDataStore {
     /** True when at least one TERMS dictionary is installed — lets the JA
      *  engine skip its whole candidate loop (one probe instead of a no-op
      *  query per deinflection candidate). */
-    suspend fun hasTermDictionaries(ctx: Context): Boolean = withContext(Dispatchers.IO) {
-        ready(ctx).second.termDicts.isNotEmpty()
-    }
+    suspend fun hasTermDictionaries(ctx: Context, sourceLanguage: String): Boolean =
+        withContext(Dispatchers.IO) {
+            ready(ctx, sourceLanguage).second.termDicts.isNotEmpty()
+        }
 
     /**
      * Imported-term definition lookup for one candidate form. Every
@@ -346,12 +360,13 @@ object YomitanDataStore {
      */
     suspend fun termSensesFor(
         ctx: Context,
+        sourceLanguage: String,
         term: String,
         reading: String?,
     ): TermLookup = withContext(Dispatchers.IO) {
         val empty = TermLookup(emptyList(), reading)
         if (term.isEmpty()) return@withContext empty
-        val (database, caps) = ready(ctx)
+        val (database, caps) = ready(ctx, sourceLanguage)
         if (caps.termDicts.isEmpty()) return@withContext empty
 
         val rows = mutableListOf<TermMerge.Row>()
@@ -392,10 +407,11 @@ object YomitanDataStore {
      */
     suspend fun batchTermsExist(
         ctx: Context,
+        sourceLanguage: String,
         candidates: Set<String>,
     ): Set<String> = withContext(Dispatchers.IO) {
         if (candidates.isEmpty()) return@withContext emptySet()
-        val (database, caps) = ready(ctx)
+        val (database, caps) = ready(ctx, sourceLanguage)
         if (caps.termDicts.isEmpty()) return@withContext emptySet()
         batchTermsExistQuery(database, candidates, caps.termDicts.map { it.first })
     }
@@ -440,12 +456,14 @@ object YomitanDataStore {
                 } catch (e: Exception) {
                     Log.w(TAG, "eager ingest failed for ${dictionary.id}", e)
                 } finally {
-                    // The cache is REGISTRY-derived and the registry changed
+                    // The caches are REGISTRY-derived and the registry changed
                     // the moment the import committed — stale regardless of
                     // ingest outcome. Unconditional, matching onDictDeleted;
                     // leaving it inside the try would freeze a pre-import
-                    // "no pitch installed" gate until process restart.
-                    cache = null
+                    // "no pitch installed" gate until process restart. Under
+                    // the lock, so ordering vs. the projection is irrelevant.
+                    registrySnapshot = null
+                    caches.clear()
                 }
             }
         }
@@ -458,52 +476,73 @@ object YomitanDataStore {
             } catch (e: Exception) {
                 Log.w(TAG, "purge failed for $id", e)
             }
-            cache = null
+            registrySnapshot = null
+            caches.clear()
         }
     }
 
-    /** Drops cached registry-derived state (priority orders, capability
-     *  gates). Cheap; next query reloads. Called after reorders. */
-    fun invalidate() {
-        cache = null
+    /** Drops cached registry-derived state (priority orders, capability gates)
+     *  across all languages so the next query rebuilds from the current
+     *  registry. Called after reorder/toggle/alias/accent edits.
+     *
+     *  Acquires [mutex] — the SAME lock [ready] publishes under — so it can't
+     *  interleave INSIDE a rebuild. It runs strictly before or after one; an
+     *  "after" wipes any cache a concurrent [ready] just published from a
+     *  now-stale snapshot, so the next query rebuilds fresh. Without the lock,
+     *  a settings edit racing an in-flight rebuild could leave the lock-free
+     *  fast path serving stale priority/labels/colors until the next
+     *  invalidation or restart. The in-lock hooks ([onDictImported]/
+     *  [onDictDeleted]) clear inline rather than call this — [mutex] is not
+     *  re-entrant. */
+    suspend fun invalidate() = mutex.withLock {
+        registrySnapshot = null
+        caches.clear()
     }
 
     // ── Init / reconcile ────────────────────────────────────────────────
 
-    private suspend fun ready(ctx: Context): Pair<SQLiteDatabase, CapabilityCache> {
-        // Fast path once initialized; cache only goes null on invalidate/hooks.
-        cache?.let { caps -> db?.let { return it to caps } }
+    private suspend fun ready(ctx: Context, lang: String): Pair<SQLiteDatabase, CapabilityCache> {
+        // Canonicalize so a stray "zh-Hant"/"JA" can't create a redundant
+        // (still correct, thanks to matchesSourceLanguage) map entry.
+        val key = lang.split('-', '_').first().lowercase(java.util.Locale.ROOT)
+        // Fast path once built; entries only drop on invalidate/hooks.
+        caches[key]?.let { caps -> db?.let { return it to caps } }
         return mutex.withLock {
             val database = openDb(ctx)
-            val caps = cache ?: run {
-                val registry = YomitanDictionaryStore.load(ctx)
-                reconcileLocked(ctx, database, registry)
+            // Language-INDEPENDENT init: registry load + reconcile + the
+            // per-dict on/kun split aggregate run ONCE per init cycle, not per
+            // language. Captured into a local so a concurrent invalidate()
+            // nulling the field mid-flight can't NPE the projection below.
+            val registry = registrySnapshot ?: run {
+                val loaded = YomitanDictionaryStore.load(ctx)
+                reconcileLocked(ctx, database, loaded)
                 // Per-dict on/kun convention check (post-reconcile, so rows
                 // are settled): a dict that never fills onyomi ships a
                 // combined readings list, not the split.
-                val splitsByDict = HashMap<String, Boolean>()
-                database.rawQuery(
-                    "SELECT dict_id, MAX(CASE WHEN onyomi != '' THEN 1 ELSE 0 END) " +
-                        "FROM kanji GROUP BY dict_id",
-                    null,
-                ).use { c ->
-                    while (c.moveToNext()) splitsByDict[c.getString(0)] = c.getInt(1) == 1
+                splitsByDict = buildMap {
+                    database.rawQuery(
+                        "SELECT dict_id, MAX(CASE WHEN onyomi != '' THEN 1 ELSE 0 END) " +
+                            "FROM kanji GROUP BY dict_id",
+                        null,
+                    ).use { c -> while (c.moveToNext()) put(c.getString(0), c.getInt(1) == 1) }
                 }
-                // Queries gate on source-language match here, NOT in the
+                registrySnapshot = loaded
+                loaded
+            }
+            val caps = caches.getOrPut(key) {
+                // Queries gate on source-language match HERE, not in the
                 // registry: the settings page manages all imports regardless
-                // of language; only lookups filter. Every consumer today is
-                // the Japanese engine, so the match target is the constant —
-                // if another engine ever consumes imported data, this
-                // becomes a query parameter / per-language cache instead.
+                // of language; only lookups filter, each consuming language
+                // from its own cache.
                 fun ordered(category: YomitanCategory) = registry.orderedFor(category)
-                    .filter { it.matchesSourceLanguage(CONSUMING_SOURCE_LANG) }
+                    .filter { it.matchesSourceLanguage(key) }
                 CapabilityCache(
                     pitchPriority = ordered(YomitanCategory.PITCH_ACCENT)
                         .map { it.id },
                     freqDicts = ordered(YomitanCategory.FREQUENCY)
                         .map { it.id to (it.alias ?: it.title) },
                     dictColors = registry.dictionaries
-                        .filter { it.matchesSourceLanguage(CONSUMING_SOURCE_LANG) }
+                        .filter { it.matchesSourceLanguage(key) }
                         .associate { it.id to it.accentColor },
                     kanjiDicts = ordered(YomitanCategory.KANJI)
                         .map { KanjiDictMeta(it.id, it.targetLanguage, splitsByDict[it.id] ?: true) },
@@ -512,7 +551,7 @@ object YomitanDataStore {
                     termDicts = ordered(YomitanCategory.TERMS)
                         .map { it.id to (it.alias ?: it.title) },
                     termsSingleDictionary = registry.termsSingleDictionary,
-                ).also { cache = it }
+                )
             }
             database to caps
         }
@@ -656,7 +695,13 @@ object YomitanDataStore {
                 ingestKanjiFreq(ctx, database, dictionary.id)
             }
             if (YomitanCategory.TERMS in dictionary.categories) {
-                ingestTerms(ctx, database, dictionary.id)
+                // Gate the JA-tuned headword-echo strip to Japanese-source
+                // dicts (incl. legacy undeclared→"ja"); its 【】 matching can
+                // mis-fire on other scripts (e.g. Chinese 【名】 POS markers).
+                ingestTerms(
+                    ctx, database, dictionary.id,
+                    applyHeadwordEchoStrip = dictionary.matchesSourceLanguage("ja"),
+                )
             }
             database.execSQL(
                 "INSERT OR REPLACE INTO ingested_dicts (dict_id) VALUES (?)",
@@ -929,7 +974,12 @@ object YomitanDataStore {
      *  Per-entry parsing is defensive — a malformed entry skips, never
      *  aborts the dictionary (which would loop reconcile retries forever
      *  on a dict that can't ever succeed). */
-    private fun ingestTerms(ctx: Context, database: SQLiteDatabase, dictId: String) {
+    private fun ingestTerms(
+        ctx: Context,
+        database: SQLiteDatabase,
+        dictId: String,
+        applyHeadwordEchoStrip: Boolean,
+    ) {
         val zipFile = YomitanDictionaryStore.zipFile(ctx, dictId)
         val insert = database.compileStatement(
             "INSERT INTO term (dict_id, term, reading, score, defs, pos) VALUES (?, ?, ?, ?, ?, ?)"
@@ -952,11 +1002,12 @@ object YomitanDataStore {
                                 skippedEntries++
                                 continue
                             }
-                            val defs = parsed.defs.mapNotNull {
-                                TermGlossary.stripHeadwordEcho(
-                                    it, parsed.term, parsed.reading.ifBlank { parsed.term },
-                                )
-                            }
+                            val defs = resolveTermDefs(
+                                parsed.defs,
+                                parsed.term,
+                                parsed.reading.ifBlank { parsed.term },
+                                applyHeadwordEchoStrip,
+                            )
                             if (parsed.term.isEmpty() || defs.isEmpty()) {
                                 skippedEntries++
                                 continue
@@ -1017,4 +1068,23 @@ object YomitanDataStore {
         }
         return posTags
     }
+
+    /** Per-entry definition resolution for term ingest, extracted so tests can
+     *  drive the JA-only headword-echo gate without a zip fixture. JA-source
+     *  dicts strip monolingual headword echoes (e.g. 「ねこ【猫】」) via
+     *  [TermGlossary.stripHeadwordEcho]; every other language preserves the
+     *  glossary text — that 【】 matching mis-fires on non-JA scripts (Chinese
+     *  POS markers like 【名】) — dropping only blanks to keep the
+     *  empties-skipped invariant the caller relies on. */
+    internal fun resolveTermDefs(
+        rawDefs: List<String>,
+        term: String,
+        reading: String,
+        applyHeadwordEchoStrip: Boolean,
+    ): List<String> =
+        if (applyHeadwordEchoStrip) {
+            rawDefs.mapNotNull { TermGlossary.stripHeadwordEcho(it, term, reading) }
+        } else {
+            rawDefs.filter { it.isNotBlank() }
+        }
 }

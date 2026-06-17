@@ -1,5 +1,7 @@
 package com.playtranslate.yomitan
 
+import com.playtranslate.language.SourceLangId
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -38,5 +40,26 @@ class YomitanSourceLanguageTest {
         assertFalse(dict("zh-Hans").matchesSourceLanguage("ja"))
         assertFalse(dict("ko").matchesSourceLanguage("ja"))
         assertFalse(dict("en").matchesSourceLanguage("ja"))
+    }
+
+    @Test
+    fun `both sides reduce to the primary subtag`() {
+        // A caller may pass a region variant (e.g. ZH_HANT's "zh-Hant"); it and
+        // the dict's declared language both collapse to the primary subtag.
+        assertTrue(dict("zh-Hans").matchesSourceLanguage("zh-Hant"))
+        assertTrue(dict("zh").matchesSourceLanguage("zh-Hant"))
+        assertTrue(dict("ja").matchesSourceLanguage("ja-JP"))
+        assertTrue(dict("en").matchesSourceLanguage("EN"))
+        assertFalse(dict("ko").matchesSourceLanguage("zh-Hant"))
+    }
+
+    @Test
+    fun `yomitanConsumingLang is the case-folded primary subtag`() {
+        // ZH and ZH_HANT collapse to one "zh" cache key / filter argument.
+        assertEquals("zh", SourceLangId.ZH.yomitanConsumingLang())
+        assertEquals("zh", SourceLangId.ZH_HANT.yomitanConsumingLang())
+        assertEquals("ja", SourceLangId.JA.yomitanConsumingLang())
+        assertEquals("ar", SourceLangId.AR.yomitanConsumingLang())
+        assertEquals("ru", SourceLangId.RU.yomitanConsumingLang())
     }
 }

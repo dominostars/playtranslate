@@ -37,6 +37,8 @@ class KoreanEngine(private val appContext: Context) : SourceLanguageEngine {
     private val dict: WiktionaryDictionaryManager =
         WiktionaryDictionaryManager.get(appContext, SourceLangId.KO)
 
+    private val yomitan = YomitanEnrichment(appContext, SourceLangId.KO.yomitanConsumingLang())
+
     /**
      * KOMORAN instance with the LIGHT model (4 files, ~1.75 MB). FULL
      * exists for newspaper-grade text; game dialogue doesn't need it.
@@ -190,9 +192,13 @@ class KoreanEngine(private val appContext: Context) : SourceLanguageEngine {
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? {
         // KOMORAN already produced the citation form upstream, so no stem
         // fallback is meaningful. WiktionaryDictionaryManager's stemmed=null
-        // branch short-circuits cleanly.
+        // branch short-circuits cleanly. Key Yomitan term lookup on the same
+        // NFC form so decomposed-jamo input still matches imported headwords.
         val normalized = Normalizer.normalize(word, Normalizer.Form.NFC)
-        return dict.lookup(surface = normalized, stemmed = null)
+        return yomitan.applyTo(
+            dict.lookup(surface = normalized, stemmed = null),
+            normalized, reading = null, fallbackForms = emptyList(),
+        )
     }
 
     override fun close() {

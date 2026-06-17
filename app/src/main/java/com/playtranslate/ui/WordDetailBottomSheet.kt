@@ -1832,35 +1832,38 @@ class WordDetailBottomSheet : DialogFragment() {
             listOf("pinyin" to detail.pinyin) else emptyList()
     }
 
-    private fun buildMetaLine(detail: CharacterDetail): CharSequence = when (detail) {
-        is KanjiDetail -> {
-            // Imported kanji-frequency data rides the same mono meta list, one
-            // segment per dictionary in the section's display order, ahead of
-            // the built-in JLPT/grade/strokes facts. A dictionary with a
-            // per-dict accent override tints its own frequency segment.
-            val sb = android.text.SpannableStringBuilder()
-            fun seg(text: String, color: Int?) {
-                if (sb.isNotEmpty()) sb.append("  ·  ")
-                val start = sb.length
-                sb.append(text)
-                if (color != null) {
-                    sb.setSpan(
-                        android.text.style.ForegroundColorSpan(color),
-                        start, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                    )
-                }
+    private fun buildMetaLine(detail: CharacterDetail): CharSequence {
+        // Imported kanji-frequency chips lead the mono meta list (one segment
+        // per dictionary in section order, each tinted by its per-dict accent
+        // override), ahead of the built-in facts. Shared seg() so JA kanji and
+        // ZH hanzi render identically.
+        val sb = android.text.SpannableStringBuilder()
+        fun seg(text: String, color: Int?) {
+            if (sb.isNotEmpty()) sb.append("  ·  ")
+            val start = sb.length
+            sb.append(text)
+            if (color != null) {
+                sb.setSpan(
+                    android.text.style.ForegroundColorSpan(color),
+                    start, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
             }
-            detail.frequencies.forEach { seg("${it.source}: ${it.display}", it.accentColor) }
-            if (detail.jlpt > 0)       seg("JLPT N${detail.jlpt}", null)
-            if (detail.grade in 1..6)  seg("Grade ${detail.grade}", null)
-            else if (detail.grade == 8) seg("Secondary", null)
-            if (detail.strokeCount > 0) seg("${detail.strokeCount} strokes", null)
-            sb
         }
-        is HanziDetail -> buildList {
-            if (detail.isCommon) add("Common")
-            if (detail.freqScore > 0) add("★".repeat(detail.freqScore))
-        }.joinToString("  ·  ")
+        when (detail) {
+            is KanjiDetail -> {
+                detail.frequencies.forEach { seg("${it.source}: ${it.display}", it.accentColor) }
+                if (detail.jlpt > 0)        seg("JLPT N${detail.jlpt}", null)
+                if (detail.grade in 1..6)   seg("Grade ${detail.grade}", null)
+                else if (detail.grade == 8) seg("Secondary", null)
+                if (detail.strokeCount > 0) seg("${detail.strokeCount} strokes", null)
+            }
+            is HanziDetail -> {
+                detail.frequencies.forEach { seg("${it.source}: ${it.display}", it.accentColor) }
+                if (detail.isCommon) seg("Common", null)
+                if (detail.freqScore > 0) seg("★".repeat(detail.freqScore), null)
+            }
+        }
+        return sb
     }
 
     private fun addNotFoundNotice(parent: LinearLayout, text: String) {
