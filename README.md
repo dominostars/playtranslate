@@ -19,7 +19,7 @@ To report issues, receive support, or make requests, please join the [Discord se
 - **Capture regions**: Crop to just the dialogue box, subtitles, or any custom area
 - **Text-to-speech**: Hear text spoken aloud. Change the default voice in settings
 - **Anki export**: Save sentences to AnkiDroid with the original text, translation, word list, target words, text-to-speech, and a screenshot. Card type selection with presets for popular decks.
-- **Yomitan integration**: Yomitan dictionaries seamlessly integrate, including pitch accent, frequency chips, kanji enrichment, and merged term definitions everywhere (incl. Anki).
+- **Yomitan integration**: Yomitan dictionaries seamlessly integrate, including pitch accent, frequency chips, kanji enrichment, and merged term definitions everywhere (incl. Anki). Look for deeper integration in the future
 - **Offline**: OCR and translation work without an internet connection, with optional on-device translation models
 - **No accessibility required**: PlayTranslate runs on a screen-recording permission by default, so it works even on devices that block accessibility for sideloaded apps. 
 
