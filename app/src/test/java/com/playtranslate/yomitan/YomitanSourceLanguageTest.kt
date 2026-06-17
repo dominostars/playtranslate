@@ -22,9 +22,13 @@ class YomitanSourceLanguageTest {
     )
 
     @Test
-    fun `undeclared source language defaults to Japanese`() {
+    fun `undeclared source language is a wildcard matching every language`() {
+        // Consulted whatever the app's source language is; a wrong-language
+        // lookup just finds nothing, so it is never silently hidden.
         assertTrue(dict(null).matchesSourceLanguage("ja"))
-        assertFalse(dict(null).matchesSourceLanguage("ru"))
+        assertTrue(dict(null).matchesSourceLanguage("ru"))
+        assertTrue(dict(null).matchesSourceLanguage("zh"))
+        assertTrue(dict(null).matchesSourceLanguage("en"))
     }
 
     @Test

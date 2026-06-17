@@ -695,9 +695,11 @@ object YomitanDataStore {
                 ingestKanjiFreq(ctx, database, dictionary.id)
             }
             if (YomitanCategory.TERMS in dictionary.categories) {
-                // Gate the JA-tuned headword-echo strip to Japanese-source
-                // dicts (incl. legacy undeclared→"ja"); its 【】 matching can
-                // mis-fire on other scripts (e.g. Chinese 【名】 POS markers).
+                // The JA-tuned headword-echo strip runs for dicts that match
+                // "ja": declared-JA, plus undeclared ones (now a wildcard —
+                // almost always legacy JA). It only strips a 【】 that echoes
+                // the headword, a near-no-op on other scripts, so stripping an
+                // undeclared deck is safe even when it isn't actually Japanese.
                 ingestTerms(
                     ctx, database, dictionary.id,
                     applyHeadwordEchoStrip = dictionary.matchesSourceLanguage("ja"),

@@ -71,17 +71,20 @@ data class YomitanDictionary(
 )
 
 /**
- * Whether this dictionary's data applies to source language [lang]: compares
- * the index.json sourceLanguage's primary subtag against [lang]'s primary
- * subtag, case-insensitively, so "ja-JP" applies to "ja" and a caller may pass
- * "zh-Hant" safely (both reduce to "zh"). An undeclared sourceLanguage defaults
- * to Japanese — the field is a recent schema addition most community
- * dictionaries predate, and the ecosystem is overwhelmingly JA, so the default
- * keeps every dictionary that works today working.
+ * Whether this dictionary's data applies to source language [lang]. A DECLARED
+ * index.json sourceLanguage matches [lang] by primary subtag, case-insensitively
+ * (so "ja-JP" applies to "ja", and a caller may pass "zh-Hant" — both reduce to
+ * "zh"). An UNDECLARED sourceLanguage is a WILDCARD that applies to EVERY source
+ * language: a deck that omits the field (e.g. a Chinese→English one) is consulted
+ * whatever the app's current source language is. A wrong-language lookup simply
+ * finds nothing — its headwords won't match the input's script/lemmas — so this
+ * surfaces results when the language lines up and is harmlessly silent otherwise,
+ * rather than hiding the dictionary outright or mis-bucketing it as Japanese.
  */
-fun YomitanDictionary.matchesSourceLanguage(lang: String): Boolean =
-    (sourceLanguage ?: "ja").split('-', '_').first()
-        .equals(lang.split('-', '_').first(), ignoreCase = true)
+fun YomitanDictionary.matchesSourceLanguage(lang: String): Boolean {
+    val declared = sourceLanguage?.split('-', '_')?.first() ?: return true
+    return declared.equals(lang.split('-', '_').first(), ignoreCase = true)
+}
 
 /**
  * On-disk registry of imported dictionaries. [sectionOrder] holds an
