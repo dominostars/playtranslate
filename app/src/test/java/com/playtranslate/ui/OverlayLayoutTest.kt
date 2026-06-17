@@ -240,12 +240,15 @@ class OverlayLayoutTest {
 
     @Test
     fun resolve_growEnabled_twoNeighbors_clampDisjoint_eachCoversSource() {
-        // Two adjacent narrow vertical sources, grow on → backgrounds grow but
-        // stay disjoint, and each still covers its own source.
+        // Two adjacent narrow vertical sources, grow on → both backgrounds grow but stay disjoint,
+        // each still covering its own source. minWidthPx is small enough that both columns can
+        // reach their target, so this isolates the mutual clamp-disjoint behaviour; the
+        // can't-grow-enough → ROTATE fallback is covered by
+        // resolve_growEnabled_wedgedColumnBetweenNeighbors_rotates.
         val rects = OverlayLayout.resolveScreenRects(
             listOf(
-                box(Rect(100, 100, 150, 500), text = "ALPHA BETA", orientation = TextOrientation.VERTICAL, minWidthPx = 300),
-                box(Rect(160, 100, 210, 500), text = "GAMMA DELTA", orientation = TextOrientation.VERTICAL, minWidthPx = 300),
+                box(Rect(100, 100, 150, 500), text = "ALPHA BETA", orientation = TextOrientation.VERTICAL, minWidthPx = 150),
+                box(Rect(160, 100, 210, 500), text = "GAMMA DELTA", orientation = TextOrientation.VERTICAL, minWidthPx = 150),
             ),
             cropLeft = 0, cropTop = 0,
             screenshotW = 1000, screenshotH = 1000,
@@ -255,6 +258,8 @@ class OverlayLayoutTest {
             targetStackable = true,
             growEnabled = true,
         )
+        assertEquals(RenderMode.GROW_HORIZONTAL, rects[0].mode)
+        assertEquals(RenderMode.GROW_HORIZONTAL, rects[1].mode)
         val a = rects[0].rect
         val b = rects[1].rect
         // Disjoint horizontally (no overlap between the two grown backgrounds).
@@ -269,11 +274,12 @@ class OverlayLayoutTest {
         // Two close vertical regions whose PADDED bounds overlap (density 1 → 6px padding;
         // sources only 8px apart). They must be pushed apart to disjoint, each still covering
         // its unpadded source — the on-device overlap bug (growth alone wouldn't separate
-        // already-overlapping boxes).
+        // already-overlapping boxes). minWidthPx is small enough that both still grow (rather
+        // than hitting the wedged-box ROTATE fallback), keeping this a pure de-overlap test.
         val rects = OverlayLayout.resolveScreenRects(
             listOf(
-                box(Rect(100, 100, 150, 500), text = "AA BB", orientation = TextOrientation.VERTICAL, minWidthPx = 300),
-                box(Rect(158, 100, 210, 500), text = "CC DD", orientation = TextOrientation.VERTICAL, minWidthPx = 300),
+                box(Rect(100, 100, 150, 500), text = "AA BB", orientation = TextOrientation.VERTICAL, minWidthPx = 150),
+                box(Rect(158, 100, 210, 500), text = "CC DD", orientation = TextOrientation.VERTICAL, minWidthPx = 150),
             ),
             cropLeft = 0, cropTop = 0,
             screenshotW = 1000, screenshotH = 1000,
@@ -343,6 +349,60 @@ class OverlayLayoutTest {
         assertEquals(RenderMode.GROW_HORIZONTAL, rects[0].mode)
     }
 
+    @Test
+    fun resolve_growEnabled_wedgedColumnBetweenNeighbors_rotates() {
+        // Three tightly packed narrow vertical columns, grow on. The middle column is hemmed in
+        // on BOTH sides (neighbours sit right against it), so even claiming all the room it could
+        // reach stays far below its target width → it falls back to ROTATE in its narrow footprint
+        // instead of a cramped horizontal line. The outer columns each have open space on their
+        // far side and still grow.
+        val rects = OverlayLayout.resolveScreenRects(
+            listOf(
+                box(Rect(300, 100, 350, 500), text = "ALPHA BETA", orientation = TextOrientation.VERTICAL, minWidthPx = 300),
+                box(Rect(356, 100, 406, 500), text = "GAMMA DELTA", orientation = TextOrientation.VERTICAL, minWidthPx = 300),
+                box(Rect(412, 100, 462, 500), text = "EPSILON ZETA", orientation = TextOrientation.VERTICAL, minWidthPx = 300),
+            ),
+            cropLeft = 0, cropTop = 0,
+            screenshotW = 1000, screenshotH = 1000,
+            displayW = 1000, displayH = 1000,
+            density = 0f,
+            targetIsVerticalScript = false,
+            targetStackable = true,
+            growEnabled = true,
+        )
+        // Middle column rotates in place, keeping its narrow (ungrown) footprint.
+        assertEquals(RenderMode.ROTATE, rects[1].mode)
+        assertEquals(50f, rects[1].rect.width(), 0.5f)
+        // Outer columns have far-side room and still grow.
+        assertEquals(RenderMode.GROW_HORIZONTAL, rects[0].mode)
+        assertEquals(RenderMode.GROW_HORIZONTAL, rects[2].mode)
+    }
+
+    @Test
+    fun resolve_growEnabled_partialRoomAboveThreshold_growsClamped() {
+        // A narrow vertical column wedged between two fixed wide columns, but with enough combined
+        // room to reach >=70% of its target width → it stays GROW (clamped below target by the
+        // neighbours) rather than rotating. Guards the threshold direction: partial-but-legible
+        // growth is preferred over rotation.
+        val rects = OverlayLayout.resolveScreenRects(
+            listOf(
+                box(Rect(200, 100, 330, 500), text = "left block", orientation = TextOrientation.VERTICAL, minWidthPx = 50),
+                box(Rect(400, 100, 450, 500), text = "WEDGE WORD", orientation = TextOrientation.VERTICAL, minWidthPx = 300),
+                box(Rect(560, 100, 700, 500), text = "right block", orientation = TextOrientation.VERTICAL, minWidthPx = 50),
+            ),
+            cropLeft = 0, cropTop = 0,
+            screenshotW = 1000, screenshotH = 1000,
+            displayW = 1000, displayH = 1000,
+            density = 0f,
+            targetIsVerticalScript = false,
+            targetStackable = true,
+            growEnabled = true,
+        )
+        assertEquals(RenderMode.GROW_HORIZONTAL, rects[1].mode)
+        // Grew into all available room (50 + 70 left + 110 right = 230), clamped below target 300.
+        assertEquals(230f, rects[1].rect.width(), 0.5f)
+    }
+
     // ── stackViable ──────────────────────────────────────────────────────
 
     @Test
@@ -372,5 +432,28 @@ class OverlayLayoutTest {
         // A long single token that can't fit one legible column in a short box →
         // rejected (would wrap to multiple columns or truncate).
         assertTrue(!OverlayLayout.stackViable("ABCDEFGHIJKLMNOP", RectF(0f, 0f, 30f, 60f), density = 1f, targetStackable = true))
+    }
+
+    // ── lineBreakRuns (autosize word-fit cap segmentation) ───────────────
+
+    @Test
+    fun lineBreakRuns_latin_splitsIntoWords() {
+        // Whitespace languages: runs are the words, with the trailing break-space stripped.
+        assertEquals(listOf("Cut", "to", "size."), lineBreakRuns("Cut to size."))
+    }
+
+    @Test
+    fun lineBreakRuns_noSpaceScript_splitsIntoSmallRuns() {
+        // The Codex-flagged regression: CJK has no spaces but breaks between characters, so it must
+        // NOT come back as one giant unbreakable token (which would make the autosize cap shrink
+        // the whole sentence onto one tiny line). Expect many small runs, none the whole string.
+        val runs = lineBreakRuns("これは長い文です")
+        assertTrue("expected multiple runs, got $runs", runs.size > 1)
+        assertTrue("no run should be the whole string, got $runs", runs.none { it == "これは長い文です" })
+    }
+
+    @Test
+    fun lineBreakRuns_blank_isEmpty() {
+        assertTrue(lineBreakRuns("   ").isEmpty())
     }
 }

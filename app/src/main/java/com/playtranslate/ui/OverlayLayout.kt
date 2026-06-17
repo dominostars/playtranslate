@@ -18,8 +18,9 @@ import com.playtranslate.language.TextOrientation
  *   (CJK) targets, and for short single-token translations in a stackable script.
  * - [GROW_HORIZONTAL] — a narrow vertical box grown in width over its source and rendered
  *   horizontally ([resolveScreenRects] pass 3). Only produced when the grow pref is on.
- * - [ROTATE] — the 90°-rotated fallback, reached only when grow is off (or the script can't
- *   stack) and the box is too narrow for a horizontal line. Stays in the original footprint.
+ * - [ROTATE] — the 90°-rotated fallback in the box's original narrow footprint. Reached when grow
+ *   is off (or the script can't stack) and the box is too narrow for a horizontal line, and also
+ *   when grow is on but the box is too wedged between neighbours to grow to a legible width.
  */
 enum class RenderMode {
     LEGACY_HORIZONTAL,
@@ -46,6 +47,13 @@ internal object OverlayLayout {
 
     /** Padding (dp) added around a non-furigana box for visual breathing room. */
     private const val BOX_PADDING_DP = 6f
+
+    /** A [RenderMode.GROW_HORIZONTAL] box that can't reach this fraction of its legible target
+     *  width (`targetW = min(minWidthPx, ½·displayW)`) even by claiming all the room on both sides
+     *  falls back to [RenderMode.ROTATE] rather than rendering a too-narrow horizontal line. An
+     *  absolute legibility floor, not a fraction of the needed expansion — so an isolated box
+     *  (full-screen room) can never spuriously rotate. */
+    private const val ROTATE_FALLBACK_MIN_WIDTH_FRAC = 0.7f
 
     /** Map an OCR-bitmap rect to on-screen coordinates. */
     fun mapRect(
@@ -155,7 +163,7 @@ internal object OverlayLayout {
         // small. Safe here because passes 1–2 partition by orientation, not by mode.
         val modes = boxes.indices.map { i ->
             renderModeFor(boxes[i], finalRects[i], density, targetIsVerticalScript, targetStackable, growEnabled)
-        }
+        }.toMutableList()
 
         // Pass 3 — GROW_HORIZONTAL: grow each box's width toward min-width into the free space
         // beside it. Pass 2 already separated the columns, so the growth clamps keep them
@@ -221,11 +229,14 @@ internal object OverlayLayout {
      * box keeps covering its source. Mutates [rects] in place; processed right-to-left so
      * contention is deterministic (an earlier box's grown rect is a fixed obstacle for later
      * ones).
+     *
+     * A box too wedged to reach [ROTATE_FALLBACK_MIN_WIDTH_FRAC] of its target width is flipped to
+     * [RenderMode.ROTATE] in [modes] and left at its narrow footprint instead of being grown.
      */
     private fun growIntoGaps(
         boxes: List<TextBox>,
         rects: List<RectF>,
-        modes: List<RenderMode>,
+        modes: MutableList<RenderMode>,
         displayW: Float,
     ) {
         val growIdx = boxes.indices
@@ -249,6 +260,16 @@ internal object OverlayLayout {
             }
             val leftRoom = (r.left - leftLimit).coerceAtLeast(0f)
             val rightRoom = (rightLimit - r.right).coerceAtLeast(0f)
+
+            // Wedged between neighbours: if even claiming all the room on both sides can't bring the
+            // box to a legible fraction of its target width, rotate in place instead of rendering a
+            // too-narrow horizontal line. Leaving the rect at its narrow post-pass-2 footprint lets
+            // the ROTATE render path use it directly (TranslationOverlayView swaps dims + rotates 90°).
+            val maxAchievableW = r.width() + leftRoom + rightRoom
+            if (maxAchievableW < ROTATE_FALLBACK_MIN_WIDTH_FRAC * targetW) {
+                modes[gi] = RenderMode.ROTATE
+                continue
+            }
 
             // Split the needed width symmetrically, then push any remainder to the side that
             // still has room.

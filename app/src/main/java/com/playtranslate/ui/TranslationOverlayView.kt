@@ -27,6 +27,31 @@ import com.playtranslate.R
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import androidx.core.graphics.createBitmap
+import java.text.BreakIterator
+
+/**
+ * The substrings of [text] between consecutive legal line-break opportunities, per
+ * [BreakIterator.getLineInstance] — the runs the layout can't split across lines. Trailing
+ * break-whitespace is stripped and blank runs dropped. Script-aware: words for whitespace
+ * languages, single characters for CJK, dictionary segments for Thai — so a no-space sentence is
+ * many small runs, never one giant token. Used to size text so an unbreakable run never overflows
+ * its line. `internal` for unit testing.
+ */
+internal fun lineBreakRuns(text: String): List<String> {
+    if (text.isBlank()) return emptyList()
+    val iter = BreakIterator.getLineInstance()
+    iter.setText(text)
+    val runs = ArrayList<String>()
+    var start = iter.first()
+    var end = iter.next()
+    while (end != BreakIterator.DONE) {
+        val run = text.substring(start, end).trimEnd()
+        if (run.isNotEmpty()) runs.add(run)
+        start = end
+        end = iter.next()
+    }
+    return runs
+}
 
 /**
  * Transparent overlay that positions auto-sizing TextViews inside bounding
@@ -358,9 +383,15 @@ class TranslationOverlayView(
                     else -> box.bgColor
                 }
 
-                // GROW boxes cap their font so the translation stays a small, centred block
-                // in the tall on-source background rather than ballooning to fill the height.
-                val autoMax = if (mode == RenderMode.GROW_HORIZONTAL) growMaxTextSizeSp else maxTextSizeSp
+                // GROW boxes cap their font so the translation stays a small, centred block in the
+                // tall on-source background rather than ballooning to fill the height. On top of
+                // that, cap every box so the font can't grow past the point where the longest word
+                // fits on one line — otherwise autosize (which maximizes against the box height)
+                // breaks single words across rows in a tall, narrow column. ROTATE wraps along the
+                // tall side, so its wrap width is rectH.
+                val baseMax = if (mode == RenderMode.GROW_HORIZONTAL) growMaxTextSizeSp else maxTextSizeSp
+                val wrapWidthPx = if (mode == RenderMode.ROTATE) rectH else rectW
+                val autoMax = unbreakableFitMaxSp(box.translatedText, wrapWidthPx, baseMax)
 
                 val child: View = when {
                     box.translatedText.isEmpty() -> {
@@ -427,14 +458,32 @@ class TranslationOverlayView(
         if (hasPlaceholders) startShimmer()
     }
 
-    /** Minimum on-screen width (px) for a legible horizontal line of [text]: the longest
-     *  whitespace-delimited token measured at the legibility floor, plus the inner text
-     *  margins. Scripts without spaces (Thai, etc.) measure the whole string; the resolver's
-     *  ½-screen clamp bounds the result. */
-    private fun computeMinWidthPx(text: String): Int {
-        val longest = text.split(Regex("\\s+")).filter { it.isNotEmpty() }
-            .maxByOrNull { minWidthPaint.measureText(it) } ?: text
-        return kotlin.math.ceil(minWidthPaint.measureText(longest).toDouble()).toInt() + 2 * textMargin
+    /** Minimum on-screen width (px) for a legible horizontal line of [text]: the widest run that
+     *  can't be split across lines, measured at the legibility floor, plus the inner text margins.
+     *  See [widestUnbreakableRunPx]; the resolver's ½-screen clamp bounds the result. */
+    private fun computeMinWidthPx(text: String): Int =
+        kotlin.math.ceil(widestUnbreakableRunPx(text).toDouble()).toInt() + 2 * textMargin
+
+    /** Floor-font width (px) of the widest run of [text] that can't be broken across lines — the
+     *  widest of [lineBreakRuns], which respects script line-break rules (spaces for Latin,
+     *  between-character for CJK, dictionary segmentation for Thai). 0 when [text] has no run. */
+    private fun widestUnbreakableRunPx(text: String): Float =
+        lineBreakRuns(text).maxOfOrNull { minWidthPaint.measureText(it) } ?: 0f
+
+    /** Largest autosize ceiling (sp) that still fits the widest unbreakable run of [text] on one
+     *  line in a [layoutWidthPx]-wide view, capped at [ceilingSp] and floored just above
+     *  [minTextSizeSp]. Autosize maximizes the font subject to the box *height*, with no rule
+     *  against an unbreakable run overflowing its line — so in a tall, narrow box it enlarges text
+     *  until a run is force-broken mid-unit. Clamping the ceiling here prevents that. It keys off
+     *  the widest *unbreakable* run, not the whole string, so no-space scripts (CJK/Thai) — whose
+     *  runs are tiny — stay effectively uncapped and wrap normally; it only ever lowers the
+     *  ceiling, so genuinely wide boxes are unaffected. */
+    private fun unbreakableFitMaxSp(text: String, layoutWidthPx: Int, ceilingSp: Int): Int {
+        val widthAtFloor = widestUnbreakableRunPx(text)
+        if (widthAtFloor <= 0f) return ceilingSp
+        val avail = (layoutWidthPx - 2 * textMargin).coerceAtLeast(1)
+        val fit = kotlin.math.floor(VerticalTextLayout.MIN_WIDTH_SP * avail / widthAtFloor).toInt()
+        return fit.coerceIn(minTextSizeSp + 1, ceilingSp)
     }
 
     /** Debug dump of the resolved layout — each box's [RenderMode] + final rect, plus an
