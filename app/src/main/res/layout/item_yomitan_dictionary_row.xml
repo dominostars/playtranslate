@@ -17,8 +17,7 @@
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:minHeight="@dimen/pt_row_min_height"
-        android:paddingHorizontal="@dimen/pt_row_h_padding"
-        android:paddingVertical="@dimen/pt_row_v_padding">
+        android:paddingHorizontal="@dimen/pt_row_h_padding">
 
         <ImageView
             android:id="@+id/yomitanDragHandle"
@@ -30,45 +29,60 @@
             android:scaleType="center"
             android:contentDescription="@string/cd_drag_to_reorder" />
 
-        <!-- Per-dictionary accent dot; color set by the adapter (the override,
-             or the subtitle text color by default). -->
-        <View
-            android:id="@+id/yomitanColorDot"
-            android:layout_width="10dp"
-            android:layout_height="10dp"
-            android:layout_marginEnd="12dp"
-            android:importantForAccessibility="no" />
-
-        <!-- The tap target for opening the metadata detail page. Scoped to the
-             center content (not the whole row) so it never overlaps the drag
-             handle or the delete button. Height is wrap_content (NOT
-             match_parent) so a two-line subtitle isn't clipped to the row's
-             min height. -->
+        <!-- The tap target for opening the metadata detail page: spans the accent
+             dot + title/subtitle and the full row height, but stays scoped
+             between the drag handle and the delete button so it never overlaps
+             them. paddingVertical lives here (not on the row) so the entire
+             height is tappable. Height is wrap_content with a minHeight floor,
+             NOT match_parent: this is a 0dp/weight child, which LinearLayout
+             skips in its first measure pass, so match_parent resolved against
+             the min-height row and clipped a two-line subtitle. wrap_content
+             always measures the full text; minHeight makes a single-line row
+             fill the whole row so all of it stays tappable. -->
         <LinearLayout
             android:id="@+id/yomitanRowContent"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:orientation="vertical"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:minHeight="@dimen/pt_row_min_height"
+            android:paddingVertical="@dimen/pt_row_v_padding"
             android:background="?attr/selectableItemBackground">
 
-            <TextView
-                android:id="@+id/tvYomitanTitle"
-                style="@style/Text.PT.RowTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:singleLine="true"
-                android:ellipsize="end" />
+            <!-- Per-dictionary accent dot; color set by the adapter (the override,
+                 or the subtitle text color by default). -->
+            <View
+                android:id="@+id/yomitanColorDot"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:layout_marginEnd="12dp"
+                android:importantForAccessibility="no" />
 
-            <TextView
-                android:id="@+id/tvYomitanSubtitle"
-                style="@style/Text.PT.RowSubtitle"
-                android:layout_width="match_parent"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:maxLines="2"
-                android:ellipsize="end"
-                android:visibility="gone" />
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvYomitanTitle"
+                    style="@style/Text.PT.RowTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/tvYomitanSubtitle"
+                    style="@style/Text.PT.RowSubtitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:maxLines="2"
+                    android:ellipsize="end"
+                    android:visibility="gone" />
+            </LinearLayout>
         </LinearLayout>
 
         <ImageView
