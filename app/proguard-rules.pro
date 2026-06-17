@@ -27,6 +27,29 @@
 -keep class com.playtranslate.language.ManifestFile { *; }
 -keep class com.playtranslate.language.ManifestLicense { *; }
 
+# Yomitan index.json — Gson reflection-parsed. Unlike the registry DTOs (which
+# are constructed directly, so R8 keeps them concrete), IndexJson is only ever
+# instantiated by Gson, so a minified build marks it abstract (class merging)
+# and every import fails with "index.json is not valid JSON". Keeping it
+# preserves both the class and the external field names (title/format/revision…).
+-keep class com.playtranslate.yomitan.YomitanDictionaryStore$IndexJson { *; }
+
+# Tatoeba example-sentence API DTOs — same hazard: reflective-only (never
+# constructed directly), parsed from external JSON. $** catches
+# ApiResponse/ApiSentence/ApiTranslation.
+-keep class com.playtranslate.language.TatoebaClient$** { *; }
+
+# Yomitan on-disk registry — Gson reflection-parsed. `dictionaries` is a
+# List<YomitanDictionary> and `categories` a List<YomitanCategory>; without
+# keeping the container AND the element types, R8 erases the generic type
+# (yes, even with -keepattributes Signature, for non-kept model classes) and
+# Gson deserializes each entry as a LinkedTreeMap → ClassCastException the
+# moment the registry is non-empty. Mirror the LanguagePackCatalog/CatalogEntry
+# precedent: keep the container and its element types together.
+-keep class com.playtranslate.yomitan.YomitanRegistry { *; }
+-keep class com.playtranslate.yomitan.YomitanDictionary { *; }
+-keep class com.playtranslate.yomitan.YomitanCategory { *; }
+
 # ── ML Kit ────────────────────────────────────────────────────────────────────
 -keep class com.google.mlkit.** { *; }
 -dontwarn com.google.mlkit.**
