@@ -2182,6 +2182,32 @@
     <string name="yomitan_importing_title">Importing Dictionary</string>
     <!-- Status line of the import progress popup. -->
     <string name="yomitan_importing_message">Validating dictionary files…</string>
+    <!-- Status line of the import progress popup during a MULTI-FILE import; %1$d = current file (1-based), %2$d = total selected. Noun omitted deliberately so it needs no plural agreement. -->
+    <string name="yomitan_importing_progress">Importing <xliff:g id="current" example="2">%1$d</xliff:g> of <xliff:g id="total" example="5">%2$d</xliff:g>…</string>
+    <!-- Title of the summary alert after a multi-file import when at least one dictionary imported. -->
+    <string name="yomitan_import_summary_title">Import Complete</string>
+    <!-- Title of the summary alert after a multi-file import when NONE imported. -->
+    <string name="yomitan_import_summary_title_none">Couldn\'t Import</string>
+    <!-- First line of the multi-file import summary; %1$d = imported, %2$d = total selected. The plural agrees with the total. -->
+    <plurals name="yomitan_import_summary_count">
+        <item quantity="one"><xliff:g id="imported" example="1">%1$d</xliff:g> of <xliff:g id="total" example="1">%2$d</xliff:g> dictionary imported.</item>
+        <item quantity="other"><xliff:g id="imported" example="4">%1$d</xliff:g> of <xliff:g id="total" example="6">%2$d</xliff:g> dictionaries imported.</item>
+    </plurals>
+    <!-- Summary line listing dictionaries that were already installed; %1$s = comma-separated names. -->
+    <string name="yomitan_import_summary_duplicates">Already imported: <xliff:g id="names" example="JMdict, KANJIDIC">%1$s</xliff:g></string>
+    <!-- Summary line listing files that failed validation; %1$s = comma-separated file names. -->
+    <string name="yomitan_import_summary_invalid">Couldn\'t be read: <xliff:g id="names" example="notes.zip">%1$s</xliff:g></string>
+    <!-- Summary line listing files that didn't fit; %1$s = comma-separated file names. -->
+    <string name="yomitan_import_summary_no_space">Not enough space: <xliff:g id="names" example="big.zip">%1$s</xliff:g></string>
+    <!-- Summary line listing files that failed for storage/IO reasons; %1$s = comma-separated file names. -->
+    <string name="yomitan_import_summary_failed">Failed: <xliff:g id="names" example="broken.zip">%1$s</xliff:g></string>
+    <!-- Appended to a summary line when more names were elided than shown; %1$d = how many more. -->
+    <plurals name="yomitan_import_summary_more">
+        <item quantity="one">+<xliff:g id="count" example="1">%1$d</xliff:g> more</item>
+        <item quantity="other">+<xliff:g id="count" example="3">%1$d</xliff:g> more</item>
+    </plurals>
+    <!-- Fallback name for a picked file whose display name couldn't be read, in the import summary. -->
+    <string name="yomitan_import_summary_unknown_file">Unknown file</string>
     <!-- Title of the alert shown when the picked file fails validation. -->
     <string name="yomitan_invalid_title">Invalid File</string>
     <!-- Body of the invalid-file alert; a developer-facing diagnostic line is appended below it. -->

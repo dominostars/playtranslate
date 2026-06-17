@@ -1,8 +1,10 @@
 package com.playtranslate.ui
 
+import android.content.Context
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -24,6 +26,7 @@ import com.playtranslate.R
 import com.playtranslate.language.LanguagePackDownloader
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
+import com.playtranslate.yomitan.GroupedNames
 import com.playtranslate.yomitan.RecommendedYomitanDictionaries
 import com.playtranslate.yomitan.RecommendedYomitanDictionary
 import com.playtranslate.yomitan.YomitanCategory
@@ -31,9 +34,12 @@ import com.playtranslate.yomitan.YomitanDictionary
 import com.playtranslate.yomitan.YomitanDictionaryStore
 import com.playtranslate.yomitan.YomitanImportResult
 import com.playtranslate.yomitan.YomitanRegistry
+import com.playtranslate.yomitan.summarizeBatch
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -57,17 +63,18 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
     /** Zips come from downloads/file managers with inconsistent MIME types —
      *  octet-stream is common for GitHub release assets. The importer's own
      *  validation is what actually decides whether the pick was a dictionary. */
-    private val pickDictionary = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) startImport(uri)
+    private val pickDictionaries = registerForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        // OpenMultipleDocuments returns an EMPTY list on cancel (not null).
+        if (uris.isNotEmpty()) startBatchImport(uris)
     }
 
     override fun onContentCreated(savedInstanceState: Bundle?) {
         sectionsContainer = findViewById(R.id.yomitanSections)
 
         findViewById<View>(R.id.btnYomitanImport).setOnClickListener {
-            pickDictionary.launch(
+            pickDictionaries.launch(
                 arrayOf(
                     "application/zip",
                     "application/octet-stream",
@@ -89,21 +96,64 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
 
     // ── Import ──────────────────────────────────────────────────────────
 
-    private fun startImport(uri: android.net.Uri) {
+    /** Imports one or more picked zips sequentially behind a single progress
+     *  popup. Single pick → the rich per-file alert; multi-pick → an aggregated
+     *  summary. Sequential (not parallel) so each import's live-free-space disk
+     *  guard is a real aggregate bound, mirroring the auto-update scan. */
+    private fun startBatchImport(uris: List<Uri>) {
         val progress = OverlayProgress.Builder(this)
             .setTitle(getString(R.string.yomitan_importing_title))
             .setMessage(getString(R.string.yomitan_importing_message))
             .setOnDismiss { importJob?.cancel() } // USER cancel and activity pause alike
             .show()
+        // Indeterminate: each file's import is itself indeterminate, and a
+        // per-file "% of files" bar would sit visibly stuck while the largest
+        // term bank validates. The "N of M" message carries the progress.
         progress.setIndeterminate(true)
 
         importJob = lifecycleScope.launch {
-            val result = try {
-                YomitanDictionaryStore.import(this@YomitanSettingsActivity, uri)
+            val outcomes = ArrayList<Pair<Uri, YomitanImportResult>>(uris.size)
+            try {
+                for ((index, uri) in uris.withIndex()) {
+                    // Multi-file only: show the running count. A lone file keeps
+                    // the generic "Validating…" message (no "1 of 1").
+                    if (uris.size > 1) {
+                        progress.setMessage(
+                            getString(R.string.yomitan_importing_progress, index + 1, uris.size),
+                        )
+                    }
+                    val result = try {
+                        YomitanDictionaryStore.import(this@YomitanSettingsActivity, uri)
+                    } catch (c: CancellationException) {
+                        throw c // cooperative cancel (Cancel tap / pause) must propagate
+                    } catch (e: Exception) {
+                        // import() is total on its documented paths except the
+                        // unguarded sha256 (and latent OOM); contain a per-file
+                        // throw so one bad file can't sink the batch + its summary.
+                        Log.w(TAG, "import threw for $uri", e)
+                        YomitanImportResult.IoError
+                    }
+                    // No global "storage wall" break: import()'s disk guard is
+                    // per-file (≈3× THIS zip) and its temp copy is deleted as it
+                    // returns, so a later, smaller dictionary can still fit. Each
+                    // out-of-space file is just reported individually in the summary.
+                    outcomes += uri to result
+                }
+            } catch (c: CancellationException) {
+                refresh() // surface the imports that did land before the cancel
+                throw c
             } finally {
-                progress.dismiss()
+                progress.dismiss() // idempotent; before the summary so scrims don't stack
             }
-            handleImportResult(result)
+            // Normal completion only (a cancel rethrew above).
+            if (uris.size == 1) {
+                // Preserve the rich single-file alerts (specific invalid reason,
+                // insufficient-space byte sizes).
+                handleImportResult(outcomes.single().second)
+            } else {
+                refresh()
+                showBatchSummary(outcomes)
+            }
         }
     }
 
@@ -219,6 +269,87 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
                 themeColor(R.attr.ptAccentOn),
             ) {}
             .show()
+    }
+
+    /** Aggregated result alert for a multi-file import. Never enumerates the
+     *  successes (they're already visible in the refreshed list behind the
+     *  alert) — only the count plus the failure/duplicate groups, with failed
+     *  files named by their SAF display name (resolved here, lazily, only for
+     *  the outcomes that have no dictionary title). */
+    private suspend fun showBatchSummary(outcomes: List<Pair<Uri, YomitanImportResult>>) {
+        val labeled = outcomes.map { (uri, result) ->
+            val label = when (result) {
+                is YomitanImportResult.Success -> result.dictionary.title
+                is YomitanImportResult.Duplicate -> result.title
+                // Failures carry no title — name the source file instead.
+                else -> uri.displayName(this@YomitanSettingsActivity)
+            }
+            label to result
+        }
+        val tally = summarizeBatch(labeled, MAX_SUMMARY_NAMES_PER_GROUP)
+
+        val lines = buildList {
+            add(
+                resources.getQuantityString(
+                    R.plurals.yomitan_import_summary_count, tally.totalSelected,
+                    tally.importedCount, tally.totalSelected,
+                ),
+            )
+            groupLine(R.string.yomitan_import_summary_duplicates, tally.duplicates)?.let { add(it) }
+            groupLine(R.string.yomitan_import_summary_invalid, tally.invalid)?.let { add(it) }
+            groupLine(R.string.yomitan_import_summary_no_space, tally.noSpace)?.let { add(it) }
+            groupLine(R.string.yomitan_import_summary_failed, tally.failed)?.let { add(it) }
+        }
+        val title = getString(
+            if (tally.importedCount > 0) R.string.yomitan_import_summary_title
+            else R.string.yomitan_import_summary_title_none,
+        )
+        showImportAlert(title, lines.joinToString("\n\n"))
+    }
+
+    /** One failure/duplicate summary line: header + up to
+     *  [MAX_SUMMARY_NAMES_PER_GROUP] example names + a "+K more" tail. Null when
+     *  the group is empty, so the caller omits the line. */
+    private fun groupLine(headerRes: Int, group: GroupedNames): String? {
+        if (group.isEmpty) return null
+        val names = buildList {
+            addAll(group.examples)
+            if (group.overflow > 0) {
+                add(
+                    resources.getQuantityString(
+                        R.plurals.yomitan_import_summary_more, group.overflow, group.overflow,
+                    ),
+                )
+            }
+        }.joinToString(", ")
+        return getString(headerRes, names)
+    }
+
+    /** SAF display name for a content [Uri] (to name a failed file in the batch
+     *  summary). Off the main thread; null-safe — a recreated activity can lapse
+     *  the read grant (SecurityException) and some providers return a blank name,
+     *  so it falls back to the last path segment, then a generic label. */
+    private suspend fun Uri.displayName(ctx: Context): String {
+        val uri = this
+        return withContext(Dispatchers.IO) {
+            val resolved = try {
+                ctx.contentResolver.query(
+                    uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null,
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        cursor.getString(0)?.takeIf { it.isNotBlank() }
+                    } else {
+                        null
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "display-name query failed for $uri", e)
+                null
+            }
+            resolved
+                ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+                ?: ctx.getString(R.string.yomitan_import_summary_unknown_file)
+        }
     }
 
     // ── Sections ────────────────────────────────────────────────────────
@@ -495,5 +626,10 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
 
     private companion object {
         const val TAG = "YomitanSettings"
+
+        /** Cap on example names shown per failure/duplicate group in the batch
+         *  summary; the rest collapse into a "+K more" tail (the alert has no
+         *  scroll and a capped width). */
+        const val MAX_SUMMARY_NAMES_PER_GROUP = 3
     }
 }
