@@ -42,6 +42,7 @@ import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.language.WordTranslator
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.Example
+import com.playtranslate.model.headwordDisplay
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -1359,6 +1360,8 @@ class WordAnkiReviewSheet : DialogFragment() {
                     SentenceAnkiHtmlBuilder.WordEntry(
                         w, triple.first, triple.second, triple.third,
                         surfaceForm = payload.surfaces[w].orEmpty(),
+                        pitch = payload.enrichment[w]?.pitch.orEmpty(),
+                        frequencies = payload.enrichment[w]?.frequencies.orEmpty(),
                     )
                 }
                 getContentFragment()?.applyWords(sentence, entries, targetWord)
@@ -1383,13 +1386,16 @@ class WordAnkiReviewSheet : DialogFragment() {
         val meaningArr = args.getStringArray(ARG_SENTENCE_MEANINGS) ?: emptyArray()
         val freqArr    = args.getIntArray(ARG_SENTENCE_FREQ_SCORES) ?: IntArray(0)
         val surfaces   = LastSentenceCache.surfaceForms ?: emptyMap()
+        val enrich     = LastSentenceCache.wordEnrichment ?: emptyMap()
         return wordArr.mapIndexed { i, w ->
             SentenceAnkiHtmlBuilder.WordEntry(
                 w,
                 readingArr.getOrElse(i) { "" },
                 meaningArr.getOrElse(i) { "" },
                 freqArr.getOrElse(i) { 0 },
-                surfaceForm = surfaces[w] ?: ""
+                surfaceForm = surfaces[w] ?: "",
+                pitch = enrich[w]?.pitch.orEmpty(),
+                frequencies = enrich[w]?.frequencies.orEmpty(),
             )
         }
     }
@@ -1415,11 +1421,17 @@ class WordAnkiReviewSheet : DialogFragment() {
                 append(WordAnkiHtmlBuilder.wrapFlatDefinitionHtml(fallbackDefinition))
             }
         }
+        // Pitch + per-dictionary frequencies for the structured path's
+        // PITCH_POSITION / FREQUENCY_* sources, from the resolved entry's
+        // headword matching this word (empty when no entry / no Yomitan data).
+        val headword = resolvedEntry?.headwordDisplay(word)
         val input = WordSendInput(
             word = word,
             reading = reading,
             pos = pos,
             freqScore = freqScore,
+            pitch = headword?.pitch.orEmpty(),
+            frequencies = headword?.frequencies.orEmpty(),
             sourceLangId = sourceLangId,
             screenshotPath = screenshotPath,
             includeWordAudio = wordAudioHandle?.switch?.isChecked == true,

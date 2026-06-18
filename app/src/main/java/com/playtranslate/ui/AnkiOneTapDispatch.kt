@@ -4,6 +4,7 @@ import android.content.Context
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.model.FrequencyTag
 
 /**
  * "Headless" card-creation helpers — entry points used when the user
@@ -82,15 +83,18 @@ suspend fun Context.oneTapSendSentence(
 
     val resolvedWords: Map<String, Triple<String, String, Int>>
     val resolvedSurfaces: Map<String, String>
+    val resolvedEnrichment: Map<String, WordEnrichment>
     if (wordsPayload != null && wordsPayload.results.isNotEmpty()) {
-        // Use the caller's atomic snapshot — words and surfaces are
-        // guaranteed to be from the same lookup pass.
+        // Use the caller's atomic snapshot — words, surfaces, and
+        // enrichment are guaranteed to be from the same lookup pass.
         resolvedWords = wordsPayload.results
         resolvedSurfaces = wordsPayload.surfaces
+        resolvedEnrichment = wordsPayload.enrichment
     } else {
         val payload = LastSentenceCache.awaitOrStartWordLookups(ctx, original)
         resolvedWords = payload.results
         resolvedSurfaces = payload.surfaces
+        resolvedEnrichment = payload.enrichment
     }
     val wordEntries: List<SentenceAnkiHtmlBuilder.WordEntry> =
         resolvedWords.map { (w, triple) ->
@@ -100,6 +104,8 @@ suspend fun Context.oneTapSendSentence(
                 triple.second,
                 triple.third,
                 surfaceForm = resolvedSurfaces[w] ?: "",
+                pitch = resolvedEnrichment[w]?.pitch.orEmpty(),
+                frequencies = resolvedEnrichment[w]?.frequencies.orEmpty(),
             )
         }
 
@@ -157,6 +163,8 @@ suspend fun Context.oneTapSendWord(
     pos: String,
     fallbackDefinition: String,
     freqScore: Int,
+    pitch: List<Int>,
+    frequencies: List<FrequencyTag>,
     screenshotPath: String?,
     sourceLangId: SourceLangId,
 ): AnkiSendResult {
@@ -168,6 +176,8 @@ suspend fun Context.oneTapSendWord(
         reading = reading,
         pos = pos,
         freqScore = freqScore,
+        pitch = pitch,
+        frequencies = frequencies,
         sourceLangId = sourceLangId,
         screenshotPath = screenshotPath,
         includeWordAudio = prefs.ankiWordAudioEnabled,

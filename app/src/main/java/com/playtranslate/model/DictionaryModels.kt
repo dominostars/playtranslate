@@ -93,6 +93,12 @@ data class FrequencyTag(
     /** Per-dictionary accent override (ARGB) for the chip's rounded
      *  background; null = the default neutral chip. */
     val accentColor: Int? = null,
+    /** The dictionary's sortable numeric value for this headword (rank or
+     *  count), null for pure-string data ("common", "Top 5k"). Carried for
+     *  frequency-sort aggregation (e.g. the Anki FreqSort harmonic mean);
+     *  [display] remains the user-facing form. Trailing + defaulted so the
+     *  positional [accentColor]-only construction sites stay valid. */
+    val value: Double? = null,
 )
 
 /**

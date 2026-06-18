@@ -200,19 +200,30 @@ object YomitanDataStore {
         val (database, caps) = ready(ctx, sourceLanguage)
         if (caps.freqDicts.isEmpty()) return@withContext emptyMap()
 
-        // rows[term] = (readingOrNull, dictId, display) in rowid (bank) order;
-        // a NULL reading means the datum applies to every reading of the term.
-        val rows = HashMap<String, MutableList<Triple<String?, String, String>>>()
+        // rows[term] = (readingOrNull, dictId, display, valueOrNull) in rowid
+        // (bank) order; a NULL reading means the datum applies to every reading
+        // of the term. [value] is the dictionary's sortable number (NULL for
+        // pure-string data) — surfaced for frequency-sort aggregation.
+        data class FreqRow(
+            val reading: String?,
+            val dictId: String,
+            val display: String,
+            val value: Double?,
+        )
+        val rows = HashMap<String, MutableList<FreqRow>>()
         pairs.map { it.first }.distinct().chunked(500).forEach { chunk ->
             val placeholders = chunk.joinToString(",") { "?" }
             database.rawQuery(
-                "SELECT term, reading, dict_id, display FROM frequency " +
+                "SELECT term, reading, dict_id, display, value FROM frequency " +
                     "WHERE term IN ($placeholders) ORDER BY rowid",
                 chunk.toTypedArray(),
             ).use { c ->
                 while (c.moveToNext()) {
                     rows.getOrPut(c.getString(0)) { mutableListOf() }
-                        .add(Triple(c.getString(1), c.getString(2), c.getString(3)))
+                        .add(FreqRow(
+                            c.getString(1), c.getString(2), c.getString(3),
+                            if (c.isNull(4)) null else c.getDouble(4),
+                        ))
                 }
             }
         }
@@ -222,16 +233,25 @@ object YomitanDataStore {
             for (pair in pairs) {
                 val candidates = rows[pair.first] ?: continue
                 val normalized = Deinflector.katakanaToHiragana(pair.second)
-                // dictId -> first-seen-order distinct displays
+                // dictId -> first-seen-order distinct displays, plus the first
+                // non-null numeric value per dict (one rank per dict feeds the
+                // frequency-sort harmonic mean).
                 val byDict = HashMap<String, LinkedHashSet<String>>()
-                for ((reading, dictId, display) in candidates) {
-                    if (reading == null || reading == normalized) {
-                        byDict.getOrPut(dictId) { LinkedHashSet() }.add(display)
+                val valueByDict = HashMap<String, Double>()
+                for (row in candidates) {
+                    if (row.reading == null || row.reading == normalized) {
+                        byDict.getOrPut(row.dictId) { LinkedHashSet() }.add(row.display)
+                        if (row.value != null && row.dictId !in valueByDict) {
+                            valueByDict[row.dictId] = row.value
+                        }
                     }
                 }
                 val tags = caps.freqDicts.mapNotNull { (dictId, label) ->
                     byDict[dictId]?.let {
-                        FrequencyTag(label, it.joinToString(" · "), caps.dictColors[dictId])
+                        FrequencyTag(
+                            label, it.joinToString(" · "),
+                            caps.dictColors[dictId], valueByDict[dictId],
+                        )
                     }
                 }
                 if (tags.isNotEmpty()) put(pair, tags)

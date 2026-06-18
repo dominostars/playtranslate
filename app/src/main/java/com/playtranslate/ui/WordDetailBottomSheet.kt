@@ -511,8 +511,9 @@ class WordDetailBottomSheet : DialogFragment() {
         val sentenceWordsPayload: LastSentenceCache.WordsPayload? = run {
             val hostWords = hostContext?.wordResults
             val hostSurfaces = hostContext?.surfaceForms
+            val hostEnrich = hostContext?.wordEnrichment
             if (hostWords != null && hostSurfaces != null) {
-                LastSentenceCache.WordsPayload(hostWords, hostSurfaces)
+                LastSentenceCache.WordsPayload(hostWords, hostSurfaces, hostEnrich.orEmpty())
             } else null
         }
 
@@ -529,12 +530,15 @@ class WordDetailBottomSheet : DialogFragment() {
                 )
             } else {
                 val (reading, pos, definition) = buildAnkiWordFields(entry, defResult)
+                val hw = entry.headwordDisplay(word)
                 requireContext().oneTapSendWord(
                     word = word,
                     reading = reading,
                     pos = pos,
                     fallbackDefinition = definition,
                     freqScore = entry.freqScore,
+                    pitch = hw.pitch,
+                    frequencies = hw.frequencies,
                     screenshotPath = screenshotPath,
                     sourceLangId = sourceLangId,
                 )

@@ -5,6 +5,7 @@ import android.util.Log
 import com.playtranslate.Prefs
 import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.headwordFor
 import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
@@ -21,6 +22,17 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
+
+/**
+ * Per-word pitch + frequencies carried alongside the lean word-lookup maps so
+ * sentence-mode Anki sends can fill the pitch/frequency fields. One cohesive
+ * value object (not two parallel maps) so the two can't skew apart; rides next
+ * to [LastSentenceCache.wordResults] / [LastSentenceCache.surfaceForms].
+ */
+data class WordEnrichment(
+    val pitch: List<Int> = emptyList(),
+    val frequencies: List<FrequencyTag> = emptyList(),
+)
 
 /**
  * In-memory cache for the most recent sentence's translation + word
@@ -81,6 +93,11 @@ object LastSentenceCache {
     /** Maps display-word → surface form as it appears in the sentence (e.g. 分かる → 分からない). */
     var surfaceForms: Map<String, String>? = null
         private set
+    /** Maps display-word → its pitch + per-dictionary frequencies, for
+     *  sentence-mode Anki sends. Rides atomically with [wordResults] /
+     *  [surfaceForms]. */
+    var wordEnrichment: Map<String, WordEnrichment>? = null
+        private set
 
     // ── In-flight tracking ───────────────────────────────────────────
 
@@ -98,6 +115,7 @@ object LastSentenceCache {
     data class WordsPayload(
         val results: Map<String, Triple<String, String, Int>>,
         val surfaces: Map<String, String>,
+        val enrichment: Map<String, WordEnrichment>,
     )
 
     fun clear() {
@@ -107,6 +125,7 @@ object LastSentenceCache {
             translationSource = null
             wordResults = null
             surfaceForms = null
+            wordEnrichment = null
             translationPending?.job?.cancel()
             wordsPending?.job?.cancel()
             translationPending = null
@@ -126,6 +145,7 @@ object LastSentenceCache {
         translationSource: String?,
         wordResults: Map<String, Triple<String, String, Int>>?,
         surfaceForms: Map<String, String>?,
+        wordEnrichment: Map<String, WordEnrichment>?,
     ) {
         synchronized(lock) {
             if (this.original != original) {
@@ -136,6 +156,7 @@ object LastSentenceCache {
             this.translationSource = translationSource
             this.wordResults = wordResults
             this.surfaceForms = surfaceForms
+            this.wordEnrichment = wordEnrichment
         }
     }
 
@@ -234,7 +255,7 @@ object LastSentenceCache {
             wordResults?.let { cached ->
                 Log.d(TAG, "cache hit words for '${sentence.preview()}'")
                 return@synchronized CompletableDeferred(
-                    WordsPayload(cached, surfaceForms.orEmpty())
+                    WordsPayload(cached, surfaceForms.orEmpty(), wordEnrichment.orEmpty())
                 )
             }
             Log.d(TAG, "starting words for '${sentence.preview()}'")
@@ -245,12 +266,13 @@ object LastSentenceCache {
                     throw e
                 } catch (t: Throwable) {
                     Log.w(TAG, "word lookup failed for '${sentence.preview()}': ${t.message}")
-                    WordsPayload(emptyMap(), emptyMap())
+                    WordsPayload(emptyMap(), emptyMap(), emptyMap())
                 }
                 synchronized(lock) {
                     if (original == sentence) {
                         wordResults = payload.results
                         surfaceForms = payload.surfaces
+                        wordEnrichment = payload.enrichment
                         Log.d(TAG, "cache write words for '${sentence.preview()}'")
                     } else {
                         Log.d(TAG, "stale-discard words for '${sentence.preview()}'")
@@ -273,9 +295,9 @@ object LastSentenceCache {
             // caller with the cancellation: return empty and let the
             // UI render its "no words" placeholder.
             coroutineContext.ensureActive()
-            WordsPayload(emptyMap(), emptyMap())
+            WordsPayload(emptyMap(), emptyMap(), emptyMap())
         } catch (_: Throwable) {
-            WordsPayload(emptyMap(), emptyMap())
+            WordsPayload(emptyMap(), emptyMap(), emptyMap())
         }
     }
 
@@ -293,6 +315,7 @@ object LastSentenceCache {
         translationSource = null
         wordResults = null
         surfaceForms = null
+        wordEnrichment = null
         original = sentence
         Log.d(TAG, "cache cleared: '${prev?.preview()}' → '${sentence.preview()}'")
     }
@@ -345,6 +368,7 @@ object LastSentenceCache {
         val tokenResults = engine.tokenize(sentence)
         val results = linkedMapOf<String, Triple<String, String, Int>>()
         val surfaces = linkedMapOf<String, String>()
+        val enrichment = linkedMapOf<String, WordEnrichment>()
         for (tok in tokenResults) {
             try {
                 val defResult = resolver.lookup(tok.lookupForm, tok.reading)
@@ -410,6 +434,12 @@ object LastSentenceCache {
                         ).joinToString("\n")
                     if (meaning.isNotEmpty()) {
                         results[displayWord] = Triple(reading, meaning, entry.freqScore)
+                        // primary is the headword we labelled the row with —
+                        // its pitch/frequencies are what the sentence card's
+                        // target-word fields want.
+                        enrichment[displayWord] = WordEnrichment(
+                            primary?.pitch.orEmpty(), primary?.frequencies.orEmpty(),
+                        )
                         if (tok.surface != displayWord) {
                             surfaces[displayWord] = tok.surface
                         }
@@ -417,7 +447,7 @@ object LastSentenceCache {
                 }
             } catch (_: Exception) {}
         }
-        WordsPayload(results, surfaces)
+        WordsPayload(results, surfaces, enrichment)
     }
 
     private fun String.preview(): String =

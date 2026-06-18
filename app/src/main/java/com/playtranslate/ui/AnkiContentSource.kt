@@ -65,6 +65,29 @@ enum class ContentSource(
     WORDS_TABLE          (R.string.anki_content_words_table,
                           R.string.anki_content_words_table_desc),
 
+    // Yomitan-derived (JA) sources for mining-note pitch/frequency slots,
+    // populated post-lookup from Headword.pitch / .frequencies.
+    //  - PITCH_POSITION fills Lapis `PitchPosition` AND JPMN `PAOverride`
+    //    (identical comma-separated downstep string; both accept it raw).
+    //  - The two frequency-LIST sources differ ONLY by target template's
+    //    expected markup: FREQUENCY_VALUES is Lapis's <ul> (the card splits
+    //    on commas, so we ship a pre-built list); FREQUENCY_STYLIZED is
+    //    JPMN's private `frequencies__group` HTML (a plain list renders
+    //    wrong there). Each is its own source because one string can't be
+    //    both shapes.
+    //  - FREQUENCY_HARMONIC is the numeric sort field (Lapis `FreqSort` /
+    //    JPMN `FrequencySort`).
+    // Distinct from FREQUENCY above (the ★ stars from the 0–5 pack score),
+    // which stays for cross-language star ratings.
+    PITCH_POSITION       (R.string.anki_content_pitch_position,
+                          R.string.anki_content_pitch_position_desc),
+    FREQUENCY_VALUES     (R.string.anki_content_frequency_values,
+                          R.string.anki_content_frequency_values_desc),
+    FREQUENCY_STYLIZED   (R.string.anki_content_frequency_stylized,
+                          R.string.anki_content_frequency_stylized_desc),
+    FREQUENCY_HARMONIC   (R.string.anki_content_frequency_harmonic,
+                          R.string.anki_content_frequency_harmonic_desc),
+
     // Card-type state flags. Each emits literal "x" when its mode
     // condition fires (computed inside AnkiCardOutputBuilder), empty
     // string otherwise. Lets users opt their template's "Is*Card"
@@ -111,6 +134,10 @@ data class CardOutputs(
     val frequency: String,
     val partOfSpeech: String,
     val wordsTable: String,
+    val pitchPosition: String,
+    val frequencyValues: String,
+    val frequencyStylized: String,
+    val frequencyHarmonic: String,
     val vocabularyCardFlag: String,
     val sentenceCardFlag: String,
     val targetedSentenceCardFlag: String,
@@ -133,6 +160,10 @@ fun CardOutputs.valueFor(source: ContentSource): String = when (source) {
     ContentSource.FREQUENCY                   -> frequency
     ContentSource.PART_OF_SPEECH              -> partOfSpeech
     ContentSource.WORDS_TABLE                 -> wordsTable
+    ContentSource.PITCH_POSITION              -> pitchPosition
+    ContentSource.FREQUENCY_VALUES            -> frequencyValues
+    ContentSource.FREQUENCY_STYLIZED          -> frequencyStylized
+    ContentSource.FREQUENCY_HARMONIC          -> frequencyHarmonic
     ContentSource.VOCABULARY_CARD_FLAG        -> vocabularyCardFlag
     ContentSource.SENTENCE_CARD_FLAG          -> sentenceCardFlag
     ContentSource.TARGETED_SENTENCE_CARD_FLAG -> targetedSentenceCardFlag

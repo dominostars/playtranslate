@@ -1,5 +1,7 @@
 package com.playtranslate.ui
 
+import com.playtranslate.model.FrequencyTag
+
 /**
  * Builds [CardOutputs] from the sheet-side state. The send-time
  * dispatcher passes the resulting struct to
@@ -164,6 +166,18 @@ object AnkiCardOutputBuilder {
             frequency = frequency,
             partOfSpeech = "",
             wordsTable = wordsHtml,
+            // Yomitan pitch/frequency fields source from the first highlighted
+            // word (the card's target word), matching how expression/reading/
+            // definition above pick it. Empty when nothing is highlighted.
+            pitchPosition = firstHighlighted
+                ?.let { AnkiFrequencyFormat.pitchPositions(it.pitch) }.orEmpty(),
+            frequencyValues = firstHighlighted
+                ?.let { AnkiFrequencyFormat.frequencyValuesHtml(it.freqScore, it.frequencies) }.orEmpty(),
+            frequencyStylized = firstHighlighted
+                ?.let { AnkiFrequencyFormat.frequenciesStylizedJpmn(it.freqScore, it.frequencies) }.orEmpty(),
+            frequencyHarmonic = firstHighlighted
+                ?.let { AnkiFrequencyFormat.harmonicMean(it.frequencies.mapNotNull { f -> f.value })?.toString() }
+                .orEmpty(),
             // Flag values for sentence-mode sends:
             //  - SENTENCE_CARD_FLAG always fires (Lapis/JPMN signal).
             //  - TARGETED_SENTENCE_CARD_FLAG fires only when there's a
@@ -194,6 +208,11 @@ object AnkiCardOutputBuilder {
         pos: String,
         definitionHtml: String,
         freqScore: Int,
+        /** Pitch downsteps + per-dict frequencies for the looked-up word
+         *  (from `entry.headwordDisplay(word)`); required so a word-send site
+         *  that forgets to thread them is a compile error, not silent-empty. */
+        pitch: List<Int>,
+        frequencies: List<FrequencyTag>,
         imageFilename: String?,
         examplesHtml: String = "",
         sourceLangId: com.playtranslate.language.SourceLangId =
@@ -222,6 +241,13 @@ object AnkiCardOutputBuilder {
         frequency = SentenceAnkiHtmlBuilder.starsString(freqScore),
         partOfSpeech = htmlEscape(pos),
         wordsTable = "",
+        // Yomitan pitch/frequency fields (JA). Empty for languages/words with
+        // no pitch or frequency data, so the mapped field just stays blank.
+        pitchPosition = AnkiFrequencyFormat.pitchPositions(pitch),
+        frequencyValues = AnkiFrequencyFormat.frequencyValuesHtml(freqScore, frequencies),
+        frequencyStylized = AnkiFrequencyFormat.frequenciesStylizedJpmn(freqScore, frequencies),
+        frequencyHarmonic =
+            AnkiFrequencyFormat.harmonicMean(frequencies.mapNotNull { it.value })?.toString().orEmpty(),
         // Flag values for word-mode sends: VOCABULARY_CARD_FLAG fires
         // (Migaku/Lapis vocab-variant signal); sentence flags stay
         // empty since word cards aren't sentence-variant. ALWAYS_ON

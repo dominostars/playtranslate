@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import com.playtranslate.AnkiManager
+import com.playtranslate.model.FrequencyTag
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -28,9 +29,9 @@ class AnkiCardTypeMapperTest {
     private fun model(name: String, fields: List<String>) =
         AnkiManager.ModelInfo(id = 1L, name = name, fieldNames = fields, type = 0, sortf = 0)
 
-    // Field fixtures use the canonical schemas as of 2026-05:
-    //  - Lapis from donkuri/lapis README
-    //  - JPMN from Aquafina-water-bottle/jp-mining-note templates
+    // Field fixtures use the canonical schemas (verified June 2026):
+    //  - Lapis from donkuri/lapis (v1.7.0)
+    //  - JPMN from Aquafina-water-bottle / arbyste jp-mining-note (0.11.0.6)
     //  - Migaku from the Browser Extension note type (confirmed against
     //    a real install)
 
@@ -52,7 +53,8 @@ class AnkiCardTypeMapperTest {
         "IsSentenceCard", "IsClickCard", "IsHoverCard", "IsTargetedSentenceCard",
         "Hint", "HintNotHidden", "Picture",
         "WordAudio", "SentenceAudio",
-        "FrequenciesStylized", "SecondaryDefinition", "ExtraDefinitions",
+        "PAOverride", "PAOverrideText", "PAPositions", "PAGraphs", "PAGraphsText",
+        "FrequenciesStylized", "FrequencySort", "SecondaryDefinition", "ExtraDefinitions",
         "AJTWordPitch", "UtilityDictionaries",
     )
 
@@ -72,7 +74,7 @@ class AnkiCardTypeMapperTest {
         assertEquals(ContentSource.DEFINITION,               mapping["MainDefinition"])
         assertEquals(ContentSource.SENTENCE,                 mapping["Sentence"])
         assertEquals(ContentSource.PICTURE,                  mapping["Picture"])
-        assertEquals(ContentSource.FREQUENCY,                mapping["Frequency"])
+        assertEquals(ContentSource.FREQUENCY_VALUES,         mapping["Frequency"])
         // Lapis renders `{{Expression}}` raw on the vocab-card front,
         // so the plain Expression slot maps to the plain EXPRESSION
         // source (no brackets — they'd display as literal text). The
@@ -91,15 +93,17 @@ class AnkiCardTypeMapperTest {
         // Audio fields carry PT-synthesized TTS.
         assertEquals(ContentSource.WORD_AUDIO,     mapping["ExpressionAudio"])
         assertEquals(ContentSource.SENTENCE_AUDIO, mapping["SentenceAudio"])
+        // Pitch position, frequency list, and frequency-sort now auto-map
+        // from Yomitan data.
+        assertEquals(ContentSource.PITCH_POSITION,    mapping["PitchPosition"])
+        assertEquals(ContentSource.FREQUENCY_HARMONIC, mapping["FreqSort"])
         // Alternative-definition slots, the OTHER state flags
-        // (IsClickCard / IsAudioCard), pitch — none of which we produce
-        // or want to auto-populate — stay null (treated as
-        // ContentSource.NONE by the dialog).
+        // (IsClickCard / IsAudioCard), and PitchCategories — none of which
+        // we produce — stay null (treated as ContentSource.NONE by the dialog).
         assertEquals(null, mapping["Glossary"])
         assertEquals(null, mapping["IsClickCard"])
         assertEquals(null, mapping["IsAudioCard"])
-        assertEquals(null, mapping["FreqSort"])
-        assertEquals(null, mapping["PitchPosition"])
+        assertEquals(null, mapping["PitchCategories"])
         assertEquals(null, mapping["MiscInfo"])
     }
 
@@ -145,13 +149,19 @@ class AnkiCardTypeMapperTest {
         // Audio fields carry PT-synthesized TTS.
         assertEquals(ContentSource.WORD_AUDIO,     mapping["WordAudio"])
         assertEquals(ContentSource.SENTENCE_AUDIO, mapping["SentenceAudio"])
-        // Secondary definition slots, user-preference flags, pre-stylized
-        // frequency / pitch HTML — none of which PT produces or
-        // auto-populates — stay unmapped.
+        // Pitch position → PAOverride (raw comma-separated downsteps, takes
+        // display priority), frequency list → FrequenciesStylized (JPMN's own
+        // markup), frequency sort → FrequencySort. All now auto-map.
+        assertEquals(ContentSource.PITCH_POSITION,     mapping["PAOverride"])
+        assertEquals(ContentSource.FREQUENCY_STYLIZED, mapping["FrequenciesStylized"])
+        assertEquals(ContentSource.FREQUENCY_HARMONIC, mapping["FrequencySort"])
+        // Secondary definition slots, user-preference flags, the
+        // rendered-SVG pitch-graph field (PAGraphs needs an SVG we don't
+        // produce), and AJT's pitch field — stay unmapped.
         assertEquals(null, mapping["SecondaryDefinition"])
         assertEquals(null, mapping["IsHoverCard"])
         assertEquals(null, mapping["IsClickCard"])
-        assertEquals(null, mapping["FrequenciesStylized"])
+        assertEquals(null, mapping["PAGraphs"])
         assertEquals(null, mapping["AJTWordPitch"])
     }
 
@@ -241,6 +251,104 @@ class AnkiCardTypeMapperTest {
             ),
             AnkiCardTypeMapper.AUDIO_FIELD_DEFAULTS,
         )
+    }
+
+    // ─── Pitch/frequency field migration table ───────────────────────────
+    // PITCH_FREQ_FIELD_MIGRATION drives the one-shot prefs back-fill
+    // (Prefs.migrateAnkiPitchFreqFieldMappings). Pin the exact (field, from,
+    // to) rules so a future tweak can't silently change which old defaults
+    // get upgraded.
+
+    @Test fun `PITCH_FREQ_FIELD_MIGRATION upgrades each old auto-default`() {
+        assertEquals(
+            listOf(
+                Triple("PitchPosition", ContentSource.NONE, ContentSource.PITCH_POSITION),
+                Triple("FreqSort", ContentSource.NONE, ContentSource.FREQUENCY_HARMONIC),
+                Triple("Frequency", ContentSource.FREQUENCY, ContentSource.FREQUENCY_VALUES),
+                Triple("PAOverride", ContentSource.NONE, ContentSource.PITCH_POSITION),
+                Triple("FrequencySort", ContentSource.NONE, ContentSource.FREQUENCY_HARMONIC),
+                Triple("FrequenciesStylized", ContentSource.NONE, ContentSource.FREQUENCY_STYLIZED),
+            ),
+            AnkiCardTypeMapper.PITCH_FREQ_FIELD_MIGRATION,
+        )
+    }
+
+    // ─── Yomitan pitch/frequency outputs ─────────────────────────────────
+    // forWord threads Headword.pitch / .frequencies into the four new
+    // CardOutputs fields via AnkiFrequencyFormat. (forSentence sources them
+    // from the highlighted WordEntry; covered by AnkiFrequencyFormatTest.)
+
+    @Test fun `forWord emits comma-joined pitch positions`() {
+        val outputs = AnkiCardOutputBuilder.forWord(
+            word = "心", reading = "こころ", pos = "noun",
+            definitionHtml = "", freqScore = 0,
+            pitch = listOf(2, 0), frequencies = emptyList(), imageFilename = null,
+        )
+        assertEquals("2,0", outputs.pitchPosition)
+    }
+
+    @Test fun `forWord builds a frequency list with stars then dictionaries`() {
+        val outputs = AnkiCardOutputBuilder.forWord(
+            word = "猫", reading = "ねこ", pos = "noun",
+            definitionHtml = "", freqScore = 3,
+            pitch = emptyList(),
+            frequencies = listOf(
+                FrequencyTag("JPDB", "1234", value = 1234.0),
+                FrequencyTag("CC100", "5678", value = 5678.0),
+            ),
+            imageFilename = null,
+        )
+        assertEquals(
+            "<ul><li>★★★</li><li>JPDB: 1234</li><li>CC100: 5678</li></ul>",
+            outputs.frequencyValues,
+        )
+    }
+
+    @Test fun `forWord harmonic mean excludes the star score`() {
+        val outputs = AnkiCardOutputBuilder.forWord(
+            word = "猫", reading = "ねこ", pos = "noun",
+            definitionHtml = "", freqScore = 5,
+            pitch = emptyList(),
+            frequencies = listOf(
+                FrequencyTag("A", "10", value = 10.0),
+                FrequencyTag("B", "30", value = 30.0),
+            ),
+            imageFilename = null,
+        )
+        // 2 / (1/10 + 1/30) = 15 — freqScore=5 must NOT drag it toward a constant.
+        assertEquals("15", outputs.frequencyHarmonic)
+    }
+
+    @Test fun `forWord leaves pitch and frequency blank without data`() {
+        val outputs = AnkiCardOutputBuilder.forWord(
+            word = "猫", reading = "ねこ", pos = "noun",
+            definitionHtml = "", freqScore = 0,
+            pitch = emptyList(), frequencies = emptyList(), imageFilename = null,
+        )
+        assertEquals("", outputs.pitchPosition)
+        assertEquals("", outputs.frequencyValues)
+        assertEquals("", outputs.frequencyHarmonic)
+    }
+
+    @Test fun `forSentence sources pitch and frequency from the highlighted word`() {
+        val data = SentenceAnkiContentFragment.CardData(
+            source = "猫が好き",
+            target = "I like cats",
+            words = listOf(
+                SentenceAnkiHtmlBuilder.WordEntry(
+                    "猫", "ねこ", "cat", freqScore = 2,
+                    pitch = listOf(0),
+                    frequencies = listOf(FrequencyTag("JPDB", "1234", value = 1234.0)),
+                ),
+            ),
+            selectedWords = setOf("猫"),
+            screenshotPath = null,
+            sourceLangId = com.playtranslate.language.SourceLangId.JA,
+        )
+        val outputs = AnkiCardOutputBuilder.forSentence(data, imageFilename = null)
+        assertEquals("0", outputs.pitchPosition)
+        assertEquals("<ul><li>★★</li><li>JPDB: 1234</li></ul>", outputs.frequencyValues)
+        assertEquals("1234", outputs.frequencyHarmonic)
     }
 
     // ─── Basic shape ─────────────────────────────────────────────────────
@@ -344,6 +452,10 @@ class AnkiCardTypeMapperTest {
         frequency = "★★★",
         partOfSpeech = "noun",
         wordsTable = "<table>words</table>",
+        pitchPosition = "0,2",
+        frequencyValues = "<ul><li>★★★</li></ul>",
+        frequencyStylized = "<div class=\"frequencies__group\"></div>",
+        frequencyHarmonic = "1234",
         vocabularyCardFlag = "x",
         sentenceCardFlag = "",
         targetedSentenceCardFlag = "",
@@ -407,6 +519,8 @@ class AnkiCardTypeMapperTest {
             pos = "noun",
             definitionHtml = "<div>cat</div>",
             freqScore = 3,
+            pitch = emptyList(),
+            frequencies = emptyList(),
             imageFilename = "1746876543.jpg",
         )
         assertEquals(
@@ -422,6 +536,8 @@ class AnkiCardTypeMapperTest {
             pos = "noun",
             definitionHtml = "",
             freqScore = 0,
+            pitch = emptyList(),
+            frequencies = emptyList(),
             imageFilename = null,
         )
         assertEquals("", outputs.picture)
@@ -434,7 +550,8 @@ class AnkiCardTypeMapperTest {
     @Test fun `forWord emits vocabulary flag and always-on, leaves sentence flags empty`() {
         val outputs = AnkiCardOutputBuilder.forWord(
             word = "猫", reading = "ねこ", pos = "noun",
-            definitionHtml = "", freqScore = 0, imageFilename = null,
+            definitionHtml = "", freqScore = 0,
+            pitch = emptyList(), frequencies = emptyList(), imageFilename = null,
         )
         assertEquals("x", outputs.vocabularyCardFlag)
         assertEquals("",  outputs.sentenceCardFlag)

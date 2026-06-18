@@ -47,7 +47,14 @@ object AnkiCardTypeMapper {
         "Picture"               to ContentSource.PICTURE,
         "ExpressionAudio"       to ContentSource.WORD_AUDIO,
         "SentenceAudio"         to ContentSource.SENTENCE_AUDIO,
-        "Frequency"             to ContentSource.FREQUENCY,
+        // `Frequency` holds the per-dictionary value list (+ ★ rating)
+        // rendered as a <ul>, not the bare stars — Lapis's card JS turns this
+        // into the frequency list. `PitchPosition` takes the comma-separated
+        // downsteps (the card draws the graph from them); `FreqSort` is the
+        // numeric harmonic-mean sort key.
+        "Frequency"             to ContentSource.FREQUENCY_VALUES,
+        "PitchPosition"         to ContentSource.PITCH_POSITION,
+        "FreqSort"              to ContentSource.FREQUENCY_HARMONIC,
         "IsWordAndSentenceCard" to ContentSource.VOCABULARY_CARD_FLAG,
         "IsSentenceCard"        to ContentSource.SENTENCE_CARD_FLAG,
     )
@@ -85,6 +92,16 @@ object AnkiCardTypeMapper {
         "Picture"                 to ContentSource.PICTURE,
         "WordAudio"                to ContentSource.WORD_AUDIO,
         "SentenceAudio"            to ContentSource.SENTENCE_AUDIO,
+        // Yomitan pitch/frequency. `PAOverride` (not `PAPositions`) carries the
+        // raw comma-separated downsteps: it accepts a raw number list and wins
+        // JPMN's pitch display priority, whereas `PAPositions` expects Yomitan
+        // HTML and its raw fallback reads only the first digit (dropping a 2nd
+        // accent). `FrequenciesStylized` needs JPMN's own frequencies__group
+        // markup; `FrequencySort` is the raw numeric sort field. (`PAGraphs`
+        // needs a rendered SVG → left unmapped; pitch still shows via PAOverride.)
+        "PAOverride"              to ContentSource.PITCH_POSITION,
+        "FrequenciesStylized"     to ContentSource.FREQUENCY_STYLIZED,
+        "FrequencySort"           to ContentSource.FREQUENCY_HARMONIC,
         // JPMN's vocab variant is the no-flag default; we only fire the
         // sentence + targeted-sentence flags. IsTargetedSentenceCard
         // combines with IsSentenceCard per JPMN's compound-flag rules:
@@ -152,6 +169,37 @@ object AnkiCardTypeMapper {
         (LAPIS_DEFAULTS + JPMN_DEFAULTS + MIGAKU_DEFAULTS).filterValues {
             it == ContentSource.WORD_AUDIO || it == ContentSource.SENTENCE_AUDIO
         }
+
+    /**
+     * Field-name → (old auto-default, new source) rewrites for the
+     * pitch/frequency slots that became fillable with the Yomitan integration.
+     * Consumed by [com.playtranslate.Prefs.migrateAnkiPitchFreqFieldMappings]
+     * to back-fill mappings configured before those sources existed — the same
+     * shape of fix as [AUDIO_FIELD_DEFAULTS], but each field's "old value"
+     * differs.
+     *
+     * `PitchPosition`/`FreqSort` (Lapis) and `PAOverride`/`FrequencySort`/
+     * `FrequenciesStylized` (JPMN) had NO source before, so the field-mapping
+     * dialog persisted them as `NONE`. Lapis's `Frequency` was already
+     * auto-mapped to the ★ stars ([ContentSource.FREQUENCY]) and upgrades to
+     * the value list. The migration rewrites only a field still sitting at its
+     * OLD auto-default; a deliberately different choice — including a
+     * user-cleared `NONE` on `Frequency` — is left untouched.
+     *
+     * Field names are unique across the templates we recognise, so the
+     * name-keyed rewrite needs no template re-detection (like
+     * [AUDIO_FIELD_DEFAULTS]).
+     */
+    val PITCH_FREQ_FIELD_MIGRATION: List<Triple<String, ContentSource, ContentSource>> = listOf(
+        // Lapis
+        Triple("PitchPosition", ContentSource.NONE, ContentSource.PITCH_POSITION),
+        Triple("FreqSort", ContentSource.NONE, ContentSource.FREQUENCY_HARMONIC),
+        Triple("Frequency", ContentSource.FREQUENCY, ContentSource.FREQUENCY_VALUES),
+        // JPMN
+        Triple("PAOverride", ContentSource.NONE, ContentSource.PITCH_POSITION),
+        Triple("FrequencySort", ContentSource.NONE, ContentSource.FREQUENCY_HARMONIC),
+        Triple("FrequenciesStylized", ContentSource.NONE, ContentSource.FREQUENCY_STYLIZED),
+    )
 
     /**
      * Anki Basic-shape templates skip the per-field mapping system

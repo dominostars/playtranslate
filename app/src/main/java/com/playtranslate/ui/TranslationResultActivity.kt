@@ -204,6 +204,7 @@ class TranslationResultActivity :
             // one-tap helper awaits LastSentenceCache, which is
             // atomic per sentence.
             surfaceForms = settledRows?.toSurfaceMap(),
+            wordEnrichment = settledRows?.toEnrichmentMap(),
         )
     }
 

@@ -25,6 +25,7 @@ class LastSentenceCacheTest {
             translationSource = "ml-kit",
             wordResults = mapOf("鼠标" to Triple("", "滑鼠", 0)),
             surfaceForms = emptyMap(),
+            wordEnrichment = emptyMap(),
         )
         assertEquals("請用滑鼠", LastSentenceCache.translation)
         assertNotNull(LastSentenceCache.wordResults)

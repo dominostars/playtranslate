@@ -1106,6 +1106,28 @@
     <string name="anki_content_words_table">Words list (sentence cards)</string>
     <string name="anki_content_words_table_desc">A formatted list of every word <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> detected in the sentence, with readings and definitions.</string>
 
+    <!-- The Yomitan pitch/frequency options below appear in the Anki “Map field” content-source picker dialog (Japanese mining notes); each pair is one option’s label plus its description line. “Lapis”/“JPMN” are community card-template brands; ★ is the star glyph (U+2605). -->
+
+    <!-- Picker option label: pitch-accent position source. -->
+    <string name="anki_content_pitch_position">Pitch-accent position</string>
+    <!-- Picker option description for “Pitch-accent position”; the example shows the comma-separated downstep format. -->
+    <string name="anki_content_pitch_position_desc">Pitch-accent downstep position(s) for the highlighted word, comma-separated. For <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'s “PitchPosition” or <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>\'s “PAOverride”. Example: 0,2</string>
+
+    <!-- Picker option label: full frequency list (★ rating plus dictionary values). -->
+    <string name="anki_content_frequency_values">Frequency list</string>
+    <!-- Picker option description for “Frequency list”. -->
+    <string name="anki_content_frequency_values_desc">The ★ rating plus every frequency-dictionary value for the highlighted word, as a list. For <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'s “Frequency”.</string>
+
+    <!-- Picker option label: JPMN-styled variant of the frequency list. -->
+    <string name="anki_content_frequency_stylized">Frequency list (JPMN style)</string>
+    <!-- Picker option description for “Frequency list (JPMN style)”. -->
+    <string name="anki_content_frequency_stylized_desc">The same frequency list, emitted in <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>\'s own styled format for its “FrequenciesStylized” field. Use only on <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> cards.</string>
+
+    <!-- Picker option label: numeric frequency-sort value. -->
+    <string name="anki_content_frequency_harmonic">Frequency sort number</string>
+    <!-- Picker option description for “Frequency sort number”; rendered the same way as a plain number. -->
+    <string name="anki_content_frequency_harmonic_desc">A single number for ordering cards by frequency, the harmonic mean of the word\'s dictionary frequencies (lower = more frequent). For <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'s “FreqSort” or <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>\'s “FrequencySort”.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          CARD-TYPE STATE FLAGS — Mustache section-gate fields.  The "(x)"
          suffix discloses the literal value the flag emits when it fires

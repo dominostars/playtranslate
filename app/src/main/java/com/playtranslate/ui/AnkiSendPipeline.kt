@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.fragment.app.Fragment
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
+import com.playtranslate.model.FrequencyTag
 import com.playtranslate.tts.TtsEngine
 import com.playtranslate.tts.ttsTextForWord
 import java.io.File
@@ -58,6 +59,13 @@ data class WordSendInput(
     val reading: String,
     val pos: String,
     val freqScore: Int,
+    /** Pitch downsteps + per-dictionary frequencies for the word (from
+     *  `entry.headwordDisplay(word)`), feeding the structured path's
+     *  PITCH_POSITION / FREQUENCY_* sources. Required (not defaulted) so a
+     *  word-send construction site that forgets to thread them is a compile
+     *  error rather than a silently-blank field. */
+    val pitch: List<Int>,
+    val frequencies: List<FrequencyTag>,
     val sourceLangId: SourceLangId,
     val screenshotPath: String?,
     val includeWordAudio: Boolean,
@@ -208,6 +216,8 @@ suspend fun Context.sendWordCard(
                     pos = input.pos,
                     definitionHtml = input.inlineDefinitionHtml,
                     freqScore = input.freqScore,
+                    pitch = input.pitch,
+                    frequencies = input.frequencies,
                     imageFilename = imageFilename,
                     examplesHtml = input.inlineExamplesHtml,
                     sourceLangId = input.sourceLangId,

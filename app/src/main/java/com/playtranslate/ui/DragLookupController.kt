@@ -1558,6 +1558,8 @@ class DragLookupController(
                     pos = snap.pos,
                     fallbackDefinition = snap.definition,
                     freqScore = snap.freqScore,
+                    pitch = snap.pitch,
+                    frequencies = snap.frequencies,
                     screenshotPath = snap.screenshotPath,
                     sourceLangId = sourceLangId,
                 )
@@ -1623,6 +1625,8 @@ class DragLookupController(
         val pos: String,
         val definition: String,
         val freqScore: Int,
+        val pitch: List<Int>,
+        val frequencies: List<FrequencyTag>,
         val screenshotPath: String?,
         val sentence: String?,
         val sentenceTranslation: String?,
@@ -1641,6 +1645,9 @@ class DragLookupController(
         val pos = entry.senses.firstOrNull()?.partsOfSpeech
             ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
         val definition = flatCardDefinition(entry)
+        // Pitch + per-dict frequencies from the headword matching the clicked
+        // word (carries them through the dismiss, like the other snapshot data).
+        val headword = entry.headwordDisplay(word)
         val sentence = currentSentence
         val sentenceTranslation = LastSentenceCache
             .takeIf { it.original == sentence }?.translation
@@ -1650,6 +1657,8 @@ class DragLookupController(
             pos = pos,
             definition = definition,
             freqScore = entry.freqScore,
+            pitch = headword.pitch,
+            frequencies = headword.frequencies,
             screenshotPath = screenshotPath,
             sentence = sentence,
             sentenceTranslation = sentenceTranslation,

@@ -5,6 +5,7 @@ import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.dictionary.JapaneseTokenizer
 import com.playtranslate.dictionary.SudachiJapaneseTokenizer
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.model.FrequencyTag
 
 private const val TAG = "SentenceFurigana"
 
@@ -25,7 +26,20 @@ private const val WBR = "<wbr>"
  */
 object SentenceAnkiHtmlBuilder {
 
-    data class WordEntry(val word: String, val reading: String, val meaning: String, val freqScore: Int = 0, val surfaceForm: String = "")
+    data class WordEntry(
+        val word: String,
+        val reading: String,
+        val meaning: String,
+        val freqScore: Int = 0,
+        val surfaceForm: String = "",
+        /** Pitch-accent downsteps for this word, for the Anki pitch-position
+         *  field; empty when unknown. Populated on the sentence-send path from
+         *  [LastSentenceCache] by word, like [surfaceForm]. */
+        val pitch: List<Int> = emptyList(),
+        /** Per-dictionary frequencies for this word, for the Anki frequency
+         *  list/sort fields; empty when unknown. */
+        val frequencies: List<FrequencyTag> = emptyList(),
+    )
 
     /**
      * @param highlightedWords words to bold in the sentence (font-weight:800)

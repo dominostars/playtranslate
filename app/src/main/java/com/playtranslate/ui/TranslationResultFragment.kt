@@ -630,7 +630,7 @@ class TranslationResultFragment : Fragment() {
         // (see LastSentenceCache.awaitOrStartWordLookups docs).
         val settledRows = (vm.wordLookups.value as? WordLookupsState.Settled)?.rows
         val wordsPayload = settledRows?.let {
-            LastSentenceCache.WordsPayload(it.toLegacyMap(), it.toSurfaceMap())
+            LastSentenceCache.WordsPayload(it.toLegacyMap(), it.toSurfaceMap(), it.toEnrichmentMap())
         }
         val screenshotPath = result.screenshotPath
         val pill = pillAnkiButton ?: return
@@ -732,7 +732,7 @@ class TranslationResultFragment : Fragment() {
         // surface-forms-race rationale.
         val settledRows = (vm.wordLookups.value as? WordLookupsState.Settled)?.rows
         val wordsPayload = settledRows?.let {
-            LastSentenceCache.WordsPayload(it.toLegacyMap(), it.toSurfaceMap())
+            LastSentenceCache.WordsPayload(it.toLegacyMap(), it.toSurfaceMap(), it.toEnrichmentMap())
         }
         dismissWordPopup()
         Toast.makeText(
@@ -749,12 +749,15 @@ class TranslationResultFragment : Fragment() {
                     targetWord = word,
                 )
             } else {
+                val hw = entry.headwordDisplay(word)
                 requireContext().oneTapSendWord(
                     word = word,
                     reading = readingClean,
                     pos = pos,
                     fallbackDefinition = definition,
                     freqScore = entry.freqScore,
+                    pitch = hw.pitch,
+                    frequencies = hw.frequencies,
                     screenshotPath = screenshotPath,
                     sourceLangId = prefs.sourceLangId,
                 )

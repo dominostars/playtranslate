@@ -237,13 +237,16 @@ class SentenceAnkiContentFragment : Fragment() {
         val meaningArr = args.getStringArray(ARG_MEANINGS) ?: emptyArray()
         val freqArr    = args.getIntArray(ARG_FREQ_SCORES) ?: IntArray(0)
         val surfaces   = LastSentenceCache.surfaceForms ?: emptyMap()
+        val enrich     = LastSentenceCache.wordEnrichment ?: emptyMap()
         wordArr.forEachIndexed { i, w ->
             words.add(SentenceAnkiHtmlBuilder.WordEntry(
                 w,
                 readingArr.getOrElse(i) { "" },
                 meaningArr.getOrElse(i) { "" },
                 freqArr.getOrElse(i) { 0 },
-                surfaceForm = surfaces[w] ?: ""
+                surfaceForm = surfaces[w] ?: "",
+                pitch = enrich[w]?.pitch.orEmpty(),
+                frequencies = enrich[w]?.frequencies.orEmpty(),
             ))
         }
 

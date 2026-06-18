@@ -253,6 +253,7 @@ class TranslationResultViewModel : ViewModel() {
                     translationSource = ready?.result?.backendDisplayName,
                     wordResults = data.rows.toLegacyMap(),
                     surfaceForms = data.surfaces,
+                    wordEnrichment = data.rows.toEnrichmentMap(),
                 )
             } catch (e: CancellationException) {
                 // Caller cancelled (e.g. new text arrived) — let the next
@@ -362,3 +363,10 @@ fun List<RowState>.toLegacyMap(): Map<String, Triple<String, String, Int>> =
  *  the time a downstream consumer reads it). */
 fun List<RowState>.toSurfaceMap(): Map<String, String> =
     associate { it.displayWord to it.surface }
+
+/** Pitch + per-dictionary frequencies map paired with [toLegacyMap] /
+ *  [toSurfaceMap] (same atomic-snapshot rationale — read together, not via the
+ *  process-global cache, to keep word→data aligned). Feeds the sentence-card
+ *  pitch/frequency Anki fields via [WordEnrichment]. */
+fun List<RowState>.toEnrichmentMap(): Map<String, WordEnrichment> =
+    associate { it.displayWord to WordEnrichment(it.pitch, it.frequencies) }

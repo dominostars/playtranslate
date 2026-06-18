@@ -794,6 +794,11 @@ class Prefs internal constructor(
         // Back-fill TTS-audio field mappings for non-default card types
         // configured before v2.2.0 — see [migrateAnkiAudioFieldMappings].
         migrateAnkiAudioFieldMappings()
+
+        // Back-fill pitch/frequency field mappings for card types configured
+        // before those Yomitan-derived sources existed — see
+        // [migrateAnkiPitchFreqFieldMappings].
+        migrateAnkiPitchFreqFieldMappings()
     }
 
     /**
@@ -859,6 +864,67 @@ class Prefs internal constructor(
         }
 
         sp.edit { putBoolean(KEY_ANKI_AUDIO_MAPPING_MIGRATED, true) }
+    }
+
+    /**
+     * One-shot back-fill of pitch/frequency field mappings for card types
+     * configured before those Yomitan-derived sources existed.
+     *
+     * Like [migrateAnkiAudioFieldMappings], the field-mapping dialog persisted
+     * every note field, and these pitch/frequency slots had no source yet, so
+     * they sit at `NONE` — except Lapis's `Frequency`, which sat at the old
+     * ★-stars default ([com.playtranslate.ui.ContentSource.FREQUENCY]). Because
+     * [getAnkiFieldMapping] is authoritative once non-empty, an existing saved
+     * mapping would never pick up the new template defaults, so the fields
+     * would stay blank on every send.
+     *
+     * Walks every saved mapping and applies
+     * [com.playtranslate.ui.AnkiCardTypeMapper.PITCH_FREQ_FIELD_MIGRATION]: a
+     * field present and still at its OLD auto-default is rewritten to the new
+     * source; a deliberately different choice (incl. a user-cleared `NONE` on
+     * `Frequency`) is left as-is. Touches only fields already present in the
+     * saved JSON. Gated on [KEY_ANKI_PITCH_FREQ_MAPPING_MIGRATED] so it runs
+     * exactly once.
+     *
+     * Known limitation (shared with [migrateAnkiAudioFieldMappings]): a mapping
+     * saved before the note type gained these fields has no key to rewrite —
+     * the user re-opens the mapping dialog to pick them up (its template
+     * defaults now include them).
+     */
+    private fun migrateAnkiPitchFreqFieldMappings() {
+        if (sp.contains(KEY_ANKI_PITCH_FREQ_MAPPING_MIGRATED)) return
+
+        val raw = sp.getString(KEY_ANKI_FIELD_MAPPINGS, null)
+        if (raw != null) {
+            try {
+                val root = JSONObject(raw)
+                val rules = com.playtranslate.ui.AnkiCardTypeMapper.PITCH_FREQ_FIELD_MIGRATION
+                var changed = false
+                val modelIds = root.keys()
+                while (modelIds.hasNext()) {
+                    val obj = root.optJSONObject(modelIds.next()) ?: continue
+                    for ((fieldName, from, to) in rules) {
+                        // Rewrite only a field still sitting at its old
+                        // auto-default. An absent field (note type gained the
+                        // slot after the mapping was saved) or a deliberately
+                        // different value is left alone.
+                        if (obj.has(fieldName) && obj.optString(fieldName) == from.name) {
+                            obj.put(fieldName, to.name)
+                            changed = true
+                        }
+                    }
+                }
+                if (changed) {
+                    sp.edit { putString(KEY_ANKI_FIELD_MAPPINGS, root.toString()) }
+                }
+            } catch (_: Exception) {
+                // Corrupt JSON — getAnkiFieldMapping already degrades it to an
+                // empty mapping; set the marker rather than re-parsing a broken
+                // blob on every launch.
+            }
+        }
+
+        sp.edit { putBoolean(KEY_ANKI_PITCH_FREQ_MAPPING_MIGRATED, true) }
     }
 
     /** Hotkey combo for hold-to-show translations. Empty = not set. Format: keyCodes joined by "+". */
@@ -1049,6 +1115,7 @@ class Prefs internal constructor(
         private const val KEY_ANKI_WORD_AUDIO      = "anki_word_audio_enabled"
         private const val KEY_ANKI_SENTENCE_AUDIO  = "anki_sentence_audio_enabled"
         private const val KEY_ANKI_AUDIO_MAPPING_MIGRATED = "anki_audio_mapping_migrated"
+        private const val KEY_ANKI_PITCH_FREQ_MAPPING_MIGRATED = "anki_pitch_freq_mapping_migrated"
         private const val KEY_REGION_LIST    = "region_list"
         private const val KEY_DEEPL_KEY      = "deepl_api_key"
         private const val KEY_SECRETS_ENCRYPTED_MIGRATED = "secrets_encrypted_migrated"

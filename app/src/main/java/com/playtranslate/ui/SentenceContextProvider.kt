@@ -28,4 +28,8 @@ data class SentenceContext(
      *  null OR when the host can't supply matching surfaces from the
      *  same source. */
     val surfaceForms: Map<String, String>? = null,
+    /** Word → pitch + frequencies, snapshotted atomically with
+     *  [wordResults] (same rationale as [surfaceForms]); feeds the
+     *  sentence-card pitch/frequency Anki fields. Null when unavailable. */
+    val wordEnrichment: Map<String, WordEnrichment>? = null,
 )
