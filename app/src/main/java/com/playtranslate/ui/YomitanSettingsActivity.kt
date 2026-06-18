@@ -104,7 +104,7 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
         val progress = OverlayProgress.Builder(this)
             .setTitle(getString(R.string.yomitan_importing_title))
             .setMessage(getString(R.string.yomitan_importing_message))
-            .setOnDismiss { importJob?.cancel() } // USER cancel and activity pause alike
+            .setOnDismiss { importJob?.cancel() } // USER cancel/back or host teardown; a plain background keeps importing
             .show()
         // Indeterminate: each file's import is itself indeterminate, and a
         // per-file "% of files" bar would sit visibly stuck while the largest
@@ -165,7 +165,7 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
         val progress = OverlayProgress.Builder(this)
             .setTitle(getString(R.string.yomitan_downloading_title))
             .setMessage(rec.displayTitle)
-            .setOnDismiss { importJob?.cancel() } // USER cancel and activity pause alike
+            .setOnDismiss { importJob?.cancel() } // USER cancel/back or host teardown; a plain background keeps importing
             .show()
 
         val tmp = File(

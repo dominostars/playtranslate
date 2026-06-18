@@ -1,13 +1,11 @@
 package com.playtranslate.ui
 
 import android.app.Activity
-import android.app.Application
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -93,8 +91,12 @@ fun OverlayProgress.showYomitanDownloadProgress(context: Context, received: Long
 enum class DismissReason {
     /** User explicitly bailed — cancel-button tap or back-press. */
     USER,
-    /** Host activity paused — sub-Activity nav, app backgrounded, etc. The
-     *  user did not bail; they may come back. */
+    /** Dismissed by the lifecycle rather than the user; they may come back, so
+     *  keep the .partial. For [OverlayAlert] this fires when the host activity
+     *  pauses. For [OverlayProgress] it fires only on host-window teardown /
+     *  activity destroy — a plain pause/stop no longer dismisses progress (it
+     *  rides the decorView), so by the time this fires the job is already
+     *  ending via lifecycleScope. */
     LIFECYCLE_PAUSE,
 }
 
@@ -109,14 +111,17 @@ enum class DismissReason {
  * visibility — is exposed on the returned instance so the caller can
  * stream updates from a coroutine.
  *
- * Attaches to whichever PlayTranslate activity is currently foregrounded.
- * Both user cancel (cancel-button tap, back-press) and lifecycle pause
- * (host activity pauses) detach the view and fire [Builder.setOnDismiss]
- * with the corresponding [DismissReason]. Callers branch on the reason —
- * USER typically wipes the partial so a new attempt starts fresh;
- * LIFECYCLE_PAUSE typically just stops the job so the .partial can be
- * resumed later. Forgetting to branch defaults to "treat both alike,"
- * which is loud (visible cancel) rather than silent (orphaned work).
+ * Attaches to whichever PlayTranslate activity is currently foregrounded, then
+ * RIDES that activity's decorView: it deliberately does NOT dismiss when the
+ * host merely pauses or stops, so backgrounding the app, a screen timeout, or a
+ * system dialog leaves the download running (on the host's lifecycleScope) and
+ * the popup simply reappears on return. It is dismissed only by the user
+ * (cancel-button tap / back-press → [DismissReason.USER], which typically wipes
+ * the .partial so a new attempt starts fresh) or by host-window teardown /
+ * activity destroy (→ [DismissReason.LIFECYCLE_PAUSE], where the job is already
+ * ending via lifecycleScope and the .partial is kept for a later resume).
+ * Contrast [OverlayAlert], which still dismisses on pause — correct for a
+ * one-shot decision prompt, wrong for a long-running download.
  */
 class OverlayProgress private constructor(
     rawContext: Context,
@@ -140,11 +145,12 @@ class OverlayProgress private constructor(
         fun setProgress(percent: Int) = apply { this.initialProgress = percent }
         fun setCancelLabel(label: String) = apply { this.cancelLabel = label }
 
-        /** Fires whenever the dialog is dismissed by user action OR
-         *  lifecycle pause. Branch on [DismissReason] to decide whether
-         *  to wipe partial state (USER) or just stop the job
-         *  (LIFECYCLE_PAUSE). See [OverlayProgress] class doc for the
-         *  full contract. */
+        /** Fires when the dialog is dismissed by the user (cancel/back) or by
+         *  host-window teardown / activity destroy — NOT on a plain background
+         *  (the popup rides the decor and survives pause/stop). Branch on
+         *  [DismissReason] to decide whether to wipe partial state (USER) or
+         *  just stop the job (LIFECYCLE_PAUSE). See [OverlayProgress] class doc
+         *  for the full contract. */
         fun setOnDismiss(callback: (DismissReason) -> Unit) = apply { this.onDismiss = callback }
 
         /** Attaches above whichever PlayTranslate surface is currently on top
@@ -170,8 +176,6 @@ class OverlayProgress private constructor(
     private var statusView: TextView? = null
     private var progressView: ProgressBar? = null
     private var cancelButton: Button? = null
-    private var attachedActivity: Activity? = null
-    private var lifecycleCallback: Application.ActivityLifecycleCallbacks? = null
     private var backPressedCallback: OnBackPressedCallback? = null
     private var dismissed = false
 
@@ -218,20 +222,15 @@ class OverlayProgress private constructor(
         dismissAction?.invoke()
         dismissAction = null
         scrim = null
-        lifecycleCallback?.let {
-            attachedActivity?.application?.unregisterActivityLifecycleCallbacks(it)
-        }
         backPressedCallback?.remove()
-        lifecycleCallback = null
         backPressedCallback = null
-        attachedActivity = null
     }
 
     private fun detachAndDispatch(reason: DismissReason) {
-        // Idempotent: cancel / back / activity-pause / the detach-listener can
-        // all race to dismiss. First one wins; the rest (including the
-        // removeView that fires the detach listener) no-op so onDismiss isn't
-        // invoked twice.
+        // Idempotent: cancel / back / the detach-listener (host teardown or
+        // destroy) can all race to dismiss. First one wins; the rest (including
+        // the removeView that fires the detach listener) no-op so onDismiss
+        // isn't invoked twice.
         if (dismissed) return
         dismiss()
         onDismiss(reason)
@@ -257,27 +256,18 @@ class OverlayProgress private constructor(
         decor.addView(scrimView, lp)
         scrim = scrimView
         dismissAction = { try { decor.removeView(scrimView) } catch (_: Exception) {} }
-        attachedActivity = activity
 
-        val app = activity.application
-        val lifecycle = object : Application.ActivityLifecycleCallbacks {
-            override fun onActivityPaused(a: Activity) {
-                if (a === attachedActivity) detachAndDispatch(DismissReason.LIFECYCLE_PAUSE)
-            }
-            override fun onActivityCreated(a: Activity, b: Bundle?) {}
-            override fun onActivityStarted(a: Activity) {}
-            override fun onActivityResumed(a: Activity) {}
-            override fun onActivityStopped(a: Activity) {}
-            override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
-            override fun onActivityDestroyed(a: Activity) {}
-        }
-        app.registerActivityLifecycleCallbacks(lifecycle)
-        lifecycleCallback = lifecycle
-
-        // Host window torn down independently of our own dismiss (the dialog
-        // we're parented to is dismissed): detach cleanly + branch the caller
-        // on LIFECYCLE_PAUSE (stop the job, keep partial). Guarded by
-        // [dismissed] in detachAndDispatch against our own removeView.
+        // Terminal trigger. Unlike [OverlayAlert], a progress popup deliberately
+        // does NOT dismiss when its host activity merely pauses or stops: the
+        // scrim rides the host's decorView (hidden while backgrounded, re-shown
+        // by the framework on return), so a screen-off, a system dialog, or a
+        // brief app-switch can't kill an in-flight download — the coroutine keeps
+        // running on the host's lifecycleScope. The scrim only leaves the
+        // hierarchy when the host is DESTROYED (config-change recreate / process
+        // kill, where lifecycleScope cancels the job anyway) or a parent Dialog
+        // we're parented to is dismissed. Both tear down the decor → fire this
+        // listener → detachAndDispatch(LIFECYCLE_PAUSE) (keep the .partial; the
+        // job is already ending). Our own removeView is guarded by [dismissed].
         scrimView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {}
             override fun onViewDetachedFromWindow(v: View) {

@@ -79,6 +79,7 @@
             android:name=".ui.LanguageSetupActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Theme.PlayTranslate" />
 
         <!-- DeepL API key entry sub-screen (launched from Settings → Translation Service). -->
@@ -139,6 +140,7 @@
             android:name=".ui.CaptureOverlaySettingsActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Theme.PlayTranslate" />
 
         <!-- Anki Flashcards sub-page (deck / card-type / mapping), launched from Settings → Configure. -->
@@ -153,6 +155,7 @@
             android:name=".ui.TranslationServicesActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Theme.PlayTranslate" />
 
         <!-- Yomitan dictionary import sub-page (debug builds only), launched from Settings → Configure. -->
@@ -160,6 +163,7 @@
             android:name=".ui.YomitanSettingsActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Theme.PlayTranslate" />
 
         <!-- Read-only metadata detail for an installed Yomitan dictionary, opened
