@@ -250,11 +250,14 @@ class OfflineModelInstallController(
                             }
                             is OnDeviceLlmDownloader.Progress.Verifying -> {
                                 progressDialog.setMessage(activity.getString(m.statusVerifying))
-                                progressDialog.setProgress(100)
+                                progressDialog.setIndeterminate(true)
                             }
                             is OnDeviceLlmDownloader.Progress.Extracting -> {
                                 progressDialog.setMessage(activity.getString(R.string.model_download_extracting))
-                                progressDialog.setProgress(100)
+                                // Indeterminate animation (the accent-tinted bar set up in
+                                // OverlayProgress.buildScrim) — extraction reports no byte total,
+                                // and it matches the OCR install + Yomitan import treatment.
+                                progressDialog.setIndeterminate(true)
                             }
                         }
                     }
