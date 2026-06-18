@@ -1,5 +1,8 @@
 package com.playtranslate.ui
 
+import com.playtranslate.dictionary.Deinflector
+import com.playtranslate.model.FrequencyTag
+
 /**
  * Top-level builders for the legacy v004 word-card HTML. Extracted from
  * [WordAnkiReviewSheet] so the one-tap path can reuse the same
@@ -41,6 +44,11 @@ internal object WordAnkiHtmlBuilder {
         reading: String,
         pos: String,
         freqScore: Int,
+        /** Pitch downsteps + per-dictionary frequencies for the word (from
+         *  `entry.headwordDisplay(word)`, carried via WordSendInput). Empty for
+         *  non-JA / no pitch dictionary — the reading then renders plain. */
+        pitch: List<Int>,
+        frequencies: List<FrequencyTag>,
         imageFilename: String?,
         audioFilename: String?,
         definitionHtml: String,
@@ -57,6 +65,9 @@ internal object WordAnkiHtmlBuilder {
         append(".gl-ex{margin:8px 0 0 8px;padding-left:10px;border-left:2px solid #6cd1c2;}")
         append(".gl-ex-tr{font-size:0.92em;color:#888;margin-top:2px;}")
         append(".gl-section{font-size:0.78em;letter-spacing:0.08em;color:#888;text-transform:uppercase;margin:18px 4px 6px;}")
+        // Centered, bullet-less frequency list (reused from the structured path).
+        append(".gl-back ul{list-style:none;padding:0;text-align:center;margin:6px 0;}")
+        append(PitchAccentHtml.PITCH_CSS)
         append("</style>")
         append("<div class=\"gl-back\">")
         if (imageFilename != null) {
@@ -77,7 +88,25 @@ internal object WordAnkiHtmlBuilder {
         append("<div style=\"text-align:center;font-size:1.8em;padding:12px 4px;\">")
         append(htmlEscape(word))
         append("</div>")
-        if (reading.isNotEmpty()) {
+        // Kana for the pitch contour: the reading when present, else the word
+        // itself when it's all-kana. Kana-only entries collapse the kana into
+        // the headword and carry no separate reading but still have pitch, so
+        // mirror WordResultCell and repeat the kana here. The all-kana guard is
+        // load-bearing — the contour maps morae onto the string, so it must
+        // never cover kanji.
+        val pitchKana = when {
+            reading.isNotEmpty() -> reading
+            pitch.isNotEmpty() && word.isNotEmpty() && word.all(Deinflector::isKana) -> word
+            else -> ""
+        }
+        val pitchHtml = if (pitchKana.isNotEmpty()) {
+            PitchAccentHtml.pitchAccentHtml(pitchKana, pitch)
+        } else ""
+        if (pitchHtml.isNotEmpty()) {
+            append("<div style=\"text-align:center;font-size:1.1em;color:#888;\">")
+            append(pitchHtml)
+            append("</div>")
+        } else if (reading.isNotEmpty()) {
             append("<div style=\"text-align:center;font-size:1.1em;color:#888;\">")
             append(htmlEscape(reading))
             append("</div>")
@@ -87,10 +116,15 @@ internal object WordAnkiHtmlBuilder {
             append(htmlEscape(pos))
             append("</div>")
         }
-        if (freqScore > 0) {
-            // starsString emits only ★ glyphs — safe.
-            val stars = SentenceAnkiHtmlBuilder.starsString(freqScore)
-            append("<div style=\"text-align:center;font-size:0.9em;color:#888;margin-top:4px;\">$stars</div>")
+        // ★ rating plus each Yomitan frequency dict's value, as a centered
+        // list. Reuses the structured path's renderer (semantically identical);
+        // the `.gl-back ul` rule above strips bullets and centers it. Empty
+        // when there's neither a star score nor any frequency data.
+        val freqHtml = AnkiFrequencyFormat.frequencyValuesHtml(freqScore, frequencies)
+        if (freqHtml.isNotEmpty()) {
+            append("<div style=\"text-align:center;font-size:0.9em;color:#888;margin-top:4px;\">")
+            append(freqHtml)
+            append("</div>")
         }
         append("<div style=\"margin-bottom:12px;\"></div>")
         append("<hr>")

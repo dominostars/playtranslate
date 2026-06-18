@@ -204,6 +204,8 @@ suspend fun Context.sendWordCard(
                     reading = input.reading,
                     pos = input.pos,
                     freqScore = input.freqScore,
+                    pitch = input.pitch,
+                    frequencies = input.frequencies,
                     imageFilename = imageFilename,
                     audioFilename = audioFilename,
                     definitionHtml = input.classDefinitionHtml,

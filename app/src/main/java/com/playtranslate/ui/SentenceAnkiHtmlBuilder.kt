@@ -120,13 +120,14 @@ object SentenceAnkiHtmlBuilder {
         // Legacy back HTML wraps a <style> block that defines the gl-*
         // classes. classStyler emits class refs that the surrounding
         // <style> applies — no inline duplication.
-        val wordsHtml = buildWordsHtmlWith(sorted, highlightedWords, classStyler, wordAudioFilenames)
+        val wordsHtml = buildWordsHtmlWith(sorted, highlightedWords, classStyler, wordAudioFilenames, renderPitch = true)
         return buildString {
             append("<style>")
             append("body{visibility:hidden!important;white-space:normal!important;}")
             append(".gl-front{display:none!important;}")
             append("#answer{display:none!important;}")
             append(".gl-back{visibility:visible!important;}")
+            append(PitchAccentHtml.PITCH_CSS)
             append("</style>")
             append("<div class=\"gl-back\">")
             if (imageFilename != null) {
@@ -650,6 +651,11 @@ object SentenceAnkiHtmlBuilder {
          *  surface so Anki renders an inline play button. Words absent
          *  from this map get no audio tag. */
         wordAudioFilenames: Map<String, String> = emptyMap(),
+        /** When true, render each word's reading with its pitch-accent contour
+         *  (the legacy PT card back). Default false so the structured
+         *  WORDS_TABLE path — which ships no pitch CSS and already gets pitch
+         *  via the PitchPosition/PAOverride fields — emits no `pa-*` markup. */
+        renderPitch: Boolean = false,
     ): String {
         if (words.isEmpty()) return ""
         val sb = StringBuilder()
@@ -665,11 +671,29 @@ object SentenceAnkiHtmlBuilder {
                 sb.append("<div ${styler(null, "margin-bottom:14px;")}>")
                 sb.append("<div><b>").append(safeWord).append("</b>").append(audioTag).append("</div>")
             }
-            if (entry.reading.isNotEmpty() || entry.freqScore > 0) {
+            // Kana for the pitch contour: the reading, or (kana-only entries)
+            // the all-kana word — mirrors the word card / WordResultCell. The
+            // kana-only branch is gated on renderPitch so the structured
+            // WORDS_TABLE path is unchanged; the all-kana guard keeps the
+            // contour off kanji.
+            val pitchKana = when {
+                entry.reading.isNotEmpty() -> entry.reading
+                renderPitch && entry.pitch.isNotEmpty() &&
+                    entry.word.isNotEmpty() && entry.word.all(Deinflector::isKana) -> entry.word
+                else -> ""
+            }
+            if (pitchKana.isNotEmpty() || entry.freqScore > 0) {
                 sb.append("<div ${styler(null, "font-size:0.85em;")}>")
-                if (entry.reading.isNotEmpty()) {
+                if (pitchKana.isNotEmpty()) {
                     sb.append("<span ${styler("gl-hint", "")}>")
-                        .append(htmlEscape(entry.reading)).append("</span>")
+                    // Pitch contour (legacy back only); the diagram contains the
+                    // kana, so it replaces the plain reading.
+                    val pitchHtml = if (renderPitch) {
+                        PitchAccentHtml.pitchAccentHtml(pitchKana, entry.pitch)
+                    } else ""
+                    if (pitchHtml.isNotEmpty()) sb.append(pitchHtml)
+                    else sb.append(htmlEscape(entry.reading))
+                    sb.append("</span>")
                 }
                 if (entry.freqScore > 0) {
                     // starsString emits only the ★ glyph repeated, so it's

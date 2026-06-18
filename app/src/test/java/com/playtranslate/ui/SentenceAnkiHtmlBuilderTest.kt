@@ -615,6 +615,37 @@ class SentenceAnkiHtmlBuilderTest {
         )
     }
 
+    @Test fun `buildWordsHtmlWith renders pitch only when renderPitch is on`() {
+        val entry = SentenceAnkiHtmlBuilder.WordEntry(
+            word = "猫", reading = "ねこ", meaning = "cat", freqScore = 0,
+            pitch = listOf(1),
+        )
+        val on = SentenceAnkiHtmlBuilder.buildWordsHtmlWith(
+            listOf(entry), emptySet(), inlineStyler, renderPitch = true,
+        )
+        assertTrue("pitch rendered when on", on.contains("class=\"pa-m"))
+        // The structured WORDS_TABLE path uses the default (false) and ships no
+        // pitch CSS — it must not emit pa-* markup (Finding B: no leak).
+        val off = SentenceAnkiHtmlBuilder.buildWordsHtmlWith(
+            listOf(entry), emptySet(), inlineStyler,
+        )
+        assertFalse("no pitch markup when off (structured path)", off.contains("class=\"pa-m"))
+        assertTrue("plain reading when off", off.contains("ねこ"))
+    }
+
+    @Test fun `buildWordsHtmlWith renders pitch over a kana-only word`() {
+        // Kana-only word in a sentence: blank reading, pitch present → the
+        // contour rides on the all-kana word (legacy back only).
+        val entry = SentenceAnkiHtmlBuilder.WordEntry(
+            word = "なるほど", reading = "", meaning = "I see", freqScore = 0,
+            pitch = listOf(0),
+        )
+        val html = SentenceAnkiHtmlBuilder.buildWordsHtmlWith(
+            listOf(entry), emptySet(), inlineStyler, renderPitch = true,
+        )
+        assertTrue("pitch over kana-only word", html.contains("class=\"pa-m"))
+    }
+
     @Test fun `ZH sentence furigana picks longest matching word at each position`() {
         // Defensive: if both 小心地 (3-char adverb) and 小心 (2-char
         // adjective) happen to be in the WordEntry list, longest-first
