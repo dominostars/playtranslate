@@ -167,6 +167,11 @@ class MagnifierLens(
     private val growBufferPx = dp(8f)
 
     private var lensView: LensView? = null
+    /** Full-screen host that owns the window; [lensView] is its single child,
+     *  slid horizontally inside it. The window is the whole display so a tap
+     *  anywhere off the card is caught and consumed (dismiss without leaking
+     *  the tap to the app/game beneath). */
+    private var lensRoot: LensRoot? = null
     private var params: WindowManager.LayoutParams? = null
     /** Snapshot of (isDark, accentColorRes) at the time the cached
      *  [lensView] was built. Compared against the live prefs on every
@@ -195,6 +200,10 @@ class MagnifierLens(
      *  put as the card grows): card BOTTOM when not flipped, card TOP when
      *  flipped. */
     private var anchoredEdgeScreenY = 0
+    /** Horizontal offset of the lens column inside the full-screen root, and
+     *  the card width — captured at [show] for [makeInteractive]'s arrow. */
+    private var lastLensX = 0
+    private var lastCardW = 0
     /** Drives the animated card grow on release; cancelled on re-fit / teardown. */
     private var heightAnimator: ValueAnimator? = null
 
@@ -257,6 +266,7 @@ class MagnifierLens(
 
     fun makeInteractive() {
         val view = lensView ?: return
+        val root = lensRoot ?: return
         val p = params ?: return
         // The interactive card needs window focus only to receive analog-
         // stick motion for stick-nudge dismissal. With no game controller
@@ -271,19 +281,21 @@ class MagnifierLens(
         if (!hasGameController()) {
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         }
-        // The window is already full-height (set in show()); this flag change
+        // The window is already full-screen (set in show()); this flag change
         // is flags-only — no size or position change, so it can't trigger the
         // resize flash. The card grows purely inside the fixed window below.
         p.flags = flags
-        try { wm.updateViewLayout(view, p) } catch (_: Exception) {}
+        try { wm.updateViewLayout(root, p) } catch (_: Exception) {}
+        // Sticky now: the root catches off-card taps to dismiss (and consumes
+        // them so they don't reach the app/game behind).
+        root.interactive = true
+        root.onOffCardTap = { dismiss() }
         view.attachInteractiveListeners(onDismissRequest = { dismiss() })
-        // Arrow x stays inside the card region — clamped so the triangle's
-        // tip lands somewhere over the card, not the chip-halo padding.
-        val cardLeftInView = chipHaloXPx
-        val cardW = p.width - 2 * chipHaloXPx
-        val arrowRelX = (lastFingerX - p.x).coerceIn(
-            cardLeftInView + arrowSizePx,
-            cardLeftInView + cardW - arrowSizePx,
+        // Arrow x stays inside the card region (in lens-local coords) — clamped
+        // so the triangle's tip lands over the card, not the chip-halo padding.
+        val arrowRelX = (lastFingerX - lastLensX).coerceIn(
+            chipHaloXPx + arrowSizePx,
+            chipHaloXPx + lastCardW - arrowSizePx,
         )
         view.setArrowVisible(true, arrowRelX)
         // Release commit: grow the card to fit the dictionary, animated inside
@@ -393,15 +405,19 @@ class MagnifierLens(
 
     fun resetToZoom() {
         val view = lensView ?: return
+        val root = lensRoot ?: return
         val p = params ?: return
         // Back to the base-height zoom card for the next drag.
         heightAnimator?.cancel()
         lensCardHeight = lensH
         view.setCardHeight(lensH)
-        // Window stays full-height (never resized); just revert the flags. The
-        // following show() repositions the base card for the new drag.
+        // No longer sticky: stop catching off-card taps. Window stays full-
+        // screen (never resized); just revert the flags. The following show()
+        // repositions the base card for the new drag.
+        root.interactive = false
+        root.onOffCardTap = null
         p.flags = zoomWindowFlags()
-        try { wm.updateViewLayout(view, p) } catch (_: Exception) {}
+        try { wm.updateViewLayout(root, p) } catch (_: Exception) {}
         view.detachInteractiveListeners()
         view.setDefinitions(null, null)
         view.setLabel(null, null)
@@ -453,9 +469,9 @@ class MagnifierLens(
 
         val cardW = cardWidth(screenW)
         val viewW = cardW + 2 * chipHaloXPx
-        ensureWindow(cardW, viewW, screenH)
+        ensureWindow(cardW, viewW, screenW, screenH)
         val view = lensView ?: return
-        val p = params ?: return
+        val root = lensRoot ?: return
 
         val aboveY = fingerY - verticalMarginPx - lensH
         // Activity-window callers (tap-on-word in the result screen) need the
@@ -468,7 +484,7 @@ class MagnifierLens(
         val flipped = aboveY < flipThreshold + flipBiasPx
         view.setSourcePoint(fingerX.toFloat(), fingerY.toFloat(), screenW, screenH)
         view.setLensFlipped(flipped)
-        view.isVisible = true
+        root.isVisible = true
 
         lastFingerX = fingerX
         lastFlipped = flipped
@@ -478,9 +494,8 @@ class MagnifierLens(
         heightAnimator?.cancel()
         lensCardHeight = lensH
 
-        // The card's TOP in screen coords. The window spans the full screen
-        // height at y = 0, so within the window the card top sits at this same
-        // Y — set via the card-top override.
+        // The card's TOP in screen coords. The window spans the full screen at
+        // y = 0, so within it the card top sits at this same Y (card-top override).
         val lensBodyY = if (!flipped) {
             aboveY
         } else {
@@ -493,21 +508,18 @@ class MagnifierLens(
         anchoredEdgeScreenY = if (!flipped) lensBodyY + lensH else lensBodyY
         view.setCardGeometry(lensH, lensBodyY)
 
-        // The window only ever moves horizontally to follow the finger; its
-        // y (0) and height (screenH) never change, so it never resizes.
-        val x = (fingerX - viewW / 2).coerceIn(0, (screenW - viewW).coerceAtLeast(0))
-        if (p.x != x || p.y != 0 || p.height != screenH) {
-            p.x = x
-            p.y = 0
-            p.height = screenH
-            try { wm.updateViewLayout(view, p) } catch (_: Exception) {}
-        } else {
-            view.invalidate()
-        }
+        // Slide the lens column to follow the finger horizontally; the window
+        // itself is fixed full-screen (never moves or resizes), so this is a
+        // pure view translation inside the root — no updateViewLayout, no flash.
+        val lensX = (fingerX - viewW / 2).coerceIn(0, (screenW - viewW).coerceAtLeast(0))
+        lastLensX = lensX
+        lastCardW = cardW
+        root.setLensX(lensX)
+        view.invalidate()
     }
 
     fun hide() {
-        lensView?.visibility = View.INVISIBLE
+        lensRoot?.visibility = View.INVISIBLE
     }
 
     fun dismiss() {
@@ -521,20 +533,21 @@ class MagnifierLens(
      *  the theme-change rebuild in [show] (which must not look like a
      *  user-initiated dismissal). */
     private fun removeOverlayInternal() {
-        val view = lensView ?: return
+        val root = lensRoot ?: return
         heightAnimator?.cancel()
         heightAnimator = null
         lensCardHeight = lensH
         lensView = null
+        lensRoot = null
         params = null
         if (overlayHost != null) {
-            overlayHost.removeOverlayWindow(view)
+            overlayHost.removeOverlayWindow(root)
         } else {
-            try { wm.removeView(view) } catch (_: Exception) {}
+            try { wm.removeView(root) } catch (_: Exception) {}
         }
     }
 
-    private fun ensureWindow(cardW: Int, viewW: Int, windowH: Int) {
+    private fun ensureWindow(cardW: Int, viewW: Int, screenW: Int, windowH: Int) {
         if (lensView != null) return
         // Build the themed context fresh on each window construction so
         // it reflects the user's current mode + accent. Caching this at
@@ -562,16 +575,18 @@ class MagnifierLens(
             onAnkiLongPress = { onAnkiLongPress?.invoke() },
             onSpeakTap = { onSpeakTap?.invoke() },
         )
+        val root = LensRoot(themedCtx, view, viewW)
         val windowType = if (useActivityWindow)
             WindowManager.LayoutParams.TYPE_APPLICATION_PANEL
         else
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-        // Window is pre-sized to the full screen height and never resized: the
-        // card is positioned and grown INSIDE it (resizing a live overlay makes
-        // this device flash the window at its gravity anchor). Only the window's
-        // x moves, to follow the finger horizontally during the drag.
+        // Full-screen window, never moved or resized: the card is positioned and
+        // grown INSIDE it (resizing a live overlay flashes it at its gravity
+        // anchor), and a tap anywhere off the card is caught + consumed so it
+        // dismisses without leaking to the app/game beneath. The card follows
+        // the finger via [LensRoot]'s internal lens translation, not the window.
         val lp = WindowManager.LayoutParams(
-            viewW, windowH,
+            screenW, windowH,
             windowType,
             zoomWindowFlags(),
             PixelFormat.TRANSLUCENT
@@ -581,24 +596,71 @@ class MagnifierLens(
             y = 0
         }
         val attached = if (overlayHost != null) {
-            overlayHost.addOverlayWindow(view, wm, lp, displayId)
+            overlayHost.addOverlayWindow(root, wm, lp, displayId)
         } else {
-            try { wm.addView(view, lp); true } catch (_: Exception) { false }
+            try { wm.addView(root, lp); true } catch (_: Exception) { false }
         }
         if (!attached) return
         lensView = view
+        lensRoot = root
         params = lp
     }
 
     /**
-     * Host view for the redesigned lens. The window spans the full screen
-     * height (pre-sized so the card can grow on release without a window
-     * resize — resizing a live overlay flashes it at its gravity anchor on
-     * some devices). The card body is placed inside the window at the screen Y
-     * given by [bodyTopOffset]; the pill/chip halo overhangs one card edge and
-     * the arrow strip the other (top/bottom swap with the flip state). Only the
-     * window's x moves, to follow the finger during the drag; the card's
-     * vertical position and growth happen entirely inside the fixed window.
+     * Full-screen, transparent host that owns the lens window. [lensView] (the
+     * card-width view that actually paints) is its only child, slid
+     * horizontally inside it to follow the finger. The window spans the whole
+     * display for two reasons: the card can grow on release without ever
+     * resizing the window (resizing a live overlay flashes it at its gravity
+     * anchor on some devices), and a tap anywhere off the card is caught and
+     * consumed — dismissing the lens without leaking that tap to the app/game
+     * behind it.
+     */
+    private class LensRoot(
+        ctx: Context,
+        val lens: LensView,
+        private val lensW: Int,
+    ) : FrameLayout(ctx) {
+        /** True once the lens is sticky; off-card taps dismiss only then. */
+        var interactive = false
+        /** Invoked when a sticky-mode DOWN lands left/right of the lens column.
+         *  (Taps inside the column but off the chrome band are dismissed by
+         *  [lens] itself; both are consumed by this full-screen window.) */
+        var onOffCardTap: (() -> Unit)? = null
+
+        init {
+            // Transparent: only [lens] paints. The rest of the screen-sized
+            // root is an invisible touch catcher.
+            background = null
+            addView(
+                lens,
+                LayoutParams(lensW, LayoutParams.MATCH_PARENT, Gravity.TOP or Gravity.START),
+            )
+        }
+
+        /** Horizontal offset of the lens column within the full-screen root. */
+        fun setLensX(x: Int) {
+            lens.translationX = x.toFloat()
+        }
+
+        override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+            if (interactive && ev.actionMasked == MotionEvent.ACTION_DOWN) {
+                val left = lens.translationX
+                if (ev.x < left || ev.x >= left + lensW) {
+                    onOffCardTap?.invoke()
+                    return true   // consume: the tap dismisses; it does not pass through
+                }
+            }
+            return super.dispatchTouchEvent(ev)
+        }
+    }
+
+    /**
+     * Card-width view for the redesigned lens. Sits inside [LensRoot] and is
+     * slid horizontally to follow the finger; vertically the card is placed at
+     * the screen Y given by [bodyTopOffset] and grows there. The pill/chip halo
+     * overhangs one card edge and the arrow strip the other (top/bottom swap
+     * with the flip state).
      *
      * Card panel (background + border) is painted on canvas in [draw] so we
      * can clip the zoomed pixels and the inset shadow to the rounded-rect
