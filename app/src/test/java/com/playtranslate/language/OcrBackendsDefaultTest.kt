@@ -54,6 +54,16 @@ class OcrBackendsDefaultTest {
         )
     }
 
+    @Test fun thaiHasOnlyTheThaiPaddleRecognizerAndNoMlKitFloor() {
+        val th = backends(SourceLangId.TH)
+        assertEquals("Thai Paddle is Thai's only backend", 1, th.size)
+        assertTrue(th.any { it is OcrBackend.Paddle && it.recPackKey == "paddle-rec-thai" })
+        assertFalse(
+            "Thai has no ML Kit floor (no ML Kit Thai recognizer)",
+            OcrModelManager.hasMlKitFloor(SourceLangId.TH),
+        )
+    }
+
     @Test fun flooredLanguagesReportAnMlKitFloor() {
         assertTrue(OcrModelManager.hasMlKitFloor(SourceLangId.JA))
         assertTrue(OcrModelManager.hasMlKitFloor(SourceLangId.EN))

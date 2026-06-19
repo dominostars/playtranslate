@@ -2,7 +2,9 @@ package com.playtranslate.language
 
 import com.google.mlkit.nl.translate.TranslateLanguage
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -97,6 +99,36 @@ class LanguageTest {
         assertEquals(TextDirection.LTR, profile.textDirection)
         assertEquals(HintTextKind.NONE, profile.hintTextKind)
         assertEquals(true, profile.wordsSeparatedByWhitespace)
+    }
+
+    @Test fun `fromCode resolves Thai`() {
+        assertEquals(SourceLangId.TH, SourceLangId.fromCode("th"))
+        assertEquals(SourceLangId.TH, SourceLangId.fromCode("TH"))
+        assertEquals(SourceLangId.TH, SourceLangId.fromCode("th-TH"))
+    }
+
+    @Test fun `TH profile has no ML Kit floor and Thai no-whitespace traits`() {
+        val profile = SourceLanguageProfiles[SourceLangId.TH]
+        assertEquals(TranslateLanguage.THAI, profile.translationCode)
+        // No ML Kit Thai recognizer — only the downloadable, arm64-only Thai
+        // Paddle pack (like RU/AR).
+        assertNull(profile.mlKitFloor)
+        assertEquals(ScriptFamily.THAI, profile.scriptFamily)
+        assertEquals(TextDirection.LTR, profile.textDirection)
+        assertEquals(HintTextKind.NONE, profile.hintTextKind)
+        // Thai has no inter-word spaces (like CJK) — drives the segmenter path
+        // and skips OCR line-assembly/spacing.
+        assertEquals(false, profile.wordsSeparatedByWhitespace)
+        assertTrue(profile.isScriptChar('ก'))
+        assertFalse(profile.isScriptChar('a'))
+    }
+
+    @Test fun `every SourceLangId resolves to a profile`() {
+        // SourceLanguageProfiles.all is a map, not an exhaustive when — a missing
+        // profile fails SILENTLY via forCode (the path OcrModelManager.ALL_PACK_KEYS
+        // uses), so guard every enum value here.
+        val missing = SourceLangId.entries.filter { SourceLanguageProfiles.forCode(it.code) == null }
+        assertTrue("SourceLangIds with no profile: $missing", missing.isEmpty())
     }
 
     @Test fun `ZH_HANT shares pack with ZH`() {

@@ -240,6 +240,7 @@ SNOWBALL_ALGO_FOR_LANG: dict[str, Optional[str]] = {
     "vi": None,
     "id": None,
     "ko": None,
+    "th": None,  # isolating; runtime tokenization is the newmm dictionary matcher
 }
 
 # Norwegian: our runtime and ML Kit use `no` for Norwegian, but kaikki
@@ -438,6 +439,14 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
             # entry in the pack, even archaic ones (the corpus miss rate
             # for the long tail is high, and dropping those would hurt
             # Hanja aliases more than it helps pack size).
+        elif lang == "th":
+            # wordfreq has NO Thai at all (verified: wordfreq 3.1.1,
+            # `word_frequency(w, "th")` raises LookupError — no Thai-script
+            # tokenizer), and there is no clean, redistributable Thai frequency
+            # list. So Thai carries no frequency (freq=None → sense-count
+            # freq_score below) and takes NO frequency cut: Thai Wiktionary is
+            # small, so every content entry is worth keeping.
+            freq = None
         else:
             freq = max(
                 word_frequency(word.lower(), wordfreq_locale),
@@ -517,6 +526,13 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
                 base = max(0, min(100, int((math.log10(freq) + 7) * 20)))
                 freq_score = max(10, min(95, base - (etym_num - 1) * 2))
                 is_common = 1 if freq >= COMMON_FREQUENCY else 0
+        elif lang == "th":
+            # No frequency signal (wordfreq lacks Thai). Rank by sense count —
+            # more senses ≈ more central vocabulary — mirroring Korean's
+            # freq-less path. is_common stays 0 (no frequency to threshold).
+            sense_count = len(glosses_list)
+            freq_score = max(10, min(60, 20 + sense_count * 5))
+            is_common = 0
         else:
             freq_score = max(0, min(100, int((math.log10(freq) + 7) * 20)))
             is_common = 1 if freq >= COMMON_FREQUENCY else 0
@@ -710,6 +726,41 @@ def extract_komoran_models(jar_path: Path, tokenizer_dir: Path) -> list[dict]:
     return entries
 
 
+def build_thai_wordlist(db_path: Path, words_path: Path) -> dict:
+    """Write the Thai segmenter wordlist (``words.txt``): the union of the
+    pack's Wiktionary headwords (position 0) and the PyThaiNLP CC0 word list.
+
+    This is the dictionary the newmm matcher in ThaiEngine segments against —
+    intentionally SEPARATE from the lookup dict, since a word can aid
+    segmentation (boundary finding) without having a full dictionary entry.
+    Returns a manifest file entry."""
+    try:
+        from pythainlp.corpus.common import thai_words
+    except ImportError as e:
+        raise SystemExit(
+            "Thai build needs PyThaiNLP for the segmenter wordlist "
+            "(`pip install pythainlp`)."
+        ) from e
+    words: set[str] = set()
+    conn = sqlite3.connect(db_path)
+    try:
+        for (w,) in conn.execute("SELECT text FROM headword WHERE position = 0"):
+            w = (w or "").strip()
+            if w:
+                words.add(w)
+    finally:
+        conn.close()
+    wiktionary_count = len(words)
+    words.update(w.strip() for w in thai_words() if w and w.strip())
+    words_path.write_text("\n".join(sorted(words)) + "\n", encoding="utf-8")
+    size = words_path.stat().st_size
+    print(
+        f"Wrote {words_path}: {len(words)} words "
+        f"({wiktionary_count} Wiktionary + {len(words) - wiktionary_count} new from PyThaiNLP)"
+    )
+    return {"path": "words.txt", "size": size, "sha256": _sha256_of(words_path)}
+
+
 def build_manifest(
     db_path: Path,
     manifest_path: Path,
@@ -739,6 +790,13 @@ def build_manifest(
             "component": "Arramooz",
             "license": "GPL-3.0",
             "attribution": "© Taha Zerrouki, https://github.com/linuxscout/arramooz",
+        })
+    if lang == "th":
+        # PyThaiNLP CC0 word list, merged into the segmenter wordlist (words.txt).
+        licenses.append({
+            "component": "PyThaiNLP word list",
+            "license": "CC0-1.0",
+            "attribution": "© PyThaiNLP, https://github.com/PyThaiNLP/pythainlp",
         })
     if tokenizer_entries:
         files.extend(tokenizer_entries)
@@ -771,6 +829,7 @@ def build_zip(
     manifest_path: Path,
     zip_path: Path,
     tokenizer_dir: Path | None = None,
+    extra_root_files: list[Path] | None = None,
 ) -> None:
     if zip_path.exists():
         zip_path.unlink()
@@ -781,6 +840,8 @@ def build_zip(
             for p in sorted(tokenizer_dir.iterdir()):
                 if p.is_file():
                     z.write(p, arcname=f"tokenizer/{p.name}")
+        for p in extra_root_files or []:  # e.g. Thai words.txt at the pack root
+            z.write(p, arcname=p.name)
     print(f"Wrote {zip_path} ({zip_path.stat().st_size} bytes)")
 
 
@@ -1068,8 +1129,21 @@ def main() -> int:
     elif args.komoran_jar is not None and args.lang != "ko":
         print(f"warning: --komoran-jar ignored for lang={args.lang}", file=sys.stderr)
 
+    extra_root_files: list[Path] = []
+    if args.lang == "th":
+        # ThaiEngine's newmm matcher segments against words.txt (Wiktionary
+        # headwords ∪ PyThaiNLP CC0), shipped at the pack root.
+        words_path = args.output / "words.txt"
+        entry = build_thai_wordlist(db_path, words_path)
+        tokenizer_entries = (tokenizer_entries or []) + [entry]
+        extra_root_files.append(words_path)
+
     build_manifest(db_path, manifest_path, args.lang, args.pack_version, tokenizer_entries)
-    build_zip(db_path, manifest_path, zip_path, tokenizer_dir if tokenizer_entries else None)
+    build_zip(
+        db_path, manifest_path, zip_path,
+        tokenizer_dir if (args.lang == "ko" and tokenizer_entries) else None,
+        extra_root_files,
+    )
 
     print()
     print(f"Next steps:")

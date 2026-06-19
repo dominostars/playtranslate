@@ -34,6 +34,7 @@ enum class SourceLangId(val code: String) {
     KO("ko"),
     RU("ru"),
     AR("ar"),
+    TH("th"),
     ;
 
     /** The lang ID used for pack directory/catalog lookup. Variants that share
@@ -97,7 +98,12 @@ enum class SourceLangId(val code: String) {
 }
 
 /** Broad script family, used for OCR / segmentation / rendering decisions. */
-enum class ScriptFamily { LATIN, CJK_JAPANESE, CJK_CHINESE, CJK_KOREAN, ARABIC, DEVANAGARI, CYRILLIC }
+enum class ScriptFamily { LATIN, CJK_JAPANESE, CJK_CHINESE, CJK_KOREAN, ARABIC, DEVANAGARI, CYRILLIC, THAI }
+
+/** Thai block U+0E00..U+0E7F — single source of truth shared by the TH profile's
+ *  [SourceLanguageProfile.isScriptChar], `ThaiEngine.isLookupWorthy`, and the Thai
+ *  segmenter. Mirrors the literal in `LayoutAnalyzer.isSourceLangChar("th")`. */
+val THAI_RANGE: CharRange = '฀'..'๿'
 
 /** Text direction for rendering source text. */
 enum class TextDirection { LTR, RTL }
@@ -257,6 +263,7 @@ data class SourceLanguageProfile(
                 ScriptFamily.LATIN -> add(OcrBackend.Paddle("paddle-rec-unified"))
                 ScriptFamily.CYRILLIC -> add(OcrBackend.Paddle("paddle-rec-cyrillic"))
                 ScriptFamily.ARABIC -> add(OcrBackend.Paddle("paddle-rec-arabic"))
+                ScriptFamily.THAI -> add(OcrBackend.Paddle("paddle-rec-thai"))
                 ScriptFamily.DEVANAGARI -> {} // pack exists; profile not wired yet
             }
             // ML Kit floor last (unless already first, or null for no-floor scripts).
@@ -500,6 +507,23 @@ object SourceLanguageProfiles {
                     || c in 'ﹰ'..'ﻼ'  // Presentation Forms-B (Arabic ligatures)
             },
             translationCode = TranslateLanguage.ARABIC,
+        ),
+        SourceLangId.TH to SourceLanguageProfile(
+            id = SourceLangId.TH,
+            scriptFamily = ScriptFamily.THAI,
+            textDirection = TextDirection.LTR,
+            // No ML Kit Thai recognizer — Thai's only OCR is the arm64-only
+            // paddle-rec-thai pack, so there is no always-present floor (like RU/AR).
+            mlKitFloor = null,
+            hintTextKind = HintTextKind.NONE,
+            // Thai is written WITHOUT inter-word spaces (like CJK). false drops the
+            // OCR line-join separator (LayoutAnalyzer) and skips LineAssembler;
+            // ThaiEngine segments via the dictionary maximal-matcher, not whitespace.
+            wordsSeparatedByWhitespace = false,
+            // Thai block U+0E00..U+0E7F; shared THAI_RANGE mirrors
+            // OcrManager/LayoutAnalyzer.isSourceLangChar("th").
+            isScriptChar = { c -> c in THAI_RANGE },
+            translationCode = TranslateLanguage.THAI,
         ),
     )
 

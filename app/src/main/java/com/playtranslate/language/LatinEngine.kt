@@ -198,8 +198,10 @@ class LatinEngine(
             // prefix morphology (ber-, me-, di-, ter-) that Snowball doesn't
             // model; surface-only lookup is an acceptable first pass.
             SourceLangId.VI, SourceLangId.ID -> null
-            // Should never happen — CJK ids never reach LatinEngine.
-            SourceLangId.JA, SourceLangId.ZH, SourceLangId.ZH_HANT, SourceLangId.KO -> null
+            // Should never happen — CJK ids and Thai never reach LatinEngine
+            // (each has a dedicated engine). Listed to satisfy the exhaustive when.
+            SourceLangId.JA, SourceLangId.ZH, SourceLangId.ZH_HANT, SourceLangId.KO,
+            SourceLangId.TH -> null
         }
     }
 }
