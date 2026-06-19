@@ -263,12 +263,22 @@ class PackUpgradeOrchestrator(
         // pick up the new pack. Stale-data window shrinks from "until
         // process kill" to "any in-flight lookup that started before this
         // post-install eviction." Per Codex review findings 2026-05-10.
-        if (result is InstallResult.Success && sid == SourceLangId.JA) {
-            DictionaryManager.get(app).close()
-            // Close the old Sudachi Dictionary too; releaseForPack then drops the
-            // cached JapaneseEngine so the next get() re-inits the Provider against
-            // the new pack's system_*.dic.
-            SudachiJapaneseTokenizer.Provider.close()
+        if (result is InstallResult.Success) {
+            if (sid == SourceLangId.JA) {
+                DictionaryManager.get(app).close()
+                // Close the old Sudachi Dictionary too (mmap'd system_*.dic); the
+                // other langs' SQLite dict handles reopen lazily on next ensureOpen
+                // after the engine eviction below.
+                SudachiJapaneseTokenizer.Provider.close()
+            }
+            // Drop the cached engine for EVERY source language (was JA-only): an
+            // ADDITIVE in-place swap otherwise leaves a warm engine bound to the OLD
+            // inode — a stale dict handle, and for Thai also a stale segmenter trie
+            // built from the old words.txt — until process death. releaseForPack
+            // closes the engine (and its dict) so the next get() re-inits against the
+            // new pack. (FORCE mode already evicted via Step 2's uninstall, but a
+            // re-prime between uninstall and here could re-cache, so this is also its
+            // backstop.)
             SourceLanguageEngines.releaseForPack(sid.packId)
         }
         return result
