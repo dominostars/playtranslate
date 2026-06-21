@@ -123,6 +123,26 @@ class LanguageTest {
         assertFalse(profile.isScriptChar('a'))
     }
 
+    @Test fun `fromCode resolves Hindi`() {
+        assertEquals(SourceLangId.HI, SourceLangId.fromCode("hi"))
+        assertEquals(SourceLangId.HI, SourceLangId.fromCode("HI"))
+        assertEquals(SourceLangId.HI, SourceLangId.fromCode("hi-IN"))
+    }
+
+    @Test fun `HI profile has an ML Kit Devanagari floor and whitespace traits`() {
+        val profile = SourceLanguageProfiles[SourceLangId.HI]
+        assertEquals(TranslateLanguage.HINDI, profile.translationCode)
+        // Unlike RU/AR/TH, Hindi HAS an ML Kit floor (ML Kit ships a Devanagari recognizer).
+        assertEquals(OcrBackend.MLKitDevanagari, profile.mlKitFloor)
+        assertEquals(ScriptFamily.DEVANAGARI, profile.scriptFamily)
+        assertEquals(TextDirection.LTR, profile.textDirection)
+        assertEquals(HintTextKind.NONE, profile.hintTextKind)
+        // Hindi uses inter-word whitespace → LatinEngine path (no segmenter).
+        assertEquals(true, profile.wordsSeparatedByWhitespace)
+        assertTrue(profile.isScriptChar('क'))
+        assertFalse(profile.isScriptChar('a'))
+    }
+
     @Test fun `every SourceLangId resolves to a profile`() {
         // SourceLanguageProfiles.all is a map, not an exhaustive when — a missing
         // profile fails SILENTLY via forCode (the path OcrModelManager.ALL_PACK_KEYS

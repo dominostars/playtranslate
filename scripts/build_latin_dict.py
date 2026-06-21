@@ -15,7 +15,7 @@ One script, parameterised by `--lang`. Supports any source language
 that kaikki.org publishes AND that has a `word_frequency` locale in
 the `wordfreq` package. Verified list:
 
-    ca cs da de en es fi fr hu id it ko nb nl no pl pt ro sv tr vi
+    ca cs da de en es fi fr hi hu id it ko nb nl no pl pt ro sv tr vi
 
 (Norwegian: pass `--lang no` — the kaikki file is named "Norwegian"
 but its lang_code is `no`. The wordfreq locale `nb` is substituted
@@ -80,6 +80,7 @@ import math
 import os
 import sqlite3
 import sys
+import unicodedata
 import zipfile
 from pathlib import Path
 from typing import Iterable, Optional
@@ -198,6 +199,13 @@ def lower_for_lang(word: str, lang: str) -> str:
         word = word.translate(_TR_UPPER_MAP)
     elif lang == "ar":
         word = arabic_normalize(word)
+    elif lang == "hi":
+        # Devanagari: canonical NFC composes nukta sequences (e.g. ड़ as
+        # U+0921+U+093C -> U+095C) so OCR and kaikki forms match regardless of
+        # source. NFC is divergence-free (identical to java.text.Normalizer NFC
+        # at runtime), so no shared spec is needed. This is NOT IndicNormalizer
+        # folding (deferred with the stemmer).
+        word = unicodedata.normalize("NFC", word)
     return word.lower()
 
 
@@ -241,6 +249,7 @@ SNOWBALL_ALGO_FOR_LANG: dict[str, Optional[str]] = {
     "id": None,
     "ko": None,
     "th": None,  # isolating; runtime tokenization is the newmm dictionary matcher
+    "hi": None,  # no Snowball Hindi; v1 is surface + form_of aliases (no stem rows)
 }
 
 # Norwegian: our runtime and ML Kit use `no` for Norwegian, but kaikki

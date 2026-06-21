@@ -2,6 +2,7 @@ package com.playtranslate.ocr.registry
 
 import android.util.Log
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
+import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
 import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -65,7 +66,7 @@ class OcrEngineRegistry {
         OcrBackend.MLKitLatin -> MlKitOcr(TextRecognizerOptions.DEFAULT_OPTIONS)
         OcrBackend.MLKitChinese -> MlKitOcr(ChineseTextRecognizerOptions.Builder().build())
         OcrBackend.MLKitKorean -> MlKitOcr(KoreanTextRecognizerOptions.Builder().build())
-        OcrBackend.MLKitDevanagari -> error("MLKitDevanagari not yet available (add play-services-mlkit-text-recognition-devanagari dependency)")
+        OcrBackend.MLKitDevanagari -> MlKitOcr(DevanagariTextRecognizerOptions.Builder().build())
         is OcrBackend.Tesseract -> error("Tesseract OCR backend not yet implemented (Phase 5)")
         // Meiki/Paddle are detector+recognizer composites built via their bridges
         // in engineFor (Phase 2 resolution), never through this ML-Kit factory.

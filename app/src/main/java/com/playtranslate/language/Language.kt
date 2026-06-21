@@ -35,6 +35,7 @@ enum class SourceLangId(val code: String) {
     RU("ru"),
     AR("ar"),
     TH("th"),
+    HI("hi"),
     ;
 
     /** The lang ID used for pack directory/catalog lookup. Variants that share
@@ -104,6 +105,10 @@ enum class ScriptFamily { LATIN, CJK_JAPANESE, CJK_CHINESE, CJK_KOREAN, ARABIC, 
  *  [SourceLanguageProfile.isScriptChar], `ThaiEngine.isLookupWorthy`, and the Thai
  *  segmenter. Mirrors the literal in `LayoutAnalyzer.isSourceLangChar("th")`. */
 val THAI_RANGE: CharRange = '฀'..'๿'
+
+/** Devanagari block U+0900..U+097F — shared by the HI profile's
+ *  [SourceLanguageProfile.isScriptChar]; mirrors `LayoutAnalyzer.isSourceLangChar("hi")`. */
+val DEVANAGARI_RANGE: CharRange = 'ऀ'..'ॿ'
 
 /** Text direction for rendering source text. */
 enum class TextDirection { LTR, RTL }
@@ -264,7 +269,7 @@ data class SourceLanguageProfile(
                 ScriptFamily.CYRILLIC -> add(OcrBackend.Paddle("paddle-rec-cyrillic"))
                 ScriptFamily.ARABIC -> add(OcrBackend.Paddle("paddle-rec-arabic"))
                 ScriptFamily.THAI -> add(OcrBackend.Paddle("paddle-rec-thai"))
-                ScriptFamily.DEVANAGARI -> {} // pack exists; profile not wired yet
+                ScriptFamily.DEVANAGARI -> {} // floor = ML Kit Devanagari (via mlKitFloor); paddle-rec-devanagari dormant
             }
             // ML Kit floor last (unless already first, or null for no-floor scripts).
             if (!mlKitDefault) mlKitFloor?.let { add(it) }
@@ -524,6 +529,24 @@ object SourceLanguageProfiles {
             // OcrManager/LayoutAnalyzer.isSourceLangChar("th").
             isScriptChar = { c -> c in THAI_RANGE },
             translationCode = TranslateLanguage.THAI,
+        ),
+        SourceLangId.HI to SourceLanguageProfile(
+            id = SourceLangId.HI,
+            scriptFamily = ScriptFamily.DEVANAGARI,
+            textDirection = TextDirection.LTR,
+            // ML Kit HAS a Devanagari recognizer, so Hindi gets an always-present
+            // floor (unlike RU/AR/TH). paddle-rec-devanagari stays dormant — no
+            // evidence it beats ML Kit; wired later only if it demonstrably wins.
+            mlKitFloor = OcrBackend.MLKitDevanagari,
+            hintTextKind = HintTextKind.NONE,
+            // Hindi uses inter-word whitespace → LatinEngine tokenizes via ICU
+            // BreakIterator (no segmenter). Surface + Wiktionary form_of aliases;
+            // null stemmer in v1 (Lucene HindiStemmer deferred until measured).
+            wordsSeparatedByWhitespace = true,
+            // Devanagari block U+0900..U+097F; shared DEVANAGARI_RANGE mirrors
+            // LayoutAnalyzer.isSourceLangChar("hi").
+            isScriptChar = { c -> c in DEVANAGARI_RANGE },
+            translationCode = TranslateLanguage.HINDI,
         ),
     )
 

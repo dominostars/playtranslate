@@ -23,6 +23,7 @@ import org.tartarus.snowball.ext.RussianStemmer
 import org.tartarus.snowball.ext.SpanishStemmer
 import org.tartarus.snowball.ext.SwedishStemmer
 import org.tartarus.snowball.ext.TurkishStemmer
+import java.text.Normalizer
 import java.util.Locale
 
 /**
@@ -134,8 +135,14 @@ class LatinEngine(
      *  lemma). The pack is built with the identical normalization. Casual
      *  letter-variant spellings are handled separately by the folded fallback in
      *  [lookup] ([ArabicFold]). No-op for other languages. */
-    private fun normalizeForLookup(word: String): String =
-        if (langId == SourceLangId.AR) ArabicNormalize.normalize(word) else word
+    private fun normalizeForLookup(word: String): String = when (langId) {
+        SourceLangId.AR -> ArabicNormalize.normalize(word)
+        // Devanagari: canonical NFC composes nukta sequences (ड़ etc.) so OCR and
+        // pack forms match. Divergence-free (the pack applies the same NFC); NOT
+        // IndicNormalizer folding (deferred with the Lucene stemmer).
+        SourceLangId.HI -> Normalizer.normalize(word, Normalizer.Form.NFC)
+        else -> word
+    }
 
     private fun isLookupWorthy(token: String): Boolean {
         if (token.isBlank()) return false
@@ -197,7 +204,8 @@ class LatinEngine(
             // is fully isolating (no inflection to strip). Indonesian has
             // prefix morphology (ber-, me-, di-, ter-) that Snowball doesn't
             // model; surface-only lookup is an acceptable first pass.
-            SourceLangId.VI, SourceLangId.ID -> null
+            // Hindi defers the Lucene HindiStemmer (v1 = surface + form_of aliases).
+            SourceLangId.VI, SourceLangId.ID, SourceLangId.HI -> null
             // Should never happen — CJK ids and Thai never reach LatinEngine
             // (each has a dedicated engine). Listed to satisfy the exhaustive when.
             SourceLangId.JA, SourceLangId.ZH, SourceLangId.ZH_HANT, SourceLangId.KO,

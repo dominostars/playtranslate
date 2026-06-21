@@ -16,6 +16,7 @@ lucene = "8.11.4"
 komoran = "3.3.9"
 mlkitTextRecognitionChinese = "16.0.1"
 mlkitTextRecognitionKorean = "16.0.1"
+mlkitTextRecognitionDevanagari = "16.0.1"
 okhttp = "5.4.0"
 gson = "2.14.0"
 # kotlinx-serialization RUNTIME is versioned independently from the Kotlin
@@ -57,6 +58,7 @@ sqlite-jdbc = { group = "org.xerial", name = "sqlite-jdbc", version.ref = "sqlit
 komoran = { group = "com.github.shin285", name = "KOMORAN", version.ref = "komoran" }
 mlkit-text-recognition-chinese = { group = "com.google.mlkit", name = "text-recognition-chinese", version.ref = "mlkitTextRecognitionChinese" }
 mlkit-text-recognition-korean = { group = "com.google.mlkit", name = "text-recognition-korean", version.ref = "mlkitTextRecognitionKorean" }
+mlkit-text-recognition-devanagari = { group = "com.google.mlkit", name = "text-recognition-devanagari", version.ref = "mlkitTextRecognitionDevanagari" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }

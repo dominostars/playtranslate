@@ -163,6 +163,7 @@ dependencies {
     implementation(libs.mlkit.text.recognition)          // Latin base SDK (Phase 3)
     implementation(libs.mlkit.text.recognition.chinese)   // Chinese OCR (Phase 4)
     implementation(libs.mlkit.text.recognition.korean)    // Korean OCR
+    implementation(libs.mlkit.text.recognition.devanagari) // Devanagari/Hindi OCR
     implementation(libs.mlkit.translate)
     implementation(libs.mlkit.language.id)
 

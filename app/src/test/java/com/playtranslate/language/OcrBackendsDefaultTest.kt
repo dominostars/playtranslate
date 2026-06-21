@@ -64,6 +64,15 @@ class OcrBackendsDefaultTest {
         )
     }
 
+    @Test fun hindiHasOnlyTheMlKitDevanagariFloorAndNoPaddle() {
+        val hi = backends(SourceLangId.HI)
+        // ML Kit Devanagari is the floor and the ONLY backend in v1: the
+        // DEVANAGARI -> {} branch stays empty, so paddle-rec-devanagari is dormant.
+        assertEquals("ML Kit Devanagari is Hindi's only backend", listOf(OcrBackend.MLKitDevanagari), hi)
+        assertTrue(OcrModelManager.hasMlKitFloor(SourceLangId.HI))
+        assertFalse("paddle-rec-devanagari stays dormant in v1", hi.any { it is OcrBackend.Paddle })
+    }
+
     @Test fun flooredLanguagesReportAnMlKitFloor() {
         assertTrue(OcrModelManager.hasMlKitFloor(SourceLangId.JA))
         assertTrue(OcrModelManager.hasMlKitFloor(SourceLangId.EN))

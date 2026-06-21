@@ -508,6 +508,23 @@
         }
       ]
     },
+    "hi": {
+      "display": "Hindi",
+      "script": "DEVANAGARI",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "size": 1011221,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/hi-v1/hi.zip",
+      "sha256": "39cde8fcdf89583490820c2c67fa651cf4845d85e177ffc48604916012846ccd",
+      "licenses": [
+        {
+          "component": "Wiktionary",
+          "license": "CC-BY-SA-3.0",
+          "attribution": "© Wiktionary contributors, https://en.wiktionary.org/"
+        }
+      ]
+    },
     "en": {
       "display": "English",
       "script": "LATIN",
