@@ -1245,6 +1245,13 @@
     <!-- Row label for the model picker. -->
     <string name="llm_backend_model_label">Model</string>
 
+    <!-- Group header above the ADVANCED settings card (OpenAI sub-screen). -->
+    <string name="llm_backend_advanced_header">Advanced</string>
+    <!-- Row label above the custom base-URL text field (ADVANCED card). -->
+    <string name="llm_backend_base_url_label">Custom URL</string>
+    <!-- Inline EditText error under the custom base-URL field: malformed URL, or http:// to a non-local host. -->
+    <string name="llm_backend_base_url_invalid">Use https:// — http:// is only allowed for a local or LAN address</string>
+
     <!-- "Get API key" cell title.  %1$s = backend display name
          (e.g. "OpenAI"). -->
     <string name="llm_backend_get_key_title_fmt">Get a <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> API key</string>

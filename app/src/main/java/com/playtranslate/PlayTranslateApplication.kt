@@ -84,10 +84,15 @@ class PlayTranslateApplication : Application() {
                     keyProvider     = { Prefs(this).openaiApiKey },
                     enabledProvider = { Prefs(this).openaiEnabled },
                     modelProvider   = { Prefs(this).openaiModel },
-                    // Canonical OpenAI endpoint — no longer user-configurable.
-                    baseUrlProvider = { "https://api.openai.com/v1" },
+                    // User-settable via the ADVANCED settings section;
+                    // defaults to the canonical OpenAI endpoint. modelsUrlProvider
+                    // is intentionally omitted so /models follows the same URL.
+                    baseUrlProvider = { Prefs(this).openaiBaseUrl },
                     usageTracker    = UsageTracker(sharedPrefs, "openai"),
-                    filterFineTunes = true,
+                    // Apply OpenAI's first-party owned_by filter only on the
+                    // canonical endpoint; a custom OpenAI-compatible URL tags
+                    // models with its own org, which the filter would drop.
+                    applyOwnedByFilter = { !Prefs(this).isCustomOpenaiBaseUrl },
                     cooldownState   = CooldownState(this, "openai"),
                 ),
                 OpenAiBackend(
@@ -109,8 +114,8 @@ class PlayTranslateApplication : Application() {
                     modelsUrlProvider = { "https://api.deepseek.com" },
                     usageTracker    = UsageTracker(sharedPrefs, "deepseek"),
                     // DeepSeek's /models entries all have owned_by="deepseek";
-                    // the OpenAI fine-tune filter would drop the whole catalog.
-                    filterFineTunes = false,
+                    // OpenAI's owned_by filter would drop the whole catalog.
+                    applyOwnedByFilter = { false },
                     // DeepSeek opts out of v1 cooldown: its 10-min TCP-hold
                     // makes SocketTimeoutException categorisation ambiguous
                     // (overload vs dead-key vs slow response). Revisit in v2.

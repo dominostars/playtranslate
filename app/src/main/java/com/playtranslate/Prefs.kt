@@ -460,6 +460,23 @@ class Prefs internal constructor(
         get() = sp.getString(KEY_OPENAI_MODEL, DEFAULT_OPENAI_MODEL) ?: DEFAULT_OPENAI_MODEL
         set(v) = sp.edit { putString(KEY_OPENAI_MODEL, v) }
 
+    /** OpenAI base URL. Plaintext (not a secret) — mirrors [openaiModel],
+     *  NOT the encrypted key path. Defaults to the canonical endpoint; the
+     *  ADVANCED section of the OpenAI settings sub-screen lets users point
+     *  the backend at any OpenAI-compatible service (proxy/gateway,
+     *  OpenRouter, LM Studio, Ollama, self-hosted llama.cpp). */
+    var openaiBaseUrl: String
+        get() = sp.getString(KEY_OPENAI_BASE_URL, DEFAULT_OPENAI_BASE_URL) ?: DEFAULT_OPENAI_BASE_URL
+        set(v) = sp.edit { putString(KEY_OPENAI_BASE_URL, v) }
+
+    /** True when [openaiBaseUrl] points somewhere other than the canonical
+     *  OpenAI endpoint (trailing-slash / whitespace insensitive). The single
+     *  definition of "is this still real OpenAI?" — drives the model-list
+     *  owned_by filter (custom endpoints tag models with their own org, so
+     *  OpenAI's first-party filter would empty the picker on them). */
+    val isCustomOpenaiBaseUrl: Boolean
+        get() = openaiBaseUrl.trim().trimEnd('/') != DEFAULT_OPENAI_BASE_URL.trimEnd('/')
+
     /** DeepSeek API key from https://platform.deepseek.com/api_keys. */
     var deepseekApiKey: String
         get() = readSecret(KEY_DEEPSEEK_KEY, "")
@@ -1138,6 +1155,7 @@ class Prefs internal constructor(
         const val KEY_OPENAI_KEY                    = "openai_api_key"
         const val KEY_OPENAI_ENABLED                = "openai_enabled"
         const val KEY_OPENAI_MODEL                  = "openai_model"
+        const val KEY_OPENAI_BASE_URL               = "openai_base_url"
         const val KEY_DEEPSEEK_KEY                  = "deepseek_api_key"
         const val KEY_DEEPSEEK_ENABLED              = "deepseek_enabled"
         const val KEY_DEEPSEEK_MODEL                = "deepseek_model"
@@ -1149,6 +1167,9 @@ class Prefs internal constructor(
          *  guesses; the picker's listModels log line shows the actual
          *  top so we can adjust if wrong. */
         const val DEFAULT_OPENAI_MODEL    = "chat-latest"
+        /** Canonical OpenAI endpoint. Default for [openaiBaseUrl]; the
+         *  reference point for [isCustomOpenaiBaseUrl]. */
+        const val DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
         const val DEFAULT_GEMINI_MODEL    = "gemini-flash-lite-latest"
         // DeepSeek doesn't ship a rolling -latest alias (per api-docs.
         // deepseek.com). The legacy `deepseek-chat` / `deepseek-reasoner`

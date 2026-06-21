@@ -194,7 +194,7 @@ class TranslationServicesActivity : SettingsSubPageActivity() {
 
     private fun snapshotLlmConfig(prefs: Prefs): String = listOf(
         prefs.geminiApiKey, prefs.geminiModel,
-        prefs.openaiApiKey, prefs.openaiModel,
+        prefs.openaiApiKey, prefs.openaiModel, prefs.openaiBaseUrl,
         prefs.deepseekApiKey, prefs.deepseekModel,
     ).joinToString("|")
 

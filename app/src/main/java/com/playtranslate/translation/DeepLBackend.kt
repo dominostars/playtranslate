@@ -13,6 +13,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import okhttp3.MediaType.Companion.toMediaType
+import com.playtranslate.net.PtHttp
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -60,7 +61,7 @@ class DeepLBackend(
      *  instance so cooldowns survive process restart. Kept defaulted to
      *  avoid forcing every unit-test constructor call to pass one. */
     private val cooldownState: CooldownState = CooldownState(context = null, backendId = "deepl"),
-    private val client: OkHttpClient = OkHttpClient(),
+    private val client: OkHttpClient = PtHttp.clientBuilder().build(),
 ) : TranslationBackend, QuotaAware, BatchTranslator, Cooldownable {
 
     override val id: BackendId = "deepl"

@@ -1,24 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Explicitly prohibit cleartext (HTTP) traffic for all real domains.
-    All network calls in PlayTranslate use HTTPS (DeepL API, Google
-    Translate, OpenAI, Gemini). This is the default on API 28+ but
-    stating it explicitly protects against accidental regressions and
-    satisfies Play Store security scanners.
+    Cleartext (HTTP) is permitted app-wide. PlayTranslate's own services
+    (DeepL, Gemini, OpenAI, the language-pack CDN) are all HTTPS, but the
+    OpenAI online backend exposes a user-settable base URL (the ADVANCED
+    settings section) that can point at an arbitrary OpenAI-compatible
+    endpoint — including self-hosted servers (LM Studio / Ollama /
+    llama.cpp) reachable only over plain HTTP on a LAN address. Android's
+    network-security-config can only whitelist literal hosts, not IP
+    ranges, so per-host exceptions can't cover user-supplied LAN IPs;
+    permitting cleartext globally is the only way to support them.
 
-    Loopback addresses are an explicit exception: users can point the
-    OpenAI-compatible backend at LM Studio / Ollama / etc. running on
-    the same device (`http://localhost:1234/v1`) without losing the
-    bearer-leak protection for real internet endpoints, which still
-    require HTTPS. The settings UI validator (LlmBackendSettingsActivity
-    .validateBaseUrl) is the gate for what host strings are allowed in;
-    this manifest entry is the runtime guard.
+    Tradeoff: a user who enters an http:// URL sends their API key in
+    cleartext to that host. The settings validator
+    (LlmBackendSettingsActivity.validateBaseUrl) still requires a
+    well-formed http/https URL, and the field defaults to the canonical
+    HTTPS OpenAI endpoint.
 -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false" />
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">localhost</domain>
-        <domain includeSubdomains="false">127.0.0.1</domain>
-        <domain includeSubdomains="false">::1</domain>
-    </domain-config>
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

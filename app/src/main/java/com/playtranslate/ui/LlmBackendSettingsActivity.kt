@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.EditText
@@ -20,6 +19,7 @@ import androidx.core.view.WindowInsetsCompat
 import com.playtranslate.R
 import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.applyTheme
+import com.playtranslate.net.CustomEndpointPolicy
 import com.playtranslate.translation.KeyStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -52,11 +52,12 @@ import androidx.core.view.isGone
  * backend is enabled (i.e. the user has saved a key), at which point
  * the picker has a real key to call /v1/models with.
  *
- * Each registered provider has a hardcoded canonical base URL (set at
- * registration time in PlayTranslateApplication), so the sub-screen
- * has no URL field. To add an OpenAI-compatible provider (DeepSeek,
- * etc.), register a second [com.playtranslate.translation.OpenAiBackend]
- * instance with the right URL — no UI changes needed here.
+ * The ADVANCED section exposes a custom base URL for providers that opt
+ * in via [LlmBackendConfig.allowsBaseUrl] (OpenAI only today); it's hidden
+ * for the rest. The typed URL is format-checked up front but persisted
+ * only together with the key on a successful (or unprovable) validation —
+ * never before a failed ping — so the "X discards edits" contract holds
+ * for the URL too.
  */
 class LlmBackendSettingsActivity : AppCompatActivity() {
 
@@ -91,6 +92,7 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         etApiKey.setSelection(etApiKey.text.length)
 
         wireGetKeyLink(findViewById(R.id.rowGetKeyLink))
+        wireAdvancedSection()
 
         btnSave = findViewById(R.id.btnSave)
         progressSave = findViewById(R.id.progressSave)
@@ -111,6 +113,26 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
             clipboard.setPrimaryClip(ClipData.newPlainText("URL", config.getKeyUrl))
             Toast.makeText(this, getString(R.string.toast_link_copied), Toast.LENGTH_SHORT).show()
             true
+        }
+    }
+
+    /** Shows the ADVANCED section (custom base URL) only for providers that
+     *  opt in via [LlmBackendConfig.allowsBaseUrl]; GONE otherwise. Header
+     *  text is set here because settings_group_header carries no
+     *  android:text. The field prepopulates from the saved URL and hints
+     *  the canonical default. */
+    private fun wireAdvancedSection() {
+        val section = findViewById<View>(R.id.sectionAdvanced)
+        if (!config.allowsBaseUrl) {
+            section.isVisible = false
+            return
+        }
+        findViewById<View>(R.id.headerAdvanced)
+            .findViewById<TextView>(R.id.tvGroupTitle).text =
+            getString(R.string.llm_backend_advanced_header)
+        findViewById<EditText>(R.id.etBaseUrl).apply {
+            setText(config.getBaseUrl())
+            hint = config.defaultBaseUrl
         }
     }
 
@@ -135,9 +157,28 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
     private fun onSave() {
         val key = etApiKey.text.toString().trim()
 
+        // Custom base URL (OpenAI only): format-validate up front but DON'T
+        // persist yet. The URL is committed atomically with the key on a
+        // successful (or unprovable) validation below, so a failed ping or a
+        // toolbar-X leaves the prior config untouched.
+        val typedUrl: String? = if (config.allowsBaseUrl) {
+            val etBaseUrl = findViewById<EditText>(R.id.etBaseUrl)
+            val raw = etBaseUrl.text.toString().trim()
+            val err = validateBaseUrl(raw)
+            if (err != null) {
+                etBaseUrl.error = err
+                return
+            }
+            raw
+        } else {
+            null
+        }
+
         // Blank key short-circuit: clear the saved key + disable the
-        // backend. Nothing to validate.
+        // backend. The URL passed its format check, so persist it (it's an
+        // independent setting); nothing to validate.
         if (key.isBlank()) {
+            if (typedUrl != null) config.setBaseUrl(typedUrl)
             config.setKey("")
             config.setEnabled(false)
             finish()
@@ -151,7 +192,9 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         // post-validation save+finish. No prefs are persisted on cancel.
         lifecycleScope.launch {
             val status = try {
-                config.validateKey(key)
+                // Validate the typed key against the typed URL (overrideBaseUrl)
+                // so nothing has to be persisted to run the ping.
+                config.validateKey(key, typedUrl)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -166,10 +209,12 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
                     showInvalidKeyAlert()
                 }
                 else -> {
-                    // Ok / Unreachable — save and finish. Unreachable
-                    // means we couldn't *prove* the key wrong (offline,
-                    // 5xx, etc.) so we let the user proceed; the next
-                    // translate call surfaces any real issue.
+                    // Ok / Unreachable — persist URL + key together and
+                    // finish. Unreachable means we couldn't *prove* the key
+                    // wrong (offline, 5xx, a custom endpoint without /models)
+                    // so we let the user proceed; the next translate call
+                    // surfaces any real issue.
+                    if (typedUrl != null) config.setBaseUrl(typedUrl)
                     config.setKey(key)
                     config.setEnabled(true)
                     finish()
@@ -192,6 +237,17 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
             .addCancelButton(getString(R.string.llm_backend_invalid_key_alert_button))
             .show()
     }
+
+    /**
+     * Returns null when [raw] is an acceptable custom base URL, or an inline
+     * error string. https is allowed to any host; http is allowed ONLY to a
+     * loopback / private-LAN / link-local address (see [CustomEndpointPolicy]),
+     * so a typo'd or pasted public http URL can't send the Bearer key in
+     * cleartext over the internet — while a self-hosted LAN server still works.
+     */
+    private fun validateBaseUrl(raw: String): String? =
+        if (CustomEndpointPolicy.isAcceptable(raw)) null
+        else getString(R.string.llm_backend_base_url_invalid)
 
     companion object {
         const val EXTRA_BACKEND_ID = "backend_id"

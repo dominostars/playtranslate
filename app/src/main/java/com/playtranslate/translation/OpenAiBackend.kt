@@ -2,6 +2,7 @@ package com.playtranslate.translation
 
 import android.util.Log
 import com.playtranslate.PtJson
+import com.playtranslate.net.PtHttp
 import com.playtranslate.translation.llm.LlmBatchPrompt
 import com.playtranslate.translation.llm.cleanLlmOutput
 import com.playtranslate.translation.qwen.QwenChatTemplate
@@ -71,13 +72,14 @@ class OpenAiBackend(
      *  HTTP 200 with an empty body that listModels then rejects. */
     private val modelsUrlProvider: () -> String = baseUrlProvider,
     private val usageTracker: UsageTracker,
-    /** When true, [listModels] drops entries whose `owned_by` isn't
-     *  one of OpenAI's first-party values — strips out fine-tunes /
-     *  user-uploaded models on platform.openai.com. For other
-     *  OpenAI-compatible providers (DeepSeek etc.) every model's
-     *  `owned_by` is their own org name, so this must be false or
-     *  the picker comes back empty. */
-    private val filterFineTunes: Boolean,
+    /** Returns true when [listModels] should apply OpenAI's first-party
+     *  `owned_by` filter (strips fine-tunes / user-uploaded models on
+     *  platform.openai.com). A lambda, not a constant, because the OpenAI
+     *  instance flips it per request off the live base URL: the filter
+     *  applies only on the canonical endpoint. DeepSeek and custom user
+     *  URLs tag models with their own org name, so this returns false
+     *  there or the picker comes back empty. */
+    private val applyOwnedByFilter: () -> Boolean,
     /** Null for backends that should NOT participate in the waterfall
      *  cooldown system (currently DeepSeek — its 10-minute TCP-hold
      *  behavior makes SocketTimeoutException categorisation too
@@ -339,20 +341,23 @@ class OpenAiBackend(
     }
 
     /**
-     * Verify the API key against the configured endpoint by hitting
-     * `/v1/models`. Each registered provider (OpenAI, DeepSeek) has a
-     * known base URL so the gate that previously skipped validation on
-     * "custom" URLs is no longer needed — every endpoint we configure
-     * is one we've vetted to support `/v1/models`.
+     * Verify the API key by hitting `/models` on the configured endpoint.
+     * The OpenAI instance now exposes a user-settable base URL (the
+     * ADVANCED settings section), so endpoints are no longer all
+     * first-party-vetted: a custom OpenAI-compatible server may not
+     * support `/models` or may use a different key shape. Validation is
+     * therefore best-effort — a definitive 401/403 is [KeyStatus.Invalid],
+     * anything else (incl. a missing `/models`) is [KeyStatus.Unreachable],
+     * which the save path treats as "save anyway".
      *
-     * [overrideKey] lets the settings-save path validate a key that
-     * hasn't been persisted yet (user just typed it). When null,
-     * falls back to the registered keyProvider.
+     * [overrideKey] / [overrideBaseUrl] let the settings-save path validate
+     * a key + URL the user just typed but hasn't persisted yet. Both fall
+     * back to the registered providers when null.
      */
-    override suspend fun validateKey(overrideKey: String?): KeyStatus = withContext(Dispatchers.IO) {
+    override suspend fun validateKey(overrideKey: String?, overrideBaseUrl: String?): KeyStatus = withContext(Dispatchers.IO) {
         val apiKey = (overrideKey ?: keyProvider())?.takeIf { it.isNotBlank() }
             ?: return@withContext KeyStatus.Invalid("API key blank")
-        val modelsUrl = modelsUrlProvider().trim().trimEnd('/')
+        val modelsUrl = (overrideBaseUrl ?: modelsUrlProvider()).trim().trimEnd('/')
         val request = Request.Builder()
             .url("$modelsUrl/models")
             .addHeader("Authorization", "Bearer $apiKey")
@@ -414,14 +419,14 @@ class OpenAiBackend(
             }
             val sorted = parsed.data
                 .asSequence()
-                // Drop fine-tunes and user-owned models for OpenAI itself
-                // (where owned_by ∈ {system, openai, openai-internal}).
-                // Other OpenAI-compatible providers (DeepSeek) populate
-                // owned_by with their own org name, so gating this filter
-                // on the [filterFineTunes] constructor flag keeps the
-                // picker from coming back empty on those providers.
+                // Drop fine-tunes and user-owned models for canonical
+                // OpenAI (where owned_by ∈ {system, openai, openai-internal}).
+                // DeepSeek and custom user base URLs populate owned_by with
+                // their own org name, so [applyOwnedByFilter] returns false
+                // there and keeps the picker from coming back empty on those
+                // endpoints.
                 .filter { entry ->
-                    !filterFineTunes ||
+                    !applyOwnedByFilter() ||
                         entry.owned_by.isBlank() ||
                         entry.owned_by == "system" ||
                         entry.owned_by == "openai" ||
@@ -576,7 +581,13 @@ class OpenAiBackend(
 
         // 30s timeouts: gpt-4o on long passages can take 15-20s; OkHttp's
         // default 10s read timeout would spuriously fail those calls.
-        private fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
+        // customEndpointBuilder: OpenAI is the ONE backend allowed to reach a
+        // user-configured http endpoint (a self-hosted LAN LLM server). Its
+        // client enforces CustomEndpointPolicy at the request boundary (https
+        // anywhere, or http only to loopback/LAN) and disables scheme-changing
+        // redirects — so the Bearer key can't go cleartext to a public host no
+        // matter how the saved base URL got there, not just when the UI saves.
+        private fun defaultClient(): OkHttpClient = PtHttp.customEndpointBuilder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)

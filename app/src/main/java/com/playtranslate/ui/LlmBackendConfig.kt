@@ -35,15 +35,23 @@ data class LlmBackendConfig(
      *  and rendering a fallback. */
     val listModels: suspend () -> List<String>,
     val defaultModel: String,
+    /** True for backends exposing a user-configurable base URL (OpenAI).
+     *  When false, the ADVANCED section is hidden on the settings sub-screen. */
+    val allowsBaseUrl: Boolean,
+    /** Canonical URL — shown as the field hint and the reference for
+     *  "is this custom?". Null when [allowsBaseUrl] is false. */
+    val defaultBaseUrl: String?,
+    val getBaseUrl: () -> String,
+    val setBaseUrl: (String) -> Unit,
     val getEnabled: () -> Boolean,
     val setEnabled: (Boolean) -> Unit,
     val todayUsageString: () -> String,
     /** Validates a key against the provider's auth-only endpoint.
-     *  [overrideKey] non-null lets the settings save path test a key
-     *  the user just typed before persisting it. Every registered
-     *  provider implements [KeyValidator], so this is non-null for all
-     *  configs. */
-    val validateKey: suspend (overrideKey: String?) -> KeyStatus,
+     *  [overrideKey] / [overrideBaseUrl] non-null let the settings save
+     *  path test a key + URL the user just typed before persisting them.
+     *  Every registered provider implements [KeyValidator], so this is
+     *  non-null for all configs. */
+    val validateKey: suspend (overrideKey: String?, overrideBaseUrl: String?) -> KeyStatus,
 )
 
 object LlmBackendConfigs {
@@ -72,8 +80,8 @@ object LlmBackendConfigs {
      *  backend implements [KeyValidator]. Smart-cast pattern matches
      *  [lookupModels] — adding a new validating backend (Anthropic,
      *  etc.) doesn't need a per-class branch here. */
-    private fun lookupValidateKey(backendId: String): suspend (overrideKey: String?) -> KeyStatus = { override ->
-        (TranslationBackendRegistry.byId(backendId) as? KeyValidator)?.validateKey(override)
+    private fun lookupValidateKey(backendId: String): suspend (overrideKey: String?, overrideBaseUrl: String?) -> KeyStatus = { override, overrideUrl ->
+        (TranslationBackendRegistry.byId(backendId) as? KeyValidator)?.validateKey(override, overrideUrl)
             ?: KeyStatus.Unreachable
     }
 
@@ -95,6 +103,10 @@ object LlmBackendConfigs {
             setModel = { prefs.openaiModel = it },
             listModels = lookupModels("openai"),
             defaultModel = Prefs.DEFAULT_OPENAI_MODEL,
+            allowsBaseUrl = true,
+            defaultBaseUrl = Prefs.DEFAULT_OPENAI_BASE_URL,
+            getBaseUrl = { prefs.openaiBaseUrl },
+            setBaseUrl = { prefs.openaiBaseUrl = it },
             getEnabled = { prefs.openaiEnabled },
             setEnabled = { prefs.openaiEnabled = it },
             todayUsageString = { tracker.todayString() },
@@ -120,6 +132,10 @@ object LlmBackendConfigs {
             setModel = { prefs.geminiModel = it },
             listModels = lookupModels("gemini"),
             defaultModel = Prefs.DEFAULT_GEMINI_MODEL,
+            allowsBaseUrl = false,
+            defaultBaseUrl = null,
+            getBaseUrl = { "" },
+            setBaseUrl = {},
             getEnabled = { prefs.geminiEnabled },
             setEnabled = { prefs.geminiEnabled = it },
             todayUsageString = { tracker.todayString() },
@@ -148,6 +164,10 @@ object LlmBackendConfigs {
             setModel = { prefs.deepseekModel = it },
             listModels = lookupModels("deepseek"),
             defaultModel = Prefs.DEFAULT_DEEPSEEK_MODEL,
+            allowsBaseUrl = false,
+            defaultBaseUrl = null,
+            getBaseUrl = { "" },
+            setBaseUrl = {},
             getEnabled = { prefs.deepseekEnabled },
             setEnabled = { prefs.deepseekEnabled = it },
             todayUsageString = { tracker.todayString() },

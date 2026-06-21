@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import com.playtranslate.net.PtHttp
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
@@ -63,7 +64,7 @@ object TatoebaClient {
     private data class ApiTranslation(val text: String? = null, val lang: String? = null)
 
     private val client by lazy {
-        OkHttpClient.Builder()
+        PtHttp.clientBuilder()
             .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
             .build()

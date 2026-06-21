@@ -70,7 +70,7 @@ class OpenAiBackendCooldownTest {
             modelProvider = { "gpt-4" },
             baseUrlProvider = { "https://api.openai.com/v1" },
             usageTracker = UsageTracker(FakeSharedPreferences(), "openai"),
-            filterFineTunes = true,
+            applyOwnedByFilter = { true },
             cooldownState = cooldown,
             client = cannedClient(200, "{}"),
         )
@@ -131,7 +131,7 @@ class OpenAiBackendCooldownTest {
             modelProvider = { "gpt-4" },
             baseUrlProvider = { "https://api.openai.com/v1" },
             usageTracker = UsageTracker(FakeSharedPreferences(), "openai"),
-            filterFineTunes = true,
+            applyOwnedByFilter = { true },
             cooldownState = cooldown,
             client = client,
         )

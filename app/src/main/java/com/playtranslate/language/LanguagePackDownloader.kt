@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.Dns
+import com.playtranslate.net.PtHttp
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -184,7 +185,7 @@ class LanguagePackDownloader(
     }
 
     companion object {
-        private fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
+        private fun defaultClient(): OkHttpClient = PtHttp.clientBuilder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             // Prefer IPv4 over IPv6. Many consumer networks advertise a

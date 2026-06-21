@@ -2,6 +2,7 @@ package com.playtranslate.translation
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.playtranslate.net.PtHttp
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -36,7 +37,7 @@ class LingvaBackend(
 
     override val status: BackendStatus = BackendStatus.Info("No API key required")
 
-    private val client = OkHttpClient.Builder()
+    private val client = PtHttp.clientBuilder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)
         .build()

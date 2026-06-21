@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.playtranslate.net.PtHttp
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -31,7 +32,7 @@ object UpdateChecker {
     )
 
     private val client by lazy {
-        OkHttpClient.Builder()
+        PtHttp.clientBuilder()
             .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
             .build()

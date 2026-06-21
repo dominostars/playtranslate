@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.playtranslate.PtJson
 import com.playtranslate.language.LanguagePackDownloader
+import com.playtranslate.net.PtHttp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,7 +46,7 @@ object YomitanUpdater {
      *  [LanguagePackDownloader]'s own client). Reuses the IPv4-preferred DNS so a
      *  v6-broken CDN doesn't burn a full connect-timeout before falling back. */
     private val client: OkHttpClient by lazy {
-        OkHttpClient.Builder()
+        PtHttp.clientBuilder()
             .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
             .dns(LanguagePackDownloader.Ipv4PreferredDns)
@@ -73,8 +74,9 @@ object YomitanUpdater {
     }
 
     /** GETs and parses [indexUrl]. Returns null on any network/parse failure
-     *  (logged, never thrown). HTTPS is enforced by the network security
-     *  config, so an `http://` indexUrl simply fails the fetch and is skipped. */
+     *  (logged, never thrown). The client comes from [PtHttp.clientBuilder], so a
+     *  non-https indexUrl (or an https→http redirect) is refused by the shared
+     *  https-only interceptor and surfaces here as a skipped fetch. */
     suspend fun fetchRemoteIndex(indexUrl: String): RemoteIndex? = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder().url(indexUrl).build()

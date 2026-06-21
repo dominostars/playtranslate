@@ -2,6 +2,7 @@ package com.playtranslate.translation
 
 import android.util.Log
 import com.playtranslate.PtJson
+import com.playtranslate.net.PtHttp
 import com.playtranslate.translation.llm.LlmBatchPrompt
 import com.playtranslate.translation.llm.cleanLlmOutput
 import com.playtranslate.translation.qwen.QwenChatTemplate
@@ -342,8 +343,9 @@ class GeminiBackend(
      * known-invalid keys instead of saving them.
      *
      * [overrideKey] lets the caller pass a typed-but-unsaved key.
+     * Gemini has no configurable base URL, so [overrideBaseUrl] is ignored.
      */
-    override suspend fun validateKey(overrideKey: String?): KeyStatus = withContext(Dispatchers.IO) {
+    override suspend fun validateKey(overrideKey: String?, overrideBaseUrl: String?): KeyStatus = withContext(Dispatchers.IO) {
         val apiKey = (overrideKey ?: keyProvider())?.takeIf { it.isNotBlank() }
             ?: return@withContext KeyStatus.Invalid("API key blank")
         val request = Request.Builder()
@@ -493,7 +495,7 @@ class GeminiBackend(
          *  Matches "2.5" in "gemini-2.5-flash". */
         private val VERSION_PATTERN = Regex("""\d+\.\d+""")
 
-        private fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
+        private fun defaultClient(): OkHttpClient = PtHttp.clientBuilder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)

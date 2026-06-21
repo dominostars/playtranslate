@@ -179,5 +179,7 @@ interface ModelLister {
  *    than blocking the user — we couldn't *prove* it's wrong.
  */
 interface KeyValidator {
-    suspend fun validateKey(overrideKey: String? = null): KeyStatus
+    /** [overrideBaseUrl] (OpenAI-compatible backends only) validates a
+     *  user-typed-but-unsaved endpoint; ignored by providers with a fixed URL. */
+    suspend fun validateKey(overrideKey: String? = null, overrideBaseUrl: String? = null): KeyStatus
 }
