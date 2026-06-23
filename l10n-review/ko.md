@@ -61,3 +61,33 @@ status_no_text "%2$s"에서 ✓ · word_detail_not_found "%1$s"에 ✓ · llm_ba
 - **Truncation risk:** none — bottom bar 자동/일시정지/설정/영역 and the two-line 캡처\n영역 are all comfortably short.
 - **Legal text:** faithful and conservative — §5(b) kept, EU/UK/South Korea enumeration kept, negation in clause (1) correctly scopes both 거주 and 위치, in-text 동의 matches the 동의 — Hunyuan 사용 button's leading word; only a tense nuance in clause (2) (💬).
 - **Overall:** fix-then-ship — one real scoping error (label_region_drag_hint) and a cluster of composed-string and calque awkwardnesses; no build-breaking issues found.
+
+---
+
+# Delta review — 2026-06-23 sync (+29 keys)
+Scope: Anki pitch/frequency content options, OpenAI custom base URL, Yomitan multi-file import + auto-update, Anki audio picker. Mechanical layer re-verified programmatically (analyzer 0/0; placeholder parity; plural CLDR set — both `<plurals>` collapsed to Korean's single `other`; processDebugResources BUILD SUCCESSFUL) — no 🛑.
+
+## Findings (delta)
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| audio_error_loading | 💬 | 불러올 수 없습니다 | 불러올 수 없음 | Terse status cell, parallel to its own siblings audio_no_results (결과 없음) and audio_loading (불러오는 중…) and to the dictionary-status cell family, where dictionary_status_error uses the noun-form 검색할 수 없음 for the exact same "couldn't X" slot. EN is the equally-terse "Couldn't load". The full 합니다체 sentence is heavier than the cell register; noun-form 없음 matches better. (Defensible as-is — word_detail_more_examples_error is also a full sentence — hence nit only.) |
+
+## Clean areas (delta)
+**Particle / counter handling at every placeholder — the Korean-critical axis — is clean, and notably it never attaches a bare particle to a raw runtime variable:**
+- `yomitan_importing_progress` — `%2$d개 중 %1$d개 가져오는 중…`: the 개 counter sits between the number and any grammar, so no batchim-sensitive particle ever lands on `%1$d`/`%2$d`. The two `<xliff:g>` spans were reordered (total-first, 개 중, current) — placeholders are positional so this is legitimate, and it matches the established `…%2$s 중 %1$s` download-progress idiom (qwen/hymt/install rows) exactly.
+- `yomitan_import_summary_count` (other) — `사전 %2$d개 중 %1$d개를 가져왔습니다.`: the object particle 를 attaches to the counter 개, never to the variable; reads as a natural full 합니다체 sentence. The single `other` form is correct for Korean and the counter makes it read naturally at any count. Mirrors the file's own counter idiom and the committed `bergamot_warmup_downloading_multi` fix (…%2$d개 중 %1$d번째).
+- `yomitan_import_summary_more` (other) — `+%1$d개 더`: 개 counter again; clean.
+- The four `%1$s` file-name summary lines (`_duplicates` 이미 가져옴:, `_invalid` 읽을 수 없음:, `_no_space` 저장공간 부족:, `_failed` 실패:) all use the `라벨: %1$s` colon-list form, leaving the comma-joined names sentence-final with no particle on the variable — the safe pattern, and consistent label phrasing across the four.
+- `llm_backend_base_url_invalid` — `https://를 사용하세요. http://는 …`: particles attach to fixed literal tokens (not variables); by pronunciation HTTPS → …에스 (vowel) → 를 ✓, HTTP → …피 (vowel) → 는 ✓. The EN em-dash was rendered as a sentence break (…사용하세요. http://는…), which reads more naturally in Korean than a dash; the conditional "…에만 허용됩니다" preserves the "only allowed for" force.
+
+**Terminology — reused, not reinvented:** 고저 악센트 (pitch accent) matches `yomitan_category_pitch_accent` and `yomitan_page_description`; 빈도 (frequency), 사전 (dictionary), 가져오기/가져오는 중/가져왔습니다 (import), 다운로드, 저장공간 (no internal space — matches offline_backend_disk_label and the qwen status rows), 자동 업데이트, 텍스트 음성 변환 (TTS — matches audio_source_tts_name itself and anki audio descs), 오디오 (audio) all uniform with the file. 고급 (Advanced header) and 사용자 지정 URL (Custom URL) are the standard Android/MS Korean renderings; 사용자 지정 is the conventional "Custom" and reads fine next to the neighbouring 직접 입력… custom-model affordance. Brand/field names left as-is: Lapis/JPMN, the quoted Anki field names ("PitchPosition", "PAOverride", "Frequency", "FrequenciesStylized", "FreqSort", "FrequencySort"), and Wikimedia Commons all untranslated.
+
+**The `Example:` / quoted-field-name / glyph rule is honored:** `anki_content_pitch_position_desc` keeps `예: 0,2`; `anki_content_frequency_values_desc` keeps the raw `★` glyph (matching EN's `★`, not spelled out as 별/별점) — correct, since here ★ is output shape, whereas the sibling `anki_content_frequency_desc` legitimately uses 별점 because EN there said "★ rating" as prose. No field name or sample was localized.
+
+**Register — consistent with the file's own mixed-but-bounded convention for this family:** the four `anki_content_*_desc` bodies use full 합니다체 (…사용합니다, …표시합니다) and polite imperative (…사용하세요), which is exactly the established split in the existing `anki_content_*_desc` block (definition_desc/picture_desc/word_audio_desc are 합니다체 sentences; flag_*_desc are …사용하세요). Labels are noun phrases (고저 악센트 위치, 빈도 목록, 빈도 목록(JPMN 스타일), 빈도 정렬 번호, 고급, 자동 업데이트, 오디오) or polite imperative-free short forms — all on-register. `yomitan_auto_update_subtitle` (…다운로드하고 설치합니다) and `yomitan_import_summary_title`/`_title_none` (가져오기 완료 / 가져오지 못함) match neighbouring 합니다체 bodies and noun-form titles. No 해요체/반말, no 당신/내 언어 contexts in this batch.
+
+**Truncation:** the short labels (고급, 오디오, 결과 없음, 자동 업데이트, 텍스트 음성 변환) are all comfortably short for their header/cell slots; none risk clipping. 사용자 지정 URL is a normal row label width.
+
+**Plurals:** both `<plurals>` correctly collapse to the single Korean `other`; each reads naturally because a counter (개) carries the quantity, so there is no English "1 dictionary / N dictionaries" singular/plural artifact bleeding through.
+
+**Net:** ship-ready. Zero ❌/⚠️ in the 29 keys; one 💬 cell-register nit (audio_error_loading). The particle-sensitive sites — the whole reason Korean is high-risk — are handled correctly via counters and colon-lists, never a bare particle on a variable.

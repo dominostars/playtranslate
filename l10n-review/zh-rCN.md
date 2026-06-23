@@ -30,3 +30,24 @@ Mechanical rules: no violations found — all `<xliff:g>` inner content intact, 
 - **Truncation risk**: none — bottom bar items are all two characters (自动/暂停/设置/区域), 截取\n区域 fits the two-line button.
 - **Legal text**: faithful and conservative — §5(b), the EU/UK/South Korea list, and 声明并保证 all preserved; fix the (1)-clause grammar before shipping.
 - **Overall**: **fix-then-ship** — one legal-text grammar error and two Android-wording alignments; everything else is polish.
+
+---
+
+# Delta review — 2026-06-23 sync (+29 keys)
+Scope: Anki pitch/frequency content options, OpenAI custom base URL, Yomitan multi-file import + auto-update, Anki audio picker. Mechanical layer re-verified programmatically (analyzer 0/0; placeholder parity; plural CLDR set; processDebugResources BUILD SUCCESSFUL) — no 🛑.
+
+## Findings (delta)
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| yomitan_importing_progress | 💬 | 正在导入第 %1$d / %2$d 个… | 正在导入 %1$d / %2$d… | `第 X / Y 个` mixes the ordinal classifier 第…个 ("the Nth") with a current/total slash, which don't pair cleanly; 第 implies a single ordinal, not "current of total". A bare `%1$d / %2$d` (or `第 %1$d 个，共 %2$d 个`) reads more naturally as progress. Placeholders stay positional/byte-identical; the EN noun-omission intent is preserved either way. Minor — current form is still understandable. |
+
+## Clean areas (delta)
+- **Pangu spacing — all 29 keys clean.** Every Han↔Latin/number boundary carries exactly one space (`词频列表（JPMN 风格）`, `自定义 URL`, `高亮单词的 ★ 评级`, `本地或局域网地址`); no space before any full-width punctuation (programmatic scan for ` [，。、？！：；）”]` over the new lines: zero hits); no space between Han runs; numeric/`%n$d` placeholders correctly spaced as Latin runs (`第 %1$d / %2$d 个`, `%2$d 部词典中的 %1$d 部`). Brand names against full-width quotes (`Lapis 的“PitchPosition”`) and the em-dash `https://——http://` (no surrounding space, matching the file's `——` convention at lines 277/279) are both correct. The only spacing "hits" in the double-space scan were XML indentation, not content.
+- **Terminology reuse — uniform.** 音高重音 (pitch accent) matches `yomitan_category_pitch_accent`/`yomitan_page_description`; 词频 (frequency) matches `yomitan_category_frequency`/`anki_content_frequency`; 词典 (dictionary) and 导入 (import) match the surrounding Yomitan block; 文字转语音 (TTS) and 音频 (audio) match `settings_cell_tts`/`anki_group_audio`; `无结果` is byte-identical to the established `lang_search_no_results`/`dictionary_status_no_results`; `正在加载…` / `无法加载` follow the file-wide loading pattern (`anki_deck_picker_loading`, `word_detail_more_examples_error`); 自定义 URL matches the 自定义 family; 局域网 (LAN) is the correct Simplified term. The 风格 (label) vs 样式格式 (desc) pairing tracks EN's own "JPMN style" vs "styled format" distinction, not a split.
+- **Register — casual 你 throughout, zero 您;** concise friendly tone consistent (请使用…, 请仅在…卡片上使用). No formal/informal mixing introduced.
+- **Plurals / measure words — both collapsed to a single `other` with the right classifier:** 部 for 词典 in `yomitan_import_summary_count` (`%2$d 部词典中的 %1$d 部`, positionally-reordered placeholders, byte-identical spans), 项 for elided names in `yomitan_import_summary_more` (`+%1$d 项`). Generic 个 in the progress string is acceptable (noun deliberately omitted in EN).
+- **Short-label truncation — none.** Anki audio cells (`无结果`, `正在加载…`, `无法加载`), picker title (`音频`), source names (`文字转语音`, `Wikimedia Commons`), and the Advanced header (`高级`) are all short; no overflow risk.
+- **The `Example:` / quoted-field-name rule — honored.** `anki_content_pitch_position_desc` renders `示例：0,2` with the `0,2` sample left verbatim (matching the file's `示例：聞く`/`示例：★★★` precedent), and the Anki field names (`“PitchPosition”`, `“PAOverride”`, `“Frequency”`, `“FrequenciesStylized”`, `“FreqSort”`, `“FrequencySort”`) are kept as-is in straight English inside full-width quotes — correctly not flagged.
+- **`<xliff:g>` integrity:** all brand spans (Lapis/JPMN) and `%1$d`/`%2$d`/`%1$s` placeholders byte-identical to EN; reordering in `yomitan_import_summary_count` is a legal positional move only.
+
+Net: no 🛑/❌/⚠️ in the delta — one 💬 nit (`yomitan_importing_progress` classifier phrasing). The +29 keys are ship-ready as-is.

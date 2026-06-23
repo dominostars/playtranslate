@@ -562,6 +562,18 @@
     <string name="anki_content_words_table">单词列表（句子卡片）</string>
     <string name="anki_content_words_table_desc"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 在句子中检测到的所有单词的格式化列表，包含读音和释义。</string>
 
+    <string name="anki_content_pitch_position">音高重音位置</string>
+    <string name="anki_content_pitch_position_desc">高亮单词的音高重音降调位置，以逗号分隔。用于 <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> 的“PitchPosition”或 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> 的“PAOverride”。示例：0,2</string>
+
+    <string name="anki_content_frequency_values">词频列表</string>
+    <string name="anki_content_frequency_values_desc">高亮单词的 ★ 评级，以及来自各词频词典的所有数值，以列表形式呈现。用于 <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> 的“Frequency”。</string>
+
+    <string name="anki_content_frequency_stylized">词频列表（JPMN 风格）</string>
+    <string name="anki_content_frequency_stylized_desc">同一份词频列表，以 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> 自有的样式格式输出，供其“FrequenciesStylized”字段使用。请仅在 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> 卡片上使用。</string>
+
+    <string name="anki_content_frequency_harmonic">词频排序数值</string>
+    <string name="anki_content_frequency_harmonic_desc">用于按词频排序卡片的单个数值，即该单词各词典词频的调和平均数（越小越常用）。用于 <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> 的“FreqSort”或 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> 的“FrequencySort”。</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          CARD-TYPE STATE FLAGS
          ═══════════════════════════════════════════════════════════════ -->
@@ -630,6 +642,12 @@
     <string name="llm_backend_api_key_label">API 密钥</string>
 
     <string name="llm_backend_model_label">模型</string>
+
+    <string name="llm_backend_advanced_header">高级</string>
+
+    <string name="llm_backend_base_url_label">自定义 URL</string>
+
+    <string name="llm_backend_base_url_invalid">请使用 https://——http:// 仅允许用于本地或局域网地址</string>
 
     <string name="llm_backend_get_key_title_fmt">获取 <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> API 密钥</string>
 
@@ -1180,6 +1198,30 @@
 
     <string name="yomitan_importing_message">正在验证词典文件…</string>
 
+    <string name="yomitan_importing_progress">正在导入 <xliff:g id="current" example="2">%1$d</xliff:g> / <xliff:g id="total" example="5">%2$d</xliff:g>…</string>
+
+    <string name="yomitan_import_summary_title">导入完成</string>
+
+    <string name="yomitan_import_summary_title_none">无法导入</string>
+
+    <plurals name="yomitan_import_summary_count">
+        <item quantity="other">已导入 <xliff:g id="total" example="6">%2$d</xliff:g> 部词典中的 <xliff:g id="imported" example="4">%1$d</xliff:g> 部。</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_duplicates">已导入过：<xliff:g id="names" example="JMdict, KANJIDIC">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_invalid">无法读取：<xliff:g id="names" example="notes.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_no_space">空间不足：<xliff:g id="names" example="big.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_failed">失败：<xliff:g id="names" example="broken.zip">%1$s</xliff:g></string>
+
+    <plurals name="yomitan_import_summary_more">
+        <item quantity="other">+<xliff:g id="count" example="3">%1$d</xliff:g> 项</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_unknown_file">未知文件</string>
+
     <string name="yomitan_invalid_title">无效文件</string>
 
     <string name="yomitan_invalid_message">无法将此文件作为 Yomitan 词典读取。</string>
@@ -1191,6 +1233,10 @@
     <string name="yomitan_single_dict_title">仅显示来自单个词典的释义</string>
 
     <string name="yomitan_single_dict_subtitle">释义来自优先级最高且有结果的词典；内置词典作为最后的后备。</string>
+
+    <string name="yomitan_auto_update_label">自动更新</string>
+
+    <string name="yomitan_auto_update_subtitle">自动下载并安装此词典的新版本</string>
 
     <string name="yomitan_io_error_title">导入失败</string>
 
@@ -1423,6 +1469,20 @@
     <string name="toast_no_crash_report">没有可发送的崩溃报告</string>
 
     <string name="share_chooser_share_logs">分享日志</string>
+
+    <!-- Audio sources (Wikimedia Commons human recordings + TTS). -->
+
+    <string name="audio_source_tts_name">文字转语音</string>
+
+    <string name="audio_source_commons_name">Wikimedia Commons</string>
+
+    <string name="audio_no_results">无结果</string>
+
+    <string name="audio_source_picker_title">音频</string>
+
+    <string name="audio_loading">正在加载…</string>
+
+    <string name="audio_error_loading">无法加载</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">名词</string>

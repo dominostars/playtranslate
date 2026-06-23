@@ -564,6 +564,22 @@
     <string name="anki_content_words_table">単語リスト（文カード）</string>
     <string name="anki_content_words_table_desc">文中で<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>が検出したすべての単語を、読みと定義付きで整形したリスト。</string>
 
+    <string name="anki_content_pitch_position">高低アクセントの位置</string>
+
+    <string name="anki_content_pitch_position_desc">強調表示した単語の下げ核の位置（カンマ区切り）。<xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>の「PitchPosition」や<xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>の「PAOverride」に使用します。Example: 0,2</string>
+
+    <string name="anki_content_frequency_values">頻度リスト</string>
+
+    <string name="anki_content_frequency_values_desc">強調表示した単語の★評価と、すべての頻度辞書の値をリストにしたもの。<xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>の「Frequency」に使用します。</string>
+
+    <string name="anki_content_frequency_stylized">頻度リスト（JPMN形式）</string>
+
+    <string name="anki_content_frequency_stylized_desc">同じ頻度リストを、<xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>独自の装飾形式で「FrequenciesStylized」フィールド用に出力したもの。<xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>のカードでのみ使用してください。</string>
+
+    <string name="anki_content_frequency_harmonic">頻度ソート番号</string>
+
+    <string name="anki_content_frequency_harmonic_desc">カードを頻度順に並べるための単一の数値で、単語の各辞書頻度の調和平均（小さいほど高頻度）。<xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>の「FreqSort」や<xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>の「FrequencySort」に使用します。</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          CARD-TYPE STATE FLAGS
          ═══════════════════════════════════════════════════════════════ -->
@@ -632,6 +648,12 @@
     <string name="llm_backend_api_key_label">APIキー</string>
 
     <string name="llm_backend_model_label">モデル</string>
+
+    <string name="llm_backend_advanced_header">詳細設定</string>
+
+    <string name="llm_backend_base_url_label">カスタムURL</string>
+
+    <string name="llm_backend_base_url_invalid">https://を使用してください。http://はローカルまたはLANのアドレスでのみ使用できます</string>
 
     <string name="llm_backend_get_key_title_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g>のAPIキーを取得</string>
 
@@ -1182,6 +1204,30 @@
 
     <string name="yomitan_importing_message">辞書ファイルを検証中…</string>
 
+    <string name="yomitan_importing_progress"><xliff:g id="total" example="5">%2$d</xliff:g>件中<xliff:g id="current" example="2">%1$d</xliff:g>件をインポート中…</string>
+
+    <string name="yomitan_import_summary_title">インポート完了</string>
+
+    <string name="yomitan_import_summary_title_none">インポートできませんでした</string>
+
+    <plurals name="yomitan_import_summary_count">
+        <item quantity="other"><xliff:g id="total" example="6">%2$d</xliff:g>件中<xliff:g id="imported" example="4">%1$d</xliff:g>件の辞書をインポートしました。</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_duplicates">インポート済み：<xliff:g id="names" example="JMdict, KANJIDIC">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_invalid">読み込めませんでした：<xliff:g id="names" example="notes.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_no_space">空き容量が足りません：<xliff:g id="names" example="big.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_failed">失敗：<xliff:g id="names" example="broken.zip">%1$s</xliff:g></string>
+
+    <plurals name="yomitan_import_summary_more">
+        <item quantity="other">他<xliff:g id="count" example="3">%1$d</xliff:g>件</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_unknown_file">不明なファイル</string>
+
     <string name="yomitan_invalid_title">無効なファイル</string>
 
     <string name="yomitan_invalid_message">このファイルはYomitan辞書として読み込めませんでした。</string>
@@ -1193,6 +1239,10 @@
     <string name="yomitan_single_dict_title">1つの辞書からのみ定義を表示</string>
 
     <string name="yomitan_single_dict_subtitle">定義は、結果のある辞書のうち最も優先順位の高いものから表示されます。内蔵辞書が最後の代替となります</string>
+
+    <string name="yomitan_auto_update_label">自動更新</string>
+
+    <string name="yomitan_auto_update_subtitle">この辞書の新しいバージョンを自動的にダウンロードしてインストールします</string>
 
     <string name="yomitan_io_error_title">インポートに失敗しました</string>
 
@@ -1425,6 +1475,18 @@
     <string name="toast_no_crash_report">送信するクラッシュレポートがありません</string>
 
     <string name="share_chooser_share_logs">ログを共有</string>
+
+    <string name="audio_source_tts_name">テキスト読み上げ</string>
+
+    <string name="audio_source_commons_name">Wikimedia Commons</string>
+
+    <string name="audio_no_results">結果がありません</string>
+
+    <string name="audio_source_picker_title">音声</string>
+
+    <string name="audio_loading">読み込み中…</string>
+
+    <string name="audio_error_loading">読み込めませんでした</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">名詞</string>

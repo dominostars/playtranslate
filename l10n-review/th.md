@@ -37,3 +37,29 @@ Sections checked and clean (not padded above): all download/progress strings ("�
 - **Truncation risk**: only หยุดชั่วคราว (bottom-bar Pause) is at real risk; everything else fits.
 - **Legal text**: faithful — §5(b), both EU/UK/South Korea enumerations, and affirm-and-warrant force all preserved; one softener noted (ไม่รวม → ไม่อนุญาต) as polish.
 - **Overall**: fix-then-ship — three ❌ grammar/meaning fixes plus the brand-collision sentences, then this is a high-quality, consistent translation.
+
+---
+
+# Delta review — 2026-06-23 sync (+29 keys)
+Scope: Anki pitch/frequency content options, OpenAI custom base URL, Yomitan multi-file import + auto-update, Anki audio picker. Mechanical layer re-verified programmatically (analyzer 0/0; placeholder parity; plural CLDR set; processDebugResources BUILD SUCCESSFUL) — no 🛑.
+
+## Findings (delta)
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| audio_no_results | ⚠ | `ไม่พบผลลัพธ์` | `ไม่มีผลลัพธ์` | Same English "No results" already ships as `ไม่มีผลลัพธ์` in both `lang_search_no_results` and `dictionary_status_no_results`. Both forms are natural Thai, but one English term must map to one translation; align this third instance to the established `ไม่มีผลลัพธ์`. |
+| yomitan_import_summary_more (plurals) | ⚠ | `+<xliff…>%1$d</xliff…> รายการ` | `อีก <xliff…>%1$d</xliff…> รายการ` | English `+%1$d more` is appended to an elided names line ("…, +3 more"); `+3 รายการ` reads as a flat count "+3 items" and drops the "more / not-shown" sense. The file already renders "more" as `อีก %1$d` (`inflection_more`); `อีก %1$d รายการ` restores it. Borderline ❌ (meaning loss) but context-recoverable, so ⚠. |
+
+## Clean areas (delta)
+**Word-spacing** — clean at every boundary. `base_url_invalid`: `ใช้ https://`, the em-dash `https:// — http://` (spaced between two Latin URLs), and `LAN เท่านั้น` all correct; the long Thai run `อนุญาตเฉพาะที่อยู่ในเครื่องหรือเครือข่าย` between `http://` and `LAN` carries no stray internal space. `URL ที่กำหนดเอง` (Latin→Thai), `importing_progress` `นำเข้า %1$d จาก %2$d…` (spaces around both numeric placeholders, ellipsis glued), `summary_count` `…%1$d จาก %2$d ฉบับแล้ว`, and `summary_more` `+%1$d รายการ` (the `+` glued to the number) are all spaced correctly. The four Anki `*_desc` brand spans (`“PitchPosition” ของ <Lapis>`, `<JPMN>`) sit Thai-space-Latin-space-Thai with no leakage.
+
+**Classifiers** — `ฉบับ` for dictionaries in `summary_count` (`นำเข้าพจนานุกรม N จาก M ฉบับแล้ว`) reads naturally and collapses correctly at 1 and many (Thai has no singular form). `รายการ` for the elided-item count in `summary_more` matches the file's existing `%d รายการ` list counters (lines 214, 1317). No bare-number-without-classifier anywhere in the new set.
+
+**Terminology reuse** — every load-bearing term matches precedent: `การเน้นระดับเสียง` (pitch-accent) == `yomitan_category_pitch_accent`; `ความถี่` (frequency) == `yomitan_category_frequency`; `พจนานุกรม` (dictionary) and `นำเข้า` (import) consistent across the whole Yomitan block; `การอ่านออกเสียงข้อความ` (TTS, `audio_source_tts_name`) == the file-wide TTS term (`settings_cell_tts`, `tts_no_engine_*`); `เสียง` (`audio_source_picker_title`) == `anki_group_audio`; `ขั้นสูง` (`llm_backend_advanced_header`) == the casing-free adjective already used in `enhanced_auto_translate_title`; `คำจำกัดความ`, `การ์ด`, `ไฮไลต์` all reused. `ตัวเลขจัดเรียงตามความถี่` (frequency-sort) and `รายการความถี่ (สไตล์ JPMN)` read as native compounds, not calques. `audio_error_loading` `ไม่สามารถโหลดได้` follows the file's `ไม่สามารถโหลด…ได้` frame (`word_detail_more_examples_error`); `audio_loading` `กำลังโหลด…` matches the `กำลังโหลด…` family.
+
+**Register** — neutral-polite throughout; no ครับ/ค่ะ/นะคะ in any of the 29 keys; no colloquial pronouns.
+
+**Short-label truncation** — `ขั้นสูง` (2 syllables), `เสียง` (1), `อัปเดตอัตโนมัติ`, `URL ที่กำหนดเอง` all comfortably short for their headers/labels; no risk.
+
+**The `Example:` rule** — `pitch_position_desc` keeps the sample `0,2` verbatim after `ตัวอย่าง:`, and the desc strings leave the quoted field names ("PitchPosition", "PAOverride", "Frequency", "FreqSort", "FrequenciesStylized", "FrequencySort") and brand spans untouched — all correct, not flagged.
+
+**Import-title near-synonyms** — `yomitan_import_summary_title_none` "Couldn't Import" → `นำเข้าไม่สำเร็จ` collapses onto the same Thai as `yomitan_io_error_title` "Import Failed"; accepted (distinct dialogs/contexts, faithful natural rendering, no user-facing collision). `นำเข้าเสร็จสมบูรณ์` for "Import Complete" is natural.

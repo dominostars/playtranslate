@@ -37,3 +37,27 @@ Sections checked and clean: onboarding, word detail, Anki review sheet and all c
 - **Truncation risk:** pass — "Tự động / Tạm dừng / Cài đặt / Vùng" and "Vùng\nchụp" are all short.
 - **Legal text:** structurally faithful (§5(b), EU/UK/South Korea list, "xác nhận và cam đoan") but clause (1)'s double negative weakens the attestation — must fix before ship.
 - **Overall:** fix-then-ship — two ❌ items (accessibility term swap, legal clause (1)) plus the ⚠ polish; everything else is a solid, internally consistent native-quality translation.
+
+---
+
+# Delta review — 2026-06-23 sync (+29 keys)
+Scope: Anki pitch/frequency content options, OpenAI custom base URL, Yomitan multi-file import + auto-update, Anki audio picker. Mechanical layer re-verified programmatically (analyzer 0/0; placeholder parity; plural CLDR set — both `yomitan_import_summary_count` and `yomitan_import_summary_more` collapsed to Vietnamese's single `other`; `processDebugResources` BUILD SUCCESSFUL) — no 🛑.
+
+## Findings (delta)
+None. All 29 keys are natural, correct, and terminology-consistent. Nothing rises even to 💬.
+
+What was checked, key by key:
+- **Anki pitch/frequency (8):** `anki_content_pitch_position` "Vị trí trọng âm cao độ" reuses the same compound as `yomitan_category_pitch_accent`; `_desc` correctly uses "giáng" for the downstep and keeps the "PitchPosition"/"PAOverride" field names + the `0,2` example verbatim. The four `frequency_*` keys reuse "tần suất" uniformly ("Danh sách tần suất", "Số sắp xếp theo tần suất"); `_harmonic_desc` renders harmonic mean as "trung bình điều hòa" (correct) with a natural "(càng thấp = càng thường gặp)" gloss; ★/"Frequency"/"FrequenciesStylized"/"FreqSort"/"FrequencySort" field names all left as-is per the Example:/quoted-field rule.
+- **OpenAI base URL (3):** `llm_backend_advanced_header` "Nâng cao" matches existing "nâng cao" usage; `llm_backend_base_url_label` "URL tùy chỉnh" has correct adjective-after-noun order; `llm_backend_base_url_invalid` preserves `https://`/`http://` and the em-dash, and renders "local or LAN address" idiomatically as "địa chỉ cục bộ hoặc trong mạng LAN".
+- **Yomitan import + auto-update:** all summary lines reuse the file's established verbs/terms ("Đã nhập rồi" = `yomitan_duplicate_title`; "Không thể đọc" = the verb in `yomitan_invalid_message`; "Không đủ dung lượng" = `yomitan_no_space_title`); `từ điển`/`tệp` classifiers natural; `yomitan_auto_update_subtitle` faithful with consistent "tải xuống"/"cài đặt".
+- **Audio picker (6):** `audio_source_tts_name` "Chuyển văn bản thành giọng nói" matches `settings_header_text_to_speech` / `settings_cell_tts` exactly (the old "công cụ đọc giọng nói" coinage the full review flagged is now gone — `tts_no_engine_*` reads "công cụ chuyển văn bản thành giọng nói"); `audio_no_results` = `lang_search_no_results`; `audio_source_picker_title` "Âm thanh" = `anki_group_audio`; `audio_loading`/`audio_error_loading` follow the standard "Đang tải…" / "Không thể tải" pattern.
+
+## Clean areas (delta)
+- **Diacritics / tone marks:** full sweep of all 29 strings — every syllable carries its proper tone/vowel diacritic (trọng âm cao độ, giáng, điều hòa, tần suất, tệp, dung lượng); no stripped-ASCII syllable, no wrong-tone syllable.
+- **Syllable spacing:** each syllable space-separated; no merged/run-together syllables in any new string.
+- **"of"/count vs byte-progress separator:** correctly disambiguated — item counts use "X trên Y" (`yomitan_importing_progress` "Đang nhập 2 trên 5", `yomitan_import_summary_count` "4 trên 6 từ điển"), while byte progress everywhere uses "/". This is the natural Vietnamese split ("2 out of 5" vs "12 MB / 84 MB"), not the lone outlier the prior review noted (which has since been fixed — `pack_upgrade_progress_format_with_bytes` now uses "/").
+- **Classifiers in collapsed plurals:** `yomitan_import_summary_count` keeps "từ điển"; `yomitan_import_summary_more` "+%1$d tệp nữa" adds the natural "tệp" classifier (the elided items are file names) — both read correctly in the single `other` form.
+- **Terminology reuse:** tần suất, trọng âm cao độ, từ điển, nhập (import), tải xuống/cài đặt, âm thanh, and Chuyển văn bản thành giọng nói are all consistent with the rest of the file and with each other.
+- **Register:** polite **bạn**-level throughout (no second-person needed in these mostly-label strings; "Hãy …" imperatives where present in neighbors are consistent); no register drift.
+- **Short-label truncation:** "Nâng cao", "URL tùy chỉnh", "Âm thanh", "Đang tải…", "Không thể tải", "Tự động cập nhật", "Tệp không xác định" are all short — no truncation risk.
+- **Example:/quoted-field rule:** honored — Anki `*_desc` output samples (`0,2`, `★`, `★★★`) and Lapis/JPMN field names left untranslated.

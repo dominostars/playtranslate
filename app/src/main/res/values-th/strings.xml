@@ -518,6 +518,18 @@
     <string name="anki_content_words_table">รายการคำ (การ์ดประโยค)</string>
     <string name="anki_content_words_table_desc">รายการที่จัดรูปแบบของทุกคำที่ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ตรวจพบในประโยค พร้อมคำอ่านและคำจำกัดความ</string>
 
+    <string name="anki_content_pitch_position">ตำแหน่งการเน้นระดับเสียง</string>
+    <string name="anki_content_pitch_position_desc">ตำแหน่งที่เสียงตกของคำที่ไฮไลต์ คั่นด้วยจุลภาค สำหรับ “PitchPosition” ของ <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> หรือ “PAOverride” ของ <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> ตัวอย่าง: 0,2</string>
+
+    <string name="anki_content_frequency_values">รายการความถี่</string>
+    <string name="anki_content_frequency_values_desc">คะแนนดาวพร้อมทุกค่าจากพจนานุกรมความถี่ของคำที่ไฮไลต์ แสดงเป็นรายการ สำหรับ “Frequency” ของ <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g></string>
+
+    <string name="anki_content_frequency_stylized">รายการความถี่ (สไตล์ JPMN)</string>
+    <string name="anki_content_frequency_stylized_desc">รายการความถี่เดียวกัน แต่แสดงในรูปแบบที่จัดสไตล์เองของ <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> สำหรับฟิลด์ “FrequenciesStylized” ใช้กับการ์ด <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> เท่านั้น</string>
+
+    <string name="anki_content_frequency_harmonic">ตัวเลขจัดเรียงตามความถี่</string>
+    <string name="anki_content_frequency_harmonic_desc">ตัวเลขหนึ่งค่าสำหรับจัดเรียงการ์ดตามความถี่ เป็นค่าเฉลี่ยฮาร์มอนิกของความถี่จากพจนานุกรมของคำ (ยิ่งต่ำยิ่งพบบ่อย) สำหรับ “FreqSort” ของ <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> หรือ “FrequencySort” ของ <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g></string>
+
     <!-- ═══ CARD-TYPE STATE FLAGS ═══ -->
 
     <string name="anki_content_flag_vocabulary">เครื่องหมายการ์ดคำศัพท์ (x)</string>
@@ -576,6 +588,12 @@
     <string name="llm_backend_api_key_label">คีย์ API</string>
 
     <string name="llm_backend_model_label">โมเดล</string>
+
+    <string name="llm_backend_advanced_header">ขั้นสูง</string>
+
+    <string name="llm_backend_base_url_label">URL ที่กำหนดเอง</string>
+
+    <string name="llm_backend_base_url_invalid">ใช้ https:// — http:// อนุญาตเฉพาะที่อยู่ในเครื่องหรือเครือข่าย LAN เท่านั้น</string>
 
     <string name="llm_backend_get_key_title_fmt">รับคีย์ API ของ <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
 
@@ -1073,6 +1091,30 @@
 
     <string name="yomitan_importing_message">กำลังตรวจสอบไฟล์พจนานุกรม…</string>
 
+    <string name="yomitan_importing_progress">กำลังนำเข้า <xliff:g id="current" example="2">%1$d</xliff:g> จาก <xliff:g id="total" example="5">%2$d</xliff:g>…</string>
+
+    <string name="yomitan_import_summary_title">นำเข้าเสร็จสมบูรณ์</string>
+
+    <string name="yomitan_import_summary_title_none">นำเข้าไม่สำเร็จ</string>
+
+    <plurals name="yomitan_import_summary_count">
+        <item quantity="other">นำเข้าพจนานุกรม <xliff:g id="imported" example="4">%1$d</xliff:g> จาก <xliff:g id="total" example="6">%2$d</xliff:g> ฉบับแล้ว</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_duplicates">นำเข้าแล้ว: <xliff:g id="names" example="JMdict, KANJIDIC">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_invalid">อ่านไม่ได้: <xliff:g id="names" example="notes.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_no_space">พื้นที่ไม่เพียงพอ: <xliff:g id="names" example="big.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_failed">ล้มเหลว: <xliff:g id="names" example="broken.zip">%1$s</xliff:g></string>
+
+    <plurals name="yomitan_import_summary_more">
+        <item quantity="other">อีก <xliff:g id="count" example="3">%1$d</xliff:g> รายการ</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_unknown_file">ไฟล์ไม่ทราบชื่อ</string>
+
     <string name="yomitan_invalid_title">ไฟล์ไม่ถูกต้อง</string>
 
     <string name="yomitan_invalid_message">ไม่สามารถอ่านไฟล์นี้เป็นพจนานุกรม Yomitan ได้</string>
@@ -1084,6 +1126,10 @@
     <string name="yomitan_single_dict_title">แสดงคำจำกัดความจากพจนานุกรมเดียวเท่านั้น</string>
 
     <string name="yomitan_single_dict_subtitle">คำจำกัดความจะมาจากพจนานุกรมที่มีลำดับความสำคัญสูงสุดที่มีผลลัพธ์ โดยพจนานุกรมในตัวเป็นตัวสำรองสุดท้าย</string>
+
+    <string name="yomitan_auto_update_label">อัปเดตอัตโนมัติ</string>
+
+    <string name="yomitan_auto_update_subtitle">ดาวน์โหลดและติดตั้งพจนานุกรมนี้เวอร์ชันใหม่โดยอัตโนมัติ</string>
 
     <string name="yomitan_io_error_title">นำเข้าไม่สำเร็จ</string>
 
@@ -1298,6 +1344,20 @@
     <string name="toast_no_crash_report">ไม่มีรายงานข้อขัดข้องให้ส่ง</string>
 
     <string name="share_chooser_share_logs">แชร์บันทึก</string>
+
+    <!-- Audio sources (Wikimedia Commons human recordings + TTS). -->
+
+    <string name="audio_source_tts_name">การอ่านออกเสียงข้อความ</string>
+
+    <string name="audio_source_commons_name">Wikimedia Commons</string>
+
+    <string name="audio_no_results">ไม่มีผลลัพธ์</string>
+
+    <string name="audio_source_picker_title">เสียง</string>
+
+    <string name="audio_loading">กำลังโหลด…</string>
+
+    <string name="audio_error_loading">ไม่สามารถโหลดได้</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">คำนาม</string>

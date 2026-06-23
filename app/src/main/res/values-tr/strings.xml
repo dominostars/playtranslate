@@ -549,6 +549,18 @@
     <string name="anki_content_words_table">Sözcük listesi (cümle kartları)</string>
     <string name="anki_content_words_table_desc"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasının cümlede algıladığı her sözcüğün, okunuşları ve tanımlarıyla birlikte biçimlendirilmiş bir listesi.</string>
 
+    <string name="anki_content_pitch_position">Perde vurgusu konumu</string>
+    <string name="anki_content_pitch_position_desc">Vurgulanan sözcüğün perde vurgusu düşüş konum(lar)ı, virgülle ayrılmış. <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'in “PitchPosition” veya <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>\'in “PAOverride” alanı için. Örnek: 0,2</string>
+
+    <string name="anki_content_frequency_values">Sıklık listesi</string>
+    <string name="anki_content_frequency_values_desc">Vurgulanan sözcüğün ★ derecesi ve her sıklık sözlüğü değeri, liste olarak. <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'in “Frequency” alanı için.</string>
+
+    <string name="anki_content_frequency_stylized">Sıklık listesi (JPMN stili)</string>
+    <string name="anki_content_frequency_stylized_desc">Aynı sıklık listesi, <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>\'in “FrequenciesStylized” alanı için kendi biçimlendirilmiş formatında üretilir. Yalnızca <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> kartlarında kullanın.</string>
+
+    <string name="anki_content_frequency_harmonic">Sıklık sıralama numarası</string>
+    <string name="anki_content_frequency_harmonic_desc">Kartları sıklığa göre sıralamak için tek bir sayı; sözcüğün sözlük sıklıklarının harmonik ortalaması (düşük = daha sık). <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'in “FreqSort” veya <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>\'in “FrequencySort” alanı için.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          CARD-TYPE STATE FLAGS
          ═══════════════════════════════════════════════════════════════ -->
@@ -617,6 +629,10 @@
     <string name="llm_backend_api_key_label">API Anahtarı</string>
 
     <string name="llm_backend_model_label">Model</string>
+
+    <string name="llm_backend_advanced_header">Gelişmiş</string>
+    <string name="llm_backend_base_url_label">Özel URL</string>
+    <string name="llm_backend_base_url_invalid">https:// kullanın — http:// yalnızca yerel veya LAN adresi için izinlidir</string>
 
     <string name="llm_backend_get_key_title_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> API anahtarı edinin</string>
 
@@ -1154,12 +1170,30 @@
     <string name="yomitan_category_pronunciation">Telaffuz</string>
     <string name="yomitan_importing_title">Sözlük içe aktarılıyor</string>
     <string name="yomitan_importing_message">Sözlük dosyaları doğrulanıyor…</string>
+    <string name="yomitan_importing_progress"><xliff:g id="total" example="5">%2$d</xliff:g> dosyadan <xliff:g id="current" example="2">%1$d</xliff:g>. içe aktarılıyor…</string>
+    <string name="yomitan_import_summary_title">İçe aktarma tamamlandı</string>
+    <string name="yomitan_import_summary_title_none">İçe aktarılamadı</string>
+    <plurals name="yomitan_import_summary_count">
+        <item quantity="one"><xliff:g id="total" example="1">%2$d</xliff:g> sözlükten <xliff:g id="imported" example="1">%1$d</xliff:g> tanesi içe aktarıldı.</item>
+        <item quantity="other"><xliff:g id="total" example="6">%2$d</xliff:g> sözlükten <xliff:g id="imported" example="4">%1$d</xliff:g> tanesi içe aktarıldı.</item>
+    </plurals>
+    <string name="yomitan_import_summary_duplicates">Zaten içe aktarılmış: <xliff:g id="names" example="JMdict, KANJIDIC">%1$s</xliff:g></string>
+    <string name="yomitan_import_summary_invalid">Okunamadı: <xliff:g id="names" example="notes.zip">%1$s</xliff:g></string>
+    <string name="yomitan_import_summary_no_space">Yeterli alan yok: <xliff:g id="names" example="big.zip">%1$s</xliff:g></string>
+    <string name="yomitan_import_summary_failed">Başarısız: <xliff:g id="names" example="broken.zip">%1$s</xliff:g></string>
+    <plurals name="yomitan_import_summary_more">
+        <item quantity="one">+<xliff:g id="count" example="1">%1$d</xliff:g> tane daha</item>
+        <item quantity="other">+<xliff:g id="count" example="3">%1$d</xliff:g> tane daha</item>
+    </plurals>
+    <string name="yomitan_import_summary_unknown_file">Bilinmeyen dosya</string>
     <string name="yomitan_invalid_title">Geçersiz dosya</string>
     <string name="yomitan_invalid_message">Bu dosya bir Yomitan sözlüğü olarak okunamadı.</string>
     <string name="yomitan_no_space_title">Yeterli alan yok</string>
     <string name="yomitan_no_space_message">Bu sözlüğü içe aktarmak için yaklaşık <xliff:g id="needed" example="180 MB">%1$s</xliff:g> boş alan gerekir, ancak yalnızca <xliff:g id="available" example="42 MB">%2$s</xliff:g> kullanılabilir. Yer açıp tekrar deneyin.</string>
     <string name="yomitan_single_dict_title">Tanımları yalnızca tek bir sözlükten göster</string>
     <string name="yomitan_single_dict_subtitle">Tanımlar, sonuç bulunan en yüksek öncelikli sözlükten gelir; yerleşik sözlük son seçenektir</string>
+    <string name="yomitan_auto_update_label">Otomatik güncelle</string>
+    <string name="yomitan_auto_update_subtitle">Bu sözlüğün yeni sürümlerini otomatik olarak indirir ve yükler</string>
     <string name="yomitan_io_error_title">İçe aktarma başarısız</string>
     <string name="yomitan_io_error_message">Dosya içe aktarılamadı. Depolama alanını kontrol edip tekrar deneyin.</string>
     <string name="yomitan_duplicate_title">Zaten içe aktarılmış</string>
@@ -1362,6 +1396,16 @@
     <string name="toast_no_crash_report">Gönderilecek çökme raporu yok</string>
 
     <string name="share_chooser_share_logs">Günlükleri paylaş</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         AUDIO SOURCES
+         ═══════════════════════════════════════════════════════════════ -->
+    <string name="audio_source_tts_name">Metin okuma</string>
+    <string name="audio_source_commons_name">Wikimedia Commons</string>
+    <string name="audio_no_results">Sonuç yok</string>
+    <string name="audio_source_picker_title">Ses</string>
+    <string name="audio_loading">Yükleniyor…</string>
+    <string name="audio_error_loading">Yüklenemedi</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">İsim</string>

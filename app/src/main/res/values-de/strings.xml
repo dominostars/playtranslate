@@ -567,6 +567,18 @@
     <string name="anki_content_words_table">Wörterliste (Satzkarten)</string>
     <string name="anki_content_words_table_desc">Eine formatierte Liste aller Wörter, die <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> im Satz erkannt hat, mit Lesungen und Definitionen.</string>
 
+    <string name="anki_content_pitch_position">Position des Tonhöhenakzents</string>
+    <string name="anki_content_pitch_position_desc">Position(en) des Abfalls im Tonhöhenakzent für das hervorgehobene Wort, durch Kommas getrennt. Für „PitchPosition“ von <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> oder „PAOverride“ von <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>. Beispiel: 0,2</string>
+
+    <string name="anki_content_frequency_values">Häufigkeitsliste</string>
+    <string name="anki_content_frequency_values_desc">Die ★-Bewertung sowie jeder Wert aus den Häufigkeitswörterbüchern für das hervorgehobene Wort als Liste. Für „Frequency“ von <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>.</string>
+
+    <string name="anki_content_frequency_stylized">Häufigkeitsliste (JPMN-Stil)</string>
+    <string name="anki_content_frequency_stylized_desc">Dieselbe Häufigkeitsliste, ausgegeben im eigenen Stilformat von <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> für dessen Feld „FrequenciesStylized“. Nur auf <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>-Karten verwenden.</string>
+
+    <string name="anki_content_frequency_harmonic">Häufigkeits-Sortierzahl</string>
+    <string name="anki_content_frequency_harmonic_desc">Eine einzelne Zahl, um Karten nach Häufigkeit zu ordnen – das harmonische Mittel der Wörterbuch-Häufigkeiten des Wortes (niedriger = häufiger). Für „FreqSort“ von <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> oder „FrequencySort“ von <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          CARD-TYPE STATE FLAGS
          ═══════════════════════════════════════════════════════════════ -->
@@ -635,6 +647,10 @@
     <string name="llm_backend_api_key_label">API-Schlüssel</string>
 
     <string name="llm_backend_model_label">Modell</string>
+
+    <string name="llm_backend_advanced_header">Erweitert</string>
+    <string name="llm_backend_base_url_label">Benutzerdefinierte URL</string>
+    <string name="llm_backend_base_url_invalid">Verwende https:// – http:// ist nur für eine lokale oder LAN-Adresse zulässig</string>
 
     <string name="llm_backend_get_key_title_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g>-API-Schlüssel erhalten</string>
 
@@ -1185,6 +1201,32 @@
 
     <string name="yomitan_importing_message">Wörterbuchdateien werden überprüft…</string>
 
+    <string name="yomitan_importing_progress"><xliff:g id="current" example="2">%1$d</xliff:g> von <xliff:g id="total" example="5">%2$d</xliff:g> wird importiert…</string>
+
+    <string name="yomitan_import_summary_title">Import abgeschlossen</string>
+
+    <string name="yomitan_import_summary_title_none">Import nicht möglich</string>
+
+    <plurals name="yomitan_import_summary_count">
+        <item quantity="one"><xliff:g id="imported" example="1">%1$d</xliff:g> von <xliff:g id="total" example="1">%2$d</xliff:g> Wörterbuch importiert.</item>
+        <item quantity="other"><xliff:g id="imported" example="4">%1$d</xliff:g> von <xliff:g id="total" example="6">%2$d</xliff:g> Wörterbüchern importiert.</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_duplicates">Bereits importiert: <xliff:g id="names" example="JMdict, KANJIDIC">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_invalid">Konnte nicht gelesen werden: <xliff:g id="names" example="notes.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_no_space">Nicht genügend Speicherplatz: <xliff:g id="names" example="big.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_failed">Fehlgeschlagen: <xliff:g id="names" example="broken.zip">%1$s</xliff:g></string>
+
+    <plurals name="yomitan_import_summary_more">
+        <item quantity="one">+<xliff:g id="count" example="1">%1$d</xliff:g> weiterer</item>
+        <item quantity="other">+<xliff:g id="count" example="3">%1$d</xliff:g> weitere</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_unknown_file">Unbekannte Datei</string>
+
     <string name="yomitan_invalid_title">Ungültige Datei</string>
 
     <string name="yomitan_invalid_message">Diese Datei konnte nicht als Yomitan-Wörterbuch gelesen werden.</string>
@@ -1196,6 +1238,10 @@
     <string name="yomitan_single_dict_title">Definitionen nur aus einem Wörterbuch anzeigen</string>
 
     <string name="yomitan_single_dict_subtitle">Die Definitionen stammen aus dem Wörterbuch mit der höchsten Priorität, das Ergebnisse liefert; das integrierte Wörterbuch ist die letzte Ausweichlösung</string>
+
+    <string name="yomitan_auto_update_label">Automatische Updates</string>
+
+    <string name="yomitan_auto_update_subtitle">Neue Versionen dieses Wörterbuchs automatisch herunterladen und installieren</string>
 
     <string name="yomitan_io_error_title">Import fehlgeschlagen</string>
 
@@ -1429,6 +1475,20 @@
     <string name="toast_no_crash_report">Kein Absturzbericht zum Senden</string>
 
     <string name="share_chooser_share_logs">Protokolle teilen</string>
+
+    <!-- Audio sources (Wikimedia Commons human recordings + TTS). -->
+
+    <string name="audio_source_tts_name">Sprachausgabe</string>
+
+    <string name="audio_source_commons_name">Wikimedia Commons</string>
+
+    <string name="audio_no_results">Keine Ergebnisse</string>
+
+    <string name="audio_source_picker_title">Audio</string>
+
+    <string name="audio_loading">Wird geladen…</string>
+
+    <string name="audio_error_loading">Konnte nicht geladen werden</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">Substantiv</string>

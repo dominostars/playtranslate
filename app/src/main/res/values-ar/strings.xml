@@ -533,6 +533,20 @@
     <string name="anki_content_words_table">قائمة الكلمات (بطاقات الجمل)</string>
     <string name="anki_content_words_table_desc">قائمة منسَّقة بكل الكلمات التي اكتشفها <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> في الجملة، مع القراءات والتعريفات.</string>
 
+    <!-- ═══ YOMITAN PITCH / FREQUENCY CONTENT SOURCES ═══ -->
+
+    <string name="anki_content_pitch_position">موضع النبرة الصوتية</string>
+    <string name="anki_content_pitch_position_desc">مواضع هبوط النبرة الصوتية للكلمة المميَّزة، مفصولة بفواصل. لحقل «PitchPosition» في <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> أو «PAOverride» في <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>. مثال: 0,2</string>
+
+    <string name="anki_content_frequency_values">قائمة التكرار</string>
+    <string name="anki_content_frequency_values_desc">تقييم النجوم ★ إضافةً إلى كل قيمة تكرار من قواميس التكرار للكلمة المميَّزة، على شكل قائمة. لحقل «Frequency» في <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>.</string>
+
+    <string name="anki_content_frequency_stylized">قائمة التكرار (نمط JPMN)</string>
+    <string name="anki_content_frequency_stylized_desc">قائمة التكرار نفسها، مُخرَجة بالتنسيق المُنمَّق الخاص بـ <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> لحقل «FrequenciesStylized». استخدمها فقط في بطاقات <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
+    <string name="anki_content_frequency_harmonic">رقم ترتيب التكرار</string>
+    <string name="anki_content_frequency_harmonic_desc">رقم واحد لترتيب البطاقات حسب التكرار، وهو المتوسط التوافقي لتكرارات الكلمة في القواميس (الأقل = الأكثر تكرارًا). لحقل «FreqSort» في <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> أو «FrequencySort» في <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
     <!-- ═══ CARD-TYPE STATE FLAGS ═══ -->
 
     <string name="anki_content_flag_vocabulary">علامة بطاقة المفردات (x)</string>
@@ -591,6 +605,10 @@
     <string name="llm_backend_api_key_label">مفتاح API</string>
 
     <string name="llm_backend_model_label">النموذج</string>
+
+    <string name="llm_backend_advanced_header">خيارات متقدمة</string>
+    <string name="llm_backend_base_url_label">عنوان URL مخصص</string>
+    <string name="llm_backend_base_url_invalid">استخدم https:// — لا يُسمح بـ http:// إلا لعنوان محلي أو ضمن الشبكة المحلية (LAN)</string>
 
     <string name="llm_backend_get_key_title_fmt">الحصول على مفتاح API لـ <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
 
@@ -1086,6 +1104,40 @@
 
     <string name="yomitan_importing_message">جارٍ التحقق من ملفات القاموس…</string>
 
+    <string name="yomitan_importing_progress">جارٍ استيراد <xliff:g id="current" example="2">%1$d</xliff:g> من <xliff:g id="total" example="5">%2$d</xliff:g>…</string>
+
+    <string name="yomitan_import_summary_title">اكتمل الاستيراد</string>
+
+    <string name="yomitan_import_summary_title_none">تعذّر الاستيراد</string>
+
+    <plurals name="yomitan_import_summary_count">
+        <item quantity="zero">تم استيراد <xliff:g id="imported" example="0">%1$d</xliff:g> من <xliff:g id="total" example="0">%2$d</xliff:g> قاموس.</item>
+        <item quantity="one">تم استيراد <xliff:g id="imported" example="1">%1$d</xliff:g> من <xliff:g id="total" example="1">%2$d</xliff:g> قاموس.</item>
+        <item quantity="two">تم استيراد <xliff:g id="imported" example="1">%1$d</xliff:g> من <xliff:g id="total" example="2">%2$d</xliff:g> قاموسين.</item>
+        <item quantity="few">تم استيراد <xliff:g id="imported" example="4">%1$d</xliff:g> من <xliff:g id="total" example="6">%2$d</xliff:g> قواميس.</item>
+        <item quantity="many">تم استيراد <xliff:g id="imported" example="11">%1$d</xliff:g> من <xliff:g id="total" example="15">%2$d</xliff:g> قاموسًا.</item>
+        <item quantity="other">تم استيراد <xliff:g id="imported" example="100">%1$d</xliff:g> من <xliff:g id="total" example="120">%2$d</xliff:g> قاموس.</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_duplicates">مستورَدة بالفعل: <xliff:g id="names" example="JMdict, KANJIDIC">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_invalid">تعذّرت قراءتها: <xliff:g id="names" example="notes.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_no_space">مساحة غير كافية: <xliff:g id="names" example="big.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_failed">فشلت: <xliff:g id="names" example="broken.zip">%1$s</xliff:g></string>
+
+    <plurals name="yomitan_import_summary_more">
+        <item quantity="zero">+<xliff:g id="count" example="0">%1$d</xliff:g> أخرى</item>
+        <item quantity="one">+<xliff:g id="count" example="1">%1$d</xliff:g> آخر</item>
+        <item quantity="two">+<xliff:g id="count" example="2">%1$d</xliff:g> آخران</item>
+        <item quantity="few">+<xliff:g id="count" example="3">%1$d</xliff:g> أخرى</item>
+        <item quantity="many">+<xliff:g id="count" example="11">%1$d</xliff:g> أخرى</item>
+        <item quantity="other">+<xliff:g id="count" example="100">%1$d</xliff:g> أخرى</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_unknown_file">ملف غير معروف</string>
+
     <string name="yomitan_invalid_title">ملف غير صالح</string>
 
     <string name="yomitan_invalid_message">تعذّرت قراءة هذا الملف كقاموس Yomitan.</string>
@@ -1097,6 +1149,10 @@
     <string name="yomitan_single_dict_title">عرض التعريفات من قاموس واحد فقط</string>
 
     <string name="yomitan_single_dict_subtitle">تأتي التعريفات من القاموس ذي الأولوية الأعلى الذي يحتوي على نتائج؛ والقاموس المدمج هو الحل البديل الأخير</string>
+
+    <string name="yomitan_auto_update_label">تحديث تلقائي</string>
+
+    <string name="yomitan_auto_update_subtitle">تنزيل الإصدارات الجديدة من هذا القاموس وتثبيتها تلقائيًا</string>
 
     <string name="yomitan_io_error_title">فشل الاستيراد</string>
 
@@ -1314,6 +1370,20 @@
     <string name="toast_no_crash_report">لا يوجد تقرير تعطل للإرسال</string>
 
     <string name="share_chooser_share_logs">مشاركة السجلات</string>
+
+    <!-- ═══ AUDIO SOURCES ═══ -->
+
+    <string name="audio_source_tts_name">تحويل النص إلى كلام</string>
+
+    <string name="audio_source_commons_name">Wikimedia Commons</string>
+
+    <string name="audio_no_results">لا توجد نتائج</string>
+
+    <string name="audio_source_picker_title">الصوت</string>
+
+    <string name="audio_loading">جارٍ التحميل…</string>
+
+    <string name="audio_error_loading">تعذّر التحميل</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">اسم</string>

@@ -564,6 +564,18 @@
     <string name="anki_content_words_table">Danh sách từ (thẻ câu)</string>
     <string name="anki_content_words_table_desc">Danh sách được định dạng gồm mọi từ mà <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> phát hiện trong câu, kèm cách đọc và định nghĩa.</string>
 
+    <string name="anki_content_pitch_position">Vị trí trọng âm cao độ</string>
+    <string name="anki_content_pitch_position_desc">Vị trí giáng trọng âm cao độ của từ được làm nổi bật, phân tách bằng dấu phẩy. Dùng cho “PitchPosition” của <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> hoặc “PAOverride” của <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>. Ví dụ: 0,2</string>
+
+    <string name="anki_content_frequency_values">Danh sách tần suất</string>
+    <string name="anki_content_frequency_values_desc">Xếp hạng ★ cùng mọi giá trị từ điển tần suất của từ được làm nổi bật, dưới dạng danh sách. Dùng cho “Frequency” của <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>.</string>
+
+    <string name="anki_content_frequency_stylized">Danh sách tần suất (kiểu JPMN)</string>
+    <string name="anki_content_frequency_stylized_desc">Cùng danh sách tần suất đó, xuất ra theo định dạng tạo kiểu riêng của <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> cho trường “FrequenciesStylized”. Chỉ dùng trên các thẻ <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
+    <string name="anki_content_frequency_harmonic">Số sắp xếp theo tần suất</string>
+    <string name="anki_content_frequency_harmonic_desc">Một con số duy nhất để sắp xếp thẻ theo tần suất, là trung bình điều hòa của các tần suất từ điển của từ (càng thấp = càng thường gặp). Dùng cho “FreqSort” của <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> hoặc “FrequencySort” của <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          CARD-TYPE STATE FLAGS
          ═══════════════════════════════════════════════════════════════ -->
@@ -632,6 +644,10 @@
     <string name="llm_backend_api_key_label">Khóa API</string>
 
     <string name="llm_backend_model_label">Mô hình</string>
+
+    <string name="llm_backend_advanced_header">Nâng cao</string>
+    <string name="llm_backend_base_url_label">URL tùy chỉnh</string>
+    <string name="llm_backend_base_url_invalid">Hãy dùng https:// — http:// chỉ được phép cho địa chỉ cục bộ hoặc trong mạng LAN</string>
 
     <string name="llm_backend_get_key_title_fmt">Lấy khóa API <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
 
@@ -1182,6 +1198,30 @@
 
     <string name="yomitan_importing_message">Đang kiểm tra các tệp từ điển…</string>
 
+    <string name="yomitan_importing_progress">Đang nhập <xliff:g id="current" example="2">%1$d</xliff:g> trên <xliff:g id="total" example="5">%2$d</xliff:g>…</string>
+
+    <string name="yomitan_import_summary_title">Đã nhập xong</string>
+
+    <string name="yomitan_import_summary_title_none">Không thể nhập</string>
+
+    <plurals name="yomitan_import_summary_count">
+        <item quantity="other">Đã nhập <xliff:g id="imported" example="4">%1$d</xliff:g> trên <xliff:g id="total" example="6">%2$d</xliff:g> từ điển.</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_duplicates">Đã nhập rồi: <xliff:g id="names" example="JMdict, KANJIDIC">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_invalid">Không thể đọc: <xliff:g id="names" example="notes.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_no_space">Không đủ dung lượng: <xliff:g id="names" example="big.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_failed">Thất bại: <xliff:g id="names" example="broken.zip">%1$s</xliff:g></string>
+
+    <plurals name="yomitan_import_summary_more">
+        <item quantity="other">+<xliff:g id="count" example="3">%1$d</xliff:g> tệp nữa</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_unknown_file">Tệp không xác định</string>
+
     <string name="yomitan_invalid_title">Tệp không hợp lệ</string>
 
     <string name="yomitan_invalid_message">Không thể đọc tệp này như một từ điển Yomitan.</string>
@@ -1193,6 +1233,9 @@
     <string name="yomitan_single_dict_title">Chỉ hiện định nghĩa từ một từ điển</string>
 
     <string name="yomitan_single_dict_subtitle">Định nghĩa lấy từ từ điển có độ ưu tiên cao nhất mà có kết quả; từ điển tích hợp sẵn là phương án dự phòng cuối cùng</string>
+
+    <string name="yomitan_auto_update_label">Tự động cập nhật</string>
+    <string name="yomitan_auto_update_subtitle">Tự động tải xuống và cài đặt các phiên bản mới của từ điển này</string>
 
     <string name="yomitan_io_error_title">Nhập thất bại</string>
 
@@ -1425,6 +1468,18 @@
     <string name="toast_no_crash_report">Không có báo cáo sự cố để gửi</string>
 
     <string name="share_chooser_share_logs">Chia sẻ nhật ký</string>
+
+    <string name="audio_source_tts_name">Chuyển văn bản thành giọng nói</string>
+
+    <string name="audio_source_commons_name">Wikimedia Commons</string>
+
+    <string name="audio_no_results">Không có kết quả</string>
+
+    <string name="audio_source_picker_title">Âm thanh</string>
+
+    <string name="audio_loading">Đang tải…</string>
+
+    <string name="audio_error_loading">Không thể tải</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">Danh từ</string>

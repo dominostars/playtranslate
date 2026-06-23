@@ -568,6 +568,18 @@
     <string name="anki_content_words_table">Liste de mots (cartes de phrase)</string>
     <string name="anki_content_words_table_desc">Une liste formatée de tous les mots que <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> a détectés dans la phrase, avec lectures et définitions.</string>
 
+    <string name="anki_content_pitch_position">Position de l\'accent tonal</string>
+    <string name="anki_content_pitch_position_desc">Position(s) de la chute de l\'accent tonal pour le mot mis en évidence, séparées par des virgules. Pour le champ « PitchPosition » de <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> ou « PAOverride » de <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>. Exemple : 0,2</string>
+
+    <string name="anki_content_frequency_values">Liste de fréquence</string>
+    <string name="anki_content_frequency_values_desc">L\'évaluation en ★ ainsi que chaque valeur de dictionnaire de fréquence pour le mot mis en évidence, sous forme de liste. Pour le champ « Frequency » de <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>.</string>
+
+    <string name="anki_content_frequency_stylized">Liste de fréquence (style JPMN)</string>
+    <string name="anki_content_frequency_stylized_desc">La même liste de fréquence, générée dans le format stylisé propre à <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> pour son champ « FrequenciesStylized ». À utiliser uniquement sur les cartes <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
+    <string name="anki_content_frequency_harmonic">Numéro de tri par fréquence</string>
+    <string name="anki_content_frequency_harmonic_desc">Un nombre unique pour trier les cartes par fréquence, la moyenne harmonique des fréquences du mot dans les dictionnaires (plus bas = plus fréquent). Pour le champ « FreqSort » de <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> ou « FrequencySort » de <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          CARD-TYPE STATE FLAGS
          ═══════════════════════════════════════════════════════════════ -->
@@ -636,6 +648,10 @@
     <string name="llm_backend_api_key_label">Clé d\'API</string>
 
     <string name="llm_backend_model_label">Modèle</string>
+
+    <string name="llm_backend_advanced_header">Avancé</string>
+    <string name="llm_backend_base_url_label">URL personnalisée</string>
+    <string name="llm_backend_base_url_invalid">Utilisez https:// — http:// n\'est autorisé que pour une adresse locale ou de réseau local</string>
 
     <string name="llm_backend_get_key_title_fmt">Obtenir une clé d\'API <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
 
@@ -1175,12 +1191,30 @@
     <string name="yomitan_category_pronunciation">Prononciation</string>
     <string name="yomitan_importing_title">Importation du dictionnaire</string>
     <string name="yomitan_importing_message">Validation des fichiers du dictionnaire…</string>
+    <string name="yomitan_importing_progress">Importation de <xliff:g id="current" example="2">%1$d</xliff:g> sur <xliff:g id="total" example="5">%2$d</xliff:g>…</string>
+    <string name="yomitan_import_summary_title">Importation terminée</string>
+    <string name="yomitan_import_summary_title_none">Importation impossible</string>
+    <plurals name="yomitan_import_summary_count">
+        <item quantity="one"><xliff:g id="imported" example="1">%1$d</xliff:g> dictionnaire sur <xliff:g id="total" example="1">%2$d</xliff:g> importé.</item>
+        <item quantity="other"><xliff:g id="imported" example="4">%1$d</xliff:g> dictionnaires sur <xliff:g id="total" example="6">%2$d</xliff:g> importés.</item>
+    </plurals>
+    <string name="yomitan_import_summary_duplicates">Déjà importés : <xliff:g id="names" example="JMdict, KANJIDIC">%1$s</xliff:g></string>
+    <string name="yomitan_import_summary_invalid">Lecture impossible : <xliff:g id="names" example="notes.zip">%1$s</xliff:g></string>
+    <string name="yomitan_import_summary_no_space">Espace insuffisant : <xliff:g id="names" example="big.zip">%1$s</xliff:g></string>
+    <string name="yomitan_import_summary_failed">Échec : <xliff:g id="names" example="broken.zip">%1$s</xliff:g></string>
+    <plurals name="yomitan_import_summary_more">
+        <item quantity="one">+<xliff:g id="count" example="1">%1$d</xliff:g> autre</item>
+        <item quantity="other">+<xliff:g id="count" example="3">%1$d</xliff:g> autres</item>
+    </plurals>
+    <string name="yomitan_import_summary_unknown_file">Fichier inconnu</string>
     <string name="yomitan_invalid_title">Fichier non valide</string>
     <string name="yomitan_invalid_message">Ce fichier n\'a pas pu être lu comme un dictionnaire Yomitan.</string>
     <string name="yomitan_no_space_title">Espace insuffisant</string>
     <string name="yomitan_no_space_message">L\'importation de ce dictionnaire nécessite environ <xliff:g id="needed" example="180 MB">%1$s</xliff:g> d\'espace libre, mais seuls <xliff:g id="available" example="42 MB">%2$s</xliff:g> sont disponibles. Libérez de l\'espace et réessayez.</string>
     <string name="yomitan_single_dict_title">N\'afficher les définitions que d\'un seul dictionnaire</string>
     <string name="yomitan_single_dict_subtitle">Les définitions proviennent du dictionnaire prioritaire ayant des résultats ; le dictionnaire intégré est la solution de secours finale</string>
+    <string name="yomitan_auto_update_label">Mise à jour automatique</string>
+    <string name="yomitan_auto_update_subtitle">Télécharger et installer automatiquement les nouvelles versions de ce dictionnaire</string>
     <string name="yomitan_io_error_title">Échec de l\'importation</string>
     <string name="yomitan_io_error_message">Le fichier n\'a pas pu être importé. Vérifiez l\'espace de stockage et réessayez.</string>
     <string name="yomitan_duplicate_title">Déjà importé</string>
@@ -1385,6 +1419,13 @@
     <string name="toast_no_crash_report">Aucun rapport de plantage à envoyer</string>
 
     <string name="share_chooser_share_logs">Partager les journaux</string>
+
+    <string name="audio_source_tts_name">Synthèse vocale</string>
+    <string name="audio_source_commons_name">Wikimedia Commons</string>
+    <string name="audio_no_results">Aucun résultat</string>
+    <string name="audio_source_picker_title">Audio</string>
+    <string name="audio_loading">Chargement…</string>
+    <string name="audio_error_loading">Chargement impossible</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">Nom</string>

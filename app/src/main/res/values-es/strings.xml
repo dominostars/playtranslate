@@ -567,6 +567,18 @@
     <string name="anki_content_words_table">Lista de palabras (tarjetas de frase)</string>
     <string name="anki_content_words_table_desc">Una lista con formato de todas las palabras que <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> detectó en la frase, con lecturas y definiciones.</string>
 
+    <string name="anki_content_pitch_position">Posición del acento tonal</string>
+    <string name="anki_content_pitch_position_desc">Posición o posiciones del descenso tonal de la palabra resaltada, separadas por comas. Para \"PitchPosition\" de <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> o \"PAOverride\" de <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>. Ejemplo: 0,2</string>
+
+    <string name="anki_content_frequency_values">Lista de frecuencia</string>
+    <string name="anki_content_frequency_values_desc">La valoración en ★ más todos los valores de frecuencia de cada diccionario para la palabra resaltada, como lista. Para \"Frequency\" de <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>.</string>
+
+    <string name="anki_content_frequency_stylized">Lista de frecuencia (estilo JPMN)</string>
+    <string name="anki_content_frequency_stylized_desc">La misma lista de frecuencia, generada en el formato con estilo propio de <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> para su campo \"FrequenciesStylized\". Úsalo solo en tarjetas de <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
+    <string name="anki_content_frequency_harmonic">Número de orden por frecuencia</string>
+    <string name="anki_content_frequency_harmonic_desc">Un único número para ordenar las tarjetas por frecuencia, la media armónica de las frecuencias de diccionario de la palabra (menor = más frecuente). Para \"FreqSort\" de <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> o \"FrequencySort\" de <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          CARD-TYPE STATE FLAGS
          ═══════════════════════════════════════════════════════════════ -->
@@ -635,6 +647,10 @@
     <string name="llm_backend_api_key_label">Clave de API</string>
 
     <string name="llm_backend_model_label">Modelo</string>
+
+    <string name="llm_backend_advanced_header">Avanzado</string>
+    <string name="llm_backend_base_url_label">URL personalizada</string>
+    <string name="llm_backend_base_url_invalid">Usa https:// — http:// solo se permite para una dirección local o de red local (LAN)</string>
 
     <string name="llm_backend_get_key_title_fmt">Obtener una clave de API de <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
 
@@ -1185,6 +1201,32 @@
 
     <string name="yomitan_importing_message">Validando los archivos del diccionario…</string>
 
+    <string name="yomitan_importing_progress">Importando <xliff:g id="current" example="2">%1$d</xliff:g> de <xliff:g id="total" example="5">%2$d</xliff:g>…</string>
+
+    <string name="yomitan_import_summary_title">Importación completada</string>
+
+    <string name="yomitan_import_summary_title_none">No se pudo importar</string>
+
+    <plurals name="yomitan_import_summary_count">
+        <item quantity="one">Se importó <xliff:g id="imported" example="1">%1$d</xliff:g> de <xliff:g id="total" example="1">%2$d</xliff:g> diccionario.</item>
+        <item quantity="other">Se importaron <xliff:g id="imported" example="4">%1$d</xliff:g> de <xliff:g id="total" example="6">%2$d</xliff:g> diccionarios.</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_duplicates">Ya importados: <xliff:g id="names" example="JMdict, KANJIDIC">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_invalid">No se pudieron leer: <xliff:g id="names" example="notes.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_no_space">Espacio insuficiente: <xliff:g id="names" example="big.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_failed">Error: <xliff:g id="names" example="broken.zip">%1$s</xliff:g></string>
+
+    <plurals name="yomitan_import_summary_more">
+        <item quantity="one">+<xliff:g id="count" example="1">%1$d</xliff:g> más</item>
+        <item quantity="other">+<xliff:g id="count" example="3">%1$d</xliff:g> más</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_unknown_file">Archivo desconocido</string>
+
     <string name="yomitan_invalid_title">Archivo no válido</string>
 
     <string name="yomitan_invalid_message">No se pudo leer este archivo como un diccionario de Yomitan.</string>
@@ -1196,6 +1238,10 @@
     <string name="yomitan_single_dict_title">Mostrar definiciones de un solo diccionario</string>
 
     <string name="yomitan_single_dict_subtitle">Las definiciones provienen del diccionario de mayor prioridad que tenga resultados; el diccionario integrado es la alternativa final</string>
+
+    <string name="yomitan_auto_update_label">Actualización automática</string>
+
+    <string name="yomitan_auto_update_subtitle">Descargar e instalar automáticamente las nuevas versiones de este diccionario</string>
 
     <string name="yomitan_io_error_title">Error de importación</string>
 
@@ -1429,6 +1475,20 @@
     <string name="toast_no_crash_report">No hay ningún informe de fallos para enviar</string>
 
     <string name="share_chooser_share_logs">Compartir registros</string>
+
+    <!-- Audio sources (Wikimedia Commons human recordings + TTS). -->
+
+    <string name="audio_source_tts_name">Texto a voz</string>
+
+    <string name="audio_source_commons_name">Wikimedia Commons</string>
+
+    <string name="audio_no_results">Sin resultados</string>
+
+    <string name="audio_source_picker_title">Audio</string>
+
+    <string name="audio_loading">Cargando…</string>
+
+    <string name="audio_error_loading">No se pudo cargar</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">Sustantivo</string>

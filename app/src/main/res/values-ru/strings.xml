@@ -573,6 +573,18 @@
     <string name="anki_content_words_table">Список слов (карточки предложений)</string>
     <string name="anki_content_words_table_desc">Отформатированный список всех слов, которые <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> обнаружил в предложении, с чтениями и определениями.</string>
 
+    <string name="anki_content_pitch_position">Позиция тонального ударения</string>
+    <string name="anki_content_pitch_position_desc">Позиции понижения тона для выделенного слова, через запятую. Для поля «PitchPosition» в <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> или «PAOverride» в <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>. Пример: 0,2</string>
+
+    <string name="anki_content_frequency_values">Список частотности</string>
+    <string name="anki_content_frequency_values_desc">Оценка ★ и все значения частотных словарей для выделенного слова в виде списка. Для поля «Frequency» в <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>.</string>
+
+    <string name="anki_content_frequency_stylized">Список частотности (стиль JPMN)</string>
+    <string name="anki_content_frequency_stylized_desc">Тот же список частотности в фирменном оформлении <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> для его поля «FrequenciesStylized». Используйте только на карточках <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
+    <string name="anki_content_frequency_harmonic">Число для сортировки по частотности</string>
+    <string name="anki_content_frequency_harmonic_desc">Одно число для упорядочивания карточек по частотности — среднее гармоническое частотностей слова по словарям (меньше = чаще). Для поля «FreqSort» в <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> или «FrequencySort» в <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          CARD-TYPE STATE FLAGS
          ═══════════════════════════════════════════════════════════════ -->
@@ -641,6 +653,12 @@
     <string name="llm_backend_api_key_label">API-ключ</string>
 
     <string name="llm_backend_model_label">Модель</string>
+
+    <string name="llm_backend_advanced_header">Дополнительно</string>
+
+    <string name="llm_backend_base_url_label">Свой URL</string>
+
+    <string name="llm_backend_base_url_invalid">Используйте https:// — http:// допустим только для локального адреса или адреса в сети LAN</string>
 
     <string name="llm_backend_get_key_title_fmt">Получить API-ключ <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
 
@@ -1191,6 +1209,36 @@
 
     <string name="yomitan_importing_message">Проверка файлов словаря…</string>
 
+    <string name="yomitan_importing_progress">Импорт <xliff:g id="current" example="2">%1$d</xliff:g> из <xliff:g id="total" example="5">%2$d</xliff:g>…</string>
+
+    <string name="yomitan_import_summary_title">Импорт завершён</string>
+
+    <string name="yomitan_import_summary_title_none">Не удалось импортировать</string>
+
+    <plurals name="yomitan_import_summary_count">
+        <item quantity="one">Импортировано <xliff:g id="imported" example="1">%1$d</xliff:g> из <xliff:g id="total" example="1">%2$d</xliff:g> словаря.</item>
+        <item quantity="few">Импортировано <xliff:g id="imported" example="2">%1$d</xliff:g> из <xliff:g id="total" example="3">%2$d</xliff:g> словарей.</item>
+        <item quantity="many">Импортировано <xliff:g id="imported" example="4">%1$d</xliff:g> из <xliff:g id="total" example="6">%2$d</xliff:g> словарей.</item>
+        <item quantity="other">Импортировано <xliff:g id="imported" example="1">%1$d</xliff:g> из <xliff:g id="total" example="1.5">%2$d</xliff:g> словаря.</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_duplicates">Уже импортировано: <xliff:g id="names" example="JMdict, KANJIDIC">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_invalid">Не удалось прочитать: <xliff:g id="names" example="notes.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_no_space">Недостаточно места: <xliff:g id="names" example="big.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_failed">Сбой: <xliff:g id="names" example="broken.zip">%1$s</xliff:g></string>
+
+    <plurals name="yomitan_import_summary_more">
+        <item quantity="one">+ещё <xliff:g id="count" example="1">%1$d</xliff:g></item>
+        <item quantity="few">+ещё <xliff:g id="count" example="2">%1$d</xliff:g></item>
+        <item quantity="many">+ещё <xliff:g id="count" example="5">%1$d</xliff:g></item>
+        <item quantity="other">+ещё <xliff:g id="count" example="1.5">%1$d</xliff:g></item>
+    </plurals>
+
+    <string name="yomitan_import_summary_unknown_file">Неизвестный файл</string>
+
     <string name="yomitan_invalid_title">Недопустимый файл</string>
 
     <string name="yomitan_invalid_message">Не удалось прочитать этот файл как словарь Yomitan.</string>
@@ -1202,6 +1250,10 @@
     <string name="yomitan_single_dict_title">Показывать определения только из одного словаря</string>
 
     <string name="yomitan_single_dict_subtitle">Определения берутся из словаря с наивысшим приоритетом, в котором есть результаты; встроенный словарь — последний запасной вариант</string>
+
+    <string name="yomitan_auto_update_label">Автообновление</string>
+
+    <string name="yomitan_auto_update_subtitle">Автоматически скачивать и устанавливать новые версии этого словаря</string>
 
     <string name="yomitan_io_error_title">Не удалось импортировать</string>
 
@@ -1437,6 +1489,18 @@
     <string name="toast_no_crash_report">Нет отчёта о сбое для отправки</string>
 
     <string name="share_chooser_share_logs">Поделиться журналами</string>
+
+    <string name="audio_source_tts_name">Синтез речи</string>
+
+    <string name="audio_source_commons_name">Wikimedia Commons</string>
+
+    <string name="audio_no_results">Нет результатов</string>
+
+    <string name="audio_source_picker_title">Аудио</string>
+
+    <string name="audio_loading">Загрузка…</string>
+
+    <string name="audio_error_loading">Не удалось загрузить</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">Существительное</string>

@@ -72,3 +72,35 @@ Every site where a runtime placeholder meets Turkish grammar — all use a head 
 - Truncation risk: low; no changes needed.
 - Legal text: structure, §5(b), and country list preserved, but two ❌ fixes required (button-name mismatch, "ya da"→"ve" negation scope) plus the "BK" spelling-out.
 - Overall: **fix-then-ship** — three ❌ items (two in the legal attestation) and the metered/OCR-header terminology before release; the rest are polish.
+
+---
+
+# Delta review — 2026-06-23 sync (+29 keys)
+Scope: Anki pitch/frequency content options, OpenAI custom base URL, Yomitan multi-file import + auto-update, Anki audio picker. Mechanical layer re-verified programmatically (analyzer 0/0; placeholder parity; plural CLDR sets; processDebugResources BUILD SUCCESSFUL) — no 🛑.
+
+## Findings (delta)
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| yomitan_auto_update_subtitle | ⚠️ | "Bu sözlüğün yeni sürümlerini otomatik olarak indir ve yükle" | "Bu sözlüğün yeni sürümlerini otomatik olarak indirir ve yükler" | Bare **sen**-imperative ("indir ve yükle") in a toggle-caption — both a register slip (file uses siz, e.g. `quick_tile_add_row_subtitle` "açıp kapatın", and `settings_anki_get_app_summary` was corrected to "indirin") and a mood mismatch: EN is a *descriptive caption* of what the switch does, not a command. Sibling toggle subtitles describe behavior in 3rd person (`settings_overlay_mode_subtitle` "…gösterileceği", `settings_vertical_grow_subtitle` "…genişletir"); the descriptive "indirir ve yükler" matches that pattern and sidesteps the imperative entirely. |
+
+## Clean areas (delta)
+Suffix-on-placeholder — clean at every contact point; the two highest-risk Turkish sites are correct:
+- `yomitan_importing_progress` — "%2$d dosyadan %1$d. içe aktarılıyor…": the ablative case suffix ("-dan") attaches to the **fixed head noun** "dosya", not to %2$d; the "." after %1$d is an ordinal marker valid for any value. EN deliberately omits the noun; TR adds "dosya" (more natural than a bare ordinal in Turkish) — placeholder reorder is allowed and harmony cannot break. ✓
+- `yomitan_import_summary_count` (one/other) — "%2$d sözlükten %1$d tanesi içe aktarıldı.": ablative "-ten" on fixed "sözlük", partitive "tanesi" on %1$d; no suffix on either placeholder. ✓
+- `yomitan_import_summary_more` (one/other) — "+%1$d tane daha": classifier "tane" follows the count as a separate word; no suffix glued on. ✓
+- Summary list lines (`_duplicates` "Zaten içe aktarılmış:", `_invalid` "Okunamadı:", `_no_space` "Yeterli alan yok:", `_failed` "Başarısız:") all use the **colon construction** before the `%1$s` file-name list — never a possessive/case suffix on the placeholder. ✓
+- `anki_content_*_desc` brand refs use the colon-free **head-noun "alanı için"** after each `<xliff:g>` brand span; the brand suffixes themselves attach to fixed names and are all `\'`-escaped: Lapis\'in ×3, JPMN\'in ×3, Migaku\'nun ×1 (neighbor). ✓
+
+i/İ casing — clean; no dotless-I errors (scan + read). Sentence-initial dotted-İ correct in "İçe aktarma tamamlandı", "İçe aktarılamadı", "Sözlük içe aktarılıyor"; mid-word "içe" stays dotted-lowercase. None pre-uppercased (the app uppercases labels at runtime), so labels like "Gelişmiş", "Özel URL", "Otomatik güncelle", "Metin okuma", "Ses" carry correct lowercase spelling. ✓
+
+Terminology reuse — consistent with the file and the parameters: **sıklık** (frequency, matching `anki_content_frequency` "Sıklık yıldızları"), **perde vurgusu** (pitch accent, matching `yomitan_category_pitch_accent`), **sözlük** (dictionary), **içe aktar** (import, matching the whole Yomitan block), **alan(ı)** (field, matching `anki_content_source_pick_title`/`anki_sort_field_empty`), **metin okuma** (TTS — `audio_source_tts_name` "Metin okuma" matches `settings_header_text_to_speech`/`settings_cell_tts` 3×), **Ses** (`audio_source_picker_title` matches `anki_group_audio`/`tts_voice_picker_title`), **Sonuç yok** (`audio_no_results` matches `lang_search_no_results`/`dictionary_status_no_results`), **Yükleniyor…** (`audio_loading` matches `settings_ocr_installing`), **Gelişmiş** (standard Android "Advanced"). ✓
+
+Register — siz throughout the new prose: `llm_backend_base_url_invalid` "https:// kullanın…" (siz-imperative), `anki_content_frequency_stylized_desc` "…kullanın" (siz). Toggle/label titles use the noun/infinitive form per convention ("Otomatik güncelle", "İçe aktarma tamamlandı"). Sole exception is the `yomitan_auto_update_subtitle` slip above. ✓
+
+Plurals — both `<plurals>` correct: `yomitan_import_summary_count` keeps the singular noun "sözlük" after the numeral in **both** one/other (correct Turkish, not a copied EN split); `yomitan_import_summary_more` keeps singular "tane …daha" in both. ✓
+
+Short-label truncation — low risk: "Ses", "Gelişmiş", "Özel URL", "Metin okuma", "Sonuç yok", "Yükleniyor…", "Yüklenemedi", "Bilinmeyen dosya" are all comparable to or shorter than typical row/label space; the only multi-word title ("İçe aktarma tamamlandı") is an alert title with room. ✓
+
+`Example:` rule — `anki_content_pitch_position_desc` correctly leaves "Örnek: 0,2" as-is (sample not localized); the quoted field names ("PitchPosition", "PAOverride", "Frequency", "FrequenciesStylized", "FreqSort", "FrequencySort") are kept verbatim inside curly typographic quotes. ✓
+
+Delta verdict: **ship after the one ⚠️** — `yomitan_auto_update_subtitle` (sen→descriptive). No ❌, no 🛑. The two Turkish-critical mechanics (no suffix on a bare placeholder; i/İ casing) are clean across all 29 keys.

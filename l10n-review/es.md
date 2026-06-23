@@ -34,3 +34,28 @@ Checked clean: live_mode_auto_with_hint ("Auto Furigana" parallels the "Auto" to
 - **Legal text:** fix required — content and force are correct, but the quoted button name ("Aceptar") doesn't match the actual button ("Acepto: activar Hunyuan").
 - **Truncation:** pass — all 8sp bar labels short; one 💬 on the two-line floating button.
 - **Overall:** **fix-then-ship** — one ❌ (legal button mismatch) and six ⚠️, all one-line string edits; no structural problems. Caveat: this was a targeted hotlist pass, not a full review.
+
+---
+
+# Delta review — 2026-06-23 sync (+29 keys)
+Scope: Anki pitch/frequency content options, OpenAI custom base URL, Yomitan multi-file import + auto-update, Anki audio picker. Mechanical layer re-verified programmatically (analyzer 0/0; placeholder parity; plural CLDR sets; processDebugResources BUILD SUCCESSFUL) — no 🛑.
+
+## Findings (delta)
+
+**Zero findings.** All 29 keys read as native-quality, neutral-international Spanish, with consistent tú-register and terminology. The one structural trap a reviewer would expect to flag here — the curly-quote → escaped-straight-quote conversion on field-name literals — is in fact the **correct** house convention, so it is intentionally *not* flagged (see below). No ❌/⚠️/💬.
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| — | — | — | — | (no findings) |
+
+## Clean areas (delta)
+
+- **¿ / ¡ inverted punctuation:** none of the 29 strings is a question or exclamation (all are labels, descriptions, status lines, or list prefixes), so no opener is required and none is missing. Verified by scanning every in-scope line for `?!¿¡` — zero hits. No risk here this sync.
+- **tú-register + neutral vocab:** every imperative/verb form is tú and matches its siblings — `Usa https://` (`llm_backend_base_url_invalid`), `Úsalo solo en tarjetas de JPMN` (`anki_content_frequency_stylized_desc`, parallels the existing `anki_content_flag_*_desc` "Úsalo…" rows), `Importando … de …` (`yomitan_importing_progress`). No `usted`, no vosotros (`-áis/-éis`), no regionalisms. `yomitan_auto_update_subtitle` uses the descriptive **infinitive** ("Descargar e instalar automáticamente…"), which is the file's convention for toggle subtitles that describe an automatic behavior rather than command the user (cf. `yomitan_single_dict_subtitle`, `tts_voice_default_subtitle`) — correct, not a register slip.
+- **Agreement around placeholders (the `summary_count` plural):** both forms agree — `one` = "Se importó %1$d de %2$d **diccionario**." / `other` = "Se importaron %1$d de %2$d **diccionarios**." Verb (importó/importaron) and noun (diccionario/diccionarios) both track quantity; the one-form even reads correctly at the literal "1 de 1 diccionario." The list-prefix lines use number-agnostic phrasing that works for a 1-or-many comma list: `No se pudieron leer:` / `Espacio insuficiente:` / `Ya importados:` / `Error:`. `yomitan_import_summary_more` plural ("+%1$d más") is invariant in Spanish and correct for both forms.
+- **Terminology reuse (all match the rest of the file):** *acento tonal* / *descenso tonal* (`anki_content_pitch_position*`) align with `yomitan_category_pitch_accent` = "Acento tonal" and `yomitan_page_description`; *frecuencia* aligns with `yomitan_category_frequency`; *diccionario* (25×) and *tarjeta* (38×, zero "carta") are uniform; *Texto a voz* (`audio_source_tts_name`) matches `settings_header_text_to_speech` / `settings_cell_tts` (no "síntesis de voz"); *palabra resaltada* (9×) is the consistent rendering of "highlighted word"; *URL personalizada* parallels the existing `…_custom_entry` "Personalizado…"; *Avanzado* is the standard Android section header. Failure strings reuse the dominant "No se pudo…" pattern (`audio_error_loading` = "No se pudo cargar", `yomitan_import_summary_title_none` = "No se pudo importar"). Brand names (Lapis, JPMN, Wikimedia Commons, Yomitan) left untranslated.
+- **The `\"FieldName\"` / `Ejemplo:` rule (deliberately not flagged):** the four `anki_content_*_desc` strings localize the explanatory prose, keep the literal field names verbatim (`\"PitchPosition\"`, `\"PAOverride\"`, `\"Frequency\"`, `\"FrequenciesStylized\"`, `\"FreqSort\"`, `\"FrequencySort\"`), and translate "Example:" → "Ejemplo:" while leaving the sample `0,2` as-is — all per spec. The EN curly quotes around those literals are rendered as **escaped straight quotes** `\"…\"`, which is the established Spanish-file convention (39 `\"` occurrences across the Anki `_desc` block and elsewhere; the lone curly-quote string, `onboarding_a11y_enable_title`, quotes an Android setting name, a different case). Converting to straight quotes here is therefore correct and consistent, not a deviation.
+- **Short-label truncation:** the new short labels are all comfortably sized for their surfaces — `audio_source_picker_title` "Audio" (toolbar title), `audio_no_results` "Sin resultados", `audio_loading` "Cargando…", `llm_backend_advanced_header` "Avanzado", `yomitan_auto_update_label` "Actualización automática" (toggle row title; full-width, fine). None sits in a tiny bottom-bar slot, so no shortening needed.
+- **Placeholder/markup integrity (spot-confirmed alongside the quality pass):** `yomitan_importing_progress` keeps both `%1$d`/`%2$d` spans; `summary_duplicates/invalid/no_space/failed` keep the single `%1$s` names span; both plurals keep their count spans; em-dash in `llm_backend_base_url_invalid` preserved, with "LAN" sensibly expanded to "red local (LAN)". No unescaped apostrophes in any of the 29 lines.
+
+**Verdict:** ship as-is — no edits needed for this delta. (Scoped to the 29 synced keys; pre-existing findings above are unchanged.)

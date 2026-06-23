@@ -565,6 +565,18 @@
     <string name="anki_content_words_table">단어 목록(문장 카드)</string>
     <string name="anki_content_words_table_desc"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>가 문장에서 감지한 모든 단어를 읽기 및 정의와 함께 정리한 목록.</string>
 
+    <string name="anki_content_pitch_position">고저 악센트 위치</string>
+    <string name="anki_content_pitch_position_desc">강조 표시된 단어의 고저 악센트 하강 위치(들)로, 쉼표로 구분됩니다. <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>의 “PitchPosition” 또는 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>의 “PAOverride”에 사용합니다. 예: 0,2</string>
+
+    <string name="anki_content_frequency_values">빈도 목록</string>
+    <string name="anki_content_frequency_values_desc">강조 표시된 단어의 ★ 등급과 모든 빈도 사전 값을 목록으로 표시합니다. <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>의 “Frequency”에 사용합니다.</string>
+
+    <string name="anki_content_frequency_stylized">빈도 목록(JPMN 스타일)</string>
+    <string name="anki_content_frequency_stylized_desc">동일한 빈도 목록을 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> 고유의 스타일 형식으로 출력하여 “FrequenciesStylized” 필드에 사용합니다. <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> 카드에만 사용하세요.</string>
+
+    <string name="anki_content_frequency_harmonic">빈도 정렬 번호</string>
+    <string name="anki_content_frequency_harmonic_desc">카드를 빈도순으로 정렬하기 위한 단일 숫자로, 단어의 사전 빈도들의 조화 평균입니다(낮을수록 더 자주 쓰임). <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>의 “FreqSort” 또는 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>의 “FrequencySort”에 사용합니다.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          CARD-TYPE STATE FLAGS
          ═══════════════════════════════════════════════════════════════ -->
@@ -633,6 +645,10 @@
     <string name="llm_backend_api_key_label">API 키</string>
 
     <string name="llm_backend_model_label">모델</string>
+
+    <string name="llm_backend_advanced_header">고급</string>
+    <string name="llm_backend_base_url_label">사용자 지정 URL</string>
+    <string name="llm_backend_base_url_invalid">https://를 사용하세요. http://는 로컬 또는 LAN 주소에만 허용됩니다</string>
 
     <string name="llm_backend_get_key_title_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> API 키 받기</string>
 
@@ -1183,6 +1199,30 @@
 
     <string name="yomitan_importing_message">사전 파일 확인 중…</string>
 
+    <string name="yomitan_importing_progress"><xliff:g id="total" example="5">%2$d</xliff:g>개 중 <xliff:g id="current" example="2">%1$d</xliff:g>개 가져오는 중…</string>
+
+    <string name="yomitan_import_summary_title">가져오기 완료</string>
+
+    <string name="yomitan_import_summary_title_none">가져오지 못함</string>
+
+    <plurals name="yomitan_import_summary_count">
+        <item quantity="other">사전 <xliff:g id="total" example="6">%2$d</xliff:g>개 중 <xliff:g id="imported" example="4">%1$d</xliff:g>개를 가져왔습니다.</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_duplicates">이미 가져옴: <xliff:g id="names" example="JMdict, KANJIDIC">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_invalid">읽을 수 없음: <xliff:g id="names" example="notes.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_no_space">저장공간 부족: <xliff:g id="names" example="big.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_failed">실패: <xliff:g id="names" example="broken.zip">%1$s</xliff:g></string>
+
+    <plurals name="yomitan_import_summary_more">
+        <item quantity="other">+<xliff:g id="count" example="3">%1$d</xliff:g>개 더</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_unknown_file">알 수 없는 파일</string>
+
     <string name="yomitan_invalid_title">잘못된 파일</string>
 
     <string name="yomitan_invalid_message">이 파일을 Yomitan 사전으로 읽을 수 없습니다.</string>
@@ -1194,6 +1234,10 @@
     <string name="yomitan_single_dict_title">한 사전의 정의만 표시</string>
 
     <string name="yomitan_single_dict_subtitle">결과가 있는 가장 높은 우선순위의 사전에서 정의를 가져오며, 내장 사전이 최종 대체입니다</string>
+
+    <string name="yomitan_auto_update_label">자동 업데이트</string>
+
+    <string name="yomitan_auto_update_subtitle">이 사전의 새 버전을 자동으로 다운로드하고 설치합니다</string>
 
     <string name="yomitan_io_error_title">가져오기 실패</string>
 
@@ -1426,6 +1470,20 @@
     <string name="toast_no_crash_report">보낼 충돌 보고서 없음</string>
 
     <string name="share_chooser_share_logs">로그 공유</string>
+
+    <!-- Audio sources (Wikimedia Commons human recordings + TTS). -->
+
+    <string name="audio_source_tts_name">텍스트 음성 변환</string>
+
+    <string name="audio_source_commons_name">Wikimedia Commons</string>
+
+    <string name="audio_no_results">결과 없음</string>
+
+    <string name="audio_source_picker_title">오디오</string>
+
+    <string name="audio_loading">불러오는 중…</string>
+
+    <string name="audio_error_loading">불러올 수 없음</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">명사</string>
