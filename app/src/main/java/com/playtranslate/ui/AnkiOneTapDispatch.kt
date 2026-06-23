@@ -188,3 +188,50 @@ suspend fun Context.oneTapSendWord(
     )
     return ctx.sendWordCard(input, deckId = prefs.ankiDeckId)
 }
+
+/**
+ * One-tap funnel: routes to a word or sentence card by the shared single-word
+ * rule ([sentenceIsJustTheWord]) so the long-press call sites don't each
+ * re-decide. Absent / just-the-word sentence → word card; a real surrounding
+ * sentence → sentence card with [word] as the highlighted target.
+ *
+ * Returns the send result plus the [CardMode] actually used — callers that
+ * surface mode-specific recovery (e.g. the review-sheet NeedsMapping dialog)
+ * read it; the rest ignore it.
+ */
+suspend fun Context.oneTapSend(
+    word: String,
+    reading: String,
+    pos: String,
+    fallbackDefinition: String,
+    freqScore: Int,
+    pitch: List<Int>,
+    frequencies: List<FrequencyTag>,
+    sentenceOriginal: String?,
+    sentenceTranslation: String?,
+    wordsPayload: LastSentenceCache.WordsPayload?,
+    screenshotPath: String?,
+    sourceLangId: SourceLangId,
+): Pair<AnkiSendResult, CardMode> =
+    if (sentenceIsJustTheWord(sentenceOriginal, word)) {
+        oneTapSendWord(
+            word = word,
+            reading = reading,
+            pos = pos,
+            fallbackDefinition = fallbackDefinition,
+            freqScore = freqScore,
+            pitch = pitch,
+            frequencies = frequencies,
+            screenshotPath = screenshotPath,
+            sourceLangId = sourceLangId,
+        ) to CardMode.WORD
+    } else {
+        oneTapSendSentence(
+            original = sentenceOriginal!!,
+            translation = sentenceTranslation,
+            wordsPayload = wordsPayload,
+            screenshotPath = screenshotPath,
+            sourceLangId = sourceLangId,
+            targetWord = word,
+        ) to CardMode.SENTENCE
+    }

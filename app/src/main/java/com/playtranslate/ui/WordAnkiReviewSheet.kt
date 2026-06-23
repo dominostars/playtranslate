@@ -271,7 +271,15 @@ class WordAnkiReviewSheet : DialogFragment() {
 
         val sentenceOriginal    = args.getString(ARG_SENTENCE_ORIGINAL)
         val sentenceTranslation = args.getString(ARG_SENTENCE_TRANSLATION) ?: ""
-        val hasSentenceData     = sentenceOriginal != null
+        // The single shared gate every review-sheet entry point funnels through
+        // (the per-cell Anki button, word-detail, the lens, the overlay, …). A
+        // "sentence" that is just the headword — single-word lookups whose source
+        // text equals the word — adds nothing over the word card, so treat it as
+        // no-sentence: word-only, no toggle. Callers no longer each decide this.
+        // meaningfulSentence is non-null exactly when a real sentence remains, so
+        // it smart-casts to non-null at the use sites under `if (hasSentenceData)`.
+        val meaningfulSentence  = sentenceOriginal?.takeUnless { sentenceIsJustTheWord(it, word) }
+        val hasSentenceData     = meaningfulSentence != null
 
         val sourceLangId = SourceLangId.fromCode(args.getString(ARG_SOURCE_LANG)) ?: SourceLangId.JA
 
@@ -328,7 +336,7 @@ class WordAnkiReviewSheet : DialogFragment() {
             // "Looking up words…" instead of zero rows. Stays false
             // when the host already has words in hand.
             val contentFragment = SentenceAnkiContentFragment.newInstance(
-                sentenceOriginal, sentenceTranslation, sentenceWords,
+                meaningfulSentence, sentenceTranslation, sentenceWords,
                 currentScreenshotPath, targetWord = word, sourceLangId = sourceLangId,
                 wordsLoading = sentenceWords.isEmpty(),
             )
@@ -341,13 +349,13 @@ class WordAnkiReviewSheet : DialogFragment() {
             // word lookups finish, and the drag flow never runs a
             // sentence translation. The fragment renders muted
             // placeholders until these calls land.
-            // (hasSentenceData == (sentenceOriginal != null), so the
-            // outer guard already ensures sentenceOriginal is non-null.)
+            // (hasSentenceData == (meaningfulSentence != null), so it
+            // smart-casts to non-null here.)
             if (sentenceTranslation.isBlank()) {
-                launchTranslationFill(sentenceOriginal)
+                launchTranslationFill(meaningfulSentence)
             }
             if (sentenceWords.isEmpty()) {
-                launchWordsFill(sentenceOriginal, word)
+                launchWordsFill(meaningfulSentence, word)
             }
         }
 

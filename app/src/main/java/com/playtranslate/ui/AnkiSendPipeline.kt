@@ -27,6 +27,24 @@ import java.io.File
  *    restore). Each caller maps [AnkiSendResult] onto its own surface.
  */
 
+/**
+ * True when [sentenceOriginal] adds nothing over the headword [word] — it's
+ * absent, or equals the word once whitespace is stripped (a single-word lookup
+ * whose "sentence" is just the word). The Anki flow uses this as the **one**
+ * shared rule for "is there a real sentence here?", so every entry point treats
+ * such a case as a plain word card instead of a degenerate Sentence card that
+ * merely repeats the headword.
+ *
+ * Whitespace-stripped comparison mirrors
+ * [TranslationResultViewModel.WordLookupsState.Settled.singleWordRow]; punctuation
+ * stays significant (a trailing 。 means there is genuinely more than the bare word).
+ */
+fun sentenceIsJustTheWord(sentenceOriginal: String?, word: String): Boolean {
+    if (sentenceOriginal == null) return true
+    fun bare(s: String) = s.filterNot(Char::isWhitespace)
+    return bare(sentenceOriginal) == bare(word)
+}
+
 /** Inputs needed to send a sentence card. Mirrors the fields of
  *  [SentenceAnkiContentFragment.CardData] plus the audio-toggle state
  *  the sheet keeps separately. One-tap callers build this directly

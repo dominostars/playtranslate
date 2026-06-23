@@ -1533,35 +1533,25 @@ class DragLookupController(
             context, R.string.anki_adding_in_progress, Toast.LENGTH_SHORT,
         ).show()
         scope.launch {
-            // When the lens was dragged out of a sentence, the existing
-            // sheet defaults to sentence mode with the dragged word
-            // bolded (SentenceAnkiContentFragment.kt:227-231). Match
-            // that default in one-tap: send a sentence card with the
-            // target word selected. Without sentence context, fall
-            // back to a word card.
-            val sentence = snap.sentence
-            val result = if (sentence != null) {
-                context.oneTapSendSentence(
-                    original = sentence,
-                    translation = snap.sentenceTranslation,
-                    wordsPayload = null,        // await the cache (atomic)
-                    screenshotPath = snap.screenshotPath,
-                    sourceLangId = sourceLangId,
-                    targetWord = snap.word,
-                )
-            } else {
-                context.oneTapSendWord(
-                    word = snap.word,
-                    reading = snap.reading,
-                    pos = snap.pos,
-                    fallbackDefinition = snap.definition,
-                    freqScore = snap.freqScore,
-                    pitch = snap.pitch,
-                    frequencies = snap.frequencies,
-                    screenshotPath = snap.screenshotPath,
-                    sourceLangId = sourceLangId,
-                )
-            }
+            // When the lens was dragged out of a sentence, the card goes out
+            // as a sentence with the dragged word bolded; a single-word source
+            // (or none) sends a word card. That routing — incl. the
+            // single-word-sentence rule — is shared via oneTapSend; the lens
+            // ignores the returned mode.
+            val (result, _) = context.oneTapSend(
+                word = snap.word,
+                reading = snap.reading,
+                pos = snap.pos,
+                fallbackDefinition = snap.definition,
+                freqScore = snap.freqScore,
+                pitch = snap.pitch,
+                frequencies = snap.frequencies,
+                sentenceOriginal = snap.sentence,
+                sentenceTranslation = snap.sentenceTranslation,
+                wordsPayload = null,        // await the cache (atomic)
+                screenshotPath = snap.screenshotPath,
+                sourceLangId = sourceLangId,
+            )
             when (result) {
                 is AnkiSendResult.Success -> {
                     val msgRes = if (result.audioDropped || result.wordAudioDropped)

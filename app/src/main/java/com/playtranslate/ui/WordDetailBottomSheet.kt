@@ -522,33 +522,25 @@ class WordDetailBottomSheet : DialogFragment() {
 
         pill.setLoading(true)
         viewLifecycleOwner.lifecycleScope.launch {
-            val result = if (sentenceOriginal != null) {
-                requireContext().oneTapSendSentence(
-                    original = sentenceOriginal,
-                    translation = sentenceTranslation,
-                    wordsPayload = sentenceWordsPayload,
-                    screenshotPath = screenshotPath,
-                    sourceLangId = sourceLangId,
-                    targetWord = word,
-                )
-            } else {
-                val (reading, pos, definition) = buildAnkiWordFields(entry, defResult)
-                val hw = entry.headwordDisplay(word)
-                requireContext().oneTapSendWord(
-                    word = word,
-                    reading = reading,
-                    pos = pos,
-                    fallbackDefinition = definition,
-                    freqScore = entry.freqScore,
-                    pitch = hw.pitch,
-                    frequencies = hw.frequencies,
-                    screenshotPath = screenshotPath,
-                    sourceLangId = sourceLangId,
-                )
-            }
-            // CardMode informs the NeedsMapping dialog's defaults; pick
-            // the same mode the user just saw the card go out as.
-            val mode = if (sentenceOriginal != null) CardMode.SENTENCE else CardMode.WORD
+            val (reading, pos, definition) = buildAnkiWordFields(entry, defResult)
+            val hw = entry.headwordDisplay(word)
+            // The word-vs-sentence decision (incl. the single-word-sentence
+            // rule) lives in oneTapSend, shared by every long-press path.
+            // mode informs the NeedsMapping dialog's defaults.
+            val (result, mode) = requireContext().oneTapSend(
+                word = word,
+                reading = reading,
+                pos = pos,
+                fallbackDefinition = definition,
+                freqScore = entry.freqScore,
+                pitch = hw.pitch,
+                frequencies = hw.frequencies,
+                sentenceOriginal = sentenceOriginal,
+                sentenceTranslation = sentenceTranslation,
+                wordsPayload = sentenceWordsPayload,
+                screenshotPath = screenshotPath,
+                sourceLangId = sourceLangId,
+            )
             handleOneTapWordResult(result, pill, mode)
         }
     }

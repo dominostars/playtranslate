@@ -739,29 +739,23 @@ class TranslationResultFragment : Fragment() {
             activity, R.string.anki_adding_in_progress, Toast.LENGTH_SHORT,
         ).show()
         viewLifecycleOwner.lifecycleScope.launch {
-            val result = if (ready_sentence != null) {
-                requireContext().oneTapSendSentence(
-                    original = ready_sentence,
-                    translation = ready_translation,
-                    wordsPayload = wordsPayload,
-                    screenshotPath = screenshotPath,
-                    sourceLangId = prefs.sourceLangId,
-                    targetWord = word,
-                )
-            } else {
-                val hw = entry.headwordDisplay(word)
-                requireContext().oneTapSendWord(
-                    word = word,
-                    reading = readingClean,
-                    pos = pos,
-                    fallbackDefinition = definition,
-                    freqScore = entry.freqScore,
-                    pitch = hw.pitch,
-                    frequencies = hw.frequencies,
-                    screenshotPath = screenshotPath,
-                    sourceLangId = prefs.sourceLangId,
-                )
-            }
+            val hw = entry.headwordDisplay(word)
+            // Shared word-vs-sentence routing (single-word-sentence rule
+            // included) lives in oneTapSend; the popup ignores the returned mode.
+            val (result, _) = requireContext().oneTapSend(
+                word = word,
+                reading = readingClean,
+                pos = pos,
+                fallbackDefinition = definition,
+                freqScore = entry.freqScore,
+                pitch = hw.pitch,
+                frequencies = hw.frequencies,
+                sentenceOriginal = ready_sentence,
+                sentenceTranslation = ready_translation,
+                wordsPayload = wordsPayload,
+                screenshotPath = screenshotPath,
+                sourceLangId = prefs.sourceLangId,
+            )
             when (result) {
                 is AnkiSendResult.Success -> {
                     // Sentence-mode one-tap can drop per-target-word
