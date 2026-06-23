@@ -485,8 +485,9 @@ object SentenceAnkiHtmlBuilder {
     /**
      * Emits one `<wbr>kanji[reading]<wbr>` bracket per per-kanji
      * splitFurigana part, with okurigana / internal kana written
-     * through as plain text. Shared by the sentence and expression
-     * builders.
+     * through as plain text. Used by the sentence builder; the expression
+     * builder forks [buildJaExpressionFurigana] (native leading-space
+     * separator) so `{{kana:…}}` stays `<wbr>`-free for Lapis's pitch.
      */
     private fun emitFuriganaParts(sb: StringBuilder, surface: String, reading: String) {
         for (part in Deinflector.splitFurigana(surface, reading)) {
@@ -594,12 +595,63 @@ object SentenceAnkiHtmlBuilder {
         val isZh = sourceLangId == SourceLangId.ZH || sourceLangId == SourceLangId.ZH_HANT
         if (!isJa && !isZh) return htmlEscape(word)
         if (!word.any(::isKanjiChar)) return htmlEscape(word)
-        val sb = StringBuilder()
-        if (isJa) emitFuriganaParts(sb, word, reading)
-        else emitPinyinParts(sb, word, reading)
-        val out = stripBoundarySeparators(sb.toString())
+        val out = if (isJa) {
+            buildJaExpressionFurigana(word, reading)
+        } else {
+            stripBoundarySeparators(buildString { emitPinyinParts(this, word, reading) })
+        }
         Log.d(TAG, "buildExpressionFurigana: word='$word' reading='$reading' out='$out'")
         return out
+    }
+
+    /**
+     * JA expression-furigana for the word / target-word fields. Diverges from
+     * [buildSentenceFurigana] on purpose: the sentence builder separates kana
+     * *words* with `<wbr>` (a trailing space there would render as a visible
+     * gap), but an expression's only boundary is kana→kanji, so it uses the
+     * native Anki **leading space** before a kanji bracket that follows kana.
+     * Anki's furigana/kana filters consume that single leading space, so the
+     * ruby shows no gap AND `{{kana:ExpressionFurigana}}` reconstructs the
+     * reading cleanly — which is what Lapis draws its pitch contour over.
+     * `<wbr>` cannot be used here: `{{kana:…}}` strips `[…]` but not `<wbr>`, so
+     * it would leak into the kana and garble Lapis's pitch.
+     *
+     * The leading space is load-bearing, NOT cosmetic: without it
+     * `取[と]り出[だ]す` lets Anki's `[^ >]+?` swallow the okurigana —
+     * `{{kana:}}` = `とだす` (り eaten) — whereas `取[と]り 出[だ]す` gives `とりだす`.
+     *
+     * Completeness guard: [Deinflector.splitFurigana] can drop a reading mora
+     * when a kanji block's reading ends in the same kana as the following
+     * okurigana (可愛い/かわいい → 可愛=かわ, the trailing い is lost). That would put
+     * the wrong kana under the contour, so when the split doesn't reconstruct
+     * [reading] we emit a single whole-word bracket instead — coarser ruby, but
+     * `{{kana:…}}` == reading.
+     */
+    private fun buildJaExpressionFurigana(word: String, reading: String): String {
+        val parts = Deinflector.splitFurigana(word, reading)
+        val recombined = parts.joinToString("") { it.reading ?: it.text }
+        if (Deinflector.katakanaToHiragana(recombined) !=
+            Deinflector.katakanaToHiragana(reading)
+        ) {
+            return "${htmlEscape(word)}[${htmlEscape(reading)}]"
+        }
+        val sb = StringBuilder()
+        var prevWasKana = false
+        for (part in parts) {
+            val r = part.reading
+            if (r != null) {
+                // Leading space before a kanji bracket that follows kana —
+                // bounds Anki's furigana regex (so okurigana isn't absorbed)
+                // and is consumed by the filter (no visible gap, clean kana).
+                if (prevWasKana) sb.append(' ')
+                sb.append(htmlEscape(part.text)).append('[').append(htmlEscape(r)).append(']')
+                prevWasKana = false
+            } else {
+                appendPlain(sb, part.text)
+                prevWasKana = true
+            }
+        }
+        return sb.toString()
     }
 
     /**

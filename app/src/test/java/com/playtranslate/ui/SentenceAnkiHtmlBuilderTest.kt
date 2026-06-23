@@ -303,15 +303,15 @@ class SentenceAnkiHtmlBuilderTest {
         assertEquals("友達[ともだち]<wbr>に<b><wbr>聞[き]<wbr>いた</b>", result)
     }
 
-    @Test fun `Expression furigana isolates each kanji in compound headword`() {
-        // Both kanji blocks in 取り出す render as their own bracket-
-        // words separated by `<wbr>` so tapping 取 → と, tapping 出 →
-        // だ. The internal kana (り, す) sits as plain text outside
-        // any word.
+    @Test fun `Expression furigana separates each kanji block with a leading space`() {
+        // Expression furigana uses the native leading-space separator (not
+        // <wbr>) so {{kana:}} reconstructs the reading for Lapis's pitch. The
+        // space before 出 bounds Anki's regex (so り isn't absorbed) and is
+        // consumed by the filter. Internal kana (り, す) stay plain.
         val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
             word = "取り出す", reading = "とりだす", sourceLangId = SourceLangId.JA,
         )
-        assertEquals("取[と]<wbr>り<wbr>出[だ]<wbr>す", result)
+        assertEquals("取[と]り 出[だ]す", result)
     }
 
     @Test fun `Sentence furigana ZH with empty words list passes hanzi through plain`() {
@@ -337,9 +337,8 @@ class SentenceAnkiHtmlBuilderTest {
         val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
             word = "聞く", reading = "きく", sourceLangId = SourceLangId.JA,
         )
-        // Tap on 聞 shows just き — the okurigana く sits outside the
-        // bracket-word, separated by `<wbr>`.
-        assertEquals("聞[き]<wbr>く", result)
+        // Leading kanji needs no separator; the okurigana く stays plain.
+        assertEquals("聞[き]く", result)
     }
 
     @Test fun `Expression furigana passes pure-kana headwords through unchanged`() {
@@ -355,6 +354,55 @@ class SentenceAnkiHtmlBuilderTest {
         )
         assertEquals("聞く", result)
     }
+
+    @Test fun `Expression furigana spaces a kanji block that follows okurigana`() {
+        // Leading okurigana (お) then 父: the space before 父 bounds the regex
+        // and is consumed; {{kana:}} reconstructs おとうさん.
+        val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+            word = "お父さん", reading = "おとうさん", sourceLangId = SourceLangId.JA,
+        )
+        assertEquals("お 父[とう]さん", result)
+    }
+
+    @Test fun `Expression furigana keeps an all-kanji compound as one block`() {
+        // splitFurigana merges adjacent kanji into one block, so no separator
+        // is emitted (and none is needed — the bracket itself bounds it).
+        val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+            word = "日本", reading = "にほん", sourceLangId = SourceLangId.JA,
+        )
+        assertEquals("日本[にほん]", result)
+    }
+
+    @Test fun `Expression furigana falls back to a whole-word bracket when the split drops a mora`() {
+        // splitFurigana("可愛い","かわいい") assigns 可愛=かわ and loses the trailing
+        // い (it matches the い inside かわい). The completeness guard detects the
+        // lossy split and emits one bracket so {{kana:}} still == reading.
+        val result = SentenceAnkiHtmlBuilder.buildExpressionFurigana(
+            word = "可愛い", reading = "かわいい", sourceLangId = SourceLangId.JA,
+        )
+        assertEquals("可愛い[かわいい]", result)
+    }
+
+    @Test fun `Expression furigana is wbr-free and its kana reconstructs the reading`() {
+        // The invariant Lapis's pitch relies on: no <wbr> leaks into the field,
+        // and Anki's {{kana:}} over it equals the reading — covering both the
+        // <wbr>-leak and the dropped-mora bugs.
+        for ((word, reading) in listOf(
+            "聞く" to "きく",
+            "取り出す" to "とりだす",
+            "お父さん" to "おとうさん",
+            "日本" to "にほん",
+            "可愛い" to "かわいい",
+        )) {
+            val f = SentenceAnkiHtmlBuilder.buildExpressionFurigana(word, reading, SourceLangId.JA)
+            assertFalse("no <wbr> in expression furigana for $word: $f", f.contains("<wbr>"))
+            assertEquals("kana of $f must reconstruct $reading", reading, ankiKana(f))
+        }
+    }
+
+    /** Mirrors Anki's `{{kana:…}}` filter: ` ?([^ >]+?)\[(.+?)\]` → reading. */
+    private fun ankiKana(furigana: String): String =
+        Regex(" ?([^ >]+?)\\[(.+?)\\]").replace(furigana) { it.groupValues[2] }
 
     // ── ZH EXPRESSION furigana brackets (per-hanzi pinyin) ───────────────
     // Mirror of the JA tests above for the Chinese path. CC-CEDICT
