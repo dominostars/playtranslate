@@ -323,7 +323,17 @@ object AnkiCardTypeMapper {
         mapping: Map<String, ContentSource>,
         outputs: CardOutputs,
     ): List<String> = modelFieldNames.map { fieldName ->
-        outputs.valueFor(mapping[fieldName] ?: ContentSource.NONE)
+        val source = mapping[fieldName] ?: ContentSource.NONE
+        outputs.valueFor(source).also { value ->
+            // Ground truth of every field handed to AnkiDroid: the field name,
+            // the resolved ContentSource, and the value LENGTH only. Enough to
+            // bisect a card-render bug into "what PT sent" vs "what the note
+            // type's template did with it" — a wrong source mapped, or an empty
+            // field — without writing user mining/study content (expressions,
+            // sentences, definitions) to logcat. Log.d is NOT stripped from
+            // release builds, so the literal value must never be logged here.
+            Log.d(TAG, "assembleNote: '$fieldName' <- $source (${value.length} chars)")
+        }
     }
 
     /**
