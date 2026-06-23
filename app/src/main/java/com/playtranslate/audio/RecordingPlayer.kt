@@ -162,6 +162,14 @@ object RecordingPlayer {
             if (trackIndex < 0 || inputFormat == null) return null
             extractor.selectTrack(trackIndex)
             val mime = inputFormat.getString(MediaFormat.KEY_MIME) ?: return null
+            // A small compressed clip can decode into a huge PCM buffer; reject
+            // an over-long clip up front (the download cap bounds compressed bytes,
+            // not decoded ones). Unknown duration falls through to the byte cap below.
+            val durationUs = if (inputFormat.containsKey(MediaFormat.KEY_DURATION)) inputFormat.getLong(MediaFormat.KEY_DURATION) else 0L
+            if (AudioDecodeLimits.durationExceedsLimit(durationUs)) {
+                android.util.Log.w(TAG, "rejecting over-long clip ${file.name} duration=${durationUs}us")
+                return null
+            }
             var sampleRate = inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
             var channelCount = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
 
@@ -193,6 +201,11 @@ object RecordingPlayer {
                     outIdx >= 0 -> {
                         val outBuf = codec.getOutputBuffer(outIdx)
                         if (outBuf != null && info.size > 0) {
+                            if (AudioDecodeLimits.pcmExceedsLimit(out.size().toLong() + info.size)) {
+                                android.util.Log.w(TAG, "decoded PCM exceeds cap; aborting ${file.name}")
+                                codec.releaseOutputBuffer(outIdx, false)
+                                return null
+                            }
                             val chunk = ByteArray(info.size)
                             outBuf.position(info.offset)
                             outBuf.get(chunk, 0, info.size)

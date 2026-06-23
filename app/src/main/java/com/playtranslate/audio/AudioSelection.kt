@@ -55,15 +55,29 @@ object AudioSelections {
             locator = sel.locator,
         )
 
-    /** Render a selection to an attachable file (+ attribution). Auto walks
-     *  enabled sources Commons-first; Explicit uses the chosen source and falls
-     *  back to Auto (→ TTS floor) if it can't produce a file (e.g. an evicted
-     *  Commons clip, or offline). Null only if even the TTS floor fails. */
-    suspend fun toFile(ctx: Context, selection: AudioSelection, req: AudioRequest): ResolvedAudio? =
+    /** Render a selection to an attachable file (+ attribution) for **send/export**.
+     *
+     *  [Auto] walks enabled sources Commons-first → TTS floor (fallback is correct:
+     *  Auto promises no specific clip). [Explicit] uses the chosen source **only**:
+     *  if it can't produce the file (evicted + offline, dead URL) this returns
+     *  **null** rather than substituting a different clip — the send pipeline then
+     *  reports the audio as missing instead of silently shipping the wrong
+     *  recording on the card. (Preview's [play] still falls back, since auditioning
+     *  *something* beats silence.)
+     *
+     *  [enabledInOrder]/[sourceFor] default to the real [AudioSourceRegistry];
+     *  they're injectable so tests can drive the resolution deterministically. */
+    suspend fun toFile(
+        ctx: Context,
+        selection: AudioSelection,
+        req: AudioRequest,
+        enabledInOrder: (Context) -> List<AudioSource> = AudioSourceRegistry::enabledInOrder,
+        sourceFor: (String) -> AudioSource = AudioSourceRegistry::sourceFor,
+    ): ResolvedAudio? =
         when (selection) {
             AudioSelection.Auto -> {
                 var out: ResolvedAudio? = null
-                for (source in AudioSourceRegistry.enabledInOrder(ctx)) {
+                for (source in enabledInOrder(ctx)) {
                     val c = runCatching { source.defaultCandidate(ctx, req) }.getOrNull() ?: continue
                     val f = runCatching { source.toFile(ctx, c, req) }.getOrNull() ?: continue
                     out = ResolvedAudio(f, c.attribution, ephemeral = source.id == TtsAudioSource.ID); break
@@ -71,14 +85,14 @@ object AudioSelections {
                 out
             }
             is AudioSelection.Explicit -> {
-                val source = AudioSourceRegistry.sourceFor(selection.sourceId)
+                val source = sourceFor(selection.sourceId)
                 val candidate = explicitCandidate(selection)
                 val f = runCatching { source.toFile(ctx, candidate, req) }.getOrNull()
                 if (f != null) {
                     val attr = selection.attribution ?: attributionFor(ctx, selection)
                     ResolvedAudio(f, attr, ephemeral = selection.sourceId == TtsAudioSource.ID)
                 } else {
-                    toFile(ctx, AudioSelection.Auto, req) // defined fallback
+                    null // honor the explicit pick or report it missing — never substitute
                 }
             }
         }
