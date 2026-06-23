@@ -939,7 +939,19 @@ object YomitanDictionaryStore {
                 TERM_BANK.matches(entry.name) ->
                     if (validateBank(zip, entry, null) > 0) categories += YomitanCategory.TERMS
                 KANJI_BANK.matches(entry.name) ->
-                    if (validateBank(zip, entry, null) > 0) categories += YomitanCategory.KANJI
+                    if (validateBank(zip, entry, null) > 0) {
+                        categories += YomitanCategory.KANJI
+                        // KANJIDIC-lineage dicts ship their per-kanji frequency
+                        // rank inside the kanji_bank stats (no kanji_meta_bank);
+                        // expose it as a kanji-frequency source so it reaches the
+                        // freq-chip path. Guarded so a multi-file bank only scans
+                        // until the first hit.
+                        if (YomitanCategory.KANJI_FREQUENCY !in categories &&
+                            kanjiBankHasFreqStat(zip, entry)
+                        ) {
+                            categories += YomitanCategory.KANJI_FREQUENCY
+                        }
+                    }
                 KANJI_META_BANK.matches(entry.name) ->
                     if (validateBank(zip, entry, null) > 0) categories += YomitanCategory.KANJI_FREQUENCY
                 TAG_BANK.matches(entry.name) -> validateBank(zip, entry, null)
@@ -1023,6 +1035,33 @@ object YomitanDictionaryStore {
             )
         }
         return count
+    }
+
+    /** True when a kanji_bank carries a `freq` stat on any character.
+     *  KANJIDIC-lineage dicts pack their frequency rank into each entry's
+     *  stats object rather than shipping a kanji_meta_bank, so such a dict is a
+     *  kanji-frequency source too. Streams [entry] with an early exit on the
+     *  first hit; the array-of-arrays shape is already guaranteed by the
+     *  preceding [validateBank] call, so an unexpected parse hiccup is treated
+     *  as "no freq" rather than failing the whole import. */
+    private suspend fun kanjiBankHasFreqStat(zip: ZipFile, entry: ZipEntry): Boolean {
+        try {
+            zip.getInputStream(entry).use { input ->
+                JsonReader(InputStreamReader(input.buffered(), Charsets.UTF_8)).use { reader ->
+                    reader.beginArray()
+                    while (reader.hasNext()) {
+                        coroutineContext.ensureActive()
+                        if (KanjiBankEntry.parse(reader)?.freq != null) return true
+                    }
+                    reader.endArray()
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return false
+        }
+        return false
     }
 }
 

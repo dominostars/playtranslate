@@ -901,7 +901,18 @@ object YomitanDataStore {
         val insert = database.compileStatement(
             "INSERT INTO kanji (dict_id, character, onyomi, kunyomi, meanings) VALUES (?, ?, ?, ?, ?)"
         )
+        // KANJIDIC-lineage dicts pack their per-kanji frequency rank into the
+        // kanji_bank stats object (no kanji_meta_bank), so the same pass that
+        // fills `kanji` also harvests `freq` into `kanji_frequency`. Detection
+        // ([YomitanDictionaryStore.parseAndValidate]) gives such dicts the
+        // KANJI_FREQUENCY category so [kanjiFrequencyFor] actually returns
+        // these rows; without that the dict isn't in the freq section and the
+        // rows sit unread.
+        val freqInsert = database.compileStatement(
+            "INSERT INTO kanji_frequency (dict_id, character, display, value) VALUES (?, ?, ?, ?)"
+        )
         var rows = 0
+        var freqRows = 0
         ZipFile(zipFile).use { zip ->
             for (entry in zip.entries()) {
                 if (entry.name.contains('/') || !KANJI_BANK.matches(entry.name)) continue
@@ -910,43 +921,28 @@ object YomitanDataStore {
                     JsonReader(InputStreamReader(input.buffered(), Charsets.UTF_8)).use { reader ->
                         reader.beginArray()
                         while (reader.hasNext()) {
-                            reader.beginArray()
-                            val character = reader.nextString()
-                            // Defensive peeks: a short or oddly-typed entry is
-                            // skipped, never allowed to derail the stream.
-                            var onyomi = ""
-                            var kunyomi = ""
-                            var meanings: List<String>? = null
-                            var valid = true
-                            if (reader.peek() == JsonToken.STRING) onyomi = reader.nextString() else valid = false
-                            if (valid && reader.peek() == JsonToken.STRING) kunyomi = reader.nextString() else valid = false
-                            if (valid && reader.peek() == JsonToken.STRING) reader.skipValue() else valid = false // tags
-                            if (valid && reader.peek() == JsonToken.BEGIN_ARRAY) {
-                                val list = mutableListOf<String>()
-                                reader.beginArray()
-                                while (reader.hasNext()) {
-                                    if (reader.peek() == JsonToken.STRING) list.add(reader.nextString())
-                                    else reader.skipValue()
-                                }
-                                reader.endArray()
-                                meanings = list
-                            } else {
-                                valid = false
-                            }
-                            while (reader.hasNext()) reader.skipValue() // stats + extras
-                            reader.endArray()
-                            if (!valid || character.isEmpty()) {
+                            val parsed = KanjiBankEntry.parse(reader)
+                            if (parsed == null || parsed.character.isEmpty()) {
                                 skippedEntries++
                                 continue
                             }
 
                             insert.bindString(1, dictId)
-                            insert.bindString(2, character)
-                            insert.bindString(3, onyomi)
-                            insert.bindString(4, kunyomi)
-                            insert.bindString(5, KanjiData.encodeMeanings(meanings.orEmpty()))
+                            insert.bindString(2, parsed.character)
+                            insert.bindString(3, parsed.onyomi)
+                            insert.bindString(4, parsed.kunyomi)
+                            insert.bindString(5, KanjiData.encodeMeanings(parsed.meanings))
                             insert.executeInsert()
                             rows++
+
+                            parsed.freq?.let { f ->
+                                freqInsert.bindString(1, dictId)
+                                freqInsert.bindString(2, parsed.character)
+                                freqInsert.bindString(3, f.display)
+                                f.value?.let { freqInsert.bindDouble(4, it) } ?: freqInsert.bindNull(4)
+                                freqInsert.executeInsert()
+                                freqRows++
+                            }
                         }
                         reader.endArray()
                     }
@@ -956,7 +952,7 @@ object YomitanDataStore {
                 }
             }
         }
-        Log.i(TAG, "ingested $rows kanji rows for $dictId")
+        Log.i(TAG, "ingested $rows kanji rows ($freqRows with freq) for $dictId")
     }
 
     /** Streams `kanji_meta_bank_*.json` mode-`freq` entries into the
