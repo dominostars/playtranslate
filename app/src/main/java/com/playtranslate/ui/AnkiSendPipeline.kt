@@ -80,8 +80,12 @@ data class WordSendInput(
     val sourceLangId: SourceLangId,
     val screenshotPath: String?,
     val includeWordAudio: Boolean,
-    /** Voice override for the word audio. null = engine default. */
+    /** Voice override for the word audio. null = engine default. Used only by
+     *  the legacy path when [wordSelection] is null. */
     val wordVoice: String? = null,
+    /** Multi-source audio selection for the headword (Commons-first → TTS).
+     *  null = the legacy TTS path via [wordVoice] (one-tap callers). */
+    val wordSelection: AudioSelection? = null,
     /** Definition body for the legacy v004 back. Built with
      *  [classStyler] in the sheet (the back's CSS block supplies the
      *  gl-* classes); one-tap passes the inline-styled flat fallback
@@ -224,14 +228,29 @@ suspend fun Context.sendWordCard(
     deckId: Long,
 ): AnkiSendResult {
     val ctx = this
-    val audioFile: File? = if (input.includeWordAudio) {
-        TtsEngine.synthesizeToFile(
-            ctx,
-            ttsTextForWord(input.word, input.reading.ifBlank { null }, input.sourceLangId),
-            input.sourceLangId,
-            voiceNameOverride = input.wordVoice,
-        )
+    // Headword audio: a multi-source selection (sheet) resolves Commons-first
+    // → TTS; the legacy one-tap path (null selection) synthesizes TTS directly.
+    val wordResolved: ResolvedAudio? = if (input.includeWordAudio) {
+        val sel = input.wordSelection
+        if (sel != null) {
+            AudioSelections.toFile(
+                ctx, sel,
+                AudioRequest.word(input.word, input.reading.ifBlank { null }, input.sourceLangId),
+            )
+        } else {
+            TtsEngine.synthesizeToFile(
+                ctx,
+                ttsTextForWord(input.word, input.reading.ifBlank { null }, input.sourceLangId),
+                input.sourceLangId,
+                voiceNameOverride = input.wordVoice,
+            )?.let { ResolvedAudio(it, null) }
+        }
     } else null
+    val audioFile: File? = wordResolved?.file
+    // CC credit for a Commons clip, co-located with the word audio field so the
+    // attribution travels with redistributed cards. Null for plain TTS audio.
+    val audioCredit: String? =
+        wordResolved?.attribution?.let { Attribution.creditBlock(listOf(it)) }
     val result = try {
         ctx.dispatchSendToAnki(
             deckId = deckId,
@@ -251,6 +270,7 @@ suspend fun Context.sendWordCard(
                     frequencies = input.frequencies,
                     imageFilename = imageFilename,
                     audioFilename = audioFilename,
+                    audioCredit = audioCredit,
                     definitionHtml = input.classDefinitionHtml,
                 )
             },
@@ -267,11 +287,14 @@ suspend fun Context.sendWordCard(
                     examplesHtml = input.inlineExamplesHtml,
                     sourceLangId = input.sourceLangId,
                     audioFilename = audioFilename,
+                    audioCredit = audioCredit,
                 )
             },
         )
     } finally {
-        audioFile?.delete()
+        // Only delete an ephemeral TTS temp file; a cached Commons clip stays
+        // in the audio cache for reuse.
+        if (wordResolved?.ephemeral != false) audioFile?.delete()
     }
     return result.foldInLocalAudioMisses(
         sentenceMissing = input.includeWordAudio && audioFile == null,

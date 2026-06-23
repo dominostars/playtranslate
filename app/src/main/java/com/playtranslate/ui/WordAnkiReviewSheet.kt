@@ -23,6 +23,10 @@ import androidx.lifecycle.lifecycleScope
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
+import com.playtranslate.PtJson
+import com.playtranslate.audio.Attribution
+import com.playtranslate.audio.AudioRequest
+import com.playtranslate.audio.AudioSelection
 import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
@@ -78,13 +82,14 @@ class WordAnkiReviewSheet : DialogFragment() {
     private lateinit var wordContainer: LinearLayout
     private var definitionsCard: LinearLayout? = null
     /** Handle to the word-tab Audio card. The switch state is read at
-     *  send time; the Voice row text is refreshed in [onResume]. */
+     *  send time; the pill label is refreshed after a picker pick. */
     private var wordAudioHandle: AnkiAudioToggleHandle? = null
 
-    /** Per-card voice for the word-tab audio cell. Seeded from
-     *  Prefs.ttsVoiceName at buildWordContent time; null after a "Default"
-     *  pick means explicit engine default (not "fall back to pref"). */
-    private var wordTabVoice: String? = null
+    /** Multi-source audio selection for the word-tab headword cell. [Auto] is
+     *  the registry's Commons-first → TTS resolution; [Explicit] is a pin from
+     *  [AudioSourcePickerActivity]. Read at send time; mirrors the sentence
+     *  tab's per-cell selection state. */
+    private var wordSelection: AudioSelection = AudioSelection.Auto
 
     /** True while the word-tab pill's picker launch is in flight. The
      *  sheet doesn't host SentenceAnkiContentFragment's PickTarget
@@ -92,20 +97,45 @@ class WordAnkiReviewSheet : DialogFragment() {
      *  pill on the word tab. */
     private var pendingWordTabPick: Boolean = false
 
-    private val voicePickerLauncher = registerForActivityResult(
+    private val audioPickerLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val wasOurs = pendingWordTabPick.also { pendingWordTabPick = false }
         if (!wasOurs) return@registerForActivityResult
         if (result.resultCode != android.app.Activity.RESULT_OK) return@registerForActivityResult
-        val picked = result.data?.getStringExtra(TtsVoiceActivity.EXTRA_PICKED_VOICE)
-        wordTabVoice = picked
+        val src = result.data?.getStringExtra(AudioSourcePickerActivity.EXTRA_PICKED_SOURCE)
+        val key = result.data?.getStringExtra(AudioSourcePickerActivity.EXTRA_PICKED_KEY)
+        val locator = result.data?.getStringExtra(AudioSourcePickerActivity.EXTRA_PICKED_LOCATOR)
+        val attribution = result.data?.getStringExtra(AudioSourcePickerActivity.EXTRA_PICKED_ATTRIBUTION)
+            ?.let { runCatching { PtJson.lenient.decodeFromString(Attribution.serializer(), it) }.getOrNull() }
+        wordSelection = if (src != null && key != null) {
+            AudioSelection.Explicit(src, key, locator, attribution)
+        } else {
+            AudioSelection.Auto
+        }
         // The word tab only ever has one sourceLangId — captured by the
         // outer onViewCreated; safe to read again from args here.
         val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
             ?: SourceLangId.JA
-        wordAudioHandle?.refreshPillLabel(this, lang, picked)
+        wordAudioHandle?.refreshPillLabel(this, lang, wordSelection)
     }
+
+    /** Opens the multi-source audio picker for the word-tab headword cell,
+     *  seeded with the current [wordSelection]. The pick lands in
+     *  [audioPickerLauncher]. Mirrors SentenceAnkiContentFragment's
+     *  per-word launch (isWord = true → Commons is offered). */
+    private fun launchWordAudioPicker(word: String, reading: String) {
+        val ctx = context ?: return
+        val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
+            ?: SourceLangId.JA
+        pendingWordTabPick = true
+        audioPickerLauncher.launch(
+            AudioSourcePickerActivity.intent(
+                ctx, lang, word, reading.ifBlank { null }, isWord = true, current = wordSelection,
+            ),
+        )
+    }
+
     /** First child of the Screenshot group inside [wordContainer] (its
      *  header). Tracked so the lazy More examples group can be inserted
      *  immediately above the Screenshot group rather than appended to
@@ -497,28 +527,22 @@ class WordAnkiReviewSheet : DialogFragment() {
         }
         parent.addView(header)
 
-        // ── Audio group: TTS of the headword, attached as [sound:]. ──
-        // Per-cell voice mirrors the sentence sheet's pattern. Seed
-        // wordTabVoice from the global pref AT view-create so the
-        // picker's "Default" pick (null) means engine default, not
-        // "look up the pref again".
-        wordTabVoice = Prefs(ctx).ttsVoiceName(sourceLangId)
+        // ── Audio group: the headword's pronunciation, attached as [sound:].
+        //    Multi-source (Commons recordings → TTS) via the same picker the
+        //    sentence tab uses; the preview chip plays the cell's selection. ──
         wordAudioHandle = addAnkiAudioSection(
             parent = parent,
             lang = sourceLangId,
             rowLabel = word,
-            // Preview the kana reading (JA) so the audition matches the audio
-            // the card will carry (see ttsTextForWord).
+            // Preview text feeds the legacy TTS-only chip path; in selection
+            // mode the resolver does its own text prep. Kept so the audition
+            // matches the card's audio for the kana reading (JA; see ttsTextForWord).
             previewText = { ttsTextForWord(word, reading.ifBlank { null }, sourceLangId) },
             initialChecked = Prefs(ctx).ankiWordAudioEnabled,
             onCheckedChange = { Prefs(ctx).ankiWordAudioEnabled = it },
-            voiceOverride = { wordTabVoice },
-            onVoicePillTap = {
-                pendingWordTabPick = true
-                voicePickerLauncher.launch(
-                    TtsVoiceActivity.intent(ctx, sourceLangId, wordTabVoice),
-                )
-            },
+            selection = { wordSelection },
+            audioRequest = { AudioRequest.word(word, reading.ifBlank { null }, sourceLangId) },
+            onVoicePillTap = { launchWordAudioPicker(word, reading) },
         )
 
         // ── Definitions group: starts with a loading placeholder. The
@@ -1435,10 +1459,9 @@ class WordAnkiReviewSheet : DialogFragment() {
             sourceLangId = sourceLangId,
             screenshotPath = screenshotPath,
             includeWordAudio = wordAudioHandle?.switch?.isChecked == true,
-            // wordTabVoice carries the per-cell pick (null = the user's
-            // explicit "Default" choice, which is exactly what
-            // TtsEngine takes null to mean too).
-            wordVoice = wordTabVoice,
+            // Multi-source selection (Commons-first → TTS) for the headword,
+            // mirroring the sentence cell. Auto unless the user pinned a pick.
+            wordSelection = wordSelection,
             classDefinitionHtml = classDefinitionHtml,
             inlineDefinitionHtml = buildWordDefinitionHtml(inlineStyler),
             inlineExamplesHtml = buildExamplesHtml(inlineStyler),

@@ -114,7 +114,10 @@ class AudioSourcePickerActivity : AppCompatActivity() {
     private fun buildSections() {
         val inflater = LayoutInflater.from(this)
         val strokePx = (1 * resources.displayMetrics.density).toInt().coerceAtLeast(1)
-        AudioSourceRegistry.all().forEach { source ->
+        // Only sources that serve this request's kind get a section — e.g. a
+        // sentence request omits Commons (word-level only) rather than showing
+        // it as a permanently-empty "No results" row and querying it for nothing.
+        AudioSourceRegistry.all().filter { it.serves(req.kind) }.forEach { source ->
             val header = inflater.inflate(R.layout.settings_group_header, sections, false)
             header.findViewById<TextView>(R.id.tvGroupTitle).text = source.label(this).uppercase()
             sections.addView(header)

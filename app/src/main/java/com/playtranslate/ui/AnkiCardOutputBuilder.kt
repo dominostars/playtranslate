@@ -234,6 +234,8 @@ object AnkiCardOutputBuilder {
         sourceLangId: com.playtranslate.language.SourceLangId =
             com.playtranslate.language.SourceLangId.JA,
         audioFilename: String? = null,
+        /** CC credit for a Commons recording, co-located with the word audio field. */
+        audioCredit: String? = null,
     ): CardOutputs = CardOutputs(
         // EXPRESSION: plain headword text — for fields rendered raw
         // via `{{Expression}}` (Lapis vocab-card front, Hint, etc.).
@@ -249,7 +251,7 @@ object AnkiCardOutputBuilder {
         sentenceFurigana = "",
         sentenceTranslation = "",
         picture = pictureHtml(imageFilename),
-        wordAudio = soundTag(audioFilename),
+        wordAudio = soundTag(audioFilename) + audioCreditHtml(audioCredit),
         sentenceAudio = "",
         definition = definitionHtml,
         examples = examplesHtml,

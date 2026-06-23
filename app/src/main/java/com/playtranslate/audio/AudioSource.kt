@@ -35,6 +35,14 @@ interface AudioSource {
     /** Single mutator for the enabled flag (delegates to Prefs). No-op for non-toggleable sources. */
     fun setEnabled(ctx: Context, on: Boolean)
 
+    /**
+     * Whether this source can serve [kind] at all. A source that categorically
+     * can't (e.g. Commons has no sentence-level recordings) is omitted from the
+     * picker for that kind — so it never appears as a permanently-empty
+     * "No results" section, and the picker doesn't query it. Default: every kind.
+     */
+    fun serves(kind: AudioRequest.Kind): Boolean = true
+
     /** All options for the picker (metadata only — no audio is downloaded here). */
     suspend fun candidates(ctx: Context, req: AudioRequest): List<AudioCandidate>
 

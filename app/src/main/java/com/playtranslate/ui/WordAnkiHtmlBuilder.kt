@@ -51,6 +51,9 @@ internal object WordAnkiHtmlBuilder {
         frequencies: List<FrequencyTag>,
         imageFilename: String?,
         audioFilename: String?,
+        /** CC credit for a Commons recording, rendered under the [sound:] tag so
+         *  the attribution travels with the card. Null/blank for plain TTS audio. */
+        audioCredit: String? = null,
         definitionHtml: String,
     ): String = buildString {
         append("<style>")
@@ -83,6 +86,12 @@ internal object WordAnkiHtmlBuilder {
         if (audioFilename != null) {
             append("<div style=\"text-align:center;margin:8px 0;\">")
             append("[sound:$audioFilename]")
+            append("</div>")
+        }
+        // CC credit under the audio, mirroring the sentence back's styling.
+        if (!audioCredit.isNullOrBlank()) {
+            append("<div style=\"text-align:center;font-size:0.7em;opacity:0.6;margin:0 4px 8px;\">")
+            append(htmlEscape(audioCredit).replace(Regex("[\\n\\r]+"), "<br>"))
             append("</div>")
         }
         append("<div style=\"text-align:center;font-size:1.8em;padding:12px 4px;\">")
