@@ -34,6 +34,7 @@ import com.playtranslate.applyDialogEdgeToEdge
 import com.playtranslate.fullScreenDialogTheme
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
@@ -154,6 +155,10 @@ class WordAnkiReviewSheet : DialogFragment() {
     private var moreExamplesBody: LinearLayout? = null
     private var moreExamplesSourceLang: String = ""
     private var moreExamplesTargetLang: String = ""
+    /** Word-tab reading line. Held so the async dictionary lookup can
+     *  re-render it with its pitch-accent contour once [resolvedEntry]
+     *  lands. Null in sentence mode (the word header isn't built). */
+    private var wordReadingView: TextView? = null
     /** Cached resolved primary entry from the in-sheet dictionary lookup;
      *  Anki-card metadata (headword/freqScore/isCommon) reads from this.
      *  Null until the async lookup completes. */
@@ -235,6 +240,7 @@ class WordAnkiReviewSheet : DialogFragment() {
         definitionsCard = null
         moreExamplesGroup = null
         moreExamplesBody = null
+        wordReadingView = null
         screenshotHeaderView = null
         screenshotCardView = null
         deckSubtitleView = null
@@ -460,17 +466,25 @@ class WordAnkiReviewSheet : DialogFragment() {
             setTypeface(headwordFace, Typeface.BOLD)
             letterSpacing = -0.02f
         })
-        if (reading.isNotBlank() && reading != word) {
-            header.addView(TextView(ctx).apply {
-                text = reading
-                textSize = 16f
-                setTextColor(ctx.themeColor(R.attr.ptTextMuted))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                ).also { it.topMargin = (8 * density).toInt() }
-            })
+        // Reading line — plain at first, then re-rendered with its pitch-accent
+        // contour (the word-detail header's display) once the async lookup
+        // resolves the entry. Always created and held so that update has a
+        // target; hidden until there's a reading worth showing.
+        val readingView = TextView(ctx).apply {
+            text = reading
+            textSize = 16f
+            setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+            isVisible = reading.isNotBlank() && reading != word
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).also { it.topMargin = (8 * density).toInt() }
         }
+        wordReadingView = readingView
+        header.addView(readingView)
+        // Apply now in case the entry already resolved (rebuilds); a no-op on
+        // first build, where the async lookup calls it again once it lands.
+        applyWordReadingPitch(word, reading)
         if (isCommon || freqScore > 0) {
             val badgeRow = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -578,6 +592,30 @@ class WordAnkiReviewSheet : DialogFragment() {
                 }
             }
         }
+    }
+
+    /**
+     * Re-renders the word-tab reading line with its pitch-accent contour,
+     * reusing the word-detail header's display ([buildPitchAnnotatedReading]).
+     * Reads pitch from the same resolved headword the generated card uses, so
+     * the screen and the card agree. Kana-only headwords carry no separate
+     * reading but may still have pitch, so the kana is repeated as the contour
+     * surface. No-op in sentence mode (the view is null) or with no pitch data
+     * (the plain reading built in [buildWordContent] stands).
+     */
+    private fun applyWordReadingPitch(word: String, reading: String) {
+        val view = wordReadingView ?: return
+        val pitch = resolvedEntry?.headwordDisplay(word)?.pitch.orEmpty()
+        if (pitch.isEmpty()) return
+        val pitchKana = reading.takeIf { it.isNotBlank() }
+            ?: word.takeIf { word.all(Deinflector::isKana) }
+            ?: return
+        val density = view.resources.displayMetrics.density
+        view.text = buildPitchAnnotatedReading(pitchKana, pitch)
+        // Headroom for the overline band — PitchAccentSpan leaves FontMetrics
+        // alone by contract; the vertical header absorbs it as top padding.
+        view.setPadding(0, (8 * density).toInt(), 0, 0)
+        view.isVisible = true
     }
 
     /** Placeholder row shown in the Definitions card while the async
@@ -703,6 +741,8 @@ class WordAnkiReviewSheet : DialogFragment() {
         resolvedEntries = entries
         resolvedFlatSenses = entries.flatMap { it.senses }
         resolvedDefResult = defResult
+        // Now that the headword resolved, light up the reading's pitch contour.
+        applyWordReadingPitch(word, readingHint.orEmpty())
 
         // Seed the translation cache with stored pack translations for
         // target=en; ML-Kit fallback fills the rest in below. Indexed by

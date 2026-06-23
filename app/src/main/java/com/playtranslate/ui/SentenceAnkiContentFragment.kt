@@ -28,6 +28,7 @@ import com.playtranslate.R
 import com.playtranslate.audio.Attribution
 import com.playtranslate.audio.AudioRequest
 import com.playtranslate.audio.AudioSelection
+import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.themeColor
@@ -680,9 +681,28 @@ class SentenceAnkiContentFragment : Fragment() {
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(ctx.themeColor(if (isTarget) R.attr.ptAccent else R.attr.ptText))
         })
-        if (entry.reading.isNotBlank()) {
+        // Reading hint — annotated with its pitch-accent contour when known,
+        // the same display the word-detail header and result cells use. Kana-
+        // only words carry no separate reading but may still have pitch, so the
+        // kana is repeated as the contour surface (mirrors WordResultCell).
+        val pitchKana = entry.reading.takeIf { it.isNotBlank() }
+            ?: entry.word.takeIf { entry.pitch.isNotEmpty() && entry.word.all(Deinflector::isKana) }
+        if (pitchKana != null) {
             topLine.addView(TextView(ctx).apply {
-                text = entry.reading
+                if (entry.pitch.isNotEmpty()) {
+                    text = buildPitchAnnotatedReading(pitchKana, entry.pitch)
+                    // Headroom for the overline band; the horizontal row's
+                    // baseline alignment lifts this padding above the shared
+                    // baseline so the word and reading stay aligned.
+                    // PitchAccentSpan leaves FontMetrics untouched by contract.
+                    setPadding(0, (8 * density).toInt(), 0, 0)
+                    // Optical nudge up 2dp: a pure render offset (no layout
+                    // reflow), tightening the accented reading against the word.
+                    // The overline keeps its slack inside the padding band.
+                    translationY = -2f * density
+                } else {
+                    text = pitchKana
+                }
                 textSize = 12f
                 setTextColor(ctx.themeColor(R.attr.ptTextHint))
                 layoutParams = LinearLayout.LayoutParams(
