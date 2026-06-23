@@ -1246,22 +1246,20 @@ class DragLookupController(
                     frequencies = display.frequencies,
                 )
             }
-            !reading.isNullOrEmpty() -> {
+            else -> {
+                // No dictionary entry. Keep the lens up with an empty sense
+                // list — the lens's WordDefinitionsView renders its
+                // "No definitions found." placeholder. (The genuine "no token
+                // under the finger" cases already returned null above.)
                 PopupData(
                     word = lookupForm,
                     reading = reading,
-                    senses = listOf(
-                        SenseDisplay(
-                            pos = emptyList(),
-                            definition = "Not in dictionary, may be a name"
-                        )
-                    ),
+                    senses = emptyList(),
                     freqScore = 0,
                     isCommon = false,
-                    entry = null
+                    entry = null,
                 )
             }
-            else -> return null
         }
 
         Log.d(TAG, "Found: $matchedSurface ($lookupForm) → ${entry?.slug ?: "(fallback)"}")

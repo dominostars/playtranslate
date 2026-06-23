@@ -137,7 +137,7 @@
 
     <!-- ═══ WORD DETAIL ═══ -->
 
-    <string name="word_detail_not_found">لم يتم العثور على مدخل في القاموس لـ «<xliff:g id="word" example="聞く">%1$s</xliff:g>»</string>
+    <string name="word_detail_no_definitions">لم يتم العثور على تعريفات.</string>
 
     <string name="word_detail_more_examples">المزيد من الأمثلة</string>
 

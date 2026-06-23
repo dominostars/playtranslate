@@ -884,24 +884,29 @@ class TranslationResultFragment : Fragment() {
                         popupPitch = display.pitch
                         popupFrequencies = display.frequencies
                     }
-                    reading.isNotEmpty() -> {
+                    else -> {
+                        // No dictionary entry — keep the popup up with an
+                        // empty sense list so the shared placeholder renders.
+                        // `reading` is "" for no-reading languages; map it to
+                        // null (mirror the lookup guard above) so the popup's
+                        // weaker `it != word` gate can't show a blank reading.
                         word = lookupForm
-                        popupReading = reading
+                        popupReading = reading.ifEmpty { null }
                         popupLabel = null
                         freqScore = 0
                         isCommon = false
                         popupPitch = emptyList()
                         popupFrequencies = emptyList()
                     }
-                    else -> return@launch
                 }
                 // Senses share the lens-popup tier logic with the result list
-                // (see [buildSenseDisplays]); the no-entry reading-only case is
-                // a name placeholder.
+                // (see [buildSenseDisplays]); the no-entry case renders the
+                // shared "No definitions found." placeholder via empty senses
+                // (the lens's WordDefinitionsView owns the empty-state copy).
                 val senses: List<SenseDisplay> = if (entry != null) {
                     buildSenseDisplays(defResult!!, entries, prefs.targetLang)
                 } else {
-                    listOf(SenseDisplay(pos = emptyList(), definition = "Not in dictionary, may be a name"))
+                    emptyList()
                 }
 
                 // Calculate position: center on the tapped word, above it

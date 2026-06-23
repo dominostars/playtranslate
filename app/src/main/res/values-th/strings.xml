@@ -137,7 +137,7 @@
 
     <!-- ═══ WORD DETAIL ═══ -->
 
-    <string name="word_detail_not_found">ไม่พบรายการในพจนานุกรมสำหรับ “<xliff:g id="word" example="聞く">%1$s</xliff:g>”</string>
+    <string name="word_detail_no_definitions">ไม่พบคำนิยาม</string>
 
     <string name="word_detail_more_examples">ตัวอย่างเพิ่มเติม</string>
 

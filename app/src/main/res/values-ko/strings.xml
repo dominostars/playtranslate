@@ -150,7 +150,7 @@
          WORD DETAIL
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="word_detail_not_found">“<xliff:g id="word" example="聞く">%1$s</xliff:g>”에 대한 사전 항목을 찾을 수 없습니다</string>
+    <string name="word_detail_no_definitions">정의를 찾을 수 없습니다.</string>
 
     <string name="word_detail_more_examples">더 많은 예문</string>
 

@@ -149,7 +149,7 @@
          WORD DETAIL
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="word_detail_not_found">Nenhuma entrada de dicionário encontrada para \"<xliff:g id="word" example="聞く">%1$s</xliff:g>\"</string>
+    <string name="word_detail_no_definitions">Nenhuma definição encontrada.</string>
 
     <string name="word_detail_more_examples">Mais exemplos</string>
 

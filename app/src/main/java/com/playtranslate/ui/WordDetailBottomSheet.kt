@@ -305,7 +305,7 @@ class WordDetailBottomSheet : DialogFragment() {
             if (!isAdded) return@launch
             content.removeView(loadingView)
             if (primary == null) {
-                addNotFoundNotice(content, getString(R.string.word_detail_not_found, word))
+                addNotFoundNotice(content, getString(R.string.word_detail_no_definitions))
                 return@launch
             }
             val initialTranslations: List<List<String>>? = if (targetLangCode == "en") {

@@ -147,7 +147,7 @@
          WORD DETAIL
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="word_detail_not_found">未找到“<xliff:g id="word" example="聞く">%1$s</xliff:g>”的词典词条</string>
+    <string name="word_detail_no_definitions">未找到定义。</string>
 
     <string name="word_detail_more_examples">更多例句</string>
 

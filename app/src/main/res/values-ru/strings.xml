@@ -149,7 +149,7 @@
          WORD DETAIL
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="word_detail_not_found">Словарная статья для «<xliff:g id="word" example="聞く">%1$s</xliff:g>» не найдена</string>
+    <string name="word_detail_no_definitions">Определения не найдены.</string>
 
     <string name="word_detail_more_examples">Больше примеров</string>
 

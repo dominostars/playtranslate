@@ -284,10 +284,11 @@
          WORD DETAIL (bottom-sheet shown when tapping a tokenized word)
          ═══════════════════════════════════════════════════════════════ -->
 
-    <!-- Empty-state message inside the word-detail sheet. %1$s = the
-         word that was looked up (passed through verbatim, in the source
-         script, e.g. "聞く"). -->
-    <string name="word_detail_not_found">No dictionary entry found for \"<xliff:g id="word" example="聞く">%1$s</xliff:g>\"</string>
+    <!-- Empty-state shown when a looked-up word has no dictionary entry.
+         Appears in the magnifying lens, the in-app tap-word popup, and the
+         word-detail sheet. No placeholders — each surface already shows the
+         word itself elsewhere (the lens pill / the sheet header). -->
+    <string name="word_detail_no_definitions">No definitions found.</string>
 
     <!-- Section title above the example-sentences list. -->
     <string name="word_detail_more_examples">More examples</string>

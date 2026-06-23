@@ -58,6 +58,21 @@ class WordDefinitionsView @JvmOverloads constructor(
      */
     var metaChipFill: Int = context.themeColor(R.attr.ptSurface)
 
+    /**
+     * Opt-in empty-state copy. When non-null AND [bind] receives a [data]
+     * with no senses, the body renders this single muted line (the "no
+     * dictionary entry" placeholder) instead of nothing. Left null by
+     * default, so callers that legitimately bind empty senses (e.g.
+     * [WordResultCell]) keep rendering nothing.
+     *
+     * The view can't see the source entry — [WordDefinitionData] drops it
+     * (see `toLensData`) — so "no senses" is the only available "nothing to
+     * show" signal. A malformed entry that yields zero renderable senses
+     * would therefore also surface this; accepted, since "no senses"
+     * honestly reads as "no definitions."
+     */
+    var emptyPlaceholder: String? = null
+
     init {
         orientation = VERTICAL
     }
@@ -118,6 +133,21 @@ class WordDefinitionsView @JvmOverloads constructor(
                 fullWidth(topMargin = top),
             )
             firstSenseBlock = false
+        }
+
+        // Opt-in empty-state: a word with no renderable senses shows the
+        // muted placeholder (the "no dictionary entry" case) instead of a
+        // blank body. Callers that don't set [emptyPlaceholder] render
+        // nothing here, as before.
+        if (data.senses.isEmpty()) emptyPlaceholder?.let { placeholder ->
+            addView(
+                TextView(context).apply {
+                    text = placeholder
+                    setTextColor(secondaryText)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f * scale)
+                },
+                fullWidth(topMargin = if (isNotEmpty()) dp(8f * scale) else 0),
+            )
         }
     }
 

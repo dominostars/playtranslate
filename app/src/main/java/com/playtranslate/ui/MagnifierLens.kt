@@ -1068,6 +1068,10 @@ class MagnifierLens(
             // This panel is itself ptSurface — the view's default ptSurface
             // chip fill would vanish into it.
             metaChipFill = panelBadgeBg
+            // No-entry words keep the lens up (instead of dismissing) with
+            // this placeholder body; the pill still shows the word. Covers
+            // both the drag lens and the in-app tap-word lens.
+            emptyPlaceholder = ctx.getString(R.string.word_detail_no_definitions)
         }
         private val definitionsScroll = ScrollView(ctx).apply {
             isVerticalScrollBarEnabled = true
