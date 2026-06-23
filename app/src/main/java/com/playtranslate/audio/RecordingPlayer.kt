@@ -208,7 +208,9 @@ object RecordingPlayer {
                     }
                 }
             }
-            return Pcm(out.toByteArray(), sampleRate, channelCount.coerceAtLeast(1))
+            val pcmBytes = out.toByteArray()
+            Loudness.normalize(pcmBytes) // human recordings are quiet + inconsistent; even them out
+            return Pcm(pcmBytes, sampleRate, channelCount.coerceAtLeast(1))
         } catch (t: Throwable) {
             android.util.Log.w(TAG, "decodeToPcm failed file=${file.name}", t)
             return null
