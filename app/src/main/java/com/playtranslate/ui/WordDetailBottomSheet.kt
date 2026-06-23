@@ -28,6 +28,9 @@ import androidx.appcompat.content.res.AppCompatResources
 import kotlinx.coroutines.flow.drop
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
+import com.playtranslate.audio.AudioRequest
+import com.playtranslate.audio.PlayOutcome
+import com.playtranslate.audio.PronunciationPlayer
 import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.R
@@ -132,7 +135,7 @@ class WordDetailBottomSheet : DialogFragment() {
 
     override fun onDestroyView() {
         speakJob?.cancel()
-        TtsEngine.stop()
+        PronunciationPlayer.stop()
         moreExamplesGroup = null
         moreExamplesBody = null
         bigHeadwordView = null
@@ -1164,16 +1167,19 @@ class WordDetailBottomSheet : DialogFragment() {
                     icon.isGone = true
                     spinner.isVisible = true
                     try {
-                        // Live-mode caller — resolve the global voice pref
-                        // ourselves now that TtsEngine treats null as
-                        // "engine default" rather than "look up pref."
-                        val voice = Prefs(ctx).ttsVoiceName(lang)
-                        val failure: String? = when (TtsEngine.speak(ctx, speakText, lang, voiceNameOverride = voice)) {
-                            TtsEngine.SpeakResult.Spoken -> null
-                            TtsEngine.SpeakResult.NoEngine ->
+                        // Default playback: Commons-first (when enabled) → TTS
+                        // fallback, resolved by PronunciationPlayer (the TTS
+                        // source applies the voice pref itself). speakText is the
+                        // already-prepared word — the surface for non-JA.
+                        val outcome = PronunciationPlayer.play(
+                            ctx, AudioRequest.word(speakText, null, lang),
+                        )
+                        val failure: String? = when (outcome) {
+                            PlayOutcome.TtsNoEngine ->
                                 "No text-to-speech engine is available"
-                            is TtsEngine.SpeakResult.LanguageUnsupported ->
+                            is PlayOutcome.TtsLanguageUnsupported ->
                                 "Text-to-speech isn't available for ${lang.displayName()}"
+                            else -> null
                         }
                         if (failure != null) {
                             Toast.makeText(ctx, failure, Toast.LENGTH_SHORT).show()

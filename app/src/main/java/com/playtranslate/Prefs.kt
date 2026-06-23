@@ -637,6 +637,15 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_ANKI_WORD_AUDIO, true)
         set(v) = sp.edit { putBoolean(KEY_ANKI_WORD_AUDIO, v) }
 
+    /** Whether Wikimedia Commons is used for DEFAULT word playback (the live tap
+     *  path and Anki "Auto" cells). **Default off** — Commons is opt-in per card
+     *  via the Anki audio picker, which shows and plays it regardless of this flag
+     *  (explicit picks resolve through the source directly). Owned solely by
+     *  `WikimediaCommonsAudioSource`. */
+    var commonsAudioEnabled: Boolean
+        get() = sp.getBoolean("commons_audio_enabled", false)
+        set(v) = sp.edit { putBoolean("commons_audio_enabled", v) }
+
     /** Whether new sentence cards include synthesized sentence audio.
      *  See [ankiWordAudioEnabled] — same last-used-state-is-the-default
      *  behavior, for the sentence review surface. */

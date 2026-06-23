@@ -111,6 +111,7 @@ object SentenceAnkiHtmlBuilder {
         sourceLangId: SourceLangId = SourceLangId.JA,
         audioFilename: String? = null,
         wordAudioFilenames: Map<String, String> = emptyMap(),
+        audioCredit: String? = null,
     ): String {
         val wordMap = words.associate { it.word to it.reading }
         val furigana = annotateText(japanese, wordMap, newlineAsBr = true, sourceLangId = sourceLangId)
@@ -141,6 +142,11 @@ object SentenceAnkiHtmlBuilder {
             if (audioFilename != null) {
                 append("<div style=\"text-align:center;margin:8px 0;\">")
                 append("[sound:$audioFilename]")
+                append("</div>")
+            }
+            if (!audioCredit.isNullOrBlank()) {
+                append("<div style=\"text-align:center;font-size:0.7em;opacity:0.6;margin:0 4px 8px;\">")
+                append(htmlEscape(audioCredit).replace(Regex("[\\n\\r]+"), "<br>"))
                 append("</div>")
             }
             append("<div style=\"text-align:center;font-size:1.5em;margin:12px 4px;line-height:2.2em;\">$furigana</div>")

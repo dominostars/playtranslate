@@ -2,6 +2,11 @@ package com.playtranslate.ui
 
 import android.content.Context
 import androidx.fragment.app.Fragment
+import com.playtranslate.audio.Attribution
+import com.playtranslate.audio.AudioRequest
+import com.playtranslate.audio.AudioSelection
+import com.playtranslate.audio.AudioSelections
+import com.playtranslate.audio.ResolvedAudio
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.model.FrequencyTag
@@ -42,6 +47,12 @@ data class SentenceSendInput(
     /** Voice overrides for per-target-word audio. null entries =
      *  engine default. */
     val wordAudioVoices: Map<String, String?> = emptyMap(),
+    /** Multi-source audio selection for the sentence cell. null = the legacy
+     *  TTS path via [sentenceVoice] (one-tap callers). */
+    val sentenceSelection: AudioSelection? = null,
+    /** Per-target-word audio selections. Missing entry = legacy TTS via
+     *  [wordAudioVoices]. */
+    val wordSelections: Map<String, AudioSelection> = emptyMap(),
     /** Pre-built Tatoeba "more examples" block for the structured
      *  path's EXAMPLE_SENTENCES content source. The word-tab's
      *  sentence flow has examples; the result-screen sentence flow
@@ -98,32 +109,59 @@ suspend fun Context.sendSentenceCard(
     deckId: Long,
 ): AnkiSendResult {
     val ctx = this
-    val audioFile: File? = if (input.includeSentenceAudio) {
-        // Speak the kana pronunciation so the engine doesn't re-guess compound
-        // readings (初夏 → はつか) in the card's sentence audio; identity for non-JA.
-        val spokenOriginal = SourceLanguageEngines.get(ctx, input.sourceLangId)
-            .spokenForm(input.original)
-        TtsEngine.synthesizeToFile(
-            ctx, spokenOriginal, input.sourceLangId,
-            voiceNameOverride = input.sentenceVoice,
-        )
+    // Sentence audio: a multi-source selection (sheet) resolves Commons-first
+    // → TTS; the legacy one-tap path (null selection) synthesizes TTS directly.
+    val sentenceResolved: ResolvedAudio? = if (input.includeSentenceAudio) {
+        val sel = input.sentenceSelection
+        if (sel != null) {
+            AudioSelections.toFile(ctx, sel, AudioRequest.sentence(input.original, input.sourceLangId))
+        } else {
+            // Speak the kana pronunciation so the engine doesn't re-guess compound
+            // readings (初夏 → はつか) in the card's sentence audio; identity for non-JA.
+            val spokenOriginal = SourceLanguageEngines.get(ctx, input.sourceLangId)
+                .spokenForm(input.original)
+            TtsEngine.synthesizeToFile(
+                ctx, spokenOriginal, input.sourceLangId,
+                voiceNameOverride = input.sentenceVoice,
+            )?.let { ResolvedAudio(it, null) }
+        }
     } else null
-    // Per-target-word audio. TtsEngine serialises utterances internally,
-    // so a sequential loop matches the sheet's existing wall-clock cost.
-    // Words whose synth returns null are skipped — the rest of the card
-    // still lands. Synthesize the kana reading (JA) so the card audio
-    // matches the displayed reading; keyed by the same WordEntry.word the
+    val audioFile: File? = sentenceResolved?.file
+    // Per-target-word audio. Words whose synth/fetch returns null are skipped —
+    // the rest of the card still lands. Keyed by the same WordEntry.word the
     // media files are stored under.
     val readingByWord = input.words.associate { it.word to it.reading }
-    val wordAudioFiles: Map<String, File> = buildMap {
+    val wordResolved: Map<String, ResolvedAudio> = buildMap {
         for (word in input.targetWordAudioWords) {
-            TtsEngine.synthesizeToFile(
-                ctx,
-                ttsTextForWord(word, readingByWord[word]?.ifBlank { null }, input.sourceLangId),
-                input.sourceLangId,
-                voiceNameOverride = input.wordAudioVoices[word],
-            )?.let { put(word, it) }
+            val sel = input.wordSelections[word]
+            val resolved = if (sel != null) {
+                AudioSelections.toFile(
+                    ctx, sel,
+                    AudioRequest.word(word, readingByWord[word]?.ifBlank { null }, input.sourceLangId),
+                )
+            } else {
+                TtsEngine.synthesizeToFile(
+                    ctx,
+                    ttsTextForWord(word, readingByWord[word]?.ifBlank { null }, input.sourceLangId),
+                    input.sourceLangId,
+                    voiceNameOverride = input.wordAudioVoices[word],
+                )?.let { ResolvedAudio(it, null) }
+            }
+            if (resolved != null) put(word, resolved)
         }
+    }
+    val wordAudioFiles: Map<String, File> = wordResolved.mapValues { it.value.file }
+    // CC attribution for Commons clips, kept separate per audio field so the
+    // credit travels even when the card type maps only one of the audio fields.
+    // The legacy single-field back uses the aggregate.
+    val sentenceCredit: String? =
+        sentenceResolved?.attribution?.let { Attribution.creditBlock(listOf(it)) }
+    val wordCredit: String? = wordResolved.values.mapNotNull { it.attribution }
+        .takeIf { it.isNotEmpty() }?.let { Attribution.creditBlock(it) }
+    val audioCredit: String? = run {
+        val all = listOfNotNull(sentenceResolved?.attribution) +
+            wordResolved.values.mapNotNull { it.attribution }
+        if (all.isEmpty()) null else Attribution.creditBlock(all)
     }
     val result = try {
         val cardData = input.toCardData()
@@ -144,6 +182,7 @@ suspend fun Context.sendSentenceCard(
                     imageFilename, input.selectedWords, input.sourceLangId,
                     audioFilename = audioFilename,
                     wordAudioFilenames = wordAudioFilenames,
+                    audioCredit = audioCredit,
                 )
             },
             structured = { imageFilename, audioFilename, wordAudioFilenames ->
@@ -153,12 +192,16 @@ suspend fun Context.sendSentenceCard(
                     examplesHtml = input.examplesHtml,
                     audioFilename = audioFilename,
                     wordAudioFilenames = wordAudioFilenames,
+                    sentenceAudioCredit = sentenceCredit,
+                    wordAudioCredit = wordCredit,
                 )
             },
         )
     } finally {
-        audioFile?.delete()
-        wordAudioFiles.values.forEach { it.delete() }
+        // Only delete ephemeral TTS temp files; cached Commons clips stay in
+        // the audio cache for reuse.
+        if (sentenceResolved?.ephemeral != false) audioFile?.delete()
+        wordResolved.values.forEach { if (it.ephemeral) it.file.delete() }
     }
     // The dispatcher only knows about UPLOAD failures (audioPath was
     // non-null but addMediaFromFile dropped it). Synthesis failures

@@ -1,6 +1,9 @@
 package com.playtranslate.ui
 
 import com.playtranslate.Prefs
+import com.playtranslate.audio.AudioRequest
+import com.playtranslate.audio.PlayOutcome
+import com.playtranslate.audio.PronunciationPlayer
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.tts.TtsEngine
 import com.playtranslate.tts.ttsTextForWord
@@ -58,7 +61,7 @@ class LensSpeakChip(
     /** Cancel a pending speak and stop playback. Call when the lens is gone. */
     fun release() {
         job?.cancel()
-        TtsEngine.stop()
+        PronunciationPlayer.stop()
     }
 }
 
@@ -75,19 +78,16 @@ suspend fun speakWord(
     request: LensSpeakChip.Request,
     onNoEngine: () -> Unit = {},
 ) {
-    val voice = Prefs(target.context).ttsVoiceName(request.lang)
-    val result = TtsEngine.speak(
+    val outcome = PronunciationPlayer.play(
         target.context,
-        ttsTextForWord(request.word, request.reading, request.lang),
-        request.lang,
-        voiceNameOverride = voice,
+        AudioRequest.word(request.word, request.reading, request.lang),
     )
     withContext(Dispatchers.Main) {
-        when (result) {
-            TtsEngine.SpeakResult.Spoken -> { /* audio playing */ }
-            TtsEngine.SpeakResult.NoEngine -> showTtsNoEngineDialog(target, onNoEngine)
-            is TtsEngine.SpeakResult.LanguageUnsupported ->
-                showTtsLanguageUnsupportedDialog(target, request.lang, result.engineLabel)
+        when (outcome) {
+            PlayOutcome.TtsNoEngine -> showTtsNoEngineDialog(target, onNoEngine)
+            is PlayOutcome.TtsLanguageUnsupported ->
+                showTtsLanguageUnsupportedDialog(target, request.lang, outcome.engineLabel)
+            else -> { /* played, fell back to a recording, or a recoverable miss */ }
         }
     }
 }

@@ -2628,4 +2628,31 @@
     <!-- Share-sheet chooser title used by the Export Logs flow. -->
     <string name="share_chooser_share_logs">Share logs</string>
 
+    <!-- Audio sources (Wikimedia Commons human recordings + TTS). -->
+
+    <!-- Section header for the device text-to-speech source in the Anki audio
+         picker (the list of voices). Also the source's name elsewhere. -->
+    <string name="audio_source_tts_name">Text-to-speech</string>
+
+    <!-- Name of the Wikimedia Commons audio source: the label of its on/off
+         switch row at the top of the TTS settings screen, and the header of its
+         section in the Anki audio picker. -->
+    <string name="audio_source_commons_name">Wikimedia Commons</string>
+
+    <!-- Cell shown inside a source's section in the Anki audio picker when that
+         source returned no recordings for the word. -->
+    <string name="audio_no_results">No results</string>
+
+    <!-- Toolbar title of the Anki audio picker screen, where the user chooses a
+         recording or voice for a card. -->
+    <string name="audio_source_picker_title">Audio</string>
+
+    <!-- Cell shown inside a source's section in the Anki audio picker while it is
+         fetching available recordings. -->
+    <string name="audio_loading">Loading…</string>
+
+    <!-- Cell shown inside a source's section in the Anki audio picker when
+         fetching its recordings failed (e.g. no network). -->
+    <string name="audio_error_loading">Couldn\'t load</string>
+
 </resources>

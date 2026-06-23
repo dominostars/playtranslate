@@ -157,6 +157,8 @@ class AnkiReviewBottomSheet : DialogFragment() {
             sentenceVoice = data.sentenceVoice,
             targetWordAudioWords = data.targetWordAudioWords,
             wordAudioVoices = data.wordAudioVoices,
+            sentenceSelection = data.sentenceSelection,
+            wordSelections = data.wordSelections,
         )
         // Fragment receiver so NeedsMapping opens the mapping dialog
         // (Context.sendSentenceCard would skip it).

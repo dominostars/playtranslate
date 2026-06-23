@@ -50,6 +50,17 @@ object AnkiCardOutputBuilder {
     private fun soundTag(audioFilename: String?): String =
         if (audioFilename.isNullOrEmpty()) "" else "[sound:$audioFilename]"
 
+    /** A small, always-visible credit line appended to the audio field so a
+     *  CC-BY/CC-BY-SA recording's attribution travels with redistributed cards. */
+    private fun audioCreditHtml(credit: String?): String =
+        if (credit.isNullOrEmpty()) {
+            ""
+        } else {
+            "<div style=\"font-size:0.7em;opacity:0.6;\">" +
+                credit.replace("&", "&amp;").replace("<", "&lt;").replace("\n", "<br>") +
+                "</div>"
+        }
+
     /**
      * Builds outputs from a sentence sheet's current state. The caller
      * may supply pre-rendered [examplesHtml] (Tatoeba pairs for the
@@ -63,6 +74,11 @@ object AnkiCardOutputBuilder {
         imageFilename: String?,
         examplesHtml: String = "",
         audioFilename: String? = null,
+        /** CC credit for the sentence recording, co-located with the sentence audio field. */
+        sentenceAudioCredit: String? = null,
+        /** CC credit for per-word recordings, co-located with the word audio field so it
+         *  travels even when the card type maps no sentence-audio field. */
+        wordAudioCredit: String? = null,
         /** Per-target-word audio filenames keyed by word. Threaded into
          *  [SentenceAnkiHtmlBuilder.buildWordsHtmlWith] so each word's row
          *  in WORDS_TABLE gets a `[sound:…]` tag. [CardOutputs.wordAudio]
@@ -159,8 +175,8 @@ object AnkiCardOutputBuilder {
             sentenceFurigana = sentenceFuriganaHtml,
             sentenceTranslation = translationHtml,
             picture = pictureHtml(imageFilename),
-            wordAudio = wordAudioBlock,
-            sentenceAudio = soundTag(audioFilename),
+            wordAudio = wordAudioBlock + audioCreditHtml(wordAudioCredit),
+            sentenceAudio = soundTag(audioFilename) + audioCreditHtml(sentenceAudioCredit),
             definition = definition,
             examples = examplesHtml,
             frequency = frequency,

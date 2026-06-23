@@ -4,6 +4,9 @@ import android.content.res.ColorStateList
 import android.widget.ImageButton
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.audio.AudioRequest
+import com.playtranslate.audio.PlayOutcome
+import com.playtranslate.audio.PronunciationPlayer
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.themeColor
@@ -52,33 +55,31 @@ class OriginalSpeakButton(
         // and runs its finally (clearing the tint); stop() ends the utterance.
         if (job?.isActive == true) {
             job?.cancel()
-            TtsEngine.stop()
+            PronunciationPlayer.stop()
             return
         }
         val req = request() ?: return
         job = scope.launch {
             setSpeaking(true)
             try {
-                // Live-mode caller — resolve the global voice pref now
-                // that TtsEngine takes null to mean "engine default."
-                val voice = Prefs(alertTarget.context).ttsVoiceName(req.lang)
-                // Speak the kana pronunciation so the engine doesn't re-guess
-                // compound readings (初夏 → はつか); identity for non-JA.
-                val spoken = SourceLanguageEngines.get(alertTarget.context, req.lang)
-                    .spokenForm(req.text)
-                val result = TtsEngine.speak(
-                    alertTarget.context, spoken, req.lang, awaitCompletion = true,
-                    voiceNameOverride = voice,
+                // Default playback through the single owner: Commons has no
+                // sentence recordings, so this resolves to TTS — routing it here
+                // keeps one stop() authority across both backends. The TTS source
+                // applies the voice pref and kana spoken-form itself.
+                val outcome = PronunciationPlayer.play(
+                    alertTarget.context,
+                    AudioRequest.sentence(req.text, req.lang),
+                    awaitCompletion = true,
                 )
                 withContext(Dispatchers.Main) {
-                    when (result) {
-                        TtsEngine.SpeakResult.Spoken -> { /* finished playing */ }
-                        TtsEngine.SpeakResult.NoEngine ->
+                    when (outcome) {
+                        PlayOutcome.TtsNoEngine ->
                             showTtsNoEngineDialog(alertTarget) {}
-                        is TtsEngine.SpeakResult.LanguageUnsupported ->
+                        is PlayOutcome.TtsLanguageUnsupported ->
                             showTtsLanguageUnsupportedDialog(
-                                alertTarget, req.lang, result.engineLabel,
+                                alertTarget, req.lang, outcome.engineLabel,
                             )
+                        else -> { /* finished playing */ }
                     }
                 }
             } finally {
@@ -99,6 +100,6 @@ class OriginalSpeakButton(
      *  view is torn down. */
     fun release() {
         job?.cancel()
-        TtsEngine.stop()
+        PronunciationPlayer.stop()
     }
 }

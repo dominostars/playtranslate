@@ -113,6 +113,13 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Multi-source audio picker for an Anki cell (Commons recordings + TTS voices). -->
+        <activity
+            android:name=".ui.AudioSourcePickerActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate" />
+
         <!-- Appearance sub-page (theme + accent), launched from Settings → Configure. -->
         <activity
             android:name=".ui.AppearanceSettingsActivity"

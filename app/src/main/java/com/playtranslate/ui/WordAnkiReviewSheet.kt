@@ -1698,6 +1698,8 @@ class WordAnkiReviewSheet : DialogFragment() {
             sentenceVoice = data.sentenceVoice,
             targetWordAudioWords = data.targetWordAudioWords,
             wordAudioVoices = data.wordAudioVoices,
+            sentenceSelection = data.sentenceSelection,
+            wordSelections = data.wordSelections,
             // Word-sheet's sentence tab carries Tatoeba "more examples"
             // for the structured path. Built with inlineStyler since the
             // structured outputs have no surrounding <style> block.

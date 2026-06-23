@@ -26,6 +26,9 @@ import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.audio.AudioRequest
+import com.playtranslate.audio.AudioSelection
+import com.playtranslate.audio.AudioSelections
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
@@ -330,7 +333,30 @@ class AnkiAudioToggleHandle internal constructor(
             p.setLabel(computeVoicePillLabel(p.view.context, lang, voice))
         }
     }
+
+    /** Refresh the pill from an [AudioSelection] (multi-source Anki flow). */
+    fun refreshPillLabel(
+        fragment: Fragment,
+        lang: SourceLangId,
+        selection: AudioSelection,
+    ) {
+        val p = pill ?: return
+        fragment.viewLifecycleOwner.lifecycleScope.launch {
+            p.setLabel(AudioSelections.label(p.view.context, selection, lang))
+        }
+    }
 }
+
+/** Pill label for a cell: the [AudioSelection] label in multi-source mode,
+ *  else the legacy per-voice label. */
+internal suspend fun audioPillLabel(
+    ctx: android.content.Context,
+    lang: SourceLangId,
+    selection: (() -> AudioSelection)?,
+    voiceOverride: () -> String?,
+): String =
+    if (selection != null) AudioSelections.label(ctx, selection(), lang)
+    else computeVoicePillLabel(ctx, lang, voiceOverride())
 
 /** Resolves a per-cell voice override into the pill's display label, sharing
  *  [TtsVoiceLabels] with the picker and Settings digest so the three stay in
@@ -374,6 +400,8 @@ fun Fragment.addAnkiAudioSection(
     /** Tap handler for the voice pill. When null, no pill is rendered
      *  (back-compat for callers that don't opt into per-cell voices). */
     onVoicePillTap: (() -> Unit)? = null,
+    selection: (() -> AudioSelection)? = null,
+    audioRequest: (() -> AudioRequest)? = null,
 ): AnkiAudioToggleHandle {
     val ctx = requireContext()
     val inflater = android.view.LayoutInflater.from(ctx)
@@ -396,7 +424,10 @@ fun Fragment.addAnkiAudioSection(
         ellipsize = TextUtils.TruncateAt.END
     }
     val switch = audioRow.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-    val chip = AnkiAudioPreviewChip(this, lang, previewText, voiceOverride)
+    val chip = AnkiAudioPreviewChip(
+        this, lang, previewText, voiceOverride,
+        selectionProvider = selection, requestProvider = audioRequest,
+    )
     audioRow.addView(chip.view, 0)
     val pill: VoicePillView? = if (onVoicePillTap != null) {
         val p = VoicePillView(this, lang)
@@ -405,7 +436,7 @@ fun Fragment.addAnkiAudioSection(
         audioRow.addView(p.view, 1)
         // Initial label fills in async (engine bind suspends).
         viewLifecycleOwner.lifecycleScope.launch {
-            p.setLabel(computeVoicePillLabel(ctx, lang, voiceOverride()))
+            p.setLabel(audioPillLabel(ctx, lang, selection, voiceOverride))
         }
         p
     } else null
@@ -460,6 +491,8 @@ fun Fragment.addCompactAudioToggleRow(
     /** Async transform applied to the preview text before TTS — lets a JA
      *  sentence cell audition its kana pronunciation. See [AnkiAudioPreviewChip]. */
     prepare: suspend (String) -> String = { it },
+    selection: (() -> AudioSelection)? = null,
+    audioRequest: (() -> AudioRequest)? = null,
 ): AnkiAudioToggleHandle {
     val ctx = requireContext()
     val inflater = android.view.LayoutInflater.from(ctx)
@@ -483,14 +516,17 @@ fun Fragment.addCompactAudioToggleRow(
         ellipsize = TextUtils.TruncateAt.END
     }
     val switch = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-    val chip = AnkiAudioPreviewChip(this, lang, previewText, voiceOverride, prepare)
+    val chip = AnkiAudioPreviewChip(
+        this, lang, previewText, voiceOverride, prepare,
+        selectionProvider = selection, requestProvider = audioRequest,
+    )
     row.addView(chip.view, 0)
     val pill: VoicePillView? = if (onVoicePillTap != null) {
         val p = VoicePillView(this, lang)
         p.setOnTap(onVoicePillTap)
         row.addView(p.view, 1)
         viewLifecycleOwner.lifecycleScope.launch {
-            p.setLabel(computeVoicePillLabel(ctx, lang, voiceOverride()))
+            p.setLabel(audioPillLabel(ctx, lang, selection, voiceOverride))
         }
         p
     } else null

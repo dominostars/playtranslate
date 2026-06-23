@@ -14,6 +14,11 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.R
+import com.playtranslate.audio.AudioRequest
+import com.playtranslate.audio.AudioSelection
+import com.playtranslate.audio.AudioSelections
+import com.playtranslate.audio.PlayOutcome
+import com.playtranslate.audio.PronunciationPlayer
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
 import com.playtranslate.tts.TtsEngine
@@ -46,6 +51,12 @@ class AnkiAudioPreviewChip(
      *  preview matches the audio the card will carry — a JA sentence cell
      *  passes the engine's kana pronunciation. Default is identity. */
     private val prepare: suspend (String) -> String = { it },
+    /** Selection-mode: when both are non-null the chip plays the cell's
+     *  [AudioSelection] via the source registry (a Commons recording or TTS),
+     *  superseding [voiceOverride]/[prepare] (the resolver does its own text
+     *  prep). Null lambdas = legacy TTS-only preview. */
+    private val selectionProvider: (() -> AudioSelection)? = null,
+    private val requestProvider: (() -> AudioRequest)? = null,
 ) {
     private enum class State { IDLE, LOADING, PLAYING }
 
@@ -143,7 +154,7 @@ class AnkiAudioPreviewChip(
         generation++
         job?.cancel()
         job = null
-        TtsEngine.stop()
+        PronunciationPlayer.stop()
         state = State.IDLE
         render()
     }
@@ -161,33 +172,36 @@ class AnkiAudioPreviewChip(
             state = State.LOADING
             render()
             try {
-                // Speak what the card will carry — a JA sentence cell renders
-                // [raw] to its kana pronunciation; default identity otherwise.
-                val text = prepare(raw)
-                // The chip is an Anki per-cell component — null in
-                // voiceOverride() means "user picked Default for this
-                // cell", and that's exactly what TtsEngine treats null
-                // as (engine default, no pref fallback).
-                val result = TtsEngine.speak(
-                    ctx, text, lang, awaitCompletion = true,
-                    voiceNameOverride = voiceOverride(),
-                    onStart = {
-                        // Fires on the engine thread; marshal to the UI and
-                        // ignore it if a newer request has superseded this.
-                        view.post {
-                            if (gen == generation) {
-                                state = State.PLAYING
-                                render()
-                            }
-                        }
-                    },
-                )
-                val failure: String? = when (result) {
-                    TtsEngine.SpeakResult.Spoken -> null
-                    TtsEngine.SpeakResult.NoEngine ->
-                        "No text-to-speech engine is available"
-                    is TtsEngine.SpeakResult.LanguageUnsupported ->
-                        "Text-to-speech isn't available for ${lang.displayName()}"
+                // Fires when audio actually begins; marshal to the UI thread
+                // and ignore it if a newer request has superseded this one.
+                val onStartCb: () -> Unit = {
+                    view.post { if (gen == generation) { state = State.PLAYING; render() } }
+                }
+                val sel = selectionProvider
+                val reqP = requestProvider
+                val failure: String? = if (sel != null && reqP != null) {
+                    // Selection-mode: play the cell's chosen source/recording
+                    // (or Auto = Commons-first → TTS) via the registry.
+                    when (AudioSelections.play(ctx, sel(), reqP(), awaitCompletion = true, onStart = onStartCb)) {
+                        PlayOutcome.TtsNoEngine -> "No text-to-speech engine is available"
+                        is PlayOutcome.TtsLanguageUnsupported ->
+                            "Text-to-speech isn't available for ${lang.displayName()}"
+                        else -> null
+                    }
+                } else {
+                    // Legacy TTS-only preview. null voiceOverride() = engine default.
+                    val text = prepare(raw)
+                    when (
+                        TtsEngine.speak(
+                            ctx, text, lang, awaitCompletion = true,
+                            voiceNameOverride = voiceOverride(), onStart = onStartCb,
+                        )
+                    ) {
+                        TtsEngine.SpeakResult.Spoken -> null
+                        TtsEngine.SpeakResult.NoEngine -> "No text-to-speech engine is available"
+                        is TtsEngine.SpeakResult.LanguageUnsupported ->
+                            "Text-to-speech isn't available for ${lang.displayName()}"
+                    }
                 }
                 if (failure != null) Toast.makeText(ctx, failure, Toast.LENGTH_SHORT).show()
             } finally {

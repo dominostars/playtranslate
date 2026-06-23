@@ -23,7 +23,11 @@ import android.app.Activity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import com.playtranslate.Prefs
+import com.playtranslate.PtJson
 import com.playtranslate.R
+import com.playtranslate.audio.Attribution
+import com.playtranslate.audio.AudioRequest
+import com.playtranslate.audio.AudioSelection
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.themeColor
@@ -77,19 +81,14 @@ class SentenceAnkiContentFragment : Fragment() {
      *  sub-row that's about to be removed keeps playing for a beat). */
     private val wordAudioHandles = mutableMapOf<String, AnkiAudioToggleHandle>()
 
-    /** Voice for the sentence audio cell. Seeded from
-     *  [Prefs.ttsVoiceName] at buildContent time; after that, this
-     *  field IS the cell's voice. null means "explicit engine default"
-     *  (the picker's "Default" pick lands here as null too). The
-     *  global pref is never read again for this cell — the seeded
-     *  value plus any pick lives entirely on the sheet. */
-    private var sentenceVoice: String? = null
+    /** Audio source/voice for the sentence audio cell. [AudioSelection.Auto]
+     *  (default) resolves Commons-first → TTS at preview/send time; an
+     *  [AudioSelection.Explicit] is a specific pick from the audio picker. */
+    private var sentenceSelection: AudioSelection = AudioSelection.Auto
 
-    /** Same model, per target word. Entry is missing for words that
-     *  haven't been added to [selectedWords] yet; rebuildWordRows
-     *  populates an entry via `getOrPut(word) { Prefs.ttsVoiceName }`
-     *  when the word first appears as a target. */
-    private val wordVoices = mutableMapOf<String, String?>()
+    /** Same model, per target word. Entry is missing until the word first
+     *  appears as a target; rebuildWordRows seeds it to [AudioSelection.Auto]. */
+    private val wordSelections = mutableMapOf<String, AudioSelection>()
 
     /** Identifies the cell that the active picker launch was for.
      *  Cleared when the result lands. */
@@ -99,34 +98,48 @@ class SentenceAnkiContentFragment : Fragment() {
     }
     private var pendingPick: PickTarget? = null
 
-    private val voicePickerLauncher = registerForActivityResult(
+    private val audioPickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val target = pendingPick.also { pendingPick = null }
             ?: return@registerForActivityResult
         if (result.resultCode != Activity.RESULT_OK) return@registerForActivityResult
-        val picked = result.data?.getStringExtra(TtsVoiceActivity.EXTRA_PICKED_VOICE)
+        val src = result.data?.getStringExtra(AudioSourcePickerActivity.EXTRA_PICKED_SOURCE)
+        val key = result.data?.getStringExtra(AudioSourcePickerActivity.EXTRA_PICKED_KEY)
+        val locator = result.data?.getStringExtra(AudioSourcePickerActivity.EXTRA_PICKED_LOCATOR)
+        val attribution = result.data?.getStringExtra(AudioSourcePickerActivity.EXTRA_PICKED_ATTRIBUTION)
+            ?.let { runCatching { PtJson.lenient.decodeFromString(Attribution.serializer(), it) }.getOrNull() }
+        val selection = if (src != null && key != null) {
+            AudioSelection.Explicit(src, key, locator, attribution)
+        } else {
+            AudioSelection.Auto
+        }
         val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
             ?: SourceLangId.JA
         when (target) {
             is PickTarget.Sentence -> {
-                sentenceVoice = picked
-                sentenceAudioHandle?.refreshPillLabel(this, lang, picked)
+                sentenceSelection = selection
+                sentenceAudioHandle?.refreshPillLabel(this, lang, selection)
             }
             is PickTarget.Word -> {
-                wordVoices[target.word] = picked
-                wordAudioHandles[target.word]?.refreshPillLabel(this, lang, picked)
+                wordSelections[target.word] = selection
+                wordAudioHandles[target.word]?.refreshPillLabel(this, lang, selection)
             }
         }
     }
 
-    private fun launchVoicePicker(target: PickTarget, current: String?) {
+    private fun launchAudioPicker(target: PickTarget, current: AudioSelection) {
         val ctx = context ?: return
         val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
             ?: SourceLangId.JA
         pendingPick = target
-        voicePickerLauncher.launch(
-            TtsVoiceActivity.intent(ctx, lang, current),
+        val (surface, reading, isWord) = when (target) {
+            is PickTarget.Sentence -> Triple(etOriginal.text.toString(), null, false)
+            is PickTarget.Word ->
+                Triple(target.word, words.firstOrNull { it.word == target.word }?.reading, true)
+        }
+        audioPickerLauncher.launch(
+            AudioSourcePickerActivity.intent(ctx, lang, surface, reading, isWord, current),
         )
     }
 
@@ -183,6 +196,10 @@ class SentenceAnkiContentFragment : Fragment() {
          *  Only words in [targetWordAudioWords] need an entry here; the
          *  send path looks up by word. */
         val wordAudioVoices: Map<String, String?> = emptyMap(),
+        /** Multi-source audio selection for the sentence cell. */
+        val sentenceSelection: AudioSelection = AudioSelection.Auto,
+        /** Per-target-word audio selections (only [targetWordAudioWords]). */
+        val wordSelections: Map<String, AudioSelection> = emptyMap(),
     )
 
     fun getCardData(): CardData {
@@ -197,11 +214,10 @@ class SentenceAnkiContentFragment : Fragment() {
             screenshotPath = if (includePhoto) arguments?.getString(ARG_SCREENSHOT_PATH) else null,
             sourceLangId = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG)) ?: SourceLangId.JA,
             targetWordAudioWords = enabledTargets,
-            sentenceVoice = sentenceVoice,
-            // Only include voices for words whose audio is enabled — the
-            // send path iterates targetWordAudioWords anyway, so any
-            // extra entries would be dead weight.
-            wordAudioVoices = enabledTargets.associateWith { wordVoices[it] },
+            // Only include selections for words whose audio is enabled — the
+            // send path iterates targetWordAudioWords anyway.
+            sentenceSelection = sentenceSelection,
+            wordSelections = enabledTargets.associateWith { wordSelections[it] ?: AudioSelection.Auto },
         )
     }
 
@@ -315,11 +331,6 @@ class SentenceAnkiContentFragment : Fragment() {
         }
         originalCard.addView(buildEditableFrame(etOriginal))
         ankiInsetDivider(originalCard)
-        // Seed the sentence voice from the global pref AT view-create.
-        // After this point the field is the cell's voice — null means
-        // "explicit engine default" (e.g. user picked Default in the
-        // picker), not "look up the pref again".
-        sentenceVoice = prefs.ttsVoiceName(lang)
         sentenceAudioHandle = addCompactAudioToggleRow(
             parent = originalCard,
             lang = lang,
@@ -327,11 +338,12 @@ class SentenceAnkiContentFragment : Fragment() {
             previewText = { etOriginal.text.toString() },
             initialChecked = prefs.ankiSentenceAudioEnabled,
             onCheckedChange = { prefs.ankiSentenceAudioEnabled = it },
-            voiceOverride = { sentenceVoice },
-            onVoicePillTap = { launchVoicePicker(PickTarget.Sentence, sentenceVoice) },
-            // Audition the kana pronunciation so the preview matches the card's
-            // sentence audio (初夏 → しょか, not はつか); identity for non-JA.
-            prepare = { SourceLanguageEngines.get(ctx, lang).spokenForm(it) },
+            onVoicePillTap = { launchAudioPicker(PickTarget.Sentence, sentenceSelection) },
+            // Multi-source: Auto resolves Commons-first → TTS; the resolver
+            // applies the kana spoken-form for JA itself. Commons has no
+            // sentence recordings, so the sentence cell effectively uses TTS.
+            selection = { sentenceSelection },
+            audioRequest = { AudioRequest.sentence(etOriginal.text.toString(), lang) },
         )
         // Track edits — the chip re-reads via its previewText lambda, but
         // the row's visible label is a one-shot text= and won't follow
@@ -574,11 +586,8 @@ class SentenceAnkiContentFragment : Fragment() {
                     val seeded = wordAudioEnabled.getOrPut(entry.word) {
                         prefs.ankiWordAudioEnabled
                     }
-                    // Seed per-word voice from the global pref the first
-                    // time this word appears as a target. After this the
-                    // map entry IS the cell's voice; null means
-                    // "explicit Default", not "look up the pref again".
-                    wordVoices.getOrPut(entry.word) { prefs.ttsVoiceName(lang) }
+                    // Per-word selection defaults to Auto (Commons-first → TTS).
+                    wordSelections.getOrPut(entry.word) { AudioSelection.Auto }
                     val word = entry.word
                     val reading = entry.reading
                     val handle = addCompactAudioToggleRow(
@@ -596,10 +605,13 @@ class SentenceAnkiContentFragment : Fragment() {
                             // becomes the default for the next card.
                             prefs.ankiWordAudioEnabled = checked
                         },
-                        voiceOverride = { wordVoices[word] },
                         onVoicePillTap = {
-                            launchVoicePicker(PickTarget.Word(word), wordVoices[word])
+                            launchAudioPicker(
+                                PickTarget.Word(word), wordSelections[word] ?: AudioSelection.Auto,
+                            )
                         },
+                        selection = { wordSelections[word] ?: AudioSelection.Auto },
+                        audioRequest = { AudioRequest.word(word, reading.ifBlank { null }, lang) },
                     )
                     wordAudioHandles[word] = handle
                 }
@@ -725,7 +737,7 @@ class SentenceAnkiContentFragment : Fragment() {
                 // by the row's main click listener, not this ✕) leaves
                 // these entries in place — only a hard remove drops them.
                 wordAudioEnabled.remove(entry.word)
-                wordVoices.remove(entry.word)
+                wordSelections.remove(entry.word)
                 rebuildWordRows()
             }
         })
@@ -796,7 +808,7 @@ class SentenceAnkiContentFragment : Fragment() {
         wordAudioEnabled.clear()
         wordAudioHandles.values.forEach { it.release() }
         wordAudioHandles.clear()
-        wordVoices.clear()
+        wordSelections.clear()
         words.clear()
         wordsLoading = true
         rebuildWordRows()
