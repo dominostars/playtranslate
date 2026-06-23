@@ -370,3 +370,17 @@ fun List<RowState>.toSurfaceMap(): Map<String, String> =
  *  pitch/frequency Anki fields via [WordEnrichment]. */
 fun List<RowState>.toEnrichmentMap(): Map<String, WordEnrichment> =
     associate { it.displayWord to WordEnrichment(it.pitch, it.frequencies) }
+
+/** The sole resolved word when [sourceText] is exactly one token
+ *  (whitespace-insensitive), else null. Drives the single-word Anki
+ *  shortcut: a one-word result opens the word card directly instead of
+ *  the sentence sheet. Compares the row's [RowState.surface] (the form
+ *  as it appeared in the text) rather than [RowState.displayWord], so a
+ *  lone inflected word (surface 使わない / lemma 使う) still matches while a
+ *  word + particle (猫 in 猫は) or a repeat (猫 in 猫猫) does not. */
+fun WordLookupsState.Settled.singleWordRow(sourceText: String): RowState? {
+    val row = rows.singleOrNull() ?: return null
+    if (row.surface.isBlank()) return null
+    fun bare(s: String) = s.filterNot(Char::isWhitespace)
+    return row.takeIf { bare(it.surface) == bare(sourceText) }
+}

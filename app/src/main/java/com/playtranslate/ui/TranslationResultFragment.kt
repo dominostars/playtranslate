@@ -804,11 +804,31 @@ class TranslationResultFragment : Fragment() {
                 showAnkiPermissionRationaleDialog(activity) {
                     host?.getAnkiPermissionLauncher()?.launch(AnkiManager.PERMISSION)
                 }
-            else ->
-                AnkiReviewBottomSheet.newInstance(
-                    getDisplayedOriginalText(), result.translatedText, wordResults,
-                    result.screenshotPath, prefs.sourceLangId
-                ).show(childFragmentManager, AnkiReviewBottomSheet.TAG)
+            else -> {
+                // A one-word result opens the word card directly (no
+                // sentence/word toggle) — a sentence card would just repeat
+                // the word. WordAnkiReviewSheet renders word-only with no
+                // toggle whenever it's launched without sentence args.
+                val singleRow = (vm.wordLookups.value as? WordLookupsState.Settled)
+                    ?.singleWordRow(getDisplayedOriginalText())
+                if (singleRow != null) {
+                    WordAnkiReviewSheet.newInstance(
+                        word = singleRow.displayWord,
+                        reading = singleRow.reading,
+                        pos = singleRow.ankiPos,
+                        definition = singleRow.meaning,
+                        screenshotPath = result.screenshotPath,
+                        freqScore = singleRow.freqScore,
+                        isCommon = singleRow.isCommon,
+                        sourceLangId = prefs.sourceLangId,
+                    ).show(childFragmentManager, WordAnkiReviewSheet.TAG)
+                } else {
+                    AnkiReviewBottomSheet.newInstance(
+                        getDisplayedOriginalText(), result.translatedText, wordResults,
+                        result.screenshotPath, prefs.sourceLangId
+                    ).show(childFragmentManager, AnkiReviewBottomSheet.TAG)
+                }
+            }
         }
     }
 
