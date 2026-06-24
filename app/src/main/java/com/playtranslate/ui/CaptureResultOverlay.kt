@@ -13,6 +13,8 @@ import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
@@ -75,6 +77,7 @@ class CaptureResultOverlay(
 
     private var sessionJob: Job? = null
     private var dismissed = false
+    private var animatingOut = false
 
     private var screenW = 0
     private var screenH = 0
@@ -172,6 +175,8 @@ class CaptureResultOverlay(
         this.screenH = screenH
         panelHeightPx = CaptureResultGeometry.defaultPanelHeight(screenH)
         (panel.layoutParams as FrameLayout.LayoutParams).height = panelHeightPx
+        // Park above the top edge; the entrance animation (below) drops it in.
+        panel.translationY = -panelHeightPx.toFloat()
 
         val sideBySide = CaptureResultGeometry.shouldUseSideBySide(
             screenW, dp(1), (CaptureResultGeometry.SIDE_BY_SIDE_FALLBACK_SECTION_DP * density).toInt(),
@@ -201,6 +206,13 @@ class CaptureResultOverlay(
         }
         windowParams = lp
         overlayHost.addOverlayWindow(root, wm, lp, displayId)
+        // Bounce in from the top (cf. the floating icon's edge snap, but with a
+        // short overshoot instead of a plain decelerate).
+        panel.animate()
+            .translationY(0f)
+            .setDuration(ENTER_DURATION_MS)
+            .setInterpolator(OvershootInterpolator(ENTER_OVERSHOOT))
+            .start()
     }
 
     /** Collect the one-shot capture session and drive the panel. The collector is
@@ -229,6 +241,22 @@ class CaptureResultOverlay(
         try { overlayHost.removeOverlayWindow(root) } catch (_: Exception) {}
         scope.cancel()
         onDismiss?.invoke()
+    }
+
+    /** Slide the panel up off the top edge, then remove it — so tap-outside and
+     *  swipe/fling-up dismissals animate out instead of vanishing. Other paths
+     *  (Cancelled, supersede, teardown) call [dismiss] directly for immediate
+     *  removal. */
+    private fun animateOutAndDismiss() {
+        if (dismissed || animatingOut) return
+        animatingOut = true
+        dismissWordLens()
+        panel.animate()
+            .translationY(-(panelHeightPx.toFloat()))
+            .setDuration(EXIT_DURATION_MS)
+            .setInterpolator(AccelerateInterpolator())
+            .withEndAction { dismiss() }
+            .start()
     }
 
     // ── State rendering ──────────────────────────────────────────────────
@@ -488,12 +516,12 @@ class CaptureResultOverlay(
             if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
                 val panelBottom = panel.bottom + panel.translationY
                 if (ev.y >= panelBottom) {
-                    dismiss()
+                    animateOutAndDismiss()
                     return true
                 }
             }
             if (ev.actionMasked == MotionEvent.ACTION_OUTSIDE) {
-                dismiss()
+                animateOutAndDismiss()
                 return true
             }
             return super.dispatchTouchEvent(ev)
@@ -556,8 +584,7 @@ class CaptureResultOverlay(
                             translationY, vy, DISMISS_DISTANCE_DP * density, FLING_DISMISS_VEL,
                         )
                     ) {
-                        animate().translationY(-(panelHeightPx.toFloat()))
-                            .setDuration(150).withEndAction { dismiss() }.start()
+                        animateOutAndDismiss()
                     } else {
                         animate().translationY(0f).setDuration(150).start()
                     }
@@ -595,5 +622,9 @@ class CaptureResultOverlay(
         /** px/s; a deliberate up-fling (a notch above FloatingOverlayIcon's 600
          *  for a small icon, since the panel wants intent). */
         const val FLING_DISMISS_VEL = 1000f
+        const val ENTER_DURATION_MS = 280L
+        const val EXIT_DURATION_MS = 200L
+        /** OvershootInterpolator tension — modest, for a short bounce-in. */
+        const val ENTER_OVERSHOOT = 1.5f
     }
 }
