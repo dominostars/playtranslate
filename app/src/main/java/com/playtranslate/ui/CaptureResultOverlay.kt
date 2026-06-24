@@ -20,6 +20,7 @@ import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
@@ -30,6 +31,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 /**
@@ -80,6 +82,11 @@ class CaptureResultOverlay(
     private val handle = HandleView(ctx)
 
     private var binder: TranslationSectionBinder? = null
+
+    // Tap-a-word → definition (display + speak; the panel lens has no Anki/open).
+    private var wordSpans: List<Triple<IntRange, String, String>> = emptyList()
+    private var wordLens: MagnifierLens? = null
+    private var wordSpeakChip: LensSpeakChip? = null
 
     init {
         statusText.apply {
@@ -174,6 +181,7 @@ class CaptureResultOverlay(
     fun dismiss() {
         if (dismissed) return
         dismissed = true
+        dismissWordLens()
         sessionJob?.cancel()
         binder?.release()
         try { overlayHost.removeOverlayWindow(root) } catch (_: Exception) {}
@@ -195,6 +203,16 @@ class CaptureResultOverlay(
         scroll.visibility = View.VISIBLE
         b.bindResult(result)
         b.applyFurigana()
+        // Tap-a-word → definition: tokenize the source so taps resolve to spans.
+        // Readings refine on tap via the resolver, so an empty lookupToReading
+        // (no full word-list pipeline here) only loses the rare homograph hint.
+        b.tvOriginal.onTapAtOffset = { offset -> onSourceTapped(offset) }
+        scope.launch {
+            val engine = SourceLanguageEngines.get(ctx.applicationContext, prefs.sourceLangId)
+            val tokens = withContext(Dispatchers.IO) { engine.tokenize(result.originalText) }
+            if (dismissed) return@launch
+            wordSpans = SourceWordLookup.computeSpans(b.displayedSourceText(), tokens, emptyMap())
+        }
         scroll.post {
             if (dismissed) return@post
             val h = body.height.takeIf { it > 0 } ?: return@post
@@ -202,6 +220,52 @@ class CaptureResultOverlay(
             val target = if (contentRow.orientation == LinearLayout.HORIZONTAL) h else h / 2
             b.fitText(translationTargetPx = target, sourceTargetPx = target)
         }
+    }
+
+    /** Resolve the tapped word and show a display+speak lens over the game,
+     *  anchored on the tapped line (no Anki / open-detail — see [showAnkiChip]). */
+    private fun onSourceTapped(offset: Int) {
+        val span = wordSpans.firstOrNull { offset in it.first } ?: return
+        val b = binder ?: return
+        val tv = b.tvOriginal
+        scope.launch {
+            try {
+                val resolved = SourceWordLookup.resolve(ctx.applicationContext, span.second, span.third)
+                if (dismissed) return@launch
+                val layout = tv.layout ?: return@launch
+                val lineStart = layout.getLineForOffset(span.first.first)
+                val xStart = layout.getPrimaryHorizontal(span.first.first)
+                val xEnd = layout.getPrimaryHorizontal(span.first.last + 1)
+                val wordCenterX = ((xStart + xEnd) / 2).toInt() + tv.paddingLeft
+                val lineTop = layout.getLineTop(lineStart) - tv.scrollY + tv.paddingTop
+                val lineH = layout.getLineBottom(lineStart) - layout.getLineTop(lineStart)
+                val loc = IntArray(2)
+                tv.getLocationOnScreen(loc)
+                val screenX = loc[0] + wordCenterX
+                val anchorY = loc[1] + lineTop
+                dismissWordLens()
+                val lens = MagnifierLens(ctx, wm, displayId, overlayHost, showAnkiChip = false)
+                lens.onDismiss = {
+                    binder?.setWordHighlight(null)
+                    wordSpeakChip?.release()
+                    wordSpeakChip = null
+                    wordLens = null
+                }
+                wordLens = lens
+                wordSpeakChip = LensSpeakChip(
+                    lens, scope,
+                    TtsAlertTarget.Overlay(ctx, overlayHost, wm, displayId),
+                ) { LensSpeakChip.Request(resolved.word, prefs.sourceLangId, reading = resolved.reading) }
+                b.setWordHighlight(span.first)
+                lens.show(screenX, anchorY, screenW, screenH, anchorHeight = lineH)
+                lens.setDefinitions(resolved.data, resolved.label)
+                lens.makeInteractive()
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun dismissWordLens() {
+        wordLens?.dismiss()
     }
 
     /** Filled in by the in-place edit step. */

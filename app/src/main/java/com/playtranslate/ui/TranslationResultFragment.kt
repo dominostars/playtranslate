@@ -25,16 +25,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
-import com.playtranslate.translation.ChineseScriptConverter
-import com.playtranslate.language.DefinitionGlossTranslators
-import com.playtranslate.language.DefinitionResolver
-import com.playtranslate.language.DefinitionResult
-import com.playtranslate.language.WordTranslator
-import com.playtranslate.language.SourceLanguageEngines
-import com.playtranslate.language.TargetGlossDatabaseProvider
-import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.R
-import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.themeColor
@@ -663,89 +654,14 @@ class TranslationResultFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val appCtx = ctx.applicationContext
-                val prefs = Prefs(appCtx)
-                val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
-                val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
-                val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
-                val resolver = DefinitionResolver(engine, targetGlossDb,
-                    mlKitTranslator?.let { WordTranslator(it::translate) }, prefs.targetLang,
-                    DefinitionGlossTranslators.forTarget(prefs.targetLang),
-                    ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant))
-                val defResult = withContext(Dispatchers.IO) {
-                    resolver.lookup(lookupForm, reading.ifEmpty { null })
-                }
-                val response = defResult?.response
-                val entries = response?.entries.orEmpty()
-                val entry = entries.firstOrNull()
-
-                // Build popup data based on DefinitionResult tier.
-                val word: String
-                // Reading shown beneath the headword in the popup. Sourced
-                // from headwordDisplay (which suppresses it for JMdict uk
-                // entries) rather than the span's tokenizer reading, so
-                // kana-only rows don't accidentally render reading=ナゼ
-                // beneath word=なぜ via Kuromoji's katakana convention.
-                val popupReading: String?
-                val popupLabel: String?
-                val freqScore: Int
-                val isCommon: Boolean
-                val popupPitch: List<Int>
-                val popupFrequencies: List<FrequencyTag>
-                when {
-                    entry != null && defResult is DefinitionResult.MachineTranslated -> {
-                        val display = entry.headwordDisplay(lookupForm)
-                        word = display.written
-                        popupReading = display.reading
-                        popupLabel = "⚠ Machine translated"
-                        freqScore = entry.freqScore
-                        isCommon = entry.isCommon == true
-                        popupPitch = display.pitch
-                        popupFrequencies = display.frequencies
-                    }
-                    entry != null && defResult is DefinitionResult.EnglishFallback && defResult.translatedDefinitions != null -> {
-                        val display = entry.headwordDisplay(lookupForm)
-                        word = display.written
-                        popupReading = display.reading
-                        popupLabel = "⚠ Machine translated"
-                        freqScore = entry.freqScore
-                        isCommon = entry.isCommon == true
-                        popupPitch = display.pitch
-                        popupFrequencies = display.frequencies
-                    }
-                    entry != null -> {
-                        val display = entry.headwordDisplay(lookupForm)
-                        word = display.written
-                        popupReading = display.reading
-                        popupLabel = null
-                        freqScore = entry.freqScore
-                        isCommon = entry.isCommon == true
-                        popupPitch = display.pitch
-                        popupFrequencies = display.frequencies
-                    }
-                    else -> {
-                        // No dictionary entry — keep the popup up with an
-                        // empty sense list so the shared placeholder renders.
-                        // `reading` is "" for no-reading languages; map it to
-                        // null (mirror the lookup guard above) so the popup's
-                        // weaker `it != word` gate can't show a blank reading.
-                        word = lookupForm
-                        popupReading = reading.ifEmpty { null }
-                        popupLabel = null
-                        freqScore = 0
-                        isCommon = false
-                        popupPitch = emptyList()
-                        popupFrequencies = emptyList()
-                    }
-                }
-                // Senses share the lens-popup tier logic with the result list
-                // (see [buildSenseDisplays]); the no-entry case renders the
-                // shared "No definitions found." placeholder via empty senses
-                // (the lens's WordDefinitionsView owns the empty-state copy).
-                val senses: List<SenseDisplay> = if (entry != null) {
-                    buildSenseDisplays(defResult!!, entries, prefs.targetLang)
-                } else {
-                    emptyList()
-                }
+                // Shared resolution + tier branching (parity with the over-game
+                // capture panel — both surfaces resolve identically here).
+                val resolved = SourceWordLookup.resolve(appCtx, lookupForm, reading)
+                val word = resolved.word
+                val popupReading = resolved.reading
+                val popupLabel = resolved.label
+                val lensData = resolved.data
+                val entry = resolved.entry
 
                 // Calculate position: center on the tapped word, above it
                 val layout = tvOriginal.layout ?: return@launch
@@ -771,15 +687,6 @@ class TranslationResultFragment : Fragment() {
                 dismissWordPopup()
                 val canOpen = entry != null
                 val displayEntry = entry
-                val lensData = WordDefinitionData(
-                    word = word,
-                    reading = popupReading?.takeIf { it != word },
-                    senses = senses,
-                    freqScore = freqScore,
-                    isCommon = isCommon,
-                    pitch = popupPitch,
-                    frequencies = popupFrequencies,
-                )
                 wordLens = MagnifierLens(
                     activity,
                     activity.windowManager,
@@ -1186,18 +1093,7 @@ class TranslationResultFragment : Fragment() {
     ) {
         wordSpans.clear()
         val displayedText = tvOriginal.text?.toString() ?: return
-        var searchFrom = 0
-        for (tok in tokenSpans) {
-            val idx = displayedText.indexOf(tok.surface, searchFrom)
-            if (idx < 0) continue
-            val range = idx until (idx + tok.surface.length)
-            val reading = lookupToReading[tok.lookupForm]
-                ?: lookupToReading[tok.surface]
-                ?: tok.reading
-                ?: ""
-            wordSpans.add(Triple(range, tok.lookupForm, reading))
-            searchFrom = idx + tok.surface.length
-        }
+        wordSpans.addAll(SourceWordLookup.computeSpans(displayedText, tokenSpans, lookupToReading))
     }
 
 }

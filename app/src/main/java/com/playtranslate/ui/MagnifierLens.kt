@@ -124,6 +124,9 @@ class MagnifierLens(
     internal val wm: WindowManager,
     private val displayId: Int,
     private val overlayHost: OverlayHost? = null,
+    /** When false, the post-release Anki chip stays hidden — used by the
+     *  over-game capture panel, whose lens is display + speak only. */
+    private val showAnkiChip: Boolean = true,
 ) {
     private val density = rawCtx.resources.displayMetrics.density
     private fun dp(v: Float) = (v * density).toInt()
@@ -574,6 +577,7 @@ class MagnifierLens(
             onAnkiTap = { onAnkiTap?.invoke() },
             onAnkiLongPress = { onAnkiLongPress?.invoke() },
             onSpeakTap = { onSpeakTap?.invoke() },
+            showAnkiChip = showAnkiChip,
         )
         val root = LensRoot(themedCtx, view, viewW)
         val windowType = if (useActivityWindow)
@@ -685,6 +689,7 @@ class MagnifierLens(
         private val onAnkiTap: () -> Unit,
         private val onAnkiLongPress: () -> Unit,
         private val onSpeakTap: () -> Unit,
+        private val showAnkiChip: Boolean,
     ) : FrameLayout(ctx) {
         private fun dp(v: Float): Int = (density * v).toInt()
         /** Replace the alpha byte of [color] with [alpha] (0..255). Used to
@@ -1701,7 +1706,7 @@ class MagnifierLens(
             leftChip.translationX = initialOffset
             rightChip.translationX = -initialOffset
             leftChip.visibility = VISIBLE
-            rightChip.visibility = VISIBLE
+            rightChip.visibility = if (showAnkiChip) VISIBLE else GONE
             val interp = android.view.animation.DecelerateInterpolator()
             leftChip.animate().translationX(0f).setDuration(220L).setInterpolator(interp).start()
             rightChip.animate().translationX(0f).setDuration(220L).setInterpolator(interp).start()
