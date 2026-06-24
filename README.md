@@ -13,6 +13,7 @@ To report issues, receive support, or make requests, please join the [Discord se
 - **One-tap Translation**: Capture the game screen and translate Japanese text with one tap
 - **Auto Translation Mode**: Automatically translates as dialogue changes, no tapping required
 - **Word lookup**: Hover the floating lens over any word for immediate dictionary definitionss
+- **Offline**: OCR and dictionary lookups work without an internet connection, with optional offline translation models
 - **Furigana/Pinyin Mode**: Show reading hints above characters in real time
 - **Hotkey hold-to-preview**: Configure a physical key to hold-to-preview translations or furigana, great for handhelds with dedicated buttons
 - **Dual Screen & Split Screen**: Works across both screens on dual-display devices like the Ayn Thor, or in Android split-screen alongside windowed games
@@ -20,12 +21,10 @@ To report issues, receive support, or make requests, please join the [Discord se
 - **Text-to-speech**: Hear text spoken aloud. Change the default voice in settings
 - **Anki export**: Save sentences to AnkiDroid with the original text, translation, word list, target words, text-to-speech, and a screenshot. Card type selection with presets for popular decks.
 - **Yomitan integration**: Yomitan dictionaries seamlessly integrate, including pitch accent, frequency chips, kanji enrichment, and merged term definitions everywhere (incl. Anki). Look for deeper integration in the future
-- **Offline**: OCR and translation work without an internet connection, with optional on-device translation models
-- **No accessibility required**: PlayTranslate runs on a screen-recording permission by default, so it works even on devices that block accessibility for sideloaded apps. 
 
 ## How to Use
 
-1. [Download the latest release by clicking here](../../releases/download/v2.4.0-hotfix1/PlayTranslate-2.4.0-hotfix1.apk)
+1. [Download the latest release by clicking here](../../releases/download/v2.4.1/PlayTranslate-2.4.1.apk)
 2. On your Android, enable **Settings → Security → Install unknown apps** for your file manager or browser
 3. Open the APK and tap Install
 4. On first launch, follow the onboarding steps to grant the necessary permissions
