@@ -79,6 +79,9 @@ class CaptureResultOverlay(
     var onDismiss: (() -> Unit)? = null
 
     private var sessionJob: Job? = null
+    /** The active service one-shot session (OCR + translate). Held so dismissal
+     *  cancels the headless service work, not just our UI collector. */
+    private var captureSession: CaptureSession? = null
     private var dismissed = false
     private var animatingOut = false
 
@@ -235,6 +238,8 @@ class CaptureResultOverlay(
      *  cancelled on dismiss (no Activity lifecycle to auto-cancel it). */
     fun observe(session: CaptureSession) {
         sessionJob?.cancel()
+        captureSession?.cancel()
+        captureSession = session
         sessionJob = scope.launch {
             session.state.collect { state ->
                 when (state) {
@@ -253,6 +258,10 @@ class CaptureResultOverlay(
         dismissed = true
         dismissWordLens()
         sessionJob?.cancel()
+        // Cancel the service-side one-shot job too (not just our collector), so
+        // OCR/translation doesn't keep running headless after the panel is gone.
+        captureSession?.cancel()
+        captureSession = null
         binder?.release()
         try { overlayHost.removeOverlayWindow(root) } catch (_: Exception) {}
         scope.cancel()
