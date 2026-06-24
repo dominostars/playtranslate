@@ -63,32 +63,34 @@ You can support PlayTranslate on Ko-fi at https://ko-fi.com/playtranslate
 
 ## Supported Languages
 
-PlayTranslate translates from **23 game languages** (the text it can read off the screen) into **59 translation languages** (the language shown to you). Both tables are sorted by total worldwide speakers.
+PlayTranslate translates from **25 game languages** (the text it can read off the screen) into **59 translation languages** (the language shown to you). Both tables are sorted by total worldwide speakers.
 
 ### Game languages (read from the screen)
 
 | Language              | Native name      | Code     |
 |-----------------------|------------------|----------|
 | English               | English          | en       |
-| Japanese              | 日本語           | ja       |
 | Chinese (Simplified)  | 简体中文          | zh       |
 | Chinese (Traditional) | 繁體中文          | zh-Hant  |
-| Korean                | 한국어           | ko       |
+| Hindi                 | हिन्दी            | hi       |
 | Spanish               | Español          | es       |
+| Arabic                | العربية          | ar       |
 | French                | Français         | fr       |
 | Portuguese            | Português        | pt       |
-| German                | Deutsch          | de       |
 | Russian               | Русский          | ru       |
-| Arabic                | العربية          | ar       |
-| Vietnamese            | Tiếng Việt       | vi       |
+| Indonesian            | Bahasa Indonesia | id       |
+| German                | Deutsch          | de       |
+| Japanese              | 日本語           | ja       |
 | Turkish               | Türkçe           | tr       |
+| Vietnamese            | Tiếng Việt       | vi       |
+| Korean                | 한국어           | ko       |
 | Italian               | Italiano         | it       |
-| Romanian              | Română           | ro       |
+| Thai                  | ไทย              | th       |
 | Dutch                 | Nederlands       | nl       |
+| Romanian              | Română           | ro       |
 | Hungarian             | Magyar           | hu       |
 | Swedish               | Svenska          | sv       |
 | Catalan               | Català           | ca       |
-| Indonesian            | Bahasa Indonesia | id       |
 | Danish                | Dansk            | da       |
 | Finnish               | Suomi            | fi       |
 | Norwegian             | Norsk            | no       |
@@ -178,6 +180,7 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - [Sudachi](https://github.com/WorksApplications/Sudachi): Japanese morphological analysis (Apache 2.0)
 - [HanLP](https://github.com/hankcs/HanLP): Chinese word segmentation
 - [KOMORAN](https://github.com/shineware/KOMORAN): Korean morphological analysis
+- [PyThaiNLP](https://github.com/PyThaiNLP/pythainlp): Thai word segmentation — a Kotlin port of its `newmm` maximal-matcher, over a word list that includes its CC0 list (Apache 2.0)
 - [Snowball stemmers](https://snowballstem.org/) via [Apache Lucene](https://lucene.apache.org/): Latin/European stemming
 - [Lingva](https://github.com/thedaviddelta/lingva-translate): online translation
 - [AnkiDroid](https://github.com/ankidroid/Anki-Android): flashcard integration
@@ -188,7 +191,8 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - [OpenCC4j](https://github.com/houbb/opencc4j): Simplified/Traditional Chinese conversion (Apache 2.0)
 - [slimt](https://github.com/jerinphilip/slimt): tiny [Marian](https://marian-nmt.github.io/)-based NMT engine that runs the Bergamot offline models (GPL-2.0-or-later, with MPL-2.0 Marian components)
 - [OkHttp](https://square.github.io/okhttp/): HTTP client for online translation and downloads (Apache 2.0)
-- [Gson](https://github.com/google/gson): JSON serialization (Apache 2.0)
+- [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization): JSON (de)serialization for the translation backends and data models (Apache 2.0)
+- [Gson](https://github.com/google/gson): streaming JSON parsing for Yomitan dictionary banks (Apache 2.0)
 
 ### (Optional) Downloadable Offline Models
 
@@ -214,6 +218,7 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - [Arramooz](https://github.com/linuxscout/arramooz): Arabic morphological dictionary (© Taha Zerrouki; GPL 3.0)
 - [SudachiDict](https://github.com/WorksApplications/SudachiDict): Japanese tokenizer dictionary bundled for Sudachi, including [UniDic](https://clrd.ninjal.ac.jp/unidic/) (© NINJAL) and part of [mecab-ipadic-NEologd](https://github.com/neologd/mecab-ipadic-neologd) (Apache 2.0)
 - [Jiten](https://jiten.moe/): Japanese frequency data, offered as an optional in-app Yomitan dictionary download (CC BY-SA 4.0)
+- [Wikimedia Commons](https://commons.wikimedia.org/): pronunciation audio for word playback and Anki cards, fetched on demand — each clip carries its own author and license (typically CC BY / CC BY-SA / public domain), shown as a credit that travels onto exported cards
 
 ## License
 
