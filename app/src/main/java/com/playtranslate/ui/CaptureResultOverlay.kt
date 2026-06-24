@@ -7,6 +7,7 @@ import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
+import android.graphics.Typeface
 import android.text.InputType
 import android.util.TypedValue
 import android.view.Gravity
@@ -564,14 +565,18 @@ class CaptureResultOverlay(
      *  dimensions, so a hidden section's name fits a button-wide strip — a plain
      *  rotated TextView would still claim its full horizontal width in layout. */
     private inner class VerticalLabel(c: Context) : View(c) {
+        // Match the section header (style Text.PT.GroupHeader): 11sp,
+        // sans-serif-medium, all-caps, 0.12 letter spacing, ptTextMuted.
         private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = ctx.themeColor(R.attr.ptTextMuted)
             textSize = TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_SP, 14f, ctx.resources.displayMetrics,
+                TypedValue.COMPLEX_UNIT_SP, 11f, ctx.resources.displayMetrics,
             )
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            letterSpacing = 0.12f
         }
         var label: String = ""
-            set(value) { field = value; requestLayout(); invalidate() }
+            set(value) { field = value.uppercase(); requestLayout(); invalidate() }
         init { setWillNotDraw(false) }
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
