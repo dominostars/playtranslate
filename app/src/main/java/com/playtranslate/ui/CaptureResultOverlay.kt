@@ -149,6 +149,15 @@ class CaptureResultOverlay(
             })
         }
         body.apply {
+            // The visible sheet. The rounded bg lives on the body, not the panel,
+            // so the handle bar below stays fully transparent (game shows through).
+            // Top sheet: top edge is flush with the screen, so round only the
+            // bottom corners. cornerRadii order is TL, TR, BR, BL (x,y each).
+            background = GradientDrawable().apply {
+                setColor(ctx.themeColor(R.attr.ptBg))
+                val r = ctx.resources.getDimension(R.dimen.pt_radius) * 2f
+                cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, r, r, r, r)
+            }
             addView(scroll, FrameLayout.LayoutParams(MATCH, MATCH))
             addView(
                 statusText,
@@ -158,13 +167,6 @@ class CaptureResultOverlay(
         }
         panel.apply {
             orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply {
-                setColor(ctx.themeColor(R.attr.ptBg))
-                // Top sheet: the top edge is flush with the screen, so round only
-                // the bottom corners. cornerRadii order is TL, TR, BR, BL (x,y each).
-                val r = ctx.resources.getDimension(R.dimen.pt_radius)
-                cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, r, r, r, r)
-            }
             addView(body, LinearLayout.LayoutParams(MATCH, 0, 1f))
             addView(handle, LinearLayout.LayoutParams(MATCH, dp(HANDLE_HEIGHT_DP)))
         }
@@ -439,6 +441,8 @@ class CaptureResultOverlay(
             val targetCol = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
             inflater().inflate(R.layout.section_source, sourceCol, true)
             inflater().inflate(R.layout.section_target, targetCol, true)
+            trimSectionTopPadding(sourceCol)
+            trimSectionTopPadding(targetCol)
             contentRow.addView(sourceCol, LinearLayout.LayoutParams(0, WRAP, 1f))
             contentRow.addView(verticalDivider())
             contentRow.addView(targetCol, LinearLayout.LayoutParams(0, WRAP, 1f))
@@ -446,9 +450,20 @@ class CaptureResultOverlay(
             contentRow.orientation = LinearLayout.VERTICAL
             contentRow.setPadding(hPad, 0, hPad, dp(24))
             inflater().inflate(R.layout.section_source, contentRow, true)
+            trimSectionTopPadding(contentRow)
             contentRow.addView(horizontalDivider())
             inflater().inflate(R.layout.section_target, contentRow, true)
         }
+    }
+
+    /** Shave the shared section header's top padding (pt_group_gap) down for the
+     *  panel only, so the title sits closer to the top edge. [container]'s first
+     *  child is the inflated section header (header before card in the merge). */
+    private fun trimSectionTopPadding(container: LinearLayout) {
+        val header = container.getChildAt(0) ?: return
+        header.setPadding(
+            header.paddingLeft, dp(SECTION_TITLE_TOP_DP), header.paddingRight, header.paddingBottom,
+        )
     }
 
     private fun verticalDivider(): View = View(ctx).apply {
@@ -637,6 +652,9 @@ class CaptureResultOverlay(
         /** How far below the panel's bottom edge the resize grab zone extends. */
         const val EXTRA_DRAG_BELOW_DP = 26
         const val SECTION_H_PAD_DP = 12
+        /** Trimmed top padding for the panel's section headers (the shared layout
+         *  uses pt_group_gap = 20dp; the panel sits tighter to the top edge). */
+        const val SECTION_TITLE_TOP_DP = 4
         const val DISMISS_DISTANCE_DP = 64f
         /** px/s; a deliberate up-fling (a notch above FloatingOverlayIcon's 600
          *  for a small icon, since the panel wants intent). */
