@@ -36,6 +36,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 private const val TAG = "OverlayUiController"
@@ -81,6 +82,14 @@ class OverlayUiController(
     /** The over-game capture-result panel while showing (single-screen). Single
      *  instance — a new capture replaces it. */
     private var captureResultOverlay: com.playtranslate.ui.CaptureResultOverlay? = null
+
+    /** The in-flight capture-setup coroutine (it suspends in requestClean before
+     *  the panel exists, so dismissing the panel alone can't stop it), plus a
+     *  monotonic generation. Every dismiss bumps the generation and cancels the
+     *  job, so a newer capture — or any teardown — supersedes an older capture
+     *  still mid-requestClean instead of both racing the shared service. */
+    private var captureJob: Job? = null
+    private var captureGeneration = 0
 
     /** Listens for display changes (rotation, hot-plug, foldable state) so
      *  icons can be repositioned against the new dimensions and the icon
@@ -1323,8 +1332,19 @@ class OverlayUiController(
             return
         }
         val size = getDisplaySize(display)
-        scope.launch {
+        val gen = captureGeneration
+        captureJob = scope.launch {
             val bitmap = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
+            // A newer capture (or a teardown) bumped the generation while we were
+            // suspended in requestClean — bail before creating the panel or
+            // touching the shared service, so the two captures can't interleave
+            // their configureOverride/processScreenshot. (The synchronous tail
+            // below has no suspension point, so the generation check, not job
+            // cancellation, is what stops a coroutine that already resumed.)
+            if (gen != captureGeneration) {
+                bitmap?.recycle()
+                return@launch
+            }
             // Register the panel only AFTER the clean capture, so its window is
             // never blanked into this shot.
             val overlay = com.playtranslate.ui.CaptureResultOverlay(displayCtx, wm, displayId, overlayHost)
@@ -1374,6 +1394,11 @@ class OverlayUiController(
     /** Remove the over-game result panel if showing. Idempotent. The overlay
      *  cancels its own session observer + scope on dismiss. */
     fun dismissCaptureResultOverlay() {
+        // Bump first so any in-flight setup coroutine that already passed
+        // requestClean fails its generation check, then cancel the suspended one.
+        captureGeneration++
+        captureJob?.cancel()
+        captureJob = null
         captureResultOverlay?.dismiss()
         captureResultOverlay = null
     }

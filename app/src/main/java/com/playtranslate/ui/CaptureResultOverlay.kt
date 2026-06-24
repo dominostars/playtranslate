@@ -98,6 +98,9 @@ class CaptureResultOverlay(
     // In-place edit (the panel window goes focusable so the IME shows over the game).
     private var windowParams: WindowManager.LayoutParams? = null
     private var lastResult: TranslationResult? = null
+    /** Bumped per edit commit so an out-of-order translateOnce can't roll back a
+     *  newer edit. */
+    private var editGeneration = 0
     private val editContainer = LinearLayout(ctx)
     private val editText = EditText(ctx)
 
@@ -247,18 +250,25 @@ class CaptureResultOverlay(
         // Readings refine on tap via the resolver, so an empty lookupToReading
         // (no full word-list pipeline here) only loses the rare homograph hint.
         b.tvOriginal.onTapAtOffset = { offset -> onSourceTapped(offset) }
-        scope.launch {
-            val engine = SourceLanguageEngines.get(ctx.applicationContext, prefs.sourceLangId)
-            val tokens = withContext(Dispatchers.IO) { engine.tokenize(result.originalText) }
-            if (dismissed) return@launch
-            wordSpans = SourceWordLookup.computeSpans(b.displayedSourceText(), tokens, emptyMap())
-        }
+        refreshWordSpans(result.originalText)
         scroll.post {
             if (dismissed) return@post
             val h = body.height.takeIf { it > 0 } ?: return@post
             // Side-by-side: each column owns ~the body height; stacked: split it.
             val target = if (contentRow.orientation == LinearLayout.HORIZONTAL) h else h / 2
             b.fitText(translationTargetPx = target, sourceTargetPx = target)
+        }
+    }
+
+    /** (Re)tokenize the source so taps resolve to spans against the displayed
+     *  text. Called for a fresh result and after an in-place edit. */
+    private fun refreshWordSpans(originalText: String) {
+        scope.launch {
+            val engine = SourceLanguageEngines.get(ctx.applicationContext, prefs.sourceLangId)
+            val tokens = withContext(Dispatchers.IO) { engine.tokenize(originalText) }
+            if (dismissed) return@launch
+            val b = binder ?: return@launch
+            wordSpans = SourceWordLookup.computeSpans(b.displayedSourceText(), tokens, emptyMap())
         }
     }
 
@@ -337,18 +347,28 @@ class CaptureResultOverlay(
         val prev = lastResult ?: return
         if (newText.isBlank() || newText == prev.originalText) return
         val b = binder ?: return
-        // Show the edited source + a translating placeholder immediately.
-        b.setSourceSegments(TextSegments.ofText(newText))
+        // Commit the edit to state IMMEDIATELY (blank translation = retranslating)
+        // so re-opening Edit reads the new text, then gate the async translation by
+        // generation so an older translateOnce can't roll back a newer edit.
+        val edited = prev.copy(
+            originalText = newText,
+            segments = TextSegments.ofText(newText),
+            translatedText = "",
+            note = null,
+            backendDisplayName = null,
+        )
+        lastResult = edited
+        val gen = ++editGeneration
+        b.setSourceSegments(edited.segments)
         b.applyFurigana()
         b.setTargetTranslatingPlaceholder()
+        refreshWordSpans(newText)
         scope.launch {
             val svc = CaptureService.instance ?: return@launch
             val gt = svc.translateOnce(newText)
-            if (dismissed) return@launch
+            if (dismissed || gen != editGeneration) return@launch
             bindResult(
-                prev.copy(
-                    originalText = newText,
-                    segments = TextSegments.ofText(newText),
+                edited.copy(
                     translatedText = gt.text,
                     note = gt.note,
                     backendDisplayName = gt.backendDisplayName,
