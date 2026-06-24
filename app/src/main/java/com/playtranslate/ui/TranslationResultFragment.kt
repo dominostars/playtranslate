@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
-import android.graphics.Typeface
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.Gravity
@@ -15,7 +14,6 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.PopupWindow
-import android.text.StaticLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -33,11 +31,9 @@ import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.WordTranslator
 import com.playtranslate.language.SourceLanguageEngines
-import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.R
-import com.playtranslate.language.HintTextKind
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.model.headwordDisplay
@@ -46,7 +42,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.drop
-import java.util.Locale
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.isVisible
 import androidx.core.view.isGone
@@ -120,10 +115,13 @@ class TranslationResultFragment : Fragment() {
     private lateinit var statusContainer: View
     private lateinit var resultsContent: ScrollView
     private lateinit var tvOriginal: ClickableTextView
-    private lateinit var tvTranslation: TextView
-    private lateinit var tvTranslationNote: TextView
     private lateinit var tvMainWordsLoading: TextView
     private lateinit var mainWordsContainer: LinearLayout
+
+    /** Renders the source + target sections (shared with the over-game capture
+     *  panel): inline furigana, the word highlight, section visibility, copy, and
+     *  the source speak button. */
+    private lateinit var binder: TranslationSectionBinder
 
     /** Session cache of headword → Anki deck names, shared by the words list
      *  and the in-app word lens so re-renders / re-taps don't re-query. */
@@ -131,22 +129,9 @@ class TranslationResultFragment : Fragment() {
     /** Word cells from the last word-list render, so onResume / a successful
      *  in-app send can refresh the deck badges in place (no row rebuild). */
     private var lastRenderedCells: Map<String, List<WordResultCell>> = emptyMap()
-    private lateinit var btnCopyOriginal: ImageButton
-    private lateinit var btnCopyTranslation: ImageButton
-    private lateinit var btnEditOriginal: ImageButton
-    private lateinit var btnSpeakOriginal: ImageButton
-    private lateinit var btnToggleTranslation: ImageButton
-    private lateinit var btnToggleOriginal: ImageButton
-    private lateinit var btnToggleFurigana: ImageButton
     private lateinit var btnToggleWords: ImageButton
-    private lateinit var translationContent: LinearLayout
-    private lateinit var originalContent: LinearLayout
     private lateinit var wordsContent: LinearLayout
-    private lateinit var cardTranslation: com.google.android.material.card.MaterialCardView
-    private lateinit var cardOriginal: com.google.android.material.card.MaterialCardView
     private lateinit var cardWords: com.google.android.material.card.MaterialCardView
-    private lateinit var labelOriginal: TextView
-    private lateinit var labelTranslation: TextView
     private lateinit var tvNoWords: TextView
     private lateinit var resultActionButtons: View
     private lateinit var btnResultClear: View
@@ -161,22 +146,6 @@ class TranslationResultFragment : Fragment() {
      *  text (which has OCR newlines). */
     private var wordSpans = mutableListOf<Triple<IntRange, String, String>>()
     private var furiganaPopup: PopupWindow? = null
-
-    /** Drives the original-text speak button — TTS playback plus the icon
-     *  highlight. Created per view in [setupButtons], released in
-     *  [onDestroyView]. */
-    private var speakButton: OriginalSpeakButton? = null
-
-    /** Char range currently highlighted with the accent background while a
-     *  word-lookup popup is active. Tracked separately from the span object
-     *  so [applyFurigana] can re-attach the highlight after rebuilding the
-     *  spannable. */
-    private var highlightedWordRange: IntRange? = null
-
-    /** Bumped on every [applyFurigana] call so an in-flight async render can tell
-     *  it's been superseded (e.g. user toggled furigana off, or a newer render
-     *  started) and bail before stamping stale spans. Main-thread-only. */
-    private var furiganaRenderToken = 0
 
     /** Reified scroll listener so [scrollToTopSilently] can detach + reattach
      *  it around programmatic scrolls — otherwise the framework's
@@ -216,6 +185,13 @@ class TranslationResultFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         bindViews(view)
+        binder = TranslationSectionBinder(
+            view,
+            requireContext(),
+            prefs,
+            viewLifecycleOwner.lifecycleScope,
+            TtsAlertTarget.InActivity(requireActivity()),
+        )
         setupButtons()
         // Observe activity-scoped VM state. Both flows are activity-scoped
         // (survive fragment view recreation), so a rotation re-renders the
@@ -240,8 +216,7 @@ class TranslationResultFragment : Fragment() {
     override fun onDestroyView() {
         dismissFurigana()
         dismissWordPopup()
-        speakButton?.release()
-        speakButton = null
+        binder.release()
         pillAnkiButton = null
         super.onDestroyView()
     }
@@ -253,26 +228,11 @@ class TranslationResultFragment : Fragment() {
         statusContainer      = view.findViewById(R.id.statusContainer)
         resultsContent       = view.findViewById(R.id.resultsContent)
         tvOriginal           = view.findViewById(R.id.tvOriginal)
-        tvTranslation        = view.findViewById(R.id.tvTranslation)
-        tvTranslationNote    = view.findViewById(R.id.tvTranslationNote)
         tvMainWordsLoading   = view.findViewById(R.id.tvMainWordsLoading)
         mainWordsContainer   = view.findViewById(R.id.mainWordsContainer)
-        btnCopyOriginal      = view.findViewById(R.id.btnCopyOriginal)
-        btnCopyTranslation   = view.findViewById(R.id.btnCopyTranslation)
-        btnEditOriginal      = view.findViewById(R.id.btnEditOriginal)
-        btnSpeakOriginal     = view.findViewById(R.id.btnSpeakOriginal)
-        btnToggleTranslation = view.findViewById(R.id.btnToggleTranslation)
-        btnToggleOriginal    = view.findViewById(R.id.btnToggleOriginal)
-        btnToggleFurigana    = view.findViewById(R.id.btnToggleFurigana)
         btnToggleWords       = view.findViewById(R.id.btnToggleWords)
-        translationContent   = view.findViewById(R.id.translationContent)
-        originalContent      = view.findViewById(R.id.originalContent)
         wordsContent         = view.findViewById(R.id.wordsContent)
-        cardTranslation      = view.findViewById(R.id.cardTranslation)
-        cardOriginal         = view.findViewById(R.id.cardOriginal)
         cardWords            = view.findViewById(R.id.cardWords)
-        labelOriginal        = view.findViewById(R.id.labelOriginal)
-        labelTranslation     = view.findViewById(R.id.labelTranslation)
         tvNoWords            = view.findViewById(R.id.tvNoWords)
         resultActionButtons  = view.findViewById(R.id.resultActionButtons)
         btnResultClear       = view.findViewById(R.id.btnResultClear)
@@ -280,30 +240,14 @@ class TranslationResultFragment : Fragment() {
     }
 
     private fun setupButtons() {
-        btnCopyOriginal.setOnClickListener {
-            copyToClipboard(tvOriginal.text?.toString() ?: return@setOnClickListener)
-        }
-        btnCopyTranslation.setOnClickListener {
-            copyToClipboard(tvTranslation.text?.toString() ?: return@setOnClickListener)
-        }
-        btnEditOriginal.setOnClickListener {
+        // Copy / show-hide / furigana toggle / speak live in the shared binder.
+        // Editing is surface-specific: in-app it opens the host's edit overlay.
+        binder.setupSectionButtons(onEdit = {
             dismissFurigana()
             dismissWordPopup()
             host?.onEditOriginalRequested()
-        }
+        })
         resultsContent.setOnScrollChangeListener(scrollListener)
-        btnToggleTranslation.setOnClickListener {
-            prefs.hideTranslationSection = !prefs.hideTranslationSection
-            applyTranslationVisibility()
-        }
-        btnToggleOriginal.setOnClickListener {
-            prefs.hideOriginalSection = !prefs.hideOriginalSection
-            applyOriginalVisibility()
-        }
-        btnToggleFurigana.setOnClickListener {
-            prefs.showFuriganaInline = !prefs.showFuriganaInline
-            applyFurigana()
-        }
         btnToggleWords.setOnClickListener {
             prefs.hideWordsSection = !prefs.hideWordsSection
             applyWordsVisibility()
@@ -325,94 +269,12 @@ class TranslationResultFragment : Fragment() {
             true
         }
         pillAnkiButton = PillAnkiButton(btnResultAnki)
-        speakButton = OriginalSpeakButton(
-            btnSpeakOriginal,
-            viewLifecycleOwner.lifecycleScope,
-            TtsAlertTarget.InActivity(requireActivity()),
-        ) {
-            val text = getDisplayedOriginalText()
-            if (text.isBlank()) null
-            else OriginalSpeakButton.Request(text, prefs.sourceLangId)
-        }
-    }
-
-    private fun applyTranslationVisibility() {
-        val hidden = prefs.hideTranslationSection
-        cardTranslation.visibility = if (hidden) View.GONE else View.VISIBLE
-        btnCopyTranslation.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
-        btnToggleTranslation.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
-    }
-
-    private fun applyOriginalVisibility() {
-        val hidden = prefs.hideOriginalSection
-        cardOriginal.visibility = if (hidden) View.GONE else View.VISIBLE
-        btnCopyOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
-        btnEditOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
-        btnSpeakOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
-        val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
-        val hasHintText = hintKind != HintTextKind.NONE
-        btnToggleFurigana.visibility = if (hidden || !hasHintText) View.GONE else View.VISIBLE
-        if (hasHintText) {
-            val label = when (hintKind) { HintTextKind.PINYIN -> "pinyin"; else -> "furigana" }
-            btnToggleFurigana.contentDescription = "Toggle inline $label"
-            btnToggleFurigana.setImageResource(
-                if (hintKind == HintTextKind.PINYIN) R.drawable.ic_pinyin else R.drawable.ic_furigana
-            )
-        }
-        btnToggleOriginal.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
     }
 
     private fun applyWordsVisibility() {
         val hidden = prefs.hideWordsSection
         cardWords.visibility = if (hidden) View.GONE else View.VISIBLE
         btnToggleWords.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
-    }
-
-    private fun applyFurigana() {
-        val active = prefs.showFuriganaInline
-        val ctx = context ?: return
-        val accentColor = ctx.themeColor(R.attr.ptAccent)
-        val secondaryColor = ctx.themeColor(R.attr.ptTextMuted)
-        btnToggleFurigana.imageTintList = android.content.res.ColorStateList.valueOf(
-            if (active) accentColor else secondaryColor
-        )
-
-        // Every call represents the latest desired furigana state; bump the token
-        // so any async render still in flight from a prior call bails out.
-        val token = ++furiganaRenderToken
-        val plainText = tvOriginal.text.toString()
-        if (!active || plainText.isEmpty()) {
-            tvOriginal.text = plainText
-            // The text reference just got swapped, so any active accent highlight
-            // span was dropped — re-attach it from the tracked range.
-            highlightedWordRange?.let { setWordHighlight(it) }
-            return
-        }
-        // annotateForHintText tokenizes off the main thread (it's suspend); apply
-        // the furigana spans back on the main thread. Bail if a newer applyFurigana
-        // superseded us (toggle-off / re-render → token), or the displayed text
-        // changed out from under us (new result → text guard).
-        viewLifecycleOwner.lifecycleScope.launch {
-            val engine = SourceLanguageEngines.get(ctx.applicationContext, prefs.sourceLangId)
-            val annotations = engine.annotateForHintText(plainText)
-            if (token != furiganaRenderToken || tvOriginal.text.toString() != plainText) return@launch
-            if (annotations.isEmpty()) {
-                tvOriginal.text = plainText
-            } else {
-                val spannable = android.text.SpannableString(plainText)
-                for (ann in annotations) {
-                    if (ann.baseEnd > plainText.length) continue
-                    spannable.setSpan(
-                        FuriganaSpan(ann.hintText, ann.pitchDownstep),
-                        ann.baseStart, ann.baseEnd,
-                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                    )
-                }
-                tvOriginal.text = spannable
-            }
-            // Re-attach the accent highlight dropped by the text swap.
-            highlightedWordRange?.let { setWordHighlight(it) }
-        }
     }
 
     // ── Result render (driven by vm.result observation) ──────────────────
@@ -430,51 +292,32 @@ class TranslationResultFragment : Fragment() {
                 showStatusUi(getString(R.string.status_error, state.message), showHint = false)
             }
             is ResultState.Translating -> {
-                tvOriginal.setSegments(state.segments)
+                binder.setSourceSegments(state.segments)
                 tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
-                labelOriginal.text = sourceLangLocalizedDisplayName()
-                labelTranslation.text = targetLangDisplayName()
+                binder.updateLabels()
                 statusContainer.isGone = true
                 resultsContent.isVisible = true
                 resultActionButtons.isVisible = showsClearAction
                 resultsContent.scrollToTopSilently(scrollListener)
-                tvTranslation.text = getString(R.string.status_translating)
-                tvTranslationNote.text = ""
-                tvTranslationNote.isGone = true
-                applyTranslationVisibility()
-                applyOriginalVisibility()
+                binder.setTargetTranslatingPlaceholder()
+                binder.applyTranslationVisibility()
+                binder.applyOriginalVisibility()
                 applyWordsVisibility()
             }
             is ResultState.Ready -> {
                 val result = state.result
-                tvOriginal.setSegments(result.segments)
+                binder.setSourceSegments(result.segments)
                 tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
                 // A blank translation on a Ready result means a re-translate is
                 // in flight: the edit-overlay commit clears the old translation
                 // (updateOriginalText) before the new one lands (updateTranslation).
-                // Show the same "Translating…" placeholder as the Translating
-                // state instead of an empty card, and suppress the now-stale
-                // backend label until the fresh translation returns.
-                val retranslating = result.translatedText.isBlank()
-                tvTranslation.text =
-                    if (retranslating) getString(R.string.status_translating)
-                    else result.translatedText
-                val warning = result.note
-                val sourceLabel = result.backendDisplayName?.let {
-                    getString(R.string.translation_source_label, it)
-                }
-                val bottomLabel = if (retranslating) null else (warning ?: sourceLabel)
-                tvTranslationNote.text = bottomLabel ?: ""
-                tvTranslationNote.visibility = if (bottomLabel != null) View.VISIBLE else View.GONE
-                tvTranslationNote.setTypeface(
-                    null,
-                    if (warning == null && sourceLabel != null) Typeface.ITALIC else Typeface.NORMAL,
-                )
-                applyTranslationVisibility()
-                applyOriginalVisibility()
+                // The binder shows the same "Translating…" placeholder instead of
+                // an empty card and suppresses the now-stale backend label.
+                binder.bindTargetReady(result)
+                binder.applyTranslationVisibility()
+                binder.applyOriginalVisibility()
                 applyWordsVisibility()
-                labelOriginal.text = sourceLangLocalizedDisplayName()
-                labelTranslation.text = targetLangDisplayName()
+                binder.updateLabels()
                 statusContainer.isGone = true
                 resultsContent.visibility = View.INVISIBLE
                 resultActionButtons.isVisible = showsClearAction
@@ -506,8 +349,6 @@ class TranslationResultFragment : Fragment() {
         get() = view != null && vm.result.value is ResultState.Ready
 
     private companion object {
-        const val TEXT_SIZE_MAX_SP = 24f
-        const val TEXT_SIZE_MIN_SP = 16f
         const val WORD_DIVIDER_TAG = "pt_word_divider"
         /** Word-cell text-size factor for the results list — a notch below
          *  [WordResultCell.DEFAULT_SCALE] (the "large" factor reserved for the
@@ -532,30 +373,13 @@ class TranslationResultFragment : Fragment() {
     }
 
     /**
-     * Shrink translation and original text so each tries to fit within
-     * half the visible scroll area. Stops shrinking at [TEXT_SIZE_MIN_SP].
+     * Shrink translation and original text so each tries to fit within half the
+     * visible scroll area (the binder owns the per-view shrink).
      */
     private fun fitTextSizes() {
         val scrollHeight = resultsContent.height.takeIf { it > 0 } ?: return
         val halfHeight = scrollHeight / 2
-        fitTextView(tvTranslation, TEXT_SIZE_MAX_SP, TEXT_SIZE_MIN_SP, halfHeight)
-        fitTextView(tvOriginal, TEXT_SIZE_MAX_SP, TEXT_SIZE_MIN_SP, halfHeight)
-    }
-
-    private fun fitTextView(tv: TextView, maxSp: Float, minSp: Float, targetHeightPx: Int) {
-        val widthPx = tv.width.takeIf { it > 0 } ?: return
-        var sizeSp = maxSp
-        while (sizeSp > minSp) {
-            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
-            val height = StaticLayout.Builder
-                .obtain(tv.text, 0, tv.text.length, tv.paint, widthPx)
-                .setLineSpacing(tv.lineSpacingExtra, tv.lineSpacingMultiplier)
-                .build()
-                .height
-            if (height <= targetHeightPx) break
-            sizeSp -= 1f
-        }
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
+        binder.fitText(translationTargetPx = halfHeight, sourceTargetPx = halfHeight)
     }
 
     /** Lens Anki chip handler — adds the tapped word (not the sentence)
@@ -993,7 +817,7 @@ class TranslationResultFragment : Fragment() {
                     // dismissWordPopup), so speak-chip + lens cleanup lives
                     // here, not only in dismissWordPopup.
                     onDismiss = {
-                        setWordHighlight(null)
+                        binder.setWordHighlight(null)
                         wordSpeakChip?.release()
                         wordSpeakChip = null
                         wordLens = null
@@ -1006,7 +830,7 @@ class TranslationResultFragment : Fragment() {
                         TtsAlertTarget.InActivity(activity),
                     ) { LensSpeakChip.Request(word, prefs.sourceLangId, reading = popupReading) }
                 }
-                setWordHighlight(span.first)
+                binder.setWordHighlight(span.first)
                 wordLens?.show(
                     screenX, anchorY,
                     dm.widthPixels, dm.heightPixels,
@@ -1026,49 +850,6 @@ class TranslationResultFragment : Fragment() {
         // dismiss() fires the lens's onDismiss, which releases the speak chip
         // and clears wordLens / wordSpeakChip.
         wordLens?.dismiss()
-    }
-
-    /**
-     * Highlight the character [range] inside [tvOriginal] with the accent
-     * background, or clear any active highlight when [range] is null.
-     * Promotes the text to a [android.text.SpannableString] on first use so
-     * the BackgroundColorSpan has somewhere to land — [ClickableTextView]'s
-     * default text is a plain String.
-     */
-    private fun setWordHighlight(range: IntRange?) {
-        if (view == null) return
-        val ctx = context ?: return
-        val current = tvOriginal.text ?: return
-        // Rebuild a fresh Spannable from current so any FuriganaSpans
-        // already on the text are preserved (SpannableString's copy
-        // constructor brings spans across), and so we can strip prior
-        // BackgroundColorSpans cleanly before adding the new one. Mutating
-        // the existing text in place is unreliable: TextView's setText
-        // routes Spannables through Spannable.Factory, which wraps them in
-        // a new instance, so the reference we held would be orphaned and
-        // subsequent setSpan calls wouldn't show up on screen.
-        val rebuilt = android.text.SpannableString(current)
-        rebuilt.getSpans(0, rebuilt.length, android.text.style.BackgroundColorSpan::class.java)
-            .forEach { rebuilt.removeSpan(it) }
-        highlightedWordRange = range
-        if (range != null) {
-            val safeEnd = (range.last + 1).coerceAtMost(rebuilt.length)
-            val safeStart = range.first.coerceAtLeast(0).coerceAtMost(safeEnd)
-            if (safeStart < safeEnd) {
-                val accentBg = withAlpha(ctx.themeColor(R.attr.ptAccent), 0.30f)
-                rebuilt.setSpan(
-                    android.text.style.BackgroundColorSpan(accentBg),
-                    safeStart, safeEnd,
-                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                )
-            }
-        }
-        tvOriginal.text = rebuilt
-    }
-
-    private fun withAlpha(color: Int, alpha: Float): Int {
-        val a = (alpha.coerceIn(0f, 1f) * 255).toInt()
-        return Color.argb(a, Color.red(color), Color.green(color), Color.blue(color))
     }
 
     private fun showFurigana(range: IntRange, reading: String) {
@@ -1190,7 +971,7 @@ class TranslationResultFragment : Fragment() {
             is WordLookupsState.Settled -> {
                 renderWordRows(state.rows)
                 recomputeWordSpans(state.tokenSpans, state.lookupToReading)
-                applyFurigana()
+                binder.applyFurigana()
                 tvMainWordsLoading.isGone = true
                 tvNoWords.visibility = if (state.rows.isEmpty()) View.VISIBLE else View.GONE
                 btnResultAnki.isVisible = true
@@ -1419,28 +1200,4 @@ class TranslationResultFragment : Fragment() {
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────
-
-    private fun selectedTargetLang() =
-        Prefs(requireContext().applicationContext).targetLang
-
-    private fun sourceLangLocalizedDisplayName(): String {
-        val appCtx = requireContext().applicationContext
-        val p = Prefs(appCtx)
-        return p.sourceLangId.displayName(Locale.forLanguageTag(p.targetLang))
-    }
-
-    private fun targetLangDisplayName(): String {
-        val code = selectedTargetLang()
-        val variant = Prefs(requireContext().applicationContext).targetChineseVariant
-        return com.playtranslate.language.ChineseScriptVariant
-            .targetDisplayName(code, variant, Locale.forLanguageTag(code))
-    }
-
-    private fun copyToClipboard(text: String) {
-        val ctx = context ?: return
-        val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("PlayTranslate", text))
-        Toast.makeText(ctx, ctx.getString(R.string.toast_copied), Toast.LENGTH_SHORT).show()
-    }
 }
