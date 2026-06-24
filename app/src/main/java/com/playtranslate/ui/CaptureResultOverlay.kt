@@ -2,7 +2,6 @@ package com.playtranslate.ui
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PixelFormat
@@ -298,8 +297,8 @@ class CaptureResultOverlay(
     // ── Custom views ─────────────────────────────────────────────────────
 
     /** Full-screen transparent host. A DOWN below the panel (the visible game
-     *  area) dismisses and is consumed so it doesn't leak to the game. Rotation
-     *  dismisses (v1) — the responsive tree differs per orientation. */
+     *  area) dismisses and is consumed so it doesn't leak to the game.
+     *  (Rotation dismisses too, driven by the controller's display listener.) */
     private inner class CaptureResultRoot(c: Context) : FrameLayout(c) {
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
             if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -314,11 +313,6 @@ class CaptureResultOverlay(
                 return true
             }
             return super.dispatchTouchEvent(ev)
-        }
-
-        override fun onConfigurationChanged(newConfig: Configuration?) {
-            super.onConfigurationChanged(newConfig)
-            dismiss()
         }
     }
 

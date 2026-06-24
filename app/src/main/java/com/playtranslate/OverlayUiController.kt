@@ -118,6 +118,10 @@ class OverlayUiController(
         }
         override fun onDisplayChanged(displayId: Int) {
             if (!isActiveController) return
+            // A rotation / resize changes the screen dimensions the result panel
+            // sized itself + its responsive layout to; dismiss it (re-capture is
+            // cheap) rather than re-parent its bound spans across orientations.
+            dismissCaptureResultOverlay()
             // A rotation / resize invalidates a per-box translation overlay
             // group — its cached displayW/displayH drive the OCR→screen
             // mapping. Drop it on a size change; the next capture cycle
