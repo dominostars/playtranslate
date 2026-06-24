@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
+import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.view.Gravity
 import android.view.MotionEvent
@@ -157,12 +158,17 @@ class CaptureResultOverlay(
         }
         panel.apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(ctx.themeColor(R.attr.ptBg))
+            background = GradientDrawable().apply {
+                setColor(ctx.themeColor(R.attr.ptBg))
+                // Top sheet: the top edge is flush with the screen, so round only
+                // the bottom corners. cornerRadii order is TL, TR, BR, BL (x,y each).
+                val r = ctx.resources.getDimension(R.dimen.pt_radius)
+                cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, r, r, r, r)
+            }
             addView(body, LinearLayout.LayoutParams(MATCH, 0, 1f))
             addView(handle, LinearLayout.LayoutParams(MATCH, dp(HANDLE_HEIGHT_DP)))
         }
         root.addView(panel, FrameLayout.LayoutParams(MATCH, 0, Gravity.TOP))
-        wireResizeHandle()
     }
 
     // ── Public API ───────────────────────────────────────────────────────
@@ -465,39 +471,38 @@ class CaptureResultOverlay(
 
     private fun inflater() = android.view.LayoutInflater.from(ctx)
 
-    // ── Resize handle (drag to grow/shrink; up-fling dismisses) ──────────
+    // ── Resize (drag the handle / the band just below it to grow-shrink) ──
+    // Driven by CaptureResultRoot so the touch zone can extend below the panel's
+    // visible bottom edge (the handle itself can't receive touches past the
+    // panel's bounds).
 
+    private var resizing = false
     private var resizeStartRawY = 0f
     private var resizeStartHeight = 0
     private var resizeTracker: VelocityTracker? = null
 
-    private fun wireResizeHandle() {
-        handle.setOnTouchListener { _, e ->
-            when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    resizeStartRawY = e.rawY
-                    resizeStartHeight = panelHeightPx
-                    resizeTracker = VelocityTracker.obtain().also { it.addMovement(e) }
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    resizeTracker?.addMovement(e)
-                    val dy = (e.rawY - resizeStartRawY).toInt()
-                    setPanelHeight(CaptureResultGeometry.clampPanelHeight(resizeStartHeight + dy, screenH))
-                    true
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val vy = resizeTracker?.let {
-                        it.addMovement(e); it.computeCurrentVelocity(1000); it.yVelocity
-                    } ?: 0f
-                    resizeTracker?.recycle()
-                    resizeTracker = null
-                    if (vy < -FLING_DISMISS_VEL) dismiss()
-                    true
-                }
-                else -> false
-            }
-        }
+    private fun beginResize(rawY: Float) {
+        resizing = true
+        resizeStartRawY = rawY
+        resizeStartHeight = panelHeightPx
+        resizeTracker = VelocityTracker.obtain()
+    }
+
+    private fun updateResize(e: MotionEvent) {
+        resizeTracker?.addMovement(e)
+        val dy = (e.rawY - resizeStartRawY).toInt()
+        setPanelHeight(CaptureResultGeometry.clampPanelHeight(resizeStartHeight + dy, screenH))
+    }
+
+    private fun endResize(e: MotionEvent) {
+        val vy = resizeTracker?.let {
+            it.addMovement(e); it.computeCurrentVelocity(1000); it.yVelocity
+        } ?: 0f
+        resizeTracker?.recycle()
+        resizeTracker = null
+        resizing = false
+        // A fast up-fling on the handle dismisses (slides out).
+        if (vy < -FLING_DISMISS_VEL) animateOutAndDismiss()
     }
 
     private fun setPanelHeight(px: Int) {
@@ -508,21 +513,33 @@ class CaptureResultOverlay(
 
     // ── Custom views ─────────────────────────────────────────────────────
 
-    /** Full-screen transparent host. A DOWN below the panel (the visible game
-     *  area) dismisses and is consumed so it doesn't leak to the game.
-     *  (Rotation dismisses too, driven by the controller's display listener.) */
+    /** Full-screen transparent host. Owns the resize gesture (so its touch zone
+     *  can reach below the panel's visible bottom — a child can't receive touches
+     *  past the parent's bounds) and the tap-outside dismiss. A DOWN in the resize
+     *  band drags the panel height; a DOWN below that band is on the game and
+     *  dismisses. (Rotation dismisses too, via the controller's display listener.) */
     private inner class CaptureResultRoot(c: Context) : FrameLayout(c) {
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-            if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
-                val panelBottom = panel.bottom + panel.translationY
-                if (ev.y >= panelBottom) {
-                    animateOutAndDismiss()
-                    return true
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    val panelBottom = panel.bottom + panel.translationY
+                    // Resize zone = the handle strip + EXTRA_DRAG_BELOW_DP below the
+                    // panel, so the grab target extends past the sheet's edge.
+                    val resizeTop = panelBottom - dp(HANDLE_HEIGHT_DP)
+                    val resizeBottom = panelBottom + dp(EXTRA_DRAG_BELOW_DP)
+                    if (ev.y >= resizeTop && ev.y <= resizeBottom) {
+                        beginResize(ev.rawY)
+                        return true
+                    }
+                    if (ev.y > resizeBottom) {
+                        animateOutAndDismiss()
+                        return true
+                    }
                 }
-            }
-            if (ev.actionMasked == MotionEvent.ACTION_OUTSIDE) {
-                animateOutAndDismiss()
-                return true
+                MotionEvent.ACTION_MOVE -> if (resizing) { updateResize(ev); return true }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                    if (resizing) { endResize(ev); return true }
+                MotionEvent.ACTION_OUTSIDE -> { animateOutAndDismiss(); return true }
             }
             return super.dispatchTouchEvent(ev)
         }
@@ -617,6 +634,8 @@ class CaptureResultOverlay(
         const val MATCH = LinearLayout.LayoutParams.MATCH_PARENT
         const val WRAP = LinearLayout.LayoutParams.WRAP_CONTENT
         const val HANDLE_HEIGHT_DP = 20
+        /** How far below the panel's bottom edge the resize grab zone extends. */
+        const val EXTRA_DRAG_BELOW_DP = 26
         const val SECTION_H_PAD_DP = 12
         const val DISMISS_DISTANCE_DP = 64f
         /** px/s; a deliberate up-fling (a notch above FloatingOverlayIcon's 600
