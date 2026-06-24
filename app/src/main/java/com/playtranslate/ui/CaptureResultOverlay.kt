@@ -6,21 +6,28 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
+import android.text.InputType
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.widget.NestedScrollView
+import com.playtranslate.CaptureService
 import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.SourceLanguageEngines
+import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
@@ -88,6 +95,12 @@ class CaptureResultOverlay(
     private var wordLens: MagnifierLens? = null
     private var wordSpeakChip: LensSpeakChip? = null
 
+    // In-place edit (the panel window goes focusable so the IME shows over the game).
+    private var windowParams: WindowManager.LayoutParams? = null
+    private var lastResult: TranslationResult? = null
+    private val editContainer = LinearLayout(ctx)
+    private val editText = EditText(ctx)
+
     init {
         statusText.apply {
             gravity = Gravity.CENTER
@@ -104,12 +117,37 @@ class CaptureResultOverlay(
                 FrameLayout.LayoutParams(MATCH, WRAP),
             )
         }
+        editText.apply {
+            setTextColor(ctx.themeColor(R.attr.ptText))
+            textSize = 18f
+            gravity = Gravity.TOP or Gravity.START
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+            val p = dp(12)
+            setPadding(p, p, p, p)
+        }
+        val doneBtn = Button(ctx).apply {
+            text = "✓"
+            setOnClickListener { commitEdit() }
+        }
+        editContainer.apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(ctx.themeColor(R.attr.ptBg))
+            visibility = View.GONE
+            addView(editText, LinearLayout.LayoutParams(MATCH, 0, 1f))
+            addView(doneBtn, LinearLayout.LayoutParams(WRAP, WRAP).apply {
+                gravity = Gravity.END
+                marginEnd = dp(12)
+                bottomMargin = dp(8)
+            })
+        }
         body.apply {
             addView(scroll, FrameLayout.LayoutParams(MATCH, MATCH))
             addView(
                 statusText,
                 FrameLayout.LayoutParams(MATCH, WRAP, Gravity.CENTER),
             )
+            addView(editContainer, FrameLayout.LayoutParams(MATCH, MATCH))
         }
         panel.apply {
             orientation = LinearLayout.VERTICAL
@@ -158,6 +196,7 @@ class CaptureResultOverlay(
             x = 0
             y = 0
         }
+        windowParams = lp
         overlayHost.addOverlayWindow(root, wm, lp, displayId)
     }
 
@@ -199,6 +238,7 @@ class CaptureResultOverlay(
 
     private fun bindResult(result: TranslationResult) {
         val b = binder ?: return
+        lastResult = result
         statusText.visibility = View.GONE
         scroll.visibility = View.VISIBLE
         b.bindResult(result)
@@ -268,9 +308,69 @@ class CaptureResultOverlay(
         wordLens?.dismiss()
     }
 
-    /** Filled in by the in-place edit step. */
+    /** Edit the source in place: flip the panel window focusable, show an inline
+     *  EditText over the game, and bring the IME up — no app switch. (IME over an
+     *  overlay window is OEM-variable; this path needs on-device validation.) */
     private fun startInPlaceEdit() {
-        // Wired in the edit step: flips the panel focusable + inline EditText.
+        if (editContainer.visibility == View.VISIBLE) return
+        val current = lastResult?.originalText ?: binder?.displayedSourceText() ?: return
+        dismissWordLens()
+        editText.setText(current)
+        editText.setSelection(editText.text.length)
+        editContainer.visibility = View.VISIBLE
+        setWindowFocusable(true)
+        editText.requestFocus()
+        ctx.getSystemService(InputMethodManager::class.java)
+            ?.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    /** Commit the edit: hide the IME, restore the non-focusable window, then
+     *  re-translate (text-only — no screenshot, so no clean-capture blanking) and
+     *  re-render. translateOnce returns a GroupTranslation, not a session result,
+     *  so the new target is composed here rather than flowing through observe(). */
+    private fun commitEdit() {
+        val newText = editText.text?.toString().orEmpty()
+        ctx.getSystemService(InputMethodManager::class.java)
+            ?.hideSoftInputFromWindow(editText.windowToken, 0)
+        editContainer.visibility = View.GONE
+        setWindowFocusable(false)
+        val prev = lastResult ?: return
+        if (newText.isBlank() || newText == prev.originalText) return
+        val b = binder ?: return
+        // Show the edited source + a translating placeholder immediately.
+        b.setSourceSegments(TextSegments.ofText(newText))
+        b.applyFurigana()
+        b.setTargetTranslatingPlaceholder()
+        scope.launch {
+            val svc = CaptureService.instance ?: return@launch
+            val gt = svc.translateOnce(newText)
+            if (dismissed) return@launch
+            bindResult(
+                prev.copy(
+                    originalText = newText,
+                    segments = TextSegments.ofText(newText),
+                    translatedText = gt.text,
+                    note = gt.note,
+                    backendDisplayName = gt.backendDisplayName,
+                )
+            )
+        }
+    }
+
+    private fun setWindowFocusable(focusable: Boolean) {
+        val lp = windowParams ?: return
+        lp.flags = if (focusable) {
+            lp.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+        } else {
+            lp.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        }
+        lp.softInputMode = if (focusable) {
+            WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        } else {
+            WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
+        }
+        try { wm.updateViewLayout(root, lp) } catch (_: Exception) {}
     }
 
     // ── Responsive content ───────────────────────────────────────────────
