@@ -3,16 +3,17 @@ package com.playtranslate.ui
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
-import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.OvershootInterpolator
@@ -69,6 +70,7 @@ class CaptureResultOverlay(
 ) {
     private val ctx = overlayThemedContext(rawCtx)
     private val density = ctx.resources.displayMetrics.density
+    private val cornerRadiusPx = ctx.resources.getDimension(R.dimen.pt_radius) * CORNER_RADIUS_MULT
     private val prefs = Prefs(ctx)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val touchSlop = ViewConfiguration.get(ctx).scaledTouchSlop
@@ -149,15 +151,21 @@ class CaptureResultOverlay(
             })
         }
         body.apply {
-            // The visible sheet. The rounded bg lives on the body, not the panel,
-            // so the handle bar below stays fully transparent (game shows through).
-            // Top sheet: top edge is flush with the screen, so round only the
-            // bottom corners. cornerRadii order is TL, TR, BR, BL (x,y each).
-            background = GradientDrawable().apply {
-                setColor(ctx.themeColor(R.attr.ptBg))
-                val r = ctx.resources.getDimension(R.dimen.pt_radius) * 2f
-                cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, r, r, r, r)
+            // The visible sheet: a plain bg clipped to a square-top / rounded-bottom
+            // outline, so the content is cropped to the panel's rounded edges. The
+            // sheet lives on the body, not the panel, so the handle bar below stays
+            // transparent — and the pill (a sibling of the body) isn't clipped away.
+            setBackgroundColor(ctx.themeColor(R.attr.ptBg))
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) {
+                    // Push the rounded rect's top above the view so only the bottom
+                    // two corners round (the top edge is flush with the screen).
+                    outline.setRoundRect(
+                        0, -cornerRadiusPx.toInt(), view.width, view.height, cornerRadiusPx,
+                    )
+                }
             }
+            clipToOutline = true
             addView(scroll, FrameLayout.LayoutParams(MATCH, MATCH))
             addView(
                 statusText,
@@ -629,13 +637,13 @@ class CaptureResultOverlay(
     /** A centered grab-pill at the bottom of the panel. */
     private inner class HandleView(c: Context) : View(c) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = ctx.themeColor(R.attr.ptDivider)
+            color = ctx.themeColor(R.attr.ptTextMuted)
         }
         private val rect = RectF()
         init { setWillNotDraw(false) }
         override fun onDraw(canvas: Canvas) {
-            val w = dp(36).toFloat()
-            val h = dp(4).toFloat()
+            val w = dp(40).toFloat()
+            val h = dp(5).toFloat()
             val left = (width - w) / 2f
             val top = (height - h) / 2f
             rect.set(left, top, left + w, top + h)
@@ -655,6 +663,9 @@ class CaptureResultOverlay(
         /** Trimmed top padding for the panel's section headers (the shared layout
          *  uses pt_group_gap = 20dp; the panel sits tighter to the top edge). */
         const val SECTION_TITLE_TOP_DP = 4
+        /** Corner radius as a multiple of pt_radius — between the original 1x and
+         *  the 2x briefly tried. */
+        const val CORNER_RADIUS_MULT = 1.5f
         const val DISMISS_DISTANCE_DP = 64f
         /** px/s; a deliberate up-fling (a notch above FloatingOverlayIcon's 600
          *  for a small icon, since the panel wants intent). */
