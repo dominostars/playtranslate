@@ -76,6 +76,11 @@ class TranslationSectionBinder(
      *  it's been superseded and bail before stamping stale spans. */
     private var furiganaRenderToken = 0
 
+    /** Invoked after a section's eye-toggle flips its visibility, so a host can
+     *  re-layout (the over-game panel collapses the side-by-side column). Null on
+     *  the in-app results page, whose vertical layout just reflows. */
+    var onSectionVisibilityChanged: (() -> Unit)? = null
+
     // ── Source section ───────────────────────────────────────────────────
 
     fun setSourceSegments(segments: List<com.playtranslate.model.TextSegment>) {
@@ -192,6 +197,25 @@ class TranslationSectionBinder(
         btnToggleTranslation.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
     }
 
+    /** Flip a section's hidden pref, re-apply its visibility, and notify the host
+     *  so it can re-layout. Both the section's own eye button and the panel's
+     *  collapsed-strip eye route through these. */
+    fun toggleOriginalHidden() {
+        prefs.hideOriginalSection = !prefs.hideOriginalSection
+        applyOriginalVisibility()
+        onSectionVisibilityChanged?.invoke()
+    }
+
+    fun toggleTranslationHidden() {
+        prefs.hideTranslationSection = !prefs.hideTranslationSection
+        applyTranslationVisibility()
+        onSectionVisibilityChanged?.invoke()
+    }
+
+    /** Localized section header names — used for the panel's collapsed strips. */
+    fun sourceSectionLabel(): String = sourceLangLocalizedDisplayName()
+    fun targetSectionLabel(): String = targetLangDisplayName()
+
     /** Bind the target text + note for a Ready result. A blank translation means a
      *  re-translate is in flight (edit commit): show the "Translating…"
      *  placeholder and suppress the now-stale backend label. */
@@ -250,14 +274,8 @@ class TranslationSectionBinder(
             copyToClipboard(tvTranslation.text?.toString() ?: return@setOnClickListener)
         }
         btnEditOriginal.setOnClickListener { onEdit() }
-        btnToggleTranslation.setOnClickListener {
-            prefs.hideTranslationSection = !prefs.hideTranslationSection
-            applyTranslationVisibility()
-        }
-        btnToggleOriginal.setOnClickListener {
-            prefs.hideOriginalSection = !prefs.hideOriginalSection
-            applyOriginalVisibility()
-        }
+        btnToggleTranslation.setOnClickListener { toggleTranslationHidden() }
+        btnToggleOriginal.setOnClickListener { toggleOriginalHidden() }
         btnToggleFurigana.setOnClickListener {
             prefs.showFuriganaInline = !prefs.showFuriganaInline
             applyFurigana()

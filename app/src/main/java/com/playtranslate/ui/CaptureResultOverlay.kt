@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.text.InputType
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.VelocityTracker
@@ -22,6 +23,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.widget.NestedScrollView
@@ -98,6 +100,12 @@ class CaptureResultOverlay(
     private val handle = HandleView(ctx)
 
     private var binder: TranslationSectionBinder? = null
+
+    // Side-by-side column collapse: hiding a section shrinks it to a button-wide
+    // strip (rotated label) and the other section fills the freed width.
+    private var isSideBySide = false
+    private var sourceColumn: SectionColumn? = null
+    private var targetColumn: SectionColumn? = null
 
     // Tap-a-word → definition (display + speak; the panel lens has no Anki/open).
     private var wordSpans: List<Triple<IntRange, String, String>> = emptyList()
@@ -207,7 +215,10 @@ class CaptureResultOverlay(
             TtsAlertTarget.Overlay(ctx, overlayHost, wm, displayId),
         )
         b.setupSectionButtons(onEdit = { startInPlaceEdit() })
+        b.onSectionVisibilityChanged = { applySideBySideCollapse() }
         binder = b
+        // Reflect any persisted hide prefs (shared with the results page) up front.
+        applySideBySideCollapse()
 
         val lp = WindowManager.LayoutParams(
             screenW, screenH,
@@ -450,19 +461,20 @@ class CaptureResultOverlay(
 
     private fun buildContent(sideBySide: Boolean) {
         contentRow.removeAllViews()
+        isSideBySide = sideBySide
+        sourceColumn = null
+        targetColumn = null
         val hPad = dp(SECTION_H_PAD_DP)
         if (sideBySide) {
             contentRow.orientation = LinearLayout.HORIZONTAL
             contentRow.setPadding(hPad, 0, hPad, 0)
-            val sourceCol = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-            val targetCol = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-            inflater().inflate(R.layout.section_source, sourceCol, true)
-            inflater().inflate(R.layout.section_target, targetCol, true)
-            trimSectionTopPadding(sourceCol)
-            trimSectionTopPadding(targetCol)
-            contentRow.addView(sourceCol, LinearLayout.LayoutParams(0, WRAP, 1f))
+            val source = buildColumn(R.layout.section_source, isSource = true)
+            val target = buildColumn(R.layout.section_target, isSource = false)
+            sourceColumn = source
+            targetColumn = target
+            contentRow.addView(source.col, LinearLayout.LayoutParams(0, WRAP, 1f))
             contentRow.addView(verticalDivider())
-            contentRow.addView(targetCol, LinearLayout.LayoutParams(0, WRAP, 1f))
+            contentRow.addView(target.col, LinearLayout.LayoutParams(0, WRAP, 1f))
         } else {
             contentRow.orientation = LinearLayout.VERTICAL
             contentRow.setPadding(hPad, 0, hPad, dp(24))
@@ -470,6 +482,117 @@ class CaptureResultOverlay(
             trimSectionTopPadding(contentRow)
             contentRow.addView(horizontalDivider())
             inflater().inflate(R.layout.section_target, contentRow, true)
+        }
+    }
+
+    /** A side-by-side column: the inflated section ([expanded]) plus a hidden
+     *  collapsed strip, toggled by [applySideBySideCollapse]. */
+    private fun buildColumn(layoutRes: Int, isSource: Boolean): SectionColumn {
+        val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        val expanded = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        inflater().inflate(layoutRes, expanded, true)
+        trimSectionTopPadding(expanded)
+        val label = VerticalLabel(ctx)
+        val collapsed = buildCollapsedStrip(isSource, label)
+        col.addView(expanded, LinearLayout.LayoutParams(MATCH, WRAP))
+        col.addView(collapsed, LinearLayout.LayoutParams(WRAP, WRAP))
+        return SectionColumn(col, expanded, collapsed, label)
+    }
+
+    /** The strip shown when a side-by-side section is hidden: an eye button to
+     *  restore it, with the section's language name rotated vertically beneath. */
+    private fun buildCollapsedStrip(isSource: Boolean, label: VerticalLabel): View {
+        val eye = ImageButton(ctx).apply {
+            setImageResource(R.drawable.ic_visibility_off)
+            val tv = TypedValue()
+            ctx.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, tv, true)
+            setBackgroundResource(tv.resourceId)
+            setColorFilter(ctx.themeColor(R.attr.ptTextMuted))
+            contentDescription = ctx.getString(
+                if (isSource) R.string.cd_toggle_original_visibility
+                else R.string.cd_toggle_translation_visibility,
+            )
+            setOnClickListener {
+                if (isSource) binder?.toggleOriginalHidden() else binder?.toggleTranslationHidden()
+            }
+        }
+        return LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            visibility = View.GONE
+            addView(eye, LinearLayout.LayoutParams(dp(36), dp(32)).apply { topMargin = dp(8) })
+            addView(label, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(8) })
+        }
+    }
+
+    /** Collapse/expand the side-by-side columns to match the section hide prefs:
+     *  a hidden section shrinks to a button-wide strip and the other fills the
+     *  freed width. No-op in stacked mode (the binder's card GONE already reflows
+     *  there). Source is always the left column and target the right, so
+     *  collapsing in place keeps each on its side of the screen. */
+    private fun applySideBySideCollapse() {
+        if (!isSideBySide) return
+        applyColumnState(sourceColumn, prefs.hideOriginalSection, binder?.sourceSectionLabel())
+        applyColumnState(targetColumn, prefs.hideTranslationSection, binder?.targetSectionLabel())
+    }
+
+    private fun applyColumnState(column: SectionColumn?, hidden: Boolean, label: String?) {
+        val c = column ?: return
+        c.expanded.visibility = if (hidden) View.GONE else View.VISIBLE
+        c.collapsed.visibility = if (hidden) View.VISIBLE else View.GONE
+        if (hidden && label != null) c.label.label = label
+        (c.col.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+            if (hidden) {
+                lp.width = LinearLayout.LayoutParams.WRAP_CONTENT
+                lp.weight = 0f
+            } else {
+                lp.width = 0
+                lp.weight = 1f
+            }
+            c.col.layoutParams = lp
+        }
+    }
+
+    private class SectionColumn(
+        val col: LinearLayout,
+        val expanded: View,
+        val collapsed: View,
+        val label: VerticalLabel,
+    )
+
+    /** Draws [label] rotated 90° (reads bottom-to-top) and measures with swapped
+     *  dimensions, so a hidden section's name fits a button-wide strip — a plain
+     *  rotated TextView would still claim its full horizontal width in layout. */
+    private inner class VerticalLabel(c: Context) : View(c) {
+        private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = ctx.themeColor(R.attr.ptTextMuted)
+            textSize = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP, 14f, ctx.resources.displayMetrics,
+            )
+        }
+        var label: String = ""
+            set(value) { field = value; requestLayout(); invalidate() }
+        init { setWillNotDraw(false) }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val fm = textPaint.fontMetrics
+            val textH = fm.descent - fm.ascent
+            val textW = textPaint.measureText(label)
+            setMeasuredDimension(
+                View.resolveSize(kotlin.math.ceil(textH.toDouble()).toInt() + paddingLeft + paddingRight, widthMeasureSpec),
+                View.resolveSize(kotlin.math.ceil(textW.toDouble()).toInt() + paddingTop + paddingBottom, heightMeasureSpec),
+            )
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            val fm = textPaint.fontMetrics
+            val textW = textPaint.measureText(label)
+            canvas.save()
+            canvas.translate(0f, height.toFloat())
+            canvas.rotate(-90f)
+            val baseline = width / 2f - (fm.ascent + fm.descent) / 2f
+            canvas.drawText(label, (height - textW) / 2f, baseline, textPaint)
+            canvas.restore()
         }
     }
 
