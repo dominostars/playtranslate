@@ -78,6 +78,10 @@ class OverlayUiController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val handler = Handler(Looper.getMainLooper())
 
+    /** The over-game capture-result panel while showing (single-screen). Single
+     *  instance — a new capture replaces it. */
+    private var captureResultOverlay: com.playtranslate.ui.CaptureResultOverlay? = null
+
     /** Listens for display changes (rotation, hot-plug, foldable state) so
      *  icons can be repositioned against the new dimensions and the icon
      *  registry can be reconciled against the new set of available displays.
@@ -1047,6 +1051,7 @@ class OverlayUiController(
         // Suppress live captures while menu is open.
         CaptureService.instance?.holdActive = true
         hideTranslationOverlay()
+        dismissCaptureResultOverlay()
 
         val prefs = Prefs(context)
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
@@ -1273,26 +1278,7 @@ class OverlayUiController(
      */
     private fun handleRegionSelection(displayId: Int, region: RegionEntry) {
         if (effectivelySingleScreen()) {
-            scope.launch {
-                val bitmap = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
-                val intent = Intent(context, com.playtranslate.ui.TranslationResultActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_TOP_FRAC, region.top)
-                    putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_BOTTOM_FRAC, region.bottom)
-                    putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_LEFT_FRAC, region.left)
-                    putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_RIGHT_FRAC, region.right)
-                    putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_TARGET_DISPLAY_ID, displayId)
-                }
-                if (bitmap != null) {
-                    val path = savePreCapturedScreenshot(bitmap)
-                    bitmap.recycle()
-                    intent.putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_SCREENSHOT_PATH, path)
-                }
-                val opts = android.app.ActivityOptions.makeBasic()
-                    .setLaunchDisplayId(displayId)
-                    .toBundle()
-                context.startActivity(intent, opts)
-            }
+            showCaptureResultOverlay(displayId, region)
         } else {
             val intent = Intent(context, MainActivity::class.java).apply {
                 action = MainActivity.ACTION_REGION_CAPTURE
@@ -1305,6 +1291,87 @@ class OverlayUiController(
             }
             context.startActivity(intent)
         }
+    }
+
+    /**
+     * Single-screen capture: show the over-game result panel instead of leaving
+     * the game for [TranslationResultActivity]. Dismisses any existing panel
+     * first (single-instance + screenshot-blanking guard — a second capture must
+     * remove the old panel before the next requestClean blanks it into the shot),
+     * shows the new panel only AFTER the clean capture returns (so it's never in
+     * the shot), then feeds the one-shot pipeline into it. Falls back to the
+     * Activity if the capture-service handle isn't available.
+     */
+    private fun showCaptureResultOverlay(displayId: Int, region: RegionEntry) {
+        dismissCaptureResultOverlay()
+        val svc = CaptureService.instance ?: run {
+            launchResultActivity(displayId, region)
+            return
+        }
+        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val display = dm.getDisplay(displayId) ?: run {
+            launchResultActivity(displayId, region)
+            return
+        }
+        val displayCtx = context.createDisplayContext(display)
+        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: run {
+            launchResultActivity(displayId, region)
+            return
+        }
+        val size = getDisplaySize(display)
+        scope.launch {
+            val bitmap = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
+            // Register the panel only AFTER the clean capture, so its window is
+            // never blanked into this shot.
+            val overlay = com.playtranslate.ui.CaptureResultOverlay(displayCtx, wm, displayId, overlayHost)
+            overlay.onDismiss = { if (captureResultOverlay === overlay) captureResultOverlay = null }
+            captureResultOverlay = overlay
+            overlay.show(size.x, size.y)
+            // Same configure → process sequence as
+            // TranslationResultActivity.onServiceReady, off this controller's scope.
+            svc.configureSaved(
+                displayIds = Prefs(context).captureDisplayIds,
+                primaryDisplayId = displayId,
+            )
+            svc.configureOverride(displayId, region)
+            // Do NOT recycle the bitmap — processScreenshot consumes it async on
+            // the service scope and recycles it itself.
+            val session = if (bitmap != null) svc.processScreenshot(bitmap, displayId)
+                else svc.captureOnce(displayId)
+            overlay.observe(session)
+        }
+    }
+
+    /** Pre-overlay fallback: launch [TranslationResultActivity]. Used only when
+     *  the capture-service handle is briefly unavailable. */
+    private fun launchResultActivity(displayId: Int, region: RegionEntry) {
+        scope.launch {
+            val bitmap = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
+            val intent = Intent(context, com.playtranslate.ui.TranslationResultActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_TOP_FRAC, region.top)
+                putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_BOTTOM_FRAC, region.bottom)
+                putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_LEFT_FRAC, region.left)
+                putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_RIGHT_FRAC, region.right)
+                putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_TARGET_DISPLAY_ID, displayId)
+            }
+            if (bitmap != null) {
+                val path = savePreCapturedScreenshot(bitmap)
+                bitmap.recycle()
+                intent.putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_SCREENSHOT_PATH, path)
+            }
+            val opts = android.app.ActivityOptions.makeBasic()
+                .setLaunchDisplayId(displayId)
+                .toBundle()
+            context.startActivity(intent, opts)
+        }
+    }
+
+    /** Remove the over-game result panel if showing. Idempotent. The overlay
+     *  cancels its own session observer + scope on dismiss. */
+    fun dismissCaptureResultOverlay() {
+        captureResultOverlay?.dismiss()
+        captureResultOverlay = null
     }
 
     /** Saves a pre-captured screenshot to the cache for TranslationResultActivity. */
@@ -1356,6 +1423,7 @@ class OverlayUiController(
      *  the magnifier / popup / a menu the structured destroy chain
      *  hadn't reached yet. */
     fun hideAll() {
+        dismissCaptureResultOverlay()
         hideTranslationOverlay()
         regionController.hideAll()
         dismissFloatingMenu()
