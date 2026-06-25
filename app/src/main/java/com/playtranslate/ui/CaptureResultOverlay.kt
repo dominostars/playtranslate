@@ -47,6 +47,7 @@ import com.playtranslate.model.TranslationResult
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -697,15 +698,26 @@ class CaptureResultOverlay(
         b.setTargetTranslatingPlaceholder()
         refreshWordSpans(newText)
         scope.launch {
-            val svc = CaptureService.instance ?: return@launch
-            val gt = svc.translateOnce(newText)
+            // translateOnce can throw (no usable backend / all backends fail) and
+            // the service can be null — either way we MUST still land on a terminal
+            // state, because the original capture session was just cancelled above.
+            // Otherwise the panel is stranded on "Translating…" forever. Mirror the
+            // Activity edit path: fall back to a "—" placeholder. (Re-throw
+            // CancellationException so dismissal stays silent.)
+            val gt = try {
+                CaptureService.instance?.translateOnce(newText)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
             if (dismissed || gen != editGeneration) return@launch
             bindResult(
-                edited.copy(
+                if (gt != null) edited.copy(
                     translatedText = gt.text,
                     note = gt.note,
                     backendDisplayName = gt.backendDisplayName,
-                )
+                ) else edited.copy(translatedText = "—"),
             )
         }
     }
