@@ -230,6 +230,41 @@ fun DictionaryEntry.headwordFor(query: String?): Headword? {
 }
 
 /**
+ * The headword whose written form is [surface] AND whose reading is [reading] —
+ * the occurrence-validated pick. Lets a caller honour the tokenizer's
+ * per-occurrence reading for polyphonic kanji (明日 read あす in context vs the
+ * entry's primary あした) WITHOUT trusting a reading the dictionary doesn't list:
+ * a non-match returns null so [selectHeadword] falls back to the written-form
+ * pick. Strict on BOTH fields by design — matching the reading alone could
+ * surface a sibling written form the user never saw.
+ */
+fun DictionaryEntry.headwordForReading(surface: String?, reading: String?): Headword? {
+    if (reading.isNullOrEmpty()) return null
+    return headwords.firstOrNull { it.written == surface && it.reading == reading }
+}
+
+/**
+ * The headword to display for a looked-up occurrence, in priority order:
+ *  1. the occurrence [reading] matched against the seen [surface]
+ *     ([headwordForReading]) — wins only when the entry lists that exact
+ *     written↔reading pair, so a tokenizer misreading can't be injected;
+ *  2. the seen [surface] (inflected or not) as a written/reading form;
+ *  3. the [lookupForm] (lemma) as a written/reading form;
+ *  4. the entry's primary headword.
+ * Steps 2–4 reproduce the prior selection, so an empty/unmatched [reading]
+ * leaves behaviour unchanged. Feed the result to [headwordDisplay].
+ */
+fun DictionaryEntry.selectHeadword(
+    surface: String?,
+    lookupForm: String?,
+    reading: String?,
+): Headword? =
+    headwordForReading(surface, reading)
+        ?: headwordFor(surface)
+        ?: headwordFor(lookupForm)
+        ?: headwords.firstOrNull()
+
+/**
  * True when the entry's natural display is kana even though a kanji form
  * exists. Requires BOTH:
  *  1. At least one sense carries JMdict's "usually written using kana alone"

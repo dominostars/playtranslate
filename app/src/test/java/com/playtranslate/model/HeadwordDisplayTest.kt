@@ -202,4 +202,83 @@ class HeadwordDisplayTest {
         assertEquals("ありがとう", display.written)
         assertNull(display.reading)
     }
+
+    // ── headwordForReading / selectHeadword: occurrence reading ────────
+
+    /** 明日 after single-kanji expansion: one headword per reading. */
+    private fun ashita() = entry(
+        headwords = listOf(
+            Headword("明日", "あした"),
+            Headword("明日", "あす"),
+            Headword("明日", "みょうにち"),
+        ),
+        senses = listOf(plainSense("tomorrow")),
+    )
+
+    @Test fun `headwordForReading picks the headword matching surface AND reading`() {
+        val e = ashita()
+        assertEquals("あす", e.headwordForReading("明日", "あす")?.reading)
+        assertEquals("あした", e.headwordForReading("明日", "あした")?.reading)
+    }
+
+    @Test fun `headwordForReading is null when the reading is empty or absent`() {
+        val e = ashita()
+        assertNull(e.headwordForReading("明日", null))
+        assertNull(e.headwordForReading("明日", ""))
+    }
+
+    @Test fun `headwordForReading is null when the entry does not list the reading`() {
+        // Tokenizer misreading: あさひ is not a reading of 明日 → no injection.
+        assertNull(ashita().headwordForReading("明日", "あさひ"))
+    }
+
+    @Test fun `headwordForReading does not cross to a sibling written form`() {
+        // The dropped reading-only fallback would have returned B/y for surface A;
+        // strict matching keeps it null so selectHeadword shows the seen surface.
+        val e = entry(
+            headwords = listOf(Headword("A", "x"), Headword("B", "y")),
+            senses = listOf(plainSense("def")),
+        )
+        assertNull(e.headwordForReading("A", "y"))
+        assertEquals("A", e.headwordDisplay(e.selectHeadword("A", "A", "y"), "A").written)
+    }
+
+    @Test fun `selectHeadword honors the occurrence reading`() {
+        val display = ashita().let { it.headwordDisplay(it.selectHeadword("明日", "明日", "あす"), "明日") }
+        assertEquals("明日", display.written)
+        assertEquals("あす", display.reading)
+    }
+
+    @Test fun `selectHeadword falls back to the primary headword with no reading`() {
+        val display = ashita().let { it.headwordDisplay(it.selectHeadword("明日", "明日", null), "明日") }
+        assertEquals("あした", display.reading)
+    }
+
+    @Test fun `selectHeadword falls back to the primary on an unlisted reading`() {
+        val display = ashita().let { it.headwordDisplay(it.selectHeadword("明日", "明日", "あさひ"), "明日") }
+        assertEquals("あした", display.reading)
+    }
+
+    @Test fun `selectHeadword falls through an inflected surface to the lemma headword`() {
+        // 走った surface, stem reading はしっ — matches no dictionary-form headword,
+        // so it falls through surface → lemma (走る) → the lemma's reading.
+        val e = entry(
+            headwords = listOf(Headword("走る", "はしる")),
+            senses = listOf(plainSense("to run")),
+        )
+        assertEquals("はしる", e.headwordDisplay(e.selectHeadword("走った", "走る", "はしっ"), "走った").reading)
+    }
+
+    @Test fun `kana-only sibling headword resolves a lookup by that reading`() {
+        // 彼 after single-kanji expansion: 彼/かれ plus the re_nokanji あれ kept as
+        // a kana-only headword. A lookup of あれ must resolve to あれ, not fall
+        // back to 彼/かれ — the reason re_nokanji readings are preserved.
+        val e = entry(
+            headwords = listOf(Headword("彼", "かれ"), Headword(null, "あれ")),
+            senses = listOf(plainSense("he / that")),
+        )
+        val display = e.headwordDisplay(e.selectHeadword("あれ", "あれ", "あれ"), "あれ")
+        assertEquals("あれ", display.written)
+        assertNull(display.reading)
+    }
 }

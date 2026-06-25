@@ -12,7 +12,7 @@ import com.playtranslate.language.TokenSpan
 import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.language.WordTranslator
 import com.playtranslate.model.headwordDisplay
-import com.playtranslate.model.headwordFor
+import com.playtranslate.model.selectHeadword
 import com.playtranslate.translation.ChineseScriptConverter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -125,9 +125,9 @@ suspend fun resolveWordRows(
                         if (response == null || response.entries.isEmpty()) return@async null
                         val entry = response.entries.first()
                         val flatSenses = response.entries.flatMap { it.senses }
-                        val primary = entry.headwordFor(surfaceByToken[word])
-                            ?: entry.headwordFor(word)
-                            ?: entry.headwords.firstOrNull()
+                        val primary = entry.selectHeadword(
+                            surfaceByToken[word], word, readingByToken[word],
+                        )
                         // headwordDisplay swaps the kanji for the kana on JMdict
                         // uk-tagged entries (e.g. なぜ over 何故), suppressing the
                         // reading column since it would just duplicate the

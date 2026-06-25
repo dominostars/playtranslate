@@ -13,6 +13,7 @@ import com.playtranslate.language.WordTranslator
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.headwordDisplay
+import com.playtranslate.model.selectHeadword
 import com.playtranslate.translation.ChineseScriptConverter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -100,7 +101,9 @@ object SourceWordLookup {
         val popupFrequencies: List<FrequencyTag>
         when {
             entry != null && defResult is DefinitionResult.MachineTranslated -> {
-                val display = entry.headwordDisplay(lookupForm)
+                val display = entry.headwordDisplay(
+                    entry.selectHeadword(lookupForm, lookupForm, reading), lookupForm,
+                )
                 word = display.written
                 popupReading = display.reading
                 popupLabel = MACHINE_TRANSLATED_LABEL
@@ -110,7 +113,9 @@ object SourceWordLookup {
                 popupFrequencies = display.frequencies
             }
             entry != null && defResult is DefinitionResult.EnglishFallback && defResult.translatedDefinitions != null -> {
-                val display = entry.headwordDisplay(lookupForm)
+                val display = entry.headwordDisplay(
+                    entry.selectHeadword(lookupForm, lookupForm, reading), lookupForm,
+                )
                 word = display.written
                 popupReading = display.reading
                 popupLabel = MACHINE_TRANSLATED_LABEL
@@ -120,7 +125,9 @@ object SourceWordLookup {
                 popupFrequencies = display.frequencies
             }
             entry != null -> {
-                val display = entry.headwordDisplay(lookupForm)
+                val display = entry.headwordDisplay(
+                    entry.selectHeadword(lookupForm, lookupForm, reading), lookupForm,
+                )
                 word = display.written
                 popupReading = display.reading
                 popupLabel = null

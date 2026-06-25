@@ -30,6 +30,7 @@ import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.headwordDisplay
+import com.playtranslate.model.selectHeadword
 import kotlinx.coroutines.*
 import java.io.File
 import kotlin.coroutines.coroutineContext
@@ -75,6 +76,10 @@ class DragLookupController(
     private var lastWord: String? = null
     /** Current dictionary entry shown in the popup. */
     private var currentEntry: DictionaryEntry? = null
+    /** Reading shown in the lens for [lastWord] — the occurrence reading
+     *  (明日 → あす), stored so the Speak chip pronounces what's displayed
+     *  rather than re-deriving the entry's primary headword reading (あした). */
+    private var lastReading: String? = null
     /** Path to the screenshot captured at drag start. */
     private var screenshotPath: String? = null
     private var currentSentence: String? = null
@@ -171,8 +176,9 @@ class DragLookupController(
                 LensSpeakChip.Request(
                     word,
                     Prefs(popup.ctx).sourceLangId,
-                    // Speak the displayed kana reading (JA) so audio matches the lens.
-                    reading = currentEntry?.headwordDisplay(word)?.reading,
+                    // Speak the displayed kana reading (JA) so audio matches the
+                    // lens — the resolved occurrence reading, not the primary.
+                    reading = lastReading,
                 )
             }
         }
@@ -184,6 +190,7 @@ class DragLookupController(
         magnifier.onDismiss = {
             lastWord = null
             currentEntry = null
+            lastReading = null
             // Cancel a pending speak and stop any in-progress speech when
             // the lens goes away.
             speakChip?.release()
@@ -707,8 +714,12 @@ class DragLookupController(
         for (tokens in cache.values) for (t in tokens) uniqueKeys.add(t.lookupForm to t.reading)
         for ((form, hintReading) in uniqueKeys) {
             val (canonicalWord, canonicalReading) = try {
+                // selectHeadword honours the occurrence [hintReading] (明日 read
+                // あす wins over the entry's primary あした) but falls back to the
+                // primary headword when the hint matches none, so a wrong/missing
+                // tokenizer reading still canonicalizes exactly as before.
                 val head = engine.lookup(form, hintReading)?.entries?.firstOrNull()
-                    ?.headwords?.firstOrNull()
+                    ?.selectHeadword(form, form, hintReading)
                 if (head != null) (head.written ?: head.reading ?: form) to head.reading
                 else continue  // not in dict — leave Phase 1 entry as-is
             } catch (e: CancellationException) {
@@ -829,6 +840,7 @@ class DragLookupController(
                 // Release-only side effects (only when lookup succeeded).
                 lastWord = popupData.word
                 currentEntry = popupData.entry
+                lastReading = popupData.reading
                 currentSentence?.let { sent ->
                     if (sent != lastSentSentence) {
                         lastSentSentence = sent
@@ -1116,7 +1128,10 @@ class DragLookupController(
         val reading = matchedToken?.reading
         val popupData: PopupData = when {
             entry != null && defResult is DefinitionResult.Native -> {
-                val display = entry.headwordDisplay(entry.headwords.firstOrNull(), matchedSurface)
+                val display = entry.headwordDisplay(
+                    entry.selectHeadword(matchedSurface, lookupForm, matchedToken?.reading),
+                    matchedSurface,
+                )
                 // Target-driven for non-English targets: render the pack's
                 // sense list directly, no JMdict-position alignment (which
                 // is unrecoverable — see WordDetailBottomSheet for full
@@ -1169,7 +1184,10 @@ class DragLookupController(
                 )
             }
             entry != null && defResult is DefinitionResult.MachineTranslated -> {
-                val display = entry.headwordDisplay(entry.headwords.firstOrNull(), matchedSurface)
+                val display = entry.headwordDisplay(
+                    entry.selectHeadword(matchedSurface, lookupForm, matchedToken?.reading),
+                    matchedSurface,
+                )
                 val defs = defResult.translatedDefinitions
                 PopupData(
                     word = display.written,
@@ -1204,7 +1222,10 @@ class DragLookupController(
             }
             entry != null && defResult is DefinitionResult.EnglishFallback && defResult.translatedDefinitions != null -> {
                 // Translated definitions without headword translation
-                val display = entry.headwordDisplay(entry.headwords.firstOrNull(), matchedSurface)
+                val display = entry.headwordDisplay(
+                    entry.selectHeadword(matchedSurface, lookupForm, matchedToken?.reading),
+                    matchedSurface,
+                )
                 val defs = defResult.translatedDefinitions
                 PopupData(
                     word = display.written,
@@ -1225,7 +1246,10 @@ class DragLookupController(
             }
             entry != null -> {
                 // EnglishFallback with no translations — show English as-is
-                val display = entry.headwordDisplay(entry.headwords.firstOrNull(), matchedSurface)
+                val display = entry.headwordDisplay(
+                    entry.selectHeadword(matchedSurface, lookupForm, matchedToken?.reading),
+                    matchedSurface,
+                )
                 PopupData(
                     word = display.written,
                     reading = display.reading,

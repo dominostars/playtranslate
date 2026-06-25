@@ -105,6 +105,14 @@ class DictionaryManager private constructor(private val context: Context) {
     private val kePriSupport = WeakHashMap<SQLiteDatabase, Boolean>()
     private val kePriSupportLock = Any()
 
+    /** Per-handle capability cache for `reading.no_kanji`, parallel to
+     *  [kePriSupport]. Probed once per open database, NOT per [buildEntry] —
+     *  word lookup materializes many entries per sentence, so a
+     *  `PRAGMA table_info` on each would tax interactive lookup latency.
+     *  Absent on pre-column packs → [buildHeadwords] keeps positional pairing. */
+    private val noKanjiSupport = WeakHashMap<SQLiteDatabase, Boolean>()
+    private val noKanjiSupportLock = Any()
+
     /** All access to [rankScoreSupport] — read AND write — happens inside
      *  the lock. WeakHashMap's `get` can internally expunge stale entries,
      *  so even reads mutate the structure; serializing every operation
@@ -125,6 +133,15 @@ class DictionaryManager private constructor(private val context: Context) {
             kePriSupport[db]?.let { return it }
             val supports = checkColumnExists(db, "headword", "ke_pri")
             kePriSupport[db] = supports
+            return supports
+        }
+    }
+
+    private fun hasNoKanji(db: SQLiteDatabase): Boolean {
+        synchronized(noKanjiSupportLock) {
+            noKanjiSupport[db]?.let { return it }
+            val supports = checkColumnExists(db, "reading", "no_kanji")
+            noKanjiSupport[db] = supports
             return supports
         }
     }
@@ -603,8 +620,7 @@ class DictionaryManager private constructor(private val context: Context) {
         // from 何故 (no priority + uk sense → display kana). v1 packs lack the
         // column; we degrade to "no priority known", which leaves `isKanaOnly`
         // running its pre-v2 uk-only behaviour.
-        data class KanjiForm(val text: String, val hasPriority: Boolean)
-        val kanjiForms = mutableListOf<KanjiForm>()
+        val kanjiForms = mutableListOf<JmKanjiForm>()
         val v2HeadwordSchema = hasKePri(db)
         val kanjiSql = if (v2HeadwordSchema)
             "SELECT text, ke_pri FROM headword WHERE entry_id=? ORDER BY position"
@@ -614,27 +630,32 @@ class DictionaryManager private constructor(private val context: Context) {
             while (c.moveToNext()) {
                 val text = c.getString(0)
                 val hasPriority = v2HeadwordSchema && c.getString(1).orEmpty().isNotEmpty()
-                kanjiForms.add(KanjiForm(text, hasPriority))
+                kanjiForms.add(JmKanjiForm(text, hasPriority))
             }
         }
 
-        val readingForms = mutableListOf<String>()
-        db.rawQuery(
-            "SELECT text FROM reading WHERE entry_id=? ORDER BY position",
-            arrayOf(idStr)
-        ).use { c -> while (c.moveToNext()) readingForms.add(c.getString(0)) }
-
-        val headwords = if (kanjiForms.isNotEmpty()) {
-            kanjiForms.mapIndexed { i, k ->
-                Headword(
-                    written = k.text,
-                    reading = readingForms.getOrNull(i) ?: readingForms.firstOrNull(),
-                    hasPriority = k.hasPriority,
+        // `no_kanji` (JMdict re_nokanji) lets [buildHeadwords] drop readings
+        // never written with the kanji during single-kanji expansion. Probed
+        // via the cached [hasNoKanji]; absent on pre-column packs →
+        // buildHeadwords falls back to the old positional pairing.
+        val noKanjiColumn = hasNoKanji(db)
+        val readingSql = if (noKanjiColumn)
+            "SELECT text, no_kanji FROM reading WHERE entry_id=? ORDER BY position"
+        else
+            "SELECT text FROM reading WHERE entry_id=? ORDER BY position"
+        val readingForms = mutableListOf<JmReadingForm>()
+        db.rawQuery(readingSql, arrayOf(idStr)).use { c ->
+            while (c.moveToNext()) {
+                readingForms.add(
+                    JmReadingForm(
+                        text = c.getString(0),
+                        noKanji = noKanjiColumn && c.getInt(1) != 0,
+                    )
                 )
             }
-        } else {
-            readingForms.map { Headword(written = null, reading = it) }
         }
+
+        val headwords = buildHeadwords(kanjiForms, readingForms, noKanjiColumn)
         if (headwords.isEmpty()) return null
 
         // Tatoeba example sentences keyed by sense_position. The `example`
@@ -690,7 +711,7 @@ class DictionaryManager private constructor(private val context: Context) {
         if (senses.isEmpty()) return null
 
         return DictionaryEntry(
-            slug = kanjiForms.firstOrNull()?.text ?: readingForms.firstOrNull() ?: idStr,
+            slug = kanjiForms.firstOrNull()?.text ?: readingForms.firstOrNull()?.text ?: idStr,
             isCommon = isCommon,
             tags = emptyList(),
             jlpt = emptyList(),   // JMdict doesn't reliably carry JLPT levels
@@ -1074,5 +1095,74 @@ class DictionaryManager private constructor(private val context: Context) {
             val english = query("en") ?: emptyList()
             return english to "en"
         }
+    }
+}
+
+/** One kanji headword form for [buildHeadwords]: surface text + whether the
+ *  source dictionary marks it priority/common (JMdict `ke_pri`). */
+internal data class JmKanjiForm(val text: String, val hasPriority: Boolean)
+
+/** One reading form for [buildHeadwords]: the kana + whether JMdict tags it
+ *  `re_nokanji` (the reading is never written with the entry's kanji). */
+internal data class JmReadingForm(val text: String, val noKanji: Boolean)
+
+/**
+ * Pair an entry's kanji forms with its readings into [Headword]s.
+ *
+ * JMdict carries no general kanji↔reading mapping (only `re_nokanji`, and the
+ * `re_restr` restrictions we don't store). The historical heuristic pairs them
+ * positionally (kanji[i] ↔ reading[i]), which silently drops every reading past
+ * the first when a single kanji form has several — 明日 keeps only あした, losing
+ * あす / みょうにち.
+ *
+ * When there is exactly ONE kanji form that loss is fixable without `re_restr`:
+ * every kanji-compatible reading unambiguously belongs to that kanji, so we emit
+ * one headword per such reading. `re_nokanji` readings (never written with the
+ * kanji) are kept as kana-only headwords (`written = null`) rather than dropped,
+ * so a lookup BY that kana still resolves to its own reading. Kanji-paired
+ * readings lead in source order, so the primary stays first and every
+ * `headwords.firstOrNull()` consumer is unchanged.
+ *
+ * Multiple kanji forms (where `re_restr` we lack would matter) or a pack without
+ * the `no_kanji` column ([hasNoKanjiColumn] = false) keep the positional pairing
+ * — byte-for-byte the prior behaviour, so older packs don't regress. Never
+ * returns an empty list for an entry that had a kanji form (an all-`re_nokanji`
+ * single-kanji entry keeps its readings rather than vanish at the caller's
+ * empty-check).
+ */
+internal fun buildHeadwords(
+    kanjiForms: List<JmKanjiForm>,
+    readingForms: List<JmReadingForm>,
+    hasNoKanjiColumn: Boolean,
+): List<Headword> {
+    if (kanjiForms.isEmpty()) {
+        return readingForms.map { Headword(written = null, reading = it.text) }
+    }
+    if (kanjiForms.size == 1 && hasNoKanjiColumn && readingForms.isNotEmpty()) {
+        val k = kanjiForms[0]
+        val kanjiReadings = readingForms.filterNot { it.noKanji }
+        // Pathological all-re_nokanji entry: pair them with the kanji rather than
+        // vanish (keeps the entry; matches the old positional fallback).
+        if (kanjiReadings.isEmpty()) {
+            return readingForms.map {
+                Headword(written = k.text, reading = it.text, hasPriority = k.hasPriority)
+            }
+        }
+        // Kanji-compatible readings pair with the kanji (primary stays first);
+        // re_nokanji readings stay as kana-only headwords (written = null) so a
+        // lookup BY that kana resolves to its own reading via headwordFor's
+        // reading branch instead of falling back to the kanji pair.
+        return kanjiReadings.map {
+            Headword(written = k.text, reading = it.text, hasPriority = k.hasPriority)
+        } + readingForms.filter { it.noKanji }.map {
+            Headword(written = null, reading = it.text)
+        }
+    }
+    return kanjiForms.mapIndexed { i, k ->
+        Headword(
+            written = k.text,
+            reading = readingForms.getOrNull(i)?.text ?: readingForms.firstOrNull()?.text,
+            hasPriority = k.hasPriority,
+        )
     }
 }
