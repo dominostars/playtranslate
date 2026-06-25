@@ -3,7 +3,10 @@ package com.playtranslate.ui
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
@@ -77,6 +80,7 @@ class CaptureResultOverlay(
     private val ctx = overlayThemedContext(rawCtx)
     private val density = ctx.resources.displayMetrics.density
     private val cornerRadiusPx = ctx.resources.getDimension(R.dimen.pt_radius) * CORNER_RADIUS_MULT
+    private val shadowHeightPx = (cornerRadiusPx + density * SHADOW_BLUR_DP * 2.5f).toInt()
     private val prefs = Prefs(ctx)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val touchSlop = ViewConfiguration.get(ctx).scaledTouchSlop
@@ -102,6 +106,11 @@ class CaptureResultOverlay(
     private val scroll = NestedScrollView(ctx)
     private val contentRow = LinearLayout(ctx)
     private val handle = HandleView(ctx)
+    // A soft drop shadow under the sheet's bottom edge. The blur is BAKED ONCE
+    // into [shadowBitmap]; the view only blits it and is repositioned via
+    // translationY as the sheet grows/slides — never re-blurred (see [bakeBottomShadow]).
+    private val bottomShadow = BottomShadowView(ctx)
+    private var shadowBitmap: Bitmap? = null
 
     private var binder: TranslationSectionBinder? = null
 
@@ -230,6 +239,9 @@ class CaptureResultOverlay(
             addView(body, LinearLayout.LayoutParams(MATCH, 0, 1f))
             addView(handle, LinearLayout.LayoutParams(MATCH, dp(HANDLE_HEIGHT_DP)))
         }
+        // Shadow first → behind the panel, so the opaque sheet covers all but the
+        // soft fade below its bottom edge.
+        root.addView(bottomShadow, FrameLayout.LayoutParams(MATCH, shadowHeightPx, Gravity.TOP))
         root.addView(panel, FrameLayout.LayoutParams(MATCH, 0, Gravity.TOP))
     }
 
@@ -245,8 +257,11 @@ class CaptureResultOverlay(
         // Load at the minimum (drag-resize floor) height; grow to fit on Done.
         panelHeightPx = CaptureResultGeometry.minPanelHeight(screenH)
         (panel.layoutParams as FrameLayout.LayoutParams).height = panelHeightPx
+        shadowBitmap = bakeBottomShadow(screenW)
+        bottomShadow.invalidate()
         // Park above the top edge; the entrance animation (below) drops it in.
         panel.translationY = -panelHeightPx.toFloat()
+        syncShadow()
 
         val sideBySide = CaptureResultGeometry.shouldUseSideBySide(
             screenW, dp(1), (CaptureResultGeometry.SIDE_BY_SIDE_FALLBACK_SECTION_DP * density).toInt(),
@@ -294,6 +309,7 @@ class CaptureResultOverlay(
             .translationY(0f)
             .setDuration(ENTER_DURATION_MS)
             .setInterpolator(DecelerateInterpolator())
+            .setUpdateListener { syncShadow() }
             .start()
     }
 
@@ -338,6 +354,8 @@ class CaptureResultOverlay(
         captureSession = null
         binder?.release()
         try { overlayHost.removeOverlayWindow(root) } catch (_: Exception) {}
+        shadowBitmap?.recycle()
+        shadowBitmap = null
         scope.cancel()
         onDismiss?.invoke()
     }
@@ -354,6 +372,7 @@ class CaptureResultOverlay(
             .translationY(-(panelHeightPx.toFloat()))
             .setDuration(EXIT_DURATION_MS)
             .setInterpolator(AccelerateInterpolator())
+            .setUpdateListener { syncShadow() }
             .withEndAction { dismiss() }
             .start()
     }
@@ -908,9 +927,58 @@ class CaptureResultOverlay(
         panelHeightPx = px
         (panel.layoutParams as FrameLayout.LayoutParams).height = px
         panel.requestLayout()
+        syncShadow()
+    }
+
+    /** Keep the pre-baked drop shadow glued to the sheet's bottom edge — its
+     *  darkest line (the bitmap's top) sits exactly there. Cheap: only a
+     *  translationY, no redraw/re-blur. Called on resize and every frame of the
+     *  entrance/exit slide (panel.translationY moves the whole sheet). */
+    private fun syncShadow() {
+        // Land the bitmap's contour line (y=cornerRadius, the sheet's straight
+        // bottom edge) exactly on the sheet's bottom; the corner arcs above it sit
+        // behind the rounded sheet, the cast blur below shows.
+        bottomShadow.translationY =
+            panel.translationY + panelHeightPx - dp(HANDLE_HEIGHT_DP) - cornerRadiusPx
+    }
+
+    /** Bake the sheet's bottom-edge drop shadow ONCE into a software bitmap —
+     *  BlurMaskFilter only blurs on a software canvas, so doing it here keeps the
+     *  host on the hardware layer (same trick as MagnifierLens.insetShadowBitmap).
+     *  The rounded-rect "sheet" extends far up off the bitmap, so only its bottom
+     *  edge + corners cast their blur DOWNWARD into the [shadowHeightPx]-tall strip. */
+    private fun bakeBottomShadow(width: Int): Bitmap {
+        val w = width.coerceAtLeast(1)
+        val h = shadowHeightPx.coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bitmap)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(SHADOW_ALPHA, 0, 0, 0)
+            // OUTER → blur only OUTSIDE the shape, so the shadow hugs the rounded
+            // bottom contour (curving at the corners) rather than a flat line.
+            maskFilter = BlurMaskFilter(density * SHADOW_BLUR_DP, BlurMaskFilter.Blur.OUTER)
+        }
+        // Sheet silhouette: straight bottom edge at y=cornerRadius so the corner
+        // arcs sit INSIDE the bitmap; the body extends far up off it.
+        c.drawRoundRect(
+            0f, -h.toFloat() * 2f, w.toFloat(), cornerRadiusPx,
+            cornerRadiusPx, cornerRadiusPx, paint,
+        )
+        return bitmap
     }
 
     // ── Custom views ─────────────────────────────────────────────────────
+
+    /** Blits the pre-baked [shadowBitmap] (never re-blurs); positioned via
+     *  [syncShadow]'s translationY. */
+    private inner class BottomShadowView(c: Context) : View(c) {
+        // A backgroundless View has WILL_NOT_DRAW set → onDraw is skipped. Clear it
+        // (same as HandleView) or the baked shadow never blits.
+        init { setWillNotDraw(false) }
+        override fun onDraw(canvas: Canvas) {
+            shadowBitmap?.let { canvas.drawBitmap(it, 0f, 0f, null) }
+        }
+    }
 
     /** Full-screen transparent host. Owns the resize gesture (so its touch zone
      *  can reach below the panel's visible bottom — a child can't receive touches
@@ -1035,6 +1103,11 @@ class CaptureResultOverlay(
         const val HANDLE_HEIGHT_DP = 20
         /** How far below the panel's bottom edge the resize grab zone extends. */
         const val EXTRA_DRAG_BELOW_DP = 26
+        /** Blurry drop shadow under the sheet's rounded bottom edge (baked once).
+         *  The OUTER blur lands the cast edge at ~half this alpha (visible peak
+         *  ~100/255). Tune these two for darker/softer. */
+        const val SHADOW_BLUR_DP = 11f
+        const val SHADOW_ALPHA = 200
         const val SECTION_H_PAD_DP = 12
         /** Space below the filled side-by-side cards (to the panel's bottom). */
         const val SIDE_BY_SIDE_BOTTOM_BUFFER_DP = 12
