@@ -125,6 +125,10 @@ class CaptureResultOverlay(
     // Height that shows all content at max text size — the drag-resize ceiling, so
     // the user can't grow the panel into empty space beyond what the content needs.
     private var maxNeededHeightPx = Int.MAX_VALUE
+    // The auto-size ceiling: 50% of the screen by default, but the user's dragged
+    // height once they resize — so a re-fit (furigana, translation arriving) keeps
+    // their chosen height instead of snapping back down to 50%.
+    private var autoMaxPx = Int.MAX_VALUE
 
     // Tap-a-word → definition (display + speak; the panel lens has no Anki/open).
     private var wordSpans: List<Triple<IntRange, String, String>> = emptyList()
@@ -197,6 +201,13 @@ class CaptureResultOverlay(
                 },
                 0, -cornerRadiusPx.toInt(), 0, 0,
             )
+            // The InsetDrawable's negative top inset is a DRAWING trick (lift the
+            // rounded top + stroke off-screen). Applied as a background it ALSO
+            // reports that inset as a negative top PADDING, which silently inflated
+            // the scroll's content area by the corner radius — pushing the scroll's
+            // bottom (and so the last card + buffer) below the visible body at full
+            // scroll. Pin layout padding to zero so only the drawing is affected.
+            setPadding(0, 0, 0, 0)
             outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: Outline) {
                     // Push the rounded rect's top above the view so only the bottom
@@ -230,6 +241,7 @@ class CaptureResultOverlay(
         if (dismissed) return
         this.screenW = screenW
         this.screenH = screenH
+        autoMaxPx = CaptureResultGeometry.autoMaxHeight(screenH)
         // Load at the minimum (drag-resize floor) height; grow to fit on Done.
         panelHeightPx = CaptureResultGeometry.minPanelHeight(screenH)
         (panel.layoutParams as FrameLayout.LayoutParams).height = panelHeightPx
@@ -401,7 +413,7 @@ class CaptureResultOverlay(
         }
         val neededHeight = naturalContent + dp(HANDLE_HEIGHT_DP)
         maxNeededHeightPx = neededHeight.coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
-        val target = CaptureResultGeometry.autoPanelHeight(neededHeight, screenH)
+        val target = CaptureResultGeometry.autoPanelHeight(neededHeight, screenH, autoMaxPx)
         animatePanelHeight(target)
     }
 
@@ -882,7 +894,14 @@ class CaptureResultOverlay(
         resizeTracker = null
         resizing = false
         // A fast up-fling on the handle dismisses (slides out).
-        if (vy < -FLING_DISMISS_VEL) animateOutAndDismiss()
+        if (vy < -FLING_DISMISS_VEL) {
+            animateOutAndDismiss()
+        } else {
+            // Adopt the user's dragged height as the auto-size ceiling, so a later
+            // re-fit (furigana toggle, translation arriving) keeps this height
+            // instead of snapping back down to the default 50%.
+            autoMaxPx = panelHeightPx
+        }
     }
 
     private fun setPanelHeight(px: Int) {

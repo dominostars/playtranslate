@@ -34,17 +34,26 @@ class CaptureResultGeometryTest {
 
     // ─── autoPanelHeight ────────────────────────────────────────────────
 
+    private val defaultCap = CaptureResultGeometry.autoMaxHeight(2000) // 50% = 1000
+
     @Test fun `autoPanelHeight fits content that's under the cap`() {
         // content 600 within [20%, 50%] of 2000 = [400, 1000].
-        assertEquals(600, CaptureResultGeometry.autoPanelHeight(600, 2000))
+        assertEquals(600, CaptureResultGeometry.autoPanelHeight(600, 2000, defaultCap))
     }
 
-    @Test fun `autoPanelHeight caps at 50 percent`() {
-        assertEquals(1000, CaptureResultGeometry.autoPanelHeight(1800, 2000))
+    @Test fun `autoPanelHeight caps at the default 50 percent`() {
+        assertEquals(1000, CaptureResultGeometry.autoPanelHeight(1800, 2000, defaultCap))
     }
 
     @Test fun `autoPanelHeight floors at 20 percent`() {
-        assertEquals(400, CaptureResultGeometry.autoPanelHeight(100, 2000))
+        assertEquals(400, CaptureResultGeometry.autoPanelHeight(100, 2000, defaultCap))
+    }
+
+    @Test fun `autoPanelHeight caps at the user's dragged height when it exceeds 50 percent`() {
+        // User dragged to 1300 (65%); a re-fit of 1800 content stays at 1300, not 1000.
+        assertEquals(1300, CaptureResultGeometry.autoPanelHeight(1800, 2000, 1300))
+        // ...but still shrinks to the content when it needs less than the user height.
+        assertEquals(1200, CaptureResultGeometry.autoPanelHeight(1200, 2000, 1300))
     }
 
     // ─── shouldUseSideBySide ────────────────────────────────────────────

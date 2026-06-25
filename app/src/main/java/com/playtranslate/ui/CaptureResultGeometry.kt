@@ -46,14 +46,19 @@ object CaptureResultGeometry {
     fun minPanelHeight(screenHeightPx: Int): Int =
         (screenHeightPx * MIN_HEIGHT_FRACTION).toInt()
 
-    /** Panel height that shows [contentHeightPx] of content, capped at
-     *  [MAX_AUTO_HEIGHT_FRACTION] of the screen and floored at
-     *  [MIN_HEIGHT_FRACTION]. Drives the load-time grow-to-fit animation. */
-    fun autoPanelHeight(contentHeightPx: Int, screenHeightPx: Int): Int {
+    /** Default auto-size ceiling — [MAX_AUTO_HEIGHT_FRACTION] of the display. */
+    fun autoMaxHeight(screenHeightPx: Int): Int =
+        (screenHeightPx * MAX_AUTO_HEIGHT_FRACTION).toInt()
+
+    /** Panel height that shows [contentHeightPx] of content, floored at
+     *  [MIN_HEIGHT_FRACTION] of the screen and capped at [maxPx] — normally
+     *  [autoMaxHeight], but the user's dragged height once they've resized, so a
+     *  re-fit neither shrinks below nor auto-grows past it. Drives the grow-to-fit
+     *  animation. */
+    fun autoPanelHeight(contentHeightPx: Int, screenHeightPx: Int, maxPx: Int): Int {
         if (screenHeightPx <= 0) return contentHeightPx.coerceAtLeast(0)
         val floor = (screenHeightPx * MIN_HEIGHT_FRACTION).toInt()
-        val cap = (screenHeightPx * MAX_AUTO_HEIGHT_FRACTION).toInt()
-        return contentHeightPx.coerceIn(floor, cap.coerceAtLeast(floor))
+        return contentHeightPx.coerceIn(floor, maxPx.coerceAtLeast(floor))
     }
 
     /**
