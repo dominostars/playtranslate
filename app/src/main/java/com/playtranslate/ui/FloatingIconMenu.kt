@@ -123,7 +123,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
 
     private val dimPaint = Paint().apply {
-        color = Color.argb(170, 0, 0, 0)
+        // Match the region-editing view's dim (alpha 200) — a little less see-through.
+        color = Color.argb(200, 0, 0, 0)
     }
     private val clearPaint = Paint().apply {
         xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
@@ -142,14 +143,9 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val selDashLen = 8f
     private val selGapLen = 6f
 
-    private val regionStrokePaint = Paint().apply {
-        style = Paint.Style.STROKE
-        color = Color.argb(200, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
-        strokeWidth = 2f * dp
-        isAntiAlias = true
-    }
     private val regionFillPaint = Paint().apply {
-        color = Color.argb(60, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
+        // Half the previous 60 — a lighter wash so the game shows through more.
+        color = Color.argb(30, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
         style = Paint.Style.FILL
     }
     private val regionLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -486,14 +482,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             canvas.drawRect(sel, clearPaint)
             canvas.restoreToCount(sc)
             // Card-colored base border + accent dashes (screen-space stable)
-            canvas.drawRect(sel, selectionBasePaint)
-            val dashPx = selDashLen * dp
-            val gapPx = selGapLen * dp
-            val period = dashPx + gapPx
-            drawScreenDashes(canvas, sel.left, sel.top, sel.right, sel.top, dashPx, period, true)
-            drawScreenDashes(canvas, sel.right, sel.top, sel.right, sel.bottom, dashPx, period, false)
-            drawScreenDashes(canvas, sel.left, sel.bottom, sel.right, sel.bottom, dashPx, period, true)
-            drawScreenDashes(canvas, sel.left, sel.top, sel.left, sel.bottom, dashPx, period, false)
+            drawDashedBorder(canvas, sel)
         } else {
             val region = activeRegion
             if (region != null && !region.isFullScreen) {
@@ -506,7 +495,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 )
                 canvas.drawRect(0f, 0f, w, h, dimPaint)
                 canvas.drawRect(regionRect, regionFillPaint)
-                canvas.drawRect(regionRect, regionStrokePaint)
+                // Same separated-line boundary as region editing.
+                drawDashedBorder(canvas, regionRect)
                 // Label centered in the region (shadow provides contrast)
                 val label = context.getString(R.string.region_label_current_capture)
                 val labelCx = regionRect.centerX()
@@ -604,6 +594,18 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     }
 
     // ── Positioning ──────────────────────────────────────────────────────
+
+    /** The separated-line border shared by the drag selection and the active-region
+     *  preview: a card-colored base + accent dashes (screen-space stable). */
+    private fun drawDashedBorder(canvas: Canvas, r: RectF) {
+        canvas.drawRect(r, selectionBasePaint)
+        val dashPx = selDashLen * dp
+        val period = dashPx + selGapLen * dp
+        drawScreenDashes(canvas, r.left, r.top, r.right, r.top, dashPx, period, true)
+        drawScreenDashes(canvas, r.right, r.top, r.right, r.bottom, dashPx, period, false)
+        drawScreenDashes(canvas, r.left, r.bottom, r.right, r.bottom, dashPx, period, true)
+        drawScreenDashes(canvas, r.left, r.top, r.left, r.bottom, dashPx, period, false)
+    }
 
     @Suppress("UNUSED_PARAMETER")
     /** Draws dashes along a line at fixed screen-space positions. */
