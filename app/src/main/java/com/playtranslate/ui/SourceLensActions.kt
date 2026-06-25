@@ -11,6 +11,7 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.headwordDisplay
+import com.playtranslate.model.selectHeadword
 import com.playtranslate.overlay.OverlayHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -21,6 +22,9 @@ import kotlinx.coroutines.launch
  *  callback time (the lens nulls the source's word/entry state on dismiss). */
 data class LensActionContext(
     val word: String?,
+    /** The occurrence reading the lens displayed (Sudachi pick, e.g. 明日 → あす);
+     *  null when none. Drives the open-detail bold + the Anki card reading. */
+    val reading: String?,
     val entry: DictionaryEntry?,
     val sentence: String?,
     val screenshotPath: String?,
@@ -83,8 +87,11 @@ class SourceLensActions(
         // resumes live mode, which can race a fresh capture and stomp
         // LastSentenceCache before TranslationResultActivity.onCreate runs.
         val word = cur.word
+        // Prefer the occurrence reading the lens displayed (明日 → あす); fall back
+        // to the entry's primary headword only when the host supplied none.
         val headword = cur.entry?.headwords?.firstOrNull()
-        val reading = headword?.reading?.takeIf { it != headword.written }
+        val reading = cur.reading?.takeIf { it != word }
+            ?: headword?.reading?.takeIf { it != headword.written }
         val cached = LastSentenceCache.takeIf { it.original == sentence }
         val cachedTranslation = cached?.translation
         val cachedTranslationSource = cached?.translationSource
@@ -208,13 +215,18 @@ class SourceLensActions(
     private fun snapshotLensFieldsForAnki(
         word: String, entry: DictionaryEntry, cur: LensActionContext,
     ): LensAnkiSnapshot {
-        val primaryHeadword = entry.headwords.firstOrNull()
-        val reading = primaryHeadword?.reading
-            ?.takeIf { it != primaryHeadword.written } ?: ""
+        // Card reading + pitch/freq follow the occurrence reading the lens showed
+        // (明日 → あす), falling back to the primary headword when there was none.
+        val occHeadword = entry.selectHeadword(word, word, cur.reading)
+        // Take the reading from the SELECTED headword, not raw cur.reading, so the
+        // card's reading stays consistent with its pitch/freq (same occHeadword)
+        // and can't persist a reading the entry doesn't list if the occurrence
+        // reading ever arrives unvalidated.
+        val reading = occHeadword?.reading?.takeIf { it != occHeadword.written } ?: ""
         val pos = entry.senses.firstOrNull()?.partsOfSpeech
             ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
         val definition = flatCardDefinition(entry)
-        val headword = entry.headwordDisplay(word)
+        val headword = entry.headwordDisplay(occHeadword, word)
         val sentence = cur.sentence
         val sentenceTranslation = LastSentenceCache
             .takeIf { it.original == sentence }?.translation

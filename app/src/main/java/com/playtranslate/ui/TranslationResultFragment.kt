@@ -27,6 +27,7 @@ import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.model.headwordDisplay
+import com.playtranslate.model.selectHeadword
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -529,7 +530,7 @@ class TranslationResultFragment : Fragment() {
             activity, R.string.anki_adding_in_progress, Toast.LENGTH_SHORT,
         ).show()
         viewLifecycleOwner.lifecycleScope.launch {
-            val hw = entry.headwordDisplay(word)
+            val hw = entry.headwordDisplay(entry.selectHeadword(word, word, readingClean), word)
             // Shared word-vs-sentence routing (single-word-sentence rule
             // included) lives in oneTapSend; the popup ignores the returned mode.
             val (result, _) = requireContext().oneTapSend(

@@ -31,7 +31,6 @@ import com.playtranslate.Prefs
 import com.playtranslate.audio.AudioRequest
 import com.playtranslate.audio.PlayOutcome
 import com.playtranslate.audio.PronunciationPlayer
-import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
@@ -54,6 +53,8 @@ import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.HanziDetail
 import com.playtranslate.model.KanjiDetail
 import com.playtranslate.model.headwordDisplay
+import com.playtranslate.model.orderedReadingRows
+import com.playtranslate.model.selectHeadword
 import com.playtranslate.model.unambiguousFallbackPos
 import com.playtranslate.tts.TtsEngine
 import com.playtranslate.tts.ttsTextForWord
@@ -184,7 +185,7 @@ class WordDetailBottomSheet : DialogFragment() {
             if (!embedded) dismiss()
             return
         }
-        val readingHint    = arguments?.getString(ARG_READING)
+        readingHint = arguments?.getString(ARG_READING)
         val screenshotPath = arguments?.getString(ARG_SCREENSHOT_PATH)
 
         val content     = view.findViewById<LinearLayout>(R.id.detailContent)
@@ -426,9 +427,12 @@ class WordDetailBottomSheet : DialogFragment() {
     private fun buildAnkiWordFields(
         entry: DictionaryEntry,
         defResult: DefinitionResult?,
+        word: String,
     ): Triple<String, String, String> {
-        val reading = entry.headwords.firstOrNull()?.reading
-            ?.takeIf { it != entry.headwords.firstOrNull()?.written } ?: ""
+        // Honor the occurrence reading the lens showed (明日 → あす); fall back to
+        // the primary headword when there was none.
+        val hw = entry.selectHeadword(word, word, readingHint)
+        val reading = hw?.reading?.takeIf { it != hw.written } ?: ""
 
         val pos = entry.senses.firstOrNull()?.partsOfSpeech
             ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
@@ -522,8 +526,8 @@ class WordDetailBottomSheet : DialogFragment() {
 
         pill.setLoading(true)
         viewLifecycleOwner.lifecycleScope.launch {
-            val (reading, pos, definition) = buildAnkiWordFields(entry, defResult)
-            val hw = entry.headwordDisplay(word)
+            val (reading, pos, definition) = buildAnkiWordFields(entry, defResult, word)
+            val hw = entry.headwordDisplay(entry.selectHeadword(word, word, readingHint), word)
             // The word-vs-sentence decision (incl. the single-word-sentence
             // rule) lives in oneTapSend, shared by every long-press path.
             // mode informs the NeedsMapping dialog's defaults.
@@ -592,7 +596,7 @@ class WordDetailBottomSheet : DialogFragment() {
             return
         }
 
-        val (reading, pos, definition) = buildAnkiWordFields(entry, defResult)
+        val (reading, pos, definition) = buildAnkiWordFields(entry, defResult, word)
 
         val args = arguments
         // Embedded mode (drag-flow Sentence/Word tab): the host activity
@@ -647,6 +651,10 @@ class WordDetailBottomSheet : DialogFragment() {
      *  re-queried when a card is added (via [AnkiManager.noteAddedTick]). */
     private var headerBadgeFlow: FlowLayout? = null
     private var headerWord: String? = null
+    /** The occurrence reading the lens passed in (ARG_READING, e.g. 明日 → あす).
+     *  Bolds the matching reading row and drives the occurrence-aware Anki
+     *  fields; null on a cold lookup. */
+    private var readingHint: String? = null
     private val deckPillTag = "anki_deck_pill"
 
     /** In-flight TTS request from the header speak chip — cancelled when the
@@ -933,7 +941,6 @@ class WordDetailBottomSheet : DialogFragment() {
         // marked "Kana only" (JMdict uk tag — e.g. なぜ over 何故).
         val display = entry.headwordDisplay(queriedWord)
         val written = display.written
-        val reading = display.reading
 
         // Replace the placeholder (the queried word) with the canonical
         // headword from the entry. The typeface was already set in
@@ -953,53 +960,23 @@ class WordDetailBottomSheet : DialogFragment() {
             )
         }
 
-        // Reading line with the speak chip placed just after the reading.
-        // The row is emitted even without a reading — the chip speaks the
-        // word regardless of script — leaving the chip flush left in that
-        // case.
-        val readingRow = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-        // Pitch renders on the reading when there is one; kana-only collapsed
-        // entries (なぜ — reading suppressed because the kana IS the headword)
-        // still get their contour by re-using the written kana here.
-        val pitch = display.pitch
-        val pitchKana = reading
-            ?: written.takeIf { pitch.isNotEmpty() && written.all(Deinflector::isKana) }
-        if (pitchKana != null) {
-            readingRow.addView(TextView(ctx).apply {
-                if (pitch.isNotEmpty()) {
-                    text = buildPitchAnnotatedReading(pitchKana, pitch)
-                    // Headroom for the overline band — PitchAccentSpan leaves
-                    // FontMetrics alone by contract.
-                    setPadding(0, dp(8), 0, 0)
-                } else {
-                    text = pitchKana
-                }
-                textSize = 18f
-                setTextColor(ctx.themeColor(R.attr.ptTextMuted))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
+        // One row per reading, ordered by common use, each with its own pitch
+        // contour and Speak chip. The reading the lens highlighted ([readingHint],
+        // e.g. 明日 → あす) is bolded in place; a cold lookup bolds nothing. A
+        // written-only entry (no readings — non-JA) yields no rows, so we emit a
+        // single chip that speaks the word.
+        val readingRows = entry.orderedReadingRows(readingHint)
+        if (readingRows.isEmpty()) {
+            block.addView(buildReadingRow(written, null, emptyList(), bolded = false, sourceLangId))
+        } else {
+            for (row in readingRows) {
+                block.addView(
+                    buildReadingRow(
+                        row.written ?: written, row.reading, row.pitch, row.bolded, sourceLangId,
+                    )
                 )
-            })
+            }
         }
-        // Speak the kana reading (when known) rather than the kanji surface,
-        // so the audio matches the reading shown above — the system engine's
-        // own kanji→reading guess can diverge (初夏 → はつか vs しょか).
-        readingRow.addView(
-            buildSpeakChip(
-                ttsTextForWord(written, reading, sourceLangId),
-                sourceLangId,
-                leading = pitchKana == null,
-            )
-        )
-        block.addView(readingRow)
 
         // Badges: Common pill, star rating, and — resolved asynchronously —
         // the "already in Anki" deck pill. Built unconditionally as a wrapping
@@ -1049,6 +1026,57 @@ class WordDetailBottomSheet : DialogFragment() {
         maybeAddAnkiDeckBadge(badgeRow, written)
 
         parent.addView(block)
+    }
+
+    /** One reading row: an optional pitch-annotated [reading] (bold + full colour
+     *  when [bolded], else muted) followed by a Speak chip that pronounces that
+     *  reading. [reading] null → chip only (written-only entries); the chip then
+     *  speaks [written]. */
+    private fun buildReadingRow(
+        written: String,
+        reading: String?,
+        pitch: List<Int>,
+        bolded: Boolean,
+        sourceLangId: SourceLangId,
+    ): View {
+        val ctx = requireContext()
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        if (reading != null) {
+            row.addView(TextView(ctx).apply {
+                if (pitch.isNotEmpty()) {
+                    // Headroom for the overline band — PitchAccentSpan leaves
+                    // FontMetrics alone by contract.
+                    text = buildPitchAnnotatedReading(reading, pitch)
+                    setPadding(0, dp(8), 0, 0)
+                } else {
+                    text = reading
+                }
+                textSize = 18f
+                setTextColor(ctx.themeColor(if (bolded) R.attr.ptText else R.attr.ptTextMuted))
+                if (bolded) setTypeface(typeface, Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                )
+            })
+        }
+        // Speak the kana reading (when known), not the kanji surface, so the audio
+        // matches the row (初夏 → はつか vs the engine's しょか guess).
+        row.addView(
+            buildSpeakChip(
+                ttsTextForWord(written, reading, sourceLangId),
+                sourceLangId,
+                leading = reading == null,
+            )
+        )
+        return row
     }
 
     /**

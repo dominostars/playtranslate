@@ -90,7 +90,7 @@ class DragLookupController(
      *  this controller's live word/entry/sentence/screenshot at tap time. */
     private val lensActions = SourceLensActions(
         context, displayId, overlayHost, magnifier,
-    ) { LensActionContext(lastWord, currentEntry, currentSentence, screenshotPath) }
+    ) { LensActionContext(lastWord, lastReading, currentEntry, currentSentence, screenshotPath) }
 
     /** Screenshot bitmap captured at drag start, kept alive for the magnifier
      *  through the entire drag. Recycled on drag end (or when superseded by a

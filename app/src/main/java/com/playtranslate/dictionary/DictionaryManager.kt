@@ -639,17 +639,28 @@ class DictionaryManager private constructor(private val context: Context) {
         // via the cached [hasNoKanji]; absent on pre-column packs →
         // buildHeadwords falls back to the old positional pairing.
         val noKanjiColumn = hasNoKanji(db)
-        val readingSql = if (noKanjiColumn)
-            "SELECT text, no_kanji FROM reading WHERE entry_id=? ORDER BY position"
-        else
-            "SELECT text FROM reading WHERE entry_id=? ORDER BY position"
+        val rankScoreColumn = hasRankScore(db)
+        // `rank_score` (common-use rank, higher = more common) rides along for the
+        // word-detail reading rows. ORDER BY position is kept so `headwords` stays
+        // position-ordered — firstOrNull() == primary, unchanged app-wide.
+        val readingCols = buildList {
+            add("text")
+            if (noKanjiColumn) add("no_kanji")
+            if (rankScoreColumn) add("rank_score")
+        }.joinToString(", ")
         val readingForms = mutableListOf<JmReadingForm>()
-        db.rawQuery(readingSql, arrayOf(idStr)).use { c ->
+        db.rawQuery(
+            "SELECT $readingCols FROM reading WHERE entry_id=? ORDER BY position",
+            arrayOf(idStr),
+        ).use { c ->
+            val noKanjiIdx = c.getColumnIndex("no_kanji")
+            val rankIdx = c.getColumnIndex("rank_score")
             while (c.moveToNext()) {
                 readingForms.add(
                     JmReadingForm(
                         text = c.getString(0),
-                        noKanji = noKanjiColumn && c.getInt(1) != 0,
+                        noKanji = noKanjiIdx >= 0 && c.getInt(noKanjiIdx) != 0,
+                        rankScore = if (rankIdx >= 0) c.getInt(rankIdx) else 0,
                     )
                 )
             }
@@ -1102,9 +1113,10 @@ class DictionaryManager private constructor(private val context: Context) {
  *  source dictionary marks it priority/common (JMdict `ke_pri`). */
 internal data class JmKanjiForm(val text: String, val hasPriority: Boolean)
 
-/** One reading form for [buildHeadwords]: the kana + whether JMdict tags it
- *  `re_nokanji` (the reading is never written with the entry's kanji). */
-internal data class JmReadingForm(val text: String, val noKanji: Boolean)
+/** One reading form for [buildHeadwords]: the kana, whether JMdict tags it
+ *  `re_nokanji` (never written with the entry's kanji), and its `rank_score`
+ *  (common-use rank; 0 on packs predating the column). */
+internal data class JmReadingForm(val text: String, val noKanji: Boolean, val rankScore: Int = 0)
 
 /**
  * Pair an entry's kanji forms with its readings into [Headword]s.
@@ -1136,7 +1148,7 @@ internal fun buildHeadwords(
     hasNoKanjiColumn: Boolean,
 ): List<Headword> {
     if (kanjiForms.isEmpty()) {
-        return readingForms.map { Headword(written = null, reading = it.text) }
+        return readingForms.map { Headword(written = null, reading = it.text, rankScore = it.rankScore) }
     }
     if (kanjiForms.size == 1 && hasNoKanjiColumn && readingForms.isNotEmpty()) {
         val k = kanjiForms[0]
@@ -1145,7 +1157,7 @@ internal fun buildHeadwords(
         // vanish (keeps the entry; matches the old positional fallback).
         if (kanjiReadings.isEmpty()) {
             return readingForms.map {
-                Headword(written = k.text, reading = it.text, hasPriority = k.hasPriority)
+                Headword(written = k.text, reading = it.text, hasPriority = k.hasPriority, rankScore = it.rankScore)
             }
         }
         // Kanji-compatible readings pair with the kanji (primary stays first);
@@ -1153,9 +1165,9 @@ internal fun buildHeadwords(
         // lookup BY that kana resolves to its own reading via headwordFor's
         // reading branch instead of falling back to the kanji pair.
         return kanjiReadings.map {
-            Headword(written = k.text, reading = it.text, hasPriority = k.hasPriority)
+            Headword(written = k.text, reading = it.text, hasPriority = k.hasPriority, rankScore = it.rankScore)
         } + readingForms.filter { it.noKanji }.map {
-            Headword(written = null, reading = it.text)
+            Headword(written = null, reading = it.text, rankScore = it.rankScore)
         }
     }
     return kanjiForms.mapIndexed { i, k ->
@@ -1163,6 +1175,7 @@ internal fun buildHeadwords(
             written = k.text,
             reading = readingForms.getOrNull(i)?.text ?: readingForms.firstOrNull()?.text,
             hasPriority = k.hasPriority,
+            rankScore = readingForms.getOrNull(i)?.rankScore ?: 0,
         )
     }
 }

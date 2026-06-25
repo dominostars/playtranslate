@@ -713,6 +713,7 @@ class CaptureResultOverlay(
                 ) {
                     LensActionContext(
                         resolved.word,
+                        resolved.reading,
                         resolved.entry,
                         lastResult?.originalText,
                         lastResult?.screenshotPath,

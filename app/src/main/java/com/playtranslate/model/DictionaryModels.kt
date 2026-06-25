@@ -79,6 +79,11 @@ data class Headword(
      *  installed or the pair has no data; populated post-lookup by the JA
      *  engine's enrichment pass alongside [pitch]. */
     val frequencies: List<FrequencyTag> = emptyList(),
+    /** Per-reading "common use" rank from the pack's `reading.rank_score`
+     *  (higher = more common; from JMdict re_pri + re_inf + position). 0 when
+     *  the pack predates the column. Orders the reading rows in the word-detail
+     *  view; does NOT affect headword order (kept position-ordered). */
+    val rankScore: Int = 0,
 )
 
 /**

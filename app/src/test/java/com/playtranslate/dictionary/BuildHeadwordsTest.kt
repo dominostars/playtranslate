@@ -14,7 +14,8 @@ import org.junit.Test
 class BuildHeadwordsTest {
 
     private fun k(text: String, priority: Boolean = false) = JmKanjiForm(text, priority)
-    private fun r(text: String, noKanji: Boolean = false) = JmReadingForm(text, noKanji)
+    private fun r(text: String, noKanji: Boolean = false, rankScore: Int = 0) =
+        JmReadingForm(text, noKanji, rankScore)
 
     @Test fun `single kanji with several readings expands to one headword each`() {
         val hw = buildHeadwords(
@@ -94,5 +95,17 @@ class BuildHeadwordsTest {
             hasNoKanjiColumn = true,
         )
         assertEquals(listOf("食べる" to "たべる"), hw.map { it.written to it.reading })
+    }
+
+    @Test fun `carries rankScore onto headwords without reordering them`() {
+        // Even though あす ranks highest, headwords stay in INPUT (position) order
+        // — firstOrNull()/primary is unchanged; only the detail rows reorder.
+        val hw = buildHeadwords(
+            listOf(k("明日")),
+            listOf(r("あした", rankScore = 10), r("あす", rankScore = 50), r("みょうにち", rankScore = 5)),
+            hasNoKanjiColumn = true,
+        )
+        assertEquals(listOf("あした", "あす", "みょうにち"), hw.map { it.reading })
+        assertEquals(listOf(10, 50, 5), hw.map { it.rankScore })
     }
 }
