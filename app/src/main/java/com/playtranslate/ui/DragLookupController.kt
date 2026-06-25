@@ -10,7 +10,6 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.util.TypedValue
-import android.widget.Toast
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.R
@@ -18,7 +17,6 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.displaySizePx
 import com.playtranslate.MainActivity
 import com.playtranslate.OcrManager
-import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.Prefs
 import com.playtranslate.translation.ChineseScriptConverter
@@ -82,6 +80,12 @@ class DragLookupController(
     private var currentSentence: String? = null
     private var lastSentSentence: String? = null
     private var wordLookupJob: Job? = null
+
+    /** Open-detail + Anki chip actions, shared with the capture overlay. Reads
+     *  this controller's live word/entry/sentence/screenshot at tap time. */
+    private val lensActions = SourceLensActions(
+        context, displayId, overlayHost, magnifier,
+    ) { LensActionContext(lastWord, currentEntry, currentSentence, screenshotPath) }
 
     /** Screenshot bitmap captured at drag start, kept alive for the magnifier
      *  through the entire drag. Recycled on drag end (or when superseded by a
@@ -153,16 +157,8 @@ class DragLookupController(
         // "Lens-Replaces-Popup"). The popup constructor parameter stays
         // for non-drag consumers (TranslationResultFragment) and as a
         // context fallback below; drag-flow callbacks live on the lens.
-        // "Open in detail view" always goes to TranslationResultActivity
-        // — sentence + segmented Sentence/Word toggle — regardless of
-        // single- or dual-screen mode, so the user lands on a consistent
-        // surface with the switch available.
-        magnifier.onOpenTap = { openSentenceInApp() }
-        // Anki chip: tap opens the editable review sheet (default).
-        // Long-press is the headless one-tap shortcut — documented by
-        // the pro-tip footer in Settings → Anki.
-        magnifier.onAnkiTap = { openAnkiReviewForLens() }
-        magnifier.onAnkiLongPress = { oneTapFromLens() }
+        // The lens's open-detail tap + Anki chip taps are wired by
+        // [lensActions] (shared with the capture overlay).
         // Speak chip → pronounce the looked-up headword via the system TTS
         // engine. LensSpeakChip installs the lens's onSpeakTap handler and
         // owns the speak coroutine + alert routing.
@@ -1401,303 +1397,6 @@ class DragLookupController(
         wordLookupJob = scope.launch {
             LastSentenceCache.awaitOrStartWordLookups(context, sentence)
         }
-    }
-
-    private fun openSentenceInApp() {
-        val sentence = currentSentence ?: return
-        // Capture word context BEFORE magnifier.dismiss() — the lens's
-        // onDismiss handler nulls lastWord and currentEntry, so any read
-        // after dismiss returns null and the intent loses EXTRA_DRAG_WORD,
-        // which is what the activity uses to decide whether to show the
-        // Sentence/Word pill toggle.
-        val word = lastWord
-        val headword = currentEntry?.headwords?.firstOrNull()
-        val reading = headword?.reading?.takeIf { it != headword.written }
-        // Snapshot translation AND wordResults from the cache before
-        // dismissing the lens — magnifier.dismiss() resumes live mode,
-        // which can race a fresh capture cycle and stomp this cache
-        // before TranslationResultActivity's onCreate runs. By copying
-        // into intent extras here, the activity sees a launch-scoped
-        // snapshot that nothing else can overwrite.
-        val cached = LastSentenceCache.takeIf { it.original == sentence }
-        val cachedTranslation = cached?.translation
-        val cachedTranslationSource = cached?.translationSource
-        val cachedWordResults = cached?.wordResults?.takeIf { it.isNotEmpty() }
-        // Tell the service to clear the drag-flow's pause obligation if
-        // the detail view will cover the live-mode surface. The service
-        // decides based on the same "effectively single-screen" predicate
-        // it uses elsewhere — keeping the policy in one place so this
-        // path can't drift from the routing logic in resumeLiveMode and
-        // friends. Dual-screen with the in-app panel visible leaves
-        // auto-resume intact since TRA lands separately from live mode.
-        CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
-        // Tear down the lens (sticky drag-flow surface) before launching
-        // the activity. Lens dismiss → onDismiss → onSettled, which is
-        // what the service expects post-drag.
-        magnifier.dismiss()
-        // Finish any previously launched TranslationResultActivity so the
-        // new launch fully replaces it visually (otherwise FLAG_ACTIVITY_MULTIPLE_TASK
-        // leaves it alive in a hidden task).
-        TranslationResultActivity.finishCurrentIfAny()
-        val intent = Intent(context, TranslationResultActivity::class.java).apply {
-            // MULTIPLE_TASK prevents Android from reusing the previous
-            // activity's task and migrating it (and its stale content)
-            // onto a different display — the bug repro on dual-screen.
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
-            putExtra(TranslationResultActivity.EXTRA_SENTENCE_TEXT, sentence)
-            putExtra(TranslationResultActivity.EXTRA_SCREENSHOT_PATH, screenshotPath)
-            // Word context — when present, the activity surfaces the
-            // Sentence/Word pill toggle in the toolbar.
-            word?.let { putExtra(TranslationResultActivity.EXTRA_DRAG_WORD, it) }
-            if (!reading.isNullOrEmpty()) {
-                putExtra(TranslationResultActivity.EXTRA_DRAG_READING, reading)
-            }
-            cachedTranslation?.let {
-                putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_TRANSLATION, it)
-            }
-            cachedTranslationSource?.let {
-                putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_TRANSLATION_SOURCE, it)
-            }
-            cachedWordResults?.let { wr ->
-                putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_WORDS,
-                    wr.keys.toTypedArray())
-                putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_READINGS,
-                    wr.values.map { it.first }.toTypedArray())
-                putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_MEANINGS,
-                    wr.values.map { it.second }.toTypedArray())
-                putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_FREQ_SCORES,
-                    wr.values.map { it.third }.toIntArray())
-            }
-        }
-        // Always pass an explicit launch display:
-        //   - When any PlayTranslate activity is resumed, route onto its
-        //     display so the new activity replaces it visually (the user
-        //     is already looking there).
-        //   - When nothing is resumed, fall back to the icon's display so
-        //     the activity doesn't land on DEFAULT_DISPLAY on dual-screen
-        //     setups.
-        // The previous `if (!MainActivity.isInForeground)` gate only
-        // tracked MainActivity, so once an Anki/TRA activity was the
-        // resumed one, the gate routed the next launch to the icon's
-        // display — the dual-screen "moved to wrong display" bug.
-        val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: displayId
-        val opts = android.app.ActivityOptions.makeBasic()
-            .setLaunchDisplayId(targetDisplay)
-            .toBundle()
-        context.startActivity(intent, opts)
-    }
-
-    /**
-     * Headless one-tap counterpart to [openAnkiReviewForLens]. When the
-     * user has the one-tap pref on, the lens's Anki chip dismisses the
-     * lens, fires off a [Context.oneTapSendWord] in [scope], and toasts
-     * the result. Falls back to [openAnkiReviewForLens] (the existing
-     * Activity launch) on any prerequisite failure so the user can
-     * still resolve it from inside the sheet.
-     *
-     * Critically, the NeedsMapping recovery path launches the review
-     * Activity from the pre-dismiss [LensAnkiSnapshot] — not via
-     * [openAnkiReviewForLens] — because by the time the dispatcher
-     * returns, the lens has been dismissed and `lastWord` /
-     * `currentEntry` are null. Calling back into
-     * [openAnkiReviewForLens] would silently return on those null
-     * checks, leaving users with an unmapped custom card type stuck
-     * with only the dispatcher's toast and no path to the mapping UI.
-     */
-    private fun oneTapFromLens() {
-        val word = lastWord ?: return
-        val entry = currentEntry ?: return
-        val ankiManager = AnkiManager(context)
-        if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) {
-            openAnkiReviewForLens()
-            return
-        }
-        val prefs = Prefs(context)
-        if (prefs.ankiDeckId < 0L) {
-            openAnkiReviewForLens()
-            return
-        }
-
-        // Snapshot the lens's word context BEFORE dismiss (onDismiss
-        // nulls lastWord / currentEntry) — same precaution
-        // openAnkiReviewForLens takes. The snapshot is the only data
-        // the Activity-launch fallback below can rely on.
-        val snap = snapshotLensFieldsForAnki(word, entry)
-        val sourceLangId = prefs.sourceLangId
-
-        CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
-        magnifier.dismiss()
-        // Initial "Adding to Anki…" toast so the user has feedback
-        // while the send runs. Result toast follows on completion.
-        Toast.makeText(
-            context, R.string.anki_adding_in_progress, Toast.LENGTH_SHORT,
-        ).show()
-        scope.launch {
-            // When the lens was dragged out of a sentence, the card goes out
-            // as a sentence with the dragged word bolded; a single-word source
-            // (or none) sends a word card. That routing — incl. the
-            // single-word-sentence rule — is shared via oneTapSend; the lens
-            // ignores the returned mode.
-            val (result, _) = context.oneTapSend(
-                word = snap.word,
-                reading = snap.reading,
-                pos = snap.pos,
-                fallbackDefinition = snap.definition,
-                freqScore = snap.freqScore,
-                pitch = snap.pitch,
-                frequencies = snap.frequencies,
-                sentenceOriginal = snap.sentence,
-                sentenceTranslation = snap.sentenceTranslation,
-                wordsPayload = null,        // await the cache (atomic)
-                screenshotPath = snap.screenshotPath,
-                sourceLangId = sourceLangId,
-            )
-            when (result) {
-                is AnkiSendResult.Success -> {
-                    val msgRes = if (result.audioDropped || result.wordAudioDropped)
-                        R.string.anki_added_no_audio
-                    else
-                        R.string.anki_added_success
-                    Toast.makeText(context, msgRes, Toast.LENGTH_SHORT).show()
-                }
-                is AnkiSendResult.Failed -> {
-                    Toast.makeText(context, result.messageRes, Toast.LENGTH_LONG).show()
-                }
-                is AnkiSendResult.NeedsMapping -> {
-                    // Dispatcher already toasted "Configure fields…".
-                    // Launch the review Activity from the snapshot —
-                    // openAnkiReviewForLens reads now-null instance
-                    // state and would no-op, stranding the user.
-                    launchWordAnkiActivity(snap)
-                }
-            }
-        }
-    }
-
-    /**
-     * Launches the Anki word-review flow with the lens's current word
-     * context. Snapshots state before dismissing the lens (onDismiss
-     * nulls lastWord / currentEntry, so reads after dismiss would lose
-     * the data). Gates on AnkiDroid being installed; [AnkiPermissionActivity]
-     * handles the permission gate, then forwards to the review sheet.
-     */
-    private fun openAnkiReviewForLens() {
-        val word = lastWord ?: return
-        val entry = currentEntry ?: return
-
-        val ankiManager = AnkiManager(context)
-        if (!ankiManager.isAnkiDroidInstalled()) {
-            // Service context — no Activity to attach to, so route the alert
-            // through the capture-overlay path on the lens's display.
-            showAnkiNotInstalledDialog(
-                magnifier.rawCtx, overlayHost, magnifier.wm, displayId,
-            )
-            return
-        }
-
-        val snap = snapshotLensFieldsForAnki(word, entry)
-        CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
-        magnifier.dismiss()
-        launchWordAnkiActivity(snap)
-    }
-
-    /**
-     * Snapshot of all the data needed to launch
-     * [AnkiPermissionActivity] for this lens session, captured before
-     * [magnifier.dismiss] is allowed to null the source-of-truth fields
-     * (`lastWord`, `currentEntry`, `currentSentence`, `screenshotPath`).
-     */
-    private data class LensAnkiSnapshot(
-        val word: String,
-        val reading: String,
-        val pos: String,
-        val definition: String,
-        val freqScore: Int,
-        val pitch: List<Int>,
-        val frequencies: List<FrequencyTag>,
-        val screenshotPath: String?,
-        val sentence: String?,
-        val sentenceTranslation: String?,
-        val sourceLangCode: String,
-    )
-
-    /** Build a [LensAnkiSnapshot] from the supplied word + entry plus
-     *  the controller's current session fields. Call BEFORE
-     *  [magnifier.dismiss]. */
-    private fun snapshotLensFieldsForAnki(
-        word: String, entry: DictionaryEntry,
-    ): LensAnkiSnapshot {
-        val primaryHeadword = entry.headwords.firstOrNull()
-        val reading = primaryHeadword?.reading
-            ?.takeIf { it != primaryHeadword.written } ?: ""
-        val pos = entry.senses.firstOrNull()?.partsOfSpeech
-            ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
-        val definition = flatCardDefinition(entry)
-        // Pitch + per-dict frequencies from the headword matching the clicked
-        // word (carries them through the dismiss, like the other snapshot data).
-        val headword = entry.headwordDisplay(word)
-        val sentence = currentSentence
-        val sentenceTranslation = LastSentenceCache
-            .takeIf { it.original == sentence }?.translation
-        return LensAnkiSnapshot(
-            word = word,
-            reading = reading,
-            pos = pos,
-            definition = definition,
-            freqScore = entry.freqScore,
-            pitch = headword.pitch,
-            frequencies = headword.frequencies,
-            screenshotPath = screenshotPath,
-            sentence = sentence,
-            sentenceTranslation = sentenceTranslation,
-            sourceLangCode = Prefs(context).sourceLangId.code,
-        )
-    }
-
-    /**
-     * Launches the [AnkiPermissionActivity] → [WordAnkiReviewActivity]
-     * flow from a pre-captured [LensAnkiSnapshot]. Decoupled from
-     * `lastWord` / `currentEntry` so the one-tap fallback path can
-     * still launch the sheet after `magnifier.dismiss()` has cleared
-     * those fields.
-     */
-    private fun launchWordAnkiActivity(snap: LensAnkiSnapshot) {
-        // Finish any previously launched WordAnkiReviewActivity so the
-        // new sheet visibly replaces the old one rather than stacking
-        // behind it in a hidden task. Also cancel any in-flight
-        // permission trampoline — otherwise a rapid second tap (e.g.
-        // during a first-time permission flow) could let an older
-        // trampoline forward its stale intent after the new sheet opens.
-        WordAnkiReviewActivity.finishCurrentIfAny()
-        AnkiPermissionActivity.finishCurrentIfAny()
-
-        val intent = Intent(context, AnkiPermissionActivity::class.java).apply {
-            // MULTIPLE_TASK — see openSentenceInApp for the rationale.
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
-            putExtra(WordAnkiReviewActivity.EXTRA_WORD, snap.word)
-            putExtra(WordAnkiReviewActivity.EXTRA_READING, snap.reading)
-            putExtra(WordAnkiReviewActivity.EXTRA_POS, snap.pos)
-            putExtra(WordAnkiReviewActivity.EXTRA_DEFINITION, snap.definition)
-            putExtra(WordAnkiReviewActivity.EXTRA_FREQ_SCORE, snap.freqScore)
-            snap.screenshotPath?.let {
-                putExtra(WordAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, it)
-            }
-            snap.sentence?.let {
-                putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, it)
-            }
-            snap.sentenceTranslation?.let {
-                putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_TRANSLATION, it)
-            }
-            putExtra(WordAnkiReviewActivity.EXTRA_SOURCE_LANG, snap.sourceLangCode)
-        }
-
-        // Same routing rule as [openSentenceInApp]: prefer any resumed
-        // PlayTranslate activity's display, fall back to the icon's display.
-        val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: displayId
-        val opts = android.app.ActivityOptions.makeBasic()
-            .setLaunchDisplayId(targetDisplay)
-            .toBundle()
-        context.startActivity(intent, opts)
     }
 
     private fun sendLineToMainApp(lineText: String) {
