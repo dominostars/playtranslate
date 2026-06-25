@@ -152,7 +152,8 @@ class CaptureResultOverlay(
     // their chosen height instead of snapping back down to 50%.
     private var autoMaxPx = Int.MAX_VALUE
 
-    // Tap-a-word → definition (display + speak; the panel lens has no Anki/open).
+    // Tap-a-word → definition lens: display + speak + (when a dict entry matches)
+    // the open-detail tap and Anki chip, shared with the drag flow via SourceLensActions.
     private var wordSpans: List<Triple<IntRange, String, String>> = emptyList()
     private var wordLens: MagnifierLens? = null
     private var wordSpeakChip: LensSpeakChip? = null
@@ -160,6 +161,9 @@ class CaptureResultOverlay(
     // In-place edit (the panel window goes focusable so the IME shows over the game).
     private var windowParams: WindowManager.LayoutParams? = null
     private var lastResult: TranslationResult? = null
+    /** Last original text written into [LastSentenceCache] from here, so a re-bind
+     *  of the same sentence (furigana toggle, re-fit) doesn't re-fire the lookups. */
+    private var lastCachedSentence: String? = null
     /** Bumped per edit commit so an out-of-order translateOnce can't roll back a
      *  newer edit. */
     private var editGeneration = 0
@@ -420,6 +424,7 @@ class CaptureResultOverlay(
     private fun bindResult(result: TranslationResult) {
         val b = binder ?: return
         lastResult = result
+        populateSentenceCache(result)
         statusText.visibility = View.GONE
         scroll.visibility = View.VISIBLE
         b.bindResult(result)
@@ -437,6 +442,30 @@ class CaptureResultOverlay(
                 if (dismissed) return@post
                 autoSizeAndFit()
             }
+        }
+    }
+
+    /** Mirror the Activity flow's LastSentenceCache write so the lens's Anki card
+     *  + open-detail tap carry the sentence translation + per-word results. */
+    private fun populateSentenceCache(result: TranslationResult) {
+        val original = result.originalText
+        if (original.isBlank() || result.translatedText.isBlank()) return
+        if (original == lastCachedSentence) return
+        lastCachedSentence = original
+        scope.launch {
+            LastSentenceCache.setFromTranslationResult(
+                original = original,
+                translation = result.translatedText,
+                translationSource = result.backendDisplayName,
+                wordResults = null,
+                surfaceForms = null,
+                wordEnrichment = null,
+            )
+            // awaitOrStartWordLookups only writes the word maps when original ==
+            // the cache's current sentence, so the translation above is preserved.
+            try {
+                LastSentenceCache.awaitOrStartWordLookups(ctx.applicationContext, original)
+            } catch (_: Exception) {}
         }
     }
 
@@ -611,7 +640,16 @@ class CaptureResultOverlay(
                 val layout = tv.layout ?: return@launch
                 val lineStart = layout.getLineForOffset(span.first.first)
                 val xStart = layout.getPrimaryHorizontal(span.first.first)
-                val xEnd = layout.getPrimaryHorizontal(span.first.last + 1)
+                // The offset just past the word can land on the NEXT line (the word
+                // ends a wrapped line) — getPrimaryHorizontal then returns that line's
+                // start (~0), collapsing the center to mid-screen and throwing off the
+                // lens/arrow for right-edge words. Fall back to the line's right edge.
+                val endOffset = span.first.last + 1
+                val xEnd = if (layout.getLineForOffset(endOffset) == lineStart) {
+                    layout.getPrimaryHorizontal(endOffset)
+                } else {
+                    layout.getLineRight(lineStart)
+                }
                 val wordCenterX = ((xStart + xEnd) / 2).toInt() + tv.paddingLeft
                 val lineTop = layout.getLineTop(lineStart) - tv.scrollY + tv.paddingTop
                 val lineH = layout.getLineBottom(lineStart) - layout.getLineTop(lineStart)
@@ -620,7 +658,7 @@ class CaptureResultOverlay(
                 val screenX = loc[0] + wordCenterX
                 val anchorY = loc[1] + lineTop
                 dismissWordLens()
-                val lens = MagnifierLens(ctx, wm, displayId, overlayHost, showAnkiChip = false)
+                val lens = MagnifierLens(ctx, wm, displayId, overlayHost, showAnkiChip = resolved.entry != null)
                 lens.onDismiss = {
                     binder?.setWordHighlight(null)
                     wordSpeakChip?.release()
@@ -632,6 +670,22 @@ class CaptureResultOverlay(
                     lens, scope,
                     TtsAlertTarget.Overlay(ctx, overlayHost, wm, displayId),
                 ) { LensSpeakChip.Request(resolved.word, prefs.sourceLangId, reading = resolved.reading) }
+                // Open-detail tap + Anki chip — same actions as the drag flow. The captured
+                // [resolved] is this tap's word/entry; sentence + screenshot come from the
+                // current capture result.
+                SourceLensActions(
+                    ctx.applicationContext, displayId, overlayHost, lens,
+                    // Open-detail / Anki review push a full screen — tear the sheet
+                    // down so it isn't left behind it.
+                    onLaunchedActivity = { dismiss() },
+                ) {
+                    LensActionContext(
+                        resolved.word,
+                        resolved.entry,
+                        lastResult?.originalText,
+                        lastResult?.screenshotPath,
+                    )
+                }
                 b.setWordHighlight(span.first)
                 lens.show(screenX, anchorY, screenW, screenH, anchorHeight = lineH)
                 lens.setDefinitions(resolved.data, resolved.label)
