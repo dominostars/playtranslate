@@ -1296,7 +1296,21 @@ class MagnifierLens(
                     }
                     tapGestureActive = isTapEligible(ev.x, ev.y)
                 }
-                if (tapGestureActive) tapDetector.onTouchEvent(ev)
+                if (tapGestureActive) {
+                    tapDetector.onTouchEvent(ev)
+                    // If no child claimed the gesture, claim it here so the parent
+                    // keeps delivering MOVE/UP to the tap detector. A tap on the
+                    // pill (or chrome overhang) over the transparent area BELOW the
+                    // card — the flipped case, where the pill sits at the card's
+                    // bottom edge with no scroll view beneath it — leaves [handled]
+                    // false; without claiming it, the DOWN isn't consumed, the
+                    // parent never delivers the UP, and onSingleTapUp (hence the
+                    // open-detail tap) never fires. When a child DID consume (the
+                    // card-body scroll, e.g. the not-flipped pill overlapping it),
+                    // defer to it so scrolling still works — the detector runs in
+                    // parallel and only fires on a real tap.
+                    if (!handled) return true
+                }
             }
             return handled
         }
