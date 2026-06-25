@@ -20,7 +20,6 @@ import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
-import android.view.animation.OvershootInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
@@ -215,7 +214,8 @@ class CaptureResultOverlay(
         if (dismissed) return
         this.screenW = screenW
         this.screenH = screenH
-        panelHeightPx = CaptureResultGeometry.defaultPanelHeight(screenH)
+        // Load at the minimum (drag-resize floor) height; grow to fit on Done.
+        panelHeightPx = CaptureResultGeometry.minPanelHeight(screenH)
         (panel.layoutParams as FrameLayout.LayoutParams).height = panelHeightPx
         // Park above the top edge; the entrance animation (below) drops it in.
         panel.translationY = -panelHeightPx.toFloat()
@@ -253,12 +253,11 @@ class CaptureResultOverlay(
         }
         windowParams = lp
         overlayHost.addOverlayWindow(root, wm, lp, displayId)
-        // Bounce in from the top (cf. the floating icon's edge snap, but with a
-        // short overshoot instead of a plain decelerate).
+        // Ease in from the top — a plain decelerate, no overshoot/bounce.
         panel.animate()
             .translationY(0f)
             .setDuration(ENTER_DURATION_MS)
-            .setInterpolator(OvershootInterpolator(ENTER_OVERSHOOT))
+            .setInterpolator(DecelerateInterpolator())
             .start()
     }
 
@@ -636,11 +635,13 @@ class CaptureResultOverlay(
             contentRow.addView(target.col, LinearLayout.LayoutParams(0, WRAP, 1f))
         } else {
             contentRow.orientation = LinearLayout.VERTICAL
-            contentRow.setPadding(hPad, 0, hPad, dp(8))
+            contentRow.setPadding(hPad, 0, hPad, dp(STACKED_BOTTOM_BUFFER_DP))
             inflater().inflate(R.layout.section_source, contentRow, true)
-            trimSectionTopPadding(contentRow)
+            setHeaderTop(contentRow.getChildAt(0), HEADER_TOP_DP)
             contentRow.addView(horizontalDivider())
+            val targetHeaderIndex = contentRow.childCount
             inflater().inflate(R.layout.section_target, contentRow, true)
+            setHeaderTop(contentRow.getChildAt(targetHeaderIndex), HEADER_TOP_DP)
         }
     }
 
@@ -650,7 +651,7 @@ class CaptureResultOverlay(
         val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         val expanded = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         inflater().inflate(layoutRes, expanded, true)
-        trimSectionTopPadding(expanded)
+        setHeaderTop(expanded.getChildAt(0), HEADER_TOP_DP)
         // The card stays wrap here; its height is pinned explicitly each frame by
         // [applyCardFill] (deterministic — a weight/fillViewport chain doesn't
         // reliably shrink the card during a drag).
@@ -767,14 +768,11 @@ class CaptureResultOverlay(
         }
     }
 
-    /** Shave the shared section header's top padding (pt_group_gap) down for the
-     *  panel only, so the title sits closer to the top edge. [container]'s first
-     *  child is the inflated section header (header before card in the merge). */
-    private fun trimSectionTopPadding(container: LinearLayout) {
-        val header = container.getChildAt(0) ?: return
-        header.setPadding(
-            header.paddingLeft, dp(SECTION_TITLE_TOP_DP), header.paddingRight, header.paddingBottom,
-        )
+    /** Set a section [header]'s top padding (the shared layout uses pt_group_gap;
+     *  the panel tightens it per mode so the title sits closer to the top edge). */
+    private fun setHeaderTop(header: View?, topDp: Int) {
+        header ?: return
+        header.setPadding(header.paddingLeft, dp(topDp), header.paddingRight, header.paddingBottom)
     }
 
     private fun verticalDivider(): View = View(ctx).apply {
@@ -967,9 +965,12 @@ class CaptureResultOverlay(
         const val SECTION_H_PAD_DP = 12
         /** Space below the filled side-by-side cards (to the panel's bottom). */
         const val SIDE_BY_SIDE_BOTTOM_BUFFER_DP = 12
-        /** Trimmed top padding for the panel's section headers (the shared layout
-         *  uses pt_group_gap = 20dp; the panel sits tighter to the top edge). */
-        const val SECTION_TITLE_TOP_DP = 4
+        /** Space below the stacked content (to the panel's bottom). */
+        const val STACKED_BOTTOM_BUFFER_DP = 10
+        /** Top padding applied to EVERY panel section header (the shared layout uses
+         *  pt_group_gap = 20dp). One value so all four headers — source/target,
+         *  side-by-side/stacked — render the same height. */
+        const val HEADER_TOP_DP = 6
         /** Corner radius as a multiple of pt_radius — between the original 1x and
          *  the 2x briefly tried. */
         const val CORNER_RADIUS_MULT = 1.5f
@@ -980,7 +981,5 @@ class CaptureResultOverlay(
         const val ENTER_DURATION_MS = 280L
         const val EXIT_DURATION_MS = 200L
         const val HEIGHT_DURATION_MS = 240L
-        /** OvershootInterpolator tension — modest, for a short bounce-in. */
-        const val ENTER_OVERSHOOT = 1.5f
     }
 }

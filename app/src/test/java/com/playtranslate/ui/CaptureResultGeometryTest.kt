@@ -28,8 +28,8 @@ class CaptureResultGeometryTest {
         assertEquals(1800, CaptureResultGeometry.clampPanelHeight(5000, 2000))
     }
 
-    @Test fun `defaultPanelHeight is 40 percent of the screen`() {
-        assertEquals(800, CaptureResultGeometry.defaultPanelHeight(2000))
+    @Test fun `minPanelHeight is 20 percent of the screen`() {
+        assertEquals(400, CaptureResultGeometry.minPanelHeight(2000))
     }
 
     // ─── autoPanelHeight ────────────────────────────────────────────────

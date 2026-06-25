@@ -7,9 +7,8 @@ package com.playtranslate.ui
  */
 object CaptureResultGeometry {
 
-    /** Default panel height as a fraction of the display height (top sheet). */
-    const val DEFAULT_HEIGHT_FRACTION = 0.40f
-    /** Smallest the panel may shrink to (fraction of display height). */
+    /** Smallest the panel may shrink to (fraction of display height); also the
+     *  height the panel loads at before it grows to fit the result. */
     const val MIN_HEIGHT_FRACTION = 0.20f
     /** Largest the panel may grow to (fraction of display height) — never the
      *  whole screen, so a tap-outside band always remains below it. */
@@ -43,9 +42,9 @@ object CaptureResultGeometry {
         return desiredPx.coerceIn(minPx, maxPx.coerceAtLeast(minPx))
     }
 
-    /** Default panel height (px) for [screenHeightPx]. */
-    fun defaultPanelHeight(screenHeightPx: Int): Int =
-        clampPanelHeight((screenHeightPx * DEFAULT_HEIGHT_FRACTION).toInt(), screenHeightPx)
+    /** Smallest panel height (px) — the drag-resize floor; used while loading. */
+    fun minPanelHeight(screenHeightPx: Int): Int =
+        (screenHeightPx * MIN_HEIGHT_FRACTION).toInt()
 
     /** Panel height that shows [contentHeightPx] of content, capped at
      *  [MAX_AUTO_HEIGHT_FRACTION] of the screen and floored at
