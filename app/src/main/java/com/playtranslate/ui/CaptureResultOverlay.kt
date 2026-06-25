@@ -5,6 +5,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Outline
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
@@ -120,6 +122,9 @@ class CaptureResultOverlay(
     private var stackedNonCardPx = 0
     private var cardInsetMeasured = false
     private var heightAnimator: ValueAnimator? = null
+    // Height that shows all content at max text size — the drag-resize ceiling, so
+    // the user can't grow the panel into empty space beyond what the content needs.
+    private var maxNeededHeightPx = Int.MAX_VALUE
 
     // Tap-a-word → definition (display + speak; the panel lens has no Anki/open).
     private var wordSpans: List<Triple<IntRange, String, String>> = emptyList()
@@ -176,11 +181,22 @@ class CaptureResultOverlay(
             })
         }
         body.apply {
-            // The visible sheet: a plain bg clipped to a square-top / rounded-bottom
-            // outline, so the content is cropped to the panel's rounded edges. The
+            // The visible sheet: a ptBg fill + a thin ptDivider boundary (the same
+            // color as the section divider), clipped to a square-top / rounded-bottom
+            // outline so the content is cropped to the panel's rounded edges. The
             // sheet lives on the body, not the panel, so the handle bar below stays
             // transparent — and the pill (a sibling of the body) isn't clipped away.
-            setBackgroundColor(ctx.themeColor(R.attr.ptBg))
+            // A uniformly-rounded sheet whose TOP (corners + stroke) is lifted above
+            // the view by the corner radius — so, like the clip outline, only the
+            // bottom corners + sides show and there's no boundary line across the top.
+            background = InsetDrawable(
+                GradientDrawable().apply {
+                    setColor(ctx.themeColor(R.attr.ptBg))
+                    cornerRadius = cornerRadiusPx
+                    setStroke(dp(1), ctx.themeColor(R.attr.ptDivider))
+                },
+                0, -cornerRadiusPx.toInt(), 0, 0,
+            )
             outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: Outline) {
                     // Push the rounded rect's top above the view so only the bottom
@@ -232,9 +248,12 @@ class CaptureResultOverlay(
         b.setupSectionButtons(onEdit = { startInPlaceEdit() })
         b.onSectionVisibilityChanged = {
             applySideBySideCollapse()
-            // A section was hidden/shown — grow/shrink the panel to the new content
-            // (post so the card GONE / column collapse settles before we measure).
-            contentRow.post { if (!dismissed && lastResult != null) autoSizeAndFit() }
+            // A section was hidden/shown — grow/shrink the panel to the new content.
+            // Two frames: the collapse AND the other column's re-widen must settle
+            // before we measure, else we'd size to the stale pre-collapse layout.
+            contentRow.post {
+                contentRow.post { if (!dismissed && lastResult != null) autoSizeAndFit() }
+            }
         }
         // Furigana changes the source's rendered height (async on / sync off) — re-fit.
         b.onSourceTextHeightChanged = { if (!dismissed) autoSizeAndFit() }
@@ -356,15 +375,23 @@ class CaptureResultOverlay(
         val b = binder ?: return
         if (body.height <= 0 || contentRow.width <= 0) return
         measureCardInset(b)
+        // A section hidden via the eye contributes only its collapsed strip (the
+        // side-by-side column shrinks to a button-wide strip) or nothing (stacked),
+        // NOT its full text height — so hiding it actually shrinks the panel.
         val naturalContent = if (isSideBySide) {
-            maxOf(
-                sideChromeSource(b) + b.sourceTextHeightAtMax(),
-                sideChromeTarget(b) + b.targetTextHeightAtMax(),
-            ) + dp(SIDE_BY_SIDE_BOTTOM_BUFFER_DP)
+            val srcNeed = if (prefs.hideOriginalSection) (sourceColumn?.collapsed?.height ?: 0)
+                else sideChromeSource(b) + b.sourceTextHeightAtMax()
+            val tgtNeed = if (prefs.hideTranslationSection) (targetColumn?.collapsed?.height ?: 0)
+                else sideChromeTarget(b) + b.targetTextHeightAtMax()
+            maxOf(srcNeed, tgtNeed) + dp(SIDE_BY_SIDE_BOTTOM_BUFFER_DP)
         } else {
-            stackedChrome(b) + b.sourceTextHeightAtMax() + b.targetTextHeightAtMax()
+            stackedChrome(b) +
+                (if (prefs.hideOriginalSection) 0 else b.sourceTextHeightAtMax()) +
+                (if (prefs.hideTranslationSection) 0 else b.targetTextHeightAtMax())
         }
-        val target = CaptureResultGeometry.autoPanelHeight(naturalContent + dp(HANDLE_HEIGHT_DP), screenH)
+        val neededHeight = naturalContent + dp(HANDLE_HEIGHT_DP)
+        maxNeededHeightPx = neededHeight.coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
+        val target = CaptureResultGeometry.autoPanelHeight(neededHeight, screenH)
         animatePanelHeight(target)
     }
 
@@ -820,7 +847,12 @@ class CaptureResultOverlay(
     private fun updateResize(e: MotionEvent) {
         resizeTracker?.addMovement(e)
         val dy = (e.rawY - resizeStartRawY).toInt()
-        setPanelHeight(CaptureResultGeometry.clampPanelHeight(resizeStartHeight + dy, screenH))
+        // Clamp to [min, 90%], then cap at the content's max-needed height so the
+        // drag can't grow the panel into empty space beyond the content.
+        setPanelHeight(
+            CaptureResultGeometry.clampPanelHeight(resizeStartHeight + dy, screenH)
+                .coerceAtMost(maxNeededHeightPx),
+        )
         reFitText()
     }
 
