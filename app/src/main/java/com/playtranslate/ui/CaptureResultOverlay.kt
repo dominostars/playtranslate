@@ -204,7 +204,10 @@ class CaptureResultOverlay(
             // bottom corners + sides show and there's no boundary line across the top.
             background = InsetDrawable(
                 GradientDrawable().apply {
-                    setColor(ctx.themeColor(R.attr.ptBg))
+                    // Slightly translucent sheet fill — the game shows faintly
+                    // through (stroke stays opaque). SHEET_ALPHA is the dial.
+                    val bg = ctx.themeColor(R.attr.ptBg)
+                    setColor(Color.argb(SHEET_ALPHA, Color.red(bg), Color.green(bg), Color.blue(bg)))
                     cornerRadius = cornerRadiusPx
                     setStroke(dp(1), ctx.themeColor(R.attr.ptDivider))
                 },
@@ -1108,6 +1111,8 @@ class CaptureResultOverlay(
          *  ~100/255). Tune these two for darker/softer. */
         const val SHADOW_BLUR_DP = 11f
         const val SHADOW_ALPHA = 200
+        /** Sheet fill opacity (255 = opaque). Lower → more of the game shows through. */
+        const val SHEET_ALPHA = 235
         const val SECTION_H_PAD_DP = 12
         /** Space below the filled side-by-side cards (to the panel's bottom). */
         const val SIDE_BY_SIDE_BOTTOM_BUFFER_DP = 12
