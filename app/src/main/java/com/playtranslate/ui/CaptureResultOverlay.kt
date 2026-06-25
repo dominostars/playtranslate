@@ -116,6 +116,9 @@ class CaptureResultOverlay(
     // read LIVE each fit. Plus the load-time grow-to-fit animator.
     private var sourceCardInsetPx = 0
     private var targetCardInsetPx = 0
+    // Stacked only: the non-card vertical chrome (both headers + divider + bottom
+    // padding), measured once while the cards still wrap.
+    private var stackedNonCardPx = 0
     private var cardInsetMeasured = false
     private var heightAnimator: ValueAnimator? = null
 
@@ -364,39 +367,67 @@ class CaptureResultOverlay(
     /** The card frame's inset is constant — measure it ONCE while the cards are
      *  still wrap (after [applyCardFill] pins explicit heights, card − content no
      *  longer reads the inset). The header + content overhead are read live. */
+    /** The card frame's inset is constant — measure it ONCE while the cards are
+     *  still wrap (after [applyCardFill] pins min-heights, card − content no longer
+     *  reads the inset). Same for the stacked non-card chrome. The header + content
+     *  overhead are read live. */
     private fun measureCardInset(b: TranslationSectionBinder) {
-        if (cardInsetMeasured || !isSideBySide) return
+        if (cardInsetMeasured) return
         sourceCardInsetPx = b.sourceCardInset()
         targetCardInsetPx = b.targetCardInset()
+        if (!isSideBySide) {
+            stackedNonCardPx = (contentRow.height - b.sourceCardHeight() - b.targetCardHeight())
+                .coerceAtLeast(0)
+        }
         cardInsetMeasured = true
     }
 
-    // Live per-section chrome (the non-text height): header + in-card overhead
-    // (padding + the target's note row) + the once-measured card frame inset.
+    // Per-section chrome (the non-text height): header + in-card overhead (padding +
+    // the target's note row, read live) + the once-measured card frame inset.
     private fun sideChromeSource(b: TranslationSectionBinder): Int =
         b.sourceHeaderHeight() + b.sourceContentOverhead() + sourceCardInsetPx
     private fun sideChromeTarget(b: TranslationSectionBinder): Int =
         b.targetHeaderHeight() + b.targetContentOverhead() + targetCardInsetPx
-    private fun stackedChrome(b: TranslationSectionBinder): Int =
-        (contentRow.height - b.sourceTextHeight() - b.targetTextHeight()).coerceAtLeast(0)
 
-    /** Fill the side-by-side cards to the body (minus header + bottom buffer) via a
-     *  MINIMUM height, so each card background is sized by the view, not the text —
-     *  yet a card whose content runs slightly tall grows + scrolls instead of
-     *  clipping. No-op stacked. */
-    private fun applyCardFill(b: TranslationSectionBinder, bodyH: Int) {
-        if (!isSideBySide) return
-        val buffer = dp(SIDE_BY_SIDE_BOTTOM_BUFFER_DP)
-        b.setCardMinHeights(
-            (bodyH - b.sourceHeaderHeight() - buffer).coerceAtLeast(0),
-            (bodyH - b.targetHeaderHeight() - buffer).coerceAtLeast(0),
-        )
+    /** Stacked non-text chrome, summed from STABLE parts (the min-height the fill
+     *  sets would otherwise inflate a `contentRow.height − text` reading). */
+    private fun stackedChrome(b: TranslationSectionBinder): Int =
+        stackedNonCardPx + sourceCardInsetPx + targetCardInsetPx +
+            b.sourceContentOverhead() + b.targetContentOverhead()
+
+    /** Stacked: split the card area between the two cards in proportion to each
+     *  section's content-at-max, so both fill the panel (no gap below) and each
+     *  text grows/shrinks to fill its card. */
+    private fun stackedCardHeights(b: TranslationSectionBinder, bodyH: Int): Pair<Int, Int> {
+        val available = (bodyH - stackedNonCardPx).coerceAtLeast(0)
+        // A hidden section claims none of the height, so the visible one fills it.
+        val srcRef = if (prefs.hideOriginalSection) 0
+            else sourceCardInsetPx + b.sourceContentOverhead() + b.sourceTextHeightAtMax()
+        val tgtRef = if (prefs.hideTranslationSection) 0
+            else targetCardInsetPx + b.targetContentOverhead() + b.targetTextHeightAtMax()
+        val total = (srcRef + tgtRef).coerceAtLeast(1)
+        return Pair(available * srcRef / total, available * tgtRef / total)
     }
 
-    /** Fitted (source, target) text sizes for a body height. Side-by-side fits
-     *  each column to its card's inner height (leaving room for the note row);
-     *  stacked uses one shared size whose COMBINED height fits, so the longer text
-     *  doesn't shrink while the shorter has room. */
+    /** Fill each card to a MINIMUM height so its background is sized by the view,
+     *  not the text — yet a card whose content runs slightly tall grows + scrolls
+     *  instead of clipping. Side-by-side: each fills its column (minus header +
+     *  bottom buffer). Stacked: the two split the height proportionally. */
+    private fun applyCardFill(b: TranslationSectionBinder, bodyH: Int) {
+        if (isSideBySide) {
+            val buffer = dp(SIDE_BY_SIDE_BOTTOM_BUFFER_DP)
+            b.setCardMinHeights(
+                (bodyH - b.sourceHeaderHeight() - buffer).coerceAtLeast(0),
+                (bodyH - b.targetHeaderHeight() - buffer).coerceAtLeast(0),
+            )
+        } else {
+            val (src, tgt) = stackedCardHeights(b, bodyH)
+            b.setCardMinHeights(src, tgt)
+        }
+    }
+
+    /** Fitted (source, target) text sizes for a body height — each text fills its
+     *  card's inner height (the card the fill above sized). */
     private fun fitSizes(b: TranslationSectionBinder, bodyH: Int): Pair<Float, Float> =
         if (isSideBySide) {
             val buffer = dp(SIDE_BY_SIDE_BOTTOM_BUFFER_DP)
@@ -405,8 +436,11 @@ class CaptureResultOverlay(
                 b.targetSizeFor((bodyH - sideChromeTarget(b) - buffer).coerceAtLeast(1)),
             )
         } else {
-            val shared = b.stackedSizeFor((bodyH - stackedChrome(b)).coerceAtLeast(1))
-            Pair(shared, shared)
+            val (srcCard, tgtCard) = stackedCardHeights(b, bodyH)
+            Pair(
+                b.sourceSizeFor((srcCard - sourceCardInsetPx - b.sourceContentOverhead()).coerceAtLeast(1)),
+                b.targetSizeFor((tgtCard - targetCardInsetPx - b.targetContentOverhead()).coerceAtLeast(1)),
+            )
         }
 
     /** Size the text to the current panel height (continuous). Called per drag frame. */
@@ -663,8 +697,10 @@ class CaptureResultOverlay(
         applyColumnState(sourceColumn, prefs.hideOriginalSection, binder?.sourceSectionLabel())
         applyColumnState(targetColumn, prefs.hideTranslationSection, binder?.targetSectionLabel())
         // The column widths changed, so the remaining text re-wraps — re-fit it to
-        // the panel height once the new layout settles.
-        contentRow.post { if (!dismissed) reFitText() }
+        // the panel height once the new layout settles. Skip until a result is bound:
+        // an early re-fit would pin card min-heights and poison the one-shot card
+        // inset measurement (the cards must still be wrap when it runs).
+        contentRow.post { if (!dismissed && lastResult != null) reFitText() }
     }
 
     private fun applyColumnState(column: SectionColumn?, hidden: Boolean, label: String?) {

@@ -326,21 +326,6 @@ class TranslationSectionBinder(
     fun sourceSizeFor(targetPx: Int): Float = fitSize(tvOriginal, targetPx)
     fun targetSizeFor(targetPx: Int): Float = fitSize(tvTranslation, targetPx)
 
-    /** Stacked: one shared size whose COMBINED text height fits [totalTextPx], so
-     *  the longer text doesn't shrink while the shorter one still has room (the
-     *  even-split problem). */
-    fun stackedSizeFor(totalTextPx: Int): Float {
-        if (combinedTextHeight(TEXT_SIZE_MAX_SP) <= totalTextPx) return TEXT_SIZE_MAX_SP
-        if (combinedTextHeight(TEXT_SIZE_MIN_SP) > totalTextPx) return TEXT_SIZE_MIN_SP
-        var lo = TEXT_SIZE_MIN_SP
-        var hi = TEXT_SIZE_MAX_SP
-        repeat(BISECT_STEPS) {
-            val mid = (lo + hi) / 2f
-            if (combinedTextHeight(mid) <= totalTextPx) lo = mid else hi = mid
-        }
-        return lo
-    }
-
     /** Natural text heights at max size, measured the SAME way as the fit
      *  (StaticLayout), so the auto-height target and the fit agree — otherwise the
      *  taller column's bottom gets clipped. */
@@ -361,8 +346,10 @@ class TranslationSectionBinder(
     fun targetContentOverhead(): Int = translationContent.height - tvTranslation.height
     fun sourceCardInset(): Int = (cardOriginal.height - originalContent.height).coerceAtLeast(0)
     fun targetCardInset(): Int = (cardTranslation.height - translationContent.height).coerceAtLeast(0)
-    fun sourceTextHeight(): Int = tvOriginal.height
-    fun targetTextHeight(): Int = tvTranslation.height
+    // Whole-card heights — the panel reads these ONCE while the cards still wrap to
+    // derive the stacked non-card chrome (headers + divider + padding).
+    fun sourceCardHeight(): Int = cardOriginal.height
+    fun targetCardHeight(): Int = cardTranslation.height
 
     /** Set each section card's MINIMUM height, so its background fills the column
      *  (sized by the view, not the text). The card still wraps content TALLER than
@@ -387,9 +374,6 @@ class TranslationSectionBinder(
         }
         return lo
     }
-
-    private fun combinedTextHeight(sizeSp: Float): Int =
-        textHeightAt(tvOriginal, sizeSp) + textHeightAt(tvTranslation, sizeSp)
 
     /** Height [tv]'s text would occupy at [sizeSp] and its current width, without
      *  touching the live view — a paint copy + StaticLayout configured to match
