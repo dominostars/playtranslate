@@ -17,6 +17,7 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -31,6 +32,7 @@ import com.playtranslate.CaptureService
 import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
+import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
 import com.playtranslate.R
@@ -58,6 +60,16 @@ class TranslationResultActivity :
     SentenceContextProvider {
 
     private var captureService: CaptureService? = null
+
+    /** Capture-overlay return wiring: when this screen was opened from the over-game
+     *  capture panel, a user-initiated back (system back OR the toolbar button)
+     *  signals the controller to re-show that panel. A programmatic finish (e.g.
+     *  superseded by a newer detail launch via finishCurrentIfAny) does NOT signal,
+     *  so the overlay never re-shows unexpectedly. */
+    private val fromCaptureOverlay: Boolean by lazy {
+        intent.getBooleanExtra(EXTRA_FROM_CAPTURE_OVERLAY, false)
+    }
+    private var captureReturnSignalled = false
 
     /** Edit-original overlay views (parity with MainActivity's edit
      *  overlay). The standalone result screen now supports editing the
@@ -237,7 +249,22 @@ class TranslationResultActivity :
         // can reach this instance.
         tracker.bind(this)
 
-        findViewById<ImageButton>(R.id.btnBack).setOnClickListener { finish() }
+        findViewById<ImageButton>(R.id.btnBack).setOnClickListener {
+            signalCaptureOverlayReturnIfNeeded()
+            finish()
+        }
+        // A user-initiated system back also counts as "returning" to the overlay.
+        // Registered before any fragment's callback, so it's lowest priority — an
+        // internal back (e.g. the word↔sentence toggle) is consumed first and this
+        // fires only on the back that would finish the screen.
+        if (fromCaptureOverlay) {
+            onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    signalCaptureOverlayReturnIfNeeded()
+                    finish()
+                }
+            })
+        }
 
         editOverlay = findViewById(R.id.editOverlay)
         etEditOriginal = findViewById(R.id.etEditOriginal)
@@ -254,6 +281,17 @@ class TranslationResultActivity :
         val svcIntent = Intent(this, CaptureService::class.java)
         ContextCompat.startForegroundService(this, svcIntent)
         serviceBindRequested = bindService(svcIntent, serviceConnection, Context.BIND_AUTO_CREATE)
+    }
+
+    /** Signals the capture overlay's controller to re-show on a user-initiated
+     *  return. Idempotent — the toolbar back and a system back can't double-fire it. */
+    private fun signalCaptureOverlayReturnIfNeeded() {
+        if (!fromCaptureOverlay || captureReturnSignalled) return
+        captureReturnSignalled = true
+        val displayId = intent.getIntExtra(EXTRA_TARGET_DISPLAY_ID, -1)
+        if (displayId >= 0) {
+            CaptureBackendResolver.activeOverlayUi?.onCaptureDetailBackPressed(displayId)
+        }
     }
 
     override fun onDestroy() {
@@ -714,6 +752,9 @@ class TranslationResultActivity :
          *  bitmap) live on, instead of the multi-display "primary" which
          *  could be a different screen. */
         const val EXTRA_TARGET_DISPLAY_ID = "extra_target_display_id"
+        /** Set by the capture overlay's open-detail launch so this screen can
+         *  signal a return (back / toolbar-back) to re-show the overlay. */
+        const val EXTRA_FROM_CAPTURE_OVERLAY = "extra_from_capture_overlay"
         /** Drag-flow lens "Open" tap: the looked-up word from the magnifier
          *  becomes the right segment label of the Sentence/Word pill toggle
          *  in the toolbar. When absent, the activity stays in plain

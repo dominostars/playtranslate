@@ -40,12 +40,18 @@ class SourceLensActions(
     private val displayId: Int,
     private val overlayHost: OverlayHost,
     private val lens: MagnifierLens,
-    /** Fired after an action LAUNCHES an Activity (open-detail / Anki review). The
-     *  capture overlay uses it to dismiss its whole sheet so it isn't left behind
-     *  the new screen; the drag flow leaves it a no-op (its lens IS the surface). */
-    private val onLaunchedActivity: () -> Unit = {},
+    /** Fired after an action LAUNCHES an Activity, tagged with the [LaunchKind]. The
+     *  capture overlay dismisses its sheet for an Anki push but stashes-for-reshow on
+     *  an open-detail push; the drag flow leaves it a no-op (its lens IS the surface). */
+    private val onLaunchedActivity: (LaunchKind) -> Unit = {},
+    /** When true (the capture overlay), the open-detail launch is tagged so
+     *  [TranslationResultActivity] can signal a return back to the overlay on back. */
+    private val tagDetailReturn: Boolean = false,
     private val current: () -> LensActionContext,
 ) {
+    /** Which Activity an action launched, so the caller can react differently. */
+    enum class LaunchKind { Detail, Anki }
+
     init {
         // "Open in detail view" always goes to TranslationResultActivity —
         // sentence + segmented Sentence/Word toggle. Anki chip: tap opens the
@@ -90,6 +96,11 @@ class SourceLensActions(
         TranslationResultActivity.finishCurrentIfAny()
         val intent = Intent(context, TranslationResultActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+            if (tagDetailReturn) {
+                // Lets the detail screen call back so the overlay re-shows on return.
+                putExtra(TranslationResultActivity.EXTRA_FROM_CAPTURE_OVERLAY, true)
+                putExtra(TranslationResultActivity.EXTRA_TARGET_DISPLAY_ID, displayId)
+            }
             putExtra(TranslationResultActivity.EXTRA_SENTENCE_TEXT, sentence)
             putExtra(TranslationResultActivity.EXTRA_SCREENSHOT_PATH, cur.screenshotPath)
             // Word context → the activity surfaces the Sentence/Word toggle.
@@ -120,7 +131,7 @@ class SourceLensActions(
             .setLaunchDisplayId(targetDisplay)
             .toBundle()
         context.startActivity(intent, opts)
-        onLaunchedActivity()
+        onLaunchedActivity(LaunchKind.Detail)
     }
 
     private fun openAnkiReviewForLens() {
@@ -248,7 +259,7 @@ class SourceLensActions(
             .setLaunchDisplayId(targetDisplay)
             .toBundle()
         context.startActivity(intent, opts)
-        onLaunchedActivity()
+        onLaunchedActivity(LaunchKind.Anki)
     }
 
     private companion object {

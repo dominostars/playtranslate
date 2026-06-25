@@ -91,6 +91,20 @@ class OverlayUiController(
     private var captureJob: Job? = null
     private var captureGeneration = 0
 
+    /** A capture result stashed when the overlay's word lens opened the in-app
+     *  detail screen, so a user-initiated back from that screen re-shows the panel.
+     *  Discarded by ANY teardown (new capture, menu, hideAll, destroy) and after
+     *  [reshowStalenessMs], so it never re-shows unexpectedly. */
+    private var pendingReshow: PendingReshow? = null
+    /** Max age of a [pendingReshow] before a return is treated as too stale to re-show. */
+    private val reshowStalenessMs = 30_000L
+
+    private data class PendingReshow(
+        val displayId: Int,
+        val result: com.playtranslate.model.TranslationResult,
+        val stashedAtMs: Long,
+    )
+
     /** Listens for display changes (rotation, hot-plug, foldable state) so
      *  icons can be repositioned against the new dimensions and the icon
      *  registry can be reconciled against the new set of available displays.
@@ -1349,6 +1363,7 @@ class OverlayUiController(
             // never blanked into this shot.
             val overlay = com.playtranslate.ui.CaptureResultOverlay(displayCtx, wm, displayId, overlayHost)
             overlay.onDismiss = { if (captureResultOverlay === overlay) captureResultOverlay = null }
+            overlay.onNavigateToDetail = { result -> stashCaptureOverlayForReshow(displayId, result) }
             captureResultOverlay = overlay
             // Pass the clean shot for the frosted backdrop — show() downscales it
             // synchronously here, before processScreenshot (below) recycles it.
@@ -1403,6 +1418,44 @@ class OverlayUiController(
         captureJob = null
         captureResultOverlay?.dismiss()
         captureResultOverlay = null
+        // Any teardown invalidates a pending re-show. The stash path re-sets it
+        // immediately AFTER calling this, so its own teardown doesn't lose it.
+        pendingReshow = null
+    }
+
+    /** Stash the overlay's current result and tear the live panel down when its
+     *  word lens opens the in-app detail screen, so a user-initiated back from that
+     *  screen ([onCaptureDetailBackPressed]) can re-show the panel. */
+    fun stashCaptureOverlayForReshow(displayId: Int, result: com.playtranslate.model.TranslationResult) {
+        dismissCaptureResultOverlay()
+        pendingReshow = PendingReshow(displayId, result, android.os.SystemClock.elapsedRealtime())
+    }
+
+    /** Called by [com.playtranslate.ui.TranslationResultActivity] when the user backs
+     *  out of a detail screen opened from the capture overlay. Re-shows the panel only
+     *  if a matching, non-stale stash is still live; anything else (a newer capture, a
+     *  teardown, too much elapsed time, a mismatched display) leaves it dismissed. */
+    fun onCaptureDetailBackPressed(displayId: Int) {
+        val pending = pendingReshow ?: return
+        pendingReshow = null
+        if (pending.displayId != displayId) return
+        if (android.os.SystemClock.elapsedRealtime() - pending.stashedAtMs > reshowStalenessMs) return
+        reshowCaptureOverlay(displayId, pending.result)
+    }
+
+    /** Re-create the over-game panel and bind a stashed result (no re-capture). */
+    private fun reshowCaptureOverlay(displayId: Int, result: com.playtranslate.model.TranslationResult) {
+        dismissCaptureResultOverlay()
+        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val display = dm.getDisplay(displayId) ?: return
+        val displayCtx = context.createDisplayContext(display)
+        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
+        val size = getDisplaySize(display)
+        val overlay = com.playtranslate.ui.CaptureResultOverlay(displayCtx, wm, displayId, overlayHost)
+        overlay.onDismiss = { if (captureResultOverlay === overlay) captureResultOverlay = null }
+        overlay.onNavigateToDetail = { r -> stashCaptureOverlayForReshow(displayId, r) }
+        captureResultOverlay = overlay
+        overlay.showWithResult(size.x, size.y, result)
     }
 
     /** Saves a pre-captured screenshot to the cache for TranslationResultActivity. */

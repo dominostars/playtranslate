@@ -94,6 +94,11 @@ class CaptureResultOverlay(
     /** Invoked once, on any dismissal path. */
     var onDismiss: (() -> Unit)? = null
 
+    /** Invoked when the word lens opens the in-app detail screen, carrying the
+     *  currently-bound result so the controller can stash it and re-show this sheet
+     *  when the user backs out of the detail screen. Null → the lens just dismisses. */
+    var onNavigateToDetail: ((TranslationResult) -> Unit)? = null
+
     private var sessionJob: Job? = null
     /** The active service one-shot session (OCR + translate). Held so dismissal
      *  cancels the headless service work, not just our UI collector. */
@@ -380,6 +385,14 @@ class CaptureResultOverlay(
                 }
             }
         }
+    }
+
+    /** Re-show entry point for the controller's stash-and-rebind path: set up the
+     *  window exactly like [show], then bind a previously-captured result directly
+     *  (no capture session) — used when the user backs out of the detail screen. */
+    fun showWithResult(screenW: Int, screenH: Int, result: TranslationResult) {
+        show(screenW, screenH)
+        bindResult(result)
     }
 
     fun dismiss() {
@@ -682,9 +695,21 @@ class CaptureResultOverlay(
                 // current capture result.
                 SourceLensActions(
                     ctx.applicationContext, displayId, overlayHost, lens,
-                    // Open-detail / Anki review push a full screen — tear the sheet
-                    // down so it isn't left behind it.
-                    onLaunchedActivity = { dismiss() },
+                    // Anki review pushes a full screen → tear the sheet down. Open-detail
+                    // stashes this result so the controller can re-show the sheet when the
+                    // user backs out of the detail screen (falls back to dismiss when no
+                    // controller / no bound result).
+                    onLaunchedActivity = { kind ->
+                        when (kind) {
+                            SourceLensActions.LaunchKind.Anki -> dismiss()
+                            SourceLensActions.LaunchKind.Detail -> {
+                                val r = lastResult
+                                val nav = onNavigateToDetail
+                                if (r != null && nav != null) nav(r) else dismiss()
+                            }
+                        }
+                    },
+                    tagDetailReturn = true,
                 ) {
                     LensActionContext(
                         resolved.word,
