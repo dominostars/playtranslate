@@ -138,6 +138,8 @@ class TranslationSectionBinder(
             // The text reference just got swapped, so any active accent highlight
             // span was dropped — re-attach it from the tracked range.
             highlightedRange?.let { setWordHighlight(it) }
+            // Furigana off → the source shrank; let the panel re-fit to it.
+            onSourceTextHeightChanged?.invoke()
             return
         }
         // annotateForHintText tokenizes off the main thread (it's suspend); apply

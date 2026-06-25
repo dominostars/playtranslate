@@ -230,8 +230,13 @@ class CaptureResultOverlay(
             TtsAlertTarget.Overlay(ctx, overlayHost, wm, displayId),
         )
         b.setupSectionButtons(onEdit = { startInPlaceEdit() })
-        b.onSectionVisibilityChanged = { applySideBySideCollapse() }
-        // Inline furigana renders async and grows the source — re-fit to it.
+        b.onSectionVisibilityChanged = {
+            applySideBySideCollapse()
+            // A section was hidden/shown — grow/shrink the panel to the new content
+            // (post so the card GONE / column collapse settles before we measure).
+            contentRow.post { if (!dismissed && lastResult != null) autoSizeAndFit() }
+        }
+        // Furigana changes the source's rendered height (async on / sync off) — re-fit.
         b.onSourceTextHeightChanged = { if (!dismissed) autoSizeAndFit() }
         binder = b
         // Reflect any persisted hide prefs (shared with the results page) up front.
@@ -697,11 +702,10 @@ class CaptureResultOverlay(
         if (!isSideBySide) return
         applyColumnState(sourceColumn, prefs.hideOriginalSection, binder?.sourceSectionLabel())
         applyColumnState(targetColumn, prefs.hideTranslationSection, binder?.targetSectionLabel())
-        // The column widths changed, so the remaining text re-wraps — re-fit it to
-        // the panel height once the new layout settles. Skip until a result is bound:
-        // an early re-fit would pin card min-heights and poison the one-shot card
-        // inset measurement (the cards must still be wrap when it runs).
-        contentRow.post { if (!dismissed && lastResult != null) reFitText() }
+        // The re-fit to the new column widths is driven by the caller's
+        // autoSizeAndFit (on a section toggle) or the initial bind — not here, so an
+        // early collapse (before a result) can't pin card min-heights and poison the
+        // one-shot card-inset measurement.
     }
 
     private fun applyColumnState(column: SectionColumn?, hidden: Boolean, label: String?) {
