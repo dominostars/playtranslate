@@ -805,10 +805,19 @@ class CaptureResultOverlay(
         editText.setText(current)
         editText.setSelection(editText.text.length)
         editContainer.visibility = View.VISIBLE
+        editText.requestFocus()        // view-focus first, so the IME targets this field
         setWindowFocusable(true)
-        editText.requestFocus()
-        ctx.getSystemService(InputMethodManager::class.java)
-            ?.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT)
+        // Flipping the window focusable runs through wm.updateViewLayout, which is
+        // async — the window is NOT focusable yet in this frame, so an immediate
+        // showSoftInput no-ops (that was the bug: the IME only appeared after a tap).
+        // STATE_ALWAYS_VISIBLE (set above) is the primary trigger when focus lands;
+        // this posted call is the explicit nudge that runs after the relayout, guarded
+        // in case the edit was committed/cancelled before it fires.
+        editText.post {
+            if (editContainer.visibility != View.VISIBLE) return@post
+            ctx.getSystemService(InputMethodManager::class.java)
+                ?.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT)
+        }
     }
 
     /** Commit the edit: hide the IME, restore the non-focusable window, then
@@ -881,7 +890,12 @@ class CaptureResultOverlay(
             lp.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         }
         lp.softInputMode = if (focusable) {
-            WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or
+            // ALWAYS_VISIBLE, not STATE_VISIBLE: the window only becomes focusable
+            // asynchronously via the updateViewLayout below, and ALWAYS_VISIBLE makes
+            // the system raise the IME the instant the window actually gains focus.
+            // STATE_VISIBLE wasn't reliably re-evaluated on that focus transition, so
+            // the keyboard only appeared once the user tapped into the field.
+            WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
                 WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         } else {
             WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
