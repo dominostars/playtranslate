@@ -5,6 +5,7 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.text.SpannableString
+import android.text.TextPaint
 import android.text.Spanned
 import android.text.StaticLayout
 import android.text.style.BackgroundColorSpan
@@ -57,6 +58,11 @@ class TranslationSectionBinder(
     private val labelTranslation: TextView = root.findViewById(R.id.labelTranslation)
     private val cardOriginal: MaterialCardView = root.findViewById(R.id.cardOriginal)
     private val cardTranslation: MaterialCardView = root.findViewById(R.id.cardTranslation)
+    // The card's inner content holder (wraps the text + the translation note row),
+    // so its height minus the main text is the in-card overhead — measured live,
+    // independent of whether the card itself is pinned to a fill height.
+    private val originalContent: View = root.findViewById(R.id.originalContent)
+    private val translationContent: View = root.findViewById(R.id.translationContent)
     private val btnCopyOriginal: ImageButton = root.findViewById(R.id.btnCopyOriginal)
     private val btnCopyTranslation: ImageButton = root.findViewById(R.id.btnCopyTranslation)
     private val btnEditOriginal: ImageButton = root.findViewById(R.id.btnEditOriginal)
@@ -80,6 +86,12 @@ class TranslationSectionBinder(
      *  re-layout (the over-game panel collapses the side-by-side column). Null on
      *  the in-app results page, whose vertical layout just reflows. */
     var onSectionVisibilityChanged: (() -> Unit)? = null
+
+    /** Invoked after inline furigana finishes rendering (it tokenizes async, so the
+     *  source text grows TALLER than the initial fit measured). Lets the panel
+     *  re-fit/re-size to the now-taller text. Null on the results page (its single
+     *  scroll just reflows). */
+    var onSourceTextHeightChanged: (() -> Unit)? = null
 
     // ── Source section ───────────────────────────────────────────────────
 
@@ -152,6 +164,9 @@ class TranslationSectionBinder(
             }
             // Re-attach the accent highlight dropped by the text swap.
             highlightedRange?.let { setWordHighlight(it) }
+            // The furigana spans changed the source's rendered height — let the
+            // panel re-fit so the now-taller text doesn't eat its bottom buffer.
+            onSourceTextHeightChanged?.invoke()
         }
     }
 
@@ -291,29 +306,112 @@ class TranslationSectionBinder(
         }
     }
 
-    /** Shrink the translation + source text toward [translationTargetPx] /
-     *  [sourceTargetPx], stopping at the min size. The caller supplies the target
-     *  heights per layout mode (half the scroll in-app; the column height in the
-     *  panel). */
+    /** Side-by-side / results-page: fit each text to its own target height with a
+     *  CONTINUOUS size (so the load animation + resize scale smoothly instead of
+     *  in 1sp steps). */
     fun fitText(translationTargetPx: Int, sourceTargetPx: Int) {
-        fitTextView(tvTranslation, TEXT_SIZE_MAX_SP, TEXT_SIZE_MIN_SP, translationTargetPx)
-        fitTextView(tvOriginal, TEXT_SIZE_MAX_SP, TEXT_SIZE_MIN_SP, sourceTargetPx)
+        tvTranslation.setTextSize(TypedValue.COMPLEX_UNIT_SP, fitSize(tvTranslation, translationTargetPx))
+        tvOriginal.setTextSize(TypedValue.COMPLEX_UNIT_SP, fitSize(tvOriginal, sourceTargetPx))
     }
 
-    private fun fitTextView(tv: TextView, maxSp: Float, minSp: Float, targetHeightPx: Int) {
-        val widthPx = tv.width.takeIf { it > 0 } ?: return
-        var sizeSp = maxSp
-        while (sizeSp > minSp) {
-            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
-            val height = StaticLayout.Builder
-                .obtain(tv.text, 0, tv.text.length, tv.paint, widthPx)
-                .setLineSpacing(tv.lineSpacingExtra, tv.lineSpacingMultiplier)
-                .build()
-                .height
-            if (height <= targetHeightPx) break
-            sizeSp -= 1f
+    /** Set both text sizes directly — used to interpolate each frame of the height
+     *  animation between the fitted start/end sizes (a float, not a 1sp step). */
+    fun setSizes(sourceSp: Float, targetSp: Float) {
+        tvOriginal.setTextSize(TypedValue.COMPLEX_UNIT_SP, sourceSp)
+        tvTranslation.setTextSize(TypedValue.COMPLEX_UNIT_SP, targetSp)
+    }
+
+    /** Largest size that fits [targetPx] — computed, not applied (for the
+     *  animation endpoints). */
+    fun sourceSizeFor(targetPx: Int): Float = fitSize(tvOriginal, targetPx)
+    fun targetSizeFor(targetPx: Int): Float = fitSize(tvTranslation, targetPx)
+
+    /** Stacked: one shared size whose COMBINED text height fits [totalTextPx], so
+     *  the longer text doesn't shrink while the shorter one still has room (the
+     *  even-split problem). */
+    fun stackedSizeFor(totalTextPx: Int): Float {
+        if (combinedTextHeight(TEXT_SIZE_MAX_SP) <= totalTextPx) return TEXT_SIZE_MAX_SP
+        if (combinedTextHeight(TEXT_SIZE_MIN_SP) > totalTextPx) return TEXT_SIZE_MIN_SP
+        var lo = TEXT_SIZE_MIN_SP
+        var hi = TEXT_SIZE_MAX_SP
+        repeat(BISECT_STEPS) {
+            val mid = (lo + hi) / 2f
+            if (combinedTextHeight(mid) <= totalTextPx) lo = mid else hi = mid
         }
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
+        return lo
+    }
+
+    /** Natural text heights at max size, measured the SAME way as the fit
+     *  (StaticLayout), so the auto-height target and the fit agree — otherwise the
+     *  taller column's bottom gets clipped. */
+    fun sourceTextHeightAtMax(): Int = textHeightAt(tvOriginal, TEXT_SIZE_MAX_SP)
+    fun targetTextHeightAtMax(): Int = textHeightAt(tvTranslation, TEXT_SIZE_MAX_SP)
+
+    fun sourceHeaderHeight(): Int = (labelOriginal.parent as? View)?.height ?: 0
+    fun targetHeaderHeight(): Int = (labelTranslation.parent as? View)?.height ?: 0
+
+    // The card's non-text vertical space splits into two parts the panel sums:
+    //  • contentOverhead — the content holder's height minus the MAIN text:
+    //    padding + (for the target) the "Translated by" note row. Measured LIVE
+    //    (the holder wraps its content even when the card is pinned to a fill
+    //    height), so the note is always counted even if it laid out a frame late.
+    //  • cardInset — the card frame's own inset (rounded-corner overlap + stroke).
+    //    Constant; the panel measures it ONCE while the card is still wrap.
+    fun sourceContentOverhead(): Int = originalContent.height - tvOriginal.height
+    fun targetContentOverhead(): Int = translationContent.height - tvTranslation.height
+    fun sourceCardInset(): Int = (cardOriginal.height - originalContent.height).coerceAtLeast(0)
+    fun targetCardInset(): Int = (cardTranslation.height - translationContent.height).coerceAtLeast(0)
+    fun sourceTextHeight(): Int = tvOriginal.height
+    fun targetTextHeight(): Int = tvTranslation.height
+
+    /** Set each section card's MINIMUM height, so its background fills the column
+     *  (sized by the view, not the text). The card still wraps content TALLER than
+     *  this — so an imperfect text fit, or text already at min size, grows the card
+     *  (and the scroll takes over) instead of clipping the bottom line / note row. */
+    fun setCardMinHeights(sourcePx: Int, targetPx: Int) {
+        cardOriginal.minimumHeight = sourcePx
+        cardTranslation.minimumHeight = targetPx
+    }
+
+    /** Largest float size in [[TEXT_SIZE_MIN_SP], [TEXT_SIZE_MAX_SP]] whose text
+     *  fits [targetPx] (binary search → continuous, not 1sp steps). */
+    private fun fitSize(tv: TextView, targetPx: Int): Float {
+        if (tv.width <= 0) return TEXT_SIZE_MAX_SP
+        if (textHeightAt(tv, TEXT_SIZE_MAX_SP) <= targetPx) return TEXT_SIZE_MAX_SP
+        if (textHeightAt(tv, TEXT_SIZE_MIN_SP) > targetPx) return TEXT_SIZE_MIN_SP
+        var lo = TEXT_SIZE_MIN_SP
+        var hi = TEXT_SIZE_MAX_SP
+        repeat(BISECT_STEPS) {
+            val mid = (lo + hi) / 2f
+            if (textHeightAt(tv, mid) <= targetPx) lo = mid else hi = mid
+        }
+        return lo
+    }
+
+    private fun combinedTextHeight(sizeSp: Float): Int =
+        textHeightAt(tvOriginal, sizeSp) + textHeightAt(tvTranslation, sizeSp)
+
+    /** Height [tv]'s text would occupy at [sizeSp] and its current width, without
+     *  touching the live view — a paint copy + StaticLayout configured to match
+     *  the live TextView exactly, so measure and render agree (a mismatch makes the
+     *  card height track its content instead of the panel → wobble). */
+    private fun textHeightAt(tv: TextView, sizeSp: Float): Int {
+        val widthPx = (tv.width - tv.compoundPaddingLeft - tv.compoundPaddingRight)
+            .takeIf { it > 0 } ?: return 0
+        val paint = TextPaint(tv.paint)
+        paint.textSize = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_SP, sizeSp, ctx.resources.displayMetrics,
+        )
+        val layoutHeight = StaticLayout.Builder
+            .obtain(tv.text, 0, tv.text.length, paint, widthPx)
+            .setLineSpacing(tv.lineSpacingExtra, tv.lineSpacingMultiplier)
+            // The live TextView (API 28+) grows line height via fallback fonts so
+            // tall CJK glyphs fit; the StaticLayout default is off. Without this we
+            // under-measure the Japanese source and its card wobbles.
+            .setUseLineSpacingFromFallbacks(true)
+            .build()
+            .height
+        return layoutHeight + tv.compoundPaddingTop + tv.compoundPaddingBottom
     }
 
     fun release() {
@@ -341,5 +439,7 @@ class TranslationSectionBinder(
     private companion object {
         const val TEXT_SIZE_MAX_SP = 24f
         const val TEXT_SIZE_MIN_SP = 16f
+        /** Binary-search iterations for the continuous text fit. */
+        const val BISECT_STEPS = 8
     }
 }

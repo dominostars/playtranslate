@@ -32,6 +32,21 @@ class CaptureResultGeometryTest {
         assertEquals(800, CaptureResultGeometry.defaultPanelHeight(2000))
     }
 
+    // ─── autoPanelHeight ────────────────────────────────────────────────
+
+    @Test fun `autoPanelHeight fits content that's under the cap`() {
+        // content 600 within [20%, 50%] of 2000 = [400, 1000].
+        assertEquals(600, CaptureResultGeometry.autoPanelHeight(600, 2000))
+    }
+
+    @Test fun `autoPanelHeight caps at 50 percent`() {
+        assertEquals(1000, CaptureResultGeometry.autoPanelHeight(1800, 2000))
+    }
+
+    @Test fun `autoPanelHeight floors at 20 percent`() {
+        assertEquals(400, CaptureResultGeometry.autoPanelHeight(100, 2000))
+    }
+
     // ─── shouldUseSideBySide ────────────────────────────────────────────
 
     @Test fun `side-by-side when each column clears the per-section min`() {

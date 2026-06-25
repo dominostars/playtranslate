@@ -14,6 +14,9 @@ object CaptureResultGeometry {
     /** Largest the panel may grow to (fraction of display height) — never the
      *  whole screen, so a tap-outside band always remains below it. */
     const val MAX_HEIGHT_FRACTION = 0.90f
+    /** Largest fraction the panel auto-grows to when a result lands (it can still
+     *  be dragged taller, up to [MAX_HEIGHT_FRACTION]). */
+    const val MAX_AUTO_HEIGHT_FRACTION = 0.50f
 
     /**
      * Fallback minimum width (dp) one section needs to render side-by-side when
@@ -43,6 +46,16 @@ object CaptureResultGeometry {
     /** Default panel height (px) for [screenHeightPx]. */
     fun defaultPanelHeight(screenHeightPx: Int): Int =
         clampPanelHeight((screenHeightPx * DEFAULT_HEIGHT_FRACTION).toInt(), screenHeightPx)
+
+    /** Panel height that shows [contentHeightPx] of content, capped at
+     *  [MAX_AUTO_HEIGHT_FRACTION] of the screen and floored at
+     *  [MIN_HEIGHT_FRACTION]. Drives the load-time grow-to-fit animation. */
+    fun autoPanelHeight(contentHeightPx: Int, screenHeightPx: Int): Int {
+        if (screenHeightPx <= 0) return contentHeightPx.coerceAtLeast(0)
+        val floor = (screenHeightPx * MIN_HEIGHT_FRACTION).toInt()
+        val cap = (screenHeightPx * MAX_AUTO_HEIGHT_FRACTION).toInt()
+        return contentHeightPx.coerceIn(floor, cap.coerceAtLeast(floor))
+    }
 
     /**
      * True when the panel is wide enough to show source | divider | target

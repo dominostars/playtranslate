@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
@@ -18,6 +19,7 @@ import android.view.ViewConfiguration
 import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -107,6 +109,15 @@ class CaptureResultOverlay(
     private var isSideBySide = false
     private var sourceColumn: SectionColumn? = null
     private var targetColumn: SectionColumn? = null
+
+    // Auto-height + text fit. The card frame's inset (rounded-corner overlap +
+    // stroke) is constant, so it's measured once while the cards are still wrap;
+    // the header + in-card overhead (which includes the target's note row) are
+    // read LIVE each fit. Plus the load-time grow-to-fit animator.
+    private var sourceCardInsetPx = 0
+    private var targetCardInsetPx = 0
+    private var cardInsetMeasured = false
+    private var heightAnimator: ValueAnimator? = null
 
     // Tap-a-word → definition (display + speak; the panel lens has no Anki/open).
     private var wordSpans: List<Triple<IntRange, String, String>> = emptyList()
@@ -217,6 +228,8 @@ class CaptureResultOverlay(
         )
         b.setupSectionButtons(onEdit = { startInPlaceEdit() })
         b.onSectionVisibilityChanged = { applySideBySideCollapse() }
+        // Inline furigana renders async and grows the source — re-fit to it.
+        b.onSourceTextHeightChanged = { if (!dismissed) autoSizeAndFit() }
         binder = b
         // Reflect any persisted hide prefs (shared with the results page) up front.
         applySideBySideCollapse()
@@ -268,6 +281,7 @@ class CaptureResultOverlay(
     fun dismiss() {
         if (dismissed) return
         dismissed = true
+        heightAnimator?.cancel()
         dismissWordLens()
         sessionJob?.cancel()
         // Cancel the service-side one-shot job too (not just our collector), so
@@ -316,12 +330,121 @@ class CaptureResultOverlay(
         // (no full word-list pipeline here) only loses the rare homograph hint.
         b.tvOriginal.onTapAtOffset = { offset -> onSourceTapped(offset) }
         refreshWordSpans(result.originalText)
+        // Two frames: the first lays out the freshly-bound content (incl. the
+        // translation note row); the second measures + animates against it, so the
+        // note's height is reliably counted.
         scroll.post {
-            if (dismissed) return@post
-            val h = body.height.takeIf { it > 0 } ?: return@post
-            // Side-by-side: each column owns ~the body height; stacked: split it.
-            val target = if (contentRow.orientation == LinearLayout.HORIZONTAL) h else h / 2
-            b.fitText(translationTargetPx = target, sourceTargetPx = target)
+            scroll.post {
+                if (dismissed) return@post
+                autoSizeAndFit()
+            }
+        }
+    }
+
+    /** On the first layout of a fresh result: measure the natural content height
+     *  at max text size (the same StaticLayout basis as the fit, so they agree)
+     *  and animate the panel to fit it (capped at 50% of screen, floored at min),
+     *  smoothly scaling the text alongside. */
+    private fun autoSizeAndFit() {
+        val b = binder ?: return
+        if (body.height <= 0 || contentRow.width <= 0) return
+        measureCardInset(b)
+        val naturalContent = if (isSideBySide) {
+            maxOf(
+                sideChromeSource(b) + b.sourceTextHeightAtMax(),
+                sideChromeTarget(b) + b.targetTextHeightAtMax(),
+            ) + dp(SIDE_BY_SIDE_BOTTOM_BUFFER_DP)
+        } else {
+            stackedChrome(b) + b.sourceTextHeightAtMax() + b.targetTextHeightAtMax()
+        }
+        val target = CaptureResultGeometry.autoPanelHeight(naturalContent + dp(HANDLE_HEIGHT_DP), screenH)
+        animatePanelHeight(target)
+    }
+
+    /** The card frame's inset is constant — measure it ONCE while the cards are
+     *  still wrap (after [applyCardFill] pins explicit heights, card − content no
+     *  longer reads the inset). The header + content overhead are read live. */
+    private fun measureCardInset(b: TranslationSectionBinder) {
+        if (cardInsetMeasured || !isSideBySide) return
+        sourceCardInsetPx = b.sourceCardInset()
+        targetCardInsetPx = b.targetCardInset()
+        cardInsetMeasured = true
+    }
+
+    // Live per-section chrome (the non-text height): header + in-card overhead
+    // (padding + the target's note row) + the once-measured card frame inset.
+    private fun sideChromeSource(b: TranslationSectionBinder): Int =
+        b.sourceHeaderHeight() + b.sourceContentOverhead() + sourceCardInsetPx
+    private fun sideChromeTarget(b: TranslationSectionBinder): Int =
+        b.targetHeaderHeight() + b.targetContentOverhead() + targetCardInsetPx
+    private fun stackedChrome(b: TranslationSectionBinder): Int =
+        (contentRow.height - b.sourceTextHeight() - b.targetTextHeight()).coerceAtLeast(0)
+
+    /** Fill the side-by-side cards to the body (minus header + bottom buffer) via a
+     *  MINIMUM height, so each card background is sized by the view, not the text —
+     *  yet a card whose content runs slightly tall grows + scrolls instead of
+     *  clipping. No-op stacked. */
+    private fun applyCardFill(b: TranslationSectionBinder, bodyH: Int) {
+        if (!isSideBySide) return
+        val buffer = dp(SIDE_BY_SIDE_BOTTOM_BUFFER_DP)
+        b.setCardMinHeights(
+            (bodyH - b.sourceHeaderHeight() - buffer).coerceAtLeast(0),
+            (bodyH - b.targetHeaderHeight() - buffer).coerceAtLeast(0),
+        )
+    }
+
+    /** Fitted (source, target) text sizes for a body height. Side-by-side fits
+     *  each column to its card's inner height (leaving room for the note row);
+     *  stacked uses one shared size whose COMBINED height fits, so the longer text
+     *  doesn't shrink while the shorter has room. */
+    private fun fitSizes(b: TranslationSectionBinder, bodyH: Int): Pair<Float, Float> =
+        if (isSideBySide) {
+            val buffer = dp(SIDE_BY_SIDE_BOTTOM_BUFFER_DP)
+            Pair(
+                b.sourceSizeFor((bodyH - sideChromeSource(b) - buffer).coerceAtLeast(1)),
+                b.targetSizeFor((bodyH - sideChromeTarget(b) - buffer).coerceAtLeast(1)),
+            )
+        } else {
+            val shared = b.stackedSizeFor((bodyH - stackedChrome(b)).coerceAtLeast(1))
+            Pair(shared, shared)
+        }
+
+    /** Size the text to the current panel height (continuous). Called per drag frame. */
+    private fun reFitText() {
+        val b = binder ?: return
+        val bodyH = (panelHeightPx - dp(HANDLE_HEIGHT_DP)).coerceAtLeast(0)
+        applyCardFill(b, bodyH)
+        val (src, tgt) = fitSizes(b, bodyH)
+        b.setSizes(src, tgt)
+    }
+
+    /** Grow/shrink the panel to [target], interpolating BOTH the height and the
+     *  text size (as a float, between the fitted start/end sizes) so the text
+     *  scales smoothly instead of stepping. */
+    private fun animatePanelHeight(target: Int) {
+        heightAnimator?.cancel()
+        val b = binder ?: return
+        val startH = panelHeightPx
+        val (srcStart, tgtStart) = fitSizes(b, (startH - dp(HANDLE_HEIGHT_DP)).coerceAtLeast(0))
+        val (srcEnd, tgtEnd) = fitSizes(b, (target - dp(HANDLE_HEIGHT_DP)).coerceAtLeast(0))
+        applyCardFill(b, (startH - dp(HANDLE_HEIGHT_DP)).coerceAtLeast(0))
+        b.setSizes(srcStart, tgtStart)
+        if (startH == target) return
+        heightAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = HEIGHT_DURATION_MS
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { anim ->
+                if (dismissed) {
+                    anim.cancel()
+                    return@addUpdateListener
+                }
+                val f = anim.animatedValue as Float
+                val h = (startH + (target - startH) * f).toInt()
+                setPanelHeight(h)
+                applyCardFill(b, (h - dp(HANDLE_HEIGHT_DP)).coerceAtLeast(0))
+                b.setSizes(srcStart + (srcEnd - srcStart) * f, tgtStart + (tgtEnd - tgtStart) * f)
+            }
+            start()
         }
     }
 
@@ -468,7 +591,8 @@ class CaptureResultOverlay(
         val hPad = dp(SECTION_H_PAD_DP)
         if (sideBySide) {
             contentRow.orientation = LinearLayout.HORIZONTAL
-            contentRow.setPadding(hPad, 0, hPad, 0)
+            // Bottom padding = the buffer below the filled cards.
+            contentRow.setPadding(hPad, 0, hPad, dp(SIDE_BY_SIDE_BOTTOM_BUFFER_DP))
             val source = buildColumn(R.layout.section_source, isSource = true)
             val target = buildColumn(R.layout.section_target, isSource = false)
             sourceColumn = source
@@ -478,7 +602,7 @@ class CaptureResultOverlay(
             contentRow.addView(target.col, LinearLayout.LayoutParams(0, WRAP, 1f))
         } else {
             contentRow.orientation = LinearLayout.VERTICAL
-            contentRow.setPadding(hPad, 0, hPad, dp(24))
+            contentRow.setPadding(hPad, 0, hPad, dp(8))
             inflater().inflate(R.layout.section_source, contentRow, true)
             trimSectionTopPadding(contentRow)
             contentRow.addView(horizontalDivider())
@@ -493,6 +617,9 @@ class CaptureResultOverlay(
         val expanded = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         inflater().inflate(layoutRes, expanded, true)
         trimSectionTopPadding(expanded)
+        // The card stays wrap here; its height is pinned explicitly each frame by
+        // [applyCardFill] (deterministic — a weight/fillViewport chain doesn't
+        // reliably shrink the card during a drag).
         val label = VerticalLabel(ctx)
         val collapsed = buildCollapsedStrip(isSource, label)
         col.addView(expanded, LinearLayout.LayoutParams(MATCH, WRAP))
@@ -535,6 +662,9 @@ class CaptureResultOverlay(
         if (!isSideBySide) return
         applyColumnState(sourceColumn, prefs.hideOriginalSection, binder?.sourceSectionLabel())
         applyColumnState(targetColumn, prefs.hideTranslationSection, binder?.targetSectionLabel())
+        // The column widths changed, so the remaining text re-wraps — re-fit it to
+        // the panel height once the new layout settles.
+        contentRow.post { if (!dismissed) reFitText() }
     }
 
     private fun applyColumnState(column: SectionColumn?, hidden: Boolean, label: String?) {
@@ -642,6 +772,7 @@ class CaptureResultOverlay(
     private var resizeTracker: VelocityTracker? = null
 
     private fun beginResize(rawY: Float) {
+        heightAnimator?.cancel() // the user takes over from the auto-grow
         resizing = true
         resizeStartRawY = rawY
         resizeStartHeight = panelHeightPx
@@ -652,6 +783,7 @@ class CaptureResultOverlay(
         resizeTracker?.addMovement(e)
         val dy = (e.rawY - resizeStartRawY).toInt()
         setPanelHeight(CaptureResultGeometry.clampPanelHeight(resizeStartHeight + dy, screenH))
+        reFitText()
     }
 
     private fun endResize(e: MotionEvent) {
@@ -797,6 +929,8 @@ class CaptureResultOverlay(
         /** How far below the panel's bottom edge the resize grab zone extends. */
         const val EXTRA_DRAG_BELOW_DP = 26
         const val SECTION_H_PAD_DP = 12
+        /** Space below the filled side-by-side cards (to the panel's bottom). */
+        const val SIDE_BY_SIDE_BOTTOM_BUFFER_DP = 12
         /** Trimmed top padding for the panel's section headers (the shared layout
          *  uses pt_group_gap = 20dp; the panel sits tighter to the top edge). */
         const val SECTION_TITLE_TOP_DP = 4
@@ -809,6 +943,7 @@ class CaptureResultOverlay(
         const val FLING_DISMISS_VEL = 1000f
         const val ENTER_DURATION_MS = 280L
         const val EXIT_DURATION_MS = 200L
+        const val HEIGHT_DURATION_MS = 240L
         /** OvershootInterpolator tension — modest, for a short bounce-in. */
         const val ENTER_OVERSHOOT = 1.5f
     }
