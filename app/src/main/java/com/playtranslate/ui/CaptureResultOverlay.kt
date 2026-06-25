@@ -295,6 +295,16 @@ class CaptureResultOverlay(
             session.state.collect { state ->
                 when (state) {
                     is CaptureState.InProgress -> setStatus(state.message)
+                    // OCR done: show the source now with a "Translating…" placeholder
+                    // (blank translatedText renders it); Done fills it in + re-fits.
+                    is CaptureState.Translating -> bindResult(
+                        TranslationResult(
+                            originalText = state.originalText,
+                            segments = state.segments,
+                            translatedText = "",
+                            timestamp = "",
+                        ),
+                    )
                     is CaptureState.Done -> bindResult(state.result)
                     is CaptureState.NoText -> setStatus(state.message)
                     is CaptureState.Failed -> setStatus(state.message)
@@ -600,6 +610,14 @@ class CaptureResultOverlay(
         val prev = lastResult ?: return
         if (newText.isBlank() || newText == prev.originalText) return
         val b = binder ?: return
+        // The edit replaces the source, so the original capture's pending
+        // translation (of the OLD source) is now stale — stop collecting it and
+        // cancel the service job so a late Done can't revert this edit. (Our own
+        // translateOnce below is still gated by editGeneration.)
+        sessionJob?.cancel()
+        captureSession?.cancel()
+        captureSession = null
+        sessionJob = null
         // Commit the edit to state IMMEDIATELY (blank translation = retranslating)
         // so re-opening Edit reads the new text, then gate the async translation by
         // generation so an older translateOnce can't roll back a newer edit.

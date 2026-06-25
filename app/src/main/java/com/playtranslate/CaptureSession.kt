@@ -1,6 +1,8 @@
 package com.playtranslate
 
+import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 
@@ -76,8 +78,16 @@ class CaptureSession internal constructor(
 
 sealed class CaptureState {
     /** Pipeline is in flight. [message] is the user-facing status
-     *  text for this stage (Capturing / OCR / Translating). */
+     *  text for this stage (Capturing / OCR). */
     data class InProgress(val message: String) : CaptureState()
+
+    /** OCR finished — the source ([originalText] / [segments]) is ready and shown
+     *  while the translation runs; followed by [Done] (or [Cancelled] / [Failed]).
+     *  Lets the UI reveal the page on OCR rather than waiting for the translation. */
+    data class Translating(
+        val originalText: String,
+        val segments: List<TextSegment>,
+    ) : CaptureState()
 
     /** Pipeline finished with a translation. */
     data class Done(val result: TranslationResult) : CaptureState()
@@ -99,7 +109,29 @@ sealed class CaptureState {
      *  cancellation never surfaces as a flashed error or a stuck
      *  "Capturing" status on lifecycle reattach. */
     object Cancelled : CaptureState()
+
+    /** True for the four states a one-shot session ENDS on (Done / NoText /
+     *  Failed / Cancelled); false while still in flight (InProgress / Translating).
+     *  The cancellation safety net writes [Cancelled] only over a non-terminal
+     *  state, so a new in-flight state must be reflected here. */
+    val isTerminal: Boolean
+        get() = this is Done || this is NoText || this is Failed || this is Cancelled
 }
+
+/** Layer D of the cancellation contract (see [CaptureService]): the state to
+ *  write when a one-shot job completes with [completionCause] while [current] is
+ *  showing — [CaptureState.Cancelled] if a still in-flight (non-terminal) session
+ *  was cancelled, else null (leave whatever terminal state the pipeline already
+ *  wrote). Pure, so the contract is unit-tested without the Android-heavy pipeline. */
+internal fun cancelledStateOrNull(
+    completionCause: Throwable?,
+    current: CaptureState,
+): CaptureState? =
+    if (completionCause is CancellationException && !current.isTerminal) {
+        CaptureState.Cancelled
+    } else {
+        null
+    }
 
 /**
  * Background result-stream state — covers live mode, hold-to-preview,

@@ -1284,6 +1284,10 @@ class MainActivity :
                             when (state) {
                                 is CaptureState.InProgress ->
                                     resultVm.showStatus(state.message)
+                                is CaptureState.Translating ->
+                                    resultVm.showTranslatingPlaceholder(
+                                        state.originalText, state.segments, applicationContext,
+                                    )
                                 is CaptureState.Done -> {
                                     editTranslationJob?.cancel()
                                     editTranslationJob = null
@@ -2261,6 +2265,11 @@ class MainActivity :
         if (newText.isBlank()) return
 
         resultVm.updateOriginalText(newText, applicationContext)
+
+        // The edit supersedes any in-flight capture (it's translating the OLD
+        // source) — cancel + detach it so a late Done can't overwrite the edit.
+        _currentCaptureSession.value?.cancel()
+        _currentCaptureSession.value = null
 
         editTranslationJob?.cancel()
         editTranslationJob = lifecycleScope.launch {

@@ -25,6 +25,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.annotation.MainThread
 import androidx.core.app.NotificationCompat
+import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
 import com.google.mlkit.nl.translate.TranslateLanguage
 import kotlinx.coroutines.CancellationException
@@ -701,20 +702,18 @@ class CaptureService : Service() {
 
     /** Layer D from "Cancellation correctness" above: write
      *  [CaptureState.Cancelled] when [job] completes with a
-     *  CancellationException and [state] is still InProgress. The
-     *  InProgress check is defensive against a hypothetical race
-     *  between cancellation and the pipeline's own terminal write —
-     *  in practice the pipeline writes terminal states only after
-     *  awaiting through suspension points where cancellation would
-     *  have already propagated. */
+     *  CancellationException while [state] is still NON-TERMINAL
+     *  (InProgress / Translating — translation is the slow window, so
+     *  cancellation here is routine, not hypothetical). Skipping terminal
+     *  states stays defensive against a race with the pipeline's own
+     *  terminal write. The decision lives in [cancelledStateOrNull] so the
+     *  contract is unit-tested away from the Android-heavy pipeline. */
     private fun attachCancellationTerminal(
         job: Job,
         state: MutableStateFlow<CaptureState>,
     ) {
         job.invokeOnCompletion { cause ->
-            if (cause is CancellationException && state.value is CaptureState.InProgress) {
-                state.value = CaptureState.Cancelled
-            }
+            cancelledStateOrNull(cause, state.value)?.let { state.value = it }
         }
     }
 
@@ -759,7 +758,8 @@ class CaptureService : Service() {
                 return
             }
 
-            state.value = CaptureState.InProgress(getString(R.string.status_translating))
+            // Reveal the page on OCR: show the source now, translate in the section.
+            state.value = CaptureState.Translating(ocrResult.fullText, ocrResult.segments)
             val groupTranslation = translateGroups(ocrResult.groups.map { it.text })
 
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
@@ -1819,6 +1819,7 @@ class CaptureService : Service() {
     internal suspend fun runCaptureOcrTranslate(
         displayId: Int,
         onScreenshotTaken: (() -> Unit)? = null,
+        onOcrReady: ((originalText: String, segments: List<TextSegment>) -> Unit)? = null,
     ): PipelineOutcome {
         val raw: Bitmap = captureScreen(displayId)
             ?: return PipelineOutcome.Failed(
@@ -1845,6 +1846,10 @@ class CaptureService : Service() {
             }
 
             if (ocrResult == null) return PipelineOutcome.NoText
+
+            // OCR is in — surface the source now so the page can reveal before the
+            // (slower) translation runs.
+            onOcrReady?.invoke(ocrResult.fullText, ocrResult.segments)
 
             val perGroup = translateGroupsSeparately(ocrResult.groups.map { it.text })
             val translated = perGroup.joinToString("\n\n") { it.text }
@@ -1896,6 +1901,10 @@ class CaptureService : Service() {
         val outcome = runCaptureOcrTranslate(
             displayId = displayId,
             onScreenshotTaken = { flashRegionIndicator(displayId) },
+            // Reveal the source as soon as OCR finishes; translation lands on Done.
+            onOcrReady = { originalText, segments ->
+                state.value = CaptureState.Translating(originalText, segments)
+            },
         )
         state.value = when (outcome) {
             is PipelineOutcome.Success -> CaptureState.Done(outcome.pipeline.result)

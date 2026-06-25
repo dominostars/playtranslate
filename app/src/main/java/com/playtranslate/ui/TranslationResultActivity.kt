@@ -71,6 +71,13 @@ class TranslationResultActivity :
      *  cancel it — this is a one-shot screen. */
     private var editTranslationJob: kotlinx.coroutines.Job? = null
 
+    /** The active one-shot capture session + its state collector. Held so an edit
+     *  can supersede a still-running capture (it's translating the pre-edit
+     *  source): cancelling the collector stops a late Done from overwriting the
+     *  edit and its Cancelled from finish()-ing us. */
+    private var captureSession: CaptureSession? = null
+    private var sessionCollectJob: kotlinx.coroutines.Job? = null
+
     /** Tracks keyboard visibility so dismissing the IME commits the edit,
      *  matching MainActivity's commit-on-keyboard-hide behavior. */
     private var wasKeyboardVisible = false
@@ -520,11 +527,17 @@ class TranslationResultActivity :
      *  whatever terminal state has been reached (no replay of any other
      *  capture's output). */
     private fun observeSession(session: CaptureSession) {
-        lifecycleScope.launch {
+        sessionCollectJob?.cancel()
+        captureSession = session
+        sessionCollectJob = lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 session.state.collect { state ->
                     when (state) {
                         is CaptureState.InProgress -> vm.showStatus(state.message)
+                        // OCR done: reveal the source + "Translating…" placeholder;
+                        // Done replaces it with the finished translation.
+                        is CaptureState.Translating ->
+                            vm.showTranslatingPlaceholder(state.originalText, state.segments, applicationContext)
                         is CaptureState.Done -> vm.displayResult(state.result, applicationContext)
                         is CaptureState.NoText -> vm.showStatus(state.message)
                         is CaptureState.Failed -> vm.showError(state.message)
@@ -634,6 +647,13 @@ class TranslationResultActivity :
         if (newText.isBlank()) return
 
         vm.updateOriginalText(newText, applicationContext)
+
+        // The edit supersedes the in-flight capture (it's translating the OLD
+        // source) — stop collecting + cancel it so a late Done can't overwrite the
+        // edit and its Cancelled doesn't finish() us.
+        sessionCollectJob?.cancel()
+        captureSession?.cancel()
+        captureSession = null
 
         editTranslationJob?.cancel()
         editTranslationJob = lifecycleScope.launch {
