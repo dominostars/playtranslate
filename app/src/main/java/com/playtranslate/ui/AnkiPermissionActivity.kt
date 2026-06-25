@@ -11,8 +11,11 @@ import com.playtranslate.R
 
 /**
  * Translucent, content-less trampoline that makes sure the AnkiDroid
- * read/write permission is held, then forwards to [WordAnkiReviewActivity]
- * with the launch intent's extras.
+ * read/write permission is held, then forwards to the requested review
+ * activity ([WordAnkiReviewActivity] by default, or [SentenceAnkiReviewActivity]
+ * when the launch intent sets [EXTRA_FORWARD_TARGET]) with the launch
+ * intent's extras. Callers must still confirm AnkiDroid is installed before
+ * launching this — the trampoline only fronts the runtime permission.
  *
  * The rationale and the system permission dialog layer over whatever is
  * behind the translucent window, so the permission is asked in place — a
@@ -75,12 +78,18 @@ class AnkiPermissionActivity : ComponentActivity() {
      *  (via [finishCurrentIfAny] from a rapid second Anki tap). Without
      *  this guard, the permission-result callback can still fire on a
      *  finish-requested instance and forward its now-stale intent extras
-     *  into a new WordAnkiReviewActivity — surfacing the old sentence
+     *  into a new review activity — surfacing the old sentence
      *  the user already abandoned. */
     private fun forwardToReview() {
         if (isFinishing || isDestroyed) return
+        // Word review by default; the capture overlay's sentence-card path sets
+        // EXTRA_FORWARD_TARGET so the same permission gate fronts both reviews.
+        val targetClass = when (intent.getStringExtra(EXTRA_FORWARD_TARGET)) {
+            TARGET_SENTENCE -> SentenceAnkiReviewActivity::class.java
+            else -> WordAnkiReviewActivity::class.java
+        }
         startActivity(
-            Intent(this, WordAnkiReviewActivity::class.java)
+            Intent(this, targetClass)
                 .putExtras(intent.extras ?: Bundle())
         )
         finish()
@@ -92,9 +101,14 @@ class AnkiPermissionActivity : ComponentActivity() {
     }
 
     companion object {
-        /** See [CurrentActivityTracker]. Called from
-         *  [DragLookupController.openAnkiReviewForLens] alongside
-         *  [WordAnkiReviewActivity.finishCurrentIfAny] so a rapid second
+        /** Optional launch extra naming which review the trampoline forwards
+         *  to once permission is held. Absent ⇒ [WordAnkiReviewActivity]. */
+        const val EXTRA_FORWARD_TARGET = "anki_forward_target"
+        const val TARGET_SENTENCE = "sentence"
+
+        /** See [CurrentActivityTracker]. Called by each review launcher
+         *  (e.g. [SourceLensActions], [CaptureResultOverlay]) alongside the
+         *  matching review activity's finishCurrentIfAny so a rapid second
          *  Anki tap can also cancel an in-flight permission trampoline
          *  before it forwards its now-stale intent. */
         private val tracker = CurrentActivityTracker<AnkiPermissionActivity>()

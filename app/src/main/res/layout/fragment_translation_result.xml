@@ -61,7 +61,7 @@
             android:orientation="vertical"
             android:paddingHorizontal="@dimen/pt_section_h_padding"
             android:paddingTop="0dp"
-            android:paddingBottom="64dp">
+            android:paddingBottom="8dp">
 
             <!-- ══════════════════════════════════════════════════════ -->
             <!-- TRANSLATION                                           -->
@@ -186,53 +186,5 @@
         </LinearLayout>
 
     </ScrollView>
-
-    <!-- Floating Anki pill button. Outer FrameLayout is the tap host
-         and overlay slot for the one-tap spinner; inner LinearLayout
-         holds the icon + label. PillAnkiButton (AnkiUiHelper.kt) hides
-         the inner LinearLayout and adds a centered ProgressBar above
-         it while a one-tap send is in flight. -->
-    <FrameLayout
-        android:id="@+id/btnResultAnki"
-        android:layout_width="wrap_content"
-        android:layout_height="40dp"
-        android:layout_gravity="bottom|end"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="16dp"
-        android:background="@drawable/bg_anki_pill"
-        android:paddingStart="12dp"
-        android:paddingEnd="16dp"
-        android:elevation="6dp"
-        android:alpha="0.85"
-        android:clickable="true"
-        android:focusable="true"
-        android:visibility="gone">
-
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <ImageView
-                android:layout_width="20dp"
-                android:layout_height="20dp"
-                android:src="@drawable/ic_card_stack"
-                app:tint="?attr/ptAccentOn"
-                android:contentDescription="@null"
-                android:scaleType="centerInside" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/anki_section_header"
-                android:textColor="?attr/ptAccentOn"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:layout_marginStart="2dp" />
-
-        </LinearLayout>
-
-    </FrameLayout>
 
 </FrameLayout>

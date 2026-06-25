@@ -99,7 +99,9 @@ data class FrequencyTag(
      *  [display] remains the user-facing form. Trailing + defaulted so the
      *  positional [accentColor]-only construction sites stay valid. */
     val value: Double? = null,
-)
+    // Serializable so a per-word [WordEnrichment] map can ride through the Anki
+    // review activity's intent extras as an atomic snapshot (see WordEnrichment).
+) : java.io.Serializable
 
 /**
  * One imported kanji dictionary's content for a character — the winning

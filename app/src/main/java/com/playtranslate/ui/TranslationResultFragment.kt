@@ -10,7 +10,6 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.PopupWindow
@@ -126,10 +125,6 @@ class TranslationResultFragment : Fragment() {
     private lateinit var tvNoWords: TextView
     private lateinit var resultActionButtons: View
     private lateinit var btnResultClear: View
-    // FrameLayout so PillAnkiButton can overlay a centered spinner during
-    // one-tap sends without breaking the pill's horizontal icon+label.
-    private lateinit var btnResultAnki: FrameLayout
-    private var pillAnkiButton: PillAnkiButton? = null
 
     /** Maps character ranges in original text to (displayWord, reading).
      *  Recomputed in [renderWordLookups] Settled branch from the VM's
@@ -208,7 +203,6 @@ class TranslationResultFragment : Fragment() {
         dismissFurigana()
         dismissWordPopup()
         binder.release()
-        pillAnkiButton = null
         super.onDestroyView()
     }
 
@@ -227,17 +221,20 @@ class TranslationResultFragment : Fragment() {
         tvNoWords            = view.findViewById(R.id.tvNoWords)
         resultActionButtons  = view.findViewById(R.id.resultActionButtons)
         btnResultClear       = view.findViewById(R.id.btnResultClear)
-        btnResultAnki        = view.findViewById(R.id.btnResultAnki)
     }
 
     private fun setupButtons() {
         // Copy / show-hide / furigana toggle / speak live in the shared binder.
         // Editing is surface-specific: in-app it opens the host's edit overlay.
-        binder.setupSectionButtons(onEdit = {
-            dismissFurigana()
-            dismissWordPopup()
-            host?.onEditOriginalRequested()
-        })
+        binder.setupSectionButtons(
+            onEdit = {
+                dismissFurigana()
+                dismissWordPopup()
+                host?.onEditOriginalRequested()
+            },
+            onAddToAnki = { onAnkiClicked() },
+            onAnkiOneTap = { oneTapSentenceFromResult() },
+        )
         resultsContent.setOnScrollChangeListener(scrollListener)
         btnToggleWords.setOnClickListener {
             prefs.hideWordsSection = !prefs.hideWordsSection
@@ -248,18 +245,9 @@ class TranslationResultFragment : Fragment() {
             // to idle status; the fragment will re-render from the VM.
             vm.showStatus(getString(R.string.status_idle), showHint = true)
         }
-        // Tap opens the editable review sheet — the default and
-        // discoverable action. Long-press is the power-user shortcut
-        // that auto-creates the card with no review, documented by the
-        // pro-tip footer in Settings → Anki.
-        btnResultAnki.setOnClickListener {
-            onAnkiClicked()
-        }
-        btnResultAnki.setOnLongClickListener {
-            oneTapSentenceFromResult()
-            true
-        }
-        pillAnkiButton = PillAnkiButton(btnResultAnki)
+        // The Anki action now lives on the source/target section headers
+        // (tap = review sheet, long-press = one-tap), wired via the binder's
+        // setupSectionButtons above. The floating pill button is gone.
     }
 
     private fun applyWordsVisibility() {
@@ -312,7 +300,6 @@ class TranslationResultFragment : Fragment() {
                 statusContainer.isGone = true
                 resultsContent.visibility = View.INVISIBLE
                 resultActionButtons.isVisible = showsClearAction
-                btnResultAnki.isVisible = true
                 resultsContent.scrollToTopSilently(scrollListener)
                 resultsContent.post {
                     fitTextSizes()
@@ -331,7 +318,6 @@ class TranslationResultFragment : Fragment() {
         tvLiveHint.isGone = true
         statusContainer.isVisible = true
         resultsContent.isGone = true
-        btnResultAnki.isGone = true
     }
 
     /** True iff the activity is currently showing a translation result
@@ -417,13 +403,14 @@ class TranslationResultFragment : Fragment() {
     }
 
     /**
-     * One-tap sentence-card send from the result-screen Anki button.
-     * Falls back to the existing sheet flow ([onAnkiClicked]) on any
-     * gate failure (AnkiDroid missing, permission denied, no deck
-     * picked) so the user can still resolve the prerequisite. On
-     * success/failure the button restores; NeedsMapping opens the
-     * field-mapping dialog inline so the user can configure their
-     * custom card type without leaving the result screen.
+     * One-tap sentence-card send from the section-header Anki button's
+     * long-press. Falls back to the existing sheet flow ([onAnkiClicked])
+     * on any gate failure (AnkiDroid missing, permission denied, no deck
+     * picked) so the user can still resolve the prerequisite. Progress +
+     * outcome are reported via Toasts (the floating pill with its spinner
+     * is gone); NeedsMapping still opens the field-mapping dialog inline so
+     * the user can configure their custom card type without leaving the
+     * result screen.
      */
     private fun oneTapSentenceFromResult() {
         host?.onInteraction()
@@ -448,8 +435,7 @@ class TranslationResultFragment : Fragment() {
             LastSentenceCache.WordsPayload(it.toLegacyMap(), it.toSurfaceMap(), it.toEnrichmentMap())
         }
         val screenshotPath = result.screenshotPath
-        val pill = pillAnkiButton ?: return
-        pill.setLoading(true)
+        Toast.makeText(requireContext(), R.string.anki_adding_in_progress, Toast.LENGTH_SHORT).show()
         viewLifecycleOwner.lifecycleScope.launch {
             val sendResult = requireContext().oneTapSendSentence(
                 original = original,
@@ -458,45 +444,34 @@ class TranslationResultFragment : Fragment() {
                 screenshotPath = screenshotPath,
                 sourceLangId = prefs.sourceLangId,
             )
-            handleOneTapResult(sendResult, pill, CardMode.SENTENCE)
-        }
-    }
-
-    /** Maps a one-tap [AnkiSendResult] to the result-screen UX. */
-    private fun handleOneTapResult(
-        sendResult: AnkiSendResult,
-        pill: PillAnkiButton,
-        mode: CardMode,
-    ) {
-        when (sendResult) {
-            is AnkiSendResult.Success -> {
-                val msgRes = if (sendResult.audioDropped || sendResult.wordAudioDropped)
-                    R.string.anki_added_no_audio
-                else
-                    R.string.anki_added_success
-                Toast.makeText(requireContext(), msgRes, Toast.LENGTH_SHORT).show()
-                pill.setLoading(false)
-                refreshWordBadges()
-            }
-            is AnkiSendResult.Failed -> {
-                val ctx = requireContext()
-                OverlayAlert.Builder(requireActivity())
-                    .hideIcon()
-                    .setTitle(getString(R.string.anki_send_failed_title))
-                    .setMessage(getString(sendResult.messageRes))
-                    .addButton(
-                        getString(android.R.string.ok),
-                        ctx.themeColor(R.attr.ptAccent),
-                        ctx.themeColor(R.attr.ptAccentOn),
-                    ) {}
-                    .show()
-                pill.setLoading(false)
-            }
-            is AnkiSendResult.NeedsMapping -> {
-                // Dispatcher already toasted; open the mapping dialog
-                // so the user can fix the unmapped card type.
-                showAnkiCardTypeMappingDialog(sendResult.model, mode) { _, _ -> }
-                pill.setLoading(false)
+            if (!isAdded) return@launch
+            when (sendResult) {
+                is AnkiSendResult.Success -> {
+                    val msgRes = if (sendResult.audioDropped || sendResult.wordAudioDropped)
+                        R.string.anki_added_no_audio
+                    else
+                        R.string.anki_added_success
+                    Toast.makeText(requireContext(), msgRes, Toast.LENGTH_SHORT).show()
+                    refreshWordBadges()
+                }
+                is AnkiSendResult.Failed -> {
+                    val ctx = requireContext()
+                    OverlayAlert.Builder(requireActivity())
+                        .hideIcon()
+                        .setTitle(getString(R.string.anki_send_failed_title))
+                        .setMessage(getString(sendResult.messageRes))
+                        .addButton(
+                            getString(android.R.string.ok),
+                            ctx.themeColor(R.attr.ptAccent),
+                            ctx.themeColor(R.attr.ptAccentOn),
+                        ) {}
+                        .show()
+                }
+                is AnkiSendResult.NeedsMapping -> {
+                    // Dispatcher already toasted; open the mapping dialog
+                    // so the user can fix the unmapped card type.
+                    showAnkiCardTypeMappingDialog(sendResult.model, CardMode.SENTENCE) { _, _ -> }
+                }
             }
         }
     }
@@ -604,8 +579,11 @@ class TranslationResultFragment : Fragment() {
         val result = (vm.result.value as? ResultState.Ready)?.result ?: return
         val activity = activity ?: return
         val ankiManager = AnkiManager(activity)
-        val wordResults = (vm.wordLookups.value as? WordLookupsState.Settled)
-            ?.rows?.toLegacyMap() ?: emptyMap()
+        // Snapshot the settled rows ONCE so wordResults + surfaces + enrichment
+        // all come from the same emission; the sheet renders from this atomic
+        // snapshot, never the global cache (see AnkiReviewBottomSheet.newInstance).
+        val settledRows = (vm.wordLookups.value as? WordLookupsState.Settled)?.rows
+        val wordResults = settledRows?.toLegacyMap() ?: emptyMap()
         when {
             !ankiManager.isAnkiDroidInstalled() ->
                 showAnkiNotInstalledDialog(activity)
@@ -634,6 +612,8 @@ class TranslationResultFragment : Fragment() {
                 } else {
                     AnkiReviewBottomSheet.newInstance(
                         getDisplayedOriginalText(), result.translatedText, wordResults,
+                        settledRows?.toSurfaceMap() ?: emptyMap(),
+                        settledRows?.toEnrichmentMap() ?: emptyMap(),
                         result.screenshotPath, prefs.sourceLangId
                     ).show(childFragmentManager, AnkiReviewBottomSheet.TAG)
                 }
@@ -881,7 +861,6 @@ class TranslationResultFragment : Fragment() {
                 binder.applyFurigana()
                 tvMainWordsLoading.isGone = true
                 tvNoWords.visibility = if (state.rows.isEmpty()) View.VISIBLE else View.GONE
-                btnResultAnki.isVisible = true
             }
         }
     }

@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
@@ -36,9 +37,11 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.widget.NestedScrollView
+import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
+import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.SourceLanguageEngines
@@ -298,7 +301,11 @@ class CaptureResultOverlay(
             panel, ctx, prefs, scope,
             TtsAlertTarget.Overlay(ctx, overlayHost, wm, displayId),
         )
-        b.setupSectionButtons(onEdit = { startInPlaceEdit() })
+        b.setupSectionButtons(
+            onEdit = { startInPlaceEdit() },
+            onAddToAnki = { openSentenceAnkiReview() },
+            onAnkiOneTap = { oneTapSentenceFromOverlay() },
+        )
         b.onSectionVisibilityChanged = {
             applySideBySideCollapse()
             // A section was hidden/shown — grow/shrink the panel to the new content.
@@ -696,6 +703,96 @@ class CaptureResultOverlay(
 
     private fun dismissWordLens() {
         wordLens?.dismiss()
+    }
+
+    // Card-level "add to Anki" for the whole captured sentence — the overlay is a
+    // window, so it launches an Activity-hosted review (the results page uses a
+    // DialogFragment it can't). Mirrors the results page's onAnkiClicked.
+    // The overlay always uses the SENTENCE review (no single-word→word-sheet branch
+    // like the results page) — accepted simplification.
+    private fun openSentenceAnkiReview() {
+        val result = lastResult ?: return
+        val sentence = result.originalText
+        if (sentence.isBlank()) return
+        val app = ctx.applicationContext
+        // Gate like the word-lens path (SourceLensActions): AnkiDroid must be
+        // installed, and the runtime permission is requested by the
+        // AnkiPermissionActivity trampoline — the overlay is a window with no
+        // result launcher of its own. Without this gate a user with no AnkiDroid
+        // / no permission would reach a dead review sheet (no-op deck loader; the
+        // save can only fail later).
+        if (!AnkiManager(app).isAnkiDroidInstalled()) {
+            showAnkiNotInstalledDialog(ctx, overlayHost, wm, displayId)
+            return
+        }
+        val cached = LastSentenceCache.takeIf { it.original == sentence }
+        val words = cached?.wordResults?.takeIf { it.isNotEmpty() }
+        SentenceAnkiReviewActivity.finishCurrentIfAny()
+        AnkiPermissionActivity.finishCurrentIfAny()
+        val intent = Intent(app, AnkiPermissionActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+            putExtra(AnkiPermissionActivity.EXTRA_FORWARD_TARGET, AnkiPermissionActivity.TARGET_SENTENCE)
+            putExtra(SentenceAnkiReviewActivity.EXTRA_SENTENCE, sentence)
+            putExtra(SentenceAnkiReviewActivity.EXTRA_TRANSLATION, result.translatedText)
+            result.screenshotPath?.let { putExtra(SentenceAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, it) }
+            putExtra(SentenceAnkiReviewActivity.EXTRA_SOURCE_LANG, prefs.sourceLangId.code)
+            words?.let { wr ->
+                val keys = wr.keys.toTypedArray()
+                putExtra(SentenceAnkiReviewActivity.EXTRA_WORDS, keys)
+                putExtra(SentenceAnkiReviewActivity.EXTRA_READINGS, wr.values.map { it.first }.toTypedArray())
+                putExtra(SentenceAnkiReviewActivity.EXTRA_MEANINGS, wr.values.map { it.second }.toTypedArray())
+                putExtra(SentenceAnkiReviewActivity.EXTRA_FREQ_SCORES, wr.values.map { it.third }.toIntArray())
+                // Carry surfaces (parallel to keys) + pitch/frequency enrichment
+                // from the SAME `cached` snapshot, atomically — so the review
+                // can't pair these words with another sentence's enrichment that
+                // a later capture wrote to the global cache while the permission
+                // trampoline was up.
+                putExtra(SentenceAnkiReviewActivity.EXTRA_SURFACES,
+                    keys.map { cached?.surfaceForms?.get(it) ?: "" }.toTypedArray())
+                putExtra(SentenceAnkiReviewActivity.EXTRA_ENRICHMENT,
+                    HashMap(cached?.wordEnrichment.orEmpty()))
+            }
+        }
+        val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: displayId
+        val opts = android.app.ActivityOptions.makeBasic().setLaunchDisplayId(targetDisplay).toBundle()
+        app.startActivity(intent, opts)
+        dismiss()   // tear the sheet down — it'd otherwise sit over the review/trampoline
+    }
+
+    // Long-press = headless one-tap send of the captured sentence. Runs on a
+    // process-lived scope so dismissing the sheet can't cancel the card.
+    private fun oneTapSentenceFromOverlay() {
+        val result = lastResult ?: return
+        val sentence = result.originalText
+        if (sentence.isBlank()) return
+        val app = ctx.applicationContext
+        val ankiManager = AnkiManager(app)
+        if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission() || prefs.ankiDeckId < 0L) {
+            // No headless path available → fall back to the review.
+            openSentenceAnkiReview()
+            return
+        }
+        val cached = LastSentenceCache.takeIf { it.original == sentence }
+        val words = cached?.wordResults?.takeIf { it.isNotEmpty() }
+        val payload = words?.let {
+            LastSentenceCache.WordsPayload(it, cached.surfaceForms.orEmpty(), cached.wordEnrichment.orEmpty())
+        }
+        val translation = result.translatedText.takeIf { it.isNotEmpty() }
+        val langId = prefs.sourceLangId
+        android.widget.Toast.makeText(app, R.string.anki_adding_in_progress, android.widget.Toast.LENGTH_SHORT).show()
+        ankiSendScope.launch {
+            val sendResult = app.oneTapSendSentence(
+                original = sentence, translation = translation, wordsPayload = payload,
+                screenshotPath = result.screenshotPath, sourceLangId = langId,
+            )
+            when (sendResult) {
+                is AnkiSendResult.Success -> android.widget.Toast.makeText(app,
+                    if (sendResult.audioDropped || sendResult.wordAudioDropped) R.string.anki_added_no_audio else R.string.anki_added_success,
+                    android.widget.Toast.LENGTH_SHORT).show()
+                is AnkiSendResult.Failed -> android.widget.Toast.makeText(app, sendResult.messageRes, android.widget.Toast.LENGTH_LONG).show()
+                is AnkiSendResult.NeedsMapping -> openSentenceAnkiReview()
+            }
+        }
     }
 
     /** Edit the source in place: flip the panel window focusable, show an inline
@@ -1268,6 +1365,12 @@ class CaptureResultOverlay(
     private fun dp(v: Int): Int = (v * density).toInt()
 
     private companion object {
+        /** Fire-and-forget one-tap Anki sends run here, NOT on [scope] — the overlay
+         *  cancels [scope] on dismiss, which would silently kill an in-flight send
+         *  (no card, no result toast). Process-lived; mirrors SourceLensActions.sendScope.
+         *  The toasts target the app context, so they still fire after the panel is gone. */
+        private val ankiSendScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
         const val MATCH = LinearLayout.LayoutParams.MATCH_PARENT
         const val WRAP = LinearLayout.LayoutParams.WRAP_CONTENT
         const val HANDLE_HEIGHT_DP = 20

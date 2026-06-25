@@ -32,7 +32,10 @@ import kotlin.coroutines.coroutineContext
 data class WordEnrichment(
     val pitch: List<Int> = emptyList(),
     val frequencies: List<FrequencyTag> = emptyList(),
-)
+    // Serializable so the sentence Anki review can carry per-word enrichment as
+    // an atomic intent/args snapshot instead of re-reading the global cache
+    // fields (which can belong to a different sentence by render time).
+) : java.io.Serializable
 
 /**
  * In-memory cache for the most recent sentence's translation + word

@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.content.DialogInterface
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -27,6 +28,15 @@ class AnkiReviewBottomSheet : DialogFragment() {
 
     /** Controller for the Save button's idle ↔ loading swap. */
     private var sendButton: AnkiSendButton? = null
+
+    /** Optional listener called when this sheet is dismissed (used by
+     *  [SentenceAnkiReviewActivity] to finish the host activity). */
+    var onDismissListener: DialogInterface.OnDismissListener? = null
+
+    override fun onDismiss(dialog: DialogInterface) {
+        super.onDismiss(dialog)
+        onDismissListener?.onDismiss(dialog)
+    }
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
 
@@ -75,14 +85,20 @@ class AnkiReviewBottomSheet : DialogFragment() {
         val readingArr = args.getStringArray(ARG_READINGS) ?: emptyArray()
         val meaningArr = args.getStringArray(ARG_MEANINGS) ?: emptyArray()
         val freqArr    = args.getIntArray(ARG_FREQ_SCORES) ?: IntArray(0)
-        val surfaces = LastSentenceCache.surfaceForms ?: emptyMap()
-        val enrich = LastSentenceCache.wordEnrichment ?: emptyMap()
+        // Surfaces (parallel to ARG_WORDS) + enrichment (keyed map) come from the
+        // atomic snapshot the caller passed — never the live LastSentenceCache,
+        // whose global fields may have rotated to another sentence by now (see
+        // newInstance / LastSentenceCache.awaitOrStartWordLookups docs).
+        val surfaceArr = args.getStringArray(ARG_SURFACES) ?: emptyArray()
+        @Suppress("DEPRECATION", "UNCHECKED_CAST")
+        val enrich = (args.getSerializable(ARG_ENRICHMENT) as? HashMap<String, WordEnrichment>)
+            ?: hashMapOf()
         wordArr.forEachIndexed { i, w ->
             words.add(SentenceAnkiHtmlBuilder.WordEntry(
                 w, readingArr.getOrElse(i) { "" },
                 meaningArr.getOrElse(i) { "" },
                 freqArr.getOrElse(i) { 0 },
-                surfaceForm = surfaces[w] ?: "",
+                surfaceForm = surfaceArr.getOrElse(i) { "" },
                 pitch = enrich[w]?.pitch.orEmpty(),
                 frequencies = enrich[w]?.frequencies.orEmpty(),
             ))
@@ -194,24 +210,43 @@ class AnkiReviewBottomSheet : DialogFragment() {
         private const val ARG_READINGS        = "readings"
         private const val ARG_MEANINGS        = "meanings"
         private const val ARG_FREQ_SCORES     = "freq_scores"
+        private const val ARG_SURFACES        = "surfaces"
+        private const val ARG_ENRICHMENT      = "enrichment"
         private const val ARG_SCREENSHOT_PATH = "screenshot_path"
         private const val ARG_SOURCE_LANG     = "source_lang"
 
+        /**
+         * [surfaceForms] (display-word → surface in the sentence) and
+         * [wordEnrichment] (display-word → pitch + frequencies) travel as an
+         * atomic snapshot in the args — they are deliberately NOT re-read from
+         * [LastSentenceCache] at render time. The global cache fields can rotate
+         * to a different sentence before this sheet renders (e.g. behind the
+         * Anki permission trampoline on the capture overlay), which would pair
+         * one sentence's words with another's enrichment. Callers pass the same
+         * snapshot their word rows came from.
+         */
         fun newInstance(
             original: String,
             translation: String,
             wordResults: Map<String, Triple<String, String, Int>>,
+            surfaceForms: Map<String, String>,
+            wordEnrichment: Map<String, WordEnrichment>,
             screenshotPath: String?,
             sourceLangId: SourceLangId = SourceLangId.JA,
         ): AnkiReviewBottomSheet {
             return AnkiReviewBottomSheet().apply {
+                val wordKeys = wordResults.keys.toTypedArray()
                 arguments = Bundle().apply {
                     putString(ARG_ORIGINAL, original)
                     putString(ARG_TRANSLATION, translation)
-                    putStringArray(ARG_WORDS,    wordResults.keys.toTypedArray())
+                    putStringArray(ARG_WORDS,    wordKeys)
                     putStringArray(ARG_READINGS, wordResults.values.map { it.first }.toTypedArray())
                     putStringArray(ARG_MEANINGS, wordResults.values.map { it.second }.toTypedArray())
                     putIntArray(ARG_FREQ_SCORES, wordResults.values.map { it.third }.toIntArray())
+                    // Surfaces ride parallel to ARG_WORDS; enrichment as one
+                    // Serializable map keyed by display word.
+                    putStringArray(ARG_SURFACES, wordKeys.map { surfaceForms[it] ?: "" }.toTypedArray())
+                    putSerializable(ARG_ENRICHMENT, HashMap(wordEnrichment))
                     if (screenshotPath != null) putString(ARG_SCREENSHOT_PATH, screenshotPath)
                     putString(ARG_SOURCE_LANG, sourceLangId.code)
                 }

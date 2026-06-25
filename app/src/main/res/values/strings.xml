@@ -1965,6 +1965,10 @@
     <!-- contentDescription for the "copy original" icon button. -->
     <string name="cd_copy_original">Copy original</string>
 
+    <!-- contentDescription for the section-header button that adds the
+         current text to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>. -->
+    <string name="cd_add_to_anki">Add to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
     <!-- contentDescription for the eye-toggle on the original-text
          row. -->
     <string name="cd_toggle_original_visibility">Toggle original visibility</string>

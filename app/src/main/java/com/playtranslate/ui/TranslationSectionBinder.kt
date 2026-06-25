@@ -283,12 +283,42 @@ class TranslationSectionBinder(
     /** Wire copy / show-hide / furigana toggle / speak. [onEdit] is invoked by the
      *  source Edit button — the surface decides what editing means (an Activity
      *  overlay in-app, an in-place IME over the game). */
-    fun setupSectionButtons(onEdit: () -> Unit) {
-        btnCopyOriginal.setOnClickListener {
-            copyToClipboard(tvOriginal.text?.toString() ?: return@setOnClickListener)
-        }
-        btnCopyTranslation.setOnClickListener {
-            copyToClipboard(tvTranslation.text?.toString() ?: return@setOnClickListener)
+    fun setupSectionButtons(
+        onEdit: () -> Unit,
+        onAddToAnki: (() -> Unit)? = null,
+        onAnkiOneTap: (() -> Unit)? = null,
+    ) {
+        if (onAddToAnki != null) {
+            // Results page (and later the capture overlay): the copy button becomes
+            // "add to Anki"; copy moves to a long-press on the text itself.
+            val ankiTint = ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextMuted))
+            for (btn in listOf(btnCopyOriginal, btnCopyTranslation)) {
+                btn.setImageResource(R.drawable.ic_card_stack)
+                btn.imageTintList = ankiTint   // explicit so it's muted even where app:tint isn't applied (overlay)
+                btn.contentDescription = ctx.getString(R.string.cd_add_to_anki)
+                btn.setOnClickListener { onAddToAnki() }
+                if (onAnkiOneTap != null) {
+                    btn.setOnLongClickListener { onAnkiOneTap(); true }
+                }
+            }
+            // TODO(device): tvOriginal is a ClickableTextView whose onTouchEvent
+            // routes through a GestureDetector and always consumes the event. Long-
+            // press copy relies on View.onTouchEvent's own long-press timer firing
+            // via super.onTouchEvent; verify on-device that the word-tap path doesn't
+            // suppress this long-click. Do NOT remove the word-tap handling.
+            tvOriginal.setOnLongClickListener {
+                copyToClipboard(tvOriginal.text?.toString() ?: return@setOnLongClickListener true); true
+            }
+            tvTranslation.setOnLongClickListener {
+                copyToClipboard(tvTranslation.text?.toString() ?: return@setOnLongClickListener true); true
+            }
+        } else {
+            btnCopyOriginal.setOnClickListener {
+                copyToClipboard(tvOriginal.text?.toString() ?: return@setOnClickListener)
+            }
+            btnCopyTranslation.setOnClickListener {
+                copyToClipboard(tvTranslation.text?.toString() ?: return@setOnClickListener)
+            }
         }
         btnEditOriginal.setOnClickListener { onEdit() }
         btnToggleTranslation.setOnClickListener { toggleTranslationHidden() }

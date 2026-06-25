@@ -66,6 +66,17 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Opaque host for the Anki SENTENCE-review sheet, reached from the
+             over-game capture panel (a window that can't host the DialogFragment
+             directly). -->
+        <activity
+            android:name=".ui.SentenceAnkiReviewActivity"
+            android:exported="false"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@style/Theme.PlayTranslate" />
+
         <!-- Standalone results host for region capture on single-screen / backgrounded. -->
         <activity
             android:name=".ui.TranslationResultActivity"
