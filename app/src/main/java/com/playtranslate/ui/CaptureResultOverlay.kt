@@ -23,6 +23,7 @@ import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewOutlineProvider
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
@@ -112,6 +113,10 @@ class CaptureResultOverlay(
     // translationY as the sheet grows/slides — never re-blurred (see [bakeBottomShadow]).
     private val bottomShadow = BottomShadowView(ctx)
     private var shadowBitmap: Bitmap? = null
+    // The shadow tracks the sheet through a single pre-draw hook (see [syncShadow])
+    // rather than per-mover wiring — so no drag/animation path can move the sheet
+    // and leave the shadow behind.
+    private var shadowSync: ViewTreeObserver.OnPreDrawListener? = null
     // Frosted backdrop: the captured screenshot blurred ONCE (a cheap downscale),
     // drawn at full-screen scale UNDER the translucent sheet fill and clipped to
     // the rounded body. Static — no live re-blur.
@@ -278,7 +283,6 @@ class CaptureResultOverlay(
         }
         // Park above the top edge; the entrance animation (below) drops it in.
         panel.translationY = -panelHeightPx.toFloat()
-        syncShadow()
 
         val sideBySide = CaptureResultGeometry.shouldUseSideBySide(
             screenW, dp(1), (CaptureResultGeometry.SIDE_BY_SIDE_FALLBACK_SECTION_DP * density).toInt(),
@@ -322,12 +326,18 @@ class CaptureResultOverlay(
         }
         windowParams = lp
         overlayHost.addOverlayWindow(root, wm, lp, displayId)
+        // ONE place that keeps the drop shadow glued to the sheet: a pre-draw hook
+        // re-reads the panel's live position every frame, so the shadow follows
+        // through any move (handle drag, body swipe/fling, resize, entrance/exit)
+        // with no per-mover wiring to forget.
+        shadowSync = ViewTreeObserver.OnPreDrawListener { syncShadow(); true }.also {
+            root.viewTreeObserver.addOnPreDrawListener(it)
+        }
         // Ease in from the top — a plain decelerate, no overshoot/bounce.
         panel.animate()
             .translationY(0f)
             .setDuration(ENTER_DURATION_MS)
             .setInterpolator(DecelerateInterpolator())
-            .setUpdateListener { syncShadow() }
             .start()
     }
 
@@ -371,6 +381,8 @@ class CaptureResultOverlay(
         captureSession?.cancel()
         captureSession = null
         binder?.release()
+        shadowSync?.let { root.viewTreeObserver.removeOnPreDrawListener(it) }
+        shadowSync = null
         try { overlayHost.removeOverlayWindow(root) } catch (_: Exception) {}
         shadowBitmap?.recycle()
         shadowBitmap = null
@@ -392,7 +404,6 @@ class CaptureResultOverlay(
             .translationY(-(panelHeightPx.toFloat()))
             .setDuration(EXIT_DURATION_MS)
             .setInterpolator(AccelerateInterpolator())
-            .setUpdateListener { syncShadow() }
             .withEndAction { dismiss() }
             .start()
     }
@@ -947,13 +958,13 @@ class CaptureResultOverlay(
         panelHeightPx = px
         (panel.layoutParams as FrameLayout.LayoutParams).height = px
         panel.requestLayout()
-        syncShadow()
     }
 
-    /** Keep the pre-baked drop shadow glued to the sheet's bottom edge — its
-     *  darkest line (the bitmap's top) sits exactly there. Cheap: only a
-     *  translationY, no redraw/re-blur. Called on resize and every frame of the
-     *  entrance/exit slide (panel.translationY moves the whole sheet). */
+    /** Glue the pre-baked drop shadow to the sheet's bottom edge by re-reading the
+     *  panel's LIVE position + height. Driven once per frame by the pre-draw hook
+     *  registered in [show], so it tracks the sheet through ANY move — handle drag,
+     *  body swipe/fling, resize, entrance/exit — with no per-mover wiring to miss.
+     *  Cheap + idempotent: a single translationY, a no-op when nothing moved. */
     private fun syncShadow() {
         // Land the bitmap's contour line (y=cornerRadius, the sheet's straight
         // bottom edge) exactly on the sheet's bottom; the corner arcs above it sit
