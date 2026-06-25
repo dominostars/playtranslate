@@ -1350,7 +1350,9 @@ class OverlayUiController(
             val overlay = com.playtranslate.ui.CaptureResultOverlay(displayCtx, wm, displayId, overlayHost)
             overlay.onDismiss = { if (captureResultOverlay === overlay) captureResultOverlay = null }
             captureResultOverlay = overlay
-            overlay.show(size.x, size.y)
+            // Pass the clean shot for the frosted backdrop — show() downscales it
+            // synchronously here, before processScreenshot (below) recycles it.
+            overlay.show(size.x, size.y, bitmap)
             // Same configure → process sequence as
             // TranslationResultActivity.onServiceReady, off this controller's scope.
             svc.configureSaved(

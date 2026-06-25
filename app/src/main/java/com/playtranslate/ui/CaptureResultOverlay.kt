@@ -12,6 +12,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.Paint
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.text.InputType
@@ -101,7 +102,7 @@ class CaptureResultOverlay(
 
     private val root = CaptureResultRoot(ctx)
     private val panel = TopSheetPanel(ctx)
-    private val body = FrameLayout(ctx)
+    private val body = BodyView(ctx)
     private val statusText = TextView(ctx)
     private val scroll = NestedScrollView(ctx)
     private val contentRow = LinearLayout(ctx)
@@ -111,6 +112,12 @@ class CaptureResultOverlay(
     // translationY as the sheet grows/slides — never re-blurred (see [bakeBottomShadow]).
     private val bottomShadow = BottomShadowView(ctx)
     private var shadowBitmap: Bitmap? = null
+    // Frosted backdrop: the captured screenshot blurred ONCE (a cheap downscale),
+    // drawn at full-screen scale UNDER the translucent sheet fill and clipped to
+    // the rounded body. Static — no live re-blur.
+    private var backdropSmall: Bitmap? = null
+    private val backdropPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val backdropDst = Rect()
 
     private var binder: TranslationSectionBinder? = null
 
@@ -251,8 +258,10 @@ class CaptureResultOverlay(
     // ── Public API ───────────────────────────────────────────────────────
 
     /** Size + add the window, lay out the sections responsively, and show the
-     *  initial status placeholder. Call once. */
-    fun show(screenW: Int, screenH: Int) {
+     *  initial status placeholder. Call once. [backdrop] (the clean capture, if
+     *  available) is blurred once into the frosted sheet fill — the caller may
+     *  recycle it afterward (we keep only a downscaled copy). */
+    fun show(screenW: Int, screenH: Int, backdrop: Bitmap? = null) {
         if (dismissed) return
         this.screenW = screenW
         this.screenH = screenH
@@ -262,6 +271,11 @@ class CaptureResultOverlay(
         (panel.layoutParams as FrameLayout.LayoutParams).height = panelHeightPx
         shadowBitmap = bakeBottomShadow(screenW)
         bottomShadow.invalidate()
+        backdrop?.let {
+            backdropSmall = blurBackdrop(it)
+            backdropDst.set(0, 0, screenW, screenH)
+            body.invalidate()
+        }
         // Park above the top edge; the entrance animation (below) drops it in.
         panel.translationY = -panelHeightPx.toFloat()
         syncShadow()
@@ -287,6 +301,7 @@ class CaptureResultOverlay(
         }
         // Furigana changes the source's rendered height (async on / sync off) — re-fit.
         b.onSourceTextHeightChanged = { if (!dismissed) autoSizeAndFit() }
+        b.setCardFillAlpha(CARD_FILL_ALPHA)
         binder = b
         // Reflect any persisted hide prefs (shared with the results page) up front.
         applySideBySideCollapse()
@@ -359,6 +374,8 @@ class CaptureResultOverlay(
         try { overlayHost.removeOverlayWindow(root) } catch (_: Exception) {}
         shadowBitmap?.recycle()
         shadowBitmap = null
+        backdropSmall?.recycle()
+        backdropSmall = null
         scope.cancel()
         onDismiss?.invoke()
     }
@@ -970,6 +987,69 @@ class CaptureResultOverlay(
         return bitmap
     }
 
+    /** The blur: downscale for cheapness, then a separable box blur (3 passes ≈
+     *  Gaussian) over the small bitmap so it reads as a smooth frost instead of
+     *  visible low-res pixels — a plain downscale+upscale aliases (the grid shows
+     *  through). Small bitmap → sub-millisecond. Reads [src] synchronously so the
+     *  caller can recycle it right after. */
+    private fun blurBackdrop(src: Bitmap): Bitmap? {
+        if (src.isRecycled || src.width <= 0 || src.height <= 0) return null
+        val w = (src.width / BACKDROP_DOWNSCALE).coerceAtLeast(1)
+        val h = (src.height / BACKDROP_DOWNSCALE).coerceAtLeast(1)
+        val small = try {
+            Bitmap.createScaledBitmap(src, w, h, true)
+        } catch (_: Exception) {
+            return null
+        }
+        val blurred = boxBlur(small, BACKDROP_BLUR_RADIUS, passes = 3)
+        if (blurred !== small) small.recycle()
+        return blurred
+    }
+
+    /** Separable box blur over a small ARGB bitmap, [passes] times (3 ≈ Gaussian). */
+    private fun boxBlur(src: Bitmap, radius: Int, passes: Int): Bitmap {
+        val w = src.width
+        val h = src.height
+        if (radius < 1 || w < 2 || h < 2) return src
+        val a = IntArray(w * h)
+        val b = IntArray(w * h)
+        src.getPixels(a, 0, w, 0, 0, w, h)
+        repeat(passes) {
+            boxBlurAxis(a, b, w, h, radius, horizontal = true)
+            boxBlurAxis(b, a, w, h, radius, horizontal = false)
+        }
+        return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply {
+            setPixels(a, 0, w, 0, 0, w, h)
+        }
+    }
+
+    /** One running-window box-blur pass along one axis (edges clamp). */
+    private fun boxBlurAxis(src: IntArray, dst: IntArray, w: Int, h: Int, r: Int, horizontal: Boolean) {
+        val lines = if (horizontal) h else w
+        val len = if (horizontal) w else h
+        val step = if (horizontal) 1 else w
+        val div = 2 * r + 1
+        for (line in 0 until lines) {
+            val base = if (horizontal) line * w else line
+            var sa = 0; var sr = 0; var sg = 0; var sb = 0
+            for (i in -r..r) {
+                val c = src[base + i.coerceIn(0, len - 1) * step]
+                sa += (c ushr 24) and 0xff; sr += (c ushr 16) and 0xff
+                sg += (c ushr 8) and 0xff; sb += c and 0xff
+            }
+            for (j in 0 until len) {
+                dst[base + j * step] =
+                    ((sa / div) shl 24) or ((sr / div) shl 16) or ((sg / div) shl 8) or (sb / div)
+                val co = src[base + (j - r).coerceIn(0, len - 1) * step]
+                val ci = src[base + (j + r + 1).coerceIn(0, len - 1) * step]
+                sa += ((ci ushr 24) and 0xff) - ((co ushr 24) and 0xff)
+                sr += ((ci ushr 16) and 0xff) - ((co ushr 16) and 0xff)
+                sg += ((ci ushr 8) and 0xff) - ((co ushr 8) and 0xff)
+                sb += (ci and 0xff) - (co and 0xff)
+            }
+        }
+    }
+
     // ── Custom views ─────────────────────────────────────────────────────
 
     /** Blits the pre-baked [shadowBitmap] (never re-blurs); positioned via
@@ -980,6 +1060,16 @@ class CaptureResultOverlay(
         init { setWillNotDraw(false) }
         override fun onDraw(canvas: Canvas) {
             shadowBitmap?.let { canvas.drawBitmap(it, 0f, 0f, null) }
+        }
+    }
+
+    /** The sheet surface. Draws the frosted backdrop FIRST (before super → under the
+     *  translucent fill background and the content), scaled to full screen so the
+     *  body shows the captured frame's top strip 1:1; clipToOutline rounds it. */
+    private inner class BodyView(c: Context) : FrameLayout(c) {
+        override fun draw(canvas: Canvas) {
+            backdropSmall?.let { canvas.drawBitmap(it, null, backdropDst, backdropPaint) }
+            super.draw(canvas)
         }
     }
 
@@ -1111,8 +1201,17 @@ class CaptureResultOverlay(
          *  ~100/255). Tune these two for darker/softer. */
         const val SHADOW_BLUR_DP = 11f
         const val SHADOW_ALPHA = 200
-        /** Sheet fill opacity (255 = opaque). Lower → more of the game shows through. */
-        const val SHEET_ALPHA = 235
+        /** Sheet fill opacity (255 = opaque). Lower → more of the frosted backdrop
+         *  shows through the tint. */
+        const val SHEET_ALPHA = 205
+        /** Text-card fill opacity (0–1) — very slightly translucent so the frost
+         *  shows faintly behind the text too. */
+        const val CARD_FILL_ALPHA = 0.8f
+        /** Backdrop downscale before the box blur (cheapness; the blur does the
+         *  smoothing now, so this no longer needs to be aggressive). */
+        const val BACKDROP_DOWNSCALE = 6
+        /** Box-blur radius (in downscaled px) — the main blur dial. */
+        const val BACKDROP_BLUR_RADIUS = 5
         const val SECTION_H_PAD_DP = 12
         /** Space below the filled side-by-side cards (to the panel's bottom). */
         const val SIDE_BY_SIDE_BOTTOM_BUFFER_DP = 12

@@ -362,6 +362,15 @@ class TranslationSectionBinder(
         cardTranslation.minimumHeight = targetPx
     }
 
+    /** Tint both text cards' fill to [alpha] (0–1) of ptCard — used by the overlay
+     *  to let the frosted backdrop show faintly through; the results page leaves
+     *  them opaque. */
+    fun setCardFillAlpha(alpha: Float) {
+        val c = withAlpha(ctx.themeColor(R.attr.ptCard), alpha)
+        cardOriginal.setCardBackgroundColor(c)
+        cardTranslation.setCardBackgroundColor(c)
+    }
+
     /** Largest float size in [[TEXT_SIZE_MIN_SP], [TEXT_SIZE_MAX_SP]] whose text
      *  fits [targetPx] (binary search → continuous, not 1sp steps). */
     private fun fitSize(tv: TextView, targetPx: Int): Float {
