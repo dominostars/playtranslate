@@ -110,6 +110,7 @@ from wiktionary_filters import (
     MAX_HEADWORD_WORDS,
     MAX_SENSES_PER_ENTRY,
     WIKT_REDIRECT_KEYS,
+    filter_misc,
     is_redirect_entry,
     is_redirect_sense,
 )
@@ -486,7 +487,10 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
             if not this_glosses:
                 continue
             this_examples = extract_examples(sense)
-            senses_data.append({"glosses": this_glosses, "examples": this_examples})
+            this_misc = filter_misc(sense.get("tags"), sense.get("raw_tags"))
+            senses_data.append(
+                {"glosses": this_glosses, "examples": this_examples, "misc": this_misc}
+            )
         if not senses_data:
             continue
 
@@ -586,7 +590,7 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
                     sense_pos,
                     pos_raw,
                     "\t".join(sense["glosses"]),
-                    "",
+                    "\t".join(sense["misc"]),
                 ),
             )
             for ex_pos, (text, translation) in enumerate(sense["examples"]):

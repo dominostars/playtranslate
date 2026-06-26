@@ -77,7 +77,7 @@ POS_ABBREV = {
 # Shared constants live in scripts/wiktionary_filters.py so this script
 # and build_latin_dict.py can't drift on what "redirect" / "content POS"
 # means — a bug hidden by that drift was what prompted this refactor.
-from wiktionary_filters import WIKT_EXCLUDED_POS, WIKT_REDIRECT_KEYS
+from wiktionary_filters import WIKT_EXCLUDED_POS, WIKT_REDIRECT_KEYS, filter_misc
 # Shared source-lang code normalization (ISO 639-3 → 639-1, umbrella collapse,
 # whitespace stripping, non-ASCII rejection). See scripts/iso_codes.py for the
 # bug class this prevents.
@@ -151,26 +151,6 @@ def extract_kaikki_examples(sense: dict) -> Tuple[str, str]:
     return "\t".join(texts), "\t".join(trans)
 
 
-def extract_kaikki_misc(sense: dict) -> str:
-    """Returns comma-joined misc flags from kaikki tags + raw_tags. Dedup
-    preserves first-occurrence order. Tags (machine-normalized) come before
-    raw_tags (German editorial labels) so the more useful identifiers
-    surface first when the runtime renders them inline.
-    """
-    out: List[str] = []
-    seen: Set[str] = set()
-    for src in (sense.get("tags") or [], sense.get("raw_tags") or []):
-        for t in src:
-            if not isinstance(t, str):
-                continue
-            s = t.strip()
-            if not s or s in seen:
-                continue
-            seen.add(s)
-            out.append(s)
-    return ",".join(out)
-
-
 # ── JMdict parsing ─────────────────────────────────────────────────────
 
 def parse_jmdict(
@@ -228,7 +208,7 @@ def parse_jmdict(
                     if m.text and m.text not in seen_misc:
                         seen_misc.add(m.text)
                         entry_misc.append(m.text)
-            misc_str = ",".join(entry_misc)
+            misc_str = ",".join(filter_misc(entry_misc))
 
         # For each sense, check if it has glosses in the target language
         for sense_ord, sense in enumerate(entry.iter("sense")):
@@ -464,7 +444,7 @@ def parse_wiktionary_dir(
                     pos_str = pos if pos else ""
                     gloss_str = "\t".join(glosses[:8])
                     examples_str, example_trans_str = extract_kaikki_examples(sense)
-                    misc_str = extract_kaikki_misc(sense)
+                    misc_str = ",".join(filter_misc(sense.get("tags"), sense.get("raw_tags")))
 
                     rows.append((
                         source_lang, word, "", start_ord + senses_added, pos_str,

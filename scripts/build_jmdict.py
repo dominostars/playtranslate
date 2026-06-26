@@ -28,6 +28,10 @@ import ssl
 import sys
 import urllib.request
 import xml.etree.ElementTree as ET
+
+# Curate misc tags to the shared vocabulary (app/src/main/resources/misc_vocabulary.json):
+# register normalized, domain/dialect kept, grammatical noise + freeform s_inf dropped.
+from wiktionary_filters import filter_misc
 import zipfile
 from pathlib import Path
 
@@ -526,7 +530,7 @@ def parse_and_insert(
             for s in sense.findall("s_inf"):
                 if s.text:
                     misc_parts.append(s.text)
-            misc_str = "\t".join(misc_parts)
+            misc_str = "\t".join(filter_misc(misc_parts))
 
             if glosses:
                 cur.execute(
