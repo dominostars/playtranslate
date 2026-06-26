@@ -112,11 +112,28 @@ object MiscVocabulary {
     /** English label for a code (Anki export stays English, never localized). */
     fun englishLabel(code: MiscCode): String = current().label[code] ?: code.name
 
+    /** Expand a legacy (pre-tab) target pack's comma-joined misc blob into its
+     *  individual tokens. Such a blob is unrecognized as a whole, so splitting
+     *  it recovers the cleaned tags without a forced re-download; recognized
+     *  tokens — including curated domain labels that contain commas, like
+     *  "food, cooking" — are left intact, and current tab-delimited packs (whose
+     *  tokens are all recognized) are a no-op here. Shared by [renderMisc] and
+     *  [englishMisc] so both paths stay backward-compatible. */
+    fun expandLegacyMisc(tokens: List<String>): List<String> =
+        tokens.flatMap { token ->
+            val t = token.trim()
+            if (canonical(t) == null && !isPassthrough(t) && ',' in t) {
+                t.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            } else {
+                listOf(t)
+            }
+        }
+
     /** Same filter as `renderMisc` but English-only and Context-free — for Anki
      *  card HTML, which must stay portable. Register/dialect → English label,
      *  domain/region → raw, everything else dropped. */
     fun englishMisc(tokens: List<String>): List<String> =
-        tokens.mapNotNull { token ->
+        expandLegacyMisc(tokens).mapNotNull { token ->
             canonical(token)?.let { englishLabel(it) }
                 ?: if (isPassthrough(token)) token else null
         }.distinct()

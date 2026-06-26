@@ -110,4 +110,26 @@ class MiscVocabularyTest {
             assertFalse(MiscVocabulary.englishMisc(listOf(label)).any { it.contains('\t') })
         }
     }
+
+    /** Backward-compat: a legacy (pre-tab) target pack joined misc with ',',
+     *  so the whole row arrives as one unrecognized token. It must be re-split
+     *  and cleaned, while a NEW pack's comma-containing domain stays whole. */
+    @Test
+    fun `legacy comma-joined target misc is re-split and cleaned`() {
+        // The exact noisy comma blob a pre-tab target pack stores.
+        assertEquals(
+            listOf("Derogatory"),
+            MiscVocabulary.englishMisc(listOf("derogatory,feminine,masculine,noun")),
+        )
+        // Region + register survive (order preserved); grammar is dropped.
+        assertEquals(
+            listOf("Chile", "Colloquial"),
+            MiscVocabulary.englishMisc(listOf("Chile,colloquial,noun")),
+        )
+        // A new pack's single comma-domain token is recognized → never re-split.
+        assertEquals(
+            listOf("food, cooking"),
+            MiscVocabulary.englishMisc(listOf("food, cooking")),
+        )
+    }
 }

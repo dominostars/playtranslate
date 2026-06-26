@@ -91,9 +91,9 @@ class FstTargetGlossDatabase private constructor(
         },
         // Tab-delimited, matching the source packs and build_target_pack.py.
         // NOT comma: curated domain labels contain commas (e.g. "food, cooking"),
-        // which a comma split would corrupt. A pre-tab-delimiter pack decodes to
-        // one un-splittable token that the render filter drops (no misc shown)
-        // until it is rebuilt — never a crash.
+        // which a comma split would corrupt. A legacy (pre-tab) pack decodes to
+        // one comma-joined token; MiscVocabulary.expandLegacyMisc re-splits it at
+        // render time so old packs keep their cleaned tags until they're rebuilt.
         misc = strings.get(miscId).split('\t').filter { it.isNotBlank() },
     )
 

@@ -25,7 +25,7 @@ import com.playtranslate.model.MiscVocabulary.MiscCode
  */
 fun Context.renderMisc(tokens: List<String>): List<String> {
     if (tokens.isEmpty()) return emptyList()
-    return tokens.mapNotNull { token ->
+    return MiscVocabulary.expandLegacyMisc(tokens).mapNotNull { token ->
         MiscVocabulary.canonical(token)?.let { getString(it.stringRes()) }
             ?: if (MiscVocabulary.isPassthrough(token)) token else null
     }.distinct()
