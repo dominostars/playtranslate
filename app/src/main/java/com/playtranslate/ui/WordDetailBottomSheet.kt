@@ -960,23 +960,32 @@ class WordDetailBottomSheet : DialogFragment() {
             )
         }
 
-        // One row per reading, ordered by common use, each with its own pitch
-        // contour and Speak chip. The reading the lens highlighted ([readingHint],
-        // e.g. 明日 → あす) is bolded in place; a cold lookup bolds nothing. A
-        // written-only entry (no readings — non-JA) yields no rows, so we emit a
-        // single chip that speaks the word.
+        // Every reading, ordered by common use, flowing inline and wrapping to a
+        // new line only when the width runs out. Each is its own tap target — tap
+        // the reading OR its chip to hear it — carrying its pitch contour, with the
+        // reading the lens highlighted ([readingHint], e.g. 明日 → あす) bolded in
+        // place (a cold lookup bolds nothing). A written-only entry (non-JA) yields
+        // a single speak chip.
+        val readingsFlow = FlowLayout(ctx).apply {
+            lineSpacingPx = dp(6)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+        }
         val readingRows = entry.orderedReadingRows(readingHint)
         if (readingRows.isEmpty()) {
-            block.addView(buildReadingRow(written, null, emptyList(), bolded = false, sourceLangId))
+            readingsFlow.addView(buildReadingUnit(written, null, emptyList(), bolded = false, sourceLangId))
         } else {
             for (row in readingRows) {
-                block.addView(
-                    buildReadingRow(
+                readingsFlow.addView(
+                    buildReadingUnit(
                         row.written ?: written, row.reading, row.pitch, row.bolded, sourceLangId,
                     )
                 )
             }
         }
+        block.addView(readingsFlow)
 
         // Badges: Common pill, star rating, and — resolved asynchronously —
         // the "already in Anki" deck pill. Built unconditionally as a wrapping
@@ -1032,7 +1041,7 @@ class WordDetailBottomSheet : DialogFragment() {
      *  when [bolded], else muted) followed by a Speak chip that pronounces that
      *  reading. [reading] null → chip only (written-only entries); the chip then
      *  speaks [written]. */
-    private fun buildReadingRow(
+    private fun buildReadingUnit(
         written: String,
         reading: String?,
         pitch: List<Int>,
@@ -1040,16 +1049,26 @@ class WordDetailBottomSheet : DialogFragment() {
         sourceLangId: SourceLangId,
     ): View {
         val ctx = requireContext()
-        val row = LinearLayout(ctx).apply {
+        // Speak the kana reading (when known), not the kanji surface, so the audio
+        // matches the unit (初夏 → はつか vs the engine's しょか guess).
+        val chip = buildSpeakChip(
+            ttsTextForWord(written, reading, sourceLangId),
+            sourceLangId,
+            leading = reading == null,
+        )
+        val unit = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-            )
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).also { it.marginEnd = dp(8) }
         }
         if (reading != null) {
-            row.addView(TextView(ctx).apply {
+            val ripple = TypedValue().also {
+                ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, it, true)
+            }.resourceId
+            unit.addView(TextView(ctx).apply {
                 if (pitch.isNotEmpty()) {
                     // Headroom for the overline band — PitchAccentSpan leaves
                     // FontMetrics alone by contract.
@@ -1061,22 +1080,19 @@ class WordDetailBottomSheet : DialogFragment() {
                 textSize = 18f
                 setTextColor(ctx.themeColor(if (bolded) R.attr.ptText else R.attr.ptTextMuted))
                 if (bolded) setTypeface(typeface, Typeface.BOLD)
+                // Tapping the reading itself speaks it — delegate to the chip so
+                // the icon/spinner feedback is identical to tapping the chip.
+                isClickable = true
+                setBackgroundResource(ripple)
+                setOnClickListener { chip.performClick() }
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                 )
             })
         }
-        // Speak the kana reading (when known), not the kanji surface, so the audio
-        // matches the row (初夏 → はつか vs the engine's しょか guess).
-        row.addView(
-            buildSpeakChip(
-                ttsTextForWord(written, reading, sourceLangId),
-                sourceLangId,
-                leading = reading == null,
-            )
-        )
-        return row
+        unit.addView(chip)
+        return unit
     }
 
     /**
