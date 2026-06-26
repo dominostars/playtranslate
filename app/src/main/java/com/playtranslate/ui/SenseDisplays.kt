@@ -40,7 +40,7 @@ fun buildSenseDisplays(
                 val fallbackPos = unambiguousFallbackPos(entries)
                 targetSensesSorted.map { target ->
                     val pos = target.pos.filter { it.isNotBlank() }.ifEmpty { fallbackPos }
-                    SenseDisplay(pos = pos, definition = target.glosses.joinToString("; "))
+                    SenseDisplay(pos = pos, definition = target.glosses.joinToString("; "), misc = target.misc)
                 }
             } else {
                 // Reached only when target == "en" (Native is not returned for
@@ -52,11 +52,13 @@ fun buildSenseDisplays(
                         SenseDisplay(
                             pos = target.pos,
                             definition = target.glosses.joinToString("; "),
+                            misc = target.misc,
                         )
                     } else {
                         SenseDisplay(
                             pos = sense.partsOfSpeech,
                             definition = sense.targetDefinitions.joinToString("; "),
+                            misc = sense.misc,
                         )
                     }
                 }
@@ -69,16 +71,18 @@ fun buildSenseDisplays(
                     SenseDisplay(
                         pos = sense.partsOfSpeech,
                         definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") },
+                        misc = sense.misc,
                     )
                 }
             } else {
                 buildList {
-                    add(SenseDisplay(pos = emptyList(), definition = defResult.translatedHeadword))
+                    add(SenseDisplay(pos = emptyList(), definition = defResult.translatedHeadword, misc = emptyList()))
                     flatSenses.forEach { sense ->
                         add(
                             SenseDisplay(
                                 pos = sense.partsOfSpeech,
                                 definition = sense.targetDefinitions.joinToString("; "),
+                                misc = sense.misc,
                             )
                         )
                     }
@@ -91,6 +95,7 @@ fun buildSenseDisplays(
                 SenseDisplay(
                     pos = sense.partsOfSpeech,
                     definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") },
+                    misc = sense.misc,
                 )
             }
         }
@@ -99,6 +104,7 @@ fun buildSenseDisplays(
                 SenseDisplay(
                     pos = sense.partsOfSpeech,
                     definition = sense.targetDefinitions.joinToString("; "),
+                    misc = sense.misc,
                 )
             }
         }
@@ -117,6 +123,7 @@ fun importedSenseDisplays(groups: List<ImportedSenseGroup>): List<SenseDisplay> 
                 // localized — so it rides a single-element pos list.
                 pos = listOf(importedHeader(group.source, sense.pos)),
                 definition = sense.definition,
+                misc = emptyList(),
                 imported = true,
                 accentColor = group.accentColor,
             )

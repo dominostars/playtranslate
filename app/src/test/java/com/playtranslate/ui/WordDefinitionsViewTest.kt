@@ -69,7 +69,7 @@ class WordDefinitionsViewTest {
     fun nonEmptySenses_withPlaceholderSet_doesNotRenderPlaceholder() {
         val v = WordDefinitionsView(ctx).apply { emptyPlaceholder = placeholder }
         val data = emptyData().copy(
-            senses = listOf(SenseDisplay(pos = emptyList(), definition = "to eat")),
+            senses = listOf(SenseDisplay(pos = emptyList(), definition = "to eat", misc = emptyList())),
         )
         v.bind(data, label = null, scale = 1f)
         val t = texts(v)

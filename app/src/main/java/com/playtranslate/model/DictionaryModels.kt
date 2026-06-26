@@ -287,7 +287,7 @@ fun DictionaryEntry.selectHeadword(
 val DictionaryEntry.isKanaOnly: Boolean
     get() {
         val hasUkSense = senses.any { sense ->
-            sense.misc.any { it.equals("Kana only", ignoreCase = true) }
+            sense.misc.any { MiscVocabulary.canonical(it) == MiscVocabulary.MiscCode.KANA_ONLY }
         }
         if (!hasUkSense) return false
         val anyPriorityKanji = headwords.any { it.written != null && it.hasPriority }

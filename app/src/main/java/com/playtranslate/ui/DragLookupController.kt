@@ -1150,6 +1150,7 @@ class DragLookupController(
                         SenseDisplay(
                             pos = pos,
                             definition = target.glosses.joinToString("; "),
+                            misc = target.misc,
                         )
                     }
                 } else {
@@ -1163,11 +1164,13 @@ class DragLookupController(
                             SenseDisplay(
                                 pos = target.pos,
                                 definition = target.glosses.joinToString("; "),
+                                misc = target.misc,
                             )
                         } else {
                             SenseDisplay(
                                 pos = sense.partsOfSpeech,
                                 definition = sense.targetDefinitions.joinToString("; "),
+                                misc = sense.misc,
                             )
                         }
                     }
@@ -1197,17 +1200,19 @@ class DragLookupController(
                         flatSenses.mapIndexed { i, sense ->
                             SenseDisplay(
                                 pos = sense.partsOfSpeech,
-                                definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                                definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") },
+                                misc = sense.misc,
                             )
                         }
                     } else {
                         // No translated definitions — headword + English context
                         buildList {
-                            add(SenseDisplay(pos = emptyList(), definition = defResult.translatedHeadword))
+                            add(SenseDisplay(pos = emptyList(), definition = defResult.translatedHeadword, misc = emptyList()))
                             flatSenses.forEach { sense ->
                                 add(SenseDisplay(
                                     pos = sense.partsOfSpeech,
-                                    definition = sense.targetDefinitions.joinToString("; ")
+                                    definition = sense.targetDefinitions.joinToString("; "),
+                                    misc = sense.misc,
                                 ))
                             }
                         }
@@ -1233,7 +1238,8 @@ class DragLookupController(
                     senses = importedRows + flatSenses.mapIndexed { i, sense ->
                         SenseDisplay(
                             pos = sense.partsOfSpeech,
-                            definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                            definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") },
+                            misc = sense.misc,
                         )
                     },
                     freqScore = entry.freqScore,
@@ -1256,7 +1262,8 @@ class DragLookupController(
                     senses = importedRows + flatSenses.map { sense ->
                         SenseDisplay(
                             pos = sense.partsOfSpeech,
-                            definition = sense.targetDefinitions.joinToString("; ")
+                            definition = sense.targetDefinitions.joinToString("; "),
+                            misc = sense.misc,
                         )
                     },
                     freqScore = entry.freqScore,

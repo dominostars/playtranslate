@@ -356,6 +356,88 @@
     <!-- POS tag shown with a word's definitions: the "auxiliary" (verb/adjective) category. -->
     <string name="pos_auxiliary">Auxiliary</string>
 
+    <!-- Misc register/usage tags shown under a word's definition (the magnifier
+         lens, the translation-result word cell, and the word-detail sheet). A
+         short italic note telling the learner HOW/WHEN a sense is used. Mapped
+         from JMdict + Wiktionary tags by MiscVocabulary; domain (medicine, law…)
+         and dialect/region names pass through untranslated. Keep these short. -->
+    <!-- Misc tag: the word is usually written in kana, not kanji. -->
+    <string name="misc_kana_only">Kana only</string>
+    <!-- Misc tag: the word is usually written in kanji. -->
+    <string name="misc_kanji_only">Kanji only</string>
+    <!-- Misc tag: casual/everyday speech. -->
+    <string name="misc_colloquial">Colloquial</string>
+    <!-- Misc tag: informal register. -->
+    <string name="misc_informal">Informal</string>
+    <!-- Misc tag: formal register. -->
+    <string name="misc_formal">Formal</string>
+    <!-- Misc tag: literary/written register. -->
+    <string name="misc_literary">Literary</string>
+    <!-- Misc tag: honorific/respectful (e.g. Japanese sonkeigo). -->
+    <string name="misc_honorific">Honorific</string>
+    <!-- Misc tag: humble speech (e.g. Japanese kenjougo). -->
+    <string name="misc_humble">Humble</string>
+    <!-- Misc tag: polite speech (e.g. Japanese teineigo). -->
+    <string name="misc_polite">Polite</string>
+    <!-- Misc tag: familiar/intimate speech. -->
+    <string name="misc_familiar">Familiar</string>
+    <!-- Misc tag: endearing/affectionate. -->
+    <string name="misc_endearing">Endearing</string>
+    <!-- Misc tag: children's language. -->
+    <string name="misc_childrens">Children\'s</string>
+    <!-- Misc tag: used chiefly by/about women. -->
+    <string name="misc_female_speech">Female term</string>
+    <!-- Misc tag: used chiefly by/about men. -->
+    <string name="misc_male_speech">Male term</string>
+    <!-- Misc tag: archaic — no longer in normal use. -->
+    <string name="misc_archaic">Archaic</string>
+    <!-- Misc tag: obsolete. -->
+    <string name="misc_obsolete">Obsolete</string>
+    <!-- Misc tag: dated — old-fashioned. -->
+    <string name="misc_dated">Dated</string>
+    <!-- Misc tag: historical — refers to a thing of the past. -->
+    <string name="misc_historical">Historical</string>
+    <!-- Misc tag: rare/uncommon. -->
+    <string name="misc_rare">Rare</string>
+    <!-- Misc tag: neologism — recently coined. -->
+    <string name="misc_neologism">Neologism</string>
+    <!-- Misc tag: slang. -->
+    <string name="misc_slang">Slang</string>
+    <!-- Misc tag: Internet slang. -->
+    <string name="misc_internet_slang">Internet slang</string>
+    <!-- Misc tag: manga/anime slang. -->
+    <string name="misc_manga_slang">Manga slang</string>
+    <!-- Misc tag: idiomatic expression. -->
+    <string name="misc_idiomatic">Idiomatic</string>
+    <!-- Misc tag: figurative/non-literal sense. -->
+    <string name="misc_figurative">Figurative</string>
+    <!-- Misc tag: onomatopoeia / mimetic word. -->
+    <string name="misc_onomatopoeia">Onomatopoeia</string>
+    <!-- Misc tag: poetic. -->
+    <string name="misc_poetic">Poetic</string>
+    <!-- Misc tag: humorous/jocular. -->
+    <string name="misc_humorous">Humorous</string>
+    <!-- Misc tag: derogatory. -->
+    <string name="misc_derogatory">Derogatory</string>
+    <!-- Misc tag: offensive. -->
+    <string name="misc_offensive">Offensive</string>
+    <!-- Misc tag: vulgar/crude. -->
+    <string name="misc_vulgar">Vulgar</string>
+    <!-- Misc tag: slur. -->
+    <string name="misc_slur">Slur</string>
+    <!-- Misc tag: sensitive — use with care. -->
+    <string name="misc_sensitive">Sensitive</string>
+    <!-- Misc tag: euphemistic. -->
+    <string name="misc_euphemistic">Euphemistic</string>
+    <!-- Misc tag: sarcastic/ironic. -->
+    <string name="misc_sarcastic">Sarcastic</string>
+    <!-- Misc tag: nonstandard form. -->
+    <string name="misc_nonstandard">Nonstandard</string>
+    <!-- Misc tag: four-character idiomatic compound (Japanese yojijukugo). -->
+    <string name="misc_yojijukugo">Four-character compound</string>
+    <!-- Misc tag: dialectal/regional. -->
+    <string name="misc_dialectal">Dialectal</string>
+
     <!-- Badge text when a looked-up word already has an Anki card in more
          than one deck (single-deck case shows the deck's name instead). -->
     <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> Anki decks</string>

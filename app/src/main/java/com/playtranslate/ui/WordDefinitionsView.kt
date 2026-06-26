@@ -84,7 +84,7 @@ class WordDefinitionsView @JvmOverloads constructor(
      * lens passes a small factor, the result cell the handoff's "large"
      * default.
      */
-    fun bind(data: WordDefinitionData, label: String?, scale: Float) {
+    fun bind(data: WordDefinitionData, label: String?, scale: Float, showMisc: Boolean = true) {
         removeAllViews()
 
         val hasMetaContent = data.isCommon || data.freqScore > 0 ||
@@ -132,6 +132,19 @@ class WordDefinitionsView @JvmOverloads constructor(
                 buildDefinitionRow(i + 1, sense.definition, scale, clamp = sense.imported),
                 fullWidth(topMargin = top),
             )
+            // Register-tag line under the gloss. renderMisc is the render-side
+            // cleanliness authority (localizes known tags, passes domain/region
+            // through, drops noise). Suppressed on the drag lens (showMisc=false)
+            // so its compact layout is unchanged — the tap-through detail sheet
+            // still shows misc (it re-resolves independently).
+            if (showMisc) {
+                context.renderMiscText(sense.misc)?.let { miscText ->
+                    addView(
+                        buildMiscRow(miscText, scale),
+                        fullWidth(topMargin = dp(2f * scale)).also { it.marginStart = dp(25f * scale) },
+                    )
+                }
+            }
             firstSenseBlock = false
         }
 
@@ -249,6 +262,16 @@ class WordDefinitionsView @JvmOverloads constructor(
                     ellipsize = TextUtils.TruncateAt.END
                 }
             }, LayoutParams(0, WRAP_CONTENT, 1f).apply { marginStart = dp(9f * scale) })
+        }
+
+    /** The small italic register-tag line shown under a sense's gloss (e.g.
+     *  "Honorific · Colloquial"). Muted hint color, sized just below the gloss. */
+    private fun buildMiscRow(text: String, scale: Float): TextView =
+        TextView(context).apply {
+            this.text = text
+            setTextColor(hintText)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f * scale)
+            setTypeface(null, android.graphics.Typeface.ITALIC)
         }
 
     private fun fullWidth(topMargin: Int = 0, bottomMargin: Int = 0): LayoutParams =

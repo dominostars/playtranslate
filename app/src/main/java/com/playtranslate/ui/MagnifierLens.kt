@@ -1563,7 +1563,9 @@ class MagnifierLens(
             }
             mode = Mode.DEFINITIONS
             setLabel(data.word, data.reading, data.pitch)
-            definitionsContent.bind(data, label, LENS_DEFINITIONS_SCALE)
+            // Drag lens keeps its compact layout — no misc line. The detail
+            // sheet reached on tap-through still shows misc (it re-resolves).
+            definitionsContent.bind(data, label, LENS_DEFINITIONS_SCALE, showMisc = false)
             definitionsScroll.scrollTo(0, 0)
             definitionsScroll.visibility = VISIBLE
             // Chip visibility is owned by [attachInteractiveListeners] —

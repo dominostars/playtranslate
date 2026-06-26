@@ -39,6 +39,11 @@ data class WordDefinitionData(
 data class SenseDisplay(
     val pos: List<String>,
     val definition: String,
+    /** Curated misc register tags, raw as stored in the pack. The render layer
+     *  ([com.playtranslate.ui.renderMisc]) is the cleanliness authority — it
+     *  localizes / passes through / drops. REQUIRED (no default) so every
+     *  construction site decides explicitly; imported rows pass emptyList(). */
+    val misc: List<String>,
     val imported: Boolean = false,
     /** Per-dictionary accent override (ARGB) for an imported row's title;
      *  null = the default muted header. */

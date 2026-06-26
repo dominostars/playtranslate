@@ -919,7 +919,7 @@ class WordAnkiReviewSheet : DialogFragment() {
                     posLabels = posLabels,
                     glossList = target.glosses,
                     senseNumber = senseNumber,
-                    miscText = target.misc.takeIf { it.isNotEmpty() }?.joinToString(" · "),
+                    miscText = requireContext().renderMiscText(target.misc),
                     examples = visibleExamples,
                     senseIndex = idx,
                     visibleSiblingCount = numVisible,
@@ -957,7 +957,7 @@ class WordAnkiReviewSheet : DialogFragment() {
                 posLabels = posLabels,
                 glossList = glossList,
                 senseNumber = senseNumber,
-                miscText = sense.misc.takeIf { it.isNotEmpty() }?.joinToString(" · "),
+                miscText = requireContext().renderMiscText(sense.misc),
                 examples = visibleExamples,
                 senseIndex = flatIdx,
                 visibleSiblingCount = numVisibleSenses,
@@ -1654,9 +1654,10 @@ class WordAnkiReviewSheet : DialogFragment() {
                 append(numberPrefix)
                 append(htmlEscape(target.glosses.joinToString("; ")))
                 append("</div>")
-                if (target.misc.isNotEmpty()) {
+                val targetMisc = com.playtranslate.model.MiscVocabulary.englishMisc(target.misc)
+                if (targetMisc.isNotEmpty()) {
                     append("<div ${styler("gl-misc", "")}>")
-                    append(htmlEscape(target.misc.joinToString(" · ")))
+                    append(htmlEscape(targetMisc.joinToString(" · ")))
                     append("</div>")
                 }
                 target.examples.withIndex()
@@ -1711,10 +1712,10 @@ class WordAnkiReviewSheet : DialogFragment() {
             append(numberPrefix)
             append(htmlEscape(gloss))
             append("</div>")
-            val miscText = sense.misc.takeIf { it.isNotEmpty() }?.joinToString(" · ")
-            if (miscText != null) {
+            val miscEng = com.playtranslate.model.MiscVocabulary.englishMisc(sense.misc)
+            if (miscEng.isNotEmpty()) {
                 append("<div ${styler("gl-misc", "")}>")
-                append(htmlEscape(miscText))
+                append(htmlEscape(miscEng.joinToString(" · ")))
                 append("</div>")
             }
             sense.examples.withIndex()
