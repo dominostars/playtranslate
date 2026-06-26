@@ -208,7 +208,7 @@ def parse_jmdict(
                     if m.text and m.text not in seen_misc:
                         seen_misc.add(m.text)
                         entry_misc.append(m.text)
-            misc_str = ",".join(filter_misc(entry_misc))
+            misc_str = "\t".join(filter_misc(entry_misc))
 
         # For each sense, check if it has glosses in the target language
         for sense_ord, sense in enumerate(entry.iter("sense")):
@@ -444,7 +444,7 @@ def parse_wiktionary_dir(
                     pos_str = pos if pos else ""
                     gloss_str = "\t".join(glosses[:8])
                     examples_str, example_trans_str = extract_kaikki_examples(sense)
-                    misc_str = ",".join(filter_misc(sense.get("tags"), sense.get("raw_tags")))
+                    misc_str = "\t".join(filter_misc(sense.get("tags"), sense.get("raw_tags")))
 
                     rows.append((
                         source_lang, word, "", start_ord + senses_added, pos_str,

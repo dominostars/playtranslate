@@ -3,8 +3,8 @@
   "_filter_rule": "Keep iff: register alias (from kaikki .tags / JMdict misc, normalized to canonical code) OR domainAllowlist (passthrough raw) OR regionGazetteer (passthrough raw). Everything else is DROPPED; tokens NOT in grammaticalDenylist are logged when dropped so gazetteer/register gaps are visible.",
 
   "register": [
-    { "code": "KANA_ONLY",      "stringKey": "misc_kana_only",      "label": "Kana only",      "aliases": ["kana only"] },
-    { "code": "KANJI_ONLY",     "stringKey": "misc_kanji_only",     "label": "Kanji only",     "aliases": ["kanji only"] },
+    { "code": "KANA_ONLY",      "stringKey": "misc_kana_only",      "label": "Kana only",      "aliases": ["kana only", "usually written using kana alone", "word usually written using kana alone"] },
+    { "code": "KANJI_ONLY",     "stringKey": "misc_kanji_only",     "label": "Kanji only",     "aliases": ["kanji only", "usually written using kanji alone", "word usually written using kanji alone"] },
     { "code": "COLLOQUIAL",     "stringKey": "misc_colloquial",     "label": "Colloquial",     "aliases": ["colloquial"] },
     { "code": "INFORMAL",       "stringKey": "misc_informal",       "label": "Informal",       "aliases": ["informal"] },
     { "code": "FORMAL",         "stringKey": "misc_formal",         "label": "Formal",         "aliases": ["formal", "formal or literary term"] },

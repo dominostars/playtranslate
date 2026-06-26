@@ -84,4 +84,30 @@ class MiscVocabularyTest {
         // A freeform s_inf sentence is dropped.
         assertTrue(MiscVocabulary.englishMisc(listOf("めばちこ is Osaka dialect")).isEmpty())
     }
+
+    /** F1 regression: build_target_pack feeds RAW JMdict misc (not the
+     *  MISC_ABBREV-abbreviated form) into the filter, so the raw descriptive
+     *  forms must canonicalize or kana-only/kanji-only rows silently vanish. */
+    @Test
+    fun `raw JMdict kana-only and kanji-only forms canonicalize`() {
+        assertEquals(MiscCode.KANA_ONLY, MiscVocabulary.canonical("usually written using kana alone"))
+        assertEquals(MiscCode.KANA_ONLY, MiscVocabulary.canonical("word usually written using kana alone"))
+        assertEquals(MiscCode.KANJI_ONLY, MiscVocabulary.canonical("usually written using kanji alone"))
+        assertEquals(
+            listOf("Kana only"),
+            MiscVocabulary.englishMisc(listOf("word usually written using kana alone")),
+        )
+    }
+
+    /** F2 regression: the target-pack misc format is tab-delimited, so domain
+     *  labels that contain commas pass through whole instead of being split
+     *  apart by the old comma split. */
+    @Test
+    fun `comma-containing domain labels pass through intact`() {
+        for (label in listOf("food, cooking", "art, aesthetics", "electricity, elec. eng.")) {
+            assertEquals(listOf(label), MiscVocabulary.englishMisc(listOf(label)))
+            // A surviving token must never contain the tab delimiter.
+            assertFalse(MiscVocabulary.englishMisc(listOf(label)).any { it.contains('\t') })
+        }
+    }
 }
