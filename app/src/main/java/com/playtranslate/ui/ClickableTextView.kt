@@ -20,17 +20,25 @@ class ClickableTextView @JvmOverloads constructor(
 
     var onTapAtOffset: ((charOffset: Int) -> Unit)? = null
 
-    // Set by [onSingleTapUp] before it calls [performClick] so the
-    // accessibility-click path and the touch path go through the same
-    // performClick → onTapAtOffset chain with the correct offset. Defaults
-    // to 0 so a TalkBack double-tap (which doesn't run onSingleTapUp)
-    // opens the editor at the start of the text.
+    init {
+        // Be explicitly clickable so the base View fires exactly ONE performClick
+        // per tap (its ACTION_UP handler) and exposes the TalkBack click action.
+        // The gestureDetector below must NOT also call performClick — doing both
+        // double-fired onTapAtOffset (one synchronous gesture click + one posted
+        // View click), which double-resolved the tapped word.
+        isClickable = true
+    }
+
+    // Set by [onSingleTapUp] on every touch tap; consumed by the base View's
+    // single [performClick] so the touch path lands on the correct offset.
+    // Defaults to 0 so a TalkBack double-tap — which fires performClick without
+    // running onSingleTapUp — opens at the start of the text.
     private var pendingTapOffset: Int = 0
 
     private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+        // Records the tap offset only; the click is fired by the base View.
         override fun onSingleTapUp(e: MotionEvent): Boolean {
             pendingTapOffset = offsetAt(e.x, e.y)
-            performClick()
             return true
         }
     })
@@ -40,10 +48,10 @@ class ClickableTextView @JvmOverloads constructor(
         highlightColor = 0x00000000
     }
 
-    // Click detection runs through [gestureDetector]'s onSingleTapUp, which
-    // calls performClick. Lint can't trace that path through the anonymous
-    // SimpleOnGestureListener and so flags onTouchEvent for not calling
-    // performClick directly.
+    // Taps are turned into a single click by the base View's ACTION_UP handling
+    // (this view is clickable); [gestureDetector] only records the tap offset.
+    // Lint can't see performClick on the View's posted-click path, hence the
+    // suppression.
     @android.annotation.SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         gestureDetector.onTouchEvent(event)
