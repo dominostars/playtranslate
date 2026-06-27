@@ -941,12 +941,25 @@ class WordDetailBottomSheet : DialogFragment() {
         // marked "Kana only" (JMdict uk tag — e.g. なぜ over 何故).
         val display = entry.headwordDisplay(queriedWord)
         val written = display.written
+        val readingRows = entry.orderedReadingRows(readingHint)
+        // Kana-only: the (single) reading just repeats the kana title. Draw the
+        // accent on the TITLE itself, inline the speak icon to its right, and drop
+        // the reading rows below — instead of repeating the kana.
+        val kanaOnly = readingRows.size == 1 && readingRows[0].reading == written
 
-        // Replace the placeholder (the queried word) with the canonical
-        // headword from the entry. The typeface was already set in
-        // onViewCreated, and the layout listener there will resync the
-        // scroll content's paddingTop after this re-measure.
-        bigHeadwordView?.text = written
+        // Replace the placeholder (the queried word) with the canonical headword.
+        // For kana-only words the pitch contour rides on the title (the layout
+        // listener in onViewCreated resyncs the scroll content's paddingTop).
+        if (kanaOnly && readingRows[0].pitch.isNotEmpty()) {
+            bigHeadwordView?.text = buildPitchAnnotatedReading(written, readingRows[0].pitch)
+            bigHeadwordView?.setPadding(0, dp(10), 0, 0) // overline headroom
+        } else {
+            bigHeadwordView?.text = written
+            bigHeadwordView?.setPadding(0, 0, 0, 0)
+        }
+        // Speak icon inline to the right of the title when there's no reading row to
+        // host it (kana-only); the whole title becomes the tap-to-speak target.
+        configureHeadwordSpeak(kanaOnly, written, sourceLangId)
 
         val isCommon = entry.isCommon == true
         val freqStars = entry.freqScore.coerceIn(0, 5)
@@ -966,26 +979,29 @@ class WordDetailBottomSheet : DialogFragment() {
         // reading the lens highlighted ([readingHint], e.g. 明日 → あす) bolded in
         // place (a cold lookup bolds nothing). A written-only entry (non-JA) yields
         // a single speak chip.
-        val readingsFlow = FlowLayout(ctx).apply {
-            lineSpacingPx = dp(6)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            )
-        }
-        val readingRows = entry.orderedReadingRows(readingHint)
-        if (readingRows.isEmpty()) {
-            readingsFlow.addView(buildReadingUnit(written, null, emptyList(), bolded = false, sourceLangId))
-        } else {
-            for (row in readingRows) {
-                readingsFlow.addView(
-                    buildReadingUnit(
-                        row.written ?: written, row.reading, row.pitch, row.bolded, sourceLangId,
-                    )
+        // Skipped entirely for kana-only — the accent + speak icon ride on the
+        // title above instead of repeating the kana here.
+        if (!kanaOnly) {
+            val readingsFlow = FlowLayout(ctx).apply {
+                lineSpacingPx = dp(6)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
                 )
             }
+            if (readingRows.isEmpty()) {
+                readingsFlow.addView(buildReadingUnit(written, null, emptyList(), bolded = false, sourceLangId))
+            } else {
+                for (row in readingRows) {
+                    readingsFlow.addView(
+                        buildReadingUnit(
+                            row.written ?: written, row.reading, row.pitch, row.bolded, sourceLangId,
+                        )
+                    )
+                }
+            }
+            block.addView(readingsFlow)
         }
-        block.addView(readingsFlow)
 
         // Badges: Common pill, star rating, and — resolved asynchronously —
         // the "already in Anki" deck pill. Built unconditionally as a wrapping
@@ -1041,6 +1057,43 @@ class WordDetailBottomSheet : DialogFragment() {
      *  when [bolded], else muted) followed by a Speak chip that pronounces that
      *  reading. [reading] null → chip only (written-only entries); the chip then
      *  speaks [written]. */
+    /** Inline a tap-to-speak affordance ON the title: a trailing speaker icon and
+     *  a click that pronounces [speakText]. Used for kana-only words, which carry
+     *  no separate reading row to host a speak chip. [enabled] = false clears it. */
+    private fun configureHeadwordSpeak(enabled: Boolean, speakText: String, lang: SourceLangId) {
+        val hw = bigHeadwordView ?: return
+        if (enabled) {
+            val ctx = requireContext()
+            val icon = AppCompatResources.getDrawable(ctx, R.drawable.ic_lens_speak)?.mutate()?.apply {
+                setBounds(0, 0, dp(22), dp(22))
+                setTint(ctx.themeColor(R.attr.ptTextMuted))
+            }
+            hw.setCompoundDrawablesRelative(null, null, icon, null)
+            hw.compoundDrawablePadding = dp(8)
+            hw.isClickable = true
+            hw.setOnClickListener { speakHeadword(speakText, lang) }
+        } else {
+            hw.setCompoundDrawablesRelative(null, null, null, null)
+            hw.isClickable = false
+            hw.setOnClickListener(null)
+        }
+    }
+
+    private fun speakHeadword(text: String, lang: SourceLangId) {
+        if (speakJob?.isActive == true) return
+        val ctx = requireContext()
+        speakJob = viewLifecycleOwner.lifecycleScope.launch {
+            val outcome = PronunciationPlayer.play(ctx, AudioRequest.word(text, null, lang))
+            val failure: String? = when (outcome) {
+                PlayOutcome.TtsNoEngine -> "No text-to-speech engine is available"
+                is PlayOutcome.TtsLanguageUnsupported ->
+                    "Text-to-speech isn't available for ${lang.displayName()}"
+                else -> null
+            }
+            if (failure != null) Toast.makeText(ctx, failure, Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun buildReadingUnit(
         written: String,
         reading: String?,

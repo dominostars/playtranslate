@@ -187,7 +187,6 @@ class WordResultCell @JvmOverloads constructor(
     ) {
         boundData = data
         boundScale = scale
-        wordView.text = data.word
         wordView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 27f * scale)
         // Readings: every reading of the entry in the shared common-use order
         // (orderedReadingRows), the occurrence bolded. A single reading sits
@@ -203,7 +202,18 @@ class WordResultCell @JvmOverloads constructor(
             if (inline != null) listOf(ReadingRow(data.word, inline, data.pitch, false))
             else emptyList()
         }
-        canInlineSingleReading = readings.size == 1
+        // Kana-only: the (single) reading just repeats the kana title, so draw the
+        // pitch accent on the TITLE itself (with the [n] numbers) rather than show
+        // a duplicate reading line.
+        val kanaOnly = readings.size == 1 && readings[0].reading == data.word
+        if (kanaOnly && readings[0].pitch.isNotEmpty()) {
+            wordView.text = buildPitchAnnotatedReading(data.word, readings[0].pitch)
+            wordView.setPadding(0, dp(8f * scale), 0, 0) // overline headroom
+        } else {
+            wordView.text = data.word
+            wordView.setPadding(0, 0, 0, 0)
+        }
+        canInlineSingleReading = readings.size == 1 && !kanaOnly
         readingsFlow.removeAllViews()
         readings.forEach { row ->
             readingsFlow.addView(
@@ -214,6 +224,11 @@ class WordResultCell @JvmOverloads constructor(
             )
         }
         when {
+            kanaOnly -> {
+                // Accent rides on the title above; no separate reading line.
+                readingView.isGone = true
+                readingsFlow.isGone = true
+            }
             readings.isEmpty() -> {
                 readingView.isGone = true
                 readingsFlow.isGone = true

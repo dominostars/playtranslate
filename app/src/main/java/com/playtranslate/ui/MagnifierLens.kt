@@ -1405,7 +1405,10 @@ class MagnifierLens(
             val newState = if (w == null) PillState.Placeholder else PillState.Word
             val newWord = w.orEmpty()
             val newReading = pitchKana.orEmpty()
-            val showReading = pitchKana != null && newState == PillState.Word
+            // Kana-only: the reading just repeats the kana title. Draw the accent
+            // on the WORD itself (below) and hide the separate reading slot.
+            val kanaOnly = newReading.isNotEmpty() && newReading == newWord
+            val showReading = pitchKana != null && newState == PillState.Word && !kanaOnly
 
             if (newState == pillState && newWord == pillWord && newReading == pillReading &&
                 newPitch == pillPitch
@@ -1422,24 +1425,48 @@ class MagnifierLens(
             // Push the new content into the views before measuring the
             // pill's natural width — the new word's text width is what
             // we're animating toward.
-            pillWordView.text = newWord
-            if (newPitch.isEmpty()) {
-                pillReadingView.text = newReading
-                fitPillReadingSize(newWord, newReading)
-                pillReadingView.setPadding(0, 0, 0, 0)
+            if (kanaOnly) {
+                // Accent rides on the word itself. Two things the hidden reading
+                // slot used to handle: (1) fit the word + its [n] suffix to the
+                // card budget so a long kana word can't overflow/ellipsize; (2)
+                // a top pad shifts it down so the overline clears the capsule top
+                // (the contour draws ~0.16×size above the text). Top-only, since
+                // symmetric padding would push a 24sp word past the 40dp pill.
+                val suffix = if (newPitch.isNotEmpty())
+                    newPitch.joinToString("·") { "[$it]" } else ""
+                if (newPitch.isNotEmpty()) {
+                    pillWordView.text = buildPitchAnnotatedReading(newWord, newPitch)
+                } else {
+                    pillWordView.text = newWord
+                }
+                fitPillWordSize(newWord, suffix)
+                val pad = if (newPitch.isNotEmpty())
+                    (pillWordView.textSize * 0.22f).toInt() else 0
+                pillWordView.setPadding(0, pad, 0, 0)
             } else {
-                pillReadingView.text = buildPitchAnnotatedReading(newReading, newPitch)
-                // Fit against reading + suffix; the suffix is measured at
-                // full size though it renders at 0.75× — erring roomy.
-                fitPillReadingSize(
-                    newWord,
-                    newReading + " " + newPitch.joinToString("·") { "[$it]" },
-                )
-                // Symmetric padding: headroom for the overline above,
-                // mirrored below so the glyphs stay centered in the fixed-
-                // height pill. Scales with the post-fit text size.
-                val pad = (pillReadingView.textSize * 0.30f).toInt()
-                pillReadingView.setPadding(0, pad, 0, pad)
+                // Reset the headline to full size + no padding — a prior kana-only
+                // label may have shrunk / padded it.
+                pillWordView.setTextSize(TypedValue.COMPLEX_UNIT_SP, pillWordSp)
+                pillWordView.setPadding(0, 0, 0, 0)
+                pillWordView.text = newWord
+                if (newPitch.isEmpty()) {
+                    pillReadingView.text = newReading
+                    fitPillReadingSize(newWord, newReading)
+                    pillReadingView.setPadding(0, 0, 0, 0)
+                } else {
+                    pillReadingView.text = buildPitchAnnotatedReading(newReading, newPitch)
+                    // Fit against reading + suffix; the suffix is measured at
+                    // full size though it renders at 0.75× — erring roomy.
+                    fitPillReadingSize(
+                        newWord,
+                        newReading + " " + newPitch.joinToString("·") { "[$it]" },
+                    )
+                    // Symmetric padding: headroom for the overline above,
+                    // mirrored below so the glyphs stay centered in the fixed-
+                    // height pill. Scales with the post-fit text size.
+                    val pad = (pillReadingView.textSize * 0.30f).toInt()
+                    pillReadingView.setPadding(0, pad, 0, pad)
+                }
             }
 
             if (prevState == PillState.None) {
@@ -1549,6 +1576,30 @@ class MagnifierLens(
                 sp -= 1f
             }
             pillReadingView.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+        }
+
+        /** Shrink the kana-only headline (plus its [n] suffix) down to the card
+         *  budget, mirroring [fitPillReadingSize] — here the headline carries the
+         *  accent and there's no reading slot to absorb the width. Stateless:
+         *  starts each call from [pillWordSp]. */
+        private fun fitPillWordSize(word: String, suffix: String) {
+            pillWordView.setTextSize(TypedValue.COMPLEX_UNIT_SP, pillWordSp)
+            if (word.isEmpty()) return
+            val available = (cardW - 2 * bodyHPaddingPx).toFloat()
+            // No divider/reading/gap in the kana-only pill — just word + chevron.
+            val fixed = pillChevronSize.toFloat() +
+                pillChevronMarginStart.toFloat() +
+                pillPaddingLead.toFloat() +
+                pillPaddingTrail.toFloat()
+            val wordAvailable = (available - fixed).coerceAtLeast(0f)
+            val measured = if (suffix.isEmpty()) word else "$word $suffix"
+            var sp = pillWordSp
+            while (sp > pillReadingMinSp) {
+                pillWordSizingPaint.textSize = sp * density
+                if (pillWordSizingPaint.measureText(measured) <= wordAvailable) break
+                sp -= 1f
+            }
+            pillWordView.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
         }
 
         fun setDefinitions(data: WordDefinitionData?, label: String?) {
