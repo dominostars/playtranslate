@@ -325,6 +325,12 @@ def create_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX idx_headword_text ON headword(text);
         CREATE INDEX idx_reading_text  ON reading(text);
         CREATE INDEX idx_example_entry ON example(entry_id, sense_position);
+        -- Reverse lookups by entry_id: buildEntry fetches each matched entry's
+        -- headword / reading / sense rows by entry_id (+ ORDER BY position).
+        -- Without these, those reverse lookups are full table scans per entry.
+        CREATE INDEX idx_headword_entry ON headword(entry_id, position);
+        CREATE INDEX idx_reading_entry  ON reading(entry_id, position);
+        CREATE INDEX idx_sense_entry    ON sense(entry_id, position);
         """
     )
 
