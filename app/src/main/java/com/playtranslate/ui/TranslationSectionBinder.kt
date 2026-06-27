@@ -293,7 +293,7 @@ class TranslationSectionBinder(
             // "add to Anki"; copy moves to a long-press on the text itself.
             val ankiTint = ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextMuted))
             for (btn in listOf(btnCopyOriginal, btnCopyTranslation)) {
-                btn.setImageResource(R.drawable.ic_card_stack)
+                btn.setImageResource(R.drawable.ic_card_stack_add)
                 btn.imageTintList = ankiTint   // explicit so it's muted even where app:tint isn't applied (overlay)
                 btn.contentDescription = ctx.getString(R.string.cd_add_to_anki)
                 btn.setOnClickListener { onAddToAnki() }

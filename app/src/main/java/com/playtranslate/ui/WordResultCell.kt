@@ -116,7 +116,7 @@ class WordResultCell @JvmOverloads constructor(
 
         // Add-to-Anki button — always plain.
         ankiButton = actionSlot(clickable = true, marginStartDp = 16f).apply {
-            addView(iconView(R.drawable.ic_card_stack, mutedColor), centerParams(22f))
+            addView(iconView(R.drawable.ic_card_stack_add, mutedColor), centerParams(22f))
         }
         headRow.addView(ankiButton)
 

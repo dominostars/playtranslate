@@ -991,7 +991,7 @@ class MagnifierLens(
         private val rightChip = makeChip(
             { onAnkiTap() },
             { onAnkiLongPress() },
-            makeChipIcon(R.drawable.ic_card_stack),
+            makeChipIcon(R.drawable.ic_card_stack_add),
         )
 
         /** Build a chip: a clickable disk with [content] views centered on it.

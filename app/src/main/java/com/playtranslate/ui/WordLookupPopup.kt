@@ -400,7 +400,7 @@ class WordLookupPopup(
                 }
             })
 
-            val iconRes = if (showAnkiButton) R.drawable.ic_card_stack else R.drawable.ic_open_in_new
+            val iconRes = if (showAnkiButton) R.drawable.ic_card_stack_add else R.drawable.ic_open_in_new
             val onTap = if (showAnkiButton) onAnkiTap else onOpenTap
             val icon = ImageView(ctx).apply {
                 val drawable = AppCompatResources.getDrawable(ctx, iconRes)?.mutate()
