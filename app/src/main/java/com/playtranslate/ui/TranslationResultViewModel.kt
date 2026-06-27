@@ -45,6 +45,16 @@ class TranslationResultViewModel : ViewModel() {
 
     private var lookupJob: Job? = null
 
+    /** The most recent settled word-lookup paired with the source text it ran
+     *  against. The [LastSentenceCache] write needs BOTH this and a Ready
+     *  translation for the same text, and the two land in either order (the
+     *  local dictionary lookup often settles before a network translation). We
+     *  hold the settled lookup here so whichever lands second can complete the
+     *  write — see [writeLastSentenceCache]. Null while a lookup is in flight. */
+    private var settledLookup: SettledLookup? = null
+
+    private data class SettledLookup(val text: String, val data: LookupData)
+
     // ── Dedup architecture (read this before changing displayResult) ────
     //
     // Two layers cooperate to prevent redundant work and UI flicker
@@ -110,8 +120,31 @@ class TranslationResultViewModel : ViewModel() {
     fun displayResult(result: TranslationResult, appCtx: Context) {
         if (result === lastSeenResult) return
         lastSeenResult = result
+        // If a Translating placeholder for this same source text is on screen,
+        // it already started the identical lookup this capture cycle
+        // (showTranslatingPlaceholder → displayResult, one capture). Promote to
+        // Ready but DON'T restart the pipeline: re-running cancels the in-flight
+        // job and flashes the word list Settled → Loading → Settled (definitions
+        // show, vanish, reappear). A refined/changed source text, or a path with
+        // no placeholder (live mode, cached drag result), still re-runs lookups.
+        val sameTextPlaceholder =
+            (_result.value as? ResultState.Translating)?.originalText == result.originalText
+        // Only skip if that placeholder lookup actually covers this text — still
+        // in flight, or settled successfully (settledLookup set). A FAILED
+        // placeholder lookup settles empty with no settledLookup (and its job
+        // completes, so isActive is false), so it falls through and re-runs —
+        // otherwise a transient lookup failure would leave the word list empty
+        // and the cache unwritten for an otherwise-successful translation.
+        val placeholderLookupCoversText =
+            lookupJob?.isActive == true || settledLookup?.text == result.originalText
         _result.value = ResultState.Ready(result)
-        startWordLookups(result.originalText, appCtx)
+        if (!(sameTextPlaceholder && placeholderLookupCoversText)) {
+            startWordLookups(result.originalText, appCtx)
+        }
+        // The translation just landed; if the (skipped) placeholder lookup has
+        // already settled, this is the second half — write the full cache. If it
+        // hasn't, the lookup's own settle will write it. Either order works.
+        writeLastSentenceCache()
     }
 
     /** Display a result that came from the service's panel state.
@@ -129,6 +162,7 @@ class TranslationResultViewModel : ViewModel() {
     /** Show a status message. Cancels any in-flight lookup. */
     fun showStatus(message: String, showHint: Boolean = false) {
         lookupJob?.cancel()
+        settledLookup = null
         _wordLookups.value = WordLookupsState.Idle
         _result.value = ResultState.Status(message, showHint)
     }
@@ -137,6 +171,7 @@ class TranslationResultViewModel : ViewModel() {
      *  resource. Cancels any in-flight lookup. */
     fun showError(message: String) {
         lookupJob?.cancel()
+        settledLookup = null
         _wordLookups.value = WordLookupsState.Idle
         _result.value = ResultState.Error(message)
     }
@@ -221,8 +256,33 @@ class TranslationResultViewModel : ViewModel() {
             }
             else -> { /* No-op for Idle/Status/Error */ }
         }
+        // Translation (or a re-translate) just landed on a Ready result — refresh
+        // the cache so its translation/backend match, pairing with the already
+        // settled lookup if there is one. No-op while still pending or non-Ready.
+        writeLastSentenceCache()
     }
 
+    /**
+     * Write [LastSentenceCache] once BOTH halves are known for the SAME source
+     * text: a settled word lookup ([settledLookup]) and a Ready translation.
+     * Called from both the lookup-settle path and the Ready transitions, so
+     * whichever lands second triggers the write. No-op until they agree — this
+     * is what stops a lookup that outruns the translation from caching a
+     * snapshot with a null sentence/translation (the bug this guards).
+     */
+    private fun writeLastSentenceCache() {
+        val ready = _result.value as? ResultState.Ready ?: return
+        val settled = settledLookup ?: return
+        if (settled.text != ready.result.originalText) return
+        LastSentenceCache.setFromTranslationResult(
+            original = ready.result.originalText,
+            translation = ready.result.translatedText,
+            translationSource = ready.result.backendDisplayName,
+            wordResults = settled.data.rows.toLegacyMap(),
+            surfaceForms = settled.data.surfaces,
+            wordEnrichment = settled.data.rows.toEnrichmentMap(),
+        )
+    }
 
     /**
      * Run the tokenize → dictionary-lookup pipeline for [text] on
@@ -230,12 +290,15 @@ class TranslationResultViewModel : ViewModel() {
      * [WordLookupsState.Loading] immediately and
      * [WordLookupsState.Settled] when complete.
      *
-     * Pulls translation/original from the current [result] for the
-     * [LastSentenceCache] write at the end so the cache stays in
+     * On settle, records [settledLookup] and writes the
+     * [LastSentenceCache] (via [writeLastSentenceCache]) so the cache stays in
      * sync with this VM's understanding of the result.
      */
     fun startWordLookups(text: String, appCtx: Context) {
         lookupJob?.cancel()
+        // Invalidate the prior settled lookup until this one lands, so a Ready
+        // transition mid-flight can't pair the cache write with stale word data.
+        settledLookup = null
         _wordLookups.value = WordLookupsState.Loading
         lookupJob = viewModelScope.launch {
             try {
@@ -245,17 +308,13 @@ class TranslationResultViewModel : ViewModel() {
                     tokenSpans = data.tokenSpans,
                     lookupToReading = data.lookupToReading,
                 )
-                // LastSentenceCache stays in sync — same write target as
-                // before the hoist; only the writer changed (was fragment).
-                val ready = _result.value as? ResultState.Ready
-                LastSentenceCache.setFromTranslationResult(
-                    original = ready?.result?.originalText,
-                    translation = ready?.result?.translatedText,
-                    translationSource = ready?.result?.backendDisplayName,
-                    wordResults = data.rows.toLegacyMap(),
-                    surfaceForms = data.surfaces,
-                    wordEnrichment = data.rows.toEnrichmentMap(),
-                )
+                // Pair the settled lookup with its source text and (re)write the
+                // cache. If the translation has already landed (Ready, same text),
+                // this completes the snapshot now; if not, the Ready transition
+                // will. writeLastSentenceCache no-ops until both agree, so a lookup
+                // that outran the translation never caches a null sentence.
+                settledLookup = SettledLookup(text, data)
+                writeLastSentenceCache()
             } catch (e: CancellationException) {
                 // Caller cancelled (e.g. new text arrived) — let the next
                 // emission drive state. Don't write Settled here.

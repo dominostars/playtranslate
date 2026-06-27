@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Rect
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.Gravity
@@ -52,6 +53,32 @@ private fun ScrollView.scrollToTopSilently(listener: View.OnScrollChangeListener
     setOnScrollChangeListener(null)
     scrollTo(0, 0)
     setOnScrollChangeListener(listener)
+}
+
+/**
+ * Restore a saved scroll [y] without firing the registered listener — the
+ * preserve-position counterpart to [scrollToTopSilently], used when only the
+ * translation changed (so the user's place in the result shouldn't jump).
+ * [ScrollView.scrollTo] clamps [y] to the current content range, so an offset
+ * that outran a now-shorter result lands at the bottom rather than in empty
+ * space. Same synchronous-scrollTo caveat as [scrollToTopSilently].
+ */
+private fun ScrollView.restoreScrollSilently(y: Int, listener: View.OnScrollChangeListener) {
+    setOnScrollChangeListener(null)
+    scrollTo(0, y)
+    setOnScrollChangeListener(listener)
+}
+
+/**
+ * Top of [descendant] in this ScrollView's content coordinate space —
+ * i.e. independent of the current scroll offset (offsetDescendantRectToMyCoords
+ * stops at this view, so it never subtracts our own scrollY). Subtract
+ * [ScrollView.getScrollY] to get the view's offset from the viewport top.
+ */
+private fun ScrollView.contentTopOf(descendant: View): Int {
+    val r = Rect(0, 0, descendant.width, descendant.height)
+    offsetDescendantRectToMyCoords(descendant, r)
+    return r.top
 }
 
 /**
@@ -133,6 +160,21 @@ class TranslationResultFragment : Fragment() {
      *  text (which has OCR newlines). */
     private var wordSpans = mutableListOf<Triple<IntRange, String, String>>()
     private var furiganaPopup: PopupWindow? = null
+
+    /** Bumped on every [renderResult] call. The results reveal is async (hide →
+     *  fit → show across two posts), so a fast Translating→Status/Error/Idle
+     *  transition could otherwise let a queued reveal re-show stale results over
+     *  the status screen. Each posted step bails if the generation moved on. */
+    private var renderGeneration = 0
+
+    /** Source text of the last Translating/Ready render, used to decide
+     *  whether a new Ready emission should keep the user's scroll position
+     *  (same source → only the translation changed, e.g. a Translating→Ready
+     *  promotion or a backend re-translate) or reset to the top (source
+     *  changed → a fresh capture or an edit-overlay commit, where the old
+     *  offset is meaningless). Cleared to null on status/idle/error so the
+     *  next translation always starts at the top. */
+    private var lastRenderedSourceText: String? = null
 
     /** Reified scroll listener so [scrollToTopSilently] can detach + reattach
      *  it around programmatic scrolls — otherwise the framework's
@@ -261,6 +303,9 @@ class TranslationResultFragment : Fragment() {
 
     private fun renderResult(state: ResultState) {
         if (view == null) return
+        // Every render supersedes any pending async reveal from a prior one —
+        // see [renderGeneration]. Captured by [revealResultsContentFitted].
+        val generation = ++renderGeneration
         when (state) {
             is ResultState.Idle -> {
                 showStatusUi(getString(R.string.status_idle), showHint = true)
@@ -272,20 +317,36 @@ class TranslationResultFragment : Fragment() {
                 showStatusUi(getString(R.string.status_error, state.message), showHint = false)
             }
             is ResultState.Translating -> {
+                // A placeholder is always a freshly-started translation (drag
+                // sentence / edit commit), so reset to top; record the source
+                // so the matching Ready promotion preserves the user's scroll.
+                lastRenderedSourceText = state.originalText
                 binder.setSourceSegments(state.segments)
                 tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
-                binder.updateLabels()
-                statusContainer.isGone = true
-                resultsContent.isVisible = true
-                resultActionButtons.isVisible = showsClearAction
-                resultsContent.scrollToTopSilently(scrollListener)
                 binder.setTargetTranslatingPlaceholder()
                 binder.applyTranslationVisibility()
                 binder.applyOriginalVisibility()
                 applyWordsVisibility()
+                binder.updateLabels()
+                statusContainer.isGone = true
+                resultActionButtons.isVisible = showsClearAction
+                // The source text is final the instant the placeholder shows, so
+                // fit it now — not when the translation later lands, which would
+                // make it visibly resize. revealResultsContentFitted is the shared
+                // hide→fit→show both states run, so the two can't drift on sizing.
+                revealResultsContentFitted(generation) { resultsContent.scrollToTopSilently(scrollListener) }
             }
             is ResultState.Ready -> {
                 val result = state.result
+                // Keep the user's place when only the translation changed
+                // (Translating→Ready promotion, backend re-translate); reset to
+                // top only when the source text itself changed — a fresh capture
+                // or an edit-overlay commit — where the old offset is meaningless.
+                // The anchor is captured before the binder mutates content, so it
+                // reflects what the user was looking at. See [lastRenderedSourceText].
+                val preserveScroll = result.originalText == lastRenderedSourceText
+                val scrollAnchor = if (preserveScroll) captureScrollAnchor() else null
+                lastRenderedSourceText = result.originalText
                 binder.setSourceSegments(result.segments)
                 tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
                 // A blank translation on a Ready result means a re-translate is
@@ -299,12 +360,10 @@ class TranslationResultFragment : Fragment() {
                 applyWordsVisibility()
                 binder.updateLabels()
                 statusContainer.isGone = true
-                resultsContent.visibility = View.INVISIBLE
                 resultActionButtons.isVisible = showsClearAction
-                resultsContent.scrollToTopSilently(scrollListener)
-                resultsContent.post {
-                    fitTextSizes()
-                    if (view != null) resultsContent.isVisible = true
+                revealResultsContentFitted(generation) {
+                    if (scrollAnchor != null) restoreScrollAnchor(scrollAnchor)
+                    else resultsContent.scrollToTopSilently(scrollListener)
                 }
             }
         }
@@ -314,6 +373,9 @@ class TranslationResultFragment : Fragment() {
      *  results hidden, Anki gone. [showHint] gates the
      *  "press X to start" hint line under the message. */
     private fun showStatusUi(message: String, showHint: Boolean) {
+        // Leaving the results view drops the scroll anchor: the next translation
+        // is unrelated content and should land at the top.
+        lastRenderedSourceText = null
         tvStatus.text = message
         tvStatusHint.visibility = if (showHint) View.VISIBLE else View.GONE
         tvLiveHint.isGone = true
@@ -358,6 +420,85 @@ class TranslationResultFragment : Fragment() {
         val scrollHeight = resultsContent.height.takeIf { it > 0 } ?: return
         val halfHeight = scrollHeight / 2
         binder.fitText(translationTargetPx = halfHeight, sourceTargetPx = halfHeight)
+    }
+
+    /**
+     * Reveal the results card with its text already sized: hide it, fit the
+     * source + translation to their halves once laid out, then position the
+     * scroll and show. Fitting BEFORE the first paint is why the source doesn't
+     * visibly resize when the translation later lands — Translating and Ready
+     * both size it through this one path, so they can't drift apart.
+     *
+     * [positionScroll] runs in a nested post so it measures the *post-fit*
+     * layout (fitText's shrink is a relayout deferred behind the traversal's
+     * sync barrier): the Ready anchor restore needs settled geometry, and a
+     * scroll-to-top is harmless to defer.
+     */
+    private fun revealResultsContentFitted(generation: Int, positionScroll: () -> Unit) {
+        resultsContent.visibility = View.INVISIBLE
+        resultsContent.post {
+            // A newer render (a result update, or a switch to status/error/idle
+            // that already hid the results) supersedes this reveal — bail so we
+            // don't resurrect stale content over the status screen. The newer
+            // render owns visibility from here.
+            if (view == null || generation != renderGeneration) return@post
+            fitTextSizes()
+            resultsContent.post {
+                if (view == null || generation != renderGeneration) return@post
+                positionScroll()
+                resultsContent.isVisible = true
+            }
+        }
+    }
+
+    /** A view to keep visually pinned across a result re-render, plus its
+     *  pixel offset from the top of the scroll viewport when captured. */
+    private class ScrollAnchor(val view: View, val offsetFromViewportTop: Int)
+
+    /**
+     * Snapshot the view sitting at the top of the results viewport so a
+     * re-render that changes the height of the translation/source cards
+     * restores the user to the same *content*, not the same raw pixel offset
+     * (which would drift as the growing translation card pushes rows down).
+     *
+     * Candidates run top-to-bottom: each result block, plus every word row so a
+     * deep scroll into the list anchors on the right row. The most specific
+     * (largest top) block straddling the viewport top wins; if the top sits in
+     * a gap, the first block below it is used. Null when there's nothing to
+     * anchor on.
+     */
+    private fun captureScrollAnchor(): ScrollAnchor? {
+        val content = resultsContent.getChildAt(0) as? ViewGroup ?: return null
+        val scrollY = resultsContent.scrollY
+        var straddler: View? = null
+        var straddlerTop = Int.MIN_VALUE
+        var firstBelow: View? = null
+        var firstBelowTop = Int.MAX_VALUE
+        fun consider(v: View) {
+            if (!v.isVisible || v.height == 0) return
+            val top = resultsContent.contentTopOf(v)
+            if (top <= scrollY && scrollY < top + v.height) {
+                if (top > straddlerTop) { straddler = v; straddlerTop = top }
+            } else if (top >= scrollY && top < firstBelowTop) {
+                firstBelow = v; firstBelowTop = top
+            }
+        }
+        for (i in 0 until content.childCount) consider(content.getChildAt(i))
+        for (i in 0 until mainWordsContainer.childCount) consider(mainWordsContainer.getChildAt(i))
+        val anchor = straddler ?: firstBelow ?: return null
+        return ScrollAnchor(anchor, resultsContent.contentTopOf(anchor) - scrollY)
+    }
+
+    /** Re-scroll so [anchor]'s view returns to the viewport offset it had when
+     *  captured, measured against the now-settled layout. No-op if the anchored
+     *  view was detached by the re-render. */
+    private fun restoreScrollAnchor(anchor: ScrollAnchor) {
+        if (anchor.view.parent == null) {
+            resultsContent.scrollToTopSilently(scrollListener)
+            return
+        }
+        val target = resultsContent.contentTopOf(anchor.view) - anchor.offsetFromViewportTop
+        resultsContent.restoreScrollSilently(target, scrollListener)
     }
 
     /** Lens Anki chip handler — adds the tapped word (not the sentence)
