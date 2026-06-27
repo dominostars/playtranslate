@@ -375,7 +375,33 @@ class TranslationSectionBinder(
     //  • cardInset — the card frame's own inset (rounded-corner overlap + stroke).
     //    Constant; the panel measures it ONCE while the card is still wrap.
     fun sourceContentOverhead(): Int = originalContent.height - tvOriginal.height
-    fun targetContentOverhead(): Int = translationContent.height - tvTranslation.height
+    /**
+     * Target content overhead = padding + the "Translated by…" note row. The row is
+     * set VISIBLE only when a result binds, and contributes 0 to the holder height
+     * until the next layout pass — so a fit run synchronously on bind (before that
+     * pass) under-counts the overhead, sizes the translation too large, and it then
+     * visibly resizes a frame later once the row measures (the post-translation
+     * "flash"). While the row is shown with text but not yet laid out, measure it
+     * here so the very first fit already counts it and the translation lands at its
+     * final size. The Translating placeholder leaves the row GONE, so this never
+     * touches it — only the real translation, which is the one that flashed.
+     */
+    fun targetContentOverhead(): Int {
+        val live = translationContent.height - tvTranslation.height
+        if (tvTranslationNote.visibility == View.VISIBLE && tvTranslationNote.height == 0 &&
+            tvTranslationNote.text.isNotEmpty()
+        ) {
+            val w = (translationContent.width - translationContent.paddingLeft - translationContent.paddingRight)
+                .coerceAtLeast(0)
+            tvTranslationNote.measure(
+                View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            )
+            val topMargin = (tvTranslationNote.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.topMargin ?: 0
+            return live + tvTranslationNote.measuredHeight + topMargin
+        }
+        return live
+    }
     fun sourceCardInset(): Int = (cardOriginal.height - originalContent.height).coerceAtLeast(0)
     fun targetCardInset(): Int = (cardTranslation.height - translationContent.height).coerceAtLeast(0)
     // Whole-card heights — the panel reads these ONCE while the cards still wrap to
