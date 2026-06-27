@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import com.playtranslate.model.FrequencyTag
+import com.playtranslate.model.ReadingRow
 
 /**
  * The dictionary payload rendered by [WordDefinitionsView] — the meta row
@@ -27,6 +28,10 @@ data class WordDefinitionData(
     /** Per-dictionary frequency chips from imported Yomitan frequency
      *  dictionaries, in the user's section order. */
     val frequencies: List<FrequencyTag> = emptyList(),
+    /** Every reading in common-use order (shared ordering with the word detail
+     *  page), occurrence flagged. [WordResultCell] lists these below the title
+     *  when there's more than one or the inline reading won't fit. */
+    val readingRows: List<ReadingRow> = emptyList(),
 )
 
 /** A single rendered sense: its part(s) of speech (whole English tokens) and

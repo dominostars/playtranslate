@@ -8,6 +8,7 @@ import com.playtranslate.language.InflectedForm
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TokenSpan
 import com.playtranslate.model.FrequencyTag
+import com.playtranslate.model.ReadingRow
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
@@ -346,6 +347,12 @@ data class RowState(
      *  its conjugation tags (e.g. 食べたい·Desiderative, 食べられない·Passive/Neg).
      *  Empty for uninflected words / non-Japanese sources. */
     val inflectedForms: List<InflectedForm> = emptyList(),
+    /** Every reading of the entry in common-use order — the SAME source the word
+     *  detail page uses ([DictionaryEntry.orderedReadingRows]) — with the
+     *  occurrence reading flagged bolded. The cell lists these below the title
+     *  when there's more than one or the inline reading won't fit. Empty for
+     *  non-JA / no-reading rows. */
+    val readingRows: List<ReadingRow> = emptyList(),
 )
 
 /** Convert the row list into the legacy `Map<String, Triple<...>>`

@@ -12,6 +12,7 @@ import com.playtranslate.language.TokenSpan
 import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.language.WordTranslator
 import com.playtranslate.model.headwordDisplay
+import com.playtranslate.model.orderedReadingRows
 import com.playtranslate.model.selectHeadword
 import com.playtranslate.translation.ChineseScriptConverter
 import kotlinx.coroutines.CancellationException
@@ -206,6 +207,9 @@ suspend fun resolveWordRows(
                                 pitch = display.pitch,
                                 frequencies = display.frequencies,
                                 inflectedForms = inflectionForms[word].orEmpty(),
+                                // Same ordering the word detail page uses; bold the
+                                // occurrence (the selected headword's reading).
+                                readingRows = entry.orderedReadingRows(primary?.reading),
                             ),
                             surfaceMapping = if (surface != displayWord) {
                                 displayWord to surface

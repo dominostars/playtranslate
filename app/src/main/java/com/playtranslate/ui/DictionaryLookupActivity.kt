@@ -144,6 +144,7 @@ class DictionaryLookupActivity : SettingsSubPageActivity() {
             ankiDecks = ankiDecksByWord[rowState.displayWord].orEmpty(),
             pitch = rowState.pitch,
             frequencies = rowState.frequencies,
+            readingRows = rowState.readingRows,
         )
         cell.bind(
             data = data,
