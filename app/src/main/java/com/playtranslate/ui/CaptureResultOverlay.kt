@@ -454,6 +454,17 @@ class CaptureResultOverlay(
         // (no full word-list pipeline here) only loses the rare homograph hint.
         b.tvOriginal.onTapAtOffset = { offset -> onSourceTapped(offset) }
         refreshWordSpans(result.originalText)
+        // Fit the text to the current panel NOW, before this frame draws. The first
+        // (status→content) bind hasn't laid the scroll out yet, so this no-ops via
+        // autoSizeAndFit's own width guard and the posts below do the work. But on a
+        // re-bind onto an already-laid-out panel — the Translating→Done promotion —
+        // the freshly-set text would otherwise be drawn at the OUTGOING size for a
+        // frame and then snap: the short "Translating…" placeholder fills its
+        // (source-driven) card at the 24sp ceiling, so the longer real translation
+        // flashes at 24sp before the posted fit snaps it down to its ~16sp fit.
+        // Fitting synchronously draws it at the right size on the first frame; the
+        // posts still re-measure the now-laid-out note row and drive grow-to-fit.
+        autoSizeAndFit()
         // Two frames: the first lays out the freshly-bound content (incl. the
         // translation note row); the second measures + animates against it, so the
         // note's height is reliably counted.
