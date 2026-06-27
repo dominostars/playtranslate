@@ -12,6 +12,7 @@ import android.text.style.BackgroundColorSpan
 import android.util.TypedValue
 import android.view.View
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import com.google.android.material.card.MaterialCardView
@@ -21,7 +22,9 @@ import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.themeColor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -70,6 +73,10 @@ class TranslationSectionBinder(
     private val btnToggleTranslation: ImageButton = root.findViewById(R.id.btnToggleTranslation)
     private val btnToggleOriginal: ImageButton = root.findViewById(R.id.btnToggleOriginal)
     private val btnToggleFurigana: ImageButton = root.findViewById(R.id.btnToggleFurigana)
+    // "Scanned by <engine>" + gear, under the source text (mirror of tvTranslationNote).
+    private val sourceNoteRow: View = root.findViewById(R.id.sourceNoteRow)
+    private val tvSourceNote: TextView = root.findViewById(R.id.tvSourceNote)
+    private val btnSourceOcr: ImageView = root.findViewById(R.id.btnSourceOcr)
 
     private var speakButton: OriginalSpeakButton? = null
 
@@ -93,6 +100,20 @@ class TranslationSectionBinder(
      *  scroll just reflows). */
     var onSourceTextHeightChanged: (() -> Unit)? = null
 
+    /** Invoked when the user taps the source OCR-attribution row (text or gear).
+     *  Each surface opens its own OCR picker. Null → the row is inert. */
+    var onChooseOcr: (() -> Unit)? = null
+
+    init {
+        sourceNoteRow.setOnClickListener { onChooseOcr?.invoke() }
+        // Tint the gear in CODE, not via XML app:tint: the over-game overlay inflates
+        // these views with a plain (non-AppCompat) LayoutInflater, which silently drops
+        // app:tint, so the white ic_settings would render white there while the in-app
+        // (AppCompat) surface tints it. Setting imageTintList works on a plain ImageView
+        // too, so both surfaces match. (Same reason the Anki button is tinted in code.)
+        btnSourceOcr.imageTintList = ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextHint))
+    }
+
     // ── Source section ───────────────────────────────────────────────────
 
     fun setSourceSegments(segments: List<com.playtranslate.model.TextSegment>) {
@@ -101,6 +122,24 @@ class TranslationSectionBinder(
 
     /** Returns the displayed source text (with OCR line breaks preserved). */
     fun displayedSourceText(): String = tvOriginal.text?.toString() ?: ""
+
+    /** Bind the "Scanned by <engine>" attribution row under the source text. Shown
+     *  only for OCR-derived results ([provenance] != null); the gear + tap are
+     *  enabled only when the language has >1 available OCR tool to switch between
+     *  (otherwise there's nothing to choose, mirroring Settings hiding its OCR
+     *  card). Italic to match the "Translated by" treatment. */
+    fun bindSourceOcr(provenance: OcrProvenance?) {
+        if (provenance == null) {
+            sourceNoteRow.visibility = View.GONE
+            return
+        }
+        tvSourceNote.text = ctx.getString(R.string.ocr_source_label, provenance.engineLabel)
+        tvSourceNote.setTypeface(null, Typeface.ITALIC)
+        sourceNoteRow.visibility = View.VISIBLE
+        val multi = OcrModelManager.availableBackends(ctx, provenance.sourceLangId).size > 1
+        btnSourceOcr.visibility = if (multi) View.VISIBLE else View.GONE
+        sourceNoteRow.isClickable = multi
+    }
 
     fun applyOriginalVisibility() {
         val hidden = prefs.hideOriginalSection
@@ -272,6 +311,7 @@ class TranslationSectionBinder(
 
     fun bindResult(result: TranslationResult) {
         setSourceSegments(result.segments)
+        bindSourceOcr(result.ocrProvenance)
         bindTargetReady(result)
         updateLabels()
         applyOriginalVisibility()
@@ -374,7 +414,27 @@ class TranslationSectionBinder(
     //    height), so the note is always counted even if it laid out a frame late.
     //  • cardInset — the card frame's own inset (rounded-corner overlap + stroke).
     //    Constant; the panel measures it ONCE while the card is still wrap.
-    fun sourceContentOverhead(): Int = originalContent.height - tvOriginal.height
+    fun sourceContentOverhead(): Int {
+        val live = originalContent.height - tvOriginal.height
+        // Same pre-measure guard as [targetContentOverhead]: the "Scanned by…" row is
+        // set VISIBLE on bind but contributes 0 to originalContent's height until the
+        // next layout pass, so a fit run synchronously on bind would under-count the
+        // overhead and the source text would visibly resize a frame later. Measure the
+        // row (a container — the gear can exceed the text height) so the first fit
+        // already accounts for it. (Furigana is not a factor: it grows tvOriginal,
+        // which is subtracted out here.)
+        if (sourceNoteRow.visibility == View.VISIBLE && sourceNoteRow.height == 0) {
+            val w = (originalContent.width - originalContent.paddingLeft - originalContent.paddingRight)
+                .coerceAtLeast(0)
+            sourceNoteRow.measure(
+                View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            )
+            val topMargin = (sourceNoteRow.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.topMargin ?: 0
+            return live + sourceNoteRow.measuredHeight + topMargin
+        }
+        return live
+    }
     /**
      * Target content overhead = padding + the "Translated by…" note row. The row is
      * set VISIBLE only when a result binds, and contributes 0 to the holder height

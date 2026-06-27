@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.app.Dialog
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -22,6 +23,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.ComponentDialog
 import androidx.activity.OnBackPressedCallback
 import androidx.core.content.ContextCompat
+import androidx.core.widget.TextViewCompat
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.R
 import com.playtranslate.overlay.OverlayHost
@@ -59,6 +61,9 @@ class OverlayAlert private constructor(
         val label: String,
         val color: Int,
         val textColor: Int,
+        /** Optional drawable shown at the LEFT of the button label (e.g. a download
+         *  icon), tinted to [textColor]. */
+        val leadingIconRes: Int? = null,
         val onClick: () -> Unit,
     )
 
@@ -104,8 +109,8 @@ class OverlayAlert private constructor(
          *  confirms). */
         fun hideIcon() = apply { this.showIcon = false }
 
-        fun addButton(label: String, color: Int, textColor: Int = context.themeColor(R.attr.ptCard), onClick: () -> Unit) = apply {
-            buttons.add(ButtonConfig(label, color, textColor, onClick))
+        fun addButton(label: String, color: Int, textColor: Int = context.themeColor(R.attr.ptCard), leadingIconRes: Int? = null, onClick: () -> Unit) = apply {
+            buttons.add(ButtonConfig(label, color, textColor, leadingIconRes, onClick))
         }
 
         /** Adds a styled cancel button (divider background, ptText label).
@@ -297,6 +302,11 @@ class OverlayAlert private constructor(
                     }
                 } else {
                     setBackgroundColor(Color.TRANSPARENT)
+                }
+                cfg.leadingIconRes?.let { iconRes ->
+                    setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
+                    compoundDrawablePadding = (8 * dp).toInt()
+                    TextViewCompat.setCompoundDrawableTintList(this, ColorStateList.valueOf(cfg.textColor))
                 }
                 setOnClickListener {
                     dismiss()

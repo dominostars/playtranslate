@@ -1,5 +1,6 @@
 package com.playtranslate.ocr.core
 
+import com.playtranslate.language.OcrBackend
 import java.io.Closeable
 
 /**
@@ -24,3 +25,13 @@ interface OcrEngine : Closeable {
 
     suspend fun recognize(image: OcrImage): List<RecognizedRegion>
 }
+
+/**
+ * An [OcrEngine] resolved for a source language, paired with the [backend] that
+ * produced it. The registry's `engineFor` is the ONE place the real
+ * selected → ML-Kit-floor → empty-engine fallback is observable, so it reports
+ * which backend actually ran here instead of letting callers re-derive it (which
+ * would drift from the resolution rule). [backend] is null only for the no-OCR
+ * empty engine; callers map it to a user-facing label / provenance.
+ */
+data class ResolvedOcr(val engine: OcrEngine, val backend: OcrBackend?)

@@ -104,6 +104,41 @@
                 android:textColor="?attr/ptText"
                 android:lineSpacingMultiplier="1" />
 
+            <!-- "Scanned by <engine>" + gear. Tapping the row opens the OCR picker.
+                 Mirror of the target's "Translated by" note (tvTranslationNote);
+                 wrap_content so only the label+gear is the tap target. Shown only
+                 for OCR-derived results with >1 available engine (binder). -->
+            <LinearLayout
+                android:id="@+id/sourceNoteRow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackground"
+                android:contentDescription="@string/cd_choose_ocr"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/tvSourceNote"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="?attr/ptTextHint"
+                    android:textSize="11sp" />
+
+                <ImageView
+                    android:id="@+id/btnSourceOcr"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_marginStart="6dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_settings"
+                    app:tint="?attr/ptTextHint" />
+
+            </LinearLayout>
+
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 

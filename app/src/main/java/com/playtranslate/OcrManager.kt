@@ -3,6 +3,7 @@ package com.playtranslate
 import android.graphics.Bitmap
 import android.graphics.Rect
 import com.google.mlkit.vision.text.Text
+import com.playtranslate.language.OcrBackend
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.model.TextSegment
@@ -122,6 +123,12 @@ class OcrManager private constructor() {
         val groups: List<OcrGroup> = emptyList(),
         /** Debug bounding boxes at line/element/group level, or null if debug is off. */
         val debugBoxes: OcrDebugBoxes? = null,
+        /** The OCR backend that actually produced this result, captured at the
+         *  registry's resolution chokepoint. Null when no engine identity is
+         *  available (the no-OCR empty engine). Carries the backend itself — not
+         *  just a label — so callers can derive both its display name and its
+         *  selection token for provenance. */
+        val engineBackend: OcrBackend? = null,
     )
 
     /**
@@ -146,7 +153,7 @@ class OcrManager private constructor() {
             logGrouping = debugLogGroupingEnabled,
         ) ?: return null
 
-        val result = buildOcrResult(output.groups, output.scaleFactor, collectDebugBoxes)
+        val result = buildOcrResult(output.groups, output.scaleFactor, collectDebugBoxes, output.backend)
         if (result.fullText.isBlank()) return null
 
         android.util.Log.d("DetectionLog", "OCR raw: ${result.groups.size} groups")
@@ -190,6 +197,7 @@ class OcrManager private constructor() {
         groups: List<LayoutGroup>,
         scaleFactor: Float,
         collectDebugBoxes: Boolean,
+        engineBackend: OcrBackend? = null,
     ): OcrResult {
         val ocrGroups = groups.mapIndexed { gi, group ->
             OcrGroup(
@@ -228,6 +236,7 @@ class OcrManager private constructor() {
             segments = segments,
             groups = ocrGroups,
             debugBoxes = debugBoxes,
+            engineBackend = engineBackend,
         )
     }
 

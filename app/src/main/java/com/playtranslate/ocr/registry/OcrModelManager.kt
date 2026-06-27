@@ -55,19 +55,24 @@ object OcrModelManager {
     @Volatile var appContext: Context? = null
 
     /**
-     * Production OCR engine for [sourceLang]: the user's chosen backend if its pack
-     * is installed, else null → the registry's ML Kit floor. Selection only mutates
-     * Prefs, so this resolves fresh each call (no stale cached engine); the native
-     * session is owned + cached by the bridge (closed only at quiescent teardown).
+     * Production OCR engine for [sourceLang] paired with the backend that produced
+     * it: the user's chosen backend if its pack is installed, else null → the
+     * registry's ML Kit floor. Returning the backend (not just the engine) lets the
+     * registry report what actually ran without re-deriving the resolution rule.
+     * Selection only mutates Prefs, so this resolves fresh each call (no stale
+     * cached engine); the native session is owned + cached by the bridge (closed
+     * only at quiescent teardown).
      */
-    fun engineForSelected(sourceLang: String): OcrEngine? {
+    fun engineForSelected(sourceLang: String): Pair<OcrBackend, OcrEngine>? {
         val ctx = appContext ?: return null
         val profile = SourceLanguageProfiles.forCode(sourceLang) ?: SourceLanguageProfiles[SourceLangId.JA]
         return when (val chosen = selectedBackend(ctx, profile.id)) {
             is OcrBackend.Meiki ->
-                if (OcrPackModelHelper(chosen.packKey).isInstalled(ctx)) MeikiBridge.engine(ctx, chosen.packKey) else null
+                if (OcrPackModelHelper(chosen.packKey).isInstalled(ctx))
+                    MeikiBridge.engine(ctx, chosen.packKey)?.let { chosen to it } else null
             is OcrBackend.Paddle ->
-                if (OcrPackModelHelper(chosen.recPackKey).isInstalled(ctx)) PaddleOcrBridge.engine(ctx, chosen.recPackKey) else null
+                if (OcrPackModelHelper(chosen.recPackKey).isInstalled(ctx))
+                    PaddleOcrBridge.engine(ctx, chosen.recPackKey)?.let { chosen to it } else null
             else -> null // ML Kit floor — registry builds it
         }
     }
@@ -488,3 +493,11 @@ val OcrBackend.ocrLabel: String
         is OcrBackend.Tesseract -> "Tesseract"
         else -> "ML Kit"
     }
+
+/** True iff every pack [this] needs is on disk, so the engine can actually run.
+ *  ML Kit (no packs) and APK-bundled recognizers read as downloaded
+ *  ([OcrPackModelHelper.isInstalled] returns true for both). Shared by the
+ *  Settings OCR picker and the in-result OCR switcher so the "downloaded"
+ *  predicate can't drift between them. */
+fun OcrBackend.isDownloaded(ctx: Context): Boolean =
+    packKeys.all { OcrPackModelHelper(it).isInstalled(ctx) }

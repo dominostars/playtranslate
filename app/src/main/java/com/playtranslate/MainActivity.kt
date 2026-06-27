@@ -66,7 +66,10 @@ import com.playtranslate.language.PackUpgradeOrchestrator
 import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.StalePack
+import com.playtranslate.ocr.registry.OcrModelManager
+import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.translation.OfflineModelReclaimer
@@ -161,10 +164,42 @@ class MainActivity :
      *  calls [OnboardingViewModel.refresh] (after `reresolve`) from each trigger. */
     private val onboardingVm: OnboardingViewModel by viewModels()
 
+    /** In-flight OCR-tool switch (re-OCR of the cached screenshot). Cancelled
+     *  before launching a fresh one so a double-tap can't race two re-scans. */
+    private var reOcrJob: kotlinx.coroutines.Job? = null
+
     // ── TranslationResultHost event handlers ──────────────────────────────
 
     override fun onEditOriginalRequested() {
         showEditOverlay()
+    }
+
+    override fun onReOcrRequested() {
+        val svc = captureService ?: return
+        val ready = resultVm.result.value as? com.playtranslate.ui.ResultState.Ready ?: return
+        val prov = ready.result.ocrProvenance ?: return
+        val path = ready.result.screenshotPath ?: return
+        // Pause live capture so a fresh cycle can't overwrite the cached screenshot
+        // mid-rescan (the panel result's screenshotPath is the per-display file).
+        if (isLiveMode) pauseLiveMode()
+        reOcrJob?.cancel()
+        reOcrJob = lifecycleScope.launch {
+            when (val outcome = svc.reOcr(prov, path)) {
+                is CaptureService.ReOcrOutcome.Done ->
+                    resultVm.displayResult(outcome.result, applicationContext)
+                CaptureService.ReOcrOutcome.NoText ->
+                    toastReOcr(R.string.ocr_rescan_no_text, prov.sourceLangId)
+                is CaptureService.ReOcrOutcome.Failed ->
+                    toastReOcr(R.string.ocr_rescan_failed, prov.sourceLangId)
+            }
+        }
+    }
+
+    /** Toast naming the OCR engine the user just switched to (now the selected
+     *  backend), keeping the prior result on screen. */
+    private fun toastReOcr(msgRes: Int, id: SourceLangId) {
+        val engine = OcrModelManager.selectedBackend(this, id)?.ocrLabel ?: ""
+        Toast.makeText(this, getString(msgRes, engine), Toast.LENGTH_SHORT).show()
     }
 
     override fun onUserScrolled() {
@@ -1286,7 +1321,7 @@ class MainActivity :
                                     resultVm.showStatus(state.message)
                                 is CaptureState.Translating ->
                                     resultVm.showTranslatingPlaceholder(
-                                        state.originalText, state.segments, applicationContext,
+                                        state.originalText, state.segments, applicationContext, state.ocrProvenance,
                                     )
                                 is CaptureState.Done -> {
                                     editTranslationJob?.cancel()

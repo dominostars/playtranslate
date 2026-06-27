@@ -708,6 +708,24 @@
          translated text. %1$s = backend display name (e.g. "DeepL"). -->
     <string name="translation_source_label">Translated by <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
 
+    <!-- Attribution line directly under the SOURCE text on a translation result
+         (mirror of translation_source_label): which OCR tool read the text.
+         %1$s = OCR engine name (e.g. "PaddleOCR") — a proper noun, don't translate it. -->
+    <string name="ocr_source_label">Scanned by <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g></string>
+    <!-- Title of the dialog (opened by tapping the source OCR row) that lets the
+         user switch OCR tools for the current source language. -->
+    <string name="ocr_picker_title">Choose OCR tool</string>
+    <!-- Body text of that same "Choose OCR tool" dialog, shown under the title. -->
+    <string name="ocr_picker_message">OCR is what extracts text from a screenshot. Different tools might be better for different fonts</string>
+    <!-- Accessibility label (contentDescription) for the source OCR-attribution row + gear icon. -->
+    <string name="cd_choose_ocr">Choose OCR tool</string>
+    <!-- Toast shown when re-scanning with a newly-chosen OCR tool finds no text;
+         the previous result is kept on screen. %1$s = OCR engine name (proper noun, don't translate). -->
+    <string name="ocr_rescan_no_text">No text found with <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g></string>
+    <!-- Toast shown when re-scanning with a newly-chosen OCR tool fails (decode/error);
+         the previous result is kept on screen. %1$s = OCR engine name (proper noun, don't translate). -->
+    <string name="ocr_rescan_failed">Couldn\'t re-scan with <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g></string>
+
     <!-- Error toast shown when the user tries to start live mode but
          the active capture backend doesn't support it. -->
     <string name="error_live_mode_unsupported_backend">Live mode isn\'t available with the current screen-capture method.</string>

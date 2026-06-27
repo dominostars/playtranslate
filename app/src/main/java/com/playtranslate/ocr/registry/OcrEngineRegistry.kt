@@ -14,6 +14,7 @@ import com.playtranslate.ocr.core.OcrEngine
 import com.playtranslate.ocr.core.OcrImage
 import com.playtranslate.ocr.core.OcrOrientationSupport
 import com.playtranslate.ocr.core.RecognizedRegion
+import com.playtranslate.ocr.core.ResolvedOcr
 import com.playtranslate.ocr.engines.mlkit.MlKitOcr
 import java.util.concurrent.ConcurrentHashMap
 
@@ -32,12 +33,16 @@ class OcrEngineRegistry {
 
     private val engines = ConcurrentHashMap<OcrBackend, OcrEngine>()
 
-    fun engineFor(sourceLang: String): OcrEngine {
+    fun engineFor(sourceLang: String): ResolvedOcr {
         // Production: the user's chosen Meiki/Paddle engine if its pack is
         // installed — built + owned by the bridge (NOT cached here, so a selection
         // switch never closes a live session out from under a capture). Falls
         // through to the ML Kit floor (cached; thread-safe, no native teardown).
-        OcrModelManager.engineForSelected(sourceLang)?.let { return it }
+        // This is the single point where the real chosen→floor→empty fallback is
+        // observable, so it reports the resolved backend alongside the engine.
+        OcrModelManager.engineForSelected(sourceLang)?.let { (backend, engine) ->
+            return ResolvedOcr(engine, backend)
+        }
         val profile = SourceLanguageProfiles.forCode(sourceLang)
             ?: SourceLanguageProfiles[SourceLangId.JA]
         // A no-floor language (Cyrillic etc.) reaches here only if its mandatory
@@ -47,9 +52,9 @@ class OcrEngineRegistry {
         // breadcrumb so a gate hole is diagnosable rather than silently text-less.
         val floor = profile.mlKitFloor ?: run {
             Log.w(TAG, "no OCR backend for '$sourceLang' (no ML Kit floor, pack absent); returning empty engine")
-            return EmptyOcrEngine
+            return ResolvedOcr(EmptyOcrEngine, null)
         }
-        return engines.getOrPut(floor) { create(floor) }
+        return ResolvedOcr(engines.getOrPut(floor) { create(floor) }, floor)
     }
 
     /** Close + drop every cached engine. Caller must guarantee no in-flight OCR. */

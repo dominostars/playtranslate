@@ -1,5 +1,6 @@
 package com.playtranslate
 
+import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
 import kotlinx.coroutines.CancellationException
@@ -87,6 +88,10 @@ sealed class CaptureState {
     data class Translating(
         val originalText: String,
         val segments: List<TextSegment>,
+        /** Provenance of the OCR that produced [originalText], so the source
+         *  "Scanned by …" attribution can show as soon as OCR finishes — before the
+         *  translation lands. Null for non-OCR placeholders (drag/sentence/edit). */
+        val ocrProvenance: OcrProvenance? = null,
     ) : CaptureState()
 
     /** Pipeline finished with a translation. */

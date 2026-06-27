@@ -190,8 +190,9 @@ class TranslationResultViewModel : ViewModel() {
         originalText: String,
         segments: List<TextSegment>,
         appCtx: Context,
+        ocrProvenance: com.playtranslate.model.OcrProvenance? = null,
     ) {
-        _result.value = ResultState.Translating(originalText, segments)
+        _result.value = ResultState.Translating(originalText, segments, ocrProvenance)
         startWordLookups(originalText, appCtx)
     }
 
@@ -213,6 +214,10 @@ class TranslationResultViewModel : ViewModel() {
                         originalText = newText,
                         translatedText = "",
                         segments = newSegments,
+                        // Edited source is no longer the OCR output — drop provenance
+                        // so the "Scanned by …" row + gear hide and re-OCR (which would
+                        // discard the edit) is disabled.
+                        ocrProvenance = null,
                     )
                 )
             }
@@ -354,7 +359,13 @@ sealed class ResultState {
     data class Status(val message: String, val showHint: Boolean = false) : ResultState()
     /** Drag-sentence placeholder: original text is set, translation
      *  is in flight ("Translating..." in the UI). */
-    data class Translating(val originalText: String, val segments: List<TextSegment>) : ResultState()
+    data class Translating(
+        val originalText: String,
+        val segments: List<TextSegment>,
+        /** OCR provenance when this placeholder came from a capture (drives the
+         *  source "Scanned by …" row during translation); null for drag/sentence/edit. */
+        val ocrProvenance: com.playtranslate.model.OcrProvenance? = null,
+    ) : ResultState()
     data class Ready(val result: TranslationResult) : ResultState()
     /** Translation/capture error; fragment formats with
      *  [com.playtranslate.R.string.status_error]. */

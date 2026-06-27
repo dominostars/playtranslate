@@ -3,6 +3,7 @@ package com.playtranslate
 import android.app.Notification
 import android.app.NotificationChannel
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -25,12 +26,16 @@ import android.util.Log
 import android.widget.Toast
 import androidx.annotation.MainThread
 import androidx.core.app.NotificationCompat
+import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.ocr.registry.ocrLabel
+import com.playtranslate.ocr.registry.selectionToken
 import com.google.mlkit.nl.translate.TranslateLanguage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -577,14 +582,18 @@ class CaptureService : Service() {
      *  thread the captured value rather than re-reading Prefs, so mid-batch
      *  changes can't create inconsistency between key-derivation and
      *  translator selection. */
-    private fun snapshotTranslationTarget(): TranslationTarget {
+    private fun snapshotTranslationTarget(sourceOverride: SourceLangId? = null): TranslationTarget {
         val prefs = Prefs(this)
+        // [sourceOverride] lets a re-OCR translate in the language that actually
+        // produced the result (its provenance), not the current pref — the user may
+        // have switched source language since. Target/variant still come from prefs.
+        val srcId = sourceOverride ?: prefs.sourceLangId
         return TranslationTarget(
-            source = SourceLanguageProfiles[prefs.sourceLangId].translationCode,
+            source = SourceLanguageProfiles[srcId].translationCode,
             target = prefs.targetLang,
             deeplKey = prefs.deeplApiKey,
             chineseVariant = prefs.targetChineseVariant,
-            sourceIsTraditional = prefs.sourceLangId == SourceLangId.ZH_HANT,
+            sourceIsTraditional = srcId == SourceLangId.ZH_HANT,
         )
     }
 
@@ -748,6 +757,9 @@ class CaptureService : Service() {
             // OCR the crop directly. Cleanup of `bitmap` is the outer
             // finally's job.
             state.value = CaptureState.InProgress(getString(R.string.status_ocr))
+            // Snapshot the exact source language (variant included) once, before OCR,
+            // so OCR + provenance can't disagree even if the language changes mid-cycle.
+            val srcId = Prefs(this@CaptureService).sourceLangId
             val ocrResult = ocrManager.recognise(bitmap, sourceLang, screenshotWidth = raw.width)
             if (BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
                 OcrSeedWriter.writeSeed(this@CaptureService, bitmap, ocrResult)
@@ -759,7 +771,9 @@ class CaptureService : Service() {
             }
 
             // Reveal the page on OCR: show the source now, translate in the section.
-            state.value = CaptureState.Translating(ocrResult.fullText, ocrResult.segments)
+            state.value = CaptureState.Translating(
+                ocrResult.fullText, ocrResult.segments, ocrProvenanceFor(ocrResult, displayId, region, srcId),
+            )
             val groupTranslation = translateGroups(ocrResult.groups.map { it.text })
 
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
@@ -772,6 +786,7 @@ class CaptureService : Service() {
                     screenshotPath      = screenshotPath,
                     note                = groupTranslation.note,
                     backendDisplayName  = groupTranslation.backendDisplayName,
+                    ocrProvenance       = ocrProvenanceFor(ocrResult, displayId, region, srcId),
                 )
             )
         } catch (e: CancellationException) {
@@ -780,6 +795,71 @@ class CaptureService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Process cycle failed: ${e.message}", e)
             state.value = CaptureState.Failed(e.message ?: "Unknown error")
+        } finally {
+            if (!bitmap.isRecycled) bitmap.recycle()
+        }
+    }
+
+    /** Result of [reOcr]. [Done] carries a finished result to swap in; [NoText]
+     *  and [Failed] are terminal outcomes the caller surfaces (e.g. a toast)
+     *  WITHOUT tearing down the existing on-screen result — re-scanning with a
+     *  weaker engine must never erase a good translation. */
+    sealed interface ReOcrOutcome {
+        data class Done(val result: TranslationResult) : ReOcrOutcome
+        data object NoText : ReOcrOutcome
+        data class Failed(val message: String) : ReOcrOutcome
+    }
+
+    /**
+     * Re-run OCR + translation on a previously-captured [screenshotPath] using the
+     * OCR engine that is NOW selected for [OcrProvenance.sourceLangId] (the picker
+     * persists the new token before calling this — engine resolution reads Prefs
+     * fresh). Re-crops the IDENTICAL rectangle from [provenance] (carried from the
+     * original capture) so a later live-region change can't shift it.
+     *
+     * Deliberately does NOT drive the capture state machine / [processScreenshot]:
+     * it returns a [ReOcrOutcome] so the caller keeps the prior result on
+     * NoText/Failed, and it never touches [oneShotCaptureJob] from a background
+     * thread. Decodes on IO; safe to call from any dispatcher.
+     */
+    suspend fun reOcr(provenance: OcrProvenance, screenshotPath: String): ReOcrOutcome {
+        val raw = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(screenshotPath) }
+            ?: return ReOcrOutcome.Failed("screenshot decode failed: $screenshotPath")
+        val rawWidth = raw.width
+        val rawHeight = raw.height
+        var bitmap: Bitmap = raw
+        return try {
+            val region = provenance.region
+            val statusBarHeight = getStatusBarHeightForDisplay(provenance.displayId)
+            val top    = maxOf((rawHeight * region.top).toInt(), statusBarHeight)
+            val left   = (rawWidth  * region.left).toInt()
+            val bottom = (rawHeight * region.bottom).toInt()
+            val right  = (rawWidth  * region.right).toInt()
+            bitmap = cropBitmap(raw, top, bottom, left, right)
+
+            val lang = SourceLanguageProfiles[provenance.sourceLangId].translationCode
+            val ocrResult = ocrManager.recognise(bitmap, lang, screenshotWidth = rawWidth)
+                ?: return ReOcrOutcome.NoText
+
+            val groupTranslation = translateGroups(ocrResult.groups.map { it.text }, provenance.sourceLangId)
+            val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            ReOcrOutcome.Done(
+                TranslationResult(
+                    originalText       = ocrResult.fullText,
+                    segments           = ocrResult.segments,
+                    translatedText     = groupTranslation.text,
+                    timestamp          = timestamp,
+                    screenshotPath     = screenshotPath,
+                    note               = groupTranslation.note,
+                    backendDisplayName = groupTranslation.backendDisplayName,
+                    ocrProvenance      = ocrProvenanceFor(ocrResult, provenance.displayId, region, provenance.sourceLangId),
+                )
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "reOcr failed: ${e.message}", e)
+            ReOcrOutcome.Failed(e.message ?: "Unknown error")
         } finally {
             if (!bitmap.isRecycled) bitmap.recycle()
         }
@@ -1665,6 +1745,7 @@ class CaptureService : Service() {
     internal suspend fun translateAndSendToPanel(
         ocrResult: OcrManager.OcrResult,
         screenshotPath: String?,
+        displayId: Int,
         forceShow: Boolean = false
     ): List<GroupTranslation>? {
         if (!forceShow) {
@@ -1685,6 +1766,7 @@ class CaptureService : Service() {
                 screenshotPath     = screenshotPath,
                 note               = note,
                 backendDisplayName = backendDisplayName,
+                ocrProvenance      = ocrProvenanceFor(ocrResult, displayId, activeRegionForDisplay(displayId), Prefs(this).sourceLangId),
             )
         )
         return perGroup
@@ -1748,6 +1830,26 @@ class CaptureService : Service() {
     /** Persist [raw] to the screenshot cache via the active capture backend. */
     internal fun captureSaveToCache(raw: Bitmap, displayId: Int): String? =
         CaptureBackendResolver.active().captureSource?.saveToCache(raw, displayId)
+
+    /** Build the [OcrProvenance] for a freshly-OCR'd result. [sourceLangId] is the
+     *  EXACT source language (variant included) the caller snapshotted at capture
+     *  time — passed in, NOT derived from the OCR code, because OCR is variant-
+     *  agnostic (ZH and ZH_HANT both OCR as "zh"), so reconstructing from the code
+     *  would collapse Traditional → Simplified and break the picker's backend key +
+     *  `sourceIsTraditional` on re-OCR. [engineBackend] supplies the label + selection
+     *  token; [displayId] + [region] re-crop the identical rectangle on a re-OCR.
+     *  Null when the result carries no engine identity (the empty engine) — callers
+     *  then leave [TranslationResult.ocrProvenance] null, suppressing the source OCR
+     *  row and re-OCR. */
+    private fun ocrProvenanceFor(
+        ocrResult: OcrManager.OcrResult,
+        displayId: Int,
+        region: RegionEntry,
+        sourceLangId: SourceLangId,
+    ): OcrProvenance? {
+        val backend = ocrResult.engineBackend ?: return null
+        return OcrProvenance(backend.ocrLabel, backend.selectionToken, displayId, sourceLangId, region)
+    }
 
     /**
      * @param preCaptured If non-null, use this bitmap instead of taking a new
@@ -1819,7 +1921,7 @@ class CaptureService : Service() {
     internal suspend fun runCaptureOcrTranslate(
         displayId: Int,
         onScreenshotTaken: (() -> Unit)? = null,
-        onOcrReady: ((originalText: String, segments: List<TextSegment>) -> Unit)? = null,
+        onOcrReady: ((originalText: String, segments: List<TextSegment>, ocrProvenance: OcrProvenance?) -> Unit)? = null,
     ): PipelineOutcome {
         val raw: Bitmap = captureScreen(displayId)
             ?: return PipelineOutcome.Failed(
@@ -1840,6 +1942,8 @@ class CaptureService : Service() {
 
             // No pre-OCR icon blackout — the floating icon is always rendered
             // in compact mode so it doesn't bleed into the OCR region.
+            // Snapshot the exact source language (variant included) once for provenance.
+            val srcId = Prefs(this@CaptureService).sourceLangId
             val ocrResult = ocrManager.recognise(bitmap, sourceLang, screenshotWidth = raw.width)
             if (BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
                 OcrSeedWriter.writeSeed(this@CaptureService, bitmap, ocrResult)
@@ -1849,7 +1953,7 @@ class CaptureService : Service() {
 
             // OCR is in — surface the source now so the page can reveal before the
             // (slower) translation runs.
-            onOcrReady?.invoke(ocrResult.fullText, ocrResult.segments)
+            onOcrReady?.invoke(ocrResult.fullText, ocrResult.segments, ocrProvenanceFor(ocrResult, displayId, region, srcId))
 
             val perGroup = translateGroupsSeparately(ocrResult.groups.map { it.text })
             val translated = perGroup.joinToString("\n\n") { it.text }
@@ -1867,6 +1971,7 @@ class CaptureService : Service() {
                         screenshotPath     = screenshotPath,
                         note               = note,
                         backendDisplayName = backendDisplayName,
+                        ocrProvenance      = ocrProvenanceFor(ocrResult, displayId, region, srcId),
                     ),
                     groupBounds = ocrResult.groups.map { it.bounds },
                     groupTranslations = perGroup.map { it.text },
@@ -1902,8 +2007,8 @@ class CaptureService : Service() {
             displayId = displayId,
             onScreenshotTaken = { flashRegionIndicator(displayId) },
             // Reveal the source as soon as OCR finishes; translation lands on Done.
-            onOcrReady = { originalText, segments ->
-                state.value = CaptureState.Translating(originalText, segments)
+            onOcrReady = { originalText, segments, ocrProvenance ->
+                state.value = CaptureState.Translating(originalText, segments, ocrProvenance)
             },
         )
         state.value = when (outcome) {
@@ -1948,8 +2053,11 @@ class CaptureService : Service() {
      *     a lower-priority backend, the fallback's output shouldn't outlast
      *     the memory pressure window.
      */
-    internal suspend fun translateGroupsSeparately(groupTexts: List<String>): List<GroupTranslation> {
-        val target = snapshotTranslationTarget()
+    internal suspend fun translateGroupsSeparately(
+        groupTexts: List<String>,
+        sourceOverride: SourceLangId? = null,
+    ): List<GroupTranslation> {
+        val target = snapshotTranslationTarget(sourceOverride)
 
         // OCR-only bypass: when source and target language are the same,
         // skip translation entirely — OCR output is the final result.
@@ -2050,8 +2158,11 @@ class CaptureService : Service() {
             .map { it.copy(text = target.localize(it.text)) }
     }
 
-    private suspend fun translateGroups(groupTexts: List<String>): GroupTranslation {
-        val results = translateGroupsSeparately(groupTexts)
+    private suspend fun translateGroups(
+        groupTexts: List<String>,
+        sourceOverride: SourceLangId? = null,
+    ): GroupTranslation {
+        val results = translateGroupsSeparately(groupTexts, sourceOverride)
         val translated = results.joinToString("\n\n") { it.text }
         val note = results.mapNotNull { it.note }.firstOrNull()
         val backendDisplayName = results.mapNotNull { it.backendDisplayName }.firstOrNull()

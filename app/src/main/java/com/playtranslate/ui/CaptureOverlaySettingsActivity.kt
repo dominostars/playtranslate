@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Typeface
@@ -137,6 +138,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         // The source language can change from another screen (the language
         // picker); rebuild the OCR cells so they track the current language.
         setupOcrSection()
+        maybeHandleOcrDownloadDeepLink()
     }
 
     override fun onDestroy() {
@@ -812,5 +814,38 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private fun deleteOcr(backend: OcrBackend) {
         backend.packKeys.forEach { OcrModelManager.deleteOcrPack(this, it) }
         setupOcrSection()
+    }
+
+    /** Consume the "auto-download this OCR engine" deep link (from the in-result
+     *  OCR picker tapping a not-yet-downloaded tool): resolve the backend for the
+     *  requested language + token, kick off [selectOcr] (download + progress +
+     *  persist-on-success), and scroll the OCR card into view. The extra is
+     *  removed after one handling so a later onResume (e.g. returning from the
+     *  download dialog) can't re-fire it — [selectOcr] has no re-entrancy guard. */
+    private fun maybeHandleOcrDownloadDeepLink() {
+        val token = intent.getStringExtra(EXTRA_OCR_AUTODOWNLOAD) ?: return
+        val langCode = intent.getStringExtra(EXTRA_OCR_LANG)
+        intent.removeExtra(EXTRA_OCR_AUTODOWNLOAD)
+        intent.removeExtra(EXTRA_OCR_LANG)
+        val id = SourceLangId.entries.firstOrNull { it.code == langCode } ?: prefs.sourceLangId
+        val backend = OcrModelManager.availableBackends(this, id)
+            .firstOrNull { it.selectionToken == token } ?: return
+        findViewById<View>(R.id.cardOcr)?.let { card ->
+            card.post { card.requestRectangleOnScreen(android.graphics.Rect(0, 0, card.width, card.height)) }
+        }
+        selectOcr(id, backend)
+    }
+
+    companion object {
+        private const val EXTRA_OCR_LANG = "extra_ocr_lang"
+        private const val EXTRA_OCR_AUTODOWNLOAD = "extra_ocr_autodownload"
+
+        /** Intent that opens this screen and immediately starts downloading the OCR
+         *  pack for [token]'s backend under language [id] — the in-result OCR
+         *  picker's "not downloaded" path. */
+        fun downloadIntent(ctx: Context, id: SourceLangId, token: String): Intent =
+            Intent(ctx, CaptureOverlaySettingsActivity::class.java)
+                .putExtra(EXTRA_OCR_LANG, id.code)
+                .putExtra(EXTRA_OCR_AUTODOWNLOAD, token)
     }
 }

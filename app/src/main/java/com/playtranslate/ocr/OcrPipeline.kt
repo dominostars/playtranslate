@@ -2,11 +2,12 @@ package com.playtranslate.ocr
 
 import android.graphics.Bitmap
 import com.playtranslate.OcrPreprocessingRecipe
+import com.playtranslate.language.OcrBackend
 import com.playtranslate.ocr.core.LayoutAnalyzer
 import com.playtranslate.ocr.core.LayoutGroup
-import com.playtranslate.ocr.core.OcrEngine
 import com.playtranslate.ocr.core.OcrImage
 import com.playtranslate.ocr.core.RecognizedTextNormalizer
+import com.playtranslate.ocr.core.ResolvedOcr
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -29,11 +30,13 @@ import kotlinx.coroutines.withContext
 object OcrPipeline {
 
     /** Grouped paragraphs in the engine's input-coordinate space, plus the
-     *  factor to divide box coordinates by to reach original-bitmap space. */
-    data class Output(val groups: List<LayoutGroup>, val scaleFactor: Float)
+     *  factor to divide box coordinates by to reach original-bitmap space and the
+     *  [backend] that actually ran (null = the no-OCR empty engine), so the caller
+     *  can attribute the result to a specific OCR tool. */
+    data class Output(val groups: List<LayoutGroup>, val scaleFactor: Float, val backend: OcrBackend?)
 
     suspend fun run(
-        engineProvider: () -> OcrEngine,
+        engineProvider: () -> ResolvedOcr,
         bitmap: Bitmap,
         sourceLang: String,
         screenshotWidth: Int,
@@ -53,7 +56,8 @@ object OcrPipeline {
         // call-site arguments: building a first-use Meiki/Paddle engine does a
         // native MNN load + OpenCV init, and the dark-bg sample reads bitmap
         // pixels — both would otherwise run on the Main capture coroutine.
-        val engine = engineProvider()
+        val resolved = engineProvider()
+        val engine = resolved.engine
         val isDarkBackground = darkBackgroundProvider()
         val selfPreprocesses = engine.capabilities.selfPreprocesses
         val processed = if (selfPreprocesses) bitmap else recipe.apply(bitmap, isDarkBackground)
@@ -74,7 +78,7 @@ object OcrPipeline {
                 logDecisions = logGrouping,
             )
             if (groups.isEmpty()) return@withContext null
-            Output(groups, scaleFactor)
+            Output(groups, scaleFactor, resolved.backend)
         } finally {
             if (processed !== bitmap) processed.recycle()
         }

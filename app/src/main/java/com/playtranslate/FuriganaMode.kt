@@ -246,7 +246,7 @@ class FuriganaMode(
             // Save screenshot for Anki + send translation to in-app panel.
             // Per-display filename — see ScreenshotManager.saveToCache.
             val screenshotPath = service.captureSaveToCache(raw, displayId)
-            service.translateAndSendToPanel(ocrResult, screenshotPath)
+            service.translateAndSendToPanel(ocrResult, screenshotPath, displayId)
         } finally {
             if (!raw.isRecycled) raw.recycle()
         }

@@ -36,8 +36,11 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
 import com.playtranslate.R
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.ocr.registry.OcrModelManager
+import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.themeColor
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -89,6 +92,10 @@ class TranslationResultActivity :
      *  edit and its Cancelled from finish()-ing us. */
     private var captureSession: CaptureSession? = null
     private var sessionCollectJob: kotlinx.coroutines.Job? = null
+
+    /** In-flight OCR-tool switch (re-OCR of the cached screenshot). Cancelled
+     *  before launching a fresh one so a double-tap can't race two re-scans. */
+    private var reOcrJob: kotlinx.coroutines.Job? = null
 
     /** Tracks keyboard visibility so dismissing the IME commits the edit,
      *  matching MainActivity's commit-on-keyboard-hide behavior. */
@@ -182,6 +189,42 @@ class TranslationResultActivity :
 
     override fun onEditOriginalRequested() {
         showEditOverlay()
+    }
+
+    override fun onReOcrRequested() {
+        val svc = captureService ?: return
+        val prov = (vm.result.value as? ResultState.Ready)?.result?.ocrProvenance ?: return
+        // The result's screenshotPath is the per-display capture-d{id}.jpg, which a
+        // later capture on that display can overwrite; prefer the stable pre-capture
+        // screenshot this screen was launched with.
+        val path = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
+            ?: (vm.result.value as? ResultState.Ready)?.result?.screenshotPath
+            ?: return
+        reOcrJob?.cancel()
+        reOcrJob = lifecycleScope.launch {
+            when (val outcome = svc.reOcr(prov, path)) {
+                is CaptureService.ReOcrOutcome.Done -> {
+                    // The original one-shot session is superseded; stop its collector
+                    // so a rotation re-collect of its sticky Done can't revert the
+                    // re-OCR'd result (the VM survives config change and re-renders it).
+                    // Mirrors commitEdit's supersede.
+                    sessionCollectJob?.cancel()
+                    captureSession = null
+                    vm.displayResult(outcome.result, applicationContext)
+                }
+                CaptureService.ReOcrOutcome.NoText ->
+                    toastReOcr(R.string.ocr_rescan_no_text, prov.sourceLangId)
+                is CaptureService.ReOcrOutcome.Failed ->
+                    toastReOcr(R.string.ocr_rescan_failed, prov.sourceLangId)
+            }
+        }
+    }
+
+    /** Toast naming the OCR engine the user just switched to (now the selected
+     *  backend), keeping the prior result on screen. */
+    private fun toastReOcr(msgRes: Int, id: SourceLangId) {
+        val engine = OcrModelManager.selectedBackend(this, id)?.ocrLabel ?: ""
+        Toast.makeText(this, getString(msgRes, engine), Toast.LENGTH_SHORT).show()
     }
 
     override fun onUserScrolled() {
@@ -575,7 +618,7 @@ class TranslationResultActivity :
                         // OCR done: reveal the source + "Translating…" placeholder;
                         // Done replaces it with the finished translation.
                         is CaptureState.Translating ->
-                            vm.showTranslatingPlaceholder(state.originalText, state.segments, applicationContext)
+                            vm.showTranslatingPlaceholder(state.originalText, state.segments, applicationContext, state.ocrProvenance)
                         is CaptureState.Done -> vm.displayResult(state.result, applicationContext)
                         is CaptureState.NoText -> vm.showStatus(state.message)
                         is CaptureState.Failed -> vm.showError(state.message)

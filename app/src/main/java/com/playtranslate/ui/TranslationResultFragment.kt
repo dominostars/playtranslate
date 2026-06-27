@@ -29,6 +29,7 @@ import com.playtranslate.R
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.selectHeadword
+import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -112,6 +113,12 @@ class TranslationResultFragment : Fragment() {
         /** User tapped Edit on the original-text card. The host opens
          *  its edit overlay UI. No-op for hosts without one. */
         fun onEditOriginalRequested()
+
+        /** User picked a different (already-downloaded) OCR tool from the source
+         *  OCR picker. The new token is already persisted; the host re-OCRs the
+         *  current result's cached screenshot and refreshes the result in place.
+         *  No-op for hosts/results without OCR provenance. */
+        fun onReOcrRequested()
 
         /** User scrolled the result content. The host can use this to
          *  pause live-mode capture, etc. No-op for hosts without
@@ -278,6 +285,7 @@ class TranslationResultFragment : Fragment() {
             onAddToAnki = { onAnkiClicked() },
             onAnkiOneTap = { oneTapSentenceFromResult() },
         )
+        binder.onChooseOcr = { showOcrPicker() }
         resultsContent.setOnScrollChangeListener(scrollListener)
         btnToggleWords.setOnClickListener {
             prefs.hideWordsSection = !prefs.hideWordsSection
@@ -291,6 +299,26 @@ class TranslationResultFragment : Fragment() {
         // The Anki action now lives on the source/target section headers
         // (tap = review sheet, long-press = one-tap), wired via the binder's
         // setupSectionButtons above. The floating pill button is gone.
+    }
+
+    /** Open the "Choose OCR tool" picker for the current OCR-derived result.
+     *  Switching to a downloaded engine re-OCRs via the host; a not-downloaded
+     *  engine deep-links to the OCR settings screen to fetch it. */
+    private fun showOcrPicker() {
+        val ctx = context ?: return
+        val provenance = (vm.result.value as? ResultState.Ready)?.result?.ocrProvenance ?: return
+        OcrPicker.populate(
+            OverlayAlert.Builder(requireActivity()),
+            ctx,
+            provenance.sourceLangId,
+            provenance.engineToken,
+            onReOcr = { host?.onReOcrRequested() },
+            onDownload = { backend ->
+                startActivity(
+                    CaptureOverlaySettingsActivity.downloadIntent(ctx, provenance.sourceLangId, backend.selectionToken)
+                )
+            },
+        ).show()
     }
 
     private fun applyWordsVisibility() {
@@ -323,6 +351,10 @@ class TranslationResultFragment : Fragment() {
                 lastRenderedSourceText = state.originalText
                 binder.setSourceSegments(state.segments)
                 tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
+                // Capture placeholders carry OCR provenance — show "Scanned by …" with
+                // the source as soon as OCR finishes, before the translation lands.
+                // Drag/edit placeholders carry null, which hides the row.
+                binder.bindSourceOcr(state.ocrProvenance)
                 binder.setTargetTranslatingPlaceholder()
                 binder.applyTranslationVisibility()
                 binder.applyOriginalVisibility()
@@ -348,6 +380,7 @@ class TranslationResultFragment : Fragment() {
                 val scrollAnchor = if (preserveScroll) captureScrollAnchor() else null
                 lastRenderedSourceText = result.originalText
                 binder.setSourceSegments(result.segments)
+                binder.bindSourceOcr(result.ocrProvenance)
                 tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
                 // A blank translation on a Ready result means a re-translate is
                 // in flight: the edit-overlay commit clears the old translation
