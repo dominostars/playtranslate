@@ -35,16 +35,14 @@ import com.playtranslate.fullScreenDialogTheme
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.playtranslate.dictionary.Deinflector
-import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
+import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.tts.ttsTextForWord
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TatoebaClient
-import com.playtranslate.language.TranslationManagerProvider
-import com.playtranslate.language.WordTranslator
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.Example
 import com.playtranslate.model.headwordDisplay
@@ -722,12 +720,11 @@ class WordAnkiReviewSheet : DialogFragment() {
         moreExamplesTargetLang = targetLangCode
         val engine = SourceLanguageEngines.get(appCtx, sourceLangId)
         val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, targetLangCode)
-        val mlKit = TranslationManagerProvider.get(engine.profile.translationCode, targetLangCode)
-        val enToTargetWrapper = DefinitionGlossTranslators.forTarget(targetLangCode)
+        val enToTargetWrapper = OfflineFallbackTranslators.forTarget(targetLangCode)
         val charConverter = ChineseScriptConverter.forTarget(targetLangCode, prefs.targetChineseVariant)
         val resolver = DefinitionResolver(
             engine, targetGlossDb,
-            mlKit?.let { WordTranslator(it::translate) },
+            OfflineFallbackTranslators.forPair(engine.profile.translationCode, targetLangCode),
             targetLangCode,
             enToTargetWrapper,
             charConverter,

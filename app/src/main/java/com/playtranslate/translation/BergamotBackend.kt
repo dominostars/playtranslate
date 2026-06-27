@@ -33,9 +33,10 @@ class BergamotBackend(
     override val qualityStars: StarRating = 2.0f
     override val speedStars: StarRating = 5.0f
 
-    /** Fast single-hop en→target — the preferred dictionary definition-gloss
-     *  tier when its model is installed (see DefinitionGlossTranslators). */
-    override val usableForDefinitionGloss: Boolean = true
+    /** The preferred offline fallback tier when its model is installed — wins the
+     *  headword and definition-gloss waterfall over ML Kit (see
+     *  OfflineFallbackTranslators). */
+    override val usableAsOfflineFallback: Boolean = true
 
     /** arm64-only (the .so) — gates the backend off 32-bit, like the MNN tier. */
     fun supportsRequiredAbi(): Boolean = Process.is64Bit()

@@ -35,10 +35,10 @@ class MlKitBackend : TranslationBackend {
     override val qualityStars: StarRating = 1.0f
     override val speedStars: StarRating = 5.0f
 
-    /** The floor of the dictionary definition-gloss waterfall: priority 30 puts
-     *  it last among the gloss-capable backends, after Bergamot. See
-     *  DefinitionGlossTranslators. */
-    override val usableForDefinitionGloss: Boolean = true
+    /** The floor of the offline fallback waterfall: priority 30 puts it last among
+     *  the offline-fallback backends, after Bergamot. See
+     *  OfflineFallbackTranslators. */
+    override val usableAsOfflineFallback: Boolean = true
 
     override val status: BackendStatus = BackendStatus.Info("Bundled with the app, used as a fallback")
 

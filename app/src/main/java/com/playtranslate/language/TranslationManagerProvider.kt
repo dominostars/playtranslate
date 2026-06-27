@@ -12,20 +12,13 @@ object TranslationManagerProvider {
     private val cache = java.util.concurrent.ConcurrentHashMap<Pair<String, String>, TranslationManager>()
 
     /** Always returns a non-null [TranslationManager] for the (source, target)
-     *  pair. Pure infrastructure — no UI policy. The translation waterfall
-     *  (MlKitBackend) calls this since it needs ML Kit even for `target == "en"`,
-     *  unlike the dictionary tier-2 path which deliberately bypasses it. */
+     *  pair. Pure infrastructure — no UI policy. [com.playtranslate.translation.MlKitBackend]
+     *  is the sole caller: every ML Kit translation — the sentence waterfall and the
+     *  dictionary offline-fallback path alike — now routes through that backend, so this
+     *  is the single point that constructs ML Kit translators. */
     fun getOrCreate(source: String, target: String): TranslationManager {
         val key = source to target
         return cache.computeIfAbsent(key) { TranslationManager(source, target) }
-    }
-
-    /** Translator for source→target headword translation (Tier 2).
-     *  Returns null when [targetLang] == "en" because JMdict gloss is
-     *  already English and ML Kit is not needed in that case. */
-    fun get(sourceLangTranslationCode: String, targetLang: String): TranslationManager? {
-        if (targetLang == "en") return null
-        return getOrCreate(sourceLangTranslationCode, targetLang)
     }
 
     /** Closes and removes every cached manager whose source or target is [lang]

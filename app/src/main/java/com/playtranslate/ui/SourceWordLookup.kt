@@ -2,14 +2,12 @@ package com.playtranslate.ui
 
 import android.content.Context
 import com.playtranslate.Prefs
-import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
+import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TokenSpan
-import com.playtranslate.language.TranslationManagerProvider
-import com.playtranslate.language.WordTranslator
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.headwordDisplay
@@ -76,11 +74,10 @@ object SourceWordLookup {
         val prefs = Prefs(appCtx)
         val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
         val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
-        val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
         val resolver = DefinitionResolver(
             engine, targetGlossDb,
-            mlKitTranslator?.let { WordTranslator(it::translate) }, prefs.targetLang,
-            DefinitionGlossTranslators.forTarget(prefs.targetLang),
+            OfflineFallbackTranslators.forPair(engine.profile.translationCode, prefs.targetLang), prefs.targetLang,
+            OfflineFallbackTranslators.forTarget(prefs.targetLang),
             ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant),
         )
         val defResult = withContext(Dispatchers.IO) {

@@ -2,15 +2,13 @@ package com.playtranslate.ui
 
 import android.content.Context
 import com.playtranslate.language.ChineseScriptVariant
-import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.InflectedForm
+import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TokenSpan
-import com.playtranslate.language.TranslationManagerProvider
-import com.playtranslate.language.WordTranslator
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.orderedReadingRows
 import com.playtranslate.model.selectHeadword
@@ -80,11 +78,10 @@ suspend fun resolveWordRows(
     val engine = context.engine
     val targetLang = context.targetLang
     val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, targetLang)
-    val mlKit = TranslationManagerProvider.get(engine.profile.translationCode, targetLang)
     val resolver = DefinitionResolver(
         engine, targetGlossDb,
-        mlKit?.let { WordTranslator(it::translate) }, targetLang,
-        DefinitionGlossTranslators.forTarget(targetLang),
+        OfflineFallbackTranslators.forPair(engine.profile.translationCode, targetLang), targetLang,
+        OfflineFallbackTranslators.forTarget(targetLang),
         ChineseScriptConverter.forTarget(targetLang, context.targetChineseVariant),
     )
 

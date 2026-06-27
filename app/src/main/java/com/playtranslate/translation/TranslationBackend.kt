@@ -59,19 +59,18 @@ interface TranslationBackend {
      *  online backends can reclaim the slot when they recover. */
     val isDegradedFallback: Boolean
 
-    /** Opt-in marker for the dictionary definition-gloss path
-     *  ([com.playtranslate.language.DefinitionResolver] Tier 3 + the word-detail
-     *  example fallback): may this backend translate the short English
-     *  definitions of a tapped word into the user's target language? The gloss
-     *  path waterfalls over the backends with this flag in priority order. Only
-     *  the fast offline tier qualifies — the on-device LLMs (priority 25–27) are
-     *  far too slow for the many short strings one lookup emits, and the online
-     *  backends aren't appropriate for per-tap glossing. Currently true for
+    /** Opt-in marker for "the opaque offline fallback" — the engine a word-tap /
+     *  definition lookup uses for both the headword (source→target) and the short
+     *  English-definition glosses (en→target) when it can't reach the native target
+     *  pack. The fallback waterfalls over the backends with this flag in priority
+     *  order. Only the fast offline tier qualifies — the on-device LLMs (priority
+     *  25–27) are far too slow for the many short strings one lookup emits, and the
+     *  online backends aren't appropriate for per-tap translation. Currently true for
      *  Bergamot ("Firefox Translations", the preferred NMT tier) and the ML Kit
      *  fallback (the priority-30 floor); default false for every other backend.
      *  The selection policy itself lives in
-     *  [com.playtranslate.language.DefinitionGlossTranslators]. */
-    val usableForDefinitionGloss: Boolean get() = false
+     *  [com.playtranslate.language.OfflineFallbackTranslators]. */
+    val usableAsOfflineFallback: Boolean get() = false
 
     /** Synchronous gate that excludes a backend from the waterfall when
      *  configuration or pair compatibility precludes it. Network

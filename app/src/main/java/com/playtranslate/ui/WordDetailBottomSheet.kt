@@ -38,15 +38,14 @@ import com.playtranslate.applyDialogEdgeToEdge
 import com.playtranslate.fullScreenDialogTheme
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.LanguagePackCatalogLoader
+import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.TatoebaClient
 import com.playtranslate.language.WordTranslator
 import com.playtranslate.language.TargetGlossDatabaseProvider
-import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.language.dedupeMtCsv
 import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryEntry
@@ -284,12 +283,11 @@ class WordDetailBottomSheet : DialogFragment() {
             moreExamplesSourceLang = sourceLangId.code
             moreExamplesTargetLang = targetLangCode
             val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, targetLangCode)
-            val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, targetLangCode)
-            val enToTargetWrapper = DefinitionGlossTranslators.forTarget(targetLangCode)
+            val enToTargetWrapper = OfflineFallbackTranslators.forTarget(targetLangCode)
             val charConverter =
                 ChineseScriptConverter.forTarget(targetLangCode, Prefs(appCtx).targetChineseVariant)
             val resolver = DefinitionResolver(engine, targetGlossDb,
-                mlKitTranslator?.let { WordTranslator(it::translate) }, targetLangCode,
+                OfflineFallbackTranslators.forPair(engine.profile.translationCode, targetLangCode), targetLangCode,
                 enToTargetWrapper, charConverter)
             val defResult = withContext(Dispatchers.IO) { resolver.lookup(word, readingHint) }
             val response = defResult?.response

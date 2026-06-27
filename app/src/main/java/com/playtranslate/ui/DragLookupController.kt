@@ -20,13 +20,11 @@ import com.playtranslate.OcrManager
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.Prefs
 import com.playtranslate.translation.ChineseScriptConverter
-import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
-import com.playtranslate.language.WordTranslator
+import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TargetGlossDatabaseProvider
-import com.playtranslate.language.TranslationManagerProvider
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.headwordDisplay
@@ -1104,10 +1102,9 @@ class DragLookupController(
         // Dictionary lookup using the base/dictionary form + reading hint
         val prefs = Prefs(context)
         val targetGlossDb = TargetGlossDatabaseProvider.get(context, prefs.targetLang)
-        val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
         val resolver = DefinitionResolver(engine, targetGlossDb,
-            mlKitTranslator?.let { WordTranslator(it::translate) }, prefs.targetLang,
-            DefinitionGlossTranslators.forTarget(prefs.targetLang),
+            OfflineFallbackTranslators.forPair(engine.profile.translationCode, prefs.targetLang), prefs.targetLang,
+            OfflineFallbackTranslators.forTarget(prefs.targetLang),
             ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant))
         val defResult = withContext(Dispatchers.IO) { resolver.lookup(lookupForm, matchedToken?.reading) }
         val response = defResult?.response

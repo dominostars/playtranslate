@@ -7,12 +7,10 @@ import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.headwordFor
-import com.playtranslate.language.DefinitionGlossTranslators
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
-import com.playtranslate.language.WordTranslator
+import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.TargetGlossDatabaseProvider
-import com.playtranslate.language.TranslationManagerProvider
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -363,10 +361,9 @@ object LastSentenceCache {
         val prefs = Prefs(appCtx)
         val engine = com.playtranslate.language.SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
         val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
-        val mlKitTranslator = TranslationManagerProvider.get(engine.profile.translationCode, prefs.targetLang)
         val resolver = DefinitionResolver(engine, targetGlossDb,
-            mlKitTranslator?.let { WordTranslator(it::translate) }, prefs.targetLang,
-            DefinitionGlossTranslators.forTarget(prefs.targetLang),
+            OfflineFallbackTranslators.forPair(engine.profile.translationCode, prefs.targetLang), prefs.targetLang,
+            OfflineFallbackTranslators.forTarget(prefs.targetLang),
             ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant))
         val tokenResults = engine.tokenize(sentence)
         val results = linkedMapOf<String, Triple<String, String, Int>>()

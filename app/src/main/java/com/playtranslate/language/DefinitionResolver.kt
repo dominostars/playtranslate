@@ -36,7 +36,7 @@ sealed interface DefinitionResult {
         val source: String,
     ) : DefinitionResult
 
-    /** ML Kit translated the headword. Definitions may also be translated. */
+    /** The offline fallback machine-translated the headword. Definitions may also be translated. */
     data class MachineTranslated(
         override val response: DictionaryResponse,
         val translatedHeadword: String,
@@ -56,7 +56,7 @@ sealed interface DefinitionResult {
  * Centralizes the word-tap definition fallback chain:
  *
  * 1. **Native** — target-language pack definition (JMdict/Wiktionary/CFDICT)
- * 2. **MachineTranslated** — ML Kit headword translation + translated definitions
+ * 2. **MachineTranslated** — offline-fallback headword translation + translated definitions
  * 3. **EnglishFallback** — English definitions (translated to target when possible)
  *
  * All word-tap UI paths use this resolver instead of calling
@@ -65,12 +65,12 @@ sealed interface DefinitionResult {
 class DefinitionResolver(
     private val engine: SourceLanguageEngine,
     private val targetGlossDb: TargetGlossLookup?,
-    private val mlKitTranslator: WordTranslator?,
+    private val sourceToTargetTranslator: WordTranslator?,
     private val targetLang: String,
     private val enToTargetTranslator: WordTranslator? = null,
     /** Renders target-language glosses to the chosen Traditional Chinese variant.
      *  Null = no conversion (non-Chinese / Simplified target). Every gloss source
-     *  (native pack, ML Kit, en→target) emits Simplified, so this is the single
+     *  (native pack, offline fallback, en→target) emits Simplified, so this is the single
      *  point that localizes Tier-1/2/3 output to Traditional. */
     private val converter: ChineseScriptConverter? = null,
 ) {
@@ -80,7 +80,7 @@ class DefinitionResolver(
             Log.d(TAG, "lookup($word, $reading): engine returned null")
             return null
         }
-        Log.d(TAG, "lookup($word, $reading): engine returned ${response.entries.size} entries, targetLang=$targetLang, targetGlossDb=${targetGlossDb != null}, mlKit=${mlKitTranslator != null}")
+        Log.d(TAG, "lookup($word, $reading): engine returned ${response.entries.size} entries, targetLang=$targetLang, targetGlossDb=${targetGlossDb != null}, srcToTgt=${sourceToTargetTranslator != null}")
 
         val entry = response.entries.firstOrNull()
 
@@ -103,7 +103,7 @@ class DefinitionResolver(
                 if (senses != null) {
                     // Native pack hit → renderer iterates target senses
                     // directly (target-driven mode). No per-sense MT
-                    // fallback computed; we save N ML Kit calls per word
+                    // fallback computed; we save N offline-fallback calls per word
                     // tap and don't pretend non-English senses align with
                     // English ordinals (they don't — see the long
                     // discussion when this path was added).
@@ -116,12 +116,12 @@ class DefinitionResolver(
             Log.d(TAG, "  Tier 1: skipped (targetGlossDb=${targetGlossDb != null}, targetLang=$targetLang)")
         }
 
-        // Tier 2: ML Kit single-word headword translation
-        if (mlKitTranslator != null && targetLang != "en") {
+        // Tier 2: offline-fallback single-word headword translation
+        if (sourceToTargetTranslator != null && targetLang != "en") {
             val headword = entry?.headwords?.firstOrNull()?.written
                 ?: entry?.slug ?: word
             try {
-                val translated = mlKitTranslator.translate(headword)
+                val translated = sourceToTargetTranslator.translate(headword)
                 Log.d(TAG, "  Tier 2: translate($headword) -> $translated")
                 if (translated.isNotBlank() && !translated.equals(headword, ignoreCase = true)) {
                     val translatedDefs = translateDefinitions(response)
@@ -134,10 +134,10 @@ class DefinitionResolver(
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.d(TAG, "  Tier 2: ML Kit failed: ${e.message}")
+                Log.d(TAG, "  Tier 2: offline fallback failed: ${e.message}")
             }
         } else {
-            Log.d(TAG, "  Tier 2: skipped (mlKit=${mlKitTranslator != null}, targetLang=$targetLang)")
+            Log.d(TAG, "  Tier 2: skipped (srcToTgt=${sourceToTargetTranslator != null}, targetLang=$targetLang)")
         }
 
         // Tier 3: English fallback (with translated definitions when possible)
@@ -182,12 +182,14 @@ class DefinitionResolver(
      * — the UI falls back to `Example.translation` which is already
      * English) or when no source→target translator is available.
      *
-     * Fires all ML Kit calls in parallel via `async` because the
-     * translator is thread-safe for concurrent requests.
+     * Fans the per-example calls out via `async`. When ML Kit is the offline
+     * fallback the calls run concurrently; when Bergamot wins they serialize
+     * behind its single translate mutex — correct either way, and the fan-out
+     * still pays off whenever ML Kit is the installed backend.
      */
     suspend fun translateExamples(response: DictionaryResponse): List<List<String>>? {
         if (targetLang == "en") return null
-        val translator = mlKitTranslator ?: return null
+        val translator = sourceToTargetTranslator ?: return null
         val flatSenses = response.entries.flatMap { it.senses }
         if (flatSenses.isEmpty()) return null
         if (flatSenses.none { it.examples.isNotEmpty() }) return null
