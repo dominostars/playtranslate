@@ -2,6 +2,8 @@ package com.playtranslate.ui
 
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.text.Spanned
+import android.text.style.BackgroundColorSpan
 import android.text.style.ReplacementSpan
 
 /**
@@ -18,6 +20,10 @@ class FuriganaSpan(
     private val reading: String,
     private val pitchDownstep: Int? = null,
 ) : ReplacementSpan() {
+
+    /** Reused fill for the word-lookup highlight; see [draw]. Color is set
+     *  per-draw from the underlying [BackgroundColorSpan]. */
+    private val highlightPaint = Paint()
 
     private companion object {
         const val FURIGANA_SCALE = 0.5f
@@ -54,6 +60,19 @@ class FuriganaSpan(
         val baseWidth = paint.measureText(text, start, end)
         val readingWidth = furiganaPaint.measureText(reading)
         val spanWidth = maxOf(baseWidth, readingWidth)
+
+        // A ReplacementSpan owns every pixel of its run, so the framework never
+        // paints a BackgroundColorSpan that sits beneath us — the word-lookup
+        // highlight would vanish behind furigana-bearing kanji. Read that span
+        // off the text and fill it ourselves, matching the plain-run path's
+        // top..bottom extent so the band stays continuous with the kana tails.
+        (text as? Spanned)
+            ?.getSpans(start, end, BackgroundColorSpan::class.java)
+            ?.firstOrNull()
+            ?.let { hl ->
+                highlightPaint.color = hl.backgroundColor
+                canvas.drawRect(x, top.toFloat(), x + spanWidth, bottom.toFloat(), highlightPaint)
+            }
 
         // Center base text within span
         val baseX = x + (spanWidth - baseWidth) / 2f
