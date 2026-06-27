@@ -2,8 +2,11 @@ package com.playtranslate.ui
 
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Typeface
 import android.text.SpannableStringBuilder
 import android.text.Spanned
+import android.text.TextPaint
+import android.text.style.MetricAffectingSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.ReplacementSpan
 import com.playtranslate.dictionary.pitch.Mora
@@ -123,5 +126,22 @@ fun buildPitchAnnotatedReading(reading: String, pitch: List<Int>): CharSequence 
         suffixStart, sb.length,
         Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
     )
+    // Keep the [n] numbers light even when the host text is bold (e.g. the
+    // kana-only title / headword the contour now rides on).
+    sb.setSpan(
+        NormalWeightSpan(),
+        suffixStart, sb.length,
+        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+    )
     return sb
+}
+
+/** Forces normal weight on its span even when the host text is bold — keeps the
+ *  `[n]` pitch suffix light against a bold title/headword. */
+private class NormalWeightSpan : MetricAffectingSpan() {
+    override fun updateDrawState(tp: TextPaint) = unbold(tp)
+    override fun updateMeasureState(tp: TextPaint) = unbold(tp)
+    private fun unbold(tp: TextPaint) {
+        tp.typeface = Typeface.create(tp.typeface, Typeface.NORMAL)
+    }
 }
