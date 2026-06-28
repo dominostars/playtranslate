@@ -190,6 +190,27 @@ class MainActivity :
         }
     }
 
+    override fun onChangeLanguageRequested(isSource: Boolean) {
+        // Just open the picker and LEAVE the result on screen, so it stays visible while
+        // the picker pushes over it (no pre-push blink). We don't remember "a change is
+        // pending" — the picker records it durably in Prefs, and [onStart] blanks the panel
+        // on return iff the shown result's source language no longer matches Prefs (so
+        // cancelling the picker naturally keeps the result). Stop live first so its loop
+        // can't keep emitting into the panel while we're away, and drop any in-flight
+        // one-shot so it can't deliver a stale-language result after we return.
+        if (isLiveMode) pauseLiveMode()
+        _currentCaptureSession.value?.cancel()
+        _currentCaptureSession.value = null
+        // Null the process-global delegate so a stale Settings callback can't fire on our
+        // selection — we don't need one (staleness is derived in onStart).
+        com.playtranslate.ui.LanguageSetupActivity.selectionDelegate = null
+        com.playtranslate.ui.LanguageSetupActivity.launch(
+            this,
+            if (isSource) com.playtranslate.ui.LanguageSetupActivity.MODE_SOURCE
+            else com.playtranslate.ui.LanguageSetupActivity.MODE_TARGET,
+        )
+    }
+
     /** Re-OCR target = engine/region/screenshot of whatever's on screen — a Ready
      *  result or a "no text detected" status. Null when neither offers re-OCR. */
     private fun reOcrTarget(): Pair<com.playtranslate.model.OcrProvenance, String>? =
@@ -699,6 +720,21 @@ class MainActivity :
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putInt("selected_tab", selectedTab.ordinal)
+    }
+
+    override fun onStart() {
+        // Stateless staleness check: if the panel still shows a result translated under a
+        // language context (source / target / Chinese variant) the user has since changed —
+        // via the header picker or Settings — it's stale. Blank it BEFORE super dispatches
+        // STARTED to the fragment, so we land on an empty panel with no flash. A matching
+        // context (or a cancelled picker) leaves the result untouched. clearPanel() also
+        // stops the sticky panelState replay from re-showing it.
+        val shown = (resultVm.result.value as? com.playtranslate.ui.ResultState.Ready)?.result
+        if (shown != null && shown.langContext != Prefs(this).langContext()) {
+            captureService?.clearPanel()
+            resultVm.showStatus(getString(R.string.status_idle), showHint = true)
+        }
+        super.onStart()
     }
 
     override fun onStop() {
@@ -1434,14 +1470,15 @@ class MainActivity :
                         screenshotPath     = screenshotPath,
                         note               = groupTranslation.note,
                         backendDisplayName = groupTranslation.backendDisplayName,
+                        langContext        = Prefs(applicationContext).langContext(),
                     )
                     resultVm.displayResult(result, applicationContext)
                 } catch (e: Exception) {
-                    resultVm.updateTranslation("")
+                    resultVm.updateTranslation("", appCtx = applicationContext)
                 }
             }
         } else {
-            resultVm.updateTranslation("")
+            resultVm.updateTranslation("", appCtx = applicationContext)
         }
     }
 
@@ -2321,13 +2358,13 @@ class MainActivity :
                 // parallel translator state that could go stale on pref change.
                 val svc = captureService
                 if (svc == null) {
-                    resultVm.updateTranslation("—")
+                    resultVm.updateTranslation("—", appCtx = applicationContext)
                     return@launch
                 }
                 val groupTranslation = svc.translateOnce(newText)
-                resultVm.updateTranslation(groupTranslation.text, groupTranslation.backendDisplayName)
+                resultVm.updateTranslation(groupTranslation.text, groupTranslation.backendDisplayName, applicationContext)
             } catch (_: Exception) {
-                resultVm.updateTranslation("—")
+                resultVm.updateTranslation("—", appCtx = applicationContext)
             }
         }
     }

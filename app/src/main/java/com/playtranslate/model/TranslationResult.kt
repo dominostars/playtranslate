@@ -1,6 +1,7 @@
 package com.playtranslate.model
 
 import com.playtranslate.RegionEntry
+import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.SourceLangId
 
 /**
@@ -36,6 +37,20 @@ data class OcrProvenance(
 )
 
 /**
+ * The language context a [TranslationResult] was produced under: the source language
+ * it was read/translated from, the target language it was translated into, and the
+ * Chinese script variant applied to that target. Captured at construction so a surface
+ * can tell when the result has gone stale because the user has since changed any of
+ * them (e.g. via the language picker or Settings) and clear it. Unlike [OcrProvenance]
+ * this is present for EVERY result, so the staleness check is uniform across result types.
+ */
+data class TranslationLangContext(
+    val sourceLangId: SourceLangId,
+    val targetLang: String,
+    val chineseVariant: ChineseScriptVariant,
+)
+
+/**
  * Full result returned after one capture → OCR → translate cycle.
  */
 data class TranslationResult(
@@ -60,4 +75,7 @@ data class TranslationResult(
      *  pipeline (drag/sentence/edit). Drives the "Scanned by …" source label, the
      *  OCR-switcher gear, and re-OCR. See [OcrProvenance]. */
     val ocrProvenance: OcrProvenance? = null,
+    /** The source/target/variant this result was translated under, so a surface can
+     *  detect staleness after a language change and clear it. See [TranslationLangContext]. */
+    val langContext: TranslationLangContext,
 )

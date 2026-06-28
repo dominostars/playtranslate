@@ -7,6 +7,7 @@ import com.playtranslate.BuildConfig
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.model.TranslationLangContext
 import com.playtranslate.security.SecretCipher
 import com.playtranslate.security.SecretCodec
 import com.playtranslate.ui.AccentColor
@@ -136,6 +137,12 @@ class Prefs internal constructor(
     var targetChineseVariant: ChineseScriptVariant
         get() = ChineseScriptVariant.fromCode(sp.getString(KEY_TARGET_CHINESE_VARIANT, null))
         set(v) = sp.edit { putString(KEY_TARGET_CHINESE_VARIANT, v.code) }
+
+    /** The current (source, target, variant) translation context — what a freshly
+     *  produced result is translated under. [sourceOverride] pins the source for a
+     *  re-OCR / pinned path; otherwise the current [sourceLangId] is used. */
+    fun langContext(sourceOverride: SourceLangId? = null): TranslationLangContext =
+        TranslationLangContext(sourceOverride ?: sourceLangId, targetLang, targetChineseVariant)
 
     /** True iff the user has explicitly picked a target language at least once.
      *  The [targetLang] getter returns an English fallback for unsaved values,

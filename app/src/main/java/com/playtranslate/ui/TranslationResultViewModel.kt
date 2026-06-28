@@ -245,7 +245,7 @@ class TranslationResultViewModel : ViewModel() {
      *  via a different backend doesn't leave the previous "Translated by …"
      *  label glued to the new text. Defaults to null so error-path callers
      *  ("" / "—") naturally clear the stale label that no longer matches. */
-    fun updateTranslation(translated: String, backendDisplayName: String? = null) {
+    fun updateTranslation(translated: String, backendDisplayName: String? = null, appCtx: Context) {
         when (val cur = _result.value) {
             is ResultState.Ready -> {
                 _result.value = ResultState.Ready(
@@ -265,6 +265,7 @@ class TranslationResultViewModel : ViewModel() {
                         screenshotPath = null,
                         note = null,
                         backendDisplayName = backendDisplayName,
+                        langContext = Prefs(appCtx).langContext(),
                     )
                 )
             }

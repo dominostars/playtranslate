@@ -336,6 +336,16 @@ class CaptureResultOverlay(
             val sp = r?.screenshotPath
             if (p != null && sp != null) showOcrPicker(p, sp)
         }
+        b.onChooseLanguage = { isSource ->
+            // Changing a language ends this overlay result (we deliberately don't re-run
+            // it): null the stale Settings delegate, dismiss, and open the language picker
+            // on the foreground display. The user re-captures to see it in the new language.
+            LanguageSetupActivity.selectionDelegate = null
+            dismiss()
+            launchLanguageSetup(
+                if (isSource) LanguageSetupActivity.MODE_SOURCE else LanguageSetupActivity.MODE_TARGET,
+            )
+        }
         binder = b
         // Reflect any persisted hide prefs (shared with the results page) up front.
         applySideBySideCollapse()
@@ -390,6 +400,7 @@ class CaptureResultOverlay(
                             translatedText = "",
                             timestamp = "",
                             ocrProvenance = state.ocrProvenance,
+                            langContext = prefs.langContext(),
                         ),
                     )
                     is CaptureState.Done -> bindResult(state.result)
@@ -799,6 +810,18 @@ class CaptureResultOverlay(
         val intent = CaptureOverlaySettingsActivity.downloadIntent(app, id, backend.selectionToken).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
+        val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: displayId
+        val opts = android.app.ActivityOptions.makeBasic().setLaunchDisplayId(targetDisplay).toBundle()
+        app.startActivity(intent, opts)
+    }
+
+    /** Open the language picker on the foreground display (mirrors [launchOcrSettings]).
+     *  The caller dismisses this overlay first; the user re-captures on return. */
+    private fun launchLanguageSetup(mode: String) {
+        val app = ctx.applicationContext
+        val intent = Intent(app, LanguageSetupActivity::class.java)
+            .putExtra(LanguageSetupActivity.EXTRA_MODE, mode)
+            .apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
         val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: displayId
         val opts = android.app.ActivityOptions.makeBasic().setLaunchDisplayId(targetDisplay).toBundle()
         app.startActivity(intent, opts)

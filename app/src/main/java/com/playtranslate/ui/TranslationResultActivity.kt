@@ -204,6 +204,19 @@ class TranslationResultActivity :
         }
     }
 
+    override fun onChangeLanguageRequested(isSource: Boolean) {
+        // Changing a language ends this standalone result (we deliberately don't re-run
+        // it). Open the language picker (the same flow as Settings) and finish; on return
+        // the user re-captures to see it in the new language. Null the process-global
+        // delegate so a stale Settings callback can't fire on our selection.
+        LanguageSetupActivity.selectionDelegate = null
+        LanguageSetupActivity.launch(
+            this,
+            if (isSource) LanguageSetupActivity.MODE_SOURCE else LanguageSetupActivity.MODE_TARGET,
+        )
+        finish()
+    }
+
     /** Re-OCR target = engine/region/screenshot of whatever's on screen — a Ready
      *  result or a "no text detected" status. Both prefer the stable pre-capture
      *  screenshot this screen was launched with over the overwriteable per-display
@@ -654,6 +667,7 @@ class TranslationResultActivity :
                     screenshotPath     = screenshotPath,
                     note               = null,
                     backendDisplayName = cachedSource,
+                    langContext        = Prefs(applicationContext).langContext(),
                 ),
                 applicationContext,
             )
@@ -685,6 +699,7 @@ class TranslationResultActivity :
                     screenshotPath     = screenshotPath,
                     note               = groupTranslation.note,
                     backendDisplayName = groupTranslation.backendDisplayName,
+                    langContext        = Prefs(applicationContext).langContext(),
                 )
                 vm.displayResult(result, applicationContext)
             } catch (e: Exception) {
@@ -740,13 +755,13 @@ class TranslationResultActivity :
                 // the full backend waterfall (mirrors MainActivity.commitEdit).
                 val svc = captureService
                 if (svc == null) {
-                    vm.updateTranslation("—")
+                    vm.updateTranslation("—", appCtx = applicationContext)
                     return@launch
                 }
                 val groupTranslation = svc.translateOnce(newText)
-                vm.updateTranslation(groupTranslation.text, groupTranslation.backendDisplayName)
+                vm.updateTranslation(groupTranslation.text, groupTranslation.backendDisplayName, applicationContext)
             } catch (_: Exception) {
-                vm.updateTranslation("—")
+                vm.updateTranslation("—", appCtx = applicationContext)
             }
         }
     }

@@ -2,7 +2,10 @@ package com.playtranslate.ui
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.playtranslate.language.ChineseScriptVariant
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.TextSegment
+import com.playtranslate.model.TranslationLangContext
 import com.playtranslate.model.TranslationResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotSame
@@ -56,6 +59,7 @@ class TranslationResultViewModelDedupTest {
             timestamp = "00:00:00",
             screenshotPath = null,
             note = null,
+            langContext = TranslationLangContext(SourceLangId.JA, "en", ChineseScriptVariant.SIMPLIFIED),
         )
 
     @Test

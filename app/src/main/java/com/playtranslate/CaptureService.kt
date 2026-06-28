@@ -291,6 +291,13 @@ class CaptureService : Service() {
     internal fun emitLiveNoText() {
         _panelState.value = PanelState.Searching
     }
+    /** Reset the sticky panel stream to [PanelState.Idle] so its replay can't re-show a
+     *  stale result after the activity returns (e.g. from the language picker). Idle is a
+     *  no-op for the panel collector, so this does NOT itself blank the on-screen result —
+     *  the caller clears the VM separately (and can keep the result visible until then). */
+    internal fun clearPanel() {
+        _panelState.value = PanelState.Idle
+    }
     internal fun emitHoldLoading(loading: Boolean) { _holdLoading.value = loading }
 
     /** Observable translation-degradation state — one [DegradedWarningKind]
@@ -806,6 +813,7 @@ class CaptureService : Service() {
                     note                = groupTranslation.note,
                     backendDisplayName  = groupTranslation.backendDisplayName,
                     ocrProvenance       = ocrProvenanceFor(ocrResult, displayId, region, srcId),
+                    langContext         = Prefs(this@CaptureService).langContext(srcId),
                 )
             )
         } catch (e: CancellationException) {
@@ -1731,6 +1739,7 @@ class CaptureService : Service() {
                 note               = note,
                 backendDisplayName = backendDisplayName,
                 ocrProvenance      = ocrProvenanceFor(ocrResult, displayId, activeRegionForDisplay(displayId), Prefs(this).sourceLangId),
+                langContext        = Prefs(this).langContext(),
             )
         )
         return perGroup
@@ -1938,6 +1947,7 @@ class CaptureService : Service() {
                         note               = note,
                         backendDisplayName = backendDisplayName,
                         ocrProvenance      = ocrProvenanceFor(ocrResult, displayId, region, srcId),
+                        langContext        = Prefs(this@CaptureService).langContext(srcId),
                     ),
                     groupBounds = ocrResult.groups.map { it.bounds },
                     groupTranslations = perGroup.map { it.text },

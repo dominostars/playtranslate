@@ -719,6 +719,12 @@
     <string name="ocr_picker_message">OCR is what extracts text from a screenshot. Different tools might be better for different fonts</string>
     <!-- Accessibility label (contentDescription) for the source OCR-attribution row + gear icon. -->
     <string name="cd_choose_ocr">Choose OCR tool</string>
+    <!-- Accessibility label (contentDescription) for the tappable source-language
+         section header on the result screen; tapping it opens the language picker. -->
+    <string name="cd_change_source_language">Change source language</string>
+    <!-- Accessibility label (contentDescription) for the tappable target-language
+         section header on the result screen; tapping it opens the language picker. -->
+    <string name="cd_change_target_language">Change target language</string>
     <!-- Toast shown when re-scanning with a newly-chosen OCR tool finds no text;
          the previous result is kept on screen. %1$s = OCR engine name (proper noun, don't translate). -->
     <string name="ocr_rescan_no_text">No text found with <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g></string>

@@ -1,5 +1,8 @@
 package com.playtranslate
 
+import com.playtranslate.language.ChineseScriptVariant
+import com.playtranslate.language.SourceLangId
+import com.playtranslate.model.TranslationLangContext
 import com.playtranslate.model.TranslationResult
 import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertEquals
@@ -22,6 +25,7 @@ class CaptureStateTest {
         segments = emptyList(),
         translatedText = "source",
         timestamp = "00:00:00",
+        langContext = TranslationLangContext(SourceLangId.JA, "en", ChineseScriptVariant.SIMPLIFIED),
     )
 
     // ─── isTerminal ─────────────────────────────────────────────────────

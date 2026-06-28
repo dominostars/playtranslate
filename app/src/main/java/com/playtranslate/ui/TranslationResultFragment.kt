@@ -123,6 +123,12 @@ class TranslationResultFragment : Fragment() {
          *  No-op for hosts/results without OCR provenance. */
         fun onReOcrRequested()
 
+        /** User tapped a language section header to change the source ([isSource] =
+         *  true) or target language. The host opens the language picker (the same
+         *  flow as Settings) and ends the current result — the picker dismisses /
+         *  clears it, and the user re-captures to see it in the new language. */
+        fun onChangeLanguageRequested(isSource: Boolean)
+
         /** User scrolled the result content. The host can use this to
          *  pause live-mode capture, etc. No-op for hosts without
          *  live-mode behavior. */
@@ -302,6 +308,7 @@ class TranslationResultFragment : Fragment() {
         binder.onChooseOcr = {
             currentReady()?.ocrProvenance?.let { showOcrPicker(it.sourceLangId, it.engineToken) }
         }
+        binder.onChooseLanguage = { isSource -> host?.onChangeLanguageRequested(isSource) }
         resultsContent.setOnScrollChangeListener(scrollListener)
         btnToggleWords.setOnClickListener {
             prefs.hideWordsSection = !prefs.hideWordsSection

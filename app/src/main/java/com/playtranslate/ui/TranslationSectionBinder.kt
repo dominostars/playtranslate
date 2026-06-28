@@ -104,8 +104,15 @@ class TranslationSectionBinder(
      *  Each surface opens its own OCR picker. Null → the row is inert. */
     var onChooseOcr: (() -> Unit)? = null
 
+    /** Invoked when the user taps a language section header — `isSource = true` for the
+     *  source (original) header, false for the target (translation) header. Each surface
+     *  opens the language picker for that side. Null → the headers are inert. */
+    var onChooseLanguage: ((isSource: Boolean) -> Unit)? = null
+
     init {
         sourceNoteRow.setOnClickListener { onChooseOcr?.invoke() }
+        labelOriginal.setOnClickListener { onChooseLanguage?.invoke(true) }
+        labelTranslation.setOnClickListener { onChooseLanguage?.invoke(false) }
         // Tint the gear in CODE, not via XML app:tint: the over-game overlay inflates
         // these views with a plain (non-AppCompat) LayoutInflater, which silently drops
         // app:tint, so the white ic_settings would render white there while the in-app

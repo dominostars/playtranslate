@@ -19,13 +19,25 @@
         android:paddingStart="4dp"
         android:paddingEnd="4dp">
 
+        <!-- Tappable area hugs the label text (wrap_content) but fills the row's full
+             height (match_parent) so it matches the inline action buttons; the Space
+             below keeps those buttons right-aligned where the weighted label used to. -->
         <TextView
             android:id="@+id/labelOriginal"
             style="@style/Text.PT.GroupHeader"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="@string/cd_change_source_language"
+            android:text="@string/section_original" />
+
+        <Space
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/section_original" />
+            android:layout_weight="1" />
 
         <ImageButton
             android:id="@+id/btnToggleFurigana"

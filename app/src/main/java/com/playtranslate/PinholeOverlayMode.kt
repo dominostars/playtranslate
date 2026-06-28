@@ -896,7 +896,8 @@ class PinholeOverlayMode(
             segments = segments,
             translatedText = translatedText,
             timestamp = timestamp,
-            screenshotPath = screenshotPath
+            screenshotPath = screenshotPath,
+            langContext = Prefs(service).langContext(),
         ))
     }
 
