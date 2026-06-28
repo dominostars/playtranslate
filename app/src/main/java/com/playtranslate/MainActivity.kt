@@ -515,14 +515,17 @@ class MainActivity :
                 checkTargetPackMigration(skipTargetCodes)
 
                 // Reclaim ML Kit + Bergamot translation models AND OCR packs
-                // orphaned by past deletions, engine switches, or the
-                // recovery/upgrade uninstall paths. Runs only after pack
-                // upgrades/migrations have settled, so it never sees a pack that's
-                // transiently uninstalled mid-upgrade. This launch pass is the ONLY
-                // place OCR packs are swept — doing it from the interactive engine
-                // switch / language-delete flows can race a live capture resolving
-                // the just-orphaned pack (see OcrModelManager.sweepOrphans). No-op
-                // once clean; fire-and-forget on IO.
+                // orphaned by past deletions, removed languages, or the
+                // recovery/upgrade uninstall paths. (OCR packs are retained while
+                // their source language is installed, so switching a language's OCR
+                // engine keeps the old pack for a free switch back — only removing
+                // the language orphans it; see OcrModelManager.plan.) Runs only after
+                // pack upgrades/migrations have settled, so it never sees a pack
+                // that's transiently uninstalled mid-upgrade. This launch pass is the
+                // ONLY place OCR packs are swept — doing it from the interactive
+                // language-delete flow can race a live capture resolving the
+                // just-orphaned pack (see OcrModelManager.sweepOrphans). No-op once
+                // clean; fire-and-forget on IO.
                 lifecycleScope.launch(Dispatchers.IO) {
                     OfflineModelReclaimer.sweepOrphans(applicationContext)
                     com.playtranslate.ocr.registry.OcrModelManager.sweepOrphans(applicationContext)
@@ -1650,8 +1653,8 @@ class MainActivity :
             val ocr = com.playtranslate.ocr.registry.OcrModelManager
             // (a) The better default's pack is already on disk (e.g. the shared CJK
             //     recognizer downloaded for another language) → adopt it silently:
-            //     no UI, no download, just move the token off the floor (which also
-            //     keeps the launch orphan-sweep from reclaiming the pack).
+            //     no UI, no download, just move the token off the floor so the user
+            //     is on the better engine.
             ocr.adoptInstalledDefaultOcr(this, activeSource)
             // (b) Else the recognizer still needs downloading → fold a synthetic
             //     "update the source pack" entry into this flow; its post-upgrade

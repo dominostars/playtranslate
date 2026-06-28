@@ -20,11 +20,14 @@ class OcrModelManagerPlanTest {
     private val latin = OcrBackend.Paddle("paddle-rec-latin")
     private val unified = OcrBackend.Paddle("paddle-rec-unified") // v6 shared recognizer
 
-    private fun plan(langs: Map<SourceLangId, OcrBackend>, installed: Set<String>) =
-        OcrModelManager.plan(langs.keys, { langs.getValue(it) }, installed)
+    private fun plan(
+        selected: Map<SourceLangId, OcrBackend>,
+        installed: Set<String>,
+        allBackends: Map<SourceLangId, List<OcrBackend>> = selected.mapValues { listOf(it.value) },
+    ) = OcrModelManager.plan(selected.keys, { selected.getValue(it) }, { allBackends[it].orEmpty() }, installed)
 
     @Test fun emptyWhenNoLanguages() {
-        val p = OcrModelManager.plan(emptySet(), { error("unused") }, emptySet())
+        val p = OcrModelManager.plan(emptySet(), { error("unused") }, { error("unused") }, emptySet())
         assertEquals(emptySet<String>(), p.required)
         assertEquals(emptySet<String>(), p.toDownload)
         assertEquals(emptySet<String>(), p.toDelete)
@@ -44,15 +47,49 @@ class OcrModelManagerPlanTest {
         assertEquals(emptySet<String>(), p.toDelete) // ja still needs it
     }
 
-    @Test fun switchingBackendOrphansTheOldPackOnly() {
-        // ja switched Meiki→Paddle while en already Paddle → meiki-ja orphaned, cjk kept.
+    @Test fun switchingBackendKeepsTheOldPackForReselection() {
+        // ja switched Meiki→Paddle while en already Paddle. ja is still installed and
+        // CAN still use Meiki, so meiki-ja is retained for a free switch back — NOT
+        // orphaned (the behavior reversal: deselection ≠ reclamation).
         val p = plan(
             mapOf(SourceLangId.JA to cjk, SourceLangId.EN to cjk),
             installed = setOf("meiki-ja", "paddle-rec-cjk"),
+            allBackends = mapOf(
+                SourceLangId.JA to listOf(meiki, cjk),
+                SourceLangId.EN to listOf(cjk),
+            ),
         )
         assertEquals(setOf("paddle-rec-cjk"), p.required)
-        assertEquals(setOf("meiki-ja"), p.toDelete)
+        assertEquals(emptySet<String>(), p.toDelete) // meiki-ja retained: ja can still select it
         assertEquals(emptySet<String>(), p.toDownload) // cjk already present
+    }
+
+    /** The new-behavior discriminator (fails under the old selection-keyed delete):
+     *  a shared recognizer stays on disk while an installed language that COULD use
+     *  it exists, even if that language currently has it DESELECTED (on the ML Kit
+     *  floor). Only removing every sharer reclaims it. */
+    @Test fun sharedPackRetainedWhileAnInstalledSharerExistsEvenIfDeselected() {
+        val p = plan(
+            mapOf(SourceLangId.JA to mlkit), // ja sits on the ML Kit floor; unified deselected
+            installed = setOf("paddle-rec-unified"),
+            allBackends = mapOf(SourceLangId.JA to listOf(meiki, unified, mlkit)),
+        )
+        assertEquals(emptySet<String>(), p.required) // ML Kit floor needs no pack
+        assertEquals(emptySet<String>(), p.toDelete)  // unified retained: ja can still select it
+    }
+
+    /** Removing a source language reclaims the pack(s) only it could use, while a
+     *  shared pack another installed language still lists is kept. */
+    @Test fun removingLanguageOrphansItsPacks() {
+        // ja removed; only en remains (selected unified + lists it as a backend).
+        // meiki-ja belonged to ja alone → orphaned; unified stays (en retains it).
+        val p = plan(
+            mapOf(SourceLangId.EN to unified),
+            installed = setOf("meiki-ja", "paddle-rec-unified"),
+            allBackends = mapOf(SourceLangId.EN to listOf(unified, OcrBackend.MLKitLatin)),
+        )
+        assertEquals(setOf("paddle-rec-unified"), p.required)
+        assertEquals(setOf("meiki-ja"), p.toDelete)
     }
 
     @Test fun mlKitNeedsNoPacks() {
@@ -68,6 +105,7 @@ class OcrModelManagerPlanTest {
         val p = OcrModelManager.plan(
             setOf(SourceLangId.RU, SourceLangId.JA),
             { id -> if (id == SourceLangId.RU) null else meiki },
+            { id -> if (id == SourceLangId.RU) emptyList() else listOf(meiki) },
             installedPacks = setOf("meiki-ja"),
         )
         assertEquals(setOf("meiki-ja"), p.required) // RU adds nothing
@@ -77,8 +115,9 @@ class OcrModelManagerPlanTest {
 
     // ── resolveSelectedBackend: the OCR token must stay NON-load-bearing ──────
     // A no-floor language (Russian) whose token is missing/stale must still
-    // resolve to its installed recognizer, or currentPlan would orphan the pack
-    // and engineForSelected would drop to the empty engine.
+    // resolve to its installed recognizer, or engineForSelected would drop to the
+    // empty engine. (Pack retention no longer depends on this — plan retains by
+    // language membership — but the resolved engine still does.)
 
     @Test fun noFloorLangResolvesToItsOnlyBackendWhenTokenMissingOrStale() {
         assertEquals(cyr, OcrModelManager.resolveSelectedBackend(listOf(cyr), token = null, mlKitFloor = null))

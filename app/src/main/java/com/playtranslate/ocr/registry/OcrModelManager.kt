@@ -15,10 +15,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * The OCR model-pack reconciler. The desired on-disk pack set is a PURE function
- * of (installed source languages × chosen backend); pack SHARING is expressed
- * solely by a shared catalog key (ja/zh/en/latin all → "paddle-rec-unified"), so deletion
- * safety is automatic set-math — no refcounts.
+ * The OCR model-pack reconciler. The on-disk pack set is a PURE function of the
+ * installed source languages and their backends, expressed as two sets (see [plan]):
+ * **required** (each language's SELECTED backend's packs — drives downloads) and
+ * **retained** (each language's ALL backends' packs — protects from deletion). A
+ * pack is reclaimed only when it falls out of `retained`, i.e. no installed language
+ * can use it — so switching a language's OCR engine keeps the deselected pack on
+ * disk for a free re-select; only REMOVING the language orphans it. Pack SHARING is
+ * expressed solely by a shared catalog key (ja/zh/en/latin all → "paddle-rec-unified"),
+ * so deletion safety is automatic set-math — no refcounts.
  *
  * Split per the lifecycle contract: [plan] is pure (JVM-testable); [applyDownloads]
  * is the suspend/IO effect (additive, safe to run anytime); [sweepOrphans] deletes
@@ -31,22 +36,41 @@ object OcrModelManager {
     private const val TAG = "OcrModelManager"
 
     data class Plan(
-        /** Packs every installed language's chosen backend needs. */
+        /** Packs every installed language's chosen backend needs (drives download). */
         val required: Set<String>,
         /** required − installed. */
         val toDownload: Set<String>,
-        /** installed − required (orphans; swept only at quiescence). */
+        /** installed − retained: packs no installed language can use (its source
+         *  language was removed), swept only at quiescence. `required ⊆ retained` by
+         *  construction, so a needed pack is never here. */
         val toDelete: Set<String>,
     )
 
-    /** PURE: desired packs = ⋃ chosen backend's packKeys over installed languages. */
+    /** PURE reconciler. Two sets drive the plan:
+     *   - **required** = ⋃ each installed language's SELECTED backend's packKeys —
+     *     the packs we must have on disk, so `toDownload = required − installed`.
+     *   - **retained** = ⋃ each installed language's ALL backends' packKeys — every
+     *     pack an installed language COULD use. `toDelete = installed − retained`, so
+     *     a pack is reclaimed only when no installed language can use it (its source
+     *     language was removed) — NOT merely because a different backend is selected.
+     *
+     *  `retained` is SEEDED from `required`, so `required ⊆ retained` holds by
+     *  construction: the sweep can never reclaim a pack the selected backend needs,
+     *  and `toDownload ∩ toDelete = ∅`, regardless of how selection resolves relative
+     *  to [allBackends]. */
     fun plan(
         installedLangs: Set<SourceLangId>,
         selectedBackend: (SourceLangId) -> OcrBackend?,
+        allBackends: (SourceLangId) -> List<OcrBackend>,
         installedPacks: Set<String>,
     ): Plan {
         val required = installedLangs.flatMapTo(HashSet()) { selectedBackend(it)?.packKeys.orEmpty() }
-        return Plan(required, required - installedPacks, installedPacks - required)
+        // Seed retained with required so `required ⊆ retained` is true by construction:
+        // a needed pack can never appear in toDelete, independent of allBackends.
+        val retained = HashSet(required).apply {
+            for (lang in installedLangs) for (b in allBackends(lang)) addAll(b.packKeys)
+        }
+        return Plan(required, required - installedPacks, installedPacks - retained)
     }
 
     /** App context pushed at startup (PlayTranslateApplication) so the registry +
@@ -132,10 +156,11 @@ object OcrModelManager {
      *  [available], else [mlKitFloor], else the top [available] backend. The final
      *  fallback keeps the OCR token NON-load-bearing for no-floor languages (Cyrillic,
      *  where [mlKitFloor] is null): a missing/stale token resolves to the same backend
-     *  the installed pack already represents, so [currentPlan] never orphans an
-     *  installed no-floor pack and [engineForSelected] never drops to the empty engine
-     *  over a bookkeeping gap. Returns null only when [available] is empty and there is
-     *  no floor (a no-floor language with no deliverable recognizer on this device). */
+     *  the installed pack already represents, so [engineForSelected] never drops to the
+     *  empty engine over a bookkeeping gap. (Pack retention no longer rides on this —
+     *  [plan] retains every installed language's packs by membership — but the resolved
+     *  engine still does.) Returns null only when [available] is empty and there is no
+     *  floor (a no-floor language with no deliverable recognizer on this device). */
     fun resolveSelectedBackend(
         available: List<OcrBackend>,
         token: String?,
@@ -241,9 +266,9 @@ object OcrModelManager {
      *  default recognizer's packs are ALREADY on disk (e.g. a shared `paddle-rec-unified`
      *  downloaded for another CJK language), adopt it — persist the token so
      *  [selectedBackend] resolves to the present recognizer instead of the ML Kit
-     *  floor, and so [currentPlan]/[sweepOrphans] count the pack as required for
-     *  this source rather than reclaiming it. No download, no UI. No-op in every
-     *  other case (see [decideOcrMigration]). */
+     *  floor, putting the user on the better engine. No download, no UI. No-op in
+     *  every other case (see [decideOcrMigration]). (The pack itself is retained by
+     *  language membership regardless of the token — see [plan].) */
     fun adoptInstalledDefaultOcr(ctx: Context, id: SourceLangId) {
         val (decision, best) = migrationFor(ctx, id)
         if (decision == OcrMigration.ADOPT && best != null) {
@@ -290,7 +315,17 @@ object OcrModelManager {
         ALL_PACK_KEYS.filterTo(HashSet()) { helper(it).isInstalled(ctx) }
 
     fun currentPlan(ctx: Context): Plan =
-        plan(LanguagePackStore.installedCodes(ctx), { selectedBackend(ctx, it) }, installedPacks(ctx))
+        plan(
+            LanguagePackStore.installedCodes(ctx),
+            selectedBackend = { selectedBackend(ctx, it) },
+            // RAW profile backends (not availability-filtered): a runtime-incompatible
+            // / non-shippable backend's pack can never reach disk, so it's never in
+            // installedPacks and can't change toDelete — and the raw list keeps this
+            // provider ctx-free. (`required` uses the filtered selectedBackend because
+            // that is the pack we actually download.)
+            allBackends = { SourceLanguageProfiles[it].ocrBackends },
+            installedPacks = installedPacks(ctx),
+        )
 
     /** Fetch one pack, best-effort. The downloader RETURNS its terminal state
      *  rather than throwing for failure/refusal (only cancellation propagates, via
@@ -386,11 +421,11 @@ object OcrModelManager {
 
     /** Download [backend]'s not-yet-installed packs, best-effort (failures logged
      *  by [downloadPack], leaving the ML Kit floor), and report whether [backend]
-     *  is fully installed afterward. Deliberately does NOT mutate Prefs and does
-     *  NOT sweep: an engine SWITCH must persist the new selection — and only then
-     *  sweep the packs the switch orphaned — AFTER this returns true, so a failed
-     *  or cancelled download never reclaims the still-working previous engine's
-     *  pack. Suspend/IO. */
+     *  is fully installed afterward. Deliberately does NOT mutate Prefs: an engine
+     *  SWITCH must persist the new selection only AFTER this returns true, so a
+     *  failed or cancelled download never strands the user off the still-working
+     *  previous engine. The previous engine's pack is retained on disk either way
+     *  (see [plan]/[sweepOrphans]) for a free switch back. Suspend/IO. */
     suspend fun installBackend(
         ctx: Context,
         backend: OcrBackend,
@@ -401,17 +436,19 @@ object OcrModelManager {
         backend.packKeys.all { helper(it).isInstalled(ctx) }
     }
 
-    /** Delete orphaned packs (installed − required) that aren't currently loaded.
+    /** Delete orphaned packs (installed − retained: packs no installed language can
+     *  use, e.g. left behind when a source language was removed) that aren't
+     *  currently loaded. Deselecting a language's OCR engine does NOT orphan its
+     *  pack — every backend of an installed language is retained, so swapping engines
+     *  keeps the pack on disk for a free re-select (the user reclaims it explicitly
+     *  via the Settings OCR trash, [deleteOcrPack]).
      *
      *  MUST be called ONLY from the launch-time reclaim (MainActivity, after pack
-     *  upgrades/migrations settle) — never from an interactive engine-switch or
-     *  language-delete flow. Rationale: a sweep only targets NON-required packs,
-     *  and a live capture only resolves the REQUIRED pack for its language, so the
-     *  two sets are normally disjoint. They overlap only when an interactive
-     *  selection change flips a pack required→orphan WHILE a capture is mid-resolve
-     *  of it — the [engineForSelected] isInstalled-check → bridge-session-create
-     *  window that [isLoaded] cannot yet see. At launch the required set is stable
-     *  and no capture/download is in flight, so the sets stay disjoint.
+     *  upgrades/migrations settle) — never from an interactive language-delete flow.
+     *  Rationale: a sweep only targets packs NO installed language can use, and a
+     *  live capture only resolves the selected (hence retained) pack for its
+     *  language, so the two sets are disjoint. At launch the installed-language set
+     *  is stable and no capture/download is in flight.
      *
      *  [isLoaded] stays as defense-in-depth: a pack backing an already-created live
      *  session is never deleted even if this is somehow called off-quiescence. */
