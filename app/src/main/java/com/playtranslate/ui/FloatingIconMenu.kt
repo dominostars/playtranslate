@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -15,7 +16,6 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -36,7 +36,11 @@ enum class DegradedWarningKind { None, Offline, LowMemory }
 /**
  * Full-screen overlay that dims the screen and shows a small popup menu
  * next to the floating icon. Tapping outside the menu dismisses it.
- * When the hide button is tapped, shows a confirmation dialog.
+ *
+ * The menu uses the B4 split layout: a left lane of three icon-only
+ * secondary actions (Edit region, Settings, Exit) and a right lane of two
+ * labelled primary actions stacked vertically (Translate once, then the
+ * Auto-translate toggle).
  *
  * Also supports drag-to-select: dragging outside the menu draws a selection
  * rectangle and fires [onRegionSelected] with fractional coordinates.
@@ -54,6 +58,9 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val mutedColor: Int = context.themeColor(R.attr.ptTextMuted).takeIf { it != 0 } ?: "#9AA1A8".toColorInt()
     private val bgColor: Int = context.themeColor(R.attr.ptBg).takeIf { it != 0 } ?: "#0B0D0E".toColorInt()
     private val dangerColor: Int = context.themeColor(R.attr.ptDanger).takeIf { it != 0 } ?: "#E05D5D".toColorInt()
+    // Faint accent wash behind the resting "Translate once" primary.
+    private val accentTintColor: Int = context.themeColor(R.attr.ptAccentTint).takeIf { it != 0 }
+        ?: Color.argb(0x24, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
 
     var onHideIcon: (() -> Unit)? = null
     var onHideTemporary: (() -> Unit)? = null
@@ -62,22 +69,25 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     var onRegionSelected: ((RegionEntry) -> Unit)? = null
     var onClearRegion: (() -> Unit)? = null
     var onToggleLive: (() -> Unit)? = null
+    /** Momentary one-shot: capture-and-translate the current region. */
+    var onTranslateOnce: (() -> Unit)? = null
     var onCaptureRegion: (() -> Unit)? = null
     var onSettings: (() -> Unit)? = null
     var isSingleScreen: Boolean = false
 
-    /** True in MediaProjection mode or single-screen — the hide control then
-     *  reads "Turn Off" and confirms turning PlayTranslate off. Set by
-     *  showFloatingMenu. */
+    /** True in MediaProjection mode or single-screen — the Exit control then
+     *  swaps to the "Turn Off" glyph and confirms turning PlayTranslate off.
+     *  Set by showFloatingMenu. Exit is icon-only now, so the wording lives in
+     *  the button's accessibility label rather than a visible caption. */
     var exitFlow: Boolean = false
         set(value) {
             field = value
-            hideLabel.text = context.getString(
-                if (value) R.string.floating_icon_close_label_turn_off
-                else R.string.floating_icon_close_label_hide
-            )
             hideIcon.setImageResource(
                 if (value) R.drawable.ic_mode_off_on else R.drawable.ic_exit_to_app
+            )
+            hideBtn.contentDescription = context.getString(
+                if (value) R.string.floating_icon_close_label_turn_off
+                else R.string.floating_icon_close_label_hide
             )
         }
 
@@ -167,15 +177,20 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private var degradedWarningLabel: TextView? = null
 
     private val menuCard: LinearLayout
-    private val settingsBtn: View
     private val instructionPill: LinearLayout
-    private val appName: String = context.getString(R.string.app_name)
 
-    private val liveIcon: TextView
+    // Translate-once (right lane, top). Its fill drops from the accent tint to
+    // the neutral card color while auto-translate is running — see [updateLiveButton].
+    private val translateOnceBtn: View
+    // Auto-translate toggle (right lane, bottom). The icon + fill swap on
+    // [updateLiveButton] between the resting play/accent and running pause/danger.
+    private val liveIcon: ImageView
     private val liveLabel: TextView
-    private val liveBtn: FrameLayout
+    private val liveBtn: View
+    // Exit (left lane, bottom). [exitFlow] swaps hideIcon's glyph and the
+    // accessibility label on the clickable hideBtn.
     private val hideIcon: ImageView
-    private val hideLabel: TextView
+    private val hideBtn: View
 
     // ── Drag state ────────────────────────────────────────────────────────
     private var isDragging = false
@@ -190,161 +205,119 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         clipChildren = false
         clipToPadding = false
 
-        val btnSize = (54 * dp).toInt()
-        val iconPad = (14 * dp).toInt()
+        // Uniform 11dp rhythm: container padding, lane gap, and the gap
+        // between the two stacked primaries are all the same value.
+        val pad = (11 * dp).toInt()
+        val laneGap = (11 * dp).toInt()
+        val primarySize = (78 * dp).toInt()
+        val primaryGap = (11 * dp).toInt()
+        val secondarySize = (48 * dp).toInt()
+        // Secondary lane matches the primary lane's height so its three icons
+        // distribute top-to-bottom (space-between) across the same span.
+        val laneHeight = primarySize * 2 + primaryGap
+        val hairline = context.themeColor(R.attr.ptDivider)
 
-        // Rounded rectangle container for both buttons
-        val borderColor = context.themeColor(R.attr.ptDivider)
-        menuCard = LinearLayout(context).apply {
+        // ── Secondary lane (left): three icon-only square buttons ─────────
+        val editIcon = ImageView(context).apply {
+            setImageResource(R.drawable.ic_crop)
+            imageTintList = ColorStateList.valueOf(mutedColor)
+        }
+        val editBtn = makeSecondaryButton(
+            editIcon, context.getString(R.string.floating_menu_edit_region)
+        ) { onCaptureRegion?.invoke() }
+
+        val settingsIcon = ImageView(context).apply {
+            setImageResource(R.drawable.ic_settings)
+            imageTintList = ColorStateList.valueOf(mutedColor)
+        }
+        val settingsButton = makeSecondaryButton(
+            settingsIcon, context.getString(R.string.nav_settings)
+        ) { onSettings?.invoke() }
+
+        val exitDesc = context.getString(R.string.floating_icon_close_label_hide)
+        hideIcon = ImageView(context).apply {
+            setImageResource(R.drawable.ic_exit_to_app)
+            imageTintList = ColorStateList.valueOf(mutedColor)
+        }
+        hideBtn = makeSecondaryButton(hideIcon, exitDesc) { onCloseRequested?.invoke() }
+
+        val secondaryLane = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, laneHeight
+            ).apply { marginEnd = laneGap }
+            addView(editBtn, LinearLayout.LayoutParams(secondarySize, secondarySize))
+            addView(laneSpacer())
+            addView(settingsButton, LinearLayout.LayoutParams(secondarySize, secondarySize))
+            addView(laneSpacer())
+            addView(hideBtn, LinearLayout.LayoutParams(secondarySize, secondarySize))
+        }
+
+        // ── Primary lane (right): Translate once + Auto-translate ─────────
+        translateOnceBtn = makePrimaryButton(
+            iconRes = R.drawable.ic_translate,
+            iconTint = accentColor,
+            label = context.getString(R.string.floating_menu_translate_once),
+            contentColor = accentColor,
+            fill = accentTintColor,
+            onClick = { onTranslateOnce?.invoke() }
+        )
+
+        liveIcon = ImageView(context).apply {
+            setImageResource(R.drawable.ic_play)
+            imageTintList = ColorStateList.valueOf(onAccentColor)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            layoutParams = LinearLayout.LayoutParams((26 * dp).toInt(), (26 * dp).toInt())
+        }
+        liveLabel = TextView(context).apply {
+            text = context.getString(R.string.live_mode_auto_translate_label)
+            setTextColor(onAccentColor)
+            textSize = 11f
+            gravity = Gravity.CENTER
+            maxLines = 2
+            setTypeface(null, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (5 * dp).toInt() }
+        }
+        liveBtn = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            contentDescription = context.getString(R.string.live_mode_auto_translate_label)
             background = GradientDrawable().apply {
-                setColor(Color.argb(0xD9, Color.red(bgColor), Color.green(bgColor), Color.blue(bgColor)))
-                cornerRadius = 20 * dp
-                setStroke((1 * dp).toInt(), borderColor)
+                setColor(accentColor)
+                cornerRadius = 11 * dp
+            }
+            layoutParams = LinearLayout.LayoutParams(primarySize, primarySize).apply {
+                topMargin = primaryGap
+            }
+            addView(liveIcon)
+            addView(liveLabel)
+            setOnClickListener { onToggleLive?.invoke() }
+        }
+
+        val primaryLane = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(translateOnceBtn)
+            addView(liveBtn)
+        }
+
+        // ── Container: both lanes side by side on one elevated surface ────
+        menuCard = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = GradientDrawable().apply {
+                setColor(bgColor)
+                cornerRadius = 14 * dp
+                setStroke((1 * dp).toInt(), hairline)
             }
             elevation = 8 * dp
             clipChildren = false
             clipToPadding = false
-            gravity = Gravity.CENTER_HORIZONTAL
-            val hPad = (14 * dp).toInt()
-            setPadding(hPad, (14 * dp).toInt(), hPad, (12 * dp).toInt())
+            setPadding(pad, pad, pad, pad)
             visibility = View.INVISIBLE
+            addView(secondaryLane)
+            addView(primaryLane)
         }
-
-        // Live mode button + label
-        val liveGroup = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = (10 * dp).toInt() }
-        }
-        liveBtn = FrameLayout(context).apply {
-            background = GradientDrawable().apply {
-                setColor(accentColor)
-                cornerRadius = 14 * dp
-            }
-            elevation = 4 * dp
-            layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-            }
-            setOnClickListener { onToggleLive?.invoke() }
-        }
-        liveIcon = TextView(context).apply {
-            text = "\u25B6"
-            setTextColor(onAccentColor)
-            textSize = 22f
-            gravity = Gravity.CENTER
-        }
-        liveBtn.addView(liveIcon, LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ))
-        liveLabel = TextView(context).apply {
-            text = context.getString(R.string.live_mode_auto_translate_label)
-            setTextColor(textColor)
-            textSize = 9f
-            gravity = Gravity.CENTER_HORIZONTAL
-            setTypeface(null, Typeface.BOLD)
-            maxWidth = btnSize
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = (4 * dp).toInt() }
-        }
-        liveGroup.addView(liveBtn)
-        liveGroup.addView(liveLabel)
-        menuCard.addView(liveGroup)
-
-        // Capture Region button + label
-        val regionGroup = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = (10 * dp).toInt() }
-        }
-        val regionBtn = FrameLayout(context).apply {
-            background = GradientDrawable().apply {
-                setColor(accentColor)
-                cornerRadius = 14 * dp
-            }
-            elevation = 4 * dp
-            layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-            }
-            setOnClickListener { onCaptureRegion?.invoke() }
-        }
-        val regionIcon = ImageView(context).apply {
-            setImageResource(R.drawable.ic_crop)
-            imageTintList = android.content.res.ColorStateList.valueOf(onAccentColor)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(iconPad, iconPad, iconPad, iconPad)
-        }
-        regionBtn.addView(regionIcon, LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ))
-        val regionLabel = TextView(context).apply {
-            text = context.getString(R.string.floating_menu_btn_capture_region)
-            setTextColor(textColor)
-            textSize = 9f
-            gravity = Gravity.CENTER_HORIZONTAL
-            setTypeface(null, Typeface.BOLD)
-            maxWidth = btnSize
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = (4 * dp).toInt() }
-        }
-        regionGroup.addView(regionBtn)
-        regionGroup.addView(regionLabel)
-        menuCard.addView(regionGroup)
-
-        // Hide button + label
-        val hideGroup = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-        }
-        val hideBtn = FrameLayout(context).apply {
-            background = GradientDrawable().apply {
-                setColor(cardColor)
-                cornerRadius = 14 * dp
-            }
-            elevation = 4 * dp
-            layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-            }
-            setOnClickListener { onCloseRequested?.invoke() }
-        }
-        hideIcon = ImageView(context).apply {
-            setImageResource(R.drawable.ic_exit_to_app)
-            imageTintList = android.content.res.ColorStateList.valueOf(textColor)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(iconPad, iconPad, iconPad, iconPad)
-        }
-        hideBtn.addView(hideIcon, LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ))
-        hideLabel = TextView(context).apply {
-            text = context.getString(R.string.floating_icon_close_label_hide)
-            setTextColor(textColor)
-            textSize = 9f
-            gravity = Gravity.CENTER_HORIZONTAL
-            setTypeface(null, Typeface.BOLD)
-            maxWidth = btnSize
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = (4 * dp).toInt() }
-        }
-        hideGroup.addView(hideBtn)
-        hideGroup.addView(hideLabel)
-        menuCard.addView(hideGroup)
-
         addView(menuCard, LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -354,7 +327,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         val dividerColor = context.themeColor(R.attr.ptDivider)
         val instructionIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_gesture_select)
-            imageTintList = android.content.res.ColorStateList.valueOf(textColor)
+            imageTintList = ColorStateList.valueOf(textColor)
             scaleType = ImageView.ScaleType.FIT_CENTER
             layoutParams = LinearLayout.LayoutParams((20 * dp).toInt(), (20 * dp).toInt()).apply {
                 rightMargin = (8 * dp).toInt()
@@ -429,48 +402,119 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             bottomMargin = (32 * dp).toInt()
         })
+    }
 
-        // Gear icon for settings — positioned above/below menu card in positionNearIcon
-        val gearSize = (48 * dp).toInt()
-        val gearIcon = ImageView(context).apply {
-            setImageResource(R.drawable.ic_settings)
-            imageTintList = android.content.res.ColorStateList.valueOf(textColor)
+    /** Equal-weight filler that pushes the secondary lane's three icons to a
+     *  space-between distribution within the fixed lane height. */
+    private fun laneSpacer(): View = View(context).apply {
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+        )
+    }
+
+    /** Builds a 78dp labelled primary button: icon above a centered two-line
+     *  label, on a rounded [fill]. */
+    private fun makePrimaryButton(
+        iconRes: Int,
+        iconTint: Int,
+        label: CharSequence,
+        contentColor: Int,
+        fill: Int,
+        onClick: () -> Unit,
+    ): LinearLayout {
+        val size = (78 * dp).toInt()
+        val icon = ImageView(context).apply {
+            setImageResource(iconRes)
+            imageTintList = ColorStateList.valueOf(iconTint)
             scaleType = ImageView.ScaleType.FIT_CENTER
-            val gearPad = (10 * dp).toInt()
-            setPadding(gearPad, gearPad, gearPad, gearPad)
+            layoutParams = LinearLayout.LayoutParams((26 * dp).toInt(), (26 * dp).toInt())
         }
-        settingsBtn = FrameLayout(context).apply {
+        val text = TextView(context).apply {
+            this.text = label
+            setTextColor(contentColor)
+            textSize = 11f
+            gravity = Gravity.CENTER
+            maxLines = 2
+            setTypeface(null, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (5 * dp).toInt() }
+        }
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            contentDescription = label
             background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.argb(0xD9, Color.red(bgColor), Color.green(bgColor), Color.blue(bgColor)))
-                setStroke((1 * dp).toInt(), borderColor)
+                setColor(fill)
+                cornerRadius = 11 * dp
             }
-            elevation = 4 * dp
-            addView(gearIcon, LayoutParams(gearSize, gearSize))
-            setOnClickListener { onSettings?.invoke() }
-            visibility = View.INVISIBLE
+            layoutParams = LinearLayout.LayoutParams(size, size)
+            addView(icon)
+            addView(text)
+            setOnClickListener { onClick() }
         }
-        addView(settingsBtn, LayoutParams(gearSize, gearSize))
+    }
+
+    /** Builds a 48dp icon-only secondary button with a faint wash + hairline.
+     *  The caller supplies the [icon] (pre-tinted) and keeps any reference it
+     *  needs to mutate later. */
+    private fun makeSecondaryButton(
+        icon: ImageView,
+        desc: CharSequence,
+        onClick: () -> Unit,
+    ): FrameLayout {
+        val iconPad = (14 * dp).toInt()
+        icon.apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(iconPad, iconPad, iconPad, iconPad)
+            // The glyph is decorative; the clickable button carries the label,
+            // so keep the icon out of the accessibility tree.
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        return FrameLayout(context).apply {
+            background = GradientDrawable().apply {
+                // Solid grouped-card fill, matching the Settings cells. A solid
+                // token (not a translucent wash) keeps these stable regardless
+                // of the container color behind them.
+                setColor(cardColor)
+                cornerRadius = 9 * dp
+                setStroke((1 * dp).toInt(), context.themeColor(R.attr.ptDivider))
+            }
+            // Label the clickable control itself — this is the node TalkBack
+            // focuses and activates, so the description must live here.
+            contentDescription = desc
+            addView(icon, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            ))
+            setOnClickListener { onClick() }
+        }
     }
 
     private fun updateLiveButton() {
         if (isLiveMode) {
-            liveIcon.text = context.getString(R.string.floating_menu_live_pause_glyph)
-            liveIcon.textSize = 20f
-            liveIcon.setTextColor("#E8E8E8".toColorInt())
-            liveIcon.setPadding(0, 0, 0, 0)
+            // Running: pause glyph on the danger fill, light content for contrast.
+            liveIcon.setImageResource(R.drawable.ic_pause)
+            liveIcon.imageTintList = ColorStateList.valueOf(textColor)
             liveLabel.text = context.getString(R.string.live_mode_pause_auto_label)
+            liveLabel.setTextColor(textColor)
             (liveBtn.background as? GradientDrawable)?.setColor(dangerColor)
         } else {
-            liveIcon.text = "\u25B6" // ▶ play
-            liveIcon.textSize = 26f
-            liveIcon.setTextColor(onAccentColor)
-            liveIcon.setPadding((2 * dp).toInt(), 0, 0, (1 * dp).toInt())
+            // Resting: play glyph on the accent fill, on-accent content.
+            liveIcon.setImageResource(R.drawable.ic_play)
+            liveIcon.imageTintList = ColorStateList.valueOf(onAccentColor)
             liveLabel.text = hintModeLabel
                 ?.let { context.getString(R.string.live_mode_auto_with_hint, it) }
                 ?: context.getString(R.string.live_mode_auto_translate_label)
+            liveLabel.setTextColor(onAccentColor)
             (liveBtn.background as? GradientDrawable)?.setColor(accentColor)
         }
+        liveBtn.contentDescription = liveLabel.text
+        // While auto-translate is running, drop Translate-once to the neutral
+        // card fill (same as the secondary buttons); restore the accent tint at rest.
+        (translateOnceBtn.background as? GradientDrawable)?.setColor(
+            if (isLiveMode) cardColor else accentTintColor
+        )
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -672,27 +716,6 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 .setDuration(150)
                 .setInterpolator(DecelerateInterpolator())
                 .start()
-
-            // Position gear icon centered above (or below) the menu card
-            val gearSize = (48 * dp).toInt()
-            val gearGap = (8 * dp).toInt()
-            val gearX = menuX + (mw - gearSize) / 2
-            val gearAboveY = menuY - gearSize - gearGap
-            val gearBelowY = menuY + mh + gearGap
-            val gearY = if (gearAboveY >= 0) gearAboveY else gearBelowY
-            val glp = settingsBtn.layoutParams as LayoutParams
-            glp.gravity = Gravity.TOP or Gravity.START
-            glp.leftMargin = gearX
-            glp.topMargin = gearY
-            settingsBtn.layoutParams = glp
-            settingsBtn.isVisible = true
-            settingsBtn.alpha = 0f
-            settingsBtn.scaleX = 0.8f
-            settingsBtn.scaleY = 0.8f
-            settingsBtn.animate()
-                .alpha(1f).scaleX(1f).scaleY(1f)
-                .setDuration(150)
-                .setInterpolator(DecelerateInterpolator()).start()
 
             // Show red X button to clear region (if a custom region is active)
             showClearRegionButton(iconEdge, screenW, screenH)

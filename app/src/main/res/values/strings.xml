@@ -1949,6 +1949,18 @@
          translation fits on one line. -->
     <string name="floating_menu_btn_capture_region">Capture\nRegion</string>
 
+    <!-- Two-line label on the "Translate once" primary button in the
+         floating-icon menu. Performs a single capture-and-translate of the
+         current region (full screen unless a region is set). The literal \n
+         forces a two-line break to match the square button; translators may
+         remove it if their translation fits on one line. -->
+    <string name="floating_menu_translate_once">Translate\nOnce</string>
+
+    <!-- Accessibility label (TalkBack / tooltip) for the icon-only "Edit
+         region" button in the floating-icon menu; opens the capture-region
+         editor. -->
+    <string name="floating_menu_edit_region">Edit region</string>
+
     <!-- Instruction pill shown at the bottom of the floating-icon menu
          while no custom region is active, prompting the user to
          drag-select an area on screen. -->
