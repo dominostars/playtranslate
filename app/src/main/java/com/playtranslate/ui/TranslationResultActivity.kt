@@ -36,13 +36,13 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
 import com.playtranslate.R
-import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.TextSegments
+import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TranslationResult
-import com.playtranslate.ocr.registry.OcrModelManager
-import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.themeColor
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -193,39 +193,31 @@ class TranslationResultActivity :
 
     override fun onReOcrRequested() {
         val svc = captureService ?: return
-        val prov = (vm.result.value as? ResultState.Ready)?.result?.ocrProvenance ?: return
-        // The result's screenshotPath is the per-display capture-d{id}.jpg, which a
-        // later capture on that display can overwrite; prefer the stable pre-capture
-        // screenshot this screen was launched with.
-        val path = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
-            ?: (vm.result.value as? ResultState.Ready)?.result?.screenshotPath
-            ?: return
+        val (prov, path) = reOcrTarget() ?: return
         reOcrJob?.cancel()
         reOcrJob = lifecycleScope.launch {
-            when (val outcome = svc.reOcr(prov, path)) {
-                is CaptureService.ReOcrOutcome.Done -> {
-                    // The original one-shot session is superseded; stop its collector
-                    // so a rotation re-collect of its sticky Done can't revert the
-                    // re-OCR'd result (the VM survives config change and re-renders it).
-                    // Mirrors commitEdit's supersede.
-                    sessionCollectJob?.cancel()
-                    captureSession = null
-                    vm.displayResult(outcome.result, applicationContext)
-                }
-                CaptureService.ReOcrOutcome.NoText ->
-                    toastReOcr(R.string.ocr_rescan_no_text, prov.sourceLangId)
-                is CaptureService.ReOcrOutcome.Failed ->
-                    toastReOcr(R.string.ocr_rescan_failed, prov.sourceLangId)
-            }
+            val bmp = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path) } ?: return@launch
+            // Re-run the capture pipeline on the pinned screenshot so the screen walks
+            // the normal loading stages; observeSession supersedes the prior session
+            // (its terminal state can't reappear on a rotation re-collect).
+            observeSession(svc.processScreenshot(bmp, prov.displayId, prov.region, prov.sourceLangId))
         }
     }
 
-    /** Toast naming the OCR engine the user just switched to (now the selected
-     *  backend), keeping the prior result on screen. */
-    private fun toastReOcr(msgRes: Int, id: SourceLangId) {
-        val engine = OcrModelManager.selectedBackend(this, id)?.ocrLabel ?: ""
-        Toast.makeText(this, getString(msgRes, engine), Toast.LENGTH_SHORT).show()
-    }
+    /** Re-OCR target = engine/region/screenshot of whatever's on screen — a Ready
+     *  result or a "no text detected" status. Both prefer the stable pre-capture
+     *  screenshot this screen was launched with over the overwriteable per-display
+     *  cache file. Null when neither offers re-OCR. */
+    private fun reOcrTarget(): Pair<OcrProvenance, String>? =
+        when (val s = vm.result.value) {
+            is ResultState.Ready ->
+                (s.result.ocrProvenance ?: return null) to
+                    (intent.getStringExtra(EXTRA_SCREENSHOT_PATH) ?: s.result.screenshotPath ?: return null)
+            is ResultState.Status ->
+                (s.ocrProvenance ?: return null) to
+                    (intent.getStringExtra(EXTRA_SCREENSHOT_PATH) ?: s.screenshotPath ?: return null)
+            else -> null
+        }
 
     override fun onUserScrolled() {
         // No-op — no live mode in this activity.
@@ -620,7 +612,11 @@ class TranslationResultActivity :
                         is CaptureState.Translating ->
                             vm.showTranslatingPlaceholder(state.originalText, state.segments, applicationContext, state.ocrProvenance)
                         is CaptureState.Done -> vm.displayResult(state.result, applicationContext)
-                        is CaptureState.NoText -> vm.showStatus(state.message)
+                        is CaptureState.NoText -> vm.showStatus(
+                            state.message,
+                            ocrProvenance = state.ocrProvenance,
+                            screenshotPath = state.screenshotPath,
+                        )
                         is CaptureState.Failed -> vm.showError(state.message)
                         // External cancellation supersedes this view —
                         // the user started live mode, replaced the

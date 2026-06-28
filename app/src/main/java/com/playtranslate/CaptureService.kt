@@ -3,7 +3,6 @@ package com.playtranslate
 import android.app.Notification
 import android.app.NotificationChannel
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -29,13 +28,13 @@ import androidx.core.app.NotificationCompat
 import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.ocr.registry.selectionToken
 import com.google.mlkit.nl.translate.TranslateLanguage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -646,12 +645,19 @@ class CaptureService : Service() {
      * Used when the screenshot must be taken before an activity appears on screen
      * (e.g. single-screen region capture from the floating menu).
      */
-    fun processScreenshot(raw: Bitmap, displayId: Int = primaryGameDisplayId()): CaptureSession {
+    fun processScreenshot(
+        raw: Bitmap,
+        displayId: Int = primaryGameDisplayId(),
+        regionOverride: RegionEntry? = null,
+        sourceLangIdOverride: SourceLangId? = null,
+    ): CaptureSession {
         oneShotCaptureJob?.cancel()
         val state = MutableStateFlow<CaptureState>(
             CaptureState.InProgress(getString(R.string.status_capturing))
         )
-        val job = serviceScope.launch { runProcessCycle(raw, displayId, state) }
+        val job = serviceScope.launch {
+            runProcessCycle(raw, displayId, state, regionOverride, sourceLangIdOverride)
+        }
         attachCancellationTerminal(job, state)
         oneShotCaptureJob = job
         return CaptureSession(state.asStateFlow(), job)
@@ -733,6 +739,8 @@ class CaptureService : Service() {
         raw: Bitmap,
         displayId: Int,
         state: MutableStateFlow<CaptureState>,
+        regionOverride: RegionEntry? = null,
+        sourceLangIdOverride: SourceLangId? = null,
     ) {
         if (!isConfigured) {
             state.value = CaptureState.Failed("Not configured — tap Translate to set up")
@@ -744,7 +752,13 @@ class CaptureService : Service() {
             state.value = CaptureState.InProgress(getString(R.string.status_capturing))
             val screenshotPath = captureSaveToCache(raw, displayId)
 
-            val region = activeRegionForDisplay(displayId)
+            // Source language + region come from current settings for a fresh capture,
+            // or from the pinned overrides when re-OCR'ing an existing capture (so the
+            // re-scan reads the SAME region/language that produced the result — only the
+            // OCR engine changes). Snapshotted once, before OCR, so OCR + provenance
+            // can't disagree even if settings change mid-cycle.
+            val srcId = sourceLangIdOverride ?: Prefs(this@CaptureService).sourceLangId
+            val region = regionOverride ?: activeRegionForDisplay(displayId)
             val statusBarHeight = getStatusBarHeightForDisplay(displayId)
             val top    = maxOf((raw.height * region.top).toInt(), statusBarHeight)
             val left   = (raw.width  * region.left).toInt()
@@ -757,16 +771,17 @@ class CaptureService : Service() {
             // OCR the crop directly. Cleanup of `bitmap` is the outer
             // finally's job.
             state.value = CaptureState.InProgress(getString(R.string.status_ocr))
-            // Snapshot the exact source language (variant included) once, before OCR,
-            // so OCR + provenance can't disagree even if the language changes mid-cycle.
-            val srcId = Prefs(this@CaptureService).sourceLangId
-            val ocrResult = ocrManager.recognise(bitmap, sourceLang, screenshotWidth = raw.width)
+            val ocrResult = ocrManager.recognise(
+                bitmap, SourceLanguageProfiles[srcId].translationCode, screenshotWidth = raw.width,
+            )
             if (BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
                 OcrSeedWriter.writeSeed(this@CaptureService, bitmap, ocrResult)
             }
 
             if (ocrResult == null) {
-                state.value = CaptureState.NoText(noTextMessage(displayId))
+                state.value = CaptureState.NoText(
+                    noTextMessage(displayId), noTextProvenanceFor(displayId, region, srcId), screenshotPath,
+                )
                 return
             }
 
@@ -774,7 +789,11 @@ class CaptureService : Service() {
             state.value = CaptureState.Translating(
                 ocrResult.fullText, ocrResult.segments, ocrProvenanceFor(ocrResult, displayId, region, srcId),
             )
-            val groupTranslation = translateGroups(ocrResult.groups.map { it.text })
+            // Pin translation to the SAME source language OCR used (srcId), not current
+            // Prefs — for a re-OCR after a source-language change they'd otherwise disagree,
+            // sending the recognized text through the wrong source/target cache key and
+            // translator. No-op for a fresh capture, where srcId == Prefs.sourceLangId.
+            val groupTranslation = translateGroups(ocrResult.groups.map { it.text }, srcId)
 
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
             state.value = CaptureState.Done(
@@ -800,69 +819,14 @@ class CaptureService : Service() {
         }
     }
 
-    /** Result of [reOcr]. [Done] carries a finished result to swap in; [NoText]
-     *  and [Failed] are terminal outcomes the caller surfaces (e.g. a toast)
-     *  WITHOUT tearing down the existing on-screen result — re-scanning with a
-     *  weaker engine must never erase a good translation. */
-    sealed interface ReOcrOutcome {
-        data class Done(val result: TranslationResult) : ReOcrOutcome
-        data object NoText : ReOcrOutcome
-        data class Failed(val message: String) : ReOcrOutcome
-    }
-
-    /**
-     * Re-run OCR + translation on a previously-captured [screenshotPath] using the
-     * OCR engine that is NOW selected for [OcrProvenance.sourceLangId] (the picker
-     * persists the new token before calling this — engine resolution reads Prefs
-     * fresh). Re-crops the IDENTICAL rectangle from [provenance] (carried from the
-     * original capture) so a later live-region change can't shift it.
-     *
-     * Deliberately does NOT drive the capture state machine / [processScreenshot]:
-     * it returns a [ReOcrOutcome] so the caller keeps the prior result on
-     * NoText/Failed, and it never touches [oneShotCaptureJob] from a background
-     * thread. Decodes on IO; safe to call from any dispatcher.
-     */
-    suspend fun reOcr(provenance: OcrProvenance, screenshotPath: String): ReOcrOutcome {
-        val raw = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(screenshotPath) }
-            ?: return ReOcrOutcome.Failed("screenshot decode failed: $screenshotPath")
-        val rawWidth = raw.width
-        val rawHeight = raw.height
-        var bitmap: Bitmap = raw
-        return try {
-            val region = provenance.region
-            val statusBarHeight = getStatusBarHeightForDisplay(provenance.displayId)
-            val top    = maxOf((rawHeight * region.top).toInt(), statusBarHeight)
-            val left   = (rawWidth  * region.left).toInt()
-            val bottom = (rawHeight * region.bottom).toInt()
-            val right  = (rawWidth  * region.right).toInt()
-            bitmap = cropBitmap(raw, top, bottom, left, right)
-
-            val lang = SourceLanguageProfiles[provenance.sourceLangId].translationCode
-            val ocrResult = ocrManager.recognise(bitmap, lang, screenshotWidth = rawWidth)
-                ?: return ReOcrOutcome.NoText
-
-            val groupTranslation = translateGroups(ocrResult.groups.map { it.text }, provenance.sourceLangId)
-            val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-            ReOcrOutcome.Done(
-                TranslationResult(
-                    originalText       = ocrResult.fullText,
-                    segments           = ocrResult.segments,
-                    translatedText     = groupTranslation.text,
-                    timestamp          = timestamp,
-                    screenshotPath     = screenshotPath,
-                    note               = groupTranslation.note,
-                    backendDisplayName = groupTranslation.backendDisplayName,
-                    ocrProvenance      = ocrProvenanceFor(ocrResult, provenance.displayId, region, provenance.sourceLangId),
-                )
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "reOcr failed: ${e.message}", e)
-            ReOcrOutcome.Failed(e.message ?: "Unknown error")
-        } finally {
-            if (!bitmap.isRecycled) bitmap.recycle()
-        }
+    /** Build the [OcrProvenance] for a NO-TEXT result, where there is no [OcrResult]
+     *  to read the engine from — attribute it to the engine that WAS selected (and
+     *  ran, finding nothing) for [srcId]. Pins the engine, language, [region], and
+     *  [displayId] so the "switch OCR tool" gear can re-OCR THIS exact capture. Null
+     *  when no OCR backend is available (e.g. a no-floor language on a 32-bit device). */
+    private fun noTextProvenanceFor(displayId: Int, region: RegionEntry, srcId: SourceLangId): OcrProvenance? {
+        val backend = OcrModelManager.selectedBackend(this, srcId) ?: return null
+        return OcrProvenance(backend.ocrLabel, backend.selectionToken, displayId, srcId, region)
     }
 
     // ── Live mode ─────────────────────────────────────────────────────────
@@ -1909,7 +1873,7 @@ class CaptureService : Service() {
      *  side-effect any service-global flow on its own anymore. */
     internal sealed class PipelineOutcome {
         data class Success(val pipeline: PipelineResult) : PipelineOutcome()
-        object NoText : PipelineOutcome()
+        data class NoText(val ocrProvenance: OcrProvenance?, val screenshotPath: String?) : PipelineOutcome()
         data class Failed(val message: String) : PipelineOutcome()
     }
 
@@ -1949,7 +1913,9 @@ class CaptureService : Service() {
                 OcrSeedWriter.writeSeed(this@CaptureService, bitmap, ocrResult)
             }
 
-            if (ocrResult == null) return PipelineOutcome.NoText
+            if (ocrResult == null) {
+                return PipelineOutcome.NoText(noTextProvenanceFor(displayId, region, srcId), screenshotPath)
+            }
 
             // OCR is in — surface the source now so the page can reveal before the
             // (slower) translation runs.
@@ -2013,7 +1979,8 @@ class CaptureService : Service() {
         )
         state.value = when (outcome) {
             is PipelineOutcome.Success -> CaptureState.Done(outcome.pipeline.result)
-            PipelineOutcome.NoText -> CaptureState.NoText(noTextMessage(displayId))
+            is PipelineOutcome.NoText ->
+                CaptureState.NoText(noTextMessage(displayId), outcome.ocrProvenance, outcome.screenshotPath)
             is PipelineOutcome.Failed -> CaptureState.Failed(outcome.message)
         }
     }

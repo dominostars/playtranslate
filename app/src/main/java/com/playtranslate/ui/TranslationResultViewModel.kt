@@ -8,6 +8,7 @@ import com.playtranslate.language.InflectedForm
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TokenSpan
 import com.playtranslate.model.FrequencyTag
+import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.ReadingRow
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TextSegments
@@ -159,12 +160,20 @@ class TranslationResultViewModel : ViewModel() {
         displayResult(result, appCtx)
     }
 
-    /** Show a status message. Cancels any in-flight lookup. */
-    fun showStatus(message: String, showHint: Boolean = false) {
+    /** Show a status message. Cancels any in-flight lookup. A non-null
+     *  [ocrProvenance] (+ [screenshotPath]) marks the "no text detected" status so
+     *  the surface shows a tappable OCR-switch gear inline that can re-OCR that exact
+     *  capture; both null for every other status. */
+    fun showStatus(
+        message: String,
+        showHint: Boolean = false,
+        ocrProvenance: OcrProvenance? = null,
+        screenshotPath: String? = null,
+    ) {
         lookupJob?.cancel()
         settledLookup = null
         _wordLookups.value = WordLookupsState.Idle
-        _result.value = ResultState.Status(message, showHint)
+        _result.value = ResultState.Status(message, showHint, ocrProvenance, screenshotPath)
     }
 
     /** Show an error. Fragment formats with the status_error string
@@ -356,7 +365,15 @@ sealed class ResultState {
     object Idle : ResultState()
     /** Waiting / informational message; [showHint] toggles the
      *  "press X to start" hint line under the message. */
-    data class Status(val message: String, val showHint: Boolean = false) : ResultState()
+    data class Status(
+        val message: String,
+        val showHint: Boolean = false,
+        /** OCR provenance + screenshot for the "no text detected" status, so the
+         *  inline OCR-switch gear can re-OCR THAT exact capture. Both null for
+         *  idle/error/searching/etc. (no gear). */
+        val ocrProvenance: OcrProvenance? = null,
+        val screenshotPath: String? = null,
+    ) : ResultState()
     /** Drag-sentence placeholder: original text is set, translation
      *  is in flight ("Translating..." in the UI). */
     data class Translating(

@@ -35,6 +35,7 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.graphics.BitmapFactory
 import android.widget.Toast
 import android.widget.LinearLayout
 import android.widget.PopupWindow
@@ -69,7 +70,6 @@ import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.StalePack
 import com.playtranslate.ocr.registry.OcrModelManager
-import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.translation.OfflineModelReclaimer
@@ -176,31 +176,30 @@ class MainActivity :
 
     override fun onReOcrRequested() {
         val svc = captureService ?: return
-        val ready = resultVm.result.value as? com.playtranslate.ui.ResultState.Ready ?: return
-        val prov = ready.result.ocrProvenance ?: return
-        val path = ready.result.screenshotPath ?: return
         // Pause live capture so a fresh cycle can't overwrite the cached screenshot
         // mid-rescan (the panel result's screenshotPath is the per-display file).
         if (isLiveMode) pauseLiveMode()
+        val (prov, path) = reOcrTarget() ?: return
         reOcrJob?.cancel()
         reOcrJob = lifecycleScope.launch {
-            when (val outcome = svc.reOcr(prov, path)) {
-                is CaptureService.ReOcrOutcome.Done ->
-                    resultVm.displayResult(outcome.result, applicationContext)
-                CaptureService.ReOcrOutcome.NoText ->
-                    toastReOcr(R.string.ocr_rescan_no_text, prov.sourceLangId)
-                is CaptureService.ReOcrOutcome.Failed ->
-                    toastReOcr(R.string.ocr_rescan_failed, prov.sourceLangId)
-            }
+            val bmp = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path) } ?: return@launch
+            // Re-run the capture pipeline on the pinned screenshot/region/language so
+            // the panel walks the normal loading stages and re-emits no-text-with-gear.
+            _currentCaptureSession.value =
+                svc.processScreenshot(bmp, prov.displayId, prov.region, prov.sourceLangId)
         }
     }
 
-    /** Toast naming the OCR engine the user just switched to (now the selected
-     *  backend), keeping the prior result on screen. */
-    private fun toastReOcr(msgRes: Int, id: SourceLangId) {
-        val engine = OcrModelManager.selectedBackend(this, id)?.ocrLabel ?: ""
-        Toast.makeText(this, getString(msgRes, engine), Toast.LENGTH_SHORT).show()
-    }
+    /** Re-OCR target = engine/region/screenshot of whatever's on screen — a Ready
+     *  result or a "no text detected" status. Null when neither offers re-OCR. */
+    private fun reOcrTarget(): Pair<com.playtranslate.model.OcrProvenance, String>? =
+        when (val s = resultVm.result.value) {
+            is com.playtranslate.ui.ResultState.Ready ->
+                (s.result.ocrProvenance ?: return null) to (s.result.screenshotPath ?: return null)
+            is com.playtranslate.ui.ResultState.Status ->
+                (s.ocrProvenance ?: return null) to (s.screenshotPath ?: return null)
+            else -> null
+        }
 
     override fun onUserScrolled() {
         if (isLiveMode && !suppressScrollPause) pauseLiveMode()
@@ -1330,7 +1329,11 @@ class MainActivity :
                                     _currentCaptureSession.value = null
                                 }
                                 is CaptureState.NoText -> {
-                                    resultVm.showStatus(state.message)
+                                    resultVm.showStatus(
+                                        state.message,
+                                        ocrProvenance = state.ocrProvenance,
+                                        screenshotPath = state.screenshotPath,
+                                    )
                                     _currentCaptureSession.value = null
                                 }
                                 is CaptureState.Failed -> {

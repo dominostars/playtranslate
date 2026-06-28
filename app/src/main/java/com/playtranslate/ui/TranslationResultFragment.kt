@@ -26,9 +26,12 @@ import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.selectHeadword
+import com.playtranslate.language.SourceLangId
+import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
@@ -296,7 +299,9 @@ class TranslationResultFragment : Fragment() {
             onAddToAnki = { onAnkiClicked() },
             onAnkiOneTap = { oneTapSentenceFromResult() },
         )
-        binder.onChooseOcr = { showOcrPicker() }
+        binder.onChooseOcr = {
+            currentReady()?.ocrProvenance?.let { showOcrPicker(it.sourceLangId, it.engineToken) }
+        }
         resultsContent.setOnScrollChangeListener(scrollListener)
         btnToggleWords.setOnClickListener {
             prefs.hideWordsSection = !prefs.hideWordsSection
@@ -312,22 +317,21 @@ class TranslationResultFragment : Fragment() {
         // setupSectionButtons above.
     }
 
-    /** Open the "Choose OCR tool" picker for the current OCR-derived result.
+    /** Open the "Choose OCR tool" picker for source language [id], highlighting
+     *  [appliedToken] (the engine that produced or attempted the current result).
      *  Switching to a downloaded engine re-OCRs via the host; a not-downloaded
-     *  engine deep-links to the OCR settings screen to fetch it. */
-    private fun showOcrPicker() {
+     *  engine deep-links to the OCR settings screen to fetch it. Shared by the
+     *  source attribution row and the "no text detected" status gear. */
+    private fun showOcrPicker(id: SourceLangId, appliedToken: String) {
         val ctx = context ?: return
-        val provenance = currentReady()?.ocrProvenance ?: return
         OcrPicker.populate(
             OverlayAlert.Builder(requireActivity()),
             ctx,
-            provenance.sourceLangId,
-            provenance.engineToken,
+            id,
+            appliedToken,
             onReOcr = { host?.onReOcrRequested() },
             onDownload = { backend ->
-                startActivity(
-                    CaptureOverlaySettingsActivity.downloadIntent(ctx, provenance.sourceLangId, backend.selectionToken)
-                )
+                startActivity(CaptureOverlaySettingsActivity.downloadIntent(ctx, id, backend.selectionToken))
             },
         ).show()
     }
@@ -350,7 +354,7 @@ class TranslationResultFragment : Fragment() {
                 showStatusUi(getString(R.string.status_idle), showHint = true)
             }
             is ResultState.Status -> {
-                showStatusUi(state.message, state.showHint)
+                showStatusUi(state.message, state.showHint, state.ocrProvenance, state.screenshotPath)
             }
             is ResultState.Error -> {
                 showStatusUi(getString(R.string.status_error, state.message), showHint = false)
@@ -364,8 +368,10 @@ class TranslationResultFragment : Fragment() {
                 tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
                 // Capture placeholders carry OCR provenance — show "Scanned by …" with
                 // the source as soon as OCR finishes, before the translation lands.
-                // Drag/edit placeholders carry null, which hides the row.
-                binder.bindSourceOcr(state.ocrProvenance)
+                // Drag/edit placeholders carry null, which hides the row. The gear
+                // stays hidden until the result settles (Ready/Status): re-OCR can't
+                // act on a transient Translating state, so a gear here is a dead control.
+                binder.bindSourceOcr(state.ocrProvenance, canReOcr = false)
                 binder.setTargetTranslatingPlaceholder()
                 binder.applyTranslationVisibility()
                 binder.applyOriginalVisibility()
@@ -391,7 +397,7 @@ class TranslationResultFragment : Fragment() {
                 val scrollAnchor = if (preserveScroll) captureScrollAnchor() else null
                 lastRenderedSourceText = result.originalText
                 binder.bindSource(result.segments)
-                binder.bindSourceOcr(result.ocrProvenance)
+                binder.bindSourceOcr(result.ocrProvenance, canReOcr = result.screenshotPath != null)
                 tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
                 // A blank translation on a Ready result means a re-translate is
                 // in flight: the edit-overlay commit clears the old translation
@@ -416,13 +422,27 @@ class TranslationResultFragment : Fragment() {
     /** Shared status / error / idle layout — single status container,
      *  results hidden, Anki gone. [showHint] gates the
      *  "press X to start" hint line under the message. */
-    private fun showStatusUi(message: String, showHint: Boolean) {
+    private fun showStatusUi(
+        message: String,
+        showHint: Boolean,
+        ocrProvenance: OcrProvenance? = null,
+        screenshotPath: String? = null,
+    ) {
         // Leaving the results view drops the scroll anchor: the next translation
         // is unrelated content and should land at the top.
         lastRenderedSourceText = null
         tvStatus.text = message
         tvStatusHint.visibility = if (showHint) View.VISIBLE else View.GONE
         tvLiveHint.isGone = true
+        // Inline OCR-switch gear on the "no text detected" status: shown only when a
+        // pinned screenshot is still on hand to re-OCR AND there's more than one OCR
+        // tool for its language. Without the screenshot the host can't rescan, so the
+        // gear would be a dead control — hide it (matches the overlay's no-text gating).
+        val showGear = ocrProvenance != null && screenshotPath != null &&
+            OcrModelManager.availableBackends(requireContext(), ocrProvenance.sourceLangId).size > 1
+        tvStatus.setStatusOcrGear(showGear) {
+            if (ocrProvenance != null) showOcrPicker(ocrProvenance.sourceLangId, ocrProvenance.engineToken)
+        }
         statusContainer.isVisible = true
         resultsContent.isGone = true
     }

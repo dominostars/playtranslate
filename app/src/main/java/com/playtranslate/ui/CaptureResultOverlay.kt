@@ -4,6 +4,7 @@ import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
@@ -49,9 +50,9 @@ import com.playtranslate.language.OcrBackend
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.ocr.registry.OcrModelManager
-import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.model.TextSegments
+import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
@@ -106,8 +107,6 @@ class CaptureResultOverlay(
     var onNavigateToDetail: ((TranslationResult) -> Unit)? = null
 
     private var sessionJob: Job? = null
-    /** In-flight OCR-tool switch (re-OCR of the cached screenshot). */
-    private var reOcrJob: Job? = null
     /** The active service one-shot session (OCR + translate). Held so dismissal
      *  cancels the headless service work, not just our UI collector. */
     private var captureSession: CaptureSession? = null
@@ -331,7 +330,12 @@ class CaptureResultOverlay(
         // Furigana changes the source's rendered height (async on / sync off) — re-fit.
         b.onSourceTextHeightChanged = { if (!dismissed) autoSizeAndFit() }
         b.setCardFillAlpha(CARD_FILL_ALPHA)
-        b.onChooseOcr = { showOcrPicker() }
+        b.onChooseOcr = {
+            val r = lastResult
+            val p = r?.ocrProvenance
+            val sp = r?.screenshotPath
+            if (p != null && sp != null) showOcrPicker(p, sp)
+        }
         binder = b
         // Reflect any persisted hide prefs (shared with the results page) up front.
         applySideBySideCollapse()
@@ -389,7 +393,7 @@ class CaptureResultOverlay(
                         ),
                     )
                     is CaptureState.Done -> bindResult(state.result)
-                    is CaptureState.NoText -> setStatus(state.message)
+                    is CaptureState.NoText -> setStatus(state.message, state.ocrProvenance, state.screenshotPath)
                     is CaptureState.Failed -> setStatus(state.message)
                     CaptureState.Cancelled -> dismiss()
                 }
@@ -445,10 +449,17 @@ class CaptureResultOverlay(
 
     // ── State rendering ──────────────────────────────────────────────────
 
-    private fun setStatus(message: String) {
+    private fun setStatus(message: String, ocrProvenance: OcrProvenance? = null, screenshotPath: String? = null) {
         statusText.text = message
         statusText.visibility = View.VISIBLE
         scroll.visibility = View.GONE
+        // Inline OCR-switch gear on the "no text detected" status: shown when there's
+        // a pinned capture to re-OCR and more than one OCR tool for its language.
+        val showGear = ocrProvenance != null && screenshotPath != null &&
+            OcrModelManager.availableBackends(ctx, ocrProvenance.sourceLangId).size > 1
+        statusText.setStatusOcrGear(showGear) {
+            if (ocrProvenance != null && screenshotPath != null) showOcrPicker(ocrProvenance, screenshotPath)
+        }
     }
 
     private fun bindResult(result: TranslationResult) {
@@ -753,36 +764,30 @@ class CaptureResultOverlay(
 
     // ── OCR tool switcher ────────────────────────────────────────────────
 
-    /** Open the "Choose OCR tool" picker as an overlay window. Switching to a
-     *  downloaded engine re-OCRs in place; a not-downloaded one deep-links to the
-     *  OCR settings screen (and tears this sheet down). */
-    private fun showOcrPicker() {
-        val prov = lastResult?.ocrProvenance ?: return
+    /** Open the "Choose OCR tool" picker as an overlay window for the capture pinned
+     *  by [prov] + [path] — a Ready result's source row, or a "no text detected"
+     *  status. Switching to a downloaded engine re-OCRs that capture in place; a
+     *  not-downloaded one deep-links to the OCR settings screen (and tears this sheet
+     *  down). */
+    private fun showOcrPicker(prov: OcrProvenance, path: String) {
         OcrPicker.populate(
             OverlayAlert.Builder(ctx, overlayHost, wm, displayId),
             ctx,
             prov.sourceLangId,
             prov.engineToken,
-            onReOcr = { reOcr() },
+            onReOcr = { reOcr(prov, path) },
             onDownload = { backend -> launchOcrSettings(backend, prov.sourceLangId); dismiss() },
         ).showAsOverlay()
     }
 
-    /** Re-OCR the cached screenshot with the just-selected engine and swap the
-     *  result in place. A weaker engine that finds no text leaves the current
-     *  result untouched (toast only) — the switch is non-destructive. */
-    private fun reOcr() {
-        val result = lastResult ?: return
-        val prov = result.ocrProvenance ?: return
-        val path = result.screenshotPath ?: return
+    /** Re-run the capture pipeline on the pinned screenshot with the just-selected
+     *  engine, driving this sheet through the normal loading stages (and re-emitting
+     *  the no-text status + gear if it still finds nothing) via [observe]. */
+    private fun reOcr(prov: OcrProvenance, path: String) {
         val svc = CaptureService.instance ?: return
-        reOcrJob?.cancel()
-        reOcrJob = scope.launch {
-            when (val outcome = svc.reOcr(prov, path)) {
-                is CaptureService.ReOcrOutcome.Done -> if (!dismissed) bindResult(outcome.result)
-                CaptureService.ReOcrOutcome.NoText -> toastReOcr(R.string.ocr_rescan_no_text, prov.sourceLangId)
-                is CaptureService.ReOcrOutcome.Failed -> toastReOcr(R.string.ocr_rescan_failed, prov.sourceLangId)
-            }
+        scope.launch {
+            val bmp = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path) } ?: return@launch
+            if (!dismissed) observe(svc.processScreenshot(bmp, prov.displayId, prov.region, prov.sourceLangId))
         }
     }
 
@@ -797,11 +802,6 @@ class CaptureResultOverlay(
         val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: displayId
         val opts = android.app.ActivityOptions.makeBasic().setLaunchDisplayId(targetDisplay).toBundle()
         app.startActivity(intent, opts)
-    }
-
-    private fun toastReOcr(msgRes: Int, id: SourceLangId) {
-        val engine = OcrModelManager.selectedBackend(ctx, id)?.ocrLabel ?: ""
-        Toast.makeText(ctx, ctx.getString(msgRes, engine), Toast.LENGTH_SHORT).show()
     }
 
     // Card-level "add to Anki" for the whole captured sentence — the overlay is a

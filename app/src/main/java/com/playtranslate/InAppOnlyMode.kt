@@ -61,7 +61,7 @@ class InAppOnlyMode(
                         service.emitResult(pipeline.result)
                         cacheOverlayData(pipeline)
                     }
-                    CaptureService.PipelineOutcome.NoText -> service.emitLiveNoText()
+                    is CaptureService.PipelineOutcome.NoText -> service.emitLiveNoText()
                     is CaptureService.PipelineOutcome.Failed -> {
                         // Failed in live mode: surface the error like before
                         // (runCaptureOcrTranslate used to emit to _errors itself)

@@ -99,8 +99,15 @@ sealed class CaptureState {
 
     /** Pipeline finished without producing usable text (OCR found
      *  nothing recognisable). Not an error — [message] is shown as
-     *  a status string. */
-    data class NoText(val message: String) : CaptureState()
+     *  a status string. [ocrProvenance] + [screenshotPath] pin the engine,
+     *  language, region, and exact screenshot that produced this no-text result,
+     *  so the inline "switch OCR tool" gear can re-OCR THAT capture (not a later
+     *  one). Null when no OCR engine/screenshot is available. */
+    data class NoText(
+        val message: String,
+        val ocrProvenance: OcrProvenance? = null,
+        val screenshotPath: String? = null,
+    ) : CaptureState()
 
     /** Pipeline failed (screenshot couldn't be taken, ML Kit threw,
      *  service not configured, etc.). [message] is shown formatted

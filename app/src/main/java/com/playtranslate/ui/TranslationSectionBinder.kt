@@ -143,9 +143,11 @@ class TranslationSectionBinder(
     /** Bind the "Scanned by <engine>" attribution row under the source text. Shown
      *  only for OCR-derived results ([provenance] != null); the gear + tap are
      *  enabled only when the language has >1 available OCR tool to switch between
-     *  (otherwise there's nothing to choose, mirroring Settings hiding its OCR
-     *  card). Italic to match the "Translated by" treatment. */
-    fun bindSourceOcr(provenance: OcrProvenance?) {
+     *  AND [canReOcr] (a cached screenshot is still on hand to re-run). Without a
+     *  screenshot the switch would be a dead control — cache-save can fail while OCR
+     *  still ran on the in-memory bitmap — so we show the attribution text alone
+     *  (mirroring Settings hiding its OCR card). Italic to match "Translated by". */
+    fun bindSourceOcr(provenance: OcrProvenance?, canReOcr: Boolean) {
         if (provenance == null) {
             sourceNoteRow.visibility = View.GONE
             return
@@ -153,9 +155,10 @@ class TranslationSectionBinder(
         tvSourceNote.text = ctx.getString(R.string.ocr_source_label, provenance.engineLabel)
         tvSourceNote.setTypeface(null, Typeface.ITALIC)
         sourceNoteRow.visibility = View.VISIBLE
-        val multi = OcrModelManager.availableBackends(ctx, provenance.sourceLangId).size > 1
-        btnSourceOcr.visibility = if (multi) View.VISIBLE else View.GONE
-        sourceNoteRow.isClickable = multi
+        val canSwitch = canReOcr &&
+            OcrModelManager.availableBackends(ctx, provenance.sourceLangId).size > 1
+        btnSourceOcr.visibility = if (canSwitch) View.VISIBLE else View.GONE
+        sourceNoteRow.isClickable = canSwitch
     }
 
     fun applyOriginalVisibility() {
@@ -328,7 +331,7 @@ class TranslationSectionBinder(
 
     fun bindResult(result: TranslationResult) {
         bindSource(result.segments)
-        bindSourceOcr(result.ocrProvenance)
+        bindSourceOcr(result.ocrProvenance, canReOcr = result.screenshotPath != null)
         bindTargetReady(result)
         updateLabels()
         applyOriginalVisibility()

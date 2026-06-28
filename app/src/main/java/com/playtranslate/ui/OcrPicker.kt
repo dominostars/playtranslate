@@ -1,6 +1,8 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import android.widget.TextView
+import androidx.core.content.ContextCompat
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.OcrBackend
@@ -69,4 +71,27 @@ object OcrPicker {
         }
         return builder.addCancelButton()
     }
+}
+
+/** Show or hide a small, tappable settings gear at the END of a status [TextView] —
+ *  the inline "switch OCR tool" affordance on the "No text detected" status. Sized +
+ *  tinted in code (intrinsic 24dp is too big next to status text, and the overlay's
+ *  non-AppCompat inflater drops app:tint), so it matches on both surfaces. [onClick]
+ *  opens the OCR picker. Pass show=false on every other status to clear it. */
+fun TextView.setStatusOcrGear(show: Boolean, onClick: () -> Unit) {
+    if (!show) {
+        setCompoundDrawablesRelative(null, null, null, null)
+        setOnClickListener(null)
+        isClickable = false
+        return
+    }
+    val sizePx = (18 * resources.displayMetrics.density).toInt()
+    val gear = ContextCompat.getDrawable(context, R.drawable.ic_settings)?.mutate()?.apply {
+        setBounds(0, 0, sizePx, sizePx)
+        setTint(context.themeColor(R.attr.ptTextHint))
+    }
+    setCompoundDrawablesRelative(null, null, gear, null)
+    compoundDrawablePadding = (6 * resources.displayMetrics.density).toInt()
+    setOnClickListener { onClick() }
+    isClickable = true
 }
