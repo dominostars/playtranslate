@@ -116,7 +116,24 @@ class TranslationSectionBinder(
 
     // ── Source section ───────────────────────────────────────────────────
 
-    fun setSourceSegments(segments: List<com.playtranslate.model.TextSegment>) {
+    /** Bind the source text for display: set the text AND paint inline furigana in
+     *  one step, so no surface can render source text without its ruby. No-ops when
+     *  the displayed text is unchanged (a Translating→Ready promotion, a backend
+     *  re-translate), preserving already-painted furigana + the word highlight and
+     *  skipping a redundant re-tokenize / ruby flash. The "Scanned by…" attribution
+     *  row is bound separately via [bindSourceOcr]; the furigana toggle re-runs
+     *  [applyFurigana] directly (a pref change isn't a source change). */
+    fun bindSource(segments: List<com.playtranslate.model.TextSegment>) {
+        val newText = segments.joinToString("") { it.text }
+        // toString() is the base text even with ruby spans attached (FuriganaSpan is
+        // a ReplacementSpan that inserts no characters), so equal text means the
+        // source is unchanged — leave the existing furigana/highlight spans in place.
+        if (newText == tvOriginal.text?.toString()) return
+        setSourceSegments(segments)  // plain text (drops any old spans)
+        applyFurigana()              // repaints ruby (async) + re-attaches the highlight
+    }
+
+    private fun setSourceSegments(segments: List<com.playtranslate.model.TextSegment>) {
         tvOriginal.setSegments(segments)
     }
 
@@ -310,7 +327,7 @@ class TranslationSectionBinder(
     // ── Convenience for surfaces that bind a whole result at once (panel) ─
 
     fun bindResult(result: TranslationResult) {
-        setSourceSegments(result.segments)
+        bindSource(result.segments)
         bindSourceOcr(result.ocrProvenance)
         bindTargetReady(result)
         updateLabels()
@@ -381,9 +398,17 @@ class TranslationSectionBinder(
     /** Side-by-side / results-page: fit each text to its own target height with a
      *  CONTINUOUS size (so the load animation + resize scale smoothly instead of
      *  in 1sp steps). */
-    fun fitText(translationTargetPx: Int, sourceTargetPx: Int) {
+    fun fitText(translationTargetPx: Int, sourceTargetPx: Int, sourceMeasuresRuby: Boolean = true) {
         tvTranslation.setTextSize(TypedValue.COMPLEX_UNIT_SP, fitSize(tvTranslation, translationTargetPx))
-        tvOriginal.setTextSize(TypedValue.COMPLEX_UNIT_SP, fitSize(tvOriginal, sourceTargetPx))
+        // The results page lets ruby overflow into its scroll, so it fits the source to
+        // the PLAIN text (sourceMeasuresRuby = false): furigana lands before the Ready
+        // fit, so measuring the taller ruby text would shrink the source font exactly
+        // when the translation appears — which it must not visibly do. The panel pins
+        // card heights and has no scroll, so it measures ruby (default) to size the card
+        // tall enough for the reading.
+        val sourceMeasure: CharSequence =
+            if (sourceMeasuresRuby) tvOriginal.text else tvOriginal.text.toString()
+        tvOriginal.setTextSize(TypedValue.COMPLEX_UNIT_SP, fitSize(tvOriginal, sourceTargetPx, sourceMeasure))
     }
 
     /** Set both text sizes directly — used to interpolate each frame of the height
@@ -494,15 +519,15 @@ class TranslationSectionBinder(
 
     /** Largest float size in [[TEXT_SIZE_MIN_SP], [TEXT_SIZE_MAX_SP]] whose text
      *  fits [targetPx] (binary search → continuous, not 1sp steps). */
-    private fun fitSize(tv: TextView, targetPx: Int): Float {
+    private fun fitSize(tv: TextView, targetPx: Int, measureText: CharSequence = tv.text): Float {
         if (tv.width <= 0) return TEXT_SIZE_MAX_SP
-        if (textHeightAt(tv, TEXT_SIZE_MAX_SP) <= targetPx) return TEXT_SIZE_MAX_SP
-        if (textHeightAt(tv, TEXT_SIZE_MIN_SP) > targetPx) return TEXT_SIZE_MIN_SP
+        if (textHeightAt(tv, TEXT_SIZE_MAX_SP, measureText) <= targetPx) return TEXT_SIZE_MAX_SP
+        if (textHeightAt(tv, TEXT_SIZE_MIN_SP, measureText) > targetPx) return TEXT_SIZE_MIN_SP
         var lo = TEXT_SIZE_MIN_SP
         var hi = TEXT_SIZE_MAX_SP
         repeat(BISECT_STEPS) {
             val mid = (lo + hi) / 2f
-            if (textHeightAt(tv, mid) <= targetPx) lo = mid else hi = mid
+            if (textHeightAt(tv, mid, measureText) <= targetPx) lo = mid else hi = mid
         }
         return lo
     }
@@ -511,7 +536,7 @@ class TranslationSectionBinder(
      *  touching the live view — a paint copy + StaticLayout configured to match
      *  the live TextView exactly, so measure and render agree (a mismatch makes the
      *  card height track its content instead of the panel → wobble). */
-    private fun textHeightAt(tv: TextView, sizeSp: Float): Int {
+    private fun textHeightAt(tv: TextView, sizeSp: Float, measureText: CharSequence = tv.text): Int {
         val widthPx = (tv.width - tv.compoundPaddingLeft - tv.compoundPaddingRight)
             .takeIf { it > 0 } ?: return 0
         val paint = TextPaint(tv.paint)
@@ -519,7 +544,7 @@ class TranslationSectionBinder(
             TypedValue.COMPLEX_UNIT_SP, sizeSp, ctx.resources.displayMetrics,
         )
         val layoutHeight = StaticLayout.Builder
-            .obtain(tv.text, 0, tv.text.length, paint, widthPx)
+            .obtain(measureText, 0, measureText.length, paint, widthPx)
             .setLineSpacing(tv.lineSpacingExtra, tv.lineSpacingMultiplier)
             // The live TextView (API 28+) grows line height via fallback fonts so
             // tall CJK glyphs fit; the StaticLayout default is off. Without this we

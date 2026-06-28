@@ -457,8 +457,7 @@ class CaptureResultOverlay(
         populateSentenceCache(result)
         statusText.visibility = View.GONE
         scroll.visibility = View.VISIBLE
-        b.bindResult(result)
-        b.applyFurigana()
+        b.bindResult(result)   // also paints furigana (bindResult → bindSource)
         // Tap-a-word → definition: tokenize the source so taps resolve to spans.
         // Readings refine on tap via the resolver, so an empty lookupToReading
         // (no full word-list pipeline here) only loses the rare homograph hint.
@@ -956,8 +955,7 @@ class CaptureResultOverlay(
         )
         lastResult = edited
         val gen = ++editGeneration
-        b.setSourceSegments(edited.segments)
-        b.applyFurigana()
+        b.bindSource(edited.segments)   // sets text + paints furigana
         b.setTargetTranslatingPlaceholder()
         refreshWordSpans(newText)
         scope.launch {

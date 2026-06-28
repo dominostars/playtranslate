@@ -201,6 +201,17 @@ class TranslationResultFragment : Fragment() {
      *  [vm.result] and [vm.wordLookups] to render. */
     private val vm: TranslationResultViewModel by activityViewModels()
 
+    /** The current Ready result, or null in any other state. Narrows the VM's
+     *  result StateFlow in one place so the call sites don't each hand-cast. */
+    private fun currentReady(): TranslationResult? =
+        (vm.result.value as? ResultState.Ready)?.result
+
+    /** The settled word-lookup rows, or null while idle/loading. Named
+     *  `currentSettledRows` (not `settledRows`) so it doesn't shadow the local
+     *  `val settledRows` snapshots the Anki paths take. */
+    private fun currentSettledRows(): List<RowState>? =
+        (vm.wordLookups.value as? WordLookupsState.Settled)?.rows
+
     private val host: TranslationResultHost?
         get() = activity as? TranslationResultHost
 
@@ -298,7 +309,7 @@ class TranslationResultFragment : Fragment() {
         }
         // The Anki action now lives on the source/target section headers
         // (tap = review sheet, long-press = one-tap), wired via the binder's
-        // setupSectionButtons above. The floating pill button is gone.
+        // setupSectionButtons above.
     }
 
     /** Open the "Choose OCR tool" picker for the current OCR-derived result.
@@ -306,7 +317,7 @@ class TranslationResultFragment : Fragment() {
      *  engine deep-links to the OCR settings screen to fetch it. */
     private fun showOcrPicker() {
         val ctx = context ?: return
-        val provenance = (vm.result.value as? ResultState.Ready)?.result?.ocrProvenance ?: return
+        val provenance = currentReady()?.ocrProvenance ?: return
         OcrPicker.populate(
             OverlayAlert.Builder(requireActivity()),
             ctx,
@@ -349,7 +360,7 @@ class TranslationResultFragment : Fragment() {
                 // sentence / edit commit), so reset to top; record the source
                 // so the matching Ready promotion preserves the user's scroll.
                 lastRenderedSourceText = state.originalText
-                binder.setSourceSegments(state.segments)
+                binder.bindSource(state.segments)
                 tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
                 // Capture placeholders carry OCR provenance — show "Scanned by …" with
                 // the source as soon as OCR finishes, before the translation lands.
@@ -379,7 +390,7 @@ class TranslationResultFragment : Fragment() {
                 val preserveScroll = result.originalText == lastRenderedSourceText
                 val scrollAnchor = if (preserveScroll) captureScrollAnchor() else null
                 lastRenderedSourceText = result.originalText
-                binder.setSourceSegments(result.segments)
+                binder.bindSource(result.segments)
                 binder.bindSourceOcr(result.ocrProvenance)
                 tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
                 // A blank translation on a Ready result means a re-translate is
@@ -452,7 +463,11 @@ class TranslationResultFragment : Fragment() {
     private fun fitTextSizes() {
         val scrollHeight = resultsContent.height.takeIf { it > 0 } ?: return
         val halfHeight = scrollHeight / 2
-        binder.fitText(translationTargetPx = halfHeight, sourceTargetPx = halfHeight)
+        // Fit the source to its PLAIN text: ruby lands before the Ready fit, and the
+        // scroll absorbs its extra height, so measuring ruby here would shrink the
+        // source font the moment the translation lands (it must stay put). See
+        // [TranslationSectionBinder.fitText].
+        binder.fitText(translationTargetPx = halfHeight, sourceTargetPx = halfHeight, sourceMeasuresRuby = false)
     }
 
     /**
@@ -534,6 +549,43 @@ class TranslationResultFragment : Fragment() {
         resultsContent.restoreScrollSilently(target, scrollListener)
     }
 
+    /** First sense's POS (blank-filtered, " · "-joined) + the flattened card
+     *  definition — the shared (POS, definition) extraction the word-Anki paths use. */
+    private fun com.playtranslate.model.DictionaryEntry.ankiPosAndDefinition(): Pair<String, String> {
+        val pos = senses.firstOrNull()?.partsOfSpeech
+            ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
+        return pos to flatCardDefinition(this)
+    }
+
+    /** Build + launch the per-word Anki review Activity: the word's own fields plus
+     *  the current Ready result's sentence context (source + translation +
+     *  screenshot). Callers pre-compute the cleaned [reading] (blank when it equals
+     *  the word) and own their AnkiDroid-installed gate. Shared by [launchWordAnki]
+     *  (lens/popup, resolves an entry) and [launchWordAnkiFromRow] (result cell,
+     *  reads a RowState). */
+    private fun launchWordAnkiIntent(
+        activity: Activity,
+        word: String,
+        reading: String,
+        pos: String,
+        definition: String,
+        freqScore: Int,
+    ) {
+        val ready = currentReady()
+        val intent = Intent(activity, AnkiPermissionActivity::class.java).apply {
+            putExtra(WordAnkiReviewActivity.EXTRA_WORD, word)
+            putExtra(WordAnkiReviewActivity.EXTRA_READING, reading)
+            putExtra(WordAnkiReviewActivity.EXTRA_POS, pos)
+            putExtra(WordAnkiReviewActivity.EXTRA_DEFINITION, definition)
+            putExtra(WordAnkiReviewActivity.EXTRA_FREQ_SCORE, freqScore)
+            ready?.screenshotPath?.let { putExtra(WordAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, it) }
+            ready?.originalText?.let { putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, it) }
+            ready?.translatedText?.let { putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_TRANSLATION, it) }
+            putExtra(WordAnkiReviewActivity.EXTRA_SOURCE_LANG, prefs.sourceLangId.code)
+        }
+        activity.startActivity(intent)
+    }
+
     /** Lens Anki chip handler — adds the tapped word (not the sentence)
      *  to Anki. Mirrors [DragLookupController.openAnkiReviewForLens]:
      *  installation gate here, permission gate handled by the launched
@@ -551,30 +603,13 @@ class TranslationResultFragment : Fragment() {
             showAnkiNotInstalledDialog(activity)
             return
         }
-        val pos = entry?.senses?.firstOrNull()?.partsOfSpeech
-            ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
-        val definition = entry?.let { flatCardDefinition(it) } ?: ""
-        val ready = (vm.result.value as? ResultState.Ready)?.result
-        val readingForExtra = reading?.takeIf { it != word } ?: ""
+        val (pos, definition) = entry?.ankiPosAndDefinition() ?: ("" to "")
         dismissWordPopup()
-        val intent = Intent(activity, AnkiPermissionActivity::class.java).apply {
-            putExtra(WordAnkiReviewActivity.EXTRA_WORD, word)
-            putExtra(WordAnkiReviewActivity.EXTRA_READING, readingForExtra)
-            putExtra(WordAnkiReviewActivity.EXTRA_POS, pos)
-            putExtra(WordAnkiReviewActivity.EXTRA_DEFINITION, definition)
-            putExtra(WordAnkiReviewActivity.EXTRA_FREQ_SCORE, entry?.freqScore ?: 0)
-            ready?.screenshotPath?.let {
-                putExtra(WordAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, it)
-            }
-            ready?.originalText?.let {
-                putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, it)
-            }
-            ready?.translatedText?.let {
-                putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_TRANSLATION, it)
-            }
-            putExtra(WordAnkiReviewActivity.EXTRA_SOURCE_LANG, prefs.sourceLangId.code)
-        }
-        activity.startActivity(intent)
+        launchWordAnkiIntent(
+            activity, word,
+            reading = reading?.takeIf { it != word } ?: "",
+            pos = pos, definition = definition, freqScore = entry?.freqScore ?: 0,
+        )
     }
 
     /**
@@ -582,14 +617,13 @@ class TranslationResultFragment : Fragment() {
      * long-press. Falls back to the existing sheet flow ([onAnkiClicked])
      * on any gate failure (AnkiDroid missing, permission denied, no deck
      * picked) so the user can still resolve the prerequisite. Progress +
-     * outcome are reported via Toasts (the floating pill with its spinner
-     * is gone); NeedsMapping still opens the field-mapping dialog inline so
-     * the user can configure their custom card type without leaving the
-     * result screen.
+     * outcome are reported via Toasts; NeedsMapping still opens the
+     * field-mapping dialog inline so the user can configure their custom
+     * card type without leaving the result screen.
      */
     private fun oneTapSentenceFromResult() {
         host?.onInteraction()
-        val result = (vm.result.value as? ResultState.Ready)?.result ?: return
+        val result = currentReady() ?: return
         val activity = activity ?: return
         val ankiManager = AnkiManager(activity)
         if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) {
@@ -605,7 +639,7 @@ class TranslationResultFragment : Fragment() {
         // Snapshot rows ONCE so the words map and the surface map
         // come from the same Settled emission — no surfaceForms race
         // (see LastSentenceCache.awaitOrStartWordLookups docs).
-        val settledRows = (vm.wordLookups.value as? WordLookupsState.Settled)?.rows
+        val settledRows = currentSettledRows()
         val wordsPayload = settledRows?.let {
             LastSentenceCache.WordsPayload(it.toLegacyMap(), it.toSurfaceMap(), it.toEnrichmentMap())
         }
@@ -679,10 +713,8 @@ class TranslationResultFragment : Fragment() {
             launchWordAnki(activity, word, reading, entry)
             return
         }
-        val pos = entry.senses.firstOrNull()?.partsOfSpeech
-            ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
-        val definition = flatCardDefinition(entry)
-        val ready = (vm.result.value as? ResultState.Ready)?.result
+        val (pos, definition) = entry.ankiPosAndDefinition()
+        val ready = currentReady()
         val screenshotPath = ready?.screenshotPath
         val readingClean = reading?.takeIf { it != word } ?: ""
         // The popup is anchored inside a translated sentence on the
@@ -695,7 +727,7 @@ class TranslationResultFragment : Fragment() {
         val ready_translation = ready?.translatedText?.takeIf { it.isNotEmpty() }
         // Atomic snapshot — see oneTapSentenceFromResult for the
         // surface-forms-race rationale.
-        val settledRows = (vm.wordLookups.value as? WordLookupsState.Settled)?.rows
+        val settledRows = currentSettledRows()
         val wordsPayload = settledRows?.let {
             LastSentenceCache.WordsPayload(it.toLegacyMap(), it.toSurfaceMap(), it.toEnrichmentMap())
         }
@@ -751,13 +783,13 @@ class TranslationResultFragment : Fragment() {
      *  internal. Reads sentence + word data from VM state. */
     private fun onAnkiClicked() {
         host?.onInteraction()
-        val result = (vm.result.value as? ResultState.Ready)?.result ?: return
+        val result = currentReady() ?: return
         val activity = activity ?: return
         val ankiManager = AnkiManager(activity)
         // Snapshot the settled rows ONCE so wordResults + surfaces + enrichment
         // all come from the same emission; the sheet renders from this atomic
         // snapshot, never the global cache (see AnkiReviewBottomSheet.newInstance).
-        val settledRows = (vm.wordLookups.value as? WordLookupsState.Settled)?.rows
+        val settledRows = currentSettledRows()
         val wordResults = settledRows?.toLegacyMap() ?: emptyMap()
         when {
             !ankiManager.isAnkiDroidInstalled() ->
@@ -851,9 +883,8 @@ class TranslationResultFragment : Fragment() {
                         onOpenTap = {
                             dismissWordPopup()
                             host?.onInteraction()
-                            val ready = (vm.result.value as? ResultState.Ready)?.result
-                            val wr = (vm.wordLookups.value as? WordLookupsState.Settled)
-                                ?.rows?.toLegacyMap() ?: emptyMap()
+                            val ready = currentReady()
+                            val wr = currentSettledRows()?.toLegacyMap() ?: emptyMap()
                             host?.onWordTapped(
                                 word, popupReading,
                                 ready?.screenshotPath,
@@ -1033,7 +1064,9 @@ class TranslationResultFragment : Fragment() {
             is WordLookupsState.Settled -> {
                 renderWordRows(state.rows)
                 recomputeWordSpans(state.tokenSpans, state.lookupToReading)
-                binder.applyFurigana()
+                // Furigana is NOT applied here: it's driven by bindSource in
+                // renderResult, so it paints with the source text (during the
+                // Translating placeholder), not after this heavier lookup settles.
                 tvMainWordsLoading.isGone = true
                 tvNoWords.visibility = if (state.rows.isEmpty()) View.VISIBLE else View.GONE
             }
@@ -1158,9 +1191,8 @@ class TranslationResultFragment : Fragment() {
             inflectedForms = rowState.inflectedForms,
             onCellTap = {
                 host?.onInteraction()
-                val ready = (vm.result.value as? ResultState.Ready)?.result
-                val wr = (vm.wordLookups.value as? WordLookupsState.Settled)
-                    ?.rows?.toLegacyMap() ?: emptyMap()
+                val ready = currentReady()
+                val wr = currentSettledRows()?.toLegacyMap() ?: emptyMap()
                 host?.onWordTapped(
                     rowState.displayWord,
                     rowState.reading.ifEmpty { null },
@@ -1212,27 +1244,11 @@ class TranslationResultFragment : Fragment() {
             showAnkiNotInstalledDialog(activity)
             return
         }
-        val ready = (vm.result.value as? ResultState.Ready)?.result
-        val readingForExtra = rowState.reading
-            .takeIf { it.isNotEmpty() && it != rowState.displayWord } ?: ""
-        val intent = Intent(activity, AnkiPermissionActivity::class.java).apply {
-            putExtra(WordAnkiReviewActivity.EXTRA_WORD, rowState.displayWord)
-            putExtra(WordAnkiReviewActivity.EXTRA_READING, readingForExtra)
-            putExtra(WordAnkiReviewActivity.EXTRA_POS, rowState.ankiPos)
-            putExtra(WordAnkiReviewActivity.EXTRA_DEFINITION, rowState.meaning)
-            putExtra(WordAnkiReviewActivity.EXTRA_FREQ_SCORE, rowState.freqScore)
-            ready?.screenshotPath?.let {
-                putExtra(WordAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, it)
-            }
-            ready?.originalText?.let {
-                putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, it)
-            }
-            ready?.translatedText?.let {
-                putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_TRANSLATION, it)
-            }
-            putExtra(WordAnkiReviewActivity.EXTRA_SOURCE_LANG, prefs.sourceLangId.code)
-        }
-        activity.startActivity(intent)
+        launchWordAnkiIntent(
+            activity, rowState.displayWord,
+            reading = rowState.reading.takeIf { it.isNotEmpty() && it != rowState.displayWord } ?: "",
+            pos = rowState.ankiPos, definition = rowState.meaning, freqScore = rowState.freqScore,
+        )
     }
 
     /** Derive view-side word spans from the VM's per-occurrence
