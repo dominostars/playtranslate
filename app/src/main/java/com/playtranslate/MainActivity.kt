@@ -723,14 +723,22 @@ class MainActivity :
     }
 
     override fun onStart() {
-        // Stateless staleness check: if the panel still shows a result translated under a
-        // language context (source / target / Chinese variant) the user has since changed —
-        // via the header picker or Settings — it's stale. Blank it BEFORE super dispatches
-        // STARTED to the fragment, so we land on an empty panel with no flash. A matching
-        // context (or a cancelled picker) leaves the result untouched. clearPanel() also
-        // stops the sticky panelState replay from re-showing it.
-        val shown = (resultVm.result.value as? com.playtranslate.ui.ResultState.Ready)?.result
-        if (shown != null && shown.langContext != Prefs(this).langContext()) {
+        // Stateless staleness check: if the panel still shows content the user has since made
+        // stale by changing a language (via a header/no-text picker or Settings), blank it
+        // BEFORE super dispatches STARTED to the fragment, so we land on an empty panel with
+        // no flash. A matching context (or a cancelled picker) leaves it untouched.
+        // clearPanel() also stops the sticky panelState replay from re-showing it.
+        //  - a Ready result is stale if its full (source/target/variant) context drifted;
+        //  - a "no text detected" status is stale if its SOURCE language drifted — it has no
+        //    translation, so only the source (which its message names) matters.
+        val stale = when (val state = resultVm.result.value) {
+            is com.playtranslate.ui.ResultState.Ready ->
+                state.result.langContext != Prefs(this).langContext()
+            is com.playtranslate.ui.ResultState.Status ->
+                state.ocrProvenance?.let { it.sourceLangId != Prefs(this).sourceLangId } == true
+            else -> false
+        }
+        if (stale) {
             captureService?.clearPanel()
             resultVm.showStatus(getString(R.string.status_idle), showHint = true)
         }

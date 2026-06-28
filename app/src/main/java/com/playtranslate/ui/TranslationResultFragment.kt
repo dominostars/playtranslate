@@ -438,18 +438,20 @@ class TranslationResultFragment : Fragment() {
         // Leaving the results view drops the scroll anchor: the next translation
         // is unrelated content and should land at the top.
         lastRenderedSourceText = null
-        tvStatus.text = message
-        tvStatusHint.visibility = if (showHint) View.VISIBLE else View.GONE
-        tvLiveHint.isGone = true
-        // Inline OCR-switch gear on the "no text detected" status: shown only when a
-        // pinned screenshot is still on hand to re-OCR AND there's more than one OCR
-        // tool for its language. Without the screenshot the host can't rescan, so the
-        // gear would be a dead control — hide it (matches the overlay's no-text gating).
+        // No-text status affordances, each its own tappable span (so tapping one can't
+        // trigger the other): the source-language name is accent-colored → source picker
+        // (same as the source header); the gear → OCR picker, shown only when a pinned
+        // screenshot is on hand to re-OCR AND there's >1 OCR tool for the language.
         val showGear = ocrProvenance != null && screenshotPath != null &&
             OcrModelManager.availableBackends(requireContext(), ocrProvenance.sourceLangId).size > 1
-        tvStatus.setStatusOcrGear(showGear) {
-            if (ocrProvenance != null) showOcrPicker(ocrProvenance.sourceLangId, ocrProvenance.engineToken)
-        }
+        tvStatus.setNoTextStatus(
+            message,
+            showGear,
+            onLanguageTap = { host?.onChangeLanguageRequested(true) },
+            onGearTap = { ocrProvenance?.let { showOcrPicker(it.sourceLangId, it.engineToken) } },
+        )
+        tvStatusHint.visibility = if (showHint) View.VISIBLE else View.GONE
+        tvLiveHint.isGone = true
         statusContainer.isVisible = true
         resultsContent.isGone = true
     }

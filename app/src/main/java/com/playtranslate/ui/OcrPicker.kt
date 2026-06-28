@@ -1,6 +1,14 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import android.graphics.Color
+import android.text.Spannable
+import android.text.SpannableStringBuilder
+import android.text.TextPaint
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
+import android.text.style.ImageSpan
+import android.view.View
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.playtranslate.Prefs
@@ -73,25 +81,70 @@ object OcrPicker {
     }
 }
 
-/** Show or hide a small, tappable settings gear at the END of a status [TextView] —
- *  the inline "switch OCR tool" affordance on the "No text detected" status. Sized +
- *  tinted in code (intrinsic 24dp is too big next to status text, and the overlay's
- *  non-AppCompat inflater drops app:tint), so it matches on both surfaces. [onClick]
- *  opens the OCR picker. Pass show=false on every other status to clear it. */
-fun TextView.setStatusOcrGear(show: Boolean, onClick: () -> Unit) {
-    if (!show) {
-        setCompoundDrawablesRelative(null, null, null, null)
-        setOnClickListener(null)
-        isClickable = false
-        return
+/** Private 1-char sentinels the no-text message wraps the source-language name in (via
+ *  [markNoTextLanguage]) so [setNoTextStatus] can recover the EXACT span to make tappable —
+ *  robust against locale word order or a region label that contains the language name, which a
+ *  substring search would mismatch. Invisible Unicode bidi isolates: no stripping needed
+ *  (zero-width), and they correctly isolate the embedded name for RTL. */
+private const val NO_TEXT_LANG_OPEN = "⁨"   // FIRST STRONG ISOLATE (FSI)
+private const val NO_TEXT_LANG_CLOSE = "⁩"  // POP DIRECTIONAL ISOLATE (PDI)
+
+/** Wrap [languageName] in the sentinels [setNoTextStatus] uses to locate the language span in
+ *  the formatted "No <lang> text detected …" message. Pass the result as the %1$s arg. */
+fun markNoTextLanguage(languageName: String): String =
+    "$NO_TEXT_LANG_OPEN$languageName$NO_TEXT_LANG_CLOSE"
+
+/** Render a "No <lang> text detected …" status in [message] with up to two independent,
+ *  precisely-tappable affordances — both [ClickableSpan]s driven by one [LinkMovementMethod],
+ *  so each has its own tap region and neither steals the other's taps:
+ *   - the source-language name (located by the [markNoTextLanguage] sentinels the message was
+ *     built with) is accent-colored and tappable → [onLanguageTap] (opens the source picker);
+ *   - when [showGear] is true a settings gear is appended, tappable → [onGearTap] (opens the
+ *     OCR picker). Sized + tinted in code (intrinsic 24dp is too big next to status text, and
+ *     the overlay's non-AppCompat inflater drops app:tint), so it matches on both surfaces.
+ *  Safe for any status: a message without the sentinels and no gear is plain text with the
+ *  movement method cleared. */
+fun TextView.setNoTextStatus(
+    message: String,
+    showGear: Boolean,
+    onLanguageTap: () -> Unit,
+    onGearTap: () -> Unit,
+) {
+    val builder = SpannableStringBuilder(message)
+    // The language name sits between the (zero-width) sentinels; make exactly that tappable.
+    val open = message.indexOf(NO_TEXT_LANG_OPEN)
+    val close = if (open >= 0) message.indexOf(NO_TEXT_LANG_CLOSE, open + 1) else -1
+    val hasLang = open >= 0 && close > open + 1
+    if (hasLang) {
+        val accent = context.themeColor(R.attr.ptAccent)
+        builder.setSpan(object : ClickableSpan() {
+            override fun onClick(widget: View) { onLanguageTap() }
+            override fun updateDrawState(ds: TextPaint) {
+                ds.color = accent
+                ds.isUnderlineText = false
+            }
+        }, open + 1, close, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
-    val sizePx = (18 * resources.displayMetrics.density).toInt()
-    val gear = ContextCompat.getDrawable(context, R.drawable.ic_settings)?.mutate()?.apply {
-        setBounds(0, 0, sizePx, sizePx)
-        setTint(context.themeColor(R.attr.ptTextHint))
+    if (showGear) {
+        val sizePx = (18 * resources.displayMetrics.density).toInt()
+        val gear = ContextCompat.getDrawable(context, R.drawable.ic_settings)?.mutate()?.apply {
+            setBounds(0, 0, sizePx, sizePx)
+            setTint(context.themeColor(R.attr.ptTextHint))
+        }
+        if (gear != null) {
+            builder.append("  ")
+            val gearAt = builder.length
+            builder.append("￼")  // object-replacement placeholder the ImageSpan draws over
+            builder.setSpan(
+                ImageSpan(gear, ImageSpan.ALIGN_CENTER), gearAt, gearAt + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+            builder.setSpan(object : ClickableSpan() {
+                override fun onClick(widget: View) { onGearTap() }
+                override fun updateDrawState(ds: TextPaint) { ds.isUnderlineText = false } // gear keeps its own tint
+            }, gearAt, gearAt + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
     }
-    setCompoundDrawablesRelative(null, null, gear, null)
-    compoundDrawablePadding = (6 * resources.displayMetrics.density).toInt()
-    setOnClickListener { onClick() }
-    isClickable = true
+    text = builder
+    movementMethod = if (hasLang || showGear) LinkMovementMethod.getInstance() else null
+    highlightColor = Color.TRANSPARENT
 }

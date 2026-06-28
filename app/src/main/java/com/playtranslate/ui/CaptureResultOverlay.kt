@@ -336,16 +336,7 @@ class CaptureResultOverlay(
             val sp = r?.screenshotPath
             if (p != null && sp != null) showOcrPicker(p, sp)
         }
-        b.onChooseLanguage = { isSource ->
-            // Changing a language ends this overlay result (we deliberately don't re-run
-            // it): null the stale Settings delegate, dismiss, and open the language picker
-            // on the foreground display. The user re-captures to see it in the new language.
-            LanguageSetupActivity.selectionDelegate = null
-            dismiss()
-            launchLanguageSetup(
-                if (isSource) LanguageSetupActivity.MODE_SOURCE else LanguageSetupActivity.MODE_TARGET,
-            )
-        }
+        b.onChooseLanguage = { isSource -> changeLanguage(isSource) }
         binder = b
         // Reflect any persisted hide prefs (shared with the results page) up front.
         applySideBySideCollapse()
@@ -461,16 +452,20 @@ class CaptureResultOverlay(
     // ── State rendering ──────────────────────────────────────────────────
 
     private fun setStatus(message: String, ocrProvenance: OcrProvenance? = null, screenshotPath: String? = null) {
-        statusText.text = message
-        statusText.visibility = View.VISIBLE
-        scroll.visibility = View.GONE
-        // Inline OCR-switch gear on the "no text detected" status: shown when there's
-        // a pinned capture to re-OCR and more than one OCR tool for its language.
+        // No-text status affordances, each its own tappable span (so tapping one can't
+        // trigger the other): the source-language name is accent-colored → source picker
+        // (same as the source header); the gear → OCR picker, shown only when a pinned
+        // screenshot is on hand to re-OCR AND there's >1 OCR tool for the language.
         val showGear = ocrProvenance != null && screenshotPath != null &&
             OcrModelManager.availableBackends(ctx, ocrProvenance.sourceLangId).size > 1
-        statusText.setStatusOcrGear(showGear) {
-            if (ocrProvenance != null && screenshotPath != null) showOcrPicker(ocrProvenance, screenshotPath)
-        }
+        statusText.setNoTextStatus(
+            message,
+            showGear,
+            onLanguageTap = { changeLanguage(isSource = true) },
+            onGearTap = { if (ocrProvenance != null && screenshotPath != null) showOcrPicker(ocrProvenance, screenshotPath) },
+        )
+        statusText.visibility = View.VISIBLE
+        scroll.visibility = View.GONE
     }
 
     private fun bindResult(result: TranslationResult) {
@@ -813,6 +808,18 @@ class CaptureResultOverlay(
         val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: displayId
         val opts = android.app.ActivityOptions.makeBasic().setLaunchDisplayId(targetDisplay).toBundle()
         app.startActivity(intent, opts)
+    }
+
+    /** Change the source ([isSource]) or target language: null the stale Settings delegate,
+     *  dismiss this overlay, and open the picker on the foreground display. Shared by the
+     *  language section headers and the tappable language name in the no-text status. The
+     *  user re-captures to see it in the new language. */
+    private fun changeLanguage(isSource: Boolean) {
+        LanguageSetupActivity.selectionDelegate = null
+        dismiss()
+        launchLanguageSetup(
+            if (isSource) LanguageSetupActivity.MODE_SOURCE else LanguageSetupActivity.MODE_TARGET,
+        )
     }
 
     /** Open the language picker on the foreground display (mirrors [launchOcrSettings]).
