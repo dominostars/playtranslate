@@ -430,8 +430,13 @@ class TranslationSectionBinder(
                 View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.AT_MOST),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
             )
-            val topMargin = (sourceNoteRow.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.topMargin ?: 0
-            return live + sourceNoteRow.measuredHeight + topMargin
+            // Footprint = measuredHeight + top + bottom margins. The row carries a
+            // NEGATIVE bottom margin (its vertical padding is purely tap area, not
+            // layout height), so both margins must be counted or this over-estimates
+            // the source overhead and shrinks the source text.
+            val lp = sourceNoteRow.layoutParams as? android.view.ViewGroup.MarginLayoutParams
+            val vMargins = (lp?.topMargin ?: 0) + (lp?.bottomMargin ?: 0)
+            return live + sourceNoteRow.measuredHeight + vMargins
         }
         return live
     }

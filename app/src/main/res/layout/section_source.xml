@@ -107,14 +107,24 @@
             <!-- "Scanned by <engine>" + gear. Tapping the row opens the OCR picker.
                  Mirror of the target's "Translated by" note (tvTranslationNote);
                  wrap_content so only the label+gear is the tap target. Shown only
-                 for OCR-derived results with >1 available engine (binder). -->
+                 for OCR-derived results with >1 available engine (binder).
+                 Vertical padding + an equal NEGATIVE bottom margin enlarge the tap
+                 target to the card's full content-box height (~36dp) without moving
+                 the text or growing the card: paddingTop replaces the old 6dp
+                 marginTop (text stays put), and paddingBottom (= the card's bottom
+                 inset, pt_row_v_padding) is cancelled by marginBottom=-14dp so the
+                 layout footprint is unchanged — the extra height is purely tappable.
+                 Biased downward (no top margin) so it never overlaps tvOriginal and
+                 steals its word-tap touches. -->
             <LinearLayout
                 android:id="@+id/sourceNoteRow"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginBottom="-14dp"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
+                android:paddingTop="6dp"
+                android:paddingBottom="14dp"
                 android:clickable="true"
                 android:focusable="true"
                 android:foreground="?attr/selectableItemBackground"
@@ -130,8 +140,8 @@
 
                 <ImageView
                     android:id="@+id/btnSourceOcr"
-                    android:layout_width="16dp"
-                    android:layout_height="16dp"
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
                     android:layout_marginStart="6dp"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_settings"
