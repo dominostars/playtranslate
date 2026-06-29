@@ -1097,9 +1097,7 @@ class OverlayUiController(
 
         val prefs = Prefs(context)
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
-        menu.hintModeLabel = if (prefs.overlayMode == OverlayMode.FURIGANA && hintKind != HintTextKind.NONE) {
-            when (hintKind) { HintTextKind.PINYIN -> "Pinyin"; else -> "Furigana" }
-        } else null
+        menu.hintModeLabel = hintModeLabelFor(prefs.overlayMode, hintKind)
         menu.isLiveMode = CaptureService.instance?.isLive == true
         menu.captureHighlighted = captureIsPreferredPrimary
 
@@ -1129,6 +1127,10 @@ class OverlayUiController(
             val next = modes[(modes.indexOf(prefs.overlayMode) + 1) % modes.size]
             prefs.overlayMode = next
             menu.setOverlayModeValue(overlayModeLabel(next, hintKind))
+            // Keep the auto-translate button's hint label in sync (Auto Furigana
+            // / Auto Pinyin / Auto Translate); it's hidden while the panel is
+            // open and shows the new label on collapse.
+            menu.hintModeLabel = hintModeLabelFor(next, hintKind)
         }
         menu.onOpenApp = {
             dismissFloatingMenu()
@@ -1259,6 +1261,14 @@ class OverlayUiController(
             else R.string.overlay_mode_option_furigana
         )
     }
+
+    /** Reading-hint label for the auto-translate button ("Auto Furigana" /
+     *  "Auto Pinyin") while the hint overlay mode is active; null otherwise (the
+     *  button reads "Auto Translate"). */
+    private fun hintModeLabelFor(mode: OverlayMode, hintKind: HintTextKind): String? =
+        if (mode == OverlayMode.FURIGANA && hintKind != HintTextKind.NONE) {
+            when (hintKind) { HintTextKind.PINYIN -> "Pinyin"; else -> "Furigana" }
+        } else null
 
     /** Open the "Choose OCR tool" OverlayAlert for [id] on [display], stacked
      *  over the still-open floating menu so its holdActive keeps live capture
