@@ -93,17 +93,7 @@ class OverlayHost(
         // fitInsetsTypes=0 fixes this on R+; below R, pin the window to an explicit
         // size equal to the capture's displaySizePx so overlay == capture by
         // construction. Validated on API 29 (overlay 1080x1920 == capture 1080x1920).
-        if (fullScreen && Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            context.getSystemService(DisplayManager::class.java)?.getDisplay(displayId)
-                ?.let { display ->
-                    val size = context.createDisplayContext(display).displaySizePx()
-                    if (size.x > 0 && size.y > 0) {
-                        params.width = size.x
-                        params.height = size.y
-                        params.gravity = Gravity.TOP or Gravity.START
-                    }
-                }
-        }
+        if (fullScreen) pinFullScreenSizeBelowR(params, displayId)
         return try {
             wm.addView(view, params)
             overlayWindows += OverlayHandle(view, wm, params, displayId)
@@ -114,6 +104,40 @@ class OverlayHost(
             Log.w(TAG, "addOverlayWindow failed: ${e.message}")
             false
         }
+    }
+
+    /** Pin [params] to [displayId]'s current pixel size below R, where a
+     *  MATCH_PARENT overlay resolves to the inset content area rather than the
+     *  full panel (see [addOverlayWindow]). Returns true if a size was pinned;
+     *  R+ leaves MATCH_PARENT in place — the platform spans and tracks the
+     *  display itself — and returns false. */
+    private fun pinFullScreenSizeBelowR(
+        params: WindowManager.LayoutParams,
+        displayId: Int,
+    ): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) return false
+        val display = context.getSystemService(DisplayManager::class.java)
+            ?.getDisplay(displayId) ?: return false
+        val size = context.createDisplayContext(display).displaySizePx()
+        if (size.x <= 0 || size.y <= 0) return false
+        params.width = size.x
+        params.height = size.y
+        params.gravity = Gravity.TOP or Gravity.START
+        return true
+    }
+
+    /** Re-pin an open full-screen overlay's window to [displayId]'s current size
+     *  after a rotation. Below R, [addOverlayWindow] froze the window to an
+     *  explicit pixel size that does NOT follow the display through a rotation,
+     *  so a portrait→landscape turn leaves it at the old width — and anything
+     *  re-anchored against the new bounds (e.g. a right-edge floating menu) can
+     *  land off the still-old-sized surface. A no-op on R+, where the
+     *  MATCH_PARENT window tracks the display. The view must have been added as
+     *  a full-screen overlay. */
+    fun resizeFullScreenOverlayForDisplay(view: View, displayId: Int) {
+        val handle = overlayWindows.firstOrNull { it.view === view } ?: return
+        if (!pinFullScreenSizeBelowR(handle.params, displayId)) return
+        try { handle.wm.updateViewLayout(view, handle.params) } catch (_: Exception) {}
     }
 
     /**

@@ -158,10 +158,11 @@ class OverlayUiController(
             // rebuilds the group at the new dimensions.
             dropResizedTranslationOverlay(displayId)
             // Order matters: icon reposition first so it picks up the new
-            // screen dimensions; the intro reposition then reads the icon's
-            // freshly-updated centre Y to position itself relative to it.
+            // screen dimensions; the intro + open menu reposition then read the
+            // icon's freshly-updated centre Y to anchor themselves relative to it.
             repositionIconForDisplay(displayId)
             repositionSonarIntroForDisplay(displayId)
+            repositionFloatingMenuForDisplay(displayId)
         }
     }
 
@@ -350,6 +351,9 @@ class OverlayUiController(
     // ── Overlay-specific mutable state ───────────────────────────────────
 
     private var floatingMenu: FloatingIconMenu? = null
+    /** Display the open [floatingMenu] is anchored on, so a rotation of that
+     *  display can re-anchor it ([repositionFloatingMenuForDisplay]). */
+    private var floatingMenuDisplayId: Int? = null
 
     private var pillView: View? = null
     private val pillHandler = Handler(Looper.getMainLooper())
@@ -1004,6 +1008,37 @@ class OverlayUiController(
         try { handle.wm.updateViewLayout(intro, params) } catch (_: Exception) {}
     }
 
+    /** Re-anchor an open floating menu after its display changed (rotation /
+     *  resize) so its card tracks the icon's freshly-repositioned edge slot
+     *  against the new screen dimensions. Mirrors [repositionIconForDisplay] /
+     *  [repositionSonarIntroForDisplay]: must run *after* the icon reposition
+     *  so it reads the icon's updated params, and reads the screen size through
+     *  [getDisplaySize], whose per-call window context returns the post-rotation
+     *  bounds (a cached one intermittently reports the previous orientation
+     *  here). The menu's full-screen host re-lays-out its gravity-anchored
+     *  children + region preview itself; only the absolutely-placed card needs
+     *  this. No-op unless the menu is open on [displayId]. */
+    private fun repositionFloatingMenuForDisplay(displayId: Int) {
+        val menu = floatingMenu ?: return
+        if (floatingMenuDisplayId != displayId) return
+        val icon = iconHandles[displayId]?.icon ?: return
+        val display = (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
+            ?.getDisplay(displayId) ?: return
+        val screenSize = getDisplaySize(display)
+        // Below R the menu's full-screen window was pinned to an explicit size
+        // that doesn't follow rotation; re-pin it to the new display size before
+        // re-anchoring the card, or a right-edge margin computed from the new
+        // bounds can land off the still-old-sized surface (no-op on R+).
+        overlayHost.resizeFullScreenOverlayForDisplay(menu, displayId)
+        val p = icon.params
+        val iconCx = (p?.x ?: 0) + icon.viewSizePx / 2
+        val iconCy = (p?.y ?: 0) + icon.viewSizePx / 2
+        menu.positionNearIcon(
+            iconCx, iconCy, icon.currentEdge, screenSize.x, screenSize.y,
+            animateEntrance = false,
+        )
+    }
+
     /**
      * Remove and re-add floating icons so they draw above newly added
      * overlays. Pass [displayId] = null to bring every icon forward.
@@ -1238,6 +1273,7 @@ class OverlayUiController(
 
         overlayHost.addOverlayWindow(menu, wm, params, display.displayId)
         floatingMenu = menu
+        floatingMenuDisplayId = display.displayId
 
         val p = icon.params
         val iconCx = (p?.x ?: 0) + icon.viewSizePx / 2
@@ -1321,6 +1357,7 @@ class OverlayUiController(
         // the menu's lingering dim/"Drag finger" hint in the shot.
         floatingMenu?.let { overlayHost.removeOverlayWindow(it, immediate = true) }
         floatingMenu = null
+        floatingMenuDisplayId = null
         if (wasShowing && clearHoldActive) {
             CaptureService.instance?.holdActive = false
         }

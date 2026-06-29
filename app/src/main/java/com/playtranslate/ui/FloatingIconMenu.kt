@@ -980,8 +980,28 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
     }
 
-    fun positionNearIcon(iconCx: Int, iconCy: Int, iconEdge: FloatingOverlayIcon.Edge, screenW: Int, screenH: Int) {
+    /** Anchor the menu card beside the icon against [screenW]×[screenH].
+     *
+     *  [animateEntrance] plays the fade/scale-in used when the menu first
+     *  opens; pass false to re-anchor an already-open menu in place (on
+     *  rotation), matching the icon's silent snap to its new edge slot. */
+    fun positionNearIcon(
+        iconCx: Int,
+        iconCy: Int,
+        iconEdge: FloatingOverlayIcon.Edge,
+        screenW: Int,
+        screenH: Int,
+        animateEntrance: Boolean = true,
+    ) {
         post {
+            // A re-anchor that lands mid-[toggleExpanded] would measure the card
+            // at the animator's transient rightStack width and poison
+            // collapsedLeftMargin (the running animator keeps applying it,
+            // detaching the card from the icon's edge). Settle any in-flight
+            // expand/collapse to its target first so the measure below reads the
+            // logical collapsed/expanded geometry. Only the in-place re-anchor
+            // (rotation) can collide; the entrance path has no animator running.
+            if (!animateEntrance) widthAnimator?.end()
             applyLaneOrder(iconEdge)
             menuCard.measure(
                 MeasureSpec.makeMeasureSpec(screenW, MeasureSpec.AT_MOST),
@@ -1007,20 +1027,29 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             menuCard.layoutParams = lp
             menuCard.isVisible = true
             // Remember the collapsed anchor so the expand/collapse width
-            // animation grows the card toward screen center.
-            collapsedLeftMargin = menuX
+            // animation grows the card toward screen center. When re-anchoring
+            // an already-expanded, right-anchored card (rotation), the measured
+            // width carries the expansion delta, so back it out to recover the
+            // collapsed margin — otherwise a later collapse would slide the card
+            // off the icon's edge.
             menuAnchorRight = iconEdge == FloatingOverlayIcon.Edge.RIGHT
+            collapsedLeftMargin = if (expanded && menuAnchorRight)
+                menuX + (expandedRightWidthPx - collapsedRightWidthPx)
+            else
+                menuX
 
-            menuCard.alpha = 0f
-            menuCard.scaleX = 0.8f
-            menuCard.scaleY = 0.8f
-            menuCard.animate()
-                .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .setDuration(150)
-                .setInterpolator(DecelerateInterpolator())
-                .start()
+            if (animateEntrance) {
+                menuCard.alpha = 0f
+                menuCard.scaleX = 0.8f
+                menuCard.scaleY = 0.8f
+                menuCard.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(150)
+                    .setInterpolator(DecelerateInterpolator())
+                    .start()
+            }
 
             // Show red X button to clear region (if a custom region is active)
             showClearRegionButton(iconEdge, screenW, screenH)
