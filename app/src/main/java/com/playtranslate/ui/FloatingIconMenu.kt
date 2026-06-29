@@ -55,6 +55,11 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val dp = resources.displayMetrics.density
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
+    // Screen margin the menu card is anchored by, and the clearance the
+    // drag-hint pill keeps from the card / screen edges. See positionInstructionPill.
+    private val screenMargin = (16 * dp).toInt()
+    private val pillBuffer = (16 * dp).toInt()
+
     // Theme colors resolved from the user's selected palette
     private val accentColor: Int = context.themeColor(R.attr.ptAccent).takeIf { it != 0 } ?: "#4DD0C2".toColorInt()
     private val onAccentColor: Int = context.themeColor(R.attr.ptAccentOn).takeIf { it != 0 } ?: Color.BLACK
@@ -107,8 +112,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             field = value
             // The drag-hint pill shows only for a full-screen region, and never
             // while the settings panel is open (the panel fades it out).
-            instructionPill.visibility =
-                if (expanded || (value != null && !value.isFullScreen)) View.GONE else View.VISIBLE
+            applyInstructionPillVisibility()
             // Capture button reflects full screen vs custom region.
             updateCaptureButton()
         }
@@ -202,6 +206,9 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
     private val menuCard: LinearLayout
     private val instructionPill: LinearLayout
+    // The pill's label, kept as a field so positionInstructionPill can cap its
+    // width (forcing a wrap) when the pill can't fit on one line.
+    private val instructionLabel: TextView
 
     // Capture button (right lane, top). [updateCaptureButton] sets its glyph +
     // label from the active region (full screen vs custom) and its colors from
@@ -244,6 +251,14 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private var widthAnimator: ValueAnimator? = null
     private var collapsedRightWidthPx = 0
     private var expandedRightWidthPx = 0
+    /** Collapsed menu-card footprint. The drag-hint pill only shows while the
+     *  card is collapsed, so it's positioned against these dims rather than the
+     *  live (possibly expanded) measurement. */
+    private var collapsedCardWidthPx = 0
+    private var collapsedCardHeightPx = 0
+    /** Gates the drag-hint pill hidden until [positionInstructionPill] runs once,
+     *  so it never flashes at screen-center before being placed. */
+    private var instructionPillPlaced = false
     /** Collapsed left margin + right-edge anchoring, captured by
      *  [positionNearIcon] so the width animation grows the card toward screen
      *  center rather than off the icon's edge. */
@@ -279,6 +294,9 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         // wide enough for the panel's longest row label to fit on one line.
         collapsedRightWidthPx = primarySize
         expandedRightWidthPx = (300 * dp).toInt() - (pad * 2 + secondarySize + laneGap)
+        // Collapsed card = padding + secondary lane + lane gap + collapsed right lane.
+        collapsedCardWidthPx = pad * 2 + secondarySize + laneGap + collapsedRightWidthPx
+        collapsedCardHeightPx = laneHeight + 2 * pad
 
         // ── Secondary lane (left): three icon-only square buttons ─────────
         val editIcon = ImageView(context).apply {
@@ -444,7 +462,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ))
 
-        // Drag-hint pill, centered on screen
+        // Drag-hint pill — placed by positionInstructionPill; hidden until then.
         val dividerColor = context.themeColor(R.attr.ptDivider)
         val instructionIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_gesture_select)
@@ -454,7 +472,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 rightMargin = (8 * dp).toInt()
             }
         }
-        val instructionLabel = TextView(context).apply {
+        instructionLabel = TextView(context).apply {
             text = context.getString(R.string.floating_menu_drag_instruction)
             setTextColor(textColor)
             textSize = 14f
@@ -462,6 +480,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         instructionPill = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            // Hidden until positioned, so it can't appear at screen-center first.
+            visibility = View.INVISIBLE
             setPadding(
                 (18 * dp).toInt(), (10 * dp).toInt(),
                 (18 * dp).toInt(), (10 * dp).toInt()
@@ -1053,7 +1073,117 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
             // Show red X button to clear region (if a custom region is active)
             showClearRegionButton(iconEdge, screenW, screenH)
+
+            // Keep the drag-hint pill clear of the menu card.
+            positionInstructionPill(iconCy, iconEdge, screenW, screenH)
         }
+    }
+
+    /** The drag-hint pill shows only for a full-screen region, never while the
+     *  settings panel is open, and not until it's been positioned once. */
+    private fun applyInstructionPillVisibility() {
+        instructionPill.visibility = when {
+            !instructionPillPlaced -> View.INVISIBLE
+            expanded || activeRegion?.isFullScreen == false -> View.GONE
+            else -> View.VISIBLE
+        }
+    }
+
+    /** Place the drag-hint pill so it never collides with the collapsed menu
+     *  card. Preference order:
+     *   1. Centered on screen, when there's a [pillBuffer] gap to the card.
+     *   2. Centered horizontally, vertically halved into the larger of the bands
+     *      above / below the card — the bottom band stops at the degraded-warning
+     *      pill's top edge when that pill is showing, so the two never collide.
+     *   3. Centered vertically, horizontally halved into the gap between the
+     *      card's inner edge and the opposite screen edge.
+     *  In cases 2 and 3 the pill wraps onto extra lines when its single-line
+     *  width won't fit the available width (minus buffers). */
+    private fun positionInstructionPill(
+        iconCy: Int,
+        iconEdge: FloatingOverlayIcon.Edge,
+        screenW: Int,
+        screenH: Int,
+    ) {
+        val cardOnLeft = iconEdge == FloatingOverlayIcon.Edge.LEFT
+        val cardLeft = if (cardOnLeft) screenMargin else screenW - collapsedCardWidthPx - screenMargin
+        val cardRight = cardLeft + collapsedCardWidthPx
+        val cardTop = (iconCy - collapsedCardHeightPx / 2)
+            .coerceIn(screenMargin, screenH - collapsedCardHeightPx - screenMargin)
+        val cardBottom = cardTop + collapsedCardHeightPx
+        val centerX = screenW / 2
+        val centerY = screenH / 2
+
+        // Natural single-line size, plus the fixed chrome (icon + padding) so a
+        // wrap target can be expressed as a label maxWidth.
+        val unspec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+        instructionLabel.maxWidth = Int.MAX_VALUE
+        instructionPill.measure(unspec, unspec)
+        val naturalW = instructionPill.measuredWidth
+        val naturalH = instructionPill.measuredHeight
+        val chrome = naturalW - instructionLabel.measuredWidth
+
+        // Bottom band stops at the degraded-warning pill's top edge when it's
+        // shown (it sits 32dp up from the bottom), so the buffer applied by
+        // centering keeps the two pills from touching.
+        val warning = degradedWarningView
+        val effBottom = if (warning != null && warning.isVisible) {
+            warning.measure(unspec, unspec)
+            screenH - (32 * dp).toInt() - warning.measuredHeight
+        } else screenH
+
+        // Commit a placement: wrap to [availW] when the single line overflows,
+        // then center the (possibly taller) pill at (cx, cy), clamped on-screen.
+        fun place(cx: Int, cy: Int, availW: Int) {
+            var pw = naturalW
+            var ph = naturalH
+            if (naturalW > availW) {
+                instructionLabel.maxWidth = (availW - chrome).coerceAtLeast((48 * dp).toInt())
+                instructionPill.measure(
+                    MeasureSpec.makeMeasureSpec(availW.coerceAtLeast(0), MeasureSpec.AT_MOST),
+                    unspec,
+                )
+                pw = instructionPill.measuredWidth
+                ph = instructionPill.measuredHeight
+            }
+            val lp = instructionPill.layoutParams as LayoutParams
+            lp.gravity = Gravity.TOP or Gravity.START
+            lp.leftMargin = (cx - pw / 2).coerceIn(0, (screenW - pw).coerceAtLeast(0))
+            lp.topMargin = (cy - ph / 2).coerceIn(0, (screenH - ph).coerceAtLeast(0))
+            instructionPill.layoutParams = lp
+            instructionPillPlaced = true
+            applyInstructionPillVisibility()
+        }
+
+        // Case 1: centered, if it clears the card horizontally by a buffer.
+        val centeredTop = centerY - naturalH / 2
+        val centeredBottom = centerY + naturalH / 2
+        val verticallyOverlapsCard = centeredBottom > cardTop && centeredTop < cardBottom
+        val clearsCard = if (cardOnLeft)
+            centerX - naturalW / 2 >= cardRight + pillBuffer
+        else
+            centerX + naturalW / 2 <= cardLeft - pillBuffer
+        if (!verticallyOverlapsCard || clearsCard) {
+            place(centerX, centerY, screenW)
+            return
+        }
+
+        // Case 2: the larger of the bands above / below the card, if it fits.
+        val spaceAbove = cardTop
+        val spaceBelow = effBottom - cardBottom
+        val useTop = spaceAbove >= spaceBelow
+        val band = if (useTop) spaceAbove else spaceBelow
+        if (band >= naturalH + 2 * pillBuffer) {
+            val cy = if (useTop) cardTop / 2 else (cardBottom + effBottom) / 2
+            place(centerX, cy, screenW - 2 * pillBuffer)
+            return
+        }
+
+        // Case 3: the gap beside the card, between its inner edge and the
+        // opposite screen edge.
+        val gapStart = if (cardOnLeft) cardRight else 0
+        val gapEnd = if (cardOnLeft) screenW else cardLeft
+        place((gapStart + gapEnd) / 2, centerY, (gapEnd - gapStart) - 2 * pillBuffer)
     }
 
     private fun showClearRegionButton(iconEdge: FloatingOverlayIcon.Edge, screenW: Int, screenH: Int) {
