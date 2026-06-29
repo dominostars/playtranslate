@@ -1306,7 +1306,10 @@ class OverlayUiController(
      *  wake a live-mode cycle between frames. */
     fun dismissFloatingMenu(clearHoldActive: Boolean = true) {
         val wasShowing = floatingMenu != null
-        floatingMenu?.let { overlayHost.removeOverlayWindow(it) }
+        // Remove the menu's surface synchronously: a capture started right after
+        // (e.g. live mode's first clean frame on "auto translate") must not catch
+        // the menu's lingering dim/"Drag finger" hint in the shot.
+        floatingMenu?.let { overlayHost.removeOverlayWindow(it, immediate = true) }
         floatingMenu = null
         if (wasShowing && clearHoldActive) {
             CaptureService.instance?.holdActive = false

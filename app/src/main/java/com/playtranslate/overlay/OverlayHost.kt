@@ -174,11 +174,19 @@ class OverlayHost(
     /** Unregister and call [WindowManager.removeView]. Returns true if the
      *  view was registered (and thus removed). Returns false if the view was
      *  never registered — callers that fall back to a direct removeView for
-     *  windows added before a host existed rely on this. */
-    fun removeOverlayWindow(view: View): Boolean {
+     *  windows added before a host existed rely on this.
+     *
+     *  [immediate] tears the window's surface down synchronously
+     *  ([WindowManager.removeViewImmediate]) instead of queuing an async
+     *  removeView whose surface lingers a frame or two — so a clean capture
+     *  started right after the removal can't race the leftover surface (e.g. the
+     *  floating menu's dim/hint landing in live mode's first frame). */
+    fun removeOverlayWindow(view: View, immediate: Boolean = false): Boolean {
         val handle = overlayWindows.firstOrNull { it.view === view } ?: return false
         overlayWindows -= handle
-        try { handle.wm.removeView(view) } catch (_: Exception) {}
+        try {
+            if (immediate) handle.wm.removeViewImmediate(view) else handle.wm.removeView(view)
+        } catch (_: Exception) {}
         logFocusableOverlay("remove", view, handle.params, handle.displayId)
         return true
     }
