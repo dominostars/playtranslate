@@ -113,6 +113,16 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             updateCaptureButton()
         }
 
+    /** Which primary carries the strong accent when not live: true = the
+     *  capture button, false = auto-translate (the default). Tracks the
+     *  most-recently-used primary; [isLiveMode] overrides it. */
+    var captureHighlighted: Boolean = false
+        set(value) {
+            field = value
+            updateLiveButton()
+            updateCaptureButton()
+        }
+
     /** Kind of warning to show on the bottom-center pill.
      *  [DegradedWarningKind.None] hides the pill;
      *  [DegradedWarningKind.Offline] / [DegradedWarningKind.LowMemory] show
@@ -451,11 +461,22 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         )
         captureBtn.contentDescription = captureLabel.text
 
-        val content = if (isLiveMode) mutedColor else accentColor
+        // Live: neutral left-lane styling (override). Otherwise the strong accent
+        // when this is the active primary, else the subdued accent tint.
+        val content = when {
+            isLiveMode -> mutedColor
+            captureHighlighted -> onAccentColor
+            else -> accentColor
+        }
+        val fill = when {
+            isLiveMode -> cardColor
+            captureHighlighted -> accentColor
+            else -> accentTintColor
+        }
         captureIcon.imageTintList = ColorStateList.valueOf(content)
         captureLabel.setTextColor(content)
         (captureBtn.background as? GradientDrawable)?.apply {
-            setColor(if (isLiveMode) cardColor else accentTintColor)
+            setColor(fill)
             // While live, match the left-lane buttons' hairline; none at rest.
             if (isLiveMode) setStroke((1 * dp).toInt(), context.themeColor(R.attr.ptDivider))
             else setStroke(0, Color.TRANSPARENT)
@@ -507,14 +528,17 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             liveLabel.setTextColor(textColor)
             (liveBtn.background as? GradientDrawable)?.setColor(dangerColor)
         } else {
-            // Resting: play glyph on the accent fill, on-accent content.
+            // Resting play glyph. Strong accent unless the capture button is the
+            // active primary, in which case auto-translate takes the accent tint.
             liveIcon.setImageResource(R.drawable.ic_play)
-            liveIcon.imageTintList = ColorStateList.valueOf(onAccentColor)
             liveLabel.text = hintModeLabel
                 ?.let { context.getString(R.string.live_mode_auto_with_hint, it) }
                 ?: context.getString(R.string.live_mode_auto_translate_label)
-            liveLabel.setTextColor(onAccentColor)
-            (liveBtn.background as? GradientDrawable)?.setColor(accentColor)
+            val strong = !captureHighlighted
+            val content = if (strong) onAccentColor else accentColor
+            liveIcon.imageTintList = ColorStateList.valueOf(content)
+            liveLabel.setTextColor(content)
+            (liveBtn.background as? GradientDrawable)?.setColor(if (strong) accentColor else accentTintColor)
         }
         liveBtn.contentDescription = liveLabel.text
     }

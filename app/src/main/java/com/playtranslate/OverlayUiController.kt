@@ -1064,6 +1064,14 @@ class OverlayUiController(
 
     // ── Floating icon menu ───────────────────────────────────────────────
 
+    private companion object {
+        /** The floating menu's most-recently-used primary, shared across both
+         *  backend controller instances and reset to the auto-translate default
+         *  on process start. true = the capture button carries the strong
+         *  accent, false = auto-translate. Set when the user taps either. */
+        var captureIsPreferredPrimary = false
+    }
+
     private fun showFloatingMenu(display: Display, icon: FloatingOverlayIcon) {
         dismissFloatingMenu()
         val wm = context.createDisplayContext(display).getSystemService(WindowManager::class.java) ?: return
@@ -1086,6 +1094,7 @@ class OverlayUiController(
             when (hintKind) { HintTextKind.PINYIN -> "Pinyin"; else -> "Furigana" }
         } else null
         menu.isLiveMode = CaptureService.instance?.isLive == true
+        menu.captureHighlighted = captureIsPreferredPrimary
         menu.degradedWarningKind =
             CaptureService.instance?.degradationState?.value
                 ?: com.playtranslate.ui.DegradedWarningKind.None
@@ -1109,6 +1118,8 @@ class OverlayUiController(
             }
         }
         menu.onToggleLive = {
+            // Auto-translate becomes the most-recently-used primary.
+            captureIsPreferredPrimary = false
             dismissFloatingMenu()
             if (CaptureService.instance?.isLive == true) {
                 stopLiveRouted()
@@ -1159,6 +1170,8 @@ class OverlayUiController(
         // configures the override itself. If auto-translate is running, stop it
         // first so this is a clean one-shot, not a live refresh.
         menu.onTranslateOnce = {
+            // The capture button becomes the most-recently-used primary.
+            captureIsPreferredPrimary = true
             dismissFloatingMenu()
             val region = CaptureService.instance?.activeRegionForDisplay(display.displayId)
                 ?: CaptureService.DEFAULT_REGION
