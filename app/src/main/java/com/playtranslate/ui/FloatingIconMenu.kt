@@ -228,6 +228,10 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val primaryLane: View
     private val rightStack: FrameLayout
     private val contentArea: FrameLayout
+    /** The icon-only lane; [positionNearIcon] orders it vs. [rightStack] so the
+     *  big lane sits nearest the floating icon (flipped when the icon is on the
+     *  left edge). */
+    private val secondaryLane: LinearLayout
     // Expanded-panel table: a scrolling list of settings-style rows, populated
     // by [setPanelData]. Cell height set so three cells span the secondary lane.
     private val panelRows: LinearLayout
@@ -300,7 +304,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
         hideBtn = makeSecondaryButton(hideIcon, exitDesc) { onCloseRequested?.invoke() }
 
-        val secondaryLane = LinearLayout(context).apply {
+        secondaryLane = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, laneHeight
@@ -958,8 +962,27 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
     }
 
+    /** Order the two lanes so the big (primary/content) lane sits nearest the
+     *  floating icon: small lane left + big lane right by default (icon on the
+     *  right edge), flipped when the icon is on the left edge. The lane gap rides
+     *  the first lane's marginEnd. The expanded panel follows since it lives in
+     *  the big lane ([rightStack]). */
+    private fun applyLaneOrder(iconEdge: FloatingOverlayIcon.Edge) {
+        val bigLaneFirst = iconEdge == FloatingOverlayIcon.Edge.LEFT
+        val first: View = if (bigLaneFirst) rightStack else secondaryLane
+        val second: View = if (bigLaneFirst) secondaryLane else rightStack
+        (first.layoutParams as LinearLayout.LayoutParams).marginEnd = (11 * dp).toInt()
+        (second.layoutParams as LinearLayout.LayoutParams).marginEnd = 0
+        if (menuCard.getChildAt(0) !== first) {
+            menuCard.removeAllViews()
+            menuCard.addView(first)
+            menuCard.addView(second)
+        }
+    }
+
     fun positionNearIcon(iconCx: Int, iconCy: Int, iconEdge: FloatingOverlayIcon.Edge, screenW: Int, screenH: Int) {
         post {
+            applyLaneOrder(iconEdge)
             menuCard.measure(
                 MeasureSpec.makeMeasureSpec(screenW, MeasureSpec.AT_MOST),
                 MeasureSpec.makeMeasureSpec(screenH, MeasureSpec.AT_MOST)
