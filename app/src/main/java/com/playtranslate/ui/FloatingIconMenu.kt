@@ -577,7 +577,11 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         val targetRight = if (expanded) expandedRightWidthPx else collapsedRightWidthPx
 
         if (expanded) {
+            // Fade the panel's table in.
+            contentArea.animate().cancel()
+            contentArea.alpha = 0f
             contentArea.visibility = View.VISIBLE
+            contentArea.animate().alpha(1f).setDuration(200).start()
             primaryLane.animate().cancel()
             primaryLane.animate().alpha(0f).setDuration(160).withEndAction {
                 if (expanded) primaryLane.visibility = View.GONE
@@ -590,6 +594,11 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 }.start()
             }
         } else {
+            // Fade the panel's table out, then hide it.
+            contentArea.animate().cancel()
+            contentArea.animate().alpha(0f).setDuration(160).withEndAction {
+                if (!expanded) contentArea.visibility = View.GONE
+            }.start()
             primaryLane.animate().cancel()
             primaryLane.visibility = View.VISIBLE
             primaryLane.animate().alpha(1f).setDuration(200).start()
@@ -628,7 +637,6 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                     rightStack.layoutParams = rightStack.layoutParams.apply {
                         width = ViewGroup.LayoutParams.WRAP_CONTENT
                     }
-                    contentArea.visibility = View.GONE
                 }
             })
             start()
