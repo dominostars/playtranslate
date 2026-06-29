@@ -1119,7 +1119,9 @@ class OverlayUiController(
             )
         }
         menu.onSelectOcr = {
-            dismissFloatingMenu()
+            // Show the picker over the still-open menu so its holdActive keeps
+            // live capture paused. The menu dismisses only if a different engine
+            // is chosen (see showOcrPicker); Cancel/same-engine returns here.
             showOcrPicker(display, prefs.sourceLangId)
         }
         menu.onCycleOverlayMode = {
@@ -1258,9 +1260,12 @@ class OverlayUiController(
         )
     }
 
-    /** Open the "Choose OCR tool" OverlayAlert for [id] on [display] — the same
-     *  picker the result overlay shows, minus the re-OCR (there's no live result
-     *  here; the selection persists for the next capture). */
+    /** Open the "Choose OCR tool" OverlayAlert for [id] on [display], stacked
+     *  over the still-open floating menu so its holdActive keeps live capture
+     *  paused. There's no live result to re-OCR here, so a different-engine pick
+     *  just dismisses the menu (clearing holdActive so live resumes with the new
+     *  engine, persisted by OcrPicker); Cancel or re-picking the current engine
+     *  leaves the menu open underneath. */
     private fun showOcrPicker(display: Display, id: SourceLangId) {
         val displayCtx = context.createDisplayContext(display)
         val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
@@ -1270,8 +1275,9 @@ class OverlayUiController(
             themed,
             id,
             OcrModelManager.selectedBackend(context, id)?.selectionToken ?: "",
-            onReOcr = {},
+            onReOcr = { dismissFloatingMenu() },
             onDownload = { backend ->
+                dismissFloatingMenu()
                 launchOnOverlayDisplay(
                     CaptureOverlaySettingsActivity.downloadIntent(
                         context.applicationContext, id, backend.selectionToken

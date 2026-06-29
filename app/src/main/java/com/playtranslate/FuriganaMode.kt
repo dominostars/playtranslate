@@ -163,6 +163,10 @@ class FuriganaMode(
     // ── Clean frame handling ──────────────────────────────────────────────
 
     private fun handleCleanFrame(raw: Bitmap) {
+        // Skip frames while a capture hold is active (floating menu / hold-to-
+        // preview), so the loop stops requesting overlay-blanking clean captures
+        // behind it. Processing resumes once the hold clears.
+        if (service.holdActive) { raw.recycle(); return }
         cleanProcessingJob?.cancel()
         cleanProcessingJob = scope.launch {
             try {
@@ -261,6 +265,8 @@ class FuriganaMode(
     // FrameCoordinates KDoc for details on the coordinate spaces.
 
     private fun handleRawFrame(bitmap: Bitmap) {
+        // Skip frames while a capture hold is active — see handleCleanFrame.
+        if (service.holdActive) { bitmap.recycle(); return }
         if (cleanProcessingJob?.isActive == true || rawOcrJob?.isActive == true) {
             bitmap.recycle()
             return
