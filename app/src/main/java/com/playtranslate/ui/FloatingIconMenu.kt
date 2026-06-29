@@ -1,5 +1,8 @@
 package com.playtranslate.ui
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Canvas
@@ -11,6 +14,7 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -19,6 +23,7 @@ import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.playtranslate.R
 import com.playtranslate.RegionEntry
@@ -72,7 +77,11 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     /** Momentary one-shot: capture-and-translate the current region. */
     var onTranslateOnce: (() -> Unit)? = null
     var onCaptureRegion: (() -> Unit)? = null
-    var onSettings: (() -> Unit)? = null
+    // Expanded settings-panel row actions.
+    var onSelectLanguage: (() -> Unit)? = null
+    var onSelectOcr: (() -> Unit)? = null
+    var onCycleOverlayMode: (() -> Unit)? = null
+    var onOpenApp: (() -> Unit)? = null
     var isSingleScreen: Boolean = false
 
     /** True in MediaProjection mode or single-screen — the Exit control then
@@ -96,9 +105,10 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     var activeRegion: RegionEntry? = null
         set(value) {
             field = value
-            // The drag-hint pill and the region preview are mutually exclusive.
+            // The drag-hint pill shows only for a full-screen region, and never
+            // while the settings panel is open (the panel fades it out).
             instructionPill.visibility =
-                if (value != null && !value.isFullScreen) View.GONE else View.VISIBLE
+                if (expanded || (value != null && !value.isFullScreen)) View.GONE else View.VISIBLE
             // Capture button reflects full screen vs custom region.
             updateCaptureButton()
         }
@@ -208,6 +218,33 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     // accessibility label on the clickable hideBtn.
     private val hideIcon: ImageView
     private val hideBtn: View
+    // Settings gear (left lane, middle). Toggles the inline expanded panel
+    // rather than opening the app; [updateSettingsButton] swaps its styling.
+    private val settingsBtn: View
+    private val settingsIcon: ImageView
+    // The two big primaries ([primaryLane]) and the future expanded-panel
+    // [contentArea] share [rightStack]; expanding fades the primaries out and
+    // widens the rightStack (and the whole card) to [expandedRightWidthPx].
+    private val primaryLane: View
+    private val rightStack: FrameLayout
+    private val contentArea: FrameLayout
+    // Expanded-panel table: a scrolling list of settings-style rows, populated
+    // by [setPanelData]. Cell height set so three cells span the secondary lane.
+    private val panelRows: LinearLayout
+    private var panelCellHeightPx = 0
+    /** The Overlays row's value view, updated in place when the mode cycles. */
+    private var overlayModeValueView: TextView? = null
+
+    // ── Expanded settings panel state ─────────────────────────────────────
+    private var expanded = false
+    private var widthAnimator: ValueAnimator? = null
+    private var collapsedRightWidthPx = 0
+    private var expandedRightWidthPx = 0
+    /** Collapsed left margin + right-edge anchoring, captured by
+     *  [positionNearIcon] so the width animation grows the card toward screen
+     *  center rather than off the icon's edge. */
+    private var collapsedLeftMargin = 0
+    private var menuAnchorRight = false
 
     // ── Drag state ────────────────────────────────────────────────────────
     private var isDragging = false
@@ -233,6 +270,11 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         // distribute top-to-bottom (space-between) across the same span.
         val laneHeight = primarySize * 2 + primaryGap
         val hairline = context.themeColor(R.attr.ptDivider)
+        // Collapsed: rightStack wraps the 78dp primaries. Expanded: it widens so
+        // the whole card reaches 300dp (card = padding*2 + secondary + gap + right) —
+        // wide enough for the panel's longest row label to fit on one line.
+        collapsedRightWidthPx = primarySize
+        expandedRightWidthPx = (300 * dp).toInt() - (pad * 2 + secondarySize + laneGap)
 
         // ── Secondary lane (left): three icon-only square buttons ─────────
         val editIcon = ImageView(context).apply {
@@ -243,13 +285,13 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             editIcon, context.getString(R.string.floating_menu_edit_region)
         ) { onCaptureRegion?.invoke() }
 
-        val settingsIcon = ImageView(context).apply {
+        settingsIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_settings)
             imageTintList = ColorStateList.valueOf(mutedColor)
         }
-        val settingsButton = makeSecondaryButton(
+        settingsBtn = makeSecondaryButton(
             settingsIcon, context.getString(R.string.nav_settings)
-        ) { onSettings?.invoke() }
+        ) { toggleExpanded() }
 
         val exitDesc = context.getString(R.string.floating_icon_close_label_hide)
         hideIcon = ImageView(context).apply {
@@ -265,7 +307,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             ).apply { marginEnd = laneGap }
             addView(editBtn, LinearLayout.LayoutParams(secondarySize, secondarySize))
             addView(laneSpacer())
-            addView(settingsButton, LinearLayout.LayoutParams(secondarySize, secondarySize))
+            addView(settingsBtn, LinearLayout.LayoutParams(secondarySize, secondarySize))
             addView(laneSpacer())
             addView(hideBtn, LinearLayout.LayoutParams(secondarySize, secondarySize))
         }
@@ -330,10 +372,51 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             setOnClickListener { onToggleLive?.invoke() }
         }
 
-        val primaryLane = LinearLayout(context).apply {
+        primaryLane = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             addView(captureBtn)
             addView(liveBtn)
+        }
+
+        // The primaries sit in front of a content area (the expanded panel's
+        // scrolling table); both share rightStack. Its fixed height keeps the
+        // card height constant when the primaries fade out; its width animates
+        // between collapsed/expanded.
+        // Compact 52dp rows; any rows beyond what fits in the menu height scroll.
+        panelCellHeightPx = (52 * dp).toInt()
+        panelRows = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        contentArea = FrameLayout(context).apply {
+            visibility = View.GONE
+            addView(
+                ScrollView(context).apply {
+                    isVerticalScrollBarEnabled = false
+                    addView(panelRows, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ))
+                },
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
+        rightStack = FrameLayout(context).apply {
+            // Span the full menu-card height — into the 11dp top/bottom padding via
+            // negative margins — so the expanded panel's scroll view matches the
+            // menu's top/bottom bounds. The margins cancel, so the card height is
+            // unchanged (menuCard's clipToPadding=false lets it draw to the edges).
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, laneHeight + 2 * pad
+            ).apply { topMargin = -pad; bottomMargin = -pad }
+            addView(contentArea, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            ))
+            // Keep the two big buttons aligned with the secondary lane (centered in
+            // the taller stack), not pushed up to the card's top edge.
+            addView(primaryLane, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = Gravity.CENTER_VERTICAL })
         }
 
         // ── Container: both lanes side by side on one elevated surface ────
@@ -350,7 +433,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             setPadding(pad, pad, pad, pad)
             visibility = View.INVISIBLE
             addView(secondaryLane)
-            addView(primaryLane)
+            addView(rightStack)
         }
         addView(menuCard, LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -480,6 +563,167 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             // While live, match the left-lane buttons' hairline; none at rest.
             if (isLiveMode) setStroke((1 * dp).toInt(), context.themeColor(R.attr.ptDivider))
             else setStroke(0, Color.TRANSPARENT)
+        }
+    }
+
+    /** Toggle the inline expanded settings panel: the gear takes the accent
+     *  styling, the two primaries fade out, and the card widens to 300dp with an
+     *  ease-out animation (and back). Panel content is added later. */
+    private fun toggleExpanded() {
+        expanded = !expanded
+        updateSettingsButton()
+
+        val startRight = rightStack.width.takeIf { it > 0 } ?: collapsedRightWidthPx
+        val targetRight = if (expanded) expandedRightWidthPx else collapsedRightWidthPx
+
+        if (expanded) {
+            contentArea.visibility = View.VISIBLE
+            primaryLane.animate().cancel()
+            primaryLane.animate().alpha(0f).setDuration(160).withEndAction {
+                if (expanded) primaryLane.visibility = View.GONE
+            }.start()
+            // Fade the drag-finger hint out while the panel is open.
+            if (instructionPill.isVisible) {
+                instructionPill.animate().cancel()
+                instructionPill.animate().alpha(0f).setDuration(160).withEndAction {
+                    if (expanded) { instructionPill.visibility = View.GONE; instructionPill.alpha = 1f }
+                }.start()
+            }
+        } else {
+            primaryLane.animate().cancel()
+            primaryLane.visibility = View.VISIBLE
+            primaryLane.animate().alpha(1f).setDuration(200).start()
+            // Fade the drag-finger hint back in if the current region warrants it.
+            if (activeRegion?.isFullScreen != false) {
+                instructionPill.animate().cancel()
+                instructionPill.alpha = 0f
+                instructionPill.visibility = View.VISIBLE
+                instructionPill.animate().alpha(1f).setDuration(200).start()
+            }
+        }
+
+        widthAnimator?.cancel()
+        var cancelled = false
+        widthAnimator = ValueAnimator.ofInt(startRight, targetRight).apply {
+            duration = 260
+            interpolator = DecelerateInterpolator() // ease-out
+            addUpdateListener { a ->
+                val w = a.animatedValue as Int
+                rightStack.layoutParams = rightStack.layoutParams.apply { width = w }
+                // Right-anchored: keep the right edge fixed so the card grows
+                // leftward (toward screen center) instead of off the icon's edge.
+                if (menuAnchorRight) {
+                    (menuCard.layoutParams as LayoutParams).let {
+                        it.leftMargin = collapsedLeftMargin - (w - collapsedRightWidthPx)
+                        menuCard.layoutParams = it
+                    }
+                }
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationCancel(animation: Animator) { cancelled = true }
+                override fun onAnimationEnd(animation: Animator) {
+                    // Re-wrap to the primaries' width once collapsed; the next
+                    // animation owns the end state if this one was superseded.
+                    if (cancelled || expanded) return
+                    rightStack.layoutParams = rightStack.layoutParams.apply {
+                        width = ViewGroup.LayoutParams.WRAP_CONTENT
+                    }
+                    contentArea.visibility = View.GONE
+                }
+            })
+            start()
+        }
+    }
+
+    /** Accent-filled "active" look while the panel is expanded; the muted
+     *  grouped-card secondary look when collapsed. */
+    private fun updateSettingsButton() {
+        val bg = settingsBtn.background as? GradientDrawable
+        if (expanded) {
+            bg?.setColor(accentColor)
+            bg?.setStroke(0, Color.TRANSPARENT)
+            settingsIcon.imageTintList = ColorStateList.valueOf(onAccentColor)
+        } else {
+            bg?.setColor(cardColor)
+            bg?.setStroke((1 * dp).toInt(), context.themeColor(R.attr.ptDivider))
+            settingsIcon.imageTintList = ColorStateList.valueOf(mutedColor)
+        }
+    }
+
+    /** Populate the expanded panel's table. Rows are tappable (ripple) but their
+     *  actions aren't wired yet. The reading-hint row appears only when the
+     *  source language has one ([hintLabel] non-null). */
+    fun setPanelData(languageName: String, ocrName: String, overlayValue: String?) {
+        val inflater = LayoutInflater.from(context)
+        panelRows.removeAllViews()
+        overlayModeValueView = null
+
+        // Language + OCR: title on the left, right-aligned value (chevron hidden).
+        addPanelValueRow(inflater, context.getString(R.string.floating_menu_panel_language), languageName) {
+            onSelectLanguage?.invoke()
+        }
+        panelRows.addView(panelDivider())
+        addPanelValueRow(inflater, context.getString(R.string.floating_menu_panel_ocr), ocrName) {
+            onSelectOcr?.invoke()
+        }
+
+        // Overlays row: the current overlay mode as the value; tapping cycles the
+        // available modes. Shown only when the language offers more than one.
+        if (overlayValue != null) {
+            panelRows.addView(panelDivider())
+            val overlayRow = addPanelValueRow(
+                inflater, context.getString(R.string.floating_menu_panel_overlays), overlayValue
+            ) { onCycleOverlayMode?.invoke() }
+            overlayModeValueView = overlayRow.findViewById(R.id.tvRowValue)
+        }
+
+        // Open-app row: title + external-link icon (ic_open_in_new in the layout).
+        panelRows.addView(panelDivider())
+        val openRow = inflater.inflate(R.layout.settings_row_link, panelRows, false)
+        compactPanelRow(openRow)
+        openRow.findViewById<TextView>(R.id.tvRowTitle).text = context.getString(
+            R.string.floating_menu_panel_open_app, context.getString(R.string.app_name)
+        )
+        openRow.setOnClickListener { onOpenApp?.invoke() }
+        panelRows.addView(openRow, panelRowParams())
+    }
+
+    /** Update the Overlays row's value after the mode cycles, without a rebuild. */
+    fun setOverlayModeValue(name: String) { overlayModeValueView?.text = name }
+
+    /** A value row (title + right-aligned value, no chevron) at the panel's cell
+     *  height, with a tap action. Returns the row so the caller can grab its value. */
+    private fun addPanelValueRow(
+        inflater: LayoutInflater, title: String, value: String, onClick: () -> Unit
+    ): View {
+        val row = inflater.inflate(R.layout.settings_row_value, panelRows, false)
+        compactPanelRow(row)
+        row.findViewById<TextView>(R.id.tvRowTitle).text = title
+        row.findViewById<TextView>(R.id.tvRowValue).text = value
+        row.findViewById<View>(R.id.ivRowChevron).visibility = View.GONE
+        row.setOnClickListener { onClick() }
+        panelRows.addView(row, panelRowParams())
+        return row
+    }
+
+    private fun panelRowParams() =
+        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, panelCellHeightPx)
+
+    private fun panelDivider(): View = View(context).apply {
+        setBackgroundColor(context.themeColor(R.attr.ptDivider))
+        // Inset to match the compacted row's horizontal padding.
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, (1 * dp).toInt()
+        ).apply { marginStart = (12 * dp).toInt() }
+    }
+
+    /** Fit a settings row into the narrow panel: lighter horizontal padding and
+     *  a single-line title (ellipsized) so it never wraps into the short cell. */
+    private fun compactPanelRow(row: View) {
+        row.setPaddingRelative((12 * dp).toInt(), row.paddingTop, (12 * dp).toInt(), row.paddingBottom)
+        row.findViewById<TextView>(R.id.tvRowTitle).apply {
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
         }
     }
 
@@ -731,6 +975,10 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             lp.topMargin = menuY
             menuCard.layoutParams = lp
             menuCard.isVisible = true
+            // Remember the collapsed anchor so the expand/collapse width
+            // animation grows the card toward screen center.
+            collapsedLeftMargin = menuX
+            menuAnchorRight = iconEdge == FloatingOverlayIcon.Edge.RIGHT
 
             menuCard.alpha = 0f
             menuCard.scaleX = 0.8f

@@ -1961,6 +1961,23 @@
          editor. -->
     <string name="floating_menu_edit_region">Edit region</string>
 
+    <!-- Title of the Language row in the floating-icon menu's expanded settings
+         panel; its value is the current source language's name. -->
+    <string name="floating_menu_panel_language">Language</string>
+
+    <!-- Title of the OCR row in the floating-icon menu's expanded settings
+         panel. "OCR" is a universal acronym; not translated. -->
+    <string name="floating_menu_panel_ocr" translatable="false">OCR</string>
+
+    <!-- Title of the Overlays row in the floating-icon menu's expanded settings
+         panel; its value is the current overlay mode (Translation, Furigana,
+         Pinyin), and tapping the row cycles through the available modes. -->
+    <string name="floating_menu_panel_overlays">Overlays</string>
+
+    <!-- Last row of the floating-icon menu's expanded settings panel; opens
+         the full app. %1$s is the app name. -->
+    <string name="floating_menu_panel_open_app">Open <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
+
     <!-- Instruction pill shown at the bottom of the floating-icon menu
          while no custom region is active, prompting the user to
          drag-select an area on screen. -->

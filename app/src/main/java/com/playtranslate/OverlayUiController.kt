@@ -19,11 +19,18 @@ import android.view.WindowManager
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.language.HintTextKind
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.ocr.registry.OcrModelManager
+import com.playtranslate.ocr.registry.ocrLabel
+import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.ui.CaptureOverlaySettingsActivity
 import com.playtranslate.ui.DimController
 import com.playtranslate.ui.DragLookupController
 import com.playtranslate.ui.FloatingIconMenu
+import com.playtranslate.ui.LanguageSetupActivity
+import com.playtranslate.ui.OcrPicker
 import com.playtranslate.ui.FloatingOverlayIcon
 import com.playtranslate.ui.MagnifierLens
 import com.playtranslate.ui.OverlayAlert
@@ -1095,6 +1102,37 @@ class OverlayUiController(
         } else null
         menu.isLiveMode = CaptureService.instance?.isLive == true
         menu.captureHighlighted = captureIsPreferredPrimary
+
+        // Expanded settings-panel table: data + row actions.
+        val languageName = prefs.sourceLangId.displayName()
+        val ocrName = OcrModelManager.selectedBackend(context, prefs.sourceLangId)?.ocrLabel ?: "ML Kit"
+        val overlayValue = if (hintKind != HintTextKind.NONE)
+            overlayModeLabel(prefs.overlayMode, hintKind) else null
+        menu.onSelectLanguage = {
+            // Mirror CaptureResultOverlay.changeLanguage(true): open the source picker.
+            dismissFloatingMenu()
+            LanguageSetupActivity.selectionDelegate = null
+            launchOnOverlayDisplay(
+                Intent(context.applicationContext, LanguageSetupActivity::class.java)
+                    .putExtra(LanguageSetupActivity.EXTRA_MODE, LanguageSetupActivity.MODE_SOURCE),
+                display.displayId,
+            )
+        }
+        menu.onSelectOcr = {
+            dismissFloatingMenu()
+            showOcrPicker(display, prefs.sourceLangId)
+        }
+        menu.onCycleOverlayMode = {
+            val modes = availableOverlayModes(prefs.sourceLangId)
+            val next = modes[(modes.indexOf(prefs.overlayMode) + 1) % modes.size]
+            prefs.overlayMode = next
+            menu.setOverlayModeValue(overlayModeLabel(next, hintKind))
+        }
+        menu.onOpenApp = {
+            dismissFloatingMenu()
+            sendMainActivityIntent(MainActivity.ACTION_OPEN_SETTINGS)
+        }
+        menu.setPanelData(languageName, ocrName, overlayValue)
         menu.degradedWarningKind =
             CaptureService.instance?.degradationState?.value
                 ?: com.playtranslate.ui.DegradedWarningKind.None
@@ -1180,10 +1218,6 @@ class OverlayUiController(
             }
             handleRegionSelection(display.displayId, region)
         }
-        menu.onSettings = {
-            dismissFloatingMenu()
-            sendMainActivityIntent(MainActivity.ACTION_OPEN_SETTINGS)
-        }
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -1205,6 +1239,56 @@ class OverlayUiController(
         val iconCx = (p?.x ?: 0) + icon.viewSizePx / 2
         val iconCy = (p?.y ?: 0) + icon.viewSizePx / 2
         menu.positionNearIcon(iconCx, iconCy, icon.currentEdge, screenSize.x, screenSize.y)
+    }
+
+    /** Overlay modes selectable for [id]: just Translation, unless the language
+     *  carries a reading hint (Furigana/Pinyin), which adds the hint mode. */
+    private fun availableOverlayModes(id: SourceLangId): List<OverlayMode> =
+        if (SourceLanguageProfiles[id].hintTextKind == HintTextKind.NONE)
+            listOf(OverlayMode.TRANSLATION)
+        else listOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA)
+
+    /** User-facing name for an overlay [mode]; the reading-hint mode reads
+     *  "Pinyin" for Pinyin languages and "Furigana" otherwise. */
+    private fun overlayModeLabel(mode: OverlayMode, hintKind: HintTextKind): String = when (mode) {
+        OverlayMode.TRANSLATION -> context.getString(R.string.overlay_mode_option_translation)
+        OverlayMode.FURIGANA -> context.getString(
+            if (hintKind == HintTextKind.PINYIN) R.string.overlay_mode_option_pinyin
+            else R.string.overlay_mode_option_furigana
+        )
+    }
+
+    /** Open the "Choose OCR tool" OverlayAlert for [id] on [display] — the same
+     *  picker the result overlay shows, minus the re-OCR (there's no live result
+     *  here; the selection persists for the next capture). */
+    private fun showOcrPicker(display: Display, id: SourceLangId) {
+        val displayCtx = context.createDisplayContext(display)
+        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
+        val themed = overlayThemedContext(displayCtx)
+        OcrPicker.populate(
+            OverlayAlert.Builder(themed, overlayHost, wm, display.displayId),
+            themed,
+            id,
+            OcrModelManager.selectedBackend(context, id)?.selectionToken ?: "",
+            onReOcr = {},
+            onDownload = { backend ->
+                launchOnOverlayDisplay(
+                    CaptureOverlaySettingsActivity.downloadIntent(
+                        context.applicationContext, id, backend.selectionToken
+                    ),
+                    display.displayId,
+                )
+            },
+        ).showAsOverlay()
+    }
+
+    /** Launch [intent] as a NEW_TASK activity on the foreground display (else
+     *  [fallbackDisplayId]) — mirrors the result overlay's language/OCR deep-links. */
+    private fun launchOnOverlayDisplay(intent: Intent, fallbackDisplayId: Int) {
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        val target = PlayTranslateApplication.foregroundDisplayId() ?: fallbackDisplayId
+        val opts = android.app.ActivityOptions.makeBasic().setLaunchDisplayId(target).toBundle()
+        context.applicationContext.startActivity(intent, opts)
     }
 
     /** Dismiss the floating menu. Most callers leave [clearHoldActive] at
