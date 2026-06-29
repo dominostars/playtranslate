@@ -99,6 +99,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             // The drag-hint pill and the region preview are mutually exclusive.
             instructionPill.visibility =
                 if (value != null && !value.isFullScreen) View.GONE else View.VISIBLE
+            // Capture button reflects full screen vs custom region.
+            updateCaptureButton()
         }
     /** Label for the hint-text overlay mode ("Furigana", "Pinyin", etc.), or null for translation mode. */
     var hintModeLabel: String? = null
@@ -107,6 +109,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         set(value) {
             field = value
             updateLiveButton()
+            // Capture button restyles to the neutral left-lane look while live.
+            updateCaptureButton()
         }
 
     /** Kind of warning to show on the bottom-center pill.
@@ -179,9 +183,12 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val menuCard: LinearLayout
     private val instructionPill: LinearLayout
 
-    // Translate-once (right lane, top). Its fill drops from the accent tint to
-    // the neutral card color while auto-translate is running — see [updateLiveButton].
-    private val translateOnceBtn: View
+    // Capture button (right lane, top). [updateCaptureButton] sets its glyph +
+    // label from the active region (full screen vs custom) and its colors from
+    // live state (resting accent tint, or the neutral left-lane styling while live).
+    private val captureBtn: View
+    private val captureIcon: ImageView
+    private val captureLabel: TextView
     // Auto-translate toggle (right lane, bottom). The icon + fill swap on
     // [updateLiveButton] between the resting play/accent and running pause/danger.
     private val liveIcon: ImageView
@@ -253,15 +260,32 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             addView(hideBtn, LinearLayout.LayoutParams(secondarySize, secondarySize))
         }
 
-        // ── Primary lane (right): Translate once + Auto-translate ─────────
-        translateOnceBtn = makePrimaryButton(
-            iconRes = R.drawable.ic_translate,
-            iconTint = accentColor,
-            label = context.getString(R.string.floating_menu_translate_once),
-            contentColor = accentColor,
-            fill = accentTintColor,
-            onClick = { onTranslateOnce?.invoke() }
-        )
+        // ── Primary lane (right): Capture + Auto-translate ────────────────
+        // captureIcon/captureLabel/fill are populated by updateCaptureButton()
+        // from the active region + live state, below.
+        captureIcon = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            layoutParams = LinearLayout.LayoutParams((26 * dp).toInt(), (26 * dp).toInt())
+        }
+        captureLabel = TextView(context).apply {
+            textSize = 11f
+            gravity = Gravity.CENTER
+            maxLines = 2
+            setTypeface(null, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (5 * dp).toInt() }
+        }
+        captureBtn = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply { cornerRadius = 11 * dp }
+            layoutParams = LinearLayout.LayoutParams(primarySize, primarySize)
+            addView(captureIcon)
+            addView(captureLabel)
+            setOnClickListener { onTranslateOnce?.invoke() }
+        }
+        updateCaptureButton()
 
         liveIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_play)
@@ -298,7 +322,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
         val primaryLane = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            addView(translateOnceBtn)
+            addView(captureBtn)
             addView(liveBtn)
         }
 
@@ -412,46 +436,29 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         )
     }
 
-    /** Builds a 78dp labelled primary button: icon above a centered two-line
-     *  label, on a rounded [fill]. */
-    private fun makePrimaryButton(
-        iconRes: Int,
-        iconTint: Int,
-        label: CharSequence,
-        contentColor: Int,
-        fill: Int,
-        onClick: () -> Unit,
-    ): LinearLayout {
-        val size = (78 * dp).toInt()
-        val icon = ImageView(context).apply {
-            setImageResource(iconRes)
-            imageTintList = ColorStateList.valueOf(iconTint)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            layoutParams = LinearLayout.LayoutParams((26 * dp).toInt(), (26 * dp).toInt())
-        }
-        val text = TextView(context).apply {
-            this.text = label
-            setTextColor(contentColor)
-            textSize = 11f
-            gravity = Gravity.CENTER
-            maxLines = 2
-            setTypeface(null, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = (5 * dp).toInt() }
-        }
-        return LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            contentDescription = label
-            background = GradientDrawable().apply {
-                setColor(fill)
-                cornerRadius = 11 * dp
-            }
-            layoutParams = LinearLayout.LayoutParams(size, size)
-            addView(icon)
-            addView(text)
-            setOnClickListener { onClick() }
+    /** Refreshes the capture button's glyph + label from the active region
+     *  (full screen → "Capture screen"; a custom region → "Capture region"),
+     *  and its colors from live state — the prominent accent tint at rest, or
+     *  the neutral card styling of the left-lane buttons while auto-translate runs. */
+    private fun updateCaptureButton() {
+        val fullScreen = activeRegion?.isFullScreen ?: true
+        captureIcon.setImageResource(
+            if (fullScreen) R.drawable.ic_capture else R.drawable.ic_picture_in_picture_alt
+        )
+        captureLabel.text = context.getString(
+            if (fullScreen) R.string.floating_menu_capture_screen
+            else R.string.floating_menu_btn_capture_region
+        )
+        captureBtn.contentDescription = captureLabel.text
+
+        val content = if (isLiveMode) mutedColor else accentColor
+        captureIcon.imageTintList = ColorStateList.valueOf(content)
+        captureLabel.setTextColor(content)
+        (captureBtn.background as? GradientDrawable)?.apply {
+            setColor(if (isLiveMode) cardColor else accentTintColor)
+            // While live, match the left-lane buttons' hairline; none at rest.
+            if (isLiveMode) setStroke((1 * dp).toInt(), context.themeColor(R.attr.ptDivider))
+            else setStroke(0, Color.TRANSPARENT)
         }
     }
 
@@ -510,11 +517,6 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             (liveBtn.background as? GradientDrawable)?.setColor(accentColor)
         }
         liveBtn.contentDescription = liveLabel.text
-        // While auto-translate is running, drop Translate-once to the neutral
-        // card fill (same as the secondary buttons); restore the accent tint at rest.
-        (translateOnceBtn.background as? GradientDrawable)?.setColor(
-            if (isLiveMode) cardColor else accentTintColor
-        )
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -729,6 +731,22 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         val region = activeRegion ?: return
         if (region.isFullScreen) return
 
+        // Tapping the X clears the active region. Outside live mode, keep the
+        // menu open and flip it to its full-screen state (remove the preview + X,
+        // switch the capture button to "Capture screen"); in live mode, preserve
+        // the prior behavior and close the menu.
+        val onClearTapped: () -> Unit = {
+            onClearRegion?.invoke()
+            if (isLiveMode) {
+                onDismiss?.invoke()
+            } else {
+                clearRegionButton?.let { removeView(it) }
+                clearRegionButton = null
+                activeRegion = null
+                invalidate()
+            }
+        }
+
         val btnSize = (36 * dp).toInt()
         val touchSize = (56 * dp).toInt()
         val touchPad = (touchSize - btnSize) / 2
@@ -750,10 +768,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
                 setColor(dangerColor)
             }
-            setOnClickListener {
-                onClearRegion?.invoke()
-                onDismiss?.invoke()
-            }
+            setOnClickListener { onClearTapped() }
         }
 
         // Draw X using a simple TextView overlay
@@ -773,10 +788,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             addView(xLabel, FrameLayout.LayoutParams(touchSize, touchSize).apply {
                 gravity = Gravity.CENTER
             })
-            setOnClickListener {
-                onClearRegion?.invoke()
-                onDismiss?.invoke()
-            }
+            setOnClickListener { onClearTapped() }
         }
 
         val lp = LayoutParams(touchSize, touchSize).apply {

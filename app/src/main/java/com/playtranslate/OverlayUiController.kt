@@ -1155,20 +1155,17 @@ class OverlayUiController(
             }
         }
         // One-shot capture of the *current* region (full screen unless one is
-        // set) — the same outcome as confirming the region editor with ✓, but
-        // without re-drawing. handleRegionSelection routes single- vs
-        // dual-screen and configures the override itself; in live mode we just
-        // re-run the running overlay like the editor's checkmark does.
+        // set). handleRegionSelection routes single- vs dual-screen and
+        // configures the override itself. If auto-translate is running, stop it
+        // first so this is a clean one-shot, not a live refresh.
         menu.onTranslateOnce = {
             dismissFloatingMenu()
             val region = CaptureService.instance?.activeRegionForDisplay(display.displayId)
                 ?: CaptureService.DEFAULT_REGION
             if (CaptureService.instance?.isLive == true) {
-                hideTranslationOverlay()
-                CaptureService.instance?.refreshLiveOverlay()
-            } else {
-                handleRegionSelection(display.displayId, region)
+                stopLiveRouted()
             }
+            handleRegionSelection(display.displayId, region)
         }
         menu.onSettings = {
             dismissFloatingMenu()

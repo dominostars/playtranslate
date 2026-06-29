@@ -1942,19 +1942,19 @@
          hides until next launch (accessibility + dual-screen). -->
     <string name="floating_icon_close_label_hide">Hide</string>
 
-    <!-- Multi-line label under the "Capture Region" button in the
-         floating-icon menu, drawn at 9sp under a 54dp icon. The literal
-         \n forces a consistent two-line break to match the button's
-         square footprint; translators may remove the break if their
-         translation fits on one line. -->
+    <!-- Two-line label on the floating-icon menu's capture button while a
+         custom region is active: a single capture-and-translate of that
+         region. The literal \n forces a two-line break to match the square
+         button; translators may remove the break if their translation fits
+         on one line. -->
     <string name="floating_menu_btn_capture_region">Capture\nRegion</string>
 
-    <!-- Two-line label on the "Translate once" primary button in the
-         floating-icon menu. Performs a single capture-and-translate of the
-         current region (full screen unless a region is set). The literal \n
-         forces a two-line break to match the square button; translators may
-         remove it if their translation fits on one line. -->
-    <string name="floating_menu_translate_once">Translate\nOnce</string>
+    <!-- Two-line label on the floating-icon menu's capture button while the
+         region is full screen: a single capture-and-translate of the whole
+         screen. The literal \n forces a two-line break to match the square
+         button; translators may remove it if their translation fits on one
+         line. -->
+    <string name="floating_menu_capture_screen">Capture\nScreen</string>
 
     <!-- Accessibility label (TalkBack / tooltip) for the icon-only "Edit
          region" button in the floating-icon menu; opens the capture-region
