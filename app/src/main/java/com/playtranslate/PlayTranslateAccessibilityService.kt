@@ -13,6 +13,7 @@ import android.graphics.Point
 import android.hardware.display.DisplayManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Display
 import android.view.Gravity
@@ -131,11 +132,62 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         PlayTranslateTileService.TileSync.refresh(this)
     }
 
-    /** Wire hotkey callbacks to CaptureService. Safe to call multiple times. */
+    /** Wire hotkey callbacks to CaptureService. Safe to call multiple times.
+     *
+     *  HOLD combos drive the momentary hold-to-preview on [CaptureService];
+     *  TAP combos toggle the persistent auto/live session, routed through the
+     *  active [OverlayUiController] (single- vs dual-screen / InAppOnly) just
+     *  like the floating menu's Auto button. The release leg only matters for
+     *  HOLD (end the preview) — a TAP already did its work on activation. */
     fun registerHotkeyCallbacks() {
         val svc = CaptureService.instance ?: return
-        onHotkeyActivated = { mode -> svc.hotkeyHoldStart(mode) }
-        onHotkeyReleased = { svc.hotkeyHoldEnd() }
+        onHotkeyActivated = { assignment ->
+            when (assignment.trigger) {
+                HotkeyTrigger.HOLD -> {
+                    // Stamp the hold-start so a quick release can be recognised
+                    // as a tap when this combo is also bound to Tap.
+                    hotkeyHoldActivatedAtMs = SystemClock.elapsedRealtime()
+                    svc.hotkeyHoldStart(assignment.mode)
+                }
+                HotkeyTrigger.TAP -> toggleAutoModeOnMain(assignment.mode)
+            }
+        }
+        onHotkeyReleased = { assignment ->
+            if (assignment.trigger == HotkeyTrigger.HOLD) {
+                svc.hotkeyHoldEnd()
+                // Instant-hold + tap-on-quick-release: if the same combo also
+                // carries a Tap and the press was brief, fire the toggle now —
+                // so one key can both preview (hold) and toggle auto (tap).
+                // heldMs is measured here, at release, not at toggle time.
+                val heldMs = SystemClock.elapsedRealtime() - hotkeyHoldActivatedAtMs
+                val tap = tapOnQuickRelease(
+                    releasedHold = assignment,
+                    heldDurationMs = heldMs,
+                    thresholdMs = TAP_HOLD_THRESHOLD_MS,
+                    combos = currentHotkeyCombos(),
+                )
+                if (tap != null) toggleAutoModeOnMain(tap.mode)
+            }
+        }
+    }
+
+    /**
+     * Toggle the auto/live session for [mode], on the main thread. Hotkey
+     * callbacks can fire off the main thread (onKeyEvent — see
+     * [HotkeySetupDialog]), but the live-mode path asserts main
+     * ([CaptureService.setLiveDisplays]). Re-checks [isUserReachable] at run
+     * time so a press landing after the icon is hidden / app backgrounded
+     * doesn't fire a ghost toggle — mirroring the activation gate in
+     * [decideHotkeyAction].
+     */
+    private fun toggleAutoModeOnMain(mode: OverlayMode) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            debugHandler.post { toggleAutoModeOnMain(mode) }
+            return
+        }
+        if (isUserReachable()) {
+            (CaptureBackendResolver.activeOverlayUi ?: overlayUiController).toggleAutoMode(mode)
+        }
     }
 
     /**
@@ -488,42 +540,64 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      */
     private val HOTKEY_COMBO_WINDOW_MS = 60L
 
-    private val heldKeyCodes = mutableSetOf<Int>()
-    private var activeHotkeyMode: OverlayMode? = null
-    private var pendingActivationMode: OverlayMode? = null
+    /**
+     * Longest a hold may last and still count as a "tap" when the same combo is
+     * bound to both Hold and Tap. The hold preview shows immediately on press
+     * (instant hold); releasing under this window also fires the tap toggle (so
+     * the preview just "flashes"), while a longer press is a pure hold. Tunable
+     * — lower it to make quick hold-peeks less likely to register as taps.
+     */
+    private val TAP_HOLD_THRESHOLD_MS = 350L
 
-    /** Callback when a hotkey combo becomes fully held. */
-    var onHotkeyActivated: ((OverlayMode) -> Unit)? = null
-    /** Callback when the active hotkey combo is released. */
-    var onHotkeyReleased: (() -> Unit)? = null
+    private val heldKeyCodes = mutableSetOf<Int>()
+    private var activeHotkeyAssignment: HotkeyAssignment? = null
+    private var pendingActivationAssignment: HotkeyAssignment? = null
+
+    /** [SystemClock.elapsedRealtime] when the current hold preview started.
+     *  Used to classify a quick release as a tap (see [registerHotkeyCallbacks]
+     *  and [tapOnQuickRelease]). Only meaningful while a hold is active. */
+    private var hotkeyHoldActivatedAtMs = 0L
+
+    /** Callback when a hotkey combo activates (HOLD: hold-start preview;
+     *  TAP: toggle the auto session). */
+    var onHotkeyActivated: ((HotkeyAssignment) -> Unit)? = null
+    /** Callback when the active hotkey combo is released (HOLD: hold-end;
+     *  TAP: no-op — the toggle already fired on activation). */
+    var onHotkeyReleased: ((HotkeyAssignment) -> Unit)? = null
 
     private val pendingActivationRunnable = Runnable {
-        val mode = pendingActivationMode ?: return@Runnable
-        pendingActivationMode = null
+        val assignment = pendingActivationAssignment ?: return@Runnable
+        pendingActivationAssignment = null
         // Re-check reachability: the gate may have closed during the
         // deferral window (user backgrounded the app while mid-chord).
         if (!isUserReachable()) {
-            android.util.Log.d("HotkeyDbg", "DEFERRED cancelled (gate closed): $mode")
+            android.util.Log.d("HotkeyDbg", "DEFERRED cancelled (gate closed): $assignment")
             return@Runnable
         }
-        activeHotkeyMode = mode
-        android.util.Log.d("HotkeyDbg", "ACTIVATED (deferred): $mode")
-        onHotkeyActivated?.invoke(mode)
+        activeHotkeyAssignment = assignment
+        android.util.Log.d("HotkeyDbg", "ACTIVATED (deferred): $assignment")
+        onHotkeyActivated?.invoke(assignment)
     }
 
-    private fun parseCombo(stored: String): Set<Int> {
-        if (stored.isBlank()) return emptySet()
-        return stored.split("+").mapNotNull { it.toIntOrNull() }.toSet()
+    /** The active hotkey combos for the *current* source language: read from
+     *  prefs, unset ones dropped, and — matching the Hotkeys page / digest —
+     *  the Furigana/Pinyin combos excluded when the source has no reading hint,
+     *  so a stale binding from a prior language can't fire invisibly. */
+    private fun currentHotkeyCombos(): List<HotkeyCombo> {
+        val prefs = Prefs(this)
+        return buildHotkeyCombos(
+            translationHold = prefs.hotkeyTranslation,
+            furiganaHold = prefs.hotkeyFurigana,
+            translationTap = prefs.hotkeyTranslationTap,
+            furiganaTap = prefs.hotkeyFuriganaTap,
+            hasReadingHint = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind != HintTextKind.NONE,
+        )
     }
 
     private fun checkHotkeyCombos() {
-        val prefs = Prefs(this)
-        val combos = listOf(
-            HotkeyCombo(parseCombo(prefs.hotkeyTranslation), OverlayMode.TRANSLATION),
-            HotkeyCombo(parseCombo(prefs.hotkeyFurigana), OverlayMode.FURIGANA),
-        ).filter { it.keys.isNotEmpty() }
+        val combos = currentHotkeyCombos()
 
-        val state = HotkeyState(activeHotkeyMode, pendingActivationMode)
+        val state = HotkeyState(activeHotkeyAssignment, pendingActivationAssignment)
         val action = decideHotkeyAction(
             held = heldKeyCodes,
             state = state,
@@ -541,33 +615,42 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
             is HotkeyAction.ActivateNow -> {
                 debugHandler.removeCallbacks(pendingActivationRunnable)
-                pendingActivationMode = null
-                activeHotkeyMode = action.mode
-                android.util.Log.d("HotkeyDbg", "ACTIVATED: ${action.mode}")
-                onHotkeyActivated?.invoke(action.mode)
+                pendingActivationAssignment = null
+                // Latch as "active" (so a key-up releases it) only while the keys
+                // are still held. A tap fired on quick-release of a shadowed combo
+                // has its keys already up; latching it would swallow an immediate
+                // re-tap as "still active".
+                val activatedKeys = combos.firstOrNull { it.assignment == action.assignment }?.keys.orEmpty()
+                activeHotkeyAssignment =
+                    if (shouldLatchActive(activatedKeys, heldKeyCodes)) action.assignment else null
+                android.util.Log.d(
+                    "HotkeyDbg",
+                    "ACTIVATED: ${action.assignment} (latched=${activeHotkeyAssignment != null})"
+                )
+                onHotkeyActivated?.invoke(action.assignment)
             }
 
             is HotkeyAction.DeferActivation -> {
                 debugHandler.removeCallbacks(pendingActivationRunnable)
-                pendingActivationMode = action.mode
+                pendingActivationAssignment = action.assignment
                 android.util.Log.d(
                     "HotkeyDbg",
-                    "DEFERRED: ${action.mode} (waiting ${HOTKEY_COMBO_WINDOW_MS}ms for possible superset)"
+                    "DEFERRED: ${action.assignment} (waiting ${HOTKEY_COMBO_WINDOW_MS}ms for possible superset)"
                 )
                 debugHandler.postDelayed(pendingActivationRunnable, HOTKEY_COMBO_WINDOW_MS)
             }
 
             HotkeyAction.Release -> {
-                val released = activeHotkeyMode
-                activeHotkeyMode = null
+                val released = activeHotkeyAssignment
+                activeHotkeyAssignment = null
                 android.util.Log.d("HotkeyDbg", "RELEASED: $released")
-                onHotkeyReleased?.invoke()
+                released?.let { onHotkeyReleased?.invoke(it) }
             }
 
             HotkeyAction.ClearPending -> {
                 debugHandler.removeCallbacks(pendingActivationRunnable)
-                val cleared = pendingActivationMode
-                pendingActivationMode = null
+                val cleared = pendingActivationAssignment
+                pendingActivationAssignment = null
                 android.util.Log.d("HotkeyDbg", "PENDING CLEARED: $cleared")
             }
         }

@@ -1453,6 +1453,58 @@ class OverlayUiController(
         else sendMainActivityIntent(MainActivity.ACTION_STOP_LIVE)
     }
 
+    /**
+     * Toggle the auto/live session for [mode] from a tap hotkey. Each tap
+     * hotkey owns its overlay mode, so the semantics are per-mode (matching
+     * the user's "Tap to start/stop Auto …" rows):
+     *  - live already running in [mode] → stop (turn that auto mode off);
+     *  - live running in the *other* mode → switch to [mode] in place,
+     *    keeping the session running;
+     *  - not live → start the session in [mode].
+     *
+     * Start/stop reuse [onToggleLive]'s exact single- vs dual-screen /
+     * InAppOnly routing. The in-place switch sets [Prefs.overlayMode] and
+     * reconciles: [CaptureService.setLiveDisplays]'s flavor-mismatch detector
+     * rebuilds each per-display mode instance for the new overlay flavor.
+     */
+    fun toggleAutoMode(mode: OverlayMode) {
+        val prefs = Prefs(context)
+        val svc = CaptureService.instance
+        // Auto-translate becomes the most-recently-used primary, mirroring the
+        // floating menu's Auto button.
+        captureIsPreferredPrimary = false
+        if (svc?.isLive == true) {
+            if (prefs.overlayMode == mode) {
+                stopLiveRouted()
+            } else {
+                prefs.overlayMode = mode
+                if (svc.isInAppOnly) {
+                    // In-App Only has no game-screen overlay to swap, and its
+                    // result panel renders the same regardless of overlay mode,
+                    // so reconcileLiveModes (which rebuilds only on a flavor
+                    // change) deliberately no-ops for it. The mode still governs
+                    // hold one-shots and any later game-overlay surface, so the
+                    // pref write above is the real switch; refresh the running
+                    // poll cycle so it isn't left sitting on a stale result.
+                    svc.refreshLiveOverlay()
+                } else {
+                    // Game-overlay surface: rebuild the per-display mode instance
+                    // for the new flavor (Furigana ⇄ Translation).
+                    svc.reconcileLiveModes("hotkey_mode_switch")
+                }
+            }
+        } else {
+            // Start in this hotkey's mode. The pref write is committed before
+            // start/route reads it (same-process, synchronous read-after-write).
+            prefs.overlayMode = mode
+            if (Prefs.shouldUseInAppOnlyMode(context)) {
+                sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
+            } else {
+                startLiveRouted()
+            }
+        }
+    }
+
     private fun sendMainActivityIntent(action: String, targetDisplayId: Int? = null) {
         val intent = Intent(context, MainActivity::class.java).apply {
             this.action = action

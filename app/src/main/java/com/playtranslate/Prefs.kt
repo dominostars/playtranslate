@@ -970,6 +970,16 @@ class Prefs internal constructor(
         get() = sp.getString(KEY_HOTKEY_FURIGANA, "") ?: ""
         set(v) = sp.edit { putString(KEY_HOTKEY_FURIGANA, v) }
 
+    /** Hotkey combo for tap-to-toggle auto translation. Empty = not set. Format: keyCodes joined by "+". */
+    var hotkeyTranslationTap: String
+        get() = sp.getString(KEY_HOTKEY_TRANSLATION_TAP, "") ?: ""
+        set(v) = sp.edit { putString(KEY_HOTKEY_TRANSLATION_TAP, v) }
+
+    /** Hotkey combo for tap-to-toggle auto furigana/pinyin. Empty = not set. Format: keyCodes joined by "+". */
+    var hotkeyFuriganaTap: String
+        get() = sp.getString(KEY_HOTKEY_FURIGANA_TAP, "") ?: ""
+        set(v) = sp.edit { putString(KEY_HOTKEY_FURIGANA_TAP, v) }
+
     /** Capture interval for live mode in seconds. */
     var captureIntervalSec: Float
         get() = sp.getFloat(KEY_CAPTURE_INTERVAL_SEC, DEFAULT_CAPTURE_INTERVAL_SEC).coerceAtLeast(MIN_CAPTURE_INTERVAL_SEC)
@@ -1218,6 +1228,8 @@ class Prefs internal constructor(
         private const val KEY_DEBUG_LOG_GROUPING             = "debug_log_grouping"
         const val KEY_HOTKEY_TRANSLATION                   = "hotkey_translation"
         const val KEY_HOTKEY_FURIGANA                      = "hotkey_furigana"
+        const val KEY_HOTKEY_TRANSLATION_TAP               = "hotkey_translation_tap"
+        const val KEY_HOTKEY_FURIGANA_TAP                  = "hotkey_furigana_tap"
         const val KEY_QUICK_TILE_ADDED                     = "quick_tile_added"
         private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"
         private const val KEY_LAST_YOMITAN_UPDATE_CHECK    = "last_yomitan_update_check"

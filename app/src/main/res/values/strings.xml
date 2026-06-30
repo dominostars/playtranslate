@@ -2568,22 +2568,43 @@
          yet. -->
     <string name="hotkey_not_set_subtitle">Not set</string>
 
-    <!-- Hotkey row title — translation-overlay variant.  Used when the
-         source language has no per-character reading guide. -->
-    <string name="hotkey_show_translations_title">Hotkey: hold to show Translations</string>
+    <!-- Group header above the translation hotkey rows (hold-to-show +
+         tap-to-toggle-auto). -->
+    <string name="hotkey_section_translations">Translations</string>
+
+    <!-- Hotkey row title — hold the combo to momentarily show the
+         translation overlay.  Used when the source language has no
+         per-character reading guide. -->
+    <string name="hotkey_show_translations_title">Hold to show Translations</string>
 
     <!-- Dialog title prompting the user to record a hotkey for the
          translation overlay. -->
     <string name="hotkey_show_translations_dialog_title">Show Translations</string>
 
+    <!-- Hotkey row title — tap the combo to start or stop auto (live)
+         translation. -->
+    <string name="hotkey_auto_translation_title">Tap to start/stop Auto Translate</string>
+
+    <!-- Dialog title prompting the user to record a hotkey for toggling
+         auto translation. -->
+    <string name="hotkey_auto_translation_dialog_title">Auto Translate</string>
+
     <!-- Hotkey row title — reading-hint variant.  %1$s = the localised
          reading-guide name (e.g. "Furigana" for Japanese, "Pinyin" for
          Mandarin). -->
-    <string name="hotkey_show_hint_title">Hotkey: hold to show <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+    <string name="hotkey_show_hint_title">Hold to show <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
 
     <!-- Dialog title prompting the user to record a hotkey for the
          reading-guide overlay. -->
     <string name="hotkey_show_hint_dialog_title">Show <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <!-- Hotkey row title — tap the combo to start or stop auto (live)
+         reading hints.  %1$s = the localised reading-guide name. -->
+    <string name="hotkey_auto_hint_title">Tap to start/stop Auto <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <!-- Dialog title prompting the user to record a hotkey for toggling
+         auto reading hints.  %1$s = the localised reading-guide name. -->
+    <string name="hotkey_auto_hint_dialog_title">Auto <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Capture Display section

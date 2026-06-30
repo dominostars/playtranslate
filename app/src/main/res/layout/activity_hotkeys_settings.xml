@@ -56,11 +56,14 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Hotkeys -->
+            <!-- Translations section: hold-to-show + tap-to-toggle-auto. The
+                 group header text is set in code. -->
+            <include layout="@layout/settings_group_header"
+                android:id="@+id/headerTranslations" />
+
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
                 app:cardBackgroundColor="?attr/ptCard"
                 app:cardCornerRadius="@dimen/pt_radius"
                 app:cardElevation="0dp"
@@ -76,17 +79,59 @@
                         android:id="@+id/rowHotkeyTranslation" />
 
                     <View
-                        android:id="@+id/dividerHotkeyFurigana"
                         android:layout_width="match_parent"
                         android:layout_height="1dp"
                         android:layout_marginStart="@dimen/pt_row_h_padding"
                         android:background="?attr/ptDivider" />
 
                     <include layout="@layout/settings_row_hotkey"
-                        android:id="@+id/rowHotkeyFurigana" />
+                        android:id="@+id/rowHotkeyTranslationTap" />
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
+
+            <!-- Reading-hint section (Furigana / Pinyin / …). Whole section is
+                 hidden for source languages without a reading hint; the group
+                 header text is the resolved hint name, set in code. -->
+            <LinearLayout
+                android:id="@+id/sectionFurigana"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <include layout="@layout/settings_group_header"
+                    android:id="@+id/headerFurigana" />
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:cardBackgroundColor="?attr/ptCard"
+                    app:cardCornerRadius="@dimen/pt_radius"
+                    app:cardElevation="0dp"
+                    app:strokeColor="?attr/ptDivider"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <include layout="@layout/settings_row_hotkey"
+                            android:id="@+id/rowHotkeyFurigana" />
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginStart="@dimen/pt_row_h_padding"
+                            android:background="?attr/ptDivider" />
+
+                        <include layout="@layout/settings_row_hotkey"
+                            android:id="@+id/rowHotkeyFuriganaTap" />
+
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+            </LinearLayout>
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>

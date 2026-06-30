@@ -38,9 +38,10 @@ class HotkeysSettingsViewModelTest {
     }
 
     @Test fun `initial state reflects current prefs`() {
-        Prefs(ctx).hotkeyTranslation = "3+4"
+        Prefs(ctx).apply { hotkeyTranslation = "3+4"; hotkeyTranslationTap = "5+6" }
         val vm = HotkeysSettingsViewModel(app)
         assertEquals("3+4", vm.state.value.translationHotkey)
+        assertEquals("5+6", vm.state.value.translationTapHotkey)
     }
 
     @Test fun `setTranslationHotkey writes through to prefs`() {
@@ -60,6 +61,23 @@ class HotkeysSettingsViewModelTest {
         val vm = HotkeysSettingsViewModel(app)
         vm.setFuriganaHotkey("57")
         assertEquals("57", Prefs(ctx).hotkeyFurigana)
+    }
+
+    @Test fun `tap-hotkey setters write through to prefs`() {
+        val vm = HotkeysSettingsViewModel(app)
+        vm.setTranslationTapHotkey("96")
+        vm.setFuriganaTapHotkey("99+100")
+        assertEquals("96", Prefs(ctx).hotkeyTranslationTap)
+        assertEquals("99+100", Prefs(ctx).hotkeyFuriganaTap)
+    }
+
+    @Test fun `tap-hotkey clearers write through to prefs`() {
+        Prefs(ctx).apply { hotkeyTranslationTap = "1"; hotkeyFuriganaTap = "2" }
+        val vm = HotkeysSettingsViewModel(app)
+        vm.clearTranslationTapHotkey()
+        vm.clearFuriganaTapHotkey()
+        assertEquals("", Prefs(ctx).hotkeyTranslationTap)
+        assertEquals("", Prefs(ctx).hotkeyFuriganaTap)
     }
 
     @Test fun `markQuickTileAdded persists`() {
@@ -86,10 +104,10 @@ class HotkeysSettingsViewModelTest {
         assertFalse(vm.state.value.addTileVisible)
     }
 
-    @Test fun `furigana row is shown for the default Japanese source`() {
+    @Test fun `furigana section is shown for the default Japanese source`() {
         // Default source language (cleared prefs) is Japanese, which has a
-        // furigana hint layer — so the second hotkey row is offered.
+        // furigana hint layer — so the reading-hint section is offered.
         val vm = HotkeysSettingsViewModel(app)
-        assertTrue(vm.state.value.showFuriganaRow)
+        assertTrue(vm.state.value.showFuriganaSection)
     }
 }

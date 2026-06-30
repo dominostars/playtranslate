@@ -33,6 +33,8 @@ class HotkeysSettingsViewModel(app: Application) : AndroidViewModel(app) {
         prefs.observe(
             Prefs.KEY_HOTKEY_TRANSLATION,
             Prefs.KEY_HOTKEY_FURIGANA,
+            Prefs.KEY_HOTKEY_TRANSLATION_TAP,
+            Prefs.KEY_HOTKEY_FURIGANA_TAP,
             Prefs.KEY_QUICK_TILE_ADDED,
         )
             .map { derive() }
@@ -43,8 +45,10 @@ class HotkeysSettingsViewModel(app: Application) : AndroidViewModel(app) {
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
         return HotkeysUiState(
             translationHotkey = prefs.hotkeyTranslation,
-            showFuriganaRow = hintKind != HintTextKind.NONE,
+            translationTapHotkey = prefs.hotkeyTranslationTap,
+            showFuriganaSection = hintKind != HintTextKind.NONE,
             furiganaHotkey = prefs.hotkeyFurigana,
+            furiganaTapHotkey = prefs.hotkeyFuriganaTap,
             hintKind = hintKind,
             // The QS-tile cell exists only on API 33+ (StatusBarManager
             // .requestAddTileService). It stays visible after the tile is added,
@@ -58,13 +62,19 @@ class HotkeysSettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun clearTranslationHotkey() { prefs.hotkeyTranslation = "" }
     fun setFuriganaHotkey(combo: String) { prefs.hotkeyFurigana = combo }
     fun clearFuriganaHotkey() { prefs.hotkeyFurigana = "" }
+    fun setTranslationTapHotkey(combo: String) { prefs.hotkeyTranslationTap = combo }
+    fun clearTranslationTapHotkey() { prefs.hotkeyTranslationTap = "" }
+    fun setFuriganaTapHotkey(combo: String) { prefs.hotkeyFuriganaTap = combo }
+    fun clearFuriganaTapHotkey() { prefs.hotkeyFuriganaTap = "" }
     fun markQuickTileAdded() { prefs.quickTileAdded = true }
 }
 
 data class HotkeysUiState(
     val translationHotkey: String,
-    val showFuriganaRow: Boolean,
+    val translationTapHotkey: String,
+    val showFuriganaSection: Boolean,
     val furiganaHotkey: String,
+    val furiganaTapHotkey: String,
     val hintKind: HintTextKind,
     val addTileVisible: Boolean,
     val tileAdded: Boolean,

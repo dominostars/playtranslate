@@ -45,16 +45,29 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
 
     private lateinit var cardQuickTile: MaterialCardView
     private lateinit var rowAddQuickTile: View
+    private lateinit var headerTranslations: View
     private lateinit var rowHotkeyTranslation: View
+    private lateinit var rowHotkeyTranslationTap: View
+    private lateinit var sectionFurigana: View
+    private lateinit var headerFurigana: View
     private lateinit var rowHotkeyFurigana: View
-    private lateinit var dividerHotkeyFurigana: View
+    private lateinit var rowHotkeyFuriganaTap: View
 
     override fun onContentCreated(savedInstanceState: Bundle?) {
         cardQuickTile = findViewById(R.id.cardQuickTile)
         rowAddQuickTile = findViewById(R.id.rowAddQuickTile)
+        headerTranslations = findViewById(R.id.headerTranslations)
         rowHotkeyTranslation = findViewById(R.id.rowHotkeyTranslation)
+        rowHotkeyTranslationTap = findViewById(R.id.rowHotkeyTranslationTap)
+        sectionFurigana = findViewById(R.id.sectionFurigana)
+        headerFurigana = findViewById(R.id.headerFurigana)
         rowHotkeyFurigana = findViewById(R.id.rowHotkeyFurigana)
-        dividerHotkeyFurigana = findViewById(R.id.dividerHotkeyFurigana)
+        rowHotkeyFuriganaTap = findViewById(R.id.rowHotkeyFuriganaTap)
+
+        // The Translations header is static; the reading-hint header text is
+        // the resolved hint name, set per-render (see render()).
+        headerTranslations.findViewById<TextView>(R.id.tvGroupTitle)
+            .setText(R.string.hotkey_section_translations)
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -74,14 +87,22 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
             onSet = vm::setTranslationHotkey,
             onClear = vm::clearTranslationHotkey,
         )
+        renderHotkeyRow(
+            row = rowHotkeyTranslationTap,
+            title = getString(R.string.hotkey_auto_translation_title),
+            hotkey = state.translationTapHotkey,
+            dialogTitle = getString(R.string.hotkey_auto_translation_dialog_title),
+            onSet = vm::setTranslationTapHotkey,
+            onClear = vm::clearTranslationTapHotkey,
+        )
 
-        rowHotkeyFurigana.isVisible = state.showFuriganaRow
-        dividerHotkeyFurigana.isVisible = state.showFuriganaRow
-        if (state.showFuriganaRow) {
+        sectionFurigana.isVisible = state.showFuriganaSection
+        if (state.showFuriganaSection) {
             val hintLabel = when (state.hintKind) {
                 HintTextKind.PINYIN -> getString(R.string.overlay_mode_option_pinyin)
                 else -> getString(R.string.overlay_mode_option_furigana)
             }
+            headerFurigana.findViewById<TextView>(R.id.tvGroupTitle).text = hintLabel
             renderHotkeyRow(
                 row = rowHotkeyFurigana,
                 title = getString(R.string.hotkey_show_hint_title, hintLabel),
@@ -89,6 +110,14 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
                 dialogTitle = getString(R.string.hotkey_show_hint_dialog_title, hintLabel),
                 onSet = vm::setFuriganaHotkey,
                 onClear = vm::clearFuriganaHotkey,
+            )
+            renderHotkeyRow(
+                row = rowHotkeyFuriganaTap,
+                title = getString(R.string.hotkey_auto_hint_title, hintLabel),
+                hotkey = state.furiganaTapHotkey,
+                dialogTitle = getString(R.string.hotkey_auto_hint_dialog_title, hintLabel),
+                onSet = vm::setFuriganaTapHotkey,
+                onClear = vm::clearFuriganaTapHotkey,
             )
         }
     }

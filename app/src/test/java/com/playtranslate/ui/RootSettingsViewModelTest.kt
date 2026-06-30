@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.app.Application
 import android.content.Context
 import android.content.pm.PackageInfo
+import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.AnkiManager
 import com.playtranslate.OverlayMode
@@ -278,6 +279,45 @@ class RootSettingsViewModelTest {
         }
         // Korean → HintTextKind.NONE → the leftover furigana hotkey must not show.
         assertEquals("No hotkeys set", RootSettingsViewModel(app).state.value.hotkeysSummary)
+    }
+
+    @Test @Config(sdk = [34])
+    fun `tap-only hotkeys count toward the digest category`() {
+        // Only the tap (auto-toggle) variants are bound — the category names
+        // still surface, since the digest names the category not the trigger.
+        Prefs(ctx).apply {
+            quickTileAdded = true
+            hotkeyTranslation = ""; hotkeyFurigana = ""
+            hotkeyTranslationTap = "ctrl+t"; hotkeyFuriganaTap = "ctrl+f"
+        }
+        assertEquals("Translation, Furigana", RootSettingsViewModel(app).state.value.hotkeysSummary)
+    }
+
+    @Test @Config(sdk = [34])
+    fun `stale tap hint hotkey is not advertised without a hint layer`() {
+        Prefs(ctx).apply {
+            sourceLang = "ko"; quickTileAdded = true
+            hotkeyTranslation = ""; hotkeyFurigana = ""
+            hotkeyTranslationTap = ""; hotkeyFuriganaTap = "ctrl+f"
+        }
+        // Korean → HintTextKind.NONE → the leftover tap furigana hotkey is hidden.
+        assertEquals("No hotkeys set", RootSettingsViewModel(app).state.value.hotkeysSummary)
+    }
+
+    @Test @Config(sdk = [34])
+    fun `hotkeys summary reacts to a tap-hotkey edit after construction`() {
+        // Reactive, not just seeded: the VM is already alive when a tap-only
+        // hotkey is added from the Hotkeys page. The summary only refreshes if
+        // the tap-hotkey prefs are in observe()'s key list. (Codex review:
+        // the digest counted the tap keys but didn't observe them.)
+        Prefs(ctx).quickTileAdded = true // drop the Add-tile prefix from the digest
+        val vm = RootSettingsViewModel(app)
+        assertEquals("No hotkeys set", vm.state.value.hotkeysSummary)
+
+        Prefs(ctx).hotkeyTranslationTap = "ctrl+t"
+        shadowOf(Looper.getMainLooper()).idle() // flush the observe → recompute
+
+        assertEquals("Translation", vm.state.value.hotkeysSummary)
     }
 
     @Test fun `appearance digest is theme mode + accent name`() {

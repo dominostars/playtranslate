@@ -154,6 +154,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             prefs.observe(
                 Prefs.KEY_SOURCE_LANG, Prefs.KEY_TARGET_LANG, Prefs.KEY_TARGET_CHINESE_VARIANT,
                 Prefs.KEY_QUICK_TILE_ADDED, Prefs.KEY_HOTKEY_TRANSLATION, Prefs.KEY_HOTKEY_FURIGANA,
+                Prefs.KEY_HOTKEY_TRANSLATION_TAP, Prefs.KEY_HOTKEY_FURIGANA_TAP,
                 Prefs.KEY_THEME_MODE, Prefs.KEY_ACCENT_NAME,
             ).collect {
                 _state.value = _state.value.copy(
@@ -229,11 +230,15 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun hotkeysDigest(): String {
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
-        val hasTranslation = prefs.hotkeyTranslation.isNotEmpty()
+        // Each category covers both its hold (show) and tap (auto-toggle)
+        // hotkey — the digest names the category, so either being bound counts.
+        val hasTranslation =
+            prefs.hotkeyTranslation.isNotEmpty() || prefs.hotkeyTranslationTap.isNotEmpty()
         // A leftover furigana hotkey from a prior language must not surface when
         // the current source has no hint layer — matches the Hotkeys page hiding
-        // that row for HintTextKind.NONE.
-        val hasHint = prefs.hotkeyFurigana.isNotEmpty() && hintKind != HintTextKind.NONE
+        // that section for HintTextKind.NONE.
+        val hasHint = (prefs.hotkeyFurigana.isNotEmpty() || prefs.hotkeyFuriganaTap.isNotEmpty()) &&
+            hintKind != HintTextKind.NONE
         val hintLabel = str(
             if (hintKind == HintTextKind.PINYIN) R.string.settings_hotkeys_pinyin
             else R.string.settings_hotkeys_furigana,
