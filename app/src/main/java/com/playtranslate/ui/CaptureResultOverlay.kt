@@ -580,10 +580,17 @@ class CaptureResultOverlay(
         b.targetHeaderHeight() + b.targetContentOverhead() + targetCardInsetPx
 
     /** Stacked non-text chrome, summed from STABLE parts (the min-height the fill
-     *  sets would otherwise inflate a `contentRow.height − text` reading). */
-    private fun stackedChrome(b: TranslationSectionBinder): Int =
-        stackedNonCardPx + sourceCardInsetPx + targetCardInsetPx +
-            b.sourceContentOverhead() + b.targetContentOverhead()
+     *  sets would otherwise inflate a `contentRow.height − text` reading). A hidden
+     *  section's card is GONE (its inset + content overhead — padding + the note row —
+     *  no longer render), so those drop out just like its text does; only its header
+     *  survives, kept in [stackedNonCardPx]. Without this the panel reserves a dead
+     *  card-chrome strip for the hidden section and grows as if it were still shown. */
+    private fun stackedChrome(b: TranslationSectionBinder): Int {
+        var chrome = stackedNonCardPx
+        if (!prefs.hideOriginalSection) chrome += sourceCardInsetPx + b.sourceContentOverhead()
+        if (!prefs.hideTranslationSection) chrome += targetCardInsetPx + b.targetContentOverhead()
+        return chrome
+    }
 
     /** Stacked: split the card area between the two cards in proportion to each
      *  section's content-at-max, so both fill the panel (no gap below) and each
