@@ -35,21 +35,39 @@ class MangaOcrSession private constructor(
     private val vocab: List<String>,
 ) : Closeable {
 
-    /** One decode result. [hitCap] is true when decode reached [MAX_LEN] without ever
-     *  emitting EOS — the text is truncated (or a runaway on a non-text crop), so the
-     *  caller should treat it as untrustworthy rather than a complete reading. */
+    /** One decode result. [hitCap] is true when decode stopped without ever emitting
+     *  EOS — it hit the caller's token budget (truncated, or a runaway on a non-text
+     *  crop) or the caller's `shouldContinue` aborted it — so the caller should treat
+     *  the text as untrustworthy rather than a complete reading. */
     data class Reading(val text: String, val hitCap: Boolean)
 
-    /** Recognize one crop ([cropBgr], any 3-channel Mat — grayscaled internally). */
-    fun recognize(cropBgr: Mat): Reading {
+    /**
+     * Recognize one crop ([cropBgr], any 3-channel Mat — grayscaled internally).
+     *
+     * [maxTokens] caps the decode steps (clamped to [MAX_LEN]). The no-KV-cache
+     * decoder makes a runaway decode quadratic-expensive (a full [MAX_LEN] runaway is
+     * ~7s on the Thor, discarded via [Reading.hitCap] anyway), so callers that know
+     * how long the text should be MUST pass a budget — the refiner derives one from
+     * the base engine's reading. [shouldContinue] is polled between decode steps so a
+     * cancelled caller (superseded frame) aborts mid-decode instead of finishing a
+     * doomed one; an aborted reading comes back empty with `hitCap = true`, which the
+     * caller's guards already discard.
+     */
+    fun recognize(
+        cropBgr: Mat,
+        maxTokens: Int = MAX_LEN,
+        shouldContinue: () -> Boolean = { true },
+    ): Reading {
         if (cropBgr.cols() < 2 || cropBgr.rows() < 2) return Reading("", hitCap = false)
         val enc = encoder.run(preprocess(cropBgr), intArrayOf(1, 3, IMG, IMG))
         val encData = enc.data  // [1, ENC_SEQ, ENC_DIM] flattened
 
-        val ids = ArrayList<Int>(MAX_LEN + 1)
+        val cap = maxTokens.coerceIn(1, MAX_LEN)
+        val ids = ArrayList<Int>(cap + 1)
         ids += START
         var hitCap = true                                     // flips false iff EOS breaks the loop
-        for (step in 0 until MAX_LEN) {
+        for (step in 0 until cap) {
+            if (!shouldContinue()) return Reading("", hitCap = true)
             val outs = decoder.run(listOf(
                 NamedTensor("input_ids", intArrayOf(1, ids.size), TensorData.Ints(ids.toIntArray())),
                 NamedTensor("encoder_hidden_states", intArrayOf(1, ENC_SEQ, ENC_DIM), TensorData.Floats(encData)),
@@ -99,9 +117,9 @@ class MangaOcrSession private constructor(
         private const val ENC_DIM = 192      // DeiT-tiny hidden
         private const val START = 2          // [CLS]
         private const val EOS = 3            // [SEP]
-        private const val MAX_LEN = 300     // the model's own generation_config max_length
-                                            // (decoder ceiling = 512). Was 64 — a carried-over
-                                            // spike-harness default that truncated long lines.
+        internal const val MAX_LEN = 300    // the model's own generation_config max_length
+                                            // (decoder ceiling = 512); the hard ceiling on any
+                                            // caller-supplied token budget.
         private val SPECIALS = setOf("[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]")
 
         /** Greedy argmax over the vocab slice at [base], skipping tokens that

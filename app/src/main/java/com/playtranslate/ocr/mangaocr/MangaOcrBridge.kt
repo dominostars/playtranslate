@@ -1,7 +1,6 @@
 package com.playtranslate.ocr.mangaocr
 
 import android.util.Log
-import com.playtranslate.ocr.core.TextRecognizer
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
@@ -35,13 +34,14 @@ object MangaOcrBridge {
     @Volatile private var triedInit = false
 
     /**
-     * Run [block] with a [TextRecognizer] over the shared session, holding [lock] for the
-     * whole scope. Returns null (block NOT run) when the model isn't loadable — the
-     * caller's base result then stands. The recognizer's per-frame bitmap→BGR cache is
-     * released on exit; the session is reused across frames (closed only by [close] /
-     * [closeForTrim]).
+     * Run [block] with a [MangaOcrRecognizer] over the shared session, holding [lock] for
+     * the whole scope. The block gets the concrete recognizer (not the [com.playtranslate
+     * .ocr.core.TextRecognizer] interface) so the refiner can drive the budgeted decode
+     * overload. Returns null (block NOT run) when the model isn't loadable — the caller's
+     * base result then stands. The recognizer's per-frame bitmap→BGR cache is released on
+     * exit; the session is reused across frames (closed only by [close] / [closeForTrim]).
      */
-    suspend fun <T> withRecognizer(block: suspend (TextRecognizer) -> T): T? =
+    suspend fun <T> withRecognizer(block: suspend (MangaOcrRecognizer) -> T): T? =
         lock.withLock {
             val s = sessionOrNull() ?: return@withLock null
             val recognizer = MangaOcrRecognizer(s)

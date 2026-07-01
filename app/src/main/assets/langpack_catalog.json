@@ -47,7 +47,7 @@
       "script": "",
       "bundled": false,
       "packVersion": 1,
-      "_placeholder": "NOT YET HOSTED — sizes are 0 and sha256 are placeholders, so OcrPackModelHelper.isShippable() returns false and the 'Use MangaOCR' settings cell stays hidden. To go live: convert l0wgear/manga-ocr-2025 to encoder.mnn + decoder.mnn (fp16) + vocab.txt, upload to the URLs below, and replace every size + sha256 with the real values. See ~/.claude/plans/abstract-meandering-hopper.md.",
+      "_placeholder": "NOT YET HOSTED — sizes are 0 and sha256 are placeholders, so OcrPackModelHelper.isShippable() returns false and the 'Use MangaOCR' settings cell stays hidden. To go live: convert l0wgear/manga-ocr-2025 to encoder.mnn + decoder.mnn (fp16) + vocab.txt, upload to the URLs below, and replace every size + sha256 with the real values.",
       "size": 0,
       "files": [
         {

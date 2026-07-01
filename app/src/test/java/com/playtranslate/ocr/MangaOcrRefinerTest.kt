@@ -7,13 +7,10 @@ import com.playtranslate.language.TextOrientation
 import com.playtranslate.ocr.core.DetectedRegion
 import com.playtranslate.ocr.core.LayoutGroup
 import com.playtranslate.ocr.core.OcrBox
-import com.playtranslate.ocr.core.OcrCapabilities
 import com.playtranslate.ocr.core.OcrImage
-import com.playtranslate.ocr.core.OcrOrientationSupport
 import com.playtranslate.ocr.core.RecognizedLine
 import com.playtranslate.ocr.core.RecognizedRegion
 import com.playtranslate.ocr.core.RegionOrigin
-import com.playtranslate.ocr.core.TextRecognizer
 import com.playtranslate.ocr.core.synthesizeEvenCharBoxes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
@@ -26,42 +23,49 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Behavioural tests for [MangaOcrRefiner.refineWith] via an injected fake recognizer
- * (the production [MangaOcrRefiner.refine] supplies MangaOcrBridge's real MNN session,
- * which a unit test can't load). Robolectric for `Rect`/`Bitmap`.
+ * Behavioural tests for [MangaOcrRefiner.refineWith] via an injected fake
+ * [MangaOcrRefiner.BlockReader] (the production [MangaOcrRefiner.refine] supplies
+ * MangaOcrBridge's real MNN session, which a unit test can't load). Robolectric for
+ * `Rect`/`Bitmap`.
  *
- * Serialization (the frame-level [kotlinx.coroutines.sync.Mutex]) is a structural
- * property mirrored from DetectThenRecognize and not asserted here — a timing-based
- * concurrency test would be flaky.
+ * Block mode: ONE decode per eligible [LayoutGroup] (both orientations), spliced
+ * back per line through [com.playtranslate.ocr.core.BlockTextAligner] — whose own
+ * geometry/guard behavior is pinned by BlockTextAlignerTest; here we assert the
+ * refiner-level policy (eligibility gates, decode budget, normalization, adoption
+ * vs rejection, best-effort fault handling).
+ *
+ * Serialization (the bridge [kotlinx.coroutines.sync.Mutex]) is a structural
+ * property and not asserted here — a timing-based concurrency test would be flaky.
  */
 @RunWith(RobolectricTestRunner::class)
 class MangaOcrRefinerTest {
 
     private val bitmap: Bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
 
-    /** Returns canned text keyed on the region's top edge (mirrors what
-     *  MangaOcrRecognizer emits: text + synthesized chars). Missing/blank → null. */
-    private class FakeRecognizer(private val byTop: Map<Int, String>) : TextRecognizer {
+    /** Returns canned block text keyed on the requested region's top edge (block mode:
+     *  the region is the GROUP bounds). Records call count + the budget it was given.
+     *  Missing/blank → null (decode declined). */
+    private class FakeReader(private val byTop: Map<Int, String>) : MangaOcrRefiner.BlockReader {
         var calls = 0
-        override val capabilities = OcrCapabilities(
-            OcrOrientationSupport.BOTH, true, false, false, false, true, false,
-        )
+        var lastMaxTokens = -1
 
-        override suspend fun recognize(image: OcrImage, region: DetectedRegion): RecognizedRegion? {
+        override suspend fun read(
+            image: OcrImage,
+            region: DetectedRegion,
+            maxTokens: Int,
+        ): RecognizedRegion? {
             calls++
+            lastMaxTokens = maxTokens
             val text = byTop[region.box.bounds.top]?.takeIf { it.isNotBlank() } ?: return null
-            val line = RecognizedLine(
-                text = text,
-                box = region.box,
-                orientation = region.orientation,
-                chars = synthesizeEvenCharBoxes(
-                    text, region.box.bounds, region.orientation == TextOrientation.VERTICAL,
-                ),
-            )
+            val line = RecognizedLine(text, region.box, region.orientation)
             return RecognizedRegion(text, region.box, region.orientation, -1f, listOf(line), RegionOrigin.LINE)
         }
+    }
 
-        override fun close() {}
+    /** A reader that throws on every call (simulating an OpenCV/MNN native fault). */
+    private class FailingReader(private val ex: () -> Throwable) : MangaOcrRefiner.BlockReader {
+        override suspend fun read(image: OcrImage, region: DetectedRegion, maxTokens: Int): RecognizedRegion? =
+            throw ex()
     }
 
     private fun line(text: String, top: Int, vertical: Boolean) = RecognizedLine(
@@ -79,23 +83,34 @@ class MangaOcrRefinerTest {
     )
 
     @Test
-    fun `vertical line with changed text is replaced and the group is re-joined`() = runBlocking {
-        val g = group(listOf(line("あ", 0, true), line("い", 100, true)), vertical = true)
-        val fake = FakeRecognizer(mapOf(0 to "ア", 100 to "い")) // line 0 changes, line 1 same
+    fun `an eligible group is decoded once as a whole block and spliced per line`() = runBlocking {
+        val g = group(listOf(line("いたい", 0, true), line("何をする", 100, true)), vertical = true)
+        val fake = FakeReader(mapOf(0 to "いったい何をする")) // base engine dropped the っ
         val rg = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").single()
 
-        assertEquals("re-joined with no separator for ja", "アい", rg.text)
-        assertEquals("ア", rg.lines[0].text)
-        assertTrue("replaced line gets synthesized chars", rg.lines[0].chars.isNotEmpty())
-        assertEquals("い", rg.lines[1].text)
+        assertEquals("one decode per group, not per line", 1, fake.calls)
+        assertEquals("re-joined with no separator for ja", "いったい何をする", rg.text)
+        assertEquals("いったい", rg.lines[0].text)
+        assertTrue("adopted line gets a char tier", rg.lines[0].chars.isNotEmpty())
+        assertSame("untouched line keeps its instance", g.lines[1], rg.lines[1])
     }
 
     @Test
-    fun `vertical line with identical text keeps the base line and its real boxes`() = runBlocking {
+    fun `horizontal groups are eligible in block mode`() = runBlocking {
+        val g = group(listOf(line("平く", 0, false)), vertical = false)
+        val fake = FakeReader(mapOf(0 to "早く"))
+        val rg = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").single()
+
+        assertEquals(1, fake.calls)
+        assertEquals("早く", rg.text)
+    }
+
+    @Test
+    fun `an identical reading keeps the group instance and its real boxes`() = runBlocking {
         val baseChars = synthesizeEvenCharBoxes("い", Rect(0, 0, 40, 40), vertical = true)
         val base = line("い", 0, true).copy(chars = baseChars)
         val g = group(listOf(base), vertical = true)
-        val fake = FakeRecognizer(mapOf(0 to "い")) // same text → no change
+        val fake = FakeReader(mapOf(0 to "い"))
 
         val out = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja")
         assertSame("an unchanged group is returned as the same instance", g, out.single())
@@ -103,64 +118,117 @@ class MangaOcrRefinerTest {
     }
 
     @Test
-    fun `horizontal lines are never sent to manga-ocr`() = runBlocking {
-        val g = group(listOf(line("hello", 0, false)), vertical = false)
-        val fake = FakeRecognizer(mapOf(0 to "XXXXX")) // would change if (wrongly) called
+    fun `a reading that fails alignment is rejected and the base kept`() = runBlocking {
+        // Same length, zero agreement — a confident hallucination. The old per-line
+        // "differs → adopt" policy would have taken it; the aligner's match-rate
+        // guard must not.
+        val g = group(listOf(line("こんにちは", 0, true)), vertical = true)
+        val fake = FakeReader(mapOf(0 to "ありがとう"))
 
         val out = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja")
-        assertSame(g, out.single())
-        assertEquals("recognizer is not invoked for horizontal lines", 0, fake.calls)
+        assertEquals(1, fake.calls)
+        assertSame("an unalignable reading must not replace the base", g, out.single())
     }
 
     @Test
-    fun `blank or missing recognition leaves the base line untouched`() = runBlocking {
-        val g = group(listOf(line("あ", 0, true)), vertical = true)
-        val fake = FakeRecognizer(emptyMap()) // recognizer returns null
+    fun `a group with an over-long line is ineligible - never decoded`() = runBlocking {
+        // 21 chars on one line: past the squash-resolution gate (MAX_LINE_CHARS=20),
+        // exactly the shape the findings report shows manga-ocr garbling.
+        val g = group(listOf(line("あ".repeat(21), 0, false)), vertical = false)
+        val fake = FakeReader(mapOf(0 to "X".repeat(21)))
 
         val out = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja")
+        assertSame(g, out.single())
+        assertEquals("ineligible group must not reach the reader", 0, fake.calls)
+    }
+
+    @Test
+    fun `a group with too many lines is ineligible`() = runBlocking {
+        val lines = (0 until 9).map { line("あ", it * 50, true) } // MAX_LINES = 8
+        val g = group(lines, vertical = true)
+        val fake = FakeReader(mapOf(0 to "あああああああああ"))
+
+        assertSame(g, MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").single())
+        assertEquals(0, fake.calls)
+    }
+
+    @Test
+    fun `a group with slanted text is ineligible`() = runBlocking {
+        val slanted = RecognizedLine(
+            text = "あい",
+            box = OcrBox(Rect(0, 0, 40, 40), 40f, 40f, angleDeg = 45f),
+            orientation = TextOrientation.HORIZONTAL,
+        )
+        val g = LayoutGroup("あい", listOf(slanted), Rect(0, 0, 40, 40), TextOrientation.HORIZONTAL, TextAlignment.LEFT)
+        val fake = FakeReader(mapOf(0 to "うえ"))
+
+        assertSame(g, MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").single())
+        assertEquals(0, fake.calls)
+    }
+
+    @Test
+    fun `ineligible groups are skipped while eligible ones still refine`() = runBlocking {
+        val eligible = group(listOf(line("いたい", 0, true)), vertical = true)
+        val oversized = group(listOf(line("あ".repeat(21), 500, false)), vertical = false)
+        val fake = FakeReader(mapOf(0 to "いったい"))
+
+        val out = MangaOcrRefiner.refineWith(fake, listOf(eligible, oversized), bitmap, "ja")
+        assertEquals(1, fake.calls)
+        assertEquals("いったい", out[0].text)
+        assertSame(oversized, out[1])
+    }
+
+    @Test
+    fun `the decode budget scales with the base reading length`() = runBlocking {
+        val g = group(listOf(line("いたい何をする", 0, true)), vertical = true) // 7 chars
+        val fake = FakeReader(mapOf(0 to "いたい何をする"))
+
+        MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja")
+        assertEquals(MangaOcrRefiner.budgetFor(7), fake.lastMaxTokens)
+        assertEquals("~1.5× base + slack", 14, fake.lastMaxTokens)
+    }
+
+    @Test
+    fun `blank or missing recognition leaves the base group untouched`() = runBlocking {
+        val g = group(listOf(line("あ", 0, true)), vertical = true)
+        val fake = FakeReader(emptyMap()) // reader returns null
+
+        val out = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja")
+        assertEquals(1, fake.calls)
         assertSame(g, out.single())
     }
 
     @Test
-    fun `a junk-only candidate (cursor arrow) is dropped, base line preserved`() = runBlocking {
+    fun `a junk-only candidate (cursor arrow) is dropped, base group preserved`() = runBlocking {
         val g = group(listOf(line("あ", 0, true)), vertical = true)
-        val fake = FakeRecognizer(mapOf(0 to "▼")) // normalizes away to nothing
+        val fake = FakeReader(mapOf(0 to "▼")) // normalizes away to nothing
         val out = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja")
         assertSame("a candidate that cleans to nothing must not replace the base", g, out.single())
     }
 
     @Test
-    fun `a candidate is normalized (edge pipes stripped) before adoption`() = runBlocking {
-        val g = group(listOf(line("あ", 0, true)), vertical = true)
-        val fake = FakeRecognizer(mapOf(0 to "|ありがとう|")) // leading/trailing pipes are edge junk
+    fun `a candidate is normalized (edge pipes stripped) before alignment`() = runBlocking {
+        val g = group(listOf(line("いたい", 0, true)), vertical = true)
+        val fake = FakeReader(mapOf(0 to "|いったい|")) // leading/trailing pipes are edge junk
         val rg = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").single()
-        assertEquals("ありがとう", rg.lines[0].text)
-        assertEquals("ありがとう", rg.text)
+        assertEquals("いったい", rg.lines[0].text)
+        assertEquals("いったい", rg.text)
     }
 
     @Test
-    fun `a candidate that normalizes back to the base text keeps the base line`() = runBlocking {
+    fun `a candidate that normalizes back to the base text keeps the base group`() = runBlocking {
         val g = group(listOf(line("ありがとう", 0, true)), vertical = true)
-        val fake = FakeRecognizer(mapOf(0 to "ありがとう▼")) // trailing cursor stripped -> == base
+        val fake = FakeReader(mapOf(0 to "ありがとう▼")) // trailing cursor stripped -> == base
         assertSame(
-            "a candidate equal to base after cleaning preserves the base line (real boxes)",
+            "a candidate equal to base after cleaning preserves the base group (real boxes)",
             g, MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").single(),
         )
     }
 
-    /** A recognizer that throws on every call (simulating an OpenCV/MNN native fault). */
-    private class FailingRecognizer(private val ex: () -> Throwable) : TextRecognizer {
-        override val capabilities = OcrCapabilities(
-            OcrOrientationSupport.BOTH, true, false, false, false, true, false,
-        )
-        override suspend fun recognize(image: OcrImage, region: DetectedRegion): RecognizedRegion? = throw ex()
-        override fun close() {}
-    }
-
     @Test
-    fun `a recognizer failure keeps the base groups (best-effort, never sinks the capture)`() = runBlocking {
+    fun `a reader failure keeps the base groups (best-effort, never sinks the capture)`() = runBlocking {
         val g = group(listOf(line("あ", 0, true)), vertical = true)
-        val boom = FailingRecognizer { RuntimeException("native decode failed") }
+        val boom = FailingReader { RuntimeException("native decode failed") }
 
         val out = MangaOcrRefiner.refineWith(boom, listOf(g), bitmap, "ja")
         assertSame("base OCR result must survive a refinement failure", g, out.single())
@@ -169,7 +237,7 @@ class MangaOcrRefinerTest {
     @Test
     fun `cancellation propagates rather than being swallowed as best-effort`() = runBlocking {
         val g = group(listOf(line("あ", 0, true)), vertical = true)
-        val cancelling = FailingRecognizer { CancellationException("superseded frame") }
+        val cancelling = FailingReader { CancellationException("superseded frame") }
         try {
             MangaOcrRefiner.refineWith(cancelling, listOf(g), bitmap, "ja")
             fail("expected CancellationException to propagate")

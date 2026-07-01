@@ -863,6 +863,14 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private fun setMangaOcrEnabled(on: Boolean) {
         prefs.useMangaOcr = on
         MangaOcrProvisioning.refresh(this)
+        if (!on) {
+            // Reclaim the session's ~71MB native now: TRIM_MEMORY_COMPLETE targets cached
+            // processes, which a process hosting a bound accessibility service rarely
+            // drops to, so "off but kept" would otherwise hold the model until process
+            // death. Locked close — waits out an in-flight refine; the gate (already off)
+            // stops new ones. Re-enable rebuilds lazily (refresh() re-armed init).
+            lifecycleScope.launch { MangaOcrBridge.close() }
+        }
         setupOcrSection()
     }
 
