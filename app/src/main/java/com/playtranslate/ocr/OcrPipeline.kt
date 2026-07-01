@@ -32,8 +32,15 @@ object OcrPipeline {
     /** Grouped paragraphs in the engine's input-coordinate space, plus the
      *  factor to divide box coordinates by to reach original-bitmap space and the
      *  [backend] that actually ran (null = the no-OCR empty engine), so the caller
-     *  can attribute the result to a specific OCR tool. */
-    data class Output(val groups: List<LayoutGroup>, val scaleFactor: Float, val backend: OcrBackend?)
+     *  can attribute the result to a specific OCR tool. [mangaOcrUsed] is true when
+     *  the manga-ocr refiner decoded at least one block of this result — the caller
+     *  extends the attribution to "… + MangaOCR". */
+    data class Output(
+        val groups: List<LayoutGroup>,
+        val scaleFactor: Float,
+        val backend: OcrBackend?,
+        val mangaOcrUsed: Boolean = false,
+    )
 
     suspend fun run(
         engineProvider: () -> ResolvedOcr,
@@ -86,9 +93,14 @@ object OcrPipeline {
                 if (refineWithMangaOcr) {
                     MangaOcrRefiner.refine(groups, processed, sourceLang, logText = logGrouping)
                 } else {
-                    groups
+                    null
                 }
-            Output(refined, scaleFactor, resolved.backend)
+            Output(
+                groups = refined?.groups ?: groups,
+                scaleFactor = scaleFactor,
+                backend = resolved.backend,
+                mangaOcrUsed = (refined?.decodedBlocks ?: 0) > 0,
+            )
         } finally {
             if (processed !== bitmap) processed.recycle()
         }

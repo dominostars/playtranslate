@@ -91,6 +91,23 @@ object MangaOcrRefiner {
         suspend fun read(image: OcrImage, region: DetectedRegion, maxTokens: Int): RecognizedRegion?
     }
 
+    /**
+     * One refinement pass's outcome: the (possibly refined) [groups], plus how many
+     * of them manga-ocr actually READ — a non-null reading that survived
+     * normalization and reached the aligner. An alignment-rejected reading counts
+     * (it was decoded; the guards just kept the base), but a no-output attempt —
+     * blank decode, hit-cap runaway, aborted, degenerate crop, normalized-to-junk —
+     * does not: attribution must never credit MangaOCR for a capture where every
+     * attempt produced nothing usable. [decodedBlocks] == 0 also covers the model
+     * never running (nothing eligible, model not loadable, pass failed). The caller
+     * surfaces `decodedBlocks > 0` as the "Scanned by … + MangaOCR" attribution.
+     */
+    data class Refined(val groups: List<LayoutGroup>, val decodedBlocks: Int)
+
+    /** One group's refinement outcome: the kept-or-adopted [group], plus whether a
+     *  usable reading was obtained for it (see [Refined.decodedBlocks]). */
+    private data class GroupOutcome(val group: LayoutGroup, val decoded: Boolean)
+
     /** Decode-step budget for a block whose base reading has [baseLen] chars.
      *  [BlockTextAligner]'s gap-rate guard auto-rejects any reading past ~1.5× the
      *  base length, so steps beyond that are guaranteed-rejected work; +4 slack
@@ -112,10 +129,11 @@ object MangaOcrRefiner {
     }
 
     /**
-     * Returns [groups] with eligible groups re-read by manga-ocr where the aligned
-     * reading differs from the base. A no-op (returns the input) when nothing is
-     * eligible — checked BEFORE the bridge so the session is never built for a frame
-     * it can't help — or when the model isn't loadable ([MangaOcrBridge.withRecognizer]
+     * Returns [Refined]: [groups] with eligible groups re-read by manga-ocr where the
+     * aligned reading differs from the base, plus the decoded-block count for the
+     * attribution. A no-op (input groups, 0 decodes) when nothing is eligible —
+     * checked BEFORE the bridge so the session is never built for a frame it can't
+     * help — or when the model isn't loadable ([MangaOcrBridge.withRecognizer]
      * yields null and the base result stands). The caller gates on enablement /
      * source language / ABI before invoking.
      */
@@ -124,14 +142,14 @@ object MangaOcrRefiner {
         processed: Bitmap,
         sourceLang: String,
         logText: Boolean = false,
-    ): List<LayoutGroup> {
-        if (groups.none(::isEligible)) return groups
+    ): Refined {
+        if (groups.none(::isEligible)) return Refined(groups, 0)
         return MangaOcrBridge.withRecognizer { recognizer ->
             runRefinement(
                 { image, region, maxTokens -> recognizer.recognize(image, region, maxTokens) },
                 groups, processed, sourceLang, logText,
             )
-        } ?: groups // model not loadable — MangaOcrBridge already logged why (once); base stands
+        } ?: Refined(groups, 0) // model not loadable — the bridge already logged why (once); base stands
     }
 
     /** Test seam: drive the transform with an injected [BlockReader]. Production
@@ -143,7 +161,7 @@ object MangaOcrRefiner {
         processed: Bitmap,
         sourceLang: String,
         logText: Boolean = false,
-    ): List<LayoutGroup> = runRefinement(reader, groups, processed, sourceLang, logText)
+    ): Refined = runRefinement(reader, groups, processed, sourceLang, logText)
 
     /** The transform. Production runs it inside [MangaOcrBridge.withRecognizer]'s lock;
      *  the [refineWith] test seam runs it directly. Best-effort: a decode fault returns
@@ -154,42 +172,46 @@ object MangaOcrRefiner {
         processed: Bitmap,
         sourceLang: String,
         logText: Boolean,
-    ): List<LayoutGroup> {
+    ): Refined {
         val t0 = System.nanoTime()
         val lineJoin =
             if (SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace == true) " " else ""
         val image = OcrImage(processed, sourceLang)
-        var decodes = 0
+        var attempted = 0
+        var decoded = 0
         return try {
             val out = groups.map { group ->
                 if (!isEligible(group)) {
                     group
                 } else {
-                    decodes++
-                    refineGroup(group, reader, image, lineJoin, logText)
+                    attempted++
+                    val outcome = refineGroup(group, reader, image, lineJoin, logText)
+                    if (outcome.decoded) decoded++
+                    outcome.group
                 }
             }
             if (logText) {
                 val changed = out.indices.count { out[it] !== groups[it] }
                 val ms = (System.nanoTime() - t0) / 1_000_000
-                val perDecode = if (decodes > 0) " (~${ms / decodes}ms/block)" else ""
+                val perBlock = if (attempted > 0) " (~${ms / attempted}ms/block)" else ""
                 Log.i(
                     TAG,
-                    "ran in ${ms}ms$perDecode: $decodes/${groups.size} group(s) decoded, " +
-                        "$changed adopted" +
-                        if (decodes == 0) " (no eligible group)" else "",
+                    "ran in ${ms}ms$perBlock: $attempted/${groups.size} block(s) attempted, " +
+                        "$decoded read, $changed adopted" +
+                        if (attempted == 0) " (no eligible group)" else "",
                 )
             }
-            out
+            Refined(out, decoded)
         } catch (c: CancellationException) {
             throw c // a superseded frame's cancellation must propagate, not be swallowed
         } catch (t: Throwable) {
             // Best-effort: an OPTIONAL refinement must never sink a successful base OCR
-            // pass. Keep the base groups. Don't close the session here — a transient native
-            // error is better retried next capture than escalated, and closing mid-frame is
-            // exactly the race MangaOcrBridge's locked teardown avoids.
+            // pass. Keep the base groups — and report 0 decodes, since nothing manga-ocr
+            // read survived into the result. Don't close the session here — a transient
+            // native error is better retried next capture than escalated, and closing
+            // mid-frame is exactly the race MangaOcrBridge's locked teardown avoids.
             Log.w(TAG, "refinement failed — keeping base OCR result", t)
-            groups
+            Refined(groups, 0)
         }
     }
 
@@ -199,7 +221,7 @@ object MangaOcrRefiner {
         image: OcrImage,
         lineJoin: String,
         logText: Boolean,
-    ): LayoutGroup {
+    ): GroupOutcome {
         coroutineContext.ensureActive() // stop a superseded frame promptly
         val baseLen = group.lines.sumOf { it.text.length }
         val region = DetectedRegion(box = OcrBox.upright(group.bounds), orientation = group.orientation)
@@ -215,20 +237,25 @@ object MangaOcrRefiner {
         // from THIS boundary too, keeping the refiner self-contained for any future
         // caller that doesn't wrap it.
         coroutineContext.ensureActive()
-        if (blockText.isNullOrBlank()) return group
+        // No usable reading (blank/hit-cap/degenerate decode, or normalized to junk):
+        // keep the base AND report decoded=false — this attempt must not feed the
+        // "+ MangaOCR" attribution.
+        if (blockText.isNullOrBlank()) return GroupOutcome(group, decoded = false)
         return when (val result = BlockTextAligner.align(blockText, group.lines)) {
             is BlockTextAligner.Result.Rejected -> {
                 if (logText) Log.d(TAG, "  rejected \"${group.text.take(24)}\": ${result.reason}")
-                group
+                GroupOutcome(group, decoded = true) // read fine — the guards kept the base
             }
             is BlockTextAligner.Result.Aligned -> {
                 val lines = result.lines
-                if (lines.indices.all { lines[it] === group.lines[it] }) return group
+                if (lines.indices.all { lines[it] === group.lines[it] }) {
+                    return GroupOutcome(group, decoded = true) // confirming read
+                }
                 // Rebuild group text with the same join the layout used, from the same
                 // line order (aligner output preserves size + order).
                 val text = lines.joinToString(lineJoin) { it.text }.trim()
                 if (logText) Log.d(TAG, "  base=\"${group.text}\" -> manga=\"$text\"")
-                group.copy(text = text, lines = lines)
+                GroupOutcome(group.copy(text = text, lines = lines), decoded = true)
             }
         }
     }

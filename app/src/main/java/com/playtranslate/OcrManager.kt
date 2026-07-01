@@ -153,6 +153,11 @@ class OcrManager private constructor() {
          *  just a label — so callers can derive both its display name and its
          *  selection token for provenance. */
         val engineBackend: OcrBackend? = null,
+        /** True when the manga-ocr refiner decoded at least one block of this result
+         *  (see [com.playtranslate.ocr.MangaOcrRefiner.Refined]) — provenance extends
+         *  the display label to "… + MangaOCR". Attribution-only: [engineBackend]
+         *  stays the base engine, so the re-OCR picker key is unaffected. */
+        val mangaOcrUsed: Boolean = false,
     )
 
     /**
@@ -178,7 +183,9 @@ class OcrManager private constructor() {
             refineWithMangaOcr = shouldRefineMangaOcr(sourceLang),
         ) ?: return null
 
-        val result = buildOcrResult(output.groups, output.scaleFactor, collectDebugBoxes, output.backend)
+        val result = buildOcrResult(
+            output.groups, output.scaleFactor, collectDebugBoxes, output.backend, output.mangaOcrUsed,
+        )
         if (result.fullText.isBlank()) return null
 
         android.util.Log.d("DetectionLog", "OCR raw: ${result.groups.size} groups")
@@ -224,6 +231,7 @@ class OcrManager private constructor() {
         scaleFactor: Float,
         collectDebugBoxes: Boolean,
         engineBackend: OcrBackend? = null,
+        mangaOcrUsed: Boolean = false,
     ): OcrResult {
         val ocrGroups = groups.mapIndexed { gi, group ->
             OcrGroup(
@@ -263,6 +271,7 @@ class OcrManager private constructor() {
             groups = ocrGroups,
             debugBoxes = debugBoxes,
             engineBackend = engineBackend,
+            mangaOcrUsed = mangaOcrUsed,
         )
     }
 

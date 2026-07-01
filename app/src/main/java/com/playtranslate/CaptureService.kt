@@ -1824,7 +1824,13 @@ class CaptureService : Service() {
         sourceLangId: SourceLangId,
     ): OcrProvenance? {
         val backend = ocrResult.engineBackend ?: return null
-        return OcrProvenance(backend.ocrLabel, backend.selectionToken, displayId, sourceLangId, region)
+        // MangaOCR is a refinement layer over the base engine, not a selectable
+        // backend: extend the display label only ("Scanned by ML Kit + MangaOCR",
+        // proper nouns untranslated like ocrLabel) and keep the selection token on
+        // the base engine so the re-OCR gear still keys the picker correctly.
+        val label =
+            if (ocrResult.mangaOcrUsed) "${backend.ocrLabel} + MangaOCR" else backend.ocrLabel
+        return OcrProvenance(label, backend.selectionToken, displayId, sourceLangId, region)
     }
 
     /**

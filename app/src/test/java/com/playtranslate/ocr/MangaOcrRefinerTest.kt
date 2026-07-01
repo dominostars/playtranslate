@@ -88,9 +88,11 @@ class MangaOcrRefinerTest {
     fun `an eligible group is decoded once as a whole block and spliced per line`() = runBlocking {
         val g = group(listOf(line("いたい", 0, true), line("何をする", 100, true)), vertical = true)
         val fake = FakeReader(mapOf(0 to "いったい何をする")) // base engine dropped the っ
-        val rg = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").single()
+        val res = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja")
+        val rg = res.groups.single()
 
         assertEquals("one decode per group, not per line", 1, fake.calls)
+        assertEquals("decode count feeds the attribution", 1, res.decodedBlocks)
         assertEquals("re-joined with no separator for ja", "いったい何をする", rg.text)
         assertEquals("いったい", rg.lines[0].text)
         assertTrue("adopted line gets a char tier", rg.lines[0].chars.isNotEmpty())
@@ -101,7 +103,7 @@ class MangaOcrRefinerTest {
     fun `horizontal groups are eligible in block mode`() = runBlocking {
         val g = group(listOf(line("平く", 0, false)), vertical = false)
         val fake = FakeReader(mapOf(0 to "早く"))
-        val rg = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").single()
+        val rg = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").groups.single()
 
         assertEquals(1, fake.calls)
         assertEquals("早く", rg.text)
@@ -115,8 +117,9 @@ class MangaOcrRefinerTest {
         val fake = FakeReader(mapOf(0 to "い"))
 
         val out = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja")
-        assertSame("an unchanged group is returned as the same instance", g, out.single())
-        assertSame("base char boxes are preserved (not re-synthesized)", baseChars, out.single().lines[0].chars)
+        assertSame("an unchanged group is returned as the same instance", g, out.groups.single())
+        assertSame("base char boxes are preserved (not re-synthesized)", baseChars, out.groups.single().lines[0].chars)
+        assertEquals("a confirming read still counts as a scan (attribution)", 1, out.decodedBlocks)
     }
 
     @Test
@@ -129,7 +132,8 @@ class MangaOcrRefinerTest {
 
         val out = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja")
         assertEquals(1, fake.calls)
-        assertSame("an unalignable reading must not replace the base", g, out.single())
+        assertSame("an unalignable reading must not replace the base", g, out.groups.single())
+        assertEquals("a rejected reading was still READ -> counts as a scan", 1, out.decodedBlocks)
     }
 
     @Test
@@ -140,8 +144,9 @@ class MangaOcrRefinerTest {
         val fake = FakeReader(mapOf(0 to "X".repeat(21)))
 
         val out = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja")
-        assertSame(g, out.single())
+        assertSame(g, out.groups.single())
         assertEquals("ineligible group must not reach the reader", 0, fake.calls)
+        assertEquals("no decode -> no attribution", 0, out.decodedBlocks)
     }
 
     @Test
@@ -150,7 +155,7 @@ class MangaOcrRefinerTest {
         val g = group(lines, vertical = true)
         val fake = FakeReader(mapOf(0 to "あああああああああ"))
 
-        assertSame(g, MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").single())
+        assertSame(g, MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").groups.single())
         assertEquals(0, fake.calls)
     }
 
@@ -164,7 +169,7 @@ class MangaOcrRefinerTest {
         val g = LayoutGroup("あい", listOf(slanted), Rect(0, 0, 40, 40), TextOrientation.HORIZONTAL, TextAlignment.LEFT)
         val fake = FakeReader(mapOf(0 to "うえ"))
 
-        assertSame(g, MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").single())
+        assertSame(g, MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").groups.single())
         assertEquals(0, fake.calls)
     }
 
@@ -176,8 +181,9 @@ class MangaOcrRefinerTest {
 
         val out = MangaOcrRefiner.refineWith(fake, listOf(eligible, oversized), bitmap, "ja")
         assertEquals(1, fake.calls)
-        assertEquals("いったい", out[0].text)
-        assertSame(oversized, out[1])
+        assertEquals(1, out.decodedBlocks)
+        assertEquals("いったい", out.groups[0].text)
+        assertSame(oversized, out.groups[1])
     }
 
     @Test
@@ -197,7 +203,8 @@ class MangaOcrRefinerTest {
 
         val out = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja")
         assertEquals(1, fake.calls)
-        assertSame(g, out.single())
+        assertSame(g, out.groups.single())
+        assertEquals("a no-output attempt must not feed the attribution", 0, out.decodedBlocks)
     }
 
     @Test
@@ -205,14 +212,15 @@ class MangaOcrRefinerTest {
         val g = group(listOf(line("あ", 0, true)), vertical = true)
         val fake = FakeReader(mapOf(0 to "▼")) // normalizes away to nothing
         val out = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja")
-        assertSame("a candidate that cleans to nothing must not replace the base", g, out.single())
+        assertSame("a candidate that cleans to nothing must not replace the base", g, out.groups.single())
+        assertEquals("a normalized-to-junk attempt must not feed the attribution", 0, out.decodedBlocks)
     }
 
     @Test
     fun `a candidate is normalized (edge pipes stripped) before alignment`() = runBlocking {
         val g = group(listOf(line("いたい", 0, true)), vertical = true)
         val fake = FakeReader(mapOf(0 to "|いったい|")) // leading/trailing pipes are edge junk
-        val rg = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").single()
+        val rg = MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").groups.single()
         assertEquals("いったい", rg.lines[0].text)
         assertEquals("いったい", rg.text)
     }
@@ -223,7 +231,7 @@ class MangaOcrRefinerTest {
         val fake = FakeReader(mapOf(0 to "ありがとう▼")) // trailing cursor stripped -> == base
         assertSame(
             "a candidate equal to base after cleaning preserves the base group (real boxes)",
-            g, MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").single(),
+            g, MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja").groups.single(),
         )
     }
 
@@ -233,7 +241,8 @@ class MangaOcrRefinerTest {
         val boom = FailingReader { RuntimeException("native decode failed") }
 
         val out = MangaOcrRefiner.refineWith(boom, listOf(g), bitmap, "ja")
-        assertSame("base OCR result must survive a refinement failure", g, out.single())
+        assertSame("base OCR result must survive a refinement failure", g, out.groups.single())
+        assertEquals("a failed pass contributes nothing -> no attribution", 0, out.decodedBlocks)
     }
 
     @Test
@@ -259,7 +268,7 @@ class MangaOcrRefinerTest {
         // the coroutine builder's completion check.
         val g = group(listOf(line("あ", 0, true)), vertical = true)
         var thrown: Throwable? = null
-        var returned: List<LayoutGroup>? = null
+        var returned: MangaOcrRefiner.Refined? = null
         val worker = launch {
             val self = coroutineContext[Job]!!
             val aborting = MangaOcrRefiner.BlockReader { _, _, _ ->
