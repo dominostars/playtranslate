@@ -56,6 +56,7 @@ import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
+import com.playtranslate.statusBarHeightPx
 import com.playtranslate.themeColor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -116,6 +117,11 @@ class CaptureResultOverlay(
     private var screenW = 0
     private var screenH = 0
     private var panelHeightPx = 0
+    // Status-bar-height buffer reserved at the body's top so the section headers
+    // clear the system status bar. Applied as body top padding (the sheet fill
+    // still spans to the screen top behind it) and folded into every panel↔content
+    // height conversion via [contentHeight]. 0 below API 30 (inset unreadable).
+    private var topInsetPx = 0
 
     private val root = CaptureResultRoot(ctx)
     private val panel = TopSheetPanel(ctx)
@@ -290,6 +296,11 @@ class CaptureResultOverlay(
         if (dismissed) return
         this.screenW = screenW
         this.screenH = screenH
+        // Inset the body's content below the status bar (the sheet fill, drawn on
+        // the full body bounds, still reaches the screen top). Explicit side-zeros
+        // keep overriding the InsetDrawable's reported negative top padding.
+        topInsetPx = ctx.statusBarHeightPx()
+        body.setPadding(0, topInsetPx, 0, 0)
         autoMaxPx = CaptureResultGeometry.autoMaxHeight(screenH)
         // Load at the minimum (drag-resize floor) height; grow to fit on Done.
         panelHeightPx = CaptureResultGeometry.minPanelHeight(screenH)
@@ -548,7 +559,7 @@ class CaptureResultOverlay(
                 (if (prefs.hideOriginalSection) 0 else b.sourceTextHeightAtMax()) +
                 (if (prefs.hideTranslationSection) 0 else b.targetTextHeightAtMax())
         }
-        val neededHeight = naturalContent + dp(HANDLE_HEIGHT_DP)
+        val neededHeight = naturalContent + dp(HANDLE_HEIGHT_DP) + topInsetPx
         maxNeededHeightPx = neededHeight.coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
         val target = CaptureResultGeometry.autoPanelHeight(neededHeight, screenH, autoMaxPx)
         animatePanelHeight(target)
@@ -640,10 +651,17 @@ class CaptureResultOverlay(
             )
         }
 
+    /** Height available to the sections for a given panel height: minus the handle
+     *  bar AND the status-bar buffer padding at the body's top. The single conversion
+     *  from panel height to the [applyCardFill] / [fitSizes] content height, so the
+     *  top inset stays in sync everywhere the panel grows or is dragged. */
+    private fun contentHeight(panelPx: Int): Int =
+        (panelPx - dp(HANDLE_HEIGHT_DP) - topInsetPx).coerceAtLeast(0)
+
     /** Size the text to the current panel height (continuous). Called per drag frame. */
     private fun reFitText() {
         val b = binder ?: return
-        val bodyH = (panelHeightPx - dp(HANDLE_HEIGHT_DP)).coerceAtLeast(0)
+        val bodyH = contentHeight(panelHeightPx)
         applyCardFill(b, bodyH)
         val (src, tgt) = fitSizes(b, bodyH)
         b.setSizes(src, tgt)
@@ -656,9 +674,9 @@ class CaptureResultOverlay(
         heightAnimator?.cancel()
         val b = binder ?: return
         val startH = panelHeightPx
-        val (srcStart, tgtStart) = fitSizes(b, (startH - dp(HANDLE_HEIGHT_DP)).coerceAtLeast(0))
-        val (srcEnd, tgtEnd) = fitSizes(b, (target - dp(HANDLE_HEIGHT_DP)).coerceAtLeast(0))
-        applyCardFill(b, (startH - dp(HANDLE_HEIGHT_DP)).coerceAtLeast(0))
+        val (srcStart, tgtStart) = fitSizes(b, contentHeight(startH))
+        val (srcEnd, tgtEnd) = fitSizes(b, contentHeight(target))
+        applyCardFill(b, contentHeight(startH))
         b.setSizes(srcStart, tgtStart)
         if (startH == target) return
         heightAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
@@ -672,7 +690,7 @@ class CaptureResultOverlay(
                 val f = anim.animatedValue as Float
                 val h = (startH + (target - startH) * f).toInt()
                 setPanelHeight(h)
-                applyCardFill(b, (h - dp(HANDLE_HEIGHT_DP)).coerceAtLeast(0))
+                applyCardFill(b, contentHeight(h))
                 b.setSizes(srcStart + (srcEnd - srcStart) * f, tgtStart + (tgtEnd - tgtStart) * f)
             }
             start()
