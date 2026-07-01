@@ -59,6 +59,9 @@ class PlayTranslateApplication : Application() {
         if (BuildConfig.DEBUG) {
             OcrManager.instance.debugLogGroupingEnabled = Prefs(this).debugLogGrouping
         }
+        // Push the "Use MangaOCR" toggle + installed-pack state into the OCR gate
+        // (same Context-free reason as above — the refiner can't resolve the pack itself).
+        com.playtranslate.ocr.mangaocr.MangaOcrProvisioning.refresh(applicationContext)
         // Derive the capture backend from the granted permissions (the
         // accessibility service vs "display over other apps").
         CaptureBackendResolver.reresolve(this)

@@ -2302,6 +2302,20 @@
 
     <!-- Error shown when an OCR model download fails. -->
     <string name="settings_ocr_download_failed">Couldn\'t download the OCR model. Check your connection and try again.</string>
+
+    <!-- Title of the "Use MangaOCR" toggle cell at the bottom of the OCR section in
+         Capture & overlay settings. "MangaOCR" is a proper noun (the model name), NOT translated. -->
+    <string name="settings_ocr_use_manga_title">Use MangaOCR</string>
+    <!-- Subtitle under the "Use MangaOCR" toggle cell in OCR settings — a speed warning. -->
+    <string name="settings_ocr_use_manga_subtitle">WARNING: High quality, but very slow. Not recommended for auto</string>
+    <!-- Title of the confirmation dialog shown when the user turns the "Use MangaOCR" toggle off. -->
+    <string name="settings_ocr_disable_manga_title">Turn off MangaOCR?</string>
+    <!-- Body of the turn-off-MangaOCR dialog. %1$s = the downloaded model size, e.g. "68 MB". -->
+    <string name="settings_ocr_disable_manga_msg">Keep the downloaded model (<xliff:g id="size" example="68 MB">%1$s</xliff:g>) or delete it to free space?</string>
+    <!-- Button in the turn-off-MangaOCR dialog: disable but keep the downloaded model files. -->
+    <string name="settings_ocr_disable_keep">Keep model</string>
+    <!-- Button in the turn-off-MangaOCR dialog: disable and delete the model to free space. -->
+    <string name="settings_ocr_disable_delete">Delete model</string>
     <!-- More Settings section group headers (same ALL-CAPS rendering note
          as the top of this section). One short noun-phrase heading each. -->
     <string name="settings_header_anki" translatable="false">Anki</string>

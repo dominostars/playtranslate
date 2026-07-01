@@ -35,14 +35,20 @@ class MangaOcrSession private constructor(
     private val vocab: List<String>,
 ) : Closeable {
 
+    /** One decode result. [hitCap] is true when decode reached [MAX_LEN] without ever
+     *  emitting EOS — the text is truncated (or a runaway on a non-text crop), so the
+     *  caller should treat it as untrustworthy rather than a complete reading. */
+    data class Reading(val text: String, val hitCap: Boolean)
+
     /** Recognize one crop ([cropBgr], any 3-channel Mat — grayscaled internally). */
-    fun recognize(cropBgr: Mat): String {
-        if (cropBgr.cols() < 2 || cropBgr.rows() < 2) return ""
+    fun recognize(cropBgr: Mat): Reading {
+        if (cropBgr.cols() < 2 || cropBgr.rows() < 2) return Reading("", hitCap = false)
         val enc = encoder.run(preprocess(cropBgr), intArrayOf(1, 3, IMG, IMG))
         val encData = enc.data  // [1, ENC_SEQ, ENC_DIM] flattened
 
         val ids = ArrayList<Int>(MAX_LEN + 1)
         ids += START
+        var hitCap = true                                     // flips false iff EOS breaks the loop
         for (step in 0 until MAX_LEN) {
             val outs = decoder.run(listOf(
                 NamedTensor("input_ids", intArrayOf(1, ids.size), TensorData.Ints(ids.toIntArray())),
@@ -52,7 +58,7 @@ class MangaOcrSession private constructor(
             val vocabSize = logits.size / ids.size            // [1, L, vocab] → vocab
             val base = (ids.size - 1) * vocabSize             // last timestep
             val next = nextToken(ids, logits, base, vocabSize)
-            if (next == EOS) break
+            if (next == EOS) { hitCap = false; break }
             ids += next
         }
 
@@ -62,7 +68,7 @@ class MangaOcrSession private constructor(
             if (tok in SPECIALS) continue
             sb.append(tok)
         }
-        return sb.toString().replace(" ", "")
+        return Reading(sb.toString().replace(" ", ""), hitCap)
     }
 
     /** Grayscale → RGB (3 identical channels), 224×224, normalized to [-1,1]. */
@@ -93,7 +99,9 @@ class MangaOcrSession private constructor(
         private const val ENC_DIM = 192      // DeiT-tiny hidden
         private const val START = 2          // [CLS]
         private const val EOS = 3            // [SEP]
-        private const val MAX_LEN = 64
+        private const val MAX_LEN = 300     // the model's own generation_config max_length
+                                            // (decoder ceiling = 512). Was 64 — a carried-over
+                                            // spike-harness default that truncated long lines.
         private val SPECIALS = setOf("[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]")
 
         /** Greedy argmax over the vocab slice at [base], skipping tokens that

@@ -119,9 +119,14 @@ object OcrModelManager {
      *  Kit — after burning the pack download. [mnnAvailable] mirrors
      *  `OnDeviceLlmBackend.supportsRequiredAbi()` ([android.os.Process.is64Bit]);
      *  pass it explicitly in tests. */
+    /** MNN-backed OCR requires a 64-bit process (the :mnn module ships arm64-only). The
+     *  single source for that ABI gate — mirrors OnDeviceLlmBackend.supportsRequiredAbi().
+     *  Also used by the manga-ocr refiner gate + settings cell. */
+    fun isMnnAvailable(): Boolean = android.os.Process.is64Bit()
+
     fun isRuntimeCompatible(
         backend: OcrBackend,
-        mnnAvailable: Boolean = android.os.Process.is64Bit(),
+        mnnAvailable: Boolean = isMnnAvailable(),
     ): Boolean = !backend.requiresMnn || mnnAvailable
 
     /** A backend is offerable iff its native runtime is compatible AND every pack it
@@ -434,6 +439,22 @@ object OcrModelManager {
         val missing = backend.packKeys.filterTo(HashSet()) { !helper(it).isInstalled(ctx) }
         applyDownloads(ctx, Plan(backend.packKeys.toSet(), missing, emptySet()), onProgress)
         backend.packKeys.all { helper(it).isInstalled(ctx) }
+    }
+
+    /** Download one standalone OCR pack — a pack NOT owned by any selectable
+     *  [OcrBackend] (e.g. the manga-ocr refinement model, gated behind its own
+     *  toggle rather than the engine picker) — best-effort, and report whether it is
+     *  installed afterward. Same downloader + edge-case handling as the engine packs
+     *  ([downloadPack]: Range resume, size+SHA verify, cancel/disk/offline), and the
+     *  same out-of-[ALL_PACK_KEYS] status that keeps the orphan sweep from reclaiming
+     *  it. Deliberately Prefs-free — the toggle's owner persists enablement. Suspend/IO. */
+    suspend fun ensurePack(
+        ctx: Context,
+        key: String,
+        onProgress: (OnDeviceLlmDownloader.Progress) -> Unit = {},
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!helper(key).isInstalled(ctx)) downloadPack(ctx, key, onProgress)
+        helper(key).isInstalled(ctx)
     }
 
     /** Delete orphaned packs (installed − retained: packs no installed language can

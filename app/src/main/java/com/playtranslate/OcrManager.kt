@@ -10,7 +10,9 @@ import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TextSegments
 import com.playtranslate.ocr.OcrPipeline
 import com.playtranslate.ocr.core.LayoutGroup
+import com.playtranslate.ocr.mangaocr.MangaOcrBridge
 import com.playtranslate.ocr.registry.OcrEngineRegistry
+import com.playtranslate.ocr.registry.OcrModelManager
 import androidx.core.graphics.get
 
 /**
@@ -31,6 +33,11 @@ class OcrManager private constructor() {
      *  [PlayTranslateApplication] on start and from the SettingsRenderer toggle. */
     @Volatile var debugLogGroupingEnabled: Boolean = false
 
+    /** Pushed from [com.playtranslate.PlayTranslateApplication] on start and from the
+     *  "Use MangaOCR" settings toggle. Gates the optional manga-ocr refinement
+     *  ([shouldRefineMangaOcr] adds the Japanese / arm64 / model-installed checks). */
+    @Volatile var mangaOcrEnabled: Boolean = false
+
     /** Builds + caches the [com.playtranslate.ocr.core.OcrEngine] per source
      *  language; closed in [releaseAll]. */
     private val registry = OcrEngineRegistry()
@@ -46,7 +53,24 @@ class OcrManager private constructor() {
      */
     fun releaseAll() {
         registry.closeAll()
+        // manga-ocr's session lives off the registry (it's a refiner, not a cached
+        // engine); close it on the same quiescent TRIM_MEMORY_COMPLETE signal. This is
+        // the bridge's lock-free teardown — sound only because this path guarantees no
+        // in-flight OCR (the framework's documented quiescent point); interactive teardown
+        // uses the locked MangaOcrBridge.close() instead.
+        MangaOcrBridge.closeForTrim()
     }
+
+    /** True when manga-ocr refinement should run for [sourceLang]: enabled by the user
+     *  ([mangaOcrEnabled]), Japanese, arm64 (MNN), and the model pack installed
+     *  ([MangaOcrBridge.modelDir] pushed non-null). Gating modelDir here is also what
+     *  keeps the bridge's lazy init from firing — and latching `triedInit` — before
+     *  the pack exists. */
+    private fun shouldRefineMangaOcr(sourceLang: String): Boolean =
+        mangaOcrEnabled &&
+            sourceLang == "ja" &&
+            OcrModelManager.isMnnAvailable() &&
+            MangaOcrBridge.modelDir != null
 
     /** A bounding box with optional confidence for debug overlay. */
     data class DebugBox(
@@ -151,6 +175,7 @@ class OcrManager private constructor() {
             recipe = recipe,
             darkBackgroundProvider = { sampleIsDarkBackground(bitmap) },
             logGrouping = debugLogGroupingEnabled,
+            refineWithMangaOcr = shouldRefineMangaOcr(sourceLang),
         ) ?: return null
 
         val result = buildOcrResult(output.groups, output.scaleFactor, collectDebugBoxes, output.backend)
@@ -181,6 +206,7 @@ class OcrManager private constructor() {
             recipe = recipe,
             darkBackgroundProvider = { sampleIsDarkBackground(bitmap) },
             logGrouping = debugLogGroupingEnabled,
+            refineWithMangaOcr = shouldRefineMangaOcr(sourceLang),
         ) ?: return null
 
         return buildOcrLines(output.groups, output.scaleFactor).ifEmpty { null }

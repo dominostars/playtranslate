@@ -1,6 +1,7 @@
 package com.playtranslate.ocr.mangaocr
 
 import android.graphics.Bitmap
+import com.playtranslate.language.TextOrientation
 import com.playtranslate.ocr.core.DetectedRegion
 import com.playtranslate.ocr.core.OcrCapabilities
 import com.playtranslate.ocr.core.OcrImage
@@ -9,24 +10,29 @@ import com.playtranslate.ocr.core.RecognizedLine
 import com.playtranslate.ocr.core.RecognizedRegion
 import com.playtranslate.ocr.core.RegionOrigin
 import com.playtranslate.ocr.core.TextRecognizer
+import com.playtranslate.ocr.core.synthesizeEvenCharBoxes
 import org.opencv.android.Utils
 import org.opencv.core.Mat
 import org.opencv.imgproc.Imgproc
 
 /**
  * [TextRecognizer] over [MangaOcrSession]. Crops the detected region from the
- * frame and recognizes it. **Text only — no char/element boxes** (manga-ocr emits
- * a string), so drag-lookup + furigana use the proportional fallback. Pairs with
- * any detector via [com.playtranslate.ocr.composites.DetectThenRecognize]
- * (Meiki→Manga or Paddle→Manga, per the engine selector). Caches the bitmap→BGR
+ * frame and recognizes it. manga-ocr emits a bare string, so the per-character
+ * tier is **synthesized** ([synthesizeEvenCharBoxes]) — evenly spread across the
+ * region so drag-lookup + furigana resolve (proportional, not pixel-exact); no
+ * element tier. Driven by [com.playtranslate.ocr.MangaOcrRefiner] over the
+ * selected engine's regions (and composable with any detector via
+ * [com.playtranslate.ocr.composites.DetectThenRecognize]). Caches the bitmap→BGR
  * Mat across a frame's regions. `threadSafe = false` (shared MNN session,
- * serialized by the composite mutex).
+ * serialized by the caller's mutex).
  */
 class MangaOcrRecognizer(private val session: MangaOcrSession) : TextRecognizer {
 
     override val capabilities = OcrCapabilities(
         orientation = OcrOrientationSupport.BOTH,
-        emitsCharBoxes = false,
+        // Char tier is synthesized (even spread) — proportional, not pixel-exact,
+        // but enough for drag-lookup hit-testing + furigana placement.
+        emitsCharBoxes = true,
         emitsElementBoxes = false,
         wholeRegionInput = false,
         threadSafe = false,
@@ -47,10 +53,26 @@ class MangaOcrRecognizer(private val session: MangaOcrSession) : TextRecognizer 
         if (x2 - x1 < 2 || y2 - y1 < 2) return null
 
         val sub = bgrFor(image.bitmap).submat(y1, y2, x1, x2)
-        val text = try { session.recognize(sub) } finally { sub.release() }
-        if (text.isBlank()) return null
+        val reading = try { session.recognize(sub) } finally { sub.release() }
+        // Decline a truncated / runaway reading (hit the decode cap without EOS): adopting
+        // a partial string would drop the tail of the base engine's complete line.
+        if (reading.text.isBlank() || reading.hitCap) return null
+        val text = reading.text
 
-        val line = RecognizedLine(text = text, box = region.box, orientation = region.orientation)
+        // manga-ocr has no spatial output; synthesize an even per-char tier across
+        // the region so line.chars is populated (drag-lookup + furigana). charOffset
+        // aligns 1:1 with text (session strips spaces).
+        val chars = synthesizeEvenCharBoxes(
+            text = text,
+            bounds = region.box.bounds,
+            vertical = region.orientation == TextOrientation.VERTICAL,
+        )
+        val line = RecognizedLine(
+            text = text,
+            box = region.box,
+            orientation = region.orientation,
+            chars = chars,
+        )
         return RecognizedRegion(
             text = text,
             box = region.box,

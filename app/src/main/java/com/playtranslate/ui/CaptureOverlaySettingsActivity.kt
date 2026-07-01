@@ -34,6 +34,7 @@ import androidx.core.view.isVisible
 import androidx.core.widget.TextViewCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.playtranslate.BuildConfig
 import com.playtranslate.CaptureService
 import com.playtranslate.OverlayMode
 import com.playtranslate.PlayTranslateAccessibilityService
@@ -47,6 +48,8 @@ import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.OcrBackend
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.ocr.mangaocr.MangaOcrBridge
+import com.playtranslate.ocr.mangaocr.MangaOcrProvisioning
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.OcrPackModelHelper
 import com.playtranslate.ocr.registry.ocrLabel
@@ -54,8 +57,10 @@ import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.themeColor
 import com.playtranslate.translation.llm.OnDeviceLlmDownloader
 import com.playtranslate.translation.llm.humanSize
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Capture & overlay sub-page: OCR engine choice, the multi-display capture
@@ -584,6 +589,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
                 ),
             )
         }
+        maybeAddMangaOcrCell(container, id)
     }
 
     private fun buildOcrCell(
@@ -814,6 +820,160 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private fun deleteOcr(backend: OcrBackend) {
         backend.packKeys.forEach { OcrModelManager.deleteOcrPack(this, it) }
         setupOcrSection()
+    }
+
+    // ── "Use MangaOCR" cell ─────────────────────────────────────────────────────
+    // Opt-in JA-only refinement model, appended below the engine rows. Gated to
+    // Japanese + arm64 (MNN) and only when the pack is shippable (real catalog
+    // entry), so it stays hidden until the model is actually hosted. Its pack is
+    // owned by THIS toggle, not the engine picker / orphan sweep ([ensurePack]).
+
+    private var mangaOcrDownloading = false
+
+    private fun maybeAddMangaOcrCell(container: LinearLayout, id: SourceLangId) {
+        if (id != SourceLangId.JA) return
+        if (!OcrModelManager.isMnnAvailable()) return
+        // Hidden until the pack is shippable (real catalog SHAs). In DEBUG, a manually
+        // side-loaded pack (files + sentinel pushed into the models dir) also unhides it,
+        // so the feature can be exercised before the model is hosted. Resolve the install
+        // state once (a sentinel disk read); setupOcrSection rebuilds on any state change,
+        // so the captured value is always fresh at build time.
+        val helper = MangaOcrProvisioning.helper()
+        val installed = helper.isInstalled(this)
+        if (!helper.isShippable(this) && !(BuildConfig.DEBUG && installed)) return
+        container.addView(
+            LayoutInflater.from(this).inflate(R.layout.settings_row_divider, container, false),
+        )
+        val row = LayoutInflater.from(this)
+            .inflate(R.layout.settings_row_switch_download, container, false)
+        container.addView(row)
+        DownloadableToggleRow(
+            row = row,
+            title = getString(R.string.settings_ocr_use_manga_title),
+            subtitle = getString(R.string.settings_ocr_use_manga_subtitle),
+            isInstalled = { installed },
+            isOn = { prefs.useMangaOcr && installed },
+            isDownloading = { mangaOcrDownloading },
+            onDownload = { downloadAndEnableMangaOcr() },
+            onEnable = { setMangaOcrEnabled(true) },
+            onDisable = { confirmDisableMangaOcr() },
+        )
+    }
+
+    private fun setMangaOcrEnabled(on: Boolean) {
+        prefs.useMangaOcr = on
+        MangaOcrProvisioning.refresh(this)
+        setupOcrSection()
+    }
+
+    /** Download the manga-ocr pack with a progress overlay (mirrors [selectOcr]); on
+     *  success, enable the toggle. Reuses the shared OCR-pack downloader, so resume /
+     *  SHA-verify / cancel / disk handling all come for free. */
+    private fun downloadAndEnableMangaOcr() {
+        var job: Job? = null
+        mangaOcrDownloading = true
+        setupOcrSection()
+        val overlay = OverlayProgress.Builder(this)
+            .setTitle(
+                getString(
+                    R.string.settings_ocr_downloading_title,
+                    getString(R.string.settings_ocr_use_manga_title),
+                ),
+            )
+            .setMessage(getString(R.string.settings_ocr_downloading_msg))
+            .setProgress(0)
+            .setOnDismiss { reason ->
+                if (reason == DismissReason.USER) {
+                    job?.cancel()
+                    mangaOcrDownloading = false
+                    setupOcrSection()
+                }
+            }
+            .show()
+        val main = Handler(Looper.getMainLooper())
+        job = lifecycleScope.launch {
+            val installed = OcrModelManager.ensurePack(
+                this@CaptureOverlaySettingsActivity, MangaOcrProvisioning.PACK_KEY,
+            ) { p ->
+                main.post {
+                    when (p) {
+                        is OnDeviceLlmDownloader.Progress.Downloading ->
+                            if (p.total > 0) {
+                                overlay.setProgress(((p.received * 100L) / p.total).toInt())
+                                overlay.setMessage(
+                                    getString(
+                                        R.string.install_downloading_with_bytes,
+                                        humanSize(p.received), humanSize(p.total),
+                                    ),
+                                )
+                            } else {
+                                overlay.setIndeterminate(true)
+                            }
+                        OnDeviceLlmDownloader.Progress.Verifying -> {
+                            overlay.setIndeterminate(true)
+                            overlay.setMessage(getString(R.string.settings_ocr_verifying))
+                        }
+                        is OnDeviceLlmDownloader.Progress.Extracting -> {
+                            overlay.setIndeterminate(true)
+                            overlay.setMessage(getString(R.string.settings_ocr_installing))
+                        }
+                    }
+                }
+            }
+            mangaOcrDownloading = false
+            if (installed) {
+                prefs.useMangaOcr = true
+                MangaOcrProvisioning.refresh(this@CaptureOverlaySettingsActivity)
+            }
+            overlay.dismiss()
+            setupOcrSection()
+            if (!installed) {
+                Toast.makeText(
+                    this@CaptureOverlaySettingsActivity,
+                    R.string.settings_ocr_download_failed,
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
+
+    /** Turning MangaOCR off: keep the model or delete it to reclaim space (mirrors the
+     *  offline-model disable dialog). Cancel leaves it on. */
+    private fun confirmDisableMangaOcr() {
+        OverlayAlert.Builder(this)
+            .hideIcon()
+            .setTitle(getString(R.string.settings_ocr_disable_manga_title))
+            .setMessage(
+                getString(
+                    R.string.settings_ocr_disable_manga_msg,
+                    MangaOcrProvisioning.helper().humanSize(this),
+                ),
+            )
+            .addButton(getString(R.string.settings_ocr_disable_keep), themeColor(R.attr.ptAccent)) {
+                setMangaOcrEnabled(false)
+            }
+            .addButton(
+                getString(R.string.settings_ocr_disable_delete),
+                themeColor(R.attr.ptDivider),
+                themeColor(R.attr.ptDanger),
+            ) {
+                // Disable + close the gate FIRST so no NEW refine can start, then tear
+                // the shared session down through the refiner mutex (waits out any
+                // in-flight decode — never closes it mid-frame) before unlinking files.
+                prefs.useMangaOcr = false
+                MangaOcrProvisioning.refresh(this)
+                setupOcrSection()
+                lifecycleScope.launch {
+                    MangaOcrBridge.close() // suspend + locked: waits out any in-flight refine
+                    withContext(Dispatchers.IO) {
+                        MangaOcrProvisioning.helper().delete(this@CaptureOverlaySettingsActivity)
+                    }
+                    MangaOcrProvisioning.refresh(this@CaptureOverlaySettingsActivity)
+                    setupOcrSection()
+                }
+            }
+            .addCancelButton()
+            .show()
     }
 
     /** Consume the "auto-download this OCR engine" deep link (from the in-result

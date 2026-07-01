@@ -43,6 +43,7 @@ object OcrPipeline {
         recipe: OcrPreprocessingRecipe,
         darkBackgroundProvider: () -> Boolean,
         logGrouping: Boolean,
+        refineWithMangaOcr: Boolean = false,
     ): Output? = withContext(Dispatchers.Default) {
         // Run the whole pass OFF the main thread: preprocessing, the engine's
         // inference, and layout are all CPU-bound. The capture coroutine is
@@ -78,7 +79,16 @@ object OcrPipeline {
                 logDecisions = logGrouping,
             )
             if (groups.isEmpty()) return@withContext null
-            Output(groups, scaleFactor, resolved.backend)
+            // Optional manga-ocr refinement, post-layout so both entry points share it.
+            // Crops come from `processed` (engine-input space, same as the group boxes),
+            // so this runs before the finally recycles it. No-op if the model isn't loaded.
+            val refined =
+                if (refineWithMangaOcr) {
+                    MangaOcrRefiner.refine(groups, processed, sourceLang, logText = logGrouping)
+                } else {
+                    groups
+                }
+            Output(refined, scaleFactor, resolved.backend)
         } finally {
             if (processed !== bitmap) processed.recycle()
         }

@@ -711,6 +711,14 @@ class Prefs internal constructor(
         get() = sp.getBoolean("vertical_text_grow", true)
         set(v) = sp.edit { putBoolean("vertical_text_grow", v) }
 
+    /** Opt-in manga-ocr refinement for Japanese OCR — high quality, slow; OFF by
+     *  default. Runtime-gated further to Japanese + arm64 + installed pack; the value
+     *  is pushed to [OcrManager.mangaOcrEnabled] via
+     *  [com.playtranslate.ocr.mangaocr.MangaOcrProvisioning.refresh]. */
+    var useMangaOcr: Boolean
+        get() = sp.getBoolean("use_manga_ocr", false)
+        set(v) = sp.edit { putBoolean("use_manga_ocr", v) }
+
     /**
      * One-shot migration of the legacy `auto_translation_mode` ordinal pref
      * (used on the shipped `main` branch, where 0 = OVERLAYS and

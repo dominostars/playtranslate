@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Switch row with a download-state affordance: title + subtitle on the left, then a
+     status-icon slot (cloud-down / spinner / downloaded) immediately left of a
+     MaterialSwitch. Whole row is the tap target; switch is non-clickable by itself.
+     Mirrors settings_row_backend_offline's header icon slot for the offline-model
+     download look, with the title+subtitle shape of settings_row_switch. Driven by
+     DownloadableToggleRow. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="@dimen/pt_row_min_height"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingHorizontal="@dimen/pt_row_h_padding"
+    android:paddingVertical="9dp"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
+    tools:ignore="Overdraw">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginEnd="12dp">
+
+        <TextView
+            android:id="@+id/tvRowTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            style="@style/Text.PT.RowTitle" />
+
+        <TextView
+            android:id="@+id/tvRowSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:visibility="gone"
+            style="@style/Text.PT.RowSubtitle" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/ivStatusIconWrap"
+        android:layout_width="22dp"
+        android:layout_height="22dp">
+
+        <ImageView
+            android:id="@+id/ivStatusIcon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="center"
+            android:importantForAccessibility="no"
+            app:tint="?attr/ptTextMuted" />
+
+        <ProgressBar
+            android:id="@+id/pbStatusDownloading"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="center"
+            android:visibility="gone"
+            android:indeterminate="true"
+            android:indeterminateTint="?attr/ptTextMuted" />
+    </FrameLayout>
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/switchRowToggle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:clickable="false"
+        android:focusable="false"
+        app:materialThemeOverlay="@style/Widget.PlayTranslate.MaterialSwitch" />
+
+</LinearLayout>

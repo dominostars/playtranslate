@@ -555,6 +555,10 @@ class MainActivity :
                     // them (their profile refs + catalog entries are gone); see
                     // OcrModelManager.reclaimRetiredPacks.
                     com.playtranslate.ocr.registry.OcrModelManager.reclaimRetiredPacks(applicationContext)
+                    // The manga-ocr pack sits outside ALL_PACK_KEYS (toggle-owned), so
+                    // sweepOrphans can't reclaim it — free it when Japanese is no longer
+                    // an installed source language.
+                    com.playtranslate.ocr.mangaocr.MangaOcrProvisioning.reclaimIfSourceRemoved(applicationContext)
                 }
             }
         }
