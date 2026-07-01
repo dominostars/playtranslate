@@ -98,6 +98,16 @@ class OverlayUiController(
     private var captureJob: Job? = null
     private var captureGeneration = 0
 
+    /** Display + geometry (size AND rotation) the SHOWING result panel was built for — set
+     *  when a panel is shown, cleared on dismiss. [dismissCaptureResultPanelIfReconfigured]
+     *  uses them to drop the panel when ITS display reconfigures (a 180° flip changes
+     *  rotation, so it's caught), while ignoring events from other displays. An IN-FLIGHT
+     *  capture does NOT use these — it validates its own local geometry snapshot after
+     *  requestClean — so onDisplayChanged never has to coordinate with a not-yet-shown
+     *  capture. That decoupling is what keeps the two paths race-free by construction. */
+    private var captureDisplayId = -1
+    private var captureGeometry: DisplayGeometry? = null
+
     /** A capture result stashed when the overlay's word lens opened the in-app
      *  detail screen, so a user-initiated back from that screen re-shows the panel.
      *  Discarded by ANY teardown (new capture, menu, hideAll, destroy) and after
@@ -148,10 +158,12 @@ class OverlayUiController(
         }
         override fun onDisplayChanged(displayId: Int) {
             if (!isActiveController) return
-            // A rotation / resize changes the screen dimensions the result panel
-            // sized itself + its responsive layout to; dismiss it (re-capture is
-            // cheap) rather than re-parent its bound spans across orientations.
-            dismissCaptureResultOverlay()
+            // Dismiss a SHOWING result panel when ITS display's geometry (size or rotation)
+            // changed — it's laid out + OCR-mapped against that geometry. An in-flight capture
+            // is deliberately NOT touched here (it self-validates after requestClean), so a
+            // spurious / cross-display event can't cancel a just-tapped capture — that was the
+            // rotate-then-tap no-op. 180° flips change rotation, so a stale panel still drops.
+            dismissCaptureResultPanelIfReconfigured(displayId)
             // A rotation / resize invalidates a per-box translation overlay
             // group — its cached displayW/displayH drive the OCR→screen
             // mapping. Drop it on a size change; the next capture cycle
@@ -1564,21 +1576,31 @@ class OverlayUiController(
             return
         }
         val size = getDisplaySize(display)
+        // The geometry this shot is taken against, kept LOCAL to the coroutine: the capture
+        // validates itself against it after requestClean (below), so it never depends on an
+        // onDisplayChanged event — or its timing — to cancel a stale capture. The shared
+        // captureGeometry field is set only once a panel is actually shown.
+        val launchGeometry = DisplayGeometry(size.x, size.y, display.rotation)
         val gen = captureGeneration
         captureJob = scope.launch {
             val bitmap = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
-            // A newer capture (or a teardown) bumped the generation while we were
-            // suspended in requestClean — bail before creating the panel or
-            // touching the shared service, so the two captures can't interleave
-            // their configureOverride/processScreenshot. (The synchronous tail
-            // below has no suspension point, so the generation check, not job
-            // cancellation, is what stops a coroutine that already resumed.)
-            if (gen != captureGeneration) {
+            // Single validation gate at the ONLY pre-panel suspension point. Bail if EITHER:
+            //  • a newer capture / teardown superseded us (generation bumped), or
+            //  • the captured display reconfigured under us (live geometry != the launch
+            //    snapshot) — a rotation/resize mid-capture would size the panel + OCR mapping
+            //    to stale geometry; a gone display reads null (!= snapshot) → also bails.
+            // Self-contained, so correctness holds regardless of when — or whether —
+            // onDisplayChanged fires. That decoupling is what removes the rotate-then-tap race.
+            val curGeometry = displayGeometry(displayId)
+            if (gen != captureGeneration || curGeometry != launchGeometry) {
                 bitmap?.recycle()
                 return@launch
             }
-            // Register the panel only AFTER the clean capture, so its window is
-            // never blanked into this shot.
+            // Committed: record what the SHOWN panel is built for, so a later reconfiguration
+            // of its display dismisses it (dismissCaptureResultPanelIfReconfigured). Register
+            // the panel only AFTER the clean capture, so its window isn't blanked into the shot.
+            captureDisplayId = displayId
+            captureGeometry = launchGeometry
             val overlay = com.playtranslate.ui.CaptureResultOverlay(displayCtx, wm, displayId, overlayHost)
             overlay.onDismiss = { if (captureResultOverlay === overlay) captureResultOverlay = null }
             overlay.onNavigateToDetail = { result -> stashCaptureOverlayForReshow(displayId, result) }
@@ -1636,9 +1658,41 @@ class OverlayUiController(
         captureJob = null
         captureResultOverlay?.dismiss()
         captureResultOverlay = null
+        captureDisplayId = -1
+        captureGeometry = null
         // Any teardown invalidates a pending re-show. The stash path re-sets it
         // immediately AFTER calling this, so its own teardown doesn't lose it.
         pendingReshow = null
+    }
+
+    /** The display geometry a capture/panel is laid out against — size AND rotation. A
+     *  180° flip keeps the pixel size but changes rotation, so comparing this (not size
+     *  alone) still invalidates a stale panel; a refresh-rate/HDR event keeps both, so it
+     *  doesn't churn one. */
+    private data class DisplayGeometry(val width: Int, val height: Int, val rotation: Int)
+
+    /** Size + rotation of [displayId], or null if it can't be resolved. */
+    private fun displayGeometry(displayId: Int): DisplayGeometry? {
+        val display = (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
+            ?.getDisplay(displayId) ?: return null
+        val size = getDisplaySize(display)
+        return DisplayGeometry(size.x, size.y, display.rotation)
+    }
+
+    /** Dismiss a SHOWING capture panel when its own display's geometry (size or rotation)
+     *  changed — the panel was laid out + OCR-mapped against that geometry, so a 180° flip
+     *  (rotation change, same pixels) invalidates it too. Scoped to the panel's display, so a
+     *  late event from a secondary display leaves it alone. Deliberately does NOT cancel an
+     *  in-flight capture (`captureResultOverlay == null` while one is setting up): that
+     *  self-validates its geometry after requestClean, so nothing here can race it. */
+    private fun dismissCaptureResultPanelIfReconfigured(changedDisplayId: Int) {
+        if (captureResultOverlay == null) return
+        if (changedDisplayId != captureDisplayId) return
+        val built = captureGeometry ?: return
+        val now = displayGeometry(changedDisplayId) ?: return
+        if (now != built) {
+            dismissCaptureResultOverlay()
+        }
     }
 
     /** Stash the overlay's current result and tear the live panel down when its
@@ -1669,6 +1723,8 @@ class OverlayUiController(
         val displayCtx = context.createDisplayContext(display)
         val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
         val size = getDisplaySize(display)
+        captureDisplayId = displayId
+        captureGeometry = DisplayGeometry(size.x, size.y, display.rotation)
         val overlay = com.playtranslate.ui.CaptureResultOverlay(displayCtx, wm, displayId, overlayHost)
         overlay.onDismiss = { if (captureResultOverlay === overlay) captureResultOverlay = null }
         overlay.onNavigateToDetail = { r -> stashCaptureOverlayForReshow(displayId, r) }
