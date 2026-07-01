@@ -209,6 +209,12 @@ object MangaOcrRefiner {
         val blockText = reader.read(image, region, budgetFor(baseLen))
             ?.let { RecognizedTextNormalizer.normalize(listOf(it), image.sourceLang).firstOrNull() }
             ?.lines?.firstOrNull()?.text
+        // An aborted decode (superseded frame) comes back as a null reading, not a
+        // throw. Current callers are already protected — OcrPipeline's withContext
+        // rethrows on a cancelled job — but re-check here so cancellation surfaces
+        // from THIS boundary too, keeping the refiner self-contained for any future
+        // caller that doesn't wrap it.
+        coroutineContext.ensureActive()
         if (blockText.isNullOrBlank()) return group
         return when (val result = BlockTextAligner.align(blockText, group.lines)) {
             is BlockTextAligner.Result.Rejected -> {

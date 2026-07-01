@@ -13,6 +13,8 @@ import com.playtranslate.ocr.core.RecognizedRegion
 import com.playtranslate.ocr.core.RegionOrigin
 import com.playtranslate.ocr.core.synthesizeEvenCharBoxes
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -244,5 +246,34 @@ class MangaOcrRefinerTest {
         } catch (e: CancellationException) {
             // expected — a superseded frame must cancel, not silently fall back
         }
+    }
+
+    @Test
+    fun `an aborted decode surfaces cancellation instead of a base-kept result`() = runBlocking {
+        // The session's cooperative abort returns a null reading WITHOUT throwing
+        // (MangaOcrSession polls shouldContinue between decode steps). The refiner
+        // must convert that into CancellationException at its own boundary — even on
+        // the last eligible group, where no later per-group check runs — rather than
+        // hand a "successful" base-kept result back to a superseded frame. Run in a
+        // child job: cancelling runBlocking's own job would mask the behavior under
+        // the coroutine builder's completion check.
+        val g = group(listOf(line("あ", 0, true)), vertical = true)
+        var thrown: Throwable? = null
+        var returned: List<LayoutGroup>? = null
+        val worker = launch {
+            val self = coroutineContext[Job]!!
+            val aborting = MangaOcrRefiner.BlockReader { _, _, _ ->
+                self.cancel() // frame superseded mid-decode
+                null          // the abort path: no reading, no throw
+            }
+            try {
+                returned = MangaOcrRefiner.refineWith(aborting, listOf(g), bitmap, "ja")
+            } catch (e: CancellationException) {
+                thrown = e
+            }
+        }
+        worker.join()
+        assertTrue("expected CancellationException, got result=$returned", thrown is CancellationException)
+        assertEquals(null, returned)
     }
 }
