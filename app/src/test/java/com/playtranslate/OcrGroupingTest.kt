@@ -482,6 +482,330 @@ class OcrGroupingTest {
         assertEquals(listOf(listOf(0, 1, 2, 3), listOf(4)), groups)
     }
 
+    // ── same-pass extras: pitch-lock / gap band / text cues / indent ─────
+    // (2026-07-01 group-aware evidence layer — see samePassBlockExtras)
+
+    @Test
+    fun pitchWaiver_shortTrailingWrap_joinsBody() {
+        // The confirmed height-gate false-split (Vietnamese Wikipedia capture,
+        // 2026-05-12): a digit-heavy short last line is glyph-tight shorter
+        // than the body (ratio 0.51, beyond even the demoted 0.50 cap) but
+        // sits at the paragraph's exact center-to-center pitch — established
+        // pitch waives the scale gate.
+        val groups = group(listOf(
+            box(100, 100, 1000, 156),   // body line, h=56, centerY 128
+            box(100, 180, 1000, 236),   // body line, h=56, centerY 208 (pitch 80)
+            box(100, 260, 1000, 316),   // body line, h=56, centerY 288 (pitch 80)
+            box(100, 350, 500, 387),    // trailing wrap, h=37, centerY 368 (pitch 80)
+        ))
+        assertEquals(listOf(listOf(0, 1, 2, 3)), groups)
+    }
+
+    @Test
+    fun blockGap_generousLeadingParagraph_pitchTailJoins() {
+        // Extension of the generous-leading capture: a glyph-short trailing
+        // line at the paragraph's established ~57px center pitch joins even
+        // though its gap ratio (33/31 ≈ 1.06×) is past the 0.9 confident zone
+        // and its bbox height (20 vs 31, ratio 0.55) fails the scale cap —
+        // band + pitch carries it.
+        val groups = group(listOf(
+            box(165, 164, 1293, 200),   // h=36, centerY 182
+            box(166, 224, 1369, 255),   // h=31, centerY 239 (pitch 57)
+            box(165, 282, 1365, 314),   // h=32, centerY 298 (pitch 59)
+            box(166, 340, 1266, 371),   // h=31, centerY 355 (pitch 57)
+            box(165, 404, 700, 424),    // h=20, centerY 414 (pitch 59)
+        ))
+        assertEquals(listOf(listOf(0, 1, 2, 3, 4)), groups)
+    }
+
+    @Test
+    fun scaleCap_uncorroboratedModerateDelta_splits() {
+        // Ratio 0.39 with no pitch, no indent, and no text corroboration:
+        // the bare tier of the evidence ladder (0.30) splits. A ~1.4×
+        // heading whose case profile compresses into the 0.30–0.50 band is
+        // indistinguishable by ratio alone from same-font kana variance, so
+        // bare pairs stay conservative; corroborated paths (pitch, band
+        // cues, cross-frame) get 0.50, and pitch waives entirely.
+        val groups = group(listOf(
+            box(100, 0, 1000, 50),      // h=50
+            box(100, 80, 700, 116),     // h=36 → ratio (50-36)/36 = 0.39
+        ))
+        assertEquals(listOf(listOf(0), listOf(1)), groups)
+    }
+
+    @Test
+    fun scaleCap_titleCaseHeadingAboveBody_splits() {
+        // Adversarial-review negative case: a Title Case item name at ~1.45×
+        // above its description. Both lines are mixed-case, so the
+        // caps-heading veto is blind — the bare 0.30 scale tier is what
+        // splits it.
+        val boxes = listOf(
+            box(100, 0, 400, 35),       // "Iron Sword", h=35
+            box(100, 43, 700, 67),      // "A sturdy blade forged in", h=24 → ratio 0.46
+        )
+        val texts = listOf("Iron Sword", "A sturdy blade forged in")
+        val groups = groupBoxesOnePass(
+            boxes, boxes.map { it.left }, TextOrientation.HORIZONTAL,
+            cues = texts.map { LayoutAnalyzer.textFlowCue(it) },
+        )
+        assertEquals(listOf(listOf(0), listOf(1)), groups)
+    }
+
+    @Test
+    fun scaleCap_cjkHeadingAboveBody_splits() {
+        // CJK heading at ~1.4×: kanji/kana boxes track font size honestly,
+        // so the measured ratio (0.43) lands squarely in the band the bare
+        // tier protects. No case profile exists for the caps veto — the
+        // 0.30 cap is the only guard, and it must hold.
+        val boxes = listOf(
+            box(100, 0, 300, 40),       // そうびとどうぐ heading, h=40
+            box(100, 48, 600, 76),      // body line, h=28 → ratio 0.43
+        )
+        val texts = listOf("そうびとどうぐ", "ぶきをそうびできます")
+        val groups = groupBoxesOnePass(
+            boxes, boxes.map { it.left }, TextOrientation.HORIZONTAL,
+            cues = texts.map { LayoutAnalyzer.textFlowCue(it) },
+            spacedScript = false,
+        )
+        assertEquals(listOf(listOf(0), listOf(1)), groups)
+    }
+
+    @Test
+    fun bandGap_continuationCue_moderateScaleDelta_merges() {
+        // The corroborated tier: ratio 0.44 (beyond the bare 0.30 cap)
+        // still merges in the band when a continuation cue corroborates —
+        // kana variance inside real JA paragraphs is exactly why
+        // corroborated paths keep the looser 0.50.
+        val boxes = listOf(
+            box(100, 0, 500, 36),       // h=36, ends 、
+            box(100, 80, 480, 105),     // h=25 → ratio 0.44; dy=44 in band
+        )
+        val texts = listOf("今日は、", "いい天気")
+        val groups = groupBoxesOnePass(
+            boxes, boxes.map { it.left }, TextOrientation.HORIZONTAL,
+            cues = texts.map { LayoutAnalyzer.textFlowCue(it) },
+            spacedScript = false,
+        )
+        assertEquals(listOf(listOf(0, 1)), groups)
+    }
+
+    @Test
+    fun scaleCap_furiganaScale_stillSplits() {
+        // The backstop's real job: furigana-scale (ratio 1.67) never merges
+        // into its base line — no pitch, no indent, extras reject too.
+        val groups = group(listOf(
+            box(100, 30, 300, 45),      // furigana line, h=15
+            box(100, 50, 600, 90),      // base line, h=40
+        ))
+        assertEquals(listOf(listOf(0), listOf(1)), groups)
+    }
+
+    @Test
+    fun bandGap_noCorroboration_staysSplit() {
+        // Gap 1.22× sits in the ambiguous band; with no pitch and no text
+        // cues nothing merges — punct-less stacked labels / airy menu rows
+        // stay split (which keeps splitMenuGroups' rows≥4 gate fed).
+        val groups = group(listOf(
+            box(100, 0, 500, 36),
+            box(100, 80, 500, 116),     // dy 44 = 1.22×36
+            box(100, 160, 500, 196),
+        ))
+        assertEquals(listOf(listOf(0), listOf(1), listOf(2)), groups)
+    }
+
+    @Test
+    fun bandGap_continuationCueSeeds_thenPitchExtends() {
+        // Airy CJK leading (dy 1.22×h). With band text-seeding ENABLED the
+        // first pair merges on the 、 continuation cue and the third line —
+        // cue-less — extends on the established pitch (80). While the
+        // BAND_TEXT_SEEDING_ENABLED toggle is OFF (on-device A/B), no seed
+        // forms and all three stay apart.
+        val boxes = listOf(
+            box(100, 0, 500, 36),
+            box(100, 80, 500, 116),
+            box(100, 160, 500, 196),
+        )
+        val texts = listOf("今日は、", "いい天気", "ですね")
+        val groups = groupBoxesOnePass(
+            boxes, boxes.map { it.left }, TextOrientation.HORIZONTAL,
+            cues = texts.map { LayoutAnalyzer.textFlowCue(it) },
+            spacedScript = false,
+        )
+        val expected =
+            if (LayoutAnalyzer.BAND_TEXT_SEEDING_ENABLED) listOf(listOf(0, 1, 2))
+            else listOf(listOf(0), listOf(1), listOf(2))
+        assertEquals(expected, groups)
+    }
+
+    @Test
+    fun bandGap_terminalPunct_staysSplit() {
+        // Same band geometry, but the group's line ends terminally (。) —
+        // two complete stacked utterances at airy spacing get no
+        // corroboration and stay apart.
+        val boxes = listOf(
+            box(100, 0, 500, 36),
+            box(100, 80, 500, 116),
+        )
+        val texts = listOf("そうだ。", "行こう。")
+        val groups = groupBoxesOnePass(
+            boxes, boxes.map { it.left }, TextOrientation.HORIZONTAL,
+            cues = texts.map { LayoutAnalyzer.textFlowCue(it) },
+            spacedScript = false,
+        )
+        assertEquals(listOf(listOf(0), listOf(1)), groups)
+    }
+
+    @Test
+    fun bandGap_unclosedBracket_merges() {
+        // VN dialogue: an unclosed 「 spanning the group is strong
+        // continuation evidence — the quote closes on the next line.
+        // Fires only while BAND_TEXT_SEEDING_ENABLED; split when OFF.
+        val boxes = listOf(
+            box(100, 0, 500, 36),
+            box(100, 80, 500, 116),
+        )
+        val texts = listOf("「今日は", "いい天気」")
+        val groups = groupBoxesOnePass(
+            boxes, boxes.map { it.left }, TextOrientation.HORIZONTAL,
+            cues = texts.map { LayoutAnalyzer.textFlowCue(it) },
+            spacedScript = false,
+        )
+        val expected =
+            if (LayoutAnalyzer.BAND_TEXT_SEEDING_ENABLED) listOf(listOf(0, 1))
+            else listOf(listOf(0), listOf(1))
+        assertEquals(expected, groups)
+    }
+
+    @Test
+    fun bandGap_latinLowercaseContinuation_merges() {
+        // Latin: previous line lacks terminal punctuation AND the next
+        // starts lowercase → mid-sentence break, merge within the band.
+        // Fires only while BAND_TEXT_SEEDING_ENABLED; split when OFF.
+        val boxes = listOf(
+            box(100, 0, 500, 36),
+            box(100, 80, 500, 116),
+        )
+        val texts = listOf("The quick brown", "fox jumps.")
+        val groups = groupBoxesOnePass(
+            boxes, boxes.map { it.left }, TextOrientation.HORIZONTAL,
+            cues = texts.map { LayoutAnalyzer.textFlowCue(it) },
+        )
+        val expected =
+            if (LayoutAnalyzer.BAND_TEXT_SEEDING_ENABLED) listOf(listOf(0, 1))
+            else listOf(listOf(0), listOf(1))
+        assertEquals(expected, groups)
+    }
+
+    @Test
+    fun bandGap_latinCapitalStart_staysSplit() {
+        // Stacked stat labels: no terminal punct on the first line but the
+        // second starts uppercase — no continuation evidence, stays split.
+        val boxes = listOf(
+            box(100, 0, 500, 36),
+            box(100, 80, 500, 116),
+        )
+        val texts = listOf("Attack Power", "Defense Power")
+        val groups = groupBoxesOnePass(
+            boxes, boxes.map { it.left }, TextOrientation.HORIZONTAL,
+            cues = texts.map { LayoutAnalyzer.textFlowCue(it) },
+        )
+        assertEquals(listOf(listOf(0), listOf(1)), groups)
+    }
+
+    @Test
+    fun firstLineIndent_oneEm_merges() {
+        // JA 一字下げ / Western first-line indent: the opening line starts
+        // exactly one em (≈1.0×refH) right of the body line below it. The
+        // start-edge check fails (Δ40 > tol 20) and the widths differ enough
+        // that centers miss too (Δ70) — the indent acceptance carries it.
+        val groups = group(listOf(
+            box(140, 0, 1000, 40),      // first line, indented 1 em
+            box(100, 60, 900, 100),     // body line
+        ))
+        assertEquals(listOf(listOf(0, 1)), groups)
+    }
+
+    @Test
+    fun firstLineIndent_directional_hangingIndentStaysSplit() {
+        // The acceptance is directional: a candidate indented UNDER a flush
+        // first line (hanging indent / nested child row) must not qualify.
+        val groups = group(listOf(
+            box(100, 0, 1000, 40),
+            box(140, 60, 900, 100),
+        ))
+        assertEquals(listOf(listOf(0), listOf(1)), groups)
+    }
+
+    @Test
+    fun capsHeading_titleAboveMixedBody_splits() {
+        // Hades boon card (real Thor capture, 2026-07-01): "ARCTIC GALE" is
+        // all-caps at ~1.7× font size, but its cap-height-only box (h=27) vs
+        // the mixed-case description's ascender-to-descender box (h=23)
+        // measures hRatio=0.17 — inside every height cap, 8px gap, flush
+        // left. The case profile is the only surviving scale signal; the
+        // caps-heading veto splits what geometry cannot see.
+        val boxes = listOf(
+            box(557, 505, 752, 532),     // "ARCTIC GALE"
+            box(557, 540, 1090, 563),    // "Your Casts also create a…"
+        )
+        val texts = listOf("ARCTIC GALE", "Your Casts also create a")
+        val groups = groupBoxesOnePass(
+            boxes, boxes.map { it.left }, TextOrientation.HORIZONTAL,
+            cues = texts.map { LayoutAnalyzer.textFlowCue(it) },
+        )
+        assertEquals(listOf(listOf(0), listOf(1)), groups)
+    }
+
+    @Test
+    fun capsHeading_capsAboveCaps_stillMerges() {
+        // The veto needs lowercase BELOW all-caps: a shouted all-caps wrap
+        // (both lines caps) must keep merging via the normal block path.
+        val boxes = listOf(
+            box(557, 505, 752, 532),
+            box(557, 540, 1000, 565),
+        )
+        val texts = listOf("I SAID STOP", "RIGHT THERE, BUDDY")
+        val groups = groupBoxesOnePass(
+            boxes, boxes.map { it.left }, TextOrientation.HORIZONTAL,
+            cues = texts.map { LayoutAnalyzer.textFlowCue(it) },
+        )
+        assertEquals(listOf(listOf(0, 1)), groups)
+    }
+
+    @Test
+    fun menuRows_tightSpacing_stayOneGroupForMenuSplit() {
+        // bof3-camping-shaped menu (near-equal widths, tight 0.5×h spacing):
+        // the grouper must keep merging ALL rows so splitMenuGroups' rows≥4
+        // gate still sees a 5-row group downstream. A partial split here
+        // (e.g. a fill-based terminator) would starve the discriminator.
+        val groups = group(listOf(
+            box(100, 0, 454, 36),
+            box(100, 54, 454, 90),
+            box(100, 108, 403, 144),
+            box(100, 162, 451, 198),
+            box(100, 216, 355, 252),
+        ))
+        assertEquals(1, groups.size)
+        assertEquals(listOf(0, 1, 2, 3, 4), groups[0])
+    }
+
+    @Test
+    fun verticalBand_pitchExtends_narrowTrailingColumn() {
+        // Vertical CJK: two columns establish pitch 66 (right-to-left); a
+        // narrower trailing column (w=20 vs 36, ratio 0.8 — beyond the scale
+        // cap) at the exact pitch and a band-range dx still joins — pitch
+        // waives scale, mirroring the horizontal trailing-wrap fix.
+        val groups = group(
+            listOf(
+                box(300, 100, 336, 400),   // col 1 (rightmost), w=36, centerX 318
+                box(234, 100, 270, 400),   // col 2, w=36, centerX 252 (pitch 66)
+                box(176, 100, 196, 400),   // col 3, w=20, centerX 186 (pitch 66)
+            ),
+            orientation = TextOrientation.VERTICAL,
+        )
+        assertEquals(listOf(listOf(0, 1, 2)), groups)
+    }
+
     // ── splitMenuGroups: row-based counting (vs raw regions) ─────────────
 
     @Test

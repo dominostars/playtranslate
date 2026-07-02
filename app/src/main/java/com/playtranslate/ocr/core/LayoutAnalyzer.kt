@@ -11,12 +11,16 @@ import com.playtranslate.language.TextOrientation
  *
  * This object owns the **pure-geometry grouping kernel** — the carefully-tuned
  * predicates that decide whether two boxes belong to the same text block, plus
- * the one-pass clustering algorithm built on them. It is engine-agnostic: it
- * operates on `android.graphics.Rect` + injected `alignLefts` + orientation +
- * mode, with **no text content, no language, and no ML Kit / MNN / OpenCV
- * dependency**. Text-derived inputs (the hanging-punctuation align hint, the
- * source-script noise filter) are computed by the engine adapters and either
- * injected here as `alignLefts` or applied before/after these calls.
+ * the one-pass clustering algorithm built on them, plus a group-aware evidence
+ * layer (established line pitch, an ambiguous gap band with text-flow
+ * corroboration, first-line indent — see [samePassBlockExtras]) applied only
+ * in the same-pass grouping walk. It is engine-agnostic: it operates on
+ * `android.graphics.Rect` + injected `alignLefts` / [TextFlowCue] flags +
+ * orientation + mode, with **no raw text content, no language, and no ML Kit /
+ * MNN / OpenCV dependency** in the decision kernel. Text-derived inputs (the
+ * hanging-punctuation align hint, per-line text-flow cues, the source-script
+ * noise filter) are computed by the engine adapters / [analyze] and either
+ * injected here as flags or applied before/after these calls.
  *
  * This is what makes grouping shareable across all call sites:
  *  1. post-recognition layout for end-to-end engines (ML Kit lines → paragraphs),
@@ -24,8 +28,9 @@ import com.playtranslate.language.TextOrientation
  *     pure geometry, `alignLefts` all null, no text filter), and
  *  3. cross-frame region matching for overlay caching ([Classification]).
  *
- * The kernel was moved here verbatim from `OcrManager.Companion`; its behavior
- * is pinned by `OcrGroupingTest` (synthetic-Rect cases).
+ * The kernel was moved here verbatim from `OcrManager.Companion` and later
+ * extended with the same-pass evidence layer (2026-07-01); its behavior is
+ * pinned by `OcrGroupingTest` (synthetic-Rect cases).
  */
 object LayoutAnalyzer {
 
@@ -51,10 +56,11 @@ object LayoutAnalyzer {
      * these as distinct lines, so any pixel intersection is incidental
      * (ascender/descender slivers, glyph-box padding) and is NOT evidence
      * of grouping. Decisions rest on inline (same-line gap) and block
-     * (next-line + alignment + height-match) checks alone, with the
-     * strict `sizeRatioCap`=0.30 height cap that keeps typographically distinct
-     * elements (headings vs body, captions vs body) from collapsing into one
-     * paragraph.
+     * (next-line + alignment + scale-class) checks alone. On top of this
+     * pairwise predicate, the grouping walk ([groupBoxesOnePass]) layers
+     * group-aware evidence — established line pitch, an ambiguous gap
+     * band with text-flow corroboration, first-line indent — see
+     * [samePassBlockExtras].
      *
      * [CROSS_FRAME_SAME_REGION] — matching a fresh OCR rect against a rect
      * from a previous frame's overlay state, to decide if they represent
@@ -62,13 +68,10 @@ object LayoutAnalyzer {
      * be partially occluded between frames, so substantial rect overlap
      * is evidence of same-region identity even when heights diverge —
      * see [hasSubstantialOverlap]. Sliver-only overlaps fall through to
-     * the layout checks, which run with a looser `sizeRatioCap`=0.50 — body paragraphs
-     * whose wraps differ in glyph-tight bbox height across cycles
-     * (hiragana-dominant trailing line vs kanji-dominant body line,
-     * digit-only short last line, etc.) shouldn't get split back apart
-     * across cycles when they grouped fine within a frame. The 0.50
-     * height cap still cleanly rejects heading-scale (≥1.5×) elements,
-     * which is the real "different element" guard the gate is here for.
+     * the same layout checks as same-pass, but with the corroborated
+     * scale cap ([SIZE_RATIO_CAP_CORROBORATED]) — absorbing cross-cycle
+     * bbox variance is this mode's whole job. Bare same-pass pairs use
+     * [SIZE_RATIO_CAP_BARE]; see the evidence-ladder kdoc there.
      */
     enum class GroupingMode { SAME_PASS_LAYOUT, CROSS_FRAME_SAME_REGION }
 
@@ -114,26 +117,103 @@ object LayoutAnalyzer {
      * generous-spaced body paragraphs — a gap of ≈0.84× the line height fragmented them
      * mid-paragraph — while a real paragraph break (≈1.9× the line height) stays well
      * clear, so distinct paragraphs still separate.
+     *
+     * This is the *confident-merge* ceiling, not the absolute one: the same-pass
+     * grouping walk extends merging into the [BLOCK_GAP_MULTIPLIER]..[BAND_GAP_MULTIPLIER]
+     * band when independent corroboration exists — see [samePassBlockExtras]. Cross-frame
+     * callers get no band (they call the pairwise predicate directly).
      */
     private const val BLOCK_GAP_MULTIPLIER = 0.9f
 
     /**
-     * Cap on `(hi - lo) / lo` for the inline-axis size ratio (height for
-     * horizontal text, width for vertical). The compared values are
-     * per-line (per-column for vertical) — see [wouldGroup]'s
-     * `aLineCount` / `bLineCount` — so a multi-line group's stacked
-     * extent doesn't trip this gate; only an actual per-line scale
-     * difference does.
-     *
-     * Cross-frame uses 0.50 vs 0.30 same-pass to absorb ML Kit's
-     * glyph-tight bbox variance — hiragana-dominant body wraps can be
-     * 30–40% shorter than kanji-dominant lines of the same paragraph.
-     * The 0.50 ceiling still cleanly rejects heading-scale (≥1.5×)
-     * elements, which is the real "different element" guard the gate
-     * is here for.
+     * Upper ceiling of the ambiguous block-gap band (× reference line height/width).
+     * Gaps in [[BLOCK_GAP_MULTIPLIER], [BAND_GAP_MULTIPLIER]) merge only with
+     * corroboration — an established-pitch match or a text-flow continuation cue —
+     * never on gap+alignment alone (menus and stacked labels live in this range:
+     * measured item spacing 0.31–0.8× *thickness* but ≥0.9× glyph-tight height is
+     * common, while airy web/CJK leading at line-height 1.75–2.0 lands at 0.75–1.0×).
+     * PP-StructureV3 precedent: soft 1.2× / hard 3× two-tier structure keyed on a
+     * per-block line height; the value here is re-derived for glyph-tight ML Kit
+     * boxes, not ported (the units differ).
      */
+    private const val BAND_GAP_MULTIPLIER = 1.3f
+
+    /**
+     * Relative tolerance for matching a candidate's line pitch (center-to-center
+     * block-axis distance from the group's last visual row) against the group's
+     * established pitch, with [PITCH_MIN_TOLERANCE_PX] as the floor. Rendered text
+     * has pixel-constant leading — the `blockGap_generousLeadingParagraph` fixture
+     * measures pitch stable to ±2% while glyph-tight heights wobble ±20% — so this
+     * can stay tight, absorbing only bbox-center jitter from glyph mix.
+     */
+    private const val PITCH_MATCH_TOLERANCE = 0.15f
+    private const val PITCH_MIN_TOLERANCE_PX = 3
+
+    /**
+     * Accepted range (× reference line height) for a first-line indent between a
+     * single-line group and a continuation candidate below it: JA 一字下げ prose
+     * (web novels) indents the first line by exactly one full-width character
+     * ≈ 1.0× line height, which fails the 0.5× start-edge tolerance and sits at
+     * the exact boundary of the center check (a coin flip on bbox jitter).
+     * Minimal port of Tesseract's first_indent/body_indent model — the full
+     * tab-stop machinery needs ≥3-line homogeneous segments our 1–4-line blocks
+     * don't have. LTR horizontal only.
+     */
+    private const val FIRST_LINE_INDENT_MIN = 0.7f
+    private const val FIRST_LINE_INDENT_MAX = 1.3f
+
+    /**
+     * Master switch for the text-cue-seeded band merge (the `textContinues`
+     * branch of the band zone in [samePassBlockExtras]). ON: the 2026-07-01
+     * on-device A/B showed a previously validated fix regresses with it off,
+     * which is the confirmed real-capture evidence the band was waiting for.
+     * While OFF, the band's NotGrouped log reason appends "[seeding disabled]"
+     * whenever the branch would have fired, so a regressed capture directly
+     * implicates (or clears) this path. Pitch evidence is independent of this
+     * switch: groups seeded by tight rows extend into the band on pitch alone.
+     */
+    internal const val BAND_TEXT_SEEDING_ENABLED = true
+
+    /**
+     * Scale-class caps on `(hi - lo) / lo` for the per-line size ratio (height
+     * for horizontal text, width for vertical), graded by evidence strength —
+     * the "evidence ladder" (2026-07-01, post-adversarial-review):
+     *
+     *  - [SIZE_RATIO_CAP_BARE] — the bare same-pass pairwise predicate
+     *    ([wouldGroup] with no group-aware corroboration). The strict tier
+     *    protects typographically distinct stacked elements whose case/glyph
+     *    profiles compress a real ~1.4× scale difference into the measured
+     *    0.30–0.50 band: Title Case item names above descriptions (both
+     *    mixed-case, so the caps-heading veto is blind to them) and CJK
+     *    headings at 1.3–1.5× (kanji boxes track font size honestly).
+     *  - [SIZE_RATIO_CAP_CORROBORATED] — paths carrying independent evidence:
+     *    cross-frame matching (absorbs ML Kit's cross-cycle glyph-tight bbox
+     *    variance — kana/digit-heavy lines run 30–50% shorter than
+     *    kanji/ascender lines of the same font) and the corroborated
+     *    [samePassBlockExtras] paths (text-flow band merges; first-line
+     *    indent, which keeps 0.50 because its target content — JA prose —
+     *    carries exactly the kana variance the strict tier chokes on).
+     *  - Waived entirely on an established-pitch match in
+     *    [samePassBlockExtras] — the tier that carries the CONFIRMED
+     *    trailing-wrap captures (ratios 0.51 and 0.55).
+     *
+     * The compared values are per-line (per-column for vertical) — see
+     * [wouldGroup]'s `aLineCount` / `bLineCount` — so a multi-line group's
+     * stacked extent doesn't trip the gate; only per-line scale does. The cap
+     * is a scale-class backstop, NOT a heading detector: real all-caps titles
+     * measure ratio 0.13–0.17 against their body (cap-height-only boxes) and
+     * are caught by the caps-heading veto, not by any cap. History: briefly a
+     * uniform 0.50 on 2026-07-01; re-graded the same day — every confirmed
+     * capture was already carried by pitch/veto/0.50-catches, so the bare
+     * relaxation traded unconfirmed benefit against unconfirmed heading-merge
+     * regressions.
+     */
+    private const val SIZE_RATIO_CAP_BARE = 0.30
+    private const val SIZE_RATIO_CAP_CORROBORATED = 0.50
+
     private fun sizeRatioCap(mode: GroupingMode): Double =
-        if (mode == GroupingMode.CROSS_FRAME_SAME_REGION) 0.50 else 0.30
+        if (mode == GroupingMode.CROSS_FRAME_SAME_REGION) SIZE_RATIO_CAP_CORROBORATED
+        else SIZE_RATIO_CAP_BARE
 
     /**
      * Block-grouping size guard for **horizontal** text. When the earlier line
@@ -569,6 +649,343 @@ object LayoutAnalyzer {
     internal fun rectStr(r: Rect): String =
         "[L=${r.left} T=${r.top} R=${r.right} B=${r.bottom}]"
 
+    // ── Same-pass group-aware evidence: text-flow cues, pitch, gap band ──────
+
+    /**
+     * Per-line text-flow flags for the same-pass grouping walk, precomputed by
+     * [analyze] (or a caller) and injected into [groupBoxesOnePass] exactly like
+     * `alignLefts` — the decision kernel never sees raw text. Used ONLY as
+     * corroboration inside the ambiguous gap band of [samePassBlockExtras],
+     * never as a hard split/merge signal on their own: game/VN text is
+     * hand-broken at clause boundaries, so document-tool assumptions
+     * ("short line ⇒ deliberate paragraph end") do not hold here. The safe
+     * direction — the one Tesseract itself uses by requiring text agreement
+     * before declaring a break — is "the text looks mid-sentence, so keep
+     * merging plausible."
+     */
+    data class TextFlowCue(
+        /** Line ends with sentence-terminal punctuation (。！？.!? or a closer). */
+        val endsTerminal: Boolean,
+        /** Line ends with continuation punctuation (、，, ・ … em-dash, hyphen wrap). */
+        val endsContinuation: Boolean,
+        /** Line starts with a lowercase letter (Latin/Cyrillic continuation hint). */
+        val startsLowercase: Boolean,
+        /** Net count of opened-minus-closed quote/bracket pairs in this line. */
+        val bracketDelta: Int,
+        /** Line has at least one uppercase letter and none lowercase — an
+         *  all-caps heading/label case profile (cased scripts only; always
+         *  false for CJK). */
+        val isAllCaps: Boolean = false,
+        /** Line contains at least one lowercase letter (body-text profile). */
+        val hasLowercase: Boolean = false,
+    )
+
+    private val TERMINAL_END_CHARS = setOf(
+        '。', '．', '！', '？', '.', '!', '?',
+        '」', '』', '）', '】', '〕', '》', '〉', '﹂', '﹄', '”', '’', ')',
+        '؟', '۔',
+    )
+
+    // Deliberately excludes ー (U+30FC long-vowel mark: ですよー is utterance-final
+    // in casual game dialogue) and bare absence-of-punctuation (menu items are
+    // punct-less too — neutral by necessity). '…' IS included: within a band-gap
+    // pair inside one region, trailing-off vs continuation both favor keeping the
+    // utterance together.
+    private val CONTINUATION_END_CHARS = setOf(
+        '、', '，', ',', ';', '；', '・', '‥', '…', '—', '―', '-',
+        '،', '؛',
+    )
+
+    private val OPENING_BRACKET_CHARS = setOf(
+        '「', '『', '（', '【', '〔', '《', '〈', '﹁', '﹃', '(', '“', '‘',
+    )
+    private val CLOSING_BRACKET_CHARS = setOf(
+        '」', '』', '）', '】', '〕', '》', '〉', '﹂', '﹄', ')', '”', '’',
+    )
+
+    /** Compute the [TextFlowCue] flags for one recognized line's text. */
+    internal fun textFlowCue(text: String): TextFlowCue {
+        val trimmed = text.trim()
+        var delta = 0
+        var hasUpper = false
+        var hasLower = false
+        for (c in trimmed) {
+            if (c in OPENING_BRACKET_CHARS) delta++
+            else if (c in CLOSING_BRACKET_CHARS) delta--
+            if (c.isUpperCase()) hasUpper = true
+            else if (c.isLowerCase()) hasLower = true
+        }
+        val last = trimmed.lastOrNull()
+        val first = trimmed.firstOrNull()
+        return TextFlowCue(
+            endsTerminal = last != null && last in TERMINAL_END_CHARS,
+            endsContinuation = last != null && last in CONTINUATION_END_CHARS,
+            startsLowercase = first != null && first.isLowerCase(),
+            bracketDelta = delta,
+            isAllCaps = hasUpper && !hasLower,
+            hasLowercase = hasLower,
+        )
+    }
+
+    /** Established block-axis pitch of a group: [pitch] = median center-to-center
+     *  distance between consecutive visual rows, [lastRowCenter] = block-axis
+     *  center of the group's last row (the anchor a candidate's pitch is
+     *  measured from). */
+    private data class GroupPitch(val pitch: Int, val lastRowCenter: Int)
+
+    /**
+     * The group's established line pitch, or null when the group has no
+     * reliable one (fewer than two visual rows, an out-of-flow member, or
+     * irregular spacing). Rows come from [rowBands] so a line that OCR split
+     * into inline fragments still counts as ONE row. Pitch is center-to-center,
+     * not edge-gap: glyph-tight bboxes move their edges with ascender/kana
+     * content, but a paragraph's row centers are strictly periodic (the
+     * `blockGap_generousLeadingParagraph` capture: pitch 57.5/58.5/57.5 while
+     * edge gaps run 24–27 over heights 31–37). Regularity is enforced with the
+     * same tolerance used for matching, so a group whose own spacing disagrees
+     * never lends pitch evidence.
+     */
+    private fun establishedPitch(memberBoxes: List<Rect>, orientation: TextOrientation): GroupPitch? {
+        val rows = rowBands(memberBoxes, orientation)
+        if (rows.size < 2) return null
+        val vertical = orientation == TextOrientation.VERTICAL
+        val centers = rows.map { idxs ->
+            val r = unionRect(idxs.map { memberBoxes[it] })
+            if (vertical) (r.left + r.right) / 2 else (r.top + r.bottom) / 2
+        }
+        val diffs = ArrayList<Int>(centers.size - 1)
+        for (i in 1 until centers.size) {
+            // Reading flow: top-to-bottom rows (horizontal), right-to-left
+            // columns (vertical). A non-positive step means an out-of-flow
+            // member landed in this group — no reliable pitch.
+            val d = if (vertical) centers[i - 1] - centers[i] else centers[i] - centers[i - 1]
+            if (d <= 0) return null
+            diffs.add(d)
+        }
+        val sorted = diffs.sorted()
+        val mid = sorted.size / 2
+        val median = if (sorted.size % 2 == 1) sorted[mid] else (sorted[mid - 1] + sorted[mid]) / 2
+        val tol = pitchTolerance(median)
+        if (sorted.first() < median - tol || sorted.last() > median + tol) return null
+        return GroupPitch(median, centers.last())
+    }
+
+    private fun pitchTolerance(pitch: Int): Int =
+        maxOf((pitch * PITCH_MATCH_TOLERANCE).toInt(), PITCH_MIN_TOLERANCE_PX)
+
+    /**
+     * Group-aware merge evidence layered on top of the pairwise [wouldGroup]
+     * predicate by [groupBoxesOnePass] — same-pass layout only; cross-frame
+     * callers never see this. Evaluated only after [wouldGroup] said no.
+     * Reuses [wouldGroup]'s exact gap/alignment formulas (keep in sync).
+     *
+     * Merge paths, in order:
+     *  1. **Pitch extension** (any gap below the band ceiling): the candidate
+     *     sits at the group's established line pitch and passes alignment —
+     *     continuation of a rhythm this group already proved. Waives the
+     *     scale gate entirely (a digit/kana-tight trailing wrap at
+     *     ratio ~0.51 is the confirmed false-split this exists to fix).
+     *  2. **First-line indent** (base zone, horizontal LTR): single-line group
+     *     whose line starts ≈1 em right of the candidate below — JA 一字下げ /
+     *     Western first-line indent (minimal Tesseract first/body model).
+     *  3. **Band + text corroboration** (gap in 0.9–1.3×): merge only when a
+     *     [TextFlowCue] continuation signal corroborates (unclosed quote
+     *     spanning the group, continuation punctuation, Latin lowercase
+     *     continuation) and the scale gate passes. Menus and stacked labels —
+     *     punct-less, pitch-less first pairs — find no corroboration and stay
+     *     split, which keeps `splitMenuGroups`' rows≥4 gate fed.
+     *
+     * Allocation note: reason strings are built unconditionally; this runs in
+     * the per-OCR-pass layout walk (tens of lines), NOT the per-overlay-frame
+     * [Classification] hot path, so the [GroupDecision] cost is acceptable.
+     */
+    internal fun samePassBlockExtras(
+        groupRect: Rect,
+        candidate: Rect,
+        orientation: TextOrientation,
+        groupAlignLeft: Int? = null,
+        candidateAlignLeft: Int? = null,
+        rtl: Boolean = false,
+        memberBoxes: List<Rect>,
+        bracketBalance: Int = 0,
+        lastCue: TextFlowCue? = null,
+        candidateCue: TextFlowCue? = null,
+        spacedScript: Boolean = true,
+    ): GroupDecision {
+        shortAboveLongBlock(groupRect, candidate, orientation)?.let {
+            return GroupDecision.NotGrouped("ext: $it")
+        }
+        return if (orientation == TextOrientation.VERTICAL) {
+            samePassBlockExtrasVertical(groupRect, candidate, memberBoxes, bracketBalance, lastCue)
+        } else {
+            samePassBlockExtrasHorizontal(
+                groupRect, candidate, groupAlignLeft, candidateAlignLeft, rtl,
+                memberBoxes, bracketBalance, lastCue, candidateCue, spacedScript,
+            )
+        }
+    }
+
+    private fun samePassBlockExtrasHorizontal(
+        a: Rect,
+        b: Rect,
+        aAlignLeft: Int?,
+        bAlignLeft: Int?,
+        rtl: Boolean,
+        memberBoxes: List<Rect>,
+        bracketBalance: Int,
+        lastCue: TextFlowCue?,
+        candidateCue: TextFlowCue?,
+        spacedScript: Boolean,
+    ): GroupDecision {
+        val aH = a.height()
+        val bH = b.height()
+        val refH = maxOf(aH, bH)
+        if (refH <= 0) return GroupDecision.NotGrouped("ext: refH=0")
+        val dy = if (a.bottom <= b.top) b.top - a.bottom
+                 else if (b.bottom <= a.top) a.top - b.bottom
+                 else 0
+        val bandThreshold = (refH * BAND_GAP_MULTIPLIER).toInt()
+        if (dy >= bandThreshold) {
+            return GroupDecision.NotGrouped("ext: dy=$dy ≥ band ${bandThreshold}px")
+        }
+
+        val alignTolerance = (refH * 0.5f).toInt()
+        val aStart = if (rtl) a.right else (aAlignLeft ?: a.left)
+        val bStart = if (rtl) b.right else (bAlignLeft ?: b.left)
+        val startDiff = kotlin.math.abs(aStart - bStart)
+        val centerDiff = kotlin.math.abs(a.centerX() - b.centerX())
+        val startAligned = startDiff <= alignTolerance
+        val centerAligned = centerDiff <= alignTolerance
+        // First-line indent: group is a single line that starts ≈1 em to the
+        // RIGHT of the continuation candidate strictly below it. Directional —
+        // a candidate indented under the group (hanging/list child) must NOT
+        // qualify. LTR horizontal only.
+        val indentDelta = aStart - bStart
+        val firstLineIndent = !rtl && memberBoxes.size == 1 && a.bottom <= b.top &&
+            indentDelta >= (refH * FIRST_LINE_INDENT_MIN).toInt() &&
+            indentDelta <= (refH * FIRST_LINE_INDENT_MAX).toInt()
+        if (!startAligned && !centerAligned && !firstLineIndent) {
+            return GroupDecision.NotGrouped(
+                "ext: align startΔ=$startDiff centerΔ=$centerDiff indentΔ=$indentDelta tol=${alignTolerance}px"
+            )
+        }
+
+        val groupPitch = establishedPitch(memberBoxes, TextOrientation.HORIZONTAL)
+        val candidatePitch = groupPitch?.let { b.centerY() - it.lastRowCenter }
+        val pitchOk = groupPitch != null && candidatePitch != null && candidatePitch > 0 &&
+            kotlin.math.abs(candidatePitch - groupPitch.pitch) <= pitchTolerance(groupPitch.pitch)
+        val pitchStr = if (groupPitch != null) "$candidatePitch vs ${groupPitch.pitch}" else "n/a"
+
+        val lo = minOf(aH, bH)
+        val hi = maxOf(aH, bH)
+        val scaleOk = lo <= 0 || (hi - lo).toDouble() / lo <= SIZE_RATIO_CAP_CORROBORATED
+
+        val textContinues = bracketBalance > 0 ||
+            lastCue?.endsContinuation == true ||
+            (spacedScript && lastCue != null && !lastCue.endsTerminal && candidateCue?.startsLowercase == true)
+
+        val vgapThreshold = (refH * BLOCK_GAP_MULTIPLIER).toInt()
+        return if (dy < vgapThreshold) {
+            when {
+                pitchOk -> GroupDecision.Grouped(
+                    "ext-pitch (dy=$dy, pitch $pitchStr ±${pitchTolerance(groupPitch!!.pitch)}px, scale waived)"
+                )
+                firstLineIndent && scaleOk -> GroupDecision.Grouped(
+                    "ext-indent (dy=$dy, indentΔ=$indentDelta ≈ 1em of refH=$refH)"
+                )
+                else -> GroupDecision.NotGrouped(
+                    "ext: base zone, pitch=$pitchStr, indent=$firstLineIndent, scaleOk=$scaleOk"
+                )
+            }
+        } else {
+            when {
+                pitchOk -> GroupDecision.Grouped(
+                    "ext-band-pitch (dy=$dy in [${vgapThreshold},${bandThreshold})px, pitch $pitchStr)"
+                )
+                BAND_TEXT_SEEDING_ENABLED && textContinues && scaleOk -> GroupDecision.Grouped(
+                    "ext-band-cont (dy=$dy in [${vgapThreshold},${bandThreshold})px, brackets=$bracketBalance cont=${lastCue?.endsContinuation} lower=${candidateCue?.startsLowercase})"
+                )
+                else -> GroupDecision.NotGrouped(
+                    "ext-band: dy=$dy, no corroboration (pitch=$pitchStr, cont=$textContinues" +
+                        (if (textContinues && !BAND_TEXT_SEEDING_ENABLED) " [seeding disabled]" else "") +
+                        ", scaleOk=$scaleOk)"
+                )
+            }
+        }
+    }
+
+    private fun samePassBlockExtrasVertical(
+        a: Rect,
+        b: Rect,
+        memberBoxes: List<Rect>,
+        bracketBalance: Int,
+        lastCue: TextFlowCue?,
+    ): GroupDecision {
+        val aW = a.width()
+        val bW = b.width()
+        val refW = maxOf(aW, bW)
+        if (refW <= 0) return GroupDecision.NotGrouped("ext: refW=0")
+        val dx = if (a.left <= b.right && b.right <= a.right) 0
+                 else if (b.left <= a.right && a.right <= b.right) 0
+                 else if (a.right <= b.left) b.left - a.right
+                 else a.left - b.right
+        val bandThreshold = (refW * BAND_GAP_MULTIPLIER).toInt()
+        if (dx >= bandThreshold) {
+            return GroupDecision.NotGrouped("ext: dx=$dx ≥ band ${bandThreshold}px")
+        }
+
+        val alignTolerance = (refW * 0.5f).toInt()
+        val topDiff = kotlin.math.abs(a.top - b.top)
+        val centerDiff = kotlin.math.abs(a.centerY() - b.centerY())
+        if (topDiff > alignTolerance && centerDiff > alignTolerance) {
+            return GroupDecision.NotGrouped(
+                "ext: align topΔ=$topDiff centerΔ=$centerDiff > tol=${alignTolerance}px"
+            )
+        }
+
+        val groupPitch = establishedPitch(memberBoxes, TextOrientation.VERTICAL)
+        // Vertical flow is right-to-left: the next column's center sits LEFT
+        // of the last row's center by one pitch.
+        val candidatePitch = groupPitch?.let { it.lastRowCenter - ((b.left + b.right) / 2) }
+        val pitchOk = groupPitch != null && candidatePitch != null && candidatePitch > 0 &&
+            kotlin.math.abs(candidatePitch - groupPitch.pitch) <= pitchTolerance(groupPitch.pitch)
+        val pitchStr = if (groupPitch != null) "$candidatePitch vs ${groupPitch.pitch}" else "n/a"
+
+        val lo = minOf(aW, bW)
+        val hi = maxOf(aW, bW)
+        val scaleOk = lo <= 0 || (hi - lo).toDouble() / lo <= SIZE_RATIO_CAP_CORROBORATED
+
+        // No lowercase rule (vertical text is CJK) and no first-line indent
+        // (out of scope for vertical — see FIRST_LINE_INDENT_MIN kdoc).
+        val textContinues = bracketBalance > 0 || lastCue?.endsContinuation == true
+
+        val hgapThreshold = (refW * BLOCK_GAP_MULTIPLIER).toInt()
+        return if (dx < hgapThreshold) {
+            when {
+                pitchOk -> GroupDecision.Grouped(
+                    "ext-pitch (dx=$dx, pitch $pitchStr ±${pitchTolerance(groupPitch!!.pitch)}px, scale waived)"
+                )
+                else -> GroupDecision.NotGrouped(
+                    "ext: base zone, pitch=$pitchStr, scaleOk=$scaleOk"
+                )
+            }
+        } else {
+            when {
+                pitchOk -> GroupDecision.Grouped(
+                    "ext-band-pitch (dx=$dx in [${hgapThreshold},${bandThreshold})px, pitch $pitchStr)"
+                )
+                BAND_TEXT_SEEDING_ENABLED && textContinues && scaleOk -> GroupDecision.Grouped(
+                    "ext-band-cont (dx=$dx in [${hgapThreshold},${bandThreshold})px, brackets=$bracketBalance cont=${lastCue?.endsContinuation})"
+                )
+                else -> GroupDecision.NotGrouped(
+                    "ext-band: dx=$dx, no corroboration (pitch=$pitchStr, cont=$textContinues" +
+                        (if (textContinues && !BAND_TEXT_SEEDING_ENABLED) " [seeding disabled]" else "") +
+                        ", scaleOk=$scaleOk)"
+                )
+            }
+        }
+    }
+
     /**
      * Index-level grouping pass. Pure function over rectangles + per-line
      * effective align-lefts, factored out of `groupLinesOnePass` so unit
@@ -589,6 +1006,12 @@ object LayoutAnalyzer {
      *   length as [boxes].
      * - [texts] : optional per-line text, only used to populate the
      *   debug-log snippets. Pass `null` when logging is off.
+     * - [cues] : optional per-line [TextFlowCue] flags (see [textFlowCue]),
+     *   used only as corroboration inside [samePassBlockExtras]' gap band.
+     *   Pass `null` to run pure-geometry (bare-rect callers, tests) — the
+     *   band then merges on pitch evidence alone.
+     * - [spacedScript] : whether the source language separates words with
+     *   whitespace; gates the Latin/Cyrillic lowercase-continuation cue.
      *
      * Returns a list of groups, each group being the indices into
      * [boxes] that ended up together, in encounter order.
@@ -600,12 +1023,17 @@ object LayoutAnalyzer {
         logDecisions: Boolean = false,
         texts: List<String>? = null,
         rtl: Boolean = false,
+        cues: List<TextFlowCue>? = null,
+        spacedScript: Boolean = true,
     ): List<List<Int>> {
         require(boxes.size == alignLefts.size) {
             "boxes and alignLefts must match length"
         }
         require(texts == null || texts.size == boxes.size) {
             "texts must match boxes length when provided"
+        }
+        require(cues == null || cues.size == boxes.size) {
+            "cues must match boxes length when provided"
         }
         if (boxes.isEmpty()) return emptyList()
         val groups = mutableListOf<MutableList<Int>>()
@@ -654,15 +1082,56 @@ object LayoutAnalyzer {
                     // text is unaffected.
                     groupAlignLeft = candidateGroup.mapNotNull { alignLefts[it] }.minOrNull()
                 }
-                // wouldGroup is the canonical predicate — used
+                // Caps-heading veto (text-informed, walk-level like the band
+                // cues): an all-caps line directly above a line containing
+                // lowercase is a title/label over body text ("ARCTIC GALE" /
+                // "Your Casts also…", Hades boon cards, Thor 2026-07-01).
+                // Glyph-tight boxes destroy the font-scale signal for exactly
+                // this pair — an all-caps box is cap-height only, so a ~2×
+                // title measures ~1.2× the mixed-case line below it (observed
+                // hRatio 0.13–0.17, inside every height cap) — and the case
+                // profile is the surviving evidence. Cased scripts +
+                // horizontal only; caps-above-caps (shouted wraps) and
+                // caps-above-digits are unaffected.
+                val capsHeadingVeto = cues != null &&
+                    orientation == TextOrientation.HORIZONTAL &&
+                    groupRect.bottom <= lineBox.top &&
+                    cues[candidateGroup.last()].isAllCaps &&
+                    cues[idx].hasLowercase
+                if (capsHeadingVeto) {
+                    if (logDecisions) {
+                        val prevSnippet =
+                            (texts?.get(candidateGroup.last()) ?: "").take(24).replace('\n', ' ')
+                        val candSnippet =
+                            (texts?.get(idx) ?: "").take(24).replace('\n', ' ')
+                        android.util.Log.d(
+                            "DetectionLog",
+                            "[group:$orientChar] SPLIT g$gi prev=${rectStr(groupRect)} \"$prevSnippet\" cand=${rectStr(lineBox)} \"$candSnippet\" :: caps-heading veto (all-caps above lowercase)"
+                        )
+                    }
+                    continue
+                }
+                // wouldGroup is the canonical pairwise predicate — used
                 // unconditionally so the debug-log toggle is purely
-                // observational. groupDecision is called only to
-                // produce a reason string for the log; if it ever
-                // diverges from wouldGroup the log wording becomes
-                // misleading but grouping behavior stays consistent.
-                val groupMerged = wouldGroup(
+                // observational. When it says no, the group-aware evidence
+                // layer gets a turn: pitch extension, first-line indent, and
+                // the corroborated gap band (see samePassBlockExtras).
+                // groupDecision is called only to produce a reason string
+                // for the log; if it ever diverges from wouldGroup the log
+                // wording becomes misleading but grouping behavior stays
+                // consistent.
+                val baseMerged = wouldGroup(
                     groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft, rtl = rtl
                 )
+                val extras = if (baseMerged) null else samePassBlockExtras(
+                    groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft, rtl,
+                    memberBoxes = candidateGroup.map { boxes[it] },
+                    bracketBalance = cues?.let { cs -> candidateGroup.sumOf { cs[it].bracketDelta } } ?: 0,
+                    lastCue = cues?.get(candidateGroup.last()),
+                    candidateCue = cues?.get(idx),
+                    spacedScript = spacedScript,
+                )
+                val groupMerged = baseMerged || extras is GroupDecision.Grouped
                 if (logDecisions) {
                     val decision = groupDecision(
                         groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft, rtl = rtl
@@ -672,9 +1141,10 @@ object LayoutAnalyzer {
                     val candSnippet =
                         (texts?.get(idx) ?: "").take(24).replace('\n', ' ')
                     val verdict = if (groupMerged) "MERGE" else "SPLIT"
+                    val extReason = extras?.let { " | ${it.reason}" } ?: ""
                     android.util.Log.d(
                         "DetectionLog",
-                        "[group:$orientChar] $verdict g$gi prev=${rectStr(groupRect)} \"$prevSnippet\" cand=${rectStr(lineBox)} \"$candSnippet\" :: ${decision.reason}"
+                        "[group:$orientChar] $verdict g$gi prev=${rectStr(groupRect)} \"$prevSnippet\" cand=${rectStr(lineBox)} \"$candSnippet\" :: ${decision.reason}$extReason"
                     )
                 }
                 if (groupMerged) {
@@ -739,13 +1209,15 @@ object LayoutAnalyzer {
         logDecisions: Boolean = false,
     ): List<LayoutGroup> {
         if (regions.isEmpty()) return emptyList()
-        val rtl = SourceLanguageProfiles.forCode(sourceLang)?.textDirection == TextDirection.RTL
+        val profile = SourceLanguageProfiles.forCode(sourceLang)
+        val rtl = profile?.textDirection == TextDirection.RTL
+        val spacedScript = profile?.wordsSeparatedByWhitespace != false
         val (vertical, horizontal) = regions.partition { it.orientation == TextOrientation.VERTICAL }
         val hGroups = groupRegions(
-            horizontal.sortedBy { it.box.bounds.top }, TextOrientation.HORIZONTAL, logDecisions, rtl
+            horizontal.sortedBy { it.box.bounds.top }, TextOrientation.HORIZONTAL, logDecisions, rtl, spacedScript
         )
         val vGroups = groupRegions(
-            vertical.sortedByDescending { it.box.bounds.right }, TextOrientation.VERTICAL, logDecisions, rtl
+            vertical.sortedByDescending { it.box.bounds.right }, TextOrientation.VERTICAL, logDecisions, rtl, spacedScript
         )
         val rawGroups = (hGroups + vGroups).filter { group ->
             group.any { r -> r.text.any { isSourceLangChar(it, sourceLang) } }
@@ -762,18 +1234,18 @@ object LayoutAnalyzer {
         // receives clean source (`今日はいい天気` not `今日は いい天気`). Default to
         // a space when the profile is unknown — only languages we KNOW omit
         // inter-word spaces drop it, so every other language keeps prior behavior.
-        val lineJoin =
-            if (SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace == false) "" else " "
+        val lineJoin = if (spacedScript) " " else ""
         return split.mapNotNull { buildLayoutGroup(it, lineJoin) }
     }
 
-    /** Extract boxes + align-left hints from sorted regions, run the kernel,
-     *  and remap index-groups back to region lists. */
+    /** Extract boxes + align-left hints + text-flow cues from sorted regions,
+     *  run the kernel, and remap index-groups back to region lists. */
     private fun groupRegions(
         sorted: List<RecognizedRegion>,
         orientation: TextOrientation,
         logDecisions: Boolean,
         rtl: Boolean,
+        spacedScript: Boolean,
     ): List<List<RecognizedRegion>> {
         if (sorted.isEmpty()) return emptyList()
         val boxes = sorted.map { it.box.bounds }
@@ -783,7 +1255,9 @@ object LayoutAnalyzer {
             List(sorted.size) { null }
         }
         val texts = if (logDecisions) sorted.map { it.text } else null
-        val idxGroups = groupBoxesOnePass(boxes, alignLefts, orientation, logDecisions, texts, rtl)
+        val cues = sorted.map { textFlowCue(it.text) }
+        val idxGroups =
+            groupBoxesOnePass(boxes, alignLefts, orientation, logDecisions, texts, rtl, cues, spacedScript)
         return idxGroups.map { idxs -> idxs.map { sorted[it] } }
     }
 
