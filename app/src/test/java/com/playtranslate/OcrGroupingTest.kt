@@ -656,6 +656,44 @@ class OcrGroupingTest {
     }
 
     @Test
+    fun bandGap_jaBareWordEndings_staySplit() {
+        // Permanent pin: punct-less JA word endings — including dictionary-
+        // form menu commands (たたかう/にげる) — must never read as
+        // continuation evidence. A grammatical-ender cue (particles を/が/て
+        // as band corroboration) was tried and reverted 2026-07-01: elliptical
+        // UI labels share those endings (次へ, ひとりで, こんにちは). Re-adding
+        // any member needs a field capture of the fragmentation it fixes.
+        val boxes = listOf(
+            box(100, 0, 500, 36),
+            box(100, 80, 500, 116),     // dy 44 = 1.22×36, in band
+        )
+        val texts = listOf("たたかう", "にげる")
+        val groups = groupBoxesOnePass(
+            boxes, boxes.map { it.left }, TextOrientation.HORIZONTAL,
+            cues = texts.map { LayoutAnalyzer.textFlowCue(it) },
+            spacedScript = false,
+        )
+        assertEquals(listOf(listOf(0), listOf(1)), groups)
+    }
+
+    @Test
+    fun bandGap_jaPoliteSentenceFinal_staysSplit() {
+        // ます is sentence-final polite — a complete utterance (the BoF3
+        // screen-title shape) lends no continuation evidence at band gaps.
+        val boxes = listOf(
+            box(100, 0, 500, 36),
+            box(100, 80, 500, 116),
+        )
+        val texts = listOf("アイテムをつかいます", "つかう")
+        val groups = groupBoxesOnePass(
+            boxes, boxes.map { it.left }, TextOrientation.HORIZONTAL,
+            cues = texts.map { LayoutAnalyzer.textFlowCue(it) },
+            spacedScript = false,
+        )
+        assertEquals(listOf(listOf(0), listOf(1)), groups)
+    }
+
+    @Test
     fun bandGap_unclosedBracket_merges() {
         // VN dialogue: an unclosed 「 spanning the group is strong
         // continuation evidence — the quote closes on the next line.

@@ -690,7 +690,10 @@ object LayoutAnalyzer {
     // in casual game dialogue) and bare absence-of-punctuation (menu items are
     // punct-less too — neutral by necessity). '…' IS included: within a band-gap
     // pair inside one region, trailing-off vs continuation both favor keeping the
-    // utterance together.
+    // utterance together. JA grammatical enders (particles を/が/て etc.) were
+    // tried and REVERTED 2026-07-01: elliptical UI labels share those endings
+    // (次へ, ひとりで, こんにちは) — re-add a member only with a field capture
+    // of a cont=false band split on a line ending in it.
     private val CONTINUATION_END_CHARS = setOf(
         '、', '，', ',', ';', '；', '・', '‥', '…', '—', '―', '-',
         '،', '؛',
