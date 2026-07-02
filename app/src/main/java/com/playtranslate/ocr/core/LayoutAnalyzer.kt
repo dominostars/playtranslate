@@ -150,6 +150,24 @@ object LayoutAnalyzer {
     private const val PITCH_MIN_TOLERANCE_PX = 3
 
     /**
+     * Tail-shape ceiling for the pitch waiver: an established-pitch match
+     * waives the scale gate entirely ONLY when the candidate's inline extent
+     * (width for horizontal text, column length for vertical) is under this
+     * fraction of the group's union extent. The waiver's confirmed bug class
+     * is trailing wraps, which are by nature much narrower than their
+     * paragraph (both captured tails measure 0.44× their group's width) —
+     * and glyph starvation, the reason short lines mis-measure their height,
+     * only afflicts narrow lines in the first place: a near-full-width line
+     * has enough characters to contain tall glyphs and measures normally.
+     * A full-extent candidate at coincidental pitch still merges, but through
+     * [SIZE_RATIO_CAP_CORROBORATED] — so no path bypasses the evidence
+     * ladder without tail-shape evidence. (Option A from the 2026-05-12
+     * height-gate analysis; closes the one cap-free merge path left after
+     * the ladder re-grade.)
+     */
+    private const val PITCH_TAIL_MAX_EXTENT_RATIO = 0.7f
+
+    /**
      * Accepted range (× reference line height) for a first-line indent between a
      * single-line group and a continuation candidate below it: JA 一字下げ prose
      * (web novels) indents the first line by exactly one full-width character
@@ -193,9 +211,11 @@ object LayoutAnalyzer {
      *    [samePassBlockExtras] paths (text-flow band merges; first-line
      *    indent, which keeps 0.50 because its target content — JA prose —
      *    carries exactly the kana variance the strict tier chokes on).
-     *  - Waived entirely on an established-pitch match in
-     *    [samePassBlockExtras] — the tier that carries the CONFIRMED
-     *    trailing-wrap captures (ratios 0.51 and 0.55).
+     *  - Waived on an established-pitch match in [samePassBlockExtras] when
+     *    the candidate is tail-shaped ([PITCH_TAIL_MAX_EXTENT_RATIO]) — the
+     *    tier that carries the CONFIRMED trailing-wrap captures (ratios 0.51
+     *    and 0.55, both 0.44× their group's width). A pitch-matched
+     *    full-extent candidate falls back to the corroborated tier.
      *
      * The compared values are per-line (per-column for vertical) — see
      * [wouldGroup]'s `aLineCount` / `bLineCount` — so a multi-line group's
@@ -786,8 +806,11 @@ object LayoutAnalyzer {
      *  1. **Pitch extension** (any gap below the band ceiling): the candidate
      *     sits at the group's established line pitch and passes alignment —
      *     continuation of a rhythm this group already proved. Waives the
-     *     scale gate entirely (a digit/kana-tight trailing wrap at
-     *     ratio ~0.51 is the confirmed false-split this exists to fix).
+     *     scale gate for tail-shaped candidates (inline extent under
+     *     [PITCH_TAIL_MAX_EXTENT_RATIO] of the group's — a digit/kana-tight
+     *     trailing wrap at ratio ~0.51 is the confirmed false-split this
+     *     exists to fix); a full-extent candidate at pitch merges through
+     *     [SIZE_RATIO_CAP_CORROBORATED] instead.
      *  2. **First-line indent** (base zone, horizontal LTR): single-line group
      *     whose line starts ≈1 em right of the candidate below — JA 一字下げ /
      *     Western first-line indent (minimal Tesseract first/body model).
@@ -887,29 +910,40 @@ object LayoutAnalyzer {
             lastCue?.endsContinuation == true ||
             (spacedScript && lastCue != null && !lastCue.endsTerminal && candidateCue?.startsLowercase == true)
 
+        // Tail shape: the full scale waiver is reserved for candidates that
+        // look like a paragraph's dangling last line — much narrower than
+        // the group's union width. A full-width candidate at coincidental
+        // pitch still merges, but only through the corroborated cap: no
+        // cap-free path without tail-shape evidence.
+        val tailShaped = b.width() < a.width() * PITCH_TAIL_MAX_EXTENT_RATIO
+        val pitchMerge = pitchOk && (tailShaped || scaleOk)
+        val pitchDetail =
+            if (tailShaped) "tail w=${b.width()}<${PITCH_TAIL_MAX_EXTENT_RATIO}×${a.width()}, scale waived"
+            else "scaleOk"
+
         val vgapThreshold = (refH * BLOCK_GAP_MULTIPLIER).toInt()
         return if (dy < vgapThreshold) {
             when {
-                pitchOk -> GroupDecision.Grouped(
-                    "ext-pitch (dy=$dy, pitch $pitchStr ±${pitchTolerance(groupPitch!!.pitch)}px, scale waived)"
+                pitchMerge -> GroupDecision.Grouped(
+                    "ext-pitch (dy=$dy, pitch $pitchStr ±${pitchTolerance(groupPitch!!.pitch)}px, $pitchDetail)"
                 )
                 firstLineIndent && scaleOk -> GroupDecision.Grouped(
                     "ext-indent (dy=$dy, indentΔ=$indentDelta ≈ 1em of refH=$refH)"
                 )
                 else -> GroupDecision.NotGrouped(
-                    "ext: base zone, pitch=$pitchStr, indent=$firstLineIndent, scaleOk=$scaleOk"
+                    "ext: base zone, pitch=$pitchStr, tail=$tailShaped, indent=$firstLineIndent, scaleOk=$scaleOk"
                 )
             }
         } else {
             when {
-                pitchOk -> GroupDecision.Grouped(
-                    "ext-band-pitch (dy=$dy in [${vgapThreshold},${bandThreshold})px, pitch $pitchStr)"
+                pitchMerge -> GroupDecision.Grouped(
+                    "ext-band-pitch (dy=$dy in [${vgapThreshold},${bandThreshold})px, pitch $pitchStr, $pitchDetail)"
                 )
                 BAND_TEXT_SEEDING_ENABLED && textContinues && scaleOk -> GroupDecision.Grouped(
                     "ext-band-cont (dy=$dy in [${vgapThreshold},${bandThreshold})px, brackets=$bracketBalance cont=${lastCue?.endsContinuation} lower=${candidateCue?.startsLowercase})"
                 )
                 else -> GroupDecision.NotGrouped(
-                    "ext-band: dy=$dy, no corroboration (pitch=$pitchStr, cont=$textContinues" +
+                    "ext-band: dy=$dy, no corroboration (pitch=$pitchStr, tail=$tailShaped, cont=$textContinues" +
                         (if (textContinues && !BAND_TEXT_SEEDING_ENABLED) " [seeding disabled]" else "") +
                         ", scaleOk=$scaleOk)"
                 )
@@ -962,26 +996,35 @@ object LayoutAnalyzer {
         // (out of scope for vertical — see FIRST_LINE_INDENT_MIN kdoc).
         val textContinues = bracketBalance > 0 || lastCue?.endsContinuation == true
 
+        // Tail shape, vertical analog: a trailing COLUMN is a SHORTER one
+        // (fewer characters down the column length) — see the horizontal
+        // path for the rationale.
+        val tailShaped = b.height() < a.height() * PITCH_TAIL_MAX_EXTENT_RATIO
+        val pitchMerge = pitchOk && (tailShaped || scaleOk)
+        val pitchDetail =
+            if (tailShaped) "tail h=${b.height()}<${PITCH_TAIL_MAX_EXTENT_RATIO}×${a.height()}, scale waived"
+            else "scaleOk"
+
         val hgapThreshold = (refW * BLOCK_GAP_MULTIPLIER).toInt()
         return if (dx < hgapThreshold) {
             when {
-                pitchOk -> GroupDecision.Grouped(
-                    "ext-pitch (dx=$dx, pitch $pitchStr ±${pitchTolerance(groupPitch!!.pitch)}px, scale waived)"
+                pitchMerge -> GroupDecision.Grouped(
+                    "ext-pitch (dx=$dx, pitch $pitchStr ±${pitchTolerance(groupPitch!!.pitch)}px, $pitchDetail)"
                 )
                 else -> GroupDecision.NotGrouped(
-                    "ext: base zone, pitch=$pitchStr, scaleOk=$scaleOk"
+                    "ext: base zone, pitch=$pitchStr, tail=$tailShaped, scaleOk=$scaleOk"
                 )
             }
         } else {
             when {
-                pitchOk -> GroupDecision.Grouped(
-                    "ext-band-pitch (dx=$dx in [${hgapThreshold},${bandThreshold})px, pitch $pitchStr)"
+                pitchMerge -> GroupDecision.Grouped(
+                    "ext-band-pitch (dx=$dx in [${hgapThreshold},${bandThreshold})px, pitch $pitchStr, $pitchDetail)"
                 )
                 BAND_TEXT_SEEDING_ENABLED && textContinues && scaleOk -> GroupDecision.Grouped(
                     "ext-band-cont (dx=$dx in [${hgapThreshold},${bandThreshold})px, brackets=$bracketBalance cont=${lastCue?.endsContinuation})"
                 )
                 else -> GroupDecision.NotGrouped(
-                    "ext-band: dx=$dx, no corroboration (pitch=$pitchStr, cont=$textContinues" +
+                    "ext-band: dx=$dx, no corroboration (pitch=$pitchStr, tail=$tailShaped, cont=$textContinues" +
                         (if (textContinues && !BAND_TEXT_SEEDING_ENABLED) " [seeding disabled]" else "") +
                         ", scaleOk=$scaleOk)"
                 )

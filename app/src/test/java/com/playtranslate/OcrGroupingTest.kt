@@ -828,20 +828,54 @@ class OcrGroupingTest {
     }
 
     @Test
-    fun verticalBand_pitchExtends_narrowTrailingColumn() {
+    fun verticalBand_pitchExtends_shortTrailingColumn() {
         // Vertical CJK: two columns establish pitch 66 (right-to-left); a
-        // narrower trailing column (w=20 vs 36, ratio 0.8 — beyond the scale
-        // cap) at the exact pitch and a band-range dx still joins — pitch
-        // waives scale, mirroring the horizontal trailing-wrap fix.
+        // trailing column — SHORTER (h=150 vs 300, the tail shape a real
+        // trailing column has) and kana-narrow (w=20 vs 36, ratio 0.8,
+        // beyond the corroborated cap) — at the exact pitch and a band-range
+        // dx still joins: pitch waives scale for tail-shaped candidates,
+        // mirroring the horizontal trailing-wrap fix.
         val groups = group(
             listOf(
                 box(300, 100, 336, 400),   // col 1 (rightmost), w=36, centerX 318
                 box(234, 100, 270, 400),   // col 2, w=36, centerX 252 (pitch 66)
-                box(176, 100, 196, 400),   // col 3, w=20, centerX 186 (pitch 66)
+                box(176, 100, 196, 250),   // col 3, w=20, h=150 (tail), centerX 186
             ),
             orientation = TextOrientation.VERTICAL,
         )
         assertEquals(listOf(listOf(0, 1, 2)), groups)
+    }
+
+    @Test
+    fun pitchWaiver_fullWidthScaleMismatch_staysSplit() {
+        // The narrowed door: a full-width element at the group's exact pitch
+        // no longer bypasses the height check. Coincidental rhythm plus a
+        // 1.67× height difference (ratio 0.67, past even the corroborated
+        // cap) stays out unless the candidate is tail-shaped — which a
+        // full-width heading is not.
+        val groups = group(listOf(
+            box(100, 0, 900, 36),       // body, h=36, centerY 18
+            box(100, 60, 900, 96),      // body, h=36, centerY 78 (pitch 60)
+            box(100, 120, 900, 156),    // body, h=36, centerY 138 (pitch 60)
+            box(100, 168, 1000, 228),   // full-width h=60 at pitch 60 → ratio 0.67
+        ))
+        assertEquals(listOf(listOf(0, 1, 2), listOf(3)), groups)
+    }
+
+    @Test
+    fun pitchCorroborated_fullWidthModerateScale_merges() {
+        // The middle tier: a full-width line at the group's pitch with a
+        // moderate height delta (ratio 0.33 — past the bare 0.30 cap) still
+        // merges through the corroborated 0.50 cap. Pitch remains
+        // corroboration for full-extent candidates; only the unlimited
+        // waiver requires tail shape.
+        val groups = group(listOf(
+            box(100, 0, 900, 36),       // body, h=36, centerY 18
+            box(100, 60, 900, 96),      // body, h=36, centerY 78 (pitch 60)
+            box(100, 120, 900, 156),    // body, h=36, centerY 138 (pitch 60)
+            box(100, 174, 900, 222),    // h=48 at pitch 60 → ratio 0.33
+        ))
+        assertEquals(listOf(listOf(0, 1, 2, 3)), groups)
     }
 
     // ── splitMenuGroups: row-based counting (vs raw regions) ─────────────
