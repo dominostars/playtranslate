@@ -1358,10 +1358,17 @@
 
     <!-- Group header above the ADVANCED settings card (OpenAI sub-screen). -->
     <string name="llm_backend_advanced_header">Advanced</string>
-    <!-- Row label above the provider-preset pill toggle (ADVANCED card). -->
+    <!-- Title of the Provider value cell at the top of the OpenAI config
+         page; its value shows the selected preset and tapping opens a
+         dropdown of providers. -->
     <string name="llm_backend_provider_label">Provider</string>
-    <!-- Row label above the custom base-URL text field (ADVANCED card). -->
+    <!-- Row label above the custom base-URL text field on the OpenAI
+         config page (below the Provider cell). -->
     <string name="llm_backend_base_url_label">Custom URL</string>
+    <!-- Hint/placeholder inside the base-URL field while the Custom
+         provider is selected and the field is empty — invites the user
+         to enter their own OpenAI-compatible server's URL. -->
+    <string name="llm_backend_base_url_custom_hint">Enter your backend\'s URL</string>
     <!-- Inline EditText error under the custom base-URL field: malformed URL, or http:// to a non-local host. -->
     <string name="llm_backend_base_url_invalid">Use https:// — http:// is only allowed for a local or LAN address</string>
 
@@ -1403,6 +1410,20 @@
     <string name="tr_service_add_online">Add Online Translation Service</string>
     <!-- Toolbar title of the add-service picker screen. -->
     <string name="add_online_service_title">Add Translation Service</string>
+    <!-- Title of the OpenAI row in the add-service picker. "(Customizable)"
+         flags that this entry also covers DeepSeek and custom
+         OpenAI-compatible endpoints via its Provider setting; "OpenAI"
+         itself is a brand name — don't translate it. -->
+    <string name="add_service_openai_customizable">OpenAI (Customizable)</string>
+    <!-- Subtitle under a service's row in the add-service picker: the
+         service needs an API key before it can translate. -->
+    <string name="add_service_sub_requires_key">API Key Required</string>
+    <!-- Subtitle under DeepL's row in the add-service picker: needs an
+         API key, and DeepL offers a free key tier. -->
+    <string name="add_service_sub_requires_key_free">API Key Required (Free option)</string>
+    <!-- Subtitle under Lingva's row in the add-service picker: works
+         without any API key. -->
+    <string name="add_service_sub_no_key">No API key required</string>
     <!-- Subtitle line under a service cell's title on the Translation
          services page, e.g. "Key ••••4f2a". %1$s = the last 4 characters
          of the instance's API key; distinguishes two instances of the

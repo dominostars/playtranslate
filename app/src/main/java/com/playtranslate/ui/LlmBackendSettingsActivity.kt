@@ -5,13 +5,14 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
 import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.PopupMenu
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
@@ -47,10 +48,12 @@ import androidx.core.view.isGone
  *    the first successful save** — backing out creates nothing, and the
  *    picker detects the id's appearance to dismiss itself.
  *
- * OPENAI-type pages carry a provider-preset pill (OpenAI / DeepSeek /
- * Custom) at the top of the ADVANCED section. Pinned presets fill and
- * disable the base-URL field; Custom enables free entry. The preset
- * names the instance's cell on the services page.
+ * OPENAI-type pages carry a Provider value cell (OpenAI / DeepSeek /
+ * Custom — a dropdown, sized to grow as presets are added) and the
+ * base-URL field at the top of the main card. Pinned presets fill and
+ * disable the URL field; Custom clears it for free entry behind a
+ * "bring your own backend" hint. The preset names the instance's cell
+ * on the services page.
  *
  * UX contract (unchanged from the legacy per-service screen):
  *  - The toolbar X discards in-progress edits.
@@ -75,6 +78,12 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
     private lateinit var type: ServiceType
     private var preset = OpenAiPreset.OPENAI
 
+    /** The instance's persisted custom URL (blank unless it was saved on
+     *  the CUSTOM preset). Selecting Custom restores this rather than
+     *  leaving a canonical provider URL in the field — a fresh Custom
+     *  pick shows an empty field with the "bring your own backend" hint. */
+    private var savedCustomUrl = ""
+
     override fun onCreate(savedInstanceState: Bundle?) {
         applyTheme(this)
         applyEdgeToEdge(this)
@@ -96,6 +105,7 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
                     ?: error("CREATE launch without EXTRA_TYPE")
             )
         preset = existing?.preset ?: OpenAiPreset.OPENAI
+        savedCustomUrl = if (existing?.preset == OpenAiPreset.CUSTOM) existing.baseUrl else ""
         config = LlmBackendConfigs.forInstance(this, instanceId, type, preset)
 
         toolbar = findViewById(R.id.toolbar)
@@ -108,7 +118,7 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         etApiKey.setSelection(etApiKey.text.length)
 
         wireGetKeyLink(findViewById(R.id.rowGetKeyLink))
-        wireAdvancedSection()
+        wireProviderSection()
 
         btnSave = findViewById(R.id.btnSave)
         progressSave = findViewById(R.id.progressSave)
@@ -132,52 +142,71 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         }
     }
 
-    /** ADVANCED (provider preset + base URL) is OPENAI-type only; GONE
-     *  for Gemini. Header text is set here because settings_group_header
-     *  carries no android:text. */
-    private fun wireAdvancedSection() {
-        val section = findViewById<View>(R.id.sectionAdvanced)
+    /** Provider preset + base URL rows at the top of the main card —
+     *  OPENAI-type only; GONE for Gemini. */
+    private fun wireProviderSection() {
+        val section = findViewById<View>(R.id.sectionProviderUrl)
         if (!config.allowsBaseUrl) {
             section.isVisible = false
             return
         }
-        findViewById<View>(R.id.headerAdvanced)
-            .findViewById<TextView>(R.id.tvGroupTitle).text =
-            getString(R.string.llm_backend_advanced_header)
-        buildPillToggle(
-            container = findViewById<FrameLayout>(R.id.presetToggleContainer),
-            options = listOf(
-                getString(R.string.openai_display_name) to OpenAiPreset.OPENAI,
-                getString(R.string.deepseek_display_name) to OpenAiPreset.DEEPSEEK,
-                getString(R.string.llm_backend_preset_custom) to OpenAiPreset.CUSTOM,
-            ),
-            selected = preset,
-        ) { applyPreset(it) }
+        val row = findViewById<View>(R.id.rowProvider)
+        row.findViewById<TextView>(R.id.tvRowTitle).text =
+            getString(R.string.llm_backend_provider_label)
+        refreshProviderValue()
+        row.setOnClickListener { showProviderDropdown(row) }
         applyPresetToUrlField()
     }
 
-    /** Pill selection changed: rebind the preset-derived chrome (title,
-     *  get-key link, URL field state). Nothing persists until Save. */
+    /** Anchored dropdown of presets — a menu rather than a segmented
+     *  control so the list can grow (more providers are planned). */
+    private fun showProviderDropdown(anchor: View) {
+        val popup = PopupMenu(this, anchor, Gravity.END)
+        OpenAiPreset.values().forEachIndexed { idx, p ->
+            popup.menu.add(0, idx, idx, presetLabel(p))
+        }
+        popup.setOnMenuItemClickListener { item ->
+            applyPreset(OpenAiPreset.values()[item.itemId])
+            true
+        }
+        popup.show()
+    }
+
+    private fun presetLabel(p: OpenAiPreset): String = when (p) {
+        OpenAiPreset.OPENAI -> getString(R.string.openai_display_name)
+        OpenAiPreset.DEEPSEEK -> getString(R.string.deepseek_display_name)
+        OpenAiPreset.CUSTOM -> getString(R.string.llm_backend_preset_custom)
+    }
+
+    private fun refreshProviderValue() {
+        findViewById<View>(R.id.rowProvider)
+            .findViewById<TextView>(R.id.tvRowValue).text = presetLabel(preset)
+    }
+
+    /** Dropdown selection changed: rebind the preset-derived chrome
+     *  (title, get-key link, provider value, URL field state). Nothing
+     *  persists until Save. */
     private fun applyPreset(newPreset: OpenAiPreset) {
         preset = newPreset
         config = LlmBackendConfigs.forInstance(this, instanceId, type, preset)
         toolbar.title = config.displayName
         wireGetKeyLink(findViewById(R.id.rowGetKeyLink))
+        refreshProviderValue()
         applyPresetToUrlField()
     }
 
     private fun applyPresetToUrlField() {
         val etBaseUrl = findViewById<EditText>(R.id.etBaseUrl)
-        etBaseUrl.hint = config.presetBaseUrl
         if (preset == OpenAiPreset.CUSTOM) {
-            // Entering Custom restores the stored custom URL when one was
-            // saved; otherwise the current (canonical) text stays as the
-            // editing starting point.
-            val stored = config.getBaseUrl()
-            if (stored.isNotBlank()) etBaseUrl.setText(stored)
+            etBaseUrl.hint = getString(R.string.llm_backend_base_url_custom_hint)
+            // The saved custom URL when this instance has one; otherwise
+            // empty so the hint invites the user's own endpoint (never a
+            // prefilled canonical provider URL).
+            etBaseUrl.setText(savedCustomUrl)
             etBaseUrl.isEnabled = true
             etBaseUrl.setTextColor(themeColor(R.attr.ptText))
         } else {
+            etBaseUrl.hint = null
             etBaseUrl.setText(config.presetBaseUrl)
             etBaseUrl.isEnabled = false
             etBaseUrl.setTextColor(themeColor(R.attr.ptTextMuted))

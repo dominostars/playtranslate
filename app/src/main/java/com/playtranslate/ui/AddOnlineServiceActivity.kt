@@ -1,21 +1,24 @@
 package com.playtranslate.ui
 
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.isGone
+import androidx.core.view.isVisible
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.card.MaterialCardView
 import com.playtranslate.R
 import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.applyTheme
+import com.playtranslate.themeColor
 import com.playtranslate.translation.OnlineServiceInstance
 import com.playtranslate.translation.OnlineServiceMutations
 import com.playtranslate.translation.OnlineServiceStore
@@ -78,30 +81,64 @@ class AddOnlineServiceActivity : AppCompatActivity() {
         val card = inflater.inflate(R.layout.language_list_section, parent, false) as MaterialCardView
         val rowContainer = card.findViewById<LinearLayout>(R.id.sectionRows)
 
+        // OpenAI leads: its provider preset (DeepSeek / custom endpoints)
+        // makes it the entry most users are here for.
         val services = listOf(
-            getString(R.string.gemini_display_name) to ServiceType.GEMINI,
-            getString(R.string.openai_display_name) to ServiceType.OPENAI,
-            getString(R.string.deepl_display_name) to ServiceType.DEEPL,
-            getString(R.string.lingva_display_name) to ServiceType.LINGVA,
+            ServiceRow(
+                getString(R.string.add_service_openai_customizable),
+                getString(R.string.add_service_sub_requires_key),
+                ServiceType.OPENAI,
+            ),
+            ServiceRow(
+                getString(R.string.gemini_display_name),
+                getString(R.string.add_service_sub_requires_key),
+                ServiceType.GEMINI,
+            ),
+            ServiceRow(
+                getString(R.string.deepl_display_name),
+                getString(R.string.add_service_sub_requires_key_free),
+                ServiceType.DEEPL,
+            ),
+            ServiceRow(
+                getString(R.string.lingva_display_name),
+                getString(R.string.add_service_sub_no_key),
+                ServiceType.LINGVA,
+            ),
         )
-        services.forEachIndexed { idx, (label, type) ->
+        services.forEachIndexed { idx, row ->
             if (idx > 0) {
                 rowContainer.addView(
                     inflater.inflate(R.layout.settings_row_divider, rowContainer, false)
                 )
             }
-            rowContainer.addView(buildServiceRow(rowContainer, label, type))
+            rowContainer.addView(buildServiceRow(rowContainer, row))
         }
         parent.addView(card)
     }
 
-    private fun buildServiceRow(container: ViewGroup, label: String, type: ServiceType): View {
+    private data class ServiceRow(val title: String, val subtitle: String, val type: ServiceType)
+
+    private fun buildServiceRow(container: ViewGroup, row: ServiceRow): View {
         val view = LayoutInflater.from(this)
             .inflate(R.layout.language_list_row, container, false)
-        view.findViewById<TextView>(R.id.tvRowTitle).text = label
-        view.findViewById<TextView>(R.id.tvRowEndonym).isGone = true
-        view.findViewById<FrameLayout>(R.id.btnDelete).isGone = true
-        view.setOnClickListener { onServicePicked(type) }
+        view.findViewById<TextView>(R.id.tvRowTitle).text = row.title
+        view.findViewById<TextView>(R.id.tvRowEndonym).apply {
+            text = row.subtitle
+            isVisible = true
+        }
+        // Repurpose the row's trailing slot as a passive chevron (the
+        // model picker does the same for its check icon).
+        val trailing = view.findViewById<FrameLayout>(R.id.btnDelete)
+        trailing.isVisible = true
+        trailing.isClickable = false
+        trailing.isFocusable = false
+        trailing.foreground = null
+        trailing.contentDescription = null
+        view.findViewById<ImageView>(R.id.ivDeleteIcon).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            imageTintList = ColorStateList.valueOf(themeColor(R.attr.ptTextMuted))
+        }
+        view.setOnClickListener { onServicePicked(row.type) }
         return view
     }
 

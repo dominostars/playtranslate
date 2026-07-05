@@ -47,22 +47,29 @@
             android:orientation="vertical"
             android:layout_marginEnd="16dp">
 
-            <TextView
-                android:id="@+id/tvRowTitle"
+            <!-- Title line: service name + inline masked key tail
+                 ("Key ••••4f2a", subtitle size/color) — distinguishes
+                 multiple instances of the same service. Baseline-aligned
+                 so the smaller tail sits on the title's text line. -->
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                style="@style/Text.PT.RowTitle" />
+                android:orientation="horizontal">
 
-            <!-- Masked key tail ("Key ••••4f2a") — distinguishes multiple
-                 instances of the same service. Hidden for keyless
-                 instances (Lingva). -->
-            <TextView
-                android:id="@+id/tvRowSubtitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:visibility="gone"
-                style="@style/Text.PT.RowSubtitle" />
+                <TextView
+                    android:id="@+id/tvRowTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    style="@style/Text.PT.RowTitle" />
+
+                <TextView
+                    android:id="@+id/tvKeyTail"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:visibility="gone"
+                    style="@style/Text.PT.RowSubtitle" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/tvRowSubtitle2"

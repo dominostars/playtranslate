@@ -218,7 +218,7 @@ class OnlineServicesController(
             val rowMain: View = view.findViewById(R.id.rowMain)
             val dragHandle: ImageView = view.findViewById(R.id.ivDragHandle)
             val title: TextView = view.findViewById(R.id.tvRowTitle)
-            val keyTail: TextView = view.findViewById(R.id.tvRowSubtitle)
+            val keyTail: TextView = view.findViewById(R.id.tvKeyTail)
             val switch: MaterialSwitch = view.findViewById(R.id.switchRowToggle)
             val delete: ImageView = view.findViewById(R.id.ivDelete)
             val sectionModel: View = view.findViewById(R.id.sectionModel)

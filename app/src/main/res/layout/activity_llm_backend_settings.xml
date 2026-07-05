@@ -52,6 +52,56 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
+                    <!-- Provider preset + base URL (OPENAI type only;
+                         GONE'd for Gemini — gated on allowsBaseUrl).
+                         The Provider value cell opens a dropdown of
+                         presets; pinned presets fill + disable the URL
+                         field, Custom clears it for free entry. -->
+                    <LinearLayout
+                        android:id="@+id/sectionProviderUrl"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <include layout="@layout/settings_row_value"
+                            android:id="@+id/rowProvider" />
+
+                        <include layout="@layout/settings_row_divider" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:paddingHorizontal="@dimen/pt_row_h_padding"
+                            android:paddingVertical="@dimen/pt_row_v_padding">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:labelFor="@+id/etBaseUrl"
+                                android:text="@string/llm_backend_base_url_label"
+                                style="@style/Text.PT.RowTitle" />
+
+                            <EditText
+                                android:id="@+id/etBaseUrl"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:textColorHint="?attr/ptTextHint"
+                                android:textColor="?attr/ptText"
+                                android:textSize="13sp"
+                                android:fontFamily="monospace"
+                                android:singleLine="true"
+                                android:inputType="textUri"
+                                android:background="?attr/ptSurface"
+                                android:padding="10dp"
+                                android:importantForAutofill="no" />
+                        </LinearLayout>
+
+                        <include layout="@layout/settings_row_divider" />
+
+                    </LinearLayout>
+
                     <!-- API Key entry -->
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -91,77 +141,6 @@
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-
-            <!-- ADVANCED: custom base URL. GONE'd unless allowsBaseUrl
-                 (OpenAI only). Header text is set in code — the
-                 settings_group_header include takes no android:text. -->
-            <LinearLayout
-                android:id="@+id/sectionAdvanced"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-
-                <include layout="@layout/settings_group_header"
-                    android:id="@+id/headerAdvanced" />
-
-                <com.google.android.material.card.MaterialCardView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    app:cardBackgroundColor="?attr/ptCard"
-                    app:cardCornerRadius="@dimen/pt_radius"
-                    app:cardElevation="0dp"
-                    app:strokeColor="?attr/ptDivider"
-                    app:strokeWidth="1dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:paddingHorizontal="@dimen/pt_row_h_padding"
-                        android:paddingVertical="@dimen/pt_row_v_padding">
-
-                        <!-- Provider preset: OpenAI / DeepSeek / Custom.
-                             Pinned presets fill + disable the URL field
-                             below; Custom enables free entry. -->
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/llm_backend_provider_label"
-                            style="@style/Text.PT.RowTitle" />
-
-                        <FrameLayout
-                            android:id="@+id/presetToggleContainer"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="16dp"
-                            android:labelFor="@+id/etBaseUrl"
-                            android:text="@string/llm_backend_base_url_label"
-                            style="@style/Text.PT.RowTitle" />
-
-                        <EditText
-                            android:id="@+id/etBaseUrl"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:textColorHint="?attr/ptTextHint"
-                            android:textColor="?attr/ptText"
-                            android:textSize="13sp"
-                            android:fontFamily="monospace"
-                            android:singleLine="true"
-                            android:inputType="textUri"
-                            android:background="?attr/ptSurface"
-                            android:padding="10dp"
-                            android:importantForAutofill="no" />
-                    </LinearLayout>
-
-                </com.google.android.material.card.MaterialCardView>
-
-            </LinearLayout>
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
