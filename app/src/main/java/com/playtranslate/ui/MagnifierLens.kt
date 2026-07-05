@@ -346,21 +346,34 @@ class MagnifierLens(
     }
 
     /** Animate the card body from [lensCardHeight] to [target] INSIDE the fixed
-     *  full-height window — internal relayout only, never a window resize (which
-     *  would flash the overlay at its gravity anchor). Not flipped: the card is
-     *  bottom-anchored (its top rides up as it grows) so the arrow stays on the
-     *  word; flipped: the card top is fixed and it grows downward. */
+     *  full-height window — never a window resize (which would flash the overlay
+     *  at its gravity anchor). Not flipped: the card is bottom-anchored (its top
+     *  rides up as it grows) so the arrow stays on the word; flipped: the card
+     *  top is fixed and it grows downward.
+     *
+     *  The children are laid out ONCE at the end-state ([LensView.beginCardGrow])
+     *  and each animated frame is draw-only ([LensView.setGrowFrame]) — a
+     *  per-frame relayout re-measures the whole dictionary subtree, which on
+     *  long entries stalls the main thread mid-grow. */
     private fun animateCardGrowInside(view: LensView, target: Int) {
         heightAnimator?.cancel()
         applyCardFrame(view, lensCardHeight)
+        val finalTop = if (!lastFlipped) anchoredEdgeScreenY - target else anchoredEdgeScreenY
+        view.beginCardGrow(target, finalTop)
         heightAnimator = ValueAnimator.ofInt(lensCardHeight, target).apply {
             duration = 180L
             interpolator = android.view.animation.DecelerateInterpolator()
             addUpdateListener { anim ->
                 val h = anim.animatedValue as Int
                 lensCardHeight = h
-                applyCardFrame(view, h)
+                val top = if (!lastFlipped) anchoredEdgeScreenY - h else anchoredEdgeScreenY
+                view.setGrowFrame(h, top)
             }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    view.endCardGrow()
+                }
+            })
             start()
         }
     }
@@ -1195,20 +1208,25 @@ class MagnifierLens(
          *  by the full [updateChromeLayout] (init + flip) and don't change
          *  with height; only the scroll height, and — when flipped — the
          *  pill/chip top margins, move. */
-        private fun applyCardHeightGeometry() {
+        private fun applyCardHeightGeometry(
+            layoutHeightPx: Int = cardHeightPx,
+            layoutTopPx: Int = bodyTopOffset,
+        ) {
             // Scroll viewport tracks the card body: height = card height (less
-            // the edge inset); top rides [bodyTopOffset] (which moves when the
-            // card is bottom-anchored mid-grow).
+            // the edge inset); top rides the card top (which moves when the
+            // card is bottom-anchored mid-grow). The grow path passes the END
+            // state here once and animates draw-only (see [beginCardGrow]).
             (definitionsScroll.layoutParams as? LayoutParams)?.let {
-                it.height = cardHeightPx - 2 * bodyEdgeBufferPx
-                it.topMargin = bodyTopOffset + bodyEdgeBufferPx
+                it.height = layoutHeightPx - 2 * bodyEdgeBufferPx
+                it.topMargin = layoutTopPx + bodyEdgeBufferPx
                 definitionsScroll.layoutParams = it
             }
+            val pillAnchor = if (lensFlipped) layoutTopPx + layoutHeightPx else layoutTopPx
             (pillView.layoutParams as? LayoutParams)?.let {
-                it.topMargin = pillAnchorY - pillHeightPx / 2
+                it.topMargin = pillAnchor - pillHeightPx / 2
                 pillView.layoutParams = it
             }
-            val chipTopMargin = pillAnchorY - chipHitSizePx / 2
+            val chipTopMargin = pillAnchor - chipHitSizePx / 2
             (leftChip.layoutParams as? LayoutParams)?.let {
                 it.topMargin = chipTopMargin
                 leftChip.layoutParams = it
@@ -1228,6 +1246,9 @@ class MagnifierLens(
          *  The card fill, border, and arrow read [cardHeightPx]/[bodyTopOffset]
          *  on the next draw, so an [invalidate] follows the relayout. */
         fun setCardGeometry(heightPx: Int, topOverride: Int?) {
+            // A direct geometry set supersedes any in-flight grow's pinned
+            // end-state layout — reset the draw-only ride first.
+            if (growLayoutTarget != null) clearGrowDrawState()
             if (heightPx == cardHeightPx && topOverride == bodyTopOverride) return
             cardHeightPx = heightPx
             bodyTopOverride = topOverride
@@ -1237,6 +1258,70 @@ class MagnifierLens(
             // must follow it — it's keyed off bodyTopOffset.
             rebuildClipPath()
             invalidate()
+        }
+
+        /** Non-null while the release grow animates: (final card height, final
+         *  card top). [beginCardGrow] lays the scroll/pill/chips out ONCE at
+         *  that end-state; each frame is then draw-only — the card chrome reads
+         *  [cardHeightPx]/[bodyTopOverride] at draw time, and the children ride
+         *  translationY + clipBounds ([setGrowFrame]) instead of re-measuring
+         *  the dictionary subtree per frame. */
+        private var growLayoutTarget: Pair<Int, Int>? = null
+
+        /** Start a draw-only grow toward [finalHeightPx]/[finalTopPx]: one
+         *  layout traversal at the end-state, then [setGrowFrame] per frame. */
+        fun beginCardGrow(finalHeightPx: Int, finalTopPx: Int) {
+            growLayoutTarget = finalHeightPx to finalTopPx
+            applyCardHeightGeometry(finalHeightPx, finalTopPx)
+        }
+
+        /** One grow-animation frame: update the drawn card rect and slide the
+         *  end-state-laid-out children to match via translation + clip. Falls
+         *  back to a full [setCardGeometry] if no grow is pinned. */
+        fun setGrowFrame(heightPx: Int, topPx: Int) {
+            val (finalH, finalTop) = growLayoutTarget ?: run {
+                setCardGeometry(heightPx, topPx)
+                return
+            }
+            cardHeightPx = heightPx
+            bodyTopOverride = topPx
+            // Content rides the card top (laid out at the final top, shifted
+            // back to the animated top), clipped to the animated card body.
+            val scrollShift = (topPx - finalTop).toFloat()
+            definitionsScroll.translationY = scrollShift
+            definitionsScroll.clipBounds = Rect(
+                0, 0, definitionsScroll.width,
+                (heightPx - 2 * bodyEdgeBufferPx).coerceAtLeast(0),
+            )
+            // Pill + chips are anchored to the card edge opposite the arrow —
+            // top when not flipped (rides with the content), bottom when
+            // flipped (rides the growing bottom edge).
+            val pillShift = if (lensFlipped) (heightPx - finalH).toFloat() else scrollShift
+            pillView.translationY = pillShift
+            leftChip.translationY = pillShift
+            rightChip.translationY = pillShift
+            rebuildClipPath()
+            invalidate()
+        }
+
+        /** Settle a finished (or cancelled) grow: snap the drawn card rect to
+         *  the pinned end-state and drop the draw-only ride. */
+        fun endCardGrow() {
+            val (finalH, finalTop) = growLayoutTarget ?: return
+            cardHeightPx = finalH
+            bodyTopOverride = finalTop
+            clearGrowDrawState()
+            rebuildClipPath()
+            invalidate()
+        }
+
+        private fun clearGrowDrawState() {
+            growLayoutTarget = null
+            definitionsScroll.translationY = 0f
+            definitionsScroll.clipBounds = null
+            pillView.translationY = 0f
+            leftChip.translationY = 0f
+            rightChip.translationY = 0f
         }
 
         /** Resize the card body, restoring the flip-default top position. */
