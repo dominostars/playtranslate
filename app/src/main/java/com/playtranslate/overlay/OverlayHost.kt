@@ -87,13 +87,16 @@ class OverlayHost(
         val fullScreen = params.width == WindowManager.LayoutParams.MATCH_PARENT &&
             params.height == WindowManager.LayoutParams.MATCH_PARENT
         applyFullScreenOverlayDefaults(params)
-        // Below API 30, MATCH_PARENT resolves to the content area (it excludes the
-        // nav bar), so a full-screen overlay measures short — and the OCR-box scale
-        // (overlayHeight / captureHeight) drifts off 1.0, compressing every box.
-        // fitInsetsTypes=0 fixes this on R+; below R, pin the window to an explicit
-        // size equal to the capture's displaySizePx so overlay == capture by
-        // construction. Validated on API 29 (overlay 1080x1920 == capture 1080x1920).
-        if (fullScreen) pinFullScreenSizeBelowR(params, displayId)
+        // MATCH_PARENT sizing delegates to the platform, and that delegation is
+        // measurably broken on both sides of the R boundary: below R it resolves
+        // to the inset content area (short of the panel; overlay/capture scale
+        // drifts off 1.0), and on R+ multi-display the first relayout after
+        // addView can re-measure the frame against ANOTHER display's config
+        // (Thor 2026-07-05: menu window 1920x1080 -> 1240x1080 nine ms after a
+        // gear tap; 1240 = the app display's width). Pin every full-screen
+        // overlay to its own display's explicit size so overlay == display by
+        // construction on every API level.
+        if (fullScreen) pinFullScreenSize(params, displayId)
         return try {
             wm.addView(view, params)
             overlayWindows += OverlayHandle(view, wm, params, displayId)
@@ -106,16 +109,17 @@ class OverlayHost(
         }
     }
 
-    /** Pin [params] to [displayId]'s current pixel size below R, where a
-     *  MATCH_PARENT overlay resolves to the inset content area rather than the
-     *  full panel (see [addOverlayWindow]). Returns true if a size was pinned;
-     *  R+ leaves MATCH_PARENT in place — the platform spans and tracks the
-     *  display itself — and returns false. */
-    private fun pinFullScreenSizeBelowR(
+    /** Pin [params] to [displayId]'s current pixel size, replacing
+     *  MATCH_PARENT (see [addOverlayWindow] for why platform sizing can't be
+     *  trusted). The size comes from the window's OWN display — resolved by
+     *  [displayId], never a hardcoded display — via the window-context query.
+     *  Cost of pinning: the window no longer follows a rotation by itself;
+     *  [resizeFullScreenOverlayForDisplay] re-pins from the display-change
+     *  path. Returns true if a size was pinned. */
+    private fun pinFullScreenSize(
         params: WindowManager.LayoutParams,
         displayId: Int,
     ): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) return false
         val display = context.getSystemService(DisplayManager::class.java)
             ?.getDisplay(displayId) ?: return false
         val size = context.createDisplayContext(display).displaySizePx()
@@ -126,17 +130,19 @@ class OverlayHost(
         return true
     }
 
-    /** Re-pin an open full-screen overlay's window to [displayId]'s current size
-     *  after a rotation. Below R, [addOverlayWindow] froze the window to an
-     *  explicit pixel size that does NOT follow the display through a rotation,
-     *  so a portrait→landscape turn leaves it at the old width — and anything
-     *  re-anchored against the new bounds (e.g. a right-edge floating menu) can
-     *  land off the still-old-sized surface. A no-op on R+, where the
-     *  MATCH_PARENT window tracks the display. The view must have been added as
-     *  a full-screen overlay. */
+    /** Re-pin an open full-screen overlay's window to [displayId]'s current
+     *  size after a display change. [addOverlayWindow] froze the window to an
+     *  explicit pixel size that does NOT follow the display through a
+     *  rotation, so a portrait→landscape turn would leave it at the old width
+     *  — and anything re-anchored against the new bounds (e.g. a right-edge
+     *  floating menu) could land off the still-old-sized surface. Driven from
+     *  the display-change listener, so a size pinned during a transient
+     *  reconfiguration (the ~1s natural-portrait blip on Thor) is corrected by
+     *  the next event through the same path that introduced it. The view must
+     *  have been added as a full-screen overlay. */
     fun resizeFullScreenOverlayForDisplay(view: View, displayId: Int) {
         val handle = overlayWindows.firstOrNull { it.view === view } ?: return
-        if (!pinFullScreenSizeBelowR(handle.params, displayId)) return
+        if (!pinFullScreenSize(handle.params, displayId)) return
         try { handle.wm.updateViewLayout(view, handle.params) } catch (_: Exception) {}
     }
 
@@ -327,10 +333,12 @@ class OverlayHost(
          * overlays — they must cover the whole display so OCR-box coordinates,
          * which are in capture-bitmap pixels, map 1:1 onto the overlay.
          *
-         * `fitInsetsTypes = 0` is what actually makes the window span the full
-         * display: a non-focusable TYPE_APPLICATION_OVERLAY (the translation
-         * overlay) is otherwise laid out inside the system-bar insets — shorter
-         * than the capture — which vertically compresses every box.
+         * The SIZE itself is pinned to explicit display pixels in
+         * [addOverlayWindow] (platform MATCH_PARENT sizing is untrustworthy —
+         * see there). These flags handle the POSITION/inset side: without
+         * `fitInsetsTypes = 0` a non-focusable TYPE_APPLICATION_OVERLAY (the
+         * translation overlay) is laid out inside the system-bar insets —
+         * offset from the capture — which shifts every box.
          * `FLAG_LAYOUT_NO_LIMITS` alone does not prevent that;
          * `LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS` covers the display cutout.
          *
@@ -344,7 +352,8 @@ class OverlayHost(
             if (!fullScreen) return
             params.flags = params.flags or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                // fitInsetsTypes=0 makes MATCH_PARENT span the full display.
+                // fitInsetsTypes=0 keeps the window origin out of the
+                // system-bar insets; the size is pinned in addOverlayWindow.
                 params.fitInsetsTypes = 0
             } else {
                 // Pre-30 has no fitInsetsTypes. FLAG_LAYOUT_IN_SCREEN pins the
