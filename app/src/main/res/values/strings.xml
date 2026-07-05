@@ -1400,6 +1400,110 @@
     <string name="llm_backend_invalid_key_alert_button">OK</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         ADVANCED LLM CONFIGURATION — user-editable prompt templates.
+         The {token} keywords and the default prompt templates themselves
+         are Kotlin constants (LlmPromptTemplates), deliberately English
+         and NOT localized; keep every {token} verbatim in translations.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Group header above the prompt-templates card on the Translation
+         services page (rendered uppercase by the header style). -->
+    <string name="settings_header_advanced_llm">Advanced LLM configuration</string>
+
+    <!-- Title of the System-prompt row on the Translation services page;
+         also the editor screen's toolbar title. -->
+    <string name="llm_prompt_row_system_title">System prompt</string>
+    <!-- Subtitle under the System-prompt row on the Translation services
+         page, explaining what that prompt does. -->
+    <string name="llm_prompt_row_system_subtitle">The persona and instructions sent to LLM translators, cloud and on-device.</string>
+    <!-- Title of the Translation-prompt row on the Translation services
+         page; also the editor screen's toolbar title. -->
+    <string name="llm_prompt_row_translation_title">Translation prompt</string>
+    <!-- Subtitle under the Translation-prompt row on the Translation
+         services page, explaining what that prompt does. -->
+    <string name="llm_prompt_row_translation_subtitle">The request wrapped around each phrase you look up.</string>
+    <!-- Title of the Batch-prompt row on the Translation services page;
+         also the editor screen's toolbar title. -->
+    <string name="llm_prompt_row_batch_title">Batch prompt</string>
+    <!-- Subtitle under the Batch-prompt row on the Translation services
+         page, explaining what that prompt does. -->
+    <string name="llm_prompt_row_batch_subtitle">The request cloud services use to translate a whole screen at once.</string>
+
+    <!-- Toolbar text action (top right) on the prompt editor: refills the
+         text field with the built-in default template (nothing is saved
+         until Save). -->
+    <string name="llm_prompt_reset">Reset</string>
+    <!-- Group header above the keyword legend under the prompt editor's
+         text field (rendered uppercase by the header style). -->
+    <string name="llm_prompt_keywords_header">Keywords</string>
+    <!-- Warning-colored confirm button on the advisory validation dialog
+         shown when saving a prompt with non-fatal problems. -->
+    <string name="llm_prompt_save_anyway">Save anyway</string>
+
+    <!-- Keyword-legend line in the prompt editor, next to the literal
+         {source} keyword. -->
+    <string name="llm_prompt_kw_source_desc">The source language\'s English name, e.g. Japanese</string>
+    <!-- Keyword-legend line in the prompt editor, next to the literal
+         {source_code} keyword. -->
+    <string name="llm_prompt_kw_source_code_desc">The source language code, e.g. ja</string>
+    <!-- Keyword-legend line in the prompt editor, next to the literal
+         {target} keyword. -->
+    <string name="llm_prompt_kw_target_desc">The target language\'s English name, e.g. English</string>
+    <!-- Keyword-legend line in the prompt editor, next to the literal
+         {target_code} keyword. -->
+    <string name="llm_prompt_kw_target_code_desc">The target language code, e.g. en</string>
+    <!-- Keyword-legend line in the prompt editor, next to the literal
+         {text} keyword. -->
+    <string name="llm_prompt_kw_text_desc">The text to translate</string>
+    <!-- Keyword-legend line in the prompt editor, next to the literal
+         {N} keyword. -->
+    <string name="llm_prompt_kw_count_desc">The number of phrases in the batch</string>
+    <!-- Keyword-legend line in the prompt editor, next to the literal
+         {strings} keyword. -->
+    <string name="llm_prompt_kw_strings_desc">The phrases to translate, as a JSON array</string>
+
+    <!-- Title of the non-bypassable dialog shown on Save when the prompt
+         has fatal problems (it cannot work at all). -->
+    <string name="llm_prompt_invalid_title">Can\'t save this prompt</string>
+    <!-- Line in the Save validation dialog: the text field is empty. -->
+    <string name="llm_prompt_fatal_blank">The prompt can\'t be empty.</string>
+    <!-- Line in the Save validation dialog (Translation prompt). Keep the
+         literal {text} keyword verbatim. -->
+    <string name="llm_prompt_fatal_missing_text">The prompt must include {text} — without it, the phrase to translate is never sent to the model.</string>
+    <!-- Line in the Save validation dialog (Batch prompt). Keep the
+         literal {strings} keyword verbatim. -->
+    <string name="llm_prompt_fatal_missing_strings">The prompt must include {strings} — without it, the phrases to translate are never sent to the model.</string>
+
+    <!-- Title of the bypassable dialog shown on Save when the prompt has
+         advisory problems (degraded but functional; "Save anyway" saves). -->
+    <string name="llm_prompt_warning_title">Check this prompt</string>
+    <!-- Line in the Save validation dialog. Keep the literal {source} /
+         {source_code} keywords verbatim. -->
+    <string name="llm_prompt_advisory_missing_source">Missing {source} or {source_code}: the model won\'t be told which language it\'s translating from.</string>
+    <!-- Line in the Save validation dialog. Keep the literal {target} /
+         {target_code} keywords verbatim. -->
+    <string name="llm_prompt_advisory_missing_target">Missing {target} or {target_code}: the model won\'t be told which language to translate into.</string>
+    <!-- Line in the Save validation dialog (Batch prompt). Keep the
+         literal {N} keyword verbatim. -->
+    <string name="llm_prompt_advisory_missing_count">Missing {N}: the model won\'t be told how many phrases to expect.</string>
+    <!-- Line in the Save validation dialog. %1$s = a keyword that other
+         prompts fill but this one doesn't, e.g. "{text}" typed into the
+         System prompt. -->
+    <string name="llm_prompt_advisory_foreign_token"><xliff:g id="keyword" example="{text}">%1$s</xliff:g> isn\'t filled in by this prompt and will be sent as literal text.</string>
+    <!-- Line in the Save validation dialog: the edited template exceeds
+         the length advisory threshold. -->
+    <string name="llm_prompt_advisory_too_long">This prompt is very long. On-device models may slow down or run out of context.</string>
+
+    <!-- Title of the confirm dialog shown when leaving the prompt editor
+         with unsaved edits. -->
+    <string name="llm_prompt_discard_title">Discard changes?</string>
+    <!-- Body of the same dialog. -->
+    <string name="llm_prompt_discard_message">Your edits to this prompt haven\'t been saved.</string>
+    <!-- Destructive confirm button on the same dialog; Cancel returns to
+         the editor with the edits intact. -->
+    <string name="llm_prompt_discard_confirm">Discard</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS FOOTERS for the Translation Service sections.
          ═══════════════════════════════════════════════════════════════ -->
 

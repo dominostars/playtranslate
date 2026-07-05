@@ -492,6 +492,32 @@ class Prefs internal constructor(
         get() = sp.getString(KEY_OPENAI_BASE_URL, DEFAULT_OPENAI_BASE_URL) ?: DEFAULT_OPENAI_BASE_URL
         set(v) = sp.edit { putString(KEY_OPENAI_BASE_URL, v) }
 
+    // ── User-edited LLM prompt templates (Advanced LLM Configuration) ──────
+    // null = no override → the built-in default in
+    // [com.playtranslate.translation.llm.LlmPromptTemplates] applies, so
+    // default improvements keep flowing to users who never edited. The
+    // editor stores null when a save equals the default. Raw templates with
+    // `{tokens}`, global across all eligible LLM backends. Plaintext — not
+    // secrets. Setter remove()s on null (setTtsVoiceName idiom).
+
+    var llmSystemPrompt: String?
+        get() = sp.getString(KEY_LLM_SYSTEM_PROMPT, null)
+        set(v) = sp.edit {
+            if (v == null) remove(KEY_LLM_SYSTEM_PROMPT) else putString(KEY_LLM_SYSTEM_PROMPT, v)
+        }
+
+    var llmTranslationPrompt: String?
+        get() = sp.getString(KEY_LLM_TRANSLATION_PROMPT, null)
+        set(v) = sp.edit {
+            if (v == null) remove(KEY_LLM_TRANSLATION_PROMPT) else putString(KEY_LLM_TRANSLATION_PROMPT, v)
+        }
+
+    var llmBatchPrompt: String?
+        get() = sp.getString(KEY_LLM_BATCH_PROMPT, null)
+        set(v) = sp.edit {
+            if (v == null) remove(KEY_LLM_BATCH_PROMPT) else putString(KEY_LLM_BATCH_PROMPT, v)
+        }
+
     /** True when [openaiBaseUrl] points somewhere other than the canonical
      *  OpenAI endpoint (trailing-slash / whitespace insensitive). The single
      *  definition of "is this still real OpenAI?" — drives the model-list
@@ -1209,6 +1235,9 @@ class Prefs internal constructor(
         const val KEY_DEEPSEEK_KEY                  = "deepseek_api_key"
         const val KEY_DEEPSEEK_ENABLED              = "deepseek_enabled"
         const val KEY_DEEPSEEK_MODEL                = "deepseek_model"
+        const val KEY_LLM_SYSTEM_PROMPT             = "llm_system_prompt"
+        const val KEY_LLM_TRANSLATION_PROMPT        = "llm_translation_prompt"
+        const val KEY_LLM_BATCH_PROMPT              = "llm_batch_prompt"
 
         /** Default selected model — chosen to match the first entry in
          *  the picker after filtering + sorting (newest alias by

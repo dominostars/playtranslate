@@ -74,6 +74,13 @@ class PlayTranslateApplication : Application() {
         // the online segment (offline tiers follow by priority). The
         // settings UI keeps membership + order in sync as instances are
         // added / removed / reordered.
+        // Composition-root install of the user-edited prompt overrides
+        // (Advanced LLM Configuration). The template objects are stateless
+        // and Context-free, so this closure is their one seam to Prefs —
+        // re-read per translate call, so an edit propagates without any
+        // registry rebuild.
+        com.playtranslate.translation.llm.LlmPromptTemplates.overrideProvider =
+            { kind -> kind.read(Prefs(this)) }
         val sharedPrefs = getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
         OnlineServiceStore.init(this)
         val onlineBackends = OnlineServiceStore.all().map {

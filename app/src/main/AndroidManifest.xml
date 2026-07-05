@@ -117,6 +117,15 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- LLM prompt-template editor (Advanced LLM Configuration). One
+             Activity parameterized by PromptKind, reached from the three
+             rows on the Translation services page. -->
+        <activity
+            android:name=".ui.LlmPromptEditorActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate" />
+
         <!-- Add-service picker: full list of online translation services;
              launched from the Online card's "Add Online Translation
              Service" row. -->

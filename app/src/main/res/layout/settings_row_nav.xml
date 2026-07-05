@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reusable in-app navigation row: title + optional subtitle on left,
+     chevron on right. settings_row_link's shape with the external-link
+     affordance swapped for in-app drill-down (settings_row_value's
+     chevron). android:background is the ripple state-list, not a
+     static fill — see settings_row_hotkey for the full Overdraw note. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="@dimen/pt_row_min_height"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingHorizontal="@dimen/pt_row_h_padding"
+    android:paddingVertical="@dimen/pt_row_v_padding"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
+    tools:ignore="Overdraw">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginEnd="16dp">
+
+        <TextView
+            android:id="@+id/tvRowTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            style="@style/Text.PT.RowTitle" />
+
+        <TextView
+            android:id="@+id/tvRowSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:visibility="gone"
+            style="@style/Text.PT.RowSubtitle" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/ivRowChevron"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:src="@drawable/ic_chevron_right"
+        app:tint="?attr/ptTextMuted"
+        android:importantForAccessibility="no" />
+
+</LinearLayout>

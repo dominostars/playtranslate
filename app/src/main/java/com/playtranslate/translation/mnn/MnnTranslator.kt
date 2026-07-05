@@ -21,14 +21,13 @@ import kotlinx.coroutines.sync.withLock
 /**
  * Process-singleton wrapper around the [com.playtranslate.mnn.MnnChat] inference
  * engine. Single on-device translator after the :llama strip — drives every
- * on-device backend through one engine, one mutex, one cached
- * `(source, target)` system block.
+ * on-device backend through one engine, one mutex, one cached system block.
  *
  * **Why a singleton.** The underlying engine has shared native state
  * (`g_llm`, `g_system_prompt_position` in `mnn_chat.cpp`) and a
  * single-threaded JNI dispatcher. Two independent instances with separate
  * mutexes would let two backends interleave engine calls and corrupt
- * KV / cached-system-pair state.
+ * KV / cached-system-block state.
  *
  * **Cross-backend model swaps.** [QwenMnnBackend] and [GemmaE2BMnnBackend]
  * both call [translate] with their own `modelPath`. When the path changes
@@ -46,10 +45,13 @@ class MnnTranslator private constructor(private val context: Context) {
     @Volatile private var loadedModelPath: String? = null
 
     // Same cache discipline as the prior :llama translator: when [translate]
-    // is called with the same (source, target) pair, skip the setSystemPrompt
-    // re-decode and just erase-history back to "after system" via
-    // [InferenceEngine.resetForNextPrompt].
-    private var systemPair: Pair<String, String>? = null
+    // produces the same system block as the resident one, skip the
+    // setSystemPrompt re-decode and just erase-history back to "after system"
+    // via [InferenceEngine.resetForNextPrompt]. Keyed on the produced block
+    // *text* — not the (source, target) pair — so a user edit to the system
+    // prompt (Advanced LLM Configuration) invalidates the cached KV even
+    // while the pair and model stay unchanged.
+    private var lastSystemBlock: String? = null
 
     /**
      * Read-only view of the currently loaded model path. Public for callers
@@ -91,25 +93,19 @@ class MnnTranslator private constructor(private val context: Context) {
         availMemFloorBytes: Long,
     ): String {
         val didReload = ensureLoaded(modelPath, availMemFloorBytes)
-        val pair = source to target
         val sb = StringBuilder()
         val inferStartNs = System.nanoTime()
         when (promptStyle) {
             PromptStyle.StandardChat -> {
-                if (didReload || systemPair != pair) {
-                    // *Critical*: feed the full <|im_start|>system…<|im_end|>
-                    // envelope, NOT just the prose. The engine runs with
-                    // `use_template:false` (see mnn_chat.cpp prepare()), so we
-                    // hand-build the chat envelope ourselves. Without these
-                    // role markers the model treats the system prompt as
-                    // generic context and continues it like a completion —
-                    // echoing the input + generating "Translation:" boilerplate
-                    // up to max_new_tokens.
-                    engine.setSystemPrompt(QwenChatTemplate.systemBlock(source, target))
-                    systemPair = pair
-                } else {
-                    engine.resetForNextPrompt()
-                }
+                // *Critical*: feed the full <|im_start|>system…<|im_end|>
+                // envelope, NOT just the prose. The engine runs with
+                // `use_template:false` (see mnn_chat.cpp prepare()), so we
+                // hand-build the chat envelope ourselves. Without these
+                // role markers the model treats the system prompt as
+                // generic context and continues it like a completion —
+                // echoing the input + generating "Translation:" boilerplate
+                // up to max_new_tokens.
+                prefillSystemIfChanged(didReload, QwenChatTemplate.systemBlock(source, target))
                 engine.sendUserPrompt(
                     QwenChatTemplate.userBlock(text, source, target),
                     predictLength = 256,
@@ -123,54 +119,41 @@ class MnnTranslator private constructor(private val context: Context) {
                 // (mnn_chat.cpp) keeps KV-reuse correct for Qwen 3.5's mixed
                 // attention; no Kotlin change needed here beyond the no-think
                 // user block.
-                if (didReload || systemPair != pair) {
-                    engine.setSystemPrompt(QwenChatTemplate.systemBlock(source, target))
-                    systemPair = pair
-                } else {
-                    engine.resetForNextPrompt()
-                }
+                prefillSystemIfChanged(didReload, QwenChatTemplate.systemBlock(source, target))
                 engine.sendUserPrompt(
                     QwenChatTemplate.userBlockNoThink(text, source, target),
                     predictLength = 256,
                 ).collect { token -> sb.append(token) }
             }
             PromptStyle.Gemma4Chat -> {
-                if (didReload || systemPair != pair) {
-                    // Gemma 4 uses <|turn>{role}…<turn|> markers per
-                    // llmexport.py:108-113. Same JNI path as StandardChat
-                    // (true system role), different envelope strings. `<bos>`
-                    // is inside [GemmaE2BChatTemplate.systemBlock] — it lands
-                    // exactly once because the system block is cached per
-                    // (source, target) pair and only re-prefilled here when
-                    // the pair changes.
-                    engine.setSystemPrompt(GemmaE2BChatTemplate.systemBlock(source, target))
-                    systemPair = pair
-                } else {
-                    engine.resetForNextPrompt()
-                }
+                // Gemma 4 uses <|turn>{role}…<turn|> markers per
+                // llmexport.py:108-113. Same JNI path as StandardChat
+                // (true system role), different envelope strings. `<bos>`
+                // is inside [GemmaE2BChatTemplate.systemBlock] — it lands
+                // exactly once because the system block is cached and only
+                // re-prefilled when the block text changes.
+                prefillSystemIfChanged(didReload, GemmaE2BChatTemplate.systemBlock(source, target))
                 engine.sendUserPrompt(
                     GemmaE2BChatTemplate.userBlock(text, source, target),
                     predictLength = 256,
                 ).collect { token -> sb.append(token) }
             }
             PromptStyle.HyMtChat -> {
-                if (didReload || systemPair != pair) {
-                    // Hunyuan-MT 1.5 has no system role per the model card;
-                    // the "system block" we set here is the invariant
-                    // instruction prefix (`<bos><｜hy_User｜>Translate the
-                    // following text into …\n\n`). The per-sentence body
-                    // and `<｜hy_Assistant｜>` open marker come from
-                    // [HyMtChatTemplate.userBlock]. The model sees one user
-                    // turn at inference — the cache split is invisible
-                    // because `use_template:false` in mnn_chat.cpp
-                    // concatenates the two strings verbatim. Matches the
-                    // spike's `benchmark_reuse()` exactly (sysLen=23
-                    // tokens cached; see mnn-spike/HYMT_SPIKE_REPORT.md).
-                    engine.setSystemPrompt(HyMtChatTemplate.systemBlock(source, target))
-                    systemPair = pair
-                } else {
-                    engine.resetForNextPrompt()
-                }
+                // Hunyuan-MT 1.5 has no system role per the model card;
+                // the "system block" we set here is the invariant
+                // instruction prefix (`<bos><｜hy_User｜>Translate the
+                // following text into …\n\n`). The per-sentence body
+                // and `<｜hy_Assistant｜>` open marker come from
+                // [HyMtChatTemplate.userBlock]. The model sees one user
+                // turn at inference — the cache split is invisible
+                // because `use_template:false` in mnn_chat.cpp
+                // concatenates the two strings verbatim. Matches the
+                // spike's `benchmark_reuse()` exactly (sysLen=23
+                // tokens cached; see mnn-spike/HYMT_SPIKE_REPORT.md).
+                // HyMt's block varies only by target, so the block-text
+                // guard also skips the re-prefill a source-only pair
+                // change used to force.
+                prefillSystemIfChanged(didReload, HyMtChatTemplate.systemBlock(source, target))
                 engine.sendUserPrompt(
                     HyMtChatTemplate.userBlock(text, source, target),
                     predictLength = 256,
@@ -196,6 +179,23 @@ class MnnTranslator private constructor(private val context: Context) {
     }
 
     /**
+     * Re-decode the system prompt only when needed: after a model (re)load,
+     * or when the produced [systemBlock] differs from the resident one
+     * (language pair changed, or the user edited the prompt template).
+     * Otherwise reuse the cached system KV and just erase the user/assistant
+     * history. Mutex-held by [translateLocked], same discipline as the rest
+     * of the engine state.
+     */
+    private suspend fun prefillSystemIfChanged(didReload: Boolean, systemBlock: String) {
+        if (didReload || lastSystemBlock != systemBlock) {
+            engine.setSystemPrompt(systemBlock)
+            lastSystemBlock = systemBlock
+        } else {
+            engine.resetForNextPrompt()
+        }
+    }
+
+    /**
      * Drop the loaded MNN model and release native state, **without**
      * destroying the engine itself. Mutex-serialized so it can't race with
      * an in-flight translate(); the [com.playtranslate.PlayTranslateApplication]
@@ -209,7 +209,7 @@ class MnnTranslator private constructor(private val context: Context) {
                 .onFailure { Log.w(TAG, "unloadModel() encountered $it (ignored)") }
         }
         loadedModelPath = null
-        systemPair = null
+        lastSystemBlock = null
     }
 
     /**
@@ -230,7 +230,7 @@ class MnnTranslator private constructor(private val context: Context) {
                 .onFailure { Log.w(TAG, "unloadIfLoaded() encountered $it (ignored)") }
         }
         loadedModelPath = null
-        systemPair = null
+        lastSystemBlock = null
         true
     }
 
@@ -259,7 +259,7 @@ class MnnTranslator private constructor(private val context: Context) {
             runCatching { engine.cleanUp() }
                 .onFailure { Log.w(TAG, "swap-cleanup encountered $it (ignored)") }
             loadedModelPath = null
-            systemPair = null
+            lastSystemBlock = null
         }
 
         // Decide mmap-vs-anonymous at load ("initialization") time from live
@@ -293,7 +293,7 @@ class MnnTranslator private constructor(private val context: Context) {
             runCatching { engine.cleanUp() }
                 .onFailure { Log.w(TAG, "error-recovery cleanUp encountered $it (ignored)") }
             loadedModelPath = null
-            systemPair = null
+            lastSystemBlock = null
         }
 
         // Wait for engine.Initialized.
@@ -307,7 +307,7 @@ class MnnTranslator private constructor(private val context: Context) {
         }
         engine.loadModel(modelPath, useMmap)
         loadedModelPath = modelPath
-        systemPair = null
+        lastSystemBlock = null
         return true
     }
 

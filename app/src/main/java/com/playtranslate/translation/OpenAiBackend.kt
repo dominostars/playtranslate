@@ -221,7 +221,7 @@ class OpenAiBackend(
         val baseUrl = baseUrlProvider().trim().trimEnd('/')
         val model = modelProvider()
         val system = LlmBatchPrompt.systemPrompt(source, target)
-        val user = LlmBatchPrompt.userMessage(texts)
+        val user = LlmBatchPrompt.userMessage(texts, source, target)
         val translateStart = System.nanoTime()
         Log.i(TAG, "translate batch begin model=$model batchSize=${texts.size} totalLen=${texts.sumOf { it.length }}")
 

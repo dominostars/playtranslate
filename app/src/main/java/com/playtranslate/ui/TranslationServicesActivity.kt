@@ -10,6 +10,7 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.translation.llm.PromptKind
 import kotlinx.coroutines.launch
 
 /**
@@ -40,6 +41,25 @@ class TranslationServicesActivity : SettingsSubPageActivity() {
     override fun onContentCreated(savedInstanceState: Bundle?) {
         setGroupHeader(R.id.headerOnlineTranslations, R.string.settings_header_online_translations)
         setGroupHeader(R.id.headerOfflineTranslations, R.string.settings_header_offline_translations)
+        setGroupHeader(R.id.headerAdvancedLlm, R.string.settings_header_advanced_llm)
+        wirePromptRow(
+            R.id.rowPromptSystem,
+            R.string.llm_prompt_row_system_title,
+            R.string.llm_prompt_row_system_subtitle,
+            PromptKind.SYSTEM,
+        )
+        wirePromptRow(
+            R.id.rowPromptTranslation,
+            R.string.llm_prompt_row_translation_title,
+            R.string.llm_prompt_row_translation_subtitle,
+            PromptKind.TRANSLATION,
+        )
+        wirePromptRow(
+            R.id.rowPromptBatch,
+            R.string.llm_prompt_row_batch_title,
+            R.string.llm_prompt_row_batch_subtitle,
+            PromptKind.BATCH,
+        )
 
         binder = TranslationServicesBinder(
             root = findViewById(android.R.id.content),
@@ -168,5 +188,17 @@ class TranslationServicesActivity : SettingsSubPageActivity() {
 
     private fun setGroupHeader(id: Int, titleRes: Int) {
         findViewById<View>(id)?.findViewById<TextView>(R.id.tvGroupTitle)?.text = getString(titleRes)
+    }
+
+    /** Static navigation rows of the ADVANCED LLM CONFIGURATION card —
+     *  each opens the prompt editor for one [PromptKind]. */
+    private fun wirePromptRow(rowId: Int, titleRes: Int, subtitleRes: Int, kind: PromptKind) {
+        val row = findViewById<View>(rowId) ?: return
+        row.findViewById<TextView>(R.id.tvRowTitle)?.text = getString(titleRes)
+        row.findViewById<TextView>(R.id.tvRowSubtitle)?.apply {
+            text = getString(subtitleRes)
+            visibility = View.VISIBLE
+        }
+        row.setOnClickListener { startActivity(LlmPromptEditorActivity.intent(this, kind)) }
     }
 }

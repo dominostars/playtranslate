@@ -1,11 +1,15 @@
 package com.playtranslate.translation.qwen
 
-import com.playtranslate.translation.llm.languageDisplayName
-import java.util.Locale
+import com.playtranslate.translation.llm.LlmPromptTemplates
 
 /**
  * The Qwen 2.5 chat-template envelope, fed to the MNN-backed
  * [com.playtranslate.translation.mnn.MnnTranslator].
+ *
+ * The prompt *content* (system prose + user-turn prose) lives in
+ * [LlmPromptTemplates] — shared with the Gemma template and the cloud
+ * backends, and user-editable via the Advanced LLM Configuration
+ * settings. This object owns only the Qwen envelope.
  *
  * The MNN side enables `use_template:false` and feeds the raw text from
  * these helpers because the taobao-mnn Qwen ships without a jinja
@@ -18,26 +22,15 @@ object QwenChatTemplate {
      * The system-role content. Caller is responsible for wrapping it in the
      * `<|im_start|>system\n…<|im_end|>` markers (llama.cpp's apply_chat_template
      * does this; MNN's `processSystemPrompt` JNI feeds the raw text and the
-     * native side wraps if needed).
+     * native side wraps if needed). Also called directly by the cloud
+     * backends' single-text path, where the API's system role is the envelope.
      */
-    fun systemPrompt(source: String, target: String): String {
-        val src = source.lowercase(Locale.ROOT)
-        val tgt = target.lowercase(Locale.ROOT)
-        val srcName = languageDisplayName(src)
-        val tgtName = languageDisplayName(tgt)
-        return """You are a professional $srcName ($src) to $tgtName ($tgt) translator. Your goal is to accurately convey the meaning and nuances of the original $srcName text while adhering to $tgtName grammar, vocabulary, and cultural sensitivities.
-
-Produce only the $tgtName translation, without any additional explanations or commentary."""
-    }
+    fun systemPrompt(source: String, target: String): String =
+        LlmPromptTemplates.systemPrompt(source, target)
 
     /** The user-turn body. Wrapped by the engine's `<|im_start|>user\n…<|im_end|>` markers. */
-    fun userMessage(text: String, source: String, target: String): String {
-        val src = source.lowercase(Locale.ROOT)
-        val tgt = target.lowercase(Locale.ROOT)
-        val srcName = languageDisplayName(src)
-        val tgtName = languageDisplayName(tgt)
-        return "Please translate the following $srcName text into $tgtName:\n\n$text"
-    }
+    fun userMessage(text: String, source: String, target: String): String =
+        LlmPromptTemplates.translationUserMessage(text, source, target)
 
     /**
      * The system prompt with the full `<|im_start|>system\n…<|im_end|>\n`

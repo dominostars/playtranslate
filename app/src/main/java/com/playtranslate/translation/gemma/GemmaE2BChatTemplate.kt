@@ -1,10 +1,14 @@
 package com.playtranslate.translation.gemma
 
-import com.playtranslate.translation.llm.languageDisplayName
-import java.util.Locale
+import com.playtranslate.translation.llm.LlmPromptTemplates
 
 /**
  * Gemma 4 chat-template envelope for the MNN-backed E2B translator.
+ *
+ * The prompt *content* (system prose + user-turn prose) lives in
+ * [LlmPromptTemplates] — shared with the Qwen template and the cloud
+ * backends, and user-editable via the Advanced LLM Configuration
+ * settings. This object owns only the Gemma 4 envelope.
  *
  * Gemma 4 uses `<|turn>` / `<turn|>` role markers with the role name baked
  * into the opening marker (system / user / model) — distinct from both
@@ -23,33 +27,21 @@ import java.util.Locale
  */
 object GemmaE2BChatTemplate {
     /** Plain system content. Caller wraps with `<|turn>system\n…<turn|>` markers. */
-    fun systemPrompt(source: String, target: String): String {
-        val src = source.lowercase(Locale.ROOT)
-        val tgt = target.lowercase(Locale.ROOT)
-        val srcName = languageDisplayName(src)
-        val tgtName = languageDisplayName(tgt)
-        return """You are a professional $srcName ($src) to $tgtName ($tgt) translator. Your goal is to accurately convey the meaning and nuances of the original $srcName text while adhering to $tgtName grammar, vocabulary, and cultural sensitivities.
-
-Produce only the $tgtName translation, without any additional explanations or commentary."""
-    }
+    fun systemPrompt(source: String, target: String): String =
+        LlmPromptTemplates.systemPrompt(source, target)
 
     /** Plain user-turn body. */
-    fun userMessage(text: String, source: String, target: String): String {
-        val src = source.lowercase(Locale.ROOT)
-        val tgt = target.lowercase(Locale.ROOT)
-        val srcName = languageDisplayName(src)
-        val tgtName = languageDisplayName(tgt)
-        return "Please translate the following $srcName text into $tgtName:\n\n$text"
-    }
+    fun userMessage(text: String, source: String, target: String): String =
+        LlmPromptTemplates.translationUserMessage(text, source, target)
 
     /**
      * Full system block: `<bos><|turn>system\n{system}<turn|>\n`. `<bos>` is
      * prepended to the first system block only; [com.playtranslate.translation.mnn.MnnTranslator]
-     * caches the system block per `(source, target)` pair and reuses it
-     * across translations until the pair changes, so including `<bos>` once
-     * here is correct. With `use_template:false` in the MNN config, the
-     * tokenizer does not auto-prepend a `<bos>` token, so this is the only
-     * place the marker appears.
+     * caches the produced system block and reuses it across translations
+     * until the block text changes (language pair or prompt edit), so
+     * including `<bos>` once here is correct. With `use_template:false` in
+     * the MNN config, the tokenizer does not auto-prepend a `<bos>` token,
+     * so this is the only place the marker appears.
      */
     fun systemBlock(source: String, target: String): String =
         "<bos><|turn>system\n${systemPrompt(source, target)}<turn|>\n"
