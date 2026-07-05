@@ -80,6 +80,30 @@ object TranslationBackendRegistry {
 
     fun byId(id: BackendId): TranslationBackend? = backends.firstOrNull { it.id == id }
 
+    /** Register a store-driven online backend after [init] (user added a
+     *  service instance). Copy-on-write swap of the `@Volatile` list —
+     *  same discipline as [init]/[close], so an in-flight [translate]
+     *  iterating the prior snapshot is unaffected. Main-thread only,
+     *  like every other mutator here. */
+    fun addOnlineBackend(backend: TranslationBackend) {
+        if (backends.any { it.id == backend.id }) {
+            Log.w(TAG, "addOnlineBackend(${backend.id}) — id already registered, replacing")
+            removeOnlineBackend(backend.id)
+        }
+        backends = backends + backend
+    }
+
+    /** Deregister an online backend (user deleted a service instance, or
+     *  a config save is rebuilding it). Closes the removed backend —
+     *  in-flight calls on the prior list snapshot still hold a valid
+     *  reference; close() only shuts pooled HTTP resources down, which
+     *  OkHttp handles gracefully for stragglers. No-op for unknown ids. */
+    fun removeOnlineBackend(id: BackendId) {
+        val target = backends.firstOrNull { it.id == id } ?: return
+        backends = backends - target
+        runCatching { target.close() }
+    }
+
     /** Returns the id of the first non-degraded usable backend for the
      *  pair that is NOT currently in a cooldown — this is the backend
      *  the cache should treat as "preferred" for its identity check.

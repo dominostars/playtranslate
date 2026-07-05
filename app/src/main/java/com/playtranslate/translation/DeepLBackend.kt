@@ -54,19 +54,22 @@ class DeepLRateLimitException : IOException("DeepL rate limit exceeded")
  * production we instantiate a default [OkHttpClient].
  */
 class DeepLBackend(
+    // Identity is parameterized (defaults preserve the legacy singleton)
+    // so the store-driven multi-instance wiring can register several
+    // DeepL instances under distinct ids. See OnlineBackendFactory.
+    override val id: BackendId = "deepl",
+    override val displayName: String = "DeepL",
+    override val priority: Int = 10,
     private val keyProvider: () -> String?,
     private val enabledProvider: () -> Boolean,
-    /** Default is a non-persisting test-mode state; production wiring in
-     *  [com.playtranslate.PlayTranslateApplication] passes a Context-backed
-     *  instance so cooldowns survive process restart. Kept defaulted to
-     *  avoid forcing every unit-test constructor call to pass one. */
-    private val cooldownState: CooldownState = CooldownState(context = null, backendId = "deepl"),
+    /** Default is a non-persisting test-mode state; production wiring
+     *  passes a Context-backed instance so cooldowns survive process
+     *  restart. Kept defaulted to avoid forcing every unit-test
+     *  constructor call to pass one. */
+    private val cooldownState: CooldownState = CooldownState(context = null, backendId = id),
     private val client: OkHttpClient = PtHttp.clientBuilder().build(),
 ) : TranslationBackend, QuotaAware, BatchTranslator, Cooldownable {
 
-    override val id: BackendId = "deepl"
-    override val displayName: String = "DeepL"
-    override val priority: Int = 10
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
     override val qualityStars: StarRating = 4.5f

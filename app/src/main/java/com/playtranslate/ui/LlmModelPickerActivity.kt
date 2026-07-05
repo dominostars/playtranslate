@@ -24,6 +24,8 @@ import com.playtranslate.R
 import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.applyTheme
 import com.playtranslate.themeColor
+import com.playtranslate.translation.OnlineServiceMutations
+import com.playtranslate.translation.OnlineServiceStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -60,9 +62,13 @@ class LlmModelPickerActivity : AppCompatActivity() {
             WindowInsetsCompat.CONSUMED
         }
 
-        val backendId = intent.getStringExtra(EXTRA_BACKEND_ID)
-            ?: error("LlmModelPickerActivity launched without EXTRA_BACKEND_ID")
-        config = LlmBackendConfigs.forId(this, backendId)
+        val instanceId = intent.getStringExtra(EXTRA_INSTANCE_ID)
+            ?: error("LlmModelPickerActivity launched without EXTRA_INSTANCE_ID")
+        // The picker is only reachable for saved instances (the Model
+        // sub-cell appears after the first successful key save).
+        val instance = OnlineServiceStore.byId(instanceId)
+            ?: error("LlmModelPickerActivity launched for unknown instance $instanceId")
+        config = LlmBackendConfigs.forInstance(this, instanceId, instance.type, instance.preset)
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         toolbar.title = getString(R.string.llm_backend_model_label)
@@ -138,7 +144,7 @@ class LlmModelPickerActivity : AppCompatActivity() {
                     topRadius = topRadius,
                     bottomRadius = bottomRadius,
                     onTap = {
-                        config.setModel(model)
+                        OnlineServiceMutations.setModel(config.instanceId, model)
                         finish()
                     },
                 )
@@ -220,7 +226,7 @@ class LlmModelPickerActivity : AppCompatActivity() {
             .setPositiveButton(R.string.deepl_settings_save) { _, _ ->
                 val typed = input.text.toString().trim()
                 if (typed.isNotBlank()) {
-                    config.setModel(typed)
+                    OnlineServiceMutations.setModel(config.instanceId, typed)
                     finish()
                 }
             }
@@ -234,10 +240,10 @@ class LlmModelPickerActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "LlmModelPicker"
-        const val EXTRA_BACKEND_ID = "backend_id"
+        const val EXTRA_INSTANCE_ID = "instance_id"
 
-        fun newIntent(context: android.content.Context, backendId: String): Intent =
+        fun newIntent(context: android.content.Context, instanceId: String): Intent =
             Intent(context, LlmModelPickerActivity::class.java)
-                .putExtra(EXTRA_BACKEND_ID, backendId)
+                .putExtra(EXTRA_INSTANCE_ID, instanceId)
     }
 }

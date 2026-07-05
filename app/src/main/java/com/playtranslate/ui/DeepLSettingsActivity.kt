@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.EditText
@@ -13,30 +12,33 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
-import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.applyTheme
+import com.playtranslate.translation.OnlineServiceInstance
+import com.playtranslate.translation.OnlineServiceMutations
+import com.playtranslate.translation.OnlineServiceStore
+import com.playtranslate.translation.ServiceType
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.net.toUri
 
 /**
- * Sub-screen for entering / editing the DeepL API key.
+ * Sub-screen for entering / editing a DeepL instance's API key.
  *
  * UX contract:
- *  - Prepopulates the field from [Prefs.deeplApiKey] on entry, so toggling
- *    DeepL off and on again returns the user to their saved key.
+ *  - Prepopulates the field from the instance's key slot on entry.
  *  - The X button in the toolbar discards in-progress edits — nothing is
  *    written.
- *  - The Save button persists whatever is in the field (including empty).
- *    Saving a non-empty value also flips [Prefs.deeplEnabled] on; saving
- *    empty flips it off. The pref change drives the Settings switch back
- *    in [SettingsBottomSheet] via its SharedPreferences listener — no
- *    Activity result contract needed.
+ *  - Save with a non-empty key persists the instance enabled (creating
+ *    the store record on the first save — CREATE mode launches from the
+ *    add-service picker with a fresh id and no record). Save with an
+ *    empty key clears the key + disables an existing instance, or
+ *    creates nothing in CREATE mode.
  *
- * Mirrors [LanguageSetupActivity] for navigation and theming.
+ * Mirrors [LlmBackendSettingsActivity] minus the validation ping (DeepL
+ * has no cheap auth-only endpoint wired) and the ADVANCED section.
  */
 class DeepLSettingsActivity : AppCompatActivity() {
 
@@ -58,17 +60,31 @@ class DeepLSettingsActivity : AppCompatActivity() {
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         toolbar.setNavigationOnClickListener { finish() }
 
-        val prefs = Prefs(this)
+        val instanceId = intent.getStringExtra(EXTRA_INSTANCE_ID)
+            ?: error("DeepLSettingsActivity launched without EXTRA_INSTANCE_ID")
+
         val etDeeplKey = findViewById<EditText>(R.id.etDeeplKey)
-        etDeeplKey.setText(prefs.deeplApiKey)
+        etDeeplKey.setText(OnlineServiceStore.readKey(instanceId))
         etDeeplKey.setSelection(etDeeplKey.text.length)
 
         wireGetKeyLink(findViewById(R.id.rowDeeplLink))
 
         findViewById<MaterialButton>(R.id.btnSave).setOnClickListener {
             val key = etDeeplKey.text.toString().trim()
-            prefs.deeplApiKey = key
-            prefs.deeplEnabled = key.isNotBlank()
+            val existing = OnlineServiceStore.byId(instanceId)
+            if (existing == null && key.isBlank()) {
+                // CREATE mode with nothing typed: create nothing; the
+                // picker stays open because the id never appeared.
+                finish()
+                return@setOnClickListener
+            }
+            val instance = existing?.copy(enabled = key.isNotBlank())
+                ?: OnlineServiceInstance(
+                    id = instanceId,
+                    type = ServiceType.DEEPL,
+                    enabled = true,
+                )
+            OnlineServiceMutations.saveConfig(this, instance, key)
             finish()
         }
     }
@@ -89,5 +105,13 @@ class DeepLSettingsActivity : AppCompatActivity() {
             Toast.makeText(this, getString(R.string.toast_link_copied), Toast.LENGTH_SHORT).show()
             true
         }
+    }
+
+    companion object {
+        const val EXTRA_INSTANCE_ID = "instance_id"
+
+        fun newIntent(context: Context, instanceId: String): Intent =
+            Intent(context, DeepLSettingsActivity::class.java)
+                .putExtra(EXTRA_INSTANCE_ID, instanceId)
     }
 }

@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One online translation-service instance: main row (drag handle ·
+     title/key-tail/status/cooldown · switch ⇄ trash) + the inline
+     "Model" sub-cell (LLM instances, enabled only) + in-card divider
+     (GONE on the last row — set by the adapter). Content ids mirror
+     settings_row_backend.xml so the status/cooldown renderers carried
+     over from the legacy binder unchanged. Drag handle and trash are
+     edit-mode-only; the switch (unlike the legacy row) is its own tap
+     target — row tap opens the config page, switch tap toggles. -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    tools:ignore="Overdraw">
+
+    <LinearLayout
+        android:id="@+id/rowMain"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="@dimen/pt_row_min_height"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="@dimen/pt_row_h_padding"
+        android:paddingVertical="9dp"
+        android:foreground="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true">
+
+        <ImageView
+            android:id="@+id/ivDragHandle"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="12dp"
+            android:src="@drawable/ic_drag_handle"
+            app:tint="?attr/ptTextHint"
+            android:scaleType="center"
+            android:visibility="gone"
+            android:contentDescription="@string/cd_drag_to_reorder" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginEnd="16dp">
+
+            <TextView
+                android:id="@+id/tvRowTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                style="@style/Text.PT.RowTitle" />
+
+            <!-- Masked key tail ("Key ••••4f2a") — distinguishes multiple
+                 instances of the same service. Hidden for keyless
+                 instances (Lingva). -->
+            <TextView
+                android:id="@+id/tvRowSubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:visibility="gone"
+                style="@style/Text.PT.RowSubtitle" />
+
+            <TextView
+                android:id="@+id/tvRowSubtitle2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:visibility="gone"
+                style="@style/Text.PT.RowSubtitle" />
+
+            <!-- Cooldown line; the row background picks up the warning
+                 tint together with it. -->
+            <TextView
+                android:id="@+id/tvRowSubtitle3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:visibility="gone"
+                style="@style/Text.PT.RowSubtitle" />
+        </LinearLayout>
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchRowToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:materialThemeOverlay="@style/Widget.PlayTranslate.MaterialSwitch" />
+
+        <ImageView
+            android:id="@+id/ivDelete"
+            android:layout_width="44dp"
+            android:layout_height="28dp"
+            android:layout_marginStart="4dp"
+            android:paddingHorizontal="10dp"
+            android:src="@drawable/ic_delete"
+            app:tint="?attr/ptDanger"
+            android:scaleType="centerInside"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:visibility="gone"
+            android:contentDescription="@string/tr_service_delete_cd" />
+
+    </LinearLayout>
+
+    <!-- "Model" sub-cell under LLM instances. Visible only when the
+         instance is enabled; the wrapper exists as a visibility toggle
+         so the include stays inflated normally. -->
+    <LinearLayout
+        android:id="@+id/sectionModel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <include layout="@layout/settings_row_value"
+            android:id="@+id/rowModel" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/rowDivider"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginStart="@dimen/pt_row_h_padding"
+        android:background="?attr/ptDivider" />
+
+</LinearLayout>

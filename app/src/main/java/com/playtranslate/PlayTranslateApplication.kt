@@ -9,19 +9,15 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.diagnostics.CrashHandler
 import android.content.Context
 import com.playtranslate.region.RegionPolicy
-import com.playtranslate.translation.CooldownState
-import com.playtranslate.translation.DeepLBackend
 import com.playtranslate.translation.GemmaE2BMnnBackend
-import com.playtranslate.translation.GeminiBackend
 import com.playtranslate.translation.HyMtBackend
-import com.playtranslate.translation.LingvaBackend
 import com.playtranslate.translation.BergamotBackend
 import com.playtranslate.translation.MlKitBackend
-import com.playtranslate.translation.OpenAiBackend
+import com.playtranslate.translation.OnlineBackendFactory
+import com.playtranslate.translation.OnlineServiceStore
 import com.playtranslate.translation.QwenMnnBackend
 import com.playtranslate.translation.Qwen35Mnn2bBackend
 import com.playtranslate.translation.TranslationBackendRegistry
-import com.playtranslate.translation.UsageTracker
 import com.playtranslate.translation.mnn.MnnTranslator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -67,69 +63,24 @@ class PlayTranslateApplication : Application() {
         CaptureBackendResolver.reresolve(this)
         // Build the translation-backend registry once at process start.
         // Backends are stateless or hold pooled HTTP clients that should
-        // outlive a single CaptureService instance. The DeepL key is read
-        // via closure each call so a Settings change propagates without
+        // outlive a single CaptureService instance. Config is read via
+        // closure each call so a Settings change propagates without
         // rebuilding the registry.
+        //
+        // Online backends are store-driven: OnlineServiceStore.init runs
+        // the one-shot legacy→instance migration and loads the ordered
+        // instance list, which the factory maps to backends. The trailing
+        // setOrder makes the waterfall honor the store's list order for
+        // the online segment (offline tiers follow by priority). The
+        // settings UI keeps membership + order in sync as instances are
+        // added / removed / reordered.
         val sharedPrefs = getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
+        OnlineServiceStore.init(this)
+        val onlineBackends = OnlineServiceStore.all().map {
+            OnlineBackendFactory.build(this, sharedPrefs, it)
+        }
         TranslationBackendRegistry.init(
-            listOf(
-                GeminiBackend(
-                    keyProvider     = { Prefs(this).geminiApiKey },
-                    enabledProvider = { Prefs(this).geminiEnabled },
-                    modelProvider   = { Prefs(this).geminiModel },
-                    usageTracker    = UsageTracker(sharedPrefs, "gemini"),
-                    cooldownState   = CooldownState(this, "gemini"),
-                ),
-                OpenAiBackend(
-                    id              = "openai",
-                    displayName     = "OpenAI",
-                    priority        = 8,
-                    keyProvider     = { Prefs(this).openaiApiKey },
-                    enabledProvider = { Prefs(this).openaiEnabled },
-                    modelProvider   = { Prefs(this).openaiModel },
-                    // User-settable via the ADVANCED settings section;
-                    // defaults to the canonical OpenAI endpoint. modelsUrlProvider
-                    // is intentionally omitted so /models follows the same URL.
-                    baseUrlProvider = { Prefs(this).openaiBaseUrl },
-                    usageTracker    = UsageTracker(sharedPrefs, "openai"),
-                    // Apply OpenAI's first-party owned_by filter only on the
-                    // canonical endpoint; a custom OpenAI-compatible URL tags
-                    // models with its own org, which the filter would drop.
-                    applyOwnedByFilter = { !Prefs(this).isCustomOpenaiBaseUrl },
-                    cooldownState   = CooldownState(this, "openai"),
-                ),
-                OpenAiBackend(
-                    // DeepSeek speaks the OpenAI-compatible chat-completions
-                    // API; the same backend class drives it with a different
-                    // base URL + key + filter setting. priority=9 puts it
-                    // just below OpenAI in the waterfall (typical user adds
-                    // DeepSeek as a cheaper alternative to OpenAI).
-                    id              = "deepseek",
-                    displayName     = "DeepSeek",
-                    priority        = 9,
-                    keyProvider     = { Prefs(this).deepseekApiKey },
-                    enabledProvider = { Prefs(this).deepseekEnabled },
-                    modelProvider   = { Prefs(this).deepseekModel },
-                    baseUrlProvider = { "https://api.deepseek.com/v1" },
-                    // DeepSeek splits its endpoints: /v1/chat/completions
-                    // works (above) but /v1/models returns 200 + empty body.
-                    // The real model-listing endpoint sits at the root.
-                    modelsUrlProvider = { "https://api.deepseek.com" },
-                    usageTracker    = UsageTracker(sharedPrefs, "deepseek"),
-                    // DeepSeek's /models entries all have owned_by="deepseek";
-                    // OpenAI's owned_by filter would drop the whole catalog.
-                    applyOwnedByFilter = { false },
-                    // DeepSeek opts out of v1 cooldown: its 10-min TCP-hold
-                    // makes SocketTimeoutException categorisation ambiguous
-                    // (overload vs dead-key vs slow response). Revisit in v2.
-                    cooldownState   = null,
-                ),
-                DeepLBackend(
-                    keyProvider     = { Prefs(this).deeplApiKey },
-                    enabledProvider = { Prefs(this).deeplEnabled },
-                    cooldownState   = CooldownState(this, "deepl"),
-                ),
-                LingvaBackend(enabledProvider = { Prefs(this).lingvaEnabled }),
+            onlineBackends + listOf(
                 GemmaE2BMnnBackend(
                     context         = this,
                     enabledProvider = { Prefs(this).gemmaE2bEnabled },
@@ -161,6 +112,7 @@ class PlayTranslateApplication : Application() {
                 MlKitBackend(),
             )
         )
+        TranslationBackendRegistry.setOrder(OnlineServiceStore.all().map { it.id })
 
         // Launch-time cleanup: drop in-flight download partials for any
         // deprecated model (generic — driven by CatalogEntry.deprecated), so a

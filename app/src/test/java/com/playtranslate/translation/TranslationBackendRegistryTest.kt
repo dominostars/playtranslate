@@ -30,6 +30,62 @@ class TranslationBackendRegistryTest {
         TranslationBackendRegistry.close()
     }
 
+    @Test fun `addOnlineBackend registers after init and setOrder places it`() = runBlocking {
+        val offline = FakeOfflineBackend(id = "offline", priority = 30)
+        TranslationBackendRegistry.init(listOf(offline))
+
+        val added = FakeOnlineBackend(id = "uuid-1", priority = 15, response = "from-added")
+        TranslationBackendRegistry.addOnlineBackend(added)
+        TranslationBackendRegistry.setOrder(listOf("uuid-1"))
+
+        assertEquals(
+            listOf("uuid-1", "offline"),
+            TranslationBackendRegistry.orderedBackends().map { it.id },
+        )
+        assertEquals("from-added", TranslationBackendRegistry.translate("hi", "ja", "en").text)
+    }
+
+    @Test fun `addOnlineBackend with a duplicate id replaces and closes the prior instance`() {
+        val original = FakeOnlineBackend(id = "dup", priority = 15, response = "old")
+        TranslationBackendRegistry.init(listOf(original))
+
+        val replacement = FakeOnlineBackend(id = "dup", priority = 15, response = "new")
+        TranslationBackendRegistry.addOnlineBackend(replacement)
+
+        assertTrue(original.closed)
+        assertEquals(1, TranslationBackendRegistry.orderedBackends().count { it.id == "dup" })
+        assertEquals(replacement, TranslationBackendRegistry.byId("dup"))
+    }
+
+    @Test fun `removeOnlineBackend deregisters and closes, unknown id is a no-op`() {
+        val a = FakeOnlineBackend(id = "a", priority = 10)
+        val b = FakeOnlineBackend(id = "b", priority = 20)
+        TranslationBackendRegistry.init(listOf(a, b))
+
+        TranslationBackendRegistry.removeOnlineBackend("a")
+        TranslationBackendRegistry.removeOnlineBackend("ghost")
+
+        assertTrue(a.closed)
+        assertEquals(listOf("b"), TranslationBackendRegistry.orderedBackends().map { it.id })
+    }
+
+    @Test fun `store-order override puts online instances first then offline by priority`() {
+        // Mirrors the production wiring: online ids in store order via
+        // setOrder; offline tiers keep their priority order after them.
+        val online1 = FakeOnlineBackend(id = "lingva", priority = 15)
+        val online2 = FakeOnlineBackend(id = "uuid-openai", priority = 15)
+        val offlineFast = FakeOfflineBackend(id = "bergamot", priority = 28)
+        val offlineLast = FakeOfflineBackend(id = "mlkit", priority = 30)
+        TranslationBackendRegistry.init(listOf(offlineLast, online1, offlineFast, online2))
+
+        TranslationBackendRegistry.setOrder(listOf("uuid-openai", "lingva"))
+
+        assertEquals(
+            listOf("uuid-openai", "lingva", "bergamot", "mlkit"),
+            TranslationBackendRegistry.orderedBackends().map { it.id },
+        )
+    }
+
     @Test fun `first usable backend wins, later backends not invoked`() = runBlocking {
         val first = FakeOnlineBackend(id = "first", priority = 10, response = "from-first")
         val second = FakeOnlineBackend(id = "second", priority = 20, response = "from-second")

@@ -89,12 +89,14 @@ import androidx.core.net.toUri
 import androidx.core.view.isGone
 
 /**
- * Wires the Online + Offline translation backend rows (extracted verbatim from
+ * Wires the Offline translation backend rows (extracted verbatim from
  * the old monolithic SettingsRenderer). Field names mirror the renderer's so
  * the moved methods need no internal rewiring; the host
  * [TranslationServicesActivity] supplies a [Callbacks] that runs the offline-
- * model install flows + opens the LLM/DeepL sub-screens, and drives refreshes
- * from its own lifecycle.
+ * model install flows, and drives refreshes from its own lifecycle.
+ *
+ * The Online card is instance-based and lives in [OnlineServicesController];
+ * its status/cooldown rendering moved there together with the rows.
  */
 class TranslationServicesBinder(
     private val root: View,
@@ -119,9 +121,6 @@ class TranslationServicesBinder(
         fun startBergamotDownload()
         fun enableInstalledBergamot()
         fun showBergamotDisableDialog()
-        fun openDeepLSettings()
-        fun openLlmBackendSettings(id: BackendId)
-        fun openLlmModelPicker(id: BackendId)
     }
 
     /** Wire all backend rows + kick off the initial status render. */
@@ -130,17 +129,6 @@ class TranslationServicesBinder(
         refreshAllBackendStatuses()
     }
 
-    private val rowBackendGemini: View = root.findViewById(R.id.rowBackendGemini)
-    private val sectionBackendGeminiModel: View = root.findViewById(R.id.sectionBackendGeminiModel)
-    private val rowBackendGeminiModel: View = root.findViewById(R.id.rowBackendGeminiModel)
-    private val rowBackendOpenai: View = root.findViewById(R.id.rowBackendOpenai)
-    private val sectionBackendOpenaiModel: View = root.findViewById(R.id.sectionBackendOpenaiModel)
-    private val rowBackendOpenaiModel: View = root.findViewById(R.id.rowBackendOpenaiModel)
-    private val rowBackendDeepseek: View = root.findViewById(R.id.rowBackendDeepseek)
-    private val sectionBackendDeepseekModel: View = root.findViewById(R.id.sectionBackendDeepseekModel)
-    private val rowBackendDeepseekModel: View = root.findViewById(R.id.rowBackendDeepseekModel)
-    private val rowBackendDeepl: View = root.findViewById(R.id.rowBackendDeepl)
-    private val rowBackendLingva: View = root.findViewById(R.id.rowBackendLingva)
     private val rowBackendGemmaE2bMnn: View = root.findViewById(R.id.rowBackendGemmaE2bMnn)
     private val dividerBackendQwenMnn: View = root.findViewById(R.id.dividerBackendQwenMnn)
     private val rowBackendQwenMnn: View = root.findViewById(R.id.rowBackendQwenMnn)
@@ -165,276 +153,16 @@ class TranslationServicesBinder(
         // stat grid + downloaded-check icon are bound there too.
         wireMlKitBackendRow()
 
-        wireBackendSwitchRow(
-            row = rowBackendLingva,
-            title = ctx.getString(R.string.lingva_display_name),
-            initial = prefs.lingvaEnabled,
-            onChanged = { checked -> prefs.lingvaEnabled = checked },
-        )
-
-        wireGeminiBackendRow()
-        wireGeminiModelRow()
-        wireOpenAiBackendRow()
-        wireOpenAiModelRow()
-        wireDeepseekBackendRow()
-        wireDeepseekModelRow()
-        wireDeeplBackendRow()
         wireGemmaE2bMnnBackendRow()
         wireQwenMnnBackendRow()
         wireQwen35Mnn2bBackendRow()
         wireHyMtBackendRow()
         wireBergamotBackendRow()
 
-        // Compose line 1 for each ONLINE backend from its metadata
-        // (requiresInternet + quality), styled with mixed-color spans.
-        // Offline backends use the C7 stat-grid layout instead — their
-        // line-1 TextView doesn't exist; renderOfflineBackendRow binds
-        // the quality/speed stars directly.
-        for (backend in TranslationBackendRegistry.orderedBackends()) {
-            val row = backendRowById(backend.id) ?: continue
-            if (isOfflineRowBackend(backend)) continue
-            setBackendLine1(row, backend)
-        }
-
-        // Render every backend's status line, kicking off async refreshes
-        // for ones in Loading state. For offline backends this fully binds
-        // the C7 row (title, stat grid, icon, switch, warning sub-row).
+        // Render every offline backend's row, kicking off async refreshes
+        // for ones in Loading state — this fully binds the C7 row (title,
+        // stat grid, icon, switch, warning sub-row).
         refreshAllBackendStatuses()
-    }
-
-    /** Compose the row's line-1 subtitle from the backend's metadata —
-     *  `(quality) · (speed)` for offline backends — with each part tinted
-     *  by its own [Tone] via a [ForegroundColorSpan]. The TextView's base
-     *  color (set by the `Text.PT.RowSubtitle` style) handles parts we
-     *  don't span. The online/offline distinction itself is carried by
-     *  the section header (Online vs Offline cards), and online rows skip
-     *  this line entirely — the status line (line 2) carries everything
-     *  the user needs for online backends (key state, usage, quota). */
-    private fun setBackendLine1(row: View, backend: TranslationBackend) {
-        val tv = row.findViewById<TextView>(R.id.tvRowSubtitle)
-        if (backend.requiresInternet) {
-            tv.isGone = true
-            tv.contentDescription = null
-            return
-        }
-        val builder = SpannableStringBuilder()
-
-        // Quality: <stars>
-        appendLabelAndStars(
-            builder = builder,
-            label = ctx.getString(R.string.a11y_quality_label_colon),
-            rating = backend.qualityStars,
-            tone = qualityTone(backend.qualityStars),
-        )
-
-        // · Speed: <stars> (when the backend supplies a speed rating)
-        backend.speedStars?.let { speed ->
-            builder.append(" · ")
-            appendLabelAndStars(
-                builder = builder,
-                label = ctx.getString(R.string.a11y_speed_label),
-                rating = speed,
-                tone = speedTone(speed),
-            )
-        }
-
-        tv.text = builder
-        // Accessibility — the visible text is mostly ImageSpans over
-        // single space characters, so TalkBack would only announce
-        // "Quality: Speed:" without the actual ratings. The
-        // contentDescription overrides that with a parallel readable
-        // form like "Quality 4 out of 5 stars, Speed 2 out of 5 stars".
-        tv.contentDescription = buildString {
-            append(ctx.getString(R.string.a11y_quality_label))
-            append(' ')
-            append(formatStars(backend.qualityStars))
-            append(' ')
-            append(ctx.getString(R.string.a11y_out_of_5_stars))
-            backend.speedStars?.let { speed ->
-                append(", ")
-                append(ctx.getString(R.string.a11y_speed_label_comma))
-                append(' ')
-                append(formatStars(speed))
-                append(' ')
-                append(ctx.getString(R.string.a11y_out_of_5_stars))
-            }
-        }
-        tv.isVisible = true
-    }
-
-    /** Half-step star formatter for accessibility text:
-     *  4.0 → "4", 3.5 → "3.5", 0.0 → "0". Rounds to the nearest 0.5
-     *  to match how the visible stars are drawn. */
-    private fun formatStars(rating: StarRating): String {
-        val halfSteps = (rating * 2f).toInt().coerceIn(0, 10)
-        val whole = halfSteps / 2
-        val hasHalf = (halfSteps % 2) != 0
-        return if (hasHalf) "$whole.5" else whole.toString()
-    }
-
-    /** Quality is read as alarming only when truly unusable. Matches
-     *  the previous enum mapping (`Bad → Danger`, everything else
-     *  default-tinted). */
-    private fun qualityTone(stars: StarRating): Tone? = when {
-        stars <= 1.0f -> Tone.Danger
-        else -> null
-    }
-
-    /** Speed tones preserve the prior enum buckets:
-     *  VerySlow (≈0.5 stars) → Danger, Slow (≈2 stars) → Warning,
-     *  Okay/Fast (≥3 stars) → default. */
-    private fun speedTone(stars: StarRating): Tone? = when {
-        stars <= 0.5f -> Tone.Danger
-        stars <= 2.0f -> Tone.Warning
-        else -> null
-    }
-
-    /** Append "$label$stars" to [builder], tinted by [tone]. The label
-     *  text gets the same color as the stars so the whole segment reads
-     *  as one tinted unit. */
-    private fun appendLabelAndStars(
-        builder: SpannableStringBuilder,
-        label: String,
-        rating: StarRating,
-        tone: Tone?,
-    ) {
-        val color: Int? = tone?.let { ctx.themeColor(toneAttr(it)) }
-        val segStart = builder.length
-        builder.append(label)
-        builder.append(' ')
-        appendStars(builder, rating, color)
-        if (color != null) {
-            // Cover the whole "Quality: ★★★☆☆" run so the label text
-            // matches the (tinted) stars. ImageSpan handles its own
-            // tint, the ForegroundColorSpan covers the text portion.
-            builder.setSpan(
-                ForegroundColorSpan(color),
-                segStart,
-                builder.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-            )
-        }
-    }
-
-    /** Append five star ImageSpans (filled / half / outlined) for
-     *  [rating] clamped to 0-5. [color] tints all five drawables when
-     *  non-null; otherwise the vector's default fillColor (white) is
-     *  recolored to the row's muted subtitle attr so it doesn't appear
-     *  jarringly white on dark themes. */
-    private fun appendStars(
-        builder: SpannableStringBuilder,
-        rating: StarRating,
-        color: Int?,
-    ) {
-        val halfStars = (rating * 2f).toInt().coerceIn(0, 10)
-        val starSizePx = (14 * ctx.resources.displayMetrics.density).toInt()
-        val tintColor = color ?: ctx.themeColor(R.attr.ptTextMuted)
-        for (i in 0 until 5) {
-            val starStart = i * 2
-            val resId = when {
-                halfStars >= starStart + 2 -> R.drawable.ic_star_filled
-                halfStars >= starStart + 1 -> R.drawable.ic_star_half
-                else -> R.drawable.ic_star_outline
-            }
-            val drawable = androidx.appcompat.content.res.AppCompatResources
-                .getDrawable(ctx, resId)?.mutate() ?: continue
-            androidx.core.graphics.drawable.DrawableCompat.setTint(drawable, tintColor)
-            drawable.setBounds(0, 0, starSizePx, starSizePx)
-            val pos = builder.length
-            builder.append(" ")
-            builder.setSpan(
-                android.text.style.ImageSpan(drawable, android.text.style.ImageSpan.ALIGN_BASELINE),
-                pos,
-                pos + 1,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-            )
-        }
-    }
-
-    private fun appendMaybeColored(
-        builder: SpannableStringBuilder,
-        text: String,
-        tone: Tone?,
-    ) {
-        val start = builder.length
-        builder.append(text)
-        if (tone != null) {
-            val color = ctx.themeColor(toneAttr(tone))
-            builder.setSpan(
-                ForegroundColorSpan(color),
-                start,
-                builder.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-            )
-        }
-    }
-
-    /** Refresh the DeepL switch from the current pref value. Called from
-     *  [SettingsBottomSheet]'s pref-change observer after
-     *  [DeepLSettingsActivity] returns. */
-    fun refreshDeeplBackendSwitch() {
-        rowBackendDeepl.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
-            it.isChecked = prefs.deeplEnabled
-        }
-    }
-
-    /** Refresh the Gemini switch from the current pref value AND the
-     *  visibility of the inline "Model" sub-cell (only shown when the
-     *  backend is enabled). Driven by the SP listener after
-     *  [LlmBackendSettingsActivity] persists a save. */
-    fun refreshGeminiBackendSwitch() {
-        rowBackendGemini.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
-            it.isChecked = prefs.geminiEnabled
-        }
-        sectionBackendGeminiModel.visibility =
-            if (prefs.geminiEnabled) View.VISIBLE else View.GONE
-    }
-
-    /** Refresh the OpenAI switch from the current pref value AND the
-     *  visibility of the inline "Model" sub-cell. Mirrors
-     *  [refreshGeminiBackendSwitch]. */
-    fun refreshOpenaiBackendSwitch() {
-        rowBackendOpenai.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
-            it.isChecked = prefs.openaiEnabled
-        }
-        sectionBackendOpenaiModel.visibility =
-            if (prefs.openaiEnabled) View.VISIBLE else View.GONE
-    }
-
-    /** Refresh the DeepSeek switch + model sub-cell visibility. Mirrors
-     *  [refreshOpenaiBackendSwitch]. */
-    fun refreshDeepseekBackendSwitch() {
-        rowBackendDeepseek.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
-            it.isChecked = prefs.deepseekEnabled
-        }
-        sectionBackendDeepseekModel.visibility =
-            if (prefs.deepseekEnabled) View.VISIBLE else View.GONE
-    }
-
-    /** Re-read the Gemini model name into the inline sub-cell's title
-     *  (the row's title is the model name itself; the value column is
-     *  intentionally blank). Driven by the SP listener on
-     *  [Prefs.KEY_GEMINI_MODEL] so a save from [LlmModelPickerActivity]
-     *  propagates here on resume. */
-    fun refreshGeminiModelValue() {
-        rowBackendGeminiModel.findViewById<TextView>(R.id.tvRowTitle).text = prefs.geminiModel
-    }
-
-    /** Mirrors [refreshGeminiModelValue] for OpenAI. */
-    fun refreshOpenaiModelValue() {
-        rowBackendOpenaiModel.findViewById<TextView>(R.id.tvRowTitle).text = prefs.openaiModel
-    }
-
-    /** Mirrors [refreshGeminiModelValue] for DeepSeek. */
-    fun refreshDeepseekModelValue() {
-        rowBackendDeepseekModel.findViewById<TextView>(R.id.tvRowTitle).text = prefs.deepseekModel
-    }
-
-    /** Refresh the Lingva switch from the current pref value. */
-    fun refreshLingvaBackendSwitch() {
-        rowBackendLingva.findViewById<MaterialSwitch>(R.id.switchRowToggle)?.let {
-            it.isChecked = prefs.lingvaEnabled
-        }
     }
 
     /** Refresh the MNN-Qwen row's switch + status icon from current pref +
@@ -471,46 +199,31 @@ class TranslationServicesBinder(
         updateOfflineStatusIconAndSwitch(rowBackendHyMt, backend)
     }
 
-    /** Re-render every backend row's secondary subtitle line and kick off
-     *  an async [TranslationBackend.refreshStatus] for each. Called on
-     *  initial bind, on Settings resume (after [DeepLSettingsActivity]
-     *  returns), and on relevant pref changes.
+    /** Re-render every offline backend row and kick off an async
+     *  [TranslationBackend.refreshStatus] for each. Called on initial
+     *  bind, on Settings resume, and on relevant pref changes.
      *
-     *  We render the cached status synchronously first (so the row shows
+     *  We render the cached state synchronously first (so the row shows
      *  the last known value immediately) and then trigger a background
      *  refresh that updates the row when fresh data arrives. Backends
-     *  without async state (Lingva, ML Kit) inherit the default no-op
+     *  without async state (ML Kit) inherit the default no-op
      *  [refreshStatus] that returns the same status without I/O — so
      *  always-launching is essentially free for them. */
     fun refreshAllBackendStatuses() {
         for (backend in TranslationBackendRegistry.orderedBackends()) {
+            if (!isOfflineRowBackend(backend)) continue
             val row = backendRowById(backend.id) ?: continue
-            if (isOfflineRowBackend(backend)) {
-                // C7 layout — single entry point owns title/grid/icon/switch/warning.
-                renderOfflineBackendRow(row, backend)
-            } else {
-                renderBackendStatusLine(row, backend.status)
-                renderBackendCooldownLine(row, backend)
-            }
+            // C7 layout — single entry point owns title/grid/icon/switch/warning.
+            renderOfflineBackendRow(row, backend)
             backendRefreshJobs[backend.id]?.cancel()
             backendRefreshJobs[backend.id] = lifecycleScope.launch {
-                val fresh = backend.refreshStatus()
-                if (isOfflineRowBackend(backend)) {
-                    renderOfflineBackendRow(row, backend)
-                } else {
-                    renderBackendStatusLine(row, fresh)
-                    renderBackendCooldownLine(row, backend)
-                }
+                backend.refreshStatus()
+                renderOfflineBackendRow(row, backend)
             }
         }
     }
 
     private fun backendRowById(id: BackendId): View? = when (id) {
-        "gemini"          -> rowBackendGemini
-        "openai"          -> rowBackendOpenai
-        "deepseek"        -> rowBackendDeepseek
-        "deepl"           -> rowBackendDeepl
-        "lingva"          -> rowBackendLingva
         "gemma_e2b_mnn"   -> rowBackendGemmaE2bMnn
         "qwen_mnn"        -> rowBackendQwenMnn
         "qwen35_mnn_2b"   -> rowBackendQwen35Mnn2b
@@ -520,147 +233,6 @@ class TranslationServicesBinder(
         else              -> null
     }
 
-    /** Apply a [BackendStatus] to a row's secondary subtitle TextView,
-     *  styling by tone and italic flag. The Loading state has its own
-     *  generic text since backends don't supply transient text. */
-    private fun renderBackendStatusLine(row: View, status: BackendStatus) {
-        val tv = row.findViewById<TextView>(R.id.tvRowSubtitle2) ?: return
-        when (status) {
-            is BackendStatus.Hidden -> tv.isGone = true
-            is BackendStatus.Loading -> {
-                tv.text = ctx.getString(R.string.tr_service_status_loading)
-                applyTone(tv, Tone.Neutral)
-                applyItalic(tv, true)
-                tv.isVisible = true
-            }
-            is BackendStatus.Info -> {
-                tv.text = status.text
-                applyTone(tv, status.tone)
-                applyItalic(tv, status.italic)
-                tv.isVisible = true
-            }
-            is BackendStatus.Quota -> {
-                tv.text = formatQuota(status)
-                // Danger tone when the user has hit (or exceeded) their
-                // limit for the period — translations will start failing
-                // through to the next backend.
-                val exhausted = status.used >= status.limit
-                applyTone(tv, if (exhausted) Tone.Danger else Tone.Neutral)
-                applyItalic(tv, false)
-                tv.isVisible = true
-            }
-        }
-    }
-
-    /**
-     * Render (or hide) the cooldown line below the existing status line.
-     * Drives both the per-row text content and the warning-tinted row
-     * background — when [backend] implements [Cooldownable] and reports
-     * a future `retryAt`, we surface a third subtitle line with a
-     * relative-or-absolute time hint and tint the row to mirror the
-     * existing "Update language packs" warning recipe.
-     *
-     * Called from [refreshAllBackendStatuses] both synchronously and
-     * after the async `refreshStatus()` completes, so the row picks up
-     * cooldown expiry (`unavailableUntil` returning null after the time
-     * passes) the next time Settings opens or refreshes.
-     */
-    private fun renderBackendCooldownLine(row: View, backend: TranslationBackend) {
-        val tv = row.findViewById<TextView>(R.id.tvRowSubtitle3) ?: return
-        val cooldownable = backend as? Cooldownable
-        val until = cooldownable?.unavailableUntil()
-        if (until == null) {
-            tv.isGone = true
-            clearRowWarningTint(row)
-            return
-        }
-        val description = cooldownable.unavailableDescription()
-            ?: ctx.getString(R.string.backend_status_unavailable_default)
-        tv.text = formatCooldownLine(description, until)
-        applyTone(tv, Tone.Warning)
-        applyItalic(tv, false)
-        tv.isVisible = true
-        applyRowWarningTint(row)
-    }
-
-    /** "Rate limited · Retry at 3:42 PM" for short cooldowns;
-     *  "Monthly quota used · Retry on Jun 1" for ones more than ~24h
-     *  out. Time uses the user's locale TimeFormat; date uses a fixed
-     *  "MMM d" so the line stays readable. */
-    private fun formatCooldownLine(description: String, retryAt: Long): String {
-        val now = System.currentTimeMillis()
-        val withinDay = retryAt - now < 24L * 60 * 60 * 1000
-        val formatted = if (withinDay) {
-            android.text.format.DateFormat.getTimeFormat(ctx).format(Date(retryAt))
-        } else {
-            SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(retryAt))
-        }
-        val word = if (withinDay) ctx.getString(R.string.backend_cooldown_retry_at)
-                   else ctx.getString(R.string.backend_cooldown_retry_on)
-        return ctx.getString(R.string.backend_cooldown_status_fmt, description, word, formatted)
-    }
-
-    private fun applyRowWarningTint(row: View) {
-        val baseCard = ctx.themeColor(R.attr.ptCard)
-        val warning = ctx.themeColor(R.attr.ptWarning)
-        val density = ctx.resources.displayMetrics.density
-        // GradientDrawable here (rather than the MaterialCardView recipe
-        // used by applyUpdatePacksWarningTint) because the row is a
-        // LinearLayout inside an already-rounded card — applying card
-        // properties would target the wrong View. Foreground stays as
-        // selectableItemBackground (XML default) so the ripple still
-        // works over the tinted fill.
-        row.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(blendColors(warning, baseCard, 0.20f))
-            setStroke((1 * density).toInt(), warning)
-        }
-    }
-
-    private fun clearRowWarningTint(row: View) {
-        row.background = null
-    }
-
-    private fun applyTone(tv: TextView, tone: Tone) {
-        tv.setTextColor(ctx.themeColor(toneAttr(tone)))
-    }
-
-    private fun toneAttr(tone: Tone): Int = when (tone) {
-        Tone.Neutral -> R.attr.ptTextHint
-        Tone.Warning -> R.attr.ptWarning
-        Tone.Danger  -> R.attr.ptDanger
-        Tone.Accent  -> R.attr.ptAccent
-    }
-
-    private fun applyItalic(tv: TextView, italic: Boolean) {
-        // Pass null for the family so only the style flag changes;
-        // otherwise re-styling a previously-italicised typeface can
-        // leave residual italic-ness on platforms where the styled
-        // typeface gets cached. This guarantees a clean toggle.
-        tv.setTypeface(null, if (italic) Typeface.ITALIC else Typeface.NORMAL)
-    }
-
-    private fun formatQuota(q: BackendStatus.Quota): String {
-        val used  = String.format(Locale.getDefault(), "%,d", q.used)
-        val limit = String.format(Locale.getDefault(), "%,d", q.limit)
-        val base  = ctx.getString(R.string.tr_service_status_quota_fmt, used, limit)
-        return q.resetEpochMs?.let { ms ->
-            val date = SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(ms))
-            ctx.getString(R.string.tr_service_status_quota_with_reset_fmt, base, date)
-        } ?: base
-    }
-
-    /** Wire the DeepL row's title + tap behavior. The line-1 subtitle is
-     *  composed by [setBackendLine1]; line 2 is rendered by
-     *  [renderBackendStatusLine] via [refreshAllBackendStatuses]. The
-     *  switch in `settings_row_backend.xml` is non-clickable; the whole
-     *  row is the tap target.
-     *
-     *    - off → tap: open [DeepLSettingsActivity]. The activity writes
-     *      `deeplEnabled=true` on Save and the pref-change listener flips
-     *      the switch + retriggers status refresh.
-     *    - on  → tap: directly disable (preserving the saved DeepL key
-     *      so a later re-enable can prepopulate it). */
     /** ML Kit row — bundled, always-on fallback. The C7 offline layout
      *  shows the title + stat grid + downloaded-check icon via
      *  [renderOfflineBackendRow]; the switch stays GONE (user-confirmed
@@ -811,7 +383,7 @@ class TranslationServicesBinder(
     // Offline backend row (settings_row_backend_offline) — C7 redesign.
     // Header row with title + status icon + switch, then a 4-column stat
     // grid (Quality | Speed | RAM | Disk). Used by MlKit + every
-    // OnDeviceLlmBackend; online backends keep settings_row_backend.xml.
+    // OnDeviceLlmBackend; online instances render in OnlineServicesController.
     // ─────────────────────────────────────────────────────────────────────
 
     /** Backend IDs whose download is in flight; the row swaps its status
@@ -1183,161 +755,6 @@ class TranslationServicesBinder(
         val row = backendRowById(backendId) ?: return
         val backend = TranslationBackendRegistry.byId(backendId) ?: return
         updateOfflineStatusIconAndSwitch(row, backend)
-    }
-
-    private fun wireDeeplBackendRow() {
-        rowBackendDeepl.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.deepl_settings_title)
-
-        val switch = rowBackendDeepl.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        switch.isChecked = prefs.deeplEnabled
-
-        rowBackendDeepl.setOnClickListener {
-            if (prefs.deeplEnabled) {
-                prefs.deeplEnabled = false
-                switch.isChecked = false
-            } else {
-                callbacks.openDeepLSettings()
-            }
-        }
-    }
-
-    private fun wireGeminiBackendRow() {
-        rowBackendGemini.findViewById<TextView>(R.id.tvRowTitle).text =
-            ctx.getString(R.string.gemini_display_name)
-
-        val switch = rowBackendGemini.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        switch.isChecked = prefs.geminiEnabled
-
-        // Match the DeepL UX: tap when on → disable (preserves saved key);
-        // tap when off → open the sub-screen so the user can enter / verify
-        // the key. The save path in the activity flips the enabled pref.
-        rowBackendGemini.setOnClickListener {
-            if (prefs.geminiEnabled) {
-                prefs.geminiEnabled = false
-                switch.isChecked = false
-            } else {
-                callbacks.openLlmBackendSettings("gemini")
-            }
-        }
-    }
-
-    private fun wireOpenAiBackendRow() {
-        rowBackendOpenai.findViewById<TextView>(R.id.tvRowTitle).text =
-            ctx.getString(R.string.openai_display_name)
-
-        val switch = rowBackendOpenai.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        switch.isChecked = prefs.openaiEnabled
-
-        rowBackendOpenai.setOnClickListener {
-            if (prefs.openaiEnabled) {
-                prefs.openaiEnabled = false
-                switch.isChecked = false
-            } else {
-                callbacks.openLlmBackendSettings("openai")
-            }
-        }
-    }
-
-    private fun wireGeminiModelRow() {
-        // The row's title IS the model name (e.g. "gemini-2.5-flash"); the
-        // value column is left blank — only the chevron carries "tap to
-        // change" affordance. Title is rendered in the regular sans-serif
-        // weight (not the medium baked into Text.PT.RowTitle) and the
-        // row is compacted vertically so the sub-cell reads as a
-        // secondary annotation rather than a peer to the backend row.
-        applyModelRowChrome(rowBackendGeminiModel, prefs.geminiModel)
-        rowBackendGeminiModel.setOnClickListener {
-            callbacks.openLlmModelPicker("gemini")
-        }
-        sectionBackendGeminiModel.visibility =
-            if (prefs.geminiEnabled) View.VISIBLE else View.GONE
-    }
-
-    private fun wireOpenAiModelRow() {
-        applyModelRowChrome(rowBackendOpenaiModel, prefs.openaiModel)
-        rowBackendOpenaiModel.setOnClickListener {
-            callbacks.openLlmModelPicker("openai")
-        }
-        sectionBackendOpenaiModel.visibility =
-            if (prefs.openaiEnabled) View.VISIBLE else View.GONE
-    }
-
-    private fun wireDeepseekBackendRow() {
-        rowBackendDeepseek.findViewById<TextView>(R.id.tvRowTitle).text =
-            ctx.getString(R.string.deepseek_display_name)
-
-        val switch = rowBackendDeepseek.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        switch.isChecked = prefs.deepseekEnabled
-
-        rowBackendDeepseek.setOnClickListener {
-            if (prefs.deepseekEnabled) {
-                prefs.deepseekEnabled = false
-                switch.isChecked = false
-            } else {
-                callbacks.openLlmBackendSettings("deepseek")
-            }
-        }
-    }
-
-    private fun wireDeepseekModelRow() {
-        applyModelRowChrome(rowBackendDeepseekModel, prefs.deepseekModel)
-        rowBackendDeepseekModel.setOnClickListener {
-            callbacks.openLlmModelPicker("deepseek")
-        }
-        sectionBackendDeepseekModel.visibility =
-            if (prefs.deepseekEnabled) View.VISIBLE else View.GONE
-    }
-
-    /** Apply the compact, muted styling to an inline "Model" sub-cell.
-     *  Shared between Gemini/OpenAI (and any future LLM row) so the visual
-     *  treatment stays in one place. Title is rendered in the regular
-     *  sans-serif weight tinted with [R.attr.ptTextMuted] — the same color
-     *  the hotkey row uses for its "Not set" placeholder — so the cell
-     *  reads as a secondary annotation rather than a peer to the backend
-     *  row above it. */
-    private fun applyModelRowChrome(row: View, modelName: String) {
-        val title = row.findViewById<TextView>(R.id.tvRowTitle)
-        title.text = modelName
-        title.typeface = android.graphics.Typeface.SANS_SERIF
-        title.setTextColor(ctx.themeColor(R.attr.ptTextMuted))
-        row.findViewById<TextView>(R.id.tvRowValue).text = ""
-        val density = ctx.resources.displayMetrics.density
-        val hPad = ctx.resources.getDimensionPixelSize(R.dimen.pt_row_h_padding)
-        val vPad = (6 * density).toInt()
-        row.setPaddingRelative(hPad, vPad, hPad, vPad)
-        row.minimumHeight = (48 * density).toInt()
-    }
-
-    private fun wireBackendSwitchRow(
-        row: View,
-        title: String,
-        initial: Boolean,
-        onChanged: (Boolean) -> Unit,
-    ) {
-        row.findViewById<TextView>(R.id.tvRowTitle).text = title
-
-        val switch = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        switch.isChecked = initial
-        // Single source of truth: row click toggles the switch and
-        // immediately writes the pref. The switch itself stays
-        // non-clickable per the layout, so we don't need a separate
-        // OnCheckedChangeListener — that path can't fire for user input.
-        row.setOnClickListener {
-            val next = !switch.isChecked
-            switch.isChecked = next
-            onChanged(next)
-        }
-    }
-
-    /** Variant of [wireBackendSwitchRow] for rows without an interactive
-     *  toggle (the ML Kit row). Caller is responsible for hiding the
-     *  switch view; this method only wires the title and removes any
-     *  click handler. The line-1 subtitle is composed by [setBackendLine1]. */
-    private fun wireBackendStaticRow(row: View, title: String) {
-        row.findViewById<TextView>(R.id.tvRowTitle).text = title
-        row.isClickable = false
-        row.isFocusable = false
-        row.setOnClickListener(null)
     }
 
 }

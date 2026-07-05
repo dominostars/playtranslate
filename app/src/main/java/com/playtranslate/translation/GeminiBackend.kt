@@ -54,6 +54,12 @@ class GeminiRateLimitException : IOException("Gemini rate limit exceeded")
  * for the same reason as [OpenAiBackend].
  */
 class GeminiBackend(
+    // Identity is parameterized (defaults preserve the legacy singleton)
+    // so the store-driven multi-instance wiring can register several
+    // Gemini instances under distinct ids. See OnlineBackendFactory.
+    override val id: BackendId = "gemini",
+    override val displayName: String = "Gemini",
+    override val priority: Int = 7,
     private val keyProvider: () -> String?,
     private val enabledProvider: () -> Boolean,
     private val modelProvider: () -> String,
@@ -62,9 +68,6 @@ class GeminiBackend(
     private val client: OkHttpClient = defaultClient(),
 ) : TranslationBackend, BatchTranslator, ModelLister, KeyValidator, Cooldownable {
 
-    override val id: BackendId = "gemini"
-    override val displayName: String = "Gemini"
-    override val priority: Int = 7
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
     override val qualityStars: StarRating = 4.5f

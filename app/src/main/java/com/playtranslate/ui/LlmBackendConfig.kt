@@ -2,176 +2,103 @@ package com.playtranslate.ui
 
 import android.content.Context
 import com.playtranslate.Prefs
-import com.playtranslate.R
-import com.playtranslate.translation.KeyStatus
-import com.playtranslate.translation.KeyValidator
 import com.playtranslate.translation.ModelLister
+import com.playtranslate.translation.OnlineBackendFactory
+import com.playtranslate.translation.OnlineServiceInstance
+import com.playtranslate.translation.OnlineServiceStore
+import com.playtranslate.translation.OpenAiPreset
+import com.playtranslate.translation.ServiceType
 import com.playtranslate.translation.TranslationBackendRegistry
-import com.playtranslate.translation.UsageTracker
 
 /**
- * Per-backend configuration handed to [LlmBackendSettingsActivity]. The
- * activity stays generic by reading and writing through these getters
- * and setters; adding a third LLM backend (Anthropic, etc.) is one new
- * branch in [LlmBackendConfigs.forId] plus the backend class itself.
+ * Per-instance configuration descriptor handed to
+ * [LlmBackendSettingsActivity] and [LlmModelPickerActivity]. Purely a
+ * read-side + display bundle: persistence goes through
+ * [com.playtranslate.translation.OnlineServiceMutations] (create-on-save
+ * semantics — no store record exists until the first successful save),
+ * and key validation runs against a page-state shell backend built in
+ * the activity, so a preset switched in the UI but not yet saved
+ * validates against the right endpoint.
  *
- * `validateKey` is nullable rather than always-present so providers
- * without a cheap key-validation endpoint (Gemini) can omit it; the
- * activity skips the on-save ping in that case.
+ * Rebuild via [LlmBackendConfigs.forInstance] whenever the page's preset
+ * selection changes — construction is a handful of lambdas.
  */
 data class LlmBackendConfig(
+    val instanceId: String,
+    val type: ServiceType,
+    val preset: OpenAiPreset,
     val displayName: String,
-    val titleStringRes: Int,
     val keyHint: String,
     val getKeyUrl: String,
     val getKey: () -> String,
-    val setKey: (String) -> Unit,
     val getModel: () -> String,
-    val setModel: (String) -> Unit,
-    /** Fetches the list of models the configured key can call. Suspend
-     *  because it's a network call to the provider's /models endpoint;
-     *  see [GeminiBackend.listModels] and [OpenAiBackend.listModels].
-     *  Throws on any failure — the picker is responsible for catching
-     *  and rendering a fallback. */
+    /** Fetches the models the SAVED instance's key can call, via the
+     *  registered backend — the model picker is only reachable for
+     *  saved instances. Returns empty when the backend is missing or
+     *  not [ModelLister]-capable. */
     val listModels: suspend () -> List<String>,
     val defaultModel: String,
-    /** True for backends exposing a user-configurable base URL (OpenAI).
-     *  When false, the ADVANCED section is hidden on the settings sub-screen. */
+    /** True for OPENAI-type instances: the ADVANCED section (provider
+     *  preset + base URL) is shown. Hidden for Gemini. */
     val allowsBaseUrl: Boolean,
-    /** Canonical URL — shown as the field hint and the reference for
-     *  "is this custom?". Null when [allowsBaseUrl] is false. */
-    val defaultBaseUrl: String?,
+    /** The base URL the current preset resolves to — field text for
+     *  pinned presets, hint for CUSTOM. */
+    val presetBaseUrl: String,
     val getBaseUrl: () -> String,
-    val setBaseUrl: (String) -> Unit,
-    val getEnabled: () -> Boolean,
-    val setEnabled: (Boolean) -> Unit,
-    val todayUsageString: () -> String,
-    /** Validates a key against the provider's auth-only endpoint.
-     *  [overrideKey] / [overrideBaseUrl] non-null let the settings save
-     *  path test a key + URL the user just typed before persisting them.
-     *  Every registered provider implements [KeyValidator], so this is
-     *  non-null for all configs. */
-    val validateKey: suspend (overrideKey: String?, overrideBaseUrl: String?) -> KeyStatus,
 )
 
 object LlmBackendConfigs {
 
-    /** Loud failure on unknown id beats silently opening the wrong screen
-     *  from a typo'd row click. */
-    fun forId(context: Context, id: String): LlmBackendConfig = when (id) {
-        "openai" -> openAiConfig(context)
-        "gemini" -> geminiConfig(context)
-        "deepseek" -> deepseekConfig(context)
-        else -> throw IllegalArgumentException("Unknown LLM backend id: $id")
-    }
-
-    /** Shared `listModels` lambda for any provider whose registered
-     *  backend implements [ModelLister]. Adding a new LLM backend
-     *  (Anthropic, etc.) only needs to implement the capability — no
-     *  per-class smart-cast here. Returns an empty list if the backend
-     *  isn't ModelLister-capable so the picker falls back to its
-     *  "Custom…"-only state. */
-    private fun lookupModels(backendId: String): suspend () -> List<String> = {
-        (TranslationBackendRegistry.byId(backendId) as? ModelLister)?.listModels()
-            ?: emptyList()
-    }
-
-    /** Shared `validateKey` lambda for any provider whose registered
-     *  backend implements [KeyValidator]. Smart-cast pattern matches
-     *  [lookupModels] — adding a new validating backend (Anthropic,
-     *  etc.) doesn't need a per-class branch here. */
-    private fun lookupValidateKey(backendId: String): suspend (overrideKey: String?, overrideBaseUrl: String?) -> KeyStatus = { override, overrideUrl ->
-        (TranslationBackendRegistry.byId(backendId) as? KeyValidator)?.validateKey(override, overrideUrl)
-            ?: KeyStatus.Unreachable
-    }
-
-    private fun openAiConfig(context: Context): LlmBackendConfig {
-        val prefs = Prefs(context)
-        val sp = context.applicationContext.getSharedPreferences(
-            "playtranslate_prefs",
-            Context.MODE_PRIVATE,
+    fun forInstance(
+        context: Context,
+        instanceId: String,
+        type: ServiceType,
+        preset: OpenAiPreset,
+    ): LlmBackendConfig {
+        // A shell carrying the page's (possibly unsaved) preset — display
+        // strings and URL resolution key off it, not the stored record.
+        val shell = OnlineServiceInstance(
+            id = instanceId, type = type, enabled = false, preset = preset,
         )
-        val tracker = UsageTracker(sp, "openai")
         return LlmBackendConfig(
-            displayName = context.getString(R.string.openai_display_name),
-            titleStringRes = R.string.openai_settings_title,
-            keyHint = "sk-...",
-            getKeyUrl = "https://platform.openai.com/api-keys",
-            getKey = { prefs.openaiApiKey },
-            setKey = { prefs.openaiApiKey = it },
-            getModel = { prefs.openaiModel },
-            setModel = { prefs.openaiModel = it },
-            listModels = lookupModels("openai"),
-            defaultModel = Prefs.DEFAULT_OPENAI_MODEL,
-            allowsBaseUrl = true,
-            defaultBaseUrl = Prefs.DEFAULT_OPENAI_BASE_URL,
-            getBaseUrl = { prefs.openaiBaseUrl },
-            setBaseUrl = { prefs.openaiBaseUrl = it },
-            getEnabled = { prefs.openaiEnabled },
-            setEnabled = { prefs.openaiEnabled = it },
-            todayUsageString = { tracker.todayString() },
-            validateKey = lookupValidateKey("openai"),
+            instanceId = instanceId,
+            type = type,
+            preset = preset,
+            displayName = OnlineBackendFactory.displayName(context, shell),
+            keyHint = when (type) {
+                ServiceType.GEMINI -> "AIza..."
+                else -> "sk-..."
+            },
+            getKeyUrl = keyUrlFor(type, preset),
+            getKey = { OnlineServiceStore.readKey(instanceId) },
+            getModel = {
+                OnlineServiceStore.byId(instanceId)?.model
+                    ?.ifBlank { OnlineBackendFactory.defaultModelFor(type, preset) }
+                    ?: OnlineBackendFactory.defaultModelFor(type, preset)
+            },
+            listModels = {
+                (TranslationBackendRegistry.byId(instanceId) as? ModelLister)?.listModels()
+                    ?: emptyList()
+            },
+            defaultModel = OnlineBackendFactory.defaultModelFor(type, preset),
+            allowsBaseUrl = type == ServiceType.OPENAI,
+            presetBaseUrl = OnlineBackendFactory.resolveBaseUrl(shell)
+                .ifBlank { Prefs.DEFAULT_OPENAI_BASE_URL },
+            getBaseUrl = { OnlineServiceStore.byId(instanceId)?.baseUrl ?: "" },
         )
     }
 
-    private fun geminiConfig(context: Context): LlmBackendConfig {
-        val prefs = Prefs(context)
-        val sp = context.applicationContext.getSharedPreferences(
-            "playtranslate_prefs",
-            Context.MODE_PRIVATE,
-        )
-        val tracker = UsageTracker(sp, "gemini")
-        return LlmBackendConfig(
-            displayName = context.getString(R.string.gemini_display_name),
-            titleStringRes = R.string.gemini_settings_title,
-            keyHint = "AIza...",
-            getKeyUrl = "https://aistudio.google.com/app/apikey",
-            getKey = { prefs.geminiApiKey },
-            setKey = { prefs.geminiApiKey = it },
-            getModel = { prefs.geminiModel },
-            setModel = { prefs.geminiModel = it },
-            listModels = lookupModels("gemini"),
-            defaultModel = Prefs.DEFAULT_GEMINI_MODEL,
-            allowsBaseUrl = false,
-            defaultBaseUrl = null,
-            getBaseUrl = { "" },
-            setBaseUrl = {},
-            getEnabled = { prefs.geminiEnabled },
-            setEnabled = { prefs.geminiEnabled = it },
-            todayUsageString = { tracker.todayString() },
-            // Gemini's /v1beta/models is now used for both listing and
-            // key validation — same auth-only endpoint that listModels
-            // already hits successfully.
-            validateKey = lookupValidateKey("gemini"),
-        )
-    }
-
-    private fun deepseekConfig(context: Context): LlmBackendConfig {
-        val prefs = Prefs(context)
-        val sp = context.applicationContext.getSharedPreferences(
-            "playtranslate_prefs",
-            Context.MODE_PRIVATE,
-        )
-        val tracker = UsageTracker(sp, "deepseek")
-        return LlmBackendConfig(
-            displayName = context.getString(R.string.deepseek_display_name),
-            titleStringRes = R.string.deepseek_settings_title,
-            keyHint = "sk-...",
-            getKeyUrl = "https://platform.deepseek.com/api_keys",
-            getKey = { prefs.deepseekApiKey },
-            setKey = { prefs.deepseekApiKey = it },
-            getModel = { prefs.deepseekModel },
-            setModel = { prefs.deepseekModel = it },
-            listModels = lookupModels("deepseek"),
-            defaultModel = Prefs.DEFAULT_DEEPSEEK_MODEL,
-            allowsBaseUrl = false,
-            defaultBaseUrl = null,
-            getBaseUrl = { "" },
-            setBaseUrl = {},
-            getEnabled = { prefs.deepseekEnabled },
-            setEnabled = { prefs.deepseekEnabled = it },
-            todayUsageString = { tracker.todayString() },
-            validateKey = lookupValidateKey("deepseek"),
-        )
+    /** Where to get a key for this provider. CUSTOM keeps OpenAI's page —
+     *  the legacy custom-URL flow lived on the OpenAI screen with this
+     *  same link, and most custom endpoints (OpenRouter, proxies) accept
+     *  an OpenAI-style key anyway. */
+    private fun keyUrlFor(type: ServiceType, preset: OpenAiPreset): String = when (type) {
+        ServiceType.GEMINI -> "https://aistudio.google.com/app/apikey"
+        ServiceType.OPENAI -> when (preset) {
+            OpenAiPreset.DEEPSEEK -> "https://platform.deepseek.com/api_keys"
+            else -> "https://platform.openai.com/api-keys"
+        }
+        // DeepL and Lingva don't route through this screen.
+        ServiceType.DEEPL, ServiceType.LINGVA -> ""
     }
 }

@@ -1,36 +1,32 @@
 package com.playtranslate.ui
 
 import android.content.Context
-import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.view.View
 import android.widget.TextView
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.appbar.MaterialToolbar
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.R
-import com.playtranslate.translation.BackendId
 import kotlinx.coroutines.launch
 
 /**
- * Translation services sub-page: the Online (Gemini / OpenAI / DeepSeek /
- * DeepL / Lingva) and Offline (Gemma-E2B / Hunyuan-MT / Qwen-3.5 / Qwen-MNN /
- * Bergamot / ML Kit) backend rows.
+ * Translation services sub-page: the Online card (the user's service
+ * instances — store-driven, reorderable, any number of instances per
+ * service) and the Offline card (Gemma-E2B / Hunyuan-MT / Qwen-3.5 /
+ * Qwen-MNN / Bergamot / ML Kit rows).
  *
- * The row rendering lives in [TranslationServicesBinder] (extracted from the
- * old SettingsRenderer). The offline-model install flows are consolidated in
- * [OfflineModelInstallController] (one descriptor-driven flow for the four MNN
- * tiers + a Bergamot sibling). The LLM key / DeepL key editors are the existing
- * sub-screen Activities.
- *
- * This Activity owns the backend cache-reconcile choreography that used to live
- * in SettingsBottomSheet: on resume it re-renders every backend, force-clears
- * the translation cache if an LLM key/model changed while paused (via a config
- * snapshot diff), and reconciles the backend preference; a SharedPreferences
- * listener does the same while the page is foreground. (A future change can
- * make this reactive — see the migration notes — but it's a faithful relocation
- * here to keep the behavior identical.)
+ * The online card is owned by [OnlineServicesController] (RecyclerView +
+ * add row + toolbar EDIT mode); every online mutation routes through
+ * [com.playtranslate.translation.OnlineServiceMutations], which handles
+ * the registry/order/cache/reconcile choreography at write time — so
+ * this Activity's own lifecycle work reduces to an onResume rebind.
+ * Offline rows keep the legacy [TranslationServicesBinder] +
+ * [OfflineModelInstallController] wiring, including the offline-pref
+ * SharedPreferences listener (their install flows still communicate
+ * through prefs).
  */
 class TranslationServicesActivity : SettingsSubPageActivity() {
 
@@ -38,8 +34,8 @@ class TranslationServicesActivity : SettingsSubPageActivity() {
 
     private lateinit var binder: TranslationServicesBinder
     private lateinit var installer: OfflineModelInstallController
+    private lateinit var onlineController: OnlineServicesController
     private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
-    private var llmConfigSnapshotOnPause: String? = null
 
     override fun onContentCreated(savedInstanceState: Bundle?) {
         setGroupHeader(R.id.headerOnlineTranslations, R.string.settings_header_online_translations)
@@ -66,88 +62,54 @@ class TranslationServicesActivity : SettingsSubPageActivity() {
                 override fun startBergamotDownload() = installer.downloadBergamot()
                 override fun enableInstalledBergamot() = installer.enableInstalledBergamot()
                 override fun showBergamotDisableDialog() = installer.disableBergamot()
-                override fun openDeepLSettings() {
-                    startActivity(Intent(this@TranslationServicesActivity, DeepLSettingsActivity::class.java))
-                }
-                override fun openLlmBackendSettings(id: BackendId) {
-                    startActivity(
-                        Intent(this@TranslationServicesActivity, LlmBackendSettingsActivity::class.java)
-                            .putExtra(LlmBackendSettingsActivity.EXTRA_BACKEND_ID, id),
-                    )
-                }
-                override fun openLlmModelPicker(id: BackendId) {
-                    startActivity(LlmModelPickerActivity.newIntent(this@TranslationServicesActivity, id))
-                }
             },
         )
         installer = OfflineModelInstallController(this, binder)
         binder.bind()
+
+        onlineController = OnlineServicesController(
+            activity = this,
+            root = findViewById(android.R.id.content),
+            lifecycleScope = lifecycleScope,
+        )
+        wireEditAction()
+    }
+
+    /** Toolbar EDIT ⇄ DONE action driving the online card's edit mode. */
+    private fun wireEditAction() {
+        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar) ?: return
+        toolbar.inflateMenu(R.menu.menu_translation_services)
+        toolbar.setOnMenuItemClickListener { item ->
+            if (item.itemId != R.id.action_edit) return@setOnMenuItemClickListener false
+            val editing = onlineController.toggleEditMode()
+            item.title = getString(if (editing) R.string.label_done else R.string.label_edit)
+            true
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        // Catch up on backend changes made via the DeepL / LLM sub-screens while
-        // this page was paused (they flip *_enabled / keys while our listener is
-        // unregistered). Faithful port of the old SettingsBottomSheet.onResume.
-        binder.refreshDeeplBackendSwitch()
-        binder.refreshGeminiBackendSwitch()
-        binder.refreshOpenaiBackendSwitch()
-        binder.refreshDeepseekBackendSwitch()
-        binder.refreshGeminiModelValue()
-        binder.refreshOpenaiModelValue()
-        binder.refreshDeepseekModelValue()
-        binder.refreshLingvaBackendSwitch()
+        // Catch up on changes made via the config sub-screens / add picker
+        // while this page was paused. The mutation helper already handled
+        // registry membership, order, cache clears, and preference
+        // reconciliation at write time — this is purely a re-render, plus
+        // one belt-and-braces reconcile (covers e.g. a cooldown expiring
+        // while paused).
+        onlineController.rebind()
         binder.refreshQwenMnnSwitch()
+        binder.refreshQwen35Mnn2bSwitch()
         binder.refreshGemmaE2bSwitch()
         binder.refreshHyMtSwitch()
-        // LLM key/model changes don't flip *_enabled but DO change the output a
-        // given input maps to; reconcileBackendPreference can't catch them
-        // (preferred id unchanged), so diff the paused-snapshot and force-clear
-        // the cache when anything moved.
-        val before = llmConfigSnapshotOnPause
-        llmConfigSnapshotOnPause = null
-        if (before != null && before != snapshotLlmConfig(Prefs(this))) {
-            CaptureService.instance?.clearTranslationCache()
-        }
+        binder.refreshBergamotSwitch()
         binder.refreshAllBackendStatuses()
         CaptureService.instance?.reconcileBackendPreference()
 
+        // Offline-model toggles still flow through prefs (their install
+        // flows flip *_enabled from dialogs + download completions), so
+        // the listener remains for the offline card only.
         val sp = getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
         prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             when (key) {
-                Prefs.KEY_DEEPL_ENABLED -> {
-                    binder.refreshDeeplBackendSwitch()
-                    binder.refreshAllBackendStatuses()
-                    CaptureService.instance?.reconcileBackendPreference()
-                }
-                Prefs.KEY_GEMINI_ENABLED -> {
-                    binder.refreshGeminiBackendSwitch()
-                    binder.refreshAllBackendStatuses()
-                    CaptureService.instance?.reconcileBackendPreference()
-                }
-                Prefs.KEY_OPENAI_ENABLED -> {
-                    binder.refreshOpenaiBackendSwitch()
-                    binder.refreshAllBackendStatuses()
-                    CaptureService.instance?.reconcileBackendPreference()
-                }
-                Prefs.KEY_DEEPSEEK_ENABLED -> {
-                    binder.refreshDeepseekBackendSwitch()
-                    binder.refreshAllBackendStatuses()
-                    CaptureService.instance?.reconcileBackendPreference()
-                }
-                Prefs.KEY_GEMINI_KEY, Prefs.KEY_OPENAI_KEY, Prefs.KEY_DEEPSEEK_KEY,
-                Prefs.KEY_GEMINI_MODEL, Prefs.KEY_OPENAI_MODEL, Prefs.KEY_DEEPSEEK_MODEL -> {
-                    binder.refreshAllBackendStatuses()
-                    CaptureService.instance?.clearTranslationCache()
-                    if (key == Prefs.KEY_GEMINI_MODEL) binder.refreshGeminiModelValue()
-                    if (key == Prefs.KEY_OPENAI_MODEL) binder.refreshOpenaiModelValue()
-                    if (key == Prefs.KEY_DEEPSEEK_MODEL) binder.refreshDeepseekModelValue()
-                }
-                Prefs.KEY_LINGVA_ENABLED -> {
-                    binder.refreshLingvaBackendSwitch()
-                    binder.refreshAllBackendStatuses()
-                    CaptureService.instance?.reconcileBackendPreference()
-                }
                 Prefs.KEY_QWEN_MNN_ENABLED -> {
                     binder.refreshQwenMnnSwitch()
                     binder.refreshAllBackendStatuses()
@@ -184,19 +146,12 @@ class TranslationServicesActivity : SettingsSubPageActivity() {
 
     override fun onPause() {
         super.onPause()
-        llmConfigSnapshotOnPause = snapshotLlmConfig(Prefs(this))
         prefsListener?.let {
             getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
                 .unregisterOnSharedPreferenceChangeListener(it)
         }
         prefsListener = null
     }
-
-    private fun snapshotLlmConfig(prefs: Prefs): String = listOf(
-        prefs.geminiApiKey, prefs.geminiModel,
-        prefs.openaiApiKey, prefs.openaiModel, prefs.openaiBaseUrl,
-        prefs.deepseekApiKey, prefs.deepseekModel,
-    ).joinToString("|")
 
     /** Drop the loaded MNN model when every on-device LLM toggle is off, so the
      *  OS can reclaim the working set. Unload is mutex-serialized in the

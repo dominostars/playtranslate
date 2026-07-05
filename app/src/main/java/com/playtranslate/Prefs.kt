@@ -362,6 +362,22 @@ class Prefs internal constructor(
         else putString(key, codec.encrypt(key, value) ?: return@edit)
     }
 
+    // ── Per-instance key slots (multi-instance online services) ──────────
+    // [com.playtranslate.translation.OnlineServiceStore] owns which slot
+    // belongs to which service instance; these expose the same
+    // codec-encrypted read/write path for arbitrary slot names. The AAD
+    // binding still holds per slot — a blob can't be moved between
+    // instances any more than between the legacy fixed slots.
+
+    internal fun readInstanceSecret(slot: String, default: String = ""): String =
+        readSecret(slot, default)
+
+    internal fun writeInstanceSecret(slot: String, value: String) = writeSecret(slot, value)
+
+    /** Removes the slot outright (instance deleted) — distinct from
+     *  writing "", which means "key explicitly cleared but slot alive". */
+    internal fun clearInstanceSecret(slot: String) = sp.edit { remove(slot) }
+
     /**
      * Re-encrypt any pre-existing plaintext API keys in place, exactly once.
      * Runs first in [migrateLegacyPrefs], before any property read.
@@ -1168,7 +1184,7 @@ class Prefs internal constructor(
         private const val KEY_ANKI_AUDIO_MAPPING_MIGRATED = "anki_audio_mapping_migrated"
         private const val KEY_ANKI_PITCH_FREQ_MAPPING_MIGRATED = "anki_pitch_freq_mapping_migrated"
         private const val KEY_REGION_LIST    = "region_list"
-        private const val KEY_DEEPL_KEY      = "deepl_api_key"
+        const val KEY_DEEPL_KEY              = "deepl_api_key"
         private const val KEY_SECRETS_ENCRYPTED_MIGRATED = "secrets_encrypted_migrated"
 
         /** Process-wide guard so the one-shot secret migration runs exactly

@@ -1337,6 +1337,10 @@
     <string name="openai_display_name" translatable="false">OpenAI</string>
     <string name="gemini_display_name" translatable="false">Gemini</string>
     <string name="deepseek_display_name" translatable="false">DeepSeek</string>
+    <string name="deepl_display_name" translatable="false">DeepL</string>
+    <!-- Cell title + provider-preset pill label for an OpenAI-compatible
+         service pointed at a user-entered URL (LM Studio, OpenRouter, …). -->
+    <string name="llm_backend_preset_custom">Custom</string>
     <string name="openai_settings_title" translatable="false">OpenAI</string>
     <string name="gemini_settings_title" translatable="false">Gemini</string>
     <string name="deepseek_settings_title" translatable="false">DeepSeek</string>
@@ -1354,6 +1358,8 @@
 
     <!-- Group header above the ADVANCED settings card (OpenAI sub-screen). -->
     <string name="llm_backend_advanced_header">Advanced</string>
+    <!-- Row label above the provider-preset pill toggle (ADVANCED card). -->
+    <string name="llm_backend_provider_label">Provider</string>
     <!-- Row label above the custom base-URL text field (ADVANCED card). -->
     <string name="llm_backend_base_url_label">Custom URL</string>
     <!-- Inline EditText error under the custom base-URL field: malformed URL, or http:// to a non-local host. -->
@@ -1393,6 +1399,27 @@
     <!-- Footer below the online (cloud) backends list, explaining the
          waterfall order and the privacy implication. -->
     <string name="tr_service_order_footer">Translations try each enabled service in the order shown, falling back when one is unavailable. Online translation services receive the captured text. Review each provider\'s privacy policy before enabling.</string>
+    <!-- Action row at the top of the Online card: opens the add-service picker. -->
+    <string name="tr_service_add_online">Add Online Translation Service</string>
+    <!-- Toolbar title of the add-service picker screen. -->
+    <string name="add_online_service_title">Add Translation Service</string>
+    <!-- Subtitle line under a service cell's title on the Translation
+         services page, e.g. "Key ••••4f2a". %1$s = the last 4 characters
+         of the instance's API key; distinguishes two instances of the
+         same service. Keep short — one line under the title. -->
+    <string name="tr_service_key_tail_fmt">Key ••••<xliff:g id="key_tail" example="4f2a">%1$s</xliff:g></string>
+    <!-- Title of the delete-confirmation alert shown when the user taps
+         the trash icon on a service cell in edit mode. %1$s = the
+         service's display name ("OpenAI", "DeepL", …). -->
+    <string name="tr_service_remove_title_fmt">Remove <xliff:g id="service_name" example="OpenAI">%1$s</xliff:g>?</string>
+    <!-- Body text of the same delete-confirmation alert. -->
+    <string name="tr_service_remove_message">This removes the service from the list and deletes its saved API key.</string>
+    <!-- Confirm (destructive, danger-tinted) button of the delete-
+         confirmation alert. -->
+    <string name="tr_service_remove_confirm">Remove</string>
+    <!-- Content description (accessibility) of the edit-mode trash icon
+         on a service cell. -->
+    <string name="tr_service_delete_cd">Remove service</string>
 
     <!-- Footer below the offline (on-device) backends list — sets
          expectations about quality vs speed. -->

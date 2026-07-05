@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Toolbar action for the Translation services page: toggles the online
+     section's edit mode (drag-to-reorder + delete). Title flips between
+     label_edit / label_done in code. -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_edit"
+        android:title="@string/label_edit"
+        app:showAsAction="always" />
+
+</menu>

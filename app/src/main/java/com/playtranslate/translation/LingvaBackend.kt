@@ -25,12 +25,15 @@ import java.util.concurrent.TimeUnit
  * Settings — the registry's waterfall skips this backend when disabled.
  */
 class LingvaBackend(
+    // Identity is parameterized (defaults preserve the legacy singleton)
+    // so the store-driven multi-instance wiring can register a re-added
+    // Lingva instance under a fresh id. See OnlineBackendFactory.
+    override val id: BackendId = "lingva",
+    override val displayName: String = "Lingva",
+    override val priority: Int = 20,
     private val enabledProvider: () -> Boolean,
 ) : TranslationBackend, BatchTranslator {
 
-    override val id: BackendId = "lingva"
-    override val displayName: String = "Lingva"
-    override val priority: Int = 20
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
     override val qualityStars: StarRating = 4.0f

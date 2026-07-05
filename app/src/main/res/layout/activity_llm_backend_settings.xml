@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Generic LLM backend settings sub-screen.
-     Title is set programmatically from LlmBackendConfig.titleStringRes
+<!-- Generic LLM service-instance settings sub-screen.
+     Title is set programmatically from LlmBackendConfig.displayName
      (one layout serves multiple providers, so app:title is intentionally
-     omitted on the toolbar). The ADVANCED section (custom base URL) is
-     GONE'd for providers without a configurable endpoint (Gemini,
-     DeepSeek) — gated on LlmBackendConfig.allowsBaseUrl. -->
+     omitted on the toolbar). The ADVANCED section (provider preset +
+     base URL) is GONE'd for types without a configurable endpoint
+     (Gemini) — gated on LlmBackendConfig.allowsBaseUrl. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
@@ -120,9 +120,25 @@
                         android:paddingHorizontal="@dimen/pt_row_h_padding"
                         android:paddingVertical="@dimen/pt_row_v_padding">
 
+                        <!-- Provider preset: OpenAI / DeepSeek / Custom.
+                             Pinned presets fill + disable the URL field
+                             below; Custom enables free entry. -->
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:text="@string/llm_backend_provider_label"
+                            style="@style/Text.PT.RowTitle" />
+
+                        <FrameLayout
+                            android:id="@+id/presetToggleContainer"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="16dp"
                             android:labelFor="@+id/etBaseUrl"
                             android:text="@string/llm_backend_base_url_label"
                             style="@style/Text.PT.RowTitle" />
