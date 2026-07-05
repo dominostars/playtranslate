@@ -541,7 +541,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                 val heldLongEnough = event.eventTime - event.downTime >= holdDelayMs
                 if (wasDragStarted) {
                     if (onDragEnd?.invoke() == true) {
-                        restorePosition()
+                        restorePositionInstantly()
                     } else {
                         snapToEdge(lastXVel, lastYVel)
                     }
@@ -648,6 +648,20 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
     private fun restorePosition() {
         animateTo(savedParamX, savedParamY)
+    }
+
+    /** [restorePosition] without the glide: one updateViewLayout straight to
+     *  the saved dock. Used when a release commits the sticky lens — the
+     *  definitions bind and full-screen lens relayout own the next frames, so
+     *  a concurrent glide freezes mid-screen (~50ms stall measured, parked
+     *  near panel centre) before finishing. The lens is the payload there;
+     *  the icon just reappears at its dock. */
+    private fun restorePositionInstantly() {
+        snapAnimator?.cancel()
+        val p = params ?: return
+        p.x = savedParamX
+        p.y = savedParamY
+        try { wm?.updateViewLayout(this, p) } catch (_: Exception) {}
     }
 
     /** Sets position from persisted edge + fraction without animation. */
