@@ -47,6 +47,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -1079,31 +1080,38 @@ class CaptureService : Service() {
         // The consent dialog suspends this start for however long the user
         // stares at it. If a stop lands meanwhile (display disconnect, QS
         // tile off, device sleep), resuming must NOT resurrect live mode
-        // with a stale display set (review finding). stopLive() bumps the
-        // generation; a stale token bails.
-        val startGeneration = ++liveStartGeneration
+        // with a stale display set (review finding). Structured
+        // concurrency, not a flag: the pending start is a Job that
+        // stopLive() — and any newer start — cancels outright.
+        pendingLiveStart?.cancel()
+        pendingLiveStart = null
         if (backend.canCaptureWithoutPrompting && !wantMpStreamConsent) {
             beginLiveCapture()
         } else {
-            serviceScope.launch {
+            pendingLiveStart = serviceScope.launch {
                 if (wantMpStreamConsent) {
                     // Result deliberately ignored — decline means the
                     // accessibility capture path, not an error.
                     MediaProjectionCaptureBackend.ensureCaptureReady()
-                    if (startGeneration == liveStartGeneration) beginLiveCapture()
-                } else if (backend.ensureCaptureReady()) {
-                    if (startGeneration == liveStartGeneration) beginLiveCapture()
-                } else {
+                } else if (!backend.ensureCaptureReady()) {
                     emitError(getString(R.string.error_screen_capture_denied))
+                    return@launch
                 }
+                // A cancel that raced the await lands here at the next
+                // suspension boundary; ensureActive makes it explicit.
+                ensureActive()
+                beginLiveCapture()
             }
+            // No completion-nulling: cancel() on a completed Job is a no-op,
+            // so a stale reference here is harmless by construction.
         }
     }
 
-    /** Monotonic token pairing each [startLive] with the stops that may
-     *  interleave its async consent await — see the comment in [startLive].
-     *  Main-thread confined like the rest of the live-mode mutators. */
-    private var liveStartGeneration = 0
+    /** The startLive currently suspended in its capture-consent await, if
+     *  any. Cancelled by [stopLive] and by a superseding [startLive] — a
+     *  stop must never be undone by a stale start resuming. Main-thread
+     *  confined like the rest of the live-mode mutators. */
+    private var pendingLiveStart: Job? = null
 
     /**
      * The post-consent tail of [startLive]: compute the target display set
@@ -1467,9 +1475,10 @@ class CaptureService : Service() {
     }
 
     fun stopLive() {
-        // Invalidate any startLive suspended in its consent dialog — see
-        // liveStartGeneration.
-        liveStartGeneration++
+        // Abort any startLive suspended in its consent dialog — a stop must
+        // win against a start that resumes later (see pendingLiveStart).
+        pendingLiveStart?.cancel()
+        pendingLiveStart = null
         Log.i(TAG, "stopLive() called (isLive=$isLive, modes=${liveModes.keys})", Throwable("stopLive caller"))
         // Stop bypasses setLiveDisplays: we genuinely want zero live modes,
         // not "fall back to the backend's capturable default" — which is what
