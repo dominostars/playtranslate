@@ -38,6 +38,14 @@ object OutsideChangeGate {
          *  brightness ramp being correctly absorbed. */
         val fitSlopeQ16: Long,
         val fitOffset: Long,
+        /** Grid-mode only (see [check] with an [OutsideBlockGrid]): some
+         *  block is awaiting its stillness confirmation — the caller must
+         *  force a follow-up cycle, because the change may already have
+         *  settled into delivery silence. */
+        val pendingSettle: Boolean = false,
+        /** Grid-mode diagnostics for the skip/GO debug lines. */
+        val movingBlocks: Int = 0,
+        val volatileBlocks: Int = 0,
     ) {
         /** Human-readable fit for debug lines, e.g. "a=0.61 b=2". */
         fun fitLabel(): String = String.format(
@@ -50,13 +58,17 @@ object OutsideChangeGate {
         internal var rawRow = IntArray(0)
         internal var refRow = IntArray(0)
         internal var pairs = LongArray(0)
+        internal var blockIdx = IntArray(0)
 
         internal fun ensure(rowWidth: Int, maxSamples: Int) {
             if (rawRow.size < rowWidth) {
                 rawRow = IntArray(rowWidth)
                 refRow = IntArray(rowWidth)
             }
-            if (pairs.size < maxSamples) pairs = LongArray(maxSamples)
+            if (pairs.size < maxSamples) {
+                pairs = LongArray(maxSamples)
+                blockIdx = IntArray(maxSamples)
+            }
         }
     }
 
@@ -73,6 +85,7 @@ object OutsideChangeGate {
         bounds: Rect,
         exclude: List<Rect>,
         buffers: Buffers,
+        grid: OutsideBlockGrid? = null,
         stridePx: Int = PinholeCalibration.OUTSIDE_STRIDE_PX,
         lumaThreshold: Int = PinholeCalibration.OUTSIDE_LUMA_THRESHOLD,
         minChangedSamples: Int = PinholeCalibration.OUTSIDE_MIN_CHANGED_SAMPLES,
@@ -87,6 +100,7 @@ object OutsideChangeGate {
 
         val maxSamples = (height / stridePx + 1) * (width / stridePx + 1)
         buffers.ensure(width, maxSamples)
+        grid?.configure(left, top, width, height)
 
         var n = 0
         var y = top
@@ -96,16 +110,48 @@ object OutsideChangeGate {
             var x = 0
             while (x < width) {
                 if (!excluded(left + x, y, exclude)) {
-                    buffers.pairs[n++] = PhotometricFit.pack(
+                    buffers.pairs[n] = PhotometricFit.pack(
                         expected = luma(buffers.refRow[x]),
                         observed = luma(buffers.rawRow[x]),
                     )
+                    if (grid != null) {
+                        buffers.blockIdx[n] = grid.blockIndex(left + x, y)
+                    }
+                    n++
                 }
                 x += stridePx
             }
             y += stridePx
         }
-        return analyze(buffers.pairs, n, lumaThreshold, minChangedSamples)
+
+        val flat = analyze(buffers.pairs, n, lumaThreshold, minChangedSamples)
+        if (grid == null) return flat
+
+        // Grid mode: replay the residuals into the per-block temporal state;
+        // the settle/volatility verdict supersedes the flat sample count as
+        // the firing decision (audit A3 — animation is excluded, transitions
+        // wait for stillness), while the flat fields stay for diagnostics.
+        val fit = PhotometricFit.Fit(flat.fitSlopeQ16, flat.fitOffset)
+        grid.beginRun()
+        for (i in 0 until n) {
+            val p = buffers.pairs[i]
+            val expected = (p ushr 32).toInt()
+            val observed = (p and 0xFFFFFFFFL).toInt()
+            val r = PhotometricFit.residual(fit, expected, observed)
+            grid.accumulate(
+                buffers.blockIdx[i],
+                observed,
+                r > lumaThreshold || r < -lumaThreshold,
+            )
+        }
+        val verdict = grid.lastVerdict
+        grid.finishRun(verdict)
+        return flat.copy(
+            fired = verdict.fired,
+            pendingSettle = verdict.pendingSettle,
+            movingBlocks = verdict.movingBlocks,
+            volatileBlocks = verdict.volatileBlocks,
+        )
     }
 
     /** Pure residual analysis over the first [n] packed (ref, raw) luma

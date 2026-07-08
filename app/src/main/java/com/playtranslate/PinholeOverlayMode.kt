@@ -192,6 +192,8 @@ class PinholeOverlayMode(
         cleanRefBitmap = null
         overlayBitmap?.recycle()
         overlayBitmap = null
+        pendingRemovals.clear()
+        outsideGrid.reset()
         // The gate is only meaningful relative to a previous look at the
         // screen. After a reset the model is empty (overlays hidden, caches
         // dropped), so the next cycle must run even in delivery silence —
@@ -232,6 +234,11 @@ class PinholeOverlayMode(
     /** Reused sampling buffers for [OutsideChangeGate] — no steady-state
      *  allocation on skipped cycles. */
     private val gateBuffers = OutsideChangeGate.Buffers()
+
+    /** Per-block temporal state for the outside gate (audit A3): volatility
+     *  exclusion + the settle gate. Reset whenever the overlay layout
+     *  changes or the mode's state resets. */
+    private val outsideGrid = OutsideBlockGrid()
 
     /** Reused per-channel photometric-fit scratch for [checkPinholes]. */
     private val fitR = PhotometricFit.Fit()
@@ -435,19 +442,25 @@ class PinholeOverlayMode(
                         )
                     }
                 }
-                val outside = OutsideChangeGate.check(raw, gateRef, crop, exclude, gateBuffers)
+                val outside =
+                    OutsideChangeGate.check(raw, gateRef, crop, exclude, gateBuffers, outsideGrid)
                 reconcileCycle =
                     gateSkipStreak >= PinholeCalibration.GATE_RECONCILE_EVERY_SKIPS
                 if (allKeep && !outside.fired && !reconcileCycle) {
                     // Every box is verifiably healthy on this frame — any
                     // pending one-look removals were transients; forget them.
                     pendingRemovals.clear()
+                    // A block awaiting its stillness confirmation must get a
+                    // follow-up look even if the screen has gone silent.
+                    if (outside.pendingSettle) forceNextCycle = true
                     gateSkipStreak++
                     if (debug) {
                         DetectionLog.log(
                             "D$displayId c$cycleNum gate: skip #$gateSkipStreak " +
                                 "(outside ${outside.changedSamples}/${outside.totalSamples} " +
-                                "${outside.fitLabel()})"
+                                "${outside.fitLabel()} mv=${outside.movingBlocks} " +
+                                "vol=${outside.volatileBlocks}" +
+                                (if (outside.pendingSettle) " settling" else "") + ")"
                         )
                     }
                     return prefs.captureIntervalMs
@@ -827,7 +840,13 @@ class PinholeOverlayMode(
             //     echoing back through the mirror as a delivery. On a static
             //     screen the follow-up finds nothing, forces nothing, and the
             //     loop parks.
-            if (anyChanged || farOcrGroups.isNotEmpty()) forceNextCycle = true
+            if (anyChanged || farOcrGroups.isNotEmpty()) {
+                forceNextCycle = true
+                // The overlay layout changed: block membership under the
+                // exclusion rects shifted and the reference re-baselined, so
+                // the outside grid's temporal state is stale.
+                outsideGrid.reset()
+            }
             // A pending (one-look) removal needs its confirming second look
             // even if the screen delivers nothing further — the change that
             // tripped it may have settled into silence, and silence would
