@@ -82,13 +82,11 @@ class PinholeOverlayMode(
         val pct: Float,
         val changed: Int,
         val total: Int,
-        /** Max |per-channel residual| after the photometric fit — the
-         *  headroom a real change has over the threshold. */
+        /** Max per-channel |raw − predicted| — the headroom a real change
+         *  has over [PinholeCalibration.SPLATTER_THRESHOLD]. */
         val maxDelta: Int,
-        /** Average per-channel fit slope (Q16; 65536 = 1.0). Well off 1.0
-         *  with result=KEEP is a brightness ramp being absorbed. */
-        val fitSlopeQ16: Long = 1L shl PhotometricFit.Q,
-        /** Distinct glyph anchors with changed samples (audit A7). */
+        /** Distinct glyph anchors with changed samples — telemetry only
+         *  (audit A7; disarmed 2026-07-08 pending ink-aware placement). */
         val glyphAnchorsHit: Int = 0,
     )
 
@@ -228,7 +226,6 @@ class PinholeOverlayMode(
         cleanRefBitmap = null
         overlayBitmap?.recycle()
         overlayBitmap = null
-        pendingRemovals.clear()
         outsideGrid.reset()
         inputBurstUntilMs = 0L
         // The gate is only meaningful relative to a previous look at the
@@ -277,23 +274,12 @@ class PinholeOverlayMode(
      *  changes or the mode's state resets. */
     private val outsideGrid = OutsideBlockGrid()
 
-    /** Reused per-channel photometric-fit scratch for [checkPinholes]. */
-    private val fitR = PhotometricFit.Fit()
-    private val fitG = PhotometricFit.Fit()
-    private val fitB = PhotometricFit.Fit()
-
-    /** Removal hysteresis (audit A3): boxes whose pinhole check said REMOVE
-     *  exactly once. A REMOVE lifts a box only on the second consecutive
-     *  changed look — one-frame transients (hit-flash, a particle crossing
-     *  the holes, a layout-settle glitch) revert to KEEP on the next frame
-     *  and clear their entry instead of blinking the overlay. Keyed by box
-     *  IDENTITY (kept boxes are carried by instance across cycles; replaced
-     *  boxes are fresh instances): value equality would collapse two boxes
-     *  rendering identical fields into one entry, letting the second
-     *  "confirm" off the first's pend and bypass the two-look rule. Pruned
-     *  against the surviving set every apply. */
-    private val pendingRemovals: MutableSet<TextBox> =
-        java.util.Collections.newSetFromMap(java.util.IdentityHashMap())
+    // Removal hysteresis and the pinhole-side photometric fit were removed
+    // 2026-07-08 (speed-first product rule): a false REMOVE costs one brief
+    // blink with cached-translation recovery, while both mechanisms priced
+    // their insurance in primary-path latency or, worse, missed removals.
+    // The fit survives only on the outside gate (OutsideChangeGate), where
+    // a false fire costs a single OCR.
 
     // ── Unified Cycle ───────────────────────────────────────────────────
 
@@ -487,11 +473,14 @@ class PinholeOverlayMode(
                     OutsideChangeGate.check(raw, gateRef, crop, exclude, gateBuffers, outsideGrid)
                 reconcileCycle =
                     gateSkipStreak >= PinholeCalibration.GATE_RECONCILE_EVERY_SKIPS
-                if (allKeep && !outside.fired && !reconcileCycle) {
-                    // Every box is verifiably healthy on this frame — any
-                    // pending one-look removals were transients; forget them.
-                    pendingRemovals.clear()
-                    // A block awaiting its stillness confirmation must get a
+                // Volatile tiles disable skipping outright (product rule:
+                // text inside endless animation must never wait past shipped
+                // cadence — see OutsideBlockGrid). Such screens run the full
+                // cycle every wake, exactly like the shipped app.
+                if (allKeep && !outside.fired && !reconcileCycle &&
+                    outside.volatileBlocks == 0
+                ) {
+                    // A moving-but-differing block must get a floor-paced
                     // follow-up look even if the screen has gone silent.
                     if (outside.pendingSettle) forceNextCycle = true
                     gateSkipStreak++
@@ -519,6 +508,8 @@ class PinholeOverlayMode(
                         reconcileCycle -> "reconcile after $gateSkipStreak skips"
                         !allKeep ->
                             "pinhole ${outcomes.count { it.result != PinholeResult.KEEP }} box(es)"
+                        outside.volatileBlocks > 0 ->
+                            "volatile ${outside.volatileBlocks} block(s) — full cadence"
                         else ->
                             "outside ${outside.changedSamples}/${outside.totalSamples} " +
                                 outside.fitLabel()
@@ -676,34 +667,18 @@ class PinholeOverlayMode(
                     // second per-box region read.
                     val outcome = pinholePre?.getOrNull(idx)
                         ?: checkPinholes(raw, cleanRef, bitmapRects[idx], box)
-                    // Removal hysteresis (audit A3): the first changed look
-                    // only marks the box pending; the removal applies on the
-                    // second consecutive changed look. A one-frame transient
-                    // reverts to KEEP on its next look and is forgotten.
-                    val confirmed: Boolean
                     if (outcome.result == PinholeResult.REMOVE) {
-                        confirmed = box in pendingRemovals
-                        if (confirmed) {
-                            pinholeRemovals.add(idx)
-                            pendingRemovals.remove(box)
-                        } else {
-                            pendingRemovals.add(box)
-                        }
-                    } else {
-                        confirmed = false
-                        pendingRemovals.remove(box)
+                        pinholeRemovals.add(idx)
                     }
                     if (debug && outcome.result != PinholeResult.KEEP) {
                         val r = bitmapRects[idx]
                         val pctStr = "%.1f".format(outcome.pct * 100f)
-                        val phase = if (confirmed) "REMOVE" else "REMOVE-pending"
                         DetectionLog.log(
-                            "D$displayId c$cycleNum box$idx $phase " +
+                            "D$displayId c$cycleNum box$idx ${outcome.result} " +
                                 "text=\"${box.sourceText.take(20)}\" " +
                                 "pct=$pctStr% changed=${outcome.changed}/${outcome.total} " +
                                 "glyphAnchors=${outcome.glyphAnchorsHit} " +
-                                "maxResidual=${outcome.maxDelta} " +
-                                "a=%.2f ".format(outcome.fitSlopeQ16 / 65536.0) +
+                                "maxDelta=${outcome.maxDelta} " +
                                 "rect=(${r.left},${r.top},${r.right},${r.bottom})"
                         )
                     }
@@ -755,17 +730,6 @@ class PinholeOverlayMode(
             }
 
             cachedBoxes = nextBoxes.ifEmpty { null }
-            // Pending removals only make sense for boxes that still exist —
-            // anything removed this cycle (by any mechanism) or replaced by
-            // a rebuild drops out of hysteresis tracking here. The prune must
-            // match the set's identity semantics (a List.contains check would
-            // compare by value).
-            if (pendingRemovals.isNotEmpty()) {
-                val survivors: MutableSet<TextBox> =
-                    java.util.Collections.newSetFromMap(java.util.IdentityHashMap())
-                survivors.addAll(nextBoxes)
-                pendingRemovals.retainAll(survivors)
-            }
             val anyChanged = allRemovals.isNotEmpty()
 
             if (debug && (anyChanged || farOcrGroups.isNotEmpty())) {
@@ -903,11 +867,6 @@ class PinholeOverlayMode(
                 // the outside grid's temporal state is stale.
                 outsideGrid.reset()
             }
-            // A pending (one-look) removal needs its confirming second look
-            // even if the screen delivers nothing further — the change that
-            // tripped it may have settled into silence, and silence would
-            // otherwise park the loop with a stale overlay up.
-            if (pendingRemovals.isNotEmpty()) forceNextCycle = true
             if (reconcileCycle && (anyChanged || farOcrGroups.isNotEmpty())) {
                 // The A2 gate's false-negative metric: the safety-net cycle
                 // found work the gate had been skipping past. Loud on
@@ -920,11 +879,7 @@ class PinholeOverlayMode(
             }
             val inInputBurst =
                 android.os.SystemClock.uptimeMillis() < inputBurstUntilMs
-            // Floor pacing also covers pending one-look removals: the
-            // confirming look should land ~250ms later, not a full interval
-            // — two-look hysteresis at interval pacing doubled stale-overlay
-            // latency in the field.
-            return if (anyRemoved || inInputBurst || pendingRemovals.isNotEmpty()) {
+            return if (anyRemoved || inInputBurst) {
                 mgr.minCaptureIntervalMs
             } else {
                 prefs.captureIntervalMs
@@ -1035,14 +990,14 @@ class PinholeOverlayMode(
      * The core detection math is:
      *
      *     predicted[i] = (cleanRef[i] + overlayBitmap[i]) / 2
-     *     raw[i]       ≈ a·predicted[i] + b        (per-channel affine fit)
-     *     residual[i]  = raw[i] − (a·predicted[i] + b)
+     *     delta[i]     = |raw[i] - predicted[i]|
      *
-     * and a pinhole counts as changed when any channel's |residual| exceeds
-     * [PinholeCalibration.SPLATTER_THRESHOLD]. The affine fit (audit A3,
-     * see [PhotometricFit]) absorbs compositor-side brightness transforms —
-     * the pre-sleep dim, auto-brightness — that a raw |raw − predicted|
-     * compare misread as near-total change on high-contrast boxes.
+     * with a pinhole counted as changed when any channel's delta exceeds
+     * [PinholeCalibration.SPLATTER_THRESHOLD]. Deliberately RAW deltas, no
+     * photometric normalization (2026-07-08 decision): normalizing here
+     * trades missed removals (stale overlays — the cardinal failure) for
+     * dim-ramp smoothness; a dim now flaps boxes once and self-heals, and
+     * the fit lives only on the outside gate where false fires are cheap.
      *
      * This assumes that AT PINHOLE POSITIONS, the raw on-screen pixel is a
      * 50/50 blend of the clean game background (cleanRef) and the solid
@@ -1128,29 +1083,33 @@ class PinholeOverlayMode(
         val ovPixels = IntArray(regionW * regionH)
         overlay.getPixels(ovPixels, 0, regionW, ovLeft, ovTop, regionW, regionH)
 
-        // Two passes over the fetched regions (audit A3 normalization).
+        // RAW per-channel deltas at the shipped calibration. The A3
+        // photometric fit was removed from THIS path (2026-07-08): its
+        // failure mode here is missed removals — stale overlays, the
+        // cardinal regression — and it survives only on the outside gate,
+        // where a false fire costs a single OCR. A screen dim therefore
+        // flaps boxes once (as shipped); the user is about to tap anyway.
         //
-        // Pass 1 accumulates per-channel least-squares sums for the affine
-        // fit raw ≈ a·predicted + b; pass 2 thresholds the per-channel
-        // RESIDUALS from that fit instead of the raw deltas. When the game
-        // under the box is unchanged, any brightness pipeline the compositor
-        // applies (the pre-sleep dim, auto-brightness, night light) acts
-        // ~affinely on the whole box and collapses into (a, b) — residuals
-        // stay at the noise floor and the box KEEPs, where the old absolute
-        // compare flagged 85–95% of samples on a mere dim ramp (Thor
-        // 2026-07-08, c35/c56). A real text change decorrelates raw from
-        // predicted, no line fits it, and the residuals stay large.
+        // Glyph anchors (audit A7) are TELEMETRY ONLY: they are laid
+        // geometrically along approximated line rows, not on detected ink,
+        // so on translucent boxes they can sit over background animation.
+        // Their hit count is logged to size the idea against real content;
+        // it does NOT influence the REMOVE decision until placement is
+        // ink-aware.
         //
         // Mask geometry note (unchanged): the mask is generated at
         // view-global origin, so the grid is tested at (left+px, top+py) —
         // at identity scale view-space == bitmap-space. Sampling box-local
         // would miss the actual on-screen holes for any box whose top-left
         // isn't grid-aligned.
-        var totalPinholes = 0
-        var sxR = 0L; var syR = 0L; var sxxR = 0L; var sxyR = 0L
-        var sxG = 0L; var syG = 0L; var sxxG = 0L; var sxyG = 0L
-        var sxB = 0L; var syB = 0L; var sxxB = 0L; var sxyB = 0L
+        val vertical =
+            box.orientation == com.playtranslate.language.TextOrientation.VERTICAL
+        val anchors = GlyphAnchors.forBox(bitmapRect, box.lineCount, vertical)
+        var anchorHits = 0L
 
+        var totalPinholes = 0
+        var changedPinholes = 0
+        var maxDelta = 0
         for (py in 0 until regionH) {
             for (px in 0 until regionW) {
                 if (!isPinholePosition(left + px, top + py, spacing)) continue
@@ -1160,48 +1119,12 @@ class PinholeOverlayMode(
                 val ovPx = ovPixels[i]
                 val rawPx = rawPixels[i]
                 // predicted = clean_ref * 0.5 + overlay_rendered * 0.5
-                val pR = ((Color.red(refPx) + Color.red(ovPx)) / 2).toLong()
-                val pG = ((Color.green(refPx) + Color.green(ovPx)) / 2).toLong()
-                val pB = ((Color.blue(refPx) + Color.blue(ovPx)) / 2).toLong()
-                val rR = Color.red(rawPx).toLong()
-                val rG = Color.green(rawPx).toLong()
-                val rB = Color.blue(rawPx).toLong()
-                sxR += pR; syR += rR; sxxR += pR * pR; sxyR += pR * rR
-                sxG += pG; syG += rG; sxxG += pG * pG; sxyG += pG * rG
-                sxB += pB; syB += rB; sxxB += pB * pB; sxyB += pB * rB
-            }
-        }
-        if (totalPinholes == 0) return keepZero
-
-        PhotometricFit.finish(totalPinholes, sxR, syR, sxxR, sxyR, fitR)
-        PhotometricFit.finish(totalPinholes, sxG, syG, sxxG, sxyG, fitG)
-        PhotometricFit.finish(totalPinholes, sxB, syB, sxxB, sxyB, fitB)
-
-        // Glyph anchors (audit A7): approximated text-line probe points.
-        // Changed samples near two DISTINCT anchors mark the box suspect
-        // regardless of area percentage — a swapped digit in a wide box
-        // moves far too few samples for the pct rule but must land on the
-        // text rows. Hits are tracked in one Long bitset.
-        val vertical =
-            box.orientation == com.playtranslate.language.TextOrientation.VERTICAL
-        val anchors = GlyphAnchors.forBox(bitmapRect, box.lineCount, vertical)
-        var anchorHits = 0L
-
-        var changedPinholes = 0
-        var maxDelta = 0
-        for (py in 0 until regionH) {
-            for (px in 0 until regionW) {
-                if (!isPinholePosition(left + px, top + py, spacing)) continue
-                val i = py * regionW + px
-                val refPx = refPixels[i]
-                val ovPx = ovPixels[i]
-                val rawPx = rawPixels[i]
-                val predR = ((Color.red(refPx) + Color.red(ovPx)) / 2)
-                val predG = ((Color.green(refPx) + Color.green(ovPx)) / 2)
-                val predB = ((Color.blue(refPx) + Color.blue(ovPx)) / 2)
-                val dr = kotlin.math.abs(PhotometricFit.residual(fitR, predR, Color.red(rawPx)))
-                val dg = kotlin.math.abs(PhotometricFit.residual(fitG, predG, Color.green(rawPx)))
-                val db = kotlin.math.abs(PhotometricFit.residual(fitB, predB, Color.blue(rawPx)))
+                val predR = (Color.red(refPx) + Color.red(ovPx)) / 2
+                val predG = (Color.green(refPx) + Color.green(ovPx)) / 2
+                val predB = (Color.blue(refPx) + Color.blue(ovPx)) / 2
+                val dr = kotlin.math.abs(Color.red(rawPx) - predR)
+                val dg = kotlin.math.abs(Color.green(rawPx) - predG)
+                val db = kotlin.math.abs(Color.blue(rawPx) - predB)
                 val delta = maxOf(dr, dg, db)
                 if (delta > maxDelta) maxDelta = delta
                 if (dr > PinholeCalibration.SPLATTER_THRESHOLD ||
@@ -1217,19 +1140,17 @@ class PinholeOverlayMode(
                 }
             }
         }
+        if (totalPinholes == 0) return keepZero
 
         val pct = changedPinholes.toFloat() / totalPinholes
-        val glyphAnchorsHit = java.lang.Long.bitCount(anchorHits)
-        val result = if (pct >= PinholeCalibration.PINHOLE_CHANGE_PCT ||
-            glyphAnchorsHit >= PinholeCalibration.GLYPH_PROBE_MIN_ANCHORS
-        ) {
+        val result = if (pct >= PinholeCalibration.PINHOLE_CHANGE_PCT) {
             PinholeResult.REMOVE
         } else {
             PinholeResult.KEEP
         }
-        val avgSlope = (fitR.slopeQ16 + fitG.slopeQ16 + fitB.slopeQ16) / 3
         return PinholeOutcome(
-            result, pct, changedPinholes, totalPinholes, maxDelta, avgSlope, glyphAnchorsHit,
+            result, pct, changedPinholes, totalPinholes, maxDelta,
+            glyphAnchorsHit = java.lang.Long.bitCount(anchorHits),
         )
     }
 

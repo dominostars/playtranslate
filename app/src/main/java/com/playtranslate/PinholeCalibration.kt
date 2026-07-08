@@ -124,19 +124,14 @@ object PinholeCalibration {
     /** Grid spacing in view pixels between adjacent pinhole positions. */
     const val PINHOLE_SPACING = 3
 
-    /** Per-channel threshold for classifying a pinhole as "changed".
-     *
-     *  Since the A3 rework this thresholds the RESIDUAL from the per-box
-     *  photometric fit, not the raw |raw − predicted| delta. Residual space
-     *  runs smaller than delta space twice over: the fit removes systematic
-     *  components (so honest-match noise lands below the old 20–30 ceiling),
-     *  and on a real change the fit legally soaks a few percent of the
-     *  changed samples' magnitude before the clamp stops it. The original
-     *  60 — calibrated for raw deltas — silently under-detected text swaps
-     *  in the field (2026-07-08: recorded swap deltas cluster near 50–60;
-     *  all-KEEP on live content). 45 restores sensitivity while keeping
-     *  ≥1.5× headroom over honest noise. */
-    const val SPLATTER_THRESHOLD = 45
+    /** Per-channel RAW delta threshold for classifying a pinhole as
+     *  "changed" — the shipped calibration (honest-match noise peaks at
+     *  ~20–30; 60 leaves headroom). The brief A3 experiment that measured
+     *  fit-residuals here instead (with a recalibrated 45) is reverted:
+     *  normalization on the removal path trades stale overlays for dim
+     *  smoothness, the wrong direction under the 2026-07-08 speed-first
+     *  rule. */
+    const val SPLATTER_THRESHOLD = 60
 
     // ── A2 change-gate constants (OutsideChangeGate + the runCycle gate) ──
 
@@ -179,12 +174,13 @@ object PinholeCalibration {
      *  1–2 nearest actual holes. */
     const val GLYPH_PROBE_RADIUS_PX = 4
 
-    /** Distinct anchors with changed samples for a box to be suspect
-     *  regardless of area percentage — the sensitivity rule that catches a
-     *  single swapped digit in a wide box (the stale-counter false-KEEP).
-     *  Two DISTINCT anchors, not two samples: a localized animation blob
-     *  near one anchor cluster shouldn't qualify. Removal still passes
-     *  two-look hysteresis downstream. */
+    /** (Telemetry reference only — the anchor rule is DISARMED as of
+     *  2026-07-08.) Distinct anchors with changed samples that WOULD mark a
+     *  box suspect regardless of area percentage. Anchors are placed
+     *  geometrically, not on detected ink, so on translucent boxes they can
+     *  sit over background animation; the per-outcome glyphAnchors= count
+     *  is being collected to size the idea before it is ever allowed to
+     *  drive removals. */
     const val GLYPH_PROBE_MIN_ANCHORS = 2
 
     /** Inset from the rendered rect (which includes ~14px of box padding)

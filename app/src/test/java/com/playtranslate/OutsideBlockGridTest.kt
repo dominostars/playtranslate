@@ -6,9 +6,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * JVM tests for [OutsideBlockGrid] — the settle/volatility state machine the
- * outside gate's firing decision runs through (audit A3). Runs are driven
- * with explicit block feeds; block 0 is the subject throughout.
+ * JVM tests for [OutsideBlockGrid] under the speed-first rules (2026-07-08):
+ * fire on the FIRST still-and-differing look (no confirmation wait), hold
+ * only while a block is mid-motion (with a wake claim when it also differs),
+ * and report volatile blocks so the caller disables gate skipping entirely
+ * on screens with persistent animation. Block 0 is the subject throughout.
  */
 class OutsideBlockGridTest {
 
@@ -29,20 +31,17 @@ class OutsideBlockGridTest {
     }
 
     @Test
-    fun `settled change pends once then fires on the confirming run`() {
+    fun `still differing block fires on its first look`() {
         val g = grid()
         run(g, Triple(0, 100, 0)) // seed
-        val pendRun = run(g, Triple(0, 100, 5))
-        assertFalse(pendRun.fired)
-        assertTrue(pendRun.pendingSettle)
-        val fireRun = run(g, Triple(0, 100, 5))
-        assertTrue(fireRun.fired)
-        assertEquals(1, fireRun.firedBlocks)
-        assertFalse(fireRun.pendingSettle)
+        val v = run(g, Triple(0, 100, 5))
+        assertTrue(v.fired)
+        assertEquals(1, v.firedBlocks)
+        assertFalse(v.pendingSettle)
     }
 
     @Test
-    fun `first look after seeding never fires even when differing`() {
+    fun `seeding look never fires even when differing`() {
         val g = grid()
         val v = run(g, Triple(0, 100, 5))
         assertFalse(v.fired)
@@ -50,39 +49,23 @@ class OutsideBlockGridTest {
     }
 
     @Test
-    fun `transient change is forgotten without firing`() {
+    fun `mid-motion holds fire but claims a wake, then fires when still`() {
         val g = grid()
         run(g, Triple(0, 100, 0))
-        run(g, Triple(0, 100, 5)) // pends
-        val v = run(g, Triple(0, 100, 0)) // reverted
-        assertFalse(v.fired)
-        assertFalse(v.pendingSettle)
-        // And it must re-earn the two-look sequence afterwards.
-        val pendAgain = run(g, Triple(0, 100, 5))
-        assertFalse(pendAgain.fired)
-        assertTrue(pendAgain.pendingSettle)
-    }
-
-    @Test
-    fun `mid-transition waits for stillness but claims a wake`() {
-        val g = grid()
-        run(g, Triple(0, 100, 0))
-        // Sum jumps AND differs: a change mid-animation (or a single-frame
-        // change followed by silence) — no pend yet, but a follow-up wake.
+        // Sum jumps AND differs: a change mid-animation, or a single-frame
+        // change that may settle into delivery silence.
         val moving = run(g, Triple(0, 200, 5))
         assertFalse(moving.fired)
         assertTrue(moving.pendingSettle)
         assertEquals(1, moving.movingBlocks)
-        // Stillness look #1: pends.
+        // First still look fires — no confirmation wait.
         val still = run(g, Triple(0, 200, 5))
-        assertFalse(still.fired)
-        assertTrue(still.pendingSettle)
-        // Stillness look #2: fires.
-        assertTrue(run(g, Triple(0, 200, 5)).fired)
+        assertTrue(still.fired)
+        assertFalse(still.pendingSettle)
     }
 
     @Test
-    fun `persistent animation goes volatile and never fires`() {
+    fun `persistent animation goes volatile, never fires, and is reported`() {
         val g = grid()
         run(g, Triple(0, 100, 0))
         var sawVolatile = false
@@ -92,66 +75,66 @@ class OutsideBlockGridTest {
             assertFalse("run $i must not fire", v.fired)
             if (v.volatileBlocks > 0) sawVolatile = true
         }
-        assertTrue("EMA should have crossed the volatile bar", sawVolatile)
-        // While volatile, even a stable differing look must not pend.
+        assertTrue("EMA should cross the volatile bar", sawVolatile)
+        // While volatile, even a stable differing look neither fires nor
+        // claims a wake — the CALLER sees volatileBlocks > 0 and disables
+        // skipping, so the screen runs full-cadence OCR instead.
         val v = run(g, Triple(0, 100, 5))
         assertFalse(v.fired)
         assertFalse(v.pendingSettle)
+        assertTrue(v.volatileBlocks > 0)
     }
 
     @Test
-    fun `volatile block recovers after sustained stillness`() {
+    fun `volatile block recovers after sustained stillness and fires again`() {
         val g = grid()
         run(g, Triple(0, 100, 0))
         for (i in 0 until 12) {
             run(g, Triple(0, if (i % 2 == 0) 200 else 100, 5))
         }
-        // Quiet, unchanged runs decay the EMA below the volatile bar.
         var recovered = false
         for (i in 0 until 12) {
             val v = run(g, Triple(0, 100, 0))
             if (v.volatileBlocks == 0) { recovered = true; break }
         }
         assertTrue("EMA should decay back under the bar", recovered)
-        // A real settled change now goes pend → fire normally.
-        assertFalse(run(g, Triple(0, 100, 5)).fired)
+        // First still differing look after recovery fires immediately.
         assertTrue(run(g, Triple(0, 100, 5)).fired)
     }
 
     @Test
-    fun `pending claim survives a fully-excluded run`() {
+    fun `motion sum survives a fully-excluded run`() {
         val g = grid()
         run(g, Triple(0, 100, 0))
-        run(g, Triple(0, 100, 5)) // pends
-        // Next run the block is entirely under a box (no samples) — the
-        // wake claim must hold so the confirming look still happens.
+        run(g, Triple(0, 200, 5)) // moving + differs → wake claim
+        // Block entirely under a box next run (no samples) — state holds.
         val covered = run(g, Triple(1, 80, 0))
         assertFalse(covered.fired)
-        assertTrue(covered.pendingSettle)
-        // Samples return, still differing and still (sum unchanged) → fire.
-        assertTrue(run(g, Triple(0, 100, 5)).fired)
+        // Samples return at the same sum → still + differs → fire.
+        assertTrue(run(g, Triple(0, 200, 5)).fired)
     }
 
     @Test
-    fun `reset drops pending state and reseeds`() {
+    fun `reset drops state and reseeds`() {
         val g = grid()
         run(g, Triple(0, 100, 0))
-        run(g, Triple(0, 100, 5)) // pends
+        run(g, Triple(0, 200, 5))
         g.reset()
         val v = run(g, Triple(0, 100, 5)) // seeding look
         assertFalse(v.fired)
-        assertFalse(v.pendingSettle)
+        // Next still look fires normally.
+        assertTrue(run(g, Triple(0, 100, 5)).fired)
     }
 
     @Test
     fun `independent blocks do not couple`() {
         val g = grid()
         run(g, Triple(0, 100, 0), Triple(1, 50, 0))
-        // Block 1 animates; block 0 has a settled change.
-        run(g, Triple(0, 100, 5), Triple(1, 150, 5))
-        val v = run(g, Triple(0, 100, 5), Triple(1, 50, 5))
+        // Block 1 animates; block 0 carries a settled change.
+        val v = run(g, Triple(0, 100, 5), Triple(1, 150, 5))
         assertTrue(v.fired)
         assertEquals(1, v.firedBlocks) // only block 0
+        assertEquals(1, v.movingBlocks) // only block 1
     }
 
     private companion object {

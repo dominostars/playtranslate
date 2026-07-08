@@ -1,9 +1,9 @@
 package com.playtranslate
 
 /**
- * Per-block temporal state for the outside change gate (audit A3): gives the
- * anchored diff a memory so that persistent animation stops firing it and
- * mid-transition frames stop reaching OCR.
+ * Per-block temporal state for the outside change gate (audit A3, reshaped
+ * by the 2026-07-08 speed-first product rule: no content class ever waits
+ * longer than shipped cadence).
  *
  * The OCR crop is tiled into [BLOCK_PX] blocks. Each run (one gate pass over
  * one captured frame) feeds every block two signals:
@@ -16,18 +16,18 @@ package com.playtranslate
  *    over threshold) — the block DIFFERS from the last full look.
  *
  * Decision per block:
- *  - MOVING keeps an EMA; blocks whose EMA crosses [VOLATILE_EMA] are
- *    VOLATILE (continuous animation — water, particles, Live2D) and can
- *    neither fire nor pend until the EMA decays.
- *  - DIFFERS ∧ moving → wait (mid-transition; OCR would read garbage).
- *  - DIFFERS ∧ quiet ∧ not volatile → pend one run, FIRE on the next run
- *    that confirms it (still differing, still quiet) — the audit's settle
- *    gate with K=2 observations, where the observations arrive on
- *    delivery-driven wakes.
+ *  - DIFFERS ∧ still ∧ not volatile → FIRE now. No confirmation wait.
+ *  - DIFFERS ∧ moving → hold (the frame is unreadable smear) and claim a
+ *    floor-paced follow-up wake; fires on the first still look.
+ *  - Persistently moving (EMA ≥ [VOLATILE_EMA]) → VOLATILE. The block can't
+ *    produce useful per-look evidence, so it never fires — and the CALLER
+ *    must treat any nonzero [Verdict.volatileBlocks] as "gate skipping
+ *    disabled": screens containing endless animation run full-cadence OCR
+ *    exactly like the shipped app, trading cycles for zero staleness.
  *
- * The caller must force follow-up wakes while [Verdict.pendingSettle] is
- * true (a settled change's screen goes silent, and silence would otherwise
- * park the loop before the confirming look), and must [reset] whenever the
+ * The caller must force floor-paced follow-up wakes while
+ * [Verdict.pendingSettle] is true (a one-frame change reads as moving once
+ * and may settle into delivery silence), and must [reset] whenever the
  * overlay layout changes (block membership shifts under the exclusion
  * rects) or the reference re-baselines.
  *
@@ -38,8 +38,11 @@ class OutsideBlockGrid {
     class Verdict(
         @JvmField var fired: Boolean = false,
         @JvmField var firedBlocks: Int = 0,
+        /** Some moving block already differs from the anchor — recheck at
+         *  the floor until it comes to rest (then it fires). */
         @JvmField var pendingSettle: Boolean = false,
         @JvmField var movingBlocks: Int = 0,
+        /** Nonzero ⇒ the caller must not skip cycles on this screen. */
         @JvmField var volatileBlocks: Int = 0,
     )
 
@@ -54,8 +57,6 @@ class OutsideBlockGrid {
     private var lastSum = IntArray(0)
     /** Per-block moving-EMA, 0..255. */
     private var ema = IntArray(0)
-    /** Per-block pending-settle flag (differs, seen quiet once). */
-    private var pending = BooleanArray(0)
     /** True until the first run after a reset seeds [lastSum]. */
     private var seeding = true
 
@@ -74,7 +75,6 @@ class OutsideBlockGrid {
         val n = (c * r).coerceAtLeast(0)
         lastSum = IntArray(n)
         ema = IntArray(n)
-        pending = BooleanArray(n)
         runSum = IntArray(n)
         runCount = IntArray(n)
         runChanged = IntArray(n)
@@ -86,7 +86,6 @@ class OutsideBlockGrid {
     fun reset() {
         java.util.Arrays.fill(lastSum, Int.MIN_VALUE)
         java.util.Arrays.fill(ema, 0)
-        java.util.Arrays.fill(pending, false)
         seeding = true
     }
 
@@ -127,9 +126,7 @@ class OutsideBlockGrid {
             val count = runCount[b]
             if (count == 0) {
                 // Fully excluded (under a box) this run — no evidence either
-                // way; hold state, but a pending block keeps its claim on a
-                // follow-up wake.
-                if (pending[b]) out.pendingSettle = true
+                // way; hold state.
                 continue
             }
             val moving = if (wasSeeding || lastSum[b] == Int.MIN_VALUE) {
@@ -150,30 +147,36 @@ class OutsideBlockGrid {
 
             val differs = runChanged[b] >= MIN_CHANGED_PER_BLOCK
             when {
-                wasSeeding -> pending[b] = false // first look only seeds
-                isVolatile || moving -> {
-                    // Animation, or mid-transition: never fire, and drop any
-                    // pending claim — it must re-earn stillness. A moving
-                    // block that ALSO differs from the anchor still claims a
-                    // follow-up wake: a single-frame change reads as moving
-                    // exactly once and may be followed by total delivery
-                    // silence, which would otherwise park the loop before a
-                    // stillness look ever happens.
-                    pending[b] = false
-                    if (!isVolatile && differs) out.pendingSettle = true
+                wasSeeding -> Unit // first look only seeds the sums
+                isVolatile -> {
+                    // Persistent animation. The block can't fire usefully
+                    // (its pixels differ every frame by nature) — the CALLER
+                    // must treat a nonzero volatileBlocks count as "gate
+                    // skipping off": text inside endless animation is
+                    // invisible to per-look pixel evidence, and the product
+                    // rule (2026-07-08) is that no content class ever waits
+                    // longer than shipped cadence — volatile screens run
+                    // full-cadence OCR instead of accepting staleness.
                 }
-                differs && pending[b] -> {
-                    out.fired = true
-                    out.firedBlocks++
-                    pending[b] = false
+                moving -> {
+                    // Mid-transition: the frame is unreadable smear; firing
+                    // now would OCR garbage. Fire on the first still look.
+                    // A moving block that already differs claims a follow-up
+                    // wake — a single-frame change reads as moving exactly
+                    // once and may settle into delivery silence.
+                    if (differs) out.pendingSettle = true
                 }
                 differs -> {
-                    pending[b] = true
-                    out.pendingSettle = true
+                    // Still + differs from the last full look → fire NOW.
+                    // (The former K=2 confirmation wait added 250ms–1s to
+                    // every new-text event as insurance against an
+                    // unmeasured garbage-OCR class — removed per the
+                    // speed-first product rule.)
+                    out.fired = true
+                    out.firedBlocks++
                 }
-                else -> pending[b] = false
+                else -> Unit
             }
-            if (pending[b]) out.pendingSettle = true
         }
     }
 
