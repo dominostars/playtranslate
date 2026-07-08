@@ -4,45 +4,60 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import androidx.appcompat.widget.AppCompatTextView
 
-/** TextView that draws a stroke outline behind the text for readability without a background. */
+/**
+ * TextView that draws a stroke outline behind the text for readability
+ * without a background: a STROKE pass of the layout, then the normal FILL
+ * pass on top.
+ *
+ * The two passes need different paint configs within a single frame, so the
+ * flip itself must live in [onDraw] — but everything mutated there is plain
+ * [Paint] state, which is inert (a Paint holds no view reference, so the swap
+ * cannot trigger an invalidate). The stroke COLOR specifically goes through a
+ * Paint-level color filter rather than `setTextColor()`: TextView re-stamps
+ * its view-level color onto the paint at the start of every draw (which is
+ * why `paint.color` writes don't work here), and `setTextColor()` invalidates
+ * unconditionally — an invalidate from inside a draw schedules the next
+ * frame, and every visible outlined box then redraws its whole window at the
+ * display refresh rate forever (measured: 118–120 draws/s on a completely
+ * static screen). The filter survives the re-stamp and touches no view state.
+ */
 internal class OutlinedTextView(context: Context) : AppCompatTextView(context) {
+
     var outlineColor: Int = Color.argb(220, 34, 34, 34)
+        set(value) {
+            if (field == value) return
+            field = value
+            strokeFilter = PorterDuffColorFilter(value, PorterDuff.Mode.SRC_IN)
+            invalidate()
+        }
+
     var outlineWidth: Float = 0f
 
-    /** True while [onDraw] swaps text colors for the stroke pass.
-     *
-     *  TextView.setTextColor() invalidates unconditionally, and an invalidate
-     *  issued from inside a draw schedules another frame — so without this
-     *  guard every draw begets the next, and any window showing an outlined
-     *  box redraws at the display refresh rate forever (measured: 118–120
-     *  draws/s on a completely static screen, which also kept the
-     *  MediaProjection mirror reporting full-rate "changes" while nothing
-     *  changed). setTextColor is still the right mechanism for the swap
-     *  itself: TextView re-applies its own current color to the paint during
-     *  draw, so writing paint.color directly has no effect here. */
-    private var inOutlineDraw = false
-
-    override fun invalidate() {
-        if (inOutlineDraw) return
-        super.invalidate()
-    }
+    /** Recolors the stroke pass to [outlineColor]. SRC_IN keeps the glyph
+     *  coverage (and the fill color's alpha) as the mask, replacing only the
+     *  color — identical output to the old setTextColor swap for the opaque
+     *  text colors the overlay uses. Rebuilt in the [outlineColor] setter,
+     *  never during draw. */
+    private var strokeFilter = PorterDuffColorFilter(outlineColor, PorterDuff.Mode.SRC_IN)
 
     override fun onDraw(canvas: Canvas) {
         if (outlineWidth > 0f) {
-            inOutlineDraw = true
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = outlineWidth
+            paint.strokeJoin = Paint.Join.ROUND
+            paint.colorFilter = strokeFilter
             try {
-                val savedColor = currentTextColor
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = outlineWidth
-                paint.strokeJoin = Paint.Join.ROUND
-                setTextColor(outlineColor)
                 super.onDraw(canvas)
-                paint.style = Paint.Style.FILL
-                setTextColor(savedColor)
             } finally {
-                inOutlineDraw = false
+                // Restore FILL + no filter even if the stroke pass throws —
+                // leaked stroke state would corrupt the fill pass, TextView's
+                // own measurement, and every later frame.
+                paint.colorFilter = null
+                paint.style = Paint.Style.FILL
             }
         }
         super.onDraw(canvas)
