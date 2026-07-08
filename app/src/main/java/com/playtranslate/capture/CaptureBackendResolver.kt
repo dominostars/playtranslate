@@ -3,6 +3,7 @@ package com.playtranslate.capture
 import android.content.Context
 import android.os.Build
 import android.provider.Settings
+import android.view.Display
 import com.playtranslate.CaptureService
 import com.playtranslate.OverlayUiController
 import com.playtranslate.PlayTranslateAccessibilityService
@@ -41,6 +42,30 @@ object CaptureBackendResolver {
      *  capture through this. */
     val activeLiveCaptureSource: LiveCaptureSource?
         get() = active().liveCaptureSource
+
+    /**
+     * The capture source live TRANSLATION mode should pull pixels from for
+     * [displayId]: the MediaProjection mirrored stream when it can serve this
+     * display and screen-record consent is already held — even while the
+     * accessibility backend is otherwise active, because the stream's
+     * [DeliverySignal] is what the delivery-gated cycle runs on — otherwise
+     * the active backend's source (accessibility screenshots; also every
+     * non-default display, which MediaProjection cannot mirror).
+     *
+     * Fallback is emergent from `hasConsent`: consent declined at the dialog,
+     * revoked mid-session, or never requested all land on the accessibility
+     * path with no extra state. Overlay hosting and input monitoring are NOT
+     * affected — they stay with [active] (the window type, its alpha cell,
+     * and gamepad keys follow the overlay host, not the capture source).
+     */
+    fun liveCaptureSourceFor(displayId: Int): LiveCaptureSource? {
+        if (displayId == Display.DEFAULT_DISPLAY &&
+            CaptureService.instance?.mediaProjectionController?.hasConsent == true
+        ) {
+            MediaProjectionCaptureBackend.liveCaptureSource?.let { return it }
+        }
+        return active().liveCaptureSource
+    }
 
     /**
      * Re-derive the active backend from the granted permissions and swap if it

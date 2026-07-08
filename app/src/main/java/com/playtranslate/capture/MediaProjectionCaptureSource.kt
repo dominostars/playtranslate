@@ -226,6 +226,14 @@ class MediaProjectionCaptureSource(
      *  still held is a transient failure and is left for the caller to retry. */
     private fun checkConsentLost(captureResult: Bitmap?): Boolean {
         if (captureResult != null || controller.hasConsent) return false
+        // Accessibility-backend users only borrow this stream for live
+        // capture; on consent loss they fall back to accessibility capture
+        // (liveCaptureSourceFor keys off hasConsent) instead of live mode
+        // dying. Without this, the outcome would depend on WHERE the revoke
+        // landed: mid-capture → stop, mid-park → seamless fallback via the
+        // teardown wake. Deterministic fallback for both. MediaProjection-only
+        // users keep today's stop — they have nothing to fall back to.
+        if (CaptureBackendResolver.active().requiresAccessibilityService) return false
         val svc = CaptureService.instance ?: return false
         if (!svc.isLive) return false
         DetectionLog.log("MP: screen-capture consent lost, stopping live mode")

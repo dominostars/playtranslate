@@ -1,6 +1,7 @@
 package com.playtranslate
 
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.capture.LiveCaptureSource
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -132,7 +133,7 @@ class PinholeOverlayMode(
      * changes the screen — including us.
      */
     private suspend fun awaitCycleReason() {
-        val signal = CaptureBackendResolver.activeLiveCaptureSource?.deliverySignal ?: return
+        val signal = liveSource()?.deliverySignal ?: return
         val debug = Prefs(service).debugLiveMode
         var parkedAtMs = 0L
         while (!forceNextCycle && !service.holdActive &&
@@ -203,6 +204,22 @@ class PinholeOverlayMode(
      *  attempt. Main-thread only, like the rest of the mode's state. */
     private var forceNextCycle = true
 
+    /** Sticky per-instance fallback: set when the identity-scale guard trips
+     *  on the MediaProjection stream (the unresolved capture-vs-overlay size
+     *  mismatch) while accessibility capture is available. Once set, this
+     *  instance captures via the accessibility source — never worse off than
+     *  the pre-split behavior. A mode rebuild (stop/start) retries the
+     *  stream. */
+    private var forceA11yCapture = false
+
+    /** The capture source this mode's cycles AND the delivery gate use.
+     *  Both must resolve identically — parking on one source's delivery
+     *  signal while capturing from another would desync the served-frame
+     *  cursor the gate compares against. */
+    private fun liveSource(): LiveCaptureSource? =
+        if (forceA11yCapture) CaptureBackendResolver.active().liveCaptureSource
+        else CaptureBackendResolver.liveCaptureSourceFor(displayId)
+
     // ── Unified Cycle ───────────────────────────────────────────────────
 
     /** True only when cached boxes are actually rendered on screen. An external
@@ -219,10 +236,20 @@ class PinholeOverlayMode(
     private suspend fun runCycle(): Long {
         val prefs = Prefs(service)
         if (service.holdActive) return 100L
-        val mgr = CaptureBackendResolver.activeLiveCaptureSource
+        val mgr = liveSource()
         if (mgr == null) {
             // Backend unavailable (service unbinding / mid-swap). Retry
             // unconditionally — recovery must not wait for a delivery.
+            forceNextCycle = true
+            return prefs.captureIntervalMs
+        }
+        if (CaptureBackendResolver.activeOverlayUi == null) {
+            // Overlay host gone (accessibility service died; reresolve may lag
+            // the OS settings flush). MediaProjection capture can still work in
+            // that window, but there is nowhere to render — skip the cycle
+            // instead of burning OCR + translation on output showLiveOverlay
+            // will drop. Poll-retry until the host returns or reresolve stops
+            // this mode.
             forceNextCycle = true
             return prefs.captureIntervalMs
         }
@@ -313,9 +340,24 @@ class PinholeOverlayMode(
             // pinhole pattern and detection math (see FrameCoordinates KDoc
             // for the full story).
             if (!coords.isIdentityScale) {
+                // The recorded 1240-vs-1920 field mismatch means this path is
+                // reachable. When it trips on the MediaProjection stream and
+                // accessibility capture exists, fall back to it permanently
+                // for this instance — an accessibility user must never end up
+                // worse than the pre-split behavior. (User-visible notice is
+                // an open l10n item; DetectionLog only for now.)
+                val a11ySource = CaptureBackendResolver.active().liveCaptureSource
+                if (!forceA11yCapture && a11ySource != null && a11ySource !== mgr) {
+                    forceA11yCapture = true
+                    DetectionLog.log(
+                        "D$displayId identity mismatch (view=${coords.viewWidth}x${coords.viewHeight} " +
+                            "bitmap=${raw.width}x${raw.height}) — falling back to accessibility capture"
+                    )
+                    forceNextCycle = true
+                    return mgr.minCaptureIntervalMs
+                }
                 // Preserve the retry-every-interval*3 semantics under the
-                // gate — the recorded 1240-vs-1920 field mismatch means this
-                // path is reachable, and parking here would hide it.
+                // gate — parking here would hide the failure.
                 forceNextCycle = true
                 return prefs.captureIntervalMs * 3
             }

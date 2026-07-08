@@ -66,6 +66,17 @@ package com.playtranslate
  * other three matrix cells (accessibility live, MP one-shot, accessibility
  * one-shot — all at α=1.0).
  *
+ * A fifth cell arrived with delivery-gated live capture (2026-07): an
+ * accessibility-hosted window (α=1.0, this default mask) CAPTURED through
+ * the MediaProjection mirror — `CaptureBackendResolver.liveCaptureSourceFor`
+ * routes live TRANSLATION capture to the mirrored stream even under the
+ * accessibility backend. The blend math is the accessibility cell's (the
+ * alpha cell follows the overlay host's window type, not the capture
+ * source); the capture path is the mirror. Overlay + mask presence in the
+ * mirror is verified qualitatively on Thor; when validating this cell,
+ * watch pinhole `pct` on stable text for a mirror-side blend bias (the
+ * SAW-at-α≈0.8 mirror cell historically showed one).
+ *
  * ## Detection thresholds
  *
  *  - [SPLATTER_THRESHOLD] — per-channel delta above which a pinhole is

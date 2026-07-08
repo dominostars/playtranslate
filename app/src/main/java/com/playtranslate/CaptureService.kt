@@ -63,6 +63,7 @@ import java.util.Locale
 import android.hardware.display.DisplayManager
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CaptureLifecycle
+import com.playtranslate.capture.MediaProjectionCaptureBackend
 import com.playtranslate.capture.MediaProjectionCaptureSource
 import com.playtranslate.capture.MediaProjectionController
 import com.playtranslate.dictionary.DictionaryManager
@@ -1062,11 +1063,29 @@ class CaptureService : Service() {
         // restarts the loop and re-launches the dialog in an unbreakable
         // cycle. canCaptureWithoutPrompting keeps the common already-ready
         // case (consent held, or the accessibility backend) fully synchronous.
-        if (backend.canCaptureWithoutPrompting) {
+        //
+        // TRANSLATION live mode additionally prefers the MediaProjection
+        // stream for CAPTURE even under the accessibility backend — the
+        // delivery-gated cycle runs on the mirror's frame signal — so attempt
+        // that consent up front too, best-effort: on decline, live mode
+        // proceeds on accessibility capture (CaptureBackendResolver
+        // .liveCaptureSourceFor falls back on !hasConsent). Re-prompts on
+        // every start that lacks a warm token by design (2026-07-07 decision:
+        // no remembered decline). Overlay hosting and input monitoring stay
+        // with the accessibility backend either way.
+        val wantMpStreamConsent = backend.requiresAccessibilityService &&
+            desiredFlavor() == OverlayFlavor.TRANSLATION &&
+            !mediaProjectionController.hasConsent
+        if (backend.canCaptureWithoutPrompting && !wantMpStreamConsent) {
             beginLiveCapture()
         } else {
             serviceScope.launch {
-                if (backend.ensureCaptureReady()) {
+                if (wantMpStreamConsent) {
+                    // Result deliberately ignored — decline means the
+                    // accessibility capture path, not an error.
+                    MediaProjectionCaptureBackend.ensureCaptureReady()
+                    beginLiveCapture()
+                } else if (backend.ensureCaptureReady()) {
                     beginLiveCapture()
                 } else {
                     emitError(getString(R.string.error_screen_capture_denied))
