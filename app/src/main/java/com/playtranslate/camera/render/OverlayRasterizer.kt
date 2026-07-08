@@ -10,11 +10,16 @@ import com.playtranslate.ui.TranslationOverlayView
 
 /** One warpable overlay region: its rendered pixels, where those pixels sit
  *  in AnalysisUpright (keyframe) space, and which tracked region's refined
- *  homography it rides ([trackKey] -1 → always the global homography). */
+ *  homography it rides ([trackKey] -1 → always the global homography).
+ *  [pixelsPerAu] > 1 means the bitmap was rendered super-sampled (zoomed-in
+ *  crispness) and must be drawn scaled down by that factor. */
 class RasterRegion(
     val bitmap: Bitmap,
     val auRect: Rect,
     val trackKey: Int = -1,
+    val pixelsPerAu: Float = 1f,
+    /** The box this raster was rendered from — the dirty-diff identity. */
+    val sourceBox: TextBox? = null,
 ) {
     fun release() = bitmap.recycle()
 }
@@ -49,8 +54,27 @@ class OverlayRasterizer(
         auWidth: Int,
         auHeight: Int,
         trackKeys: List<Int> = emptyList(),
+        /** Super-sampling factor: render at this scale for crispness when the
+         *  user has zoomed in past the raster's native resolution. */
+        renderScale: Float = 1f,
+        /** Previous regions for the dirty diff: a child whose source box and
+         *  laid-out rect are unchanged reuses the previous bitmap instead of
+         *  re-rendering (skeleton→filled swaps only redraw filled boxes). */
+        previous: List<RasterRegion>? = null,
     ): List<RasterRegion> {
         if (boxes.isEmpty()) return emptyList()
+        val s = renderScale.coerceIn(0.5f, 2.5f)
+        val renderBoxes = if (s == 1f) boxes else boxes.map { b ->
+            b.copy(
+                bounds = Rect(
+                    (b.bounds.left * s).toInt(), (b.bounds.top * s).toInt(),
+                    (b.bounds.right * s).toInt(), (b.bounds.bottom * s).toInt(),
+                ),
+                minWidthPx = (b.minWidthPx * s).toInt(),
+            )
+        }
+        val vw = (auWidth * s).toInt()
+        val vh = (auHeight * s).toInt()
         val view = TranslationOverlayView(
             context,
             pinholeMode = false,
@@ -58,27 +82,44 @@ class OverlayRasterizer(
             verticalTextStackable = verticalTextStackable,
             verticalGrowEnabled = verticalGrowEnabled,
         )
-        val wSpec = View.MeasureSpec.makeMeasureSpec(auWidth, View.MeasureSpec.EXACTLY)
-        val hSpec = View.MeasureSpec.makeMeasureSpec(auHeight, View.MeasureSpec.EXACTLY)
+        val wSpec = View.MeasureSpec.makeMeasureSpec(vw, View.MeasureSpec.EXACTLY)
+        val hSpec = View.MeasureSpec.makeMeasureSpec(vh, View.MeasureSpec.EXACTLY)
         // First pass gives the view its size (setBoxes only builds children
         // once width/height are known); second pass lays out the children.
         view.measure(wSpec, hSpec)
-        view.layout(0, 0, auWidth, auHeight)
-        view.setBoxes(boxes, 0, 0, auWidth, auHeight)
+        view.layout(0, 0, vw, vh)
+        view.setBoxes(renderBoxes, 0, 0, vw, vh)
         view.measure(wSpec, hSpec)
-        view.layout(0, 0, auWidth, auHeight)
+        view.layout(0, 0, vw, vh)
 
         val regions = ArrayList<RasterRegion>(view.childCount)
         for (i in 0 until view.childCount) {
             val child = view.getChildAt(i)
             if (child.width <= 0 || child.height <= 0) continue
+            val auRect = Rect(
+                (child.left / s).toInt(), (child.top / s).toInt(),
+                (child.right / s).toInt(), (child.bottom / s).toInt(),
+            )
+            val box = boxes.getOrNull(i)
+            // Dirty diff: same box content, same geometry, same scale →
+            // the previous bitmap is still exactly right.
+            val reusable = previous?.firstOrNull { p ->
+                p.sourceBox == box && p.auRect == auRect && p.pixelsPerAu == s &&
+                    !p.bitmap.isRecycled
+            }
+            if (reusable != null) {
+                regions.add(RasterRegion(reusable.bitmap, auRect, trackKeys.getOrElse(i) { -1 }, s, box))
+                continue
+            }
             val bmp = Bitmap.createBitmap(child.width, child.height, Bitmap.Config.ARGB_8888)
             child.draw(Canvas(bmp))
             regions.add(
                 RasterRegion(
                     bitmap = bmp,
-                    auRect = Rect(child.left, child.top, child.right, child.bottom),
+                    auRect = auRect,
                     trackKey = trackKeys.getOrElse(i) { -1 },
+                    pixelsPerAu = s,
+                    sourceBox = box,
                 )
             )
         }

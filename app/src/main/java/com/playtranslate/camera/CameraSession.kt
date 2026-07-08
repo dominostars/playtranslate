@@ -76,6 +76,10 @@ class CameraSession(
         /** Downscale factor of the color-sampling reference bitmap. */
         const val COLOR_SCALE = 4
 
+        /** Re-raster for crispness when tracked scale drifts this far from
+         *  the raster's native scale (either direction). */
+        const val RASTER_SCALE_DRIFT = 1.3f
+
         /** Groups whose known line confidences average below the engine's
          *  threshold are dropped before translation — garbage reads (rotated
          *  text, blur) translate into fluent-sounding nonsense otherwise.
@@ -176,6 +180,16 @@ class CameraSession(
 
     /** The warp surface; created lazily on main. */
     private var warpView: WarpOverlayView? = null
+
+    // Last-shown raster state (MAIN THREAD only): feeds the dirty diff and
+    // the crispness re-raster on scale drift.
+    private var lastShownBoxes: List<TextBox>? = null
+    private var lastShownKeys: List<Int> = emptyList()
+    private var lastShownRegions: List<RasterRegion>? = null
+    private var lastShownAuW = 0
+    private var lastShownAuH = 0
+    private var rasterScale = 1f
+    private var rerasterPending = false
 
     /** Debug status sink (the on-screen pill); set by the Activity in debug
      *  builds. Called on the main thread. */
@@ -345,6 +359,9 @@ class CameraSession(
         } else null
         overlayHost.post {
             warpView?.applyHomography(hAu, perRegionAu)
+            if (decision.state == TrackState.LOCKED && decision.scale > 0f) {
+                maybeRerasterForScale(decision.scale)
+            }
             pill?.let { statusSink?.invoke(it) }
         }
     }
@@ -796,9 +813,52 @@ class CameraSession(
                 verticalTextStackable = stackableTargetScript(prefs.targetLang),
                 verticalGrowEnabled = prefs.verticalTextGrow,
             )
+            // Dirty diff against the last show at the same keyframe size —
+            // a skeleton→filled swap re-renders only the boxes that changed.
+            val previous = if (lastShownAuW == auW && lastShownAuH == auH) lastShownRegions else null
             val regions: List<RasterRegion> =
-                rasterizer.rasterize(boxes, auW, auH, trackKeys)
+                rasterizer.rasterize(boxes, auW, auH, trackKeys, renderScale = 1f, previous = previous)
             ensureWarpView().setRegions(regions, auW, auH)
+            lastShownBoxes = boxes
+            lastShownKeys = trackKeys
+            lastShownRegions = regions
+            lastShownAuW = auW
+            lastShownAuH = auH
+            rasterScale = 1f
+        }
+    }
+
+    /** Crispness re-raster: when the tracked scale has drifted well past the
+     *  raster's native resolution, re-render the same boxes super-sampled
+     *  (off the frame path; the warp keeps running on the old bitmaps until
+     *  the swap). Main thread. */
+    private fun maybeRerasterForScale(trackedScale: Float) {
+        if (rerasterPending) return
+        val boxes = lastShownBoxes ?: return
+        val ratio = if (trackedScale > rasterScale) trackedScale / rasterScale else rasterScale / trackedScale
+        if (ratio < RASTER_SCALE_DRIFT) return
+        rerasterPending = true
+        val keys = lastShownKeys
+        val auW = lastShownAuW
+        val auH = lastShownAuH
+        val targetScale = trackedScale.coerceIn(0.5f, 2.5f)
+        val gen = generation.get()
+        scope.launch(Dispatchers.Main) {
+            try {
+                if (gen != generation.get() || lastShownBoxes !== boxes) return@launch
+                val rasterizer = OverlayRasterizer(
+                    context,
+                    verticalTextTarget = targetSupportsVerticalText(prefs.targetLang),
+                    verticalTextStackable = stackableTargetScript(prefs.targetLang),
+                    verticalGrowEnabled = prefs.verticalTextGrow,
+                )
+                val regions = rasterizer.rasterize(boxes, auW, auH, keys, renderScale = targetScale)
+                ensureWarpView().setRegions(regions, auW, auH)
+                lastShownRegions = regions
+                rasterScale = targetScale
+            } finally {
+                rerasterPending = false
+            }
         }
     }
 
@@ -859,7 +919,15 @@ class CameraSession(
             engine.reset()
             while (anchorCache.isNotEmpty()) anchorCache.removeFirst().first.release()
         }
-        overlayHost.post { warpView?.clearRegions() }
+        overlayHost.post {
+            warpView?.clearRegions()
+            lastShownBoxes = null
+            lastShownRegions = null
+            lastShownKeys = emptyList()
+            lastShownAuW = 0
+            lastShownAuH = 0
+            rasterScale = 1f
+        }
     }
 
     /** Final teardown from the Activity. Not restartable. */

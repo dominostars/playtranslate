@@ -41,14 +41,17 @@ class WarpOverlayView(context: Context) : View(context) {
     private val scratch = DoubleArray(9)
 
     /** Install freshly rastered regions for a keyframe of [auW]×[auH].
-     *  Recycles the previous set. Main thread. */
+     *  Recycles previous bitmaps EXCEPT those carried over by the dirty
+     *  diff (identity-shared with the new set). Main thread. */
     fun setRegions(newRegions: List<RasterRegion>, auW: Int, auH: Int) {
         val old = regions
         regions = newRegions
         auWidth = auW
         auHeight = auH
         matrices = Array(newRegions.size) { Matrix() }
-        old.forEach { it.release() }
+        for (o in old) {
+            if (newRegions.none { it.bitmap === o.bitmap }) o.release()
+        }
         applyHomography(lastHAu, lastPerRegionAu)
     }
 
@@ -100,13 +103,15 @@ class WarpOverlayView(context: Context) : View(context) {
                 } ?: combinedGlobal
             } else combinedGlobal
             val r = region.auRect
-            // h · T(left, top): translating region-local pixels to their AU
-            // position folds into the last column.
-            scratch[0] = h[0]; scratch[1] = h[1]
+            // h · T(left, top) · S(1/ppa): region-local PIXELS → AU units
+            // (super-sampled rasters shrink by pixelsPerAu) → warped AU →
+            // view. Translation folds into the last column.
+            val inv = 1.0 / region.pixelsPerAu
+            scratch[0] = h[0] * inv; scratch[1] = h[1] * inv
             scratch[2] = h[0] * r.left + h[1] * r.top + h[2]
-            scratch[3] = h[3]; scratch[4] = h[4]
+            scratch[3] = h[3] * inv; scratch[4] = h[4] * inv
             scratch[5] = h[3] * r.left + h[4] * r.top + h[5]
-            scratch[6] = h[6]; scratch[7] = h[7]
+            scratch[6] = h[6] * inv; scratch[7] = h[7] * inv
             scratch[8] = h[6] * r.left + h[7] * r.top + h[8]
             Homography.toAndroidMatrix(scratch, matrices[i])
         }
