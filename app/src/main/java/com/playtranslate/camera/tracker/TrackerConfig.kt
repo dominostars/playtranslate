@@ -52,6 +52,12 @@ object TrackerConfig {
     /** Floor between acquires. */
     const val ACQUIRE_COOLDOWN_MS = 250L
 
+    /** Watchdog: if ACQUIRING persists this long with no completion callback
+     *  (a dropped launch, a wedged OCR), revert to Idle rather than pinning
+     *  the state machine — observed 47 s of pinned ACQUIRING on device when
+     *  a granted acquire request was silently not launched. */
+    const val ACQUIRE_TIMEOUT_MS = 30_000L
+
     /** EMA smoothing factor applied to the emitted homography (0..1, higher =
      *  snappier). Deliberate v1 simplification over the reference's 8-DoF EKF;
      *  same seam if an EKF upgrade is ever warranted. */
@@ -71,14 +77,36 @@ object TrackerConfig {
      *  linear in this. */
     const val TOTAL_POINT_CAP = 400
 
-    /** Consecutive frames of scene-change (vs the last keyframe) with the
-     *  smoothed inlier count below [MIN_INLIERS_ACQUIRE] before a Locked
-     *  anchor is declared dead → Idle. Catches the "pointed somewhere new
-     *  but spurious re-matches keep the old lock limping" deadlock, which
-     *  the consecutive-bad-frames hysteresis misses (rematch spikes reset
-     *  it). Observed live on the Moto G (sceneDiff 60-96, inliers 10-266
-     *  oscillating, state pinned LOCKED for 27 s). */
-    const val SCENE_LOSS_FRAMES = 20
+    /** Consecutive frames with the smoothed inlier count below
+     *  [DEAD_ANCHOR_EMA_INLIERS] before a Locked anchor is declared dead →
+     *  Idle. Catches the "pointed somewhere new but spurious re-matches keep
+     *  the old lock limping" failure, which the consecutive-bad-frames
+     *  hysteresis misses (rematch spikes reset it). Observed live on the
+     *  Moto G (inliers 10-266 oscillating, state pinned LOCKED for 27 s). */
+    const val DEAD_ANCHOR_FRAMES = 20
+
+    // ── Settle / motion (tracker-derived; the coarse luma grid this replaced
+    //    needed per-device calibration and broke twice on the Moto G) ───────
+
+    /** Median LK point displacement (CN px) at or below which a frame counts
+     *  as still. Sub-pixel when braced; ~1 px handheld-still. */
+    const val SETTLE_DISP_CN_PX = 1.5
+
+    /** Consecutive still frames before the settle gate opens. */
+    const val SETTLE_FRAMES = 3
+
+    /** A frame with median displacement above this counts as deliberate
+     *  motion: it resets the no-text acquire backoff (the scene is being
+     *  re-aimed, so a fresh OCR is worth trying again soon). */
+    const val MOTION_RESET_CN_PX = 8.0
+
+    /** Escalating backoff between acquires that found no usable text, so a
+     *  blank/textless scene isn't OCR-hammered every cooldown interval. */
+    const val NO_TEXT_BACKOFF_BASE_MS = 1_000L
+    const val NO_TEXT_BACKOFF_MAX_MS = 4_000L
+
+    /** Good-features budget for the anchorless (Idle) motion probe. */
+    const val PROBE_POINTS = 40
 
     /** EMA factor for the smoothed inlier count feeding the dead-anchor
      *  check (higher = snappier). */

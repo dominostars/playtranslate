@@ -142,7 +142,10 @@ class OcrManager private constructor() {
         /** Per-character symbols with exact bounds. Empty if unavailable. */
         val symbols: List<SymbolBox> = emptyList(),
         /** Text orientation detected from ML Kit angle / bounding box geometry. */
-        val orientation: TextOrientation = TextOrientation.HORIZONTAL
+        val orientation: TextOrientation = TextOrientation.HORIZONTAL,
+        /** Recognition confidence 0..1 from the engine, or -1 when unknown.
+         *  -1 means "no signal", never "low". */
+        val confidence: Float = -1f,
     )
 
     /**
@@ -268,6 +271,7 @@ class OcrManager private constructor() {
                         elements = line.elements.map { ElementBox(it.text, scaleRect(it.box.bounds, scaleFactor)) },
                         symbols = line.chars.map { SymbolBox(it.text, scaleRect(it.box.bounds, scaleFactor), it.charOffset) },
                         orientation = line.orientation,
+                        confidence = line.confidence,
                     )
                 },
             )

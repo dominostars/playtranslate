@@ -14,7 +14,15 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.CaptureResult
+import android.hardware.camera2.TotalCaptureResult
+import android.hardware.camera2.CameraCaptureSession
+import androidx.camera.camera2.interop.Camera2Interop
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.Preview
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
@@ -182,7 +190,9 @@ class CameraActivity : AppCompatActivity() {
     // ── Camera ─────────────────────────────────────────────────────────────
 
     private var cameraBound = false
+    private var camera: Camera? = null
 
+    @androidx.annotation.OptIn(ExperimentalCamera2Interop::class)
     private fun showCamera() {
         permissionGate.isVisible = false
         if (cameraBound) return
@@ -206,19 +216,52 @@ class CameraActivity : AppCompatActivity() {
             val aspect = ResolutionSelector.Builder()
                 .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
                 .build()
-            val preview = Preview.Builder()
-                .setResolutionSelector(aspect)
-                .build()
+            val previewBuilder = Preview.Builder().setResolutionSelector(aspect)
+            // AF-state feed: an acquire fired mid-scan OCRs a defocused frame
+            // (observed as consistent ~0.4-confidence garbage reads). The
+            // session vetoes acquires while a scan runs.
+            Camera2Interop.Extender(previewBuilder).setSessionCaptureCallback(
+                object : CameraCaptureSession.CaptureCallback() {
+                    override fun onCaptureCompleted(
+                        s: CameraCaptureSession,
+                        r: CaptureRequest,
+                        result: TotalCaptureResult,
+                    ) {
+                        val af = result.get(CaptureResult.CONTROL_AF_STATE) ?: return
+                        session?.afScanning =
+                            af == CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN ||
+                            af == CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN
+                    }
+                }
+            )
+            val preview = previewBuilder.build()
                 .also { it.setSurfaceProvider(previewView.surfaceProvider) }
             provider.unbindAll()
             val analysis = session?.buildAnalysisUseCase()
-            if (analysis != null) {
+            camera = if (analysis != null) {
                 provider.bindToLifecycle(this, selector, preview, analysis)
             } else {
                 provider.bindToLifecycle(this, selector, preview)
             }
             cameraBound = true
+            installTapToFocus()
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    /** Tap the preview to drive AF/AE metering at that point — continuous AF
+     *  alone won't reliably lock close-range text on budget modules, which
+     *  leaves OCR reading defocused frames. */
+    private fun installTapToFocus() {
+        previewView.setOnTouchListener { v, event ->
+            if (event.actionMasked == android.view.MotionEvent.ACTION_UP) {
+                val point = previewView.meteringPointFactory.createPoint(event.x, event.y)
+                camera?.cameraControl?.startFocusAndMetering(
+                    FocusMeteringAction.Builder(point).build()
+                )
+                v.performClick()
+            }
+            true
+        }
     }
 
     // ── Mode toggle ────────────────────────────────────────────────────────

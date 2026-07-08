@@ -202,14 +202,17 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
-        <!-- Camera tool, launched from Settings → Tools. Portrait-locked in v1
-             so the preview/analysis coordinate mapping has one orientation. -->
+        <!-- Camera tool, launched from Settings → Tools. Follows auto-rotate
+             via the standard recreation flow (no configChanges): rotation
+             rebuilds the camera + session so OCR always sees gravity-upright
+             text — a portrait lock fed the OCR sideways frames when users
+             naturally turned the phone for wide text, producing garbage
+             reads. Auto-rotate OFF still degrades sideways; the confidence
+             gate suppresses most of that output. -->
         <activity
             android:name=".camera.CameraActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity"
-            android:screenOrientation="portrait"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Theme.PlayTranslate" />
 
         <!-- Hotkeys sub-page (QS tile + hotkeys), launched from Settings → Configure. -->

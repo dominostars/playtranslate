@@ -1,5 +1,7 @@
 package com.playtranslate.camera.tracker
 
+import kotlin.math.min
+
 /** Lifecycle of the camera tracker, mirroring the reference planar engine. */
 enum class TrackState { IDLE, ACQUIRING, LOCKED, LOST }
 
@@ -19,23 +21,30 @@ data class FrameDecision(
     /** Debug-pill fields. */
     val inliers: Int,
     val scale: Float,
+    val settled: Boolean,
 )
 
 /**
  * Pure policy state machine for the camera tracker — no OpenCV, no Android
  * types, fully JVM-testable. Consumes per-frame [TrackMeasurement]s (from
- * [FrameTracker]) plus the session's settle/scene signals, owns the
- * Idle/Acquiring/Locked/Lost lifecycle and every re-OCR trigger:
+ * [FrameTracker], including the anchorless motion probe while Idle), owns
+ * the Idle/Acquiring/Locked/Lost lifecycle and every re-OCR trigger.
  *
- *  - Idle + settled (+ scene changed) + cooldown → acquire.
+ * Motion/settle is derived from ONE source: the tracker's median LK point
+ * displacement. (An earlier design ran a parallel coarse-luma-grid detector;
+ * it needed per-device calibration and broke twice on real sensors —
+ * auto-exposure drift, AF convergence — before being deleted.)
+ *
+ * Triggers:
+ *  - Idle + settled + cooldown (+ escalating no-text backoff) → acquire.
  *  - Locked: EMA-smooth the homography; drop to Lost after
- *    [TrackerConfig.FRAMES_TO_LOST] consecutive sub-floor frames (hysteresis:
- *    the keep floor is lower than the acquire floor).
- *  - Locked + settled: staleness ([TrackerConfig.ANCHOR_REFRESH_AGE_MS]) or
- *    scale drift ([TrackerConfig.SCALE_DRIFT_REACQUIRE]) → re-acquire.
- *  - Lost: hide overlays, give the tracker's own re-match
- *    [TrackerConfig.LOST_TO_IDLE_FRAMES] frames to re-lock, then Idle (which
- *    re-OCRs on the next settle).
+ *    [TrackerConfig.FRAMES_TO_LOST] consecutive sub-floor frames.
+ *  - Locked + settled: staleness, scale drift, or per-region tracing-point
+ *    collapse → re-acquire.
+ *  - Locked + smoothed inliers under [TrackerConfig.DEAD_ANCHOR_EMA_INLIERS]
+ *    for [TrackerConfig.DEAD_ANCHOR_FRAMES] → Idle (dead anchor: spurious
+ *    re-matches would otherwise keep a stale lock limping forever).
+ *  - Acquiring: watchdog back to Idle if no completion arrives.
  */
 class TrackerEngine(
     private val clock: () -> Long = System::currentTimeMillis,
@@ -49,14 +58,22 @@ class TrackerEngine(
     private var lastAcquireRequestMs = 0L
     private var anchorCreatedAtMs = 0L
 
+    /** Consecutive still frames (median displacement ≤ threshold). Unknown
+     *  displacement (rematch frames, first frame) neither advances nor
+     *  resets it. */
+    private var stillFrames = 0
+
+    /** Consecutive acquires that produced no usable text; drives the
+     *  escalating backoff. Reset by deliberate motion (re-aiming). */
+    private var noTextFailures = 0
+
     /** Region key → consecutive frames with tracing-point survival below
      *  [TrackerConfig.REGION_SURVIVAL_REOCR] (the Huawei collapse trigger). */
     private val regionCollapseStreaks = HashMap<Int, Int>()
 
-    /** Smoothed inlier count + consecutive scene-changed frames — together
-     *  they detect a dead anchor that spurious re-matches keep limping. */
+    /** Smoothed inlier count + streak below the dead-anchor floor. */
     private var emaInliers = 0f
-    private var sceneChangedStreak = 0
+    private var deadAnchorStreak = 0
 
     /** Session callback: an acquire it launched finished. [locked] true when
      *  a new anchor was installed with enough inliers to trust. */
@@ -69,11 +86,13 @@ class TrackerEngine(
             lostFrames = 0
             regionCollapseStreaks.clear()
             emaInliers = TrackerConfig.DEAD_ANCHOR_EMA_INLIERS
-            sceneChangedStreak = 0
+            deadAnchorStreak = 0
+            noTextFailures = 0
         } else if (state == TrackState.ACQUIRING) {
             // Nothing usable (no text / OCR failed / weak features). Back to
-            // Idle; the scene-change gate stops an immediate identical retry.
+            // Idle; the escalating backoff stops an immediate identical retry.
             state = TrackState.IDLE
+            noTextFailures++
         }
     }
 
@@ -84,20 +103,29 @@ class TrackerEngine(
         lostFrames = 0
         lastAcquireRequestMs = 0L
         anchorCreatedAtMs = 0L
+        stillFrames = 0
+        noTextFailures = 0
         regionCollapseStreaks.clear()
         emaInliers = 0f
-        sceneChangedStreak = 0
+        deadAnchorStreak = 0
     }
 
+    /**
+     * [canAcquire] is the session's launch capacity (no acquire coroutine in
+     * flight). The engine must never transition to ACQUIRING unless the
+     * session can actually launch — a granted-but-dropped request pins the
+     * state machine forever (no completion ever arrives).
+     */
     fun onFrame(
         m: TrackMeasurement?,
-        settled: Boolean,
-        sceneChanged: Boolean,
+        canAcquire: Boolean = true,
         nowMs: Long = clock(),
     ): FrameDecision {
+        updateStillness(m)
+
         return when (state) {
             TrackState.IDLE -> {
-                if (settled && sceneChanged && cooldownElapsed(nowMs)) {
+                if (isSettled() && canAcquire && cooldownElapsed(nowMs) && backoffElapsed(nowMs)) {
                     startAcquire(nowMs)
                     decision(null, requestAcquire = true, m)
                 } else {
@@ -105,13 +133,22 @@ class TrackerEngine(
                 }
             }
 
-            TrackState.ACQUIRING ->
-                // Keep showing the previous anchor's overlays (if any) while
-                // the new acquire runs — smoothing continues on stale state.
-                trackLockedFrame(m, settled = false, sceneChanged = false, nowMs, allowTriggers = false)
+            TrackState.ACQUIRING -> {
+                // Watchdog: a wedged or lost acquire must not pin the state
+                // machine — every trigger is disabled while ACQUIRING.
+                if (nowMs - lastAcquireRequestMs > TrackerConfig.ACQUIRE_TIMEOUT_MS) {
+                    state = TrackState.IDLE
+                    smoothedH = null
+                    decision(null, requestAcquire = false, m)
+                } else {
+                    // Keep showing the previous anchor's overlays (if any)
+                    // while the new acquire runs.
+                    trackLockedFrame(m, nowMs, allowTriggers = false, canAcquire = false)
+                }
+            }
 
             TrackState.LOCKED ->
-                trackLockedFrame(m, settled, sceneChanged, nowMs, allowTriggers = true)
+                trackLockedFrame(m, nowMs, allowTriggers = true, canAcquire = canAcquire)
 
             TrackState.LOST -> {
                 val recovered = m?.hCn != null && m.inliers >= TrackerConfig.MIN_INLIERS_ACQUIRE
@@ -133,23 +170,20 @@ class TrackerEngine(
 
     private fun trackLockedFrame(
         m: TrackMeasurement?,
-        settled: Boolean,
-        sceneChanged: Boolean,
         nowMs: Long,
         allowTriggers: Boolean,
+        canAcquire: Boolean,
     ): FrameDecision {
-        // Dead-anchor escape: the view stopped resembling the keyframe AND
-        // smoothed inliers sit below the acquire floor — but momentary
-        // rematch spikes keep resetting the consecutive-bad hysteresis, so
-        // the lock would otherwise limp forever (observed 27 s on device).
-        // Idle (not Lost): Lost's re-lock would bounce back to this anchor
-        // on the next spurious spike; Idle re-OCRs on the next settle.
+        // Dead-anchor escape: smoothed inliers sitting under the floor while
+        // momentary rematch spikes keep resetting the consecutive-bad
+        // hysteresis (observed 27 s of a stale limping lock on device).
+        // Idle, not Lost: Lost's re-lock would bounce back to this anchor on
+        // the next spurious spike; Idle re-OCRs on the next settle.
         if (allowTriggers) {
             emaInliers += TrackerConfig.EMA_INLIERS_ALPHA * ((m?.inliers ?: 0) - emaInliers)
-            sceneChangedStreak = if (sceneChanged) sceneChangedStreak + 1 else 0
-            if (sceneChangedStreak >= TrackerConfig.SCENE_LOSS_FRAMES &&
-                emaInliers < TrackerConfig.DEAD_ANCHOR_EMA_INLIERS
-            ) {
+            deadAnchorStreak =
+                if (emaInliers < TrackerConfig.DEAD_ANCHOR_EMA_INLIERS) deadAnchorStreak + 1 else 0
+            if (deadAnchorStreak >= TrackerConfig.DEAD_ANCHOR_FRAMES) {
                 state = TrackState.IDLE
                 smoothedH = null
                 return decision(null, requestAcquire = false, m)
@@ -174,9 +208,7 @@ class TrackerEngine(
             }
         }
 
-        // Per-region tracing-point collapse streaks (Huawei re-OCR trigger):
-        // a region persistently losing its points means its content changed
-        // or got occluded — the global fit can stay healthy through that.
+        // Per-region tracing-point collapse streaks (Huawei re-OCR trigger).
         if (allowTriggers && m != null) {
             for ((key, survival) in m.perRegionSurvival) {
                 if (survival < TrackerConfig.REGION_SURVIVAL_REOCR) {
@@ -192,12 +224,12 @@ class TrackerEngine(
         // Re-acquire triggers (Locked only, settled only — OCR needs a sharp
         // frame, and a mid-pan refresh would anchor to a smear).
         var acquire = false
-        if (allowTriggers && settled && cooldownElapsed(nowMs)) {
+        if (allowTriggers && isSettled() && canAcquire && cooldownElapsed(nowMs)) {
             val scale = smoothedH?.let { Homography.scaleOf(it) } ?: 1f
             val stale = nowMs - anchorCreatedAtMs > TrackerConfig.ANCHOR_REFRESH_AGE_MS
             val scaleDrift = scale > TrackerConfig.SCALE_DRIFT_REACQUIRE ||
                 scale < 1f / TrackerConfig.SCALE_DRIFT_REACQUIRE
-            if (stale || scaleDrift || sceneChanged || regionCollapsed) {
+            if (stale || scaleDrift || regionCollapsed) {
                 startAcquire(nowMs)
                 acquire = true
             }
@@ -205,6 +237,34 @@ class TrackerEngine(
         // Emit the last smoothed H even on a briefly-bad frame — a short
         // dropout shouldn't blank the overlays (hysteresis handles real loss).
         return decision(smoothedH, acquire, m)
+    }
+
+    // ── Motion / settle (single source: tracker median displacement) ──────
+
+    private fun updateStillness(m: TrackMeasurement?) {
+        val disp = m?.medianDispPx ?: -1.0
+        when {
+            disp < 0 -> Unit // unknown (rematch frame / first frame): neutral
+            disp <= TrackerConfig.SETTLE_DISP_CN_PX -> stillFrames++
+            else -> {
+                stillFrames = 0
+                // Deliberate re-aiming: a textless scene verdict no longer
+                // applies, so retry OCR promptly on the next settle.
+                if (disp > TrackerConfig.MOTION_RESET_CN_PX) noTextFailures = 0
+            }
+        }
+    }
+
+    private fun isSettled(): Boolean = stillFrames >= TrackerConfig.SETTLE_FRAMES
+
+    private fun backoffElapsed(nowMs: Long): Boolean {
+        if (noTextFailures == 0) return true
+        val shift = min(noTextFailures - 1, 8)
+        val backoff = min(
+            TrackerConfig.NO_TEXT_BACKOFF_BASE_MS shl shift,
+            TrackerConfig.NO_TEXT_BACKOFF_MAX_MS,
+        )
+        return nowMs - lastAcquireRequestMs >= backoff
     }
 
     private fun startAcquire(nowMs: Long) {
@@ -223,5 +283,6 @@ class TrackerEngine(
             requestAcquire = requestAcquire,
             inliers = m?.inliers ?: 0,
             scale = h?.let { Homography.scaleOf(it) } ?: 0f,
+            settled = isSettled(),
         )
 }

@@ -70,19 +70,20 @@ class CameraSession(
     private val overlayHost: FrameLayout,
 ) {
     private companion object {
-        const val GRID_W = 32
-
-        /** Mean-abs coarse-luma diff (0-255, exposure-compensated) below
-         *  which consecutive frames count as "still". Moto G diagnostics
-         *  2026-07-07: raw resting motion is ~2.5-12 (auto-exposure drift +
-         *  hand shake), so the metric subtracts the global luma bias and the
-         *  threshold sits above the residual noise floor. */
-        const val MOTION_EPS = 7.0
-        const val SCENE_CHANGE_EPS = 9.0
-        const val SETTLE_FRAMES = 3
 
         /** Debug pill refresh cadence (frames). */
         const val PILL_EVERY = 5
+
+        /** Groups whose known line confidences average below this are dropped
+         *  before translation — garbage reads (rotated text, blur) translate
+         *  into fluent-sounding nonsense otherwise. Engines that report no
+         *  confidence (-1) are never gated by this. */
+        const val MIN_GROUP_CONFIDENCE = 0.5f
+
+        /** Groups whose bounds touch the frame edge (within this margin, AU
+         *  px) on their reading axis are dropped: the line continues off
+         *  frame, and fragment reads translate as non-sequiturs. */
+        const val EDGE_MARGIN_PX = 12
 
         @Volatile private var cvLoaded = false
         fun ensureOpenCv() {
@@ -119,11 +120,6 @@ class CameraSession(
     private val frameTracker = FrameTracker()
     private val engine = TrackerEngine()
 
-    private var gridPrev: IntArray? = null
-    private var gridCur: IntArray? = null
-    private var gridH = 0
-    private var stillFrames = 0
-    private var lastKeyframeGrid: IntArray? = null
     private var frameCount = 0L
     private var lastHeartbeatNs = 0L
 
@@ -147,10 +143,49 @@ class CameraSession(
      *  builds. Called on the main thread. */
     var statusSink: ((String) -> Unit)? = null
 
+    /** True while the camera's autofocus is actively scanning (Activity
+     *  feeds this from the Camera2 AF-state callback). An acquire during a
+     *  scan OCRs a defocused frame — garbage reads at moderate confidence
+     *  were observed on device before this gate existed. */
+    @Volatile
+    var afScanning: Boolean = false
+
     private val furiganaPaint by lazy {
         TextPaint().apply {
             typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
             textSize = 100f // arbitrary — only relative proportions matter
+        }
+    }
+
+    /** OCR pre-warm: Meiki's engine is constructed lazily on first use (three
+     *  .mnn model loads + MNN graph setup + first-inference kernel warmup),
+     *  which used to land inside the FIRST acquire's OCR timing (~4.5 s fresh
+     *  process vs ~1.3 s steady on the Moto G). Running a stamp-sized digit
+     *  strip through the real pipeline while the user is still aiming hides
+     *  that cost. [runAcquire] joins this job so the two never race the
+     *  engine's internal caches. */
+    private val prewarmJob = scope.launch(Dispatchers.Default) {
+        try {
+            val t0 = System.currentTimeMillis()
+            val bmp = Bitmap.createBitmap(256, 96, Bitmap.Config.ARGB_8888)
+            android.graphics.Canvas(bmp).apply {
+                drawColor(Color.WHITE)
+                drawText(
+                    "0123456789",
+                    16f, 64f,
+                    android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        textSize = 48f
+                        color = Color.BLACK
+                    },
+                )
+            }
+            val sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode
+            OcrManager.instance.recognise(bmp, sourceLang, screenshotWidth = bmp.width)
+            bmp.recycle()
+            Log.d(TAG, "prewarm: OCR engine ready in ${System.currentTimeMillis() - t0}ms")
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Log.w(TAG, "prewarm failed (first acquire pays the cold start)", e)
         }
     }
 
@@ -187,46 +222,32 @@ class CameraSession(
             val t0 = System.nanoTime()
             frameCount++
 
-            // Settle / scene-change signals from the coarse luma grid.
-            val cur = sampleCoarseGrid(proxy)
-            val prev = gridPrev
-            var settled = false
-            var sceneChanged = true
-            var motion = -1.0
-            var sceneDiff = -1.0
-            if (prev != null && prev.size == cur.size) {
-                motion = meanAbsDiff(prev, cur)
-                stillFrames = if (motion <= MOTION_EPS) stillFrames + 1 else 0
-                settled = stillFrames >= SETTLE_FRAMES
-                val keyGrid = lastKeyframeGrid
-                if (keyGrid != null && keyGrid.size == cur.size) {
-                    sceneDiff = meanAbsDiff(keyGrid, cur)
-                    sceneChanged = sceneDiff > SCENE_CHANGE_EPS
-                }
-                cur.copyInto(prev)
-            } else {
-                gridPrev = cur.copyOf()
-                stillFrames = 0
-            }
-
-            // Track + decide. While an acquire's OCR is chewing the little
-            // cores, track only every other frame so the two don't starve
-            // each other (Moto G diagnostics: analysis fps fell to ~10-15 and
-            // OCR stretched to 9 s under contention); the overlay keeps its
-            // last matrices on skipped frames.
+            // Track + decide. Motion/settle comes from the tracker itself
+            // (median LK displacement; anchorless probe while Idle) — the
+            // former coarse-luma-grid detector needed per-device calibration
+            // and broke twice on real sensors before being deleted.
+            //
+            // While an acquire's OCR is chewing the little cores, track only
+            // every other frame so the two don't starve each other (Moto G:
+            // analysis fps fell to ~10-15 and OCR stretched to 9 s under
+            // contention); the overlay keeps its last matrices on skips.
             if (acquireInFlight.get() && frameCount % 2 == 1L) return
             val cn = cnConverter.convert(proxy)
             val m = frameTracker.track(cn)
-            val decision = engine.onFrame(m, settled, sceneChanged)
+            // canAcquire keeps the engine's state machine and this session's
+            // launch capacity in agreement: a request granted while an acquire
+            // was already in flight used to pin the engine in ACQUIRING
+            // forever (the dropped launch meant no completion ever arrived).
+            // AF scans also veto acquires — a keyframe mid-scan is defocused.
+            val decision = engine.onFrame(m, canAcquire = !acquireInFlight.get() && !afScanning)
 
-            // Diagnostic heartbeat for on-device tuning: is the settle gate
-            // ever opening, and what does sensor noise look like at rest?
+            // Diagnostic heartbeat for on-device tuning.
             if (frameCount % 15 == 0L) {
                 Log.d(
                     TAG,
-                    "frame#%d %s inl=%d trk=%d motion=%.2f still=%d settled=%b sceneDiff=%.2f fps~%.1f".format(
+                    "frame#%d %s inl=%d trk=%d disp=%.2f settled=%b fps~%.1f".format(
                         frameCount, decision.state, decision.inliers,
-                        m.trackedPoints, motion, stillFrames, settled, sceneDiff,
+                        m.trackedPoints, m.medianDispPx, decision.settled,
                         heartbeatFps(),
                     ),
                 )
@@ -235,7 +256,6 @@ class CameraSession(
             if (decision.requestAcquire && acquireInFlight.compareAndSet(false, true)) {
                 val keyframe = toUprightBitmap(proxy)
                 val cnKeyframe = cn.clone()
-                lastKeyframeGrid = cur.copyOf()
                 val gen = generation.get()
                 Log.d(TAG, "acquire: keyframe ${keyframe.width}x${keyframe.height} state=${decision.state}")
                 scope.launch(Dispatchers.Default) { runAcquire(keyframe, cnKeyframe, gen) }
@@ -268,40 +288,6 @@ class CameraSession(
         }
     }
 
-    private fun sampleCoarseGrid(proxy: ImageProxy): IntArray {
-        val plane = proxy.planes[0]
-        val buffer = plane.buffer
-        val w = proxy.width
-        val h = proxy.height
-        val rowStride = plane.rowStride
-        val gh = (GRID_W.toLong() * h / w).toInt().coerceAtLeast(4)
-        val grid = gridCur?.takeIf { it.size == GRID_W * gh && gridH == gh }
-            ?: IntArray(GRID_W * gh).also { gridCur = it; gridH = gh }
-        val stepX = w / GRID_W
-        val stepY = h / gh
-        var i = 0
-        for (gy in 0 until gh) {
-            val rowBase = (gy * stepY) * rowStride
-            for (gx in 0 until GRID_W) {
-                // +1 = G channel of RGBA.
-                grid[i++] = buffer.get(rowBase + (gx * stepX) * 4 + 1).toInt() and 0xFF
-            }
-        }
-        return grid
-    }
-
-    /** Mean absolute difference with the global luma bias removed first, so
-     *  auto-exposure adjustments (which shift the whole frame's brightness)
-     *  don't read as motion. */
-    private fun meanAbsDiff(a: IntArray, b: IntArray): Double {
-        var sumDelta = 0L
-        for (i in a.indices) sumDelta += a[i] - b[i]
-        val bias = sumDelta.toDouble() / a.size
-        var sum = 0.0
-        for (i in a.indices) sum += kotlin.math.abs(a[i] - b[i] - bias)
-        return sum / a.size
-    }
-
     /** RGBA ImageProxy → upright ARGB_8888 Bitmap (AnalysisUpright space).
      *  Handles rowStride padding, then rotates upright. Keyframes only. */
     private fun toUprightBitmap(proxy: ImageProxy): Bitmap {
@@ -330,6 +316,7 @@ class CameraSession(
     private suspend fun runAcquire(keyframe: Bitmap, cnKeyframe: Mat, gen: Int) {
         var installed = false
         try {
+            prewarmJob.join() // never race the engine's lazy construction
             val sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode
             val t0 = System.currentTimeMillis()
             val ocr = OcrManager.instance.recognise(
@@ -338,12 +325,19 @@ class CameraSession(
                 screenshotWidth = keyframe.width,
             )
             if (gen != generation.get()) return
-            val groups = ocr?.groups?.filter { it.text.isNotBlank() }.orEmpty()
-            Log.d(TAG, "acquire: OCR ${groups.size} groups in ${System.currentTimeMillis() - t0}ms")
+            val rawCount = ocr?.groups?.size ?: 0
+            val groups = ocr?.let { usableGroups(it, keyframe.width, keyframe.height) }.orEmpty()
+            Log.d(
+                TAG,
+                "acquire: OCR $rawCount groups (${groups.size} usable) in ${System.currentTimeMillis() - t0}ms " +
+                    "(engine=${ocr?.engineBackend ?: "ml-kit-floor/none"})",
+            )
 
             val oldKeyframe: Bitmap?
             synchronized(stateLock) {
-                cachedOcr = ocr
+                // The GATED result is what everyone downstream must see (both
+                // flavors, re-flavor on toggle, track regions) — one group set.
+                cachedOcr = ocr?.copy(groups = groups)
                 oldKeyframe = cachedKeyframe
                 cachedKeyframe = keyframe
             }
@@ -371,7 +365,7 @@ class CameraSession(
                 Log.d(TAG, "acquire: anchor #${anchor.id} seeded $seeded correspondences")
             }
 
-            buildAndShow(ocr!!, keyframe, gen)
+            buildAndShow(ocr!!.copy(groups = groups), keyframe, gen)
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Log.w(TAG, "acquire failed", e)
@@ -380,6 +374,46 @@ class CameraSession(
             if (!installed) cnKeyframe.release() else onAnalysisThread { cnKeyframe.release() }
             acquireInFlight.set(false)
         }
+    }
+
+    /**
+     * Camera-frame quality gate. OCR output is deliberately NOT trusted here
+     * (camera frames — unlike screenshots — carry blur, rotation, and
+     * frame-edge clipping the engines weren't tuned for):
+     *  - drop groups whose known line confidences average below
+     *    [MIN_GROUP_CONFIDENCE] (garbage reads translate into fluent
+     *    nonsense); engines reporting no confidence are not gated;
+     *  - drop groups clipped at the frame edge on their reading axis
+     *    (the line continues off-frame; the fragment reads as a non
+     *    sequitur once translated).
+     */
+    private fun usableGroups(
+        ocr: OcrManager.OcrResult,
+        auWidth: Int,
+        auHeight: Int,
+    ): List<OcrManager.OcrGroup> = ocr.groups.filter { g ->
+        if (g.text.isBlank()) return@filter false
+        val known = g.lines.map { it.confidence }.filter { it >= 0f }
+        if (known.isNotEmpty() && known.average() < MIN_GROUP_CONFIDENCE) {
+            Log.d(TAG, "gate: dropped low-confidence (%.2f) group \"%s\"".format(known.average(), g.text.take(40)))
+            return@filter false
+        }
+        if (known.isNotEmpty()) {
+            // Kept-group confidences calibrate the threshold: we need to know
+            // where GOOD reads sit on this device, not just the bad ones.
+            Log.d(TAG, "gate: kept (%.2f) group \"%s\"".format(known.average(), g.text.take(40)))
+        }
+        val clipped = when (g.orientation) {
+            com.playtranslate.language.TextOrientation.VERTICAL ->
+                g.bounds.top <= EDGE_MARGIN_PX || g.bounds.bottom >= auHeight - EDGE_MARGIN_PX
+            else ->
+                g.bounds.left <= EDGE_MARGIN_PX || g.bounds.right >= auWidth - EDGE_MARGIN_PX
+        }
+        if (clipped) {
+            Log.d(TAG, "gate: dropped edge-clipped group \"${g.text.take(40)}\"")
+            return@filter false
+        }
+        true
     }
 
     /** Run [block] on the analysis executor (the only thread allowed to touch
@@ -417,6 +451,11 @@ class CameraSession(
                 val t0 = System.currentTimeMillis()
                 val translations = translator.translate(texts)
                 Log.d(TAG, "acquire: translated ${texts.size} groups in ${System.currentTimeMillis() - t0}ms")
+                // Quality forensics: the OCR text and its translation, so
+                // "bad output" can be attributed to reading vs translating.
+                texts.forEachIndexed { i, src ->
+                    Log.d(TAG, "acquire text[$i]: \"${src.take(120)}\" -> \"${translations.getOrElse(i) { "" }.take(120)}\"")
+                }
                 if (gen != generation.get()) return
                 val filled = placeholders.mapIndexed { idx, ph ->
                     ph.copy(translatedText = translations.getOrElse(idx) { "" })
@@ -589,8 +628,6 @@ class CameraSession(
         analysisExecutor.execute {
             frameTracker.clearAnchor()
             engine.reset()
-            lastKeyframeGrid = null
-            stillFrames = 0
         }
         overlayHost.post { warpView?.clearRegions() }
     }

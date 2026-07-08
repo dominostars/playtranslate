@@ -69,6 +69,7 @@ class MeikiRecognizer(private val session: MeikiSession) : TextRecognizer {
         }
         val line = RecognizedLine(
             text = res.text, box = region.box, orientation = region.orientation, chars = chars,
+            confidence = res.confidence,
         )
         return RecognizedRegion(
             text = res.text,

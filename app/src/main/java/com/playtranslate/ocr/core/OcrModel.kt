@@ -116,6 +116,9 @@ data class RecognizedLine(
     val elements: List<ElementBox> = emptyList(),
     /** Character tier; drives precise furigana + drag hit-testing. Empty if unavailable. */
     val chars: List<CharBox> = emptyList(),
+    /** Recognition confidence 0..1, or -1 when the engine doesn't report one.
+     *  Consumers must treat -1 as "unknown", never as "low". */
+    val confidence: Float = -1f,
 )
 
 /**

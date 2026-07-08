@@ -179,12 +179,19 @@ class FrameTracker {
         hasPrev = false
     }
 
+    /** Probe points for anchorless motion measurement (Idle). */
+    private var probePts: List<Point> = emptyList()
+
     /**
      * Track one frame. [curGray] is the upright CN gray of the current frame
      * (caller-owned; copied internally for the next LK pass).
+     *
+     * With no anchor installed this degrades to a motion probe: a few dozen
+     * good-features corners LK-tracked frame-to-frame purely for the median
+     * displacement, which drives the engine's settle gate while Idle.
      */
     fun track(curGray: Mat): TrackMeasurement {
-        if (anchor == null) return TrackMeasurement(null, 0, -1.0, 0)
+        if (anchor == null) return probeMotion(curGray)
 
         if (!hasPrev) {
             curGray.copyTo(prevGray)
@@ -208,6 +215,41 @@ class FrameTracker {
         val measurement = fitHomography()
         curGray.copyTo(prevGray)
         return measurement
+    }
+
+    /** Anchorless motion probe: forward-LK the previous frame's probe corners
+     *  and report their median displacement; reseed on the current frame. */
+    private fun probeMotion(curGray: Mat): TrackMeasurement {
+        var motion = -1.0
+        if (hasPrev && probePts.isNotEmpty()) {
+            val prev = MatOfPoint2f(*probePts.toTypedArray())
+            val next = MatOfPoint2f()
+            Video.calcOpticalFlowPyrLK(
+                prevGray, curGray, prev, next, lkStatus, lkErr,
+                lkWin, TrackerConfig.LK_MAX_LEVEL,
+            )
+            val status = lkStatus.toArray()
+            val prevArr = prev.toArray()
+            val nextArr = next.toArray()
+            val disps = ArrayList<Double>(prevArr.size)
+            for (i in prevArr.indices) {
+                if (status.getOrNull(i)?.toInt() == 1) {
+                    disps.add(abs(nextArr[i].x - prevArr[i].x) + abs(nextArr[i].y - prevArr[i].y))
+                }
+            }
+            if (disps.isNotEmpty()) {
+                disps.sort()
+                motion = disps[disps.size / 2]
+            }
+            prev.release(); next.release()
+        }
+        val corners = MatOfPoint()
+        Imgproc.goodFeaturesToTrack(curGray, corners, TrackerConfig.PROBE_POINTS, 0.01, 12.0)
+        probePts = corners.toArray().toList()
+        corners.release()
+        curGray.copyTo(prevGray)
+        hasPrev = true
+        return TrackMeasurement(null, 0, motion, 0)
     }
 
     /** Advance [currentPts] from [prevGray] to [curGray] with forward LK +

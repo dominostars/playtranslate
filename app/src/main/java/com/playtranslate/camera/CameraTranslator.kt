@@ -78,6 +78,12 @@ class CameraTranslator(private val context: Context) {
                 snap.source,
                 snap.target,
             )
+            android.util.Log.d(
+                "CameraTranslator",
+                "batch ${snap.source}->${snap.target}: backends=" +
+                    outcomes.joinToString { "${it.backend.id}${if (it.isDegraded) "(degraded)" else ""}" }
+                        .take(200),
+            )
             synchronized(cache) {
                 uncachedIndices.forEachIndexed { i, idx ->
                     val outcome = outcomes.getOrNull(i) ?: return@forEachIndexed

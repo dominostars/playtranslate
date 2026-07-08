@@ -15,8 +15,16 @@ import org.junit.Test
 /**
  * Pure-JVM tests for the tracker policy state machine — synthetic
  * [TrackMeasurement] sequences, no camera, no OpenCV (camera plan §9).
+ * Settle is tracker-derived (median LK displacement): STILL_DISP frames
+ * count toward the gate, MOVING_DISP frames reset it.
  */
 class TrackerEngineTest {
+
+    private companion object {
+        const val STILL_DISP = 0.5
+        const val MOVING_DISP = 5.0
+        const val REAIM_DISP = TrackerConfig.MOTION_RESET_CN_PX + 2.0
+    }
 
     private var nowMs = 1_000_000L
     private fun engine() = TrackerEngine(clock = { nowMs })
@@ -24,49 +32,114 @@ class TrackerEngineTest {
     private fun goodMeasurement(
         inliers: Int = 100,
         scale: Double = 1.0,
+        disp: Double = STILL_DISP,
     ) = TrackMeasurement(
         hCn = doubleArrayOf(scale, 0.0, 2.0, 0.0, scale, -1.0, 0.0, 0.0, 1.0),
         inliers = inliers,
-        medianDispPx = 0.4,
+        medianDispPx = disp,
         trackedPoints = inliers,
     )
 
+    /** Anchorless probe result: no homography, known displacement. */
+    private fun probe(disp: Double) = TrackMeasurement(null, 0, disp, 0)
+
+    /** No-signal frame (rematch/first frame): unknown displacement. */
     private val noTrack = TrackMeasurement(null, 0, -1.0, 0)
 
     /** Drive an engine from IDLE into LOCKED via a successful acquire. */
     private fun lockEngine(e: TrackerEngine) {
-        val d = e.onFrame(noTrack, settled = true, sceneChanged = true)
-        assertTrue(d.requestAcquire)
+        var acquired = false
+        repeat(TrackerConfig.SETTLE_FRAMES + 1) {
+            if (e.onFrame(probe(STILL_DISP)).requestAcquire) {
+                acquired = true
+                return@repeat
+            }
+        }
+        assertTrue("engine never requested the initial acquire", acquired)
         assertEquals(TrackState.ACQUIRING, e.state)
         e.onAcquireFinished(locked = true, nowMs = nowMs)
         assertEquals(TrackState.LOCKED, e.state)
     }
 
     @Test
-    fun idleAcquiresOnlyWhenSettledAndSceneChanged() {
+    fun idleAcquiresOnlyAfterSettling() {
         val e = engine()
-        assertFalse(e.onFrame(noTrack, settled = false, sceneChanged = true).requestAcquire)
-        assertFalse(e.onFrame(noTrack, settled = true, sceneChanged = false).requestAcquire)
-        assertTrue(e.onFrame(noTrack, settled = true, sceneChanged = true).requestAcquire)
+        // Moving frames never open the gate.
+        repeat(10) {
+            assertFalse(e.onFrame(probe(MOVING_DISP)).requestAcquire)
+        }
+        // Unknown-displacement frames are neutral: no progress, no reset.
+        repeat(5) {
+            assertFalse(e.onFrame(noTrack).requestAcquire)
+        }
+        // Consecutive still frames open it.
+        var acquired = false
+        repeat(TrackerConfig.SETTLE_FRAMES) {
+            if (e.onFrame(probe(STILL_DISP)).requestAcquire) acquired = true
+        }
+        assertTrue(acquired)
     }
 
     @Test
-    fun acquireCooldownBlocksImmediateRetry() {
+    fun movingFrameResetsSettleProgress() {
         val e = engine()
-        assertTrue(e.onFrame(noTrack, settled = true, sceneChanged = true).requestAcquire)
-        e.onAcquireFinished(locked = false, nowMs = nowMs) // failed → IDLE
-        assertEquals(TrackState.IDLE, e.state)
-        // Same instant: cooldown blocks.
-        assertFalse(e.onFrame(noTrack, settled = true, sceneChanged = true).requestAcquire)
+        repeat(TrackerConfig.SETTLE_FRAMES - 1) { e.onFrame(probe(STILL_DISP)) }
+        e.onFrame(probe(MOVING_DISP)) // reset
+        // Needs the full run of still frames again.
+        var acquired = false
+        repeat(TrackerConfig.SETTLE_FRAMES - 1) {
+            if (e.onFrame(probe(STILL_DISP)).requestAcquire) acquired = true
+        }
+        assertFalse(acquired)
+        assertTrue(e.onFrame(probe(STILL_DISP)).requestAcquire)
+    }
+
+    @Test
+    fun noTextBackoffEscalatesAndMotionResetsIt() {
+        val e = engine()
+        // First acquire fails (no text).
+        lockAttemptFail(e)
+        // Immediately settled again: cooldown alone has passed, but the
+        // 1 s no-text backoff blocks a retry.
         nowMs += TrackerConfig.ACQUIRE_COOLDOWN_MS + 1
-        assertTrue(e.onFrame(noTrack, settled = true, sceneChanged = true).requestAcquire)
+        repeat(TrackerConfig.SETTLE_FRAMES + 2) {
+            assertFalse(e.onFrame(probe(STILL_DISP)).requestAcquire)
+        }
+        // After the backoff, retry fires...
+        nowMs += TrackerConfig.NO_TEXT_BACKOFF_BASE_MS
+        assertTrue(e.onFrame(probe(STILL_DISP)).requestAcquire)
+        e.onAcquireFinished(locked = false, nowMs = nowMs)
+        // ...and the second failure doubles the wait.
+        nowMs += TrackerConfig.NO_TEXT_BACKOFF_BASE_MS + 1
+        repeat(TrackerConfig.SETTLE_FRAMES + 2) {
+            assertFalse(e.onFrame(probe(STILL_DISP)).requestAcquire)
+        }
+        // Deliberate re-aiming clears the textless verdict: only the
+        // cooldown applies after real motion.
+        e.onFrame(probe(REAIM_DISP))
+        nowMs += TrackerConfig.ACQUIRE_COOLDOWN_MS + 1
+        var acquired = false
+        repeat(TrackerConfig.SETTLE_FRAMES) {
+            if (e.onFrame(probe(STILL_DISP)).requestAcquire) acquired = true
+        }
+        assertTrue(acquired)
+    }
+
+    private fun lockAttemptFail(e: TrackerEngine) {
+        var acquired = false
+        repeat(TrackerConfig.SETTLE_FRAMES + 1) {
+            if (e.onFrame(probe(STILL_DISP)).requestAcquire) acquired = true
+        }
+        assertTrue(acquired)
+        e.onAcquireFinished(locked = false, nowMs = nowMs)
+        assertEquals(TrackState.IDLE, e.state)
     }
 
     @Test
     fun lockedEmitsSmoothedHomography() {
         val e = engine()
         lockEngine(e)
-        val d = e.onFrame(goodMeasurement(), settled = false, sceneChanged = false)
+        val d = e.onFrame(goodMeasurement(disp = MOVING_DISP))
         assertEquals(TrackState.LOCKED, d.state)
         assertNotNull(d.hCn)
         assertEquals(100, d.inliers)
@@ -76,15 +149,13 @@ class TrackerEngineTest {
     fun briefDropoutKeepsLastHomography_hysteresis() {
         val e = engine()
         lockEngine(e)
-        e.onFrame(goodMeasurement(), settled = false, sceneChanged = false)
-        // A few bad frames (below FRAMES_TO_LOST) must not blank the overlay.
+        e.onFrame(goodMeasurement(disp = MOVING_DISP))
         repeat(TrackerConfig.FRAMES_TO_LOST - 1) {
-            val d = e.onFrame(noTrack, settled = false, sceneChanged = false)
+            val d = e.onFrame(noTrack)
             assertEquals(TrackState.LOCKED, d.state)
             assertNotNull("dropout frame $it should keep last H", d.hCn)
         }
-        // One more pushes it over the edge → LOST, overlays hidden.
-        val lost = e.onFrame(noTrack, settled = false, sceneChanged = false)
+        val lost = e.onFrame(noTrack)
         assertEquals(TrackState.LOST, lost.state)
         assertNull(lost.hCn)
     }
@@ -93,13 +164,11 @@ class TrackerEngineTest {
     fun lostRelocksOnStrongMeasurementAndSnaps() {
         val e = engine()
         lockEngine(e)
-        repeat(TrackerConfig.FRAMES_TO_LOST) { e.onFrame(noTrack, settled = false, sceneChanged = false) }
+        repeat(TrackerConfig.FRAMES_TO_LOST) { e.onFrame(noTrack) }
         assertEquals(TrackState.LOST, e.state)
-        // Weak recovery (below the acquire floor) does NOT re-lock.
-        val weak = e.onFrame(goodMeasurement(inliers = TrackerConfig.MIN_INLIERS_ACQUIRE - 1), false, false)
+        val weak = e.onFrame(goodMeasurement(inliers = TrackerConfig.MIN_INLIERS_ACQUIRE - 1, disp = MOVING_DISP))
         assertEquals(TrackState.LOST, weak.state)
-        // Strong recovery re-locks and emits immediately.
-        val strong = e.onFrame(goodMeasurement(inliers = 80), false, false)
+        val strong = e.onFrame(goodMeasurement(inliers = 80, disp = MOVING_DISP))
         assertEquals(TrackState.LOCKED, strong.state)
         assertNotNull(strong.hCn)
     }
@@ -108,9 +177,9 @@ class TrackerEngineTest {
     fun lostDecaysToIdleAfterGrace() {
         val e = engine()
         lockEngine(e)
-        repeat(TrackerConfig.FRAMES_TO_LOST) { e.onFrame(noTrack, settled = false, sceneChanged = false) }
+        repeat(TrackerConfig.FRAMES_TO_LOST) { e.onFrame(noTrack) }
         assertEquals(TrackState.LOST, e.state)
-        repeat(TrackerConfig.LOST_TO_IDLE_FRAMES) { e.onFrame(noTrack, settled = false, sceneChanged = false) }
+        repeat(TrackerConfig.LOST_TO_IDLE_FRAMES) { e.onFrame(noTrack) }
         assertEquals(TrackState.IDLE, e.state)
     }
 
@@ -118,14 +187,23 @@ class TrackerEngineTest {
     fun stalenessRefreshFiresOnlyWhenSettled() {
         val e = engine()
         lockEngine(e)
-        e.onFrame(goodMeasurement(), settled = false, sceneChanged = false)
         nowMs += TrackerConfig.ANCHOR_REFRESH_AGE_MS + 1
-        // Moving: no refresh.
-        assertFalse(e.onFrame(goodMeasurement(), settled = false, sceneChanged = false).requestAcquire)
-        // Settled: refresh fires (and keeps emitting the current H meanwhile).
-        val d = e.onFrame(goodMeasurement(), settled = true, sceneChanged = false)
-        assertTrue(d.requestAcquire)
-        assertNotNull(d.hCn)
+        // Moving: no refresh, ever.
+        repeat(5) {
+            assertFalse(e.onFrame(goodMeasurement(disp = MOVING_DISP)).requestAcquire)
+        }
+        // Settle, then the staleness refresh fires (still emitting H).
+        var acquired = false
+        var lastH: DoubleArray? = null
+        repeat(TrackerConfig.SETTLE_FRAMES) {
+            val d = e.onFrame(goodMeasurement(disp = STILL_DISP))
+            if (d.requestAcquire) {
+                acquired = true
+                lastH = d.hCn
+            }
+        }
+        assertTrue(acquired)
+        assertNotNull(lastH)
         assertEquals(TrackState.ACQUIRING, e.state)
     }
 
@@ -134,13 +212,12 @@ class TrackerEngineTest {
         val e = engine()
         lockEngine(e)
         nowMs += TrackerConfig.ACQUIRE_COOLDOWN_MS + 1
-        // Zoomed way in: scale beyond the drift threshold.
-        val drifted = goodMeasurement(scale = TrackerConfig.SCALE_DRIFT_REACQUIRE + 0.1)
-        // Feed a couple frames so the smoothed H reflects the drifted scale.
-        e.onFrame(drifted, settled = false, sceneChanged = false)
-        e.onFrame(drifted, settled = false, sceneChanged = false)
-        val d = e.onFrame(drifted, settled = true, sceneChanged = false)
-        assertTrue(d.requestAcquire)
+        val drifted = goodMeasurement(scale = TrackerConfig.SCALE_DRIFT_REACQUIRE + 0.1, disp = STILL_DISP)
+        var acquired = false
+        repeat(TrackerConfig.SETTLE_FRAMES + 2) {
+            if (e.onFrame(drifted).requestAcquire) acquired = true
+        }
+        assertTrue(acquired)
     }
 
     @Test
@@ -148,11 +225,16 @@ class TrackerEngineTest {
         val e = engine()
         lockEngine(e)
         nowMs += TrackerConfig.ANCHOR_REFRESH_AGE_MS + 1
-        assertTrue(e.onFrame(goodMeasurement(), settled = true, sceneChanged = true).requestAcquire)
+        var acquired = false
+        repeat(TrackerConfig.SETTLE_FRAMES) {
+            if (e.onFrame(goodMeasurement()).requestAcquire) acquired = true
+        }
+        assertTrue(acquired)
         assertEquals(TrackState.ACQUIRING, e.state)
-        // While acquiring, no further acquire requests regardless of signals.
         nowMs += TrackerConfig.ACQUIRE_COOLDOWN_MS + 1
-        assertFalse(e.onFrame(goodMeasurement(), settled = true, sceneChanged = true).requestAcquire)
+        repeat(5) {
+            assertFalse(e.onFrame(goodMeasurement()).requestAcquire)
+        }
     }
 
     @Test
@@ -160,16 +242,18 @@ class TrackerEngineTest {
         val e = engine()
         lockEngine(e)
         nowMs += TrackerConfig.ACQUIRE_COOLDOWN_MS + 1
-        // One region's tracing points collapse while global tracking stays
-        // healthy — the Huawei per-line re-OCR trigger.
         val collapsed = goodMeasurement().copy(perRegionSurvival = mapOf(3 to 0.2f))
-        repeat(TrackerConfig.REGION_COLLAPSE_FRAMES - 1) {
-            assertFalse(
-                "streak frame $it must not fire yet",
-                e.onFrame(collapsed, settled = true, sceneChanged = false).requestAcquire,
-            )
+        var fired = false
+        var frames = 0
+        while (frames < TrackerConfig.REGION_COLLAPSE_FRAMES + TrackerConfig.SETTLE_FRAMES) {
+            frames++
+            if (e.onFrame(collapsed).requestAcquire) {
+                fired = true
+                break
+            }
         }
-        assertTrue(e.onFrame(collapsed, settled = true, sceneChanged = false).requestAcquire)
+        assertTrue("collapse never fired in $frames frames", fired)
+        assertTrue(frames >= TrackerConfig.REGION_COLLAPSE_FRAMES)
     }
 
     @Test
@@ -180,44 +264,26 @@ class TrackerEngineTest {
         val collapsed = goodMeasurement().copy(perRegionSurvival = mapOf(3 to 0.2f))
         val recovered = goodMeasurement().copy(perRegionSurvival = mapOf(3 to 0.9f))
         repeat(TrackerConfig.REGION_COLLAPSE_FRAMES - 1) {
-            e.onFrame(collapsed, settled = true, sceneChanged = false)
+            assertFalse(e.onFrame(collapsed).requestAcquire)
         }
-        e.onFrame(recovered, settled = true, sceneChanged = false) // streak resets
+        e.onFrame(recovered) // streak resets
         repeat(TrackerConfig.REGION_COLLAPSE_FRAMES - 1) {
-            assertFalse(e.onFrame(collapsed, settled = true, sceneChanged = false).requestAcquire)
+            assertFalse(e.onFrame(collapsed).requestAcquire)
         }
-    }
-
-    @Test
-    fun perRegionHomographiesPassThroughOnlyWhileEmitting() {
-        val e = engine()
-        lockEngine(e)
-        val refined = goodMeasurement().copy(
-            perRegionH = mapOf(1 to doubleArrayOf(1.0, 0.0, 3.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)),
-        )
-        val d = e.onFrame(refined, settled = false, sceneChanged = false)
-        assertEquals(1, d.perRegionHCn.size)
-        // Once LOST (h null), the per-region map must empty too.
-        repeat(TrackerConfig.FRAMES_TO_LOST) { e.onFrame(noTrack, false, false) }
-        val lost = e.onFrame(noTrack.copy(perRegionH = refined.perRegionH), false, false)
-        assertNull(lost.hCn)
-        assertTrue(lost.perRegionHCn.isEmpty())
     }
 
     @Test
     fun deadAnchorEscapesToIdleDespiteRematchSpikes() {
         val e = engine()
         lockEngine(e)
-        // Replays the 2026-07-07 Moto G failure shape: the view no longer
-        // matches the keyframe (sceneChanged pinned true) while spurious
-        // rematches make inliers churn — spikes above MIN_INLIERS_KEEP kept
-        // resetting the consecutive-bad hysteresis, pinning LOCKED for 27 s.
+        // Moto G failure shape: spurious rematches churn the inliers with
+        // spikes that defeat the consecutive-bad hysteresis.
         val churn = intArrayOf(10, 15, 20, 200, 30, 12)
         var frames = 0
         var reachedIdle = false
         while (frames < 120) {
-            val m = goodMeasurement(inliers = churn[frames % churn.size])
-            val d = e.onFrame(m, settled = false, sceneChanged = true)
+            val m = goodMeasurement(inliers = churn[frames % churn.size], disp = MOVING_DISP)
+            val d = e.onFrame(m)
             frames++
             if (d.state == TrackState.IDLE) {
                 reachedIdle = true
@@ -232,26 +298,67 @@ class TrackerEngineTest {
     fun healthyPanNeverTripsDeadAnchorEscape() {
         val e = engine()
         lockEngine(e)
-        // Panning across the same surface: sceneChanged is also pinned true
-        // (the view left the keyframe), but tracking stays strong — the
-        // escape must NOT fire.
         repeat(120) {
-            val d = e.onFrame(goodMeasurement(inliers = 280), settled = false, sceneChanged = true)
+            val d = e.onFrame(goodMeasurement(inliers = 280, disp = MOVING_DISP))
             assertEquals(TrackState.LOCKED, d.state)
             assertNotNull(d.hCn)
         }
     }
 
     @Test
+    fun engineNeverEntersAcquiringWhenSessionCannotLaunch() {
+        val e = engine()
+        repeat(TrackerConfig.SETTLE_FRAMES + 2) {
+            val d = e.onFrame(probe(STILL_DISP), canAcquire = false)
+            assertFalse(d.requestAcquire)
+        }
+        assertEquals(TrackState.IDLE, e.state)
+        lockEngine(e)
+        nowMs += TrackerConfig.ANCHOR_REFRESH_AGE_MS + 1
+        repeat(TrackerConfig.SETTLE_FRAMES + 2) {
+            val d = e.onFrame(goodMeasurement(), canAcquire = false)
+            assertFalse(d.requestAcquire)
+        }
+        assertEquals(TrackState.LOCKED, e.state)
+    }
+
+    @Test
+    fun acquiringWatchdogRevertsToIdle() {
+        val e = engine()
+        var acquired = false
+        repeat(TrackerConfig.SETTLE_FRAMES + 1) {
+            if (e.onFrame(probe(STILL_DISP)).requestAcquire) acquired = true
+        }
+        assertTrue(acquired)
+        assertEquals(TrackState.ACQUIRING, e.state)
+        nowMs += TrackerConfig.ACQUIRE_TIMEOUT_MS + 1
+        val d = e.onFrame(noTrack)
+        assertEquals(TrackState.IDLE, d.state)
+        assertNull(d.hCn)
+    }
+
+    @Test
+    fun perRegionHomographiesPassThroughOnlyWhileEmitting() {
+        val e = engine()
+        lockEngine(e)
+        val refined = goodMeasurement(disp = MOVING_DISP).copy(
+            perRegionH = mapOf(1 to doubleArrayOf(1.0, 0.0, 3.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)),
+        )
+        val d = e.onFrame(refined)
+        assertEquals(1, d.perRegionHCn.size)
+        repeat(TrackerConfig.FRAMES_TO_LOST) { e.onFrame(noTrack) }
+        val lost = e.onFrame(noTrack.copy(perRegionH = refined.perRegionH))
+        assertNull(lost.hCn)
+        assertTrue(lost.perRegionHCn.isEmpty())
+    }
+
+    @Test
     fun homographyMathSanity() {
-        // cnToAu conjugation: pure translation in CN scales by 1/s in AU.
         val hCn = doubleArrayOf(1.0, 0.0, 10.0, 0.0, 1.0, -4.0, 0.0, 0.0, 1.0)
         val hAu = Homography.cnToAu(hCn, auToCnScale = 0.5)
         assertEquals(20.0, hAu[2], 1e-9)
         assertEquals(-8.0, hAu[5], 1e-9)
-        // scaleOf: a diag(2,2) mapping has scale 2.
         assertEquals(2f, Homography.scaleOf(doubleArrayOf(2.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 1.0)), 1e-4f)
-        // EMA converges toward the fresh value.
         val smoothed = Homography.IDENTITY.copyOf()
         val fresh = doubleArrayOf(1.0, 0.0, 10.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
         repeat(20) { Homography.emaInPlace(smoothed, fresh, 0.6f) }

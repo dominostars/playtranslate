@@ -54,6 +54,7 @@ object MlKitTextMapper {
                     orientation = orientation,
                     elements = walked.elements,
                     chars = walked.chars,
+                    confidence = lineConfidence(line),
                 )
                 out += RecognizedRegion(
                     text = walked.text,
