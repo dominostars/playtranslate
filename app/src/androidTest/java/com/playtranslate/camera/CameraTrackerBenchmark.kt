@@ -209,6 +209,47 @@ class CameraTrackerBenchmark {
     }
 
     /**
+     * Adversarial re-lock probe: an anchor must be verifiable against a
+     * warped view of ITS OWN scene, and must NOT verify against a different
+     * page with the same text-like texture statistics — raw descriptor
+     * counts alone pass on repetitive patterns (glyphs match glyphs), which
+     * is exactly how a false re-lock would restore stale overlays over the
+     * wrong scene.
+     */
+    @Test
+    fun relockProbeRejectsWrongSceneAcceptsOwnScene() {
+        ensureOpenCv()
+        val tracker = FrameTracker()
+        val pageA = syntheticPage(21)
+        val pageB = syntheticPage(99) // same generator, different layout
+        val warpedA = Mat()
+        val hTrue = jitterHomography()
+        Imgproc.warpPerspective(pageA, warpedA, hTrue, Size(CN_W.toDouble(), CN_H.toDouble()))
+        try {
+            val anchor = tracker.buildAnchor(pageA, 7L, 1080, 1920, 0.5, 0L)
+            val ownScene = tracker.verifiedMatchCount(anchor, warpedA)
+            val wrongScene = tracker.verifiedMatchCount(anchor, pageB)
+            Log.i(TAG, "relock probe: ownScene=$ownScene wrongScene=$wrongScene")
+            println("relock probe: ownScene=$ownScene wrongScene=$wrongScene")
+            assertTrue(
+                "own scene must verify (got $ownScene)",
+                ownScene >= TrackerConfig.MIN_INLIERS_ACQUIRE,
+            )
+            assertTrue(
+                "wrong scene must NOT verify (got $wrongScene)",
+                wrongScene < TrackerConfig.MIN_INLIERS_ACQUIRE,
+            )
+            anchor.release()
+        } finally {
+            tracker.release()
+            pageA.release()
+            pageB.release()
+            warpedA.release()
+            hTrue.release()
+        }
+    }
+
+    /**
      * End-to-end synthetic trace of the production tracker (FrameTracker +
      * TrackerEngine, the exact classes CameraSession drives): install an
      * anchor, then feed a 60-frame continuous pan/rotate sequence with known

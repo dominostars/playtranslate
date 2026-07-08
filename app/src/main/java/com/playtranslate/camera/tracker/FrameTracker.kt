@@ -200,9 +200,13 @@ class FrameTracker {
         return a
     }
 
-    /** How many ratio-test ORB matches [candidate] gets against [curGray] —
-     *  the re-lock probe. Read-only: no tracker state changes. */
-    fun matchCountAgainst(candidate: Anchor, curGray: Mat): Int {
+    /** Geometrically VERIFIED match count of [candidate] against [curGray] —
+     *  the re-lock probe. Ratio-test descriptor matches are fit with a RANSAC
+     *  homography and only its inliers count: raw descriptor count alone can
+     *  be high on repetitive text/UI patterns while the matches agree on no
+     *  geometry, and re-locking on that restores stale overlays over the
+     *  wrong scene. Read-only: no tracker state changes. */
+    fun verifiedMatchCount(candidate: Anchor, curGray: Mat): Int {
         if (candidate.descriptors.empty()) return 0
         val kps = MatOfKeyPoint()
         val desc = Mat()
@@ -213,18 +217,40 @@ class FrameTracker {
         }
         val knn = mutableListOf<MatOfDMatch>()
         matcher.knnMatch(candidate.descriptors, desc, knn, 2)
-        var count = 0
+        val candidateKps = candidate.keypoints.toArray()
+        val curKps = kps.toArray()
+        val srcPts = ArrayList<Point>()
+        val dstPts = ArrayList<Point>()
         for (pair in knn) {
             val m = pair.toArray()
-            if (m.isEmpty()) {
-                pair.release()
-                continue
+            if (m.isNotEmpty() && !(m.size >= 2 && m[0].distance >= 0.75f * m[1].distance)) {
+                srcPts.add(candidateKps[m[0].queryIdx].pt)
+                dstPts.add(curKps[m[0].trainIdx].pt)
             }
-            if (!(m.size >= 2 && m[0].distance >= 0.75f * m[1].distance)) count++
             pair.release()
         }
         kps.release(); desc.release()
-        return count
+        if (srcPts.size < 4) return 0
+
+        val src = MatOfPoint2f(*srcPts.toTypedArray())
+        val dst = MatOfPoint2f(*dstPts.toTypedArray())
+        val mask = Mat()
+        val h = Calib3d.findHomography(src, dst, Calib3d.RANSAC, TrackerConfig.RANSAC_REPROJ_PX, mask)
+        src.release(); dst.release()
+        if (h.empty()) {
+            mask.release()
+            return 0
+        }
+        val hArr = matToArray(h)
+        h.release()
+        var inliers = 0
+        if (Homography.isValid(hArr)) {
+            for (i in srcPts.indices) {
+                if (mask.get(i, 0)[0].toInt() == 1) inliers++
+            }
+        }
+        mask.release()
+        return inliers
     }
 
     fun clearAnchor() {

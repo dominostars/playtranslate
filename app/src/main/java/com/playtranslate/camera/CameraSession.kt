@@ -753,7 +753,12 @@ class CameraSession(
         relockCursor %= anchorCache.size
         val (anchor, payload) = anchorCache.elementAt(relockCursor)
         relockCursor++
-        val matches = frameTracker.matchCountAgainst(anchor, cn)
+        // RANSAC-verified inliers, not raw descriptor matches: repetitive
+        // text patterns match plentifully without agreeing on any geometry,
+        // and a false re-lock shows stale translations over the wrong scene
+        // (and destroys the cache entry). Verification happens BEFORE the
+        // entry is consumed.
+        val matches = frameTracker.verifiedMatchCount(anchor, cn)
         if (matches < TrackerConfig.MIN_INLIERS_ACQUIRE) return
 
         val id = engine.beginAcquire()
