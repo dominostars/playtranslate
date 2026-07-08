@@ -114,4 +114,19 @@ class OutsideChangeGateTest {
         assertFalse(r.fired)
         assertEquals(0, r.totalSamples)
     }
+
+    @Test
+    fun `fit stays exact at sample counts that overflowed the uncentered form`() {
+        // Regression for the Q16 overflow: the uncentered normal equations
+        // blew past 2^63 around n ≈ 90k (a QHD outside-crop, or a
+        // full-screen box's pinhole region). 250k dimmed samples must still
+        // read as an absorbed ×0.6 ramp, not garbage residuals.
+        val r = analyze(contrasty(250_000) { (it * 6) / 10 })
+        assertFalse(r.fired)
+        assertEquals(0, r.changedSamples)
+        assertTrue(
+            "slope should track the dim, got ${r.fitSlopeQ16}",
+            r.fitSlopeQ16 in (0.55 * 65536).toLong()..(0.65 * 65536).toLong(),
+        )
+    }
 }

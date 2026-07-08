@@ -22,9 +22,9 @@ package com.playtranslate
  * offset-only model (a=1, b=mean delta) there, which is exact for whatever
  * global shift a constant region can express.
  *
- * Pure integer/long math, allocation-free, JVM-tested. Numerically safe up
- * to ~64k samples of 8-bit values (the worst-case Q16 numerator stays
- * under 2^63).
+ * Pure integer/long math, allocation-free, JVM-tested. The centered normal
+ * equations keep every intermediate under 2^63 for any realistic sample
+ * count (safe to n ≈ 10^8 of 8-bit values).
  */
 object PhotometricFit {
 
@@ -58,16 +58,29 @@ object PhotometricFit {
         finish(n, sx, sy, sxx, sxy, out)
     }
 
-    /** Solve the normal equations from the accumulated sums. */
+    /** Solve the normal equations from the accumulated sums.
+     *
+     *  Centered form: dividing the cross-terms by n BEFORE the Q16 shift
+     *  keeps the shifted numerator ≈ n·Cov·2^16 instead of n²·Cov·2^16 —
+     *  the uncentered form overflows Long around n ≈ 90k samples, which a
+     *  QHD outside-crop or a full-screen text box's pinhole region really
+     *  reaches. Centered, the math is safe far beyond any physical display
+     *  (raw sums stay < 2^54 for 8-bit values up to n ≈ 10^8). */
     fun finish(n: Int, sx: Long, sy: Long, sxx: Long, sxy: Long, out: Fit) {
         val nL = n.toLong()
-        val denom = nL * sxx - sx * sx // = n² · Var(expected)
-        if (n == 0 || denom < MIN_EXPECTED_VARIANCE * nL * nL) {
+        if (n == 0) {
             out.slopeQ16 = 1L shl Q
-            out.offset = if (n == 0) 0L else (sy - sx) / nL
+            out.offset = 0L
             return
         }
-        val slopeQ = ((nL * sxy - sx * sy) shl Q) / denom
+        val covN = sxy - sx * sy / nL   // ≈ n · Cov(expected, observed)
+        val varN = sxx - sx * sx / nL   // ≈ n · Var(expected)
+        if (varN < MIN_EXPECTED_VARIANCE * nL) {
+            out.slopeQ16 = 1L shl Q
+            out.offset = (sy - sx) / nL
+            return
+        }
+        val slopeQ = (covN shl Q) / varN
         out.slopeQ16 = slopeQ
         out.offset = (sy - ((slopeQ * sx) shr Q)) / nL
     }

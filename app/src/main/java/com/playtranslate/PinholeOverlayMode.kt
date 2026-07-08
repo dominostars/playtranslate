@@ -286,10 +286,14 @@ class PinholeOverlayMode(
      *  exactly once. A REMOVE lifts a box only on the second consecutive
      *  changed look — one-frame transients (hit-flash, a particle crossing
      *  the holes, a layout-settle glitch) revert to KEEP on the next frame
-     *  and clear their entry instead of blinking the overlay. Keyed by
-     *  [TextBox] value equality; kept boxes are carried by instance across
-     *  cycles, and pruned against the surviving set every apply. */
-    private val pendingRemovals = mutableSetOf<TextBox>()
+     *  and clear their entry instead of blinking the overlay. Keyed by box
+     *  IDENTITY (kept boxes are carried by instance across cycles; replaced
+     *  boxes are fresh instances): value equality would collapse two boxes
+     *  rendering identical fields into one entry, letting the second
+     *  "confirm" off the first's pend and bypass the two-look rule. Pruned
+     *  against the surviving set every apply. */
+    private val pendingRemovals: MutableSet<TextBox> =
+        java.util.Collections.newSetFromMap(java.util.IdentityHashMap())
 
     // ── Unified Cycle ───────────────────────────────────────────────────
 
@@ -754,8 +758,15 @@ class PinholeOverlayMode(
             cachedBoxes = nextBoxes.ifEmpty { null }
             // Pending removals only make sense for boxes that still exist —
             // anything removed this cycle (by any mechanism) or replaced by
-            // a rebuild drops out of hysteresis tracking here.
-            pendingRemovals.retainAll(nextBoxes)
+            // a rebuild drops out of hysteresis tracking here. The prune must
+            // match the set's identity semantics (a List.contains check would
+            // compare by value).
+            if (pendingRemovals.isNotEmpty()) {
+                val survivors: MutableSet<TextBox> =
+                    java.util.Collections.newSetFromMap(java.util.IdentityHashMap())
+                survivors.addAll(nextBoxes)
+                pendingRemovals.retainAll(survivors)
+            }
             val anyChanged = allRemovals.isNotEmpty()
 
             if (debug && (anyChanged || farOcrGroups.isNotEmpty())) {
