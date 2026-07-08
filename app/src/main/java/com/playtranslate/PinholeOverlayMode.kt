@@ -88,6 +88,8 @@ class PinholeOverlayMode(
         /** Average per-channel fit slope (Q16; 65536 = 1.0). Well off 1.0
          *  with result=KEEP is a brightness ramp being absorbed. */
         val fitSlopeQ16: Long = 1L shl PhotometricFit.Q,
+        /** Distinct glyph anchors with changed samples (audit A7). */
+        val glyphAnchorsHit: Int = 0,
     )
 
     override fun start() {
@@ -461,7 +463,7 @@ class PinholeOverlayMode(
                 if (gateBoxes.any { it.translatedText.isEmpty() }) return@gate
 
                 val outcomes = Array(gateBoxes.size) { i ->
-                    checkPinholes(raw, gateRef, bitmapRects[i])
+                    checkPinholes(raw, gateRef, bitmapRects[i], gateBoxes[i])
                 }
                 val allKeep = outcomes.all { it.result == PinholeResult.KEEP }
                 val crop = OverlayToolkit.computeOcrCrop(
@@ -662,7 +664,7 @@ class PinholeOverlayMode(
                     // gate-time snapshot survives updateCleanRef), saves the
                     // second per-box region read.
                     val outcome = pinholePre?.getOrNull(idx)
-                        ?: checkPinholes(raw, cleanRef, bitmapRects[idx])
+                        ?: checkPinholes(raw, cleanRef, bitmapRects[idx], box)
                     // Removal hysteresis (audit A3): the first changed look
                     // only marks the box pending; the removal applies on the
                     // second consecutive changed look. A one-frame transient
@@ -688,6 +690,7 @@ class PinholeOverlayMode(
                             "D$displayId c$cycleNum box$idx $phase " +
                                 "text=\"${box.sourceText.take(20)}\" " +
                                 "pct=$pctStr% changed=${outcome.changed}/${outcome.total} " +
+                                "glyphAnchors=${outcome.glyphAnchorsHit} " +
                                 "maxResidual=${outcome.maxDelta} " +
                                 "a=%.2f ".format(outcome.fitSlopeQ16 / 65536.0) +
                                 "rect=(${r.left},${r.top},${r.right},${r.bottom})"
@@ -1069,7 +1072,7 @@ class PinholeOverlayMode(
      * None of this is done today. Identity scale only.
      */
     private fun checkPinholes(
-        raw: Bitmap, cleanRef: Bitmap, bitmapRect: Rect
+        raw: Bitmap, cleanRef: Bitmap, bitmapRect: Rect, box: TextBox
     ): PinholeOutcome {
         val keepZero = PinholeOutcome(PinholeResult.KEEP, 0f, 0, 0, 0)
         val overlay = overlayBitmap ?: return keepZero
@@ -1149,6 +1152,16 @@ class PinholeOverlayMode(
         PhotometricFit.finish(totalPinholes, sxG, syG, sxxG, sxyG, fitG)
         PhotometricFit.finish(totalPinholes, sxB, syB, sxxB, sxyB, fitB)
 
+        // Glyph anchors (audit A7): approximated text-line probe points.
+        // Changed samples near two DISTINCT anchors mark the box suspect
+        // regardless of area percentage — a swapped digit in a wide box
+        // moves far too few samples for the pct rule but must land on the
+        // text rows. Hits are tracked in one Long bitset.
+        val vertical =
+            box.orientation == com.playtranslate.language.TextOrientation.VERTICAL
+        val anchors = GlyphAnchors.forBox(bitmapRect, box.lineCount, vertical)
+        var anchorHits = 0L
+
         var changedPinholes = 0
         var maxDelta = 0
         for (py in 0 until regionH) {
@@ -1170,18 +1183,29 @@ class PinholeOverlayMode(
                     dg > PinholeCalibration.SPLATTER_THRESHOLD ||
                     db > PinholeCalibration.SPLATTER_THRESHOLD) {
                     changedPinholes++
+                    if (anchors.isNotEmpty()) {
+                        val a = GlyphAnchors.anchorNear(anchors, left + px, top + py)
+                        if (a in 0 until GlyphAnchors.MAX_ANCHORS) {
+                            anchorHits = anchorHits or (1L shl a)
+                        }
+                    }
                 }
             }
         }
 
         val pct = changedPinholes.toFloat() / totalPinholes
-        val result = if (pct >= PinholeCalibration.PINHOLE_CHANGE_PCT) {
+        val glyphAnchorsHit = java.lang.Long.bitCount(anchorHits)
+        val result = if (pct >= PinholeCalibration.PINHOLE_CHANGE_PCT ||
+            glyphAnchorsHit >= PinholeCalibration.GLYPH_PROBE_MIN_ANCHORS
+        ) {
             PinholeResult.REMOVE
         } else {
             PinholeResult.KEEP
         }
         val avgSlope = (fitR.slopeQ16 + fitG.slopeQ16 + fitB.slopeQ16) / 3
-        return PinholeOutcome(result, pct, changedPinholes, totalPinholes, maxDelta, avgSlope)
+        return PinholeOutcome(
+            result, pct, changedPinholes, totalPinholes, maxDelta, avgSlope, glyphAnchorsHit,
+        )
     }
 
     /**

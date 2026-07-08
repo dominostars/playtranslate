@@ -158,6 +158,28 @@ object PinholeCalibration {
      *  evidence for eventually deleting the net. */
     const val GATE_RECONCILE_EVERY_SKIPS = 25
 
+    // ── A7 glyph-anchored probes (GlyphAnchors + checkPinholes) ──────────
+
+    /** Anchor points per approximated text line (start, 1/3, 2/3, end). */
+    const val GLYPH_ANCHORS_PER_LINE = 4
+
+    /** Chebyshev radius (px) around an anchor within which a changed sample
+     *  counts as a hit on that anchor. At PINHOLE_SPACING=3 this covers the
+     *  1–2 nearest actual holes. */
+    const val GLYPH_PROBE_RADIUS_PX = 4
+
+    /** Distinct anchors with changed samples for a box to be suspect
+     *  regardless of area percentage — the sensitivity rule that catches a
+     *  single swapped digit in a wide box (the stale-counter false-KEEP).
+     *  Two DISTINCT anchors, not two samples: a localized animation blob
+     *  near one anchor cluster shouldn't qualify. Removal still passes
+     *  two-look hysteresis downstream. */
+    const val GLYPH_PROBE_MIN_ANCHORS = 2
+
+    /** Inset from the rendered rect (which includes ~14px of box padding)
+     *  before laying anchor rows, biasing anchors toward actual ink. */
+    const val GLYPH_ANCHOR_INSET_PX = 8
+
     /** Game-input burst window (audit A4): after a tap/gamepad press, cycles
      *  pace at the backend floor for this long instead of the user interval.
      *  Input is the strongest change predictor available; the burst buys
