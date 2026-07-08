@@ -441,6 +441,7 @@ class MainActivity :
             }
         }
         setContentView(R.layout.activity_main)
+        DrawRateProbe.attach(window.decorView, "mainActivity")
         // Pad for system chrome only (status bar top, cutout sides, nav bar
         // bottom). IME insets are deliberately NOT folded in here and the
         // listener returns a NON-CONSUMED but STRIPPED WindowInsetsCompat —

@@ -12,6 +12,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import androidx.core.view.doOnLayout
+import com.playtranslate.DrawRateProbe
 import com.playtranslate.displaySizePx
 
 /**
@@ -102,6 +103,7 @@ class OverlayHost(
             overlayWindows += OverlayHandle(view, wm, params, displayId)
             logOverlayGeometry(view, params, displayId, fullScreen)
             logFocusableOverlay("add", view, params, displayId)
+            DrawRateProbe.attach(view, "${view.javaClass.simpleName}@d$displayId")
             true
         } catch (e: Exception) {
             Log.w(TAG, "addOverlayWindow failed: ${e.message}")
