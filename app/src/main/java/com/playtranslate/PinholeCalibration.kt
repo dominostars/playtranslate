@@ -124,8 +124,19 @@ object PinholeCalibration {
     /** Grid spacing in view pixels between adjacent pinhole positions. */
     const val PINHOLE_SPACING = 3
 
-    /** Per-channel delta threshold for classifying a pinhole as "changed". */
-    const val SPLATTER_THRESHOLD = 60
+    /** Per-channel threshold for classifying a pinhole as "changed".
+     *
+     *  Since the A3 rework this thresholds the RESIDUAL from the per-box
+     *  photometric fit, not the raw |raw − predicted| delta. Residual space
+     *  runs smaller than delta space twice over: the fit removes systematic
+     *  components (so honest-match noise lands below the old 20–30 ceiling),
+     *  and on a real change the fit legally soaks a few percent of the
+     *  changed samples' magnitude before the clamp stops it. The original
+     *  60 — calibrated for raw deltas — silently under-detected text swaps
+     *  in the field (2026-07-08: recorded swap deltas cluster near 50–60;
+     *  all-KEEP on live content). 45 restores sensitivity while keeping
+     *  ≥1.5× headroom over honest noise. */
+    const val SPLATTER_THRESHOLD = 45
 
     // ── A2 change-gate constants (OutsideChangeGate + the runCycle gate) ──
 

@@ -37,6 +37,13 @@ object PhotometricFit {
      *  both stabler and exact for anything a near-constant region can show. */
     const val MIN_EXPECTED_VARIANCE = 25L
 
+    /** Plausible-photometry bounds for the fit (see [finish]). Measured dim
+     *  ramps sit near a≈0.6; 0.35 leaves room for deeper dim stages while
+     *  still refusing content-scale tilts. */
+    const val MIN_SLOPE = 0.35
+    const val MAX_SLOPE = 1.6
+    const val MAX_OFFSET = 96L
+
     class Fit(
         @JvmField var slopeQ16: Long = 1L shl Q,
         @JvmField var offset: Long = 0L,
@@ -77,12 +84,23 @@ object PhotometricFit {
         val varN = sxx - sx * sx / nL   // ≈ n · Var(expected)
         if (varN < MIN_EXPECTED_VARIANCE * nL) {
             out.slopeQ16 = 1L shl Q
-            out.offset = (sy - sx) / nL
+            out.offset = ((sy - sx) / nL).coerceIn(-MAX_OFFSET, MAX_OFFSET)
             return
         }
-        val slopeQ = (covN shl Q) / varN
+        // Clamp to the photometrically-plausible range. The fit exists to
+        // absorb brightness pipelines (measured dim slope ≈ 0.6; deep dim
+        // stages a bit lower; night light shifts offsets) — NOT to absorb
+        // content. A content change tilts the unconstrained least-squares
+        // line toward the changed samples and shaves their residuals under
+        // the threshold (field regression 2026-07-08: under-box text swaps
+        // read all-KEEP). Bounding (a, b) caps how much change the fit can
+        // ever soak while leaving every observed brightness event inside
+        // the box.
+        val slopeQ = ((covN shl Q) / varN)
+            .coerceIn((MIN_SLOPE * (1 shl Q)).toLong(), (MAX_SLOPE * (1 shl Q)).toLong())
         out.slopeQ16 = slopeQ
-        out.offset = (sy - ((slopeQ * sx) shr Q)) / nL
+        out.offset = ((sy - ((slopeQ * sx) shr Q)) / nL)
+            .coerceIn(-MAX_OFFSET, MAX_OFFSET)
     }
 
     /** Residual of one (expected, observed) pair under [fit]. */

@@ -116,6 +116,23 @@ class OutsideChangeGateTest {
     }
 
     @Test
+    fun `fit clamp stops a content change from being absorbed as photometry`() {
+        // 60% identity samples + 40% anti-correlated (a large content swap).
+        // Unconstrained least squares tilts the line far below any plausible
+        // brightness transform and soaks the change; the clamp pins the fit
+        // inside photometric bounds so the swapped samples stay hot.
+        val base = contrasty(120) { it }
+        val swapped = contrasty(80) { 255 - it }
+        val r = analyze(base + swapped)
+        assertTrue(r.fired)
+        assertTrue(
+            "clamped slope expected, got ${r.fitSlopeQ16}",
+            r.fitSlopeQ16 >= (PhotometricFit.MIN_SLOPE * 65536).toLong(),
+        )
+        assertTrue("most swapped samples must stay hot", r.changedSamples >= 60)
+    }
+
+    @Test
     fun `fit stays exact at sample counts that overflowed the uncentered form`() {
         // Regression for the Q16 overflow: the uncentered normal equations
         // blew past 2^63 around n ≈ 90k (a QHD outside-crop, or a

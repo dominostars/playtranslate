@@ -504,15 +504,14 @@ class PinholeOverlayMode(
                                 (if (outside.pendingSettle) " settling" else "") + ")"
                         )
                     }
-                    // Skipped cycles honor the input burst too: right after a
-                    // press the game is often still animating (gate skips),
-                    // and the settle confirmation wants floor-paced looks —
-                    // that fast pacing IS the A4 payoff.
-                    return if (android.os.SystemClock.uptimeMillis() < inputBurstUntilMs) {
-                        mgr.minCaptureIntervalMs
-                    } else {
-                        prefs.captureIntervalMs
-                    }
+                    // Skipped cycles pace at the floor whenever the next look
+                    // matters: during an input burst, and while any block is
+                    // mid-settle — K=2 settle discipline at floor pacing
+                    // costs ~0.5s; at interval pacing it tripled reaction
+                    // time in the field (2026-07-08 regression).
+                    val fastSkip = outside.pendingSettle ||
+                        android.os.SystemClock.uptimeMillis() < inputBurstUntilMs
+                    return if (fastSkip) mgr.minCaptureIntervalMs else prefs.captureIntervalMs
                 }
                 pinholePre = outcomes
                 if (debug) {
@@ -921,8 +920,15 @@ class PinholeOverlayMode(
             }
             val inInputBurst =
                 android.os.SystemClock.uptimeMillis() < inputBurstUntilMs
-            return if (anyRemoved || inInputBurst) mgr.minCaptureIntervalMs
-            else prefs.captureIntervalMs
+            // Floor pacing also covers pending one-look removals: the
+            // confirming look should land ~250ms later, not a full interval
+            // — two-look hysteresis at interval pacing doubled stale-overlay
+            // latency in the field.
+            return if (anyRemoved || inInputBurst || pendingRemovals.isNotEmpty()) {
+                mgr.minCaptureIntervalMs
+            } else {
+                prefs.captureIntervalMs
+            }
         } finally {
             if (!raw.isRecycled) raw.recycle()
         }

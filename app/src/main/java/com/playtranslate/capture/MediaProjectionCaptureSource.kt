@@ -87,17 +87,21 @@ class MediaProjectionCaptureSource(
      * helper never re-locks.
      */
     private suspend fun cleanCapture(displayId: Int): Bitmap? {
-        // Seq observed before the blank: any frame delivered after it was
-        // composited with our overlays already blanking (the blank itself
-        // forces a composition), so the served frame provably post-dates the
-        // hide instead of relying on a fixed delay to outlast the pipeline.
-        val seqBeforeBlank = controller.deliverySeqNow
         val host = CaptureBackendResolver.active().overlayHost
         val state = host?.prepareForCleanCapture(displayId)
+        // Seq observed AFTER the blank is submitted (review finding: sampling
+        // it before prepareForCleanCapture let any game frame that raced the
+        // baseline satisfy the freshness predicate on animating content).
+        // Frames composited within the blank's commit latency can still
+        // qualify — the vsync wait below bridges that residual window, as it
+        // always has; a commit-fence would close it fully if it ever shows
+        // up in practice. The blank itself forces a composition, so a
+        // qualifying delivery is guaranteed on a healthy stream.
+        val seqAtBlank = controller.deliverySeqNow
         return try {
             waitVsync(2)
             warnIfNotProjected(displayId)
-            controller.captureFrameNewerThan(seqBeforeBlank)
+            controller.captureFrameNewerThan(seqAtBlank)
         } finally {
             if (host != null && state != null) host.restoreAfterCapture(state)
         }
