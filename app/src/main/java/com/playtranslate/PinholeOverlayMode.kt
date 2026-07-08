@@ -92,8 +92,42 @@ class PinholeOverlayMode(
 
     override fun start() {
         currentJob?.cancel()
-        CaptureBackendResolver.active().startInputMonitoring(displayId) { dismiss() }
+        CaptureBackendResolver.active().startInputMonitoring(displayId) { onGameInput() }
         scheduleNextCycle()
+    }
+
+    /** Timestamp until which cycles pace at the backend floor because game
+     *  input predicted a change (audit A4). */
+    private var inputBurstUntilMs = 0L
+    private var lastInputKickMs = 0L
+
+    /**
+     * Game input as a scoped change hint (audit A4), replacing the previous
+     * dismiss-everything semantics: hide nothing, reset nothing. The burst
+     * window makes the next ~2.5s of cycles pace at the backend floor, the
+     * force opens the delivery gate, and the rate-limited kick wakes a
+     * parked loop immediately — so an input whose response is subtle (or
+     * still rendering) gets looked at right away instead of a full interval
+     * later. Detection then lifts only the regions that actually changed:
+     * static HUD boxes survive a tap, and tapping through dialogue no
+     * longer blanks every overlay on screen. Whether touches reach this at
+     * all is still gated by the touches-refresh pref at the sentinel layer,
+     * exactly as before; gamepad keys (accessibility backend) always do.
+     */
+    private fun onGameInput() {
+        val now = android.os.SystemClock.uptimeMillis()
+        inputBurstUntilMs = now + PinholeCalibration.INPUT_BURST_MS
+        forceNextCycle = true
+        val floor = liveSource()?.minCaptureIntervalMs ?: 500L
+        if (now - lastInputKickMs >= floor) {
+            lastInputKickMs = now
+            // Same cancel-and-relaunch the old dismiss path used; the new
+            // job's gate sees the force and runs at once. Cancelling a
+            // mid-flight cycle (even mid-translation) matches the previous
+            // input behavior.
+            currentJob?.cancel()
+            scheduleNextCycle()
+        }
     }
 
     private fun scheduleNextCycle(delayMs: Long = 0) {
@@ -194,6 +228,7 @@ class PinholeOverlayMode(
         overlayBitmap = null
         pendingRemovals.clear()
         outsideGrid.reset()
+        inputBurstUntilMs = 0L
         // The gate is only meaningful relative to a previous look at the
         // screen. After a reset the model is empty (overlays hidden, caches
         // dropped), so the next cycle must run even in delivery silence —
@@ -862,7 +897,10 @@ class PinholeOverlayMode(
                         "removed=${allRemovals.size} far=${farOcrGroups.size}"
                 )
             }
-            return if (anyRemoved) mgr.minCaptureIntervalMs else prefs.captureIntervalMs
+            val inInputBurst =
+                android.os.SystemClock.uptimeMillis() < inputBurstUntilMs
+            return if (anyRemoved || inInputBurst) mgr.minCaptureIntervalMs
+            else prefs.captureIntervalMs
         } finally {
             if (!raw.isRecycled) raw.recycle()
         }

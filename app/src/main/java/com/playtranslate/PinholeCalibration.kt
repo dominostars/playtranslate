@@ -158,6 +158,14 @@ object PinholeCalibration {
      *  evidence for eventually deleting the net. */
     const val GATE_RECONCILE_EVERY_SKIPS = 25
 
+    /** Game-input burst window (audit A4): after a tap/gamepad press, cycles
+     *  pace at the backend floor for this long instead of the user interval.
+     *  Input is the strongest change predictor available; the burst buys
+     *  fast settle-confirmation and pickup for whatever the input caused,
+     *  while A3's per-region detection ensures only regions that actually
+     *  changed are lifted — static HUD boxes survive. */
+    const val INPUT_BURST_MS = 2_500L
+
     /** Fraction of pinholes in a box that must change to mark it REMOVE.
      *  Sits between the old soft-DIRTY threshold (0.03) and the old
      *  confident-REMOVE threshold (0.10), leaning toward the sensitive
