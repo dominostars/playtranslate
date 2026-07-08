@@ -444,17 +444,15 @@ class CameraSession(
             val colorRef = keyframe.scale(auW / COLOR_SCALE, auH / COLOR_SCALE, false)
             keyframe.recycle()
             val gated = ocr?.copy(groups = groups)
-            synchronized(stateLock) {
-                // The GATED result is what everyone downstream must see (both
-                // flavors, re-flavor on toggle, track regions) — one group set.
-                cachedOcr = gated
-                cachedColorRef = colorRef
-                cachedAuW = auW
-                cachedAuH = auH
-            }
 
             if (groups.isEmpty()) {
-                // finally's finish-as-failed completes the acquire.
+                // No text in this scene: the re-flavor cache must not keep
+                // describing a previous one. finally completes the acquire.
+                synchronized(stateLock) {
+                    cachedOcr = null
+                    cachedColorRef = null
+                    lastBuilt = null
+                }
                 withContext(Dispatchers.Main) { warpView?.clearRegions() }
                 postHint(true)
                 return
@@ -483,12 +481,28 @@ class CameraSession(
                     System.currentTimeMillis(),
                 )
                 val seeded = frameTracker.installAnchor(anchor, cnKeyframe)
-                engine.finishAcquire(acquireId, locked = seeded >= TrackerConfig.MIN_INLIERS_ACQUIRE)
-                Log.d(TAG, "acquire#$acquireId: anchor #${anchor.id} seeded $seeded correspondences")
-                true
+                val locked = seeded >= TrackerConfig.MIN_INLIERS_ACQUIRE
+                engine.finishAcquire(acquireId, locked = locked)
+                Log.d(TAG, "acquire#$acquireId: anchor #${anchor.id} seeded $seeded correspondences locked=$locked")
+                if (!locked) {
+                    // Live-frame seeding failed (user moved away during the
+                    // slow OCR): the scene this keyframe describes is GONE.
+                    // Drop the dead anchor now; returning false below stops
+                    // its OCR output from being rasterized/cached/shown.
+                    frameTracker.clearAnchor()
+                }
+                locked
             } ?: false
 
             if (!installed) return
+            // The re-flavor cache describes the CURRENTLY ANCHORED scene —
+            // set only after the lock actually succeeded.
+            synchronized(stateLock) {
+                cachedOcr = gated
+                cachedColorRef = colorRef
+                cachedAuW = auW
+                cachedAuH = auH
+            }
             buildAndShow(gated!!, colorRef, auW, auH, gen)
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
@@ -501,6 +515,10 @@ class CameraSession(
             // acquires suppressed. Fire-and-forget (not a suspend call: those
             // throw immediately inside a cancelled coroutine) and idempotent
             // (a no-op when the install path already finished this id).
+            // Early exits (stale generation, exceptions, cancellation) reach
+            // here before the normal recycle point — a camera keyframe is
+            // multi-MB, so free it promptly rather than waiting on GC.
+            if (!keyframe.isRecycled) keyframe.recycle()
             if (!analysisExecutor.isShutdown) {
                 // Serialized behind any pending install block, so this can't
                 // race a cancelled-but-still-running use of cnKeyframe.
