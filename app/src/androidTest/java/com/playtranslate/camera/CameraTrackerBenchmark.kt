@@ -237,9 +237,11 @@ class CameraTrackerBenchmark {
                 ) requested = true
             }
             assertTrue(requested)
+            val acquireId = engine.beginAcquire(nowMs = nowMs)
+            assertTrue(acquireId != 0L)
             val anchor = tracker.buildAnchor(base, 1L, 1080, 1920, 0.5, nowMs)
             val seeded = tracker.installAnchor(anchor, base)
-            engine.onAcquireFinished(locked = seeded >= TrackerConfig.MIN_INLIERS_ACQUIRE, nowMs = nowMs)
+            engine.finishAcquire(acquireId, locked = seeded >= TrackerConfig.MIN_INLIERS_ACQUIRE, nowMs = nowMs)
             assertTrue("only $seeded correspondences seeded", seeded >= TrackerConfig.MIN_INLIERS_ACQUIRE)
             // Two tracked regions over text rows (CN coords).
             tracker.setTrackRegions(

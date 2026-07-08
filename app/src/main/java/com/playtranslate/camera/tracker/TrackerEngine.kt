@@ -75,9 +75,42 @@ class TrackerEngine(
     private var emaInliers = 0f
     private var deadAnchorStreak = 0
 
-    /** Session callback: an acquire it launched finished. [locked] true when
-     *  a new anchor was installed with enough inliers to trust. */
-    fun onAcquireFinished(locked: Boolean, nowMs: Long = clock()) {
+    // ── Acquire lifecycle: the engine is the ONE writer ────────────────────
+    // A FrameDecision.requestAcquire is an OFFER; nothing changes until the
+    // session actually launches and calls [beginAcquire]. Completion must
+    // quote the id it was given — a completion whose id is no longer active
+    // (watchdog fired, reset happened) is structurally ignored. This
+    // replaces the session-side acquireInFlight flag whose divergence from
+    // engine state once pinned the machine for 47 s.
+
+    private var activeAcquireId = 0L
+    private var nextAcquireId = 1L
+
+    /** The session IS launching an acquire now. Returns the acquire id to
+     *  quote on completion, or 0 if refused (one already active). */
+    fun beginAcquire(nowMs: Long = clock()): Long {
+        if (state == TrackState.ACQUIRING) return 0L
+        state = TrackState.ACQUIRING
+        lastAcquireRequestMs = nowMs
+        activeAcquireId = nextAcquireId++
+        return activeAcquireId
+    }
+
+    /** True while [acquireId] is the acquire the engine is waiting on. The
+     *  session checks this before installing an anchor from a completion. */
+    fun isAcquireActive(acquireId: Long): Boolean =
+        state == TrackState.ACQUIRING && acquireId == activeAcquireId
+
+    /** Completion for [acquireId]; ignored unless it is still the active
+     *  acquire. [locked] true when a new anchor was installed with enough
+     *  live-frame matches to trust. */
+    fun finishAcquire(acquireId: Long, locked: Boolean, nowMs: Long = clock()) {
+        if (!isAcquireActive(acquireId)) return
+        activeAcquireId = 0L
+        onAcquireFinished(locked, nowMs)
+    }
+
+    private fun onAcquireFinished(locked: Boolean, nowMs: Long = clock()) {
         if (locked) {
             state = TrackState.LOCKED
             anchorCreatedAtMs = nowMs
@@ -98,6 +131,7 @@ class TrackerEngine(
 
     fun reset() {
         state = TrackState.IDLE
+        activeAcquireId = 0L
         smoothedH = null
         belowKeepStreak = 0
         lostFrames = 0
@@ -125,12 +159,8 @@ class TrackerEngine(
 
         return when (state) {
             TrackState.IDLE -> {
-                if (isSettled() && canAcquire && cooldownElapsed(nowMs) && backoffElapsed(nowMs)) {
-                    startAcquire(nowMs)
-                    decision(null, requestAcquire = true, m)
-                } else {
-                    decision(null, requestAcquire = false, m)
-                }
+                val offer = isSettled() && canAcquire && cooldownElapsed(nowMs) && backoffElapsed(nowMs)
+                decision(null, requestAcquire = offer, m)
             }
 
             TrackState.ACQUIRING -> {
@@ -138,6 +168,7 @@ class TrackerEngine(
                 // machine — every trigger is disabled while ACQUIRING.
                 if (nowMs - lastAcquireRequestMs > TrackerConfig.ACQUIRE_TIMEOUT_MS) {
                     state = TrackState.IDLE
+                    activeAcquireId = 0L
                     smoothedH = null
                     decision(null, requestAcquire = false, m)
                 } else {
@@ -239,8 +270,7 @@ class TrackerEngine(
             val scaleDrift = scale > TrackerConfig.SCALE_DRIFT_REACQUIRE ||
                 scale < 1f / TrackerConfig.SCALE_DRIFT_REACQUIRE
             if (stale || scaleDrift || regionCollapsed) {
-                startAcquire(nowMs)
-                acquire = true
+                acquire = true // an OFFER — the session launches, then beginAcquire()
             }
         }
         // Emit the last smoothed H even on a briefly-bad frame — a short
@@ -274,11 +304,6 @@ class TrackerEngine(
             TrackerConfig.NO_TEXT_BACKOFF_MAX_MS,
         )
         return nowMs - lastAcquireRequestMs >= backoff
-    }
-
-    private fun startAcquire(nowMs: Long) {
-        state = TrackState.ACQUIRING
-        lastAcquireRequestMs = nowMs
     }
 
     private fun cooldownElapsed(nowMs: Long): Boolean =

@@ -46,18 +46,22 @@ class TrackerEngineTest {
     /** No-signal frame (rematch/first frame): unknown displacement. */
     private val noTrack = TrackMeasurement(null, 0, -1.0, 0)
 
-    /** Drive an engine from IDLE into LOCKED via a successful acquire. */
-    private fun lockEngine(e: TrackerEngine) {
-        var acquired = false
-        repeat(TrackerConfig.SETTLE_FRAMES + 1) {
-            if (e.onFrame(probe(STILL_DISP)).requestAcquire) {
-                acquired = true
-                return@repeat
-            }
+    /** Settle until the engine OFFERS an acquire; fail if it never does. */
+    private fun settleUntilOffer(e: TrackerEngine): Boolean {
+        repeat(TrackerConfig.SETTLE_FRAMES + 2) {
+            if (e.onFrame(probe(STILL_DISP)).requestAcquire) return true
         }
-        assertTrue("engine never requested the initial acquire", acquired)
+        return false
+    }
+
+    /** Drive an engine from IDLE into LOCKED via a successful acquire,
+     *  using the full offer → begin → finish protocol. */
+    private fun lockEngine(e: TrackerEngine) {
+        assertTrue("engine never offered the initial acquire", settleUntilOffer(e))
+        val id = e.beginAcquire(nowMs = nowMs)
+        assertTrue(id != 0L)
         assertEquals(TrackState.ACQUIRING, e.state)
-        e.onAcquireFinished(locked = true, nowMs = nowMs)
+        e.finishAcquire(id, locked = true, nowMs = nowMs)
         assertEquals(TrackState.LOCKED, e.state)
     }
 
@@ -108,7 +112,8 @@ class TrackerEngineTest {
         // After the backoff, retry fires...
         nowMs += TrackerConfig.NO_TEXT_BACKOFF_BASE_MS
         assertTrue(e.onFrame(probe(STILL_DISP)).requestAcquire)
-        e.onAcquireFinished(locked = false, nowMs = nowMs)
+        val id2 = e.beginAcquire(nowMs = nowMs)
+        e.finishAcquire(id2, locked = false, nowMs = nowMs)
         // ...and the second failure doubles the wait.
         nowMs += TrackerConfig.NO_TEXT_BACKOFF_BASE_MS + 1
         repeat(TrackerConfig.SETTLE_FRAMES + 2) {
@@ -126,12 +131,10 @@ class TrackerEngineTest {
     }
 
     private fun lockAttemptFail(e: TrackerEngine) {
-        var acquired = false
-        repeat(TrackerConfig.SETTLE_FRAMES + 1) {
-            if (e.onFrame(probe(STILL_DISP)).requestAcquire) acquired = true
-        }
-        assertTrue(acquired)
-        e.onAcquireFinished(locked = false, nowMs = nowMs)
+        assertTrue(settleUntilOffer(e))
+        val id = e.beginAcquire(nowMs = nowMs)
+        assertTrue(id != 0L)
+        e.finishAcquire(id, locked = false, nowMs = nowMs)
         assertEquals(TrackState.IDLE, e.state)
     }
 
@@ -204,6 +207,9 @@ class TrackerEngineTest {
         }
         assertTrue(acquired)
         assertNotNull(lastH)
+        // An offer does NOT transition; only the session's launch does.
+        assertEquals(TrackState.LOCKED, e.state)
+        assertTrue(e.beginAcquire(nowMs = nowMs) != 0L)
         assertEquals(TrackState.ACQUIRING, e.state)
     }
 
@@ -230,11 +236,14 @@ class TrackerEngineTest {
             if (e.onFrame(goodMeasurement()).requestAcquire) acquired = true
         }
         assertTrue(acquired)
+        assertTrue(e.beginAcquire(nowMs = nowMs) != 0L)
         assertEquals(TrackState.ACQUIRING, e.state)
+        // While ACQUIRING: no further offers, and a second begin is refused.
         nowMs += TrackerConfig.ACQUIRE_COOLDOWN_MS + 1
         repeat(5) {
             assertFalse(e.onFrame(goodMeasurement()).requestAcquire)
         }
+        assertEquals(0L, e.beginAcquire(nowMs = nowMs))
     }
 
     @Test
@@ -325,16 +334,18 @@ class TrackerEngineTest {
     @Test
     fun acquiringWatchdogRevertsToIdle() {
         val e = engine()
-        var acquired = false
-        repeat(TrackerConfig.SETTLE_FRAMES + 1) {
-            if (e.onFrame(probe(STILL_DISP)).requestAcquire) acquired = true
-        }
-        assertTrue(acquired)
+        assertTrue(settleUntilOffer(e))
+        val id = e.beginAcquire(nowMs = nowMs)
+        assertTrue(id != 0L)
         assertEquals(TrackState.ACQUIRING, e.state)
         nowMs += TrackerConfig.ACQUIRE_TIMEOUT_MS + 1
         val d = e.onFrame(noTrack)
         assertEquals(TrackState.IDLE, d.state)
         assertNull(d.hCn)
+        // The watchdog also invalidated the id: the late completion is a
+        // structural no-op instead of a resurrection.
+        e.finishAcquire(id, locked = true, nowMs = nowMs)
+        assertEquals(TrackState.IDLE, e.state)
     }
 
     @Test
@@ -363,6 +374,8 @@ class TrackerEngineTest {
             if (e.onFrame(goodMeasurement()).requestAcquire) fired = true
         }
         assertTrue(fired)
+        val id = e.beginAcquire(nowMs = nowMs)
+        assertTrue(id != 0L)
         assertEquals(TrackState.ACQUIRING, e.state)
         assertNotNull(e.onFrame(goodMeasurement(disp = MOVING_DISP)).hCn)
         // User walks away while the (slow) OCR runs: after the hysteresis the
@@ -373,7 +386,7 @@ class TrackerEngineTest {
         assertNull(d.hCn)
         assertEquals(TrackState.ACQUIRING, d.state)
         // The late completion for the departed scene fails to lock → Idle.
-        e.onAcquireFinished(locked = false, nowMs = nowMs)
+        e.finishAcquire(id, locked = false, nowMs = nowMs)
         assertEquals(TrackState.IDLE, e.state)
     }
 

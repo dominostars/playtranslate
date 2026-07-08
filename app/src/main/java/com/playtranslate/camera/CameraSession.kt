@@ -34,7 +34,6 @@ import com.playtranslate.language.stackableTargetScript
 import com.playtranslate.language.targetSupportsVerticalText
 import com.playtranslate.ui.TextBox
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
@@ -102,9 +101,10 @@ class CameraSession(
     private val analysisExecutor = Executors.newSingleThreadExecutor()
 
     /** Bumped on mode/language change and shutdown; in-flight acquires check
-     *  it before publishing so stale results drop silently. */
+     *  it before PUBLISHING so stale display work drops silently. Acquire
+     *  lifecycle itself is owned by the engine (begin/finish ids) — this
+     *  guards only the display path. */
     private val generation = AtomicInteger(0)
-    private val acquireInFlight = AtomicBoolean(false)
     private val nextAnchorId = AtomicLong(1L)
 
     // OpenCV must be loaded BEFORE the tracker fields below construct their
@@ -231,26 +231,21 @@ class CameraSession(
             // every other frame so the two don't starve each other (Moto G:
             // analysis fps fell to ~10-15 and OCR stretched to 9 s under
             // contention); the overlay keeps its last matrices on skips.
-            if (acquireInFlight.get() && frameCount % 2 == 1L) return
+            // Engine state IS the acquire-in-flight truth (single writer).
+            if (engine.state == TrackState.ACQUIRING && frameCount % 2 == 1L) return
             val cn = cnConverter.convert(proxy)
             val m = frameTracker.track(cn)
-            // canAcquire keeps the engine's state machine and this session's
-            // launch capacity in agreement: a request granted while an acquire
-            // was already in flight used to pin the engine in ACQUIRING
-            // forever (the dropped launch meant no completion ever arrived).
-            // AF scans also veto acquires — a keyframe mid-scan is defocused.
-            val decision = engine.onFrame(m, canAcquire = !acquireInFlight.get() && !afScanning)
+            // AF scans veto acquire offers — a keyframe mid-scan is defocused.
+            val decision = engine.onFrame(m, canAcquire = !afScanning)
 
             // Keep tracker and engine agreeing about anchor existence. When
-            // the engine settles on IDLE (dead anchor, lost-decay) the
-            // tracker must drop its anchor too — otherwise track() keeps
+            // the engine settles on IDLE (dead anchor, lost-decay, watchdog)
+            // the tracker must drop its anchor too — otherwise track() keeps
             // futilely rematching the corpse instead of running the motion
             // probe, the median displacement stays unknown, the settle gate
             // never opens, and IDLE becomes permanent (observed: a minute of
             // disp=-1 with text on screen).
-            if (decision.state == TrackState.IDLE && frameTracker.hasAnchor() &&
-                !acquireInFlight.get()
-            ) {
+            if (decision.state == TrackState.IDLE && frameTracker.hasAnchor()) {
                 frameTracker.clearAnchor()
             }
 
@@ -266,12 +261,18 @@ class CameraSession(
                 )
             }
 
-            if (decision.requestAcquire && acquireInFlight.compareAndSet(false, true)) {
-                val keyframe = toUprightBitmap(proxy)
-                val cnKeyframe = cn.clone()
-                val gen = generation.get()
-                Log.d(TAG, "acquire: keyframe ${keyframe.width}x${keyframe.height} state=${decision.state}")
-                scope.launch(Dispatchers.Default) { runAcquire(keyframe, cnKeyframe, gen) }
+            if (decision.requestAcquire) {
+                // A decision is an OFFER; the engine transitions only when we
+                // commit to launching (beginAcquire), and completions must
+                // quote the id — stale ones are structurally ignored.
+                val acquireId = engine.beginAcquire()
+                if (acquireId != 0L) {
+                    val keyframe = toUprightBitmap(proxy)
+                    val cnKeyframe = cn.clone()
+                    val gen = generation.get()
+                    Log.d(TAG, "acquire#$acquireId: keyframe ${keyframe.width}x${keyframe.height}")
+                    scope.launch(Dispatchers.Default) { runAcquire(keyframe, cnKeyframe, gen, acquireId) }
+                }
             }
 
             publish(decision, (System.nanoTime() - t0) / 1e6)
@@ -326,7 +327,7 @@ class CameraSession(
 
     // ── Acquire pipeline (off the frame path) ──────────────────────────────
 
-    private suspend fun runAcquire(keyframe: Bitmap, cnKeyframe: Mat, gen: Int) {
+    private suspend fun runAcquire(keyframe: Bitmap, cnKeyframe: Mat, gen: Int, acquireId: Long) {
         var installed = false
         try {
             prewarmJob.join() // never race the engine's lazy construction
@@ -357,15 +358,17 @@ class CameraSession(
             oldKeyframe?.recycle()
 
             if (groups.isEmpty()) {
-                onAnalysisThread { engine.onAcquireFinished(locked = false) }
+                onAnalysisThread { engine.finishAcquire(acquireId, locked = false) }
                 withContext(Dispatchers.Main) { warpView?.clearRegions() }
                 return
             }
 
             // Anchor install first (fast, ~15 ms) so tracking starts while
-            // rasterization/translation still run.
-            installed = true
-            onAnalysisThread {
+            // rasterization/translation still run. The engine's active-id
+            // check makes a stale completion (watchdog fired, reset) a no-op
+            // instead of a resurrection.
+            installed = onAnalysisThread {
+                if (!engine.isAcquireActive(acquireId)) return@onAnalysisThread false
                 val anchor = frameTracker.buildAnchor(
                     cnKeyframe,
                     nextAnchorId.getAndIncrement(),
@@ -374,18 +377,19 @@ class CameraSession(
                     System.currentTimeMillis(),
                 )
                 val seeded = frameTracker.installAnchor(anchor, cnKeyframe)
-                engine.onAcquireFinished(locked = seeded >= TrackerConfig.MIN_INLIERS_ACQUIRE)
-                Log.d(TAG, "acquire: anchor #${anchor.id} seeded $seeded correspondences")
-            }
+                engine.finishAcquire(acquireId, locked = seeded >= TrackerConfig.MIN_INLIERS_ACQUIRE)
+                Log.d(TAG, "acquire#$acquireId: anchor #${anchor.id} seeded $seeded correspondences")
+                true
+            } ?: false
 
+            if (!installed) return
             buildAndShow(ocr!!.copy(groups = groups), keyframe, gen)
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Log.w(TAG, "acquire failed", e)
-            onAnalysisThread { engine.onAcquireFinished(locked = false) }
+            onAnalysisThread { engine.finishAcquire(acquireId, locked = false) }
         } finally {
             if (!installed) cnKeyframe.release() else onAnalysisThread { cnKeyframe.release() }
-            acquireInFlight.set(false)
         }
     }
 
@@ -441,16 +445,18 @@ class CameraSession(
     }
 
     /** Run [block] on the analysis executor (the only thread allowed to touch
-     *  [frameTracker]/[engine]) and await completion. */
-    private suspend fun onAnalysisThread(block: () -> Unit) {
-        if (analysisExecutor.isShutdown) return
-        kotlinx.coroutines.suspendCancellableCoroutine<Unit> { cont ->
+     *  [frameTracker]/[engine]) and await its result; null when shut down. */
+    private suspend fun <T> onAnalysisThread(block: () -> T): T? {
+        if (analysisExecutor.isShutdown) return null
+        return kotlinx.coroutines.suspendCancellableCoroutine { cont ->
             analysisExecutor.execute {
-                try {
+                val result = try {
                     block()
-                } finally {
-                    if (cont.isActive) cont.resume(Unit) {}
+                } catch (t: Throwable) {
+                    if (cont.isActive) cont.resume(null) {}
+                    throw t
                 }
+                if (cont.isActive) cont.resume(result) {}
             }
         }
     }
