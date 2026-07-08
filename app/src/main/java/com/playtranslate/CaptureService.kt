@@ -13,7 +13,10 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.view.WindowManager
 import android.os.Binder
@@ -25,6 +28,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.annotation.MainThread
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
@@ -50,6 +54,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -355,6 +362,44 @@ class CaptureService : Service() {
         ui.setIconsDegraded(translationDegraded)
     }
 
+    // ── Debug: MediaProjection mirror probe (Step-0 "D1" verification) ────
+    //
+    //   adb shell am broadcast -a com.playtranslate.debug.MP_PROBE
+    //
+    // With accessibility live-mode overlays showing, obtains MediaProjection
+    // consent and dumps ONE raw mirrored frame to files/pinhole_dumps/, to
+    // answer whether the accessibility overlay window (and its pinhole mask)
+    // appears in the MP mirror at all — the premise the MP-capture-with-a11y
+    // plan stands on. Debug builds only; never registered in release.
+    private val mpProbeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            serviceScope.launch {
+                if (!mediaProjectionController.ensureConsent()) {
+                    DetectionLog.log("MP probe: consent declined")
+                    return@launch
+                }
+                val bmp = mediaProjectionCaptureSource
+                    .requestRaw(mediaProjectionController.projectedDisplayId)
+                if (bmp == null) {
+                    DetectionLog.log("MP probe: capture failed")
+                    return@launch
+                }
+                val path = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val dir = File(getExternalFilesDir(null), "pinhole_dumps")
+                        dir.mkdirs()
+                        val f = File(dir, "mp_probe_${System.currentTimeMillis()}.png")
+                        FileOutputStream(f).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                        f.absolutePath
+                    }.getOrNull()
+                }
+                bmp.recycle()
+                Log.i(TAG, "MP probe: saved ${path ?: "FAILED"}")
+                DetectionLog.log("MP probe: ${path ?: "save failed"}")
+            }
+        }
+    }
+
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
     override fun onCreate() {
@@ -362,6 +407,14 @@ class CaptureService : Service() {
         Log.i(TAG, "onCreate")
         instance = this
         createNotificationChannel()
+
+        if (BuildConfig.DEBUG) {
+            ContextCompat.registerReceiver(
+                this, mpProbeReceiver,
+                IntentFilter(ACTION_DEBUG_MP_PROBE),
+                ContextCompat.RECEIVER_EXPORTED,
+            )
+        }
 
         // Register hotkey callbacks (whichever service started first)
         PlayTranslateAccessibilityService.instance?.registerHotkeyCallbacks()
@@ -398,6 +451,7 @@ class CaptureService : Service() {
 
     override fun onDestroy() {
         Log.w(TAG, "onDestroy")
+        if (BuildConfig.DEBUG) runCatching { unregisterReceiver(mpProbeReceiver) }
         // Tear down live modes FIRST — while [instance] is still set, so
         // CaptureBackendResolver.activeOverlayUi can still resolve to this
         // service's MediaProjection overlay UI and the cleanup chain (each
@@ -1848,6 +1902,10 @@ class CaptureService : Service() {
          *  consent and bring the controls up" — sent by the Quick Settings tile,
          *  which can't assume the service is already alive. */
         const val ACTION_MP_ACTIVATE = "com.playtranslate.action.MP_ACTIVATE"
+
+        /** Debug-build-only broadcast that dumps one raw MediaProjection
+         *  frame — see [mpProbeReceiver]. */
+        const val ACTION_DEBUG_MP_PROBE = "com.playtranslate.debug.MP_PROBE"
 
         /** Empty-id, full-screen region used as the initial saved/active value
          *  before [configureSaved] runs and as the defensive fallback in

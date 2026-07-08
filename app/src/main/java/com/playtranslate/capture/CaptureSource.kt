@@ -27,6 +27,36 @@ interface CaptureSource {
 }
 
 /**
+ * Frame-delivery signal exposed by streaming capture backends.
+ *
+ * MediaProjection mirrors the display into a persistent VirtualDisplay whose
+ * compositor queues a frame into the backing ImageReader only when the display
+ * content actually changes. That makes "a delivery happened" a cheap "the
+ * screen changed" signal — and, crucially, delivery *silence* means the frame
+ * most recently served is still what's on screen.
+ *
+ * Contract:
+ *  - [seqNow] is monotonically non-decreasing. It advances on every delivered
+ *    frame AND once on session teardown, so a consumer suspended in
+ *    [awaitSeqAfter] always wakes when the projection dies (and can re-resolve
+ *    its capture source) instead of hanging forever.
+ *  - [lastServedSeq] is the seq of the frame most recently handed to a *raw*
+ *    capture caller — the "what the consumer last saw" cursor. Clean captures
+ *    do not advance it: they serve one-shot consumers, and marking their
+ *    deliveries as "seen" could hide a change from the live-mode cycle.
+ *  - [awaitSeqAfter] suspends until `seqNow() > seq`. Cancellable.
+ *
+ * Backends without a frame stream (accessibility `takeScreenshot`) leave
+ * [LiveCaptureSource.deliverySignal] null; consumers must treat null as "no
+ * silence evidence available" and poll as before.
+ */
+interface DeliverySignal {
+    fun seqNow(): Long
+    val lastServedSeq: Long
+    suspend fun awaitSeqAfter(seq: Long)
+}
+
+/**
  * A [CaptureSource] that can additionally drive the continuous raw/clean
  * frame loop that live mode depends on.
  *
@@ -36,6 +66,10 @@ interface CaptureSource {
  * so live-mode callers never branch on the backend themselves.
  */
 interface LiveCaptureSource : CaptureSource {
+    /** Frame-delivery signal, or null when this backend cannot observe
+     *  per-frame deliveries (see [DeliverySignal]). */
+    val deliverySignal: DeliverySignal? get() = null
+
     /** Minimum interval the capture loop must respect. The accessibility
      *  backend enforces the platform `takeScreenshot` rate limit; the
      *  MediaProjection backend has no platform limit and uses a small floor. */

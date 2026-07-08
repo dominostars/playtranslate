@@ -11,16 +11,23 @@ import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.util.Log
 import android.view.Display
 import com.playtranslate.CaptureService
+import com.playtranslate.DetectionLog
 import com.playtranslate.PlayTranslateTileService
+import com.playtranslate.Prefs
 import com.playtranslate.displaySizePx
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicReference
 import androidx.core.graphics.createBitmap
 
 private const val TAG = "MediaProjectionCtl"
@@ -67,6 +74,109 @@ class MediaProjectionController(private val service: CaptureService) {
      *  [captureFrame] awaits the same gate so only one dialog shows. */
     @Volatile private var consentGate: CompletableDeferred<Boolean>? = null
 
+    // ── Frame stream: delivery seq + latest-frame latch ──────────────────
+    //
+    // The mirrored VirtualDisplay composites a frame into the ImageReader only
+    // when the display content changes. An OnImageAvailableListener (on a
+    // dedicated HandlerThread) latches the newest Image and advances a
+    // monotonic delivery seq. Captures then serve the latched frame directly:
+    // "latched frame + delivery silence since" IS the current screen, which
+    // retires acquireBitmap's delay(64)/delay(48) freshness dance for raw
+    // captures and gives clean captures a provable post-blank frame.
+    //
+    // Threading: the listener is the ONLY caller of acquireLatestImage (the
+    // single-consumer rule — a second consumer would race it for frames).
+    // Ownership of the latched Image transfers by AtomicReference.getAndSet:
+    // whoever swaps a non-null frame out closes it, exactly once.
+
+    private class LatchedFrame(val image: Image, val seq: Long)
+
+    private val latch = AtomicReference<LatchedFrame?>(null)
+
+    /** Monotonic delivery counter, doubling as the wake signal: collectors of
+     *  the flow wake on every advance. Advanced by the listener per delivered
+     *  frame, and once by [teardown] so a consumer parked in awaitSeqAfter
+     *  re-checks its world instead of sleeping on a dead stream. */
+    private val deliverySeq = MutableStateFlow(0L)
+
+    /** Seq of the frame most recently served to a RAW capture caller. Clean
+     *  captures deliberately don't advance this — see [DeliverySignal]. */
+    @Volatile private var lastServedSeq = 0L
+
+    @Volatile private var frameThread: HandlerThread? = null
+    @Volatile private var frameHandler: Handler? = null
+
+    // Step-0 characterization counters. Written on the frame thread
+    // (deliveredTotal) and the capture path (served counts, serialized by the
+    // capture source's mutex); read for the 5s summary on the frame thread.
+    @Volatile private var deliveredTotal = 0L
+    @Volatile private var rawServedCount = 0L
+    @Volatile private var cleanServedCount = 0L
+    private var summaryLastDelivered = 0L
+    private var summaryMsSinceLog = 0L
+
+    /** The delivery-signal surface handed to [MediaProjectionCaptureSource]. */
+    val deliverySignal: DeliverySignal = object : DeliverySignal {
+        override fun seqNow(): Long = deliverySeq.value
+        override val lastServedSeq: Long
+            get() = this@MediaProjectionController.lastServedSeq
+        override suspend fun awaitSeqAfter(seq: Long) {
+            deliverySeq.first { it > seq }
+        }
+    }
+
+    /** Current delivery seq — the pre-blank marker clean captures pass to
+     *  [captureFrameNewerThan]. */
+    val deliverySeqNow: Long get() = deliverySeq.value
+
+    private val frameListener = ImageReader.OnImageAvailableListener { reader ->
+        val img = try {
+            reader.acquireLatestImage()
+        } catch (e: IllegalStateException) {
+            // Two documented causes, both transient here: the reader was
+            // closed under us (teardown race), or maxImages is momentarily
+            // exhausted (one claimed in-flight + one latched + this one).
+            // Drop the frame WITHOUT advancing the seq — a frame nobody could
+            // observe must not count as a delivery.
+            null
+        } ?: return@OnImageAvailableListener
+        val seq = deliverySeq.updateAndGet { it + 1 }
+        deliveredTotal++
+        latch.getAndSet(LatchedFrame(img, seq))?.image?.close()
+    }
+
+    private fun ensureFrameHandler(): Handler {
+        frameHandler?.let { return it }
+        val t = HandlerThread("PtCaptureFrames").also { it.start() }
+        frameThread = t
+        val h = Handler(t.looper)
+        frameHandler = h
+        h.postDelayed(summaryRunnable, SUMMARY_INTERVAL_MS)
+        return h
+    }
+
+    /** 5s delivery-rate summary while the stream is alive, debug-gated. Runs
+     *  on the frame thread; the DetectionLog write is posted to main because
+     *  its ring buffer is only ever touched from there. */
+    private val summaryRunnable = object : Runnable {
+        override fun run() {
+            val total = deliveredTotal
+            val delta = total - summaryLastDelivered
+            summaryLastDelivered = total
+            // Log when something happened this window, or once per minute as
+            // a heartbeat proving the stream is alive-but-silent.
+            summaryMsSinceLog += SUMMARY_INTERVAL_MS
+            val heartbeat = summaryMsSinceLog >= 60_000L
+            if ((delta > 0 || heartbeat) && Prefs(service).debugLiveMode) {
+                summaryMsSinceLog = 0
+                val line = "MP stream: +$delta deliveries/${SUMMARY_INTERVAL_MS / 1000}s " +
+                    "(total=$total rawServed=$rawServedCount cleanServed=$cleanServedCount)"
+                mainHandler.post { DetectionLog.log(line) }
+            }
+            frameHandler?.postDelayed(this, SUMMARY_INTERVAL_MS)
+        }
+    }
+
     /** True once the user has granted a token still valid for this process. */
     val hasConsent: Boolean get() = resultData != null
 
@@ -109,18 +219,87 @@ class MediaProjectionController(private val service: CaptureService) {
     }
 
     /**
-     * Capture one clean frame of the projected display ([projectedDisplayId])
-     * at its current resolution. Lazily establishes the projection + virtual
-     * display, but NOT consent — consent must already be held (see
-     * [ensureConsent]); returns null without prompting if it isn't. Returns
-     * null on any capture failure too. Call on the main thread — the heavy
-     * pixel copy is moved off it internally.
+     * Capture one frame of the projected display ([projectedDisplayId]) at its
+     * current resolution. Lazily establishes the projection + virtual display,
+     * but NOT consent — consent must already be held (see [ensureConsent]);
+     * returns null without prompting if it isn't. Returns null on any capture
+     * failure too. Call on the main thread — the heavy pixel copy is moved off
+     * it internally.
+     *
+     * Serves the latched frame when one exists — the most recent composition
+     * the mirror delivered, which delivery silence proves is still current —
+     * with no freshness delay. Falls back to awaiting the first delivery
+     * (bounded by [FRESHNESS_BUDGET_MS]) right after VirtualDisplay creation.
      */
-    suspend fun captureFrame(): Bitmap? {
+    suspend fun captureFrame(): Bitmap? = captureNewerThan(minSeq = 0L, advanceCursor = true)
+
+    /**
+     * Clean-capture variant: serve only a frame delivered AFTER [minSeq] (the
+     * seq observed before the caller blanked its overlays), so the frame
+     * provably post-dates the blank. On a healthy stream the blank itself
+     * forces a composition, so this resolves in one frame; if the budget
+     * expires anyway, fall back to the latest latched frame — the same
+     * take-latest semantics the old delay(64) path had — and log it.
+     *
+     * Does not advance the raw-consumer cursor (see [DeliverySignal]).
+     */
+    suspend fun captureFrameNewerThan(minSeq: Long): Bitmap? =
+        captureNewerThan(minSeq, advanceCursor = false)
+
+    private suspend fun captureNewerThan(minSeq: Long, advanceCursor: Boolean): Bitmap? {
         if (!ensureProjection()) return null
         val (w, h) = captureSize(projectedDisplayId) ?: return null
-        val reader = ensureVirtualDisplay(w, h) ?: return null
-        return acquireBitmap(reader, w, h)
+        ensureVirtualDisplay(w, h) ?: return null
+
+        var frame: LatchedFrame? = withTimeoutOrNull(FRESHNESS_BUDGET_MS) {
+            var claimed: LatchedFrame? = null
+            while (claimed == null) {
+                val observed = deliverySeq.value
+                val f = tryClaim(w, h)
+                if (f != null && f.seq > minSeq) {
+                    claimed = f
+                } else {
+                    f?.image?.close() // stale for this caller — discard, wait on
+                    deliverySeq.first { it > observed }
+                }
+            }
+            claimed
+        }
+        if (frame == null && minSeq > 0) {
+            // Post-blank frame never arrived inside the budget. Preserve the
+            // legacy behavior (delay-then-take-latest) rather than failing the
+            // capture: serve whatever is latched, loudly.
+            frame = tryClaim(w, h)
+            if (frame != null) {
+                Log.w(TAG, "clean capture: no post-blank delivery in ${FRESHNESS_BUDGET_MS}ms; serving latest (seq=${frame.seq} <= $minSeq)")
+            }
+        }
+        val claimed = frame ?: return null
+        return try {
+            withContext(Dispatchers.Default) { imageToBitmap(claimed.image, w, h) }.also {
+                if (advanceCursor) {
+                    lastServedSeq = maxOf(lastServedSeq, claimed.seq)
+                    rawServedCount++
+                } else {
+                    cleanServedCount++
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "imageToBitmap failed: ${e.message}")
+            null
+        } finally {
+            claimed.image.close()
+        }
+    }
+
+    /** Claim the latch if it holds a frame matching the current capture size.
+     *  A mismatched frame (pre-resize straggler) is closed and dropped —
+     *  serving it would feed imageToBitmap a buffer of the wrong geometry. */
+    private fun tryClaim(w: Int, h: Int): LatchedFrame? {
+        val f = latch.getAndSet(null) ?: return null
+        if (f.image.width == w && f.image.height == h) return f
+        f.image.close()
+        return null
     }
 
     private fun ensureProjection(): Boolean {
@@ -186,7 +365,15 @@ class MediaProjectionController(private val service: CaptureService) {
         val proj = projection ?: return null
         imageReader?.let { if (readerW == w && readerH == h) return it }
         val dpi = service.resources.displayMetrics.densityDpi
-        val newReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
+        // maxImages = 3: one latched + one claimed in-flight by a capture +
+        // one for the listener's acquireLatestImage swap moment. At 2 the
+        // producer stalls (or the listener throws) whenever a capture holds a
+        // claimed frame while a new delivery lands.
+        val newReader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3)
+        // Register the frame listener before the reader's surface is wired
+        // into the VirtualDisplay so the very first composited frame is
+        // latched rather than lost.
+        newReader.setOnImageAvailableListener(frameListener, ensureFrameHandler())
         val oldReader = imageReader
         val vd = virtualDisplay
         // Android 15 (targetSdk ≥ 35) enforces stricter MediaProjection token
@@ -228,6 +415,9 @@ class MediaProjectionController(private val service: CaptureService) {
         imageReader = newReader
         readerW = w
         readerH = h
+        // Any latched frame at this point came from the old reader — drop it
+        // before the reader it belongs to is closed. (No-op on first create.)
+        latch.getAndSet(null)?.image?.close()
         oldReader?.close()
         return newReader
     }
@@ -247,43 +437,6 @@ class MediaProjectionController(private val service: CaptureService) {
         val size = service.createDisplayContext(display).displaySizePx()
         return if (size.x > 0 && size.y > 0) size.x to size.y else null
     }
-
-    private suspend fun acquireBitmap(reader: ImageReader, width: Int, height: Int): Bitmap? {
-        // The overlay-blanking + vsync wait already happened in the caller.
-        // Give the virtual-display → ImageReader pipeline a few frames to
-        // deliver the post-blank frame, then take the latest. The exact
-        // frame-freshness discipline is a known device-testing tuning point.
-        delay(64)
-        var image = acquireLatest(reader)
-        if (image == null) {
-            delay(48)
-            image = acquireLatest(reader) ?: return null
-        }
-        return try {
-            withContext(Dispatchers.Default) { imageToBitmap(image, width, height) }
-        } catch (e: Exception) {
-            Log.e(TAG, "imageToBitmap failed: ${e.message}")
-            null
-        } finally {
-            image.close()
-        }
-    }
-
-    /** [ImageReader.acquireLatestImage] that returns null instead of throwing
-     *  when the reader has already been closed. teardown() — a projection
-     *  revoke, or CaptureService.onDestroy — can close the reader while a
-     *  capture is suspended mid-[acquireBitmap]; a closed reader has no frame
-     *  to deliver, so the capture fails into the normal null path. Catches
-     *  IllegalStateException only (the documented closed/maxImages signal);
-     *  acquireLatestImage is not a suspend call, so this can't swallow a
-     *  CancellationException. */
-    private fun acquireLatest(reader: ImageReader): Image? =
-        try {
-            reader.acquireLatestImage()
-        } catch (e: IllegalStateException) {
-            Log.w(TAG, "capture reader closed mid-acquire: ${e.message}")
-            null
-        }
 
     private fun imageToBitmap(image: Image, width: Int, height: Int): Bitmap {
         val plane = image.planes[0]
@@ -307,6 +460,19 @@ class MediaProjectionController(private val service: CaptureService) {
         imageReader = null
         readerW = 0
         readerH = 0
+        // Latch cleanup AFTER the reader closes: a listener invocation racing
+        // this teardown can re-latch right up until the reader is closed, so
+        // clearing first could leak that late frame. Closing an Image whose
+        // reader is already closed can itself throw on some builds — the
+        // buffers are freed with the reader either way, so swallow it.
+        latch.getAndSet(null)?.let { try { it.image.close() } catch (_: Exception) {} }
+        // Advance the seq once so anything suspended in awaitSeqAfter wakes,
+        // re-checks its capture source, and discovers the session is gone —
+        // instead of sleeping forever on a stream that will never deliver.
+        deliverySeq.updateAndGet { it + 1 }
+        frameThread?.quitSafely()
+        frameThread = null
+        frameHandler = null
         projection?.let { try { it.stop() } catch (_: Exception) {} }
         projection = null
         // The token is single-use on API 34+ — once the projection stops, the
@@ -352,4 +518,15 @@ class MediaProjectionController(private val service: CaptureService) {
 
     /** Release the projection and virtual display. */
     fun destroy() = teardown()
+
+    private companion object {
+        /** Bound on waiting for a delivery when the latch is empty (first
+         *  capture after VD creation) or a clean capture awaits its post-blank
+         *  frame. Sized to the legacy delay(64)+delay(48) freshness budget the
+         *  old poll path allowed, so availability semantics don't regress. */
+        const val FRESHNESS_BUDGET_MS = 112L
+
+        /** Cadence of the debug delivery-rate summary. */
+        const val SUMMARY_INTERVAL_MS = 5_000L
+    }
 }

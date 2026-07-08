@@ -40,6 +40,10 @@ class MediaProjectionCaptureSource(
      *  only the floor that keeps a misconfigured pref from spinning the loop. */
     override val minCaptureIntervalMs: Long get() = MIN_LOOP_INTERVAL_MS
 
+    /** Frame deliveries from the mirrored VirtualDisplay — the streaming
+     *  backend's "screen changed" signal (see [DeliverySignal]). */
+    override val deliverySignal: DeliverySignal get() = controller.deliverySignal
+
     // ── One-shot capture ─────────────────────────────────────────────────
 
     override suspend fun requestClean(displayId: Int): Bitmap? {
@@ -83,11 +87,17 @@ class MediaProjectionCaptureSource(
      * helper never re-locks.
      */
     private suspend fun cleanCapture(displayId: Int): Bitmap? {
+        // Seq observed before the blank: any frame delivered after it was
+        // composited with our overlays already blanking (the blank itself
+        // forces a composition), so the served frame provably post-dates the
+        // hide instead of relying on a fixed delay to outlast the pipeline.
+        val seqBeforeBlank = controller.deliverySeqNow
         val host = CaptureBackendResolver.active().overlayHost
         val state = host?.prepareForCleanCapture(displayId)
         return try {
             waitVsync(2)
-            captureProjectedFrame(displayId)
+            warnIfNotProjected(displayId)
+            controller.captureFrameNewerThan(seqBeforeBlank)
         } finally {
             if (host != null && state != null) host.restoreAfterCapture(state)
         }
@@ -188,13 +198,17 @@ class MediaProjectionCaptureSource(
      *  display is an upstream routing bug — log it loudly. The frame still
      *  comes from the projected display regardless. */
     private suspend fun captureProjectedFrame(requestedDisplayId: Int): Bitmap? {
+        warnIfNotProjected(requestedDisplayId)
+        return controller.captureFrame()
+    }
+
+    private fun warnIfNotProjected(requestedDisplayId: Int) {
         if (requestedDisplayId != controller.projectedDisplayId) {
             DetectionLog.log(
                 "MP: WARNING — capture requested for display $requestedDisplayId; " +
                     "MediaProjection only mirrors display ${controller.projectedDisplayId}"
             )
         }
-        return controller.captureFrame()
     }
 
     /** Loop poll interval — the user's pref, floored at [MIN_LOOP_INTERVAL_MS].
