@@ -47,6 +47,21 @@
             android:layout_marginTop="8dp"
             android:visibility="gone" />
 
+        <!-- User-facing status hint (e.g. "no readable text"): shown when a
+             scan finds nothing usable, instead of silently showing nothing. -->
+        <TextView
+            android:id="@+id/cameraHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal|bottom"
+            android:layout_marginBottom="48dp"
+            android:background="@drawable/bg_camera_pill_scrim"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="6dp"
+            android:textColor="@android:color/white"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
         <!-- Tracker debug pill (debug builds only): STATE inl=… sc=… ms. -->
         <TextView
             android:id="@+id/cameraDebugPill"

@@ -80,6 +80,10 @@ class CameraSession(
          *  the raster's native scale (either direction). */
         const val RASTER_SCALE_DRIFT = 1.3f
 
+        /** Sustained anchor-less IDLE frames before the analysis rate halves
+         *  (~12 s at 25 fps). Resets the moment anything locks. */
+        const val IDLE_BACKOFF_AFTER_FRAMES = 300
+
         /** Groups whose known line confidences average below the engine's
          *  threshold are dropped before translation — garbage reads (rotated
          *  text, blur) translate into fluent-sounding nonsense otherwise.
@@ -133,6 +137,11 @@ class CameraSession(
 
     private var frameCount = 0L
     private var lastHeartbeatNs = 0L
+
+    /** Consecutive frames the engine has reported IDLE (analysis thread).
+     *  Sustained idling halves the analysis rate — no reason to burn
+     *  full-rate CPU/battery pointing at a couch. */
+    private var idleStreak = 0
 
     /** Analysis fps over the 15-frame heartbeat window. */
     private fun heartbeatFps(): Double {
@@ -194,6 +203,15 @@ class CameraSession(
     /** Debug status sink (the on-screen pill); set by the Activity in debug
      *  builds. Called on the main thread. */
     var statusSink: ((String) -> Unit)? = null
+
+    /** User-facing hint sink (production): non-null shows the message, null
+     *  hides it. A scan that finds nothing usable must SAY so — silence
+     *  reads as "broken". Called on the main thread. */
+    var hintSink: ((show: Boolean) -> Unit)? = null
+
+    private fun postHint(show: Boolean) {
+        overlayHost.post { hintSink?.invoke(show) }
+    }
 
     /** True while the camera's autofocus is actively scanning (Activity
      *  feeds this from the Camera2 AF-state callback). An acquire during a
@@ -285,6 +303,9 @@ class CameraSession(
             // contention); the overlay keeps its last matrices on skips.
             // Engine state IS the acquire-in-flight truth (single writer).
             if (engine.state == TrackState.ACQUIRING && frameCount % 2 == 1L) return
+            // Thermal/battery backoff: sustained anchor-less idling halves
+            // the analysis rate (settle just takes 2× the frames to open).
+            if (idleStreak > IDLE_BACKOFF_AFTER_FRAMES && frameCount % 2 == 1L) return
             val cn = cnConverter.convert(proxy)
             val m = frameTracker.track(cn)
             // AF scans veto acquire offers — a keyframe mid-scan is defocused.
@@ -297,6 +318,8 @@ class CameraSession(
             // probe, the median displacement stays unknown, the settle gate
             // never opens, and IDLE becomes permanent (observed: a minute of
             // disp=-1 with text on screen).
+            idleStreak = if (decision.state == TrackState.IDLE) idleStreak + 1 else 0
+
             if (decision.state == TrackState.IDLE && frameTracker.hasAnchor()) {
                 frameTracker.clearAnchor()
             }
@@ -433,8 +456,10 @@ class CameraSession(
             if (groups.isEmpty()) {
                 onAnalysisThread { engine.finishAcquire(acquireId, locked = false) }
                 withContext(Dispatchers.Main) { warpView?.clearRegions() }
+                postHint(true)
                 return
             }
+            postHint(false)
 
             // Anchor install first (fast, ~15 ms) so tracking starts while
             // rasterization/translation still run. The engine's active-id

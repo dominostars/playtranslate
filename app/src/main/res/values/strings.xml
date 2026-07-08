@@ -2917,6 +2917,8 @@
     <string name="camera_unavailable">No camera available on this device</string>
     <!-- Content description of the back arrow on the camera screen. -->
     <string name="camera_back_cd">Back</string>
+    <!-- Hint shown when a camera scan found no usable text (nothing detected, or everything failed the quality gates). -->
+    <string name="camera_no_text_hint">No readable text — try moving closer or tap to focus</string>
 
     <!-- Hub-cell status digests (the summary line under each cell title). -->
     <string name="settings_digest_none">None</string>

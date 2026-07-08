@@ -126,6 +126,10 @@ class CameraActivity : AppCompatActivity() {
         )
         sessionLangKey = langKey()
 
+        val hint = findViewById<TextView>(R.id.cameraHint)
+        hint.setText(R.string.camera_no_text_hint)
+        session?.hintSink = { show -> hint.isVisible = show }
+
         if (com.playtranslate.BuildConfig.DEBUG) {
             val pill = findViewById<TextView>(R.id.cameraDebugPill)
             pill.isVisible = true
