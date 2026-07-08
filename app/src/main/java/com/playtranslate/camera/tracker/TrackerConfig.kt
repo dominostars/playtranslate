@@ -125,8 +125,15 @@ object TrackerConfig {
     const val DEAD_ANCHOR_EMA_INLIERS = 100f
 
     /** Minimum surviving correspondences inside a region's anchor rect to fit
-     *  that region its own homography; below this it falls back to global H. */
+     *  that region its own transform; below this it falls back to global H. */
     const val MIN_REGION_POINTS = 6
+
+    /** Max deviation (CN px) between a region transform and the global
+     *  homography, measured at the region's corners. A refinement is a small
+     *  correction by definition; a wildly-diverging fit is a degenerate
+     *  solution (near-collinear points on a small label), and rendering it
+     *  smears the overlay across the screen. */
+    const val REGION_MAX_DEVIATION_CN_PX = 30.0
 
     /** Region rect inflation (fraction of each dimension) when testing
      *  point membership — text corners sit ON the glyph edges. */

@@ -390,7 +390,7 @@ class FrameTracker {
         h.release()
         val valid = Homography.isValid(hArr)
 
-        val (perRegionH, perRegionSurvival) = fitRegions()
+        val (perRegionH, perRegionSurvival) = fitRegions(if (valid) hArr else null)
         return TrackMeasurement(
             hCn = if (valid) hArr else null,
             inliers = inliers,
@@ -402,7 +402,7 @@ class FrameTracker {
     }
 
     /** Per-region refinement over the (already RANSAC-pruned) inlier set. */
-    private fun fitRegions(): Pair<Map<Int, DoubleArray>, Map<Int, Float>> {
+    private fun fitRegions(globalH: DoubleArray?): Pair<Map<Int, DoubleArray>, Map<Int, Float>> {
         if (regionRects.isEmpty()) return emptyMap<Int, DoubleArray>() to emptyMap()
         val hByKey = HashMap<Int, DoubleArray>()
         val survivalByKey = HashMap<Int, Float>()
@@ -425,17 +425,52 @@ class FrameTracker {
                     (memberAnchor.size.toFloat() / baseline).coerceAtMost(1f)
             }
             if (memberAnchor.size < TrackerConfig.MIN_REGION_POINTS) continue
+            // 4-DoF similarity, NOT a full homography: a small label's points
+            // sit nearly on a line, and an 8-DoF perspective fit on
+            // near-collinear points is degenerate — tiny noise produced wild
+            // matrices that smeared overlays across the screen on device. A
+            // similarity (rotate+scale+translate) is well-posed from 2 points
+            // and can't generate perspective slivers.
             val src = MatOfPoint2f(*memberAnchor.toTypedArray())
             val dst = MatOfPoint2f(*memberCurrent.toTypedArray())
-            val h = Calib3d.findHomography(src, dst, Calib3d.RANSAC, TrackerConfig.RANSAC_REPROJ_PX)
+            val affine = Calib3d.estimateAffinePartial2D(
+                src, dst, Mat(), Calib3d.RANSAC, TrackerConfig.RANSAC_REPROJ_PX, 2000, 0.99, 10,
+            )
             src.release(); dst.release()
-            if (!h.empty()) {
-                val arr = matToArray(h)
-                if (Homography.isValid(arr)) hByKey[regionKeys[ri]] = arr
+            if (!affine.empty()) {
+                val arr = doubleArrayOf(
+                    affine.get(0, 0)[0], affine.get(0, 1)[0], affine.get(0, 2)[0],
+                    affine.get(1, 0)[0], affine.get(1, 1)[0], affine.get(1, 2)[0],
+                    0.0, 0.0, 1.0,
+                )
+                if (Homography.isValid(arr) && regionAgreesWithGlobal(arr, globalH, regionRects[ri])) {
+                    hByKey[regionKeys[ri]] = arr
+                }
             }
-            h.release()
+            affine.release()
         }
         return hByKey to survivalByKey
+    }
+
+    /** A refinement must stay a refinement: reject region transforms whose
+     *  corner projections diverge from the global homography by more than
+     *  [TrackerConfig.REGION_MAX_DEVIATION_CN_PX] — those are degenerate fits,
+     *  and the global H is the safer rendering. */
+    private fun regionAgreesWithGlobal(regionH: DoubleArray, globalH: DoubleArray?, rect: Rect): Boolean {
+        if (globalH == null) return false
+        val corners = arrayOf(
+            rect.left.toDouble() to rect.top.toDouble(),
+            rect.right.toDouble() to rect.top.toDouble(),
+            rect.left.toDouble() to rect.bottom.toDouble(),
+            rect.right.toDouble() to rect.bottom.toDouble(),
+        )
+        for ((x, y) in corners) {
+            val a = Homography.project(regionH, x, y)
+            val b = Homography.project(globalH, x, y)
+            val dev = abs(a[0] - b[0]) + abs(a[1] - b[1])
+            if (dev > TrackerConfig.REGION_MAX_DEVIATION_CN_PX) return false
+        }
+        return true
     }
 
     private fun matToArray(h: Mat): DoubleArray {

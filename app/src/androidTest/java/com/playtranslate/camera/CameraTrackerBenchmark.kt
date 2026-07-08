@@ -226,9 +226,17 @@ class CameraTrackerBenchmark {
         val base = syntheticPage(11)
 
         try {
-            // Acquire, exactly as CameraSession does it.
-            val idleDecision = engine.onFrame(null, settled = true, sceneChanged = true, nowMs = nowMs)
-            assertTrue(idleDecision.requestAcquire)
+            // Acquire, exactly as CameraSession does it: settle is derived
+            // from measurement displacement, so feed still probe frames.
+            var requested = false
+            repeat(TrackerConfig.SETTLE_FRAMES + 1) {
+                if (engine.onFrame(
+                        com.playtranslate.camera.tracker.TrackMeasurement(null, 0, 0.5, 0),
+                        nowMs = nowMs,
+                    ).requestAcquire
+                ) requested = true
+            }
+            assertTrue(requested)
             val anchor = tracker.buildAnchor(base, 1L, 1080, 1920, 0.5, nowMs)
             val seeded = tracker.installAnchor(anchor, base)
             engine.onAcquireFinished(locked = seeded >= TrackerConfig.MIN_INLIERS_ACQUIRE, nowMs = nowMs)
@@ -257,7 +265,7 @@ class CameraTrackerBenchmark {
                 Imgproc.warpPerspective(base, cur, hTrue, Size(CN_W.toDouble(), CN_H.toDouble()))
 
                 val m = tracker.track(cur)
-                val d = engine.onFrame(m, settled = false, sceneChanged = false, nowMs = nowMs)
+                val d = engine.onFrame(m, nowMs = nowMs)
                 if (d.state == TrackState.LOCKED && d.hCn != null) {
                     lockedFrames++
                     if (d.perRegionHCn.size == 2) regionFrames++
