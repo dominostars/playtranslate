@@ -73,6 +73,9 @@ class CameraSession(
         /** Debug pill refresh cadence (frames). */
         const val PILL_EVERY = 5
 
+        /** Downscale factor of the color-sampling reference bitmap. */
+        const val COLOR_SCALE = 4
+
         /** Groups whose known line confidences average below this are dropped
          *  before translation — garbage reads (rotated text, blur) translate
          *  into fluent-sounding nonsense otherwise. Engines that report no
@@ -134,7 +137,38 @@ class CameraSession(
     // ── Published pipeline state (guarded by [stateLock]) ─────────────────
     private val stateLock = Any()
     private var cachedOcr: OcrManager.OcrResult? = null
-    private var cachedKeyframe: Bitmap? = null
+
+    /** ×4-downscaled keyframe for background-color sampling — all the
+     *  re-flavor path needs (the full-res keyframe is recycled right after
+     *  OCR; 0.5 MB instead of 8 MB). */
+    private var cachedColorRef: Bitmap? = null
+    private var cachedAuW = 0
+    private var cachedAuH = 0
+
+    /** The display payload of the currently anchored scene once its final
+     *  (filled) boxes exist — what the anchor LRU stores alongside the
+     *  anchor for instant re-display on re-lock. */
+    private var lastBuilt: BuiltOverlays? = null
+
+    private class BuiltOverlays(
+        val ocr: OcrManager.OcrResult,
+        val boxes: List<TextBox>,
+        val trackKeys: List<Int>,
+        val trackRegionsAu: List<Pair<Int, android.graphics.Rect>>,
+        val colorRef: Bitmap,
+        val auW: Int,
+        val auH: Int,
+        val mode: OverlayMode,
+        val langKey: String,
+    )
+
+    /** Recently replaced scenes (anchor + display payload), newest last.
+     *  Analysis-thread only; anchors own native Mats → release on evict. */
+    private val anchorCache = ArrayDeque<Pair<com.playtranslate.camera.tracker.Anchor, BuiltOverlays>>()
+    private var relockCursor = 0
+
+    private fun langKey(): String =
+        "${prefs.sourceLangId}|${prefs.targetLang}|${prefs.targetChineseVariant}"
 
     /** The warp surface; created lazily on main. */
     private var warpView: WarpOverlayView? = null
@@ -249,6 +283,15 @@ class CameraSession(
                 frameTracker.clearAnchor()
             }
 
+            // Anchor LRU: while Idle, periodically probe one cached scene —
+            // glancing back at known text re-locks with zero OCR/translation.
+            if (decision.state == TrackState.IDLE && !frameTracker.hasAnchor() &&
+                anchorCache.isNotEmpty() &&
+                frameCount % TrackerConfig.RELOCK_PROBE_INTERVAL_FRAMES == 0L
+            ) {
+                tryRelock(cn)
+            }
+
             // Diagnostic heartbeat for on-device tuning.
             if (frameCount % 15 == 0L) {
                 Log.d(
@@ -347,15 +390,23 @@ class CameraSession(
                     "(engine=${ocr?.engineBackend ?: "ml-kit-floor/none"})",
             )
 
-            val oldKeyframe: Bitmap?
+            // Everything downstream needs only the ×4 color reference and the
+            // AU dims — drop the 8 MB keyframe as soon as OCR is done. Color
+            // refs are Java-heap bitmaps; the GC owns their lifecycle (they
+            // can be shared between the session cache and LRU scenes).
+            val auW = keyframe.width
+            val auH = keyframe.height
+            val colorRef = keyframe.scale(auW / COLOR_SCALE, auH / COLOR_SCALE, false)
+            keyframe.recycle()
+            val gated = ocr?.copy(groups = groups)
             synchronized(stateLock) {
                 // The GATED result is what everyone downstream must see (both
                 // flavors, re-flavor on toggle, track regions) — one group set.
-                cachedOcr = ocr?.copy(groups = groups)
-                oldKeyframe = cachedKeyframe
-                cachedKeyframe = keyframe
+                cachedOcr = gated
+                cachedColorRef = colorRef
+                cachedAuW = auW
+                cachedAuH = auH
             }
-            oldKeyframe?.recycle()
 
             if (groups.isEmpty()) {
                 onAnalysisThread { engine.finishAcquire(acquireId, locked = false) }
@@ -369,10 +420,18 @@ class CameraSession(
             // instead of a resurrection.
             installed = onAnalysisThread {
                 if (!engine.isAcquireActive(acquireId)) return@onAnalysisThread false
+                // The replaced scene goes to the LRU (with its display
+                // payload) instead of being released — glancing back at it
+                // re-locks without re-OCR.
+                frameTracker.detachAnchor()?.let { old ->
+                    val payload = synchronized(stateLock) { lastBuilt }
+                    if (payload != null) cacheScene(old, payload) else old.release()
+                }
+                synchronized(stateLock) { lastBuilt = null }
                 val anchor = frameTracker.buildAnchor(
                     cnKeyframe,
                     nextAnchorId.getAndIncrement(),
-                    keyframe.width, keyframe.height,
+                    auW, auH,
                     cnConverter.cnScale,
                     System.currentTimeMillis(),
                 )
@@ -383,7 +442,7 @@ class CameraSession(
             } ?: false
 
             if (!installed) return
-            buildAndShow(ocr!!.copy(groups = groups), keyframe, gen)
+            buildAndShow(gated!!, colorRef, auW, auH, gen)
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Log.w(TAG, "acquire failed", e)
@@ -466,17 +525,25 @@ class CameraSession(
      *  per-region homography units), rasterize, and hand the raster regions
      *  to the warp view. Two-phase skeleton→filled for the translation
      *  flavor. */
-    private suspend fun buildAndShow(ocr: OcrManager.OcrResult, keyframe: Bitmap, gen: Int) {
-        when (prefs.overlayMode) {
+    private suspend fun buildAndShow(
+        ocr: OcrManager.OcrResult,
+        colorRef: Bitmap,
+        auW: Int,
+        auH: Int,
+        gen: Int,
+    ) {
+        val mode = prefs.overlayMode
+        when (mode) {
             OverlayMode.TRANSLATION -> {
                 val groups = ocr.groups.filter { it.text.isNotBlank() }
                 val texts = groups.map { it.text }
                 // One tracked region per group: key = group index.
                 val trackKeys = groups.indices.toList()
-                installTrackRegions(groups.mapIndexed { idx, g -> idx to g.bounds })
+                val regions = groups.mapIndexed { idx, g -> idx to g.bounds }
+                installTrackRegions(regions)
 
-                val placeholders = buildPlaceholderBoxes(groups, keyframe)
-                showRegions(placeholders, trackKeys, keyframe, gen)
+                val placeholders = buildPlaceholderBoxes(groups, colorRef)
+                showRegions(placeholders, trackKeys, auW, auH, gen)
 
                 val t0 = System.currentTimeMillis()
                 val translations = translator.translate(texts)
@@ -490,7 +557,8 @@ class CameraSession(
                 val filled = placeholders.mapIndexed { idx, ph ->
                     ph.copy(translatedText = translations.getOrElse(idx) { "" })
                 }
-                showRegions(filled, trackKeys, keyframe, gen)
+                showRegions(filled, trackKeys, auW, auH, gen)
+                rememberBuilt(ocr, filled, trackKeys, regions, colorRef, auW, auH, mode)
             }
             OverlayMode.FURIGANA -> {
                 val engine = SourceLanguageEngines.get(context, prefs.sourceLangId)
@@ -516,7 +584,83 @@ class CameraSession(
                         trackKeys.add(nearestLineKey(box, groupLines))
                     }
                 }
-                showRegions(boxes, trackKeys, keyframe, gen)
+                showRegions(boxes, trackKeys, auW, auH, gen)
+                rememberBuilt(ocr, boxes, trackKeys, lineRegions, colorRef, auW, auH, mode)
+            }
+        }
+    }
+
+    /** Snapshot the finished display payload so the anchor LRU can restore
+     *  this scene instantly on re-lock. */
+    private fun rememberBuilt(
+        ocr: OcrManager.OcrResult,
+        boxes: List<TextBox>,
+        trackKeys: List<Int>,
+        regions: List<Pair<Int, android.graphics.Rect>>,
+        colorRef: Bitmap,
+        auW: Int,
+        auH: Int,
+        mode: OverlayMode,
+    ) {
+        synchronized(stateLock) {
+            lastBuilt = BuiltOverlays(ocr, boxes, trackKeys, regions, colorRef, auW, auH, mode, langKey())
+        }
+    }
+
+    /** Push a replaced scene into the LRU (analysis thread only). */
+    private fun cacheScene(anchor: com.playtranslate.camera.tracker.Anchor, payload: BuiltOverlays) {
+        anchorCache.addLast(anchor to payload)
+        while (anchorCache.size > TrackerConfig.ANCHOR_CACHE_SIZE) {
+            anchorCache.removeFirst().first.release()
+        }
+    }
+
+    /** While Idle with cached scenes, probe one per call (round-robin); on a
+     *  strong ORB match, reinstall the cached anchor + its display payload —
+     *  a full re-lock with zero OCR/translation. Analysis thread only. */
+    private fun tryRelock(cn: Mat) {
+        val lk = langKey()
+        val mode = prefs.overlayMode
+        // Entries built under a different language/flavor can't be shown;
+        // drop them (release native Mats) rather than probing them forever.
+        val it = anchorCache.iterator()
+        while (it.hasNext()) {
+            val (a, p) = it.next()
+            if (p.langKey != lk || p.mode != mode) {
+                a.release()
+                it.remove()
+            }
+        }
+        if (anchorCache.isEmpty()) return
+        relockCursor %= anchorCache.size
+        val (anchor, payload) = anchorCache.elementAt(relockCursor)
+        relockCursor++
+        val matches = frameTracker.matchCountAgainst(anchor, cn)
+        if (matches < TrackerConfig.MIN_INLIERS_ACQUIRE) return
+
+        val id = engine.beginAcquire()
+        if (id == 0L) return
+        anchorCache.remove(anchor to payload)
+        val seeded = frameTracker.installAnchor(anchor, anchor.cnGray)
+        engine.finishAcquire(id, locked = seeded >= TrackerConfig.MIN_INLIERS_ACQUIRE)
+        if (seeded < TrackerConfig.MIN_INLIERS_ACQUIRE) return
+        Log.d(TAG, "relock: anchor #${anchor.id} restored with $matches matches, $seeded seeded")
+
+        synchronized(stateLock) {
+            cachedOcr = payload.ocr
+            cachedColorRef = payload.colorRef
+            cachedAuW = payload.auW
+            cachedAuH = payload.auH
+            lastBuilt = payload
+        }
+        val gen = generation.get()
+        scope.launch(Dispatchers.Default) {
+            try {
+                installTrackRegions(payload.trackRegionsAu)
+                showRegions(payload.boxes, payload.trackKeys, payload.auW, payload.auH, gen)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.w(TAG, "relock display failed", e)
             }
         }
     }
@@ -562,17 +706,10 @@ class CameraSession(
 
     private fun buildPlaceholderBoxes(
         groups: List<OcrManager.OcrGroup>,
-        keyframe: Bitmap,
+        colorRef: Bitmap,
     ): List<TextBox> {
-        val colorScale = 4
         val bounds = groups.map { it.bounds }
-        val colorRef = keyframe.scale(keyframe.width / colorScale, keyframe.height / colorScale, false)
-        val colors: List<Pair<Int, Int>>
-        try {
-            colors = OverlayToolkit.sampleGroupColors(colorRef, bounds, 0, 0, colorScale)
-        } finally {
-            colorRef.recycle()
-        }
+        val colors = OverlayToolkit.sampleGroupColors(colorRef, bounds, 0, 0, COLOR_SCALE)
         return groups.mapIndexed { idx, group ->
             val (bg, tc) = colors.getOrElse(idx) { Pair(Color.argb(224, 0, 0, 0), Color.WHITE) }
             TextBox(
@@ -595,7 +732,8 @@ class CameraSession(
     private suspend fun showRegions(
         boxes: List<TextBox>,
         trackKeys: List<Int>,
-        keyframe: Bitmap,
+        auW: Int,
+        auH: Int,
         gen: Int,
     ) {
         withContext(Dispatchers.Main) {
@@ -607,8 +745,8 @@ class CameraSession(
                 verticalGrowEnabled = prefs.verticalTextGrow,
             )
             val regions: List<RasterRegion> =
-                rasterizer.rasterize(boxes, keyframe.width, keyframe.height, trackKeys)
-            ensureWarpView().setRegions(regions, keyframe.width, keyframe.height)
+                rasterizer.rasterize(boxes, auW, auH, trackKeys)
+            ensureWarpView().setRegions(regions, auW, auH)
         }
     }
 
@@ -632,11 +770,20 @@ class CameraSession(
      *  no anchor change; the tracker keeps running. */
     fun onOverlayModeChanged() {
         val gen = generation.incrementAndGet()
-        val (ocr, keyframe) = synchronized(stateLock) { cachedOcr to cachedKeyframe }
-        if (ocr == null || keyframe == null || keyframe.isRecycled) return
+        val ocr: OcrManager.OcrResult?
+        val colorRef: Bitmap?
+        val auW: Int
+        val auH: Int
+        synchronized(stateLock) {
+            ocr = cachedOcr
+            colorRef = cachedColorRef
+            auW = cachedAuW
+            auH = cachedAuH
+        }
+        if (ocr == null || colorRef == null || colorRef.isRecycled || auW == 0) return
         scope.launch(Dispatchers.Default) {
             try {
-                buildAndShow(ocr, keyframe, gen)
+                buildAndShow(ocr, colorRef, auW, auH, gen)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 Log.w(TAG, "re-flavor failed", e)
@@ -648,16 +795,17 @@ class CameraSession(
      *  re-OCRs from scratch. */
     fun reset() {
         generation.incrementAndGet()
-        val oldKeyframe: Bitmap?
         synchronized(stateLock) {
             cachedOcr = null
-            oldKeyframe = cachedKeyframe
-            cachedKeyframe = null
+            cachedColorRef = null
+            cachedAuW = 0
+            cachedAuH = 0
+            lastBuilt = null
         }
-        oldKeyframe?.recycle()
         analysisExecutor.execute {
             frameTracker.clearAnchor()
             engine.reset()
+            while (anchorCache.isNotEmpty()) anchorCache.removeFirst().first.release()
         }
         overlayHost.post { warpView?.clearRegions() }
     }
@@ -668,14 +816,13 @@ class CameraSession(
         analysisExecutor.execute {
             frameTracker.release()
             cnConverter.release()
+            while (anchorCache.isNotEmpty()) anchorCache.removeFirst().first.release()
         }
         analysisExecutor.shutdown()
-        val oldKeyframe: Bitmap?
         synchronized(stateLock) {
             cachedOcr = null
-            oldKeyframe = cachedKeyframe
-            cachedKeyframe = null
+            cachedColorRef = null
+            lastBuilt = null
         }
-        oldKeyframe?.recycle()
     }
 }

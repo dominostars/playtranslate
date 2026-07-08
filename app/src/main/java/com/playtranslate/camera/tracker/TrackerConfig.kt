@@ -114,6 +114,19 @@ object TrackerConfig {
     /** Good-features budget for the anchorless (Idle) motion probe. */
     const val PROBE_POINTS = 40
 
+    // ── Anchor LRU (re-lock on previously seen scenes without re-OCR) ─────
+
+    /** Recently replaced anchors kept alive for instant re-lock. Each holds
+     *  ~0.6 MB of Mats (CN gray + descriptors); display payload is boxes,
+     *  not rasters. */
+    const val ANCHOR_CACHE_SIZE = 3
+
+    /** While Idle with a non-empty cache, try an ORB match against one
+     *  cached anchor every N frames (round-robin). ORB costs ~40 ms on
+     *  budget SoCs, so probing every frame would halve the fps; every 10th
+     *  re-locks within ~0.5 s at ~25 fps. */
+    const val RELOCK_PROBE_INTERVAL_FRAMES = 10
+
     /** EMA factor for the smoothed inlier count feeding the dead-anchor
      *  check (higher = snappier). */
     const val EMA_INLIERS_ALPHA = 0.3f

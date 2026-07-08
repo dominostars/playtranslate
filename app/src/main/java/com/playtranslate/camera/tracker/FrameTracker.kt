@@ -183,6 +183,43 @@ class FrameTracker {
     fun anchorId(): Long = anchor?.id ?: -1L
     fun currentAnchor(): Anchor? = anchor
 
+    /** Remove and return the current anchor WITHOUT releasing it — the
+     *  caller takes ownership (anchor-LRU handoff). */
+    fun detachAnchor(): Anchor? {
+        val a = anchor ?: return null
+        anchor = null
+        anchorPts.clear()
+        currentPts.clear()
+        regionKeys = IntArray(0)
+        regionRects = arrayOf()
+        regionBaselines = IntArray(0)
+        return a
+    }
+
+    /** How many ratio-test ORB matches [candidate] gets against [curGray] —
+     *  the re-lock probe. Read-only: no tracker state changes. */
+    fun matchCountAgainst(candidate: Anchor, curGray: Mat): Int {
+        if (candidate.descriptors.empty()) return 0
+        val kps = MatOfKeyPoint()
+        val desc = Mat()
+        orb.detectAndCompute(curGray, Mat(), kps, desc)
+        if (desc.empty()) {
+            kps.release(); desc.release()
+            return 0
+        }
+        val knn = mutableListOf<MatOfDMatch>()
+        matcher.knnMatch(candidate.descriptors, desc, knn, 2)
+        var count = 0
+        for (pair in knn) {
+            val m = pair.toArray()
+            if (m.isEmpty()) continue
+            if (m.size >= 2 && m[0].distance >= 0.75f * m[1].distance) continue
+            count++
+        }
+        kps.release(); desc.release()
+        return count
+    }
+
     fun clearAnchor() {
         anchor?.release()
         anchor = null
