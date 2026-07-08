@@ -275,6 +275,7 @@ class MediaProjectionController(private val service: CaptureService) {
             }
         }
         val claimed = frame ?: return null
+        beginDecode()
         return try {
             withContext(Dispatchers.Default) { imageToBitmap(claimed.image, w, h) }.also {
                 if (advanceCursor) {
@@ -289,16 +290,66 @@ class MediaProjectionController(private val service: CaptureService) {
             null
         } finally {
             claimed.image.close()
+            endDecode()
         }
+    }
+
+    // ── Decode-vs-close serialization (review finding) ───────────────────
+    //
+    // imageToBitmap copies the claimed Image's buffer on Dispatchers.Default.
+    // Captures hold the source's captureMutex, but teardown() (projection
+    // revoke posts onProjectionLost to main) does not — ImageReader.close()
+    // while the copy is mid-buffer is a native use-after-free, not a
+    // catchable exception. Reader closes therefore defer while a decode is
+    // in flight and complete on the decoding thread when it finishes. The
+    // resize-swap close can't actually race (it runs under the same mutex as
+    // every decode) but routes through the same guard for uniformity.
+
+    private val decodeLock = Any()
+    private var decodesInFlight = 0
+    private val deferredReaderCloses = mutableListOf<ImageReader>()
+
+    private fun beginDecode() {
+        synchronized(decodeLock) { decodesInFlight++ }
+    }
+
+    private fun endDecode() {
+        var toClose: List<ImageReader>? = null
+        synchronized(decodeLock) {
+            decodesInFlight--
+            if (decodesInFlight == 0 && deferredReaderCloses.isNotEmpty()) {
+                toClose = deferredReaderCloses.toList()
+                deferredReaderCloses.clear()
+            }
+        }
+        toClose?.forEach { it.close() }
+    }
+
+    /** Close [reader] now, or after the in-flight decode finishes. */
+    private fun closeReaderSafely(reader: ImageReader?) {
+        reader ?: return
+        val closeNow: Boolean
+        synchronized(decodeLock) {
+            closeNow = decodesInFlight == 0
+            if (!closeNow) deferredReaderCloses.add(reader)
+        }
+        if (closeNow) reader.close()
     }
 
     /** Claim the latch if it holds a frame matching the current capture size.
      *  A mismatched frame (pre-resize straggler) is closed and dropped —
-     *  serving it would feed imageToBitmap a buffer of the wrong geometry. */
+     *  serving it would feed imageToBitmap a buffer of the wrong geometry.
+     *  A frame whose reader was closed under it (late straggler swept by a
+     *  swap) throws on the size read and is treated as no-frame. */
     private fun tryClaim(w: Int, h: Int): LatchedFrame? {
         val f = latch.getAndSet(null) ?: return null
-        if (f.image.width == w && f.image.height == h) return f
-        f.image.close()
+        val matches = try {
+            f.image.width == w && f.image.height == h
+        } catch (e: IllegalStateException) {
+            false
+        }
+        if (matches) return f
+        try { f.image.close() } catch (_: Exception) {}
         return null
     }
 
@@ -415,10 +466,14 @@ class MediaProjectionController(private val service: CaptureService) {
         imageReader = newReader
         readerW = w
         readerH = h
-        // Any latched frame at this point came from the old reader — drop it
-        // before the reader it belongs to is closed. (No-op on first create.)
-        latch.getAndSet(null)?.image?.close()
-        oldReader?.close()
+        // Straggler discipline on the swap (review finding): detach the old
+        // reader's listener so late old-reader frames can't re-latch, close
+        // the reader, and only THEN sweep the latch — a straggler latched
+        // between a sweep and the close would otherwise survive as an
+        // invalid Image. (No-op on first create.)
+        oldReader?.setOnImageAvailableListener(null, null)
+        closeReaderSafely(oldReader)
+        latch.getAndSet(null)?.let { try { it.image.close() } catch (_: Exception) {} }
         return newReader
     }
 
@@ -456,7 +511,8 @@ class MediaProjectionController(private val service: CaptureService) {
         val hadConsent = resultData != null
         virtualDisplay?.release()
         virtualDisplay = null
-        imageReader?.close()
+        imageReader?.setOnImageAvailableListener(null, null)
+        closeReaderSafely(imageReader)
         imageReader = null
         readerW = 0
         readerH = 0

@@ -1076,6 +1076,12 @@ class CaptureService : Service() {
         val wantMpStreamConsent = backend.requiresAccessibilityService &&
             desiredFlavor() == OverlayFlavor.TRANSLATION &&
             !mediaProjectionController.hasConsent
+        // The consent dialog suspends this start for however long the user
+        // stares at it. If a stop lands meanwhile (display disconnect, QS
+        // tile off, device sleep), resuming must NOT resurrect live mode
+        // with a stale display set (review finding). stopLive() bumps the
+        // generation; a stale token bails.
+        val startGeneration = ++liveStartGeneration
         if (backend.canCaptureWithoutPrompting && !wantMpStreamConsent) {
             beginLiveCapture()
         } else {
@@ -1084,15 +1090,20 @@ class CaptureService : Service() {
                     // Result deliberately ignored — decline means the
                     // accessibility capture path, not an error.
                     MediaProjectionCaptureBackend.ensureCaptureReady()
-                    beginLiveCapture()
+                    if (startGeneration == liveStartGeneration) beginLiveCapture()
                 } else if (backend.ensureCaptureReady()) {
-                    beginLiveCapture()
+                    if (startGeneration == liveStartGeneration) beginLiveCapture()
                 } else {
                     emitError(getString(R.string.error_screen_capture_denied))
                 }
             }
         }
     }
+
+    /** Monotonic token pairing each [startLive] with the stops that may
+     *  interleave its async consent await — see the comment in [startLive].
+     *  Main-thread confined like the rest of the live-mode mutators. */
+    private var liveStartGeneration = 0
 
     /**
      * The post-consent tail of [startLive]: compute the target display set
@@ -1456,6 +1467,9 @@ class CaptureService : Service() {
     }
 
     fun stopLive() {
+        // Invalidate any startLive suspended in its consent dialog — see
+        // liveStartGeneration.
+        liveStartGeneration++
         Log.i(TAG, "stopLive() called (isLive=$isLive, modes=${liveModes.keys})", Throwable("stopLive caller"))
         // Stop bypasses setLiveDisplays: we genuinely want zero live modes,
         // not "fall back to the backend's capturable default" — which is what
