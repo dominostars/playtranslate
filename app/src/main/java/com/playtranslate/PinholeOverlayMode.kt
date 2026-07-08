@@ -500,7 +500,15 @@ class PinholeOverlayMode(
                                 (if (outside.pendingSettle) " settling" else "") + ")"
                         )
                     }
-                    return prefs.captureIntervalMs
+                    // Skipped cycles honor the input burst too: right after a
+                    // press the game is often still animating (gate skips),
+                    // and the settle confirmation wants floor-paced looks —
+                    // that fast pacing IS the A4 payoff.
+                    return if (android.os.SystemClock.uptimeMillis() < inputBurstUntilMs) {
+                        mgr.minCaptureIntervalMs
+                    } else {
+                        prefs.captureIntervalMs
+                    }
                 }
                 pinholePre = outcomes
                 if (debug) {
