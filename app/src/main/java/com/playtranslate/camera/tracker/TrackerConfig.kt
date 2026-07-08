@@ -95,8 +95,20 @@ object TrackerConfig {
     //    needed per-device calibration and broke twice on the Moto G) ───────
 
     /** Median LK point displacement (CN px) at or below which a frame counts
-     *  as still. Sub-pixel when braced; ~1 px handheld-still. */
+     *  as still — the DEFAULT until the adaptive floor has enough samples.
+     *  Sub-pixel when braced; ~1 px handheld-still on the devices measured. */
     const val SETTLE_DISP_CN_PX = 1.5
+
+    /** Adaptive settle: the threshold derives from the device's own recent
+     *  displacement distribution (p25 × [SETTLE_FLOOR_MULT], clamped), so a
+     *  shakier sensor/hand doesn't lock the gate shut and a rock-steady rig
+     *  doesn't treat sensor noise as motion. Magic-constant calibration has
+     *  been this pipeline's most repeated failure. */
+    const val SETTLE_ADAPT_WINDOW = 90
+    const val SETTLE_ADAPT_MIN_SAMPLES = 30
+    const val SETTLE_FLOOR_MULT = 2.5
+    const val SETTLE_THRESHOLD_MIN = 0.8
+    const val SETTLE_THRESHOLD_MAX = 4.0
 
     /** Consecutive still frames before the settle gate opens. */
     const val SETTLE_FRAMES = 3

@@ -63,6 +63,14 @@ class TrackerEngine(
      *  resets it. */
     private var stillFrames = 0
 
+    /** Rolling window of known displacements feeding the adaptive settle
+     *  threshold (see [settleThreshold]). */
+    private val dispWindow = DoubleArray(TrackerConfig.SETTLE_ADAPT_WINDOW)
+    private var dispCount = 0
+    private var dispCursor = 0
+    private var cachedThreshold = TrackerConfig.SETTLE_DISP_CN_PX
+    private var insertsSinceRecalc = 0
+
     /** Consecutive acquires that produced no usable text; drives the
      *  escalating backoff. Reset by deliberate motion (re-aiming). */
     private var noTextFailures = 0
@@ -142,6 +150,10 @@ class TrackerEngine(
         regionCollapseStreaks.clear()
         emaInliers = 0f
         deadAnchorStreak = 0
+        dispCount = 0
+        dispCursor = 0
+        insertsSinceRecalc = 0
+        cachedThreshold = TrackerConfig.SETTLE_DISP_CN_PX
     }
 
     /**
@@ -282,9 +294,10 @@ class TrackerEngine(
 
     private fun updateStillness(m: TrackMeasurement?) {
         val disp = m?.medianDispPx ?: -1.0
+        if (disp >= 0) recordDisp(disp)
         when {
             disp < 0 -> Unit // unknown (rematch frame / first frame): neutral
-            disp <= TrackerConfig.SETTLE_DISP_CN_PX -> stillFrames++
+            disp <= settleThreshold() -> stillFrames++
             else -> {
                 stillFrames = 0
                 // Deliberate re-aiming: a textless scene verdict no longer
@@ -292,6 +305,30 @@ class TrackerEngine(
                 if (disp > TrackerConfig.MOTION_RESET_CN_PX) noTextFailures = 0
             }
         }
+    }
+
+    private fun recordDisp(disp: Double) {
+        dispWindow[dispCursor] = disp
+        dispCursor = (dispCursor + 1) % dispWindow.size
+        if (dispCount < dispWindow.size) dispCount++
+        if (++insertsSinceRecalc >= 15) {
+            insertsSinceRecalc = 0
+            cachedThreshold = computeThreshold()
+        }
+    }
+
+    /** Current settle threshold: default until the window has enough
+     *  samples, then p25-of-recent-displacements × mult, clamped. */
+    fun settleThreshold(): Double = cachedThreshold
+
+    private fun computeThreshold(): Double {
+        if (dispCount < TrackerConfig.SETTLE_ADAPT_MIN_SAMPLES) {
+            return TrackerConfig.SETTLE_DISP_CN_PX
+        }
+        val sorted = dispWindow.copyOf(dispCount).also { it.sort() }
+        val floor = sorted[dispCount / 4]
+        return (floor * TrackerConfig.SETTLE_FLOOR_MULT)
+            .coerceIn(TrackerConfig.SETTLE_THRESHOLD_MIN, TrackerConfig.SETTLE_THRESHOLD_MAX)
     }
 
     private fun isSettled(): Boolean = stillFrames >= TrackerConfig.SETTLE_FRAMES

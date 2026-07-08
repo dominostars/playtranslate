@@ -391,6 +391,33 @@ class TrackerEngineTest {
     }
 
     @Test
+    fun settleThresholdAdaptsDownOnSteadyDevices() {
+        val e = engine()
+        // Rock-steady rig: displacements far below the default threshold.
+        repeat(TrackerConfig.SETTLE_ADAPT_WINDOW) { e.onFrame(probe(0.2)) }
+        // p25(0.2) × 2.5 = 0.5, clamped up to the 0.8 minimum.
+        assertEquals(TrackerConfig.SETTLE_THRESHOLD_MIN, e.settleThreshold(), 1e-9)
+        // A 1.0 px wobble now counts as MOTION (default 1.5 would call it still).
+        e.onFrame(probe(1.0))
+        repeat(TrackerConfig.SETTLE_FRAMES - 1) { e.onFrame(probe(1.0)) }
+        assertFalse(e.onFrame(probe(1.0)).requestAcquire)
+    }
+
+    @Test
+    fun settleThresholdAdaptsUpOnShakyDevices() {
+        val e = engine()
+        // Noisy sensor/hand: resting displacement ~2.0 px — the default 1.5
+        // threshold would NEVER settle (the original Moto G failure shape).
+        repeat(TrackerConfig.SETTLE_ADAPT_WINDOW) { e.onFrame(probe(2.0)) }
+        assertTrue(e.settleThreshold() >= 2.0)
+        var acquired = false
+        repeat(TrackerConfig.SETTLE_FRAMES + 1) {
+            if (e.onFrame(probe(2.0)).requestAcquire) acquired = true
+        }
+        assertTrue("shaky-device settle never opened", acquired)
+    }
+
+    @Test
     fun homographyMathSanity() {
         val hCn = doubleArrayOf(1.0, 0.0, 10.0, 0.0, 1.0, -4.0, 0.0, 0.0, 1.0)
         val hAu = Homography.cnToAu(hCn, auToCnScale = 0.5)

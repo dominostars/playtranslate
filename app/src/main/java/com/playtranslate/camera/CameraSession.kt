@@ -76,11 +76,15 @@ class CameraSession(
         /** Downscale factor of the color-sampling reference bitmap. */
         const val COLOR_SCALE = 4
 
-        /** Groups whose known line confidences average below this are dropped
-         *  before translation — garbage reads (rotated text, blur) translate
-         *  into fluent-sounding nonsense otherwise. Engines that report no
-         *  confidence (-1) are never gated by this. */
-        const val MIN_GROUP_CONFIDENCE = 0.5f
+        /** Groups whose known line confidences average below the engine's
+         *  threshold are dropped before translation — garbage reads (rotated
+         *  text, blur) translate into fluent-sounding nonsense otherwise.
+         *  Engines that report no confidence (-1) are never gated.
+         *  Thresholds are per-engine-family, calibrated from device logs
+         *  (2026-07-07 Moto G): ML Kit good reads sit 0.76-0.84; Meiki
+         *  garbage sat 0.32-0.45. Extend as kept/dropped logs accumulate. */
+        const val MIN_GROUP_CONFIDENCE_DEFAULT = 0.5f
+        const val MIN_GROUP_CONFIDENCE_MLKIT = 0.6f
 
         /** Groups whose bounds touch the frame edge (within this margin, AU
          *  px) on their reading axis are dropped: the line continues off
@@ -520,10 +524,13 @@ class CameraSession(
         // (28 of 36 groups observed).
         val translating =
             SourceLanguageProfiles[prefs.sourceLangId].translationCode != prefs.targetLang
+        val confThreshold =
+            if (ocr.engineBackend?.toString()?.startsWith("MLKit") == true) MIN_GROUP_CONFIDENCE_MLKIT
+            else MIN_GROUP_CONFIDENCE_DEFAULT
         return ocr.groups.filter { g ->
             if (g.text.isBlank()) return@filter false
             val known = g.lines.map { it.confidence }.filter { it >= 0f }
-            if (known.isNotEmpty() && known.average() < MIN_GROUP_CONFIDENCE) {
+            if (known.isNotEmpty() && known.average() < confThreshold) {
                 Log.d(TAG, "gate: dropped low-confidence (%.2f) group \"%s\"".format(known.average(), g.text.take(40)))
                 return@filter false
             }
