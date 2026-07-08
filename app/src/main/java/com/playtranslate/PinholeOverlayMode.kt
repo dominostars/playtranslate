@@ -220,6 +220,14 @@ class PinholeOverlayMode(
         if (forceA11yCapture) CaptureBackendResolver.active().liveCaptureSource
         else CaptureBackendResolver.liveCaptureSourceFor(displayId)
 
+    /** Consecutive A2 gate skips since the last full cycle — drives the
+     *  reconciliation net (see runCycle's gate block). */
+    private var gateSkipStreak = 0
+
+    /** Reused sampling buffers for [OutsideChangeGate] — no steady-state
+     *  allocation on skipped cycles. */
+    private val gateBuffers = OutsideChangeGate.Buffers()
+
     // ── Unified Cycle ───────────────────────────────────────────────────
 
     /** True only when cached boxes are actually rendered on screen. An external
@@ -364,6 +372,79 @@ class PinholeOverlayMode(
 
             val bitmapRects = coords.viewListToBitmap(rects)
 
+            // ── A2: cheap change gate in front of OCR ──────────────────
+            // Pixel evidence BEFORE the expensive stages: the pinhole check
+            // (under boxes — computed once here, reused by step 8) plus a
+            // sparse brightness-normalized luma diff of everything else
+            // inside the OCR crop (OutsideChangeGate). Both quiet and
+            // nothing pending → skip OCR/classification/render outright.
+            // New text cannot appear without changing pixels — uncovered
+            // space is the outside diff's territory, under-box space the
+            // pinholes' — so the skip is sound down to the sample grid;
+            // the reconciliation cycle below is the net for anything finer,
+            // and a reconcile that finds work logs a gate MISS.
+            //
+            // A skipped cycle mutates nothing: cleanRef stays anchored at
+            // the last full look (a per-skip refresh would let slow drifts
+            // creep under the threshold), no OCR bitmap is built, no state
+            // moves, and the delivery gate re-parks on return.
+            var pinholePre: Array<PinholeOutcome>? = null
+            var reconcileCycle = false
+            run gate@{
+                val gateBoxes = cachedBoxes ?: return@gate
+                val gateRef = cleanRefBitmap ?: return@gate
+                if (overlayBitmap == null) return@gate
+                if (gateBoxes.isEmpty() || bitmapRects.size != gateBoxes.size) return@gate
+                // Pending fills (skeleton or failed-empty boxes) keep full
+                // cycles running — their recovery paths ride on OCR churn.
+                if (gateBoxes.any { it.translatedText.isEmpty() }) return@gate
+
+                val outcomes = Array(gateBoxes.size) { i ->
+                    checkPinholes(raw, gateRef, bitmapRects[i])
+                }
+                val allKeep = outcomes.all { it.result == PinholeResult.KEEP }
+                val crop = OverlayToolkit.computeOcrCrop(
+                    raw.width, raw.height,
+                    service.activeRegionForDisplay(displayId),
+                    service.getStatusBarHeightForDisplay(displayId),
+                )
+                val exclude = bitmapRects.map { r ->
+                    Rect(r).apply {
+                        inset(
+                            -PinholeCalibration.GATE_EXCLUDE_INFLATE_PX,
+                            -PinholeCalibration.GATE_EXCLUDE_INFLATE_PX,
+                        )
+                    }
+                }
+                val outside = OutsideChangeGate.check(raw, gateRef, crop, exclude, gateBuffers)
+                reconcileCycle =
+                    gateSkipStreak >= PinholeCalibration.GATE_RECONCILE_EVERY_SKIPS
+                if (allKeep && !outside.fired && !reconcileCycle) {
+                    gateSkipStreak++
+                    if (debug) {
+                        DetectionLog.log(
+                            "D$displayId c$cycleNum gate: skip #$gateSkipStreak " +
+                                "(outside ${outside.changedSamples}/${outside.totalSamples} " +
+                                "mean=${outside.meanDelta})"
+                        )
+                    }
+                    return prefs.captureIntervalMs
+                }
+                pinholePre = outcomes
+                if (debug) {
+                    val why = when {
+                        reconcileCycle -> "reconcile after $gateSkipStreak skips"
+                        !allKeep ->
+                            "pinhole ${outcomes.count { it.result != PinholeResult.KEEP }} box(es)"
+                        else ->
+                            "outside ${outside.changedSamples}/${outside.totalSamples} " +
+                                "mean=${outside.meanDelta}"
+                    }
+                    DetectionLog.log("D$displayId c$cycleNum gate: GO ($why)")
+                }
+            }
+            gateSkipStreak = 0
+
             // 4. Reconcile cleanRef against the visible overlay state.
             //    Single site of truth for the cleanRef-tracks-overlays
             //    invariant. bitmapRects is the canonical signal: it's
@@ -506,7 +587,12 @@ class PinholeOverlayMode(
                 for ((idx, box) in boxes.withIndex()) {
                     if (idx >= bitmapRects.size) continue
                     if (idx in staleOverlayIndices) continue
-                    val outcome = checkPinholes(raw, cleanRef, bitmapRects[idx])
+                    // Reuse the A2 gate's outcomes when it ran this cycle —
+                    // identical inputs (under-box cleanRef is frozen, so the
+                    // gate-time snapshot survives updateCleanRef), saves the
+                    // second per-box region read.
+                    val outcome = pinholePre?.getOrNull(idx)
+                        ?: checkPinholes(raw, cleanRef, bitmapRects[idx])
                     if (outcome.result == PinholeResult.REMOVE) {
                         pinholeRemovals.add(idx)
                     }
@@ -700,6 +786,16 @@ class PinholeOverlayMode(
             //     screen the follow-up finds nothing, forces nothing, and the
             //     loop parks.
             if (anyChanged || farOcrGroups.isNotEmpty()) forceNextCycle = true
+            if (reconcileCycle && (anyChanged || farOcrGroups.isNotEmpty())) {
+                // The A2 gate's false-negative metric: the safety-net cycle
+                // found work the gate had been skipping past. Loud on
+                // purpose — a nonzero rate here means the grid/thresholds
+                // miss real changes and the net must stay.
+                DetectionLog.log(
+                    "D$displayId c$cycleNum gate MISS: reconcile found " +
+                        "removed=${allRemovals.size} far=${farOcrGroups.size}"
+                )
+            }
             return if (anyRemoved) mgr.minCaptureIntervalMs else prefs.captureIntervalMs
         } finally {
             if (!raw.isRecycled) raw.recycle()

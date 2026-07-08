@@ -127,6 +127,37 @@ object PinholeCalibration {
     /** Per-channel delta threshold for classifying a pinhole as "changed". */
     const val SPLATTER_THRESHOLD = 60
 
+    // ── A2 change-gate constants (OutsideChangeGate + the runCycle gate) ──
+
+    /** Outside-diff sample grid stride in bitmap px. ~150 sampled rows /
+     *  ~40k samples at 1080p; text smaller than this pitch can slip between
+     *  samples, which is what [GATE_RECONCILE_EVERY_SKIPS] backstops. */
+    const val OUTSIDE_STRIDE_PX = 7
+
+    /** Per-sample |brightness-normalized luma residual| that counts as
+     *  changed. Mirror-capture noise measured ≤ ~6 levels on Thor; real
+     *  glyph swaps measured 50+ (stream-sensor 0b: swap p50=52 vs ambient
+     *  p90=14 — recorded data, order-of-magnitude corroboration only). 25
+     *  sits far above noise while catching text at half strength. */
+    const val OUTSIDE_LUMA_THRESHOLD = 25
+
+    /** Samples over threshold before the outside gate fires. 2 tolerates a
+     *  freak sample (dither, dead pixel); a real text change at stride 7
+     *  hits several grid points. */
+    const val OUTSIDE_MIN_CHANGED_SAMPLES = 2
+
+    /** Outside-diff exclusion inflation around each rendered box rect, in
+     *  px — keeps anti-aliased box edges out of the sampled set (mirrors
+     *  fillOverlayRegions' aaBuffer). */
+    const val GATE_EXCLUDE_INFLATE_PX = 3
+
+    /** Run a full reconciliation cycle after this many consecutive gate
+     *  skips — the safety net for sub-grid changes while confidence builds.
+     *  A reconcile that finds work logs a "gate MISS" (the audit-A1
+     *  false-negative metric); a persistently zero miss rate is the
+     *  evidence for eventually deleting the net. */
+    const val GATE_RECONCILE_EVERY_SKIPS = 25
+
     /** Fraction of pinholes in a box that must change to mark it REMOVE.
      *  Sits between the old soft-DIRTY threshold (0.03) and the old
      *  confident-REMOVE threshold (0.10), leaning toward the sensitive
