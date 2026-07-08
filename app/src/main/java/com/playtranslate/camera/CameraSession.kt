@@ -241,6 +241,19 @@ class CameraSession(
             // AF scans also veto acquires — a keyframe mid-scan is defocused.
             val decision = engine.onFrame(m, canAcquire = !acquireInFlight.get() && !afScanning)
 
+            // Keep tracker and engine agreeing about anchor existence. When
+            // the engine settles on IDLE (dead anchor, lost-decay) the
+            // tracker must drop its anchor too — otherwise track() keeps
+            // futilely rematching the corpse instead of running the motion
+            // probe, the median displacement stays unknown, the settle gate
+            // never opens, and IDLE becomes permanent (observed: a minute of
+            // disp=-1 with text on screen).
+            if (decision.state == TrackState.IDLE && frameTracker.hasAnchor() &&
+                !acquireInFlight.get()
+            ) {
+                frameTracker.clearAnchor()
+            }
+
             // Diagnostic heartbeat for on-device tuning.
             if (frameCount % 15 == 0L) {
                 Log.d(

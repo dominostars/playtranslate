@@ -40,6 +40,12 @@ object TrackerConfig {
      *  accumulated LK drift (benchmark: ~14 ms, still inside a 33 ms slot). */
     const val DRIFT_RESET_INTERVAL_FRAMES = 30
 
+    /** Minimum frames between re-matches while STARVED (below the keep
+     *  floor). Recovery attempts stay frequent enough to re-lock after a
+     *  blur burst, without burning a full ORB pass every frame on a scene
+     *  that's simply gone. */
+    const val STARVED_REMATCH_INTERVAL_FRAMES = 5
+
     /** Re-acquire (fresh OCR) when the tracked scale drifts this far from the
      *  anchor's acquire scale — the text is now much nearer/farther, so both
      *  BRIEF-style descriptors and the rendered overlay resolution are stale. */

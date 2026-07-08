@@ -215,10 +215,16 @@ class FrameTracker {
         }
 
         // Starved (blur, occlusion, or plain loss) → try a descriptor
-        // re-match before declaring the frame unusable.
+        // re-match before declaring the frame unusable. Throttled: when the
+        // scene is genuinely gone, an every-frame re-match burns ~14 ms per
+        // frame recovering the same handful of spurious points.
         if (currentPts.size < TrackerConfig.MIN_INLIERS_KEEP) {
-            rematch(curGray)
-            recomputeBaselines()
+            if (++framesSinceRematch >= TrackerConfig.STARVED_REMATCH_INTERVAL_FRAMES) {
+                rematch(curGray)
+                recomputeBaselines()
+            } else {
+                stepLk(curGray)
+            }
         } else if (++framesSinceRematch >= TrackerConfig.DRIFT_RESET_INTERVAL_FRAMES) {
             // Periodic drift reset (~14 ms on device — inside a 33 ms slot).
             rematch(curGray)
