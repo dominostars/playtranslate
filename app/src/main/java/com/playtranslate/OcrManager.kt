@@ -194,7 +194,8 @@ class OcrManager private constructor() {
         sourceLang: String = "ja",
         collectDebugBoxes: Boolean = false,
         screenshotWidth: Int = 0,
-        recipe: OcrPreprocessingRecipe = selectOcrRecipe(sourceLang)
+        recipe: OcrPreprocessingRecipe = selectOcrRecipe(sourceLang),
+        regionPreFilter: com.playtranslate.ocr.core.RegionPreFilter? = null,
     ): OcrResult? {
         val output = OcrPipeline.run(
             engineProvider = { registry.engineFor(sourceLang) },
@@ -205,6 +206,7 @@ class OcrManager private constructor() {
             darkBackgroundProvider = { sampleIsDarkBackground(bitmap) },
             logGrouping = debugLogGroupingEnabled,
             refineWithMangaOcr = shouldRefineMangaOcr(sourceLang),
+            regionPreFilter = regionPreFilter,
         ) ?: return null
 
         val result = buildOcrResult(

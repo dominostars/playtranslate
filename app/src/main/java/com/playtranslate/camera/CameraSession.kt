@@ -380,6 +380,7 @@ class CameraSession(
                 keyframe,
                 sourceLang,
                 screenshotWidth = keyframe.width,
+                regionPreFilter = cameraRegionPreFilter(),
             )
             if (gen != generation.get()) return
             val rawCount = ocr?.groups?.size ?: 0
@@ -449,6 +450,50 @@ class CameraSession(
             onAnalysisThread { engine.finishAcquire(acquireId, locked = false) }
         } finally {
             if (!installed) cnKeyframe.release() else onAnalysisThread { cnKeyframe.release() }
+        }
+    }
+
+    /** Fraction of the image dimension that counts as "touching the edge"
+     *  for pre-recognition gating (mirrors [EDGE_MARGIN_PX] post-OCR). */
+    private val edgeMarginFrac = 0.012f
+
+    /**
+     * Detection-stage gate + priority order, applied INSIDE composite
+     * engines between detect and recognize (recognition is the expensive
+     * stage — ~400 ms/line on budget-SoC Paddle; one acquire paid for 28
+     * discarded lines before this existed):
+     *  - when translating, drop detections clipped at the frame edge on
+     *    their reading axis (their groups would be gated post-OCR anyway);
+     *  - recognize center-out, so if a future incremental-display path (or
+     *    a cancellation) cuts the pass short, the text the user is aiming
+     *    at is what got recognized.
+     */
+    private fun cameraRegionPreFilter(): com.playtranslate.ocr.core.RegionPreFilter {
+        val translating =
+            SourceLanguageProfiles[prefs.sourceLangId].translationCode != prefs.targetLang
+        return com.playtranslate.ocr.core.RegionPreFilter { regions, w, h ->
+            val mx = (w * edgeMarginFrac).toInt()
+            val my = (h * edgeMarginFrac).toInt()
+            val kept = if (!translating) regions else regions.filter { r ->
+                val b = r.box.bounds
+                val clipped = when (r.orientation) {
+                    com.playtranslate.language.TextOrientation.VERTICAL ->
+                        b.top <= my || b.bottom >= h - my
+                    else -> b.left <= mx || b.right >= w - mx
+                }
+                !clipped
+            }
+            if (kept.size != regions.size) {
+                Log.d(TAG, "gate: skipped recognition for ${regions.size - kept.size} edge-clipped detections")
+            }
+            val cx = w / 2f
+            val cy = h / 2f
+            kept.sortedBy { r ->
+                val b = r.box.bounds
+                val dx = b.exactCenterX() - cx
+                val dy = b.exactCenterY() - cy
+                dx * dx + dy * dy
+            }
         }
     }
 

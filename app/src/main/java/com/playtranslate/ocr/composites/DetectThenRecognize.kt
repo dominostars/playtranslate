@@ -61,9 +61,13 @@ class DetectThenRecognize(
 
     private suspend fun runStages(image: OcrImage): List<RecognizedRegion> {
         val detStart = System.nanoTime()
-        val detected: List<DetectedRegion> = detector.detect(image)
+        var detected: List<DetectedRegion> = detector.detect(image)
         val detMs = (System.nanoTime() - detStart) / 1_000_000
         coroutineContext.ensureActive()
+        // Caller-supplied gate/priority hook BEFORE the expensive stage: a
+        // camera acquire once paid 28 of 36 Paddle line recognitions
+        // (~11 s) for detections its own gates then discarded.
+        image.regionPreFilter?.let { detected = it.filter(detected, image.bitmap.width, image.bitmap.height) }
         val recognized = ArrayList<RecognizedRegion>(detected.size)
         val recStart = System.nanoTime()
         for (region in detected) {

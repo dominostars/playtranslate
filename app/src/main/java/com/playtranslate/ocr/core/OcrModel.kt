@@ -68,7 +68,23 @@ data class OcrImage(
      * menu-split layout heuristic's 1/3-screen test. 0 = unknown (skip the split).
      */
     val screenshotWidth: Int = 0,
+    /**
+     * Optional hook between detection and recognition in composite engines
+     * ([com.playtranslate.ocr.composites.DetectThenRecognize]): the caller
+     * can drop detections it would discard anyway (e.g. the camera tool's
+     * frame-edge-clipped lines — recognition is the expensive stage, ~400 ms
+     * per line on budget-SoC Paddle) and reorder the rest (recognition runs
+     * in list order, so priority regions can complete first). Single-model
+     * leaf engines (ML Kit) have no detect/recognize seam and ignore this.
+     * Coordinates are in THIS image's bitmap space.
+     */
+    val regionPreFilter: RegionPreFilter? = null,
 )
+
+/** See [OcrImage.regionPreFilter]. */
+fun interface RegionPreFilter {
+    fun filter(regions: List<DetectedRegion>, imageWidth: Int, imageHeight: Int): List<DetectedRegion>
+}
 
 /**
  * A detector's output for one region, before recognition. No text yet.

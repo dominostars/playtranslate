@@ -51,6 +51,7 @@ object OcrPipeline {
         darkBackgroundProvider: () -> Boolean,
         logGrouping: Boolean,
         refineWithMangaOcr: Boolean = false,
+        regionPreFilter: com.playtranslate.ocr.core.RegionPreFilter? = null,
     ): Output? = withContext(Dispatchers.Default) {
         // Run the whole pass OFF the main thread: preprocessing, the engine's
         // inference, and layout are all CPU-bound. The capture coroutine is
@@ -72,7 +73,7 @@ object OcrPipeline {
         val scaleFactor =
             if (processed === bitmap) 1f else processed.width.toFloat() / bitmap.width
         try {
-            val recognized = engine.recognize(OcrImage(processed, sourceLang, screenshotWidth))
+            val recognized = engine.recognize(OcrImage(processed, sourceLang, screenshotWidth, regionPreFilter))
             // Shared text normalization (pipe-trim / UI-decoration / noise) for EVERY
             // engine — folds in passes that used to live only in the ML Kit adapter, so
             // Meiki/Paddle/manga-ocr get them too. LayoutAnalyzer.analyze (this is its
