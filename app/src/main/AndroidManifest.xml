@@ -18,6 +18,12 @@
     <!-- In-app self-update: hand the downloaded release APK to the system
          package installer (com.playtranslate.update.ApkUpdateManager). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Camera tool (Settings → Tools → Camera). Optional hardware: the tool
+         hides gracefully on camera-less devices (e.g. gaming handhelds). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
 
     <queries>
         <package android:name="com.ichi2.anki" />
@@ -194,6 +200,16 @@
             android:name=".ui.TranslationHistoryActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate" />
+
+        <!-- Camera tool, launched from Settings → Tools. Portrait-locked in v1
+             so the preview/analysis coordinate mapping has one orientation. -->
+        <activity
+            android:name=".camera.CameraActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Theme.PlayTranslate" />
 
         <!-- Hotkeys sub-page (QS tile + hotkeys), launched from Settings → Configure. -->

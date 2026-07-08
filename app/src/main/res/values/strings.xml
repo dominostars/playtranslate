@@ -2899,6 +2899,24 @@
     <string name="history_copied_toast">Copied</string>
     <!-- Summary line under the Dictionary hub cell title in settings. -->
     <string name="settings_cell_dictionary_summary">Look up word definitions</string>
+    <!-- Title of the Tools hub cell that opens the live camera translation screen. -->
+    <string name="settings_cell_camera">Camera</string>
+    <!-- Summary line under the Camera hub cell title in settings. -->
+    <string name="settings_cell_camera_summary">Point your camera at text to translate it</string>
+
+    <!-- CAMERA TOOL — the live camera translation screen. -->
+    <!-- Rationale shown on the camera screen before/after the CAMERA runtime permission ask. -->
+    <string name="camera_permission_rationale">PlayTranslate needs camera access to translate text you point it at. Images are processed on this device.</string>
+    <!-- Button that triggers the CAMERA runtime permission request. -->
+    <string name="camera_permission_grant">Allow camera access</string>
+    <!-- Shown when the CAMERA permission was permanently denied; the button below opens app settings. -->
+    <string name="camera_permission_denied">Camera access was denied. Allow it in system settings to use the camera.</string>
+    <!-- Button that opens the app's system settings page to change the camera permission. -->
+    <string name="camera_open_settings">Open settings</string>
+    <!-- Toast shown when the device has no usable camera. -->
+    <string name="camera_unavailable">No camera available on this device</string>
+    <!-- Content description of the back arrow on the camera screen. -->
+    <string name="camera_back_cd">Back</string>
 
     <!-- Hub-cell status digests (the summary line under each cell title). -->
     <string name="settings_digest_none">None</string>

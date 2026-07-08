@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Camera tool: full-bleed preview with floating controls on top. The
+     preview intentionally extends behind the system bars; only
+     @id/cameraControls receives inset padding (see CameraActivity). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <androidx.camera.view.PreviewView
+        android:id="@+id/cameraPreview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Overlay layer host: Phase 1 adds the translation/reading overlays here,
+         between the preview and the floating controls. -->
+    <FrameLayout
+        android:id="@+id/cameraOverlayHost"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Floating controls — the ONLY view that gets system-bar inset padding. -->
+    <FrameLayout
+        android:id="@+id/cameraControls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <ImageButton
+            android:id="@+id/cameraBack"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_gravity="start|top"
+            android:layout_margin="8dp"
+            android:background="@drawable/bg_camera_control_scrim"
+            android:contentDescription="@string/camera_back_cd"
+            android:src="@drawable/ic_arrow_back"
+            app:tint="@android:color/white" />
+
+        <!-- Segmented Translation / Furigana-Pinyin toggle; GONE unless the
+             source language has reading support (hintTextKind != NONE). -->
+        <FrameLayout
+            android:id="@+id/cameraModeToggle"
+            android:layout_width="248dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal|top"
+            android:layout_marginTop="8dp"
+            android:visibility="gone" />
+
+        <!-- Tracker debug pill (debug builds only): STATE inl=… sc=… ms. -->
+        <TextView
+            android:id="@+id/cameraDebugPill"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start|top"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="60dp"
+            android:background="@drawable/bg_camera_pill_scrim"
+            android:fontFamily="monospace"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:textColor="@android:color/white"
+            android:textSize="11sp"
+            android:visibility="gone" />
+
+    </FrameLayout>
+
+    <!-- Permission gate: replaces the preview until CAMERA is granted. -->
+    <LinearLayout
+        android:id="@+id/cameraPermissionGate"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/black"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="32dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/cameraPermissionText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="@string/camera_permission_rationale"
+            android:textColor="@android:color/white"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/cameraPermissionButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/camera_permission_grant" />
+
+    </LinearLayout>
+
+</FrameLayout>

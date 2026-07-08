@@ -210,4 +210,10 @@ dependencies {
     // into the app APK. Experimental / debug-gated; not a shipped feature.
     // See docs/paddleocr-spike-report.md (verdict: NO-GO for production).
     implementation(libs.opencv)
+
+    // CameraX for the camera tool (Settings → Tools → Camera).
+    implementation(libs.camerax.core)
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
 }

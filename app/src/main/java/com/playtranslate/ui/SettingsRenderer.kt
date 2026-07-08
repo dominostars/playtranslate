@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
+import com.playtranslate.camera.CameraActivity
 import com.playtranslate.capturableDisplays
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CaptureLifecycle
@@ -874,11 +875,21 @@ class SettingsRenderer(
 
     // ── Tools ────────────────────────────────────────────────────────────
 
-    /** TOOLS: static hub cells — translation history on top, then the
-     *  dictionary lookup screen. */
+    /** TOOLS: hub cells opening the standalone tool screens — translation
+     *  history on top, then the camera tool, then the dictionary lookup
+     *  screen. Only History carries live state; the rest bind once here. */
     private fun setupToolsSection() {
         setGroupHeader(R.id.headerTools, ctx.getString(R.string.settings_header_tools))
         refreshToolsSection()
+        bindHubCell(
+            root.findViewById(R.id.rowToolCamera),
+            HubCell(
+                iconRes = R.drawable.ic_camera,
+                title = ctx.getString(R.string.settings_cell_camera),
+                summary = ctx.getString(R.string.settings_cell_camera_summary),
+                onClick = { ctx.startActivity(Intent(ctx, CameraActivity::class.java)) },
+            ),
+        )
         bindHubCell(
             root.findViewById(R.id.rowToolDictionary),
             HubCell(

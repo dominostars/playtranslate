@@ -1,0 +1,107 @@
+package com.playtranslate.camera.tracker
+
+/**
+ * Tracker policy constants, ported from the offline-translator planar engine
+ * (translator-rs `planar_engine.rs` defaults) and adapted where our pipeline
+ * differs. Start values — tune against the debug pill on device.
+ */
+object TrackerConfig {
+    /** ORB feature budget for anchors and drift-reset re-matches. */
+    const val ORB_FEATURES = 1000
+
+    /** Max LK-tracked correspondences per frame (benchmark: 300 pts = 1.3 ms). */
+    const val MAX_TRACK_POINTS = 300
+
+    /** LK window and pyramid depth (≈40 px motion ceiling at 3 levels). */
+    const val LK_WIN_SIZE = 21.0
+    const val LK_MAX_LEVEL = 3
+
+    /** Forward-backward LK consistency threshold (px in CN space): a point
+     *  whose backward track lands farther than this from its origin is
+     *  dropped as unreliable. */
+    const val LK_FB_EPS = 1.0
+
+    /** RANSAC reprojection threshold (px in CN space). */
+    const val RANSAC_REPROJ_PX = 3.0
+
+    /** Inliers needed to LOCK a fresh anchor... */
+    const val MIN_INLIERS_ACQUIRE = 25
+
+    /** ...and the (lower, hysteresis) floor to KEEP a lock. */
+    const val MIN_INLIERS_KEEP = 18
+
+    /** Consecutive sub-[MIN_INLIERS_KEEP] frames before Locked → Lost. */
+    const val FRAMES_TO_LOST = 5
+
+    /** Lost frames (attempting anchor re-match) before giving up → Idle. */
+    const val LOST_TO_IDLE_FRAMES = 30
+
+    /** Re-detect ORB and re-match against the anchor every N frames to reset
+     *  accumulated LK drift (benchmark: ~14 ms, still inside a 33 ms slot). */
+    const val DRIFT_RESET_INTERVAL_FRAMES = 30
+
+    /** Re-acquire (fresh OCR) when the tracked scale drifts this far from the
+     *  anchor's acquire scale — the text is now much nearer/farther, so both
+     *  BRIEF-style descriptors and the rendered overlay resolution are stale. */
+    const val SCALE_DRIFT_REACQUIRE = 1.35f
+
+    /** Anchor staleness: while settled and Locked, refresh (re-OCR) anchors
+     *  older than this. */
+    const val ANCHOR_REFRESH_AGE_MS = 30_000L
+
+    /** Floor between acquires. */
+    const val ACQUIRE_COOLDOWN_MS = 250L
+
+    /** EMA smoothing factor applied to the emitted homography (0..1, higher =
+     *  snappier). Deliberate v1 simplification over the reference's 8-DoF EKF;
+     *  same seam if an EKF upgrade is ever warranted. */
+    const val H_SMOOTHING_ALPHA = 0.6f
+
+    // ── Per-region refinement (Huawei US 12,190,612's per-text-line
+    //    homographies, generalized to the overlay's warp unit: OCR groups for
+    //    the translation flavor, OCR lines for furigana/pinyin) ─────────────
+
+    /** Acquire-time good-features budget used to seed region tracing points
+     *  (on top of the ORB anchor features). 600 originally; halved after Moto
+     *  G diagnostics — 900 total points × 2 LK passes starved the acquire
+     *  OCR on budget SoCs for marginal tracking benefit. */
+    const val SEED_FEATURES = 250
+
+    /** Hard cap on live correspondences (ORB matches + seeds). LK cost is
+     *  linear in this. */
+    const val TOTAL_POINT_CAP = 400
+
+    /** Consecutive frames of scene-change (vs the last keyframe) with the
+     *  smoothed inlier count below [MIN_INLIERS_ACQUIRE] before a Locked
+     *  anchor is declared dead → Idle. Catches the "pointed somewhere new
+     *  but spurious re-matches keep the old lock limping" deadlock, which
+     *  the consecutive-bad-frames hysteresis misses (rematch spikes reset
+     *  it). Observed live on the Moto G (sceneDiff 60-96, inliers 10-266
+     *  oscillating, state pinned LOCKED for 27 s). */
+    const val SCENE_LOSS_FRAMES = 20
+
+    /** EMA factor for the smoothed inlier count feeding the dead-anchor
+     *  check (higher = snappier). */
+    const val EMA_INLIERS_ALPHA = 0.3f
+
+    /** Smoothed-inlier ceiling for the dead-anchor check. Calibrated from
+     *  the 2026-07-07 Moto G capture: a dying anchor's spurious-rematch
+     *  churn (10→266→17…) EMAs to ~40-150, while a healthy lock holds
+     *  ~270-900 — so 100 separates them with margin on both sides. */
+    const val DEAD_ANCHOR_EMA_INLIERS = 100f
+
+    /** Minimum surviving correspondences inside a region's anchor rect to fit
+     *  that region its own homography; below this it falls back to global H. */
+    const val MIN_REGION_POINTS = 6
+
+    /** Region rect inflation (fraction of each dimension) when testing
+     *  point membership — text corners sit ON the glyph edges. */
+    const val REGION_INFLATE_FRAC = 0.25f
+
+    /** Huawei-style re-OCR trigger: a region whose tracing-point survival
+     *  ratio stays below this for [REGION_COLLAPSE_FRAMES] consecutive frames
+     *  (while settled) forces a re-acquire — its content likely changed or
+     *  got occluded. */
+    const val REGION_SURVIVAL_REOCR = 0.35f
+    const val REGION_COLLAPSE_FRAMES = 5
+}

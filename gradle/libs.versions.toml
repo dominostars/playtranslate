@@ -31,6 +31,7 @@ junit = "4.13.2"
 robolectric = "4.16.1"
 opencv = "4.13.0"
 opencc4j = "1.13.1"
+camerax = "1.4.2"
 androidxTestCore = "1.7.0"
 androidxTestExtJunit = "1.3.0"
 androidxTestRunner = "1.7.0"
@@ -73,6 +74,12 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 # OpenCV — DBNet postprocessing (findContours/minAreaRect) + crop rectification
 # (warpPerspective) for the PaddleOCR spike. androidTest-only; never in the app APK.
 opencv = { group = "org.opencv", name = "opencv", version.ref = "opencv" }
+# CameraX — camera tool (Settings → Tools → Camera): full-page preview +
+# analysis frames for the keyframe-OCR/tracking pipeline.
+camerax-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
+camerax-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
+camerax-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+camerax-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 # OpenCC (Simplified<->Traditional Chinese, phrase-aware) for render-time
 # conversion of Traditional Chinese target output. Apache-2.0, pure-JVM.
 opencc4j = { group = "com.github.houbb", name = "opencc4j", version.ref = "opencc4j" }
