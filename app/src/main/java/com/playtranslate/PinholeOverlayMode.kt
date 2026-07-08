@@ -94,6 +94,7 @@ class PinholeOverlayMode(
         currentJob = scope.launch {
             try {
                 if (delayMs > 0) delay(delayMs)
+                awaitCycleReason()
                 val nextDelay = runCycle()
                 scheduleNextCycle(nextDelay)
             } catch (e: CancellationException) {
@@ -103,10 +104,54 @@ class PinholeOverlayMode(
                 // Unexpected throw (display went away, WindowManager token
                 // invalidated, bitmap op on detached view, etc.). Log and
                 // reschedule so the cycle self-heals instead of silently
-                // going dormant.
+                // going dormant. Force the retry — self-healing must not
+                // depend on the screen changing.
                 Log.e("PinholeOverlayMode", "runCycle failed, rescheduling", e)
+                forceNextCycle = true
                 scheduleNextCycle(Prefs(service).captureIntervalMs)
             }
+        }
+    }
+
+    /**
+     * The delivery gate: park before the cycle until there is a reason to run
+     * it. Reasons, in the order checked:
+     *  - the capture source exposes no [DeliverySignal] (accessibility
+     *    `takeScreenshot` — no silence evidence, poll exactly as before);
+     *  - a hold is active ([runCycle]'s 100 ms hold-poll must keep polling);
+     *  - a forced cycle is pending ([forceNextCycle]);
+     *  - the mirror delivered a frame newer than the one the last cycle
+     *    consumed (`seqNow > lastServedSeq`).
+     *
+     * Pacing (the `delay` before this call) always runs first, so cycles can
+     * never fire closer together than they did on the blind timer — the gate
+     * only ever *skips* work. The park is a cancellable suspend;
+     * stop/refresh/dismiss cancel [currentJob] while parked exactly as they
+     * cancelled a pending `delay`. Our own repaints composite and count as
+     * deliveries, so a parked loop can always be woken by anything that
+     * changes the screen — including us.
+     */
+    private suspend fun awaitCycleReason() {
+        val signal = CaptureBackendResolver.activeLiveCaptureSource?.deliverySignal ?: return
+        val debug = Prefs(service).debugLiveMode
+        var parkedAtMs = 0L
+        while (!forceNextCycle && !service.holdActive &&
+            signal.seqNow() <= signal.lastServedSeq
+        ) {
+            if (parkedAtMs == 0L) {
+                parkedAtMs = android.os.SystemClock.uptimeMillis()
+                if (debug) DetectionLog.log("D$displayId gate: parked at seq=${signal.seqNow()}")
+            }
+            signal.awaitSeqAfter(signal.lastServedSeq)
+        }
+        if (parkedAtMs != 0L && debug) {
+            val why = when {
+                forceNextCycle -> "forced"
+                service.holdActive -> "hold"
+                else -> "delivery seq=${signal.seqNow()}"
+            }
+            val ms = android.os.SystemClock.uptimeMillis() - parkedAtMs
+            DetectionLog.log("D$displayId gate: wake after ${ms}ms ($why)")
         }
     }
 
@@ -141,7 +186,22 @@ class PinholeOverlayMode(
         cleanRefBitmap = null
         overlayBitmap?.recycle()
         overlayBitmap = null
+        // The gate is only meaningful relative to a previous look at the
+        // screen. After a reset the model is empty (overlays hidden, caches
+        // dropped), so the next cycle must run even in delivery silence —
+        // otherwise a dismiss on a static screen parks forever with nothing
+        // shown.
+        forceNextCycle = true
     }
+
+    /** Run the next cycle regardless of delivery silence. Starts true (the
+     *  bootstrap look), set again by every state reset ([resetState]), every
+     *  failed/aborted cycle (self-heal must not depend on the screen
+     *  changing), and every cycle that mutated the overlay (exactly one
+     *  follow-up look — which, on a static screen, finds nothing, forces
+     *  nothing, and lets the loop park). Cleared right before each capture
+     *  attempt. Main-thread only, like the rest of the mode's state. */
+    private var forceNextCycle = true
 
     // ── Unified Cycle ───────────────────────────────────────────────────
 
@@ -159,9 +219,20 @@ class PinholeOverlayMode(
     private suspend fun runCycle(): Long {
         val prefs = Prefs(service)
         if (service.holdActive) return 100L
-        val mgr = CaptureBackendResolver.activeLiveCaptureSource ?: return prefs.captureIntervalMs
+        val mgr = CaptureBackendResolver.activeLiveCaptureSource
+        if (mgr == null) {
+            // Backend unavailable (service unbinding / mid-swap). Retry
+            // unconditionally — recovery must not wait for a delivery.
+            forceNextCycle = true
+            return prefs.captureIntervalMs
+        }
         cycleNum++
         val debug = prefs.debugLiveMode
+
+        // A pending force is consumed by reaching a real capture attempt.
+        // Deliberately after the hold/mgr guards above: those returns must
+        // not eat a force set by dismiss/refresh during a hold.
+        forceNextCycle = false
 
         // Capture. Boxes that pinhole detection flags as changed are
         // removed and re-OCR'd on the next cycle; there is no longer a
@@ -169,6 +240,10 @@ class PinholeOverlayMode(
         val raw = mgr.requestRaw(displayId)
 
         if (raw == null) {
+            // Transient capture failure — a persistently failing capture must
+            // keep retrying every interval, not park silently until the
+            // screen happens to change.
+            forceNextCycle = true
             return prefs.captureIntervalMs
         }
 
@@ -193,6 +268,9 @@ class PinholeOverlayMode(
                 overlayBitmap?.recycle()
                 overlayBitmap = null
                 CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
+                // State cleared + overlay hidden: the rebuild cycle must run
+                // even if the post-rotation screen goes immediately static.
+                forceNextCycle = true
                 return prefs.captureIntervalMs
             }
 
@@ -235,6 +313,10 @@ class PinholeOverlayMode(
             // pinhole pattern and detection math (see FrameCoordinates KDoc
             // for the full story).
             if (!coords.isIdentityScale) {
+                // Preserve the retry-every-interval*3 semantics under the
+                // gate — the recorded 1240-vs-1920 field mismatch means this
+                // path is reachable, and parking here would hide it.
+                forceNextCycle = true
                 return prefs.captureIntervalMs * 3
             }
 
@@ -317,6 +399,8 @@ class PinholeOverlayMode(
                     overlayBitmap?.recycle()
                     overlayBitmap = null
                     CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
+                    // Same reasoning as the dim-change reset above.
+                    forceNextCycle = true
                     return prefs.captureIntervalMs
                 }
             }
@@ -567,7 +651,13 @@ class PinholeOverlayMode(
                 }
             }
 
-            // 14. Timing
+            // 14. Timing. A cycle that mutated the overlay (removals applied
+            //     or new text placed) forces exactly one follow-up look — the
+            //     deterministic replacement for relying on our own repaint
+            //     echoing back through the mirror as a delivery. On a static
+            //     screen the follow-up finds nothing, forces nothing, and the
+            //     loop parks.
+            if (anyChanged || farOcrGroups.isNotEmpty()) forceNextCycle = true
             return if (anyRemoved) mgr.minCaptureIntervalMs else prefs.captureIntervalMs
         } finally {
             if (!raw.isRecycled) raw.recycle()
