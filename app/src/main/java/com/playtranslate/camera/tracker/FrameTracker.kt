@@ -110,10 +110,14 @@ class FrameTracker {
 
     private var framesSinceRematch = 0
 
-    // Reused OpenCV buffers.
+    // Reused OpenCV buffers. Every OpenCV Java object wraps NATIVE memory
+    // reclaimed only by finalizers — per-call allocations on hot paths grow
+    // native memory with no Java-heap pressure to trigger GC.
     private val lkStatus = MatOfByte()
     private val lkErr = MatOfFloat()
     private val lkWin = Size(TrackerConfig.LK_WIN_SIZE, TrackerConfig.LK_WIN_SIZE)
+    private val emptyMask = Mat()
+    private val affineInliers = Mat()
 
     /** Install a new anchor (takes ownership; releases the old one).
      *
@@ -202,7 +206,7 @@ class FrameTracker {
         if (candidate.descriptors.empty()) return 0
         val kps = MatOfKeyPoint()
         val desc = Mat()
-        orb.detectAndCompute(curGray, Mat(), kps, desc)
+        orb.detectAndCompute(curGray, emptyMask, kps, desc)
         if (desc.empty()) {
             kps.release(); desc.release()
             return 0
@@ -212,9 +216,12 @@ class FrameTracker {
         var count = 0
         for (pair in knn) {
             val m = pair.toArray()
-            if (m.isEmpty()) continue
-            if (m.size >= 2 && m[0].distance >= 0.75f * m[1].distance) continue
-            count++
+            if (m.isEmpty()) {
+                pair.release()
+                continue
+            }
+            if (!(m.size >= 2 && m[0].distance >= 0.75f * m[1].distance)) count++
+            pair.release()
         }
         kps.release(); desc.release()
         return count
@@ -366,7 +373,7 @@ class FrameTracker {
         framesSinceRematch = 0
         val kps = MatOfKeyPoint()
         val desc = Mat()
-        orb.detectAndCompute(curGray, Mat(), kps, desc)
+        orb.detectAndCompute(curGray, emptyMask, kps, desc)
         if (desc.empty() || anchor.descriptors.empty()) {
             kps.release(); desc.release()
             return
@@ -380,13 +387,16 @@ class FrameTracker {
         val newCurrent = ArrayList<Point>()
         for (pair in knn) {
             val m = pair.toArray()
-            if (m.isEmpty()) continue
             // Lowe ratio test — require the best match to clearly beat the
             // runner-up (or be the only candidate).
-            if (m.size >= 2 && m[0].distance >= 0.75f * m[1].distance) continue
-            newAnchor.add(anchorKps[m[0].queryIdx].pt)
-            newCurrent.add(curKps[m[0].trainIdx].pt)
-            if (newAnchor.size >= TrackerConfig.MAX_TRACK_POINTS) break
+            val accepted = m.isNotEmpty() &&
+                !(m.size >= 2 && m[0].distance >= 0.75f * m[1].distance) &&
+                newAnchor.size < TrackerConfig.MAX_TRACK_POINTS
+            if (accepted) {
+                newAnchor.add(anchorKps[m[0].queryIdx].pt)
+                newCurrent.add(curKps[m[0].trainIdx].pt)
+            }
+            pair.release()
         }
         anchorPts = newAnchor
         currentPts = newCurrent
@@ -471,7 +481,7 @@ class FrameTracker {
             val src = MatOfPoint2f(*memberAnchor.toTypedArray())
             val dst = MatOfPoint2f(*memberCurrent.toTypedArray())
             val affine = Calib3d.estimateAffinePartial2D(
-                src, dst, Mat(), Calib3d.RANSAC, TrackerConfig.RANSAC_REPROJ_PX, 2000, 0.99, 10,
+                src, dst, affineInliers, Calib3d.RANSAC, TrackerConfig.RANSAC_REPROJ_PX, 2000, 0.99, 10,
             )
             src.release(); dst.release()
             if (!affine.empty()) {
@@ -529,7 +539,7 @@ class FrameTracker {
     ): Anchor {
         val kps = MatOfKeyPoint()
         val desc = Mat()
-        orb.detectAndCompute(cnGray, Mat(), kps, desc)
+        orb.detectAndCompute(cnGray, emptyMask, kps, desc)
         val corners = MatOfPoint()
         Imgproc.goodFeaturesToTrack(cnGray, corners, TrackerConfig.SEED_FEATURES, 0.01, 6.0)
         val seeds = corners.toArray().toList()
@@ -552,5 +562,7 @@ class FrameTracker {
         prevGray.release()
         lkStatus.release()
         lkErr.release()
+        emptyMask.release()
+        affineInliers.release()
     }
 }

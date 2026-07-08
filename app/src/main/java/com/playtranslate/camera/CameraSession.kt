@@ -454,7 +454,7 @@ class CameraSession(
             }
 
             if (groups.isEmpty()) {
-                onAnalysisThread { engine.finishAcquire(acquireId, locked = false) }
+                // finally's finish-as-failed completes the acquire.
                 withContext(Dispatchers.Main) { warpView?.clearRegions() }
                 postHint(true)
                 return
@@ -493,9 +493,24 @@ class CameraSession(
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Log.w(TAG, "acquire failed", e)
-            onAnalysisThread { engine.finishAcquire(acquireId, locked = false) }
         } finally {
-            if (!installed) cnKeyframe.release() else onAnalysisThread { cnKeyframe.release() }
+            // TOTAL completion: every exit from this function — including the
+            // stale-generation return after OCR (mode toggled mid-acquire),
+            // the exception path, and coroutine cancellation — must complete
+            // the acquire, or the engine waits out the full watchdog with new
+            // acquires suppressed. Fire-and-forget (not a suspend call: those
+            // throw immediately inside a cancelled coroutine) and idempotent
+            // (a no-op when the install path already finished this id).
+            if (!analysisExecutor.isShutdown) {
+                // Serialized behind any pending install block, so this can't
+                // race a cancelled-but-still-running use of cnKeyframe.
+                analysisExecutor.execute {
+                    engine.finishAcquire(acquireId, locked = false)
+                    cnKeyframe.release()
+                }
+            } else {
+                cnKeyframe.release()
+            }
         }
     }
 
@@ -573,10 +588,14 @@ class CameraSession(
             if (g.text.isBlank()) return@filter false
             val known = g.lines.map { it.confidence }.filter { it >= 0f }
             if (known.isNotEmpty() && known.average() < confThreshold) {
-                Log.d(TAG, "gate: dropped low-confidence (%.2f) group \"%s\"".format(known.average(), g.text.take(40)))
+                // Camera OCR content is PRIVATE (documents, screens) — raw
+                // text never reaches production logs, only debug builds.
+                if (com.playtranslate.BuildConfig.DEBUG) {
+                    Log.d(TAG, "gate: dropped low-confidence (%.2f) group \"%s\"".format(known.average(), g.text.take(40)))
+                }
                 return@filter false
             }
-            if (known.isNotEmpty()) {
+            if (known.isNotEmpty() && com.playtranslate.BuildConfig.DEBUG) {
                 // Kept-group confidences calibrate the threshold: we need to
                 // know where GOOD reads sit on this device, not just the bad.
                 Log.d(TAG, "gate: kept (%.2f) group \"%s\"".format(known.average(), g.text.take(40)))
@@ -589,7 +608,9 @@ class CameraSession(
                         g.bounds.left <= EDGE_MARGIN_PX || g.bounds.right >= auWidth - EDGE_MARGIN_PX
                 }
                 if (clipped) {
-                    Log.d(TAG, "gate: dropped edge-clipped group \"${g.text.take(40)}\"")
+                    if (com.playtranslate.BuildConfig.DEBUG) {
+                        Log.d(TAG, "gate: dropped edge-clipped group \"${g.text.take(40)}\"")
+                    }
                     return@filter false
                 }
             }
@@ -644,8 +665,11 @@ class CameraSession(
                 Log.d(TAG, "acquire: translated ${texts.size} groups in ${System.currentTimeMillis() - t0}ms")
                 // Quality forensics: the OCR text and its translation, so
                 // "bad output" can be attributed to reading vs translating.
-                texts.forEachIndexed { i, src ->
-                    Log.d(TAG, "acquire text[$i]: \"${src.take(120)}\" -> \"${translations.getOrElse(i) { "" }.take(120)}\"")
+                // Camera content is private — DEBUG builds only, never release.
+                if (com.playtranslate.BuildConfig.DEBUG) {
+                    texts.forEachIndexed { i, src ->
+                        Log.d(TAG, "acquire text[$i]: \"${src.take(120)}\" -> \"${translations.getOrElse(i) { "" }.take(120)}\"")
+                    }
                 }
                 if (gen != generation.get()) return
                 val filled = placeholders.mapIndexed { idx, ph ->
