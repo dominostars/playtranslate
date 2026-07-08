@@ -391,29 +391,40 @@ class CameraSession(
         ocr: OcrManager.OcrResult,
         auWidth: Int,
         auHeight: Int,
-    ): List<OcrManager.OcrGroup> = ocr.groups.filter { g ->
-        if (g.text.isBlank()) return@filter false
-        val known = g.lines.map { it.confidence }.filter { it >= 0f }
-        if (known.isNotEmpty() && known.average() < MIN_GROUP_CONFIDENCE) {
-            Log.d(TAG, "gate: dropped low-confidence (%.2f) group \"%s\"".format(known.average(), g.text.take(40)))
-            return@filter false
+    ): List<OcrManager.OcrGroup> {
+        // Edge-clipped fragments only hurt when TRANSLATED (a cut-off line
+        // renders as a fluent non sequitur). In same-language OCR-only mode
+        // a clipped line is still honest output — and on a full-frame
+        // document the edge gate would otherwise discard most of the page
+        // (28 of 36 groups observed).
+        val translating =
+            SourceLanguageProfiles[prefs.sourceLangId].translationCode != prefs.targetLang
+        return ocr.groups.filter { g ->
+            if (g.text.isBlank()) return@filter false
+            val known = g.lines.map { it.confidence }.filter { it >= 0f }
+            if (known.isNotEmpty() && known.average() < MIN_GROUP_CONFIDENCE) {
+                Log.d(TAG, "gate: dropped low-confidence (%.2f) group \"%s\"".format(known.average(), g.text.take(40)))
+                return@filter false
+            }
+            if (known.isNotEmpty()) {
+                // Kept-group confidences calibrate the threshold: we need to
+                // know where GOOD reads sit on this device, not just the bad.
+                Log.d(TAG, "gate: kept (%.2f) group \"%s\"".format(known.average(), g.text.take(40)))
+            }
+            if (translating) {
+                val clipped = when (g.orientation) {
+                    com.playtranslate.language.TextOrientation.VERTICAL ->
+                        g.bounds.top <= EDGE_MARGIN_PX || g.bounds.bottom >= auHeight - EDGE_MARGIN_PX
+                    else ->
+                        g.bounds.left <= EDGE_MARGIN_PX || g.bounds.right >= auWidth - EDGE_MARGIN_PX
+                }
+                if (clipped) {
+                    Log.d(TAG, "gate: dropped edge-clipped group \"${g.text.take(40)}\"")
+                    return@filter false
+                }
+            }
+            true
         }
-        if (known.isNotEmpty()) {
-            // Kept-group confidences calibrate the threshold: we need to know
-            // where GOOD reads sit on this device, not just the bad ones.
-            Log.d(TAG, "gate: kept (%.2f) group \"%s\"".format(known.average(), g.text.take(40)))
-        }
-        val clipped = when (g.orientation) {
-            com.playtranslate.language.TextOrientation.VERTICAL ->
-                g.bounds.top <= EDGE_MARGIN_PX || g.bounds.bottom >= auHeight - EDGE_MARGIN_PX
-            else ->
-                g.bounds.left <= EDGE_MARGIN_PX || g.bounds.right >= auWidth - EDGE_MARGIN_PX
-        }
-        if (clipped) {
-            Log.d(TAG, "gate: dropped edge-clipped group \"${g.text.take(40)}\"")
-            return@filter false
-        }
-        true
     }
 
     /** Run [block] on the analysis executor (the only thread allowed to touch

@@ -115,27 +115,42 @@ class FrameTracker {
     private val lkErr = MatOfFloat()
     private val lkWin = Size(TrackerConfig.LK_WIN_SIZE, TrackerConfig.LK_WIN_SIZE)
 
-    /** Install a new anchor (takes ownership; releases the old one). Seeds
-     *  correspondences by ORB-matching against [curGray] (≈ the keyframe at
-     *  acquire time) plus the anchor's good-features tracing points. */
-    fun installAnchor(newAnchor: Anchor, curGray: Mat): Int {
+    /** Install a new anchor (takes ownership; releases the old one).
+     *
+     *  Correspondences are seeded by ORB-matching the anchor against the
+     *  LIVE previous frame when one exists — NOT the keyframe. A slow OCR
+     *  can outlive the scene (user walked away mid-acquire); matching
+     *  against the keyframe always "succeeds" (it matches itself) and used
+     *  to lock stale overlays onto a departed scene. Matching against the
+     *  live frame makes a stale completion fail to lock naturally.
+     *
+     *  Returns the ORB match count — the caller's lock criterion. Identity
+     *  tracing-point seeds are added only when that count is healthy (the
+     *  live view still resembles the keyframe, so keyframe positions are
+     *  valid current positions), and never count toward the return value. */
+    fun installAnchor(newAnchor: Anchor, keyframeGray: Mat): Int {
         anchor?.release()
         anchor = newAnchor
         framesSinceRematch = 0
-        rematch(curGray)
-        // Tracing-point seeds: at acquire, current ≈ keyframe, so the seed's
-        // current position IS its anchor position. Capped — LK cost is linear
-        // in live points and budget SoCs pay for every one.
-        val seedBudget = TrackerConfig.TOTAL_POINT_CAP - anchorPts.size
-        for ((i, p) in newAnchor.seedPts.withIndex()) {
-            if (i >= seedBudget) break
-            anchorPts.add(p)
-            currentPts.add(Point(p.x, p.y))
+        val seedTarget = if (hasPrev) prevGray else keyframeGray
+        rematch(seedTarget)
+        val orbMatches = anchorPts.size
+        if (orbMatches >= TrackerConfig.MIN_INLIERS_ACQUIRE) {
+            // Tracing-point seeds, capped — LK cost is linear in live points
+            // and budget SoCs pay for every one.
+            val seedBudget = TrackerConfig.TOTAL_POINT_CAP - anchorPts.size
+            for ((i, p) in newAnchor.seedPts.withIndex()) {
+                if (i >= seedBudget) break
+                anchorPts.add(p)
+                currentPts.add(Point(p.x, p.y))
+            }
         }
         recomputeBaselines()
-        curGray.copyTo(prevGray)
-        hasPrev = true
-        return anchorPts.size
+        if (!hasPrev) {
+            keyframeGray.copyTo(prevGray)
+            hasPrev = true
+        }
+        return orbMatches
     }
 
     /** Register the overlay warp units to refine per-region (anchor-CN

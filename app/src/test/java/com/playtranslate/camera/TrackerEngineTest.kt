@@ -353,6 +353,31 @@ class TrackerEngineTest {
     }
 
     @Test
+    fun walkingAwayMidAcquireHidesOverlaysButAwaitsCompletion() {
+        val e = engine()
+        lockEngine(e)
+        // Staleness refresh puts us in ACQUIRING with overlays still live.
+        nowMs += TrackerConfig.ANCHOR_REFRESH_AGE_MS + 1
+        var fired = false
+        repeat(TrackerConfig.SETTLE_FRAMES) {
+            if (e.onFrame(goodMeasurement()).requestAcquire) fired = true
+        }
+        assertTrue(fired)
+        assertEquals(TrackState.ACQUIRING, e.state)
+        assertNotNull(e.onFrame(goodMeasurement(disp = MOVING_DISP)).hCn)
+        // User walks away while the (slow) OCR runs: after the hysteresis the
+        // overlays must HIDE — but the state stays ACQUIRING so the pending
+        // completion still lands (16 s stale-overlay linger observed before).
+        repeat(TrackerConfig.FRAMES_TO_LOST) { e.onFrame(noTrack) }
+        val d = e.onFrame(noTrack)
+        assertNull(d.hCn)
+        assertEquals(TrackState.ACQUIRING, d.state)
+        // The late completion for the departed scene fails to lock → Idle.
+        e.onAcquireFinished(locked = false, nowMs = nowMs)
+        assertEquals(TrackState.IDLE, e.state)
+    }
+
+    @Test
     fun homographyMathSanity() {
         val hCn = doubleArrayOf(1.0, 0.0, 10.0, 0.0, 1.0, -4.0, 0.0, 0.0, 1.0)
         val hAu = Homography.cnToAu(hCn, auToCnScale = 0.5)

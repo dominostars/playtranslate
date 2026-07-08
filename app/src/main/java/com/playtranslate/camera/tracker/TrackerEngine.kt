@@ -190,6 +190,13 @@ class TrackerEngine(
             }
         }
 
+        // Loss detection runs in BOTH Locked and Acquiring. It used to be
+        // disabled while Acquiring (to prevent acquire-stacking), which also
+        // froze the hysteresis — walking away mid-acquire left stale
+        // overlays warping for the whole OCR duration (16 s observed on a
+        // slow engine). While Acquiring we only HIDE (state stays Acquiring
+        // so the completion callback still lands); Locked transitions to
+        // Lost as before.
         val good = m?.hCn != null && m.inliers >= TrackerConfig.MIN_INLIERS_KEEP
         if (good) {
             belowKeepStreak = 0
@@ -200,12 +207,14 @@ class TrackerEngine(
             } else {
                 Homography.emaInPlace(smoothed, fresh, TrackerConfig.H_SMOOTHING_ALPHA)
             }
-        } else if (allowTriggers) {
-            if (++belowKeepStreak >= TrackerConfig.FRAMES_TO_LOST) {
+        } else if (++belowKeepStreak >= TrackerConfig.FRAMES_TO_LOST) {
+            if (allowTriggers) {
                 state = TrackState.LOST
                 lostFrames = 0
-                return decision(null, requestAcquire = false, m)
+            } else {
+                smoothedH = null // hide; completion decides what's next
             }
+            return decision(null, requestAcquire = false, m)
         }
 
         // Per-region tracing-point collapse streaks (Huawei re-OCR trigger).
