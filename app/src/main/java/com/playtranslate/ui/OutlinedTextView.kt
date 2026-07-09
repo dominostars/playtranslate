@@ -6,7 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
-import androidx.appcompat.widget.AppCompatTextView
+import android.widget.TextView
 
 /**
  * TextView that draws a stroke outline behind the text for readability
@@ -24,8 +24,17 @@ import androidx.appcompat.widget.AppCompatTextView
  * frame, and every visible outlined box then redraws its whole window at the
  * display refresh rate forever (measured: 118–120 draws/s on a completely
  * static screen). The filter survives the re-stamp and touches no view state.
+ *
+ * Extends platform [TextView], deliberately not AppCompatTextView: these
+ * views are constructed from service/overlay contexts that carry no
+ * AppCompat theme, and the AppCompat widget logs a theme-check error on
+ * every construction — ~14 lines/s during live mode, enough to evict the
+ * logcat ring buffer that the in-app diagnostics export reads from. Nothing
+ * AppCompat-specific is used here; autosize is applied by the parent via
+ * [androidx.core.widget.TextViewCompat], which routes to the platform
+ * implementation on this app's minSdk.
  */
-internal class OutlinedTextView(context: Context) : AppCompatTextView(context) {
+internal class OutlinedTextView(context: Context) : TextView(context) {
 
     var outlineColor: Int = Color.argb(220, 34, 34, 34)
         set(value) {
