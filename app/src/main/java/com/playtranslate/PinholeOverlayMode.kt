@@ -26,14 +26,6 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import androidx.core.graphics.scale
 
-/** Inflation ratios for the FAR-suppression proximity check at runCycle step 9b.
- *  Asymmetric: vertical dominates because typewriter wrapping spills new lines
- *  above/below the dying overlay. Horizontal is the more likely knob to bump
- *  for long-line growth where new text exits the right edge well past the
- *  original width. */
-private const val FAR_SUPPRESS_HORIZONTAL_RATIO = 0.5f
-private const val FAR_SUPPRESS_VERTICAL_RATIO = 1.5f
-
 /**
  * Simple translation overlay mode with Shadow Mask detection.
  *
@@ -228,8 +220,6 @@ class PinholeOverlayMode(
         overlayBitmap = null
         outsideGrid.reset()
         inputBurstUntilMs = 0L
-        removedLastCycle = emptyList()
-        suppressedLastCycle = emptyList()
         // The gate is only meaningful relative to a previous look at the
         // screen. After a reset the model is empty (overlays hidden, caches
         // dropped), so the next cycle must run even in delivery silence —
@@ -283,38 +273,17 @@ class PinholeOverlayMode(
     // The fit survives only on the outside gate (OutsideChangeGate), where
     // a false fire costs a single OCR.
 
-    /** (sourceText, rendered bitmap rect) of the boxes removed on the
-     *  previous full cycle — the resurrection guard's one-cycle watch list.
-     *  Wake-on-delivery plus the 250ms removal fast-follow are now quick
-     *  enough to re-OCR a closing menu MID-FADE: the dying text gets
-     *  re-found, re-placed, and its clean reference frozen from a
-     *  post-transition frame that pinholes can never again distinguish from
-     *  the settled screen (the stuck-menu-item bug, 2026-07-08 — the old
-     *  poll cadence slept through fades entirely). A FAR group matching an
-     *  entry defers exactly one look: fading text never survives it;
-     *  genuinely re-shown text places ~250–400ms later, on that narrow
-     *  recovery path only. Self-aging — replaced wholesale every full
-     *  cycle. */
-    private var removedLastCycle: List<Pair<String, Rect>> = emptyList()
-
-    /** FAR groups suppressed by step 9b on the previous full cycle — each
-     *  may be suppressed AT MOST ONCE. The anti-sliver suppression was
-     *  designed for text bleeding around one dying box's edges, but a menu
-     *  opening is structurally "a box dies while lots of legitimate text
-     *  appears nearby": under removal churn it ate the same menu items
-     *  repeatedly (6.5s to show, 2026-07-08 log). On a second consecutive
-     *  appearance the group places unconditionally. */
-    private var suppressedLastCycle: List<Pair<String, Rect>> = emptyList()
-
-    /** Same-group test for the one-cycle watch lists above: overlapping
-     *  rect + equivalent text (the classifier's own tolerance). */
-    private fun matchesWatched(
-        watched: List<Pair<String, Rect>>,
-        text: String,
-        rectBitmap: Rect,
-    ): Boolean = watched.any { (t, r) ->
-        Rect.intersects(r, rectBitmap) && !OverlayToolkit.isSignificantChange(text, t)
-    }
+    // The step-9b FAR suppression and the resurrection-deferral guard were
+    // deleted 2026-07-09. Both were transition-layer compensators for false
+    // removals whose actual source was upstream (adjacency-stale + cascade
+    // on merged unboxed neighbors — see the campfire-menu forensics): the
+    // suppression's only observed act was starving three correct menu items
+    // near an unrelated dying box, and the deferral's "one confirming look"
+    // was structurally impossible under the A2 gate (the watch list aged
+    // only on full cycles, so it re-deferred the same rows at every
+    // reconcile and blocked convergence). Transition artifacts they targeted
+    // (mid-fade re-finds, edge slivers) self-heal in one forced look now
+    // that a forced wake bypasses the gate skip.
 
     // ── Unified Cycle ───────────────────────────────────────────────────
 
@@ -400,9 +369,6 @@ class PinholeOverlayMode(
                 CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                 // State cleared + overlay hidden: the rebuild cycle must run
                 // even if the post-rotation screen goes immediately static.
-                // Stale watch lists could wrongly defer the fresh rebuild.
-                removedLastCycle = emptyList()
-                suppressedLastCycle = emptyList()
                 forceNextCycle = true
                 return prefs.captureIntervalMs
             }
@@ -649,9 +615,6 @@ class PinholeOverlayMode(
                     overlayBitmap?.recycle()
                     overlayBitmap = null
                     CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
-                    // Same reasoning as the dim-change reset above.
-                    removedLastCycle = emptyList()
-                    suppressedLastCycle = emptyList()
                     forceNextCycle = true
                     return prefs.captureIntervalMs
                 }
@@ -699,7 +662,7 @@ class PinholeOverlayMode(
             }
             val contentMatchRemovals = classification.contentMatchRemovals
             val staleOverlayIndices = classification.staleOverlayIndices
-            var farOcrGroups = classification.farOcrGroups
+            val farOcrGroups = classification.farOcrGroups
 
             // 8. Pinhole change detection — any classified-as-changed box is
             //    removed and re-OCR'd on the next cycle. The previous design
@@ -749,71 +712,10 @@ class PinholeOverlayMode(
             // 9. Resolve: compute final state from immutable snapshot in one pass
             val allRemovals = cascadedRemovals + pinholeRemovals + contentMatchRemovals
 
-            // 9b. Suppress FAR groups near going-away cached overlays. The fill
-            //     rect at step 5 hides the dying box's interior but bleeds
-            //     slivers of new text around its edges; those slivers become
-            //     FAR placeholders that get translated to garbage before the
-            //     next cycle drops them. Drop them now — next cycle's OCR sees
-            //     the full new text uncovered.
-            //
-            //     Subtracting contentMatchRemovals is REQUIRED, not just
-            //     omission: a content-matched box (same text, drifted position)
-            //     is the textbook pinhole REMOVE trigger and can also be
-            //     pulled into cascade, so it can appear in any of the three
-            //     sources above. Its paired replacement FAR sits a few px from
-            //     the old rect (within inflation), so without the subtraction
-            //     every drift-driven content-match stutters.
-            val cc = classifyCoords
-            val goingAwayIndices = (cascadedRemovals + pinholeRemovals) - contentMatchRemovals
-            val newlySuppressed = mutableListOf<Pair<String, Rect>>()
-            if (cc != null && goingAwayIndices.isNotEmpty() && farOcrGroups.isNotEmpty()) {
-                val goingAwayBitmapRects = goingAwayIndices.mapNotNull { ocrBitmapRects.getOrNull(it) }
-                val before = farOcrGroups.size
-                farOcrGroups = farOcrGroups.filter { far ->
-                    val farBitmap = cc.ocrToBitmap(far.bounds)
-                    when {
-                        goingAwayBitmapRects.none { dying -> intersectsInflated(dying, farBitmap) } ->
-                            true
-                        // At-most-once: a group suppressed on the previous
-                        // cycle too is a real neighbor, not an edge sliver —
-                        // place it instead of starving it through churn.
-                        matchesWatched(suppressedLastCycle, far.text, farBitmap) -> true
-                        else -> {
-                            newlySuppressed += far.text to Rect(farBitmap)
-                            false
-                        }
-                    }
-                }
-                if (debug && before != farOcrGroups.size) {
-                    DetectionLog.log(
-                        "D$displayId c$cycleNum suppressed ${before - farOcrGroups.size} FAR " +
-                            "near ${goingAwayIndices.size} going-away boxes"
-                    )
-                }
-            }
-            suppressedLastCycle = newlySuppressed
-
-            // Resurrection guard: a FAR group matching a box removed on the
-            // PREVIOUS cycle re-appeared in a region that was uncovered
-            // precisely because that box died — the mid-transition re-find
-            // signature (see removedLastCycle). Defer it one look; the watch
-            // list ages out below, so nothing can be deferred twice in a row.
-            var resurrectionDeferred = false
-            if (cc != null && removedLastCycle.isNotEmpty() && farOcrGroups.isNotEmpty()) {
-                val before = farOcrGroups.size
-                farOcrGroups = farOcrGroups.filter { far ->
-                    !matchesWatched(removedLastCycle, far.text, cc.ocrToBitmap(far.bounds))
-                }
-                if (before != farOcrGroups.size) {
-                    resurrectionDeferred = true
-                    if (debug) {
-                        DetectionLog.log(
-                            "D$displayId c$cycleNum deferred ${before - farOcrGroups.size} " +
-                                "resurrection candidate(s) for one confirming look"
-                        )
-                    }
-                }
-            }
+            // (Step 9b, which suppressed FAR groups near going-away boxes,
+            // and the resurrection-deferral guard were deleted 2026-07-09 —
+            // see the note above runCycle. Every FAR group the classifier
+            // queues is placed; transition artifacts cost one forced look.)
 
             val nextBoxes = boxes.mapIndexedNotNull { i, box ->
                 if (i in allRemovals) null else box
@@ -821,21 +723,6 @@ class PinholeOverlayMode(
 
             cachedBoxes = nextBoxes.ifEmpty { null }
             val anyChanged = allRemovals.isNotEmpty()
-
-            // Watch list for the resurrection guard: this cycle's removals,
-            // by source text and rendered rect (padded — a superset of any
-            // re-found group's OCR rect, which is what the overlap test
-            // wants). Replaced wholesale so entries live exactly one cycle.
-            removedLastCycle = if (allRemovals.isEmpty()) {
-                emptyList()
-            } else {
-                allRemovals.mapNotNull { idx ->
-                    val b = boxes.getOrNull(idx) ?: return@mapNotNull null
-                    val r = bitmapRects.getOrNull(idx) ?: return@mapNotNull null
-                    b.sourceText to Rect(r)
-                }
-            }
-            if (resurrectionDeferred) forceNextCycle = true
 
             if (debug && (anyChanged || farOcrGroups.isNotEmpty())) {
                 DetectionLog.log(
@@ -984,9 +871,7 @@ class PinholeOverlayMode(
             }
             val inInputBurst =
                 android.os.SystemClock.uptimeMillis() < inputBurstUntilMs
-            // Deferred resurrection candidates get their confirming look at
-            // the floor — the whole guard costs ~250–400ms, not an interval.
-            return if (anyRemoved || inInputBurst || resurrectionDeferred) {
+            return if (anyRemoved || inInputBurst) {
                 mgr.minCaptureIntervalMs
             } else {
                 prefs.captureIntervalMs
@@ -1420,12 +1305,4 @@ class PinholeOverlayMode(
         }
     }
 
-    /** Inflate [dying] by [FAR_SUPPRESS_HORIZONTAL_RATIO] / [FAR_SUPPRESS_VERTICAL_RATIO]
-     *  of its own width/height and test intersection with [far]. Used by step 9b. */
-    private fun intersectsInflated(dying: Rect, far: Rect): Boolean {
-        val dx = (dying.width() * FAR_SUPPRESS_HORIZONTAL_RATIO).toInt()
-        val dy = (dying.height() * FAR_SUPPRESS_VERTICAL_RATIO).toInt()
-        val inflated = Rect(dying).apply { inset(-dx, -dy) }
-        return Rect.intersects(inflated, far)
-    }
 }
