@@ -238,6 +238,7 @@ class FrameTracker {
         val h = Calib3d.findHomography(src, dst, Calib3d.RANSAC, TrackerConfig.RANSAC_REPROJ_PX, mask)
         src.release(); dst.release()
         if (h.empty()) {
+            h.release() // empty Mat still owns a native header
             mask.release()
             return 0
         }
@@ -440,6 +441,7 @@ class FrameTracker {
         val h = Calib3d.findHomography(src, dst, Calib3d.RANSAC, TrackerConfig.RANSAC_REPROJ_PX, mask)
         src.release(); dst.release()
         if (h.empty()) {
+            h.release() // empty Mat still owns a native header
             mask.release()
             return TrackMeasurement(null, 0, lastMedianDisp, anchorPts.size)
         }
