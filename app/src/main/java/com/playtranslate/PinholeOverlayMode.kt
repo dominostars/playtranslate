@@ -228,6 +228,8 @@ class PinholeOverlayMode(
         overlayBitmap = null
         outsideGrid.reset()
         inputBurstUntilMs = 0L
+        removedLastCycle = emptyList()
+        suppressedLastCycle = emptyList()
         // The gate is only meaningful relative to a previous look at the
         // screen. After a reset the model is empty (overlays hidden, caches
         // dropped), so the next cycle must run even in delivery silence —
@@ -280,6 +282,39 @@ class PinholeOverlayMode(
     // their insurance in primary-path latency or, worse, missed removals.
     // The fit survives only on the outside gate (OutsideChangeGate), where
     // a false fire costs a single OCR.
+
+    /** (sourceText, rendered bitmap rect) of the boxes removed on the
+     *  previous full cycle — the resurrection guard's one-cycle watch list.
+     *  Wake-on-delivery plus the 250ms removal fast-follow are now quick
+     *  enough to re-OCR a closing menu MID-FADE: the dying text gets
+     *  re-found, re-placed, and its clean reference frozen from a
+     *  post-transition frame that pinholes can never again distinguish from
+     *  the settled screen (the stuck-menu-item bug, 2026-07-08 — the old
+     *  poll cadence slept through fades entirely). A FAR group matching an
+     *  entry defers exactly one look: fading text never survives it;
+     *  genuinely re-shown text places ~250–400ms later, on that narrow
+     *  recovery path only. Self-aging — replaced wholesale every full
+     *  cycle. */
+    private var removedLastCycle: List<Pair<String, Rect>> = emptyList()
+
+    /** FAR groups suppressed by step 9b on the previous full cycle — each
+     *  may be suppressed AT MOST ONCE. The anti-sliver suppression was
+     *  designed for text bleeding around one dying box's edges, but a menu
+     *  opening is structurally "a box dies while lots of legitimate text
+     *  appears nearby": under removal churn it ate the same menu items
+     *  repeatedly (6.5s to show, 2026-07-08 log). On a second consecutive
+     *  appearance the group places unconditionally. */
+    private var suppressedLastCycle: List<Pair<String, Rect>> = emptyList()
+
+    /** Same-group test for the one-cycle watch lists above: overlapping
+     *  rect + equivalent text (the classifier's own tolerance). */
+    private fun matchesWatched(
+        watched: List<Pair<String, Rect>>,
+        text: String,
+        rectBitmap: Rect,
+    ): Boolean = watched.any { (t, r) ->
+        Rect.intersects(r, rectBitmap) && !OverlayToolkit.isSignificantChange(text, t)
+    }
 
     // ── Unified Cycle ───────────────────────────────────────────────────
 
@@ -358,6 +393,9 @@ class PinholeOverlayMode(
                 CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                 // State cleared + overlay hidden: the rebuild cycle must run
                 // even if the post-rotation screen goes immediately static.
+                // Stale watch lists could wrongly defer the fresh rebuild.
+                removedLastCycle = emptyList()
+                suppressedLastCycle = emptyList()
                 forceNextCycle = true
                 return prefs.captureIntervalMs
             }
@@ -597,6 +635,8 @@ class PinholeOverlayMode(
                     overlayBitmap = null
                     CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                     // Same reasoning as the dim-change reset above.
+                    removedLastCycle = emptyList()
+                    suppressedLastCycle = emptyList()
                     forceNextCycle = true
                     return prefs.captureIntervalMs
                 }
@@ -710,18 +750,53 @@ class PinholeOverlayMode(
             //     every drift-driven content-match stutters.
             val cc = classifyCoords
             val goingAwayIndices = (cascadedRemovals + pinholeRemovals) - contentMatchRemovals
+            val newlySuppressed = mutableListOf<Pair<String, Rect>>()
             if (cc != null && goingAwayIndices.isNotEmpty() && farOcrGroups.isNotEmpty()) {
                 val goingAwayBitmapRects = goingAwayIndices.mapNotNull { ocrBitmapRects.getOrNull(it) }
                 val before = farOcrGroups.size
                 farOcrGroups = farOcrGroups.filter { far ->
                     val farBitmap = cc.ocrToBitmap(far.bounds)
-                    goingAwayBitmapRects.none { dying -> intersectsInflated(dying, farBitmap) }
+                    when {
+                        goingAwayBitmapRects.none { dying -> intersectsInflated(dying, farBitmap) } ->
+                            true
+                        // At-most-once: a group suppressed on the previous
+                        // cycle too is a real neighbor, not an edge sliver —
+                        // place it instead of starving it through churn.
+                        matchesWatched(suppressedLastCycle, far.text, farBitmap) -> true
+                        else -> {
+                            newlySuppressed += far.text to Rect(farBitmap)
+                            false
+                        }
+                    }
                 }
                 if (debug && before != farOcrGroups.size) {
                     DetectionLog.log(
                         "D$displayId c$cycleNum suppressed ${before - farOcrGroups.size} FAR " +
                             "near ${goingAwayIndices.size} going-away boxes"
                     )
+                }
+            }
+            suppressedLastCycle = newlySuppressed
+
+            // Resurrection guard: a FAR group matching a box removed on the
+            // PREVIOUS cycle re-appeared in a region that was uncovered
+            // precisely because that box died — the mid-transition re-find
+            // signature (see removedLastCycle). Defer it one look; the watch
+            // list ages out below, so nothing can be deferred twice in a row.
+            var resurrectionDeferred = false
+            if (cc != null && removedLastCycle.isNotEmpty() && farOcrGroups.isNotEmpty()) {
+                val before = farOcrGroups.size
+                farOcrGroups = farOcrGroups.filter { far ->
+                    !matchesWatched(removedLastCycle, far.text, cc.ocrToBitmap(far.bounds))
+                }
+                if (before != farOcrGroups.size) {
+                    resurrectionDeferred = true
+                    if (debug) {
+                        DetectionLog.log(
+                            "D$displayId c$cycleNum deferred ${before - farOcrGroups.size} " +
+                                "resurrection candidate(s) for one confirming look"
+                        )
+                    }
                 }
             }
 
@@ -731,6 +806,21 @@ class PinholeOverlayMode(
 
             cachedBoxes = nextBoxes.ifEmpty { null }
             val anyChanged = allRemovals.isNotEmpty()
+
+            // Watch list for the resurrection guard: this cycle's removals,
+            // by source text and rendered rect (padded — a superset of any
+            // re-found group's OCR rect, which is what the overlap test
+            // wants). Replaced wholesale so entries live exactly one cycle.
+            removedLastCycle = if (allRemovals.isEmpty()) {
+                emptyList()
+            } else {
+                allRemovals.mapNotNull { idx ->
+                    val b = boxes.getOrNull(idx) ?: return@mapNotNull null
+                    val r = bitmapRects.getOrNull(idx) ?: return@mapNotNull null
+                    b.sourceText to Rect(r)
+                }
+            }
+            if (resurrectionDeferred) forceNextCycle = true
 
             if (debug && (anyChanged || farOcrGroups.isNotEmpty())) {
                 DetectionLog.log(
@@ -879,7 +969,9 @@ class PinholeOverlayMode(
             }
             val inInputBurst =
                 android.os.SystemClock.uptimeMillis() < inputBurstUntilMs
-            return if (anyRemoved || inInputBurst) {
+            // Deferred resurrection candidates get their confirming look at
+            // the floor — the whole guard costs ~250–400ms, not an interval.
+            return if (anyRemoved || inInputBurst || resurrectionDeferred) {
                 mgr.minCaptureIntervalMs
             } else {
                 prefs.captureIntervalMs
