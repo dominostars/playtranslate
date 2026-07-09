@@ -86,10 +86,44 @@ class MediaProjectionController(private val service: CaptureService) {
     //
     // Threading: the listener is the ONLY caller of acquireLatestImage (the
     // single-consumer rule — a second consumer would race it for frames).
-    // Ownership of the latched Image transfers by AtomicReference.getAndSet:
-    // whoever swaps a non-null frame out closes it, exactly once.
+    // Image lifetime is reference-counted (see [LatchedFrame]): the latch
+    // holds one reference, each in-flight decode holds another, and the
+    // Image closes exactly when the count reaches zero. Consumers PEEK the
+    // latch (non-destructive) rather than claiming it.
 
-    private class LatchedFrame(val image: Image, val seq: Long)
+    /** A delivered frame plus its reference count. The latch itself holds
+     *  one reference from the moment the frame is latched; every consumer
+     *  that peeks it holds another for the duration of its decode. The Image
+     *  closes exactly when the count reaches zero — displacement by a newer
+     *  delivery (or teardown) drops the latch's reference, and an in-flight
+     *  decode keeps the buffer alive until its own release.
+     *
+     *  This makes reads NON-DESTRUCTIVE: the newest frame stays servable to
+     *  every consumer until a newer delivery replaces it. The prior design
+     *  (getAndSet(null) claims) let a one-shot clean capture steal the only
+     *  frame a parked live cycle had been woken for — on a static screen no
+     *  replacement ever came, and live retried into an empty latch until the
+     *  next real screen change (2026-07-10 review finding). */
+    private class LatchedFrame(val image: Image, val seq: Long) {
+        private val refs = java.util.concurrent.atomic.AtomicInteger(1)
+
+        /** Take a reference. Fails only when the count already hit zero —
+         *  the frame was displaced and closed between the caller's
+         *  latch.get() and this call; re-read the latch for its successor. */
+        fun acquire(): Boolean {
+            while (true) {
+                val r = refs.get()
+                if (r <= 0) return false
+                if (refs.compareAndSet(r, r + 1)) return true
+            }
+        }
+
+        fun release() {
+            if (refs.decrementAndGet() == 0) {
+                try { image.close() } catch (_: Exception) {}
+            }
+        }
+    }
 
     private val latch = AtomicReference<LatchedFrame?>(null)
 
@@ -142,7 +176,7 @@ class MediaProjectionController(private val service: CaptureService) {
         } ?: return@OnImageAvailableListener
         val seq = deliverySeq.updateAndGet { it + 1 }
         deliveredTotal++
-        latch.getAndSet(LatchedFrame(img, seq))?.image?.close()
+        latch.getAndSet(LatchedFrame(img, seq))?.release()
     }
 
     private fun ensureFrameHandler(): Handler {
@@ -279,11 +313,13 @@ class MediaProjectionController(private val service: CaptureService) {
             var claimed: LatchedFrame? = null
             while (claimed == null) {
                 val observed = deliverySeq.value
-                val f = tryClaim(w, h)
+                val f = peekLatest(w, h)
                 if (f != null && f.seq > minSeq) {
                     claimed = f
                 } else {
-                    f?.image?.close() // stale for this caller — discard, wait on
+                    // Stale for this caller — release our reference (the
+                    // frame stays latched for other consumers) and wait.
+                    f?.release()
                     deliverySeq.first { it > observed }
                 }
             }
@@ -292,15 +328,15 @@ class MediaProjectionController(private val service: CaptureService) {
                 // kdoc). Each round waits one quiet window; a newer arrival
                 // restarts it. Bounded by the enclosing budget.
                 while (true) {
-                    val newerSeq = withTimeoutOrNull(DRAIN_QUIET_MS) {
+                    withTimeoutOrNull(DRAIN_QUIET_MS) {
                         deliverySeq.first { it > claimed!!.seq }
                     } ?: break
-                    val newer = tryClaim(w, h)
-                    if (newer != null && newer.seq >= newerSeq) {
-                        claimed!!.image.close()
+                    val newer = peekLatest(w, h)
+                    if (newer != null && newer.seq > claimed!!.seq) {
+                        claimed!!.release()
                         claimed = newer
                     } else {
-                        newer?.image?.close()
+                        newer?.release()
                     }
                 }
             }
@@ -328,7 +364,10 @@ class MediaProjectionController(private val service: CaptureService) {
             Log.e(TAG, "imageToBitmap failed: ${e.message}")
             null
         } finally {
-            claimed.image.close()
+            // Release, don't close: the frame usually remains latched for
+            // other consumers; the close happens when the last reference
+            // (ours or the latch's) goes away.
+            claimed.release()
             endDecode()
         }
     }
@@ -375,20 +414,27 @@ class MediaProjectionController(private val service: CaptureService) {
         if (closeNow) reader.close()
     }
 
-    /** Claim the latch if it holds a frame matching the current capture size.
-     *  A mismatched frame (pre-resize straggler) is closed and dropped —
-     *  serving it would feed imageToBitmap a buffer of the wrong geometry.
-     *  A frame whose reader was closed under it (late straggler swept by a
-     *  swap) throws on the size read and is treated as no-frame. */
-    private fun tryClaim(w: Int, h: Int): LatchedFrame? {
-        val f = latch.getAndSet(null) ?: return null
-        val matches = try {
-            f.image.width == w && f.image.height == h
-        } catch (e: IllegalStateException) {
-            false
+    /** Peek the latched frame if it matches the current capture size, taking
+     *  a reference the caller MUST [LatchedFrame.release]. Non-destructive:
+     *  the frame stays latched for other consumers (live + one-shot share
+     *  the newest frame). A mismatched frame (pre-resize straggler) is left
+     *  for the next delivery to displace; a frame whose reader was closed
+     *  under it (late straggler swept by a swap) throws on the size read and
+     *  reads as no-frame. The retry bound covers acquire() losing a race to
+     *  displacement — the re-read observes the successor frame. */
+    private fun peekLatest(w: Int, h: Int): LatchedFrame? {
+        repeat(4) {
+            val f = latch.get() ?: return null
+            if (!f.acquire()) return@repeat // displaced under us — re-read
+            val matches = try {
+                f.image.width == w && f.image.height == h
+            } catch (e: IllegalStateException) {
+                false
+            }
+            if (matches) return f
+            f.release()
+            return null
         }
-        if (matches) return f
-        try { f.image.close() } catch (_: Exception) {}
         return null
     }
 
@@ -512,7 +558,7 @@ class MediaProjectionController(private val service: CaptureService) {
         // invalid Image. (No-op on first create.)
         oldReader?.setOnImageAvailableListener(null, null)
         closeReaderSafely(oldReader)
-        latch.getAndSet(null)?.let { try { it.image.close() } catch (_: Exception) {} }
+        latch.getAndSet(null)?.release()
         return newReader
     }
 
@@ -541,7 +587,13 @@ class MediaProjectionController(private val service: CaptureService) {
         val padded = createBitmap(
             width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888,
         )
-        padded.copyPixelsFromBuffer(plane.buffer)
+        // Frames are shared (non-destructive latch) and may be decoded more
+        // than once; copyPixelsFromBuffer advances the buffer position, so
+        // rewind first. No concurrent position race: every decode runs under
+        // the capture source's mutex.
+        val buf = plane.buffer
+        buf.rewind()
+        padded.copyPixelsFromBuffer(buf)
         return if (rowPadding == 0) padded
         else Bitmap.createBitmap(padded, 0, 0, width, height).also { padded.recycle() }
     }
@@ -560,7 +612,7 @@ class MediaProjectionController(private val service: CaptureService) {
         // clearing first could leak that late frame. Closing an Image whose
         // reader is already closed can itself throw on some builds — the
         // buffers are freed with the reader either way, so swallow it.
-        latch.getAndSet(null)?.let { try { it.image.close() } catch (_: Exception) {} }
+        latch.getAndSet(null)?.release()
         // Advance the seq once so anything suspended in awaitSeqAfter wakes,
         // re-checks its capture source, and discovers the session is gone —
         // instead of sleeping forever on a stream that will never deliver.
