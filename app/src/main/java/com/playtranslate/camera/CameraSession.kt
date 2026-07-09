@@ -122,6 +122,14 @@ class CameraSession(
     private val generation = AtomicInteger(0)
     private val nextAnchorId = AtomicLong(1L)
 
+    /** The in-flight acquire's coroutine. Cancellation-first: invalidation
+     *  (mode toggle, language reset, engine abandonment) CANCELS the work —
+     *  5-16 s of OCR for a scene nobody wants — instead of letting it run to
+     *  completion and discarding the result at commit points. The id guards
+     *  remain as the backstop for anything that slips through. */
+    @Volatile
+    private var acquireJob: kotlinx.coroutines.Job? = null
+
     // OpenCV must be loaded BEFORE the tracker fields below construct their
     // first Mat — this session may be the process's first OpenCV user (fresh
     // install, ML-Kit-floor OCR: Meiki/Paddle never loaded it). Kotlin runs
@@ -324,6 +332,15 @@ class CameraSession(
                 frameTracker.clearAnchor()
             }
 
+            // Engine IDLE means it is not waiting on ANY acquire (watchdog
+            // fired, failed completion): a still-running acquire coroutine is
+            // an orphan burning OCR time for a result nothing will accept.
+            // (Runs before this frame's own launch below, so it can only
+            // cancel a PREVIOUS orphan, never the acquire it starts.)
+            if (decision.state == TrackState.IDLE) {
+                acquireJob?.takeIf { it.isActive }?.cancel()
+            }
+
             // Anchor LRU: while Idle, periodically probe one cached scene —
             // glancing back at known text re-locks with zero OCR/translation.
             if (decision.state == TrackState.IDLE && !frameTracker.hasAnchor() &&
@@ -354,7 +371,7 @@ class CameraSession(
                     val buffers = AcquireBuffers(toUprightBitmap(proxy), cn.clone())
                     val gen = generation.get()
                     Log.d(TAG, "acquire#$acquireId: keyframe ${buffers.keyframe.width}x${buffers.keyframe.height}")
-                    scope.launch(Dispatchers.Default) { runAcquire(buffers, gen, acquireId) }
+                    acquireJob = scope.launch(Dispatchers.Default) { runAcquire(buffers, gen, acquireId) }
                 }
             }
 
@@ -465,6 +482,10 @@ class CameraSession(
         val cnKeyframe = buffers.cnKeyframe
         val auW = buffers.auW
         val auH = buffers.auH
+        // The install block runs detached on the analysis executor; it checks
+        // this job's liveness so a cancellation that lands mid-await can't
+        // have its anchor installed after the fact.
+        val selfJob = kotlin.coroutines.coroutineContext[kotlinx.coroutines.Job]
         try {
             prewarmJob.join() // never race the engine's lazy construction
             val sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode
@@ -507,6 +528,7 @@ class CameraSession(
             // instead of a resurrection.
             installed = onAnalysisThread {
                 if (!engine.isAcquireActive(acquireId)) return@onAnalysisThread false
+                if (selfJob?.isActive == false) return@onAnalysisThread false
                 // The replaced scene goes to the LRU (with its display
                 // payload) instead of being released — glancing back at it
                 // re-locks without re-OCR.
@@ -985,6 +1007,11 @@ class CameraSession(
     /** Overlay-mode toggle: re-flavor from the cached OCR result — no re-OCR,
      *  no anchor change; the tracker keeps running. */
     fun onOverlayModeChanged() {
+        // Cancellation-first: the in-flight acquire (possibly seconds of OCR)
+        // was for the OLD flavor; kill it rather than discarding its result
+        // later. Its finally completes the engine's acquire as failed, so the
+        // next settle re-acquires under the new flavor.
+        acquireJob?.cancel()
         val gen = generation.incrementAndGet()
         val ocr: OcrManager.OcrResult?
         val colorRef: Bitmap?
@@ -1010,6 +1037,7 @@ class CameraSession(
     /** Language/config change: drop everything; the next settled frame
      *  re-OCRs from scratch. */
     fun reset() {
+        acquireJob?.cancel()
         generation.incrementAndGet()
         synchronized(stateLock) {
             cachedOcr = null
