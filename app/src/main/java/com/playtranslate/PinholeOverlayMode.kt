@@ -26,12 +26,21 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import androidx.core.graphics.scale
 
-/** Compile-time switch for the R2 composite-OCR probe — throwaway
- *  instrumentation for the "composite cleanRef instead of blind-fill"
- *  premise (see [PinholeOverlayMode.runR2Probe]). Runs only when the
- *  live-mode debug pref is on; flip to false (or delete the probe) once
- *  the premise is answered. */
-private const val R2_PROBE = true
+/** THROWAWAY instrumentation (2026-07-09) — trigger economics for the
+ *  verification-look design. Counts, per box, how often the pinhole
+ *  changed-fraction lands in the "gray zone" between the noise floor and
+ *  the removal bar — the band where a verification look (hide box → clean
+ *  capture → region OCR) WOULD fire. The 2026-07-09 stuck-menu failure
+ *  lived at 1.3–4.2%, squarely in-band. Log-only, no behavior; emits a
+ *  per-box histogram every ~20s plus a rate-limited ENTER line per
+ *  crossing so trigger timing can be correlated with game events. Delete
+ *  once the rates are measured across several games. */
+private const val GRAYZONE_COUNTER = true
+
+/** Provisional gray-zone floor (fraction of holes changed). The emitted
+ *  histogram has sub-floor buckets so any floor can be re-derived from the
+ *  data offline — this constant only styles the ENTER lines. */
+private const val GRAYZONE_MIN_PCT = 0.01f
 
 /**
  * Simple translation overlay mode with Shadow Mask detection.
@@ -227,6 +236,8 @@ class PinholeOverlayMode(
         overlayBitmap = null
         outsideGrid.reset()
         inputBurstUntilMs = 0L
+        grayZoneStats.clear()
+        grayZoneLastEmitMs = 0L
         // The gate is only meaningful relative to a previous look at the
         // screen. After a reset the model is empty (overlays hidden, caches
         // dropped), so the next cycle must run even in delivery silence —
@@ -591,13 +602,6 @@ class PinholeOverlayMode(
             // showLiveOverlay will never render.
             if (service.holdActive) return 100L
 
-            // R2 probe (throwaway, see kdoc): second OCR on the composite
-            // input, log-only. hasOverlays() gate — the composite only
-            // differs from the flat fill when boxes are rendered.
-            if (R2_PROBE && debug && hasOverlays()) {
-                runR2Probe(raw, bitmapRects, pipeline)
-            }
-
             // No text on screen and no overlays → nothing to do
             if (pipeline == null && !hasOverlays()) {
                 service.handleNoTextDetected(displayId)
@@ -702,6 +706,7 @@ class PinholeOverlayMode(
                     if (outcome.result == PinholeResult.REMOVE) {
                         pinholeRemovals.add(idx)
                     }
+                    if (GRAYZONE_COUNTER && debug) recordGrayZone(box, outcome.pct)
                     if (debug && outcome.result != PinholeResult.KEEP) {
                         val r = bitmapRects[idx]
                         val pctStr = "%.1f".format(outcome.pct * 100f)
@@ -716,6 +721,8 @@ class PinholeOverlayMode(
                     }
                 }
             }
+
+            if (GRAYZONE_COUNTER && debug) maybeEmitGrayZone()
 
             // 8b. Cascade stale to neighbors. See cascadeStaleRemovals in Classification.kt.
             //     Same coordinate-space reasoning as the proximity check
@@ -955,77 +962,77 @@ class PinholeOverlayMode(
      *  [bitmapRects] is in cleanBoxes order (the non-dirty subset of
      *  cachedBoxes, in cachedBoxes' original order — see runCycle step 9).
      *  Index alignment via sequential walk over non-dirty boxes. */
-    /** THROWAWAY instrumentation (2026-07-09) — the killer question for the
-     *  "composite cleanRef under boxes instead of blind-fill" direction:
-     *  does OCR segment a composited frame (frozen under-box game content
-     *  + live surroundings, seams and all) the same way it segments the
-     *  real scene? Runs a SECOND OCR on the composite input and logs both
-     *  group sets side by side. The premise holds if composite cycles show
-     *  the full-scene segmentation (e.g. six separate menu rows) with
-     *  under-box text re-read as each box's sourceText. Adds one OCR of
-     *  latency per full cycle while enabled; delete after the premise is
-     *  answered. */
-    private suspend fun runR2Probe(
-        raw: Bitmap,
-        bitmapRects: List<Rect>,
-        flat: OverlayToolkit.OcrPipelineResult?,
-    ) {
-        val ref = cleanRefBitmap ?: return
-        if (bitmapRects.isEmpty()) return
-        val composite = buildCompositeOcrImage(raw, ref, bitmapRects)
-        val compResult = try {
-            service.runOcr(composite, displayId)
-        } finally {
-            if (!composite.isRecycled) composite.recycle()
-        }
-        val flatGroups = flat?.ocrResult?.groups ?: emptyList()
-        val compGroups = compResult?.ocrResult?.groups ?: emptyList()
-        DetectionLog.log(
-            "D$displayId c$cycleNum r2probe: flat=${flatGroups.size} " +
-                "composite=${compGroups.size} boxes=${bitmapRects.size}"
-        )
-        for ((i, g) in flatGroups.withIndex()) {
-            val b = g.bounds
-            DetectionLog.log(
-                "D$displayId c$cycleNum   flat[$i] \"${g.text.take(40)}\" " +
-                    "(${b.left},${b.top},${b.right},${b.bottom})"
-            )
-        }
-        for ((i, g) in compGroups.withIndex()) {
-            val b = g.bounds
-            DetectionLog.log(
-                "D$displayId c$cycleNum   comp[$i] \"${g.text.take(40)}\" " +
-                    "(${b.left},${b.top},${b.right},${b.bottom})"
-            )
-        }
+    // The R2 composite-OCR probe was removed 2026-07-09 after answering its
+    // question (commit 34cca8e6 has the implementation): composite input
+    // reliably re-reads frozen under-box content (192/192 cycles on the
+    // stuck-menu scene) but does NOT reproduce real-scene segmentation —
+    // isolated cleanRef patches in a textless live scene merge into one
+    // group. Composite-as-production-OCR-input is falsified as designed;
+    // any existence check against the frozen ref is also circular for
+    // live-change detection (it verifies the box against its own snapshot).
+
+    /** Gray-zone trigger counter — see [GRAYZONE_COUNTER]. One entry per
+     *  live box, keyed by TextBox identity (instances persist across
+     *  cycles in cachedBoxes). Histogram bucket bounds in changed-fraction
+     *  percent: [0,0.5) [0.5,1) [1,2) [2,3.5) [3.5,5). REMOVE outcomes
+     *  (≥5%) are already logged by the step-8 path. */
+    private class GrayZoneStats {
+        val buckets = IntArray(5)
+        var cycles = 0
+        var maxPct = 0f
+        var inZone = false
+        var lastEnterLogMs = 0L
     }
 
-    /** Companion to [runR2Probe]: raw with each rendered box region (same
-     *  geometry as [fillOverlayRegions], including the 3px AA ring)
-     *  replaced by the frozen cleanRef content instead of flat bgColor. */
-    private fun buildCompositeOcrImage(
-        raw: Bitmap,
-        ref: Bitmap,
-        bitmapRects: List<Rect>,
-    ): Bitmap {
-        val out = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
-        val boxes = cachedBoxes ?: return out
-        val aaBuffer = 3
-        val canvas = Canvas(out)
-        var rectIdx = 0
-        for (box in boxes) {
-            if (box.dirty) continue
-            val rect = bitmapRects.getOrNull(rectIdx) ?: break
-            rectIdx++
-            val l = (rect.left - aaBuffer).coerceAtLeast(0)
-            val t = (rect.top - aaBuffer).coerceAtLeast(0)
-            val r = (rect.right + aaBuffer).coerceAtMost(out.width)
-            val b = (rect.bottom + aaBuffer).coerceAtMost(out.height)
-            if (r <= l || b <= t) continue
-            val region = Rect(l, t, r, b)
-            canvas.drawBitmap(ref, region, region, null)
+    private val grayZoneStats = java.util.IdentityHashMap<TextBox, GrayZoneStats>()
+    private var grayZoneLastEmitMs = 0L
+
+    private fun recordGrayZone(box: TextBox, pct: Float) {
+        val s = grayZoneStats.getOrPut(box) { GrayZoneStats() }
+        s.cycles++
+        if (pct > s.maxPct) s.maxPct = pct
+        val bucket = when {
+            pct < 0.005f -> 0
+            pct < 0.01f -> 1
+            pct < 0.02f -> 2
+            pct < 0.035f -> 3
+            pct < PinholeCalibration.PINHOLE_CHANGE_PCT -> 4
+            else -> -1
         }
-        return out
+        if (bucket >= 0) s.buckets[bucket]++
+        val nowInZone = pct >= GRAYZONE_MIN_PCT &&
+            pct < PinholeCalibration.PINHOLE_CHANGE_PCT
+        val now = android.os.SystemClock.uptimeMillis()
+        if (nowInZone && !s.inZone && now - s.lastEnterLogMs > 5_000) {
+            s.lastEnterLogMs = now
+            DetectionLog.log(
+                "D$displayId c$cycleNum grayzone ENTER " +
+                    "\"${box.sourceText.take(12)}\" pct=${"%.1f".format(pct * 100)}%"
+            )
+        }
+        s.inZone = nowInZone
+    }
+
+    /** Emit the per-box histograms every ~20s of accumulated full cycles,
+     *  then reset the window. Boxes removed mid-window get their final
+     *  counts logged once here. */
+    private fun maybeEmitGrayZone() {
+        if (grayZoneStats.isEmpty()) return
+        val now = android.os.SystemClock.uptimeMillis()
+        if (grayZoneLastEmitMs == 0L) {
+            grayZoneLastEmitMs = now
+            return
+        }
+        if (now - grayZoneLastEmitMs < 20_000) return
+        val secs = (now - grayZoneLastEmitMs) / 1000
+        val parts = grayZoneStats.entries.joinToString(" | ") { (box, s) ->
+            "\"${box.sourceText.take(10)}\" n=${s.cycles} " +
+                "h=${s.buckets.joinToString(",")} " +
+                "max=${"%.1f".format(s.maxPct * 100)}%"
+        }
+        DetectionLog.log("D$displayId c$cycleNum grayzone[${secs}s]: $parts")
+        grayZoneStats.clear()
+        grayZoneLastEmitMs = now
     }
 
     private fun fillOverlayRegions(bitmap: Bitmap, bitmapRects: List<Rect>) {
