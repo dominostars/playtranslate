@@ -351,11 +351,10 @@ class CameraSession(
                 // quote the id — stale ones are structurally ignored.
                 val acquireId = engine.beginAcquire()
                 if (acquireId != 0L) {
-                    val keyframe = toUprightBitmap(proxy)
-                    val cnKeyframe = cn.clone()
+                    val buffers = AcquireBuffers(toUprightBitmap(proxy), cn.clone())
                     val gen = generation.get()
-                    Log.d(TAG, "acquire#$acquireId: keyframe ${keyframe.width}x${keyframe.height}")
-                    scope.launch(Dispatchers.Default) { runAcquire(keyframe, cnKeyframe, gen, acquireId) }
+                    Log.d(TAG, "acquire#$acquireId: keyframe ${buffers.keyframe.width}x${buffers.keyframe.height}")
+                    scope.launch(Dispatchers.Default) { runAcquire(buffers, gen, acquireId) }
                 }
             }
 
@@ -414,35 +413,78 @@ class CameraSession(
 
     // ── Acquire pipeline (off the frame path) ──────────────────────────────
 
-    private suspend fun runAcquire(keyframe: Bitmap, cnKeyframe: Mat, gen: Int, acquireId: Long) {
+    /**
+     * Owns every buffer an acquire snapshots, with ONE close path and
+     * explicit ownership transfer — buffer-lifecycle mistakes on early-exit
+     * branches produced findings in two separate review rounds; grouping
+     * makes the category unwritable rather than carefully written.
+     */
+    private inner class AcquireBuffers(
+        val keyframe: Bitmap,
+        val cnKeyframe: Mat,
+    ) {
+        var colorRef: Bitmap? = null
+            private set
+        private var colorRefKept = false
+
+        val auW = keyframe.width
+        val auH = keyframe.height
+
+        /** Create the ×4 color reference and immediately drop the multi-MB
+         *  keyframe — nothing downstream needs full resolution. */
+        fun deriveColorRef(): Bitmap {
+            val c = keyframe.scale(auW / COLOR_SCALE, auH / COLOR_SCALE, false)
+            colorRef = c
+            keyframe.recycle()
+            return c
+        }
+
+        /** Transfer colorRef ownership to the session cache / LRU payload —
+         *  close() will no longer touch it. */
+        fun keepColorRef() {
+            colorRefKept = true
+        }
+
+        /** The single close path, safe on every exit (early return,
+         *  exception, cancellation): recycles what wasn't transferred; the
+         *  cnKeyframe Mat release is serialized onto the analysis executor
+         *  behind any pending install block that may still be using it. */
+        fun close() {
+            if (!keyframe.isRecycled) keyframe.recycle()
+            colorRef?.takeIf { !colorRefKept && !it.isRecycled }?.recycle()
+            if (!analysisExecutor.isShutdown) {
+                analysisExecutor.execute { cnKeyframe.release() }
+            } else {
+                cnKeyframe.release()
+            }
+        }
+    }
+
+    private suspend fun runAcquire(buffers: AcquireBuffers, gen: Int, acquireId: Long) {
         var installed = false
+        val cnKeyframe = buffers.cnKeyframe
+        val auW = buffers.auW
+        val auH = buffers.auH
         try {
             prewarmJob.join() // never race the engine's lazy construction
             val sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode
             val t0 = System.currentTimeMillis()
             val ocr = OcrManager.instance.recognise(
-                keyframe,
+                buffers.keyframe,
                 sourceLang,
-                screenshotWidth = keyframe.width,
+                screenshotWidth = auW,
                 regionPreFilter = cameraRegionPreFilter(),
             )
             if (gen != generation.get()) return
             val rawCount = ocr?.groups?.size ?: 0
-            val groups = ocr?.let { usableGroups(it, keyframe.width, keyframe.height) }.orEmpty()
+            val groups = ocr?.let { usableGroups(it, auW, auH) }.orEmpty()
             Log.d(
                 TAG,
                 "acquire: OCR $rawCount groups (${groups.size} usable) in ${System.currentTimeMillis() - t0}ms " +
                     "(engine=${ocr?.engineBackend ?: "ml-kit-floor/none"})",
             )
 
-            // Everything downstream needs only the ×4 color reference and the
-            // AU dims — drop the 8 MB keyframe as soon as OCR is done. Color
-            // refs are Java-heap bitmaps; the GC owns their lifecycle (they
-            // can be shared between the session cache and LRU scenes).
-            val auW = keyframe.width
-            val auH = keyframe.height
-            val colorRef = keyframe.scale(auW / COLOR_SCALE, auH / COLOR_SCALE, false)
-            keyframe.recycle()
+            val colorRef = buffers.deriveColorRef()
             val gated = ocr?.copy(groups = groups)
 
             if (groups.isEmpty()) {
@@ -496,7 +538,9 @@ class CameraSession(
 
             if (!installed) return
             // The re-flavor cache describes the CURRENTLY ANCHORED scene —
-            // set only after the lock actually succeeded.
+            // set only after the lock actually succeeded. colorRef ownership
+            // transfers to the cache here.
+            buffers.keepColorRef()
             synchronized(stateLock) {
                 cachedOcr = gated
                 cachedColorRef = colorRef
@@ -508,26 +552,14 @@ class CameraSession(
             if (e is kotlinx.coroutines.CancellationException) throw e
             Log.w(TAG, "acquire failed", e)
         } finally {
-            // TOTAL completion: every exit from this function — including the
-            // stale-generation return after OCR (mode toggled mid-acquire),
-            // the exception path, and coroutine cancellation — must complete
-            // the acquire, or the engine waits out the full watchdog with new
-            // acquires suppressed. Fire-and-forget (not a suspend call: those
-            // throw immediately inside a cancelled coroutine) and idempotent
-            // (a no-op when the install path already finished this id).
-            // Early exits (stale generation, exceptions, cancellation) reach
-            // here before the normal recycle point — a camera keyframe is
-            // multi-MB, so free it promptly rather than waiting on GC.
-            if (!keyframe.isRecycled) keyframe.recycle()
+            // TOTAL completion + single buffer close path, on every exit —
+            // early returns, exceptions, and coroutine cancellation alike.
+            // Both are fire-and-forget (suspend calls throw immediately in a
+            // cancelled coroutine) and idempotent (the finish is a no-op when
+            // the install path already completed this id).
+            buffers.close()
             if (!analysisExecutor.isShutdown) {
-                // Serialized behind any pending install block, so this can't
-                // race a cancelled-but-still-running use of cnKeyframe.
-                analysisExecutor.execute {
-                    engine.finishAcquire(acquireId, locked = false)
-                    cnKeyframe.release()
-                }
-            } else {
-                cnKeyframe.release()
+                analysisExecutor.execute { engine.finishAcquire(acquireId, locked = false) }
             }
         }
     }
