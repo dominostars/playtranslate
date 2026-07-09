@@ -354,7 +354,14 @@ class PinholeOverlayMode(
 
         // A pending force is consumed by reaching a real capture attempt.
         // Deliberately after the hold/mgr guards above: those returns must
-        // not eat a force set by dismiss/refresh during a hold.
+        // not eat a force set by dismiss/refresh during a hold. The captured
+        // value rides into the A2 gate below: a forced wake is a forced FULL
+        // look, not merely a scheduler wake. Without the bypass, the one
+        // follow-up look after a mutation (step 14) gets vetoed by the pixel
+        // gate whenever the screen is static — a box-set change carries zero
+        // outside-pixel evidence — and text uncovered by a removal waits for
+        // the reconcile (observed: 26s, 2026-07-08 campfire-menu forensics).
+        val forcedLook = forceNextCycle
         forceNextCycle = false
 
         // Capture. Boxes that pinhole detection flags as changed are
@@ -479,6 +486,13 @@ class PinholeOverlayMode(
             // the last full look (a per-skip refresh would let slow drifts
             // creep under the threshold), no OCR bitmap is built, no state
             // moves, and the delivery gate re-parks on return.
+            //
+            // A forced wake bypasses the skip outright. Invariant: a skip
+            // streak may only BEGIN after a clean full look (one that found
+            // nothing to do). Mutating cycles force their follow-up look
+            // (step 14), and that look must reach OCR — the gate senses
+            // pixel change, not box-set divergence, so it is structurally
+            // blind to "text present but no longer covered".
             var pinholePre: Array<PinholeOutcome>? = null
             var reconcileCycle = false
             run gate@{
@@ -515,7 +529,7 @@ class PinholeOverlayMode(
                 // text inside endless animation must never wait past shipped
                 // cadence — see OutsideBlockGrid). Such screens run the full
                 // cycle every wake, exactly like the shipped app.
-                if (allKeep && !outside.fired && !reconcileCycle &&
+                if (!forcedLook && allKeep && !outside.fired && !reconcileCycle &&
                     outside.volatileBlocks == 0
                 ) {
                     // A moving-but-differing block must get a floor-paced
@@ -548,6 +562,7 @@ class PinholeOverlayMode(
                             "pinhole ${outcomes.count { it.result != PinholeResult.KEEP }} box(es)"
                         outside.volatileBlocks > 0 ->
                             "volatile ${outside.volatileBlocks} block(s) — full cadence"
+                        forcedLook -> "forced look"
                         else ->
                             "outside ${outside.changedSamples}/${outside.totalSamples} " +
                                 outside.fitLabel()
