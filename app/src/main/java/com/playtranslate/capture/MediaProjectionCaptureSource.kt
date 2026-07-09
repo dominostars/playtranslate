@@ -88,20 +88,35 @@ class MediaProjectionCaptureSource(
      */
     private suspend fun cleanCapture(displayId: Int): Bitmap? {
         val host = CaptureBackendResolver.active().overlayHost
+        // Anchor BEFORE the blank. The blank's own repaint must satisfy the
+        // freshness predicate — anchoring after the blank was submitted let
+        // the repaint land under the marker on fast commits and starved the
+        // wait on static screens (2026-07-10 review finding). The converse
+        // hazard — a pre-blank game frame delivered after this anchor — is
+        // closed by drain-to-newest inside [MediaProjectionController
+        // .captureFrameNewerThan]: deliveries are composition-ordered, so
+        // once the blank's repaint has been delivered, the newest delivery
+        // is always blank-inclusive.
+        val seqBefore = controller.deliverySeqNow
         val state = host?.prepareForCleanCapture(displayId)
-        // Seq observed AFTER the blank is submitted (review finding: sampling
-        // it before prepareForCleanCapture let any game frame that raced the
-        // baseline satisfy the freshness predicate on animating content).
-        // Frames composited within the blank's commit latency can still
-        // qualify — the vsync wait below bridges that residual window, as it
-        // always has; a commit-fence would close it fully if it ever shows
-        // up in practice. The blank itself forces a composition, so a
-        // qualifying delivery is guaranteed on a healthy stream.
-        val seqAtBlank = controller.deliverySeqNow
         return try {
-            waitVsync(2)
-            warnIfNotProjected(displayId)
-            controller.captureFrameNewerThan(seqAtBlank)
+            if (state == null || !state.blankedAnything) {
+                // Nothing visible on this display: no frame can contain our
+                // overlays, and no repaint is coming — gating on the anchor
+                // would burn the whole freshness budget on every quiet-screen
+                // one-shot and then serve the same frame it could have served
+                // immediately. Take the current frame, without advancing the
+                // live delivery-gate cursor.
+                warnIfNotProjected(displayId)
+                controller.captureFrameUngated()
+            } else {
+                // The blank goes through updateViewLayout → WMS/SF commit on
+                // their schedule (~1-2 vsyncs); the wait keeps the freshness
+                // loop from spinning through that latency.
+                waitVsync(2)
+                warnIfNotProjected(displayId)
+                controller.captureFrameNewerThan(seqBefore)
+            }
         } finally {
             if (host != null && state != null) host.restoreAfterCapture(state)
         }

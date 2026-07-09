@@ -64,7 +64,13 @@ class OverlayHost(
     /** Opaque snapshot returned by [prepareForCleanCapture]. */
     class OverlayState internal constructor(
         internal val saved: List<SavedHandle>
-    )
+    ) {
+        /** True when the prepare call actually blanked at least one visible
+         *  window. When false, no frame can contain this backend's overlays
+         *  AND no blank-induced repaint is coming — callers gating capture
+         *  freshness on the blank must not wait for one. */
+        val blankedAnything: Boolean get() = saved.isNotEmpty()
+    }
 
     /**
      * Add a window via [WindowManager.addView] AND register it for

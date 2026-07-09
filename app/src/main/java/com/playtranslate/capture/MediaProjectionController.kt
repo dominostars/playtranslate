@@ -234,24 +234,48 @@ class MediaProjectionController(private val service: CaptureService) {
     suspend fun captureFrame(): Bitmap? = captureNewerThan(minSeq = 0L, advanceCursor = true)
 
     /**
-     * Clean-capture variant: serve only a frame delivered AFTER [minSeq] (the
-     * seq observed before the caller blanked its overlays), so the frame
-     * provably post-dates the blank. On a healthy stream the blank itself
-     * forces a composition, so this resolves in one frame; if the budget
-     * expires anyway, fall back to the latest latched frame — the same
-     * take-latest semantics the old delay(64) path had — and log it.
+     * Clean-capture variant: serve only a frame delivered AFTER [minSeq] —
+     * the seq the caller observed BEFORE blanking its overlays, so the
+     * blank's own repaint always qualifies (anchoring after the blank
+     * starved static screens; 2026-07-10 review finding).
+     *
+     * A qualifying delivery is necessary but not sufficient: a game frame
+     * composited just before the blank can be delivered just after the
+     * anchor. Deliveries are composition-ordered on a single stream, so the
+     * fix is to DRAIN: after each qualifying claim, wait one quiet window
+     * ([DRAIN_QUIET_MS]) for anything newer and re-claim until the stream
+     * goes quiet or the budget expires. Once the blank's repaint has been
+     * delivered — guaranteed, since blanking a visible window changes the
+     * screen — the newest delivery is blank-inclusive, and on static
+     * screens the repaint is the only delivery, so the first quiet window
+     * ends the drain.
+     *
+     * On budget expiry this FAILS (null) rather than serving a frame that
+     * cannot be proven post-blank — a contaminated "clean" capture poisons
+     * OCR/baselines silently, which is strictly worse than a retryable
+     * failure. Callers with nothing blanked should use
+     * [captureFrameUngated] instead of paying the gate at all.
      *
      * Does not advance the raw-consumer cursor (see [DeliverySignal]).
      */
     suspend fun captureFrameNewerThan(minSeq: Long): Bitmap? =
         captureNewerThan(minSeq, advanceCursor = false)
 
+    /** Current frame with no freshness gate and no raw-cursor advance — the
+     *  clean-capture path for "nothing was blanked": the frame provably
+     *  cannot contain this backend's overlays, and no blank repaint is
+     *  coming, so gating would only burn the budget. Distinct from
+     *  [captureFrame], which advances the live delivery-gate cursor and
+     *  would eat a parked live cycle's pending wake. */
+    suspend fun captureFrameUngated(): Bitmap? =
+        captureNewerThan(minSeq = 0L, advanceCursor = false)
+
     private suspend fun captureNewerThan(minSeq: Long, advanceCursor: Boolean): Bitmap? {
         if (!ensureProjection()) return null
         val (w, h) = captureSize(projectedDisplayId) ?: return null
         ensureVirtualDisplay(w, h) ?: return null
 
-        var frame: LatchedFrame? = withTimeoutOrNull(FRESHNESS_BUDGET_MS) {
+        val frame: LatchedFrame? = withTimeoutOrNull(FRESHNESS_BUDGET_MS) {
             var claimed: LatchedFrame? = null
             while (claimed == null) {
                 val observed = deliverySeq.value
@@ -263,16 +287,31 @@ class MediaProjectionController(private val service: CaptureService) {
                     deliverySeq.first { it > observed }
                 }
             }
+            if (minSeq > 0) {
+                // Drain to the newest delivery (see captureFrameNewerThan
+                // kdoc). Each round waits one quiet window; a newer arrival
+                // restarts it. Bounded by the enclosing budget.
+                while (true) {
+                    val newerSeq = withTimeoutOrNull(DRAIN_QUIET_MS) {
+                        deliverySeq.first { it > claimed!!.seq }
+                    } ?: break
+                    val newer = tryClaim(w, h)
+                    if (newer != null && newer.seq >= newerSeq) {
+                        claimed!!.image.close()
+                        claimed = newer
+                    } else {
+                        newer?.image?.close()
+                    }
+                }
+            }
             claimed
         }
         if (frame == null && minSeq > 0) {
-            // Post-blank frame never arrived inside the budget. Preserve the
-            // legacy behavior (delay-then-take-latest) rather than failing the
-            // capture: serve whatever is latched, loudly.
-            frame = tryClaim(w, h)
-            if (frame != null) {
-                Log.w(TAG, "clean capture: no post-blank delivery in ${FRESHNESS_BUDGET_MS}ms; serving latest (seq=${frame.seq} <= $minSeq)")
-            }
+            Log.w(
+                TAG,
+                "clean capture FAILED: no post-blank delivery in " +
+                    "${FRESHNESS_BUDGET_MS}ms (anchor=$minSeq, latest=${deliverySeq.value})"
+            )
         }
         val claimed = frame ?: return null
         beginDecode()
@@ -581,6 +620,15 @@ class MediaProjectionController(private val service: CaptureService) {
          *  frame. Sized to the legacy delay(64)+delay(48) freshness budget the
          *  old poll path allowed, so availability semantics don't regress. */
         const val FRESHNESS_BUDGET_MS = 112L
+
+        /** Clean-capture drain: how long the delivery stream must stay quiet
+         *  after a qualifying frame before it's accepted as the newest. One
+         *  60Hz composite interval (16.7ms) plus margin — long enough that a
+         *  blank repaint following an in-flight pre-blank frame lands inside
+         *  the window and displaces it; short enough that a static screen
+         *  (repaint already claimed, stream silent) adds only this much to a
+         *  one-shot. */
+        const val DRAIN_QUIET_MS = 24L
 
         /** Cadence of the debug delivery-rate summary. */
         const val SUMMARY_INTERVAL_MS = 5_000L
