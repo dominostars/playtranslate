@@ -26,6 +26,13 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import androidx.core.graphics.scale
 
+/** Compile-time switch for the R2 composite-OCR probe — throwaway
+ *  instrumentation for the "composite cleanRef instead of blind-fill"
+ *  premise (see [PinholeOverlayMode.runR2Probe]). Runs only when the
+ *  live-mode debug pref is on; flip to false (or delete the probe) once
+ *  the premise is answered. */
+private const val R2_PROBE = true
+
 /**
  * Simple translation overlay mode with Shadow Mask detection.
  *
@@ -584,6 +591,13 @@ class PinholeOverlayMode(
             // showLiveOverlay will never render.
             if (service.holdActive) return 100L
 
+            // R2 probe (throwaway, see kdoc): second OCR on the composite
+            // input, log-only. hasOverlays() gate — the composite only
+            // differs from the flat fill when boxes are rendered.
+            if (R2_PROBE && debug && hasOverlays()) {
+                runR2Probe(raw, bitmapRects, pipeline)
+            }
+
             // No text on screen and no overlays → nothing to do
             if (pipeline == null && !hasOverlays()) {
                 service.handleNoTextDetected(displayId)
@@ -941,6 +955,79 @@ class PinholeOverlayMode(
      *  [bitmapRects] is in cleanBoxes order (the non-dirty subset of
      *  cachedBoxes, in cachedBoxes' original order — see runCycle step 9).
      *  Index alignment via sequential walk over non-dirty boxes. */
+    /** THROWAWAY instrumentation (2026-07-09) — the killer question for the
+     *  "composite cleanRef under boxes instead of blind-fill" direction:
+     *  does OCR segment a composited frame (frozen under-box game content
+     *  + live surroundings, seams and all) the same way it segments the
+     *  real scene? Runs a SECOND OCR on the composite input and logs both
+     *  group sets side by side. The premise holds if composite cycles show
+     *  the full-scene segmentation (e.g. six separate menu rows) with
+     *  under-box text re-read as each box's sourceText. Adds one OCR of
+     *  latency per full cycle while enabled; delete after the premise is
+     *  answered. */
+    private suspend fun runR2Probe(
+        raw: Bitmap,
+        bitmapRects: List<Rect>,
+        flat: OverlayToolkit.OcrPipelineResult?,
+    ) {
+        val ref = cleanRefBitmap ?: return
+        if (bitmapRects.isEmpty()) return
+        val composite = buildCompositeOcrImage(raw, ref, bitmapRects)
+        val compResult = try {
+            service.runOcr(composite, displayId)
+        } finally {
+            if (!composite.isRecycled) composite.recycle()
+        }
+        val flatGroups = flat?.ocrResult?.groups ?: emptyList()
+        val compGroups = compResult?.ocrResult?.groups ?: emptyList()
+        DetectionLog.log(
+            "D$displayId c$cycleNum r2probe: flat=${flatGroups.size} " +
+                "composite=${compGroups.size} boxes=${bitmapRects.size}"
+        )
+        for ((i, g) in flatGroups.withIndex()) {
+            val b = g.bounds
+            DetectionLog.log(
+                "D$displayId c$cycleNum   flat[$i] \"${g.text.take(40)}\" " +
+                    "(${b.left},${b.top},${b.right},${b.bottom})"
+            )
+        }
+        for ((i, g) in compGroups.withIndex()) {
+            val b = g.bounds
+            DetectionLog.log(
+                "D$displayId c$cycleNum   comp[$i] \"${g.text.take(40)}\" " +
+                    "(${b.left},${b.top},${b.right},${b.bottom})"
+            )
+        }
+    }
+
+    /** Companion to [runR2Probe]: raw with each rendered box region (same
+     *  geometry as [fillOverlayRegions], including the 3px AA ring)
+     *  replaced by the frozen cleanRef content instead of flat bgColor. */
+    private fun buildCompositeOcrImage(
+        raw: Bitmap,
+        ref: Bitmap,
+        bitmapRects: List<Rect>,
+    ): Bitmap {
+        val out = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
+        val boxes = cachedBoxes ?: return out
+        val aaBuffer = 3
+        val canvas = Canvas(out)
+        var rectIdx = 0
+        for (box in boxes) {
+            if (box.dirty) continue
+            val rect = bitmapRects.getOrNull(rectIdx) ?: break
+            rectIdx++
+            val l = (rect.left - aaBuffer).coerceAtLeast(0)
+            val t = (rect.top - aaBuffer).coerceAtLeast(0)
+            val r = (rect.right + aaBuffer).coerceAtMost(out.width)
+            val b = (rect.bottom + aaBuffer).coerceAtMost(out.height)
+            if (r <= l || b <= t) continue
+            val region = Rect(l, t, r, b)
+            canvas.drawBitmap(ref, region, region, null)
+        }
+        return out
+    }
+
     private fun fillOverlayRegions(bitmap: Bitmap, bitmapRects: List<Rect>) {
         val boxes = cachedBoxes ?: return
         // Small anti-aliasing buffer beyond the rendered overlay's edge, so
