@@ -14,6 +14,14 @@ one shared `vocab`; the CJK targets (en->ja/zh/ko) ship a split `srcVocab`+`trgV
 pair (separate source/target SentencePiece models), which our slimt fork loads via
 the Package.target_vocabulary path. Both shapes are emitted with role-named files.
 
+Some directions (sv, da, no, tr, ro, hu->en, id, hi->en, ru->en, vi->en as of
+2026-07) exist ONLY in the `tiny` tier (~17MB, 6 enc / 2 dec). Pass --allow-tiny
+to admit tiny as a fallback when no base/base-memory variant exists; the real
+architecture is read from metadata.json and baked into the entry (it differs
+from the base-memory default, so the app loads it via the catalog `arch` field).
+Without the flag, tiny-only directions are skipped — so re-running an existing
+base-memory direction can never silently downgrade it.
+
 Per direction we also read the model's sibling `metadata.json` and bake an `arch`
 object (encoder/decoder layers, heads, ffn depth) into the entry ONLY when it
 differs from the base-memory default (6/4/8/2). Base-memory entries omit it and
@@ -23,6 +31,7 @@ fluent garbage.
 
 Usage:
     python3 scripts/gen_bergamot_catalog.py ja-en es-en en-es ...
+    python3 scripts/gen_bergamot_catalog.py --allow-tiny sv-en en-sv ...
     python3 scripts/gen_bergamot_catalog.py            # default core set
 """
 import json
@@ -58,8 +67,9 @@ def load_manifest() -> dict:
     return json.load(open(MANIFEST_CACHE))
 
 
-def pick_variant(variants):
-    for arch in ("base-memory", "base"):
+def pick_variant(variants, allow_tiny=False):
+    tiers = ("base-memory", "base", "tiny") if allow_tiny else ("base-memory", "base")
+    for arch in tiers:
         for v in variants:
             if v.get("architecture") == arch:
                 return v
@@ -152,7 +162,9 @@ def build_entry(direction: str, variant: dict):
 
 
 def main():
-    dirs = sys.argv[1:] or DEFAULT_DIRS
+    argv = sys.argv[1:]
+    allow_tiny = "--allow-tiny" in argv
+    dirs = [a for a in argv if a != "--allow-tiny"] or DEFAULT_DIRS
     manifest = load_manifest()
     models = manifest["models"]
     catalog = json.load(open(CATALOG))
@@ -162,10 +174,13 @@ def main():
         if not variants:
             print(f"  MISSING {d} in manifest")
             continue
-        v = pick_variant(variants)
+        v = pick_variant(variants, allow_tiny)
         if not v:
-            print(f"  no base/base-memory variant for {d}")
+            tiers = "base/base-memory/tiny" if allow_tiny else "base/base-memory (rerun with --allow-tiny?)"
+            print(f"  no {tiers} variant for {d}")
             continue
+        if v.get("architecture") == "tiny":
+            print(f"  {d} TINY tier (no base/base-memory published)")
         entry = build_entry(d, v)
         if entry:
             catalog["packs"][f"bergamot-{d}"] = entry
