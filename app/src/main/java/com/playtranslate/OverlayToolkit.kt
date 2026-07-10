@@ -107,6 +107,48 @@ object OverlayToolkit {
     private const val ECHO_MIN_CHARS = 6
     private const val ECHO_BAG_OVERLAP = 0.7f
 
+    /**
+     * The clean-stream echo tripwire's full predicate: is any OCR [group]
+     * reading back a displayed box's own rendering at a rect where that
+     * rendering is painted? Geometry runs against what is PAINTED —
+     * [paintedBoxesFor] (the presenter's displayBoxesFor) plus the anchor
+     * rect itself. For the translation flavor painted == anchor, so this is
+     * exactly the historical anchor-rect check; for furigana the annotations
+     * are painted OUTSIDE the anchor rect (above lines / beside columns), and
+     * a contaminated stream shows them to OCR as a phantom group at the
+     * annotation rects — a group that never intersects any anchor
+     * (2026-07-10 round-11 finding). The text compare is the anchor's
+     * translatedText: what one box paints, concatenated (for furigana, the
+     * joined readings — a phantom row above a line contains that line's
+     * annotations in sequence).
+     *
+     * Skips non-discriminating boxes (translatedText ≈ sourceText: numbers,
+     * names, pure-kana lines) — those can't distinguish echo from game text.
+     *
+     * Known accepted false-positive: a game NATIVELY rendering furigana on a
+     * truly clean stream matches our own readings at our own annotation
+     * rects and demotes to the legacy furigana mode — the pre-unification
+     * shipped behavior, so the failure direction is safe.
+     */
+    internal fun findsOwnEcho(
+        groups: List<OcrManager.OcrGroup>,
+        boxes: List<TextBox>,
+        paintedBoxesFor: (TextBox) -> List<TextBox>,
+    ): Boolean {
+        for (box in boxes) {
+            if (box.translatedText.isEmpty()) continue
+            if (!isSignificantChange(box.translatedText, box.sourceText)) continue
+            val painted = paintedBoxesFor(box)
+            for (g in groups) {
+                val atPaintedRect = Rect.intersects(g.bounds, box.bounds) ||
+                    painted.any { Rect.intersects(g.bounds, it.bounds) }
+                if (!atPaintedRect) continue
+                if (echoesTranslation(g.text, box.translatedText)) return true
+            }
+        }
+        return false
+    }
+
     /** Does detected text have significant additions over existing? */
     fun hasSignificantAdditions(existing: String, detected: String): Boolean {
         val bag = existing.groupingBy { it }.eachCount().toMutableMap()
@@ -200,123 +242,8 @@ object OverlayToolkit {
         furiganaPaint: TextPaint
     ): List<FuriganaGroup> {
         val groups = mutableListOf<FuriganaGroup>()
-
-        for ((groupIdx, group) in ocrResult.groups.withIndex()) {
-            val lines = group.lines
-            if (lines.isEmpty()) continue
-
-            val groupBoxes = mutableListOf<TextBox>()
-            for (line in lines) {
-                val isVertical = line.orientation == com.playtranslate.language.TextOrientation.VERTICAL
-                if (line.text.isEmpty()) continue
-                val annotations = engine.annotateForHintText(line.text)
-                val lineBoxes = mutableListOf<TextBox>()
-
-                if (line.symbols.isNotEmpty()) {
-                    for (ann in annotations) {
-                        val matching = line.symbols.filter { it.charOffset in ann.baseStart until ann.baseEnd }
-                        if (matching.isEmpty()) continue
-                        val first = matching.first()
-                        val last = matching.last()
-
-                        val bounds = if (isVertical) {
-                            // Vertical: furigana to the right of the column
-                            val furiganaWidth = (first.bounds.width() * 0.75f).toInt().coerceAtLeast(1)
-                            Rect(
-                                last.bounds.right,
-                                first.bounds.top,
-                                last.bounds.right + furiganaWidth,
-                                last.bounds.bottom
-                            )
-                        } else {
-                            // Horizontal: furigana above the text
-                            val furiganaHeight = (first.bounds.height() * 0.75f).toInt().coerceAtLeast(1)
-                            Rect(
-                                first.bounds.left,
-                                first.bounds.top - furiganaHeight,
-                                last.bounds.right,
-                                first.bounds.top
-                            )
-                        }
-                        lineBoxes += TextBox(
-                            translatedText = ann.hintText,
-                            bounds = bounds,
-                            lineCount = 1,
-                            isFurigana = true,
-                            orientation = line.orientation
-                        )
-                    }
-                } else {
-                    // Fallback: TextPaint estimation (no symbols available)
-                    if (isVertical) {
-                        // Vertical fallback: distribute characters along column height
-                        val lineH = line.bounds.height().toFloat()
-                        val lineTop = line.bounds.top
-                        val charCount = line.text.length
-                        val charHeight = if (charCount > 0) lineH / charCount else lineH
-
-                        for (ann in annotations) {
-                            val top = lineTop + (ann.baseStart * charHeight).toInt()
-                            val bottom = lineTop + (ann.baseEnd * charHeight).toInt()
-                            val furiganaWidth = (line.bounds.width() * 0.75f).toInt().coerceAtLeast(1)
-                            lineBoxes += TextBox(
-                                translatedText = ann.hintText,
-                                bounds = Rect(
-                                    line.bounds.right,
-                                    top,
-                                    line.bounds.right + furiganaWidth,
-                                    bottom
-                                ),
-                                lineCount = 1,
-                                isFurigana = true,
-                                orientation = line.orientation
-                            )
-                        }
-                    } else {
-                        // Horizontal fallback (existing logic)
-                        val positionMapper: (Int, Int) -> Pair<Int, Int> = if (line.elements.isNotEmpty()) {
-                            buildCharToElementMapper(line.elements, furiganaPaint)
-                        } else {
-                            val lineW = line.bounds.width().toFloat()
-                            val lineLeft = line.bounds.left
-                            val charWidths = FloatArray(line.text.length).also {
-                                furiganaPaint.getTextWidths(line.text, it)
-                            }
-                            val totalWeight = charWidths.sum()
-                            fun(s: Int, e: Int): Pair<Int, Int> {
-                                if (totalWeight <= 0f) return lineLeft to lineLeft
-                                val lWeight = (0 until s.coerceIn(0, charWidths.size))
-                                    .sumOf { charWidths[it].toDouble() }.toFloat()
-                                val rWeight = (0 until e.coerceIn(0, charWidths.size))
-                                    .sumOf { charWidths[it].toDouble() }.toFloat()
-                                val l = lineLeft + (lWeight / totalWeight * lineW).toInt()
-                                val r = lineLeft + (rWeight / totalWeight * lineW).toInt()
-                                return l to r
-                            }
-                        }
-
-                        for (ann in annotations) {
-                            val (left, right) = positionMapper(ann.baseStart, ann.baseEnd)
-                            val furiganaHeight = (line.bounds.height() * 0.75f).toInt().coerceAtLeast(1)
-                            val furiganaBounds = Rect(
-                                left,
-                                line.bounds.top - furiganaHeight,
-                                right,
-                                line.bounds.top
-                            )
-                            lineBoxes += TextBox(
-                                translatedText = ann.hintText,
-                                bounds = furiganaBounds,
-                                lineCount = 1,
-                                isFurigana = true
-                            )
-                        }
-                    }
-                }
-
-                groupBoxes += mergeOverlappingFurigana(lineBoxes, furiganaPaint, isVertical)
-            }
-
+        for (group in ocrResult.groups) {
+            val groupBoxes = buildFuriganaBoxesForGroup(group, engine, furiganaPaint)
             if (groupBoxes.isNotEmpty()) {
                 groups += FuriganaGroup(
                     groupText = group.text,
@@ -326,6 +253,132 @@ object OverlayToolkit {
             }
         }
         return groups
+    }
+
+    /** Per-group variant of [buildFuriganaBoxesByGroup] — the annotation
+     *  machinery for exactly one OCR group. [ReconcilerLiveMode]'s furigana
+     *  presenter re-annotates only regions the reconciler says changed. */
+    suspend fun buildFuriganaBoxesForGroup(
+        group: OcrManager.OcrGroup,
+        engine: SourceLanguageEngine,
+        furiganaPaint: TextPaint
+    ): List<TextBox> {
+        val lines = group.lines
+        if (lines.isEmpty()) return emptyList()
+
+        val groupBoxes = mutableListOf<TextBox>()
+        for (line in lines) {
+            val isVertical = line.orientation == com.playtranslate.language.TextOrientation.VERTICAL
+            if (line.text.isEmpty()) continue
+            val annotations = engine.annotateForHintText(line.text)
+            val lineBoxes = mutableListOf<TextBox>()
+
+            if (line.symbols.isNotEmpty()) {
+                for (ann in annotations) {
+                    val matching = line.symbols.filter { it.charOffset in ann.baseStart until ann.baseEnd }
+                    if (matching.isEmpty()) continue
+                    val first = matching.first()
+                    val last = matching.last()
+
+                    val bounds = if (isVertical) {
+                        // Vertical: furigana to the right of the column
+                        val furiganaWidth = (first.bounds.width() * 0.75f).toInt().coerceAtLeast(1)
+                        Rect(
+                            last.bounds.right,
+                            first.bounds.top,
+                            last.bounds.right + furiganaWidth,
+                            last.bounds.bottom
+                        )
+                    } else {
+                        // Horizontal: furigana above the text
+                        val furiganaHeight = (first.bounds.height() * 0.75f).toInt().coerceAtLeast(1)
+                        Rect(
+                            first.bounds.left,
+                            first.bounds.top - furiganaHeight,
+                            last.bounds.right,
+                            first.bounds.top
+                        )
+                    }
+                    lineBoxes += TextBox(
+                        translatedText = ann.hintText,
+                        bounds = bounds,
+                        lineCount = 1,
+                        isFurigana = true,
+                        orientation = line.orientation
+                    )
+                }
+            } else {
+                // Fallback: TextPaint estimation (no symbols available)
+                if (isVertical) {
+                    // Vertical fallback: distribute characters along column height
+                    val lineH = line.bounds.height().toFloat()
+                    val lineTop = line.bounds.top
+                    val charCount = line.text.length
+                    val charHeight = if (charCount > 0) lineH / charCount else lineH
+
+                    for (ann in annotations) {
+                        val top = lineTop + (ann.baseStart * charHeight).toInt()
+                        val bottom = lineTop + (ann.baseEnd * charHeight).toInt()
+                        val furiganaWidth = (line.bounds.width() * 0.75f).toInt().coerceAtLeast(1)
+                        lineBoxes += TextBox(
+                            translatedText = ann.hintText,
+                            bounds = Rect(
+                                line.bounds.right,
+                                top,
+                                line.bounds.right + furiganaWidth,
+                                bottom
+                            ),
+                            lineCount = 1,
+                            isFurigana = true,
+                            orientation = line.orientation
+                        )
+                    }
+                } else {
+                    // Horizontal fallback (existing logic)
+                    val positionMapper: (Int, Int) -> Pair<Int, Int> = if (line.elements.isNotEmpty()) {
+                        buildCharToElementMapper(line.elements, furiganaPaint)
+                    } else {
+                        val lineW = line.bounds.width().toFloat()
+                        val lineLeft = line.bounds.left
+                        val charWidths = FloatArray(line.text.length).also {
+                            furiganaPaint.getTextWidths(line.text, it)
+                        }
+                        val totalWeight = charWidths.sum()
+                        fun(s: Int, e: Int): Pair<Int, Int> {
+                            if (totalWeight <= 0f) return lineLeft to lineLeft
+                            val lWeight = (0 until s.coerceIn(0, charWidths.size))
+                                .sumOf { charWidths[it].toDouble() }.toFloat()
+                            val rWeight = (0 until e.coerceIn(0, charWidths.size))
+                                .sumOf { charWidths[it].toDouble() }.toFloat()
+                            val l = lineLeft + (lWeight / totalWeight * lineW).toInt()
+                            val r = lineLeft + (rWeight / totalWeight * lineW).toInt()
+                            return l to r
+                        }
+                    }
+
+                    for (ann in annotations) {
+                        val (left, right) = positionMapper(ann.baseStart, ann.baseEnd)
+                        val furiganaHeight = (line.bounds.height() * 0.75f).toInt().coerceAtLeast(1)
+                        val furiganaBounds = Rect(
+                            left,
+                            line.bounds.top - furiganaHeight,
+                            right,
+                            line.bounds.top
+                        )
+                        lineBoxes += TextBox(
+                            translatedText = ann.hintText,
+                            bounds = furiganaBounds,
+                            lineCount = 1,
+                            isFurigana = true
+                        )
+                    }
+                }
+            }
+
+            groupBoxes += mergeOverlappingFurigana(lineBoxes, furiganaPaint, isVertical)
+        }
+
+        return groupBoxes
     }
 
     /** Convenience: build flat list of furigana boxes (for callers that don't need group tracking). */

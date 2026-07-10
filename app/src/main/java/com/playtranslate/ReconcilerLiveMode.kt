@@ -438,7 +438,12 @@ class ReconcilerLiveMode(
 
             val kept = verdicts.keptBoxes + holdOut.heldBoxes
             val toTranslate = holdOut.toTranslate
-            if (verdicts.removals.isNotEmpty()) presenter.onAnchorsDropped(verdicts.removals)
+            // Every anchor leaving the display is announced: REMOVEs, and the
+            // boxes RETRANSLATE entries replace (post-hold — a held region's
+            // box stays displayed). Presenters with per-anchor state depend
+            // on seeing every exit.
+            val dropped = verdicts.removals + toTranslate.mapNotNull { it.replacesBox }
+            if (dropped.isNotEmpty()) presenter.onAnchorsDropped(dropped)
 
             // Thrash net: kept boxes always register stability; placements
             // register outside input bursts only (touch-driven churn is the
@@ -545,24 +550,15 @@ class ReconcilerLiveMode(
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
     }
 
-    /** One box reading back its own translation at its own rect. Guarded
-     *  against non-discriminating boxes (translation ≈ source: numbers,
-     *  names) — those can't distinguish echo from game text. The match is
-     *  [OverlayToolkit.echoesTranslation] (bag-overlap), NOT exact-ish
-     *  comparison: 720p reads of our rendered text arrive garbled and merged
-     *  with the text underneath, which is precisely how the 2026-07-10
-     *  false-CLEAN churn slipped past the first version of this check. */
-    private fun isOwnEcho(groups: List<OcrManager.OcrGroup>, boxes: List<TextBox>): Boolean {
-        for (box in boxes) {
-            if (box.translatedText.isEmpty()) continue
-            if (!OverlayToolkit.isSignificantChange(box.translatedText, box.sourceText)) continue
-            for (g in groups) {
-                if (!Rect.intersects(g.bounds, box.bounds)) continue
-                if (OverlayToolkit.echoesTranslation(g.text, box.translatedText)) return true
-            }
-        }
-        return false
-    }
+    /** One box reading back its own rendering at a rect where that
+     *  rendering is PAINTED — [OverlayToolkit.findsOwnEcho] with this
+     *  presenter's display boxes as the painted geometry (for furigana the
+     *  annotations live outside the anchor rect; anchor-only geometry missed
+     *  them — round-11 finding). Safe to call [LivePresenter.displayBoxesFor]
+     *  here: cached boxes were rendered last cycle, so lookups are identity
+     *  hits with no migration side effects. */
+    private fun isOwnEcho(groups: List<OcrManager.OcrGroup>, boxes: List<TextBox>): Boolean =
+        OverlayToolkit.findsOwnEcho(groups, boxes, presenter::displayBoxesFor)
 
     /** Strided luma scan — true when every sample is near-black (the
      *  FLAG_SECURE / hidden-surface signature). ~300 samples at 1080p. */

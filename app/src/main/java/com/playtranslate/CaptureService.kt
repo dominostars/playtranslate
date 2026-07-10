@@ -1098,7 +1098,7 @@ class CaptureService : Service() {
         // held means "not probed this session" — divert through the async
         // path even when capture itself is already ready.
         val needsStreamKind = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
-            desiredFlavor() == OverlayFlavor.TRANSLATION &&
+            desiredFlavor() != OverlayFlavor.IN_APP_ONLY &&
             mediaProjectionController.hasConsent &&
             mediaProjectionController.streamKind == StreamKind.UNKNOWN
         pendingLiveStart?.cancel()
@@ -1121,7 +1121,10 @@ class CaptureService : Service() {
                 // Consent may have just been granted above — re-check, then
                 // resolve the stream kind (cached per session; instant when
                 // already resolved or on API ≤ 33).
-                if (desiredFlavor() == OverlayFlavor.TRANSLATION &&
+                // Overlay-painting flavors route by stream kind (round 10:
+                // furigana single-app grants must be classified too; panel
+                // mode is stream-agnostic and skips the probe).
+                if (desiredFlavor() != OverlayFlavor.IN_APP_ONLY &&
                     mediaProjectionController.hasConsent
                 ) {
                     mediaProjectionController.resolveStreamKind()
@@ -1197,7 +1200,10 @@ class CaptureService : Service() {
         // Panel-only: the unified loop on ANY stream kind and backend — it
         // paints nothing, so contamination is irrelevant (design record §7).
         OverlayFlavor.IN_APP_ONLY -> ReconcilerLiveMode::class.java
-        OverlayFlavor.FURIGANA -> FuriganaMode::class.java
+        OverlayFlavor.FURIGANA ->
+            if (mediaProjectionController.streamKind == StreamKind.CLEAN)
+                ReconcilerLiveMode::class.java
+            else FuriganaMode::class.java
         OverlayFlavor.TRANSLATION ->
             if (mediaProjectionController.streamKind == StreamKind.CLEAN)
                 ReconcilerLiveMode::class.java
@@ -1319,7 +1325,10 @@ class CaptureService : Service() {
             when (flavor) {
                 OverlayFlavor.IN_APP_ONLY ->
                     ReconcilerLiveMode(this, id, PanelPresenter(this, id))
-                OverlayFlavor.FURIGANA -> FuriganaMode(this, id)
+                OverlayFlavor.FURIGANA ->
+                    if (desiredClass == ReconcilerLiveMode::class.java)
+                        ReconcilerLiveMode(this, id, FuriganaPresenter(this, id))
+                    else FuriganaMode(this, id)
                 OverlayFlavor.TRANSLATION ->
                     if (desiredClass == ReconcilerLiveMode::class.java)
                         ReconcilerLiveMode(this, id, TranslationPresenter(this, id))
