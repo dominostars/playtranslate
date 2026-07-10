@@ -13,7 +13,7 @@ import com.playtranslate.ui.TextBox
  * gear, which the deleted InAppOnlyMode carried via its one-shot pipeline).
  *
  * Because nothing is painted, contamination is irrelevant
- * ([requiresCleanStream] = false): this presenter runs on ANY stream kind
+ * ([rendersOverlays] = false): this presenter runs on ANY stream kind
  * and BOTH backends. On the accessibility backend there is no delivery
  * signal, so the mode's gate never parks and the loop degrades to exactly
  * the interval polling the old mode did — minus its whole-text-nuke dedup
@@ -26,7 +26,6 @@ class PanelPresenter(
 
     override val flavor: OverlayFlavor = OverlayFlavor.IN_APP_ONLY
     override val rendersOverlays: Boolean = false
-    override val requiresCleanStream: Boolean = false
 
     override suspend fun present(
         work: List<ScanlineReconciler.Region>,

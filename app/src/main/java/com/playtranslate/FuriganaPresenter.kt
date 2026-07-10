@@ -33,7 +33,6 @@ class FuriganaPresenter(
 
     override val flavor: OverlayFlavor = OverlayFlavor.FURIGANA
     override val rendersOverlays: Boolean = true
-    override val requiresCleanStream: Boolean = true
 
     /** Anchor → annotation display boxes. Identity-keyed; see class kdoc for
      *  the reposition-copy migration. */
@@ -103,8 +102,7 @@ class FuriganaPresenter(
 
     private companion object {
         /** Payload marker for "parsed, nothing to annotate" — keeps the
-         *  anchor's translatedText non-empty (empty = retry semantics) and
-         *  under the echo tripwire's length floor. */
+         *  anchor's translatedText non-empty (empty = retry semantics). */
         const val NO_ANNOTATIONS = "·"
     }
 }

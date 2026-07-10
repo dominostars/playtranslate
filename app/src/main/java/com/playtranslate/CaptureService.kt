@@ -1193,7 +1193,7 @@ class CaptureService : Service() {
      * reconciler-driven wait→read→update loop — while everything else (whole
      * display, accessibility capture, API ≤ 33, kind not yet resolved) keeps
      * the pinhole tier. [setLiveDisplays] compares running instances against
-     * this, so a stream-kind change (new consent session, tripwire demotion)
+     * this, so a stream-kind change (new consent session, consent teardown)
      * rebuilds through the same diff that handles flavor changes.
      */
     private fun desiredModeClass(flavor: OverlayFlavor): Class<out LiveMode> = when (flavor) {
@@ -1210,14 +1210,15 @@ class CaptureService : Service() {
             else PinholeOverlayMode::class.java
     }
 
-    /** Clean-stream tripwire follow-through: the stream kind was just demoted
-     *  ([MediaProjectionController.demoteStreamKindToContaminated]), so the
-     *  running TRANSLATION mode's class no longer matches [desiredModeClass].
-     *  Re-enter the standard mutator with the current display set — its
-     *  class-mismatch diff stops the clean mode and rebuilds pinhole mode.
-     *  Called from the demoting mode's own cycle (main thread); the caller
-     *  must return immediately after, since its scope is cancelled here. */
-    internal fun onStreamKindDemoted() {
+    /** The CLEAN verdict was reset out from under a running overlay-painting
+     *  mode (consent teardown zeroes the stream kind; a backend switch can
+     *  follow), so the running mode's class no longer matches
+     *  [desiredModeClass]. Re-enter the standard mutator with the current
+     *  display set — its class-mismatch diff stops the clean mode and
+     *  rebuilds the contaminated-tier mode. Called from the mode's own cycle
+     *  (main thread); the caller must return immediately after, since its
+     *  scope is cancelled here. */
+    internal fun onCleanVerdictLost() {
         if (liveModes.isEmpty()) return
         setLiveDisplays(liveModes.keys.toSet())
     }

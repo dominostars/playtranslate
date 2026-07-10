@@ -1,7 +1,6 @@
 package com.playtranslate
 
 import android.graphics.Bitmap
-import android.graphics.Rect
 import android.os.SystemClock
 import android.util.Log
 import com.playtranslate.capture.CaptureBackendResolver
@@ -27,7 +26,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * carrying all of its review hardening; see
  * docs/single-app-capture-audit-2026-07-10.md §7 for the design record.
  *
- * Overlay-painting presenters ([LivePresenter.requiresCleanStream]) run only
+ * Overlay-painting presenters ([LivePresenter.rendersOverlays]) run only
  * on a **clean** MediaProjection stream — the API 34+ "a single app" grant,
  * where the mirror contains only the captured task's surface subtree
  * ([StreamKind.CLEAN], measured by
@@ -48,8 +47,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  *    plus one narrowly-scoped typewriter hold ([StabilityHold]).
  *  - Our own repaints never composite into a task mirror, so there is no
  *    self-echo class: no forced follow-up looks, no gate exclusions, no
- *    self-paint epochs. (The one echo we DO watch for is the tripwire below —
- *    evidence the CLEAN verdict itself was wrong.)
+ *    self-paint epochs.
  *  - Boxes render solid ([CaptureService.showLiveOverlay] `pinholeMode =
  *    false`) — no hole veil; the window alpha cap is a touch-security matter
  *    and unchanged.
@@ -77,13 +75,15 @@ import kotlinx.coroutines.withTimeoutOrNull
  *    message rather than misplace.
  *  - **Secure content**: FLAG_SECURE renders black with no callback; N
  *    consecutive black frames ⇒ tell the user once, keep polling.
- *  - **Contamination tripwire**: if OCR ever reads back a displayed box's own
- *    TRANSLATION at that box's rect (while differing from its source text),
- *    the stream contains our rendering — the probe's CLEAN verdict was wrong.
- *    Two consecutive sightings demote the session
- *    ([com.playtranslate.capture.MediaProjectionController
- *    .demoteStreamKindToContaminated]) and rebuild into the pinhole tier via
- *    [CaptureService.onStreamKindDemoted].
+ *  - **Verdict lifetime**: the CLEAN verdict is trusted for the whole
+ *    session, with no runtime tripwires — a projection token's scope is
+ *    immutable, so a correct verdict cannot become wrong later, and the
+ *    probe ([com.playtranslate.capture.StreamKindProbe]) carries the whole
+ *    burden of being right. A wrong CLEAN manifests as visible overlay
+ *    churn; restarting live mode re-probes. The one mid-session transition
+ *    that IS handled: consent teardown RESETS the verdict under a running
+ *    mode — the cycle-start guard rebuilds via
+ *    [CaptureService.onCleanVerdictLost].
  */
 class ReconcilerLiveMode(
     private val service: CaptureService,
@@ -121,13 +121,7 @@ class ReconcilerLiveMode(
     private var lastInputKickMs = 0L
 
     private var blackStreak = 0
-    private var echoStreak = 0
     private var secureNotified = false
-
-    /** Language-independent misroute net — see [ThrashDetector]. Fed kept
-     *  boxes (stability) and translating placements (potential revisits);
-     *  a crossing demotes the session exactly like the echo tripwire. */
-    private val thrash = ThrashDetector()
 
     override fun start() {
         currentJob?.cancel()
@@ -194,14 +188,12 @@ class ReconcilerLiveMode(
         cachedBoxes?.let { presenter.onAnchorsDropped(it) }
         cachedBoxes = null
         stabilityHold.clear()
-        thrash.clear()
         holdDeadlineMs = null
         cropLeft = 0
         cropTop = 0
         screenshotW = 0
         screenshotH = 0
         blackStreak = 0
-        echoStreak = 0
         forceNextCycle = true
     }
 
@@ -301,12 +293,12 @@ class ReconcilerLiveMode(
         val prefs = Prefs(service)
         if (service.holdActive) return 100L
         val controller = service.mediaProjectionController
-        if (presenter.requiresCleanStream && controller.streamKind != StreamKind.CLEAN) {
-            // Consent torn down (kind reset to UNKNOWN) or the tripwire
-            // demoted the session — either way this mode must not run on a
-            // stream that isn't provably clean. Rebuild through the mutator;
-            // our scope is cancelled inside this call.
-            service.onStreamKindDemoted()
+        if (presenter.rendersOverlays && controller.streamKind != StreamKind.CLEAN) {
+            // Consent teardown reset the verdict (a backend switch can follow
+            // it) — an overlay-painting mode must not keep running on a
+            // stream that is no longer provably clean. Rebuild through the
+            // mutator; our scope is cancelled inside this call.
+            service.onCleanVerdictLost()
             return prefs.captureIntervalMs
         }
         val mgr = liveSource()
@@ -412,23 +404,6 @@ class ReconcilerLiveMode(
 
             val groups = pipeline?.ocrResult?.groups ?: emptyList()
 
-            // Contamination tripwire — see the class doc. Misroute nets only
-            // arm for clean-stream presenters: a non-painting presenter
-            // cannot be misrouted (nothing of ours is ever in any frame).
-            if (presenter.requiresCleanStream && isOwnEcho(groups, boxes)) {
-                echoStreak++
-                DetectionLog.log("D$displayId c$cycleNum echo suspected ($echoStreak/$ECHO_STREAK_LIMIT)")
-                if (echoStreak >= ECHO_STREAK_LIMIT) {
-                    controller.demoteStreamKindToContaminated(
-                        "own translation echoed at box rects"
-                    )
-                    service.onStreamKindDemoted()
-                    return prefs.captureIntervalMs
-                }
-            } else {
-                echoStreak = 0
-            }
-
             // Reconcile in text space; then the typewriter hold.
             val verdicts = ScanlineReconciler.reconcile(groups, boxes)
             val holdOut = stabilityHold.filter(
@@ -444,27 +419,6 @@ class ReconcilerLiveMode(
             // on seeing every exit.
             val dropped = verdicts.removals + toTranslate.mapNotNull { it.replacesBox }
             if (dropped.isNotEmpty()) presenter.onAnchorsDropped(dropped)
-
-            // Thrash net: kept boxes always register stability; placements
-            // register outside input bursts only (touch-driven churn is the
-            // user's doing). A crossing means some region is oscillating
-            // through recently-seen text with no stable cycle in between —
-            // the flap signature of a misrouted stream, whatever the
-            // mechanism — so demote exactly like the echo tripwire.
-            val nowMs = SystemClock.uptimeMillis()
-            verdicts.keptBoxes.forEach { thrash.recordStability(it.bounds) }
-            if (presenter.requiresCleanStream && nowMs >= inputBurstUntilMs) {
-                for (entry in toTranslate) {
-                    if (thrash.recordPlacement(entry.bounds, entry.text, nowMs)) {
-                        DetectionLog.log(
-                            "D$displayId c$cycleNum region thrash at ${entry.bounds} — demoting"
-                        )
-                        controller.demoteStreamKindToContaminated("region thrash (flap signature)")
-                        service.onStreamKindDemoted()
-                        return prefs.captureIntervalMs
-                    }
-                }
-            }
 
             if (debug) {
                 DetectionLog.log(
@@ -550,16 +504,6 @@ class ReconcilerLiveMode(
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
     }
 
-    /** One box reading back its own rendering at a rect where that
-     *  rendering is PAINTED — [OverlayToolkit.findsOwnEcho] with this
-     *  presenter's display boxes as the painted geometry (for furigana the
-     *  annotations live outside the anchor rect; anchor-only geometry missed
-     *  them — round-11 finding). Safe to call [LivePresenter.displayBoxesFor]
-     *  here: cached boxes were rendered last cycle, so lookups are identity
-     *  hits with no migration side effects. */
-    private fun isOwnEcho(groups: List<OcrManager.OcrGroup>, boxes: List<TextBox>): Boolean =
-        OverlayToolkit.findsOwnEcho(groups, boxes, presenter::displayBoxesFor)
-
     /** Strided luma scan — true when every sample is near-black (the
      *  FLAG_SECURE / hidden-surface signature). ~300 samples at 1080p. */
     private fun isAllBlack(bmp: Bitmap): Boolean {
@@ -589,8 +533,5 @@ class ReconcilerLiveMode(
 
         /** Per-channel level at or below which a sample counts as black. */
         const val BLACK_LEVEL_MAX = 12
-
-        /** Consecutive own-echo sightings before the tripwire demotes. */
-        const val ECHO_STREAK_LIMIT = 2
     }
 }

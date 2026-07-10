@@ -6,7 +6,7 @@ import com.playtranslate.ui.TextBox
 /**
  * The presentation strategy for [ReconcilerLiveMode] — the ONLY thing that
  * differs between the live flavors. The mode owns sensing (delivery gate,
- * guards, reconciler, stability hold, misroute nets); a presenter owns what
+ * guards, reconciler, stability hold); a presenter owns what
  * a reconciled region *becomes*: a translation box, furigana annotations, or
  * a panel-only result.
  *
@@ -23,15 +23,13 @@ interface LivePresenter {
 
     val flavor: OverlayFlavor
 
-    /** False = panel-only: the mode never paints overlay windows; anchors
-     *  still back hold-to-preview via [displayBoxesFor]. */
+    /** False = panel-only: the mode never paints overlay windows (anchors
+     *  still back hold-to-preview via [displayBoxesFor]), and the mode is
+     *  stream-agnostic — a presenter that paints nothing cannot be hurt by a
+     *  contaminated stream. True = overlay-painting: only valid on a CLEAN
+     *  (task-scoped) stream; the cycle-start guard rebuilds if the verdict
+     *  is reset mid-session (consent teardown). */
     val rendersOverlays: Boolean
-
-    /** True = only valid on a CLEAN (task-scoped) stream: the mode demotes
-     *  and rebuilds on any other kind, and the misroute nets (echo tripwire,
-     *  thrash detector) arm. False = stream-agnostic — the presenter paints
-     *  nothing, so contamination is irrelevant and the nets stay cold. */
-    val requiresCleanStream: Boolean
 
     /**
      * Turn [work] (regions the reconciler wants (re)presented — RETRANSLATE

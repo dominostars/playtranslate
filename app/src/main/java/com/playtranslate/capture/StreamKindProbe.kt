@@ -38,9 +38,35 @@ import kotlin.coroutines.resume
  * failures mid-scan (consent lost, projection/VD dead), mixed evidence past
  * the round cap — resolves to UNKNOWN, which is never cached: this
  * session-start routes to the pinhole tier (operationally fail-closed) and
- * the next start re-measures. The clean mode's echo tripwire and
- * [com.playtranslate.ThrashDetector] backstop any verdict this still gets
- * wrong.
+ * the next start re-measures.
+ *
+ * The verdict is trusted for the whole session — this probe is the SOLE
+ * classifier, with no runtime backstops. That is sound because a projection
+ * token's scope is immutable: a task mirror can never start compositing our
+ * windows mid-session, so a correct verdict cannot rot. A WRONG CLEAN (a
+ * probe misfire) manifests as visible overlay churn, and the recovery is
+ * restarting live mode, which re-probes. The design burden that used to be
+ * spread across runtime tripwires therefore lives HERE, as detection that
+ * refuses to trust what it cannot verify:
+ *
+ *  - **Transform-invariant pattern matching.** Hue dominance is the fast
+ *    path, but grayscale modes (bedtime/wind-down), accessibility inversion,
+ *    and OEM force-dark can strip or remap color BEFORE the buffer we
+ *    capture. No transform maps a checkerboard to FLAT, so the second
+ *    detector is luma parity separation: the mean-luma gap between the two
+ *    checker parities (~110 as drawn). The verdict signal is the gap's SIGN
+ *    flipping in lockstep with the commanded phase swaps — sign-agnostic on
+ *    purpose, because inversion pipelines negate luma and a fixed
+ *    expectation would misread our own inverted pattern as absent. Game
+ *    content cannot flip in lockstep with commands it cannot see.
+ *  - **Draw confirmation.** ABSENT and SILENT rounds count as evidence only
+ *    after the probe view provably re-rendered its phase (onDraw observed) —
+ *    a window that never drew proves nothing, and reading its silence as
+ *    task-mirror evidence was the exact false-CLEAN shape a broken add
+ *    would produce. No draw → abort UNKNOWN.
+ *  - **Geometry-verified frames.** A frame whose dimensions differ from the
+ *    probed display cannot be scanned at laid-out coordinates; such frames
+ *    are invalid, never absence-evidence, and an all-invalid round FAILs.
  *
  * The probe window is created from the active backend's
  * [com.playtranslate.overlay.OverlayHost] context (so it carries the right
@@ -111,6 +137,11 @@ object StreamKindProbe {
             val loc = IntArray(2)
             view.getLocationOnScreen(loc)
             val rect = Rect(loc[0], loc[1], loc[0] + view.width, loc[1] + view.height)
+            // Frames are scanned at these laid-out screen coordinates, which
+            // is only meaningful on a display-sized frame (the VD is created
+            // at display size). Anything else is unscannable, not absent.
+            val expectedW = size.x
+            val expectedH = size.y
 
             // Verdict rounds. Every round commits a pattern phase (round 1 =
             // the add itself; later rounds toggle the checker phase and
@@ -130,11 +161,13 @@ object StreamKindProbe {
             //    hardening); nor does silence fail closed (the
             //    fail-to-CONTAMINATED version flapped pinhole mode over any
             //    single-app capture of resting content).
+            //  - A strong luma checker whose parity sign FLIPS across two
+            //    consecutive swapped rounds → CONTAMINATED: our pattern read
+            //    through a color-stripping/inverting pipeline. Constant sign
+            //    = environmental checker = absence-grade evidence.
             //  - FAILED (capture layer broke) or mixed evidence past
             //    [MAX_ROUNDS] → UNKNOWN, uncached: pinhole tier this start,
             //    re-measure next start.
-            // Misroute backstops beyond the probe: the clean mode's echo
-            // tripwire and its ThrashDetector both demote a wrong CLEAN.
             val ledger = Ledger()
             var round = 0
             while (true) {
@@ -144,19 +177,29 @@ object StreamKindProbe {
                 // display mirror) lands between the add and this loop, and
                 // must count. Later rounds anchor at their own toggle.
                 val seq = if (round == 1) seqAtAdd else controller.deliverySeqNow
+                val drawsBefore = if (round == 1) 0 else view.drawCount
                 if (round > 1) {
                     view.swap = !view.swap
                     view.invalidate()
+                }
+                // Evidence-validity precondition: this round's phase provably
+                // rendered. A window that never draws proves nothing — its
+                // silence must not be read as a task mirror.
+                if (!awaitDrawAfter(view, drawsBefore)) {
+                    return aborted("window never drew (round $round)")
                 }
                 val scan = scanForPattern(
                     controller, rect, swap = view.swap,
                     budgetMs = if (round == 1) FIRST_ROUND_BUDGET_MS else ROUND_BUDGET_MS,
                     minSeq = seq,
+                    expectedW = expectedW, expectedH = expectedH,
                 )
                 val settled = ledger.observe(scan) ?: continue
                 val reason = when {
                     scan == Scan.FOUND ->
                         "pattern ${if (view.swap) "B" else "A"} visible (round $round)"
+                    scan == Scan.CHECKER_POS || scan == Scan.CHECKER_NEG ->
+                        "luma checker flipped with commanded phase (round $round)"
                     scan == Scan.FAILED ->
                         "probe aborted: capture failure (round $round)"
                     settled == StreamKind.CLEAN && scan == Scan.NO_FRAMES ->
@@ -175,14 +218,21 @@ object StreamKindProbe {
 
     // ── Scanning ─────────────────────────────────────────────────────────
 
-    /** One round's evidence. [NO_FRAMES] is genuine silence — the capture
-     *  pipeline proved itself alive (readable frames existed, none fresh) but
-     *  the mirror delivered nothing new. [FAILED] is the capture layer
-     *  failing (consent lost, projection/VD dead, decode errors) — it must
+    /** One round's evidence. [CHECKER_POS]/[CHECKER_NEG] are the
+     *  transform-survivors: no hue, but a strong luma checker at the probe
+     *  rect, tagged with its fixed-parity SIGN. Possibly our pattern read
+     *  through a color-stripping (or inverting) pipeline — the [Ledger]
+     *  believes it only when the sign flips across two consecutive rounds,
+     *  in lockstep with the commanded phase swap; a constant sign is static
+     *  content that merely looks checkered and counts toward absence.
+     *  [NO_FRAMES] is genuine silence — the capture pipeline proved itself
+     *  alive (readable frames existed, none fresh) but the mirror delivered
+     *  nothing new. [FAILED] is the capture layer failing (consent lost,
+     *  projection/VD dead, decode errors, geometry-invalid frames) — it must
      *  never be mistaken for silence, because silence promotes toward CLEAN
      *  and failure must abort the probe uncached (adversarial-review
      *  finding). */
-    internal enum class Scan { FOUND, ABSENT, NO_FRAMES, FAILED }
+    internal enum class Scan { FOUND, CHECKER_POS, CHECKER_NEG, ABSENT, NO_FRAMES, FAILED }
 
     /**
      * Pure verdict ledger for the round loop, extracted so the CLEAN
@@ -205,6 +255,8 @@ object StreamKindProbe {
         private var absents = 0
         private var silents = 0
         private var rounds = 0
+        private var lastCheckerRound = 0
+        private var lastCheckerSign = 0
 
         /** Rounds in the current silent streak — for the verdict reason. */
         val silentRounds: Int get() = silents
@@ -216,6 +268,32 @@ object StreamKindProbe {
             when (scan) {
                 Scan.FOUND -> return StreamKind.CONTAMINATED
                 Scan.FAILED -> return StreamKind.UNKNOWN
+                Scan.CHECKER_POS, Scan.CHECKER_NEG -> {
+                    val sign = if (scan == Scan.CHECKER_POS) 1 else -1
+                    val consecutive = lastCheckerRound == rounds - 1
+                    if (consecutive && lastCheckerSign == -sign) {
+                        // Flipped exactly when we swapped — ours, read
+                        // through a color-stripping/inverting pipeline.
+                        return StreamKind.CONTAMINATED
+                    }
+                    if (consecutive && lastCheckerSign == sign) {
+                        // Same sign across our swap: static content that
+                        // happens to checker. Our pattern is provably not
+                        // what's visible there — absence-grade evidence.
+                        absents++
+                        if (absents >= ABSENT_ROUNDS_FOR_CLEAN) {
+                            return StreamKind.CLEAN
+                        }
+                    } else {
+                        // First checker sighting (or non-consecutive): could
+                        // be ours becoming visible — neutral, wait for the
+                        // flip round.
+                        absents = 0
+                    }
+                    silents = 0
+                    lastCheckerRound = rounds
+                    lastCheckerSign = sign
+                }
                 Scan.ABSENT -> {
                     absents++
                     silents = 0
@@ -252,12 +330,17 @@ object StreamKindProbe {
         swap: Boolean,
         budgetMs: Long,
         minSeq: Long,
+        expectedW: Int,
+        expectedH: Int,
     ): Scan {
         val deadline = SystemClock.uptimeMillis() + budgetMs
         var freshFrames = 0
         var readableFrames = 0
+        var invalidFrames = 0
         var bestMatched = 0
+        var bestSeparation = 0
         var lastFreshSample = ""
+        var lastInvalidDims = ""
         while (SystemClock.uptimeMillis() < deadline) {
             // Order matters: read the seq BEFORE claiming the frame — a
             // delivery between the two makes the frame look fresher than
@@ -271,21 +354,48 @@ object StreamKindProbe {
                 // a transient failure just doesn't count toward anything.
                 if (!controller.hasConsent) return Scan.FAILED
             } else {
-                readableFrames++
-                val match = try {
-                    if (seqNow > minSeq) {
+                val outcome = try {
+                    if (bmp.width != expectedW || bmp.height != expectedH) {
+                        // Unscannable at laid-out coords — invalid, NEVER
+                        // absence-evidence (a mis-scaled frame contains our
+                        // pattern somewhere we are not looking).
+                        invalidFrames++
+                        lastInvalidDims = "${bmp.width}x${bmp.height}"
+                        null
+                    } else if (seqNow > minSeq) {
+                        readableFrames++
                         freshFrames++
                         lastFreshSample = sampleLine(bmp, rect)
-                        val matched = matchedCells(bmp, rect, swap)
-                        if (matched > bestMatched) bestMatched = matched
-                        matched >= MATCH_CELLS_MIN
+                        val pixels = sampleCellPixels(bmp, rect)
+                        if (pixels == null) {
+                            invalidFrames++
+                            freshFrames--
+                            readableFrames--
+                            null
+                        } else {
+                            val reading = readCells(pixels, swap)
+                            if (reading.hueMatched > bestMatched) {
+                                bestMatched = reading.hueMatched
+                            }
+                            val sep = reading.lumaSeparation
+                            if (kotlin.math.abs(sep) > kotlin.math.abs(bestSeparation)) {
+                                bestSeparation = sep
+                            }
+                            when {
+                                reading.hueMatched >= MATCH_CELLS_MIN -> Scan.FOUND
+                                sep >= LUMA_SEPARATION_MIN -> Scan.CHECKER_POS
+                                sep <= -LUMA_SEPARATION_MIN -> Scan.CHECKER_NEG
+                                else -> null
+                            }
+                        }
                     } else {
-                        false
+                        readableFrames++
+                        null
                     }
                 } finally {
                     bmp.recycle()
                 }
-                if (match) return Scan.FOUND
+                if (outcome != null) return outcome
             }
             delay(FRAME_POLL_MS)
         }
@@ -293,14 +403,21 @@ object StreamKindProbe {
             freshFrames > 0 -> {
                 DetectionLog.log(
                     "MP probe: pattern absent in $freshFrames fresh frames; " +
-                        "best=$bestMatched/${(SIZE_PX / CELL_PX) * (SIZE_PX / CELL_PX)} " +
-                        "rect=$rect sampled=$lastFreshSample"
+                        "hue=$bestMatched/${(SIZE_PX / CELL_PX) * (SIZE_PX / CELL_PX)} " +
+                        "lumaSep=$bestSeparation rect=$rect sampled=$lastFreshSample"
                 )
                 Scan.ABSENT
             }
             // Stale reads prove the pipeline works end to end — the silence
             // is the mirror's, and counts as task-mirror evidence.
             readableFrames > 0 -> Scan.NO_FRAMES
+            invalidFrames > 0 -> {
+                DetectionLog.log(
+                    "MP probe: only geometry-invalid frames ($lastInvalidDims " +
+                        "vs ${expectedW}x$expectedH) — cannot measure"
+                )
+                Scan.FAILED
+            }
             // Nothing but failures: silence cannot be claimed at all.
             else -> Scan.FAILED
         }
@@ -325,38 +442,77 @@ object StreamKindProbe {
         }
     }
 
-    /** Sample each checker cell's center and classify it by HUE DOMINANCE
-     *  against the expected phase — magenta = red and blue both exceed green
-     *  by [HUE_MARGIN]; green = green exceeds both. Deliberately NOT an
-     *  absolute color comparison: the mirror composites our window through
-     *  whatever the device does to overlays — the Moto G's opacity clamp
-     *  delivered the pattern at ~84% intensity (measured 2026-07-10,
-     *  `FFD60AD6`/`FF0AD60A`), and absolute tolerance against the pure
-     *  colors flunked enough cells to false-CLEAN. Hue dominance is
-     *  invariant under any uniform attenuation (alpha clamps, screen dim,
-     *  tone mapping) down to ~×0.17 brightness. ≥[MATCH_CELLS_MIN] of the
-     *  36 cells must classify correctly — game pixels forming a phase-
-     *  correct alternating magenta/green checker by chance is not a real
-     *  risk, and a rare false FOUND resolves in the safe direction
-     *  (CONTAMINATED = today's shipped world). */
-    private fun patternMatches(bmp: Bitmap, rect: Rect, swap: Boolean): Boolean =
-        matchedCells(bmp, rect, swap) >= MATCH_CELLS_MIN
-
-    /** Count of hue-correct cells; also feeds the absent-verdict log. */
-    private fun matchedCells(bmp: Bitmap, rect: Rect, swap: Boolean): Int {
+    /** Center pixel of each checker cell, row-major, or null when the rect
+     *  falls outside the bitmap (defensive — the geometry guard should have
+     *  rejected such frames as invalid already). */
+    private fun sampleCellPixels(bmp: Bitmap, rect: Rect): IntArray? {
         if (rect.left < 0 || rect.top < 0 ||
             rect.right > bmp.width || rect.bottom > bmp.height
-        ) return 0
+        ) return null
         val cells = SIZE_PX / CELL_PX
-        var matched = 0
+        val out = IntArray(cells * cells)
         for (r in 0 until cells) {
             for (c in 0 until cells) {
                 val px = rect.left + c * CELL_PX + CELL_PX / 2
                 val py = rect.top + r * CELL_PX + CELL_PX / 2
-                if (cellHueMatches(cellIsA(r, c, swap), bmp.getPixel(px, py))) matched++
+                out[r * cells + c] = bmp.getPixel(px, py)
             }
         }
-        return matched
+        return out
+    }
+
+    /** Both detectors' evidence from one frame's 36 cell-center pixels. */
+    internal class CellReading(val hueMatched: Int, val lumaSeparation: Int)
+
+    /**
+     * Classify one frame's cell pixels (row-major, from [sampleCellPixels])
+     * against the commanded phase. Two independent detectors:
+     *
+     * **Hue dominance** (fast path): magenta = red and blue both exceed
+     * green by [HUE_MARGIN]; green = green exceeds both. Deliberately NOT an
+     * absolute color comparison: the mirror composites our window through
+     * whatever the device does to overlays — the Moto G's opacity clamp
+     * delivered the pattern at ~84% intensity (measured 2026-07-10,
+     * `FFD60AD6`/`FF0AD60A`), and absolute tolerance against the pure colors
+     * flunked enough cells to false-CLEAN. Hue dominance is invariant under
+     * any uniform attenuation (alpha clamps, screen dim, tone mapping) down
+     * to ~×0.17 brightness — but it is blind whenever the pipeline strips or
+     * remaps COLOR (grayscale bedtime modes, accessibility inversion, OEM
+     * force-dark), which is exactly a false-CLEAN generator if hue is the
+     * only detector.
+     *
+     * **Luma parity separation** (transform-invariant path): mean luma of
+     * even-parity cells minus odd-parity cells, FIXED parity indexing (not
+     * phase-relative). The drawn pattern separates by ~110 (magenta ≈72 vs
+     * green ≈182), and the SIGN alternates with the commanded phase swap.
+     * No color transform maps a checkerboard to flat — grayscale preserves
+     * the gap verbatim, inversion negates it (the alternation survives,
+     * which is why the [Ledger]'s flip test is sign-agnostic), dimming
+     * scales it. Static game content that happens to checker cannot follow
+     * the flip.
+     */
+    internal fun readCells(pixels: IntArray, swap: Boolean): CellReading {
+        val cells = SIZE_PX / CELL_PX
+        var matched = 0
+        var sumEven = 0
+        var sumOdd = 0
+        for (i in pixels.indices) {
+            val r = i / cells
+            val c = i % cells
+            if (cellHueMatches(cellIsA(r, c, swap), pixels[i])) matched++
+            val luma = lumaOf(pixels[i])
+            if ((r + c) % 2 == 0) sumEven += luma else sumOdd += luma
+        }
+        val perParity = pixels.size / 2
+        return CellReading(matched, sumEven / perParity - sumOdd / perParity)
+    }
+
+    /** Integer Rec.709-ish luma of an ARGB pixel. */
+    internal fun lumaOf(pixel: Int): Int {
+        val r = (pixel shr 16) and 0xFF
+        val g = (pixel shr 8) and 0xFF
+        val b = pixel and 0xFF
+        return (54 * r + 183 * g + 19 * b) shr 8
     }
 
     /** Hue classification of one sampled pixel against the expected cell
@@ -380,8 +536,12 @@ object StreamKindProbe {
     private class ProbeView(context: Context) : View(context) {
         /** Inverts the checker phase; set + invalidate for the second pass. */
         var swap = false
+        /** Draws observed — the evidence-validity signal ([awaitDrawAfter]).
+         *  Main-thread only, like all View state. */
+        var drawCount = 0
         private val paint = Paint()
         override fun onDraw(canvas: Canvas) {
+            drawCount++
             val cells = SIZE_PX / CELL_PX
             for (r in 0 until cells) {
                 for (c in 0 until cells) {
@@ -410,6 +570,15 @@ object StreamKindProbe {
     private fun aborted(reason: String): StreamKind =
         verdict(StreamKind.UNKNOWN, "probe aborted: $reason")
 
+    /** Suspend until the probe view has drawn again (count above
+     *  [sinceCount]) or [DRAW_TIMEOUT_MS] passes. Both this poll and onDraw
+     *  run on the main thread — delay() suspends, letting the draw happen. */
+    private suspend fun awaitDrawAfter(view: ProbeView, sinceCount: Int): Boolean =
+        withTimeoutOrNull(DRAW_TIMEOUT_MS) {
+            while (view.drawCount <= sinceCount) delay(16)
+            true
+        } != null
+
     private suspend fun awaitLaidOut(view: View): Boolean =
         withTimeoutOrNull(LAYOUT_TIMEOUT_MS) {
             suspendCancellableCoroutine { cont ->
@@ -427,6 +596,16 @@ object StreamKindProbe {
 
     /** Hue-correct cells (of 36) required for FOUND — 75%. */
     private const val MATCH_CELLS_MIN = 27
+
+    /** Minimum |luma parity separation| to call a checker present. The
+     *  pattern separates by ~110 as drawn (~92 through the measured ×0.84
+     *  clamp); random game content at the probe rect stays near 0 because a
+     *  parity mean interleaves cells from the whole rect. */
+    internal const val LUMA_SEPARATION_MIN = 30
+
+    /** How long a commanded phase may take to provably render before the
+     *  probe gives up on its own window (→ UNKNOWN). */
+    private const val DRAW_TIMEOUT_MS = 400L
 
     /** Consecutive fresh-frame ABSENT rounds that settle CLEAN — opposite
      *  checker phases by construction (each round toggles). */

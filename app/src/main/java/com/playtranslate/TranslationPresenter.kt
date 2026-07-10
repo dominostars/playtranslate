@@ -19,7 +19,6 @@ class TranslationPresenter(
 
     override val flavor: OverlayFlavor = OverlayFlavor.TRANSLATION
     override val rendersOverlays: Boolean = true
-    override val requiresCleanStream: Boolean = true
 
     override suspend fun present(
         work: List<ScanlineReconciler.Region>,

@@ -633,15 +633,6 @@ class MediaProjectionController(private val service: CaptureService) {
         return cs.x == size.first && cs.y == size.second
     }
 
-    /** Clean-stream contamination tripwire: the live mode observed its own
-     *  rendering echoed back through the stream, so the CLEAN verdict was
-     *  wrong (a probe misfire — see [StreamKindProbe]'s residual). Demote for
-     *  the rest of the session; the next consent re-probes from scratch. */
-    fun demoteStreamKindToContaminated(reason: String) {
-        DetectionLog.log("MP stream kind: demoted to CONTAMINATED ($reason)")
-        streamKind = StreamKind.CONTAMINATED
-    }
-
     private suspend fun requestConsent(): Boolean {
         consentGate?.let { return it.await() }
         val gate = CompletableDeferred<Boolean>()
