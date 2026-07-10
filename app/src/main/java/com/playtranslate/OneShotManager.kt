@@ -105,31 +105,64 @@ class OneShotManager(private val service: CaptureService) {
     }
 
 
-    private suspend fun runCycle(displayId: Int, cycle: Cycle) {
-        if (!service.isConfigured) return
-        if (cycle.generation != currentGeneration) return
+    /** Terminal state of one hold cycle. Every cycle ends in exactly one of
+     *  these, and [runCycle]'s single terminal `when` guarantees each one
+     *  paints or logs SOMETHING. The previous shape's bare returns let a
+     *  failed capture end the cycle with no pill, no log line, and a
+     *  spinner the user reads as a hang — which hid a broken capture path
+     *  for a day (2026-07-10). [Superseded] is the one deliberately silent
+     *  case: a newer gesture owns the screen. */
+    private sealed interface HoldOutcome {
+        object Success : HoldOutcome
+        object NoText : HoldOutcome
+        data class Failed(val why: String) : HoldOutcome
+        object Superseded : HoldOutcome
+    }
 
-        // 1. Capture clean screenshot
-        val raw: Bitmap = service.captureScreen(displayId) ?: return
+    private suspend fun runCycle(displayId: Int, cycle: Cycle) {
+        val outcome = runCycleStages(displayId, cycle)
+        // Superseded while the stages were finishing: the newer generation
+        // owns all painting now, whatever the stages produced.
+        if (cycle.generation != currentGeneration) return
+        when (outcome) {
+            is HoldOutcome.Success -> Unit // stages painted overlay/panel
+            is HoldOutcome.Superseded -> Unit
+            is HoldOutcome.NoText -> {
+                if (displayId == cycle.panelDisplayId) {
+                    service.emitHoldLoading(false)
+                    service.emitLiveNoText()
+                }
+                showNoTextPill(displayId)
+            }
+            is HoldOutcome.Failed -> {
+                DetectionLog.log("hold cycle FAILED on D$displayId: ${outcome.why}")
+                if (displayId == cycle.panelDisplayId) service.emitHoldLoading(false)
+                showFailurePill(displayId)
+            }
+        }
+    }
+
+    private suspend fun runCycleStages(displayId: Int, cycle: Cycle): HoldOutcome {
+        if (!service.isConfigured) return HoldOutcome.Failed("service not configured")
+        if (cycle.generation != currentGeneration) return HoldOutcome.Superseded
+
+        // 1. Capture clean screenshot. Null is a real, reachable outcome
+        //    (consent loss, no qualifying delivery inside the freshness
+        //    budget) — it must surface, never silently strand the gesture.
+        val raw: Bitmap = service.captureScreen(displayId)
+            ?: return HoldOutcome.Failed("screenshot failed")
 
         try {
-            if (cycle.generation != currentGeneration) return
+            if (cycle.generation != currentGeneration) return HoldOutcome.Superseded
 
             // 2. Flash region indicator
             service.flashRegionIndicator(displayId)
 
             // 3. OCR via shared pipeline
             val pipeline = service.runOcr(raw, displayId)
-            if (cycle.generation != currentGeneration) return
+            if (cycle.generation != currentGeneration) return HoldOutcome.Superseded
 
-            if (pipeline == null) {
-                if (displayId == cycle.panelDisplayId) {
-                    service.emitHoldLoading(false)
-                    service.emitLiveNoText()
-                }
-                showNoTextPill(displayId)
-                return
-            }
+            if (pipeline == null) return HoldOutcome.NoText
 
             val (ocrResult, _, cropLeft, cropTop, screenshotW, screenshotH) = pipeline
 
@@ -147,7 +180,7 @@ class OneShotManager(private val service: CaptureService) {
                 }
             }
 
-            if (cycle.generation != currentGeneration) return
+            if (cycle.generation != currentGeneration) return HoldOutcome.Superseded
 
             // 6. Show final overlay
             if (boxes.isNotEmpty()) {
@@ -162,6 +195,7 @@ class OneShotManager(private val service: CaptureService) {
             if (displayId == cycle.panelDisplayId) {
                 service.translateAndSendToPanel(ocrResult, screenshotPath, displayId)
             }
+            return HoldOutcome.Success
         } finally {
             if (!raw.isRecycled) raw.recycle()
         }
@@ -186,6 +220,18 @@ class OneShotManager(private val service: CaptureService) {
         val display = dm?.getDisplay(displayId)
         if (overlayUi != null && display != null) {
             overlayUi.showNoTextPill(display, service.noTextMessage(displayId))
+        }
+    }
+
+    /** Failure pill for a [HoldOutcome.Failed] cycle — same surface as the
+     *  no-text pill. Inline English mirrors the existing
+     *  runCaptureOcrTranslate failure string (l10n debt shared with it). */
+    private fun showFailurePill(displayId: Int) {
+        val overlayUi = CaptureBackendResolver.activeOverlayUi
+        val dm = service.getSystemService(android.hardware.display.DisplayManager::class.java)
+        val display = dm?.getDisplay(displayId)
+        if (overlayUi != null && display != null) {
+            overlayUi.showNoTextPill(display, "Screenshot failed")
         }
     }
 }
