@@ -30,12 +30,15 @@ import kotlin.coroutines.resume
  * frames → CONTAMINATED. Task mirror → windows outside the captured task's
  * surface subtree are structurally absent → CLEAN, evidenced either by fresh
  * post-draw frames without the pattern (confirmed across a pattern swap) or
- * by total post-draw SILENCE — a display mirror cannot stay silent past our
- * own probe commit (plus the recording chip ticking 1Hz), so no-deliveries
- * IS the task-mirror signature, not an ambiguity. Setup failures that
- * precede any evidence — window add failure, layout timeout — still resolve
- * to CONTAMINATED, the world every shipped session already lives in, and
- * log why.
+ * by SILENCE sustained across several forced commits — a display mirror
+ * cannot ignore repeated probe commits (plus the recording chip ticking
+ * ~1Hz), so multi-round no-deliveries is the task-mirror signature. A single
+ * silent phase settles nothing (see [Ledger]). Setup failures that precede
+ * any evidence — window add failure, layout timeout, mixed evidence past the
+ * round cap — resolve to CONTAMINATED, the world every shipped session
+ * already lives in, and log why. The clean mode's echo tripwire and
+ * [com.playtranslate.ThrashDetector] backstop any verdict this still gets
+ * wrong.
  *
  * The probe window is created from the active backend's
  * [com.playtranslate.overlay.OverlayHost] context (so it carries the right
@@ -105,38 +108,58 @@ object StreamKindProbe {
             view.getLocationOnScreen(loc)
             val rect = Rect(loc[0], loc[1], loc[0] + view.width, loc[1] + view.height)
 
-            // NO_FRAMES is a CLEAN verdict, not an ambiguity: on a
-            // whole-display mirror, post-draw silence is impossible — our own
-            // window commit composites into the mirror (the mechanism the
-            // delivery gate is built on; observed as this device's first
-            // FOUND, 2026-07-10 00:47), and the screen-recording chip's timer
-            // ticks a delivery every second besides. Only a task mirror can
-            // stay silent after our draw/swap: our windows aren't in it and
-            // the captured app happens to be still — which real content does
-            // constantly (the first fail-safe-to-CONTAMINATED version of
-            // this rule flapped pinhole mode over a resting news page). If
-            // the inference is ever wrong, the clean mode's echo tripwire
-            // demotes the session within two cycles.
-            when (scanForPattern(
-                controller, rect, swap = false,
-                budgetMs = PHASE_A_BUDGET_MS, minSeq = seqAtAdd,
-            )) {
-                Scan.FOUND -> return verdict(StreamKind.CONTAMINATED, "pattern A visible")
-                Scan.NO_FRAMES ->
-                    return verdict(StreamKind.CLEAN, "no post-draw deliveries — task mirror inferred")
-                Scan.ABSENT -> Unit
-            }
-            val seqAtSwap = controller.deliverySeqNow
-            view.swap = true
-            view.invalidate()
-            return when (scanForPattern(
-                controller, rect, swap = true,
-                budgetMs = PHASE_B_BUDGET_MS, minSeq = seqAtSwap,
-            )) {
-                Scan.FOUND -> verdict(StreamKind.CONTAMINATED, "pattern B visible")
-                Scan.NO_FRAMES ->
-                    verdict(StreamKind.CLEAN, "no post-swap deliveries — task mirror inferred")
-                Scan.ABSENT -> verdict(StreamKind.CLEAN, "pattern absent across swap")
+            // Verdict rounds. Every round commits a pattern phase (round 1 =
+            // the add itself; later rounds toggle the checker phase and
+            // invalidate — real pixel damage, so a display mirror MUST
+            // composite it) and scans only frames delivered after that
+            // commit. The [Ledger] pins the criteria:
+            //  - FOUND anywhere → CONTAMINATED.
+            //  - Two consecutive fresh-frame ABSENTs (opposite phases by
+            //    construction) → CLEAN: the pattern is provably not in a
+            //    stream that is provably alive.
+            //  - Three consecutive SILENT rounds → CLEAN: a display mirror
+            //    cannot ignore three forced commits (our own repaints
+            //    composite into it — this device's FOUND at 00:47 measured
+            //    that mechanism — and the recording chip ticks ~1Hz on top),
+            //    so total silence is the task-mirror signature. One silent
+            //    phase alone no longer suffices (adversarial-review
+            //    hardening); nor does silence fail closed (the
+            //    fail-to-CONTAMINATED version flapped pinhole mode over any
+            //    single-app capture of resting content).
+            //  - Mixed evidence past [MAX_ROUNDS] → CONTAMINATED (setup-
+            //    grade weirdness; today's shipped world).
+            // Misroute backstops beyond the probe: the clean mode's echo
+            // tripwire and its ThrashDetector both demote a wrong CLEAN.
+            val ledger = Ledger()
+            var round = 0
+            while (true) {
+                round++
+                // Round 1's freshness anchor is [seqAtAdd] — the add's own
+                // composition (the delivery that carries pattern A on a
+                // display mirror) lands between the add and this loop, and
+                // must count. Later rounds anchor at their own toggle.
+                val seq = if (round == 1) seqAtAdd else controller.deliverySeqNow
+                if (round > 1) {
+                    view.swap = !view.swap
+                    view.invalidate()
+                }
+                val scan = scanForPattern(
+                    controller, rect, swap = view.swap,
+                    budgetMs = if (round == 1) FIRST_ROUND_BUDGET_MS else ROUND_BUDGET_MS,
+                    minSeq = seq,
+                )
+                val settled = ledger.observe(scan) ?: continue
+                val reason = when {
+                    scan == Scan.FOUND ->
+                        "pattern ${if (view.swap) "B" else "A"} visible (round $round)"
+                    settled == StreamKind.CLEAN && scan == Scan.NO_FRAMES ->
+                        "no deliveries across ${ledger.silentRounds} forced commits — task mirror inferred"
+                    settled == StreamKind.CLEAN ->
+                        "pattern absent across swap"
+                    else ->
+                        "ambiguous: mixed evidence after $round rounds"
+                }
+                return verdict(settled, reason)
             }
         } finally {
             try { wm.removeViewImmediate(view) } catch (_: Exception) {}
@@ -145,7 +168,46 @@ object StreamKindProbe {
 
     // ── Scanning ─────────────────────────────────────────────────────────
 
-    private enum class Scan { FOUND, ABSENT, NO_FRAMES }
+    internal enum class Scan { FOUND, ABSENT, NO_FRAMES }
+
+    /**
+     * Pure verdict ledger for the round loop, extracted so the CLEAN
+     * criteria are JVM-pinned (the adversarial review's regression-test
+     * ask): a single silent phase can never select CLEAN — it takes
+     * [SILENT_ROUNDS_FOR_CLEAN] consecutive silent rounds (each preceded by
+     * a forced commit) or [ABSENT_ROUNDS_FOR_CLEAN] consecutive fresh-frame
+     * absents; FOUND settles CONTAMINATED immediately; mixed evidence
+     * exhausting [MAX_ROUNDS] fails closed to CONTAMINATED. Streaks reset
+     * each other — silence interrupted by a delivery must re-earn its run.
+     */
+    internal class Ledger {
+        private var absents = 0
+        private var silents = 0
+        private var rounds = 0
+
+        /** Rounds in the current silent streak — for the verdict reason. */
+        val silentRounds: Int get() = silents
+
+        /** Feed one round's scan; returns the settled verdict or null to
+         *  keep probing. */
+        fun observe(scan: Scan): StreamKind? {
+            rounds++
+            when (scan) {
+                Scan.FOUND -> return StreamKind.CONTAMINATED
+                Scan.ABSENT -> {
+                    absents++
+                    silents = 0
+                    if (absents >= ABSENT_ROUNDS_FOR_CLEAN) return StreamKind.CLEAN
+                }
+                Scan.NO_FRAMES -> {
+                    silents++
+                    absents = 0
+                    if (silents >= SILENT_ROUNDS_FOR_CLEAN) return StreamKind.CLEAN
+                }
+            }
+            return if (rounds >= MAX_ROUNDS) StreamKind.CONTAMINATED else null
+        }
+    }
 
     /** Poll the mirror for up to [budgetMs], looking for the checker in
      *  [rect]. FOUND returns early. Only frames DELIVERED AFTER [minSeq] —
@@ -327,8 +389,20 @@ object StreamKindProbe {
     /** Hue-correct cells (of 36) required for FOUND — 75%. */
     private const val MATCH_CELLS_MIN = 27
 
-    private const val PHASE_A_BUDGET_MS = 900L
-    private const val PHASE_B_BUDGET_MS = 500L
+    /** Consecutive fresh-frame ABSENT rounds that settle CLEAN — opposite
+     *  checker phases by construction (each round toggles). */
+    internal const val ABSENT_ROUNDS_FOR_CLEAN = 2
+
+    /** Consecutive silent rounds that settle CLEAN — each preceded by a
+     *  forced commit a display mirror could not have ignored. */
+    internal const val SILENT_ROUNDS_FOR_CLEAN = 3
+
+    /** Round cap; mixed evidence exhausting it fails closed. */
+    internal const val MAX_ROUNDS = 6
+
+    /** Round 1 waits longer — it also absorbs the window's first commit. */
+    private const val FIRST_ROUND_BUDGET_MS = 900L
+    private const val ROUND_BUDGET_MS = 500L
     private const val FRAME_POLL_MS = 33L
     private const val LAYOUT_TIMEOUT_MS = 500L
 }

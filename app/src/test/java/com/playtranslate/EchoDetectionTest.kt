@@ -1,5 +1,6 @@
 package com.playtranslate
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -63,5 +64,63 @@ class EchoDetectionTest {
         assertFalse(com.playtranslate.capture.StreamKindProbe.cellHueMatches(false, 0xFF808080.toInt()))
         // Deep dim (~×0.2) still classifies.
         assertTrue(com.playtranslate.capture.StreamKindProbe.cellHueMatches(true, 0xFF330033.toInt()))
+    }
+
+    // ── StreamKindProbe verdict ledger (adversarial-review regression) ────
+
+    private fun ledger() = com.playtranslate.capture.StreamKindProbe.Ledger()
+    private val FOUND = com.playtranslate.capture.StreamKindProbe.Scan.FOUND
+    private val ABSENT = com.playtranslate.capture.StreamKindProbe.Scan.ABSENT
+    private val SILENT = com.playtranslate.capture.StreamKindProbe.Scan.NO_FRAMES
+
+    @Test
+    fun singleSilentPhase_canNeverSelectClean() {
+        // The exact regression the adversarial review asked to pin: silence
+        // must be sustained across repeated forced commits before it reads
+        // as a task mirror.
+        val l = ledger()
+        org.junit.Assert.assertNull(l.observe(SILENT))
+        org.junit.Assert.assertNull(l.observe(SILENT))
+        assertEquals(com.playtranslate.capture.StreamKind.CLEAN, l.observe(SILENT))
+    }
+
+    @Test
+    fun foundSettlesContaminatedImmediately() {
+        assertEquals(com.playtranslate.capture.StreamKind.CONTAMINATED, ledger().observe(FOUND))
+    }
+
+    @Test
+    fun absentPairSettlesClean() {
+        val l = ledger()
+        org.junit.Assert.assertNull(l.observe(ABSENT))
+        assertEquals(com.playtranslate.capture.StreamKind.CLEAN, l.observe(ABSENT))
+    }
+
+    @Test
+    fun interruptedSilence_mustReEarnItsRun() {
+        val l = ledger()
+        org.junit.Assert.assertNull(l.observe(SILENT))
+        org.junit.Assert.assertNull(l.observe(SILENT))
+        org.junit.Assert.assertNull(l.observe(ABSENT)) // a delivery arrived — streak resets
+        org.junit.Assert.assertNull(l.observe(SILENT))
+        org.junit.Assert.assertNull(l.observe(SILENT))
+        assertEquals(
+            "a full silent run on the final round still settles CLEAN",
+            com.playtranslate.capture.StreamKind.CLEAN, l.observe(SILENT),
+        )
+    }
+
+    @Test
+    fun mixedEvidence_exhaustsToContaminated() {
+        val l = ledger()
+        org.junit.Assert.assertNull(l.observe(SILENT))
+        org.junit.Assert.assertNull(l.observe(ABSENT))
+        org.junit.Assert.assertNull(l.observe(SILENT))
+        org.junit.Assert.assertNull(l.observe(ABSENT))
+        org.junit.Assert.assertNull(l.observe(SILENT))
+        assertEquals(
+            "no coherent streak by the round cap fails closed",
+            com.playtranslate.capture.StreamKind.CONTAMINATED, l.observe(ABSENT),
+        )
     }
 }

@@ -114,6 +114,11 @@ class CleanStreamOverlayMode(
     private var echoStreak = 0
     private var identityNotified = false
 
+    /** Language-independent misroute net — see [ThrashDetector]. Fed kept
+     *  boxes (stability) and translating placements (potential revisits);
+     *  a crossing demotes the session exactly like the echo tripwire. */
+    private val thrash = ThrashDetector()
+
     override fun start() {
         currentJob?.cancel()
         CaptureBackendResolver.active().startInputMonitoring(displayId) { onGameInput() }
@@ -164,6 +169,7 @@ class CleanStreamOverlayMode(
         currentJob?.cancel()
         cachedBoxes = null
         stabilityHold.clear()
+        thrash.clear()
         holdDeadlineMs = null
         inputBurstUntilMs = 0L
         blackStreak = 0
@@ -395,6 +401,27 @@ class CleanStreamOverlayMode(
             val kept = verdicts.keptBoxes + holdOut.heldBoxes
             val toTranslate = holdOut.toTranslate
 
+            // Thrash net: kept boxes always register stability; placements
+            // register outside input bursts only (touch-driven churn is the
+            // user's doing). A crossing means some region is oscillating
+            // through recently-seen text with no stable cycle in between —
+            // the flap signature of a misrouted stream, whatever the
+            // mechanism — so demote exactly like the echo tripwire.
+            val nowMs = SystemClock.uptimeMillis()
+            verdicts.keptBoxes.forEach { thrash.recordStability(it.bounds) }
+            if (nowMs >= inputBurstUntilMs) {
+                for (entry in toTranslate) {
+                    if (thrash.recordPlacement(entry.bounds, entry.text, nowMs)) {
+                        DetectionLog.log(
+                            "D$displayId c$cycleNum region thrash at ${entry.bounds} — demoting"
+                        )
+                        controller.demoteStreamKindToContaminated("region thrash (flap signature)")
+                        service.onStreamKindDemoted()
+                        return prefs.captureIntervalMs
+                    }
+                }
+            }
+
             if (debug) {
                 DetectionLog.log(
                     "D$displayId c$cycleNum clean: ocr=${ocrMs}ms " +
@@ -473,10 +500,12 @@ class CleanStreamOverlayMode(
         )
     }
 
-    /** Drop everything displayed + the hold state; force the rebuild look. */
+    /** Drop everything displayed + the hold/thrash state; force the rebuild
+     *  look. */
     private fun clearDisplayed() {
         cachedBoxes = null
         stabilityHold.clear()
+        thrash.clear()
         holdDeadlineMs = null
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
         forceNextCycle = true
