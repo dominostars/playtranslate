@@ -92,11 +92,12 @@ class MediaProjectionCaptureSource(
         // freshness predicate — anchoring after the blank was submitted let
         // the repaint land under the marker on fast commits and starved the
         // wait on static screens (2026-07-10 review finding). The converse
-        // hazard — a pre-blank game frame delivered after this anchor — is
-        // closed by drain-to-newest inside [MediaProjectionController
-        // .captureFrameNewerThan]: deliveries are composition-ordered, so
-        // once the blank's repaint has been delivered, the newest delivery
-        // is always blank-inclusive.
+        // hazard — a pre-blank game frame delivered after this anchor —
+        // shares the shipped app's take-latest tolerance: the vsync wait
+        // below covers the blank's commit latency, and
+        // [MediaProjectionController.captureFrameNewerThan] serves the
+        // NEWEST frame above the anchor (see its kdoc for why a stricter
+        // quiescence proof was removed).
         val seqBefore = controller.deliverySeqNow
         val state = host?.prepareForCleanCapture(displayId)
         return try {

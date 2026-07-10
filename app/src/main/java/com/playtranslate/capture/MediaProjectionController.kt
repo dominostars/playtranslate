@@ -125,6 +125,20 @@ class MediaProjectionController(private val service: CaptureService) {
         }
     }
 
+    /** Run [block] with this (already-acquired) frame, releasing the
+     *  reference in a finally — cancellation or exceptions inside [block],
+     *  including the suspending decode, can never leak it. This bracket is
+     *  the ONLY sanctioned way to hold a frame across a suspension point:
+     *  the drain loop this replaced held an acquired reference in a local
+     *  across an awaited flow, and every budget-timeout cancellation leaked
+     *  one of the reader's three Image slots permanently. */
+    private suspend fun <T> LatchedFrame.use(block: suspend (LatchedFrame) -> T): T =
+        try {
+            block(this)
+        } finally {
+            release()
+        }
+
     private val latch = AtomicReference<LatchedFrame?>(null)
 
     /** Monotonic delivery counter, doubling as the wake signal: collectors of
@@ -146,6 +160,9 @@ class MediaProjectionController(private val service: CaptureService) {
     @Volatile private var deliveredTotal = 0L
     @Volatile private var rawServedCount = 0L
     @Volatile private var cleanServedCount = 0L
+    @Volatile private var rawFailedCount = 0L
+    @Volatile private var cleanFailedCount = 0L
+    @Volatile private var lastFailReason = ""
     private var summaryLastDelivered = 0L
     private var summaryMsSinceLog = 0L
 
@@ -203,8 +220,12 @@ class MediaProjectionController(private val service: CaptureService) {
             val heartbeat = summaryMsSinceLog >= 60_000L
             if ((delta > 0 || heartbeat) && Prefs(service).debugLiveMode) {
                 summaryMsSinceLog = 0
+                val failed = rawFailedCount + cleanFailedCount
+                val failSuffix =
+                    if (failed > 0) " failed=$rawFailedCount/$cleanFailedCount last=\"$lastFailReason\""
+                    else ""
                 val line = "MP stream: +$delta deliveries/${SUMMARY_INTERVAL_MS / 1000}s " +
-                    "(total=$total rawServed=$rawServedCount cleanServed=$cleanServedCount)"
+                    "(total=$total rawServed=$rawServedCount cleanServed=$cleanServedCount$failSuffix)"
                 mainHandler.post { DetectionLog.log(line) }
             }
             frameHandler?.postDelayed(this, SUMMARY_INTERVAL_MS)
@@ -268,27 +289,27 @@ class MediaProjectionController(private val service: CaptureService) {
     suspend fun captureFrame(): Bitmap? = captureNewerThan(minSeq = 0L, advanceCursor = true)
 
     /**
-     * Clean-capture variant: serve only a frame delivered AFTER [minSeq] —
-     * the seq the caller observed BEFORE blanking its overlays, so the
-     * blank's own repaint always qualifies (anchoring after the blank
-     * starved static screens; 2026-07-10 review finding).
+     * Clean-capture variant: serve the NEWEST latched frame once one exists
+     * with seq > [minSeq] — the seq the caller observed BEFORE blanking its
+     * overlays, so the blank's own repaint always qualifies (anchoring after
+     * the blank starved static screens; 2026-07-10 review finding).
      *
-     * A qualifying delivery is necessary but not sufficient: a game frame
-     * composited just before the blank can be delivered just after the
-     * anchor. Deliveries are composition-ordered on a single stream, so the
-     * fix is to DRAIN: after each qualifying claim, wait one quiet window
-     * ([DRAIN_QUIET_MS]) for anything newer and re-claim until the stream
-     * goes quiet or the budget expires. Once the blank's repaint has been
-     * delivered — guaranteed, since blanking a visible window changes the
-     * screen — the newest delivery is blank-inclusive, and on static
-     * screens the repaint is the only delivery, so the first quiet window
-     * ends the drain.
+     * Take-newest, no quiescence: an earlier revision "drained" toward
+     * stream silence to prove the blank's repaint had been delivered, but a
+     * quiet window never arrives on continuously-animating content — games,
+     * this app's entire domain — so the budget expired holding a perfectly
+     * good frame and every hold over live gameplay failed (2026-07-10
+     * incident). The newest frame above the anchor is served as-is. The
+     * residual risk is the shipped app's own: a frame composited pre-blank
+     * but delivered post-anchor can win when the blank's repaint delivery
+     * lags the caller's vsync wait — rare, and self-healing at the next
+     * attempt, where the drain's failure mode was deterministic on exactly
+     * the content users hold over.
      *
-     * On budget expiry this FAILS (null) rather than serving a frame that
-     * cannot be proven post-blank — a contaminated "clean" capture poisons
-     * OCR/baselines silently, which is strictly worse than a retryable
-     * failure. Callers with nothing blanked should use
-     * [captureFrameUngated] instead of paying the gate at all.
+     * On budget expiry with nothing above the anchor this fails (null)
+     * rather than serving a frame that provably predates the blank.
+     * Callers with nothing blanked should use [captureFrameUngated]
+     * instead of paying the gate at all.
      *
      * Does not advance the raw-consumer cursor (see [DeliverySignal]).
      */
@@ -305,71 +326,76 @@ class MediaProjectionController(private val service: CaptureService) {
         captureNewerThan(minSeq = 0L, advanceCursor = false)
 
     private suspend fun captureNewerThan(minSeq: Long, advanceCursor: Boolean): Bitmap? {
-        if (!ensureProjection()) return null
-        val (w, h) = captureSize(projectedDisplayId) ?: return null
-        ensureVirtualDisplay(w, h) ?: return null
+        val clean = !advanceCursor
+        if (!ensureProjection()) return noteFailure(clean, "no projection (consent lost?)")
+        val (w, h) = captureSize(projectedDisplayId)
+            ?: return noteFailure(clean, "display size unavailable")
+        ensureVirtualDisplay(w, h) ?: return noteFailure(clean, "virtual display unavailable")
 
-        val frame: LatchedFrame? = withTimeoutOrNull(FRESHNESS_BUDGET_MS) {
-            var claimed: LatchedFrame? = null
-            while (claimed == null) {
-                val observed = deliverySeq.value
-                val f = peekLatest(w, h)
-                if (f != null && f.seq > minSeq) {
-                    claimed = f
-                } else {
-                    // Stale for this caller — release our reference (the
-                    // frame stays latched for other consumers) and wait.
-                    f?.release()
-                    deliverySeq.first { it > observed }
-                }
+        // Deadline-as-decision, not deadline-as-abort: each pass serves the
+        // newest qualifying frame the instant one exists; the budget only
+        // bounds how long we wait for a delivery when none does. An acquired
+        // reference never crosses a suspension point outside [use] — the
+        // await below runs with no reference held.
+        val deadline = android.os.SystemClock.uptimeMillis() + FRESHNESS_BUDGET_MS
+        while (true) {
+            val f = peekLatest(w, h)
+            if (f != null && f.seq > minSeq) {
+                return f.use { decode(it, w, h, advanceCursor) }
             }
-            if (minSeq > 0) {
-                // Drain to the newest delivery (see captureFrameNewerThan
-                // kdoc). Each round waits one quiet window; a newer arrival
-                // restarts it. Bounded by the enclosing budget.
-                while (true) {
-                    withTimeoutOrNull(DRAIN_QUIET_MS) {
-                        deliverySeq.first { it > claimed!!.seq }
-                    } ?: break
-                    val newer = peekLatest(w, h)
-                    if (newer != null && newer.seq > claimed!!.seq) {
-                        claimed!!.release()
-                        claimed = newer
-                    } else {
-                        newer?.release()
-                    }
-                }
+            f?.release() // at-or-below the anchor — leave latched for others
+            val remaining = deadline - android.os.SystemClock.uptimeMillis()
+            if (remaining <= 0) {
+                return noteFailure(
+                    clean,
+                    "no delivery above anchor=$minSeq in ${FRESHNESS_BUDGET_MS}ms " +
+                        "(latest=${deliverySeq.value})"
+                )
             }
-            claimed
+            val observed = deliverySeq.value
+            withTimeoutOrNull(remaining) { deliverySeq.first { it > observed } }
+                ?: return noteFailure(
+                    clean,
+                    "no delivery above anchor=$minSeq in ${FRESHNESS_BUDGET_MS}ms " +
+                        "(latest=${deliverySeq.value})"
+                )
         }
-        if (frame == null && minSeq > 0) {
-            Log.w(
-                TAG,
-                "clean capture FAILED: no post-blank delivery in " +
-                    "${FRESHNESS_BUDGET_MS}ms (anchor=$minSeq, latest=${deliverySeq.value})"
-            )
-        }
-        val claimed = frame ?: return null
+    }
+
+    /** Decode [frame] to a Bitmap and account the serve. Callers must hold
+     *  the frame via [LatchedFrame.use]. */
+    private suspend fun decode(
+        frame: LatchedFrame,
+        w: Int,
+        h: Int,
+        advanceCursor: Boolean,
+    ): Bitmap? {
         beginDecode()
         return try {
-            withContext(Dispatchers.Default) { imageToBitmap(claimed.image, w, h) }.also {
+            withContext(Dispatchers.Default) { imageToBitmap(frame.image, w, h) }.also {
                 if (advanceCursor) {
-                    lastServedSeq = maxOf(lastServedSeq, claimed.seq)
+                    lastServedSeq = maxOf(lastServedSeq, frame.seq)
                     rawServedCount++
                 } else {
                     cleanServedCount++
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "imageToBitmap failed: ${e.message}")
-            null
+            noteFailure(clean = !advanceCursor, reason = "decode: ${e.message}")
         } finally {
-            // Release, don't close: the frame usually remains latched for
-            // other consumers; the close happens when the last reference
-            // (ours or the latch's) goes away.
-            claimed.release()
             endDecode()
         }
+    }
+
+    /** Count and log a capture failure. The counters surface in the 5s
+     *  debug summary — a capture layer that fails silently costs days
+     *  (2026-07-10: every hold over animated content failed for a day with
+     *  `cleanServed=1` as the only trace). Always returns null. */
+    private fun noteFailure(clean: Boolean, reason: String): Bitmap? {
+        if (clean) cleanFailedCount++ else rawFailedCount++
+        lastFailReason = reason
+        Log.w(TAG, "capture failed (${if (clean) "clean" else "raw"}): $reason")
+        return null
     }
 
     // ── Decode-vs-close serialization (review finding) ───────────────────
@@ -672,15 +698,6 @@ class MediaProjectionController(private val service: CaptureService) {
          *  frame. Sized to the legacy delay(64)+delay(48) freshness budget the
          *  old poll path allowed, so availability semantics don't regress. */
         const val FRESHNESS_BUDGET_MS = 112L
-
-        /** Clean-capture drain: how long the delivery stream must stay quiet
-         *  after a qualifying frame before it's accepted as the newest. One
-         *  60Hz composite interval (16.7ms) plus margin — long enough that a
-         *  blank repaint following an in-flight pre-blank frame lands inside
-         *  the window and displaces it; short enough that a static screen
-         *  (repaint already claimed, stream silent) adds only this much to a
-         *  one-shot. */
-        const val DRAIN_QUIET_MS = 24L
 
         /** Cadence of the debug delivery-rate summary. */
         const val SUMMARY_INTERVAL_MS = 5_000L
