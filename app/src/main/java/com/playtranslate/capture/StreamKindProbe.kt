@@ -50,8 +50,10 @@ import kotlin.coroutines.resume
  * which would hide the probe mid-measurement and fake a CLEAN verdict. The
  * probe owns its addView/removeViewImmediate lifecycle directly. Total
  * budget ~1s, once per consent session; two concurrent resolvers (startLive
- * racing a one-shot) at worst probe twice and agree — benign, undeduplicated
- * on purpose.
+ * racing a one-shot) at worst probe twice and agree — undeduplicated on
+ * purpose, and safe end to end because the controller serializes every
+ * frame DECODE internally (its decodeMutex), so concurrent probe/one-shot/
+ * live reads of the same latched frame cannot race its shared buffer.
  */
 object StreamKindProbe {
 

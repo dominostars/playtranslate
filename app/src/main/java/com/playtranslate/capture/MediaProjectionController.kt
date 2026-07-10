@@ -28,6 +28,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.updateAndGet
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicReference
@@ -409,6 +411,19 @@ class MediaProjectionController(private val service: CaptureService) {
         }
     }
 
+    /** Serializes the decode step across ALL callers. The latch is
+     *  non-destructive, so several holders can decode the SAME [Image] —
+     *  and `Image.Plane.getBuffer()` hands every holder one cached
+     *  ByteBuffer whose position a concurrent rewind()/copy would race
+     *  (corrupted bitmaps or a thrown copy). This lives HERE, with the
+     *  owner of the shared state, deliberately: the capture source's
+     *  captureMutex serializes whole capture SEQUENCES (blank → read →
+     *  restore) and remains required for that, but an unserialized caller
+     *  — the stream-kind probe was one (2026-07-10 review finding) — must
+     *  be structurally unable to corrupt a concurrent decode. Held only
+     *  for the ~ms buffer copy, never across delivery waits. */
+    private val decodeMutex = Mutex()
+
     /** Decode [frame] to a Bitmap and account the serve. Callers must hold
      *  the frame via [LatchedFrame.use]. */
     private suspend fun decode(
@@ -419,7 +434,9 @@ class MediaProjectionController(private val service: CaptureService) {
     ): Bitmap? {
         beginDecode()
         return try {
-            withContext(Dispatchers.Default) { imageToBitmap(frame.image, w, h) }.also {
+            decodeMutex.withLock {
+                withContext(Dispatchers.Default) { imageToBitmap(frame.image, w, h) }
+            }.also {
                 if (advanceCursor) {
                     lastServedSeq = maxOf(lastServedSeq, frame.seq)
                     rawServedCount++
@@ -717,8 +734,8 @@ class MediaProjectionController(private val service: CaptureService) {
         )
         // Frames are shared (non-destructive latch) and may be decoded more
         // than once; copyPixelsFromBuffer advances the buffer position, so
-        // rewind first. No concurrent position race: every decode runs under
-        // the capture source's mutex.
+        // rewind first. No concurrent position race: decodes are serialized
+        // by [decodeMutex] regardless of caller.
         val buf = plane.buffer
         buf.rewind()
         padded.copyPixelsFromBuffer(buf)
