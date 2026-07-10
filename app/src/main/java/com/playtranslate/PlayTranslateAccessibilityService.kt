@@ -310,7 +310,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val display = dm.getDisplay(displayId) ?: run { scheduleDebugCapture(); return }
 
         serviceScope.launch {
-            val raw = screenshotManager?.requestClean(displayId)
+            val raw = screenshotManager?.requestClean(displayId)?.bitmap
             if (raw == null || !debugRunning) {
                 raw?.recycle()
                 scheduleDebugCapture()
@@ -326,6 +326,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             val captureSvc = CaptureService.instance
             val region = captureSvc?.activeRegionForDisplay(displayId)
                 ?: RegionEntry("", 0f, 1f, 0f, 1f)
+            // Sanctioned manual crop: this debug path OCRs ACCESSIBILITY
+            // frames only, which always contain the status bar.
             val statusBarHeight = captureSvc?.getStatusBarHeightForDisplay(displayId) ?: 0
             val crop = OverlayToolkit.computeOcrCrop(raw.width, raw.height, region, statusBarHeight)
             val needsCrop = crop.top > 0 || crop.left > 0 ||

@@ -162,7 +162,8 @@ class FuriganaMode(
 
     // ── Clean frame handling ──────────────────────────────────────────────
 
-    private fun handleCleanFrame(raw: Bitmap) {
+    private fun handleCleanFrame(frame: com.playtranslate.capture.CapturedFrame) {
+        val raw = frame.bitmap
         // Skip frames while a capture hold is active (floating menu / hold-to-
         // preview), so the loop stops requesting overlay-blanking clean captures
         // behind it. Processing resumes once the hold clears.
@@ -170,7 +171,7 @@ class FuriganaMode(
         cleanProcessingJob?.cancel()
         cleanProcessingJob = scope.launch {
             try {
-                processCleanFrame(raw)
+                processCleanFrame(raw, frame.includesSystemUi)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 if (service.isLive) {
                     CaptureBackendResolver.activeLiveCaptureSource?.requestCleanCapture(displayId)
@@ -180,19 +181,14 @@ class FuriganaMode(
         }
     }
 
-    private suspend fun processCleanFrame(raw: Bitmap) {
+    private suspend fun processCleanFrame(raw: Bitmap, frameIncludesSystemUi: Boolean) {
         if (!service.isConfigured) { raw.recycle(); return }
 
         try {
-            // Shared OCR pipeline: crop → blackout icon → OCR → filter source chars.
-            // The frame came from the active live source (the loop this mode
-            // started) — forward it so the status-bar crop decision matches
-            // what the frame actually contains (task-scoped frames have none).
-            val pipeline = service.runOcr(
-                raw, displayId,
-                frameIncludesSystemUi = CaptureBackendResolver
-                    .activeLiveCaptureSource?.framesIncludeSystemUi ?: true,
-            )
+            // Shared OCR pipeline: crop → blackout icon → OCR → filter
+            // source chars. The status-bar crop decision comes from the
+            // frame's own stamped fact (CapturedFrame).
+            val pipeline = service.runOcr(raw, displayId, frameIncludesSystemUi)
 
             if (pipeline == null) {
                 cachedFuriganaBoxes = null
@@ -271,7 +267,9 @@ class FuriganaMode(
     // case), the conversion is a no-op via reference short-circuit; see
     // FrameCoordinates KDoc for details on the coordinate spaces.
 
-    private fun handleRawFrame(bitmap: Bitmap) {
+    private fun handleRawFrame(frame: com.playtranslate.capture.CapturedFrame) {
+        val bitmap = frame.bitmap
+        val frameIncludesSystemUi = frame.includesSystemUi
         // Skip frames while a capture hold is active — see handleCleanFrame.
         if (service.holdActive) { bitmap.recycle(); return }
         if (cleanProcessingJob?.isActive == true || rawOcrJob?.isActive == true) {
@@ -287,7 +285,7 @@ class FuriganaMode(
         if (ref == null || boxes.isNullOrEmpty()) {
             // No overlay exists — raw frame is inherently clean, process it directly
             emptyRectsStallCount = 0
-            handleCleanFrame(bitmap)
+            handleCleanFrame(frame)
             return
         }
 
@@ -373,11 +371,7 @@ class FuriganaMode(
         // OCR the patched frame asynchronously
         rawOcrJob = scope.launch {
             try {
-                val pipeline = service.runOcr(
-                    patched, displayId,
-                    frameIncludesSystemUi = CaptureBackendResolver
-                        .activeLiveCaptureSource?.framesIncludeSystemUi ?: true,
-                )
+                val pipeline = service.runOcr(patched, displayId, frameIncludesSystemUi)
                 if (pipeline != null) {
                     val prevText = lastOcrText
                     val prevKanji = if (prevText != null) kanjiOnly(prevText) else ""

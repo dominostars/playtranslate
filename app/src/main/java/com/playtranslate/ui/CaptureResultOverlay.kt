@@ -818,7 +818,12 @@ class CaptureResultOverlay(
         val svc = CaptureService.instance ?: return
         scope.launch {
             val bmp = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path) } ?: return@launch
-            if (!dismissed) observe(svc.processScreenshot(bmp, prov.displayId, prov.region, prov.sourceLangId))
+            if (!dismissed) observe(svc.processScreenshot(
+                com.playtranslate.capture.CapturedFrame(
+                    bmp, includesSystemUi = prov.frameIncludesSystemUi ?: true,
+                ),
+                prov.displayId, prov.region, prov.sourceLangId,
+            ))
         }
     }
 

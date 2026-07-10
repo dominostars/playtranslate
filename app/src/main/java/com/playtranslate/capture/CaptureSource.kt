@@ -1,7 +1,50 @@
 package com.playtranslate.capture
 
 import android.graphics.Bitmap
+import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
+
+/**
+ * A captured frame plus the immutable facts read at the moment the SOURCE
+ * served it. The facts travel ON the data — downstream code must never
+ * re-derive them from mutable state (the active backend, a source's live
+ * properties, the current stream kind), because a bitmap outlives the state
+ * that produced it: it crosses suspension points, gets saved to the
+ * screenshot cache, and re-enters OCR days later through re-OCR. Review
+ * rounds 6–9 were each one edge of that lifetime discovered separately;
+ * this type closes the family by construction.
+ *
+ * Ownership: exactly the old `Bitmap` rules. Whoever received the frame
+ * recycles it ([recycle]); a frame derived from a mutated copy ([derive])
+ * has its own independent bitmap lifetime — deriving never touches the
+ * parent.
+ */
+class CapturedFrame(
+    val bitmap: Bitmap,
+    /** Whether the frame contains system UI (status/nav bars). Accessibility
+     *  screenshots and whole-display mirrors do; an API 34+ single-app
+     *  ("task") mirror does not — so the OCR status-bar crop, which exists
+     *  to keep the clock/battery glyphs out of OCR, would instead eat game
+     *  content on such frames. Stamped by the source at serve time. */
+    val includesSystemUi: Boolean,
+    /** Uptime when the source served the frame — the anchor time-based
+     *  consumers (e.g. [com.playtranslate.StabilityHold]'s cap) should use
+     *  instead of reading a clock around their capture call. */
+    val capturedAtMs: Long = SystemClock.uptimeMillis(),
+) {
+    /** Same facts, different pixels — for pipeline stages that OCR a mutated
+     *  COPY of the frame (overlay-region fills, clean-ref patches). The
+     *  derived frame owns [newBitmap]; the parent's bitmap is untouched. */
+    fun derive(newBitmap: Bitmap) = CapturedFrame(newBitmap, includesSystemUi, capturedAtMs)
+
+    fun recycle() {
+        if (!bitmap.isRecycled) bitmap.recycle()
+    }
+
+    val isRecycled: Boolean get() = bitmap.isRecycled
+    val width: Int get() = bitmap.width
+    val height: Int get() = bitmap.height
+}
 
 /**
  * Backend-agnostic screen-capture surface used by every one-shot consumer
@@ -14,20 +57,21 @@ import kotlinx.coroutines.CoroutineScope
  */
 interface CaptureSource {
 
-    /** Do this source's frames contain system UI (status/nav bars)? The
-     *  SOURCE owns this fact — accessibility screenshots and whole-display
-     *  mirrors do; an API 34+ single-app ("task") mirror does not, so OCR
-     *  must not crop a status-bar strip of game content away. Consumers
-     *  forward the source they captured from to [com.playtranslate
-     *  .CaptureService.runOcr]; the crop decision is made there, once. */
+    /** Do this source's frames contain system UI (status/nav bars) RIGHT
+     *  NOW? The source's own fact, used by implementations to stamp
+     *  [CapturedFrame.includesSystemUi] at serve time. Consumers must read
+     *  the stamped frame, never this live property — it can change between
+     *  a frame's capture and its use (stream-kind resets/demotions). */
     val framesIncludeSystemUi: Boolean get() = true
+
     /** Capture a clean frame of [displayId] with the app's own overlays
-     *  hidden. The caller owns the returned bitmap and must recycle it.
+     *  hidden. The caller owns the returned frame and must recycle it.
      *  Returns null if the capture could not be taken. */
-    suspend fun requestClean(displayId: Int): Bitmap?
+    suspend fun requestClean(displayId: Int): CapturedFrame?
 
     /** Persist [bitmap] to the screenshot cache, keyed per display. Returns
-     *  the absolute file path, or null on failure. */
+     *  the absolute file path, or null on failure. (Pixels only — a saved
+     *  frame's FACTS persist in OcrProvenance alongside the result.) */
     fun saveToCache(bitmap: Bitmap, displayId: Int): String?
 
     /** Release backend resources. */
@@ -83,12 +127,12 @@ interface LiveCaptureSource : CaptureSource {
      *  MediaProjection backend has no platform limit and uses a small floor. */
     val minCaptureIntervalMs: Long
 
-    suspend fun requestRaw(displayId: Int, onCaptured: (() -> Unit)? = null): Bitmap?
+    suspend fun requestRaw(displayId: Int, onCaptured: (() -> Unit)? = null): CapturedFrame?
     fun startLoop(
         displayId: Int,
         scope: CoroutineScope,
-        onCleanFrame: (Bitmap) -> Unit,
-        onRawFrame: (Bitmap) -> Unit,
+        onCleanFrame: (CapturedFrame) -> Unit,
+        onRawFrame: (CapturedFrame) -> Unit,
     )
     fun requestCleanCapture(displayId: Int)
     fun requestCleanCaptureAll()

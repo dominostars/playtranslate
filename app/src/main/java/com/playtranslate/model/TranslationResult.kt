@@ -34,6 +34,13 @@ data class OcrProvenance(
     val displayId: Int,
     val sourceLangId: SourceLangId,
     val region: RegionEntry,
+    /** Whether the saved screenshot contains system UI — the fact a re-OCR
+     *  needs to re-crop the SAME pixels the original OCR saw
+     *  ([com.playtranslate.capture.CapturedFrame]). NULLABLE deliberately:
+     *  Gson does not run Kotlin defaults on missing fields, so results saved
+     *  before this field existed deserialize as null, and readers apply
+     *  `?: true` (legacy saves were always full-display). */
+    val frameIncludesSystemUi: Boolean? = null,
 )
 
 /**

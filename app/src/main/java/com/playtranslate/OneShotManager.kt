@@ -149,15 +149,11 @@ class OneShotManager(private val service: CaptureService) {
         // 1. Capture clean screenshot. Null is a real, reachable outcome
         //    (consent loss, no qualifying delivery inside the freshness
         //    budget) — it must surface, never silently strand the gesture.
-        // Snapshot the producing source before capture (review round 7:
-        // source-sensitive crop decisions must not re-resolve the mutable
-        // active backend after suspension points).
-        val frameSrc = CaptureBackendResolver.active().captureSource
-        val raw: Bitmap = frameSrc?.requestClean(displayId)
+        // The frame carries its capture-time facts (CapturedFrame).
+        val frame = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
             ?: return HoldOutcome.Failed("screenshot failed")
-        // Value-snapshot the frame's provenance immediately (round 8: the
-        // source property is a live read over mutable stream kind).
-        val frameIncludesUi = frameSrc.framesIncludeSystemUi
+        val raw: Bitmap = frame.bitmap
+        val frameIncludesUi = frame.includesSystemUi
 
         try {
             if (cycle.generation != currentGeneration) return HoldOutcome.Superseded

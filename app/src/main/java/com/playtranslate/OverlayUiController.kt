@@ -1583,11 +1583,9 @@ class OverlayUiController(
         val launchGeometry = DisplayGeometry(size.x, size.y, display.rotation)
         val gen = captureGeneration
         captureJob = scope.launch {
-            // Snapshot the producing source and carry it with the bitmap —
-            // never re-resolve the active backend for source-sensitive
-            // decisions after suspension (review round 7).
-            val frameSrc = CaptureBackendResolver.active().captureSource
-            val bitmap = frameSrc?.requestClean(displayId)
+            // The frame carries its capture-time facts (CapturedFrame).
+            val frame = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
+            val bitmap = frame?.bitmap
             // Single validation gate at the ONLY pre-panel suspension point. Bail if EITHER:
             //  • a newer capture / teardown superseded us (generation bumped), or
             //  • the captured display reconfigured under us (live geometry != the launch
@@ -1619,12 +1617,10 @@ class OverlayUiController(
                 primaryDisplayId = displayId,
             )
             svc.configureOverride(displayId, region)
-            // Do NOT recycle the bitmap — processScreenshot consumes it async on
+            // Do NOT recycle the frame — processScreenshot consumes it async on
             // the service scope and recycles it itself.
-            // Value-snapshot at capture (round 8): the fact, not the object.
-            val frameIncludesUi = frameSrc?.framesIncludeSystemUi ?: true
-            val session = if (bitmap != null)
-                svc.processScreenshot(bitmap, displayId, frameIncludesSystemUi = frameIncludesUi)
+            val session = if (frame != null)
+                svc.processScreenshot(frame, displayId)
                 else svc.captureOnce(displayId)
             overlay.observe(session)
         }
@@ -1634,7 +1630,7 @@ class OverlayUiController(
      *  the capture-service handle is briefly unavailable. */
     private fun launchResultActivity(displayId: Int, region: RegionEntry) {
         scope.launch {
-            val bitmap = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
+            val bitmap = CaptureBackendResolver.active().captureSource?.requestClean(displayId)?.bitmap
             val intent = Intent(context, com.playtranslate.ui.TranslationResultActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_TOP_FRAC, region.top)

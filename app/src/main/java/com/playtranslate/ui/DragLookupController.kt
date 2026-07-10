@@ -984,7 +984,7 @@ class DragLookupController(
         Log.d(TAG, "Taking screenshot for full-screen OCR...")
 
         val bitmap = withTimeoutOrNull(3000L) {
-            CaptureBackendResolver.active().captureSource?.requestClean(displayId)
+            CaptureBackendResolver.active().captureSource?.requestClean(displayId)?.bitmap
         }
         // The clean frame was captured with the lens off-screen — now it's
         // safe to bring the lens up (capture-before-reveal). Reveal even on

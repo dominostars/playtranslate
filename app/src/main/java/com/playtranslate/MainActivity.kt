@@ -186,7 +186,12 @@ class MainActivity :
             // Re-run the capture pipeline on the pinned screenshot/region/language so
             // the panel walks the normal loading stages and re-emits no-text-with-gear.
             _currentCaptureSession.value =
-                svc.processScreenshot(bmp, prov.displayId, prov.region, prov.sourceLangId)
+                svc.processScreenshot(
+                    com.playtranslate.capture.CapturedFrame(
+                        bmp, includesSystemUi = prov.frameIncludesSystemUi ?: true,
+                    ),
+                    prov.displayId, prov.region, prov.sourceLangId,
+                )
         }
     }
 

@@ -489,7 +489,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         displays.forEach { display ->
             if (mgr != null && backend.canCapture(display.displayId)) {
                 lifecycleScope.launch {
-                    val bitmap = mgr.requestClean(display.displayId)
+                    val bitmap = mgr.requestClean(display.displayId)?.bitmap
                     if (bitmap != null) {
                         displayThumbnails[display.displayId] = scaleThumbnail(bitmap)
                         if (!isFinishing) refreshDisplayRows()

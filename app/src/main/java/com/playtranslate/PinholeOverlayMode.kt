@@ -353,7 +353,10 @@ class PinholeOverlayMode(
         // Capture. Boxes that pinhole detection flags as changed are
         // removed and re-OCR'd on the next cycle; there is no longer a
         // dirty-companion buffer (see docs/dirty-overlay-archived-design.md).
-        val raw = mgr.requestRaw(displayId)
+        // CapturedFrame unwrap: this mode never runs on CLEAN streams
+        // (routing), so its frames are always full-display; the pinhole
+        // pipeline itself stays byte-identical on the unwrapped bitmap.
+        val raw = mgr.requestRaw(displayId)?.bitmap
 
         if (raw == null) {
             // Transient capture failure — a persistently failing capture must
@@ -494,6 +497,8 @@ class PinholeOverlayMode(
                 val crop = OverlayToolkit.computeOcrCrop(
                     raw.width, raw.height,
                     service.activeRegionForDisplay(displayId),
+                    // Sanctioned manual crop: pinhole never runs on CLEAN
+                    // streams (routing), so its frames always have the bar.
                     service.getStatusBarHeightForDisplay(displayId),
                 )
                 val exclude = bitmapRects.map { r ->

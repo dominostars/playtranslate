@@ -200,7 +200,12 @@ class TranslationResultActivity :
             // Re-run the capture pipeline on the pinned screenshot so the screen walks
             // the normal loading stages; observeSession supersedes the prior session
             // (its terminal state can't reappear on a rotation re-collect).
-            observeSession(svc.processScreenshot(bmp, prov.displayId, prov.region, prov.sourceLangId))
+            observeSession(svc.processScreenshot(
+                com.playtranslate.capture.CapturedFrame(
+                    bmp, includesSystemUi = prov.frameIncludesSystemUi ?: true,
+                ),
+                prov.displayId, prov.region, prov.sourceLangId,
+            ))
         }
     }
 
@@ -599,7 +604,12 @@ class TranslationResultActivity :
         val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
         val session = if (screenshotPath != null) {
             val bitmap = BitmapFactory.decodeFile(screenshotPath)
-            if (bitmap != null) svc.processScreenshot(bitmap, targetDisplayId)
+            // Shared-in screenshot with no provenance: legacy/full-display
+            // assumption, the safe default.
+            if (bitmap != null) svc.processScreenshot(
+                com.playtranslate.capture.CapturedFrame(bitmap, includesSystemUi = true),
+                targetDisplayId,
+            )
             else svc.captureOnce(targetDisplayId)
         } else {
             svc.captureOnce(targetDisplayId)

@@ -397,7 +397,7 @@ class CaptureService : Service() {
                         val dir = File(getExternalFilesDir(null), "pinhole_dumps")
                         dir.mkdirs()
                         val f = File(dir, "mp_probe_${System.currentTimeMillis()}.png")
-                        FileOutputStream(f).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                        FileOutputStream(f).use { bmp.bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
                         f.absolutePath
                     }.getOrNull()
                 }
@@ -716,22 +716,17 @@ class CaptureService : Service() {
      * (e.g. single-screen region capture from the floating menu).
      */
     fun processScreenshot(
-        raw: Bitmap,
+        frame: com.playtranslate.capture.CapturedFrame,
         displayId: Int = primaryGameDisplayId(),
         regionOverride: RegionEntry? = null,
         sourceLangIdOverride: SourceLangId? = null,
-        // Whether [raw] contains system UI, snapshotted AS A VALUE by the
-        // caller the moment the frame was produced (rounds 7+8: neither the
-        // active backend nor a live source property may be re-read after
-        // suspension — only an immutable fact travels with the frame).
-        frameIncludesSystemUi: Boolean = true,
     ): CaptureSession {
         oneShotCaptureJob?.cancel()
         val state = MutableStateFlow<CaptureState>(
             CaptureState.InProgress(getString(R.string.status_capturing))
         )
         val job = serviceScope.launch {
-            runProcessCycle(raw, displayId, state, regionOverride, sourceLangIdOverride, frameIncludesSystemUi)
+            runProcessCycle(frame, displayId, state, regionOverride, sourceLangIdOverride)
         }
         attachCancellationTerminal(job, state)
         oneShotCaptureJob = job
@@ -811,13 +806,14 @@ class CaptureService : Service() {
      *  through Capturing → OCR → Translating → final Done/NoText/Failed.
      *  Owned by the [CaptureSession] returned from [processScreenshot]. */
     private suspend fun runProcessCycle(
-        raw: Bitmap,
+        frame: com.playtranslate.capture.CapturedFrame,
         displayId: Int,
         state: MutableStateFlow<CaptureState>,
         regionOverride: RegionEntry? = null,
         sourceLangIdOverride: SourceLangId? = null,
-        frameIncludesSystemUi: Boolean = true,
     ) {
+        val raw = frame.bitmap
+        val frameIncludesSystemUi = frame.includesSystemUi
         if (!isConfigured) {
             state.value = CaptureState.Failed("Not configured — tap Translate to set up")
             raw.recycle()
@@ -863,7 +859,7 @@ class CaptureService : Service() {
 
             // Reveal the page on OCR: show the source now, translate in the section.
             state.value = CaptureState.Translating(
-                ocrResult.fullText, ocrResult.segments, ocrProvenanceFor(ocrResult, displayId, region, srcId),
+                ocrResult.fullText, ocrResult.segments, ocrProvenanceFor(ocrResult, displayId, region, srcId, frameIncludesSystemUi),
             )
             // Pin translation to the SAME source language OCR used (srcId), not current
             // Prefs — for a re-OCR after a source-language change they'd otherwise disagree,
@@ -881,7 +877,7 @@ class CaptureService : Service() {
                     screenshotPath      = screenshotPath,
                     note                = groupTranslation.note,
                     backendDisplayName  = groupTranslation.backendDisplayName,
-                    ocrProvenance       = ocrProvenanceFor(ocrResult, displayId, region, srcId),
+                    ocrProvenance       = ocrProvenanceFor(ocrResult, displayId, region, srcId, frameIncludesSystemUi),
                     langContext         = Prefs(this@CaptureService).langContext(srcId),
                 )
             )
@@ -1994,8 +1990,9 @@ class CaptureService : Service() {
         )
     }
 
-    /** Capture a clean screenshot via the active capture backend. */
-    internal suspend fun captureScreen(displayId: Int): Bitmap? =
+    /** Capture a clean screenshot via the active capture backend. The
+     *  frame carries its capture-time facts ([CapturedFrame]). */
+    internal suspend fun captureScreen(displayId: Int): com.playtranslate.capture.CapturedFrame? =
         CaptureBackendResolver.active().captureSource?.requestClean(displayId)
 
     /** Persist [raw] to the screenshot cache via the active capture backend. */
@@ -2017,6 +2014,11 @@ class CaptureService : Service() {
         displayId: Int,
         region: RegionEntry,
         sourceLangId: SourceLangId,
+        // The captured frame's stamped fact, when the caller has the frame in
+        // hand — persists with the result so a re-OCR re-crops the same
+        // pixels. Null (panel-emit paths without a frame) reads as legacy /
+        // full-display downstream.
+        frameIncludesSystemUi: Boolean? = null,
     ): OcrProvenance? {
         val backend = ocrResult.engineBackend ?: return null
         // MangaOCR is a refinement layer over the base engine, not a selectable
@@ -2025,13 +2027,12 @@ class CaptureService : Service() {
         // the base engine so the re-OCR gear still keys the picker correctly.
         val label =
             if (ocrResult.mangaOcrUsed) "${backend.ocrLabel} + MangaOCR" else backend.ocrLabel
-        return OcrProvenance(label, backend.selectionToken, displayId, sourceLangId, region)
+        return OcrProvenance(
+            label, backend.selectionToken, displayId, sourceLangId, region,
+            frameIncludesSystemUi = frameIncludesSystemUi,
+        )
     }
 
-    /**
-     * @param preCaptured If non-null, use this bitmap instead of taking a new
-     *   screenshot. Used by scene detection which already has a clean frame.
-     */
     companion object {
 
         /** Process-scoped reference for in-process callers (e.g. DragLookupController). */
@@ -2104,19 +2105,14 @@ class CaptureService : Service() {
         onScreenshotTaken: (() -> Unit)? = null,
         onOcrReady: ((originalText: String, segments: List<TextSegment>, ocrProvenance: OcrProvenance?) -> Unit)? = null,
     ): PipelineOutcome {
-        // Snapshot the producing source BEFORE capture: source-sensitive
-        // decisions (status-bar crop) must use the frame's actual producer,
-        // never a re-resolve of the mutable active backend after suspension
-        // (review round 7).
-        val frameSrc = CaptureBackendResolver.active().captureSource
-        val raw: Bitmap = frameSrc?.requestClean(displayId)
+        // The frame carries its own capture-time facts (CapturedFrame) —
+        // nothing is re-derived from mutable state downstream.
+        val frame = captureScreen(displayId)
             ?: return PipelineOutcome.Failed(
                 "Screenshot failed for display $displayId. Try a different display in Settings."
             )
-        // Provenance snapshotted AS A VALUE the moment the frame exists —
-        // the source's property is a live read over mutable stream kind
-        // (review round 8), so the fact must be captured, not the object.
-        val frameIncludesUi = frameSrc?.framesIncludeSystemUi ?: true
+        val raw: Bitmap = frame.bitmap
+        val frameIncludesUi = frame.includesSystemUi
         onScreenshotTaken?.invoke()
         var bitmap: Bitmap? = raw
         try {
@@ -2145,7 +2141,7 @@ class CaptureService : Service() {
 
             // OCR is in — surface the source now so the page can reveal before the
             // (slower) translation runs.
-            onOcrReady?.invoke(ocrResult.fullText, ocrResult.segments, ocrProvenanceFor(ocrResult, displayId, region, srcId))
+            onOcrReady?.invoke(ocrResult.fullText, ocrResult.segments, ocrProvenanceFor(ocrResult, displayId, region, srcId, frameIncludesUi))
 
             val perGroup = translateGroupsSeparately(ocrResult.groups.map { it.text })
             val translated = perGroup.joinToString("\n\n") { it.text }
@@ -2163,7 +2159,7 @@ class CaptureService : Service() {
                         screenshotPath     = screenshotPath,
                         note               = note,
                         backendDisplayName = backendDisplayName,
-                        ocrProvenance      = ocrProvenanceFor(ocrResult, displayId, region, srcId),
+                        ocrProvenance      = ocrProvenanceFor(ocrResult, displayId, region, srcId, frameIncludesUi),
                         langContext        = Prefs(this@CaptureService).langContext(srcId),
                     ),
                     groupBounds = ocrResult.groups.map { it.bounds },

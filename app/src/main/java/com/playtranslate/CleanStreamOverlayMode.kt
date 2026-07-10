@@ -321,12 +321,8 @@ class CleanStreamOverlayMode(
         val debug = prefs.debugLiveMode
         forceNextCycle = false
 
-        // The hold's cap anchor: when this read's frame entered the pipeline.
-        // The latched frame may be up to one delivery older; that slack is
-        // well inside the cap's tolerance.
-        val captureAtMs = SystemClock.uptimeMillis()
-        val raw = mgr.requestRaw(displayId)
-        if (raw == null) {
+        val frame = mgr.requestRaw(displayId)
+        if (frame == null) {
             // Generators of a null capture, enumerated: transient failure
             // (retry), consent loss (requestRaw's checkConsentLost stops live
             // mode itself), or the SOURCE's geometry refusal — CLEAN stream
@@ -340,6 +336,10 @@ class CleanStreamOverlayMode(
             forceNextCycle = true
             return prefs.captureIntervalMs
         }
+        val raw = frame.bitmap
+        // The hold's cap anchor: stamped by the source at serve time
+        // (CapturedFrame) — not a caller-side clock read.
+        val captureAtMs = frame.capturedAtMs
 
         try {
             // Rotation / display reconfig: crop-space bounds are void.
@@ -372,10 +372,7 @@ class CleanStreamOverlayMode(
             // OCR the full crop. No status-bar exclusion: a task stream
             // contains no system UI — those top rows are game content.
             val ocrStartMs = SystemClock.uptimeMillis()
-            val pipeline = service.runOcr(
-                raw, displayId,
-                frameIncludesSystemUi = mgr.framesIncludeSystemUi,
-            )
+            val pipeline = service.runOcr(raw, displayId, frame.includesSystemUi)
             val ocrMs = SystemClock.uptimeMillis() - ocrStartMs
 
             // A hold gesture may have started during the OCR suspension.

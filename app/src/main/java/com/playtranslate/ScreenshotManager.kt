@@ -16,6 +16,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import com.playtranslate.capture.CaptureCache
+import com.playtranslate.capture.CapturedFrame
 import com.playtranslate.capture.LiveCaptureSource
 import java.util.concurrent.Executors
 import kotlin.coroutines.resume
@@ -82,7 +83,12 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
      * compositor to flush the overlay-free frame, captures, and restores
      * overlays. The caller owns the returned [Bitmap] and must recycle it.
      */
-    override suspend fun requestClean(displayId: Int): Bitmap? = captureMutex.withLock {
+    /** Accessibility screenshots are always the full display, system UI
+     *  included — stamp every served frame accordingly ([CapturedFrame]). */
+    private fun stamp(bitmap: Bitmap): CapturedFrame =
+        CapturedFrame(bitmap, includesSystemUi = true)
+
+    override suspend fun requestClean(displayId: Int): CapturedFrame? = captureMutex.withLock {
         awaitScreenshotInterval()
 
         val hideStart = System.currentTimeMillis()
@@ -114,7 +120,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
                 bitmap = retry
                 if (retry == null) DetectionLog.log("Clean capture retry also failed")
             }
-            bitmap
+            bitmap?.let { stamp(it) }
         } finally {
             // Belt-and-suspenders: the takeScreenshot callback can fail to
             // fire (coroutine cancellation discards the OS-side request, OS
@@ -141,11 +147,11 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
      * capture with the restored UI visible, contaminating the bitmap. Callers
      * that need retry must re-prepare UI state and call again.
      */
-    override suspend fun requestRaw(displayId: Int, onCaptured: (() -> Unit)?): Bitmap? = captureMutex.withLock {
+    override suspend fun requestRaw(displayId: Int, onCaptured: (() -> Unit)?): CapturedFrame? = captureMutex.withLock {
         awaitScreenshotInterval()
         val bitmap = doTakeScreenshot(displayId, onCaptured)
         if (bitmap == null) DetectionLog.log("Raw capture failed")
-        bitmap
+        bitmap?.let { stamp(it) }
     }
 
     /**
@@ -194,8 +200,8 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
     override fun startLoop(
         displayId: Int,
         scope: CoroutineScope,
-        onCleanFrame: (Bitmap) -> Unit,
-        onRawFrame: (Bitmap) -> Unit
+        onCleanFrame: (CapturedFrame) -> Unit,
+        onRawFrame: (CapturedFrame) -> Unit
     ) {
         stopLoop(displayId)
         // First frame is always clean — every caller wants a clean
@@ -238,7 +244,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
                     }
                     if (bitmap != null) {
                         DetectionLog.log("Loop[$displayId]: clean frame captured (${bitmap.width}x${bitmap.height})")
-                        onCleanFrame(bitmap)
+                        onCleanFrame(stamp(bitmap))
                     } else {
                         DetectionLog.log("Loop[$displayId]: clean capture failed")
                     }
@@ -248,7 +254,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
                         doTakeScreenshot(displayId)
                     }
                     if (bitmap != null) {
-                        onRawFrame(bitmap)
+                        onRawFrame(stamp(bitmap))
                     }
                     // null = timeout or failure, logged by doTakeScreenshot
                 }
