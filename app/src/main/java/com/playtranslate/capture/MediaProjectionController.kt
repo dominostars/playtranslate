@@ -568,9 +568,14 @@ class MediaProjectionController(private val service: CaptureService) {
      * [StreamKindProbe]: a small full-alpha window is drawn and the mirror
      * checked for it — present ⇒ whole-display (CONTAMINATED), absent across
      * a pattern swap ⇒ task capture (CLEAN). Every ambiguous outcome resolves
-     * to CONTAMINATED, today's shipped world. Requires consent to be held;
-     * returns UNKNOWN (without caching) when it isn't. Cached until
-     * [teardown] — the choice can differ on every fresh consent.
+     * to UNKNOWN — which is never cached, so that session-start routes to
+     * the pinhole tier and the next start re-measures. Requires consent to
+     * be held; returns UNKNOWN (without caching) when it isn't. A measured
+     * verdict is cached until [teardown] — the choice can differ on every
+     * fresh consent — and only while the consent that was measured is still
+     * alive: a teardown DURING the probe resets [streamKind] to UNKNOWN,
+     * and caching the stale result over that reset would poison the next
+     * session (adversarial-review finding).
      */
     suspend fun resolveStreamKind(): StreamKind {
         streamKind.takeIf { it != StreamKind.UNKNOWN }?.let { return it }
@@ -580,6 +585,12 @@ class MediaProjectionController(private val service: CaptureService) {
         }
         if (!hasConsent) return StreamKind.UNKNOWN
         val kind = StreamKindProbe.measure(this)
+        if (kind == StreamKind.UNKNOWN || !hasConsent) {
+            if (kind != StreamKind.UNKNOWN) {
+                DetectionLog.log("MP stream kind: $kind discarded — consent died mid-probe")
+            }
+            return StreamKind.UNKNOWN
+        }
         streamKind = kind
         return kind
     }

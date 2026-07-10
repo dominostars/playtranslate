@@ -33,10 +33,12 @@ import kotlin.coroutines.resume
  * by SILENCE sustained across several forced commits — a display mirror
  * cannot ignore repeated probe commits (plus the recording chip ticking
  * ~1Hz), so multi-round no-deliveries is the task-mirror signature. A single
- * silent phase settles nothing (see [Ledger]). Setup failures that precede
- * any evidence — window add failure, layout timeout, mixed evidence past the
- * round cap — resolve to CONTAMINATED, the world every shipped session
- * already lives in, and log why. The clean mode's echo tripwire and
+ * silent phase settles nothing (see [Ledger]). Everything that is not a
+ * measurement — setup failures (window add, layout timeout), capture-layer
+ * failures mid-scan (consent lost, projection/VD dead), mixed evidence past
+ * the round cap — resolves to UNKNOWN, which is never cached: this
+ * session-start routes to the pinhole tier (operationally fail-closed) and
+ * the next start re-measures. The clean mode's echo tripwire and
  * [com.playtranslate.ThrashDetector] backstop any verdict this still gets
  * wrong.
  *
@@ -55,14 +57,14 @@ object StreamKindProbe {
 
     suspend fun measure(controller: MediaProjectionController): StreamKind {
         val host = CaptureBackendResolver.active().overlayHost
-            ?: return contaminated("no overlay host")
+            ?: return aborted("no overlay host")
         // The HOST's context, not the capture service's — accessibility
         // overlay window types can only be added from the accessibility
         // service's own context.
         val displayContext = host.displayContextFor(controller.projectedDisplayId)
-            ?: return contaminated("projected display missing")
+            ?: return aborted("projected display missing")
         val wm = displayContext.getSystemService(WindowManager::class.java)
-            ?: return contaminated("no WindowManager")
+            ?: return aborted("no WindowManager")
 
         val view = ProbeView(displayContext)
         val size = displayContext.displaySizePx()
@@ -98,10 +100,10 @@ object StreamKindProbe {
         try {
             wm.addView(view, params)
         } catch (e: Exception) {
-            return contaminated("probe window add failed: ${e.message}")
+            return aborted("probe window add failed: ${e.message}")
         }
         try {
-            if (!awaitLaidOut(view)) return contaminated("probe layout timeout")
+            if (!awaitLaidOut(view)) return aborted("probe layout timeout")
             // The laid-out location is the ground truth for where the pattern
             // sits on screen — immune to gravity/inset surprises.
             val loc = IntArray(2)
@@ -126,8 +128,9 @@ object StreamKindProbe {
             //    hardening); nor does silence fail closed (the
             //    fail-to-CONTAMINATED version flapped pinhole mode over any
             //    single-app capture of resting content).
-            //  - Mixed evidence past [MAX_ROUNDS] → CONTAMINATED (setup-
-            //    grade weirdness; today's shipped world).
+            //  - FAILED (capture layer broke) or mixed evidence past
+            //    [MAX_ROUNDS] → UNKNOWN, uncached: pinhole tier this start,
+            //    re-measure next start.
             // Misroute backstops beyond the probe: the clean mode's echo
             // tripwire and its ThrashDetector both demote a wrong CLEAN.
             val ledger = Ledger()
@@ -152,12 +155,14 @@ object StreamKindProbe {
                 val reason = when {
                     scan == Scan.FOUND ->
                         "pattern ${if (view.swap) "B" else "A"} visible (round $round)"
+                    scan == Scan.FAILED ->
+                        "probe aborted: capture failure (round $round)"
                     settled == StreamKind.CLEAN && scan == Scan.NO_FRAMES ->
                         "no deliveries across ${ledger.silentRounds} forced commits — task mirror inferred"
                     settled == StreamKind.CLEAN ->
                         "pattern absent across swap"
                     else ->
-                        "ambiguous: mixed evidence after $round rounds"
+                        "not measured: mixed evidence after $round rounds"
                 }
                 return verdict(settled, reason)
             }
@@ -168,7 +173,14 @@ object StreamKindProbe {
 
     // ── Scanning ─────────────────────────────────────────────────────────
 
-    internal enum class Scan { FOUND, ABSENT, NO_FRAMES }
+    /** One round's evidence. [NO_FRAMES] is genuine silence — the capture
+     *  pipeline proved itself alive (readable frames existed, none fresh) but
+     *  the mirror delivered nothing new. [FAILED] is the capture layer
+     *  failing (consent lost, projection/VD dead, decode errors) — it must
+     *  never be mistaken for silence, because silence promotes toward CLEAN
+     *  and failure must abort the probe uncached (adversarial-review
+     *  finding). */
+    internal enum class Scan { FOUND, ABSENT, NO_FRAMES, FAILED }
 
     /**
      * Pure verdict ledger for the round loop, extracted so the CLEAN
@@ -176,9 +188,16 @@ object StreamKindProbe {
      * ask): a single silent phase can never select CLEAN — it takes
      * [SILENT_ROUNDS_FOR_CLEAN] consecutive silent rounds (each preceded by
      * a forced commit) or [ABSENT_ROUNDS_FOR_CLEAN] consecutive fresh-frame
-     * absents; FOUND settles CONTAMINATED immediately; mixed evidence
-     * exhausting [MAX_ROUNDS] fails closed to CONTAMINATED. Streaks reset
-     * each other — silence interrupted by a delivery must re-earn its run.
+     * absents; FOUND settles CONTAMINATED immediately. Streaks reset each
+     * other — silence interrupted by a delivery must re-earn its run.
+     *
+     * Everything that is NOT a measured verdict settles UNKNOWN: a FAILED
+     * round (capture layer broke — never confusable with silence), and
+     * mixed evidence exhausting [MAX_ROUNDS]. UNKNOWN is deliberately
+     * uncacheable ([MediaProjectionController.resolveStreamKind] stores only
+     * CLEAN/CONTAMINATED): this session-start routes to the pinhole tier —
+     * operationally fail-closed — and the next start re-measures instead of
+     * living a whole session on a verdict the probe never earned.
      */
     internal class Ledger {
         private var absents = 0
@@ -194,6 +213,7 @@ object StreamKindProbe {
             rounds++
             when (scan) {
                 Scan.FOUND -> return StreamKind.CONTAMINATED
+                Scan.FAILED -> return StreamKind.UNKNOWN
                 Scan.ABSENT -> {
                     absents++
                     silents = 0
@@ -205,7 +225,7 @@ object StreamKindProbe {
                     if (silents >= SILENT_ROUNDS_FOR_CLEAN) return StreamKind.CLEAN
                 }
             }
-            return if (rounds >= MAX_ROUNDS) StreamKind.CONTAMINATED else null
+            return if (rounds >= MAX_ROUNDS) StreamKind.UNKNOWN else null
         }
     }
 
@@ -233,6 +253,7 @@ object StreamKindProbe {
     ): Scan {
         val deadline = SystemClock.uptimeMillis() + budgetMs
         var freshFrames = 0
+        var readableFrames = 0
         var bestMatched = 0
         var lastFreshSample = ""
         while (SystemClock.uptimeMillis() < deadline) {
@@ -241,7 +262,14 @@ object StreamKindProbe {
             // proven, the unsafe direction.
             val seqNow = controller.deliverySeqNow
             val bmp = controller.captureFrameUngated()
-            if (bmp != null) {
+            if (bmp == null) {
+                // Null is the capture layer failing, not the mirror being
+                // quiet (a healthy stream always has at least the stale
+                // latched frame to serve). A dead session aborts right away;
+                // a transient failure just doesn't count toward anything.
+                if (!controller.hasConsent) return Scan.FAILED
+            } else {
+                readableFrames++
                 val match = try {
                     if (seqNow > minSeq) {
                         freshFrames++
@@ -259,15 +287,20 @@ object StreamKindProbe {
             }
             delay(FRAME_POLL_MS)
         }
-        return if (freshFrames > 0) {
-            DetectionLog.log(
-                "MP probe: pattern absent in $freshFrames fresh frames; " +
-                    "best=$bestMatched/${(SIZE_PX / CELL_PX) * (SIZE_PX / CELL_PX)} " +
-                    "rect=$rect sampled=$lastFreshSample"
-            )
-            Scan.ABSENT
-        } else {
-            Scan.NO_FRAMES
+        return when {
+            freshFrames > 0 -> {
+                DetectionLog.log(
+                    "MP probe: pattern absent in $freshFrames fresh frames; " +
+                        "best=$bestMatched/${(SIZE_PX / CELL_PX) * (SIZE_PX / CELL_PX)} " +
+                        "rect=$rect sampled=$lastFreshSample"
+                )
+                Scan.ABSENT
+            }
+            // Stale reads prove the pipeline works end to end — the silence
+            // is the mirror's, and counts as task-mirror evidence.
+            readableFrames > 0 -> Scan.NO_FRAMES
+            // Nothing but failures: silence cannot be claimed at all.
+            else -> Scan.FAILED
         }
     }
 
@@ -368,8 +401,12 @@ object StreamKindProbe {
         return kind
     }
 
-    private fun contaminated(reason: String): StreamKind =
-        verdict(StreamKind.CONTAMINATED, "ambiguous: $reason")
+    /** Probe abort: no measurement happened, so nothing may be cached.
+     *  [MediaProjectionController.resolveStreamKind] stores only measured
+     *  verdicts; an UNKNOWN routes this session-start to the pinhole tier
+     *  (fail-closed) and re-measures on the next start. */
+    private fun aborted(reason: String): StreamKind =
+        verdict(StreamKind.UNKNOWN, "probe aborted: $reason")
 
     private suspend fun awaitLaidOut(view: View): Boolean =
         withTimeoutOrNull(LAYOUT_TIMEOUT_MS) {

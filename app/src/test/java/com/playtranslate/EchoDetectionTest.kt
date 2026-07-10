@@ -111,7 +111,7 @@ class EchoDetectionTest {
     }
 
     @Test
-    fun mixedEvidence_exhaustsToContaminated() {
+    fun mixedEvidence_exhaustsUncachedToUnknown() {
         val l = ledger()
         org.junit.Assert.assertNull(l.observe(SILENT))
         org.junit.Assert.assertNull(l.observe(ABSENT))
@@ -119,8 +119,23 @@ class EchoDetectionTest {
         org.junit.Assert.assertNull(l.observe(ABSENT))
         org.junit.Assert.assertNull(l.observe(SILENT))
         assertEquals(
-            "no coherent streak by the round cap fails closed",
-            com.playtranslate.capture.StreamKind.CONTAMINATED, l.observe(ABSENT),
+            "no coherent streak by the round cap is not a measurement — " +
+                "UNKNOWN routes pinhole and re-probes next start",
+            com.playtranslate.capture.StreamKind.UNKNOWN, l.observe(ABSENT),
         )
+    }
+
+    @Test
+    fun captureFailure_abortsImmediately_neverClean() {
+        val FAILED = com.playtranslate.capture.StreamKindProbe.Scan.FAILED
+        // A dead capture layer aborts on sight...
+        assertEquals(com.playtranslate.capture.StreamKind.UNKNOWN, ledger().observe(FAILED))
+        // ...and can never be laundered into CLEAN by prior silent rounds —
+        // the exact fail-open the adversarial review flagged (nulls counted
+        // as task-mirror silence).
+        val l = ledger()
+        org.junit.Assert.assertNull(l.observe(SILENT))
+        org.junit.Assert.assertNull(l.observe(SILENT))
+        assertEquals(com.playtranslate.capture.StreamKind.UNKNOWN, l.observe(FAILED))
     }
 }

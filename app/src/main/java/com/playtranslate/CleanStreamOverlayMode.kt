@@ -113,6 +113,7 @@ class CleanStreamOverlayMode(
     private var blackStreak = 0
     private var echoStreak = 0
     private var identityNotified = false
+    private var secureNotified = false
 
     /** Language-independent misroute net — see [ThrashDetector]. Fed kept
      *  boxes (stability) and translating placements (potential revisits);
@@ -165,17 +166,41 @@ class CleanStreamOverlayMode(
         return CachedOverlayState(boxes, cropLeft, cropTop, screenshotW, screenshotH)
     }
 
-    private fun resetState() {
-        currentJob?.cancel()
+    /**
+     * The single owner of every piece of evidence + geometry state a cycle's
+     * guards key on or accumulate. Every reset path routes through here so a
+     * guard is always disarmed by the reset it triggers — the dims guard once
+     * kept its own key (screenshotW/H) across its clear, which turned every
+     * rotation into an endless clear/retry loop with translation silently
+     * dead (adversarial-review finding). Geometry reseeds from the next OCR
+     * pass.
+     *
+     * The user-facing notification latches ([identityNotified],
+     * [secureNotified]) deliberately live OUTSIDE this clear: their guards
+     * invoke it on every trip, and clearing the latch with it would re-emit
+     * the same message every cycle. They reset in [resetState] (mode
+     * restart) and where their condition clears.
+     */
+    private fun clearEvidenceState() {
         cachedBoxes = null
         stabilityHold.clear()
         thrash.clear()
         holdDeadlineMs = null
-        inputBurstUntilMs = 0L
+        cropLeft = 0
+        cropTop = 0
+        screenshotW = 0
+        screenshotH = 0
         blackStreak = 0
         echoStreak = 0
-        identityNotified = false
         forceNextCycle = true
+    }
+
+    private fun resetState() {
+        currentJob?.cancel()
+        clearEvidenceState()
+        inputBurstUntilMs = 0L
+        identityNotified = false
+        secureNotified = false
     }
 
     /** Game input as a scoped change hint — same A4 semantics as the pinhole
@@ -334,16 +359,21 @@ class CleanStreamOverlayMode(
             }
             identityNotified = false
 
-            // Secure-content guard: FLAG_SECURE renders black, silently.
+            // Secure-content guard: FLAG_SECURE renders black, silently. The
+            // notified latch (not the streak) gates the message — the clear
+            // below zeroes the streak with the rest of the evidence state,
+            // and re-counting must not re-emit mid-blackout.
             if (isAllBlack(raw)) {
                 blackStreak++
-                if (blackStreak == SECURE_BLACK_STREAK) {
+                if (blackStreak >= SECURE_BLACK_STREAK && !secureNotified) {
+                    secureNotified = true
                     service.emitError(service.getString(R.string.error_capture_blocked_secure))
                     clearDisplayed()
                 }
                 return prefs.captureIntervalMs
             }
             blackStreak = 0
+            secureNotified = false
 
             // OCR the full crop. No status-bar exclusion: a task stream
             // contains no system UI — those top rows are game content.
@@ -500,15 +530,11 @@ class CleanStreamOverlayMode(
         )
     }
 
-    /** Drop everything displayed + the hold/thrash state; force the rebuild
-     *  look. */
+    /** Drop everything displayed + all evidence/geometry state and hide the
+     *  overlay window; the next cycle rebuilds from a fresh OCR pass. */
     private fun clearDisplayed() {
-        cachedBoxes = null
-        stabilityHold.clear()
-        thrash.clear()
-        holdDeadlineMs = null
+        clearEvidenceState()
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
-        forceNextCycle = true
     }
 
     /** One box reading back its own translation at its own rect. Guarded
