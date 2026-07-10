@@ -25,15 +25,15 @@ class StreamKindProbeTest {
 
     // ── Pattern fixtures ──────────────────────────────────────────────────
 
-    private val MAGENTA = 0xFFFF00FF.toInt()
-    private val GREEN = 0xFF00FF00.toInt()
+    private val YELLOW = 0xFFFFFF00.toInt()
+    private val BLUE = 0xFF0000FF.toInt()
 
     /** 6×6 cell pixels as the ProbeView draws them for [swap], row-major,
      *  optionally pushed through a per-pixel transform. */
     private fun pattern(swap: Boolean, transform: (Int) -> Int = { it }): IntArray =
         IntArray(36) { i ->
             val isA = ((i / 6 + i % 6) % 2 == 0) != swap
-            transform(if (isA) MAGENTA else GREEN)
+            transform(if (isA) YELLOW else BLUE)
         }
 
     private fun gray(pixel: Int): Int {
@@ -61,11 +61,11 @@ class StreamKindProbeTest {
     fun pureColors_bothDetectorsFire() {
         val reading = StreamKindProbe.readCells(pattern(swap = false), swap = false)
         assertEquals("every cell hue-correct", 36, reading.hueMatched)
-        assertEquals("magenta(72) on even parity vs green(182)", -110, reading.lumaSeparation)
+        assertEquals("yellow(236) on even parity vs blue(18)", 218, reading.lumaSeparation)
         // Phase B: hue still perfect against its own phase; luma sign flips.
         val b = StreamKindProbe.readCells(pattern(swap = true), swap = true)
         assertEquals(36, b.hueMatched)
-        assertEquals(110, b.lumaSeparation)
+        assertEquals(-218, b.lumaSeparation)
     }
 
     @Test
@@ -75,7 +75,7 @@ class StreamKindProbeTest {
         // information the ledger's flip test consumes.
         val stale = StreamKindProbe.readCells(pattern(swap = false), swap = true)
         assertEquals(0, stale.hueMatched)
-        assertEquals(-110, stale.lumaSeparation)
+        assertEquals(218, stale.lumaSeparation)
     }
 
     @Test
@@ -84,7 +84,7 @@ class StreamKindProbeTest {
         // detection is fully blind — the pre-rebuild false-CLEAN generator.
         val reading = StreamKindProbe.readCells(pattern(swap = false, ::gray), swap = false)
         assertEquals("gray cells dominate no hue", 0, reading.hueMatched)
-        assertEquals("luma gap survives verbatim", -110, reading.lumaSeparation)
+        assertEquals("luma gap survives verbatim", 218, reading.lumaSeparation)
         assertTrue(
             kotlin.math.abs(reading.lumaSeparation) >= StreamKindProbe.LUMA_SEPARATION_MIN
         )
@@ -99,11 +99,11 @@ class StreamKindProbeTest {
         val a = StreamKindProbe.readCells(
             pattern(swap = false) { gray(invert(it)) }, swap = false,
         )
-        assertEquals(110, a.lumaSeparation)
+        assertEquals(-218, a.lumaSeparation)
         val b = StreamKindProbe.readCells(
             pattern(swap = true) { gray(invert(it)) }, swap = true,
         )
-        assertEquals("alternation survives inversion", -110, b.lumaSeparation)
+        assertEquals("alternation survives inversion", 218, b.lumaSeparation)
     }
 
     @Test
@@ -135,16 +135,19 @@ class StreamKindProbeTest {
 
     @Test
     fun probeHue_matchesAttenuatedPattern_rejectsContent() {
-        // Verbatim mirror values from the 2026-07-10 Moto G session.
-        val dimMagenta = 0xFFD60AD6.toInt()
-        val dimGreen = 0xFF0AD60A.toInt()
-        assertTrue(StreamKindProbe.cellHueMatches(true, dimMagenta))
-        assertTrue(StreamKindProbe.cellHueMatches(false, dimGreen))
-        assertFalse(StreamKindProbe.cellHueMatches(false, dimMagenta))
-        assertFalse(StreamKindProbe.cellHueMatches(true, dimGreen))
+        // The ×0.84 overlay-opacity clamp was field-measured on the Moto G
+        // (2026-07-10, prior palette); these are the clamped yellow/blue.
+        val dimYellow = 0xFFD6D60A.toInt()
+        val dimBlue = 0xFF0A0AD6.toInt()
+        assertTrue(StreamKindProbe.cellHueMatches(true, dimYellow))
+        assertTrue(StreamKindProbe.cellHueMatches(false, dimBlue))
+        assertFalse(StreamKindProbe.cellHueMatches(false, dimYellow))
+        assertFalse(StreamKindProbe.cellHueMatches(true, dimBlue))
         assertFalse(StreamKindProbe.cellHueMatches(true, 0xFFFFFFFF.toInt()))
         assertFalse(StreamKindProbe.cellHueMatches(false, 0xFF808080.toInt()))
-        assertTrue(StreamKindProbe.cellHueMatches(true, 0xFF330033.toInt()))
+        // Deep dim (~×0.17) still classifies on both hues.
+        assertTrue(StreamKindProbe.cellHueMatches(true, 0xFF2B2B00.toInt()))
+        assertTrue(StreamKindProbe.cellHueMatches(false, 0xFF00002B.toInt()))
     }
 
     // ── Verdict ledger ────────────────────────────────────────────────────

@@ -494,6 +494,9 @@ class ReconcilerLiveMode(
             anchors.flatMap { presenter.displayBoxesFor(it) },
             cropLeft, cropTop, screenshotW, screenshotH,
             pinholeMode = false, displayId = displayId,
+            // Reconciler-tier bounds are hysteresis-filtered upstream — the
+            // view must not fuzzy-hold children in place (drift lag bug).
+            authoritativeBounds = true,
         )
     }
 

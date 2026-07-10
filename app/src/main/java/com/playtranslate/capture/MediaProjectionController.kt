@@ -780,12 +780,8 @@ class MediaProjectionController(private val service: CaptureService) {
         projection?.let { try { it.stop() } catch (_: Exception) {} }
         projection = null
         // The token is single-use on API 34+ — once the projection stops, the
-        // next capture must re-prompt for consent. The stream kind and the
-        // captured-content state die with the session: the next consent can
-        // make a different single-app/whole-display choice.
-        streamKind = StreamKind.UNKNOWN
-        _contentVisible.value = true
-        _contentSize.value = null
+        // next capture must re-prompt for consent.
+        resetSessionVerdict()
         resultCode = Activity.RESULT_CANCELED
         resultData = null
         // Notify observers once consent is actually gone (resultData cleared),
@@ -803,9 +799,24 @@ class MediaProjectionController(private val service: CaptureService) {
      *  that and the next capture attempt re-prompts cleanly. */
     fun invalidateConsent() {
         val hadConsent = resultData != null
+        resetSessionVerdict()
         resultCode = Activity.RESULT_CANCELED
         resultData = null
         if (hadConsent) teardownListeners.toList().forEach { it() }
+    }
+
+    /** Session-scoped classifier state dies with the consent that measured
+     *  it — EVERY consent-ending path ([teardown], [invalidateConsent]) must
+     *  run this. The probe is the SOLE classifier: a stale CLEAN surviving
+     *  into a new whole-display session would route overlay modes onto a
+     *  contaminated stream with no runtime nets left to catch it
+     *  (adversarial-review round 13). The next consent can make a different
+     *  single-app/whole-display choice, so the verdict and the
+     *  captured-content state must both re-measure. */
+    private fun resetSessionVerdict() {
+        streamKind = StreamKind.UNKNOWN
+        _contentVisible.value = true
+        _contentSize.value = null
     }
 
     /** The projection is gone — stopped by the system or the user (a revoke /

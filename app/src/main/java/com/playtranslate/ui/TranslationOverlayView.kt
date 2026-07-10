@@ -197,7 +197,8 @@ class TranslationOverlayView(
     fun setBoxes(
         boxes: List<TextBox>,
         cropLeft: Int, cropTop: Int,
-        screenshotW: Int, screenshotH: Int
+        screenshotW: Int, screenshotH: Int,
+        authoritativeBounds: Boolean = false,
     ) {
         // Skip everything if content is identical (avoids flash on false-positive recaptures)
         if (this.boxes == boxes && cropOffsetX == cropLeft && cropOffsetY == cropTop
@@ -215,7 +216,16 @@ class TranslationOverlayView(
         // field actually shifted. The old `dirty`-staleness motivation is
         // gone since dirty boxes live on a separate companion view; this
         // path's boxes list contains only clean boxes.
-        if (cropSame && OverlayLayout.boxesMatchFuzzy(this.boxes, boxes)) {
+        // The fuzzy fast path exists for callers whose bounds JITTER per
+        // re-OCR (pinhole, one-shot) — without it boxes shiver. A caller
+        // with authoritative bounds (the reconciler tier: 5px hysteresis
+        // already applied upstream, stable baseline) must NOT take it:
+        // fuzzy-matching here while updating the stored list lets rendered
+        // children lag an unbounded distance behind a slow drift, because
+        // each cycle's delta is compared against the already-advanced list
+        // (field bug 2026-07-10: furigana annotations frozen during small
+        // pans, jumping only on large ones).
+        if (!authoritativeBounds && cropSame && OverlayLayout.boxesMatchFuzzy(this.boxes, boxes)) {
             val visualChanged = this.boxes.size == boxes.size &&
                 this.boxes.zip(boxes).any { (a, b) ->
                     a.bgColor != b.bgColor ||

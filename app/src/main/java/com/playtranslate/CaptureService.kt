@@ -1098,7 +1098,6 @@ class CaptureService : Service() {
         // held means "not probed this session" — divert through the async
         // path even when capture itself is already ready.
         val needsStreamKind = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
-            desiredFlavor() != OverlayFlavor.IN_APP_ONLY &&
             mediaProjectionController.hasConsent &&
             mediaProjectionController.streamKind == StreamKind.UNKNOWN
         pendingLiveStart?.cancel()
@@ -1121,12 +1120,14 @@ class CaptureService : Service() {
                 // Consent may have just been granted above — re-check, then
                 // resolve the stream kind (cached per session; instant when
                 // already resolved or on API ≤ 33).
-                // Overlay-painting flavors route by stream kind (round 10:
-                // furigana single-app grants must be classified too; panel
-                // mode is stream-agnostic and skips the probe).
-                if (desiredFlavor() != OverlayFlavor.IN_APP_ONLY &&
-                    mediaProjectionController.hasConsent
-                ) {
+                // Classify EVERY live session that will read MP frames —
+                // panel mode included. The verdict is not just overlay
+                // routing: it decides frame SEMANTICS for every consumer
+                // (the includesSystemUi stamp → status-bar crop, and the
+                // geometry refusal). An unclassified single-app grant would
+                // stamp task frames as full-display and crop game content
+                // off panel OCR (round-13 finding).
+                if (mediaProjectionController.hasConsent) {
                     mediaProjectionController.resolveStreamKind()
                     ensureActive()
                 }
@@ -1987,6 +1988,7 @@ class CaptureService : Service() {
         pinholeMode: Boolean = false,
         oneShot: Boolean = false,
         displayId: Int = primaryGameDisplayId(),
+        authoritativeBounds: Boolean = false,
     ) {
         if (!force && holdActive) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: holdActive=true"); return }
         val ui = CaptureBackendResolver.activeOverlayUi
@@ -2002,6 +2004,7 @@ class CaptureService : Service() {
             pinholeMode, oneShot, verticalTextTarget,
             verticalTextStackable = stackableTargetScript(prefs.targetLang),
             verticalGrowEnabled = prefs.verticalTextGrow,
+            authoritativeBounds = authoritativeBounds,
         )
     }
 

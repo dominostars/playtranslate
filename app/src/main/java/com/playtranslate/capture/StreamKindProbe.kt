@@ -54,7 +54,7 @@ import kotlin.coroutines.resume
  *    and OEM force-dark can strip or remap color BEFORE the buffer we
  *    capture. No transform maps a checkerboard to FLAT, so the second
  *    detector is luma parity separation: the mean-luma gap between the two
- *    checker parities (~110 as drawn). The verdict signal is the gap's SIGN
+ *    checker parities (~218 as drawn). The verdict signal is the gap's SIGN
  *    flipping in lockstep with the commanded phase swaps — sign-agnostic on
  *    purpose, because inversion pipelines negate luma and a fixed
  *    expectation would misread our own inverted pattern as absent. Game
@@ -468,12 +468,12 @@ object StreamKindProbe {
      * Classify one frame's cell pixels (row-major, from [sampleCellPixels])
      * against the commanded phase. Two independent detectors:
      *
-     * **Hue dominance** (fast path): magenta = red and blue both exceed
-     * green by [HUE_MARGIN]; green = green exceeds both. Deliberately NOT an
+     * **Hue dominance** (fast path): yellow = red and green both exceed
+     * blue by [HUE_MARGIN]; blue = blue exceeds both. Deliberately NOT an
      * absolute color comparison: the mirror composites our window through
      * whatever the device does to overlays — the Moto G's opacity clamp
-     * delivered the pattern at ~84% intensity (measured 2026-07-10,
-     * `FFD60AD6`/`FF0AD60A`), and absolute tolerance against the pure colors
+     * delivered the (then magenta/green) pattern at ~84% intensity
+     * (measured 2026-07-10), and absolute tolerance against the pure colors
      * flunked enough cells to false-CLEAN. Hue dominance is invariant under
      * any uniform attenuation (alpha clamps, screen dim, tone mapping) down
      * to ~×0.17 brightness — but it is blind whenever the pipeline strips or
@@ -483,8 +483,8 @@ object StreamKindProbe {
      *
      * **Luma parity separation** (transform-invariant path): mean luma of
      * even-parity cells minus odd-parity cells, FIXED parity indexing (not
-     * phase-relative). The drawn pattern separates by ~110 (magenta ≈72 vs
-     * green ≈182), and the SIGN alternates with the commanded phase swap.
+     * phase-relative). The drawn pattern separates by ~218 (yellow ≈236 vs
+     * blue ≈18), and the SIGN alternates with the commanded phase swap.
      * No color transform maps a checkerboard to flat — grayscale preserves
      * the gap verbatim, inversion negates it (the alternation survives,
      * which is why the [Ledger]'s flip test is sign-agnostic), dimming
@@ -517,14 +517,14 @@ object StreamKindProbe {
 
     /** Hue classification of one sampled pixel against the expected cell
      *  color. Internal for the JVM test. */
-    internal fun cellHueMatches(expectMagenta: Boolean, pixel: Int): Boolean {
+    internal fun cellHueMatches(expectYellow: Boolean, pixel: Int): Boolean {
         val r = (pixel shr 16) and 0xFF
         val g = (pixel shr 8) and 0xFF
         val b = pixel and 0xFF
-        return if (expectMagenta) {
-            r - g >= HUE_MARGIN && b - g >= HUE_MARGIN
+        return if (expectYellow) {
+            r - b >= HUE_MARGIN && g - b >= HUE_MARGIN
         } else {
-            g - r >= HUE_MARGIN && g - b >= HUE_MARGIN
+            b - r >= HUE_MARGIN && b - g >= HUE_MARGIN
         }
     }
 
@@ -588,8 +588,13 @@ object StreamKindProbe {
 
     private const val SIZE_PX = 48
     private const val CELL_PX = 8
-    private const val COLOR_A = 0xFFFF00FF.toInt() // magenta
-    private const val COLOR_B = 0xFF00FF00.toInt() // green
+    /** Yellow/blue, not the original magenta/green: exact RGB complements
+     *  (inversion swaps them, preserving the checker), maximal on BOTH
+     *  detector axes — strong hue dominance AND a ~218-step luma gap
+     *  (236 vs 18), double magenta/green's ~110 (palette upgraded 2026-07-10
+     *  when luma became the transform-invariant detector). */
+    private const val COLOR_A = 0xFFFFFF00.toInt() // yellow
+    private const val COLOR_B = 0xFF0000FF.toInt() // blue
     /** Minimum per-channel dominance for hue classification. Survives
      *  uniform attenuation down to ~×0.17 of the drawn intensity. */
     private const val HUE_MARGIN = 40
@@ -598,7 +603,7 @@ object StreamKindProbe {
     private const val MATCH_CELLS_MIN = 27
 
     /** Minimum |luma parity separation| to call a checker present. The
-     *  pattern separates by ~110 as drawn (~92 through the measured ×0.84
+     *  pattern separates by ~218 as drawn (~183 through the measured ×0.84
      *  clamp); random game content at the probe rect stays near 0 because a
      *  parity mean interleaves cells from the whole rect. */
     internal const val LUMA_SEPARATION_MIN = 30

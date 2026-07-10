@@ -534,6 +534,7 @@ class OverlayUiController(
         verticalTextTarget: Boolean = false,
         verticalTextStackable: Boolean = false,
         verticalGrowEnabled: Boolean = false,
+        authoritativeBounds: Boolean = false,
     ) {
         // Overlay is appearing — dismiss loading spinner across all icons.
         setIconsLoading(false)
@@ -559,7 +560,9 @@ class OverlayUiController(
             existing.verticalTextStackable == verticalTextStackable &&
             existing.verticalGrowEnabled == verticalGrowEnabled
         ) {
-            existing.setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
+            existing.setBoxes(
+                boxes, cropLeft, cropTop, screenshotW, screenshotH, authoritativeBounds,
+            )
             return
         }
         hideTranslationOverlayForDisplay(displayId)
