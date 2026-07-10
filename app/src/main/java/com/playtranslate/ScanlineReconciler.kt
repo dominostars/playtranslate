@@ -10,8 +10,9 @@ import kotlin.math.abs
 /**
  * Text-space single-cycle reconciler — "Level 0". Ported from the `scanlines`
  * branch (built there for swept clean composites); on this branch it drives
- * [CleanStreamOverlayMode], whose API 34+ single-app MediaProjection stream
- * delivers frames that are clean by construction.
+ * [ReconcilerLiveMode] — every live flavor's shared sensing loop; overlay
+ * presenters run it on API 34+ single-app streams whose frames are clean by
+ * construction, the panel presenter on any stream.
  *
  * The mode answers "what changed" in TEXT space, never in pixel space: every
  * cycle it OCRs a clean frame and hands the fresh groups plus the
@@ -101,6 +102,10 @@ object ScanlineReconciler {
          *  NEW sighting. Lets [StabilityHold] scope its typewriter deferral to
          *  CHANGED verdicts only — NEW text must never wait. */
         val replacesBox: TextBox? = null,
+        /** The OCR group this region was reduced from — presenters needing
+         *  line-level data (furigana annotation placement) read it. Null only
+         *  in hand-built test fixtures. */
+        val group: OcrManager.OcrGroup? = null,
     )
 
     /**
@@ -207,6 +212,7 @@ object ScanlineReconciler {
             orientation = g.orientation,
             alignment = g.alignment,
             replacesBox = replaces,
+            group = g,
         )
 
         // Displayed boxes → KEEP / RETRANSLATE / REMOVE.

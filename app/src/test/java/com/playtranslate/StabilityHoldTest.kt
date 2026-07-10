@@ -15,7 +15,7 @@ import org.robolectric.RobolectricTestRunner
 /**
  * Trace tests for [StabilityHold] — the capture-anchored typewriter hold.
  * Each test drives the hold with hand-built [ScanlineReconciler.Verdicts]
- * cycles and explicit clocks, the way [CleanStreamOverlayMode] does per read.
+ * cycles and explicit clocks, the way [ReconcilerLiveMode] does per read.
  *
  * Clock convention in these traces: `capture(t)` is the frame's capture
  * uptime; evaluation happens `ocrMs` later (`now = capture + ocrMs`).

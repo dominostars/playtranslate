@@ -3,7 +3,7 @@ package com.playtranslate
 import android.graphics.Rect
 
 /**
- * Language-independent misroute backstop for [CleanStreamOverlayMode]: the
+ * Language-independent misroute backstop for [ReconcilerLiveMode]: the
  * flap-signature detector. If the mode is ever running against a stream that
  * is NOT actually clean (a wrong [com.playtranslate.capture.StreamKindProbe]
  * verdict), the failure always manifests as *oscillation* — a region's box
@@ -22,7 +22,7 @@ import android.graphics.Rect
  *    run ([recordStability]) — a player flipping between two menu tabs
  *    interleaves stable cycles between flips, while a true flap replaces the
  *    region every cycle and never earns one.
- * [CleanStreamOverlayMode] additionally skips recording placements during an
+ * [ReconcilerLiveMode] additionally skips recording placements during an
  * input burst, so touch-driven churn never counts. (Gamepad input is
  * invisible on the MediaProjection backend; the stability rule is the guard
  * there.)

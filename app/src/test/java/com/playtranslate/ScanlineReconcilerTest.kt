@@ -13,7 +13,7 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * Unit tests for [ScanlineReconciler] — the text-space single-cycle verdict
- * machine for [CleanStreamOverlayMode] ("Level 0"). Ported from the
+ * machine for [ReconcilerLiveMode] ("Level 0"). Ported from the
  * `scanlines` branch, extended with [ScanlineReconciler.Region.replacesBox]
  * assertions (the field [StabilityHold] keys its CHANGED-only scoping on).
  *

@@ -1186,7 +1186,7 @@ class CaptureService : Service() {
     /**
      * The implementation class a fresh live-mode instance for [flavor] should
      * have right now. TRANSLATION forks on the MediaProjection stream kind:
-     * a single-app ("clean") stream gets [CleanStreamOverlayMode] — the
+     * a single-app ("clean") stream gets [ReconcilerLiveMode] — the
      * reconciler-driven wait→read→update loop — while everything else (whole
      * display, accessibility capture, API ≤ 33, kind not yet resolved) keeps
      * the pinhole tier. [setLiveDisplays] compares running instances against
@@ -1194,11 +1194,13 @@ class CaptureService : Service() {
      * rebuilds through the same diff that handles flavor changes.
      */
     private fun desiredModeClass(flavor: OverlayFlavor): Class<out LiveMode> = when (flavor) {
-        OverlayFlavor.IN_APP_ONLY -> InAppOnlyMode::class.java
+        // Panel-only: the unified loop on ANY stream kind and backend — it
+        // paints nothing, so contamination is irrelevant (design record §7).
+        OverlayFlavor.IN_APP_ONLY -> ReconcilerLiveMode::class.java
         OverlayFlavor.FURIGANA -> FuriganaMode::class.java
         OverlayFlavor.TRANSLATION ->
             if (mediaProjectionController.streamKind == StreamKind.CLEAN)
-                CleanStreamOverlayMode::class.java
+                ReconcilerLiveMode::class.java
             else PinholeOverlayMode::class.java
     }
 
@@ -1288,9 +1290,11 @@ class CaptureService : Service() {
         // Class-mismatch subsumes flavor-mismatch (each flavor maps to a
         // distinct class) and additionally catches the TRANSLATION
         // clean-vs-pinhole fork when the stream kind changes mid-session.
+        // Class-mismatch no longer subsumes flavor-mismatch: ReconcilerLiveMode
+        // serves multiple flavors via its presenter, so both clauses apply.
         val desiredClass = desiredModeClass(flavor)
         val toRebuild = (snapshot.keys intersect actualTarget)
-            .filter { snapshot.getValue(it).javaClass != desiredClass }
+            .filter { snapshot.getValue(it).javaClass != desiredClass || snapshot.getValue(it).flavor != flavor }
             .toSet()
         val toAdd = actualTarget - snapshot.keys
 
@@ -1313,11 +1317,12 @@ class CaptureService : Service() {
 
         val newInstances: Map<Int, LiveMode> = (toAdd + toRebuild).associateWith { id ->
             when (flavor) {
-                OverlayFlavor.IN_APP_ONLY -> InAppOnlyMode(this, id)
+                OverlayFlavor.IN_APP_ONLY ->
+                    ReconcilerLiveMode(this, id, PanelPresenter(this, id))
                 OverlayFlavor.FURIGANA -> FuriganaMode(this, id)
                 OverlayFlavor.TRANSLATION ->
-                    if (desiredClass == CleanStreamOverlayMode::class.java)
-                        CleanStreamOverlayMode(this, id)
+                    if (desiredClass == ReconcilerLiveMode::class.java)
+                        ReconcilerLiveMode(this, id, TranslationPresenter(this, id))
                     else PinholeOverlayMode(this, id)
             }
         }
@@ -2009,6 +2014,18 @@ class CaptureService : Service() {
      *  Null when the result carries no engine identity (the empty engine) — callers
      *  then leave [TranslationResult.ocrProvenance] null, suppressing the source OCR
      *  row and re-OCR. */
+    /** Provenance for a panel-emitted live result — the panel presenter's
+     *  path to the re-OCR gear (region + source language resolved the same
+     *  way the one-shot pipeline resolves them). */
+    internal fun panelOcrProvenance(
+        ocrResult: OcrManager.OcrResult,
+        displayId: Int,
+        frameIncludesSystemUi: Boolean,
+    ): OcrProvenance? = ocrProvenanceFor(
+        ocrResult, displayId, activeRegionForDisplay(displayId),
+        Prefs(this).sourceLangId, frameIncludesSystemUi,
+    )
+
     private fun ocrProvenanceFor(
         ocrResult: OcrManager.OcrResult,
         displayId: Int,

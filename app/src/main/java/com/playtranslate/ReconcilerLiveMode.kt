@@ -7,8 +7,6 @@ import android.util.Log
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.LiveCaptureSource
 import com.playtranslate.capture.StreamKind
-import com.playtranslate.model.TextSegments
-import com.playtranslate.model.TranslationResult
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -23,12 +21,23 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Live TRANSLATION mode for a **clean** MediaProjection stream — the API 34+
- * "a single app" grant, where the mirror contains only the captured task's
- * surface subtree ([StreamKind.CLEAN], measured by
+ * The unified reconciler live loop — ONE sensing pipeline for every live
+ * flavor, parameterized by a [LivePresenter] (translation boxes, furigana
+ * annotations, panel-only). Grown from the clean-stream TRANSLATION mode and
+ * carrying all of its review hardening; see
+ * docs/single-app-capture-audit-2026-07-10.md §7 for the design record.
+ *
+ * Overlay-painting presenters ([LivePresenter.requiresCleanStream]) run only
+ * on a **clean** MediaProjection stream — the API 34+ "a single app" grant,
+ * where the mirror contains only the captured task's surface subtree
+ * ([StreamKind.CLEAN], measured by
  * [com.playtranslate.capture.StreamKindProbe]). Our overlay windows, system
  * UI, and every other app are structurally absent from the frames, which
- * dissolves the occlusion problem the pinhole tier exists to fight:
+ * dissolves the occlusion problem the pinhole tier exists to fight. A
+ * non-painting presenter (panel-only) runs on ANY stream kind and backend —
+ * it contaminates nothing, so there is nothing to model.
+ *
+ * On clean streams specifically:
  *
  *  - Every frame is clean by construction — no cleanRef, no blend model, no
  *    `fillOverlayRegions`, no offscreen overlay renders, no layout-settle
@@ -76,12 +85,13 @@ import kotlinx.coroutines.withTimeoutOrNull
  *    .demoteStreamKindToContaminated]) and rebuild into the pinhole tier via
  *    [CaptureService.onStreamKindDemoted].
  */
-class CleanStreamOverlayMode(
+class ReconcilerLiveMode(
     private val service: CaptureService,
     private val displayId: Int,
+    private val presenter: LivePresenter,
 ) : LiveMode {
 
-    override val flavor: OverlayFlavor = OverlayFlavor.TRANSLATION
+    override val flavor: OverlayFlavor get() = presenter.flavor
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var currentJob: Job? = null
@@ -161,8 +171,9 @@ class CleanStreamOverlayMode(
     }
 
     override fun getCachedState(): CachedOverlayState? {
-        val boxes = cachedBoxes ?: return null
-        return CachedOverlayState(boxes, cropLeft, cropTop, screenshotW, screenshotH)
+        val anchors = cachedBoxes ?: return null
+        val display = anchors.flatMap { presenter.displayBoxesFor(it) }
+        return CachedOverlayState(display, cropLeft, cropTop, screenshotW, screenshotH)
     }
 
     /**
@@ -180,6 +191,7 @@ class CleanStreamOverlayMode(
      * restart) and where their condition clears.
      */
     private fun clearEvidenceState() {
+        cachedBoxes?.let { presenter.onAnchorsDropped(it) }
         cachedBoxes = null
         stabilityHold.clear()
         thrash.clear()
@@ -289,7 +301,7 @@ class CleanStreamOverlayMode(
         val prefs = Prefs(service)
         if (service.holdActive) return 100L
         val controller = service.mediaProjectionController
-        if (controller.streamKind != StreamKind.CLEAN) {
+        if (presenter.requiresCleanStream && controller.streamKind != StreamKind.CLEAN) {
             // Consent torn down (kind reset to UNKNOWN) or the tripwire
             // demoted the session — either way this mode must not run on a
             // stream that isn't provably clean. Rebuild through the mutator;
@@ -380,7 +392,7 @@ class CleanStreamOverlayMode(
 
             val boxes = cachedBoxes ?: emptyList()
             if (pipeline == null && boxes.isEmpty()) {
-                service.handleNoTextDetected(displayId)
+                presenter.emitNoText()
                 return pacing(prefs)
             }
 
@@ -400,8 +412,10 @@ class CleanStreamOverlayMode(
 
             val groups = pipeline?.ocrResult?.groups ?: emptyList()
 
-            // Contamination tripwire — see the class doc.
-            if (isOwnEcho(groups, boxes)) {
+            // Contamination tripwire — see the class doc. Misroute nets only
+            // arm for clean-stream presenters: a non-painting presenter
+            // cannot be misrouted (nothing of ours is ever in any frame).
+            if (presenter.requiresCleanStream && isOwnEcho(groups, boxes)) {
                 echoStreak++
                 DetectionLog.log("D$displayId c$cycleNum echo suspected ($echoStreak/$ECHO_STREAK_LIMIT)")
                 if (echoStreak >= ECHO_STREAK_LIMIT) {
@@ -424,6 +438,7 @@ class CleanStreamOverlayMode(
 
             val kept = verdicts.keptBoxes + holdOut.heldBoxes
             val toTranslate = holdOut.toTranslate
+            if (verdicts.removals.isNotEmpty()) presenter.onAnchorsDropped(verdicts.removals)
 
             // Thrash net: kept boxes always register stability; placements
             // register outside input bursts only (touch-driven churn is the
@@ -433,7 +448,7 @@ class CleanStreamOverlayMode(
             // mechanism — so demote exactly like the echo tripwire.
             val nowMs = SystemClock.uptimeMillis()
             verdicts.keptBoxes.forEach { thrash.recordStability(it.bounds) }
-            if (nowMs >= inputBurstUntilMs) {
+            if (presenter.requiresCleanStream && nowMs >= inputBurstUntilMs) {
                 for (entry in toTranslate) {
                     if (thrash.recordPlacement(entry.bounds, entry.text, nowMs)) {
                         DetectionLog.log(
@@ -466,40 +481,34 @@ class CleanStreamOverlayMode(
             if (toTranslate.isEmpty()) {
                 cachedBoxes = kept.ifEmpty { null }
                 if (kept.isEmpty()) {
-                    service.handleNoTextDetected(displayId)
+                    presenter.emitNoText()
                 } else {
                     showBoxes(kept)
-                    sendFullStateToPanel(mgr.saveToCache(raw, displayId))
+                    presenter.emitApplied(
+                        kept, pipeline?.ocrResult, frame.includesSystemUi,
+                        mgr.saveToCache(raw, displayId),
+                    )
                 }
                 return pacing(prefs)
             }
 
-            // Placeholders now (color-sampled skeletons; cached translations
-            // land instantly), translation for the rest in-cycle — serial by
-            // construction, so at most one OCR and one MT batch are ever in
-            // flight (the loop's backpressure).
-            val texts = toTranslate.map { it.text }
-            val placeholders = OverlayToolkit.buildPlaceholderBoxes(
-                texts,
-                toTranslate.map { it.bounds },
-                toTranslate.map { it.lineCount },
-                raw, cropLeft, cropTop,
-                toTranslate.map { it.orientation },
-                toTranslate.map { it.alignment },
+            // The presenter turns regions into anchors — serially, in-cycle,
+            // so at most one OCR and one present pass (MT / tokenizer) are
+            // ever in flight (the loop's backpressure). A provisional render
+            // (skeletons, cache fills) may land first via onPartial.
+            val finalAnchors = presenter.present(
+                toTranslate, frame, cropLeft, cropTop,
+                onPartial = { partial ->
+                    cachedBoxes = kept + partial
+                    showBoxes(kept + partial)
+                },
             )
-            val partial = placeholders.mapIndexed { i, ph ->
-                service.getCachedTranslation(texts[i])
-                    ?.let { ph.copy(translatedText = it) } ?: ph
-            }
-            cachedBoxes = kept + partial
-            showBoxes(kept + partial)
-            if (partial.any { it.translatedText.isEmpty() }) {
-                val translated =
-                    OverlayToolkit.translatePlaceholders(service, placeholders, texts)
-                cachedBoxes = kept + translated
-                showBoxes(kept + translated)
-            }
-            sendFullStateToPanel(mgr.saveToCache(raw, displayId))
+            cachedBoxes = kept + finalAnchors
+            showBoxes(kept + finalAnchors)
+            presenter.emitApplied(
+                kept + finalAnchors, pipeline?.ocrResult, frame.includesSystemUi,
+                mgr.saveToCache(raw, displayId),
+            )
             return pacing(prefs)
         } finally {
             if (!raw.isRecycled) raw.recycle()
@@ -517,9 +526,14 @@ class CleanStreamOverlayMode(
         return maxOf(floor, minOf(base, untilCap))
     }
 
-    private fun showBoxes(boxes: List<TextBox>) {
+    /** Render the anchors' DISPLAY boxes (identity for most presenters;
+     *  furigana maps anchors to annotation boxes). Panel-only presenters
+     *  paint nothing — anchors still back hold-to-preview. */
+    private fun showBoxes(anchors: List<TextBox>) {
+        if (!presenter.rendersOverlays) return
         service.showLiveOverlay(
-            boxes, cropLeft, cropTop, screenshotW, screenshotH,
+            anchors.flatMap { presenter.displayBoxesFor(it) },
+            cropLeft, cropTop, screenshotW, screenshotH,
             pinholeMode = false, displayId = displayId,
         )
     }
@@ -570,33 +584,9 @@ class CleanStreamOverlayMode(
         return true
     }
 
-    /** Build a TranslationResult from ALL current cachedBoxes and send to the
-     *  in-app panel — same shape as the pinhole tier's panel sync. */
-    private fun sendFullStateToPanel(screenshotPath: String?) {
-        val boxes = cachedBoxes ?: return
-        val appPanelVisible = !Prefs.isSingleScreen(service) && MainActivity.isInForeground
-        if (!appPanelVisible) return
-
-        val originalText = boxes.filter { it.sourceText.isNotEmpty() }
-            .joinToString("\n") { it.sourceText }
-        val translatedText = boxes.filter { it.translatedText.isNotEmpty() }
-            .joinToString("\n\n") { it.translatedText }
-        val segments = TextSegments.ofLines(boxes.map { it.sourceText })
-        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
-            .format(java.util.Date())
-
-        service.emitResult(TranslationResult(
-            originalText = originalText,
-            segments = segments,
-            translatedText = translatedText,
-            timestamp = timestamp,
-            screenshotPath = screenshotPath,
-            langContext = Prefs(service).langContext(),
-        ))
-    }
 
     private companion object {
-        const val TAG = "CleanStreamMode"
+        const val TAG = "ReconcilerLive"
 
         /** Consecutive all-black frames before the secure-content message. */
         const val SECURE_BLACK_STREAK = 3
