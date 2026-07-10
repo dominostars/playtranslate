@@ -79,6 +79,34 @@ object OverlayToolkit {
         return diff.toFloat() / old.length <= EVOLVING_PREFIX_MAX_DIFF
     }
 
+    /**
+     * Does an OCR [groupText] look like a read-back of our own rendered
+     * [translatedText]? The clean-stream contamination tripwire's predicate.
+     * OCR reads of rendered overlay text at 720p arrive garbled and often
+     * merged with fragments of the text underneath ("確認しましたhunderstandhd"
+     * for a box showing "I understand" — observed 2026-07-10), so exact-ish
+     * comparison misses; instead require that ≥[ECHO_BAG_OVERLAP] of the
+     * translation's characters (spaces stripped, ≥ [ECHO_MIN_CHARS] of them)
+     * appear in the group, multiplicity-aware.
+     */
+    internal fun echoesTranslation(groupText: String, translatedText: String): Boolean {
+        val wanted = translatedText.filterNot { it.isWhitespace() }
+        if (wanted.length < ECHO_MIN_CHARS) return false
+        val have = groupText.groupingBy { it }.eachCount().toMutableMap()
+        var matched = 0
+        for (c in wanted) {
+            val n = have[c] ?: 0
+            if (n > 0) {
+                have[c] = n - 1
+                matched++
+            }
+        }
+        return matched.toFloat() / wanted.length >= ECHO_BAG_OVERLAP
+    }
+
+    private const val ECHO_MIN_CHARS = 6
+    private const val ECHO_BAG_OVERLAP = 0.7f
+
     /** Does detected text have significant additions over existing? */
     fun hasSignificantAdditions(existing: String, detected: String): Boolean {
         val bag = existing.groupingBy { it }.eachCount().toMutableMap()

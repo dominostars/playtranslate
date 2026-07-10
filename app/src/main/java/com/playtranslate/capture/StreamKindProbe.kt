@@ -8,7 +8,6 @@ import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
 import android.os.SystemClock
-import android.view.Choreographer
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -19,7 +18,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
-import kotlin.math.abs
 
 /**
  * Measures whether the current MediaProjection session mirrors the whole
@@ -30,12 +28,14 @@ import kotlin.math.abs
  * Whole-display mirror → our windows composite into the stream, and the
  * probe's own commit forces a delivery, so the pattern shows up within a few
  * frames → CONTAMINATED. Task mirror → windows outside the captured task's
- * surface subtree are structurally absent; the pattern never appears →
- * CLEAN, confirmed across a pattern swap so the verdict rests on two
- * independent absences (a static screen cannot fake both). Every ambiguous
- * outcome — window add failure, layout timeout, no readable frames — resolves
+ * surface subtree are structurally absent → CLEAN, evidenced either by fresh
+ * post-draw frames without the pattern (confirmed across a pattern swap) or
+ * by total post-draw SILENCE — a display mirror cannot stay silent past our
+ * own probe commit (plus the recording chip ticking 1Hz), so no-deliveries
+ * IS the task-mirror signature, not an ambiguity. Setup failures that
+ * precede any evidence — window add failure, layout timeout — still resolve
  * to CONTAMINATED, the world every shipped session already lives in, and
- * logs why.
+ * log why.
  *
  * The probe window is created from the active backend's
  * [com.playtranslate.overlay.OverlayHost] context (so it carries the right
@@ -63,11 +63,17 @@ object StreamKindProbe {
 
         val view = ProbeView(displayContext)
         val size = displayContext.displaySizePx()
+        // Deliberately TOUCHABLE (no FLAG_NOT_TOUCHABLE): pass-through
+        // overlays get their composited opacity clamped by the untrusted-
+        // touch rules (~84% measured on the Moto G, 2026-07-10 — enough to
+        // flunk an absolute color match), while a window that consumes its
+        // own touches is exempt and renders at true full alpha. The cost is
+        // a 48px square eating taps for ~1.4s right after the consent
+        // dialog closes. NOT_TOUCH_MODAL keeps every other touch flowing.
         val params = WindowManager.LayoutParams(
             SIZE_PX, SIZE_PX,
             host.windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT,
         ).apply {
@@ -82,6 +88,10 @@ object StreamKindProbe {
             // keeps the compiler honest about the API 30 method.)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
         }
+        // Anchor BEFORE the window exists: on a contaminated mirror the add's
+        // own composition delivers a frame above this seq — the freshness
+        // proof scanForPattern demands.
+        val seqAtAdd = controller.deliverySeqNow
         try {
             wm.addView(view, params)
         } catch (e: Exception) {
@@ -94,21 +104,38 @@ object StreamKindProbe {
             val loc = IntArray(2)
             view.getLocationOnScreen(loc)
             val rect = Rect(loc[0], loc[1], loc[0] + view.width, loc[1] + view.height)
-            // Give the freshly-added window its commit + composition before
-            // burning scan budget on frames that predate it.
-            waitVsync(2)
 
-            when (scanForPattern(controller, rect, swap = false, budgetMs = PHASE_A_BUDGET_MS)) {
+            // NO_FRAMES is a CLEAN verdict, not an ambiguity: on a
+            // whole-display mirror, post-draw silence is impossible — our own
+            // window commit composites into the mirror (the mechanism the
+            // delivery gate is built on; observed as this device's first
+            // FOUND, 2026-07-10 00:47), and the screen-recording chip's timer
+            // ticks a delivery every second besides. Only a task mirror can
+            // stay silent after our draw/swap: our windows aren't in it and
+            // the captured app happens to be still — which real content does
+            // constantly (the first fail-safe-to-CONTAMINATED version of
+            // this rule flapped pinhole mode over a resting news page). If
+            // the inference is ever wrong, the clean mode's echo tripwire
+            // demotes the session within two cycles.
+            when (scanForPattern(
+                controller, rect, swap = false,
+                budgetMs = PHASE_A_BUDGET_MS, minSeq = seqAtAdd,
+            )) {
                 Scan.FOUND -> return verdict(StreamKind.CONTAMINATED, "pattern A visible")
-                Scan.NO_FRAMES -> return contaminated("no frames during phase A")
+                Scan.NO_FRAMES ->
+                    return verdict(StreamKind.CLEAN, "no post-draw deliveries — task mirror inferred")
                 Scan.ABSENT -> Unit
             }
+            val seqAtSwap = controller.deliverySeqNow
             view.swap = true
             view.invalidate()
-            waitVsync(2)
-            return when (scanForPattern(controller, rect, swap = true, budgetMs = PHASE_B_BUDGET_MS)) {
+            return when (scanForPattern(
+                controller, rect, swap = true,
+                budgetMs = PHASE_B_BUDGET_MS, minSeq = seqAtSwap,
+            )) {
                 Scan.FOUND -> verdict(StreamKind.CONTAMINATED, "pattern B visible")
-                Scan.NO_FRAMES -> contaminated("no frames during phase B")
+                Scan.NO_FRAMES ->
+                    verdict(StreamKind.CLEAN, "no post-swap deliveries — task mirror inferred")
                 Scan.ABSENT -> verdict(StreamKind.CLEAN, "pattern absent across swap")
             }
         } finally {
@@ -120,24 +147,49 @@ object StreamKindProbe {
 
     private enum class Scan { FOUND, ABSENT, NO_FRAMES }
 
-    /** Poll the latched mirror for up to [budgetMs], looking for the checker
-     *  in [rect]. FOUND returns early; otherwise ABSENT if at least one frame
-     *  was readable (evidence of absence) and NO_FRAMES if none was
-     *  (absence of evidence — the caller fails safe). */
+    /** Poll the mirror for up to [budgetMs], looking for the checker in
+     *  [rect]. FOUND returns early. Only frames DELIVERED AFTER [minSeq] —
+     *  the seq observed before the pattern was drawn/swapped — count as
+     *  absence-evidence: the latch can hold a pre-probe frame indefinitely on
+     *  a static screen, and 2026-07-10's first false CLEAN on the Moto G was
+     *  exactly that — a whole scan spent re-reading one stale frame and
+     *  calling it evidence. NO_FRAMES means the mirror delivered nothing at
+     *  all after our draw/swap — which the caller reads as a TASK mirror
+     *  (see [measure]): a display mirror cannot stay silent past its own
+     *  probe commit.
+     *
+     *  On ABSENT, the last fresh frame's sampled colors at the probe rect
+     *  and the best cell-match count are logged — if a misverdict ever
+     *  recurs, that line distinguishes a mis-positioned rect (content
+     *  pixels) from a color-shifted pattern. */
     private suspend fun scanForPattern(
         controller: MediaProjectionController,
         rect: Rect,
         swap: Boolean,
         budgetMs: Long,
+        minSeq: Long,
     ): Scan {
         val deadline = SystemClock.uptimeMillis() + budgetMs
-        var framesSeen = 0
+        var freshFrames = 0
+        var bestMatched = 0
+        var lastFreshSample = ""
         while (SystemClock.uptimeMillis() < deadline) {
+            // Order matters: read the seq BEFORE claiming the frame — a
+            // delivery between the two makes the frame look fresher than
+            // proven, the unsafe direction.
+            val seqNow = controller.deliverySeqNow
             val bmp = controller.captureFrameUngated()
             if (bmp != null) {
-                framesSeen++
                 val match = try {
-                    patternMatches(bmp, rect, swap)
+                    if (seqNow > minSeq) {
+                        freshFrames++
+                        lastFreshSample = sampleLine(bmp, rect)
+                        val matched = matchedCells(bmp, rect, swap)
+                        if (matched > bestMatched) bestMatched = matched
+                        matched >= MATCH_CELLS_MIN
+                    } else {
+                        false
+                    }
                 } finally {
                     bmp.recycle()
                 }
@@ -145,35 +197,83 @@ object StreamKindProbe {
             }
             delay(FRAME_POLL_MS)
         }
-        return if (framesSeen > 0) Scan.ABSENT else Scan.NO_FRAMES
+        return if (freshFrames > 0) {
+            DetectionLog.log(
+                "MP probe: pattern absent in $freshFrames fresh frames; " +
+                    "best=$bestMatched/${(SIZE_PX / CELL_PX) * (SIZE_PX / CELL_PX)} " +
+                    "rect=$rect sampled=$lastFreshSample"
+            )
+            Scan.ABSENT
+        } else {
+            Scan.NO_FRAMES
+        }
     }
 
-    /** Sample each checker cell's center and compare against the expected
-     *  color. The tolerance absorbs color-management shifts; the two
-     *  saturated colors are ~255 levels apart per channel, so the match is
-     *  unambiguous. ≥90% of cells must agree. */
-    private fun patternMatches(bmp: Bitmap, rect: Rect, swap: Boolean): Boolean {
+    /** Corner + center cell colors of the probe rect, hex, for the
+     *  absent-verdict diagnostic line. */
+    private fun sampleLine(bmp: Bitmap, rect: Rect): String {
         if (rect.left < 0 || rect.top < 0 ||
             rect.right > bmp.width || rect.bottom > bmp.height
-        ) return false
+        ) return "rect-out-of-bounds"
+        val half = CELL_PX / 2
+        val points = listOf(
+            rect.left + half to rect.top + half,
+            rect.right - half to rect.top + half,
+            rect.centerX() to rect.centerY(),
+            rect.left + half to rect.bottom - half,
+            rect.right - half to rect.bottom - half,
+        )
+        return points.joinToString(",") { (x, y) ->
+            "%08X".format(bmp.getPixel(x, y))
+        }
+    }
+
+    /** Sample each checker cell's center and classify it by HUE DOMINANCE
+     *  against the expected phase — magenta = red and blue both exceed green
+     *  by [HUE_MARGIN]; green = green exceeds both. Deliberately NOT an
+     *  absolute color comparison: the mirror composites our window through
+     *  whatever the device does to overlays — the Moto G's opacity clamp
+     *  delivered the pattern at ~84% intensity (measured 2026-07-10,
+     *  `FFD60AD6`/`FF0AD60A`), and absolute tolerance against the pure
+     *  colors flunked enough cells to false-CLEAN. Hue dominance is
+     *  invariant under any uniform attenuation (alpha clamps, screen dim,
+     *  tone mapping) down to ~×0.17 brightness. ≥[MATCH_CELLS_MIN] of the
+     *  36 cells must classify correctly — game pixels forming a phase-
+     *  correct alternating magenta/green checker by chance is not a real
+     *  risk, and a rare false FOUND resolves in the safe direction
+     *  (CONTAMINATED = today's shipped world). */
+    private fun patternMatches(bmp: Bitmap, rect: Rect, swap: Boolean): Boolean =
+        matchedCells(bmp, rect, swap) >= MATCH_CELLS_MIN
+
+    /** Count of hue-correct cells; also feeds the absent-verdict log. */
+    private fun matchedCells(bmp: Bitmap, rect: Rect, swap: Boolean): Int {
+        if (rect.left < 0 || rect.top < 0 ||
+            rect.right > bmp.width || rect.bottom > bmp.height
+        ) return 0
         val cells = SIZE_PX / CELL_PX
         var matched = 0
         for (r in 0 until cells) {
             for (c in 0 until cells) {
                 val px = rect.left + c * CELL_PX + CELL_PX / 2
                 val py = rect.top + r * CELL_PX + CELL_PX / 2
-                val expected = if (cellIsA(r, c, swap)) COLOR_A else COLOR_B
-                if (channelsClose(expected, bmp.getPixel(px, py))) matched++
+                if (cellHueMatches(cellIsA(r, c, swap), bmp.getPixel(px, py))) matched++
             }
         }
-        val total = cells * cells
-        return matched * 10 >= total * 9
+        return matched
     }
 
-    private fun channelsClose(a: Int, b: Int): Boolean =
-        abs(((a shr 16) and 0xFF) - ((b shr 16) and 0xFF)) <= TOLERANCE &&
-            abs(((a shr 8) and 0xFF) - ((b shr 8) and 0xFF)) <= TOLERANCE &&
-            abs((a and 0xFF) - (b and 0xFF)) <= TOLERANCE
+    /** Hue classification of one sampled pixel against the expected cell
+     *  color. Internal for the JVM test. */
+    internal fun cellHueMatches(expectMagenta: Boolean, pixel: Int): Boolean {
+        val r = (pixel shr 16) and 0xFF
+        val g = (pixel shr 8) and 0xFF
+        val b = pixel and 0xFF
+        return if (expectMagenta) {
+            r - g >= HUE_MARGIN && b - g >= HUE_MARGIN
+        } else {
+            g - r >= HUE_MARGIN && g - b >= HUE_MARGIN
+        }
+    }
 
     private fun cellIsA(row: Int, col: Int, swap: Boolean): Boolean =
         ((row + col) % 2 == 0) != swap
@@ -216,23 +316,19 @@ object StreamKindProbe {
             }
         } != null
 
-    private suspend fun waitVsync(frames: Int) {
-        repeat(frames) {
-            suspendCancellableCoroutine<Unit> { cont ->
-                Choreographer.getInstance().postFrameCallback {
-                    if (cont.isActive) cont.resume(Unit)
-                }
-            }
-        }
-    }
-
     private const val SIZE_PX = 48
     private const val CELL_PX = 8
     private const val COLOR_A = 0xFFFF00FF.toInt() // magenta
     private const val COLOR_B = 0xFF00FF00.toInt() // green
-    private const val TOLERANCE = 48
-    private const val PHASE_A_BUDGET_MS = 600L
-    private const val PHASE_B_BUDGET_MS = 400L
+    /** Minimum per-channel dominance for hue classification. Survives
+     *  uniform attenuation down to ~×0.17 of the drawn intensity. */
+    private const val HUE_MARGIN = 40
+
+    /** Hue-correct cells (of 36) required for FOUND — 75%. */
+    private const val MATCH_CELLS_MIN = 27
+
+    private const val PHASE_A_BUDGET_MS = 900L
+    private const val PHASE_B_BUDGET_MS = 500L
     private const val FRAME_POLL_MS = 33L
     private const val LAYOUT_TIMEOUT_MS = 500L
 }

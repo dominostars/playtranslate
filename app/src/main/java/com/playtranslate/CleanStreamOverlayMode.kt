@@ -484,14 +484,18 @@ class CleanStreamOverlayMode(
 
     /** One box reading back its own translation at its own rect. Guarded
      *  against non-discriminating boxes (translation ≈ source: numbers,
-     *  names) — those can't distinguish echo from game text. */
+     *  names) — those can't distinguish echo from game text. The match is
+     *  [OverlayToolkit.echoesTranslation] (bag-overlap), NOT exact-ish
+     *  comparison: 720p reads of our rendered text arrive garbled and merged
+     *  with the text underneath, which is precisely how the 2026-07-10
+     *  false-CLEAN churn slipped past the first version of this check. */
     private fun isOwnEcho(groups: List<OcrManager.OcrGroup>, boxes: List<TextBox>): Boolean {
         for (box in boxes) {
             if (box.translatedText.isEmpty()) continue
             if (!OverlayToolkit.isSignificantChange(box.translatedText, box.sourceText)) continue
             for (g in groups) {
                 if (!Rect.intersects(g.bounds, box.bounds)) continue
-                if (!OverlayToolkit.isSignificantChange(g.text, box.translatedText)) return true
+                if (OverlayToolkit.echoesTranslation(g.text, box.translatedText)) return true
             }
         }
         return false
