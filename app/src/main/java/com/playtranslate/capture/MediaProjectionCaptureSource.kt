@@ -61,6 +61,13 @@ class MediaProjectionCaptureSource(
         // unless live mode is running, and live mode running means consent
         // is already held so this [ensureConsent] short-circuits.
         if (!controller.ensureConsent()) return null
+        // One-shot capture can be the session's FIRST capture — the consent
+        // dialog above may have just offered the single-app choice. Resolve
+        // the stream kind before the gated clean path runs: on a task-scoped
+        // stream the blank-and-await-repaint protocol can never be satisfied
+        // (our windows don't composite into the mirror), so cleanCapture
+        // must know to short-circuit. Cached per session; instant thereafter.
+        controller.resolveStreamKind()
         return captureMutex.withLock { cleanCapture(displayId) }
     }
 
@@ -87,6 +94,15 @@ class MediaProjectionCaptureSource(
      * helper never re-locks.
      */
     private suspend fun cleanCapture(displayId: Int): Bitmap? {
+        // Task-scoped ("single app") stream: this backend's overlay windows
+        // are structurally absent from the mirror — there is nothing to
+        // blank — and our own window mutations never composite into it, so
+        // a post-blank freshness gate would only burn its budget waiting for
+        // a repaint delivery that cannot come. Serve the current frame.
+        if (controller.streamKind == StreamKind.CLEAN) {
+            warnIfNotProjected(displayId)
+            return controller.captureFrameUngated()
+        }
         val host = CaptureBackendResolver.active().overlayHost
         // Anchor BEFORE the blank. The blank's own repaint must satisfy the
         // freshness predicate — anchoring after the blank was submitted let

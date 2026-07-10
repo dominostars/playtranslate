@@ -7,9 +7,12 @@ import android.graphics.Rect
 import android.text.TextPaint
 import com.playtranslate.language.HintTextAnnotation
 import com.playtranslate.language.SourceLanguageEngine
+import com.playtranslate.language.TextAlignment
+import com.playtranslate.language.TextOrientation
 import com.playtranslate.ui.TextBox
 import androidx.core.graphics.get
 import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
 
 /**
  * Pure, stateless functions for building overlay boxes, sampling colors, and
@@ -38,6 +41,42 @@ object OverlayToolkit {
         val maxLen = maxOf(a.length, b.length)
         if (maxLen > 0 && diff.toFloat() / maxLen > LIVE_DEDUP_PCT_THRESHOLD) return true
         return false
+    }
+
+    /** Max bag-of-chars difference (as a fraction of the compared prefix) for
+     *  [isEvolvingText]'s prefix match — ≈ the 85%-similarity gate GSM's
+     *  evolving-text detector converged on. */
+    private const val EVOLVING_PREFIX_MAX_DIFF = 0.15f
+
+    /**
+     * Is [new] a growing-prefix extension of [old] — the typewriter
+     * signature? True when [new] is strictly longer and its prefix of
+     * [old]'s length matches [old] within [EVOLVING_PREFIX_MAX_DIFF]
+     * bag-of-chars difference, retried with up to `min(2, old.length / 4)`
+     * trailing chars of [old] trimmed — the newest glyphs of a mid-render
+     * line often rasterize/OCR wrong (GSM's tail tolerance). Used by
+     * [StabilityHold] to scope its typewriter deferral: a CHANGED region
+     * whose new text merely EXTENDS the displayed text is still being
+     * revealed; anything else is a real content change.
+     */
+    fun isEvolvingText(old: String, new: String): Boolean {
+        if (old.isEmpty() || new.length <= old.length) return false
+        if (prefixSimilar(old, new)) return true
+        val trim = minOf(2, old.length / 4)
+        if (trim == 0) return false
+        return prefixSimilar(old.substring(0, old.length - trim), new)
+    }
+
+    /** Bag-of-chars comparison of [old] against the aligned prefix of [new]. */
+    private fun prefixSimilar(old: String, new: String): Boolean {
+        val prefix = new.substring(0, old.length)
+        val freqA = old.groupingBy { it }.eachCount()
+        val freqB = prefix.groupingBy { it }.eachCount()
+        var diff = 0
+        for (c in freqA.keys + freqB.keys) {
+            diff += kotlin.math.abs((freqA[c] ?: 0) - (freqB[c] ?: 0))
+        }
+        return diff.toFloat() / old.length <= EVOLVING_PREFIX_MAX_DIFF
     }
 
     /** Does detected text have significant additions over existing? */
@@ -524,6 +563,73 @@ object OverlayToolkit {
         if (dedupKey.isEmpty()) return null
 
         return OcrPipelineResult(ocrResult, dedupKey, crop.left, crop.top, raw.width, raw.height)
+    }
+
+    // ── Placeholder boxes + translation (shared by live overlay modes) ─────
+
+    /**
+     * Build placeholder [TextBox]es with empty [TextBox.translatedText]
+     * (skeleton indicators). Instant, no network — background/text colors are
+     * sampled from [raw] at each group's bounds (offset by [left]/[top] crop).
+     *
+     * Used by [CleanStreamOverlayMode]; [PinholeOverlayMode] keeps its own
+     * private copy so the legacy tier stays byte-identical. Service-free by
+     * design (pure box building).
+     */
+    internal fun buildPlaceholderBoxes(
+        texts: List<String>, bounds: List<Rect>, lineCounts: List<Int>,
+        raw: Bitmap, left: Int, top: Int,
+        orientations: List<TextOrientation> = emptyList(),
+        alignments: List<TextAlignment> = emptyList(),
+    ): List<TextBox> {
+        val colorScale = 4
+        val colorRef = raw.scale(raw.width / colorScale, raw.height / colorScale, false)
+        val colors: List<Pair<Int, Int>>
+        try {
+            colors = sampleGroupColors(colorRef, bounds, left, top, colorScale)
+        } finally {
+            colorRef.recycle()
+        }
+        return bounds.mapIndexed { idx, rect ->
+            val (bg, tc) = colors.getOrElse(idx) { Pair(Color.argb(224, 0, 0, 0), Color.WHITE) }
+            val orient = orientations.getOrElse(idx) { TextOrientation.HORIZONTAL }
+            val align = alignments.getOrElse(idx) { TextAlignment.LEFT }
+            TextBox("", rect, bg, tc, lineCounts.getOrElse(idx) { 1 },
+                sourceText = texts.getOrElse(idx) { "" }, orientation = orient, alignment = align)
+        }
+    }
+
+    /**
+     * Translate [texts] (cache-first) and return [placeholders] with filled
+     * [TextBox.translatedText]. Only cache misses hit [service]'s translator.
+     */
+    internal suspend fun translatePlaceholders(
+        service: CaptureService, placeholders: List<TextBox>, texts: List<String>,
+    ): List<TextBox> {
+        val uncachedIndices = mutableListOf<Int>()
+        val uncachedTexts = mutableListOf<String>()
+        val translations = Array(texts.size) { "" }
+
+        for ((idx, text) in texts.withIndex()) {
+            val cached = service.getCachedTranslation(text)
+            if (cached != null) {
+                translations[idx] = cached
+            } else {
+                uncachedIndices.add(idx)
+                uncachedTexts.add(text)
+            }
+        }
+
+        if (uncachedTexts.isNotEmpty()) {
+            val results = service.translateGroupsSeparately(uncachedTexts)
+            for ((i, idx) in uncachedIndices.withIndex()) {
+                translations[idx] = results.getOrNull(i)?.text ?: ""
+            }
+        }
+
+        return placeholders.mapIndexed { idx, ph ->
+            ph.copy(translatedText = translations.getOrElse(idx) { "" })
+        }
     }
 
     // ── Factory ───────────────────────────────────────────────────────────

@@ -209,6 +209,20 @@ class OverlayHost(
         }
     }
 
+    /** A display-scoped Context derived from THIS host's context — the only
+     *  context that can add windows of this host's [windowType]
+     *  (TYPE_ACCESSIBILITY_OVERLAY is tied to the accessibility service's
+     *  context). For probe-class windows that are deliberately NOT registered
+     *  through [addOverlayWindow]: an unregistered window is invisible to
+     *  [prepareForCleanCapture]'s blanking, which is exactly what a capture
+     *  probe needs — a concurrent clean capture must not be able to blank the
+     *  probe mid-measurement. Callers own the addView/removeView lifecycle. */
+    fun displayContextFor(displayId: Int): Context? {
+        val display = context.getSystemService(DisplayManager::class.java)
+            ?.getDisplay(displayId) ?: return null
+        return context.createDisplayContext(display)
+    }
+
     /** Unregister and call [WindowManager.removeView]. Returns true if the
      *  view was registered (and thus removed). Returns false if the view was
      *  never registered — callers that fall back to a direct removeView for

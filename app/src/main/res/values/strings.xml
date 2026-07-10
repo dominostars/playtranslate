@@ -739,6 +739,11 @@
     <!-- Error toast shown when MediaProjection was revoked mid-session
          and live mode was forced to stop. -->
     <string name="error_screen_capture_denied">Live mode stopped — screen capture permission was denied.</string>
+    <!-- Single-app ("game only") capture stream states. Pending l10n batch. -->
+    <!-- Status message in the in-app panel while live mode is paused because the user's chosen single-app capture target left fullscreen (split screen / freeform); clears itself. -->
+    <string name="error_single_app_not_fullscreen">Translation is paused — the captured app isn\'t filling the screen. It resumes when the app is fullscreen again.</string>
+    <!-- Status message in the in-app panel when every captured frame is black because the captured app sets FLAG_SECURE (banking apps, DRM video); live mode keeps polling. -->
+    <string name="error_capture_blocked_secure">Nothing can be read — this app blocks screen capture.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SECTION HEADERS on the translation-result screen.

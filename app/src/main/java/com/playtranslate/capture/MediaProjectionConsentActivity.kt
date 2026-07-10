@@ -3,9 +3,7 @@ package com.playtranslate.capture
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -42,21 +40,20 @@ class MediaProjectionConsentActivity : ComponentActivity() {
             finish()
             return
         }
-        // API 34+ added single-app capture mode to the system consent dialog.
-        // Pass createConfigForDefaultDisplay so the dialog only offers
-        // "Start now / Cancel" against the full default display, not a
-        // single-app choice. PlayTranslate's overlay/coord-space assumes
-        // it's mirroring the full display (see [MediaProjectionController.
-        // captureSize] sourcing from displaySizePx), and live mode would
-        // pause whenever the user switched apps to view translations in
-        // single-app mode — both broken UX. API ≤ 33 has no single-app
-        // mode anyway, so the no-arg call is equivalent there.
-        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            mgr.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay())
-        } else {
-            mgr.createScreenCaptureIntent()
-        }
-        launcher.launch(intent)
+        // API 34+ shows the system's capture-scope chooser: "a single app" or
+        // the entire screen. Single-app selection is deliberately allowed: a
+        // task-scoped stream mirrors only the chosen app's surface subtree, so
+        // our overlay windows are structurally absent from it, and live
+        // TRANSLATION mode routes to a clean-stream pipeline when it detects
+        // one. No public API reveals which option the user picked, so the
+        // stream kind is measured at session start — see
+        // [MediaProjectionController.resolveStreamKind]. The two reasons this
+        // used to force createConfigForDefaultDisplay — the full-display
+        // coord-space assumption, and live mode pausing when the captured app
+        // leaves the foreground — are handled where they belong now: the
+        // clean pipeline's identity guard and content-visibility handling.
+        // API ≤ 33 has no single-app option, so the dialog is unchanged there.
+        launcher.launch(mgr.createScreenCaptureIntent())
     }
 
     companion object {

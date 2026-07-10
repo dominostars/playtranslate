@@ -4,12 +4,14 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import android.graphics.Point
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
@@ -23,6 +25,7 @@ import com.playtranslate.displaySizePx
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.withContext
@@ -31,6 +34,22 @@ import java.util.concurrent.atomic.AtomicReference
 import androidx.core.graphics.createBitmap
 
 private const val TAG = "MediaProjectionCtl"
+
+/**
+ * What the MediaProjection stream contains — resolved once per consent
+ * session by [MediaProjectionController.resolveStreamKind].
+ *
+ * [CLEAN]: the user picked "a single app" in the API 34+ consent dialog. The
+ * stream mirrors only that task's surface subtree — this app's overlay
+ * windows, system UI, and every other app are structurally absent (never
+ * composited into the output). [CONTAMINATED]: whole-display capture — the
+ * stream shows everything, including our own overlays; the world every
+ * pre-34 session lives in. [UNKNOWN]: not resolved this session (no consent
+ * yet, or an API ≤ 33 device where nothing ever asks). Consumers must treat
+ * UNKNOWN exactly like CONTAMINATED — CLEAN is the only value that changes
+ * behavior.
+ */
+enum class StreamKind { UNKNOWN, CONTAMINATED, CLEAN }
 
 /**
  * Owns the MediaProjection session — the consent token, the [MediaProjection],
@@ -240,6 +259,34 @@ class MediaProjectionController(private val service: CaptureService) {
      *  so capture, OCR, and overlays under this backend all stay on it — there
      *  is no API to mirror a secondary display. */
     val projectedDisplayId: Int = Display.DEFAULT_DISPLAY
+
+    // ── Stream kind + captured-content state (API 34+ single-app capture) ─
+
+    /** What this session's stream contains. Resolved by [resolveStreamKind];
+     *  UNKNOWN until then and again after [teardown] (the choice is per
+     *  consent). Consumers treat UNKNOWN like CONTAMINATED. */
+    @Volatile var streamKind: StreamKind = StreamKind.UNKNOWN
+        private set
+
+    private val _contentVisible = MutableStateFlow(true)
+    /** Whether the captured content is currently visible. Only a single-app
+     *  session ever flips this: the platform hides the mirrored surface (the
+     *  stream goes black, not frozen) when the captured task leaves the
+     *  foreground, and `onCapturedContentVisibilityChanged` reports it at the
+     *  transition. Whole-display capture never becomes invisible. Reset to
+     *  true on teardown. */
+    val contentVisible: StateFlow<Boolean> get() = _contentVisible
+
+    private val _contentSize = MutableStateFlow<Point?>(null)
+    /** Size of the captured region in px, from `onCapturedContentResize` —
+     *  task bounds (`WindowMetrics#getBounds()` semantics) in a single-app
+     *  session, display bounds for whole-display capture. Null until the
+     *  first callback (which fires right after capture begins on API 34+;
+     *  never on API ≤ 33). A value equal to the display size means the frame
+     *  maps 1:1 onto screen coordinates; anything else means the content is
+     *  letterboxed into the frame and its on-screen offset is unknowable
+     *  (no public API), so consumers must pause rather than misplace. */
+    val contentSize: StateFlow<Point?> get() = _contentSize
 
     /** Observers notified right after a teardown drops the held consent. The
      *  Settings sheet registers one to refresh its Turn On/Off buttons —
@@ -494,12 +541,56 @@ class MediaProjectionController(private val service: CaptureService) {
             onProjectionLost()
             return false
         }
-        // The callback must be registered before createVirtualDisplay.
+        // The callback must be registered before createVirtualDisplay. The
+        // content callbacks exist since API 34 and are never invoked below
+        // it; they run on [mainHandler], so the StateFlow writes and the
+        // DetectionLog ring buffer are both touched from main only.
         proj.registerCallback(object : MediaProjection.Callback() {
             override fun onStop() { onProjectionLost() }
+            override fun onCapturedContentResize(width: Int, height: Int) {
+                _contentSize.value = Point(width, height)
+                DetectionLog.log("MP content resize: ${width}x$height")
+            }
+            override fun onCapturedContentVisibilityChanged(isVisible: Boolean) {
+                _contentVisible.value = isVisible
+                DetectionLog.log("MP content visible: $isVisible")
+            }
         }, mainHandler)
         projection = proj
         return true
+    }
+
+    /**
+     * Resolve what this session's stream contains, once per consent. On API
+     * ≤ 33 the consent dialog has no single-app option, so the answer is
+     * CONTAMINATED by construction (no probe). On 34+ there is no public API
+     * exposing the user's choice, so it is measured empirically by
+     * [StreamKindProbe]: a small full-alpha window is drawn and the mirror
+     * checked for it — present ⇒ whole-display (CONTAMINATED), absent across
+     * a pattern swap ⇒ task capture (CLEAN). Every ambiguous outcome resolves
+     * to CONTAMINATED, today's shipped world. Requires consent to be held;
+     * returns UNKNOWN (without caching) when it isn't. Cached until
+     * [teardown] — the choice can differ on every fresh consent.
+     */
+    suspend fun resolveStreamKind(): StreamKind {
+        streamKind.takeIf { it != StreamKind.UNKNOWN }?.let { return it }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            streamKind = StreamKind.CONTAMINATED
+            return streamKind
+        }
+        if (!hasConsent) return StreamKind.UNKNOWN
+        val kind = StreamKindProbe.measure(this)
+        streamKind = kind
+        return kind
+    }
+
+    /** Clean-stream contamination tripwire: the live mode observed its own
+     *  rendering echoed back through the stream, so the CLEAN verdict was
+     *  wrong (a probe misfire — see [StreamKindProbe]'s residual). Demote for
+     *  the rest of the session; the next consent re-probes from scratch. */
+    fun demoteStreamKindToContaminated(reason: String) {
+        DetectionLog.log("MP stream kind: demoted to CONTAMINATED ($reason)")
+        streamKind = StreamKind.CONTAMINATED
     }
 
     private suspend fun requestConsent(): Boolean {
@@ -649,7 +740,12 @@ class MediaProjectionController(private val service: CaptureService) {
         projection?.let { try { it.stop() } catch (_: Exception) {} }
         projection = null
         // The token is single-use on API 34+ — once the projection stops, the
-        // next capture must re-prompt for consent.
+        // next capture must re-prompt for consent. The stream kind and the
+        // captured-content state die with the session: the next consent can
+        // make a different single-app/whole-display choice.
+        streamKind = StreamKind.UNKNOWN
+        _contentVisible.value = true
+        _contentSize.value = null
         resultCode = Activity.RESULT_CANCELED
         resultData = null
         // Notify observers once consent is actually gone (resultData cleared),

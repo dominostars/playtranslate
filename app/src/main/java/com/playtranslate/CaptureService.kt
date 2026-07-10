@@ -67,6 +67,7 @@ import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.capture.MediaProjectionCaptureBackend
 import com.playtranslate.capture.MediaProjectionCaptureSource
 import com.playtranslate.capture.MediaProjectionController
+import com.playtranslate.capture.StreamKind
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.language.ChineseScriptVariant
@@ -380,6 +381,11 @@ class CaptureService : Service() {
                     DetectionLog.log("MP probe: consent declined")
                     return@launch
                 }
+                DetectionLog.log(
+                    "MP probe: streamKind=${mediaProjectionController.streamKind} " +
+                        "contentSize=${mediaProjectionController.contentSize.value} " +
+                        "visible=${mediaProjectionController.contentVisible.value}"
+                )
                 val bmp = mediaProjectionCaptureSource
                     .requestRaw(mediaProjectionController.projectedDisplayId)
                 if (bmp == null) {
@@ -1083,9 +1089,19 @@ class CaptureService : Service() {
         // with a stale display set (review finding). Structured
         // concurrency, not a flag: the pending start is a Job that
         // stopLive() — and any newer start — cancels outright.
+        // API 34+ lets the consent dialog scope the stream to a single app;
+        // TRANSLATION live mode routes by what was actually granted (clean
+        // task stream vs whole display), so the stream kind must be resolved
+        // before the mode instances are constructed. UNKNOWN with consent
+        // held means "not probed this session" — divert through the async
+        // path even when capture itself is already ready.
+        val needsStreamKind = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+            desiredFlavor() == OverlayFlavor.TRANSLATION &&
+            mediaProjectionController.hasConsent &&
+            mediaProjectionController.streamKind == StreamKind.UNKNOWN
         pendingLiveStart?.cancel()
         pendingLiveStart = null
-        if (backend.canCaptureWithoutPrompting && !wantMpStreamConsent) {
+        if (backend.canCaptureWithoutPrompting && !wantMpStreamConsent && !needsStreamKind) {
             beginLiveCapture()
         } else {
             pendingLiveStart = serviceScope.launch {
@@ -1100,6 +1116,15 @@ class CaptureService : Service() {
                 // A cancel that raced the await lands here at the next
                 // suspension boundary; ensureActive makes it explicit.
                 ensureActive()
+                // Consent may have just been granted above — re-check, then
+                // resolve the stream kind (cached per session; instant when
+                // already resolved or on API ≤ 33).
+                if (desiredFlavor() == OverlayFlavor.TRANSLATION &&
+                    mediaProjectionController.hasConsent
+                ) {
+                    mediaProjectionController.resolveStreamKind()
+                    ensureActive()
+                }
                 beginLiveCapture()
             }
             // No completion-nulling: cancel() on a completed Job is a no-op,
@@ -1154,6 +1179,37 @@ class CaptureService : Service() {
             OverlayMode.FURIGANA -> OverlayFlavor.FURIGANA
             OverlayMode.TRANSLATION -> OverlayFlavor.TRANSLATION
         }
+    }
+
+    /**
+     * The implementation class a fresh live-mode instance for [flavor] should
+     * have right now. TRANSLATION forks on the MediaProjection stream kind:
+     * a single-app ("clean") stream gets [CleanStreamOverlayMode] — the
+     * reconciler-driven wait→read→update loop — while everything else (whole
+     * display, accessibility capture, API ≤ 33, kind not yet resolved) keeps
+     * the pinhole tier. [setLiveDisplays] compares running instances against
+     * this, so a stream-kind change (new consent session, tripwire demotion)
+     * rebuilds through the same diff that handles flavor changes.
+     */
+    private fun desiredModeClass(flavor: OverlayFlavor): Class<out LiveMode> = when (flavor) {
+        OverlayFlavor.IN_APP_ONLY -> InAppOnlyMode::class.java
+        OverlayFlavor.FURIGANA -> FuriganaMode::class.java
+        OverlayFlavor.TRANSLATION ->
+            if (mediaProjectionController.streamKind == StreamKind.CLEAN)
+                CleanStreamOverlayMode::class.java
+            else PinholeOverlayMode::class.java
+    }
+
+    /** Clean-stream tripwire follow-through: the stream kind was just demoted
+     *  ([MediaProjectionController.demoteStreamKindToContaminated]), so the
+     *  running TRANSLATION mode's class no longer matches [desiredModeClass].
+     *  Re-enter the standard mutator with the current display set — its
+     *  class-mismatch diff stops the clean mode and rebuilds pinhole mode.
+     *  Called from the demoting mode's own cycle (main thread); the caller
+     *  must return immediately after, since its scope is cancelled here. */
+    internal fun onStreamKindDemoted() {
+        if (liveModes.isEmpty()) return
+        setLiveDisplays(liveModes.keys.toSet())
     }
 
     /**
@@ -1227,8 +1283,12 @@ class CaptureService : Service() {
         // subsequent mutation of [liveModes] can't perturb them.
         val snapshot: Map<Int, LiveMode> = liveModes.toMap()
         val toStop = snapshot.keys - actualTarget
+        // Class-mismatch subsumes flavor-mismatch (each flavor maps to a
+        // distinct class) and additionally catches the TRANSLATION
+        // clean-vs-pinhole fork when the stream kind changes mid-session.
+        val desiredClass = desiredModeClass(flavor)
         val toRebuild = (snapshot.keys intersect actualTarget)
-            .filter { snapshot.getValue(it).flavor != flavor }
+            .filter { snapshot.getValue(it).javaClass != desiredClass }
             .toSet()
         val toAdd = actualTarget - snapshot.keys
 
@@ -1253,7 +1313,10 @@ class CaptureService : Service() {
             when (flavor) {
                 OverlayFlavor.IN_APP_ONLY -> InAppOnlyMode(this, id)
                 OverlayFlavor.FURIGANA -> FuriganaMode(this, id)
-                OverlayFlavor.TRANSLATION -> PinholeOverlayMode(this, id)
+                OverlayFlavor.TRANSLATION ->
+                    if (desiredClass == CleanStreamOverlayMode::class.java)
+                        CleanStreamOverlayMode(this, id)
+                    else PinholeOverlayMode(this, id)
             }
         }
 
@@ -1791,8 +1854,18 @@ class CaptureService : Service() {
     /** Run the shared OCR pipeline on a frame captured from [displayId].
      *  Every per-display parameter (active region, status bar height, icon
      *  rect to black out) is resolved for [displayId] — the pipeline has no
-     *  notion of a "primary" display. Caller still owns [raw]. */
-    internal suspend fun runOcr(raw: Bitmap, displayId: Int): OverlayToolkit.OcrPipelineResult? {
+     *  notion of a "primary" display. Caller still owns [raw].
+     *
+     *  [statusBarHeightOverride]: the crop's status-bar exclusion, when the
+     *  frame's top rows aren't the status bar. A single-app ("clean")
+     *  MediaProjection stream contains no system UI at all — its top rows are
+     *  game content — so [CleanStreamOverlayMode] passes 0; every other
+     *  caller leaves the per-display default. */
+    internal suspend fun runOcr(
+        raw: Bitmap,
+        displayId: Int,
+        statusBarHeightOverride: Int? = null,
+    ): OverlayToolkit.OcrPipelineResult? {
         val prefs = Prefs(this)
         val seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? =
             if (BuildConfig.DEBUG && prefs.debugSaveOcrSeed) {
@@ -1803,7 +1876,7 @@ class CaptureService : Service() {
             activeRegionForDisplay(displayId),
             sourceLang,
             ocrManager,
-            getStatusBarHeightForDisplay(displayId),
+            statusBarHeightOverride ?: getStatusBarHeightForDisplay(displayId),
             seedWriter = seedWriter
         )
     }
