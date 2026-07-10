@@ -184,8 +184,15 @@ class FuriganaMode(
         if (!service.isConfigured) { raw.recycle(); return }
 
         try {
-            // Shared OCR pipeline: crop → blackout icon → OCR → filter source chars
-            val pipeline = service.runOcr(raw, displayId)
+            // Shared OCR pipeline: crop → blackout icon → OCR → filter source chars.
+            // The frame came from the active live source (the loop this mode
+            // started) — forward it so the status-bar crop decision matches
+            // what the frame actually contains (task-scoped frames have none).
+            val pipeline = service.runOcr(
+                raw, displayId,
+                frameIncludesSystemUi = CaptureBackendResolver
+                    .activeLiveCaptureSource?.framesIncludeSystemUi ?: true,
+            )
 
             if (pipeline == null) {
                 cachedFuriganaBoxes = null
@@ -366,7 +373,11 @@ class FuriganaMode(
         // OCR the patched frame asynchronously
         rawOcrJob = scope.launch {
             try {
-                val pipeline = service.runOcr(patched, displayId)
+                val pipeline = service.runOcr(
+                    patched, displayId,
+                    frameIncludesSystemUi = CaptureBackendResolver
+                        .activeLiveCaptureSource?.framesIncludeSystemUi ?: true,
+                )
                 if (pipeline != null) {
                     val prevText = lastOcrText
                     val prevKanji = if (prevText != null) kanjiOnly(prevText) else ""

@@ -149,8 +149,15 @@ class OneShotManager(private val service: CaptureService) {
         // 1. Capture clean screenshot. Null is a real, reachable outcome
         //    (consent loss, no qualifying delivery inside the freshness
         //    budget) — it must surface, never silently strand the gesture.
-        val raw: Bitmap = service.captureScreen(displayId)
+        // Snapshot the producing source before capture (review round 7:
+        // source-sensitive crop decisions must not re-resolve the mutable
+        // active backend after suspension points).
+        val frameSrc = CaptureBackendResolver.active().captureSource
+        val raw: Bitmap = frameSrc?.requestClean(displayId)
             ?: return HoldOutcome.Failed("screenshot failed")
+        // Value-snapshot the frame's provenance immediately (round 8: the
+        // source property is a live read over mutable stream kind).
+        val frameIncludesUi = frameSrc.framesIncludeSystemUi
 
         try {
             if (cycle.generation != currentGeneration) return HoldOutcome.Superseded
@@ -158,8 +165,11 @@ class OneShotManager(private val service: CaptureService) {
             // 2. Flash region indicator
             service.flashRegionIndicator(displayId)
 
-            // 3. OCR via shared pipeline
-            val pipeline = service.runOcr(raw, displayId)
+            // 3. OCR via shared pipeline. The frame came from the active
+            // backend's capture source — forward it so the status-bar crop
+            // matches the frame's contents (a single-app stream has no bar,
+            // and cropping would eat game content).
+            val pipeline = service.runOcr(raw, displayId, frameIncludesSystemUi = frameIncludesUi)
             if (cycle.generation != currentGeneration) return HoldOutcome.Superseded
 
             if (pipeline == null) return HoldOutcome.NoText

@@ -112,7 +112,6 @@ class CleanStreamOverlayMode(
 
     private var blackStreak = 0
     private var echoStreak = 0
-    private var identityNotified = false
     private var secureNotified = false
 
     /** Language-independent misroute net — see [ThrashDetector]. Fed kept
@@ -175,8 +174,7 @@ class CleanStreamOverlayMode(
      * dead (adversarial-review finding). Geometry reseeds from the next OCR
      * pass.
      *
-     * The user-facing notification latches ([identityNotified],
-     * [secureNotified]) deliberately live OUTSIDE this clear: their guards
+     * The user-facing notification latch ([secureNotified]) deliberately live OUTSIDE this clear: their guards
      * invoke it on every trip, and clearing the latch with it would re-emit
      * the same message every cycle. They reset in [resetState] (mode
      * restart) and where their condition clears.
@@ -199,7 +197,6 @@ class CleanStreamOverlayMode(
         currentJob?.cancel()
         clearEvidenceState()
         inputBurstUntilMs = 0L
-        identityNotified = false
         secureNotified = false
     }
 
@@ -319,6 +316,7 @@ class CleanStreamOverlayMode(
             return 0L
         }
 
+
         cycleNum++
         val debug = prefs.debugLiveMode
         forceNextCycle = false
@@ -329,8 +327,16 @@ class CleanStreamOverlayMode(
         val captureAtMs = SystemClock.uptimeMillis()
         val raw = mgr.requestRaw(displayId)
         if (raw == null) {
-            // Transient failure (or consent loss — requestRaw's
-            // checkConsentLost stops live mode itself in that case).
+            // Generators of a null capture, enumerated: transient failure
+            // (retry), consent loss (requestRaw's checkConsentLost stops live
+            // mode itself), or the SOURCE's geometry refusal — CLEAN stream
+            // whose task stopped filling the frame (split screen / freeform;
+            // the source owns the one-time user message). For the refusal,
+            // stale boxes must not float over wrong geometry: drop them and
+            // poll at interval until the task is fullscreen again.
+            if (!controller.frameGeometryProven()) {
+                clearDisplayed()
+            }
             forceNextCycle = true
             return prefs.captureIntervalMs
         }
@@ -343,21 +349,9 @@ class CleanStreamOverlayMode(
                 return prefs.captureIntervalMs
             }
 
-            // Identity guard — fullscreen-only is a platform limit.
-            val contentSize = controller.contentSize.value
-            if (contentSize != null &&
-                (contentSize.x != raw.width || contentSize.y != raw.height)
-            ) {
-                if (!identityNotified) {
-                    identityNotified = true
-                    service.emitError(service.getString(R.string.error_single_app_not_fullscreen))
-                }
-                clearDisplayed()
-                // Deliveries (and a resize callback) keep coming while the
-                // user rearranges windows; each look re-checks cheaply.
-                return prefs.captureIntervalMs
-            }
-            identityNotified = false
+            // (Identity itself is enforced upstream: the capture source
+            // refuses to serve CLEAN frames while geometry is unproven or
+            // non-fullscreen, so a frame reaching here is coordinate-safe.)
 
             // Secure-content guard: FLAG_SECURE renders black, silently. The
             // notified latch (not the streak) gates the message — the clear
@@ -378,7 +372,10 @@ class CleanStreamOverlayMode(
             // OCR the full crop. No status-bar exclusion: a task stream
             // contains no system UI — those top rows are game content.
             val ocrStartMs = SystemClock.uptimeMillis()
-            val pipeline = service.runOcr(raw, displayId, statusBarHeightOverride = 0)
+            val pipeline = service.runOcr(
+                raw, displayId,
+                frameIncludesSystemUi = mgr.framesIncludeSystemUi,
+            )
             val ocrMs = SystemClock.uptimeMillis() - ocrStartMs
 
             // A hold gesture may have started during the OCR suspension.

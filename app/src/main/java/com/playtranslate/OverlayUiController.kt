@@ -1583,7 +1583,11 @@ class OverlayUiController(
         val launchGeometry = DisplayGeometry(size.x, size.y, display.rotation)
         val gen = captureGeneration
         captureJob = scope.launch {
-            val bitmap = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
+            // Snapshot the producing source and carry it with the bitmap —
+            // never re-resolve the active backend for source-sensitive
+            // decisions after suspension (review round 7).
+            val frameSrc = CaptureBackendResolver.active().captureSource
+            val bitmap = frameSrc?.requestClean(displayId)
             // Single validation gate at the ONLY pre-panel suspension point. Bail if EITHER:
             //  • a newer capture / teardown superseded us (generation bumped), or
             //  • the captured display reconfigured under us (live geometry != the launch
@@ -1617,7 +1621,10 @@ class OverlayUiController(
             svc.configureOverride(displayId, region)
             // Do NOT recycle the bitmap — processScreenshot consumes it async on
             // the service scope and recycles it itself.
-            val session = if (bitmap != null) svc.processScreenshot(bitmap, displayId)
+            // Value-snapshot at capture (round 8): the fact, not the object.
+            val frameIncludesUi = frameSrc?.framesIncludeSystemUi ?: true
+            val session = if (bitmap != null)
+                svc.processScreenshot(bitmap, displayId, frameIncludesSystemUi = frameIncludesUi)
                 else svc.captureOnce(displayId)
             overlay.observe(session)
         }

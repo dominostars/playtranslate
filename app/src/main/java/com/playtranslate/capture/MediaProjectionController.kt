@@ -612,6 +612,27 @@ class MediaProjectionController(private val service: CaptureService) {
         return kind
     }
 
+    /**
+     * CLEAN streams only: is the captured task PROVEN to fill the frame 1:1?
+     * Generators of `false`, enumerated (each means box/lookup coordinates
+     * CANNOT be trusted):
+     *  1. The resize callback has not been delivered yet — UNPROVEN is not
+     *     identity; it must never be assumed (it fires at projection start
+     *     on measured devices, but that ordering is platform behavior, not
+     *     a contract).
+     *  2. The task is letterboxed / split-screen / freeform — its on-screen
+     *     offset has no public API, so mapping is impossible, not merely
+     *     unimplemented.
+     *  3. A mid-transition resize (rotation, windowing change).
+     * Non-CLEAN streams always return true: a display mirror IS the display.
+     */
+    fun frameGeometryProven(): Boolean {
+        if (streamKind != StreamKind.CLEAN) return true
+        val cs = _contentSize.value ?: return false
+        val size = captureSize(projectedDisplayId) ?: return false
+        return cs.x == size.first && cs.y == size.second
+    }
+
     /** Clean-stream contamination tripwire: the live mode observed its own
      *  rendering echoed back through the stream, so the CLEAN verdict was
      *  wrong (a probe misfire — see [StreamKindProbe]'s residual). Demote for

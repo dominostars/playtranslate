@@ -720,13 +720,18 @@ class CaptureService : Service() {
         displayId: Int = primaryGameDisplayId(),
         regionOverride: RegionEntry? = null,
         sourceLangIdOverride: SourceLangId? = null,
+        // Whether [raw] contains system UI, snapshotted AS A VALUE by the
+        // caller the moment the frame was produced (rounds 7+8: neither the
+        // active backend nor a live source property may be re-read after
+        // suspension — only an immutable fact travels with the frame).
+        frameIncludesSystemUi: Boolean = true,
     ): CaptureSession {
         oneShotCaptureJob?.cancel()
         val state = MutableStateFlow<CaptureState>(
             CaptureState.InProgress(getString(R.string.status_capturing))
         )
         val job = serviceScope.launch {
-            runProcessCycle(raw, displayId, state, regionOverride, sourceLangIdOverride)
+            runProcessCycle(raw, displayId, state, regionOverride, sourceLangIdOverride, frameIncludesSystemUi)
         }
         attachCancellationTerminal(job, state)
         oneShotCaptureJob = job
@@ -811,6 +816,7 @@ class CaptureService : Service() {
         state: MutableStateFlow<CaptureState>,
         regionOverride: RegionEntry? = null,
         sourceLangIdOverride: SourceLangId? = null,
+        frameIncludesSystemUi: Boolean = true,
     ) {
         if (!isConfigured) {
             state.value = CaptureState.Failed("Not configured — tap Translate to set up")
@@ -829,7 +835,7 @@ class CaptureService : Service() {
             // can't disagree even if settings change mid-cycle.
             val srcId = sourceLangIdOverride ?: Prefs(this@CaptureService).sourceLangId
             val region = regionOverride ?: activeRegionForDisplay(displayId)
-            val statusBarHeight = getStatusBarHeightForDisplay(displayId)
+            val statusBarHeight = statusBarHeightForFrame(displayId, frameIncludesSystemUi)
             val top    = maxOf((raw.height * region.top).toInt(), statusBarHeight)
             val left   = (raw.width  * region.left).toInt()
             val bottom = (raw.height * region.bottom).toInt()
@@ -1842,6 +1848,22 @@ class CaptureService : Service() {
         return getString(R.string.status_no_text, langName, activeRegionForDisplay(displayId).displayName(this))
     }
 
+    /** The status-bar height to exclude from OCR crops of a [displayId]
+     *  frame that came from [frameSource] — 0 when the source's frames
+     *  contain no system UI (a task-scoped single-app stream, where cropping
+     *  would eat game content), else the per-display height. Null source =
+     *  the full-display assumption, the safe default. The SINGLE owner of
+     *  this decision: [runOcr], [runProcessCycle], and
+     *  [runCaptureOcrTranslate] all route here — a manual
+     *  getStatusBarHeightForDisplay in an OCR crop is a defect
+     *  (review round 6 found two). */
+    internal fun statusBarHeightForFrame(
+        displayId: Int,
+        frameIncludesSystemUi: Boolean,
+    ): Int =
+        if (!frameIncludesSystemUi) 0
+        else getStatusBarHeightForDisplay(displayId)
+
     /** Flash the region indicator on [displayId] using that display's
      *  active region. Called by per-display modes after their own captures. */
     internal fun flashRegionIndicator(displayId: Int) {
@@ -1856,27 +1878,31 @@ class CaptureService : Service() {
      *  rect to black out) is resolved for [displayId] — the pipeline has no
      *  notion of a "primary" display. Caller still owns [raw].
      *
-     *  [statusBarHeightOverride]: the crop's status-bar exclusion, when the
-     *  frame's top rows aren't the status bar. A single-app ("clean")
-     *  MediaProjection stream contains no system UI at all — its top rows are
-     *  game content — so [CleanStreamOverlayMode] passes 0; every other
-     *  caller leaves the per-display default. */
+     *  [frameIncludesSystemUi]: whether [raw] contains system UI, snapshotted
+     *  AS A VALUE by the caller the moment the frame was produced (from
+     *  [com.playtranslate.capture.CaptureSource.framesIncludeSystemUi] — the
+     *  source owns the fact, but only the immutable value travels; rounds
+     *  7+8). A task-scoped ("single app") frame has no status bar to crop,
+     *  and cropping would eat game content instead. Callers without a source
+     *  in hand keep the default — the full-display assumption, the safe
+     *  direction. */
     internal suspend fun runOcr(
         raw: Bitmap,
         displayId: Int,
-        statusBarHeightOverride: Int? = null,
+        frameIncludesSystemUi: Boolean = true,
     ): OverlayToolkit.OcrPipelineResult? {
         val prefs = Prefs(this)
         val seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? =
             if (BuildConfig.DEBUG && prefs.debugSaveOcrSeed) {
                 { bitmap, result -> OcrSeedWriter.writeSeed(this, bitmap, result) }
             } else null
+        val statusBarHeight = statusBarHeightForFrame(displayId, frameIncludesSystemUi)
         return OverlayToolkit.runOcrPipeline(
             raw,
             activeRegionForDisplay(displayId),
             sourceLang,
             ocrManager,
-            statusBarHeightOverride ?: getStatusBarHeightForDisplay(displayId),
+            statusBarHeight,
             seedWriter = seedWriter
         )
     }
@@ -2078,17 +2104,26 @@ class CaptureService : Service() {
         onScreenshotTaken: (() -> Unit)? = null,
         onOcrReady: ((originalText: String, segments: List<TextSegment>, ocrProvenance: OcrProvenance?) -> Unit)? = null,
     ): PipelineOutcome {
-        val raw: Bitmap = captureScreen(displayId)
+        // Snapshot the producing source BEFORE capture: source-sensitive
+        // decisions (status-bar crop) must use the frame's actual producer,
+        // never a re-resolve of the mutable active backend after suspension
+        // (review round 7).
+        val frameSrc = CaptureBackendResolver.active().captureSource
+        val raw: Bitmap = frameSrc?.requestClean(displayId)
             ?: return PipelineOutcome.Failed(
                 "Screenshot failed for display $displayId. Try a different display in Settings."
             )
+        // Provenance snapshotted AS A VALUE the moment the frame exists —
+        // the source's property is a live read over mutable stream kind
+        // (review round 8), so the fact must be captured, not the object.
+        val frameIncludesUi = frameSrc?.framesIncludeSystemUi ?: true
         onScreenshotTaken?.invoke()
         var bitmap: Bitmap? = raw
         try {
             val screenshotPath = captureSaveToCache(raw, displayId)
 
             val region = activeRegionForDisplay(displayId)
-            val statusBarHeight = getStatusBarHeightForDisplay(displayId)
+            val statusBarHeight = statusBarHeightForFrame(displayId, frameIncludesUi)
             val top    = maxOf((raw.height * region.top).toInt(), statusBarHeight)
             val left   = (raw.width  * region.left).toInt()
             val bottom = (raw.height * region.bottom).toInt()

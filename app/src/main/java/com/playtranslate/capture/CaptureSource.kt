@@ -13,6 +13,14 @@ import kotlinx.coroutines.CoroutineScope
  * [CaptureBackendResolver].
  */
 interface CaptureSource {
+
+    /** Do this source's frames contain system UI (status/nav bars)? The
+     *  SOURCE owns this fact — accessibility screenshots and whole-display
+     *  mirrors do; an API 34+ single-app ("task") mirror does not, so OCR
+     *  must not crop a status-bar strip of game content away. Consumers
+     *  forward the source they captured from to [com.playtranslate
+     *  .CaptureService.runOcr]; the crop decision is made there, once. */
+    val framesIncludeSystemUi: Boolean get() = true
     /** Capture a clean frame of [displayId] with the app's own overlays
      *  hidden. The caller owns the returned bitmap and must recycle it.
      *  Returns null if the capture could not be taken. */

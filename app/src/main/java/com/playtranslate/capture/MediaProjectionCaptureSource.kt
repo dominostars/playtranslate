@@ -36,6 +36,11 @@ class MediaProjectionCaptureSource(
      *  captures must not interleave — mirrors ScreenshotManager.captureMutex. */
     private val captureMutex = Mutex()
 
+    /** A task-scoped ("single app") mirror contains no system UI at all;
+     *  whole-display mirrors do. See [CaptureSource.framesIncludeSystemUi]. */
+    override val framesIncludeSystemUi: Boolean
+        get() = controller.streamKind != StreamKind.CLEAN
+
     /** No platform rate limit applies (unlike AccessibilityService) — this is
      *  only the floor that keeps a misconfigured pref from spinning the loop. */
     override val minCaptureIntervalMs: Long get() = MIN_LOOP_INTERVAL_MS
@@ -98,8 +103,10 @@ class MediaProjectionCaptureSource(
         // are structurally absent from the mirror — there is nothing to
         // blank — and our own window mutations never composite into it, so
         // a post-blank freshness gate would only burn its budget waiting for
-        // a repaint delivery that cannot come. Serve the current frame.
+        // a repaint delivery that cannot come. Serve the current frame —
+        // but only when its geometry is proven (see refuseUnprovenGeometry).
         if (controller.streamKind == StreamKind.CLEAN) {
+            if (refuseUnprovenGeometry()) return null
             warnIfNotProjected(displayId)
             return controller.captureFrameUngated()
         }
@@ -234,9 +241,36 @@ class MediaProjectionCaptureSource(
      *  display is an upstream routing bug — log it loudly. The frame still
      *  comes from the projected display regardless. */
     private suspend fun captureProjectedFrame(requestedDisplayId: Int): Bitmap? {
+        if (refuseUnprovenGeometry()) return null
         warnIfNotProjected(requestedDisplayId)
         return controller.captureFrame()
     }
+
+    /** The single geometry choke point for CLEAN (task-scoped) streams: no
+     *  frame is served while [MediaProjectionController.frameGeometryProven]
+     *  is false, because EVERY consumer of these frames — live modes,
+     *  one-shot translate, lens/drag lookups, furigana — maps coordinates
+     *  assuming frame == screen, and a letterboxed task's on-screen offset
+     *  has no public API (refusal is the honest behavior, not a shortcut).
+     *  One user-facing message per unproven episode; callers see a null
+     *  capture, which every path already handles. */
+    private fun refuseUnprovenGeometry(): Boolean {
+        if (controller.streamKind != StreamKind.CLEAN) return false
+        if (controller.frameGeometryProven()) {
+            nonIdentityNotified = false
+            return false
+        }
+        if (!nonIdentityNotified) {
+            nonIdentityNotified = true
+            DetectionLog.log("MP: CLEAN frame refused — task geometry unproven or non-fullscreen")
+            CaptureService.instance?.let {
+                it.emitError(it.getString(R.string.error_single_app_not_fullscreen))
+            }
+        }
+        return true
+    }
+
+    @Volatile private var nonIdentityNotified = false
 
     private fun warnIfNotProjected(requestedDisplayId: Int) {
         if (requestedDisplayId != controller.projectedDisplayId) {
