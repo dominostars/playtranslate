@@ -38,6 +38,39 @@ data class FarGroup(
 )
 
 /**
+ * Dying-box fragment-deferral predicate: does [rect] abut (intersect after
+ * inflating each dying rect by [inflatePx]) any box being pinhole-removed
+ * this cycle?
+ *
+ * A fresh OCR group next to a box whose UNDER-BOX content just proved
+ * changed is suspect by construction: the group was read while the box
+ * still blinded the region it borders, so it may be only the visible tail
+ * of the text the removal is about to uncover (dialogue advance to a
+ * slightly longer message — the fragment-box dance, 2026-07-10). Placing
+ * it strands a fragment over the new message's end; deferring costs one
+ * floor-paced forced look, after which the full region is uncovered and
+ * whatever is really there places whole.
+ *
+ * Geometry deliberately CANNOT distinguish a continuation tail from an
+ * independent neighbor — the discriminator is the pinhole verdict on the
+ * box, which is why the caller keys this on pinhole removals only (a box
+ * that reads KEEP protects its neighbors' placements; content-match
+ * removals are position updates whose paired replacement sits within any
+ * inflation and must never defer). [inflatePx] is tight
+ * ([PinholeCalibration.FRAGMENT_DEFER_ABUT_PX]) — the old FAR-suppression
+ * guard's 0.5W/1.5H inflation reached ~200px and starved legitimate menu
+ * items near an unrelated dying box; abutment reaches only text that
+ * borders the uncovered region itself. No state, no watch lists: the
+ * condition evaporates with the dying box, so nothing can be deferred
+ * twice.
+ */
+fun abutsAnyInflated(dying: List<Rect>, rect: Rect, inflatePx: Int): Boolean =
+    dying.any { d ->
+        val inflated = Rect(d).apply { inset(-inflatePx, -inflatePx) }
+        Rect.intersects(inflated, rect)
+    }
+
+/**
  * Output of [classifyOcrResults].
  *
  * - [contentMatchRemovals] — indices into the input `boxes` list of cached

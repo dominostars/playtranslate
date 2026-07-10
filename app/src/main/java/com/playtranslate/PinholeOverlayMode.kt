@@ -291,17 +291,16 @@ class PinholeOverlayMode(
     // The fit survives only on the outside gate (OutsideChangeGate), where
     // a false fire costs a single OCR.
 
-    // The step-9b FAR suppression and the resurrection-deferral guard were
-    // deleted 2026-07-09. Both were transition-layer compensators for false
-    // removals whose actual source was upstream (adjacency-stale + cascade
-    // on merged unboxed neighbors — see the campfire-menu forensics): the
-    // suppression's only observed act was starving three correct menu items
-    // near an unrelated dying box, and the deferral's "one confirming look"
-    // was structurally impossible under the A2 gate (the watch list aged
-    // only on full cycles, so it re-deferred the same rows at every
-    // reconcile and blocked convergence). Transition artifacts they targeted
-    // (mid-fade re-finds, edge slivers) self-heal in one forced look now
-    // that a forced wake bypasses the gate skip.
+    // The broad step-9b FAR suppression and the resurrection-deferral guard
+    // were deleted 2026-07-09. Both were transition-layer compensators for
+    // false removals whose actual source was upstream (adjacency-stale +
+    // cascade on merged unboxed neighbors — see the campfire-menu
+    // forensics): the suppression's 0.5W/1.5H inflation starved three
+    // correct menu items near an unrelated dying box, and the deferral's
+    // "one confirming look" was structurally impossible under the A2 gate.
+    // A narrowly-scoped successor to 9b exists at runCycle step 9b
+    // (2026-07-10): pinhole-removals-only trigger, tight abutment, zero
+    // state — see abutsAnyInflated's kdoc for how it differs and why.
 
     // ── Unified Cycle ───────────────────────────────────────────────────
 
@@ -680,7 +679,7 @@ class PinholeOverlayMode(
             }
             val contentMatchRemovals = classification.contentMatchRemovals
             val staleOverlayIndices = classification.staleOverlayIndices
-            val farOcrGroups = classification.farOcrGroups
+            var farOcrGroups = classification.farOcrGroups
 
             // 8. Pinhole change detection — any classified-as-changed box is
             //    removed and re-OCR'd on the next cycle. The previous design
@@ -733,10 +732,36 @@ class PinholeOverlayMode(
             // 9. Resolve: compute final state from immutable snapshot in one pass
             val allRemovals = cascadedRemovals + pinholeRemovals + contentMatchRemovals
 
-            // (Step 9b, which suppressed FAR groups near going-away boxes,
-            // and the resurrection-deferral guard were deleted 2026-07-09 —
-            // see the note above runCycle. Every FAR group the classifier
-            // queues is placed; transition artifacts cost one forced look.)
+            // 9b. Defer FAR fragments abutting a box being PINHOLE-removed
+            //     this cycle (see abutsAnyInflated's kdoc for the full
+            //     rationale). The group was OCR'd while the dying box still
+            //     blinded the region it borders — it may be only the tail of
+            //     the text the removal uncovers. The removal already forces
+            //     a floor-paced follow-up look (step 14 + the forced-look
+            //     gate bypass), which sees the whole uncovered region and
+            //     places it complete. Content-match removals are position
+            //     updates, not content changes — their paired replacement
+            //     FAR sits within any inflation and must never defer, so
+            //     they're subtracted from the dying set.
+            val cc = classifyCoords
+            val dyingRects = (pinholeRemovals - contentMatchRemovals)
+                .mapNotNull { bitmapRects.getOrNull(it) }
+            if (cc != null && dyingRects.isNotEmpty() && farOcrGroups.isNotEmpty()) {
+                val before = farOcrGroups.size
+                farOcrGroups = farOcrGroups.filter { far ->
+                    !abutsAnyInflated(
+                        dyingRects,
+                        cc.ocrToBitmap(far.bounds),
+                        PinholeCalibration.FRAGMENT_DEFER_ABUT_PX,
+                    )
+                }
+                if (debug && before != farOcrGroups.size) {
+                    DetectionLog.log(
+                        "D$displayId c$cycleNum deferred ${before - farOcrGroups.size} FAR " +
+                            "fragment(s) abutting ${dyingRects.size} pinhole-removed box(es)"
+                    )
+                }
+            }
 
             val nextBoxes = boxes.mapIndexedNotNull { i, box ->
                 if (i in allRemovals) null else box

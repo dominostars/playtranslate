@@ -187,6 +187,16 @@ object PinholeCalibration {
      *  before laying anchor rows, biasing anchors toward actual ink. */
     const val GLYPH_ANCHOR_INSET_PX = 8
 
+    /** Dying-box fragment deferral (see [com.playtranslate.abutsAnyInflated]):
+     *  a fresh OCR group within this many px of a box being PINHOLE-removed
+     *  the same cycle is deferred one floor-paced look instead of placed —
+     *  it may be only the visible tail of the text the removal uncovers.
+     *  Sized to reach text that borders the uncovered region (tails start
+     *  at the rendered rect's edge; wrapped lines sit ≤ ~15px below; the
+     *  campfire trace's directly-adjacent menu item sat at 6px) without
+     *  reaching across a full menu row (~72px pitch at 1080p). */
+    const val FRAGMENT_DEFER_ABUT_PX = 32
+
     /** Game-input burst window (audit A4): after a tap/gamepad press, cycles
      *  pace at the backend floor for this long instead of the user interval.
      *  Input is the strongest change predictor available; the burst buys
