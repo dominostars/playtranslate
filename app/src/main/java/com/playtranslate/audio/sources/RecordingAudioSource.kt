@@ -9,6 +9,7 @@ import com.playtranslate.audio.AudioSelection
 import com.playtranslate.audio.AudioSource
 import com.playtranslate.audio.CandidateLabel
 import com.playtranslate.audio.GameAudioClip
+import com.playtranslate.audio.Loudness
 import com.playtranslate.audio.PlayOutcome
 import com.playtranslate.audio.RecordingPlayer
 import com.playtranslate.capture.GameAudioSnapshot
@@ -101,6 +102,10 @@ object RecordingAudioSource : AudioSource {
         return withContext(Dispatchers.IO) {
             val pcm = GameAudioClip.readPcmRange(wav, startMs, endMs)
             if (pcm.isEmpty()) return@withContext null
+            // Same boost-only normalization the previews apply — the card
+            // must sound like what the chip played, and game mixes sit well
+            // below the speech level TTS cards land at.
+            Loudness.normalize(pcm)
             val bytes = GameAudioClip.encodeM4a(pcm, GameAudioClip.sampleRate(wav), ctx.cacheDir)
             // Through the audio cache: LRU-swept storage the send pipeline's
             // ephemeral-cleanup won't delete (ephemeral=false for non-TTS).

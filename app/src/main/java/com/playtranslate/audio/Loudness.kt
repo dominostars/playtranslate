@@ -56,4 +56,27 @@ internal object Loudness {
     /** Signed 16-bit LE sample at frame [i]. */
     private fun sampleAt(data: ByteArray, i: Int): Int =
         (data[2 * i + 1].toInt() shl 8) or (data[2 * i].toInt() and 0xFF)
+
+    /** Same normalization over 16-bit samples held as a ShortArray (the
+     *  game-audio PCM path). Identical algorithm, boost-only. */
+    fun normalize(data: ShortArray) {
+        if (data.isEmpty()) return
+        var sumSq = 0.0
+        var peak = 0
+        for (s in data) {
+            val a = if (s < 0) -s.toInt() else s.toInt()
+            if (a > peak) peak = a
+            sumSq += s.toDouble() * s.toDouble()
+        }
+        if (peak == 0) return // pure silence
+        val rmsNorm = sqrt(sumSq / data.size) / FULL
+        if (rmsNorm <= 0.0) return
+        val gain = (TARGET_RMS / rmsNorm).coerceAtMost(MAX_GAIN)
+        if (gain <= 1.0) return // already loud enough; never attenuate
+        for (i in data.indices) {
+            val x = data[i] / FULL * gain
+            val limited = CEILING * tanh(x / CEILING)
+            data[i] = (limited * FULL).toInt().coerceIn(-32768, 32767).toShort()
+        }
+    }
 }

@@ -6,6 +6,7 @@ import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.playtranslate.audio.Loudness
 
 private const val TAG = "PcmAudioTrackPlayer"
 
@@ -45,10 +46,12 @@ class PcmAudioTrackPlayer(private val sampleRate: Int) {
         val end = endFrame.coerceIn(start, pcm.size)
         if (end == start) return
         Thread({
-            // Track construction mirrors RecordingPlayer 1:1 — the one player
-            // empirically audible on the Thor (Builder + USAGE_MEDIA/
-            // CONTENT_TYPE_SPEECH + minBuf*2). Do not "improve" this recipe
-            // without re-testing there; the device has known routing quirks.
+            // Normalize a COPY of the range (boost-only, RecordingPlayer's
+            // Loudness pass): game mixes sit well below speech level, and on
+            // the Thor the secondary display attenuates media further — an
+            // unnormalized clip reads as "didn't play".
+            val clip = pcm.copyOfRange(start, end)
+            Loudness.normalize(clip)
             val minBuf = AudioTrack.getMinBufferSize(
                 sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT,
             ).coerceAtLeast(4096)
@@ -69,6 +72,14 @@ class PcmAudioTrackPlayer(private val sampleRate: Int) {
                     )
                     .setBufferSizeInBytes(minBuf * 2)
                     .setTransferMode(AudioTrack.MODE_STREAM)
+                    // The load-bearing flag on the Thor: USAGE_MEDIA tracks
+                    // default to the deep-buffer output, whose stream volumes
+                    // this ROM pins to -inf (flinger-verified) — silence with
+                    // frames delivered. Low-latency requests the primary/fast
+                    // output, the path system TTS lands on (and why TTS was
+                    // audible while we weren't). Harmless where ineligible:
+                    // the platform silently falls back to a normal track.
+                    .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
                     .build()
             }.getOrNull()
             if (t == null || t.state != AudioTrack.STATE_INITIALIZED) {
@@ -79,24 +90,26 @@ class PcmAudioTrackPlayer(private val sampleRate: Int) {
             track = t
             // Some ROMs leave a fresh track's mixer gain at -inf until set.
             runCatching { t.setVolume(1.0f) }
-            Log.i(TAG, "playing ${end - start} frames sr=$sampleRate buf=${minBuf * 2}")
+            Log.i(
+                TAG,
+                "playing ${clip.size} frames sr=$sampleRate buf=${minBuf * 2} perf=${t.performanceMode}",
+            )
             runCatching {
                 t.play()
-                var off = start
-                while (off < end && generation == gen) {
-                    val n = t.write(pcm, off, minOf(sampleRate / 10, end - off))
+                var off = 0
+                while (off < clip.size && generation == gen) {
+                    val n = t.write(clip, off, minOf(sampleRate / 10, clip.size - off))
                     if (n <= 0) break
                     off += n
-                    val frame = off
+                    val frame = start + off
                     onProgress?.let { cb ->
                         mainHandler.post { if (generation == gen) cb(frame) }
                     }
                 }
                 // Let the buffered tail drain before teardown.
-                val total = end - start
                 while (generation == gen &&
                     t.playState == AudioTrack.PLAYSTATE_PLAYING &&
-                    t.playbackHeadPosition < total
+                    t.playbackHeadPosition < clip.size
                 ) {
                     Thread.sleep(15)
                 }
