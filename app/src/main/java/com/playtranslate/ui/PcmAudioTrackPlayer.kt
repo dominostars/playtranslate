@@ -2,10 +2,12 @@ package com.playtranslate.ui
 
 import android.media.AudioAttributes
 import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
+
+private const val TAG = "PcmAudioTrackPlayer"
 
 /**
  * Plays a range of raw mono PCM16 through an [AudioTrack] — the trim editor's
@@ -43,30 +45,41 @@ class PcmAudioTrackPlayer(private val sampleRate: Int) {
         val end = endFrame.coerceIn(start, pcm.size)
         if (end == start) return
         Thread({
+            // Track construction mirrors RecordingPlayer 1:1 — the one player
+            // empirically audible on the Thor (Builder + USAGE_MEDIA/
+            // CONTENT_TYPE_SPEECH + minBuf*2). Do not "improve" this recipe
+            // without re-testing there; the device has known routing quirks.
             val minBuf = AudioTrack.getMinBufferSize(
                 sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT,
-            )
-            val t = try {
-                AudioTrack(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build(),
-                    AudioFormat.Builder()
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setSampleRate(sampleRate)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                        .build(),
-                    maxOf(minBuf, sampleRate / 2 * 2), // ≥ 0.5 s
-                    AudioTrack.MODE_STREAM,
-                    AudioManager.AUDIO_SESSION_ID_GENERATE,
-                )
-            } catch (_: Exception) {
+            ).coerceAtLeast(4096)
+            val t = runCatching {
+                AudioTrack.Builder()
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build(),
+                    )
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setSampleRate(sampleRate)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build(),
+                    )
+                    .setBufferSizeInBytes(minBuf * 2)
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build()
+            }.getOrNull()
+            if (t == null || t.state != AudioTrack.STATE_INITIALIZED) {
+                Log.w(TAG, "AudioTrack init failed sr=$sampleRate state=${t?.state}")
+                runCatching { t?.release() }
                 return@Thread
             }
             track = t
             // Some ROMs leave a fresh track's mixer gain at -inf until set.
             runCatching { t.setVolume(1.0f) }
+            Log.i(TAG, "playing ${end - start} frames sr=$sampleRate buf=${minBuf * 2}")
             runCatching {
                 t.play()
                 var off = start
