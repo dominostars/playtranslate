@@ -121,19 +121,60 @@ internal object OverlayLayout {
             }
         }
 
-        // Pass 1 — horizontal-source boxes (stacked rows): resolve vertical overlaps by
-        // splitting at the midline.
+        // Unpadded source rects: the carve floor for pass 1. A child that stops
+        // covering its source text breaks the occlusion contract pinhole mode is
+        // built on — the uncovered sliver re-OCRs as garbage, stales the box,
+        // and the overlay churns (two live traces 2026-07-10: side-by-side boxes
+        // whose padding bands overlapped by a few px were mid-split as if
+        // stacked, cutting a whole text row out of one box's coverage).
+        // Pass 2 shares the carve-below-source shape for vertical columns but is
+        // left as-is deliberately: its carves feed the mode reclassification +
+        // growIntoGaps machinery, and no uncovering instance has been observed
+        // there — same-family watch item if vertical-text churn ever shows up.
+        val sourceRects = boxes.map { mapRect(it.bounds, cropLeft, cropTop, scaleX, scaleY) }
+
+        // Pass 1 — horizontal-source boxes: resolve overlaps without ever
+        // carving inside a box's unpadded source rect. Three geometries:
+        //  - Stacked rows (sources y-disjoint): split at the y-midline, which
+        //    lands in the inter-row padding band; the source clamp is a no-op
+        //    safety there (long-standing behaviour, unchanged).
+        //  - Side-by-side (sources x-disjoint, y-overlapping): the overlap is
+        //    purely the two padding bands — split at the x-midline of the
+        //    source gap so both boxes keep full coverage and stay disjoint.
+        //  - Sources overlapping on both axes (upstream OCR jitter/dup): no
+        //    clean split exists; clamp the y-split to the source edges and
+        //    accept the residual rendered overlap (z-order resolves it) —
+        //    covering source text outranks disjoint rendering.
         val hBoxIndices = boxes.indices.filter {
             !boxes[it].isFurigana && boxes[it].orientation != TextOrientation.VERTICAL
         }.sortedBy { finalRects[it].top }
         for (a in hBoxIndices.indices) {
             for (b in a + 1 until hBoxIndices.size) {
-                val ri = finalRects[hBoxIndices[a]]
-                val rj = finalRects[hBoxIndices[b]]
-                if (ri.bottom > rj.top && ri.left < rj.right && ri.right > rj.left) {
+                val i = hBoxIndices[a]
+                val j = hBoxIndices[b]
+                val ri = finalRects[i]
+                val rj = finalRects[j]
+                if (ri.bottom <= rj.top || ri.left >= rj.right || ri.right <= rj.left) continue
+                val si = sourceRects[i]
+                val sj = sourceRects[j]
+                val yDisjoint = si.bottom <= sj.top || sj.bottom <= si.top
+                val xDisjoint = si.right <= sj.left || sj.right <= si.left
+                if (yDisjoint || !xDisjoint) {
+                    // ri is the upper rect (sorted by top): its bottom may only
+                    // retreat to its source bottom, rj's top to its source top.
                     val mid = (ri.bottom + rj.top) / 2f
-                    ri.bottom = mid
-                    rj.top = mid
+                    ri.bottom = mid.coerceAtLeast(si.bottom).coerceAtMost(ri.bottom)
+                    rj.top = mid.coerceAtMost(sj.top).coerceAtLeast(rj.top)
+                } else {
+                    // Which box is left in SOURCE space decides the carve sides.
+                    val iIsLeft = si.right <= sj.left
+                    val lRect = if (iIsLeft) ri else rj
+                    val rRect = if (iIsLeft) rj else ri
+                    val lSrc = if (iIsLeft) si else sj
+                    val rSrc = if (iIsLeft) sj else si
+                    val mid = (lSrc.right + rSrc.left) / 2f
+                    lRect.right = mid.coerceAtLeast(lSrc.right).coerceAtMost(lRect.right)
+                    rRect.left = mid.coerceAtMost(rSrc.left).coerceAtLeast(rRect.left)
                 }
             }
         }

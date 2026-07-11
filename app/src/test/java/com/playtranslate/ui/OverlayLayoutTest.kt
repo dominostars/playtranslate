@@ -112,8 +112,35 @@ class OverlayLayoutTest {
     // ── resolveScreenRects: overlap resolution ───────────────────────────
 
     @Test
-    fun resolve_horizontalBoxes_verticalOverlapSplitAtMidpoint() {
-        // density 0 → no padding, isolating the overlap logic.
+    fun resolve_horizontalBoxes_stackedRows_splitAtMidlineInPaddingBand() {
+        // Genuinely stacked rows: sources y-disjoint (gap 200..204), only the
+        // padding bands overlap (density 1 → 6px pad: 206 vs 198). The midline
+        // lands inside the inter-row gap, so the source clamp is a no-op and
+        // the long-standing split behaviour is preserved.
+        val rects = OverlayLayout.resolveScreenRects(
+            listOf(
+                box(Rect(100, 100, 300, 200)),
+                box(Rect(100, 204, 300, 280)),
+            ),
+            cropLeft = 0, cropTop = 0,
+            screenshotW = 1000, screenshotH = 1000,
+            displayW = 1000, displayH = 1000,
+            density = 1f,
+            targetIsVerticalScript = false,
+        )
+        // Padded overlap 198..206 → split at mid 202, inside the 200..204 gap.
+        assertEquals(202f, rects[0].rect.bottom)
+        assertEquals(202f, rects[1].rect.top)
+    }
+
+    @Test
+    fun resolve_horizontalBoxes_overlappingSources_neverCarvedInsideSourceText() {
+        // Sources overlap on BOTH axes (upstream OCR jitter/dup) — no clean
+        // split exists. The carve must clamp at the source edges: covering
+        // source text outranks disjoint rendering (the uncovered sliver would
+        // re-OCR as garbage and churn the overlay — 2026-07-10 traces).
+        // density 0 → no padding, so rects == sources and the clamps fully
+        // bind: both boxes keep their full source coverage.
         val rects = OverlayLayout.resolveScreenRects(
             listOf(
                 box(Rect(100, 100, 300, 200)),
@@ -125,9 +152,36 @@ class OverlayLayoutTest {
             density = 0f,
             targetIsVerticalScript = false,
         )
-        // Overlap 180..200 → split at mid 190.
-        assertEquals(RectF(100f, 100f, 300f, 190f), rects[0].rect)
-        assertEquals(RectF(100f, 190f, 300f, 280f), rects[1].rect)
+        assertEquals(RectF(100f, 100f, 300f, 200f), rects[0].rect)
+        assertEquals(RectF(100f, 180f, 300f, 280f), rects[1].rect)
+    }
+
+    @Test
+    fun resolve_horizontalBoxes_sideBySide_splitOnXAxisKeepingFullCoverage() {
+        // The overlay-shrink trace (2026-07-10): a typewriter tail placed
+        // beside a 2-line box. Sources are x-disjoint (930 < 937) but the
+        // 6px padding bands overlap in x, and the y-spans overlap heavily.
+        // The old y-midline split carved the left box's bottom to ~908,
+        // uncovering its entire second text row (y 908..938). The split must
+        // instead run along x through the source gap.
+        val left = Rect(524, 813, 930, 938)
+        val right = Rect(937, 880, 1245, 939)
+        val rects = OverlayLayout.resolveScreenRects(
+            listOf(box(left), box(right)),
+            cropLeft = 0, cropTop = 0,
+            screenshotW = 2000, screenshotH = 2000,
+            displayW = 2000, displayH = 2000,
+            density = 1f,
+            targetIsVerticalScript = false,
+        )
+        val l = rects[0].rect
+        val r = rects[1].rect
+        assertTrue("left box must keep covering its source", l.contains(RectF(left)))
+        assertTrue("right box must keep covering its source", r.contains(RectF(right)))
+        assertTrue("boxes must not overlap after the x split", l.right <= r.left)
+        // Split runs through the source gap midline (930+937)/2.
+        assertEquals(933.5f, l.right)
+        assertEquals(933.5f, r.left)
     }
 
     @Test
