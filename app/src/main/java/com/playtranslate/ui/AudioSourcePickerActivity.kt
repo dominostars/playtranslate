@@ -1,7 +1,9 @@
 package com.playtranslate.ui
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -9,13 +11,20 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.materialswitch.MaterialSwitch
+import com.playtranslate.CaptureService
+import com.playtranslate.Prefs
 import com.playtranslate.PtJson
 import com.playtranslate.R
 import com.playtranslate.applyEdgeToEdge
@@ -28,6 +37,7 @@ import com.playtranslate.audio.AudioSelections
 import com.playtranslate.audio.AudioSource
 import com.playtranslate.audio.AudioSourceRegistry
 import com.playtranslate.audio.PronunciationPlayer
+import com.playtranslate.audio.sources.RecordingAudioSource
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
 import kotlinx.coroutines.launch
@@ -54,6 +64,20 @@ class AudioSourcePickerActivity : AppCompatActivity() {
 
     private val loaded = HashMap<String, List<AudioCandidate>>()
     private val rowHosts = HashMap<String, LinearLayout>()
+
+    /** RECORD_AUDIO for the in-picker game-audio enable switch (see
+     *  [renderGameAudioEnableRow]); mirrors the Anki-settings toggle. */
+    private var gameAudioSwitch: MaterialSwitch? = null
+    private val requestRecordAudio =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                Prefs(this).recordGameAudio = true
+                CaptureService.instance?.reconcileGameAudio()
+            } else {
+                gameAudioSwitch?.isChecked = false
+                Toast.makeText(this, R.string.anki_game_audio_permission_denied, Toast.LENGTH_LONG).show()
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         applyTheme(this)
@@ -141,9 +165,52 @@ class AudioSourcePickerActivity : AppCompatActivity() {
             }
             sections.addView(card)
             rowHosts[source.id] = rows
-            renderStatus(rows, getString(R.string.audio_loading))
-            loadSection(source)
+            // Deliberate source-specific exception to this screen's otherwise
+            // source-agnostic rendering: with recording opted out, the Game
+            // audio section IS the opt-in (a switch, mirroring the Anki
+            // settings row) rather than a permanently-empty candidate list.
+            if (source.id == RecordingAudioSource.ID && !Prefs(this).recordGameAudio) {
+                renderGameAudioEnableRow(rows)
+            } else {
+                renderStatus(rows, getString(R.string.audio_loading))
+                loadSection(source)
+            }
         }
+    }
+
+    /** The Game audio section body while the feature is off: an enable
+     *  switch. Turning it on requests RECORD_AUDIO and flips the pref —
+     *  recording starts with the next session/consent; the current card has
+     *  no snapshot either way, so the row stays (checked) rather than
+     *  re-rendering into a confusing empty candidate list. */
+    private fun renderGameAudioEnableRow(host: LinearLayout) {
+        host.removeAllViews()
+        val row = LayoutInflater.from(this)
+            .inflate(R.layout.settings_row_switch, host, false)
+        row.findViewById<TextView>(R.id.tvRowTitle).text =
+            getString(R.string.anki_game_audio_row_title)
+        row.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            text = getString(R.string.audio_source_game_enable_hint)
+            isVisible = true
+        }
+        val switch = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        gameAudioSwitch = switch
+        switch.isChecked = false
+        switch.setOnCheckedChangeListener { _, checked ->
+            if (!checked) {
+                Prefs(this).recordGameAudio = false
+                CaptureService.instance?.reconcileGameAudio()
+            } else if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED
+            ) {
+                Prefs(this).recordGameAudio = true
+                CaptureService.instance?.reconcileGameAudio()
+            } else {
+                requestRecordAudio.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+        row.setOnClickListener { switch.toggle() }
+        host.addView(row)
     }
 
     private fun loadSection(source: AudioSource) {

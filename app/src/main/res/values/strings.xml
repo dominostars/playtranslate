@@ -1115,6 +1115,11 @@
          when a recording snapshot is available. -->
     <string name="audio_source_game_ready">From your recent gameplay</string>
 
+    <!-- Subtitle under the enable switch shown in the audio picker's Game
+         audio section while the feature is off (small grey text, may wrap):
+         enabling helps future cards, not the one being edited. -->
+    <string name="audio_source_game_enable_hint">Not recording — turn on to capture game audio for future cards</string>
+
     <!-- Toolbar title of the game-audio trim editor screen. -->
     <string name="game_audio_trim_title">Trim Game Audio</string>
 

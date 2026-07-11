@@ -15,11 +15,13 @@ import com.playtranslate.audio.sources.WikimediaCommonsAudioSource
 object AudioSourceRegistry {
 
     private val sources: List<AudioSource> = listOf(
+        // First = top section in the picker (the only all()-order consumer).
+        // Auto-resolution priority is unaffected: isEnabled=false keeps the
+        // recording out of enabledInOrder entirely, so for Auto the order is
+        // still Commons → TTS.
+        RecordingAudioSource,
         WikimediaCommonsAudioSource,
         TtsAudioSource,
-        // Never in enabledInOrder (isEnabled=false — Auto must not pick it);
-        // present for the picker and for explicit-selection resolution.
-        RecordingAudioSource,
     )
 
     fun all(): List<AudioSource> = sources

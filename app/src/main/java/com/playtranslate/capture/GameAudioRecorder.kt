@@ -18,6 +18,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.abs
+import kotlin.math.log10
 
 private const val TAG = "GameAudioRecorder"
 
@@ -101,13 +103,26 @@ class GameAudioRecorder(
         else mainHandler.post { reconcileOnMain() }
     }
 
+    /** Last logged gate verdict — the verdict line is the primary field
+     *  diagnostic for "why isn't it recording", so it logs on every change
+     *  (not every reconcile — the activity push-point fires constantly). */
+    private var lastVerdict: String? = null
+
     private fun reconcileOnMain() {
         val ctx = service.applicationContext
-        val wantsRun = Prefs(ctx).recordGameAudio &&
-            CaptureLifecycle.isActive(ctx) &&
-            controller.hasConsent &&
-            hasRecordPermission() &&
-            PlayTranslateApplication.resumedActivitySimpleName() !in CARD_FLOW_PAUSE
+        val pref = Prefs(ctx).recordGameAudio
+        val active = CaptureLifecycle.isActive(ctx)
+        val consent = controller.hasConsent
+        val perm = hasRecordPermission()
+        val pausedBy = PlayTranslateApplication.resumedActivitySimpleName()
+            ?.takeIf { it in CARD_FLOW_PAUSE }
+        val wantsRun = pref && active && consent && perm && pausedBy == null
+        val verdict = "run=$wantsRun pref=$pref sessionActive=$active " +
+            "consent=$consent recordPerm=$perm pausedBy=$pausedBy"
+        if (verdict != lastVerdict) {
+            lastVerdict = verdict
+            Log.i(TAG, "reconcile: $verdict")
+        }
         if (wantsRun && !running) start()
         else if (!wantsRun && running) stop("reconcile: gate closed")
     }
@@ -221,6 +236,11 @@ class GameAudioRecorder(
 
     private fun readerLoop(rec: AudioRecord) {
         val chunk = ShortArray(SAMPLE_RATE / 10) // 100 ms
+        // Periodic level line: distinguishes "capturing real audio" from
+        // "running but the game's audio is opted out of capture" (silence)
+        // without any UI. One line per ~15 s.
+        var windowPeak = 0
+        var windowFrames = 0
         while (shouldRun) {
             val n = rec.read(chunk, 0, chunk.size)
             if (n <= 0) {
@@ -228,6 +248,10 @@ class GameAudioRecorder(
                 // read via rec.stop() and clears shouldRun first.
                 if (shouldRun) stop("read returned $n")
                 return
+            }
+            for (i in 0 until n) {
+                val a = abs(chunk[i].toInt())
+                if (a > windowPeak) windowPeak = a
             }
             synchronized(lock) {
                 if (!shouldRun) return
@@ -239,6 +263,19 @@ class GameAudioRecorder(
                 }
                 writePos = p
                 framesWritten += n
+            }
+            windowFrames += n
+            if (windowFrames >= SAMPLE_RATE * 15) {
+                val db =
+                    if (windowPeak == 0) Double.NEGATIVE_INFINITY
+                    else 20 * log10(windowPeak / 32768.0)
+                Log.i(
+                    TAG,
+                    "capturing: buffered=${minOf(framesWritten, ring.size.toLong()) / SAMPLE_RATE}s " +
+                        "peak15s=${"%.0f".format(db)}dB",
+                )
+                windowPeak = 0
+                windowFrames = 0
             }
         }
     }
