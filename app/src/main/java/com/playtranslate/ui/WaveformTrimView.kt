@@ -122,7 +122,9 @@ class WaveformTrimView @JvmOverloads constructor(
     private val leftFadePaint = Paint()
     private val rightFadePaint = Paint()
     private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = context.themeColor(R.attr.ptOutline)
+        // Matches the center baseline exactly (same attr, same alpha).
+        color = context.themeColor(R.attr.ptDivider)
+        alpha = 120
         style = Paint.Style.FILL
     }
     private val arrowPath = Path()

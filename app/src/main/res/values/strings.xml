@@ -1142,20 +1142,19 @@
     <!-- Same toggle button while playback is running: stops it. -->
     <string name="game_audio_trim_stop">Stop</string>
 
-    <!-- Readout above the waveform in the trim editor.
+    <!-- Selection readout, rendered in TWO places: above the waveform in the
+         trim editor, and as the sentence audio row's title in the card
+         editor while game audio is selected (the source name itself is on
+         the adjacent voice pill).
          %1$s = selection length in seconds with one decimal (e.g. "2.4");
          %2$s = total recorded seconds available in the buffer, no decimals
          (e.g. "147"). Renders as "2.4 s selected · 147 s recorded". -->
     <string name="game_audio_trim_duration"><xliff:g id="seconds" example="2.4">%1$s</xliff:g> s selected · <xliff:g id="total_seconds" example="147">%2$s</xliff:g> s recorded</string>
 
-    <!-- Sentence audio row title (card editor) when game audio is selected
-         but not yet trimmed — replaces the spoken-text label in that mode. -->
-    <string name="anki_game_audio_cell_untrimmed">Game audio — trim when saving</string>
-
-    <!-- Sentence audio row title (card editor) once a game-audio range is
-         committed. %1$s = clip length in seconds with one decimal
-         (e.g. "2.4"), rendering as "Game audio — 2.4 s". -->
-    <string name="anki_game_audio_cell_trimmed">Game audio — <xliff:g id="seconds" example="2.4">%1$s</xliff:g> s</string>
+    <!-- Sentence audio row title (card editor) in the brief window where
+         game audio is selected but its buffer hasn't loaded a range yet.
+         The source name is on the adjacent voice pill. -->
+    <string name="anki_game_audio_cell_untrimmed">Trim when saving</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          CARD TYPE PICKER + FIELD MAPPING (Settings → Anki → Card Type).

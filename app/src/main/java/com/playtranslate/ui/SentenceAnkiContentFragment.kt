@@ -269,9 +269,13 @@ class SentenceAnkiContentFragment : Fragment() {
                 if (range == null) {
                     getString(R.string.anki_game_audio_cell_untrimmed)
                 } else {
+                    // Same readout as the trim editor; the pill next to it
+                    // already names the source. The max() covers the rare
+                    // editor-return-before-panel-load case (duration 0).
                     getString(
-                        R.string.anki_game_audio_cell_trimmed,
+                        R.string.game_audio_trim_duration,
                         String.format(Locale.US, "%.1f", (range.second - range.first) / 1000.0),
+                        (maxOf(gameAudioDurationMs, range.second) / 1000).toString(),
                     )
                 }
             }
