@@ -56,7 +56,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -1137,7 +1139,18 @@ class CaptureService : Service() {
                 // stamp task frames as full-display and crop game content
                 // off panel OCR (round-13 finding).
                 if (mediaProjectionController.hasConsent) {
-                    mediaProjectionController.resolveStreamKind()
+                    val kind = mediaProjectionController.resolveStreamKind()
+                    ensureActive()
+                    // A live session never RUNS on an unmeasured verdict
+                    // (2026-07-10 decision, replacing the UNKNOWN-session
+                    // handling): settle it — accessibility fallback, or ask
+                    // the user — or abandon this start.
+                    if (kind == StreamKind.UNKNOWN &&
+                        mediaProjectionController.hasConsent &&
+                        !settleUnknownStreamKind(backend)
+                    ) {
+                        return@launch
+                    }
                     ensureActive()
                 }
                 beginLiveCapture()
@@ -1152,6 +1165,97 @@ class CaptureService : Service() {
      *  stop must never be undone by a stale start resuming. Main-thread
      *  confined like the rest of the live-mode mutators. */
     private var pendingLiveStart: Job? = null
+
+    /**
+     * The stream kind could not be MEASURED for a session holding MP
+     * consent — settle it terminally, so live mode never runs on a guess
+     * (2026-07-10 decision, replacing the run-on-UNKNOWN handling whose
+     * pinhole-on-task-stream cell flapped deterministically):
+     *
+     *  - **Accessibility backend**: the MP stream was only borrowed for
+     *    delivery-gated capture; with its semantics unmeasured the borrow is
+     *    unsafe, and a structurally correct alternative exists. Drop the
+     *    grant (full teardown — the next start re-prompts, matching the
+     *    no-remembered-decline consent design) and proceed on accessibility
+     *    capture: [CaptureBackendResolver.liveCaptureSourceFor] falls back
+     *    via !hasConsent, and the pinhole tier gets the whole-display
+     *    screenshots it was built for. Silent by design — the user gets a
+     *    fully working session; a dialog would be noise.
+     *  - **MediaProjection-only backend**: the stream is the session's ONLY
+     *    pixel source, so ask the user which scope they picked
+     *    ([askStreamKindChoice] — they know; there is no API). Cancel — or
+     *    an answer arriving after the consent died
+     *    ([MediaProjectionController.assertStreamKind] discards it) — means
+     *    no live session this start: tear the grant down so nothing
+     *    half-exists, and the next start re-prompts from the system dialog,
+     *    where the user can choose again knowing we may ask.
+     *
+     * Returns true when live mode should proceed, false to abandon this
+     * start (the grant is already torn down; callers just return). Runs
+     * inside [pendingLiveStart], so stopLive / a superseding start cancels
+     * the dialog await like any other suspension in the start path.
+     */
+    private suspend fun settleUnknownStreamKind(
+        backend: com.playtranslate.capture.CaptureBackend,
+    ): Boolean {
+        if (backend.requiresAccessibilityService) {
+            DetectionLog.log(
+                "MP stream kind unresolved — dropping grant; live capture falls back to accessibility"
+            )
+            mediaProjectionController.destroy()
+            return true
+        }
+        val answer = askStreamKindChoice()
+        val settled = answer?.let { mediaProjectionController.assertStreamKind(it) }
+            ?: StreamKind.UNKNOWN
+        if (settled == StreamKind.UNKNOWN) {
+            DetectionLog.log("MP stream kind prompt cancelled — live start abandoned")
+            mediaProjectionController.destroy()
+            return false
+        }
+        return true
+    }
+
+    /**
+     * The stream-kind question, asked ON SCREEN — the terminal fallback for
+     * an MP-only session the probe could not classify (see
+     * [settleUnknownStreamKind]). Suspends until the user answers; null =
+     * cancelled (button, scrim tap, or back). Cancelling the calling job
+     * dismisses the alert, so a stop/supersede mid-dialog leaves no orphan
+     * window behind.
+     */
+    private suspend fun askStreamKindChoice(): StreamKind? {
+        val host = CaptureBackendResolver.active().overlayHost ?: return null
+        val display = getSystemService(DisplayManager::class.java)
+            ?.getDisplay(Display.DEFAULT_DISPLAY) ?: return null
+        val displayCtx = createDisplayContext(display)
+        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return null
+        val themed = overlayThemedContext(displayCtx)
+        return suspendCancellableCoroutine { cont ->
+            fun answer(kind: StreamKind?) {
+                if (cont.isActive) cont.resume(kind)
+            }
+            val alert = com.playtranslate.ui.OverlayAlert
+                .Builder(themed, host, wm, Display.DEFAULT_DISPLAY)
+                // No app icon — a utility prompt, per the design decision.
+                .hideIcon()
+                .setTitle(getString(R.string.stream_kind_prompt_title))
+                .setMessage(getString(R.string.stream_kind_prompt_message))
+                .addButton(
+                    getString(R.string.stream_kind_share_one_app),
+                    themed.themeColor(R.attr.ptAccent),
+                ) { answer(StreamKind.CLEAN) }
+                .addButton(
+                    getString(R.string.stream_kind_share_entire_screen),
+                    themed.themeColor(R.attr.ptAccent),
+                ) { answer(StreamKind.CONTAMINATED) }
+                .addCancelButton(getString(R.string.btn_cancel)) { answer(null) }
+                .showAsOverlay()
+            cont.invokeOnCancellation {
+                Handler(Looper.getMainLooper()).post { alert.dismiss() }
+            }
+        }
+    }
 
     /**
      * The post-consent tail of [startLive]: compute the target display set
@@ -1231,11 +1335,12 @@ class CaptureService : Service() {
     /** The stream-kind verdict CHANGED under running live modes — reset by
      *  consent teardown (a mode's cycle-start guard calls this and must
      *  return immediately after: its scope is cancelled here), or measured
-     *  mid-session in either direction (a one-shot's clean capture can
-     *  resolve CLEAN after startLive settled UNKNOWN → pinhole on a task
-     *  stream). Re-enter the standard mutator with the current display set —
-     *  its class-mismatch diff rebuilds whichever tier [desiredModeClass]
-     *  now selects. No-op with no live modes (the startLive resolve path). */
+     *  mid-session by a one-shot's resolve. (Live sessions no longer RUN on
+     *  UNKNOWN — [settleUnknownStreamKind] — so the mid-session upgrade is
+     *  a defensive net, not a steady-state path.) Re-enter the standard
+     *  mutator with the current display set — its class-mismatch diff
+     *  rebuilds whichever tier [desiredModeClass] now selects. No-op with
+     *  no live modes (the startLive resolve path). */
     internal fun onStreamKindChanged() {
         if (liveModes.isEmpty()) return
         setLiveDisplays(liveModes.keys.toSet())

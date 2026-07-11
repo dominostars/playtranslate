@@ -609,8 +609,12 @@ class MediaProjectionController(private val service: CaptureService) {
      * [StreamKindProbe]: a small full-alpha window is drawn and the mirror
      * checked for it — present ⇒ whole-display (CONTAMINATED), absent across
      * a pattern swap ⇒ task capture (CLEAN). Every ambiguous outcome resolves
-     * to UNKNOWN — which is never cached, so that session-start routes to
-     * the pinhole tier and the next start re-measures. Requires consent to
+     * to UNKNOWN — which is never cached, and which a live-mode start settles
+     * terminally instead of running on ([CaptureService.settleUnknownStreamKind]:
+     * accessibility-backend sessions drop the grant and fall back to
+     * accessibility capture; MP-only sessions ask the user, who knows the
+     * answer, via [assertStreamKind]). One-shot paths keep the conservative
+     * treat-as-contaminated default and re-measure per attempt. Requires consent to
      * be held; returns UNKNOWN (without caching) when it isn't. A measured
      * verdict is cached until [teardown] — the choice can differ on every
      * fresh consent — and only while the consent that was measured is still
@@ -662,6 +666,39 @@ class MediaProjectionController(private val service: CaptureService) {
             // change through the same rebuild diff as a verdict reset, so a
             // task stream doesn't keep the pinhole tier until the user
             // restarts live mode (review finding).
+            service.onStreamKindChanged()
+            kind
+        }
+    }
+
+    /**
+     * Record the USER'S OWN ANSWER to the capture-scope question — the
+     * terminal fallback when [resolveStreamKind] could not measure and the
+     * MediaProjection stream is the session's only pixel source (see
+     * [CaptureService.settleUnknownStreamKind]). The user knows what they
+     * picked; there is no API. Same trust model and lifetime as a measured
+     * verdict: session-scoped, dies with the consent in
+     * [resetSessionVerdict]. A wrong answer reproduces exactly the
+     * corresponding probe misverdict — pinhole flap for a false
+     * CONTAMINATED, self-echo churn for a false CLEAN — with the same
+     * recovery (restart live mode → fresh probe), so no new failure class
+     * enters the system; the `user-asserted` provenance in the log line is
+     * what lets an exported log tell which classifier was wrong.
+     *
+     * Validated under the probe's own mutex: a MEASURED verdict that landed
+     * while the dialog was up wins (measurement outranks recollection), and
+     * an answer arriving after the consent died is discarded — a stale
+     * assertion must not poison the next session (the same mid-probe
+     * teardown discipline [resolveStreamKind] applies). Returns the verdict
+     * now in effect; UNKNOWN means the assertion was discarded.
+     */
+    suspend fun assertStreamKind(kind: StreamKind): StreamKind {
+        if (kind == StreamKind.UNKNOWN) return streamKind
+        return streamKindMutex.withLock {
+            streamKind.takeIf { it != StreamKind.UNKNOWN }?.let { return@withLock it }
+            if (!hasConsent) return@withLock StreamKind.UNKNOWN
+            streamKind = kind
+            DetectionLog.log("MP stream kind: $kind (user-asserted)")
             service.onStreamKindChanged()
             kind
         }

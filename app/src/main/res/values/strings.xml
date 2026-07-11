@@ -746,6 +746,21 @@
     <string name="error_capture_blocked_secure">Nothing can be read — this app blocks screen capture.</string>
     <!-- Label on the small on-screen chip shown for ~1.5s at live-mode start while the capture stream is being classified; sits beside a small colored checker pattern. Keep short. -->
     <string name="probe_initializing">Initializing…</string>
+    <!-- Stream-scope prompt (this block): an on-screen alert dialog shown at live-mode start
+         (MediaProjection-only backend) when the automatic probe could not determine which capture
+         scope the user picked in the SYSTEM consent dialog. The two choice-button labels mirror the
+         Android system dialog's own wording ("Share one app" / "Share entire screen" on stock
+         Android 14+); OEM builds and system locales phrase that dialog differently, so translations
+         should follow the SYSTEM dialog's local wording where known. Cancel reuses btn_cancel and
+         abandons the live-mode start. Pending l10n batch. -->
+    <!-- Title of the stream-scope alert dialog described above. -->
+    <string name="stream_kind_prompt_title">Which sharing option did you pick?</string>
+    <!-- Body text of the stream-scope alert dialog, under the title. -->
+    <string name="stream_kind_prompt_message">Live translation works differently for a single app than for the entire screen, and the system doesn\'t say which was shared.</string>
+    <!-- Choice button on the stream-scope alert dialog; wording mirrors the Android system consent dialog's single-app option. -->
+    <string name="stream_kind_share_one_app">Share one app</string>
+    <!-- Choice button on the stream-scope alert dialog; wording mirrors the Android system consent dialog's whole-screen option. -->
+    <string name="stream_kind_share_entire_screen">Share entire screen</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SECTION HEADERS on the translation-result screen.

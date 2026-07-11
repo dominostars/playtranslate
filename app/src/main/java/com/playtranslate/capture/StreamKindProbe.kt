@@ -36,9 +36,11 @@ import kotlin.coroutines.resume
  * silent phase settles nothing (see [Ledger]). Everything that is not a
  * measurement — setup failures (window add, layout timeout), capture-layer
  * failures mid-scan (consent lost, projection/VD dead), mixed evidence past
- * the round cap — resolves to UNKNOWN, which is never cached: this
- * session-start routes to the pinhole tier (operationally fail-closed) and
- * the next start re-measures.
+ * the round cap — resolves to UNKNOWN, which is never cached and which a
+ * live start never runs on: it is settled terminally by
+ * [com.playtranslate.CaptureService.settleUnknownStreamKind] (accessibility
+ * fallback, or asking the user on the MP-only backend). One-shot paths keep
+ * the conservative treat-as-contaminated default and re-measure per attempt.
  *
  * The verdict is trusted for the whole session — this probe is the SOLE
  * classifier, with no runtime backstops. That is sound because a projection
@@ -174,8 +176,8 @@ object StreamKindProbe {
             //    through a color-stripping/inverting pipeline. Constant sign
             //    = environmental checker = absence-grade evidence.
             //  - FAILED (capture layer broke) or mixed evidence past
-            //    [MAX_ROUNDS] → UNKNOWN, uncached: pinhole tier this start,
-            //    re-measure next start.
+            //    [MAX_ROUNDS] → UNKNOWN, uncached: the live start settles it
+            //    (a11y fallback / ask the user) instead of running on it.
             val ledger = Ledger()
             var round = 0
             while (true) {
@@ -255,9 +257,10 @@ object StreamKindProbe {
      * round (capture layer broke — never confusable with silence), and
      * mixed evidence exhausting [MAX_ROUNDS]. UNKNOWN is deliberately
      * uncacheable ([MediaProjectionController.resolveStreamKind] stores only
-     * CLEAN/CONTAMINATED): this session-start routes to the pinhole tier —
-     * operationally fail-closed — and the next start re-measures instead of
-     * living a whole session on a verdict the probe never earned.
+     * CLEAN/CONTAMINATED), and no live session ever runs on it — the start
+     * settles it via accessibility fallback or by asking the user
+     * ([com.playtranslate.CaptureService.settleUnknownStreamKind]), instead
+     * of living a whole session on a verdict the probe never earned.
      */
     internal class Ledger {
         private var absents = 0
@@ -605,8 +608,8 @@ object StreamKindProbe {
 
     /** Probe abort: no measurement happened, so nothing may be cached.
      *  [MediaProjectionController.resolveStreamKind] stores only measured
-     *  verdicts; an UNKNOWN routes this session-start to the pinhole tier
-     *  (fail-closed) and re-measures on the next start. */
+     *  verdicts; a live start settles an UNKNOWN terminally (a11y fallback /
+     *  ask the user) rather than running on it. */
     private fun aborted(reason: String): StreamKind =
         verdict(StreamKind.UNKNOWN, "probe aborted: $reason")
 
