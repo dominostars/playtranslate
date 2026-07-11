@@ -74,6 +74,77 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
         return maxOf(userMs, MIN_SCREENSHOT_INTERVAL_MS)
     }
 
+    // ── Capture diagnostics ──────────────────────────────────────────────
+    //
+    // Ported from MediaProjectionController's served/failed counters (the
+    // "a capture layer that fails silently costs days" lesson, 2026-07-10):
+    // individual failures already log inline, but a PERSISTENTLY failing
+    // takeScreenshot needs a trend line in a log export, not scattered
+    // one-off lines. Counts are per REQUEST, not per attempt — requestClean's
+    // internal retry is one request; the counters describe what consumers
+    // experienced. All counting sites run on the main-dispatched capture
+    // coroutines; @Volatile mirrors the MP counters for read visibility.
+
+    @Volatile private var cleanServedCount = 0L
+    @Volatile private var rawServedCount = 0L
+    @Volatile private var cleanFailedCount = 0L
+    @Volatile private var rawFailedCount = 0L
+    @Volatile private var lastFailReason = ""
+    private var summaryLastEmitMs = 0L
+    private var summaryLastTotal = 0L
+
+    /** Cadence of the counter summary — matches the MP stream summary. */
+    private val SUMMARY_INTERVAL_MS = 5_000L
+
+    private fun noteOutcome(clean: Boolean, served: Boolean) {
+        if (served) {
+            if (clean) cleanServedCount++ else rawServedCount++
+        } else {
+            if (clean) cleanFailedCount++ else rawFailedCount++
+        }
+        maybeEmitSummary()
+    }
+
+    /** Rate-limited counter summary, emitted from capture completions — a
+     *  pull source that isn't being asked to capture has nothing to report,
+     *  so there is no timer and no heartbeat (unlike the MP stream, where
+     *  silence itself is a signal). The window rolls even while
+     *  debugLiveMode is off so enabling it mid-session shows recent rates,
+     *  not a session-length backlog. Same line shape as the MP summary for
+     *  log tooling. */
+    private fun maybeEmitSummary() {
+        val now = System.currentTimeMillis()
+        if (summaryLastEmitMs == 0L) {
+            summaryLastEmitMs = now
+            return
+        }
+        if (now - summaryLastEmitMs < SUMMARY_INTERVAL_MS) return
+        val total = cleanServedCount + rawServedCount + cleanFailedCount + rawFailedCount
+        val delta = total - summaryLastTotal
+        val windowSecs = (now - summaryLastEmitMs) / 1000
+        summaryLastEmitMs = now
+        summaryLastTotal = total
+        if (!Prefs(a11y).debugLiveMode) return
+        val failed = cleanFailedCount + rawFailedCount
+        val failSuffix =
+            if (failed > 0) " failed=$rawFailedCount/$cleanFailedCount last=\"$lastFailReason\""
+            else ""
+        DetectionLog.log(
+            "A11y capture: +$delta captures/${windowSecs}s " +
+                "(rawServed=$rawServedCount cleanServed=$cleanServedCount$failSuffix)"
+        )
+    }
+
+    /** Human-readable reason for a takeScreenshot [errorCode] — the API-30
+     *  platform codes, by literal so no SDK constant dependency. */
+    private fun failReason(errorCode: Int): String = when (errorCode) {
+        1 -> "code=1 (internal error)"
+        2 -> "code=2 (no accessibility access)"
+        3 -> "code=3 (rate limit)"
+        4 -> "code=4 (invalid display)"
+        else -> "code=$errorCode"
+    }
+
     // ── Public API ───────────────────────────────────────────────────────
 
     /**
@@ -120,6 +191,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
                 bitmap = retry
                 if (retry == null) DetectionLog.log("Clean capture retry also failed")
             }
+            noteOutcome(clean = true, served = bitmap != null)
             bitmap?.let { stamp(it) }
         } finally {
             // Belt-and-suspenders: the takeScreenshot callback can fail to
@@ -151,6 +223,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
         awaitScreenshotInterval()
         val bitmap = doTakeScreenshot(displayId, onCaptured)
         if (bitmap == null) DetectionLog.log("Raw capture failed")
+        noteOutcome(clean = false, served = bitmap != null)
         bitmap?.let { stamp(it) }
     }
 
@@ -242,6 +315,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
                             a11y.restoreAfterCapture(state)
                         }
                     }
+                    noteOutcome(clean = true, served = bitmap != null)
                     if (bitmap != null) {
                         DetectionLog.log("Loop[$displayId]: clean frame captured (${bitmap.width}x${bitmap.height})")
                         onCleanFrame(stamp(bitmap))
@@ -253,6 +327,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
                         awaitScreenshotInterval()
                         doTakeScreenshot(displayId)
                     }
+                    noteOutcome(clean = false, served = bitmap != null)
                     if (bitmap != null) {
                         onRawFrame(stamp(bitmap))
                     }
@@ -325,7 +400,11 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
         // the guard keeps the API-30 calls off the API-29 compile path.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
         lastCaptureTimeMs = System.currentTimeMillis()
-        return withTimeoutOrNull(3000L) {
+        // The platform's failure reason for THIS attempt; both writer
+        // (onFailure, main executor) and reader (below, the main-dispatched
+        // caller) run on main. Null on timeout — the OS never called back.
+        var platformReason: String? = null
+        val bmp = withTimeoutOrNull(3000L) {
             suspendCancellableCoroutine { cont ->
             a11y.takeScreenshot(
                 displayId,
@@ -347,13 +426,23 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
 
                     override fun onFailure(errorCode: Int) {
                         Log.w(TAG, "takeScreenshot failed on display $displayId, code=$errorCode")
+                        platformReason = failReason(errorCode)
                         onCaptured?.invoke()
                         if (cont.isActive) cont.resume(null)
                     }
                 }
             )
         }
-        }.also { if (it == null) DetectionLog.log("Screenshot timed out (3s)") }
+        }
+        if (bmp == null) {
+            // Accurate reason for the counters + log: the previous single
+            // "timed out (3s)" line also mislabeled onFailure errors as
+            // timeouts.
+            val reason = platformReason ?: "timeout (3s)"
+            lastFailReason = reason
+            DetectionLog.log("Screenshot failed: $reason")
+        }
+        return bmp
     }
 
     /** Suspend for [frames] vsync frames (~16 ms each at 60 Hz). */
