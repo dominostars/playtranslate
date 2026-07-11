@@ -130,6 +130,12 @@ class PlayTranslateApplication : Application() {
         TranslationBackendRegistry.orderedBackends()
             .filterIsInstance<com.playtranslate.translation.llm.OnDeviceLlmBackend>()
             .forEach { it.cleanupPartialsIfDeprecated() }
+        // Same launch-time-cleanup rationale for game-audio snapshots: the
+        // in-session sweep runs only when a NEW snapshot is taken, so a
+        // ~16 MB zombie from a killed-and-never-restored card flow would
+        // otherwise linger until the OS purges the cache. A couple of stats
+        // + unlinks; negligible on cold start.
+        com.playtranslate.capture.GameAudioSnapshot.sweepOrphans(this)
         // Track the currently-resumed PlayTranslate activity so display-id
         // queries always reflect the live state instead of a value cached
         // at lifecycle boundaries — Android can move an activity between
