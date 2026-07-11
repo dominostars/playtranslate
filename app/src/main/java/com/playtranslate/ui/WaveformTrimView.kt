@@ -76,6 +76,11 @@ class WaveformTrimView @JvmOverloads constructor(
         /** Hidden-content threshold for the edge fade/arrow — about one
          *  RMS bucket; anything smaller isn't meaningfully "more audio". */
         const val EDGE_EPSILON_MS = 60.0
+
+        /** Auto-pan speed: fraction of the visible window scrolled per
+         *  animation frame while a handle drag holds the edge zone
+         *  (~0.6 windows/second at 60 fps). */
+        const val AUTO_PAN_FRACTION = 0.01
     }
 
     private val barPaint = Paint().apply { color = context.themeColor(R.attr.ptDivider) }
@@ -145,6 +150,49 @@ class WaveformTrimView @JvmOverloads constructor(
     private var downY = 0f
     private var panCommitted = false
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+
+    // ── Auto-pan while a handle drag reaches the view's edge ─────────────
+    // Dragging a handle into the edge zone scrolls the content under the
+    // (possibly stationary) finger so the drag continues into hidden audio,
+    // like text-selection auto-scroll. The handle re-derives its position
+    // from the finger x every frame, so it rides the visible edge while the
+    // waveform slides past.
+    private val autoPanZonePx = 20 * density
+    private var autoPanDir = 0 // -1 = revealing left, +1 = revealing right
+    private val autoPanTick = object : Runnable {
+        override fun run() {
+            if (autoPanDir == 0 ||
+                (drag != DragTarget.LEFT_HANDLE && drag != DragTarget.RIGHT_HANDLE)
+            ) {
+                return
+            }
+            val before = viewStartMs
+            viewStartMs += autoPanDir * contentWidth() * msPerPx * AUTO_PAN_FRACTION
+            clampView()
+            if (viewStartMs != before) {
+                applyHandleDrag(lastTouchX)
+                invalidate()
+            }
+            postOnAnimation(this)
+        }
+    }
+
+    private fun updateAutoPan(x: Float) {
+        val dir = when {
+            x < contentLeft() + autoPanZonePx -> -1
+            x > contentRight() - autoPanZonePx -> 1
+            else -> 0
+        }
+        if (dir == autoPanDir) return
+        removeCallbacks(autoPanTick)
+        autoPanDir = dir
+        if (dir != 0) postOnAnimation(autoPanTick)
+    }
+
+    private fun stopAutoPan() {
+        autoPanDir = 0
+        removeCallbacks(autoPanTick)
+    }
 
     private val scaleDetector = ScaleGestureDetector(
         context,
@@ -341,21 +389,9 @@ class WaveformTrimView @JvmOverloads constructor(
                 val dx = event.x - lastTouchX
                 lastTouchX = event.x
                 when (drag) {
-                    DragTarget.LEFT_HANDLE -> {
-                        val ms = msFor(event.x).coerceIn(0L, selEndMs - minSelectionMs)
-                        if (ms != selStartMs) {
-                            selStartMs = ms
-                            onSelectionChanged?.invoke(selStartMs, selEndMs)
-                            invalidate()
-                        }
-                    }
-                    DragTarget.RIGHT_HANDLE -> {
-                        val ms = msFor(event.x).coerceIn(selStartMs + minSelectionMs, durationMs)
-                        if (ms != selEndMs) {
-                            selEndMs = ms
-                            onSelectionChanged?.invoke(selStartMs, selEndMs)
-                            invalidate()
-                        }
+                    DragTarget.LEFT_HANDLE, DragTarget.RIGHT_HANDLE -> {
+                        applyHandleDrag(event.x)
+                        updateAutoPan(event.x)
                     }
                     DragTarget.PAN -> {
                         viewStartMs -= dx * msPerPx
@@ -368,9 +404,41 @@ class WaveformTrimView @JvmOverloads constructor(
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 drag = DragTarget.NONE
                 panCommitted = false
+                stopAutoPan()
             }
         }
         return true
+    }
+
+    /** Move the dragged handle to the audio position under finger-x [x],
+     *  clamped against the opposite handle and the file bounds. Shared by
+     *  live MOVE events and the auto-pan tick (same finger x, new view
+     *  offset ⇒ new position). */
+    private fun applyHandleDrag(x: Float) {
+        when (drag) {
+            DragTarget.LEFT_HANDLE -> {
+                val ms = msFor(x).coerceIn(0L, selEndMs - minSelectionMs)
+                if (ms != selStartMs) {
+                    selStartMs = ms
+                    onSelectionChanged?.invoke(selStartMs, selEndMs)
+                    invalidate()
+                }
+            }
+            DragTarget.RIGHT_HANDLE -> {
+                val ms = msFor(x).coerceIn(selStartMs + minSelectionMs, durationMs)
+                if (ms != selEndMs) {
+                    selEndMs = ms
+                    onSelectionChanged?.invoke(selStartMs, selEndMs)
+                    invalidate()
+                }
+            }
+            else -> {}
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        stopAutoPan()
+        super.onDetachedFromWindow()
     }
 
     /** Programmatic selection update (e.g. the full editor returned a refined
