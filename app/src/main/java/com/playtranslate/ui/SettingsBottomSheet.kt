@@ -428,8 +428,10 @@ class SettingsBottomSheet : DialogFragment() {
 
     // ── MediaProjection controls ─────────────────────────────────────────
 
-    /** MediaProjection-backend "turn on game screen controls": prompt for the
-     *  screen-record consent and, on grant, reconcile the floating icons.
+    /** MediaProjection-backend "turn on game screen controls": the full Turn
+     *  On — consent prompt, activation flag, icon reconcile — via
+     *  [com.playtranslate.capture.CaptureLifecycle.activateMediaProjection],
+     *  the same path the QS tile's ACTION_MP_ACTIVATE takes.
      *  Runs on the Activity scope so the consent round-trip survives a
      *  Settings dismiss; the switch refresh is null-safe for that case. */
     private fun requestMediaProjectionControls() {
@@ -442,18 +444,11 @@ class SettingsBottomSheet : DialogFragment() {
             return
         }
         activity.lifecycleScope.launch {
-            val controller =
-                com.playtranslate.CaptureService.instance?.mediaProjectionController
-            val granted = controller?.ensureConsent() ?: false
-            if (granted) {
-                // showOverlayIcon doesn't apply on the MediaProjection
-                // backend — the icon shows whenever capture is active (see
-                // OverlayUiController.reconcileFloatingIcons), so there's
-                // nothing to flip here.
-                com.playtranslate.capture.CaptureBackendResolver
-                    .activeOverlayUi?.reconcileFloatingIcons()
-                com.playtranslate.PlayTranslateTileService.TileSync.refresh(activity)
-            }
+            // showOverlayIcon doesn't apply on the MediaProjection backend —
+            // activation is the icon's only gate (see
+            // OverlayUiController.reconcileFloatingIcons), so there's nothing
+            // to flip here.
+            com.playtranslate.capture.CaptureLifecycle.activateMediaProjection()
             renderer?.refreshOverlayIconState()
         }
     }

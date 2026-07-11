@@ -973,6 +973,39 @@ class CaptureService : Service() {
     /** Owns the MediaProjection session (consent, VirtualDisplay, ImageReader). */
     internal val mediaProjectionController by lazy { MediaProjectionController(this) }
 
+    /** Sticky MediaProjection-backend activation — the Turn On / Turn Off
+     *  state [com.playtranslate.capture.CaptureLifecycle] reads, and (via
+     *  canShowControls) the gate for the floating controls. Deliberately NOT
+     *  the consent token: on API 34+ consent is single-use and dies with
+     *  every projection loss (status-bar-chip revoke, Android 15 lock
+     *  auto-stop), which must not read as "the user turned PlayTranslate
+     *  off" — the controls stay up and the next capture-requiring action
+     *  re-prompts (see [MediaProjectionController.onProjectionLost]).
+     *
+     *  Exactly three writers. SET on a consent grant landing while this
+     *  backend is the active one —
+     *  [MediaProjectionController.onConsentResult], the choke point all
+     *  grants flow through, so the lazy in-app prompts count as Turn On
+     *  too; a grant borrowed by an accessibility-backend live session does
+     *  NOT count (see onConsentResult's kdoc). CLEARED by Turn Off
+     *  ([com.playtranslate.capture.CaptureLifecycle.deactivate]) and by ANY
+     *  backend swap
+     *  ([com.playtranslate.capture.CaptureBackendResolver.reresolve]).
+     *  Invariant, per-backend: on the MediaProjection backend,
+     *  hasConsent ⇒ activated; the converse — activated without consent —
+     *  is the deliberate post-revoke state.
+     *  Runtime state: dies with the service, so a process restart still
+     *  comes up inactive, exactly as the old consent-derived "active" did.
+     *  @Volatile for parity with the consent fields this replaced as the
+     *  "active" source ([MediaProjectionController]'s resultCode/resultData
+     *  are @Volatile): reads and writes are not all main-confined —
+     *  [com.playtranslate.capture.CaptureLifecycle.deactivate] is documented
+     *  safe-from-any-context, and the QS tile / Settings poll
+     *  [com.playtranslate.capture.CaptureLifecycle.isActive] on their own
+     *  schedules. */
+    @Volatile
+    internal var mediaProjectionActivated = false
+
     /** One-shot clean-capture source backed by [mediaProjectionController].
      *  Stored as an explicit [Lazy] so [onDestroy] can gate teardown on
      *  whether the source was ever touched (via [Lazy.isInitialized]) without
@@ -989,14 +1022,16 @@ class CaptureService : Service() {
     }
 
     /** Game-screen overlay UI for MediaProjection mode. Its floating controls
-     *  stay hidden until MediaProjection consent is granted — see
-     *  [OverlayUiController]'s canShowControls gate. Stored as an explicit
+     *  stay hidden until the user activates the backend (Turn On / QS tile) —
+     *  see [OverlayUiController]'s canShowControls gate, which reads
+     *  [mediaProjectionActivated] rather than consent so the controls survive
+     *  a projection revoke. Stored as an explicit
      *  [Lazy] so [onDestroy] can gate teardown on whether the overlay UI was
      *  ever touched (via [Lazy.isInitialized]) — accessibility-only sessions
      *  never realize it and never need its teardown. */
     private val mediaProjectionOverlayUiLazy = lazy {
         OverlayUiController(this, mediaProjectionOverlayHost) {
-            mediaProjectionController.hasConsent
+            mediaProjectionActivated
         }.also { it.attach() }
     }
     internal val mediaProjectionOverlayUi: OverlayUiController

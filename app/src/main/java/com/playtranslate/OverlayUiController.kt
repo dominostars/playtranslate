@@ -720,15 +720,22 @@ class OverlayUiController(
      * Reconcile the floating icons against [Prefs.captureDisplayIds]: tear down
      * icons whose display is no longer selected or has been disconnected, and
      * install icons for newly-selected, currently-connected displays.
+     *
+     * [showIntro] is false only for the projection-loss reinstall
+     * ([com.playtranslate.capture.MediaProjectionController.onProjectionLost]):
+     * there the icon window was just swept by hideAll and comes straight back,
+     * so to the user it never left — replaying the sonar intro reads as a
+     * spurious flash (field report 2026-07-11). Every genuinely fresh
+     * appearance (Turn On, backend swap, display added) keeps the intro.
      */
-    fun reconcileFloatingIcons() {
+    fun reconcileFloatingIcons(showIntro: Boolean = true) {
         val prefs = Prefs(context)
         // The "show the floating icon" preference gates the icon only on the
         // accessibility backend. MediaProjection has no in-app toggle for it
         // — single-screen never did, and dual-screen deliberately doesn't
         // either (the Game Screen Controls row in Settings is a11y-only) — so
-        // the icon always shows there while capture is active (consent is the
-        // only gate, checked below).
+        // the icon always shows there while the backend is activated (the
+        // canShowControls gate below).
         val isMediaProjection =
             !CaptureBackendResolver.active().requiresAccessibilityService
         if (!isMediaProjection && !prefs.showOverlayIcon) {
@@ -736,8 +743,10 @@ class OverlayUiController(
             return
         }
         if (!canShowControls()) {
-            // MediaProjection backend without screen-record consent — the
-            // floating controls can't drive a capture, so withhold them.
+            // MediaProjection backend the user hasn't turned on. The gate is
+            // deliberately the activation flag, not consent: a revoked
+            // projection keeps the controls up — the next capture-requiring
+            // action re-prompts (see onProjectionLost).
             hideFloatingIcon("controls_gated")
             return
         }
@@ -762,7 +771,7 @@ class OverlayUiController(
         if (target.none { dm.getDisplay(it) != null }) {
             val display = findIconDisplay(prefs) ?: return
             if (display.displayId !in iconHandles) {
-                installFloatingIconForDisplay(display, prefs)
+                installFloatingIconForDisplay(display, prefs, showIntro)
             }
             return
         }
@@ -770,7 +779,7 @@ class OverlayUiController(
         for (id in target) {
             if (id in iconHandles) continue
             val display = dm.getDisplay(id) ?: continue
-            installFloatingIconForDisplay(display, prefs)
+            installFloatingIconForDisplay(display, prefs, showIntro)
         }
     }
 
@@ -783,7 +792,11 @@ class OverlayUiController(
         try { handle.wm.updateViewLayout(handle.icon, p) } catch (_: Exception) {}
     }
 
-    private fun installFloatingIconForDisplay(display: Display, prefs: Prefs) {
+    private fun installFloatingIconForDisplay(
+        display: Display,
+        prefs: Prefs,
+        showIntro: Boolean = true,
+    ) {
         val displayId = display.displayId
         // Idempotent: if an icon was already there for this display, tear it
         // down first so the closures and registry stay coherent.
@@ -892,8 +905,10 @@ class OverlayUiController(
             // bring-to-front re-stacks without going through install), so
             // gating the intro here gives us exactly the firing model the
             // design asked for: every fresh appearance, never a routine
-            // re-layout.
-            showSonarIntro(icon, displayId, displayCtx, pos)
+            // re-layout. The one non-appearance that reaches this path is the
+            // projection-loss sweep-and-reinstall, which passes
+            // showIntro=false (see reconcileFloatingIcons).
+            if (showIntro) showSonarIntro(icon, displayId, displayCtx, pos)
         } else {
             controller.destroy()
         }

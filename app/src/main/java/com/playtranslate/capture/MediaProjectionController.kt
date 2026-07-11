@@ -291,21 +291,43 @@ class MediaProjectionController(private val service: CaptureService) {
      *  (no public API), so consumers must pause rather than misplace. */
     val contentSize: StateFlow<Point?> get() = _contentSize
 
-    /** Observers notified right after a teardown drops the held consent. The
-     *  Settings sheet registers one to refresh its Turn On/Off buttons —
-     *  MediaProjection "active" is held consent, not a pref it could watch. */
+    /** Observers notified right after a teardown drops the held consent — a
+     *  runtime transition no pref watcher could see. The Settings sheet
+     *  registers one to re-render rows that reflect consent state. */
     private val teardownListeners = mutableListOf<() -> Unit>()
 
     fun addTeardownListener(listener: () -> Unit) { teardownListeners += listener }
     fun removeTeardownListener(listener: () -> Unit) { teardownListeners -= listener }
 
     /** Delivered by [MediaProjectionConsentActivity]. Completes any pending
-     *  [consentGate] so suspended [captureFrame] calls resume. */
+     *  [consentGate] so suspended [captureFrame] calls resume.
+     *
+     *  A grant marks the backend activated HERE — the one choke point all
+     *  grants flow through — but ONLY while the MediaProjection backend is
+     *  the active one. On the MP backend, granting the dialog IS the user
+     *  saying "on": the lazy prompts (in-app Translate button / live toggle,
+     *  via requestClean / startLive) must flip the lifecycle state exactly
+     *  as they did when "active" was the consent token itself, or the tile
+     *  and Settings would report Off while a just-granted session captures
+     *  (adversarial-review round 2). On the accessibility backend the same
+     *  dialog means something narrower — "borrow the MP stream for this
+     *  live session" ([CaptureService.startLive]'s wantMpStreamConsent) —
+     *  and must NOT write MP-backend lifecycle state that nothing on that
+     *  backend reads or clears (round 3: the stale flag would resurface as
+     *  a phantom "on" after a later swap into MP). Together with
+     *  [CaptureBackendResolver.reresolve] destroying any borrowed session
+     *  at the swap boundary, the invariant is per-backend: on the MP
+     *  backend, hasConsent ⇒ activated; the converse — activated without
+     *  consent — is the deliberate post-revoke state. Set BEFORE the gate
+     *  completes so resumed callers observe it. */
     fun onConsentResult(resultCode: Int, data: Intent?) {
         val granted = resultCode == Activity.RESULT_OK && data != null
         if (granted) {
             this.resultCode = resultCode
             this.resultData = data
+            if (!CaptureBackendResolver.active().requiresAccessibilityService) {
+                service.mediaProjectionActivated = true
+            }
         }
         val gate = consentGate
         consentGate = null
@@ -915,20 +937,34 @@ class MediaProjectionController(private val service: CaptureService) {
         _contentSize.value = null
     }
 
-    /** The projection is gone — stopped by the system or the user (a revoke /
-     *  sleep teardown), or [getMediaProjection] failed to turn a held consent
-     *  token into a session. Not our own [destroy]. Tear the session down,
-     *  drop every overlay this backend owns (a drag/lookup in flight at the
-     *  moment of loss can otherwise leave the magnifier lens, region
+    /** The projection is gone — stopped by the system or the user (a
+     *  status-bar-chip revoke, an Android 15 lock-screen auto-stop), or
+     *  [getMediaProjection] / createVirtualDisplay failed to turn a held
+     *  consent token into a session. Not our own [destroy]. Tear the session
+     *  down and drop its overlays — hideAll, because a drag/lookup in flight
+     *  at the moment of loss can otherwise leave the magnifier lens, region
      *  indicator, translation boxes, or floating menu orphaned on screen —
-     *  reconcileFloatingIcons only knew about the floating icon), and refresh
-     *  the QS tile so the UI catches up with the lost consent. Always
-     *  invoked on the main thread (the projection callback posts to
-     *  [mainHandler]; the failure path is the capture path), so the
-     *  main-thread-only hideAll is safe. */
+     *  then reconcile the floating controls back up: projection loss is NOT
+     *  deactivation. [CaptureService.mediaProjectionActivated] is only
+     *  cleared by an explicit Turn Off, so the icon survives the revoke and
+     *  the next capture-requiring action re-prompts for the now-burned
+     *  single-use consent (requestClean and startLive both route through
+     *  [ensureConsent]; a running live mode is stopped by its loop's
+     *  checkConsentLost). The reinstall re-runs updateForegroundState, which
+     *  drops the mediaProjection FGS type back to SPECIAL_USE now that
+     *  consent is gone. Same hideAll → reconcile idiom as a backend swap
+     *  ([CaptureBackendResolver.reresolve]). Always invoked on the main
+     *  thread (the projection callback posts to [mainHandler]; the failure
+     *  path is the capture path), so the main-thread-only overlay work is
+     *  safe. */
     private fun onProjectionLost() {
         teardown()
-        CaptureBackendResolver.activeOverlayUi?.hideAll()
+        CaptureBackendResolver.activeOverlayUi?.apply {
+            hideAll()
+            // showIntro=false: the icon was just swept and comes straight
+            // back — to the user it never left, so no sonar-ping replay.
+            reconcileFloatingIcons(showIntro = false)
+        }
         PlayTranslateTileService.TileSync.refresh(service.applicationContext)
     }
 

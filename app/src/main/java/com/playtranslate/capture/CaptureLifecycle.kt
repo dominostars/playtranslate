@@ -11,9 +11,15 @@ import com.playtranslate.Prefs
  * system is running — and for the activate / deactivate operations behind the
  * Settings "Turn On / Turn Off" button and the Quick Settings tile.
  *
- * "active" is derived, never stored:
- *  - MediaProjection backend → screen-record consent is currently held
- *    (consent doesn't survive a process restart, so this is runtime state).
+ * "active" is derived where possible:
+ *  - MediaProjection backend → the explicit
+ *    [CaptureService.mediaProjectionActivated] flag: set by Turn On, cleared
+ *    only by Turn Off. Deliberately NOT held consent — the consent token is
+ *    single-use on API 34+ and dies with every status-bar-chip revoke / lock
+ *    auto-stop, which must not read as the user turning PlayTranslate off
+ *    (the floating controls stay up; the next capture re-prompts — see
+ *    [MediaProjectionController.onProjectionLost]). Still runtime state: it
+ *    dies with the service, so a process restart comes up inactive.
  *  - Accessibility backend, dual-screen → always true (the service is the
  *    capture path — there is nothing to start).
  *  - Accessibility backend, single-screen → the floating icon is shown.
@@ -23,7 +29,7 @@ object CaptureLifecycle {
     /** Whether PlayTranslate's capture system is currently running. */
     fun isActive(ctx: Context): Boolean {
         if (!CaptureBackendResolver.active().requiresAccessibilityService) {
-            return CaptureService.instance?.mediaProjectionController?.hasConsent == true
+            return CaptureService.instance?.mediaProjectionActivated == true
         }
         if (!Prefs.isSingleScreen(ctx)) return true
         return Prefs(ctx).showOverlayIcon && PlayTranslateAccessibilityService.isEnabled(ctx)
@@ -41,6 +47,9 @@ object CaptureLifecycle {
     fun deactivate(ctx: Context) {
         if (!CaptureBackendResolver.active().requiresAccessibilityService) {
             CaptureService.instance?.let { svc ->
+                // Clear the activation flag BEFORE reconciling below — the
+                // icon's canShowControls gate reads it.
+                svc.mediaProjectionActivated = false
                 if (svc.isLive) svc.stopLive()
                 svc.mediaProjectionCaptureSource.destroy()
             }
@@ -64,7 +73,11 @@ object CaptureLifecycle {
 
     /** MediaProjection-backend activate: obtain screen-record consent — capture
      *  stays lazy, no projection is created here — and on grant bring the
-     *  floating controls up. Returns whether consent is now held. */
+     *  floating controls up. No flag write here: the grant itself marks the
+     *  backend activated ([MediaProjectionController.onConsentResult] owns
+     *  that write, for every grant path — not just this one), and a
+     *  short-circuiting ensureConsent implies the flag is already set
+     *  (hasConsent ⇒ activated). Returns whether consent is now held. */
     suspend fun activateMediaProjection(): Boolean {
         val controller = CaptureService.instance?.mediaProjectionController ?: return false
         if (!controller.ensureConsent()) return false

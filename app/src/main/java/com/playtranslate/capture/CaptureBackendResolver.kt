@@ -93,12 +93,22 @@ object CaptureBackendResolver {
         if (want == useMediaProjection) return
         CaptureService.instance?.let { svc ->
             if (svc.isLive) svc.stopLive()
-            // Outgoing MediaProjection backend: release its session (consent
-            // token, VirtualDisplay, ImageReader) so a stale projection doesn't
-            // linger — and keep the service foreground — under the now-inactive
-            // backend. teardown() is the same release onDestroy / the off
-            // switch use; stopLive() above already stopped any capture loops.
-            if (useMediaProjection) svc.mediaProjectionController.destroy()
+            // A backend swap is a fresh capture start in BOTH directions.
+            // Outgoing MediaProjection: release the session (consent token,
+            // VirtualDisplay, ImageReader) so a stale projection doesn't
+            // linger — and keep the service foreground — under the now-
+            // inactive backend. Outgoing accessibility: the same destroy
+            // drops any BORROWED stream session (startLive's
+            // wantMpStreamConsent) — a warm borrowed token surviving into
+            // the incoming MediaProjection backend would let captures run
+            // without ever re-prompting while the lifecycle reads Off
+            // (adversarial-review round 3). The activation flag clears with
+            // it: swapping back to MediaProjection later requires an
+            // explicit Turn On (round 1). teardown() is the release
+            // onDestroy / the off switch use, and a no-op when no session
+            // exists; stopLive() above already stopped any capture loops.
+            svc.mediaProjectionActivated = false
+            svc.mediaProjectionController.destroy()
         }
         active().overlayUi?.hideAll()
         useMediaProjection = want
