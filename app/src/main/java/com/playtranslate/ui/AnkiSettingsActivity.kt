@@ -1,15 +1,21 @@
 package com.playtranslate.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.AnkiManager
+import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +44,22 @@ class AnkiSettingsActivity : SettingsSubPageActivity() {
     private lateinit var dividerAnkiCardType: View
     private lateinit var rowAnkiEditMapping: View
     private lateinit var dividerAnkiEditMapping: View
+    private lateinit var switchGameAudio: MaterialSwitch
+
+    /** RECORD_AUDIO for the game-audio toggle (mirrors AnkiPermissionActivity's
+     *  RequestPermission idiom). Grant persists the pref; deny reverts the
+     *  switch — the revert's change listener persists false, which is the
+     *  state the user is left in. */
+    private val requestRecordAudio =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                Prefs(this).recordGameAudio = true
+                CaptureService.instance?.reconcileGameAudio()
+            } else {
+                switchGameAudio.isChecked = false
+                Toast.makeText(this, R.string.anki_game_audio_permission_denied, Toast.LENGTH_LONG).show()
+            }
+        }
 
     override fun onContentCreated(savedInstanceState: Bundle?) {
         rowAnkiDeck = findViewById(R.id.rowAnkiDeck)
@@ -56,6 +78,8 @@ class AnkiSettingsActivity : SettingsSubPageActivity() {
         rowAnkiDeck.setOnClickListener { showDeckPicker() }
         rowAnkiCardType.setOnClickListener { showCardTypePicker() }
         rowAnkiEditMapping.setOnClickListener { showCardTypeMapping() }
+
+        setupGameAudioSection()
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -77,6 +101,34 @@ class AnkiSettingsActivity : SettingsSubPageActivity() {
         // deck/model deleted or renamed externally).
         validateAnkiDeck()
         validateAnkiCardType()
+    }
+
+    private fun setupGameAudioSection() {
+        findViewById<View>(R.id.headerGameAudio)
+            .findViewById<TextView>(R.id.tvGroupTitle).text = getString(R.string.anki_group_audio)
+        val row = findViewById<View>(R.id.rowGameAudio)
+        row.findViewById<TextView>(R.id.tvRowTitle).text =
+            getString(R.string.anki_game_audio_row_title)
+        row.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            text = getString(R.string.anki_game_audio_row_subtitle)
+            isVisible = true
+        }
+        switchGameAudio = row.findViewById(R.id.switchRowToggle)
+        switchGameAudio.isChecked = Prefs(this).recordGameAudio
+        switchGameAudio.setOnCheckedChangeListener { _, checked ->
+            if (!checked) {
+                Prefs(this).recordGameAudio = false
+                CaptureService.instance?.reconcileGameAudio()
+            } else if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED
+            ) {
+                Prefs(this).recordGameAudio = true
+                CaptureService.instance?.reconcileGameAudio()
+            } else {
+                requestRecordAudio.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+        row.setOnClickListener { switchGameAudio.toggle() }
     }
 
     private fun render(state: AnkiUiState) {

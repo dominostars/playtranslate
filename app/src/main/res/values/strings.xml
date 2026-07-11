@@ -1142,6 +1142,15 @@
          rendering as "2.4 s selected". -->
     <string name="game_audio_trim_duration"><xliff:g id="seconds" example="2.4">%1$s</xliff:g> s selected</string>
 
+    <!-- Sentence audio row title (card editor) when game audio is selected
+         but not yet trimmed — replaces the spoken-text label in that mode. -->
+    <string name="anki_game_audio_cell_untrimmed">Game audio — trim when saving</string>
+
+    <!-- Sentence audio row title (card editor) once a game-audio range is
+         committed. %1$s = clip length in seconds with one decimal
+         (e.g. "2.4"), rendering as "Game audio — 2.4 s". -->
+    <string name="anki_game_audio_cell_trimmed">Game audio — <xliff:g id="seconds" example="2.4">%1$s</xliff:g> s</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          CARD TYPE PICKER + FIELD MAPPING (Settings → Anki → Card Type).
          ═══════════════════════════════════════════════════════════════ -->

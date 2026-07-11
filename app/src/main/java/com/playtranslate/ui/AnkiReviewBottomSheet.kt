@@ -161,6 +161,12 @@ class AnkiReviewBottomSheet : DialogFragment() {
 
     private suspend fun sendToAnki(deckId: Long) {
         val content = getContentFragment() ?: run { sendButton?.setLoading(false); return }
+        // Untrimmed game audio resolves here (trim editor opens once);
+        // false = the user backed out of the editor — abort the send.
+        if (!content.resolveGameAudioForSend()) {
+            sendButton?.setLoading(false)
+            return
+        }
         val data = content.getCardData()
         val input = SentenceSendInput(
             original = data.source,

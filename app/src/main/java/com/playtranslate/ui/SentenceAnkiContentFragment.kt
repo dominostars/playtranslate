@@ -22,18 +22,29 @@ import android.widget.TextView
 import android.app.Activity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
+import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.PtJson
 import com.playtranslate.R
 import com.playtranslate.audio.Attribution
 import com.playtranslate.audio.AudioRequest
 import com.playtranslate.audio.AudioSelection
+import com.playtranslate.audio.sources.RecordingAudioSource
+import com.playtranslate.capture.GameAudioSnapshot
 import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.themeColor
 import com.playtranslate.tts.ttsTextForWord
+import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.Locale
+import kotlin.coroutines.resume
 
 /**
  * Sentence-card content for Anki review (Original, Translation, Words,
@@ -121,11 +132,102 @@ class SentenceAnkiContentFragment : Fragment() {
             is PickTarget.Sentence -> {
                 sentenceSelection = selection
                 sentenceAudioHandle?.refreshPillLabel(this, lang, selection)
+                // A pick of "Game audio" arrives rangeless (provisional) —
+                // the title flips to its status line; trim commits at save.
+                refreshSentenceAudioTitle()
             }
             is PickTarget.Word -> {
                 wordSelections[target.word] = selection
                 wordAudioHandles[target.word]?.refreshPillLabel(this, lang, selection)
             }
+        }
+    }
+
+    /** Non-null while the save-time trim editor is up; resumed by its result. */
+    private var trimContinuation: CancellableContinuation<Boolean>? = null
+
+    private val trimEditorLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val cont = trimContinuation.also { trimContinuation = null }
+            ?: return@registerForActivityResult
+        val action = if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.getStringExtra(GameAudioTrimActivity.EXTRA_ACTION)
+        } else {
+            null
+        }
+        val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
+            ?: SourceLangId.JA
+        when (action) {
+            GameAudioTrimActivity.ACTION_TRIM -> {
+                val s = result.data?.getLongExtra(GameAudioTrimActivity.EXTRA_START_MS, -1L) ?: -1L
+                val e = result.data?.getLongExtra(GameAudioTrimActivity.EXTRA_END_MS, -1L) ?: -1L
+                val ctx = context
+                if (ctx != null && s >= 0 && e > s) {
+                    sentenceSelection = RecordingAudioSource.committedSelection(ctx, s, e)
+                    sentenceAudioHandle?.refreshPillLabel(this, lang, sentenceSelection)
+                    refreshSentenceAudioTitle()
+                    cont.resume(true)
+                } else {
+                    cont.resume(false)
+                }
+            }
+            GameAudioTrimActivity.ACTION_TTS -> {
+                sentenceSelection = AudioSelection.Auto
+                sentenceAudioHandle?.refreshPillLabel(this, lang, sentenceSelection)
+                refreshSentenceAudioTitle()
+                cont.resume(true)
+            }
+            GameAudioTrimActivity.ACTION_NONE -> {
+                // Switch off ⇒ sentenceAudioEnabled false ⇒ the gate passes
+                // and the send simply carries no sentence audio.
+                sentenceAudioHandle?.switch?.isChecked = false
+                cont.resume(true)
+            }
+            else -> cont.resume(false) // back/cancel — abort the send
+        }
+    }
+
+    /**
+     * Save-time gate: an untrimmed Game-audio selection never sends — open
+     * the trim editor once and commit/redirect per its result ("Use TTS
+     * instead" / "No audio" are its escape hatches). Returns false when the
+     * user backed out, in which case the host restores its Save button and
+     * aborts. Both host sheets await this before [getCardData].
+     */
+    suspend fun resolveGameAudioForSend(): Boolean {
+        if (!sentenceAudioEnabled) return true
+        if (!RecordingAudioSource.isProvisional(sentenceSelection)) return true
+        val ctx = context ?: return true
+        return suspendCancellableCoroutine { cont ->
+            trimContinuation = cont
+            cont.invokeOnCancellation { trimContinuation = null }
+            trimEditorLauncher.launch(
+                GameAudioTrimActivity.intent(ctx, GameAudioSnapshot.file(ctx).absolutePath),
+            )
+        }
+    }
+
+    /** The sentence audio row's title: the sentence text normally, a
+     *  game-audio status line when the recording is the selected source —
+     *  in that mode the spoken-text label doesn't describe what the card
+     *  will actually get. */
+    private fun refreshSentenceAudioTitle() {
+        val title = sentenceAudioHandle?.titleView ?: return
+        val sel = sentenceSelection
+        title.text = when {
+            sel is AudioSelection.Explicit && sel.sourceId == RecordingAudioSource.ID -> {
+                val range = RecordingAudioSource.parseRange(sel.key)
+                if (range == null) {
+                    getString(R.string.anki_game_audio_cell_untrimmed)
+                } else {
+                    getString(
+                        R.string.anki_game_audio_cell_trimmed,
+                        String.format(Locale.US, "%.1f", (range.second - range.first) / 1000.0),
+                    )
+                }
+            }
+            else -> etOriginal.text.toString()
         }
     }
 
@@ -282,6 +384,28 @@ class SentenceAnkiContentFragment : Fragment() {
         val translation = args.getString(ARG_TRANSLATION) ?: ""
         val screenshotPath = args.getString(ARG_SCREENSHOT_PATH)
         buildContent(original, translation, screenshotPath)
+
+        // Freeze the rolling game-audio buffer for THIS card the moment the
+        // flow opens ("snapshot at card-open"). One-shot: never on restore,
+        // so a post-process-death recreation can't clobber a good snapshot
+        // with post-death silence. When a snapshot lands, the cell defaults
+        // to provisional Game audio — the trim commits at save via
+        // [resolveGameAudioForSend].
+        if (savedInstanceState == null && Prefs(requireContext()).recordGameAudio) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                val snap = withContext(Dispatchers.IO) {
+                    CaptureService.instance?.gameAudioRecorder?.snapshotToFile()
+                }
+                if (snap == null || !isAdded) return@launch
+                sentenceSelection = RecordingAudioSource.provisionalSelection(requireContext())
+                val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
+                    ?: SourceLangId.JA
+                sentenceAudioHandle?.refreshPillLabel(
+                    this@SentenceAnkiContentFragment, lang, sentenceSelection,
+                )
+                refreshSentenceAudioTitle()
+            }
+        }
     }
 
     // ── Build ────────────────────────────────────────────────────────────
@@ -353,7 +477,9 @@ class SentenceAnkiContentFragment : Fragment() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
-                sentenceAudioHandle?.titleView?.text = s?.toString().orEmpty()
+                // Routed through the refresher: in game-audio mode the row
+                // title is a status line, not the (editable) sentence text.
+                refreshSentenceAudioTitle()
             }
         })
 
