@@ -48,7 +48,7 @@ class TranslationPresenter(
      *  tier's panel sync, gated on the panel actually being visible. The
      *  screenshot write only runs past the gate (single-screen mode — the
      *  default — never pays it). */
-    override fun emitApplied(
+    override suspend fun emitApplied(
         anchors: List<TextBox>,
         ocrResult: OcrManager.OcrResult?,
         frameIncludesSystemUi: Boolean,

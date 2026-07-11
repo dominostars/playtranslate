@@ -8,11 +8,12 @@ import com.playtranslate.ui.TextBox
 /**
  * [LivePresenter] for live furigana/pinyin on a CLEAN stream: regions become
  * reading annotations positioned above (or beside, for vertical text) their
- * lines — no machine translation, just the source-language engine's
- * annotator. The legacy [FuriganaMode] keeps serving contaminated streams
- * (≤ API 33 / whole-display), where its cleanRef/patching machinery is still
- * needed; this presenter exists precisely because a task-scoped stream makes
- * all of that unnecessary.
+ * lines — the on-screen product is the source-language engine's annotator,
+ * no machine translation (MT happens only in the panel emission, exactly as
+ * the legacy tier does it — see [emitApplied]). The legacy [FuriganaMode]
+ * keeps serving contaminated streams (≤ API 33 / whole-display), where its
+ * cleanRef/patching machinery is still needed; this presenter exists
+ * precisely because a task-scoped stream makes all of that unnecessary.
  *
  * ## Anchors vs display boxes
  * Annotations render OUTSIDE the OCR group's rect, so they must never be what
@@ -87,18 +88,25 @@ class FuriganaPresenter(
         anchors.forEach { display.remove(it) }
     }
 
-    /** No panel emission — the screenshot provider is never invoked, so no
-     *  JPEG is written. NOTE: this DIVERGES from the legacy [FuriganaMode],
-     *  which does send the OCR result to the panel for MT
-     *  ([CaptureService.translateAndSendToPanel], visibility-gated) —
-     *  whether the clean tier should match it is an open decision
-     *  (2026-07-10 review, finding 3). */
-    override fun emitApplied(
+    /** Panel parity with the legacy [FuriganaMode] (2026-07-10 review,
+     *  finding 3 — decided for parity): the frame's OCR result goes to the
+     *  panel for MT while the annotations overlay the game, so dual-screen
+     *  furigana behaves identically on both tiers — tier routing is
+     *  invisible to the user and must stay that way. The visibility gate
+     *  runs HERE (before the screenshot JPEG is written) as well as inside
+     *  [CaptureService.translateAndSendToPanel]; awaiting the MT keeps the
+     *  legacy mode's serial backpressure. */
+    override suspend fun emitApplied(
         anchors: List<TextBox>,
         ocrResult: OcrManager.OcrResult?,
         frameIncludesSystemUi: Boolean,
         screenshotPath: () -> String?,
-    ) = Unit
+    ) {
+        if (ocrResult == null || !service.appPanelVisible()) return
+        service.translateAndSendToPanel(
+            ocrResult, screenshotPath(), displayId, frameIncludesSystemUi,
+        )
+    }
 
     override fun emitNoText() {
         service.handleNoTextDetected(displayId)

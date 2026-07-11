@@ -53,7 +53,7 @@ class PanelPresenter(
      *  this; review note). */
     private var lastEmitted: Pair<String, String>? = null
 
-    override fun emitApplied(
+    override suspend fun emitApplied(
         anchors: List<TextBox>,
         ocrResult: OcrManager.OcrResult?,
         frameIncludesSystemUi: Boolean,
