@@ -48,8 +48,8 @@ private const val TAG = "GameAudioRecorder"
  * transient pause (the mining loop can trail a voice line by minutes). The
  * cost is a splice seam in the waveform where a pause happened; for a
  * manually-trimmed buffer that is visible but harmless. Our own playback
- * never appears in the ring — the app opts out of capture wholesale via
- * `android:allowAudioPlaybackCapture="false"`.
+ * never appears in the ring — the capture config excludes our uid (see
+ * [start]; the manifest-level opt-out is off-limits on the Thor).
  */
 class GameAudioRecorder(
     private val service: CaptureService,
@@ -139,11 +139,27 @@ class GameAudioRecorder(
             Log.w(TAG, "start skipped: no projection (consent token dead?)")
             return
         }
-        val config = AudioPlaybackCaptureConfiguration.Builder(projection)
-            .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
-            .addMatchingUsage(AudioAttributes.USAGE_GAME)
-            .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
-            .build()
+        // Self-exclusion lives HERE, not in the manifest: excludeUid keeps our
+        // own TTS/preview playback out of the ring while leaving our players
+        // capture-eligible — an app-wide allowAudioPlaybackCapture=false made
+        // every AudioTrack we render silent on the Thor's bottom display
+        // (its per-display media routing rides a capture-style patch that
+        // opted-out tracks can't enter). Matching and excluding rules can't
+        // be combined, so exclude-only it is: everything capturable except us
+        // — which still means the game (USAGE_GAME/MEDIA). Usage-matching
+        // config kept as fallback in case an OEM rejects exclude-only.
+        val config = runCatching {
+            AudioPlaybackCaptureConfiguration.Builder(projection)
+                .excludeUid(android.os.Process.myUid())
+                .build()
+        }.getOrElse {
+            Log.w(TAG, "excludeUid config rejected (${it.message}); using usage matching")
+            AudioPlaybackCaptureConfiguration.Builder(projection)
+                .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
+                .addMatchingUsage(AudioAttributes.USAGE_GAME)
+                .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
+                .build()
+        }
         val format = AudioFormat.Builder()
             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
             .setSampleRate(SAMPLE_RATE)
