@@ -744,6 +744,8 @@
     <string name="error_single_app_not_fullscreen">Translation is paused — the captured app isn\'t filling the screen. It resumes when the app is fullscreen again.</string>
     <!-- Status message in the in-app panel when every captured frame is black because the captured app sets FLAG_SECURE (banking apps, DRM video); live mode keeps polling. -->
     <string name="error_capture_blocked_secure">Nothing can be read — this app blocks screen capture.</string>
+    <!-- Label on the small on-screen chip shown for ~1.5s at live-mode start while the capture stream is being classified; sits beside a small colored checker pattern. Keep short. -->
+    <string name="probe_initializing">Initializing…</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SECTION HEADERS on the translation-result screen.

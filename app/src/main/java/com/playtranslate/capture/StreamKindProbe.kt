@@ -103,20 +103,23 @@ object StreamKindProbe {
         // touch rules (~84% measured on the Moto G, 2026-07-10 — enough to
         // flunk an absolute color match), while a window that consumes its
         // own touches is exempt and renders at true full alpha. The cost is
-        // a 48px square eating taps for ~1.4s right after the consent
-        // dialog closes. NOT_TOUCH_MODAL keeps every other touch flowing.
+        // a 48px-tall strip (checker + "Initializing…" label) eating taps
+        // for ~1.4s right after the consent dialog closes. NOT_TOUCH_MODAL
+        // keeps every other touch flowing.
         val params = WindowManager.LayoutParams(
-            SIZE_PX, SIZE_PX,
+            WindowManager.LayoutParams.WRAP_CONTENT, SIZE_PX,
             host.windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT,
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            // Quarter-point: clear of the status bar, the floating icon
-            // (right edge), and any single-app letterbox edge.
-            x = size.x / 4
-            y = size.y / 4
+            // Center: where a loading chip naturally lives, clear of every
+            // edge artifact (cutouts, rounded corners, letterbox seams), and
+            // position-neutral for detection — a clean stream never contains
+            // the window, a contaminated one contains it anywhere. Cost: the
+            // touchable strip eats center-screen taps for its ~1.4s life,
+            // which the visible label makes self-explaining.
+            gravity = Gravity.CENTER
             // Position in full-display coordinates, not inside system-bar
             // insets — the frame is display-sized, and the pattern test uses
             // screen coords. (The probe only runs on API 34+, but the guard
@@ -138,7 +141,10 @@ object StreamKindProbe {
             // sits on screen — immune to gravity/inset surprises.
             val loc = IntArray(2)
             view.getLocationOnScreen(loc)
-            val rect = Rect(loc[0], loc[1], loc[0] + view.width, loc[1] + view.height)
+            // Scan ONLY the checker grid — the window is wider than the
+            // pattern (the "Initializing…" label sits to its right), and the
+            // label must never contribute cells to the verdict.
+            val rect = Rect(loc[0], loc[1], loc[0] + SIZE_PX, loc[1] + SIZE_PX)
             // Frames are scanned at these laid-out screen coordinates, which
             // is only meaningful on a display-sized frame (the VD is created
             // at display size). Anything else is unscannable, not absent.
@@ -544,6 +550,31 @@ object StreamKindProbe {
          *  Main-thread only, like all View state. */
         var drawCount = 0
         private val paint = Paint()
+
+        // "Initializing…" chip to the RIGHT of the grid, so the ~1.4s
+        // pattern flash reads as deliberate setup UI instead of a glitch.
+        // Width is MEASURED from the localized string — every locale fits
+        // exactly, no fixed guess. The probe scans only the grid sub-rect;
+        // nothing here may shift the grid off the view's left edge.
+        private val labelText = context.getString(com.playtranslate.R.string.probe_initializing)
+        private val labelPaint = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFFFFFF.toInt()
+            textSize = android.util.TypedValue.applyDimension(
+                android.util.TypedValue.COMPLEX_UNIT_SP, 13f,
+                context.resources.displayMetrics,
+            )
+        }
+        private val labelPadding = android.util.TypedValue.applyDimension(
+            android.util.TypedValue.COMPLEX_UNIT_DIP, 12f,
+            context.resources.displayMetrics,
+        )
+        private val labelBgPaint = Paint().apply { color = 0xE6202020.toInt() }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val labelW = (labelPaint.measureText(labelText) + 2 * labelPadding).toInt()
+            setMeasuredDimension(SIZE_PX + labelW, SIZE_PX)
+        }
+
         override fun onDraw(canvas: Canvas) {
             drawCount++
             val cells = SIZE_PX / CELL_PX
@@ -557,6 +588,11 @@ object StreamKindProbe {
                     )
                 }
             }
+            canvas.drawRect(
+                SIZE_PX.toFloat(), 0f, width.toFloat(), SIZE_PX.toFloat(), labelBgPaint,
+            )
+            val baseline = SIZE_PX / 2f - (labelPaint.descent() + labelPaint.ascent()) / 2f
+            canvas.drawText(labelText, SIZE_PX + labelPadding, baseline, labelPaint)
         }
     }
 
