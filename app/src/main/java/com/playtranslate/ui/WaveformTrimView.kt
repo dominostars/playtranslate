@@ -72,12 +72,6 @@ class WaveformTrimView @JvmOverloads constructor(
     private val minSelectionMs = 200L
     private val minWindowMs = 2_000.0
 
-    /** Fraction of the window pannable/rendered PAST each file boundary.
-     *  Without it, a selection ending at the file's end pins its handle
-     *  flush against the view edge — ungrabbable in practice (and, before
-     *  the activity's 48dp inset, inside the system gesture zone). */
-    private val edgeOverscroll = 0.12
-
     private companion object {
         /** Hidden-content threshold for the edge fade/arrow — about one
          *  RMS bucket; anything smaller isn't meaningfully "more audio". */
@@ -165,8 +159,7 @@ class WaveformTrimView @JvmOverloads constructor(
                 // Keep the ms under the pinch focal point fixed.
                 val focalX = detector.focusX - contentLeft()
                 val focalMs = viewStartMs + focalX * msPerPx
-                msPerPx = (msPerPx / detector.scaleFactor)
-                    .coerceIn(minWindowMs / contentWidth(), maxMsPerPx())
+                msPerPx = clampScale(msPerPx / detector.scaleFactor)
                 viewStartMs = focalMs - focalX * msPerPx
                 clampView()
                 invalidate()
@@ -212,7 +205,7 @@ class WaveformTrimView @JvmOverloads constructor(
     private fun fitAndReveal() {
         if (width == 0 || durationMs == 0L) return
         msPerPx = maxMsPerPx()
-        viewStartMs = -contentWidth() * msPerPx * edgeOverscroll
+        viewStartMs = 0.0
         revealSelection()
     }
 
@@ -260,7 +253,7 @@ class WaveformTrimView @JvmOverloads constructor(
         }
 
         // Edge fades into the host surface, shown only when content actually
-        // continues past that edge (the overscroll margin doesn't count).
+        // continues past that edge.
         val viewEndMs = viewStartMs + contentWidth() * msPerPx
         val hasLeft = viewStartMs > EDGE_EPSILON_MS
         val hasRight = viewEndMs < durationMs - EDGE_EPSILON_MS
@@ -268,19 +261,22 @@ class WaveformTrimView @JvmOverloads constructor(
         if (hasLeft) canvas.drawRect(cl, 0f, cl + fadeWidthPx, h, leftFadePaint)
         if (hasRight) canvas.drawRect(cr - fadeWidthPx, 0f, cr, h, rightFadePaint)
 
-        // Handles: full-height bar + a grip dot on a page-background halo
-        // ring (the dot alone vanishes into the bars it sits over).
-        for (hx in listOf(selL, selR)) {
-            canvas.drawRect(hx - 1.25f * density, 0f, hx + 1.25f * density, h, handlePaint)
-            canvas.drawCircle(hx, midY, 8f * density, handleHaloPaint)
-            canvas.drawCircle(hx, midY, 6f * density, handlePaint)
-        }
-
         cursorMs?.let { ms ->
             val cx = xFor(ms)
             if (cx in cl..cr) canvas.drawLine(cx, 0f, cx, h, cursorPaint)
         }
         canvas.restore()
+
+        // Handles draw UNCLIPPED so a boundary handle's grip can bleed into
+        // the gutter instead of being sliced in half — but only when the
+        // handle's position is actually at/inside the visible content edge
+        // (an off-screen selection edge stays undrawn).
+        for (hx in listOf(selL, selR)) {
+            if (hx < cl - 2f * density || hx > cr + 2f * density) continue
+            canvas.drawRect(hx - 1.25f * density, 0f, hx + 1.25f * density, h, handlePaint)
+            canvas.drawCircle(hx, midY, 8f * density, handleHaloPaint)
+            canvas.drawCircle(hx, midY, 6f * density, handlePaint)
+        }
 
         // Arrows live OUTSIDE the playback range, in the empty gutters —
         // fully clear of bars and fades so they're unmissable.
@@ -400,16 +396,22 @@ class WaveformTrimView @JvmOverloads constructor(
     private fun xFor(ms: Long): Float = (contentLeft() + (ms - viewStartMs) / msPerPx).toFloat()
     private fun msFor(x: Float): Long = (viewStartMs + (x - contentLeft()) * msPerPx).toLong()
 
-    /** Fully-zoomed-out scale: the file plus the overscroll margins fill the
-     *  content region, so even at max zoom-out the boundary handles sit
-     *  inside it rather than flush against its edges. */
-    private fun maxMsPerPx(): Double =
-        durationMs.toDouble() / (contentWidth() * (1 - 2 * edgeOverscroll))
+    /** Fully-zoomed-out scale: the file exactly fills the content region —
+     *  no blank margins past the boundaries (boundary handles get their
+     *  standoff from the arrow gutters + the host's padding instead). */
+    private fun maxMsPerPx(): Double = durationMs.toDouble() / contentWidth()
+
+    /** Zoom bounds, degenerate-safe: a snapshot shorter than the 2 s minimum
+     *  window would otherwise invert the coerce bounds and throw. */
+    private fun clampScale(scale: Double): Double {
+        val maxScale = maxMsPerPx()
+        val minScale = minOf(minWindowMs / contentWidth(), maxScale)
+        return scale.coerceIn(minScale, maxScale)
+    }
 
     private fun clampView() {
         val windowMs = contentWidth() * msPerPx
-        val over = windowMs * edgeOverscroll
-        viewStartMs = viewStartMs.coerceIn(-over, max(-over, durationMs - windowMs + over))
+        viewStartMs = viewStartMs.coerceIn(0.0, max(0.0, durationMs - windowMs))
     }
 
     /** Scroll/zoom so the selection is comfortably on screen. */
@@ -417,7 +419,7 @@ class WaveformTrimView @JvmOverloads constructor(
         if (width == 0 || durationMs == 0L || selEndMs <= selStartMs) return
         val selLen = (selEndMs - selStartMs).toDouble()
         // Show the selection at ~1/3 of the window, but never zoom past limits.
-        msPerPx = (selLen * 3 / contentWidth()).coerceIn(minWindowMs / contentWidth(), maxMsPerPx())
+        msPerPx = clampScale(selLen * 3 / contentWidth())
         viewStartMs = selStartMs - (contentWidth() * msPerPx - selLen) / 2
         clampView()
     }
