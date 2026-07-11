@@ -333,7 +333,21 @@ class ReconcilerLiveMode(
         val debug = prefs.debugLiveMode
         forceNextCycle = false
 
-        val frame = mgr.requestRaw(displayId)
+        // A non-painting presenter on a NON-clean source must not OCR raw
+        // frames: they contain this app's own overlay UI (floating icon,
+        // open menu), which the deleted InAppOnlyMode excluded via clean
+        // capture. Painting presenters only run on CLEAN streams (routing),
+        // where raw frames are clean by construction. Pacing consequence:
+        // requestClean does not advance the delivery-gate cursor, so
+        // contaminated-source panel sessions poll at the interval — exactly
+        // the deleted mode's pacing.
+        val frame = if (presenter.rendersOverlays ||
+            controller.streamKind == StreamKind.CLEAN
+        ) {
+            mgr.requestRaw(displayId)
+        } else {
+            mgr.requestClean(displayId)
+        }
         if (frame == null) {
             // Generators of a null capture, enumerated: transient failure
             // (retry), consent loss (requestRaw's checkConsentLost stops live

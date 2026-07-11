@@ -79,6 +79,26 @@ object OverlayToolkit {
         return diff.toFloat() / old.length <= EVOLVING_PREFIX_MAX_DIFF
     }
 
+    /** Anchors in panel reading order: the current OCR's group order (the
+     *  layout engine's reading order — correct for vertical/RTL scripts)
+     *  when available, else geometric top-then-left. The live mode maintains
+     *  anchors as kept-then-new, which scrambles panel text when a new line
+     *  appears above an unchanged one (round-25 review finding). Stable
+     *  sort: unmatched anchors keep their incoming order at the tail. */
+    fun panelReadingOrder(
+        anchors: List<TextBox>,
+        ocrResult: OcrManager.OcrResult?,
+    ): List<TextBox> {
+        val groups = ocrResult?.groups
+        if (groups.isNullOrEmpty()) {
+            return anchors.sortedWith(compareBy({ it.bounds.top }, { it.bounds.left }))
+        }
+        return anchors.sortedBy { a ->
+            val i = groups.indexOfFirst { Rect.intersects(it.bounds, a.bounds) }
+            if (i >= 0) i else Int.MAX_VALUE
+        }
+    }
+
     /** Does detected text have significant additions over existing? */
     fun hasSignificantAdditions(existing: String, detected: String): Boolean {
         val bag = existing.groupingBy { it }.eachCount().toMutableMap()

@@ -335,7 +335,8 @@ class MediaProjectionController(private val service: CaptureService) {
      * with no freshness delay. Falls back to awaiting the first delivery
      * (bounded by [FRESHNESS_BUDGET_MS]) right after VirtualDisplay creation.
      */
-    suspend fun captureFrame(): Bitmap? = captureNewerThan(minSeq = 0L, advanceCursor = true)
+    suspend fun captureFrame(): Bitmap? =
+        captureNewerThan(minSeq = 0L, advanceCursor = true)?.first
 
     /**
      * Clean-capture variant: serve the NEWEST latched frame once one exists
@@ -363,7 +364,7 @@ class MediaProjectionController(private val service: CaptureService) {
      * Does not advance the raw-consumer cursor (see [DeliverySignal]).
      */
     suspend fun captureFrameNewerThan(minSeq: Long): Bitmap? =
-        captureNewerThan(minSeq, advanceCursor = false)
+        captureNewerThan(minSeq, advanceCursor = false)?.first
 
     /** Current frame with no freshness gate and no raw-cursor advance — the
      *  clean-capture path for "nothing was blanked": the frame provably
@@ -372,9 +373,22 @@ class MediaProjectionController(private val service: CaptureService) {
      *  [captureFrame], which advances the live delivery-gate cursor and
      *  would eat a parked live cycle's pending wake. */
     suspend fun captureFrameUngated(): Bitmap? =
+        captureFrameUngatedWithSeq()?.first
+
+    /** [captureFrameUngated] plus the served frame's delivery seq — stamped
+     *  in the same latch swap that published the frame. Freshness proofs
+     *  MUST compare against this, never correlate [deliverySeqNow] with a
+     *  separate capture read: the frame listener advances the seq before it
+     *  publishes the latch, so two racing reads can flag a stale frame as
+     *  fresh — absence evidence the probe would trust (round-23 review
+     *  finding). */
+    suspend fun captureFrameUngatedWithSeq(): Pair<Bitmap, Long>? =
         captureNewerThan(minSeq = 0L, advanceCursor = false)
 
-    private suspend fun captureNewerThan(minSeq: Long, advanceCursor: Boolean): Bitmap? {
+    private suspend fun captureNewerThan(
+        minSeq: Long,
+        advanceCursor: Boolean,
+    ): Pair<Bitmap, Long>? {
         val clean = !advanceCursor
         if (!ensureProjection()) return noteFailure(clean, "no projection (consent lost?)")
         val (w, h) = captureSize(projectedDisplayId)
@@ -390,7 +404,7 @@ class MediaProjectionController(private val service: CaptureService) {
         while (true) {
             val f = peekLatest(w, h)
             if (f != null && f.seq > minSeq) {
-                return f.use { decode(it, w, h, advanceCursor) }
+                return f.use { lf -> decode(lf, w, h, advanceCursor)?.let { it to lf.seq } }
             }
             f?.release() // at-or-below the anchor — leave latched for others
             val remaining = deadline - android.os.SystemClock.uptimeMillis()
@@ -455,7 +469,7 @@ class MediaProjectionController(private val service: CaptureService) {
      *  debug summary — a capture layer that fails silently costs days
      *  (2026-07-10: every hold over animated content failed for a day with
      *  `cleanServed=1` as the only trace). Always returns null. */
-    private fun noteFailure(clean: Boolean, reason: String): Bitmap? {
+    private fun noteFailure(clean: Boolean, reason: String): Nothing? {
         if (clean) cleanFailedCount++ else rawFailedCount++
         lastFailReason = reason
         Log.w(TAG, "capture failed (${if (clean) "clean" else "raw"}): $reason")

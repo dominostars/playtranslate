@@ -57,11 +57,12 @@ class TranslationPresenter(
         val appPanelVisible = !Prefs.isSingleScreen(service) && MainActivity.isInForeground
         if (!appPanelVisible) return
 
-        val originalText = anchors.filter { it.sourceText.isNotEmpty() }
+        val ordered = OverlayToolkit.panelReadingOrder(anchors, ocrResult)
+        val originalText = ordered.filter { it.sourceText.isNotEmpty() }
             .joinToString("\n") { it.sourceText }
-        val translatedText = anchors.filter { it.translatedText.isNotEmpty() }
+        val translatedText = ordered.filter { it.translatedText.isNotEmpty() }
             .joinToString("\n\n") { it.translatedText }
-        val segments = TextSegments.ofLines(anchors.map { it.sourceText })
+        val segments = TextSegments.ofLines(ordered.map { it.sourceText })
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
 

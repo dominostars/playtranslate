@@ -344,11 +344,13 @@ object StreamKindProbe {
         var lastFreshSample = ""
         var lastInvalidDims = ""
         while (SystemClock.uptimeMillis() < deadline) {
-            // Order matters: read the seq BEFORE claiming the frame — a
-            // delivery between the two makes the frame look fresher than
-            // proven, the unsafe direction.
-            val seqNow = controller.deliverySeqNow
-            val bmp = controller.captureFrameUngated()
+            // Freshness is proven by the seq stamped ON the served frame (the
+            // same latch swap that published it) — never by correlating
+            // deliverySeqNow with a separate capture read, which races the
+            // listener's advance-then-publish order and can flag a stale
+            // frame as fresh absence evidence (round-23 review finding).
+            val read = controller.captureFrameUngatedWithSeq()
+            val bmp = read?.first
             if (bmp == null) {
                 // Null is the capture layer failing, not the mirror being
                 // quiet (a healthy stream always has at least the stale
@@ -364,7 +366,7 @@ object StreamKindProbe {
                         invalidFrames++
                         lastInvalidDims = "${bmp.width}x${bmp.height}"
                         null
-                    } else if (seqNow > minSeq) {
+                    } else if (read.second > minSeq) {
                         readableFrames++
                         freshFrames++
                         lastFreshSample = sampleLine(bmp, rect)
