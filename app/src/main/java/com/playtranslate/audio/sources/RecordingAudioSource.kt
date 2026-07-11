@@ -25,9 +25,11 @@ import java.io.File
  *  - provisional (no range committed yet): [KEY_PROVISIONAL] — never sendable;
  *    [toFile] returns null and the fragment's Save gate forces the trim editor.
  *  - committed: `snapshot@<mtime>-<startMs>-<endMs>.m4a` — the snapshot's
- *    lastModified is baked in so a clip cached from an OLD snapshot can never
- *    be served for a new one (the snapshot file self-clobbers per card), and
- *    the `.m4a` suffix makes [AudioCache.clipFile] derive the right extension
+ *    lastModified is baked in AND enforced at resolve time ([parseRangeFor]):
+ *    a range committed against an overwritten snapshot fails closed instead
+ *    of cutting the new audio at the old range, and a clip cached from an
+ *    OLD snapshot can never be served for a new one (distinct cache key).
+ *    The `.m4a` suffix makes [AudioCache.clipFile] derive the right extension
  *    for the file AnkiDroid ends up storing.
  *
  * `isEnabled = false` is deliberate and load-bearing: it keeps this source out
@@ -80,9 +82,14 @@ object RecordingAudioSource : AudioSource {
             // Snapshot gone: recoverable=false — silently auditioning TTS in
             // place of "Game audio" would misrepresent what the card will get.
             ?: return PlayOutcome.Failed(recoverable = false)
+        if (candidate.key != KEY_PROVISIONAL && parseRangeFor(candidate.key, wav) == null) {
+            // Committed against an overwritten snapshot: refuse rather than
+            // audition the wrong audio at the old range.
+            return PlayOutcome.Failed(recoverable = false)
+        }
         val preview = withContext(Dispatchers.IO) {
             val durationMs = GameAudioClip.durationMs(wav)
-            val (startMs, endMs) = parseRange(candidate.key)
+            val (startMs, endMs) = parseRangeFor(candidate.key, wav)
                 ?: ((durationMs - PROVISIONAL_PREVIEW_MS).coerceAtLeast(0) to durationMs)
             val pcm = GameAudioClip.readPcmRange(wav, startMs, endMs)
             if (pcm.isEmpty()) return@withContext null
@@ -97,8 +104,11 @@ object RecordingAudioSource : AudioSource {
     }
 
     override suspend fun toFile(ctx: Context, candidate: AudioCandidate, req: AudioRequest): File? {
-        val (startMs, endMs) = parseRange(candidate.key) ?: return null // provisional never sends
         val wav = snapshotWav(ctx, candidate) ?: return null
+        // Provisional never sends; neither does a range committed against an
+        // OVERWRITTEN snapshot (mtime mismatch) — fail closed into the send
+        // path's audio-missing handling instead of cutting the wrong audio.
+        val (startMs, endMs) = parseRangeFor(candidate.key, wav) ?: return null
         return withContext(Dispatchers.IO) {
             val pcm = GameAudioClip.readPcmRange(wav, startMs, endMs)
             if (pcm.isEmpty()) return@withContext null
@@ -141,9 +151,23 @@ object RecordingAudioSource : AudioSource {
             parseRange(selection.key) == null
 
     /** Committed (startMs, endMs) — a half-open window — or null for the
-     *  provisional key. */
+     *  provisional key. Display-oriented: does NOT check snapshot identity;
+     *  anything that CUTS or PLAYS audio must use [parseRangeFor]. */
     fun parseRange(key: String): Pair<Long, Long>? {
         val m = COMMITTED_KEY.matchEntire(key) ?: return null
+        val start = m.groupValues[2].toLong()
+        val end = m.groupValues[3].toLong()
+        return if (end > start) start to end else null
+    }
+
+    /** [parseRange] plus snapshot-identity enforcement: null unless [key]
+     *  was committed against the CURRENT content of [wav] (the mtime baked
+     *  into the key matches the file). A range from an overwritten snapshot
+     *  must fail closed — cutting the new audio at the old range would
+     *  silently attach the wrong clip (adversarial-review finding). */
+    fun parseRangeFor(key: String, wav: File): Pair<Long, Long>? {
+        val m = COMMITTED_KEY.matchEntire(key) ?: return null
+        if (m.groupValues[1].toLong() != wav.lastModified()) return null
         val start = m.groupValues[2].toLong()
         val end = m.groupValues[3].toLong()
         return if (end > start) start to end else null

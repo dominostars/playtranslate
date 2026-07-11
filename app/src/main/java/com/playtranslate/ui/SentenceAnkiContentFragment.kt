@@ -484,11 +484,12 @@ class SentenceAnkiContentFragment : Fragment() {
         val wav = GameAudioSnapshot.file(ctx)
         if (gameAudioLoadedMtime == wav.lastModified()) {
             // Already loaded (e.g. the user switched to TTS and back). A
-            // re-pick arrives RANGELESS — re-commit from the wave's current
-            // selection, or Save-after-play would ship a rangeless key that
-            // toFile resolves to no audio at all.
+            // re-pick arrives RANGELESS — and a range committed against an
+            // older snapshot is rangeless for THIS one (mtime-checked) —
+            // re-commit from the wave's current selection, or Save-after-play
+            // would ship a key that toFile resolves to no audio at all.
             val rangeless = (sentenceSelection as? AudioSelection.Explicit)
-                ?.let { RecordingAudioSource.parseRange(it.key) } == null
+                ?.let { RecordingAudioSource.parseRangeFor(it.key, wav) } == null
             val wave = gameAudioWave
             if (rangeless && wave != null && wave.selEndMs > wave.selStartMs) {
                 sentenceSelection = RecordingAudioSource.committedSelection(
@@ -499,6 +500,11 @@ class SentenceAnkiContentFragment : Fragment() {
             gameAudioPanel?.visibility = View.VISIBLE
             return
         }
+        // Captured BEFORE the IO hop; the continuation re-validates against
+        // both, so a stale load can neither resurrect game audio after the
+        // user switched source nor bind a snapshot that was since replaced
+        // (adversarial-review finding).
+        val expectedMtime = wav.lastModified()
         viewLifecycleOwner.lifecycleScope.launch {
             val loaded = withContext(Dispatchers.IO) {
                 val durationMs = GameAudioClip.durationMs(wav)
@@ -508,6 +514,10 @@ class SentenceAnkiContentFragment : Fragment() {
                 Triple(durationMs, rate, rmsBucketsForStrip(pcm, rate))
             }
             if (!isAdded) return@launch
+            val selNow = sentenceSelection
+            val stillGameAudio = selNow is AudioSelection.Explicit &&
+                selNow.sourceId == RecordingAudioSource.ID
+            if (!stillGameAudio || wav.lastModified() != expectedMtime) return@launch
             if (loaded == null) {
                 gameAudioPanel?.visibility = View.GONE
                 return@launch
@@ -515,11 +525,12 @@ class SentenceAnkiContentFragment : Fragment() {
             val (durationMs, rate, buckets) = loaded
             gameAudioDurationMs = durationMs
             gameAudioSampleRate = rate
-            gameAudioLoadedMtime = wav.lastModified()
+            gameAudioLoadedMtime = expectedMtime
             // A rangeless (fresh) selection gets the default range now that
-            // the duration is known; a committed range is preserved.
-            val existing = (sentenceSelection as? AudioSelection.Explicit)
-                ?.let { RecordingAudioSource.parseRange(it.key) }
+            // the duration is known; a range committed against THIS snapshot
+            // (mtime-checked) is preserved.
+            val existing = (selNow as AudioSelection.Explicit)
+                .let { RecordingAudioSource.parseRangeFor(it.key, wav) }
             val start = existing?.first ?: (durationMs - 5_000L).coerceAtLeast(0)
             val end = existing?.second ?: durationMs
             if (existing == null) {
