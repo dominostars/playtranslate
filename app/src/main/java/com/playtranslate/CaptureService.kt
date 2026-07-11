@@ -18,6 +18,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.view.Display
 import android.view.WindowManager
 import android.os.Binder
 import android.os.Build
@@ -1188,27 +1189,35 @@ class CaptureService : Service() {
     }
 
     /**
-     * The implementation class a fresh live-mode instance for [flavor] should
-     * have right now. TRANSLATION forks on the MediaProjection stream kind:
-     * a single-app ("clean") stream gets [ReconcilerLiveMode] — the
-     * reconciler-driven wait→read→update loop — while everything else (whole
-     * display, accessibility capture, API ≤ 33, kind not yet resolved) keeps
-     * the pinhole tier. [setLiveDisplays] compares running instances against
+     * The implementation class a fresh live-mode instance for [flavor] on
+     * [displayId] should have right now. The overlay flavors fork on the
+     * MediaProjection stream kind, scoped to the DEFAULT display only: the
+     * CLEAN verdict describes exactly one stream — the default display's
+     * ([MediaProjectionController.projectedDisplayId] is a constant) — while
+     * a secondary display's only possible frame source is accessibility
+     * screenshots, which DO contain our overlays, so it keeps the legacy
+     * tier unconditionally (shipped behavior). That is not a stopgap:
+     * MediaProjection cannot mirror a non-default display at all, and a
+     * dual-screen emulator's second-screen Presentation window is outside
+     * any task mirror — accessibility capture is the only path that can see
+     * those pixels. [setLiveDisplays] compares running instances against
      * this, so a stream-kind change (new consent session, consent teardown)
      * rebuilds through the same diff that handles flavor changes.
      */
-    private fun desiredModeClass(flavor: OverlayFlavor): Class<out LiveMode> = when (flavor) {
-        // Panel-only: the unified loop on ANY stream kind and backend — it
-        // paints nothing, so contamination is irrelevant (design record §7).
-        OverlayFlavor.IN_APP_ONLY -> ReconcilerLiveMode::class.java
-        OverlayFlavor.FURIGANA ->
-            if (mediaProjectionController.streamKind == StreamKind.CLEAN)
-                ReconcilerLiveMode::class.java
-            else FuriganaMode::class.java
-        OverlayFlavor.TRANSLATION ->
-            if (mediaProjectionController.streamKind == StreamKind.CLEAN)
-                ReconcilerLiveMode::class.java
-            else PinholeOverlayMode::class.java
+    private fun desiredModeClass(flavor: OverlayFlavor, displayId: Int): Class<out LiveMode> {
+        val clean = displayId == Display.DEFAULT_DISPLAY &&
+            mediaProjectionController.streamKind == StreamKind.CLEAN
+        return when (flavor) {
+            // Panel-only: the unified loop on ANY stream kind and backend — it
+            // paints nothing, so contamination is irrelevant (design record §7).
+            OverlayFlavor.IN_APP_ONLY -> ReconcilerLiveMode::class.java
+            OverlayFlavor.FURIGANA ->
+                if (clean) ReconcilerLiveMode::class.java
+                else FuriganaMode::class.java
+            OverlayFlavor.TRANSLATION ->
+                if (clean) ReconcilerLiveMode::class.java
+                else PinholeOverlayMode::class.java
+        }
     }
 
     /** The CLEAN verdict was reset out from under a running overlay-painting
@@ -1300,9 +1309,11 @@ class CaptureService : Service() {
         // clean-vs-pinhole fork when the stream kind changes mid-session.
         // Class-mismatch no longer subsumes flavor-mismatch: ReconcilerLiveMode
         // serves multiple flavors via its presenter, so both clauses apply.
-        val desiredClass = desiredModeClass(flavor)
         val toRebuild = (snapshot.keys intersect actualTarget)
-            .filter { snapshot.getValue(it).javaClass != desiredClass || snapshot.getValue(it).flavor != flavor }
+            .filter {
+                snapshot.getValue(it).javaClass != desiredModeClass(flavor, it) ||
+                    snapshot.getValue(it).flavor != flavor
+            }
             .toSet()
         val toAdd = actualTarget - snapshot.keys
 
@@ -1324,6 +1335,7 @@ class CaptureService : Service() {
         }
 
         val newInstances: Map<Int, LiveMode> = (toAdd + toRebuild).associateWith { id ->
+            val desiredClass = desiredModeClass(flavor, id)
             when (flavor) {
                 OverlayFlavor.IN_APP_ONLY ->
                     ReconcilerLiveMode(this, id, PanelPresenter(this, id))
