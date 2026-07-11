@@ -71,6 +71,9 @@ class TranslationPresenter(
             translatedText = translatedText,
             timestamp = timestamp,
             screenshotPath = screenshotPath,
+            ocrProvenance = ocrResult?.let {
+                service.panelOcrProvenance(it, displayId, frameIncludesSystemUi)
+            },
             langContext = Prefs(service).langContext(),
         ))
     }
