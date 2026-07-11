@@ -106,12 +106,15 @@ class WaveformTrimView @JvmOverloads constructor(
         this.rms = rmsBuckets
         this.bucketMs = bucketMs
         this.durationMs = durationMs
-        msPerPx = 0.0 // re-fit on next layout pass
+        msPerPx = 0.0
         if (initialStartMs >= 0 && initialEndMs > initialStartMs) {
             selStartMs = initialStartMs.coerceIn(0, durationMs)
             selEndMs = initialEndMs.coerceIn(selStartMs + minSelectionMs, durationMs)
         }
-        requestLayout()
+        // Data usually lands AFTER layout (the activity loads it async), and
+        // requestLayout() on an unchanged size never re-fires onSizeChanged —
+        // so fit here when measured; onSizeChanged covers the pre-layout case.
+        fitAndReveal()
         invalidate()
     }
 
@@ -122,11 +125,16 @@ class WaveformTrimView @JvmOverloads constructor(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        if (w > 0 && durationMs > 0 && msPerPx == 0.0) {
-            msPerPx = durationMs.toDouble() / w
-            viewStartMs = 0.0
-            revealSelection()
-        }
+        if (msPerPx == 0.0) fitAndReveal()
+    }
+
+    /** Fit the full file to the view width and scroll/zoom the selection into
+     *  view. No-op until both the layout pass and [setData] have happened. */
+    private fun fitAndReveal() {
+        if (width == 0 || durationMs == 0L) return
+        msPerPx = durationMs.toDouble() / width
+        viewStartMs = 0.0
+        revealSelection()
     }
 
     override fun onDraw(canvas: Canvas) {
