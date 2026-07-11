@@ -237,11 +237,20 @@ class SentenceAnkiContentFragment : Fragment() {
     suspend fun resolveGameAudioForSend(): Boolean {
         if (!sentenceAudioEnabled) return true
         val sel = sentenceSelection
-        val isGameAudio = sel is AudioSelection.Explicit &&
-            sel.sourceId == RecordingAudioSource.ID
-        if (!isGameAudio || gameAudioReviewed) return true
+        if (sel !is AudioSelection.Explicit || sel.sourceId != RecordingAudioSource.ID) return true
         val ctx = context ?: return true
-        val range = RecordingAudioSource.parseRange((sel as AudioSelection.Explicit).key)
+        // Reviewed is only trusted while the committed clip is still
+        // RESOLVABLE — a later card's snapshot clobbers the shared file, and
+        // toFile would fail closed at send time, shipping the card without
+        // its user-approved audio. Stale ⇒ un-review and reopen the editor
+        // over the CURRENT buffer (the line is often still in the 3-minute
+        // ring, just at a different offset), with TTS/no-audio as the
+        // in-editor outs (adversarial-review finding).
+        val validRange = RecordingAudioSource.parseRangeFor(
+            sel.key, GameAudioSnapshot.file(ctx),
+        )
+        if (gameAudioReviewed && validRange != null) return true
+        gameAudioReviewed = false
         return suspendCancellableCoroutine { cont ->
             trimContinuation = cont
             cont.invokeOnCancellation { trimContinuation = null }
@@ -249,8 +258,8 @@ class SentenceAnkiContentFragment : Fragment() {
                 GameAudioTrimActivity.intent(
                     ctx,
                     GameAudioSnapshot.file(ctx).absolutePath,
-                    initialStartMs = range?.first ?: -1L,
-                    initialEndMs = range?.second ?: -1L,
+                    initialStartMs = validRange?.first ?: -1L,
+                    initialEndMs = validRange?.second ?: -1L,
                 ),
             )
         }
@@ -379,6 +388,15 @@ class SentenceAnkiContentFragment : Fragment() {
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View = inflater.inflate(R.layout.fragment_sentence_anki_content, container, false)
+
+    override fun onResume() {
+        super.onResume()
+        // Self-heal snapshot churn at the earliest moment: a sheet that
+        // lingered while another card re-snapshotted comes back to a panel
+        // showing a buffer that no longer exists. The mtime guard inside
+        // makes this a no-op in every other case.
+        if (gameAudioPanel != null) updateGameAudioPanel()
+    }
 
     override fun onDestroyView() {
         stopInlinePlayback()
@@ -536,6 +554,9 @@ class SentenceAnkiContentFragment : Fragment() {
             if (existing == null) {
                 sentenceSelection =
                     RecordingAudioSource.committedSelection(requireContext(), start, end)
+                // A freshly-defaulted range (including one replacing a range
+                // from an older snapshot) hasn't been seen by the user.
+                gameAudioReviewed = false
             }
             gameAudioWave?.setData(buckets, 50L, durationMs, start, end)
             refreshSentenceAudioTitle()
@@ -602,13 +623,23 @@ class SentenceAnkiContentFragment : Fragment() {
         val ctx = context ?: return PlayOutcome.Failed(recoverable = false)
         val wav = GameAudioSnapshot.file(ctx).takeIf { it.exists() }
             ?: return PlayOutcome.Failed(recoverable = false)
-        val range = RecordingAudioSource.parseRange(sel.key)
+        if (sel.key != RecordingAudioSource.KEY_PROVISIONAL &&
+            RecordingAudioSource.parseRangeFor(sel.key, wav) == null
+        ) {
+            // Committed against a REPLACED snapshot: auditioning the current
+            // buffer at the old range would play the wrong audio — and must
+            // not count as review. Re-sync the panel to the new buffer
+            // instead; the next tap plays what's really there.
+            updateGameAudioPanel()
+            return PlayOutcome.Failed(recoverable = false)
+        }
+        val range = RecordingAudioSource.parseRangeFor(sel.key, wav)
             ?: gameAudioWave?.let { w ->
                 if (w.selEndMs > w.selStartMs) w.selStartMs to w.selEndMs else null
             }
             ?: return PlayOutcome.Failed(recoverable = false)
         val (startMs, endMs) = range
-        gameAudioReviewed = true // listening counts as review
+        gameAudioReviewed = true // listening counts as review (valid clip only)
         val (pcm, rate) = withContext(Dispatchers.IO) {
             GameAudioClip.readPcmRange(wav, startMs, endMs) to GameAudioClip.sampleRate(wav)
         }
