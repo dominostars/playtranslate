@@ -253,7 +253,11 @@ fun classifyOcrResults(
             // adjacent. Falling back to raw heights for the shrink
             // direction preserves pre-fix behavior there (the cached
             // translation stays, the new adjacent text gets its own
-            // placeholder via the far path).
+            // placeholder via the far path). The one legitimate shrink-
+            // direction shape — a same-row continuation of the box's LAST
+            // line (typewriter tail, campfire trace 2026-07-10) — is
+            // rescued by the inline-only last-line probe below; the block
+            // direction stays de-normalized on purpose.
             val boxRect = ocrBitmapRects[boxIdx]
             val boxLineCount = boxes[boxIdx].lineCount
             // Per-line normalization only applies when orientations agree
@@ -274,13 +278,25 @@ fun classifyOcrResults(
             val growthDirection = orientMatch && ocrLineCount > boxLineCount
             val aLn = if (growthDirection) boxLineCount else 1
             val bLn = if (growthDirection) ocrLineCount else 1
-            val matched = LayoutAnalyzer.wouldGroup(
+            val wholeBoxMatched = LayoutAnalyzer.wouldGroup(
                 boxRect, ocrFullRect, orient,
                 mode = LayoutAnalyzer.GroupingMode.CROSS_FRAME_SAME_REGION,
                 aLineCount = aLn,
                 bLineCount = bLn,
                 rtl = rtl,
             )
+            // Shrink-direction inline rescue: the de-normalized raw-height
+            // path above can never accept a same-row continuation of a
+            // multi-line box's last line (the fragment is compared against
+            // the whole box's height). Probe the last-line INLINE geometry
+            // only, on the forward reading side only — the block direction
+            // stays de-normalized on purpose. Horizontal only; the vertical
+            // twin is unobserved (deferred).
+            val lastLineMatched = !wholeBoxMatched && orientMatch &&
+                orient == TextOrientation.HORIZONTAL &&
+                boxLineCount > 1 && ocrLineCount == 1 &&
+                LayoutAnalyzer.inlineContinuesLastLine(boxRect, boxLineCount, ocrFullRect, rtl)
+            val matched = wholeBoxMatched || lastLineMatched
             if (OcrManager.instance.debugLogGroupingEnabled) {
                 val decision = LayoutAnalyzer.groupDecision(
                     boxRect, ocrFullRect, orient,
@@ -289,7 +305,11 @@ fun classifyOcrResults(
                     bLineCount = bLn,
                     rtl = rtl,
                 )
-                val verdict = if (matched) "MATCH" else "MISS"
+                val verdict = when {
+                    lastLineMatched -> "MATCH-lastline"
+                    matched -> "MATCH"
+                    else -> "MISS"
+                }
                 val boxSnippet = boxes[boxIdx].sourceText.take(24).replace('\n', ' ')
                 val ocrSnippet = ocrText.take(24).replace('\n', ' ')
                 android.util.Log.d(

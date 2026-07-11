@@ -571,6 +571,147 @@ class ClassificationTest {
         assertFalse("fresh far is not paired", result.farOcrGroups[1].paired)
     }
 
+    // ── classifyOcrResults: shrink-direction last-line continuation ──────
+
+    @Test
+    fun classify_lastLineContinuation_stalesMultiLineBox() {
+        // Campfire trace 2026-07-10 c4: two-line cached box, single-line
+        // typewriter tail 7px right of its last line. The whole-box raw
+        // height comparison rejects (125 vs 59 → ratio 1.12 over the cap);
+        // the last-line probe must stale the box so the merged sentence
+        // places on the next cycle instead of stranding a split pair.
+        val cached = box(
+            Rect(524, 813, 930, 938),
+            sourceText = "「キャンプではさ色んな事が、で",
+            lineCount = 2,
+        )
+        val result = classifyOcrResults(
+            ocrResult = ocrResult("きるんだよ・" to Rect(937, 880, 1245, 939)),
+            boxes = listOf(cached),
+            ocrBitmapRects = listOf(cached.bounds),
+            coords = identityCoords,
+        )
+        assertEquals(setOf(0), result.staleOverlayIndices)
+        assertTrue("fragment must be suppressed, not placed", result.farOcrGroups.isEmpty())
+    }
+
+    @Test
+    fun classify_lastLineProbe_freshLineBelowParagraph_staysFar() {
+        // The asymmetry's protected case: a fresh single line directly BELOW
+        // the cached paragraph, left-aligned, plausible line height. The
+        // probe tests inline geometry only — a below-the-box fragment always
+        // fails the last-line band check — so this must stay unmatched.
+        val cached = box(Rect(100, 100, 500, 200), sourceText = "two line paragraph", lineCount = 2)
+        val result = classifyOcrResults(
+            ocrResult = ocrResult("unrelated below" to Rect(100, 210, 400, 255)),
+            boxes = listOf(cached),
+            ocrBitmapRects = listOf(cached.bounds),
+            coords = identityCoords,
+        )
+        assertTrue(result.staleOverlayIndices.isEmpty())
+        assertEquals(1, result.farOcrGroups.size)
+    }
+
+    @Test
+    fun classify_lastLineProbe_distantColumn_staysFar() {
+        // Same last-line height but a column gap away: dx 100 ≥ 1.5×lineH 75.
+        // Two-column layouts must not stale each other — note the probe's dx
+        // gate is TIGHTER than the whole-box inline branch's (which would
+        // allow dx up to 150 here on raw refH).
+        val cached = box(Rect(100, 100, 500, 200), sourceText = "left block", lineCount = 2)
+        val result = classifyOcrResults(
+            ocrResult = ocrResult("right column" to Rect(600, 155, 800, 195)),
+            boxes = listOf(cached),
+            ocrBitmapRects = listOf(cached.bounds),
+            coords = identityCoords,
+        )
+        assertTrue(result.staleOverlayIndices.isEmpty())
+        assertEquals(1, result.farOcrGroups.size)
+    }
+
+    @Test
+    fun classify_lastLineProbe_fragmentOverlappingUnionWidth_staysFar() {
+        // Ragged paragraph: long first line, short last line. The cached
+        // union rect (100..600 wide) says nothing about the last line's
+        // true extent, so a fragment INSIDE the union width on the
+        // last-line band is not continuation evidence — the probe must
+        // refuse x-overlap outright. (Chosen to overlap the union by only
+        // 20px ≈ 11% of the fragment, below the 0.30 substantial-overlap
+        // short-circuit, so this isolates the probe's overlap arm.)
+        val cached = box(
+            Rect(100, 100, 600, 200),
+            sourceText = "long first line, short last",
+            lineCount = 2,
+        )
+        val result = classifyOcrResults(
+            ocrResult = ocrResult("unrelated hud" to Rect(580, 160, 760, 195)),
+            boxes = listOf(cached),
+            ocrBitmapRects = listOf(cached.bounds),
+            coords = identityCoords,
+        )
+        assertTrue(result.staleOverlayIndices.isEmpty())
+        assertEquals(1, result.farOcrGroups.size)
+    }
+
+    @Test
+    fun classify_lastLineProbe_fragmentOnNonForwardSide_staysFar() {
+        // LTR text reveals left→right, so a continuation can only extend
+        // PAST the last line's end — a same-height fragment just LEFT of
+        // the box (label, list bullet, another column) is a neighbor and
+        // must not stale the overlay on geometry alone.
+        val cached = box(Rect(300, 100, 700, 200), sourceText = "two line paragraph", lineCount = 2)
+        val result = classifyOcrResults(
+            ocrResult = ocrResult("left label" to Rect(200, 160, 280, 195)),
+            boxes = listOf(cached),
+            ocrBitmapRects = listOf(cached.bounds),
+            coords = identityCoords,
+        )
+        assertTrue(result.staleOverlayIndices.isEmpty())
+        assertEquals(1, result.farOcrGroups.size)
+    }
+
+    @Test
+    fun classify_lastLineProbe_rtlMirror_matchesLeftRefusesRight() {
+        // RTL mirror: the forward side flips. The same left-side fragment
+        // that must stay far under LTR is the legitimate continuation side
+        // for an RTL source, and the right side becomes the refused one.
+        val cached = box(Rect(300, 100, 700, 200), sourceText = "rtl paragraph", lineCount = 2)
+        val leftFragment = classifyOcrResults(
+            ocrResult = ocrResult("تكملة" to Rect(200, 160, 280, 195)),
+            boxes = listOf(cached),
+            ocrBitmapRects = listOf(cached.bounds),
+            coords = identityCoords,
+            rtl = true,
+        )
+        assertEquals(setOf(0), leftFragment.staleOverlayIndices)
+        assertTrue(leftFragment.farOcrGroups.isEmpty())
+
+        val rightFragment = classifyOcrResults(
+            ocrResult = ocrResult("جار" to Rect(720, 160, 800, 195)),
+            boxes = listOf(cached),
+            ocrBitmapRects = listOf(cached.bounds),
+            coords = identityCoords,
+            rtl = true,
+        )
+        assertTrue(rightFragment.staleOverlayIndices.isEmpty())
+        assertEquals(1, rightFragment.farOcrGroups.size)
+    }
+
+    @Test
+    fun classify_lastLineProbe_dissimilarHeightFragment_staysFar() {
+        // A small badge/icon-text at last-line height right beside the box:
+        // per-line heights 50 vs 20 → ratio 1.5 over the cross-frame cap.
+        val cached = box(Rect(100, 100, 500, 200), sourceText = "left block", lineCount = 2)
+        val result = classifyOcrResults(
+            ocrResult = ocrResult("%" to Rect(505, 175, 560, 195)),
+            boxes = listOf(cached),
+            ocrBitmapRects = listOf(cached.bounds),
+            coords = identityCoords,
+        )
+        assertTrue(result.staleOverlayIndices.isEmpty())
+        assertEquals(1, result.farOcrGroups.size)
+    }
+
     @Test
     fun classify_farCoalesce_noContentMatch_doesNotRemergeOcrSplits() {
         // Bug regression (epilepsy-warning screen, v2.2.0): with no cached

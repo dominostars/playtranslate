@@ -235,6 +235,75 @@ object LayoutAnalyzer {
         if (mode == GroupingMode.CROSS_FRAME_SAME_REGION) SIZE_RATIO_CAP_CORROBORATED
         else SIZE_RATIO_CAP_BARE
 
+    /** Same-line (inline) gap ceiling, in units of the reference line height.
+     *  Shared by [wouldGroup]'s inline branch and [inlineContinuesLastLine]
+     *  so the whole-box and last-line continuations stay on one ruler. */
+    private const val INLINE_GAP_MULTIPLIER = 1.5f
+
+    /**
+     * Cross-frame inline-continuation probe for the shrink direction that
+     * [wouldGroup]'s classification caller deliberately de-normalizes
+     * (cached multi-line box, fresh single-line fragment): is [fresh] a
+     * same-row continuation of [boxRect]'s LAST line?
+     *
+     * Against a multi-line cached rect, [wouldGroup]'s inline branch can
+     * never accept a true last-line continuation — the fragment's height is
+     * compared against the whole box's raw height (campfire trace
+     * 2026-07-10: 125px two-line box vs 59px typewriter tail → ratio 1.12
+     * over the cap, tail placed as its own box, sentence stranded split).
+     * This probe re-tests the INLINE conditions only, on the last line's
+     * band: fragment centerY inside the band, gap under
+     * [INLINE_GAP_MULTIPLIER]× the per-line height (tighter than the
+     * whole-box branch, whose refH is the full height), and per-line height
+     * similarity within the cross-frame cap.
+     *
+     * Deliberately NOT a general shrink-direction re-normalization: testing
+     * the block relationship per-line would re-admit the unrelated-text-
+     * below-the-paragraph false match that the caller's growth-direction
+     * asymmetry exists to prevent (see classifyOcrResults) — a fragment
+     * below the box always fails the band check here. Unlike the inline
+     * branch it mirrors, the probe is DIRECTIONAL: a continuation extends
+     * the last line in reading direction only (rightward for LTR [rtl] =
+     * false, leftward for RTL), strictly beside the union rect — the
+     * non-forward side and x-overlap both refuse (see the forwardGap
+     * comment below). Horizontal text only; the vertical twin (fragment
+     * column beside a multi-column box) is unobserved and deferred.
+     */
+    fun inlineContinuesLastLine(
+        boxRect: Rect,
+        boxLineCount: Int,
+        fresh: Rect,
+        rtl: Boolean = false,
+    ): Boolean {
+        // Single-line boxes already get a correct inline comparison from
+        // wouldGroup (raw height == line height); only multi-line boxes
+        // need the band-scoped rescue.
+        if (boxLineCount < 2) return false
+        val lineH = boxRect.height() / boxLineCount
+        if (lineH <= 0 || fresh.height() <= 0) return false
+        val bandTop = boxRect.bottom - lineH
+        val freshCy = (fresh.top + fresh.bottom) / 2
+        if (freshCy < bandTop || freshCy > boxRect.bottom) return false
+        // A continuation extends the last line in READING direction only —
+        // a same-height fragment on the non-forward side is a neighbor
+        // (label, list bullet, another column), never a continuation.
+        // A negative gap also refuses x-overlap with the union, which is
+        // NOT continuation evidence: the union rect says nothing about the
+        // last line's true extent (ragged paragraph — long first line,
+        // short last line — puts union width far right of the last-line
+        // glyphs). The pinhole caller can't even produce an overlapping
+        // fragment (the rendered box covers the union and the region is
+        // bg-filled before OCR), but that is a caller invariant — the
+        // geometry here must refuse on its own.
+        val forwardGap =
+            if (rtl) boxRect.left - fresh.right else fresh.left - boxRect.right
+        if (forwardGap < 0) return false
+        if (forwardGap >= (lineH * INLINE_GAP_MULTIPLIER).toInt()) return false
+        val lo = minOf(lineH, fresh.height())
+        val hi = maxOf(lineH, fresh.height())
+        return (hi - lo).toDouble() / lo <= sizeRatioCap(GroupingMode.CROSS_FRAME_SAME_REGION)
+    }
+
     /**
      * Block-grouping size guard for **horizontal** text. When the earlier line
      * (strictly above) is less than one-third the later line's width, refuse to
@@ -361,7 +430,7 @@ object LayoutAnalyzer {
             val dx = if (a.right <= b.left) b.left - a.right
                      else if (b.right <= a.left) a.left - b.right
                      else 0
-            if (dx < (refH * 1.5f).toInt()) {
+            if (dx < (refH * INLINE_GAP_MULTIPLIER).toInt()) {
                 // Heights must be similar — inline is for same-line
                 // text continuation, not for a small fresh fragment
                 // whose centerY happens to fall inside a tall
