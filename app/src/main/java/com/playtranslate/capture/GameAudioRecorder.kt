@@ -299,10 +299,12 @@ class GameAudioRecorder(
     }
 
     /**
-     * Freeze the ring's current contents into [GameAudioSnapshot.file] as a
-     * mono PCM16 WAV — the buffer a card flow trims from. Works while paused
-     * or stopped (the ring survives). Returns the file, or null when less
-     * than half a second has been captured. Blocking; call on Dispatchers.IO.
+     * Freeze the ring's current contents into a FRESH per-card snapshot file
+     * ([GameAudioSnapshot.newFile]) as a mono PCM16 WAV — immutable once
+     * written; the calling card flow owns (and deletes) it. Works while
+     * paused or stopped (the ring survives). Returns the file, or null when
+     * less than half a second has been captured. Blocking; call on
+     * Dispatchers.IO.
      */
     fun snapshotToFile(): File? {
         val pcm: ShortArray
@@ -317,9 +319,10 @@ class GameAudioRecorder(
             ring.copyInto(pcm, 0, start, start + firstLen)
             if (firstLen < available) ring.copyInto(pcm, firstLen, 0, available - firstLen)
         }
-        val out = GameAudioSnapshot.file(service)
+        val out = GameAudioSnapshot.newFile(service)
         return try {
             out.parentFile?.mkdirs()
+            GameAudioSnapshot.sweepOrphans(service)
             writeWav(pcm, out)
             Log.i(TAG, "snapshot: ${pcm.size / SAMPLE_RATE}s → ${out.name}")
             out

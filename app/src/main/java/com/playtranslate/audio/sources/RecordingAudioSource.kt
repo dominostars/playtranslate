@@ -18,19 +18,20 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * The recorded-game-audio source: serves the frozen snapshot
- * ([GameAudioSnapshot]) a card flow trims its sentence audio from.
+ * The recorded-game-audio source: serves the frozen per-card snapshot
+ * ([GameAudioSnapshot]) a card flow trims its sentence audio from. Snapshots
+ * are IMMUTABLE per card — a selection's locator pins the exact file, so
+ * snapshot churn between cards cannot invalidate or corrupt a pick.
  *
  * Selection keys carry the whole state, so a pick survives any process churn:
  *  - provisional (no range committed yet): [KEY_PROVISIONAL] — never sendable;
  *    [toFile] returns null and the fragment's Save gate forces the trim editor.
  *  - committed: `snapshot@<mtime>-<startMs>-<endMs>.m4a` — the snapshot's
- *    lastModified is baked in AND enforced at resolve time ([parseRangeFor]):
- *    a range committed against an overwritten snapshot fails closed instead
- *    of cutting the new audio at the old range, and a clip cached from an
- *    OLD snapshot can never be served for a new one (distinct cache key).
- *    The `.m4a` suffix makes [AudioCache.clipFile] derive the right extension
- *    for the file AnkiDroid ends up storing.
+ *    lastModified gives the encoded clip a unique cache identity per snapshot
+ *    file, and [parseRangeFor] enforces it at resolve time as a fail-closed
+ *    backstop for the residual ways a file can change under a key (OS cache
+ *    purge, orphan sweep). The `.m4a` suffix makes [AudioCache.clipFile]
+ *    derive the right extension for the file AnkiDroid ends up storing.
  *
  * `isEnabled = false` is deliberate and load-bearing: it keeps this source out
  * of [com.playtranslate.audio.AudioSourceRegistry.enabledInOrder], so the Auto
@@ -65,8 +66,11 @@ object RecordingAudioSource : AudioSource {
 
     override fun serves(kind: AudioRequest.Kind): Boolean = kind == AudioRequest.Kind.SENTENCE
 
-    override suspend fun candidates(ctx: Context, req: AudioRequest): List<AudioCandidate> =
-        if (GameAudioSnapshot.exists(ctx)) listOf(snapshotCandidate(ctx)) else emptyList()
+    override suspend fun candidates(ctx: Context, req: AudioRequest): List<AudioCandidate> {
+        val wav = GameAudioSnapshot.active?.takeIf { GameAudioSnapshot.isUsable(it) }
+            ?: return emptyList()
+        return listOf(snapshotCandidate(wav))
+    }
 
     override suspend fun defaultCandidate(ctx: Context, req: AudioRequest): AudioCandidate? =
         candidates(ctx, req).firstOrNull()
@@ -125,23 +129,24 @@ object RecordingAudioSource : AudioSource {
 
     // ── Selection helpers (used by the sentence fragment + trim editor) ──
 
-    /** The cell's default selection when a snapshot exists — trim pending. */
-    fun provisionalSelection(ctx: Context): AudioSelection.Explicit =
+    /** The cell's default selection over the card's own snapshot [wav] —
+     *  trim pending. */
+    fun provisionalSelection(wav: File): AudioSelection.Explicit =
         AudioSelection.Explicit(
             sourceId = ID,
             key = KEY_PROVISIONAL,
-            locator = GameAudioSnapshot.file(ctx).absolutePath,
+            locator = wav.absolutePath,
         )
 
-    /** Selection for a committed trim range over the CURRENT snapshot. */
-    fun committedSelection(ctx: Context, startMs: Long, endMs: Long): AudioSelection.Explicit {
-        val wav = GameAudioSnapshot.file(ctx)
-        return AudioSelection.Explicit(
+    /** Selection for a committed trim range over the card's snapshot [wav].
+     *  The locator pins the exact (immutable) file; the mtime in the key
+     *  gives the encoded clip a unique cache identity per snapshot. */
+    fun committedSelection(wav: File, startMs: Long, endMs: Long): AudioSelection.Explicit =
+        AudioSelection.Explicit(
             sourceId = ID,
             key = "snapshot@${wav.lastModified()}-$startMs-$endMs.m4a",
             locator = wav.absolutePath,
         )
-    }
 
     /** True when [selection] is game audio with no committed range — the state
      *  the Save gate intercepts. */
@@ -173,19 +178,20 @@ object RecordingAudioSource : AudioSource {
         return if (end > start) start to end else null
     }
 
-    private fun snapshotCandidate(ctx: Context): AudioCandidate =
+    private fun snapshotCandidate(wav: File): AudioCandidate =
         AudioCandidate(
             sourceId = ID,
             key = KEY_PROVISIONAL,
             title = CandidateLabel.Res(R.string.audio_source_game_name),
             subtitle = CandidateLabel.Res(R.string.audio_source_game_ready),
-            locator = GameAudioSnapshot.file(ctx).absolutePath,
+            locator = wav.absolutePath,
         )
 
-    /** The snapshot WAV an explicit pick refers to (locator-first, falling
-     *  back to the canonical path), or null when it's gone/empty. */
+    /** The snapshot WAV an explicit pick refers to (locator-first — the
+     *  per-card immutable file — falling back to the active card's), or
+     *  null when it's gone/empty. */
     private fun snapshotWav(ctx: Context, candidate: AudioCandidate): File? {
-        val f = candidate.locator?.let(::File) ?: GameAudioSnapshot.file(ctx)
-        return f.takeIf { it.exists() && it.length() > 44 }
+        val f = candidate.locator?.let(::File) ?: GameAudioSnapshot.active
+        return f?.takeIf { it.exists() && it.length() > 44 }
     }
 }

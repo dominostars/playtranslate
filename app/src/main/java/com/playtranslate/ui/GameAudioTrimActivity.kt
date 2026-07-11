@@ -120,8 +120,7 @@ class GameAudioTrimActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val loadedData = withContext(Dispatchers.IO) {
                 val wav = wavPath?.let(::File)?.takeIf { it.exists() }
-                    ?: GameAudioSnapshot.file(this@GameAudioTrimActivity)
-                        .takeIf { it.exists() }
+                    ?: GameAudioSnapshot.active?.takeIf { it.exists() }
                     ?: return@withContext null
                 val durationMs = GameAudioClip.durationMs(wav)
                 if (durationMs < 500) return@withContext null

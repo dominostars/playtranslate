@@ -90,8 +90,14 @@ class SentenceAnkiContentFragment : Fragment() {
     private var gameAudioWave: WaveformTrimView? = null
     private var gameAudioSampleRate = 44_100
     private var gameAudioDurationMs = 0L
-    /** Snapshot mtime the panel last loaded — reload guard. 0 = not loaded. */
-    private var gameAudioLoadedMtime = 0L
+
+    /** THIS card's snapshot — a unique immutable file this fragment owns and
+     *  deletes in onDestroyView. Other cards snapshot to their own files, so
+     *  nothing external can invalidate this one (the churn-bug class fix). */
+    private var gameAudioSnapshotFile: File? = null
+
+    /** The snapshot file the panel last loaded — reload guard. */
+    private var gameAudioLoadedFile: File? = null
     private var inlinePlayer: PcmAudioTrackPlayer? = null
     private var inlinePlaying = false
     /** The chip's suspended await while inline playback runs — resumed on
@@ -196,10 +202,10 @@ class SentenceAnkiContentFragment : Fragment() {
             GameAudioTrimActivity.ACTION_TRIM -> {
                 val s = data?.getLongExtra(GameAudioTrimActivity.EXTRA_START_MS, -1L) ?: -1L
                 val e = data?.getLongExtra(GameAudioTrimActivity.EXTRA_END_MS, -1L) ?: -1L
-                val ctx = context
-                if (ctx != null && s >= 0 && e > s) {
+                val wav = gameAudioSnapshotFile
+                if (wav != null && s >= 0 && e > s) {
                     stopInlinePlayback()
-                    sentenceSelection = RecordingAudioSource.committedSelection(ctx, s, e)
+                    sentenceSelection = RecordingAudioSource.committedSelection(wav, s, e)
                     gameAudioReviewed = true
                     sentenceAudioHandle?.refreshPillLabel(this, lang, sentenceSelection)
                     refreshSentenceAudioTitle()
@@ -239,16 +245,16 @@ class SentenceAnkiContentFragment : Fragment() {
         val sel = sentenceSelection
         if (sel !is AudioSelection.Explicit || sel.sourceId != RecordingAudioSource.ID) return true
         val ctx = context ?: return true
-        // Reviewed is only trusted while the committed clip is still
-        // RESOLVABLE — a later card's snapshot clobbers the shared file, and
-        // toFile would fail closed at send time, shipping the card without
-        // its user-approved audio. Stale ⇒ un-review and reopen the editor
-        // over the CURRENT buffer (the line is often still in the 3-minute
-        // ring, just at a different offset), with TTS/no-audio as the
-        // in-editor outs (adversarial-review finding).
-        val validRange = RecordingAudioSource.parseRangeFor(
-            sel.key, GameAudioSnapshot.file(ctx),
-        )
+        val wav = gameAudioSnapshotFile
+        if (wav == null || !GameAudioSnapshot.isUsable(wav)) {
+            // Under immutable per-card ownership the buffer only disappears
+            // to an OS cache purge. Nothing to trim; the send path surfaces
+            // "audio missing" honestly.
+            return true
+        }
+        // The snapshot can't be clobbered by other cards anymore, so this
+        // check reduces to "was a range reviewed" plus the purge backstop.
+        val validRange = RecordingAudioSource.parseRangeFor(sel.key, wav)
         if (gameAudioReviewed && validRange != null) return true
         gameAudioReviewed = false
         return suspendCancellableCoroutine { cont ->
@@ -257,7 +263,7 @@ class SentenceAnkiContentFragment : Fragment() {
             trimEditorLauncher.launch(
                 GameAudioTrimActivity.intent(
                     ctx,
-                    GameAudioSnapshot.file(ctx).absolutePath,
+                    wav.absolutePath,
                     initialStartMs = validRange?.first ?: -1L,
                     initialEndMs = validRange?.second ?: -1L,
                 ),
@@ -391,11 +397,9 @@ class SentenceAnkiContentFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        // Self-heal snapshot churn at the earliest moment: a sheet that
-        // lingered while another card re-snapshotted comes back to a panel
-        // showing a buffer that no longer exists. The mtime guard inside
-        // makes this a no-op in every other case.
-        if (gameAudioPanel != null) updateGameAudioPanel()
+        // This card's buffer is the "active" snapshot again — the audio
+        // picker and trim-editor fallback resolve Game audio against it.
+        gameAudioSnapshotFile?.let { GameAudioSnapshot.active = it }
     }
 
     override fun onDestroyView() {
@@ -403,7 +407,13 @@ class SentenceAnkiContentFragment : Fragment() {
         inlinePlayer = null
         gameAudioPanel = null
         gameAudioWave = null
-        gameAudioLoadedMtime = 0L
+        gameAudioLoadedFile = null
+        // We own this card's snapshot; the flow is over.
+        gameAudioSnapshotFile?.let { f ->
+            if (GameAudioSnapshot.active == f) GameAudioSnapshot.active = null
+            f.delete()
+        }
+        gameAudioSnapshotFile = null
         ivPhoto?.setImageBitmap(null)
         ivPhoto = null
         sentenceAudioHandle?.release()
@@ -471,8 +481,15 @@ class SentenceAnkiContentFragment : Fragment() {
                 val snap = withContext(Dispatchers.IO) {
                     CaptureService.instance?.gameAudioRecorder?.snapshotToFile()
                 }
-                if (snap == null || !isAdded) return@launch
-                sentenceSelection = RecordingAudioSource.provisionalSelection(requireContext())
+                if (snap == null) return@launch
+                if (!isAdded) {
+                    // Flow died while snapshotting — we own the file; reap it.
+                    snap.delete()
+                    return@launch
+                }
+                gameAudioSnapshotFile = snap
+                GameAudioSnapshot.active = snap
+                sentenceSelection = RecordingAudioSource.provisionalSelection(snap)
                 val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
                     ?: SourceLangId.JA
                 sentenceAudioHandle?.refreshPillLabel(
@@ -490,39 +507,32 @@ class SentenceAnkiContentFragment : Fragment() {
     /** Sync the panel with [sentenceSelection]: load + show while the game
      *  recording is the selected source, hide (and silence) otherwise. */
     private fun updateGameAudioPanel() {
-        val ctx = context ?: return
         val sel = sentenceSelection
         val isGameAudio = sel is AudioSelection.Explicit &&
             sel.sourceId == RecordingAudioSource.ID
-        if (!isGameAudio || !GameAudioSnapshot.exists(ctx)) {
+        val wav = gameAudioSnapshotFile
+        if (!isGameAudio || wav == null || !GameAudioSnapshot.isUsable(wav)) {
             stopInlinePlayback()
             gameAudioPanel?.visibility = View.GONE
             return
         }
-        val wav = GameAudioSnapshot.file(ctx)
-        if (gameAudioLoadedMtime == wav.lastModified()) {
+        if (gameAudioLoadedFile == wav) {
             // Already loaded (e.g. the user switched to TTS and back). A
-            // re-pick arrives RANGELESS — and a range committed against an
-            // older snapshot is rangeless for THIS one (mtime-checked) —
-            // re-commit from the wave's current selection, or Save-after-play
-            // would ship a key that toFile resolves to no audio at all.
-            val rangeless = (sentenceSelection as? AudioSelection.Explicit)
-                ?.let { RecordingAudioSource.parseRangeFor(it.key, wav) } == null
+            // re-pick arrives RANGELESS — re-commit from the wave's current
+            // selection, or Save-after-play would ship a key that toFile
+            // resolves to no audio at all.
+            val rangeless = (sel as AudioSelection.Explicit)
+                .let { RecordingAudioSource.parseRangeFor(it.key, wav) } == null
             val wave = gameAudioWave
             if (rangeless && wave != null && wave.selEndMs > wave.selStartMs) {
                 sentenceSelection = RecordingAudioSource.committedSelection(
-                    ctx, wave.selStartMs, wave.selEndMs,
+                    wav, wave.selStartMs, wave.selEndMs,
                 )
                 refreshSentenceAudioTitle()
             }
             gameAudioPanel?.visibility = View.VISIBLE
             return
         }
-        // Captured BEFORE the IO hop; the continuation re-validates against
-        // both, so a stale load can neither resurrect game audio after the
-        // user switched source nor bind a snapshot that was since replaced
-        // (adversarial-review finding).
-        val expectedMtime = wav.lastModified()
         viewLifecycleOwner.lifecycleScope.launch {
             val loaded = withContext(Dispatchers.IO) {
                 val durationMs = GameAudioClip.durationMs(wav)
@@ -532,10 +542,13 @@ class SentenceAnkiContentFragment : Fragment() {
                 Triple(durationMs, rate, rmsBucketsForStrip(pcm, rate))
             }
             if (!isAdded) return@launch
+            // UI-race guard: the user may have switched source while the IO
+            // ran. (The snapshot itself is immutable and fragment-owned —
+            // file churn is structurally impossible now.)
             val selNow = sentenceSelection
             val stillGameAudio = selNow is AudioSelection.Explicit &&
                 selNow.sourceId == RecordingAudioSource.ID
-            if (!stillGameAudio || wav.lastModified() != expectedMtime) return@launch
+            if (!stillGameAudio || gameAudioSnapshotFile != wav) return@launch
             if (loaded == null) {
                 gameAudioPanel?.visibility = View.GONE
                 return@launch
@@ -543,19 +556,16 @@ class SentenceAnkiContentFragment : Fragment() {
             val (durationMs, rate, buckets) = loaded
             gameAudioDurationMs = durationMs
             gameAudioSampleRate = rate
-            gameAudioLoadedMtime = expectedMtime
+            gameAudioLoadedFile = wav
             // A rangeless (fresh) selection gets the default range now that
-            // the duration is known; a range committed against THIS snapshot
-            // (mtime-checked) is preserved.
+            // the duration is known; a committed range is preserved.
             val existing = (selNow as AudioSelection.Explicit)
                 .let { RecordingAudioSource.parseRangeFor(it.key, wav) }
             val start = existing?.first ?: (durationMs - 5_000L).coerceAtLeast(0)
             val end = existing?.second ?: durationMs
             if (existing == null) {
-                sentenceSelection =
-                    RecordingAudioSource.committedSelection(requireContext(), start, end)
-                // A freshly-defaulted range (including one replacing a range
-                // from an older snapshot) hasn't been seen by the user.
+                sentenceSelection = RecordingAudioSource.committedSelection(wav, start, end)
+                // A freshly-defaulted range hasn't been seen by the user.
                 gameAudioReviewed = false
             }
             gameAudioWave?.setData(buckets, 50L, durationMs, start, end)
@@ -602,9 +612,9 @@ class SentenceAnkiContentFragment : Fragment() {
     }
 
     private fun onInlineSelectionChanged(startMs: Long, endMs: Long) {
-        val ctx = context ?: return
+        val wav = gameAudioSnapshotFile ?: return
         stopInlinePlayback()
-        sentenceSelection = RecordingAudioSource.committedSelection(ctx, startMs, endMs)
+        sentenceSelection = RecordingAudioSource.committedSelection(wav, startMs, endMs)
         gameAudioReviewed = true
         refreshSentenceAudioTitle()
     }
@@ -620,26 +630,17 @@ class SentenceAnkiContentFragment : Fragment() {
     private suspend fun playGameAudioInline(onStart: (() -> Unit)?): PlayOutcome? {
         val sel = sentenceSelection as? AudioSelection.Explicit ?: return null
         if (sel.sourceId != RecordingAudioSource.ID) return null
-        val ctx = context ?: return PlayOutcome.Failed(recoverable = false)
-        val wav = GameAudioSnapshot.file(ctx).takeIf { it.exists() }
+        // This fragment's own immutable snapshot — churn from other cards is
+        // structurally impossible, so no staleness handling is needed here.
+        val wav = gameAudioSnapshotFile?.takeIf { GameAudioSnapshot.isUsable(it) }
             ?: return PlayOutcome.Failed(recoverable = false)
-        if (sel.key != RecordingAudioSource.KEY_PROVISIONAL &&
-            RecordingAudioSource.parseRangeFor(sel.key, wav) == null
-        ) {
-            // Committed against a REPLACED snapshot: auditioning the current
-            // buffer at the old range would play the wrong audio — and must
-            // not count as review. Re-sync the panel to the new buffer
-            // instead; the next tap plays what's really there.
-            updateGameAudioPanel()
-            return PlayOutcome.Failed(recoverable = false)
-        }
         val range = RecordingAudioSource.parseRangeFor(sel.key, wav)
             ?: gameAudioWave?.let { w ->
                 if (w.selEndMs > w.selStartMs) w.selStartMs to w.selEndMs else null
             }
             ?: return PlayOutcome.Failed(recoverable = false)
         val (startMs, endMs) = range
-        gameAudioReviewed = true // listening counts as review (valid clip only)
+        gameAudioReviewed = true // listening counts as review
         val (pcm, rate) = withContext(Dispatchers.IO) {
             GameAudioClip.readPcmRange(wav, startMs, endMs) to GameAudioClip.sampleRate(wav)
         }
@@ -781,7 +782,7 @@ class SentenceAnkiContentFragment : Fragment() {
         // waveform, not just pinches that start on the strip itself.
         forwardPanelTouchesToWave(panel)
         panel.visibility = View.GONE
-        gameAudioLoadedMtime = 0L
+        gameAudioLoadedFile = null
         originalCard.addView(panel)
 
         // Translation — same trick with R.id.etAnkiTranslation.
