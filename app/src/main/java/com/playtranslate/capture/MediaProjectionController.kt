@@ -601,7 +601,19 @@ class MediaProjectionController(private val service: CaptureService) {
             return streamKind
         }
         if (!hasConsent) return StreamKind.UNKNOWN
-        val kind = StreamKindProbe.measure(this)
+        var kind = StreamKindProbe.measure(this)
+        if (kind == StreamKind.UNKNOWN && hasConsent) {
+            // One retry: the probe is the SOLE classifier, so a transient
+            // abort (layout/draw timing, buffer contention) would otherwise
+            // consign the whole session to the degraded tier. The log line
+            // is the field abort-rate signal — this app has no telemetry,
+            // so exported logs are the only place the rate can ever show up.
+            val second = StreamKindProbe.measure(this)
+            DetectionLog.log(
+                "MP stream kind: retry after UNKNOWN → $second"
+            )
+            kind = second
+        }
         if (kind == StreamKind.UNKNOWN || !hasConsent) {
             if (kind != StreamKind.UNKNOWN) {
                 DetectionLog.log("MP stream kind: $kind discarded — consent died mid-probe")
