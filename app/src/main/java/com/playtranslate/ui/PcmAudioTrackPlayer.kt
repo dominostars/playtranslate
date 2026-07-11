@@ -2,6 +2,7 @@ package com.playtranslate.ui
 
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
@@ -50,10 +51,19 @@ class PcmAudioTrackPlayer(private val sampleRate: Int) {
             // Loudness pass): game mixes sit well below speech level, and on
             // the Thor the secondary display attenuates media further — an
             // unnormalized clip reads as "didn't play".
-            val clip = pcm.copyOfRange(start, end)
-            Loudness.normalize(clip)
+            val normalized = pcm.copyOfRange(start, end)
+            Loudness.normalize(normalized)
+            // Fast-track eligibility requires the SINK's native rate on most
+            // builds — a 44.1 kHz track on a 48 kHz sink gets the low-latency
+            // request silently denied and lands back on the (Thor-muted)
+            // deep-buffer path. Resample to native before building the track.
+            val nativeRate = AudioTrack.getNativeOutputSampleRate(AudioManager.STREAM_MUSIC)
+                .takeIf { it > 0 } ?: sampleRate
+            val clip =
+                if (nativeRate == sampleRate) normalized
+                else resampleLinear(normalized, sampleRate, nativeRate)
             val minBuf = AudioTrack.getMinBufferSize(
-                sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT,
+                nativeRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT,
             ).coerceAtLeast(4096)
             val t = runCatching {
                 AudioTrack.Builder()
@@ -66,7 +76,7 @@ class PcmAudioTrackPlayer(private val sampleRate: Int) {
                     .setAudioFormat(
                         AudioFormat.Builder()
                             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                            .setSampleRate(sampleRate)
+                            .setSampleRate(nativeRate)
                             .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                             .build(),
                     )
@@ -92,16 +102,19 @@ class PcmAudioTrackPlayer(private val sampleRate: Int) {
             runCatching { t.setVolume(1.0f) }
             Log.i(
                 TAG,
-                "playing ${clip.size} frames sr=$sampleRate buf=${minBuf * 2} perf=${t.performanceMode}",
+                "playing ${clip.size} frames sr=$sampleRate->$nativeRate " +
+                    "buf=${minBuf * 2} perf=${t.performanceMode}",
             )
             runCatching {
                 t.play()
                 var off = 0
                 while (off < clip.size && generation == gen) {
-                    val n = t.write(clip, off, minOf(sampleRate / 10, clip.size - off))
+                    val n = t.write(clip, off, minOf(nativeRate / 10, clip.size - off))
                     if (n <= 0) break
                     off += n
-                    val frame = start + off
+                    // Progress stays in SOURCE frame space — callers map it
+                    // to ms with the rate they handed us.
+                    val frame = start + (off.toLong() * sampleRate / nativeRate).toInt()
                     onProgress?.let { cb ->
                         mainHandler.post { if (generation == gen) cb(frame) }
                     }
@@ -129,5 +142,21 @@ class PcmAudioTrackPlayer(private val sampleRate: Int) {
         // paused+flushed; the render thread then releases it.
         runCatching { track?.pause() }
         runCatching { track?.flush() }
+    }
+
+    /** Linear-interpolation resample, mono PCM16. Plenty for speech preview;
+     *  the card's encoded clip keeps the original samples. */
+    private fun resampleLinear(src: ShortArray, from: Int, to: Int): ShortArray {
+        val outLen = (src.size.toLong() * to / from).toInt().coerceAtLeast(1)
+        val out = ShortArray(outLen)
+        for (i in out.indices) {
+            val srcPos = i.toLong() * from
+            val idx = (srcPos / to).toInt().coerceAtMost(src.size - 1)
+            val next = (idx + 1).coerceAtMost(src.size - 1)
+            val frac = (srcPos % to).toDouble() / to
+            out[i] = ((1 - frac) * src[idx] + frac * src[next]).toInt()
+                .coerceIn(-32768, 32767).toShort()
+        }
+        return out
     }
 }
