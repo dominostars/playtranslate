@@ -23,12 +23,15 @@
         android:layout_height="1dp"
         android:background="?attr/ptDivider" />
 
+    <!-- 48dp horizontal inset: a trim handle dragged to the view's edge must
+         still sit clear of the system back-gesture zones, or grabbing it
+         triggers navigation instead of a drag. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:orientation="vertical"
-        android:paddingHorizontal="@dimen/pt_section_h_padding"
+        android:paddingHorizontal="48dp"
         android:paddingTop="12dp"
         android:paddingBottom="8dp">
 
