@@ -8,6 +8,7 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.view.ViewConfiguration
 import com.playtranslate.R
 import com.playtranslate.themeColor
 import kotlin.math.abs
@@ -47,6 +48,13 @@ class WaveformTrimView @JvmOverloads constructor(
     /** Fired on every user-driven selection change (drag in progress too). */
     var onSelectionChanged: ((startMs: Long, endMs: Long) -> Unit)? = null
 
+    /** Embedded mode (the in-card panel inside a scrolling bottom sheet):
+     *  pinch zoom off, and the parent keeps vertical gestures — a body drag
+     *  becomes a pan only once horizontal movement wins the touch slop, so
+     *  scrolling the card by dragging across the waveform still works.
+     *  Handle grabs always win immediately. */
+    var embedded = false
+
     private val density = resources.displayMetrics.density
     private val handleTouchPx = 24 * density
     private val minSelectionMs = 200L
@@ -85,6 +93,10 @@ class WaveformTrimView @JvmOverloads constructor(
     private var drag = DragTarget.NONE
     private var lastTouchX = 0f
     private var scaling = false
+    private var downX = 0f
+    private var downY = 0f
+    private var panCommitted = false
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     private val scaleDetector = ScaleGestureDetector(
         context,
@@ -196,15 +208,35 @@ class WaveformTrimView @JvmOverloads constructor(
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (durationMs == 0L) return false
-        scaleDetector.onTouchEvent(event)
+        if (!embedded) scaleDetector.onTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                parent?.requestDisallowInterceptTouchEvent(true)
                 lastTouchX = event.x
+                downX = event.x
+                downY = event.y
+                panCommitted = false
                 drag = hitTest(event.x)
+                // Embedded body-drags stay interceptable (the sheet may claim
+                // a vertical scroll); handle grabs are ours unconditionally.
+                if (!embedded || drag != DragTarget.PAN) {
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                }
             }
             MotionEvent.ACTION_MOVE -> {
                 if (scaling || event.pointerCount > 1) return true
+                if (embedded && drag == DragTarget.PAN && !panCommitted) {
+                    val adx = abs(event.x - downX)
+                    val ady = abs(event.y - downY)
+                    if (adx > touchSlop && adx > ady) {
+                        // Horizontal won: this is a pan — claim the gesture.
+                        panCommitted = true
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                        lastTouchX = event.x
+                    }
+                    // Else keep waiting; a vertical win means the parent
+                    // intercepts and we receive ACTION_CANCEL.
+                    return true
+                }
                 val dx = event.x - lastTouchX
                 lastTouchX = event.x
                 when (drag) {
@@ -232,9 +264,22 @@ class WaveformTrimView @JvmOverloads constructor(
                     DragTarget.NONE -> {}
                 }
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> drag = DragTarget.NONE
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                drag = DragTarget.NONE
+                panCommitted = false
+            }
         }
         return true
+    }
+
+    /** Programmatic selection update (e.g. the full editor returned a refined
+     *  range) — applies, reveals, does NOT fire [onSelectionChanged]. */
+    fun setSelection(startMs: Long, endMs: Long) {
+        if (durationMs == 0L || endMs <= startMs) return
+        selStartMs = startMs.coerceIn(0, durationMs)
+        selEndMs = endMs.coerceIn(selStartMs + minSelectionMs, durationMs)
+        revealSelection()
+        invalidate()
     }
 
     private fun hitTest(x: Float): DragTarget {

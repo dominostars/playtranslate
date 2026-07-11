@@ -30,6 +30,7 @@ import com.playtranslate.R
 import com.playtranslate.audio.Attribution
 import com.playtranslate.audio.AudioRequest
 import com.playtranslate.audio.AudioSelection
+import com.playtranslate.audio.GameAudioClip
 import com.playtranslate.audio.sources.RecordingAudioSource
 import com.playtranslate.capture.GameAudioSnapshot
 import com.playtranslate.dictionary.Deinflector
@@ -80,6 +81,23 @@ class SentenceAnkiContentFragment : Fragment() {
     private var screenshotGroup: View? = null
     private var ivPhoto: ImageView? = null
     private var sentenceAudioHandle: AnkiAudioToggleHandle? = null
+
+    // ── In-card game-audio panel (waveform + play + expand) ──────────────
+    private var gameAudioPanel: View? = null
+    private var gameAudioWave: WaveformTrimView? = null
+    private var btnInlinePlay: com.google.android.material.button.MaterialButton? = null
+    private var gameAudioSampleRate = 44_100
+    private var gameAudioDurationMs = 0L
+    /** Snapshot mtime the panel last loaded — reload guard. 0 = not loaded. */
+    private var gameAudioLoadedMtime = 0L
+    private var inlinePlayer: PcmAudioTrackPlayer? = null
+    private var inlinePlaying = false
+
+    /** True once the user has interacted with the game-audio selection —
+     *  dragged a handle, played it (listening counts as review), or been
+     *  through the full editor. Reviewed audio sends directly; unreviewed
+     *  audio still gets the save-time editor as the safety net. */
+    private var gameAudioReviewed = false
 
     /** Independent per-target-word audio toggle state for THIS card.
      *  Seeded from [Prefs.ankiWordAudioEnabled] when a word is first
@@ -132,9 +150,10 @@ class SentenceAnkiContentFragment : Fragment() {
             is PickTarget.Sentence -> {
                 sentenceSelection = selection
                 sentenceAudioHandle?.refreshPillLabel(this, lang, selection)
-                // A pick of "Game audio" arrives rangeless (provisional) —
-                // the title flips to its status line; trim commits at save.
                 refreshSentenceAudioTitle()
+                // A pick of "Game audio" arrives rangeless — the panel load
+                // commits the default range; any other source hides the panel.
+                updateGameAudioPanel()
             }
             is PickTarget.Word -> {
                 wordSelections[target.word] = selection
@@ -146,64 +165,87 @@ class SentenceAnkiContentFragment : Fragment() {
     /** Non-null while the save-time trim editor is up; resumed by its result. */
     private var trimContinuation: CancellableContinuation<Boolean>? = null
 
+    /** Shared by the save-time gate and the panel's "Open editor" button —
+     *  the launcher applies the result either way; the continuation exists
+     *  only in gate mode. */
     private val trimEditorLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val cont = trimContinuation.also { trimContinuation = null }
-            ?: return@registerForActivityResult
-        val action = if (result.resultCode == Activity.RESULT_OK) {
-            result.data?.getStringExtra(GameAudioTrimActivity.EXTRA_ACTION)
+        val proceed = applyTrimEditorResult(result.resultCode, result.data)
+        cont?.resume(proceed)
+    }
+
+    /** Returns whether a pending send should proceed. Any RESULT_OK action
+     *  counts as review — the user saw the editor and chose. */
+    private fun applyTrimEditorResult(resultCode: Int, data: android.content.Intent?): Boolean {
+        val action = if (resultCode == Activity.RESULT_OK) {
+            data?.getStringExtra(GameAudioTrimActivity.EXTRA_ACTION)
         } else {
             null
         }
         val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
             ?: SourceLangId.JA
-        when (action) {
+        return when (action) {
             GameAudioTrimActivity.ACTION_TRIM -> {
-                val s = result.data?.getLongExtra(GameAudioTrimActivity.EXTRA_START_MS, -1L) ?: -1L
-                val e = result.data?.getLongExtra(GameAudioTrimActivity.EXTRA_END_MS, -1L) ?: -1L
+                val s = data?.getLongExtra(GameAudioTrimActivity.EXTRA_START_MS, -1L) ?: -1L
+                val e = data?.getLongExtra(GameAudioTrimActivity.EXTRA_END_MS, -1L) ?: -1L
                 val ctx = context
                 if (ctx != null && s >= 0 && e > s) {
+                    stopInlinePlayback()
                     sentenceSelection = RecordingAudioSource.committedSelection(ctx, s, e)
+                    gameAudioReviewed = true
                     sentenceAudioHandle?.refreshPillLabel(this, lang, sentenceSelection)
                     refreshSentenceAudioTitle()
-                    cont.resume(true)
+                    gameAudioWave?.setSelection(s, e)
+                    true
                 } else {
-                    cont.resume(false)
+                    false
                 }
             }
             GameAudioTrimActivity.ACTION_TTS -> {
                 sentenceSelection = AudioSelection.Auto
+                gameAudioReviewed = true
                 sentenceAudioHandle?.refreshPillLabel(this, lang, sentenceSelection)
                 refreshSentenceAudioTitle()
-                cont.resume(true)
+                updateGameAudioPanel()
+                true
             }
             GameAudioTrimActivity.ACTION_NONE -> {
                 // Switch off ⇒ sentenceAudioEnabled false ⇒ the gate passes
                 // and the send simply carries no sentence audio.
+                gameAudioReviewed = true
                 sentenceAudioHandle?.switch?.isChecked = false
-                cont.resume(true)
+                true
             }
-            else -> cont.resume(false) // back/cancel — abort the send
+            else -> false // back/cancel — abort a pending send, change nothing
         }
     }
 
     /**
-     * Save-time gate: an untrimmed Game-audio selection never sends — open
-     * the trim editor once and commit/redirect per its result ("Use TTS
-     * instead" / "No audio" are its escape hatches). Returns false when the
-     * user backed out, in which case the host restores its Save button and
-     * aborts. Both host sheets await this before [getCardData].
+     * Save-time gate: game audio the user never reviewed (no handle drag, no
+     * play, no editor visit) opens the trim editor once, seeded with the
+     * current selection. Reviewed audio — the normal case with the in-card
+     * panel — sends directly. Returns false when the user backed out.
      */
     suspend fun resolveGameAudioForSend(): Boolean {
         if (!sentenceAudioEnabled) return true
-        if (!RecordingAudioSource.isProvisional(sentenceSelection)) return true
+        val sel = sentenceSelection
+        val isGameAudio = sel is AudioSelection.Explicit &&
+            sel.sourceId == RecordingAudioSource.ID
+        if (!isGameAudio || gameAudioReviewed) return true
         val ctx = context ?: return true
+        val range = RecordingAudioSource.parseRange((sel as AudioSelection.Explicit).key)
         return suspendCancellableCoroutine { cont ->
             trimContinuation = cont
             cont.invokeOnCancellation { trimContinuation = null }
             trimEditorLauncher.launch(
-                GameAudioTrimActivity.intent(ctx, GameAudioSnapshot.file(ctx).absolutePath),
+                GameAudioTrimActivity.intent(
+                    ctx,
+                    GameAudioSnapshot.file(ctx).absolutePath,
+                    initialStartMs = range?.first ?: -1L,
+                    initialEndMs = range?.second ?: -1L,
+                ),
             )
         }
     }
@@ -329,6 +371,12 @@ class SentenceAnkiContentFragment : Fragment() {
     ): View = inflater.inflate(R.layout.fragment_sentence_anki_content, container, false)
 
     override fun onDestroyView() {
+        stopInlinePlayback()
+        inlinePlayer = null
+        gameAudioPanel = null
+        gameAudioWave = null
+        btnInlinePlay = null
+        gameAudioLoadedMtime = 0L
         ivPhoto?.setImageBitmap(null)
         ivPhoto = null
         sentenceAudioHandle?.release()
@@ -403,9 +451,147 @@ class SentenceAnkiContentFragment : Fragment() {
                 sentenceAudioHandle?.refreshPillLabel(
                     this@SentenceAnkiContentFragment, lang, sentenceSelection,
                 )
-                refreshSentenceAudioTitle()
+                // The panel load commits the default range (last few seconds)
+                // and shows the inline editor, expanded by default.
+                updateGameAudioPanel()
             }
         }
+    }
+
+    // ── In-card game-audio panel ─────────────────────────────────────────
+
+    /** Sync the panel with [sentenceSelection]: load + show while the game
+     *  recording is the selected source, hide (and silence) otherwise. */
+    private fun updateGameAudioPanel() {
+        val ctx = context ?: return
+        val sel = sentenceSelection
+        val isGameAudio = sel is AudioSelection.Explicit &&
+            sel.sourceId == RecordingAudioSource.ID
+        if (!isGameAudio || !GameAudioSnapshot.exists(ctx)) {
+            stopInlinePlayback()
+            gameAudioPanel?.visibility = View.GONE
+            return
+        }
+        val wav = GameAudioSnapshot.file(ctx)
+        if (gameAudioLoadedMtime == wav.lastModified()) {
+            // Already loaded (e.g. the user switched to TTS and back). A
+            // re-pick arrives RANGELESS — re-commit from the wave's current
+            // selection, or Save-after-play would ship a rangeless key that
+            // toFile resolves to no audio at all.
+            val rangeless = (sentenceSelection as? AudioSelection.Explicit)
+                ?.let { RecordingAudioSource.parseRange(it.key) } == null
+            val wave = gameAudioWave
+            if (rangeless && wave != null && wave.selEndMs > wave.selStartMs) {
+                sentenceSelection = RecordingAudioSource.committedSelection(
+                    ctx, wave.selStartMs, wave.selEndMs,
+                )
+                refreshSentenceAudioTitle()
+            }
+            gameAudioPanel?.visibility = View.VISIBLE
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            val loaded = withContext(Dispatchers.IO) {
+                val durationMs = GameAudioClip.durationMs(wav)
+                if (durationMs < 500) return@withContext null
+                val rate = GameAudioClip.sampleRate(wav)
+                val pcm = GameAudioClip.readPcmRange(wav, 0, durationMs)
+                Triple(durationMs, rate, rmsBucketsForStrip(pcm, rate))
+            }
+            if (!isAdded) return@launch
+            if (loaded == null) {
+                gameAudioPanel?.visibility = View.GONE
+                return@launch
+            }
+            val (durationMs, rate, buckets) = loaded
+            gameAudioDurationMs = durationMs
+            gameAudioSampleRate = rate
+            gameAudioLoadedMtime = wav.lastModified()
+            // A rangeless (fresh) selection gets the default range now that
+            // the duration is known; a committed range is preserved.
+            val existing = (sentenceSelection as? AudioSelection.Explicit)
+                ?.let { RecordingAudioSource.parseRange(it.key) }
+            val start = existing?.first ?: (durationMs - 5_000L).coerceAtLeast(0)
+            val end = existing?.second ?: durationMs
+            if (existing == null) {
+                sentenceSelection =
+                    RecordingAudioSource.committedSelection(requireContext(), start, end)
+            }
+            gameAudioWave?.setData(buckets, 50L, durationMs, start, end)
+            refreshSentenceAudioTitle()
+            gameAudioPanel?.visibility = View.VISIBLE
+        }
+    }
+
+    /** Per-bucket RMS normalized to the loudest bucket (50 ms buckets). */
+    private fun rmsBucketsForStrip(pcm: ShortArray, rate: Int): FloatArray {
+        val bucketFrames = (rate / 20).coerceAtLeast(1)
+        val out = FloatArray((pcm.size + bucketFrames - 1) / bucketFrames)
+        var maxRms = 0f
+        for (b in out.indices) {
+            val from = b * bucketFrames
+            val to = minOf(from + bucketFrames, pcm.size)
+            var sumSq = 0.0
+            for (i in from until to) {
+                val s = pcm[i].toDouble()
+                sumSq += s * s
+            }
+            val rms = (kotlin.math.sqrt(sumSq / (to - from)) / Short.MAX_VALUE).toFloat()
+            out[b] = rms
+            if (rms > maxRms) maxRms = rms
+        }
+        if (maxRms > 0f) for (b in out.indices) out[b] = (out[b] / maxRms).coerceAtMost(1f)
+        return out
+    }
+
+    private fun onInlineSelectionChanged(startMs: Long, endMs: Long) {
+        val ctx = context ?: return
+        stopInlinePlayback()
+        sentenceSelection = RecordingAudioSource.committedSelection(ctx, startMs, endMs)
+        gameAudioReviewed = true
+        refreshSentenceAudioTitle()
+    }
+
+    private fun toggleInlinePlayback() {
+        if (inlinePlaying) {
+            stopInlinePlayback()
+            return
+        }
+        val ctx = context ?: return
+        val wave = gameAudioWave ?: return
+        val wav = GameAudioSnapshot.file(ctx).takeIf { it.exists() } ?: return
+        val startMs = wave.selStartMs
+        val endMs = wave.selEndMs
+        gameAudioReviewed = true // listening counts as review
+        inlinePlaying = true
+        btnInlinePlay?.setText(R.string.game_audio_trim_stop)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val pcm = withContext(Dispatchers.IO) {
+                GameAudioClip.readPcmRange(wav, startMs, endMs)
+            }
+            if (!isAdded || !inlinePlaying || pcm.isEmpty()) {
+                if (isAdded) stopInlinePlayback()
+                return@launch
+            }
+            val player = inlinePlayer ?: PcmAudioTrackPlayer(gameAudioSampleRate)
+                .also { inlinePlayer = it }
+            player.play(
+                pcm,
+                0,
+                pcm.size,
+                onProgress = { frame ->
+                    gameAudioWave?.setPlaybackCursorMs(startMs + frame * 1000L / gameAudioSampleRate)
+                },
+                onDone = { stopInlinePlayback() },
+            )
+        }
+    }
+
+    private fun stopInlinePlayback() {
+        inlinePlayer?.stop()
+        inlinePlaying = false
+        gameAudioWave?.setPlaybackCursorMs(null)
+        btnInlinePlay?.setText(R.string.game_audio_trim_play)
     }
 
     // ── Build ────────────────────────────────────────────────────────────
@@ -482,6 +668,34 @@ class SentenceAnkiContentFragment : Fragment() {
                 refreshSentenceAudioTitle()
             }
         })
+
+        // In-card game-audio editing panel, beneath the audio row inside the
+        // same card. Hidden until the selection is the game recording.
+        val panel = LayoutInflater.from(ctx)
+            .inflate(R.layout.anki_game_audio_panel, originalCard, false)
+        gameAudioPanel = panel
+        gameAudioWave = panel.findViewById<WaveformTrimView>(R.id.waveInline).apply {
+            embedded = true
+            onSelectionChanged = { s, e -> onInlineSelectionChanged(s, e) }
+        }
+        btnInlinePlay = panel.findViewById(R.id.btnInlinePlay)
+        btnInlinePlay?.setOnClickListener { toggleInlinePlayback() }
+        panel.findViewById<View>(R.id.btnInlineExpand).setOnClickListener {
+            stopInlinePlayback()
+            val range = (sentenceSelection as? AudioSelection.Explicit)
+                ?.let { RecordingAudioSource.parseRange(it.key) }
+            trimEditorLauncher.launch(
+                GameAudioTrimActivity.intent(
+                    ctx,
+                    GameAudioSnapshot.file(ctx).absolutePath,
+                    initialStartMs = range?.first ?: -1L,
+                    initialEndMs = range?.second ?: -1L,
+                ),
+            )
+        }
+        panel.visibility = View.GONE
+        gameAudioLoadedMtime = 0L
+        originalCard.addView(panel)
 
         // Translation — same trick with R.id.etAnkiTranslation.
         ankiGroupHeader(root, getString(R.string.anki_group_translation))
