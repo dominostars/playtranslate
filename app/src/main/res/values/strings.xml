@@ -1148,10 +1148,6 @@
          (e.g. "147"). Renders as "2.4 s selected · 147 s recorded". -->
     <string name="game_audio_trim_duration"><xliff:g id="seconds" example="2.4">%1$s</xliff:g> s selected · <xliff:g id="total_seconds" example="147">%2$s</xliff:g> s recorded</string>
 
-    <!-- Text button in the in-card game-audio panel: opens the full-screen
-         trim editor seeded with the current selection. -->
-    <string name="game_audio_open_editor">Open editor</string>
-
     <!-- Sentence audio row title (card editor) when game audio is selected
          but not yet trimmed — replaces the spoken-text label in that mode. -->
     <string name="anki_game_audio_cell_untrimmed">Game audio — trim when saving</string>

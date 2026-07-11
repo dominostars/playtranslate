@@ -29,6 +29,7 @@ import com.playtranslate.R
 import com.playtranslate.audio.AudioRequest
 import com.playtranslate.audio.AudioSelection
 import com.playtranslate.audio.AudioSelections
+import com.playtranslate.audio.PlayOutcome
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
@@ -493,6 +494,9 @@ fun Fragment.addCompactAudioToggleRow(
     prepare: suspend (String) -> String = { it },
     selection: (() -> AudioSelection)? = null,
     audioRequest: (() -> AudioRequest)? = null,
+    /** See [AnkiAudioPreviewChip]'s playOverride — host-played preview
+     *  (the sentence cell's inline game-audio playback). */
+    playOverride: (suspend (onStart: (() -> Unit)?) -> PlayOutcome?)? = null,
 ): AnkiAudioToggleHandle {
     val ctx = requireContext()
     val inflater = android.view.LayoutInflater.from(ctx)
@@ -519,6 +523,7 @@ fun Fragment.addCompactAudioToggleRow(
     val chip = AnkiAudioPreviewChip(
         this, lang, previewText, voiceOverride, prepare,
         selectionProvider = selection, requestProvider = audioRequest,
+        playOverride = playOverride,
     )
     row.addView(chip.view, 0)
     val pill: VoicePillView? = if (onVoicePillTap != null) {

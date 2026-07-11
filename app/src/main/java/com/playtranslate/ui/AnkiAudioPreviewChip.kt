@@ -57,6 +57,13 @@ class AnkiAudioPreviewChip(
      *  prep). Null lambdas = legacy TTS-only preview. */
     private val selectionProvider: (() -> AudioSelection)? = null,
     private val requestProvider: (() -> AudioRequest)? = null,
+    /** Selection-mode escape hatch: consulted before the registry. A non-null
+     *  outcome means the host played the audio itself (the sentence cell's
+     *  game-audio panel plays raw PCM and sweeps a cursor on its waveform);
+     *  null falls through to the normal [AudioSelections.play] path. Must
+     *  suspend until playback completes and honor cancellation (tap-again
+     *  cancels the chip's job). */
+    private val playOverride: (suspend (onStart: (() -> Unit)?) -> PlayOutcome?)? = null,
 ) {
     private enum class State { IDLE, LOADING, PLAYING }
 
@@ -180,9 +187,12 @@ class AnkiAudioPreviewChip(
                 val sel = selectionProvider
                 val reqP = requestProvider
                 val failure: String? = if (sel != null && reqP != null) {
-                    // Selection-mode: play the cell's chosen source/recording
-                    // (or Auto = Commons-first → TTS) via the registry.
-                    when (AudioSelections.play(ctx, sel(), reqP(), awaitCompletion = true, onStart = onStartCb)) {
+                    // Selection-mode: the host's override first (game-audio
+                    // inline playback), else the cell's chosen source via
+                    // the registry (or Auto = Commons-first → TTS).
+                    val outcome = playOverride?.invoke(onStartCb)
+                        ?: AudioSelections.play(ctx, sel(), reqP(), awaitCompletion = true, onStart = onStartCb)
+                    when (outcome) {
                         PlayOutcome.TtsNoEngine -> "No text-to-speech engine is available"
                         is PlayOutcome.TtsLanguageUnsupported ->
                             "Text-to-speech isn't available for ${lang.displayName()}"

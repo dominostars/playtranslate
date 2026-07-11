@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Inline game-audio editing panel inside the sentence card's Original
-     group: waveform with trim handles + play-selection + expand to the
-     full editor. Shown only while the sentence audio source is the game
+     group: the trim waveform, nothing else — playback lives on the row's
+     preview chip above, and the save-time editor covers never-reviewed
+     audio. Shown only while the sentence audio source is the game
      recording. 24dp horizontal padding keeps handles clear of the system
      back-gesture zones even inside the sheet. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -9,50 +10,12 @@
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:paddingHorizontal="24dp"
-    android:paddingBottom="8dp">
+    android:paddingBottom="10dp">
 
     <com.playtranslate.ui.WaveformTrimView
         android:id="@+id/waveInline"
         android:layout_width="match_parent"
         android:layout_height="80dp"
         android:layout_marginTop="4dp" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnInlinePlay"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minHeight="0dp"
-            android:text="@string/game_audio_trim_play"
-            android:textAllCaps="false"
-            android:textSize="13sp" />
-
-        <Space
-            android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:layout_weight="1" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnInlineExpand"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minHeight="0dp"
-            android:text="@string/game_audio_open_editor"
-            android:textAllCaps="false"
-            android:textSize="13sp" />
-
-    </LinearLayout>
 
 </LinearLayout>

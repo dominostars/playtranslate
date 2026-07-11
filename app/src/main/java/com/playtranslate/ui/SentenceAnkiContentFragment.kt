@@ -31,6 +31,7 @@ import com.playtranslate.audio.Attribution
 import com.playtranslate.audio.AudioRequest
 import com.playtranslate.audio.AudioSelection
 import com.playtranslate.audio.GameAudioClip
+import com.playtranslate.audio.PlayOutcome
 import com.playtranslate.audio.sources.RecordingAudioSource
 import com.playtranslate.capture.GameAudioSnapshot
 import com.playtranslate.dictionary.Deinflector
@@ -82,16 +83,19 @@ class SentenceAnkiContentFragment : Fragment() {
     private var ivPhoto: ImageView? = null
     private var sentenceAudioHandle: AnkiAudioToggleHandle? = null
 
-    // ── In-card game-audio panel (waveform + play + expand) ──────────────
+    // ── In-card game-audio panel (waveform; playback via the row chip) ───
     private var gameAudioPanel: View? = null
     private var gameAudioWave: WaveformTrimView? = null
-    private var btnInlinePlay: com.google.android.material.button.MaterialButton? = null
     private var gameAudioSampleRate = 44_100
     private var gameAudioDurationMs = 0L
     /** Snapshot mtime the panel last loaded — reload guard. 0 = not loaded. */
     private var gameAudioLoadedMtime = 0L
     private var inlinePlayer: PcmAudioTrackPlayer? = null
     private var inlinePlaying = false
+    /** The chip's suspended await while inline playback runs — resumed on
+     *  natural completion AND by [stopInlinePlayback] (a handle drag), so
+     *  the chip always returns to idle. */
+    private var inlineCont: CancellableContinuation<Unit>? = null
 
     /** True once the user has interacted with the game-audio selection —
      *  dragged a handle, played it (listening counts as review), or been
@@ -375,7 +379,6 @@ class SentenceAnkiContentFragment : Fragment() {
         inlinePlayer = null
         gameAudioPanel = null
         gameAudioWave = null
-        btnInlinePlay = null
         gameAudioLoadedMtime = 0L
         ivPhoto?.setImageBitmap(null)
         ivPhoto = null
@@ -552,46 +555,71 @@ class SentenceAnkiContentFragment : Fragment() {
         refreshSentenceAudioTitle()
     }
 
-    private fun toggleInlinePlayback() {
-        if (inlinePlaying) {
-            stopInlinePlayback()
-            return
-        }
-        val ctx = context ?: return
-        val wave = gameAudioWave ?: return
-        val wav = GameAudioSnapshot.file(ctx).takeIf { it.exists() } ?: return
-        val startMs = wave.selStartMs
-        val endMs = wave.selEndMs
+    /**
+     * The row chip's playOverride in game-audio mode: play the selected
+     * range as raw PCM with the cursor sweeping the inline waveform.
+     * Suspends until playback completes (the chip shows the pause icon
+     * meanwhile); the chip's tap-again cancellation lands in
+     * invokeOnCancellation. Returns null for non-game selections so the
+     * chip falls through to the registry path.
+     */
+    private suspend fun playGameAudioInline(onStart: (() -> Unit)?): PlayOutcome? {
+        val sel = sentenceSelection as? AudioSelection.Explicit ?: return null
+        if (sel.sourceId != RecordingAudioSource.ID) return null
+        val ctx = context ?: return PlayOutcome.Failed(recoverable = false)
+        val wav = GameAudioSnapshot.file(ctx).takeIf { it.exists() }
+            ?: return PlayOutcome.Failed(recoverable = false)
+        val range = RecordingAudioSource.parseRange(sel.key)
+            ?: gameAudioWave?.let { w ->
+                if (w.selEndMs > w.selStartMs) w.selStartMs to w.selEndMs else null
+            }
+            ?: return PlayOutcome.Failed(recoverable = false)
+        val (startMs, endMs) = range
         gameAudioReviewed = true // listening counts as review
-        inlinePlaying = true
-        btnInlinePlay?.setText(R.string.game_audio_trim_stop)
-        viewLifecycleOwner.lifecycleScope.launch {
-            val pcm = withContext(Dispatchers.IO) {
-                GameAudioClip.readPcmRange(wav, startMs, endMs)
-            }
-            if (!isAdded || !inlinePlaying || pcm.isEmpty()) {
-                if (isAdded) stopInlinePlayback()
-                return@launch
-            }
-            val player = inlinePlayer ?: PcmAudioTrackPlayer(gameAudioSampleRate)
-                .also { inlinePlayer = it }
-            player.play(
-                pcm,
-                0,
-                pcm.size,
-                onProgress = { frame ->
-                    gameAudioWave?.setPlaybackCursorMs(startMs + frame * 1000L / gameAudioSampleRate)
-                },
-                onDone = { stopInlinePlayback() },
-            )
+        val (pcm, rate) = withContext(Dispatchers.IO) {
+            GameAudioClip.readPcmRange(wav, startMs, endMs) to GameAudioClip.sampleRate(wav)
         }
+        if (pcm.isEmpty()) return PlayOutcome.Failed(recoverable = false)
+        stopInlinePlayback()
+        val player = PcmAudioTrackPlayer(rate)
+        inlinePlayer = player
+        inlinePlaying = true
+        try {
+            suspendCancellableCoroutine { cont ->
+                inlineCont = cont
+                cont.invokeOnCancellation { player.stop() }
+                player.play(
+                    pcm,
+                    0,
+                    pcm.size,
+                    onProgress = { frame ->
+                        gameAudioWave?.setPlaybackCursorMs(startMs + frame * 1000L / rate)
+                    },
+                    onDone = {
+                        inlineCont = null
+                        if (cont.isActive) cont.resume(Unit)
+                    },
+                )
+                onStart?.invoke()
+            }
+        } finally {
+            inlineCont = null
+            inlinePlaying = false
+            gameAudioWave?.setPlaybackCursorMs(null)
+        }
+        return PlayOutcome.Played
     }
 
     private fun stopInlinePlayback() {
         inlinePlayer?.stop()
         inlinePlaying = false
+        // Release the chip's await too (a handle drag mid-playback), so the
+        // chip returns to idle instead of hanging on the pause icon.
+        inlineCont?.let {
+            inlineCont = null
+            if (it.isActive) it.resume(Unit)
+        }
         gameAudioWave?.setPlaybackCursorMs(null)
-        btnInlinePlay?.setText(R.string.game_audio_trim_play)
     }
 
     // ── Build ────────────────────────────────────────────────────────────
@@ -655,6 +683,10 @@ class SentenceAnkiContentFragment : Fragment() {
             // sentence recordings, so the sentence cell effectively uses TTS.
             selection = { sentenceSelection },
             audioRequest = { AudioRequest.sentence(etOriginal.text.toString(), lang) },
+            // Game-audio mode: the chip drives the inline panel's playback
+            // (raw PCM + cursor sweep on the waveform) instead of the
+            // registry path; null for every other selection.
+            playOverride = { onStart -> playGameAudioInline(onStart) },
         )
         // Track edits — the chip re-reads via its previewText lambda, but
         // the row's visible label is a one-shot text= and won't follow
@@ -671,27 +703,13 @@ class SentenceAnkiContentFragment : Fragment() {
 
         // In-card game-audio editing panel, beneath the audio row inside the
         // same card. Hidden until the selection is the game recording.
+        // Playback is the row chip's job (playOverride above).
         val panel = LayoutInflater.from(ctx)
             .inflate(R.layout.anki_game_audio_panel, originalCard, false)
         gameAudioPanel = panel
         gameAudioWave = panel.findViewById<WaveformTrimView>(R.id.waveInline).apply {
             embedded = true
             onSelectionChanged = { s, e -> onInlineSelectionChanged(s, e) }
-        }
-        btnInlinePlay = panel.findViewById(R.id.btnInlinePlay)
-        btnInlinePlay?.setOnClickListener { toggleInlinePlayback() }
-        panel.findViewById<View>(R.id.btnInlineExpand).setOnClickListener {
-            stopInlinePlayback()
-            val range = (sentenceSelection as? AudioSelection.Explicit)
-                ?.let { RecordingAudioSource.parseRange(it.key) }
-            trimEditorLauncher.launch(
-                GameAudioTrimActivity.intent(
-                    ctx,
-                    GameAudioSnapshot.file(ctx).absolutePath,
-                    initialStartMs = range?.first ?: -1L,
-                    initialEndMs = range?.second ?: -1L,
-                ),
-            )
         }
         panel.visibility = View.GONE
         gameAudioLoadedMtime = 0L
