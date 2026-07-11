@@ -31,8 +31,15 @@ class PcmAudioTrackPlayer(private val sampleRate: Int) {
 
     /**
      * Play [pcm] from [startFrame] until [endFrame]. [onProgress] receives the
-     * absolute frame index reached (throttled to write-chunk granularity);
-     * [onDone] fires once on natural completion — not on preemption/stop.
+     * absolute frame index reached (throttled to write-chunk granularity).
+     *
+     * [onDone] is the TERMINAL signal: it fires exactly once, on main, when
+     * this play() reaches any end state — natural completion, AudioTrack
+     * build/init failure, or an empty range. It does NOT fire on preemption
+     * by a newer play()/[stop] (the preemptor owns the state reset). Callers
+     * suspend on it (the inline preview's chip await), so every early-exit
+     * path below MUST route through [signalDone] — a silent return leaves
+     * the caller hung in a playing state (adversarial-review finding).
      */
     fun play(
         pcm: ShortArray,
@@ -45,7 +52,10 @@ class PcmAudioTrackPlayer(private val sampleRate: Int) {
         val gen = ++generation
         val start = startFrame.coerceIn(0, pcm.size)
         val end = endFrame.coerceIn(start, pcm.size)
-        if (end == start) return
+        if (end == start) {
+            signalDone(gen, onDone)
+            return
+        }
         Thread({
             // Normalize a COPY of the range (boost-only, RecordingPlayer's
             // Loudness pass): game mixes sit well below speech level, and on
@@ -95,6 +105,7 @@ class PcmAudioTrackPlayer(private val sampleRate: Int) {
             if (t == null || t.state != AudioTrack.STATE_INITIALIZED) {
                 Log.w(TAG, "AudioTrack init failed sr=$sampleRate state=${t?.state}")
                 runCatching { t?.release() }
+                signalDone(gen, onDone)
                 return@Thread
             }
             track = t
@@ -130,10 +141,15 @@ class PcmAudioTrackPlayer(private val sampleRate: Int) {
             runCatching { t.stop() }
             runCatching { t.release() }
             if (track === t) track = null
-            if (generation == gen) {
-                mainHandler.post { if (generation == gen) onDone?.invoke() }
-            }
+            signalDone(gen, onDone)
         }, "PcmAudioTrackPlayer").start()
+    }
+
+    /** Deliver the terminal [onDone] on main unless a newer play()/stop()
+     *  has preempted this generation (the preemptor owns the reset). */
+    private fun signalDone(gen: Int, onDone: (() -> Unit)?) {
+        if (generation != gen || onDone == null) return
+        mainHandler.post { if (generation == gen) onDone.invoke() }
     }
 
     fun stop() {
