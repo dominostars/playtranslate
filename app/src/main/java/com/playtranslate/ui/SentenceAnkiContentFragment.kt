@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.Typeface
@@ -10,6 +11,7 @@ import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
@@ -547,6 +549,22 @@ class SentenceAnkiContentFragment : Fragment() {
         return out
     }
 
+    /** Touches landing on the panel's padding (outside the waveform child)
+     *  are forwarded into the waveform, coordinate-shifted — so zoom/pan
+     *  gestures work across the whole bottom region of the cell. Touches
+     *  that start ON the waveform never reach this listener. */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun forwardPanelTouchesToWave(panel: View) {
+        panel.setOnTouchListener { _, ev ->
+            val wave = gameAudioWave ?: return@setOnTouchListener false
+            val copy = MotionEvent.obtain(ev)
+            copy.offsetLocation(-wave.left.toFloat(), -wave.top.toFloat())
+            val handled = wave.onTouchEvent(copy)
+            copy.recycle()
+            handled
+        }
+    }
+
     private fun onInlineSelectionChanged(startMs: Long, endMs: Long) {
         val ctx = context ?: return
         stopInlinePlayback()
@@ -709,8 +727,13 @@ class SentenceAnkiContentFragment : Fragment() {
         gameAudioPanel = panel
         gameAudioWave = panel.findViewById<WaveformTrimView>(R.id.waveInline).apply {
             embedded = true
+            // The panel sits on the group card, not the page background.
+            fadeColor = ctx.themeColor(R.attr.ptCard)
             onSelectionChanged = { s, e -> onInlineSelectionChanged(s, e) }
         }
+        // Pinch anywhere in the panel (its padding included) zooms the
+        // waveform, not just pinches that start on the strip itself.
+        forwardPanelTouchesToWave(panel)
         panel.visibility = View.GONE
         gameAudioLoadedMtime = 0L
         originalCard.addView(panel)

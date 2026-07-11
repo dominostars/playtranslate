@@ -3,7 +3,10 @@ package com.playtranslate.ui
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -49,11 +52,20 @@ class WaveformTrimView @JvmOverloads constructor(
     var onSelectionChanged: ((startMs: Long, endMs: Long) -> Unit)? = null
 
     /** Embedded mode (the in-card panel inside a scrolling bottom sheet):
-     *  pinch zoom off, and the parent keeps vertical gestures — a body drag
-     *  becomes a pan only once horizontal movement wins the touch slop, so
-     *  scrolling the card by dragging across the waveform still works.
-     *  Handle grabs always win immediately. */
+     *  the parent keeps vertical gestures — a body drag becomes a pan only
+     *  once horizontal movement wins the touch slop, so scrolling the card
+     *  by dragging across the waveform still works. Handle grabs and pinch
+     *  zooms (any second pointer) always win immediately. */
     var embedded = false
+
+    /** Host surface color the edge fades blend into — ptCard for the in-card
+     *  panel, the default ptBg for the full editor. */
+    var fadeColor: Int = context.themeColor(R.attr.ptBg)
+        set(value) {
+            field = value
+            fadeShadersDirty = true
+            invalidate()
+        }
 
     private val density = resources.displayMetrics.density
     private val handleTouchPx = 24 * density
@@ -65,6 +77,12 @@ class WaveformTrimView @JvmOverloads constructor(
      *  flush against the view edge — ungrabbable in practice (and, before
      *  the activity's 48dp inset, inside the system gesture zone). */
     private val edgeOverscroll = 0.12
+
+    private companion object {
+        /** Hidden-content threshold for the edge fade/arrow — about one
+         *  RMS bucket; anything smaller isn't meaningfully "more audio". */
+        const val EDGE_EPSILON_MS = 60.0
+    }
 
     private val barPaint = Paint().apply { color = context.themeColor(R.attr.ptDivider) }
     private val barSelectedPaint = Paint().apply { color = context.themeColor(R.attr.ptAccent) }
@@ -87,6 +105,29 @@ class WaveformTrimView @JvmOverloads constructor(
     private val baselinePaint = Paint().apply {
         color = context.themeColor(R.attr.ptDivider)
         alpha = 120
+    }
+
+    // ── More-audio-off-screen affordances: edge fades + arrows ───────────
+    private val fadeWidthPx = 24 * density
+    private var fadeShadersDirty = true
+    private val leftFadePaint = Paint()
+    private val rightFadePaint = Paint()
+    private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = context.themeColor(R.attr.ptOutline)
+        style = Paint.Style.FILL
+    }
+    private val arrowPath = Path()
+
+    private fun ensureFadeShaders() {
+        if (!fadeShadersDirty || width == 0) return
+        fadeShadersDirty = false
+        val transparent = fadeColor and 0x00FFFFFF
+        leftFadePaint.shader = LinearGradient(
+            0f, 0f, fadeWidthPx, 0f, fadeColor, transparent, Shader.TileMode.CLAMP,
+        )
+        rightFadePaint.shader = LinearGradient(
+            width - fadeWidthPx, 0f, width.toFloat(), 0f, transparent, fadeColor, Shader.TileMode.CLAMP,
+        )
     }
 
     private enum class DragTarget { LEFT_HANDLE, RIGHT_HANDLE, PAN, NONE }
@@ -148,6 +189,7 @@ class WaveformTrimView @JvmOverloads constructor(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
+        fadeShadersDirty = true
         if (msPerPx == 0.0) fitAndReveal()
     }
 
@@ -191,6 +233,22 @@ class WaveformTrimView @JvmOverloads constructor(
             x += colW
         }
 
+        // More-audio indicators: an edge fade into the host surface plus a
+        // small triangle arrow, each shown only when content actually
+        // continues past that edge (the overscroll margin doesn't count).
+        val viewEndMs = viewStartMs + width * msPerPx
+        val hasLeft = viewStartMs > EDGE_EPSILON_MS
+        val hasRight = viewEndMs < durationMs - EDGE_EPSILON_MS
+        ensureFadeShaders()
+        if (hasLeft) {
+            canvas.drawRect(0f, 0f, fadeWidthPx, h, leftFadePaint)
+            drawEdgeArrow(canvas, midY, pointingLeft = true)
+        }
+        if (hasRight) {
+            canvas.drawRect(width - fadeWidthPx, 0f, width.toFloat(), h, rightFadePaint)
+            drawEdgeArrow(canvas, midY, pointingLeft = false)
+        }
+
         // Handles: full-height bar + a grip dot on a page-background halo
         // ring (the dot alone vanishes into the bars it sits over).
         for (hx in listOf(selL, selR)) {
@@ -205,11 +263,33 @@ class WaveformTrimView @JvmOverloads constructor(
         }
     }
 
+    /** The Material arrow_left / arrow_right triangle, centered vertically
+     *  just inside the faded edge. */
+    private fun drawEdgeArrow(canvas: Canvas, midY: Float, pointingLeft: Boolean) {
+        val halfH = 5f * density
+        val w = 6f * density
+        val tipX = if (pointingLeft) 4f * density else width - 4f * density
+        val baseX = if (pointingLeft) tipX + w else tipX - w
+        arrowPath.reset()
+        arrowPath.moveTo(baseX, midY - halfH)
+        arrowPath.lineTo(tipX, midY)
+        arrowPath.lineTo(baseX, midY + halfH)
+        arrowPath.close()
+        canvas.drawPath(arrowPath, arrowPaint)
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (durationMs == 0L) return false
-        if (!embedded) scaleDetector.onTouchEvent(event)
+        scaleDetector.onTouchEvent(event)
         when (event.actionMasked) {
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                // A second finger means pinch — claim the gesture from the
+                // sheet and abandon any pending drag.
+                parent?.requestDisallowInterceptTouchEvent(true)
+                drag = DragTarget.NONE
+                panCommitted = false
+            }
             MotionEvent.ACTION_DOWN -> {
                 lastTouchX = event.x
                 downX = event.x
