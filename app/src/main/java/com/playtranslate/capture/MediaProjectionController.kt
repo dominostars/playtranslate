@@ -647,6 +647,12 @@ class MediaProjectionController(private val service: CaptureService) {
                 return@withLock StreamKind.UNKNOWN
             }
             streamKind = kind
+            // A verdict can be measured MID-SESSION (a one-shot's clean
+            // capture resolving after startLive settled UNKNOWN). Route the
+            // change through the same rebuild diff as a verdict reset, so a
+            // task stream doesn't keep the pinhole tier until the user
+            // restarts live mode (review finding).
+            service.onStreamKindChanged()
             kind
         }
     }

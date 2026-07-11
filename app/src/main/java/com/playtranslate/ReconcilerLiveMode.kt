@@ -83,7 +83,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  *    churn; restarting live mode re-probes. The one mid-session transition
  *    that IS handled: consent teardown RESETS the verdict under a running
  *    mode — the cycle-start guard rebuilds via
- *    [CaptureService.onCleanVerdictLost].
+ *    [CaptureService.onStreamKindChanged].
  */
 class ReconcilerLiveMode(
     private val service: CaptureService,
@@ -123,6 +123,13 @@ class ReconcilerLiveMode(
     private var blackStreak = 0
     private var secureNotified = false
 
+    /** The overlay WINDOW was hidden (visibility park) while the box list
+     *  was kept. An all-KEEP cycle after the task returns would otherwise
+     *  early-return without repainting — re-show must be explicit
+     *  (review finding: overlay gone until the text changed). Cleared by
+     *  [showBoxes]. */
+    private var overlayHidden = false
+
     override fun start() {
         currentJob?.cancel()
         CaptureBackendResolver.active().startInputMonitoring(displayId) { onGameInput() }
@@ -137,6 +144,12 @@ class ReconcilerLiveMode(
                 // is what feeds THIS display (re-checked per emission).
                 if (liveSource()?.contentVisible == null) return@collect
                 if (!visible) {
+                    // Cancel any in-flight cycle FIRST: one suspended in
+                    // OCR/MT would otherwise complete after this hide and
+                    // resurrect the overlay over whatever replaced the task
+                    // (review finding: boxes floating over the launcher).
+                    currentJob?.cancel()
+                    overlayHidden = true
                     CaptureBackendResolver.activeOverlayUi
                         ?.hideTranslationOverlayForDisplay(displayId)
                 } else {
@@ -301,7 +314,7 @@ class ReconcilerLiveMode(
             // it) — an overlay-painting mode must not keep running on a
             // stream that is no longer provably clean. Rebuild through the
             // mutator; our scope is cancelled inside this call.
-            service.onCleanVerdictLost()
+            service.onStreamKindChanged()
             return prefs.captureIntervalMs
         }
         val mgr = liveSource()
@@ -333,17 +346,19 @@ class ReconcilerLiveMode(
         val debug = prefs.debugLiveMode
         forceNextCycle = false
 
-        // A non-painting presenter on a NON-clean source must not OCR raw
-        // frames: they contain this app's own overlay UI (floating icon,
-        // open menu), which the deleted InAppOnlyMode excluded via clean
-        // capture. Painting presenters only run on CLEAN streams (routing),
-        // where raw frames are clean by construction. Pacing consequence:
+        // A non-painting presenter on a contaminated source must not OCR
+        // raw frames: they contain this app's own overlay UI (floating
+        // icon, open menu), which the deleted InAppOnlyMode excluded via
+        // clean capture. The fact is THE SOURCE'S OWN
+        // (framesIncludeSystemUi), never the global MP verdict — on a
+        // non-default display mgr is the accessibility source while an
+        // unrelated MP session's verdict floats globally (review finding).
+        // Painting presenters only run on CLEAN streams (routing), where
+        // raw frames are clean by construction. Pacing consequence:
         // requestClean does not advance the delivery-gate cursor, so
         // contaminated-source panel sessions poll at the interval — exactly
         // the deleted mode's pacing.
-        val frame = if (presenter.rendersOverlays ||
-            controller.streamKind == StreamKind.CLEAN
-        ) {
+        val frame = if (presenter.rendersOverlays || !mgr.framesIncludeSystemUi) {
             mgr.requestRaw(displayId)
         } else {
             mgr.requestClean(displayId)
@@ -356,7 +371,12 @@ class ReconcilerLiveMode(
             // the source owns the one-time user message). For the refusal,
             // stale boxes must not float over wrong geometry: drop them and
             // poll at interval until the task is fullscreen again.
-            if (!controller.frameGeometryProven()) {
+            // Geometry refusal is an MP-stream concept; consult it only
+            // when THIS display's frames come from the MP stream
+            // (contentVisible is non-null exactly for the MP source — its
+            // documented discriminator). An a11y-fed display must not clear
+            // its boxes over an unrelated MP task's letterboxing.
+            if (mgr.contentVisible != null && !controller.frameGeometryProven()) {
                 clearDisplayed()
             }
             forceNextCycle = true
@@ -455,7 +475,10 @@ class ReconcilerLiveMode(
                 verdicts.repositioned > 0
             if (!mutated) {
                 // Steady state: what's displayed is already exactly right
-                // (kept verbatim + held verbatim). No rendering work.
+                // (kept verbatim + held verbatim) — but if the WINDOW was
+                // hidden by a visibility park, "already right" content still
+                // needs an explicit re-show (all-KEEP never repaints).
+                if (overlayHidden) showBoxes(kept)
                 return pacing(prefs)
             }
 
@@ -511,6 +534,7 @@ class ReconcilerLiveMode(
      *  furigana maps anchors to annotation boxes). Panel-only presenters
      *  paint nothing — anchors still back hold-to-preview. */
     private fun showBoxes(anchors: List<TextBox>) {
+        overlayHidden = false
         if (!presenter.rendersOverlays) return
         service.showLiveOverlay(
             anchors.flatMap { presenter.displayBoxesFor(it) },

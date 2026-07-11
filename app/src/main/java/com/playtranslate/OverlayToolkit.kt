@@ -603,7 +603,7 @@ object OverlayToolkit {
      * (skeleton indicators). Instant, no network — background/text colors are
      * sampled from [raw] at each group's bounds (offset by [left]/[top] crop).
      *
-     * Used by [CleanStreamOverlayMode]; [PinholeOverlayMode] keeps its own
+     * Used by [ReconcilerLiveMode]; [PinholeOverlayMode] keeps its own
      * private copy so the legacy tier stays byte-identical. Service-free by
      * design (pure box building).
      */

@@ -1228,15 +1228,15 @@ class CaptureService : Service() {
         }
     }
 
-    /** The CLEAN verdict was reset out from under a running overlay-painting
-     *  mode (consent teardown zeroes the stream kind; a backend switch can
-     *  follow), so the running mode's class no longer matches
-     *  [desiredModeClass]. Re-enter the standard mutator with the current
-     *  display set — its class-mismatch diff stops the clean mode and
-     *  rebuilds the contaminated-tier mode. Called from the mode's own cycle
-     *  (main thread); the caller must return immediately after, since its
-     *  scope is cancelled here. */
-    internal fun onCleanVerdictLost() {
+    /** The stream-kind verdict CHANGED under running live modes — reset by
+     *  consent teardown (a mode's cycle-start guard calls this and must
+     *  return immediately after: its scope is cancelled here), or measured
+     *  mid-session in either direction (a one-shot's clean capture can
+     *  resolve CLEAN after startLive settled UNKNOWN → pinhole on a task
+     *  stream). Re-enter the standard mutator with the current display set —
+     *  its class-mismatch diff rebuilds whichever tier [desiredModeClass]
+     *  now selects. No-op with no live modes (the startLive resolve path). */
+    internal fun onStreamKindChanged() {
         if (liveModes.isEmpty()) return
         setLiveDisplays(liveModes.keys.toSet())
     }

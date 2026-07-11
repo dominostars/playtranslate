@@ -48,6 +48,12 @@ class PanelPresenter(
         return OverlayToolkit.translatePlaceholders(service, placeholders, texts)
     }
 
+    /** Last emitted (original, translated) — reposition-only cycles re-enter
+     *  with identical text, and the panel must not churn a fresh timestamp
+     *  for pure scroll drift (the deleted mode's whole-text dedup suppressed
+     *  this; review note). */
+    private var lastEmitted: Pair<String, String>? = null
+
     override fun emitApplied(
         anchors: List<TextBox>,
         ocrResult: OcrManager.OcrResult?,
@@ -60,6 +66,8 @@ class PanelPresenter(
         val translatedText = ordered.filter { it.translatedText.isNotEmpty() }
             .joinToString("\n\n") { it.translatedText }
         val segments = TextSegments.ofLines(ordered.map { it.sourceText })
+        if (originalText to translatedText == lastEmitted) return
+        lastEmitted = originalText to translatedText
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
 
@@ -77,6 +85,7 @@ class PanelPresenter(
     }
 
     override fun emitNoText() {
+        lastEmitted = null
         service.emitLiveNoText()
     }
 }
