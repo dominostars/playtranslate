@@ -122,6 +122,16 @@ interface LiveCaptureSource : CaptureSource {
      *  per-frame deliveries (see [DeliverySignal]). */
     val deliverySignal: DeliverySignal? get() = null
 
+    /** Captured-content visibility, or null when this source has no such
+     *  concept. Non-null only for the MediaProjection stream: a single-app
+     *  mirror goes BLACK (this flow flipping false) when the captured task
+     *  leaves the foreground, so consumers hide/park on false. Null means
+     *  this source's frames always show whatever the display shows
+     *  (accessibility screenshots) — a consumer must NOT park such a source
+     *  on some other stream's visibility (adversarial-review finding: an
+     *  a11y-fed panel display parked on the MP task's backgrounding). */
+    val contentVisible: kotlinx.coroutines.flow.StateFlow<Boolean>? get() = null
+
     /** Minimum interval the capture loop must respect. The accessibility
      *  backend enforces the platform `takeScreenshot` rate limit; the
      *  MediaProjection backend has no platform limit and uses a small floor. */

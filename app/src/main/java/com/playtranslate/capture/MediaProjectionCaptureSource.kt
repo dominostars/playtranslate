@@ -49,6 +49,8 @@ class MediaProjectionCaptureSource(
      *  backend's "screen changed" signal (see [DeliverySignal]). */
     override val deliverySignal: DeliverySignal get() = controller.deliverySignal
 
+    override val contentVisible get() = controller.contentVisible
+
     // ── One-shot capture ─────────────────────────────────────────────────
 
     /** Wrap a just-captured bitmap with the facts as they are AT SERVE

@@ -133,6 +133,9 @@ class ReconcilerLiveMode(
         visibilityJob?.cancel()
         visibilityJob = scope.launch {
             service.mediaProjectionController.contentVisible.drop(1).collect { visible ->
+                // The flow describes the MP stream; act only if that stream
+                // is what feeds THIS display (re-checked per emission).
+                if (liveSource()?.contentVisible == null) return@collect
                 if (!visible) {
                     CaptureBackendResolver.activeOverlayUi
                         ?.hideTranslationOverlayForDisplay(displayId)
@@ -311,11 +314,16 @@ class ReconcilerLiveMode(
             return prefs.captureIntervalMs
         }
 
-        // Visibility guard — see the class doc. The collector in [start]
-        // already hid the overlay window; keep the box list and suspend until
-        // the task returns (cancellable park; no polling).
-        if (!controller.contentVisible.value) {
-            controller.contentVisible.first { it }
+        // Visibility guard — see the class doc. Keyed to THIS instance's
+        // capture source: only the MP stream has visibility semantics (its
+        // mirror goes black when the captured task backgrounds); an
+        // accessibility-fed display must not park on some other stream's
+        // state. The collector in [start] already hid the overlay window;
+        // keep the box list and suspend until the task returns (cancellable
+        // park; no polling).
+        val visibility = mgr.contentVisible
+        if (visibility != null && !visibility.value) {
+            visibility.first { it }
             forceNextCycle = true
             return 0L
         }
