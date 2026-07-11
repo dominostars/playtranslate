@@ -604,10 +604,16 @@ class TranslationResultActivity :
         val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
         val session = if (screenshotPath != null) {
             val bitmap = BitmapFactory.decodeFile(screenshotPath)
-            // Shared-in screenshot with no provenance: legacy/full-display
-            // assumption, the safe default.
+            // The capturing side sends the frame's geometry fact alongside
+            // the path; senders without it (shared-in images) default to
+            // full-display, the safe legacy assumption.
             if (bitmap != null) svc.processScreenshot(
-                com.playtranslate.capture.CapturedFrame(bitmap, includesSystemUi = true),
+                com.playtranslate.capture.CapturedFrame(
+                    bitmap,
+                    includesSystemUi = intent.getBooleanExtra(
+                        EXTRA_SCREENSHOT_INCLUDES_SYSTEM_UI, true,
+                    ),
+                ),
                 targetDisplayId,
             )
             else svc.captureOnce(targetDisplayId)
@@ -810,6 +816,11 @@ class TranslationResultActivity :
         const val EXTRA_LEFT_FRAC = "extra_left_frac"
         const val EXTRA_RIGHT_FRAC = "extra_right_frac"
         const val EXTRA_SCREENSHOT_PATH = "extra_screenshot_path"
+
+            /** Geometry fact for [EXTRA_SCREENSHOT_PATH]'s frame — whether it
+             *  contains system UI (drives the status-bar crop). Absent = true:
+             *  legacy/full-display, the safe default for shared-in images. */
+            const val EXTRA_SCREENSHOT_INCLUDES_SYSTEM_UI = "screenshot_includes_system_ui"
         const val EXTRA_SENTENCE_TEXT = "extra_sentence_text"
         /** Display the drag originated on. Routes the override + screenshot
          *  processing back to the same display the icon (and pre-captured

@@ -1633,7 +1633,7 @@ class OverlayUiController(
      *  the capture-service handle is briefly unavailable. */
     private fun launchResultActivity(displayId: Int, region: RegionEntry) {
         scope.launch {
-            val bitmap = CaptureBackendResolver.active().captureSource?.requestClean(displayId)?.bitmap
+            val frame = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
             val intent = Intent(context, com.playtranslate.ui.TranslationResultActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_TOP_FRAC, region.top)
@@ -1642,10 +1642,17 @@ class OverlayUiController(
                 putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_RIGHT_FRAC, region.right)
                 putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_TARGET_DISPLAY_ID, displayId)
             }
-            if (bitmap != null) {
-                val path = savePreCapturedScreenshot(bitmap)
-                bitmap.recycle()
+            if (frame != null) {
+                val path = savePreCapturedScreenshot(frame.bitmap)
                 intent.putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_SCREENSHOT_PATH, path)
+                // The frame's geometry fact rides the intent next to the
+                // path it describes — a single-app frame has no status bar,
+                // and the activity must not crop one off.
+                intent.putExtra(
+                    com.playtranslate.ui.TranslationResultActivity.EXTRA_SCREENSHOT_INCLUDES_SYSTEM_UI,
+                    frame.includesSystemUi,
+                )
+                frame.recycle()
             }
             val opts = android.app.ActivityOptions.makeBasic()
                 .setLaunchDisplayId(displayId)
