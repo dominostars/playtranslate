@@ -1,6 +1,7 @@
 package com.playtranslate.audio
 
 import android.content.Context
+import com.playtranslate.audio.sources.RecordingAudioSource
 import com.playtranslate.audio.sources.TtsAudioSource
 import com.playtranslate.audio.sources.WikimediaCommonsAudioSource
 
@@ -16,6 +17,9 @@ object AudioSourceRegistry {
     private val sources: List<AudioSource> = listOf(
         WikimediaCommonsAudioSource,
         TtsAudioSource,
+        // Never in enabledInOrder (isEnabled=false — Auto must not pick it);
+        // present for the picker and for explicit-selection resolution.
+        RecordingAudioSource,
     )
 
     fun all(): List<AudioSource> = sources

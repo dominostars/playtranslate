@@ -2,6 +2,7 @@ package com.playtranslate.audio
 
 import android.content.Context
 import com.playtranslate.R
+import com.playtranslate.audio.sources.RecordingAudioSource
 import com.playtranslate.audio.sources.TtsAudioSource
 import com.playtranslate.audio.sources.WikimediaCommonsAudioSource
 import com.playtranslate.tts.TtsEngine
@@ -125,6 +126,7 @@ object AudioSelections {
             AudioSelection.Auto -> ctx.getString(R.string.tts_voice_default)
             is AudioSelection.Explicit -> when (selection.sourceId) {
                 WikimediaCommonsAudioSource.ID -> ctx.getString(R.string.audio_source_commons_name)
+                RecordingAudioSource.ID -> ctx.getString(R.string.audio_source_game_name)
                 else ->
                     if (selection.key == TtsAudioSource.DEFAULT_KEY) ctx.getString(R.string.tts_voice_default)
                     else TtsVoiceLabels.titleFor(ctx, TtsEngine.voicesFor(ctx, lang), selection.key)
