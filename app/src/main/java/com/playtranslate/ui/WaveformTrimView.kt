@@ -52,6 +52,12 @@ class WaveformTrimView @JvmOverloads constructor(
     private val minSelectionMs = 200L
     private val minWindowMs = 2_000.0
 
+    /** Fraction of the window pannable/rendered PAST each file boundary.
+     *  Without it, a selection ending at the file's end pins its handle
+     *  flush against the view edge — ungrabbable in practice (and, before
+     *  the activity's 48dp inset, inside the system gesture zone). */
+    private val edgeOverscroll = 0.12
+
     private val barPaint = Paint().apply { color = context.themeColor(R.attr.ptDivider) }
     private val barSelectedPaint = Paint().apply { color = context.themeColor(R.attr.ptAccent) }
     private val selectionFill = Paint().apply {
@@ -60,6 +66,11 @@ class WaveformTrimView @JvmOverloads constructor(
     }
     private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = context.themeColor(R.attr.ptAccent)
+    }
+    /** Ring behind the grip dot, in the page background color — separates
+     *  the dot from the waveform bars it sits over. */
+    private val handleHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = context.themeColor(R.attr.ptBg)
     }
     private val cursorPaint = Paint().apply {
         color = context.themeColor(R.attr.ptText)
@@ -88,7 +99,7 @@ class WaveformTrimView @JvmOverloads constructor(
                 // Keep the ms under the pinch focal point fixed.
                 val focalMs = viewStartMs + detector.focusX * msPerPx
                 msPerPx = (msPerPx / detector.scaleFactor)
-                    .coerceIn(minWindowMs / width, durationMs.toDouble() / width)
+                    .coerceIn(minWindowMs / width, maxMsPerPx())
                 viewStartMs = focalMs - detector.focusX * msPerPx
                 clampView()
                 invalidate()
@@ -132,8 +143,8 @@ class WaveformTrimView @JvmOverloads constructor(
      *  view. No-op until both the layout pass and [setData] have happened. */
     private fun fitAndReveal() {
         if (width == 0 || durationMs == 0L) return
-        msPerPx = durationMs.toDouble() / width
-        viewStartMs = 0.0
+        msPerPx = maxMsPerPx()
+        viewStartMs = -width * msPerPx * edgeOverscroll
         revealSelection()
     }
 
@@ -168,10 +179,11 @@ class WaveformTrimView @JvmOverloads constructor(
             x += colW
         }
 
-        // Handles: full-height bar + a grip dot, mirroring RegionDragView's
-        // handle affordance.
+        // Handles: full-height bar + a grip dot on a page-background halo
+        // ring (the dot alone vanishes into the bars it sits over).
         for (hx in listOf(selL, selR)) {
             canvas.drawRect(hx - 1.25f * density, 0f, hx + 1.25f * density, h, handlePaint)
+            canvas.drawCircle(hx, midY, 8f * density, handleHaloPaint)
             canvas.drawCircle(hx, midY, 6f * density, handlePaint)
         }
 
@@ -238,9 +250,16 @@ class WaveformTrimView @JvmOverloads constructor(
     private fun xFor(ms: Long): Float = ((ms - viewStartMs) / msPerPx).toFloat()
     private fun msFor(x: Float): Long = (viewStartMs + x * msPerPx).toLong()
 
+    /** Fully-zoomed-out scale: the file plus the overscroll margins fill the
+     *  width, so even at max zoom-out the boundary handles sit inside the
+     *  view rather than flush against its edges. */
+    private fun maxMsPerPx(): Double =
+        durationMs.toDouble() / (width * (1 - 2 * edgeOverscroll))
+
     private fun clampView() {
         val windowMs = width * msPerPx
-        viewStartMs = viewStartMs.coerceIn(0.0, max(0.0, durationMs - windowMs))
+        val over = windowMs * edgeOverscroll
+        viewStartMs = viewStartMs.coerceIn(-over, max(-over, durationMs - windowMs + over))
     }
 
     /** Scroll/zoom so the selection is comfortably on screen. */
@@ -248,7 +267,7 @@ class WaveformTrimView @JvmOverloads constructor(
         if (width == 0 || durationMs == 0L || selEndMs <= selStartMs) return
         val selLen = (selEndMs - selStartMs).toDouble()
         // Show the selection at ~1/3 of the window, but never zoom past limits.
-        msPerPx = (selLen * 3 / width).coerceIn(minWindowMs / width, durationMs.toDouble() / width)
+        msPerPx = (selLen * 3 / width).coerceIn(minWindowMs / width, maxMsPerPx())
         viewStartMs = selStartMs - (width * msPerPx - selLen) / 2
         clampView()
     }

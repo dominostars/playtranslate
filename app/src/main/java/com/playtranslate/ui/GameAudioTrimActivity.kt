@@ -47,6 +47,7 @@ class GameAudioTrimActivity : AppCompatActivity() {
 
     private var pcm: ShortArray = ShortArray(0)
     private var sampleRate = 44_100
+    private var totalDurationMs = 0L
     private var player: PcmAudioTrackPlayer? = null
     private var playing = false
 
@@ -137,6 +138,7 @@ class GameAudioTrimActivity : AppCompatActivity() {
             val buckets = withContext(Dispatchers.Default) { rmsBuckets(samples, rate) }
             pcm = samples
             sampleRate = rate
+            totalDurationMs = durationMs
             player = PcmAudioTrackPlayer(rate)
             val (selStart, selEnd) =
                 if (initialStartMs in 0 until initialEndMs) initialStartMs to minOf(initialEndMs, durationMs)
@@ -198,9 +200,13 @@ class GameAudioTrimActivity : AppCompatActivity() {
 
     private fun renderDuration(startMs: Long, endMs: Long) {
         val seconds = (endMs - startMs) / 1000.0
+        // The recorded total answers "why is there so little to trim?" —
+        // the buffer holds only what has played since recording started
+        // this session (up to the 180 s ring), not a guaranteed 3 minutes.
         tvDuration.text = getString(
             R.string.game_audio_trim_duration,
             String.format(Locale.US, "%.1f", seconds),
+            (totalDurationMs / 1000).toString(),
         )
     }
 
