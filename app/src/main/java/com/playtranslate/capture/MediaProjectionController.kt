@@ -601,28 +601,45 @@ class MediaProjectionController(private val service: CaptureService) {
             return streamKind
         }
         if (!hasConsent) return StreamKind.UNKNOWN
-        var kind = StreamKindProbe.measure(this)
-        if (kind == StreamKind.UNKNOWN && hasConsent) {
-            // One retry: the probe is the SOLE classifier, so a transient
-            // abort (layout/draw timing, buffer contention) would otherwise
-            // consign the whole session to the degraded tier. The log line
-            // is the field abort-rate signal — this app has no telemetry,
-            // so exported logs are the only place the rate can ever show up.
-            val second = StreamKindProbe.measure(this)
-            DetectionLog.log(
-                "MP stream kind: retry after UNKNOWN → $second"
-            )
-            kind = second
-        }
-        if (kind == StreamKind.UNKNOWN || !hasConsent) {
-            if (kind != StreamKind.UNKNOWN) {
-                DetectionLog.log("MP stream kind: $kind discarded — consent died mid-probe")
+        // Exactly one probe at a time. Two resolvers can race here (startLive
+        // vs a clean capture right after consent), and concurrent probes are
+        // NOT independent: both windows sit at the same coordinates, so on a
+        // contaminated stream the occluded one reads the topmost one's
+        // checker — and a cadence alignment that shows it the same phase two
+        // rounds running scores as absence evidence and caches a false CLEAN
+        // (the sign-agnostic ledger retired the old "probe twice and agree"
+        // reasoning). Waiters re-check under the lock and adopt the winner's
+        // cached verdict without probing again.
+        return streamKindMutex.withLock {
+            streamKind.takeIf { it != StreamKind.UNKNOWN }?.let { return@withLock it }
+            if (!hasConsent) return@withLock StreamKind.UNKNOWN
+            var kind = StreamKindProbe.measure(this)
+            if (kind == StreamKind.UNKNOWN && hasConsent) {
+                // One retry: the probe is the SOLE classifier, so a transient
+                // abort (layout/draw timing, buffer contention) would otherwise
+                // consign the whole session to the degraded tier. The log line
+                // is the field abort-rate signal — this app has no telemetry,
+                // so exported logs are the only place the rate can ever show up.
+                val second = StreamKindProbe.measure(this)
+                DetectionLog.log(
+                    "MP stream kind: retry after UNKNOWN → $second"
+                )
+                kind = second
             }
-            return StreamKind.UNKNOWN
+            if (kind == StreamKind.UNKNOWN || !hasConsent) {
+                if (kind != StreamKind.UNKNOWN) {
+                    DetectionLog.log("MP stream kind: $kind discarded — consent died mid-probe")
+                }
+                return@withLock StreamKind.UNKNOWN
+            }
+            streamKind = kind
+            kind
         }
-        streamKind = kind
-        return kind
     }
+
+    /** Serializes [resolveStreamKind]'s measure+cache — see the comment at
+     *  its lock site for why concurrent probes can poison each other. */
+    private val streamKindMutex = Mutex()
 
     /**
      * CLEAN streams only: is the captured task PROVEN to fill the frame 1:1?

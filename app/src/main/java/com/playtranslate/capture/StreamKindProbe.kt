@@ -75,11 +75,13 @@ import kotlin.coroutines.resume
  * capture's [com.playtranslate.overlay.OverlayHost.prepareForCleanCapture],
  * which would hide the probe mid-measurement and fake a CLEAN verdict. The
  * probe owns its addView/removeViewImmediate lifecycle directly. Total
- * budget ~1s, once per consent session; two concurrent resolvers (startLive
- * racing a one-shot) at worst probe twice and agree — undeduplicated on
- * purpose, and safe end to end because the controller serializes every
- * frame DECODE internally (its decodeMutex), so concurrent probe/one-shot/
- * live reads of the same latched frame cannot race its shared buffer.
+ * budget ~1s, once per consent session. Concurrent resolvers are SERIALIZED
+ * by [MediaProjectionController.resolveStreamKind]'s mutex — two live probes
+ * would stack windows at the same coordinates and read each other's phase,
+ * which the sign-agnostic ledger can score as absence (a false CLEAN). Frame
+ * DECODE is additionally serialized controller-internally (its decodeMutex),
+ * so probe/one-shot/live reads of the same latched frame cannot race the
+ * shared buffer.
  */
 object StreamKindProbe {
 
