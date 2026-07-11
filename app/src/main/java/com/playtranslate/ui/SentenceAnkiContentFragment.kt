@@ -402,16 +402,63 @@ class SentenceAnkiContentFragment : Fragment() {
         gameAudioSnapshotFile?.let { GameAudioSnapshot.active = it }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // Game-audio state survives process death: the snapshot file stays
+        // on disk (onDestroyView never runs when the process dies), so the
+        // path + selection key + review flag fully reconstruct the cell —
+        // a trimmed clip must not silently degrade to Auto/TTS on restore
+        // (adversarial-review finding).
+        val wav = gameAudioSnapshotFile ?: return
+        outState.putString(STATE_GAME_SNAPSHOT_PATH, wav.absolutePath)
+        val sel = sentenceSelection
+        if (sel is AudioSelection.Explicit && sel.sourceId == RecordingAudioSource.ID) {
+            outState.putString(STATE_GAME_SEL_KEY, sel.key)
+            outState.putBoolean(STATE_GAME_REVIEWED, gameAudioReviewed)
+        }
+    }
+
+    /** Rebuild the game-audio cell after process death. No-ops (cell stays
+     *  Auto, like a card opened without recording) when nothing was saved or
+     *  the snapshot didn't survive — realistic restores happen minutes after
+     *  death and find the file; only a >6 h zombie loses it to the orphan
+     *  sweep or an OS cache purge. */
+    private fun restoreGameAudioState(state: Bundle) {
+        val path = state.getString(STATE_GAME_SNAPSHOT_PATH) ?: return
+        val wav = File(path)
+        if (!GameAudioSnapshot.isUsable(wav)) return
+        gameAudioSnapshotFile = wav
+        GameAudioSnapshot.active = wav
+        // No saved key ⇒ the user had switched the cell AWAY from game audio
+        // before death. Re-own the file (cleanup + picker availability) but
+        // do not resurrect a game-audio selection over their choice.
+        val key = state.getString(STATE_GAME_SEL_KEY) ?: return
+        sentenceSelection =
+            AudioSelection.Explicit(RecordingAudioSource.ID, key, locator = wav.absolutePath)
+        gameAudioReviewed = state.getBoolean(STATE_GAME_REVIEWED, false)
+        val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
+            ?: SourceLangId.JA
+        sentenceAudioHandle?.refreshPillLabel(this, lang, sentenceSelection)
+        refreshSentenceAudioTitle()
+        // Reloads the waveform; parseRangeFor re-validates the restored key
+        // against the file (untouched across death ⇒ range preserved).
+        updateGameAudioPanel()
+    }
+
     override fun onDestroyView() {
         stopInlinePlayback()
         inlinePlayer = null
         gameAudioPanel = null
         gameAudioWave = null
         gameAudioLoadedFile = null
-        // We own this card's snapshot; the flow is over.
+        // We own this card's snapshot. Delete it when the flow is truly over
+        // — but NOT through a configuration-change recreation, where the
+        // just-saved instance state points at this file and the recreated
+        // fragment re-owns it (process death never runs this at all; a
+        // recreation that never completes is the orphan sweep's job).
         gameAudioSnapshotFile?.let { f ->
             if (GameAudioSnapshot.active == f) GameAudioSnapshot.active = null
-            f.delete()
+            if (activity?.isChangingConfigurations != true) f.delete()
         }
         gameAudioSnapshotFile = null
         ivPhoto?.setImageBitmap(null)
@@ -476,7 +523,9 @@ class SentenceAnkiContentFragment : Fragment() {
         // with post-death silence. When a snapshot lands, the cell defaults
         // to provisional Game audio — the trim commits at save via
         // [resolveGameAudioForSend].
-        if (savedInstanceState == null && Prefs(requireContext()).recordGameAudio) {
+        if (savedInstanceState != null) {
+            restoreGameAudioState(savedInstanceState)
+        } else if (Prefs(requireContext()).recordGameAudio) {
             viewLifecycleOwner.lifecycleScope.launch {
                 val snap = withContext(Dispatchers.IO) {
                     CaptureService.instance?.gameAudioRecorder?.snapshotToFile()
@@ -1332,6 +1381,12 @@ class SentenceAnkiContentFragment : Fragment() {
     }
 
     companion object {
+        /** Process-death restore of the game-audio state (the snapshot file
+         *  survives on disk — onDestroyView never ran). */
+        private const val STATE_GAME_SNAPSHOT_PATH = "game_snapshot_path"
+        private const val STATE_GAME_SEL_KEY = "game_sel_key"
+        private const val STATE_GAME_REVIEWED = "game_reviewed"
+
         private const val ARG_ORIGINAL        = "japanese"
         private const val ARG_TRANSLATION     = "translation"
         private const val ARG_WORDS           = "words"
