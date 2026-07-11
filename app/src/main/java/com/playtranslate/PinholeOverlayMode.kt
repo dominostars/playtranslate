@@ -640,22 +640,23 @@ class PinholeOverlayMode(
             //     the text the removal uncovers. The removal already forces
             //     a floor-paced follow-up look (step 14 + the forced-look
             //     gate bypass), which sees the whole uncovered region and
-            //     places it complete. Content-match removals are position
-            //     updates, not content changes — their paired replacement
-            //     FAR sits within any inflation and must never defer, so
-            //     they're subtracted from the dying set.
+            //     places it complete. EVERY pinhole REMOVE counts as dying,
+            //     including boxes that also content-matched — the match only
+            //     proves the text reappeared elsewhere, not that the removal
+            //     uncovers background (taxi-prompt trace 2026-07-10: the
+            //     dying prompt's text re-matched the dialogue name plate,
+            //     the dying set went empty, and a broken message fragment
+            //     placed). The content-match placement promise is carried by
+            //     the paired FARs themselves (FarGroup.paired), which the
+            //     filter never drops — so an unrelated dying neighbor can't
+            //     defer them either (the conversation-close prompt gap).
             val cc = classifyCoords
-            val dyingRects = (pinholeRemovals - contentMatchRemovals)
-                .mapNotNull { bitmapRects.getOrNull(it) }
+            val dyingRects = pinholeRemovals.mapNotNull { bitmapRects.getOrNull(it) }
             if (cc != null && dyingRects.isNotEmpty() && farOcrGroups.isNotEmpty()) {
                 val before = farOcrGroups.size
-                farOcrGroups = farOcrGroups.filter { far ->
-                    !abutsAnyInflated(
-                        dyingRects,
-                        cc.ocrToBitmap(far.bounds),
-                        PinholeCalibration.FRAGMENT_DEFER_ABUT_PX,
-                    )
-                }
+                farOcrGroups = deferDyingBoxFragments(
+                    farOcrGroups, dyingRects, cc, PinholeCalibration.FRAGMENT_DEFER_ABUT_PX,
+                )
                 if (debug && before != farOcrGroups.size) {
                     DetectionLog.log(
                         "D$displayId c$cycleNum deferred ${before - farOcrGroups.size} FAR " +

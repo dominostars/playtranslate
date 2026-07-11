@@ -35,6 +35,14 @@ data class FarGroup(
     val lineCount: Int,
     val orientation: TextOrientation = TextOrientation.HORIZONTAL,
     val alignment: TextAlignment = TextAlignment.LEFT,
+    /** True iff this entry is a content-match replacement (classify step 1),
+     *  possibly widened by coalesced continuations (step 3). The content
+     *  match promised this text a placement at its new position, and
+     *  [deferDyingBoxFragments] honors that promise unconditionally — a
+     *  paired FAR is never deferred, even when its new position abuts a
+     *  dying box (conversation close: the plate→prompt replacement lands
+     *  beside the dying message box every time). */
+    val paired: Boolean = false,
 )
 
 /**
@@ -54,9 +62,15 @@ data class FarGroup(
  * Geometry deliberately CANNOT distinguish a continuation tail from an
  * independent neighbor — the discriminator is the pinhole verdict on the
  * box, which is why the caller keys this on pinhole removals only (a box
- * that reads KEEP protects its neighbors' placements; content-match
- * removals are position updates whose paired replacement sits within any
- * inflation and must never defer). [inflatePx] is tight
+ * that reads KEEP protects its neighbors' placements). EVERY pinhole
+ * removal qualifies, including boxes that also content-matched: the match
+ * only proves the box's text reappeared elsewhere, not that the removal
+ * uncovers background (taxi-prompt trace 2026-07-10 — the dying talk
+ * prompt's text re-matched the dialogue name plate, the dying set went
+ * empty, and a broken message fragment placed, churning the scene for
+ * five cycles). The content-match no-defer promise rides on the paired
+ * replacement itself — [FarGroup.paired], honored by
+ * [deferDyingBoxFragments]. [inflatePx] is tight
  * ([PinholeCalibration.FRAGMENT_DEFER_ABUT_PX]) — the old FAR-suppression
  * guard's 0.5W/1.5H inflation reached ~200px and starved legitimate menu
  * items near an unrelated dying box; abutment reaches only text that
@@ -69,6 +83,34 @@ fun abutsAnyInflated(dying: List<Rect>, rect: Rect, inflatePx: Int): Boolean =
         val inflated = Rect(d).apply { inset(-inflatePx, -inflatePx) }
         Rect.intersects(inflated, rect)
     }
+
+/**
+ * Step-9b deferral filter: drop FAR groups that abut (per
+ * [abutsAnyInflated]) any box being pinhole-removed this cycle — except
+ * paired content-match replacements ([FarGroup.paired]), which place
+ * unconditionally. Dropped groups are deferred, not lost: the removal
+ * that triggered the drop already forces a floor-paced follow-up look
+ * that re-OCRs the uncovered region and places whatever is really there,
+ * complete.
+ *
+ * [dyingRects] must be the RENDERED (padded) rects of every box with a
+ * pinhole REMOVE verdict this cycle, content-matched or not — see
+ * [abutsAnyInflated]'s kdoc for why a content match must not shrink the
+ * dying set. [FarGroup.bounds] are OCR-crop space; [coords] maps them
+ * into the dying rects' bitmap space.
+ */
+fun deferDyingBoxFragments(
+    farGroups: List<FarGroup>,
+    dyingRects: List<Rect>,
+    coords: FrameCoordinates,
+    inflatePx: Int,
+): List<FarGroup> {
+    if (dyingRects.isEmpty() || farGroups.isEmpty()) return farGroups
+    return farGroups.filter { far ->
+        far.paired ||
+            !abutsAnyInflated(dyingRects, coords.ocrToBitmap(far.bounds), inflatePx)
+    }
+}
 
 /**
  * Output of [classifyOcrResults].
@@ -176,7 +218,7 @@ fun classifyOcrResults(
                     // content-match target a later fresh OCR fragment may
                     // legitimately stitch onto.
                     pairedFarIndices.add(farOcrGroups.size)
-                    farOcrGroups.add(FarGroup(ocrText, ocrBound, lc, orient, align))
+                    farOcrGroups.add(FarGroup(ocrText, ocrBound, lc, orient, align, paired = true))
                     contentMatched = true
                     break
                 }
@@ -379,6 +421,27 @@ fun classifyOcrResults(
                     lineCount = mergedLineCount,
                     orientation = existing.orientation,
                     alignment = mergedAlign,
+                    // The coalesce gate only admits paired targets, and the
+                    // merged entry keeps the paired placement promise.
+                    //
+                    // KNOWN GAP (accepted 2026-07-10): the flag covers the
+                    // whole merged rect, so a coalesced fresh component that
+                    // is itself a partial read beside a pinhole-dying box
+                    // would ride the exemption past step-9b deferral and
+                    // could re-create placement churn. That needs a same-pass
+                    // content-match AND this gate to accept the occluded
+                    // fragment AND the occluder to die the same cycle — never
+                    // observed (the taxi-prompt trace's gate rejected exactly
+                    // this merge; typewriter merges are fully-visible reveals
+                    // by construction). Do NOT fix by clearing the flag on
+                    // merge: deferring a replacement whose source box was
+                    // already removed re-creates the conversation-close
+                    // uncovered-cycle bug for merged groups. If churn ever
+                    // shows a coalesced-merge signature (far count drops via
+                    // this branch in the same cycle as an abutting pinhole
+                    // REMOVE), the fix is per-component rects tested
+                    // individually in deferDyingBoxFragments.
+                    paired = existing.paired,
                 )
             } else {
                 farOcrGroups.add(FarGroup(ocrText, ocrBound, lc, orient, align))

@@ -1,6 +1,7 @@
 package com.playtranslate
 
 import android.graphics.Rect
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -8,9 +9,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Vectors for [abutsAnyInflated] — the dying-box fragment-deferral
- * predicate (dialogue-advance tail dance, 2026-07-10). Rects are drawn
- * from the two real traces that motivated and constrain the rule:
+ * Vectors for [abutsAnyInflated] and [deferDyingBoxFragments] — the
+ * dying-box fragment-deferral predicate and its step-9b filter
+ * (dialogue-advance tail dance, 2026-07-10). Rects are drawn
+ * from the real traces that motivated and constrain the rule:
  *
  *  - The dialogue tail: a message grows slightly on advance; OCR sees only
  *    the sliver outside the old (dying) box. Placing it strands a fragment
@@ -94,5 +96,82 @@ class FragmentDeferralTest {
         // Tail rects can overlap the rendered rect's padding band.
         val overlapping = Rect(880, 560, 1000, 600)
         assertTrue(abutsAnyInflated(listOf(dyingDialogue), overlapping, inflate))
+    }
+
+    // ── deferDyingBoxFragments: paired exemption ─────────────────────────
+    //
+    // Vectors from the taxi-prompt trace (2026-07-10, pinhole-trace2.txt).
+    // The game shows the NPC name twice — on the talk prompt AND on the
+    // dialogue name plate — so the dying prompt content-matches the plate
+    // and, before the fix, vacated the dying set: the message fragment the
+    // prompt still occluded then placed broken (missing あるだろう?) and the
+    // scene churned for five cycles.
+
+    // Identity scale, zero crop → ocrToBitmap is a no-op, so every rect
+    // below can stay in the trace's OCR-crop space.
+    private val identityCoords = FrameCoordinates(
+        bitmapWidth = 10_000, bitmapHeight = 10_000,
+        viewWidth = 10_000, viewHeight = 10_000,
+        cropLeft = 0, cropTop = 0,
+    )
+
+    /** c3's dying talk-prompt overlay: text rect (531,156,748,187) plus the
+     *  14px render padding — the box that also content-matched. */
+    private val dyingTaxiPrompt = Rect(517, 142, 762, 201)
+
+    @Test
+    fun `broken message abutting a content-matched dying box defers`() {
+        val platePaired = FarGroup(
+            text = "タクシー運転手", bounds = Rect(36, 109, 214, 135),
+            lineCount = 1, paired = true,
+        )
+        val brokenMessage = FarGroup(
+            text = "すぐそこにタコ焼き屋かあそこはオススメだね。",
+            bounds = Rect(125, 166, 515, 252), lineCount = 2,
+        )
+        val survivors = deferDyingBoxFragments(
+            listOf(platePaired, brokenMessage),
+            listOf(dyingTaxiPrompt), identityCoords, inflate,
+        )
+        // The broken fragment waits for the forced look that sees the whole
+        // uncovered sentence; the plate replacement places immediately.
+        assertEquals(listOf(platePaired), survivors)
+    }
+
+    @Test
+    fun `paired replacement abutting an unrelated dying box still places`() {
+        // Conversation close (2026-07-09 trace, c14/c31/c234): the
+        // plate→prompt replacement lands beside the dying message box
+        // every time and must not lose its cycle to it.
+        val pairedPrompt = FarGroup(
+            text = "凄腕の女記者", bounds = Rect(1047, 802, 1232, 835),
+            lineCount = 1, paired = true,
+        )
+        val dyingMessage = Rect(624, 842, 1292, 956)
+        val survivors = deferDyingBoxFragments(
+            listOf(pairedPrompt), listOf(dyingMessage), identityCoords, inflate,
+        )
+        assertEquals(listOf(pairedPrompt), survivors)
+    }
+
+    @Test
+    fun `same rect without the paired flag defers - the exemption is the flag not geometry`() {
+        val unpaired = FarGroup(
+            text = "凄腕の女記者", bounds = Rect(1047, 802, 1232, 835),
+            lineCount = 1,
+        )
+        val survivors = deferDyingBoxFragments(
+            listOf(unpaired), listOf(Rect(624, 842, 1292, 956)), identityCoords, inflate,
+        )
+        assertTrue(survivors.isEmpty())
+    }
+
+    @Test
+    fun `no dying boxes passes everything through untouched`() {
+        val fragment = FarGroup(text = "x", bounds = Rect(0, 0, 10, 10), lineCount = 1)
+        assertEquals(
+            listOf(fragment),
+            deferDyingBoxFragments(listOf(fragment), emptyList(), identityCoords, inflate),
+        )
     }
 }

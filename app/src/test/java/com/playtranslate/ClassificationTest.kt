@@ -544,6 +544,31 @@ class ClassificationTest {
         assertEquals(1, result.farOcrGroups.size)
         assertEquals("A B C", result.farOcrGroups[0].text)
         assertEquals(2, result.farOcrGroups[0].lineCount)
+        assertTrue(
+            "a coalesced merge keeps the paired placement promise",
+            result.farOcrGroups[0].paired,
+        )
+    }
+
+    @Test
+    fun classify_pairedFlag_setOnContentMatchReplacement_notOnFreshFar() {
+        // The paired flag is what exempts a content-match replacement from
+        // dying-box fragment deferral (see deferDyingBoxFragments): the
+        // replacement must carry it, and brand-new text must not.
+        val boxBounds = Rect(0, 0, 100, 100)
+        val result = classifyOcrResults(
+            ocrResult = ocrResult(
+                "hello" to Rect(500, 500, 600, 600),           // content match, elsewhere
+                "brand new" to Rect(3000, 3000, 3200, 3040),   // unrelated fresh text
+            ),
+            boxes = listOf(box(boxBounds, sourceText = "hello")),
+            ocrBitmapRects = listOf(boxBounds),
+            coords = identityCoords,
+        )
+        assertEquals(setOf(0), result.contentMatchRemovals)
+        assertEquals(2, result.farOcrGroups.size)
+        assertTrue("content-match replacement is paired", result.farOcrGroups[0].paired)
+        assertFalse("fresh far is not paired", result.farOcrGroups[1].paired)
     }
 
     @Test
