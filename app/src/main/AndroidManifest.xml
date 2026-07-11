@@ -28,10 +28,12 @@
 
     <!-- Self-exclusion from our own game-audio capture happens via
          excludeUid on the capture config (GameAudioRecorder), NOT via
-         allowAudioPlaybackCapture=false: on the AYN Thor the bottom-display
-         media routing appears to ride a capture-style patch, and an app-wide
-         capture opt-out made every AudioTrack we render silent there
-         (see reference_thor_audio_quirks). -->
+         allowAudioPlaybackCapture=false. Confirmed on the AYN Thor: our
+         capture registers an audio POLICY MIX, and our own USAGE_MEDIA
+         tracks — matched by the mix's usage rules while carrying the
+         manifest opt-out flags — were routed nowhere (G db = -inf on every
+         output thread). An exclude-uid mix never matches our tracks, so
+         they render normally (see reference_thor_audio_quirks). -->
     <application
         android:name=".PlayTranslateApplication"
         android:allowBackup="false"

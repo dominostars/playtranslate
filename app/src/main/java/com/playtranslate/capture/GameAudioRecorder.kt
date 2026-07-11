@@ -139,15 +139,17 @@ class GameAudioRecorder(
             Log.w(TAG, "start skipped: no projection (consent token dead?)")
             return
         }
-        // Self-exclusion lives HERE, not in the manifest: excludeUid keeps our
-        // own TTS/preview playback out of the ring while leaving our players
-        // capture-eligible — an app-wide allowAudioPlaybackCapture=false made
-        // every AudioTrack we render silent on the Thor's bottom display
-        // (its per-display media routing rides a capture-style patch that
-        // opted-out tracks can't enter). Matching and excluding rules can't
-        // be combined, so exclude-only it is: everything capturable except us
-        // — which still means the game (USAGE_GAME/MEDIA). Usage-matching
-        // config kept as fallback in case an OEM rejects exclude-only.
+        // Self-exclusion lives HERE, not in the manifest, and the rule kind
+        // is load-bearing (Thor-confirmed 2026-07-11): this capture registers
+        // an audio POLICY MIX, and with usage-matching rules + the manifest
+        // opt-out our own USAGE_MEDIA tracks were matched by our own mix yet
+        // barred from entering it — audioserver routed them nowhere (G db =
+        // -inf, silent previews). An exclude-uid mix never matches our
+        // tracks at all, so they render normally while everything else
+        // capturable (the game: USAGE_GAME/MEDIA) still lands in the ring.
+        // Matching and excluding rules can't be combined, so exclude-only;
+        // usage-matching kept as fallback if an OEM rejects it — accepting
+        // that on Thor-like ROMs that fallback re-silences our previews.
         val config = runCatching {
             AudioPlaybackCaptureConfiguration.Builder(projection)
                 .excludeUid(android.os.Process.myUid())
