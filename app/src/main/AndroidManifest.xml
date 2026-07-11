@@ -26,17 +26,20 @@
         </intent>
     </queries>
 
-    <!-- Self-exclusion from our own game-audio capture happens via
-         excludeUid on the capture config (GameAudioRecorder), NOT via
-         allowAudioPlaybackCapture=false. Confirmed on the AYN Thor: our
-         capture registers an audio POLICY MIX, and our own USAGE_MEDIA
-         tracks — matched by the mix's usage rules while carrying the
-         manifest opt-out flags — were routed nowhere (G db = -inf on every
-         output thread). An exclude-uid mix never matches our tracks, so
-         they render normally (see reference_thor_audio_quirks). -->
+    <!-- Self-exclusion from our own game-audio capture: excludeUid on the
+         capture config (GameAudioRecorder) is the load-bearing half — with
+         USAGE-MATCHING rules, our own tracks were matched by our own capture
+         policy mix while the opt-out flag barred them from entering it, and
+         the Thor routed them nowhere (G db = -inf on every output thread;
+         see reference_thor_audio_quirks). allowAudioPlaybackCapture=false is
+         defense-in-depth on top (keeps our audio out of third-party captures
+         and out of the ring if the usage-matching fallback ever fires) —
+         Thor-tested TOGETHER with excludeUid; if playback ever goes silent
+         on a quirky ROM, this flag is the first suspect to strip. -->
     <application
         android:name=".PlayTranslateApplication"
         android:allowBackup="false"
+        android:allowAudioPlaybackCapture="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
