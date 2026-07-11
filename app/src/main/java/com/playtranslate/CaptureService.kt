@@ -853,7 +853,7 @@ class CaptureService : Service() {
 
             if (ocrResult == null) {
                 state.value = CaptureState.NoText(
-                    noTextMessage(displayId), noTextProvenanceFor(displayId, region, srcId), screenshotPath,
+                    noTextMessage(displayId), noTextProvenanceFor(displayId, region, srcId, frameIncludesSystemUi), screenshotPath,
                 )
                 return
             }
@@ -898,9 +898,17 @@ class CaptureService : Service() {
      *  ran, finding nothing) for [srcId]. Pins the engine, language, [region], and
      *  [displayId] so the "switch OCR tool" gear can re-OCR THIS exact capture. Null
      *  when no OCR backend is available (e.g. a no-floor language on a 32-bit device). */
-    private fun noTextProvenanceFor(displayId: Int, region: RegionEntry, srcId: SourceLangId): OcrProvenance? {
+    private fun noTextProvenanceFor(
+        displayId: Int,
+        region: RegionEntry,
+        srcId: SourceLangId,
+        frameIncludesSystemUi: Boolean,
+    ): OcrProvenance? {
         val backend = OcrModelManager.selectedBackend(this, srcId) ?: return null
-        return OcrProvenance(backend.ocrLabel, backend.selectionToken, displayId, srcId, region)
+        return OcrProvenance(
+            backend.ocrLabel, backend.selectionToken, displayId, srcId, region,
+            frameIncludesSystemUi = frameIncludesSystemUi,
+        )
     }
 
     // ── Live mode ─────────────────────────────────────────────────────────
@@ -1940,6 +1948,7 @@ class CaptureService : Service() {
         ocrResult: OcrManager.OcrResult,
         screenshotPath: String?,
         displayId: Int,
+        frameIncludesSystemUi: Boolean,
         forceShow: Boolean = false
     ): List<GroupTranslation>? {
         if (!forceShow) {
@@ -1960,7 +1969,10 @@ class CaptureService : Service() {
                 screenshotPath     = screenshotPath,
                 note               = note,
                 backendDisplayName = backendDisplayName,
-                ocrProvenance      = ocrProvenanceFor(ocrResult, displayId, activeRegionForDisplay(displayId), Prefs(this).sourceLangId),
+                ocrProvenance      = ocrProvenanceFor(
+                    ocrResult, displayId, activeRegionForDisplay(displayId),
+                    Prefs(this).sourceLangId, frameIncludesSystemUi,
+                ),
                 langContext        = Prefs(this).langContext(),
             )
         )
@@ -2178,7 +2190,7 @@ class CaptureService : Service() {
             }
 
             if (ocrResult == null) {
-                return PipelineOutcome.NoText(noTextProvenanceFor(displayId, region, srcId), screenshotPath)
+                return PipelineOutcome.NoText(noTextProvenanceFor(displayId, region, srcId, frameIncludesUi), screenshotPath)
             }
 
             // OCR is in — surface the source now so the page can reveal before the

@@ -199,7 +199,9 @@ class OneShotManager(private val service: CaptureService) {
             //    cancellation propagated by [supersede]/[cancel] handles
             //    the in-flight case past this checkpoint.
             if (displayId == cycle.panelDisplayId) {
-                service.translateAndSendToPanel(ocrResult, screenshotPath, displayId)
+                service.translateAndSendToPanel(
+                    ocrResult, screenshotPath, displayId, frameIncludesUi,
+                )
             }
             return HoldOutcome.Success
         } finally {
