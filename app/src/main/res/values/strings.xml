@@ -1092,6 +1092,57 @@
     <string name="anki_audio_preview_content_description">Preview audio</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         GAME-AUDIO RECORDING (Settings → Anki → Audio; trim editor).
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Switch-row title in Settings → Anki Flashcards → Audio: opt-in
+         rolling recording of game audio. -->
+    <string name="anki_game_audio_row_title">Record game audio</string>
+
+    <!-- Subtitle under the switch row above (small grey text, may wrap to
+         two lines). -->
+    <string name="anki_game_audio_row_subtitle">Keep the last few minutes of game audio so new sentence cards can use the real voice line</string>
+
+    <!-- Toast shown from the same settings row when the recording
+         permission is denied and the switch reverts to off. -->
+    <string name="anki_game_audio_permission_denied">Permission denied — game audio recording stays off</string>
+
+    <!-- Audio-source name: shown on the sentence cell's voice pill and as
+         the source's section header in the audio picker. -->
+    <string name="audio_source_game_name">Game audio</string>
+
+    <!-- Row subtitle in the audio picker under the "Game audio" candidate
+         when a recording snapshot is available. -->
+    <string name="audio_source_game_ready">From your recent gameplay</string>
+
+    <!-- Toolbar title of the game-audio trim editor screen. -->
+    <string name="game_audio_trim_title">Trim Game Audio</string>
+
+    <!-- Primary bottom button of the trim editor: commits the selected
+         range as the card's sentence audio. -->
+    <string name="game_audio_trim_save">Use selection</string>
+
+    <!-- Secondary text button in the trim editor: abandon the recording
+         and fall back to synthesized (TTS) sentence audio. -->
+    <string name="game_audio_trim_use_tts">Use TTS instead</string>
+
+    <!-- Secondary text button in the trim editor: send the card with no
+         sentence audio at all. -->
+    <string name="game_audio_trim_no_audio">No audio</string>
+
+    <!-- Play/pause toggle button in the trim editor: plays the currently
+         selected range. -->
+    <string name="game_audio_trim_play">Play selection</string>
+
+    <!-- Same toggle button while playback is running: stops it. -->
+    <string name="game_audio_trim_stop">Stop</string>
+
+    <!-- Readout above the waveform in the trim editor.
+         %1$s = selection length in seconds with one decimal (e.g. "2.4"),
+         rendering as "2.4 s selected". -->
+    <string name="game_audio_trim_duration"><xliff:g id="seconds" example="2.4">%1$s</xliff:g> s selected</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          CARD TYPE PICKER + FIELD MAPPING (Settings → Anki → Card Type).
          ═══════════════════════════════════════════════════════════════ -->
 

@@ -139,12 +139,14 @@ class PlayTranslateApplication : Application() {
             override fun onActivityResumed(activity: Activity) {
                 resumedActivity = WeakReference(activity)
                 CaptureService.instance?.reconcileLiveModes("activityResumed=${activity.javaClass.simpleName}")
+                CaptureService.instance?.reconcileGameAudio()
                 drainPendingForegroundOps(activity)
             }
             override fun onActivityPaused(activity: Activity) {
                 if (resumedActivity?.get() === activity) {
                     resumedActivity = null
                     CaptureService.instance?.reconcileLiveModes("activityPaused=${activity.javaClass.simpleName}")
+                    CaptureService.instance?.reconcileGameAudio()
                 }
             }
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -179,6 +181,12 @@ class PlayTranslateApplication : Application() {
             return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) act.display?.displayId
             else @Suppress("DEPRECATION") act.windowManager.defaultDisplay.displayId
         }
+
+        /** Simple class name of the currently-resumed PlayTranslate activity,
+         *  or null when none is. The game-audio recorder matches this against
+         *  its card-flow pause set. */
+        fun resumedActivitySimpleName(): String? =
+            resumedActivity?.get()?.javaClass?.simpleName
 
         /** Pre-populate the resumed-activity registry from inside an
          *  activity's own onResume, *before* anything in that resume path

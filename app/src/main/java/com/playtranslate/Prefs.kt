@@ -702,6 +702,15 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_ANKI_SENTENCE_AUDIO, true)
         set(v) = sp.edit { putBoolean(KEY_ANKI_SENTENCE_AUDIO, v) }
 
+    /** Opt-in: keep a rolling recording of the game's audio (AudioPlaybackCapture
+     *  on the MediaProjection session) so sentence cards can attach the real
+     *  voice line. Settings → Anki Flashcards → Audio. Recording itself also
+     *  needs an active capture session + screen-capture consent + RECORD_AUDIO —
+     *  see GameAudioRecorder.reconcile. */
+    var recordGameAudio: Boolean
+        get() = sp.getBoolean(KEY_ANKI_GAME_AUDIO, false)
+        set(v) = sp.edit { putBoolean(KEY_ANKI_GAME_AUDIO, v) }
+
     var showTransliteration: Boolean
         get() = sp.getBoolean(KEY_SHOW_TRANSLITERATION, false)
         set(v) = sp.edit { putBoolean(KEY_SHOW_TRANSLITERATION, v) }
@@ -1207,6 +1216,7 @@ class Prefs internal constructor(
         private const val KEY_ANKI_FIELD_MAPPINGS  = "anki_field_mappings"   // JSON
         private const val KEY_ANKI_WORD_AUDIO      = "anki_word_audio_enabled"
         private const val KEY_ANKI_SENTENCE_AUDIO  = "anki_sentence_audio_enabled"
+        private const val KEY_ANKI_GAME_AUDIO      = "anki_game_audio_enabled"
         private const val KEY_ANKI_AUDIO_MAPPING_MIGRATED = "anki_audio_mapping_migrated"
         private const val KEY_ANKI_PITCH_FREQ_MAPPING_MIGRATED = "anki_pitch_freq_mapping_migrated"
         private const val KEY_REGION_LIST    = "region_list"

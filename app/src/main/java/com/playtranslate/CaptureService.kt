@@ -67,6 +67,7 @@ import java.util.Locale
 import android.hardware.display.DisplayManager
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CaptureLifecycle
+import com.playtranslate.capture.GameAudioRecorder
 import com.playtranslate.capture.MediaProjectionCaptureBackend
 import com.playtranslate.capture.MediaProjectionCaptureSource
 import com.playtranslate.capture.MediaProjectionController
@@ -478,6 +479,11 @@ class CaptureService : Service() {
         // accessibility-only session doesn't force-initialize it.
         if (mediaProjectionOverlayUiLazy.isInitialized()) {
             mediaProjectionOverlayUi.destroy()
+        }
+        // Stop the game-audio recorder BEFORE the projection teardown below,
+        // so its AudioRecord releases against a still-live projection.
+        if (gameAudioRecorderLazy.isInitialized()) {
+            gameAudioRecorder.destroy()
         }
         // Release the MediaProjection session (projection / VirtualDisplay /
         // ImageReader) — nothing else releases those native resources. Same
@@ -1015,6 +1021,28 @@ class CaptureService : Service() {
     }
     internal val mediaProjectionCaptureSource: MediaProjectionCaptureSource
         by mediaProjectionCaptureSourceLazy
+
+    /** Rolling game-audio recording for Anki sentence cards (opt-in). Same
+     *  explicit-[Lazy] pattern — [reconcileGameAudio] checks the pref before
+     *  touching it, so users who never opt in never allocate an AudioRecord
+     *  or the ~16 MB ring. */
+    private val gameAudioRecorderLazy = lazy {
+        GameAudioRecorder(this, mediaProjectionController)
+    }
+    internal val gameAudioRecorder: GameAudioRecorder by gameAudioRecorderLazy
+
+    /** Re-evaluate whether the game-audio recorder should run — the single
+     *  push-point entry the consent/activate/deactivate/backend-swap/settings
+     *  and activity-lifecycle seams all call, mirroring [reconcileLiveModes].
+     *  Pref-gated BEFORE the lazy so the recorder is never force-initialized
+     *  just to be told to stop. */
+    fun reconcileGameAudio() {
+        if (!Prefs(this).recordGameAudio) {
+            if (gameAudioRecorderLazy.isInitialized()) gameAudioRecorder.stop("pref off")
+            return
+        }
+        gameAudioRecorder.reconcile()
+    }
 
     /** Overlay-window host for MediaProjection mode (TYPE_APPLICATION_OVERLAY). */
     internal val mediaProjectionOverlayHost by lazy {

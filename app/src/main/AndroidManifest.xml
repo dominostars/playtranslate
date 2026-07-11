@@ -12,6 +12,9 @@
     <uses-permission android:name="com.ichi2.anki.permission.READ_WRITE_DATABASE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- Game-audio recording for Anki sentence cards: AudioPlaybackCapture on
+         the MediaProjection session — never the microphone. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <queries>
         <package android:name="com.ichi2.anki" />
@@ -23,9 +26,12 @@
         </intent>
     </queries>
 
+    <!-- allowAudioPlaybackCapture=false: our own playback (TTS previews,
+         Commons auditions) must never enter our own game-audio capture. -->
     <application
         android:name=".PlayTranslateApplication"
         android:allowBackup="false"
+        android:allowAudioPlaybackCapture="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -145,6 +151,13 @@
         <!-- Multi-source audio picker for an Anki cell (Commons recordings + TTS voices). -->
         <activity
             android:name=".ui.AudioSourcePickerActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate" />
+
+        <!-- Manual trim editor for recorded game audio (Anki sentence cards). -->
+        <activity
+            android:name=".ui.GameAudioTrimActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />

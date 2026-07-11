@@ -113,5 +113,10 @@ object CaptureBackendResolver {
         active().overlayUi?.hideAll()
         useMediaProjection = want
         active().overlayUi?.reconcileFloatingIcons()
+        // Backend swap: the controller.destroy() above already stopped the
+        // game-audio recorder via its teardown listener; re-evaluate under
+        // the incoming backend (it restarts only once that backend is active
+        // with fresh consent).
+        CaptureService.instance?.reconcileGameAudio()
     }
 }

@@ -332,6 +332,10 @@ class MediaProjectionController(private val service: CaptureService) {
         val gate = consentGate
         consentGate = null
         gate?.complete(granted)
+        // Every consent grant flows through here — MP-backend Turn On AND the
+        // accessibility live-start borrow — so this is the one push-point that
+        // covers "consent arrived" for the game-audio recorder.
+        if (granted) service.reconcileGameAudio()
     }
 
     /**
@@ -573,6 +577,16 @@ class MediaProjectionController(private val service: CaptureService) {
         }
         return null
     }
+
+    /** Game-audio hook ([GameAudioRecorder]): turn the held consent into a
+     *  live projection — no VirtualDisplay involved — and return it so an
+     *  AudioPlaybackCapture AudioRecord can attach to the same session screen
+     *  capture uses. Promotes the FGS type first via [ensureProjection], same
+     *  contract as the frame path. Returns null when consent isn't held or
+     *  the token is dead; never prompts. The caller must not stop() the
+     *  returned projection — the session stays owned by this controller. */
+    fun projectionForAudioCapture(): MediaProjection? =
+        if (ensureProjection()) projection else null
 
     private fun ensureProjection(): Boolean {
         if (projection != null) return true

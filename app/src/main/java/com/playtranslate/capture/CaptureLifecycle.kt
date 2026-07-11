@@ -59,6 +59,10 @@ object CaptureLifecycle {
             // Accessibility — reuse the canonical "PlayTranslate goes inactive" path.
             PlayTranslateAccessibilityService.disable(ctx, "capture_lifecycle_stop")
         }
+        // Session off ⇒ the game-audio gate closes. The projection teardown
+        // above already stopped the recorder via its teardown listener; this
+        // makes the stop deterministic for both backend branches.
+        CaptureService.instance?.reconcileGameAudio()
     }
 
     /** Accessibility-backend activate: show the floating icon. Returns false —
@@ -68,6 +72,9 @@ object CaptureLifecycle {
         Prefs(ctx).showOverlayIcon = true
         CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
         PlayTranslateTileService.TileSync.refresh(ctx)
+        // Session on ⇒ recording may start (if a warm consent token exists —
+        // the recorder never prompts).
+        CaptureService.instance?.reconcileGameAudio()
         return true
     }
 
