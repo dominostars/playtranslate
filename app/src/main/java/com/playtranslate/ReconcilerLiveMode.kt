@@ -7,17 +7,14 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.LiveCaptureSource
 import com.playtranslate.capture.StreamKind
 import com.playtranslate.ui.TextBox
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The unified reconciler live loop — ONE sensing pipeline for every live
@@ -73,8 +70,14 @@ import kotlinx.coroutines.withTimeoutOrNull
  *    its on-screen offset has NO public API — box placement is impossible,
  *    not just unimplemented. `contentSize != frame size` ⇒ pause with a
  *    message rather than misplace.
- *  - **Secure content**: FLAG_SECURE renders black with no callback; N
- *    consecutive black frames ⇒ tell the user once, keep polling.
+ *  - **Secure content**: FLAG_SECURE renders black with no callback — but so
+ *    do ordinary loading screens and fades, which games show constantly. So
+ *    black frames are handled as content (boxes clear immediately, exactly
+ *    as an OCR of a black frame would clear them) while the *message* needs
+ *    sustained evidence: only a blackout lasting [SECURE_BLACK_NOTIFY_MS]
+ *    earns the "this app blocks capture" error, at most once per session —
+ *    a scary permission message on every loading screen costs more trust
+ *    than a late explanation costs waiting.
  *  - **Verdict lifetime**: the CLEAN verdict is trusted for the whole
  *    session, with no runtime tripwires — a projection token's scope is
  *    immutable, so a correct verdict cannot become wrong later, and the
@@ -94,7 +97,6 @@ class ReconcilerLiveMode(
     override val flavor: OverlayFlavor get() = presenter.flavor
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var currentJob: Job? = null
     private var visibilityJob: Job? = null
 
     /** Displayed boxes, bounds in OCR-crop space — the mode's only
@@ -112,15 +114,23 @@ class ReconcilerLiveMode(
      *  screen still gets its releasing read. */
     private var holdDeadlineMs: Long? = null
 
-    /** Run the next cycle regardless of delivery silence. Starts true (the
-     *  bootstrap look); set by resets, failures, visibility resumes, and
-     *  expired hold deadlines. Cleared right before each capture attempt. */
-    private var forceNextCycle = true
+    /** The shared pacing/gate/input scheduler — see [LiveCycleEngine].
+     *  Our own repaints never wake its gate — a task mirror doesn't
+     *  composite them — which is exactly right: nothing we draw can change
+     *  what needs reading. The park is bounded by the earliest stability-
+     *  hold deadline via [holdDeadlineMs]. */
+    private val engine = LiveCycleEngine(
+        scope, service, displayId, TAG,
+        source = ::liveSource,
+        parkDeadlineMs = { holdDeadlineMs },
+    ) { runCycle() }
 
-    private var inputBurstUntilMs = 0L
-    private var lastInputKickMs = 0L
-
-    private var blackStreak = 0
+    /** Uptime when the current run of all-black frames began (0 = screen is
+     *  not black). Lives OUTSIDE [clearEvidenceState]: the black branch
+     *  clears the displayed boxes, and resetting this with them would
+     *  restart the notify clock mid-blackout. Reset by any non-black frame
+     *  and by [resetState]. */
+    private var blackSinceMs = 0L
     private var secureNotified = false
 
     /** The overlay WINDOW was hidden (visibility park) while the box list
@@ -131,8 +141,8 @@ class ReconcilerLiveMode(
     private var overlayHidden = false
 
     override fun start() {
-        currentJob?.cancel()
-        CaptureBackendResolver.active().startInputMonitoring(displayId) { onGameInput() }
+        engine.cancelCurrent()
+        CaptureBackendResolver.active().startInputMonitoring(displayId) { engine.onGameInput() }
         // Hide the overlay the moment the captured task leaves the foreground
         // — and force a look (with a wake) the moment it returns. drop(1)
         // skips the StateFlow's replay of the current value; runCycle's
@@ -148,18 +158,18 @@ class ReconcilerLiveMode(
                     // OCR/MT would otherwise complete after this hide and
                     // resurrect the overlay over whatever replaced the task
                     // (review finding: boxes floating over the launcher).
-                    currentJob?.cancel()
+                    engine.cancelCurrent()
                     overlayHidden = true
                     CaptureBackendResolver.activeOverlayUi
                         ?.hideTranslationOverlayForDisplay(displayId)
                 } else {
-                    forceNextCycle = true
-                    currentJob?.cancel()
-                    scheduleNextCycle()
+                    engine.forceNext()
+                    engine.cancelCurrent()
+                    engine.scheduleNext()
                 }
             }
         }
-        scheduleNextCycle()
+        engine.scheduleNext()
     }
 
     override fun stop() {
@@ -171,13 +181,13 @@ class ReconcilerLiveMode(
 
     override fun refresh() {
         resetState()
-        scheduleNextCycle()
+        engine.scheduleNext()
     }
 
     override fun dismiss() {
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
         resetState()
-        scheduleNextCycle(Prefs(service).captureIntervalMs)
+        engine.scheduleNext(Prefs(service).captureIntervalMs)
     }
 
     override fun getCachedState(): CachedOverlayState? {
@@ -195,10 +205,12 @@ class ReconcilerLiveMode(
      * dead (adversarial-review finding). Geometry reseeds from the next OCR
      * pass.
      *
-     * The user-facing notification latch ([secureNotified]) deliberately live OUTSIDE this clear: their guards
-     * invoke it on every trip, and clearing the latch with it would re-emit
-     * the same message every cycle. They reset in [resetState] (mode
-     * restart) and where their condition clears.
+     * The user-facing notification latch ([secureNotified]) and the blackout
+     * clock ([blackSinceMs]) deliberately live OUTSIDE this clear: the black
+     * branch clears displayed state on every blackout, and clearing them
+     * with it would re-emit the message (or restart its clock) mid-blackout.
+     * They reset in [resetState] (mode restart) and where their condition
+     * clears.
      */
     private fun clearEvidenceState() {
         cachedBoxes?.let { presenter.onAnchorsDropped(it) }
@@ -209,31 +221,15 @@ class ReconcilerLiveMode(
         cropTop = 0
         screenshotW = 0
         screenshotH = 0
-        blackStreak = 0
-        forceNextCycle = true
+        engine.forceNext()
     }
 
     private fun resetState() {
-        currentJob?.cancel()
+        engine.cancelCurrent()
         clearEvidenceState()
-        inputBurstUntilMs = 0L
+        engine.resetInputBurst()
+        blackSinceMs = 0L
         secureNotified = false
-    }
-
-    /** Game input as a scoped change hint — same A4 semantics as the pinhole
-     *  tier: the burst window paces the next ~2.5s of cycles at the floor,
-     *  and a rate-limited kick wakes a parked loop immediately. Nothing is
-     *  hidden or reset — the reconciler decides what actually changed. */
-    private fun onGameInput() {
-        val now = SystemClock.uptimeMillis()
-        inputBurstUntilMs = now + PinholeCalibration.INPUT_BURST_MS
-        forceNextCycle = true
-        val floor = liveSource()?.minCaptureIntervalMs ?: 500L
-        if (now - lastInputKickMs >= floor) {
-            lastInputKickMs = now
-            currentJob?.cancel()
-            scheduleNextCycle()
-        }
     }
 
     /** This mode exists only on the MediaProjection stream; the resolver
@@ -241,67 +237,6 @@ class ReconcilerLiveMode(
      *  stream-kind check at the top of [runCycle]. */
     private fun liveSource(): LiveCaptureSource? =
         CaptureBackendResolver.liveCaptureSourceFor(displayId)
-
-    private fun scheduleNextCycle(delayMs: Long = 0) {
-        currentJob = scope.launch {
-            try {
-                if (delayMs > 0) delay(delayMs)
-                awaitCycleReason()
-                val nextDelay = runCycle()
-                scheduleNextCycle(nextDelay)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e(TAG, "runCycle failed, rescheduling", e)
-                forceNextCycle = true
-                scheduleNextCycle(Prefs(service).captureIntervalMs)
-            }
-        }
-    }
-
-    /**
-     * The delivery gate: park until there is a reason to run a cycle — a
-     * forced look, a hold (peek) in progress, a fresh delivery, or an open
-     * [StabilityHold] reaching its cap (the park is bounded by the earliest
-     * hold deadline; a static screen after a typewriter must still deliver
-     * the releasing read). Our own repaints never wake this gate — a task
-     * mirror doesn't composite them — which is exactly right: nothing we
-     * draw can change what needs reading.
-     */
-    private suspend fun awaitCycleReason() {
-        val signal = liveSource()?.deliverySignal ?: return
-        val debug = Prefs(service).debugLiveMode
-        var parkedAtMs = 0L
-        while (!forceNextCycle && !service.holdActive &&
-            signal.seqNow() <= signal.lastServedSeq
-        ) {
-            val deadline = holdDeadlineMs
-            val remainingMs = if (deadline == null) null
-            else deadline - SystemClock.uptimeMillis()
-            if (remainingMs != null && remainingMs <= 0) {
-                forceNextCycle = true
-                break
-            }
-            if (parkedAtMs == 0L) {
-                parkedAtMs = SystemClock.uptimeMillis()
-                if (debug) DetectionLog.log("D$displayId gate: parked at seq=${signal.seqNow()}")
-            }
-            if (remainingMs != null) {
-                withTimeoutOrNull(remainingMs) { signal.awaitSeqAfter(signal.lastServedSeq) }
-            } else {
-                signal.awaitSeqAfter(signal.lastServedSeq)
-            }
-        }
-        if (parkedAtMs != 0L && debug) {
-            val why = when {
-                forceNextCycle -> "forced"
-                service.holdActive -> "hold"
-                else -> "delivery seq=${signal.seqNow()}"
-            }
-            val ms = SystemClock.uptimeMillis() - parkedAtMs
-            DetectionLog.log("D$displayId gate: wake after ${ms}ms ($why)")
-        }
-    }
 
     /** Run one read→reconcile→update cycle. Returns the delay (ms) before the
      *  next cycle. */
@@ -319,11 +254,11 @@ class ReconcilerLiveMode(
         }
         val mgr = liveSource()
         if (mgr == null) {
-            forceNextCycle = true
+            engine.forceNext()
             return prefs.captureIntervalMs
         }
         if (CaptureBackendResolver.activeOverlayUi == null) {
-            forceNextCycle = true
+            engine.forceNext()
             return prefs.captureIntervalMs
         }
 
@@ -337,14 +272,13 @@ class ReconcilerLiveMode(
         val visibility = mgr.contentVisible
         if (visibility != null && !visibility.value) {
             visibility.first { it }
-            forceNextCycle = true
+            engine.forceNext()
             return 0L
         }
 
-
         cycleNum++
         val debug = prefs.debugLiveMode
-        forceNextCycle = false
+        engine.consumeForce()
 
         // A non-painting presenter on a contaminated source must not OCR
         // raw frames: they contain this app's own overlay UI (floating
@@ -379,7 +313,7 @@ class ReconcilerLiveMode(
             if (mgr.contentVisible != null && !controller.frameGeometryProven()) {
                 clearDisplayed()
             }
-            forceNextCycle = true
+            engine.forceNext()
             return prefs.captureIntervalMs
         }
         val raw = frame.bitmap
@@ -399,21 +333,27 @@ class ReconcilerLiveMode(
             // refuses to serve CLEAN frames while geometry is unproven or
             // non-fullscreen, so a frame reaching here is coordinate-safe.)
 
-            // Secure-content guard: FLAG_SECURE renders black, silently. The
-            // notified latch (not the streak) gates the message — the clear
-            // below zeroes the streak with the rest of the evidence state,
-            // and re-counting must not re-emit mid-blackout.
+            // Black-frame handling. A black frame is ORDINARY game content
+            // (loading screens, fades) far more often than FLAG_SECURE, so
+            // the two concerns split: displayed boxes clear immediately —
+            // exactly what an OCR of a black frame would do, minus the OCR
+            // cost, and stale boxes must never float over a blackout — while
+            // the secure-content MESSAGE needs sustained evidence (a blackout
+            // outliving any plausible loading screen) and fires at most once
+            // per session. The 3-consecutive-frames version fired a scary
+            // permission error on every long loading screen, re-emitted per
+            // episode (review finding).
             if (isAllBlack(raw)) {
-                blackStreak++
-                if (blackStreak >= SECURE_BLACK_STREAK && !secureNotified) {
+                val now = SystemClock.uptimeMillis()
+                if (blackSinceMs == 0L) blackSinceMs = now
+                if (cachedBoxes != null) clearDisplayed()
+                if (now - blackSinceMs >= SECURE_BLACK_NOTIFY_MS && !secureNotified) {
                     secureNotified = true
                     service.emitError(service.getString(R.string.error_capture_blocked_secure))
-                    clearDisplayed()
                 }
                 return prefs.captureIntervalMs
             }
-            blackStreak = 0
-            secureNotified = false
+            blackSinceMs = 0L
 
             // OCR the full crop. No status-bar exclusion: a task stream
             // contains no system UI — those top rows are game content.
@@ -488,10 +428,9 @@ class ReconcilerLiveMode(
                     presenter.emitNoText()
                 } else {
                     showBoxes(kept)
-                    presenter.emitApplied(
-                        kept, pipeline?.ocrResult, frame.includesSystemUi,
-                        mgr.saveToCache(raw, displayId),
-                    )
+                    presenter.emitApplied(kept, pipeline?.ocrResult, frame.includesSystemUi) {
+                        mgr.saveToCache(raw, displayId)
+                    }
                 }
                 return pacing(prefs)
             }
@@ -509,10 +448,9 @@ class ReconcilerLiveMode(
             )
             cachedBoxes = kept + finalAnchors
             showBoxes(kept + finalAnchors)
-            presenter.emitApplied(
-                kept + finalAnchors, pipeline?.ocrResult, frame.includesSystemUi,
-                mgr.saveToCache(raw, displayId),
-            )
+            presenter.emitApplied(kept + finalAnchors, pipeline?.ocrResult, frame.includesSystemUi) {
+                mgr.saveToCache(raw, displayId)
+            }
             return pacing(prefs)
         } finally {
             if (!raw.isRecycled) raw.recycle()
@@ -523,8 +461,7 @@ class ReconcilerLiveMode(
      *  never past an open hold's cap deadline, never below the source floor. */
     private fun pacing(prefs: Prefs): Long {
         val floor = liveSource()?.minCaptureIntervalMs ?: 500L
-        val base = if (SystemClock.uptimeMillis() < inputBurstUntilMs) floor
-        else prefs.captureIntervalMs
+        val base = if (engine.inInputBurst()) floor else prefs.captureIntervalMs
         val deadline = holdDeadlineMs ?: return base
         val untilCap = deadline - SystemClock.uptimeMillis()
         return maxOf(floor, minOf(base, untilCap))
@@ -577,8 +514,13 @@ class ReconcilerLiveMode(
     private companion object {
         const val TAG = "ReconcilerLive"
 
-        /** Consecutive all-black frames before the secure-content message. */
-        const val SECURE_BLACK_STREAK = 3
+        /** Continuous blackout (ms) before the secure-content message —
+         *  longer than any plausible loading screen or fade, because the
+         *  message reads as a permission problem and must not fire on
+         *  routine black game content. Only accrues while cycles run
+         *  (polling sources; an MP stream parked on a static black screen
+         *  never re-reads it — parity with the shipped behavior). */
+        const val SECURE_BLACK_NOTIFY_MS = 8_000L
 
         /** Per-channel level at or below which a sample counts as black. */
         const val BLACK_LEVEL_MAX = 12

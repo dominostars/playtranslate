@@ -87,13 +87,17 @@ class FuriganaPresenter(
         anchors.forEach { display.remove(it) }
     }
 
-    /** Furigana is an on-screen-only feature — the panel is untouched, same
-     *  as the legacy mode. */
+    /** No panel emission — the screenshot provider is never invoked, so no
+     *  JPEG is written. NOTE: this DIVERGES from the legacy [FuriganaMode],
+     *  which does send the OCR result to the panel for MT
+     *  ([CaptureService.translateAndSendToPanel], visibility-gated) —
+     *  whether the clean tier should match it is an open decision
+     *  (2026-07-10 review, finding 3). */
     override fun emitApplied(
         anchors: List<TextBox>,
         ocrResult: OcrManager.OcrResult?,
         frameIncludesSystemUi: Boolean,
-        screenshotPath: String?,
+        screenshotPath: () -> String?,
     ) = Unit
 
     override fun emitNoText() {

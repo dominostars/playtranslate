@@ -113,15 +113,13 @@ object ScanlineReconciler {
      * boxes verbatim, toTranslate as a placeholder skeleton then translated in
      * place) and hides the overlay when both are empty. [removals] and the four
      * counts are informational (stats line / panel sync). Invariants:
-     * `keptBoxes.size == unchanged + held`, `removals.size == missing`,
+     * `keptBoxes.size == unchanged`, `removals.size == missing`,
      * `toTranslate.size == changed + added`, and `repositioned <= unchanged`.
      */
     data class Verdicts(
         /** KEEP boxes. Verbatim when static; carrying the group's fresh bounds
          *  when the region drifted (see [repositioned]) — the translation is
-         *  never touched either way. HELD boxes (outside a scoped call's
-         *  evidence — see [reconcile]'s scope param) also pass through here,
-         *  always verbatim. */
+         *  never touched either way. */
         val keptBoxes: List<TextBox>,
         /** Regions to translate this cycle — RETRANSLATE (changed/retry) and
          *  NEW alike. Translated and rendered now. Changed entries precede
@@ -137,10 +135,6 @@ object ScanlineReconciler {
          *  bounds because the region drifted beyond [REPOSITION_HYSTERESIS_PX].
          *  A subset of [unchanged] (not a separate verdict); informational. */
         val repositioned: Int,
-        /** Scoped calls only: boxes outside the evidence scope, passed through
-         *  verbatim (never judged, never removed). Always 0 for full-frame
-         *  calls. `keptBoxes.size == unchanged + held`. */
-        val held: Int = 0,
     )
 
     /**
@@ -148,30 +142,15 @@ object ScanlineReconciler {
      * [groups] bounds and [boxes] bounds must share one coordinate space (the
      * mode keeps both in OCR-crop space — placeholders are built from group
      * bounds). See the class doc for the verdict semantics. Holds no state: the
-     * whole outcome is a function of these arguments.
-     *
-     * [scope] — the SCOPE CONTRACT ("scope ≡ exactly the pixels OCR saw").
-     * null = full-frame evidence, current semantics. Non-null = the OCR input
-     * covered only these rects: boxes NOT intersecting the scope are HELD —
-     * passed through verbatim, never judged, never removed (absence of
-     * out-of-scope evidence is not evidence of absence) — and groups outside
-     * the scope are IGNORED (a cropped OCR cannot assert anything beyond its
-     * crop). A box merely straddling the scope edge counts as in-scope.
-     * The clean-stream mode always passes null (full frames); the machinery is
-     * kept because it is pure, tested, and what any future cropped-read
-     * optimization would need.
+     * whole outcome is a function of these arguments. The evidence contract is
+     * FULL-FRAME: OCR must have seen the whole crop, because an unpaired box is
+     * removed — absence of evidence is treated as evidence of absence, which is
+     * only sound when the read covered everything.
      */
     fun reconcile(
         groups: List<OcrManager.OcrGroup>,
         boxes: List<TextBox>,
-        scope: List<Rect>? = null,
     ): Verdicts {
-        val inScopeGroup = BooleanArray(groups.size) { gi ->
-            scope == null || scope.any { r -> Rect.intersects(r, groups[gi].bounds) }
-        }
-        val inScopeBox = BooleanArray(boxes.size) { bi ->
-            scope == null || scope.any { r -> Rect.intersects(r, boxes[bi].bounds) }
-        }
         val groupClaimed = BooleanArray(groups.size)
         val boxGroup = arrayOfNulls<Int>(boxes.size)
 
@@ -180,12 +159,11 @@ object ScanlineReconciler {
         // so a same-region re-OCR whose text changed still pairs (→ RETRANSLATE)
         // instead of falling through to REMOVE + NEW.
         for ((bi, box) in boxes.withIndex()) {
-            if (!inScopeBox[bi]) continue // HELD below; never pairs
             var bestG = -1
             var bestOverlap = -1L
             var bestDist = Long.MAX_VALUE
             for ((gi, g) in groups.withIndex()) {
-                if (groupClaimed[gi] || !inScopeGroup[gi]) continue
+                if (groupClaimed[gi]) continue
                 if (!pairs(box.bounds, g.bounds, box.orientation, box.lineCount, g.lines.size)) continue
                 val ov = overlapArea(box.bounds, g.bounds)
                 val dist = centerDist2(box.bounds, g.bounds)
@@ -203,7 +181,6 @@ object ScanlineReconciler {
         val toTranslate = ArrayList<Region>()
         val removals = ArrayList<TextBox>()
         var uCount = 0; var cCount = 0; var mCount = 0; var nCount = 0; var rCount = 0
-        var hCount = 0
 
         fun regionOf(g: OcrManager.OcrGroup, replaces: TextBox? = null) = Region(
             text = g.text,
@@ -217,11 +194,6 @@ object ScanlineReconciler {
 
         // Displayed boxes → KEEP / RETRANSLATE / REMOVE.
         for ((bi, box) in boxes.withIndex()) {
-            if (!inScopeBox[bi]) {
-                // HELD — out of scope: verbatim pass-through, no judgment.
-                kept.add(box); hCount++
-                continue
-            }
             val gi = boxGroup[bi]
             if (gi == null) {
                 // REMOVE — the region is gone. One empty read suffices.
@@ -255,7 +227,7 @@ object ScanlineReconciler {
 
         // Unclaimed groups → NEW → translate immediately.
         for ((gi, g) in groups.withIndex()) {
-            if (groupClaimed[gi] || !inScopeGroup[gi]) continue
+            if (groupClaimed[gi]) continue
             toTranslate.add(regionOf(g)); nCount++
         }
 
@@ -268,54 +240,7 @@ object ScanlineReconciler {
             missing = mCount,
             added = nCount,
             repositioned = rCount,
-            held = hCount,
         )
-    }
-
-    /**
-     * Decompose "the frame minus [covered]" into rects — the SCOPE for a
-     * masked scan: OCR ran on a frame whose [covered] regions were blacked
-     * out, so the evidence is exactly the complement. Handing this to
-     * [reconcile]'s scope makes every displayed box HOLD (each is inside its
-     * own blacked rect) while uncovered groups pair/NEW normally — one scope
-     * contract, no asymmetric special case. Guillotine subtraction: each
-     * covered rect splits every intersecting scope rect into ≤4 remainders.
-     * Pure; JVM-tested. Unused by the clean-stream mode (full frames); kept
-     * with the scope machinery.
-     */
-    internal fun uncoveredScope(frameW: Int, frameH: Int, covered: List<Rect>): List<Rect> =
-        subtract(listOf(Rect(0, 0, frameW, frameH)), covered)
-
-    /**
-     * Guillotine subtraction of [covered] from [seeds] — the general scope
-     * builder behind [uncoveredScope]: a scoped read's evidence is its
-     * inflated trigger rects MINUS every region whose pixels were blacked
-     * before OCR — those pixels are our own paint, and "scope ≡ exactly the
-     * pixels OCR saw" means the true ones. Each covered rect splits every
-     * intersecting seed into ≤4 remainders. Pure; JVM-tested.
-     */
-    internal fun subtract(seeds: List<Rect>, covered: List<Rect>): List<Rect> {
-        var scope = seeds.filter { !it.isEmpty }.map { Rect(it) }.toMutableList()
-        for (c in covered) {
-            if (c.isEmpty) continue
-            val next = mutableListOf<Rect>()
-            for (r in scope) {
-                if (!Rect.intersects(r, c)) {
-                    next.add(r)
-                    continue
-                }
-                // Top / bottom slabs, then left / right slivers of the middle band.
-                if (c.top > r.top) next.add(Rect(r.left, r.top, r.right, c.top))
-                if (c.bottom < r.bottom) next.add(Rect(r.left, c.bottom, r.right, r.bottom))
-                val midTop = maxOf(r.top, c.top)
-                val midBottom = minOf(r.bottom, c.bottom)
-                if (c.left > r.left) next.add(Rect(r.left, midTop, c.left, midBottom))
-                if (c.right < r.right) next.add(Rect(c.right, midTop, r.right, midBottom))
-            }
-            scope = next
-            if (scope.isEmpty()) break
-        }
-        return scope
     }
 
     // ── Geometry helpers ─────────────────────────────────────────────────

@@ -11,17 +11,11 @@ import android.util.Log
 import android.view.Choreographer
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextDirection
-import com.playtranslate.model.TextSegments
-import com.playtranslate.model.TranslationResult
 import com.playtranslate.ui.TextBox
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import androidx.core.graphics.scale
@@ -63,7 +57,6 @@ class PinholeOverlayMode(
     override val flavor: OverlayFlavor = OverlayFlavor.TRANSLATION
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var currentJob: Job? = null
 
     // State
     private var cachedBoxes: List<TextBox>? = null
@@ -98,109 +91,20 @@ class PinholeOverlayMode(
         val glyphAnchorsHit: Int = 0,
     )
 
+    /** The shared pacing/gate/input scheduler — see [LiveCycleEngine] for
+     *  the delivery-gate and input-burst semantics. Our own repaints
+     *  composite into the whole-display mirror and count as deliveries, so
+     *  a parked loop can always be woken by anything that changes the
+     *  screen — including us. */
+    private val engine = LiveCycleEngine(
+        scope, service, displayId, "PinholeOverlayMode",
+        source = ::liveSource,
+    ) { runCycle() }
+
     override fun start() {
-        currentJob?.cancel()
-        CaptureBackendResolver.active().startInputMonitoring(displayId) { onGameInput() }
-        scheduleNextCycle()
-    }
-
-    /** Timestamp until which cycles pace at the backend floor because game
-     *  input predicted a change (audit A4). */
-    private var inputBurstUntilMs = 0L
-    private var lastInputKickMs = 0L
-
-    /**
-     * Game input as a scoped change hint (audit A4), replacing the previous
-     * dismiss-everything semantics: hide nothing, reset nothing. The burst
-     * window makes the next ~2.5s of cycles pace at the backend floor, the
-     * force opens the delivery gate, and the rate-limited kick wakes a
-     * parked loop immediately — so an input whose response is subtle (or
-     * still rendering) gets looked at right away instead of a full interval
-     * later. Detection then lifts only the regions that actually changed:
-     * static HUD boxes survive a tap, and tapping through dialogue no
-     * longer blanks every overlay on screen. Whether touches reach this at
-     * all is still gated by the touches-refresh pref at the sentinel layer,
-     * exactly as before; gamepad keys (accessibility backend) always do.
-     */
-    private fun onGameInput() {
-        val now = android.os.SystemClock.uptimeMillis()
-        inputBurstUntilMs = now + PinholeCalibration.INPUT_BURST_MS
-        forceNextCycle = true
-        val floor = liveSource()?.minCaptureIntervalMs ?: 500L
-        if (now - lastInputKickMs >= floor) {
-            lastInputKickMs = now
-            // Same cancel-and-relaunch the old dismiss path used; the new
-            // job's gate sees the force and runs at once. Cancelling a
-            // mid-flight cycle (even mid-translation) matches the previous
-            // input behavior.
-            currentJob?.cancel()
-            scheduleNextCycle()
-        }
-    }
-
-    private fun scheduleNextCycle(delayMs: Long = 0) {
-        currentJob = scope.launch {
-            try {
-                if (delayMs > 0) delay(delayMs)
-                awaitCycleReason()
-                val nextDelay = runCycle()
-                scheduleNextCycle(nextDelay)
-            } catch (e: CancellationException) {
-                // Normal cancellation (stop/refresh/dismiss) — propagate.
-                throw e
-            } catch (e: Exception) {
-                // Unexpected throw (display went away, WindowManager token
-                // invalidated, bitmap op on detached view, etc.). Log and
-                // reschedule so the cycle self-heals instead of silently
-                // going dormant. Force the retry — self-healing must not
-                // depend on the screen changing.
-                Log.e("PinholeOverlayMode", "runCycle failed, rescheduling", e)
-                forceNextCycle = true
-                scheduleNextCycle(Prefs(service).captureIntervalMs)
-            }
-        }
-    }
-
-    /**
-     * The delivery gate: park before the cycle until there is a reason to run
-     * it. Reasons, in the order checked:
-     *  - the capture source exposes no [DeliverySignal] (accessibility
-     *    `takeScreenshot` — no silence evidence, poll exactly as before);
-     *  - a hold is active ([runCycle]'s 100 ms hold-poll must keep polling);
-     *  - a forced cycle is pending ([forceNextCycle]);
-     *  - the mirror delivered a frame newer than the one the last cycle
-     *    consumed (`seqNow > lastServedSeq`).
-     *
-     * Pacing (the `delay` before this call) always runs first, so cycles can
-     * never fire closer together than they did on the blind timer — the gate
-     * only ever *skips* work. The park is a cancellable suspend;
-     * stop/refresh/dismiss cancel [currentJob] while parked exactly as they
-     * cancelled a pending `delay`. Our own repaints composite and count as
-     * deliveries, so a parked loop can always be woken by anything that
-     * changes the screen — including us.
-     */
-    private suspend fun awaitCycleReason() {
-        val signal = liveSource()?.deliverySignal ?: return
-        val debug = Prefs(service).debugLiveMode
-        var parkedAtMs = 0L
-        while (!forceNextCycle && !service.holdActive &&
-            signal.seqNow() <= signal.lastServedSeq
-        ) {
-            if (parkedAtMs == 0L) {
-                parkedAtMs = android.os.SystemClock.uptimeMillis()
-                if (debug) DetectionLog.log("D$displayId gate: parked at seq=${signal.seqNow()}")
-            }
-            signal.awaitSeqAfter(signal.lastServedSeq)
-        }
-        if (parkedAtMs != 0L && debug) {
-            val why = when {
-                forceNextCycle -> "forced"
-                service.holdActive -> "hold"
-                else -> "delivery seq=${signal.seqNow()}"
-            }
-            val ms = android.os.SystemClock.uptimeMillis() - parkedAtMs
-            DetectionLog.log("D$displayId gate: wake after ${ms}ms ($why)")
-        }
+        engine.cancelCurrent()
+        CaptureBackendResolver.active().startInputMonitoring(displayId) { engine.onGameInput() }
+        engine.scheduleNext()
     }
 
     override fun stop() {
@@ -213,7 +117,7 @@ class PinholeOverlayMode(
 
     override fun refresh() {
         resetState()
-        scheduleNextCycle()
+        engine.scheduleNext()
     }
 
     override fun getCachedState(): CachedOverlayState? {
@@ -224,36 +128,30 @@ class PinholeOverlayMode(
     override fun dismiss() {
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
         resetState()
-        scheduleNextCycle(Prefs(service).captureIntervalMs)
+        engine.scheduleNext(Prefs(service).captureIntervalMs)
     }
 
     private fun resetState() {
-        currentJob?.cancel()
+        engine.cancelCurrent()
         cachedBoxes = null
         cleanRefBitmap?.recycle()
         cleanRefBitmap = null
         overlayBitmap?.recycle()
         overlayBitmap = null
         outsideGrid.reset()
-        inputBurstUntilMs = 0L
+        engine.resetInputBurst()
         grayZoneStats.clear()
         grayZoneLastEmitMs = 0L
         // The gate is only meaningful relative to a previous look at the
         // screen. After a reset the model is empty (overlays hidden, caches
         // dropped), so the next cycle must run even in delivery silence —
         // otherwise a dismiss on a static screen parks forever with nothing
-        // shown.
-        forceNextCycle = true
+        // shown. Forced again by every failed/aborted cycle (self-heal must
+        // not depend on the screen changing) and every cycle that mutated
+        // the overlay (exactly one follow-up look — which, on a static
+        // screen, finds nothing, forces nothing, and lets the loop park).
+        engine.forceNext()
     }
-
-    /** Run the next cycle regardless of delivery silence. Starts true (the
-     *  bootstrap look), set again by every state reset ([resetState]), every
-     *  failed/aborted cycle (self-heal must not depend on the screen
-     *  changing), and every cycle that mutated the overlay (exactly one
-     *  follow-up look — which, on a static screen, finds nothing, forces
-     *  nothing, and lets the loop park). Cleared right before each capture
-     *  attempt. Main-thread only, like the rest of the mode's state. */
-    private var forceNextCycle = true
 
     /** Sticky per-instance fallback: set when the identity-scale guard trips
      *  on the MediaProjection stream (the unresolved capture-vs-overlay size
@@ -322,7 +220,7 @@ class PinholeOverlayMode(
         if (mgr == null) {
             // Backend unavailable (service unbinding / mid-swap). Retry
             // unconditionally — recovery must not wait for a delivery.
-            forceNextCycle = true
+            engine.forceNext()
             return prefs.captureIntervalMs
         }
         if (CaptureBackendResolver.activeOverlayUi == null) {
@@ -332,7 +230,7 @@ class PinholeOverlayMode(
             // instead of burning OCR + translation on output showLiveOverlay
             // will drop. Poll-retry until the host returns or reresolve stops
             // this mode.
-            forceNextCycle = true
+            engine.forceNext()
             return prefs.captureIntervalMs
         }
         cycleNum++
@@ -347,8 +245,7 @@ class PinholeOverlayMode(
         // gate whenever the screen is static — a box-set change carries zero
         // outside-pixel evidence — and text uncovered by a removal waits for
         // the reconcile (observed: 26s, 2026-07-08 campfire-menu forensics).
-        val forcedLook = forceNextCycle
-        forceNextCycle = false
+        val forcedLook = engine.consumeForce()
 
         // Capture. Boxes that pinhole detection flags as changed are
         // removed and re-OCR'd on the next cycle; there is no longer a
@@ -362,7 +259,7 @@ class PinholeOverlayMode(
             // Transient capture failure — a persistently failing capture must
             // keep retrying every interval, not park silently until the
             // screen happens to change.
-            forceNextCycle = true
+            engine.forceNext()
             return prefs.captureIntervalMs
         }
 
@@ -370,9 +267,9 @@ class PinholeOverlayMode(
             // Mid-cycle dimension changes (rotation, display resize) invalidate
             // cleanRef and the cached state. Mirrors FuriganaMode.handleRawFrame's
             // mid-cycle recovery. Clear state inline — do NOT call resetState()
-            // from here, because resetState cancels currentJob (which IS the
-            // currently-running job). Self-cancellation works via cooperative
-            // cancellation but is subtle; inline clearing is clearer.
+            // from here, because resetState cancels the engine's current job
+            // (which IS the currently-running job). Self-cancellation works via
+            // cooperative cancellation but is subtle; inline clearing is clearer.
             val existingRef = cleanRefBitmap
             if (existingRef != null &&
                 (raw.width != existingRef.width || raw.height != existingRef.height)) {
@@ -389,7 +286,7 @@ class PinholeOverlayMode(
                 CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                 // State cleared + overlay hidden: the rebuild cycle must run
                 // even if the post-rotation screen goes immediately static.
-                forceNextCycle = true
+                engine.forceNext()
                 return prefs.captureIntervalMs
             }
 
@@ -445,12 +342,12 @@ class PinholeOverlayMode(
                         "D$displayId identity mismatch (view=${coords.viewWidth}x${coords.viewHeight} " +
                             "bitmap=${raw.width}x${raw.height}) — falling back to accessibility capture"
                     )
-                    forceNextCycle = true
+                    engine.forceNext()
                     return mgr.minCaptureIntervalMs
                 }
                 // Preserve the retry-every-interval*3 semantics under the
                 // gate — parking here would hide the failure.
-                forceNextCycle = true
+                engine.forceNext()
                 return prefs.captureIntervalMs * 3
             }
 
@@ -522,7 +419,7 @@ class PinholeOverlayMode(
                 ) {
                     // A moving-but-differing block must get a floor-paced
                     // follow-up look even if the screen has gone silent.
-                    if (outside.pendingSettle) forceNextCycle = true
+                    if (outside.pendingSettle) engine.forceNext()
                     gateSkipStreak++
                     if (debug) {
                         DetectionLog.log(
@@ -538,8 +435,7 @@ class PinholeOverlayMode(
                     // mid-settle — K=2 settle discipline at floor pacing
                     // costs ~0.5s; at interval pacing it tripled reaction
                     // time in the field (2026-07-08 regression).
-                    val fastSkip = outside.pendingSettle ||
-                        android.os.SystemClock.uptimeMillis() < inputBurstUntilMs
+                    val fastSkip = outside.pendingSettle || engine.inInputBurst()
                     return if (fastSkip) mgr.minCaptureIntervalMs else prefs.captureIntervalMs
                 }
                 pinholePre = outcomes
@@ -637,7 +533,7 @@ class PinholeOverlayMode(
                     overlayBitmap?.recycle()
                     overlayBitmap = null
                     CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
-                    forceNextCycle = true
+                    engine.forceNext()
                     return prefs.captureIntervalMs
                 }
             }
@@ -893,7 +789,9 @@ class PinholeOverlayMode(
                 if (cachedBoxes.isNullOrEmpty()) {
                     service.handleNoTextDetected(displayId)
                 } else {
-                    sendFullStateToPanel(mgr.saveToCache(raw, displayId))
+                    // Lazy path: the JPEG save only runs when the panel is
+                    // actually visible (inside sendFullStateToPanel's gate).
+                    sendFullStateToPanel { mgr.saveToCache(raw, displayId) }
                 }
             }
 
@@ -904,7 +802,7 @@ class PinholeOverlayMode(
             //     screen the follow-up finds nothing, forces nothing, and the
             //     loop parks.
             if (anyChanged || farOcrGroups.isNotEmpty()) {
-                forceNextCycle = true
+                engine.forceNext()
                 // The overlay layout changed: block membership under the
                 // exclusion rects shifted and the reference re-baselined, so
                 // the outside grid's temporal state is stale.
@@ -920,9 +818,7 @@ class PinholeOverlayMode(
                         "removed=${allRemovals.size} far=${farOcrGroups.size}"
                 )
             }
-            val inInputBurst =
-                android.os.SystemClock.uptimeMillis() < inputBurstUntilMs
-            return if (anyRemoved || inInputBurst) {
+            return if (anyRemoved || engine.inInputBurst()) {
                 mgr.minCaptureIntervalMs
             } else {
                 prefs.captureIntervalMs
@@ -1333,31 +1229,18 @@ class PinholeOverlayMode(
     // ── Panel ────────────────────────────────────────────────────────────
 
     /**
-     * Build a TranslationResult from ALL current cachedBoxes and send to the
-     * in-app panel. No re-OCR is needed — every cached box already carries
-     * its sourceText + translatedText.
+     * Send ALL current cachedBoxes to the in-app panel. No re-OCR is needed —
+     * every cached box already carries its sourceText + translatedText.
+     * [screenshotPath] is invoked only past the visibility gate — it is a
+     * synchronous JPEG write of the frame, wasted whenever the panel is
+     * hidden (single-screen mode, the default). Boxes go out in cachedBoxes
+     * order, as this tier always has (no reading-order sort — deliberate
+     * byte-parity with the shipped behavior).
      */
-    private fun sendFullStateToPanel(screenshotPath: String?) {
+    private fun sendFullStateToPanel(screenshotPath: () -> String?) {
         val boxes = cachedBoxes ?: return
-        val appPanelVisible = !Prefs.isSingleScreen(service) && MainActivity.isInForeground
-        if (!appPanelVisible) return
-
-        val originalText = boxes.filter { it.sourceText.isNotEmpty() }
-            .joinToString("\n") { it.sourceText }
-        val translatedText = boxes.filter { it.translatedText.isNotEmpty() }
-            .joinToString("\n\n") { it.translatedText }
-        val segments = TextSegments.ofLines(boxes.map { it.sourceText })
-        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
-            .format(java.util.Date())
-
-        service.emitResult(TranslationResult(
-            originalText = originalText,
-            segments = segments,
-            translatedText = translatedText,
-            timestamp = timestamp,
-            screenshotPath = screenshotPath,
-            langContext = Prefs(service).langContext(),
-        ))
+        if (!service.appPanelVisible()) return
+        service.emitPanelResult(OverlayToolkit.panelTexts(boxes), screenshotPath())
     }
 
     // ── Translation Helpers ─────────────────────────────────────────────

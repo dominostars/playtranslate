@@ -1,8 +1,6 @@
 package com.playtranslate
 
 import com.playtranslate.capture.CapturedFrame
-import com.playtranslate.model.TextSegments
-import com.playtranslate.model.TranslationResult
 import com.playtranslate.ui.TextBox
 
 /**
@@ -47,36 +45,23 @@ class TranslationPresenter(
     }
 
     /** Full displayed state to the in-app panel — same shape as the pinhole
-     *  tier's panel sync, gated on the panel actually being visible. */
+     *  tier's panel sync, gated on the panel actually being visible. The
+     *  screenshot write only runs past the gate (single-screen mode — the
+     *  default — never pays it). */
     override fun emitApplied(
         anchors: List<TextBox>,
         ocrResult: OcrManager.OcrResult?,
         frameIncludesSystemUi: Boolean,
-        screenshotPath: String?,
+        screenshotPath: () -> String?,
     ) {
-        val appPanelVisible = !Prefs.isSingleScreen(service) && MainActivity.isInForeground
-        if (!appPanelVisible) return
-
-        val ordered = OverlayToolkit.panelReadingOrder(anchors, ocrResult)
-        val originalText = ordered.filter { it.sourceText.isNotEmpty() }
-            .joinToString("\n") { it.sourceText }
-        val translatedText = ordered.filter { it.translatedText.isNotEmpty() }
-            .joinToString("\n\n") { it.translatedText }
-        val segments = TextSegments.ofLines(ordered.map { it.sourceText })
-        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
-            .format(java.util.Date())
-
-        service.emitResult(TranslationResult(
-            originalText = originalText,
-            segments = segments,
-            translatedText = translatedText,
-            timestamp = timestamp,
-            screenshotPath = screenshotPath,
+        if (!service.appPanelVisible()) return
+        service.emitPanelResult(
+            OverlayToolkit.panelTexts(OverlayToolkit.panelReadingOrder(anchors, ocrResult)),
+            screenshotPath(),
             ocrProvenance = ocrResult?.let {
                 service.panelOcrProvenance(it, displayId, frameIncludesSystemUi)
             },
-            langContext = Prefs(service).langContext(),
-        ))
+        )
     }
 
     override fun emitNoText() {

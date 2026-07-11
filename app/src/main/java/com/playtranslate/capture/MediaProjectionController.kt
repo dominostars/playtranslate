@@ -22,6 +22,7 @@ import com.playtranslate.DetectionLog
 import com.playtranslate.PlayTranslateTileService
 import com.playtranslate.Prefs
 import com.playtranslate.displaySizePx
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -458,6 +459,15 @@ class MediaProjectionController(private val service: CaptureService) {
                     cleanServedCount++
                 }
             }
+        } catch (e: CancellationException) {
+            // MUST rethrow, never count: live modes cancel their cycle jobs
+            // mid-capture by design (input kick, visibility hide). Swallowing
+            // the cancellation here let the cancelled cycle return normally
+            // and launch its successor — forking a second, untracked cycle
+            // chain next to the canceller's replacement, alive until mode
+            // stop — and logged every cancel as a capture failure in the
+            // counters that exist to catch REAL silent failures.
+            throw e
         } catch (e: Exception) {
             noteFailure(clean = !advanceCursor, reason = "decode: ${e.message}")
         } finally {

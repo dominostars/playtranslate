@@ -1979,6 +1979,35 @@ class CaptureService : Service() {
         return perGroup
     }
 
+    /** Whether the in-app panel is on screen to receive live results —
+     *  the shared gate for every live tier's panel sync. */
+    internal fun appPanelVisible(): Boolean =
+        !Prefs.isSingleScreen(this) && MainActivity.isInForeground
+
+    /** Emit a live tier's displayed state to the in-app panel — the ONE
+     *  emission shape shared by the pinhole tier and the reconciler
+     *  presenters (build [texts] via [OverlayToolkit.panelTexts]; gating
+     *  and ordering policy stay with the caller, where they genuinely
+     *  differ). [screenshotPath] is a synchronous JPEG write — callers
+     *  invoke it (lazily) only on paths that actually emit. */
+    internal fun emitPanelResult(
+        texts: OverlayToolkit.PanelTexts,
+        screenshotPath: String?,
+        ocrProvenance: OcrProvenance? = null,
+    ) {
+        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date())
+        emitResult(TranslationResult(
+            originalText = texts.originalText,
+            segments = texts.segments,
+            translatedText = texts.translatedText,
+            timestamp = timestamp,
+            screenshotPath = screenshotPath,
+            ocrProvenance = ocrProvenance,
+            langContext = Prefs(this).langContext(),
+        ))
+    }
+
     /** Called by a per-display LiveMode when its OCR pass finds no source-
      *  language text on [displayId]: clears that display's overlay pair
      *  and notifies the in-app panel. The panel emit is intentionally

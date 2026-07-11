@@ -1,7 +1,6 @@
 package com.playtranslate
 
 import com.playtranslate.capture.CapturedFrame
-import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.ui.TextBox
 
@@ -58,30 +57,21 @@ class PanelPresenter(
         anchors: List<TextBox>,
         ocrResult: OcrManager.OcrResult?,
         frameIncludesSystemUi: Boolean,
-        screenshotPath: String?,
+        screenshotPath: () -> String?,
     ) {
-        val ordered = OverlayToolkit.panelReadingOrder(anchors, ocrResult)
-        val originalText = ordered.filter { it.sourceText.isNotEmpty() }
-            .joinToString("\n") { it.sourceText }
-        val translatedText = ordered.filter { it.translatedText.isNotEmpty() }
-            .joinToString("\n\n") { it.translatedText }
-        val segments = TextSegments.ofLines(ordered.map { it.sourceText })
-        if (originalText to translatedText == lastEmitted) return
-        lastEmitted = originalText to translatedText
-        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
-            .format(java.util.Date())
-
-        service.emitResult(TranslationResult(
-            originalText = originalText,
-            segments = segments,
-            translatedText = translatedText,
-            timestamp = timestamp,
-            screenshotPath = screenshotPath,
+        val texts = OverlayToolkit.panelTexts(
+            OverlayToolkit.panelReadingOrder(anchors, ocrResult),
+        )
+        if (texts.originalText to texts.translatedText == lastEmitted) return
+        lastEmitted = texts.originalText to texts.translatedText
+        // Screenshot write only past the dedup — a reposition-only cycle
+        // must not pay the JPEG.
+        service.emitPanelResult(
+            texts, screenshotPath(),
             ocrProvenance = ocrResult?.let {
                 service.panelOcrProvenance(it, displayId, frameIncludesSystemUi)
             },
-            langContext = Prefs(service).langContext(),
-        ))
+        )
     }
 
     override fun emitNoText() {

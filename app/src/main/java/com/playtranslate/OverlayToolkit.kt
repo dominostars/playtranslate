@@ -99,6 +99,27 @@ object OverlayToolkit {
         }
     }
 
+    /** The panel-facing text triple built from displayed boxes — ONE shape
+     *  for every live tier's panel sync ([CaptureService.emitPanelResult]).
+     *  Extracted because three hand-kept copies of the filter/join rules had
+     *  already diverged once (provenance). */
+    class PanelTexts(
+        val originalText: String,
+        val translatedText: String,
+        val segments: List<com.playtranslate.model.TextSegment>,
+    )
+
+    /** Build the panel texts from [ordered] boxes (the caller's chosen panel
+     *  order — [panelReadingOrder] for the reconciler tier, cachedBoxes
+     *  verbatim for the pinhole tier). */
+    fun panelTexts(ordered: List<TextBox>): PanelTexts = PanelTexts(
+        originalText = ordered.filter { it.sourceText.isNotEmpty() }
+            .joinToString("\n") { it.sourceText },
+        translatedText = ordered.filter { it.translatedText.isNotEmpty() }
+            .joinToString("\n\n") { it.translatedText },
+        segments = com.playtranslate.model.TextSegments.ofLines(ordered.map { it.sourceText }),
+    )
+
     /** Does detected text have significant additions over existing? */
     fun hasSignificantAdditions(existing: String, detected: String): Boolean {
         val bag = existing.groupingBy { it }.eachCount().toMutableMap()

@@ -56,12 +56,16 @@ interface LivePresenter {
 
     /** Applied-state emission (panel policy). [ocrResult] and
      *  [frameIncludesSystemUi] support provenance for presenters whose panel
-     *  result is the product. */
+     *  result is the product. [screenshotPath] performs a synchronous JPEG
+     *  write of the cycle's frame — invoke it lazily, only on paths that
+     *  actually emit (a presenter that ignores it, or gates on panel
+     *  visibility, must not pay the write), and only synchronously within
+     *  this call: the frame backing it is recycled when the cycle ends. */
     fun emitApplied(
         anchors: List<TextBox>,
         ocrResult: OcrManager.OcrResult?,
         frameIncludesSystemUi: Boolean,
-        screenshotPath: String?,
+        screenshotPath: () -> String?,
     )
 
     /** The no-text outcome (panel/overlay policy). */
