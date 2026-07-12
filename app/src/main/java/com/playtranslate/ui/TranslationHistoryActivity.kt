@@ -87,14 +87,18 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
             isVisible = true
         }
         val toggle = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        // Seed BEFORE attaching the listener so restoring the saved state
+        // doesn't fire a redundant write.
         toggle.isChecked = Prefs(this).translationHistoryEnabled
-        // The row is the tap target; read the new value at tap time.
-        row.setOnClickListener {
-            val enabled = !toggle.isChecked
-            toggle.isChecked = enabled
-            Prefs(this).translationHistoryEnabled = enabled
+        // SINGLE persistence path: every state change — row tap, any direct
+        // switch interaction (a11y actions; the layout keeps the switch
+        // non-clickable for touch), programmatic — funnels through the
+        // checked-change listener. The row tap only toggles.
+        toggle.setOnCheckedChangeListener { _, checked ->
+            Prefs(this).translationHistoryEnabled = checked
             updateEmptyState()
         }
+        row.setOnClickListener { toggle.toggle() }
     }
 
     private suspend fun reloadNow() {
