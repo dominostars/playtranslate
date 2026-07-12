@@ -426,7 +426,7 @@ class SentenceAnkiContentFragment : Fragment() {
      *  editor). No-ops (cell stays Auto, like a card opened without
      *  recording) when nothing was saved or the snapshot didn't survive —
      *  realistic restores happen minutes later and find the file; only a
-     *  >6 h zombie loses it to the orphan sweep or an OS cache purge. */
+     *  >24 h zombie loses it to the orphan sweep or an OS cache purge. */
     private fun restoreGameAudioState(state: Bundle) {
         val path = state.getString(STATE_GAME_SNAPSHOT_PATH) ?: return
         val wav = File(path)

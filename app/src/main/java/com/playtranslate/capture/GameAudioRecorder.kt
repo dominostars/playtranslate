@@ -319,16 +319,19 @@ class GameAudioRecorder(
             ring.copyInto(pcm, 0, start, start + firstLen)
             if (firstLen < available) ring.copyInto(pcm, firstLen, 0, available - firstLen)
         }
-        val out = GameAudioSnapshot.newFile(service)
+        var out: File? = null
         return try {
-            out.parentFile?.mkdirs()
+            // Creation sits inside the try: exclusive-create can throw
+            // (disk full), and snapshot failure means "no recording", not
+            // a crash in the card-open coroutine.
+            out = GameAudioSnapshot.newFile(service)
             GameAudioSnapshot.sweepOrphans(service)
             writeWav(pcm, out)
             Log.i(TAG, "snapshot: ${pcm.size / SAMPLE_RATE}s → ${out.name}")
             out
         } catch (e: Exception) {
             Log.e(TAG, "snapshot write failed", e)
-            out.delete()
+            out?.delete()
             null
         }
     }

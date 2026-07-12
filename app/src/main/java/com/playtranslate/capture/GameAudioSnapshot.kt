@@ -21,7 +21,7 @@ import java.io.File
  * audio after snapshot churn" races is structurally impossible rather than
  * guarded against at every consumer. The mtime baked into selection keys
  * remains as cache-key identity and as a fail-closed backstop for the
- * residual cases (OS cache purge, orphan sweep of a >6 h zombie sheet).
+ * residual cases (OS cache purge, orphan sweep of a >24 h zombie sheet).
  *
  * Deliberately NOT in [com.playtranslate.audio.AudioCache]: a ~16 MB
  * snapshot would evict real pronunciation clips from the 64 MB LRU.
@@ -32,9 +32,13 @@ object GameAudioSnapshot {
     private const val WAV_HEADER_BYTES = 44L
     private const val PREFIX = "snap-"
 
-    /** Crash leftovers older than this are reaped by [sweepOrphans]. A live
-     *  lingering sheet is hours-fresh; its file survives. */
-    private const val ORPHAN_MAX_AGE_MS = 6L * 60 * 60 * 1000
+    /** Crash leftovers older than this are reaped by [sweepOrphans].
+     *  Generous on purpose: after process death the launch-time sweep runs
+     *  before any activity restore can re-own its file, so the TTL is the
+     *  only protection that window has. A day-old zombie is one ~16 MB
+     *  cache file; a day-old restore losing its reviewed clip is
+     *  user-visible data loss. */
+    private const val ORPHAN_MAX_AGE_MS = 24L * 60 * 60 * 1000
 
     /** The snapshot backing the card flow the user is currently in — set by
      *  the sentence fragment on create/resume, cleared on its destroy. Lets
@@ -46,19 +50,29 @@ object GameAudioSnapshot {
 
     fun dir(ctx: Context): File = File(ctx.cacheDir, "game-audio")
 
-    /** A fresh, unique snapshot path for one card flow. */
+    /** A fresh snapshot file for one card flow — exclusively created (zero
+     *  bytes, [isUsable] false until the WAV payload lands) so two card
+     *  opens in the same millisecond can never alias one path and break
+     *  per-card immutability. Throws on I/O failure; callers already treat
+     *  snapshot failure as "no recording". */
     fun newFile(ctx: Context): File =
-        File(dir(ctx), "$PREFIX${System.currentTimeMillis()}.wav")
+        File.createTempFile(PREFIX, ".wav", dir(ctx).apply { mkdirs() })
 
     /** True when [f] is a snapshot with actual audio (not just a header). */
     fun isUsable(f: File?): Boolean =
         f != null && f.exists() && f.length() > WAV_HEADER_BYTES
 
     /** Delete snapshot files no card flow can still own. Called from the
-     *  recorder's snapshot path (already on IO). */
+     *  recorder's snapshot path (already on IO) and at app launch. The
+     *  [active] file is exempt regardless of age — an in-process card flow
+     *  that outlives the TTL must not lose its file to a newer card's
+     *  sweep; age is only trusted as proof of orphaning for files no live
+     *  flow claims. */
     fun sweepOrphans(ctx: Context) {
         val now = System.currentTimeMillis()
+        val live = active
         dir(ctx).listFiles()?.forEach { f ->
+            if (f == live) return@forEach
             if (f.name.startsWith(PREFIX) && now - f.lastModified() > ORPHAN_MAX_AGE_MS) {
                 f.delete()
             }
