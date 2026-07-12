@@ -63,6 +63,10 @@ class TranslationLogRecorderTest {
             target.value.translation = translation
             return 1
         }
+
+        override suspend fun attachById(rowId: Long, translation: String, backendDisplayName: String?) {
+            rows.getValue(rowId).translation = translation
+        }
     }
 
     private lateinit var sink: FakeSink
@@ -195,6 +199,30 @@ class TranslationLogRecorderTest {
         assertEquals(1, sink.rows.size)
         assertEquals("Hello, everyone.", sink.rows.getValue(1L).translation)
         // The completed pair enters the context ring.
+        assertTrue(recorder.contextBlockFor("ja", "en").contains("Hello, everyone."))
+    }
+
+    @Test
+    fun historyEntryTranslationAttachesToTheExactRow_neverItsTwin() {
+        // Codex regression: twin translation-less rows share a normKey
+        // across sessions; tapping the OLDER row must fill row 1, not the
+        // newest key match.
+        recorder.onShownDeliberate(
+            "こんにちは、世界のみなさん。", null, null, "ja", "en",
+            TranslationHistoryStore.PROVENANCE_LOOKUP,
+        )
+        recorder.onHistoryCleared() // new session: gate forgets, rows persist
+        recorder.onShownDeliberate(
+            "こんにちは、世界のみなさん。", null, null, "ja", "en",
+            TranslationHistoryStore.PROVENANCE_LOOKUP,
+        )
+        assertEquals(2, sink.rows.size)
+        recorder.onHistoryEntryTranslated(
+            1L, "こんにちは、世界のみなさん。", "Hello, everyone.", "ja", "en",
+        )
+        assertEquals("Hello, everyone.", sink.rows.getValue(1L).translation)
+        assertEquals(null, sink.rows.getValue(2L).translation)
+        // The completed pair still feeds the context ring.
         assertTrue(recorder.contextBlockFor("ja", "en").contains("Hello, everyone."))
     }
 

@@ -260,6 +260,11 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
                     putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_TRANSLATION_SOURCE, it)
                 }
             }
+            // Row identity + stored pair: a late translation attaches to
+            // exactly this row, and only when the pair still matches.
+            putExtra(TranslationResultActivity.EXTRA_HISTORY_ENTRY_ID, entry.id)
+            putExtra(TranslationResultActivity.EXTRA_HISTORY_SOURCE_LANG, entry.sourceLang)
+            putExtra(TranslationResultActivity.EXTRA_HISTORY_TARGET_LANG, entry.targetLang)
             putExtra(
                 TranslationResultActivity.EXTRA_TOOLBAR_TITLE,
                 titleFormat.format(Date(entry.atMs)),

@@ -718,13 +718,35 @@ class TranslationResultActivity :
                 // leaving it translation-less forever.
                 if (groupTranslation.text.isNotEmpty()) {
                     val logPrefs = Prefs(applicationContext)
-                    svc.translationLogRecorder.onDeliberateTranslation(
-                        sentenceText, groupTranslation.text,
-                        com.playtranslate.language.SourceLanguageProfiles[logPrefs.sourceLangId].translationCode,
-                        logPrefs.targetLang,
-                        com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_LOOKUP,
-                        groupTranslation.backendDisplayName,
-                    )
+                    val currentSource = com.playtranslate.language
+                        .SourceLanguageProfiles[logPrefs.sourceLangId].translationCode
+                    val currentTarget = logPrefs.targetLang
+                    val historyRowId = intent.getLongExtra(EXTRA_HISTORY_ENTRY_ID, -1L)
+                    if (historyRowId >= 0) {
+                        // History row tap: attach to EXACTLY that row (twin
+                        // rows can share a key across sessions), and only
+                        // when this translation's pair matches the row's
+                        // stored pair — a cross-pair result stays display-
+                        // only rather than corrupting a row that claims a
+                        // different pair (translateOnce runs under current
+                        // prefs; target-side overrides aren't plumbed).
+                        val storedSource = intent.getStringExtra(EXTRA_HISTORY_SOURCE_LANG)
+                        val storedTarget = intent.getStringExtra(EXTRA_HISTORY_TARGET_LANG)
+                        if (storedSource == currentSource && storedTarget == currentTarget) {
+                            svc.translationLogRecorder.onHistoryEntryTranslated(
+                                historyRowId, sentenceText, groupTranslation.text,
+                                currentSource, currentTarget,
+                                groupTranslation.backendDisplayName,
+                            )
+                        }
+                    } else {
+                        svc.translationLogRecorder.onDeliberateTranslation(
+                            sentenceText, groupTranslation.text,
+                            currentSource, currentTarget,
+                            com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_LOOKUP,
+                            groupTranslation.backendDisplayName,
+                        )
+                    }
                 }
                 val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                 val result = TranslationResult(
@@ -866,6 +888,13 @@ class TranslationResultActivity :
         /** Optional toolbar title (centered) — History entry launches pass
          *  the entry's date/time. Absent for every other launch path. */
         const val EXTRA_TOOLBAR_TITLE = "extra_toolbar_title"
+
+        /** History-tap identity: the tapped row's id plus its STORED
+         *  language pair, so a late translation attaches to exactly that
+         *  row and only under a matching pair (see handleSentenceMode). */
+        const val EXTRA_HISTORY_ENTRY_ID = "extra_history_entry_id"
+        const val EXTRA_HISTORY_SOURCE_LANG = "extra_history_source_lang"
+        const val EXTRA_HISTORY_TARGET_LANG = "extra_history_target_lang"
         /** Sentence's tokenized word lookups, serialized as four parallel
          *  arrays (mirrors [WordDetailBottomSheet]'s args bundle layout).
          *  Captured by the drag controller at lens-dismiss time so the

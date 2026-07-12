@@ -177,6 +177,23 @@ object TranslationHistoryStore {
         affected
     }
 
+    /** Fill EXACTLY [id] with a translation produced after the fact (History
+     *  row tap → results-page translate). Row identity is the caller's — no
+     *  key matching, so twin rows sharing a normKey across sessions can
+     *  never receive each other's translation. */
+    suspend fun attachTranslationById(
+        ctx: Context,
+        id: Long,
+        translation: String,
+        backendDisplayName: String?,
+    ): Unit = withContext(dispatcher) {
+        openDb(ctx).execSQL(
+            "UPDATE entries SET translation = ?, backend = COALESCE(?, backend) WHERE id = ?",
+            arrayOf(translation, backendDisplayName, id.toString()),
+        )
+        _revision.value++
+    }
+
     /** Newest first. */
     suspend fun recent(ctx: Context, limit: Int): List<HistoryEntry> = withContext(dispatcher) {
         val out = ArrayList<HistoryEntry>(limit)

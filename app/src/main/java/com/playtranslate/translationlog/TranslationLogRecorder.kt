@@ -54,6 +54,8 @@ class TranslationLogRecorder(
         suspend fun update(rowId: Long, sourceText: String, translation: String?, atMs: Long, normKey: String)
 
         suspend fun attachByKey(normKey: String, translation: String, backendDisplayName: String?): Int
+
+        suspend fun attachById(rowId: Long, translation: String, backendDisplayName: String?)
     }
 
     private class StoreSink(private val ctx: Context) : HistorySink {
@@ -71,6 +73,9 @@ class TranslationLogRecorder(
 
         override suspend fun attachByKey(normKey: String, translation: String, backendDisplayName: String?): Int =
             TranslationHistoryStore.attachTranslationByKey(ctx, normKey, translation, backendDisplayName)
+
+        override suspend fun attachById(rowId: Long, translation: String, backendDisplayName: String?) =
+            TranslationHistoryStore.attachTranslationById(ctx, rowId, translation, backendDisplayName)
     }
 
     private val prefs = Prefs(appContext)
@@ -171,6 +176,38 @@ class TranslationLogRecorder(
     fun onEntryDeleted(normKey: String) = guarded {
         gate?.forget(normKey)
         rowIds.remove(normKey)
+    }
+
+    /** A History row the user tapped got its translation on the results
+     *  page: attach to EXACTLY that row (twin rows can share a normKey
+     *  across sessions — key matching must never pick for the user). The
+     *  caller guarantees the language pair matches the row's stored pair;
+     *  cross-pair translations are display-only and never attach. */
+    fun onHistoryEntryTranslated(
+        rowId: Long,
+        source: String,
+        translation: String,
+        sourceLang: String,
+        targetLang: String,
+        backendDisplayName: String? = null,
+    ) = guarded {
+        if (translation.isBlank()) return@guarded
+        val historyOn = prefs.translationHistoryEnabled
+        val contextOn = prefs.llmContextEnabled
+        if (historyOn) {
+            scope.launch {
+                runCatching { sink.attachById(rowId, translation, backendDisplayName) }
+                    .onFailure { Log.w(TAG, "attach-by-id failed: ${it.message}") }
+            }
+        }
+        if (contextOn) {
+            val key = LogWriteGate.normalizedKey(source, sourceLang)
+            ring.push(
+                ContextRing.ContextPair(
+                    source, translation, System.currentTimeMillis(), key, sourceLang, targetLang,
+                )
+            )
+        }
     }
 
     /** A translation arrived for a deliberate entry recorded earlier
