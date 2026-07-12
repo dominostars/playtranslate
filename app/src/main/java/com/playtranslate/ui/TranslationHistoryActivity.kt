@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.doOnNextLayout
@@ -15,10 +16,6 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.DiffUtil
-import androidx.recyclerview.widget.ItemTouchHelper
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
@@ -37,75 +34,40 @@ import kotlinx.coroutines.launch
 /**
  * Tools → History: the reading surface for the translation log. Hosts its
  * OWN master switch (enable/consume/clear all live at one address — the
- * empty state doubles as onboarding when the feature is off) and a
- * reverse-chronological list grouped under per-date section headers; rows
- * carry an inline action cluster (copy / add-to-Anki / delete + chevron)
- * mirroring WordResultCell's header-button idiom, and tapping a row opens
- * [TranslationResultActivity] seeded with the entry (its date/time in the
- * toolbar; a missing translation self-translates there). Clear history is
- * a danger row under the switch. The whole page is one scroll surface
- * (the list inflates fully; reload compensates the scroll offset on
- * top-inserts to keep the reading position anchored). Live-updates via
- * [TranslationHistoryStore.revision] — the page can sit on the second
- * screen while auto-translate feeds it. Deletes and clears also reset the
- * recorder's dedupe memory so a removed line can record again.
+ * empty state doubles as onboarding when the feature is off) and per-date
+ * sections in the settings-page rhythm: a group header OUTSIDE each day's
+ * card, rows inside. Rows carry an inline action cluster (copy /
+ * add-to-Anki / delete + chevron) mirroring WordResultCell's header-button
+ * idiom, and tapping a row opens [TranslationResultActivity] pushed
+ * in-task, seeded with the entry (its date/time in the toolbar; a missing
+ * translation self-translates there AND feeds back into the log). The
+ * whole page is one scroll surface; sections are rebuilt per store
+ * revision with per-entry VIEW REUSE (only new entries inflate) and a
+ * scroll-offset compensation on top-inserts so the reading position holds
+ * while the page live-updates on the second display. Deletes and clears
+ * also reset the recorder's dedupe memory so a removed line can record
+ * again.
  */
 class TranslationHistoryActivity : SettingsSubPageActivity() {
 
     override val layoutResId = R.layout.activity_translation_history
 
-    /** Display list: date headers interleaved with entries, newest first. */
-    private sealed interface Row {
-        val key: String
-
-        data class Header(val label: String, override val key: String) : Row
-        data class Item(val entry: HistoryEntry) : Row {
-            override val key get() = "e:${entry.id}"
-        }
-    }
-
-    private val rows = mutableListOf<Row>()
-    private lateinit var adapter: HistoryAdapter
     private lateinit var emptyView: TextView
-    private lateinit var listCard: View
+    private lateinit var sections: LinearLayout
     private lateinit var scroll: androidx.core.widget.NestedScrollView
+
+    /** Per-entry row views, reused across renders — inflation happens once
+     *  per entry id; bindings refresh every render. */
+    private val rowViews = HashMap<Long, View>()
+
+    private var hasEntries = false
 
     override fun onContentCreated(savedInstanceState: Bundle?) {
         emptyView = findViewById(R.id.tvHistoryEmpty)
-        listCard = findViewById(R.id.cardHistory)
+        sections = findViewById(R.id.historySections)
         scroll = findViewById(R.id.historyScroll)
         bindMasterToggle()
         findViewById<View>(R.id.rowClearHistory).setOnClickListener { confirmClear() }
-
-        val recycler = findViewById<RecyclerView>(R.id.rvHistory)
-        recycler.layoutManager = LinearLayoutManager(this)
-        adapter = HistoryAdapter()
-        recycler.adapter = adapter
-
-        ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
-            0, ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT,
-        ) {
-            override fun onMove(
-                rv: RecyclerView, vh: RecyclerView.ViewHolder, t: RecyclerView.ViewHolder,
-            ) = false
-
-            override fun getSwipeDirs(rv: RecyclerView, vh: RecyclerView.ViewHolder): Int {
-                val pos = vh.bindingAdapterPosition
-                return if (pos != RecyclerView.NO_POSITION && rows[pos] is Row.Item) {
-                    super.getSwipeDirs(rv, vh)
-                } else 0
-            }
-
-            override fun onSwiped(vh: RecyclerView.ViewHolder, direction: Int) {
-                val pos = vh.bindingAdapterPosition
-                if (pos == RecyclerView.NO_POSITION) return
-                val row = rows[pos] as? Row.Item ?: return
-                // Restore the row immediately — the confirm dialog floats
-                // above it; a confirmed delete reloads the list anyway.
-                adapter.notifyItemChanged(pos)
-                confirmDelete(row.entry)
-            }
-        }).attachToRecyclerView(recycler)
 
         // Initial load + live updates while visible: the store's revision
         // bumps on every mutation and StateFlow replays/conflates, so this
@@ -137,42 +99,53 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
 
     private suspend fun reloadNow() {
         val fresh = TranslationHistoryStore.recent(this, LOAD_LIMIT)
-        // Interleave date headers (entries are newest-first, so days arrive
-        // in descending order and consecutive-day grouping is correct).
-        val newRows = ArrayList<Row>(fresh.size + 8)
-        var lastDay: String? = null
-        for (entry in fresh) {
-            val day = dayKeyFormat.format(Date(entry.atMs))
-            if (day != lastDay) {
-                lastDay = day
-                newRows.add(Row.Header(headerFormat.format(Date(entry.atMs)), "d:$day"))
+        render(fresh)
+    }
+
+    /** Rebuild the section tree from [fresh] (newest first). Row views are
+     *  reused by entry id, so a live-update render costs one layout pass
+     *  and inflates only genuinely new entries; the scroll offset is
+     *  compensated when the user has scrolled into the list so top-inserts
+     *  don't shove their reading position. */
+    private fun render(fresh: List<HistoryEntry>) {
+        val inflater = LayoutInflater.from(this)
+        val grewFrom = sections.height
+        val anchored = scroll.scrollY > sections.top
+
+        sections.removeAllViews()
+        var day: String? = null
+        var rowsHost: LinearLayout? = null
+        fresh.forEachIndexed { index, entry ->
+            val entryDay = dayKeyFormat.format(Date(entry.atMs))
+            if (entryDay != day) {
+                day = entryDay
+                val header = inflater.inflate(R.layout.settings_group_header, sections, false)
+                header.findViewById<TextView>(R.id.tvGroupTitle).text =
+                    headerFormat.format(Date(entry.atMs))
+                header.findViewById<TextView>(R.id.tvGroupBadge)?.isVisible = false
+                sections.addView(header)
+                val card = inflater.inflate(R.layout.history_section_card, sections, false)
+                rowsHost = card.findViewById(R.id.sectionRows)
+                sections.addView(card)
             }
-            newRows.add(Row.Item(entry))
+            val host = rowsHost ?: return@forEachIndexed
+            val row = rowViews.getOrPut(entry.id) {
+                inflater.inflate(R.layout.item_translation_history_row, host, false)
+            }
+            (row.parent as? ViewGroup)?.removeView(row)
+            val nextIsSameDay = fresh.getOrNull(index + 1)
+                ?.let { dayKeyFormat.format(Date(it.atMs)) == entryDay } == true
+            bindRow(row, entry, showDivider = nextIsSameDay)
+            host.addView(row)
         }
 
-        // Diff instead of reset so live updates rebind only what changed.
-        val diff = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
-            override fun getOldListSize() = rows.size
-            override fun getNewListSize() = newRows.size
-            override fun areItemsTheSame(old: Int, new: Int) = rows[old].key == newRows[new].key
-            override fun areContentsTheSame(old: Int, new: Int) = rows[old] == newRows[new]
-        })
-        // The outer NestedScrollView owns scrolling (the list is fully
-        // inflated), so a top-insert grows the card and would shove the
-        // reading position down by the new rows' height. Compensate: if the
-        // user has scrolled into the list, restore their anchor by scrolling
-        // down by the card's height delta after layout. At the top (or in
-        // the header) no compensation — the newest line should appear.
-        val grewFrom = listCard.height
-        val anchored = scroll.scrollY > listCard.top
-        rows.clear()
-        rows.addAll(newRows)
-        diff.dispatchUpdatesTo(adapter)
-        // Divider/last-row decisions are bind-time; a removal can move them
-        // onto rows the diff didn't touch — rebind the tail.
-        if (rows.isNotEmpty()) adapter.notifyItemChanged(rows.size - 1)
+        // Drop views for entries no longer present (deletes, prune, clear).
+        val liveIds = fresh.mapTo(HashSet()) { it.id }
+        rowViews.keys.retainAll(liveIds)
+
+        hasEntries = fresh.isNotEmpty()
         if (anchored) {
-            listCard.doOnNextLayout {
+            sections.doOnNextLayout {
                 val delta = it.height - grewFrom
                 if (delta > 0) scroll.scrollBy(0, delta)
             }
@@ -180,11 +153,27 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
         updateEmptyState()
     }
 
+    private fun bindRow(row: View, entry: HistoryEntry, showDivider: Boolean) {
+        row.findViewById<TextView>(R.id.tvHistoryMeta).text = listOfNotNull(
+            timeFormat.format(Date(entry.atMs)),
+            entry.backendDisplayName,
+        ).joinToString(" · ")
+        row.findViewById<TextView>(R.id.tvHistorySource).text = entry.sourceText
+        row.findViewById<TextView>(R.id.tvHistoryTranslation).apply {
+            text = entry.translation.orEmpty()
+            isVisible = !entry.translation.isNullOrEmpty()
+        }
+        row.findViewById<View>(R.id.historyRowDivider).isVisible = showDivider
+        row.findViewById<View>(R.id.historyRowContent).setOnClickListener { openEntry(entry) }
+        row.findViewById<View>(R.id.btnHistoryCopy).setOnClickListener { copyEntry(entry) }
+        row.findViewById<View>(R.id.btnHistoryAnki).setOnClickListener { addToAnki(entry) }
+        row.findViewById<View>(R.id.btnHistoryDelete).setOnClickListener { confirmDelete(entry) }
+    }
+
     private fun updateEmptyState() {
-        val empty = rows.isEmpty()
-        emptyView.isVisible = empty
-        listCard.isVisible = !empty
-        if (empty) {
+        emptyView.isVisible = !hasEntries
+        sections.isVisible = hasEntries
+        if (!hasEntries) {
             emptyView.setText(
                 if (Prefs(this).translationHistoryEnabled) R.string.history_empty_none
                 else R.string.history_empty_off
@@ -260,9 +249,8 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
 
     /** Row tap: the full translation-results page, pushed in-task (plain
      *  launch — no NEW_TASK — so back returns here), seeded with the
-     *  entry. A missing translation self-translates there
-     *  (handleSentenceMode's translateOnce path); the toolbar shows the
-     *  entry's date/time. */
+     *  entry. A missing translation self-translates there and attaches
+     *  back onto this entry; the toolbar shows the entry's date/time. */
     private fun openEntry(entry: HistoryEntry) {
         startActivity(Intent(this, TranslationResultActivity::class.java).apply {
             putExtra(TranslationResultActivity.EXTRA_SENTENCE_TEXT, entry.sourceText)
@@ -279,62 +267,6 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
         })
     }
 
-    private inner class HistoryAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-
-        inner class HeaderVH(view: View) : RecyclerView.ViewHolder(view) {
-            val label: TextView = view.findViewById(R.id.tvHistoryDateHeader)
-        }
-
-        inner class ItemVH(view: View) : RecyclerView.ViewHolder(view) {
-            val content: View = view.findViewById(R.id.historyRowContent)
-            val meta: TextView = view.findViewById(R.id.tvHistoryMeta)
-            val copy: View = view.findViewById(R.id.btnHistoryCopy)
-            val anki: View = view.findViewById(R.id.btnHistoryAnki)
-            val delete: View = view.findViewById(R.id.btnHistoryDelete)
-            val source: TextView = view.findViewById(R.id.tvHistorySource)
-            val translation: TextView = view.findViewById(R.id.tvHistoryTranslation)
-            val divider: View = view.findViewById(R.id.historyRowDivider)
-        }
-
-        override fun getItemViewType(position: Int) =
-            if (rows[position] is Row.Header) TYPE_HEADER else TYPE_ITEM
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-            val inflater = LayoutInflater.from(parent.context)
-            return if (viewType == TYPE_HEADER) {
-                HeaderVH(inflater.inflate(R.layout.item_translation_history_header, parent, false))
-            } else {
-                ItemVH(inflater.inflate(R.layout.item_translation_history_row, parent, false))
-            }
-        }
-
-        override fun getItemCount() = rows.size
-
-        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-            when (val row = rows[position]) {
-                is Row.Header -> (holder as HeaderVH).label.text = row.label
-                is Row.Item -> bindItem(holder as ItemVH, row.entry, position)
-            }
-        }
-
-        private fun bindItem(holder: ItemVH, entry: HistoryEntry, position: Int) {
-            holder.meta.text = listOfNotNull(
-                timeFormat.format(Date(entry.atMs)),
-                entry.backendDisplayName,
-            ).joinToString(" · ")
-            holder.source.text = entry.sourceText
-            holder.translation.text = entry.translation.orEmpty()
-            holder.translation.isVisible = !entry.translation.isNullOrEmpty()
-            // No divider before a section header or at the card's end.
-            holder.divider.isVisible = rows.getOrNull(position + 1) is Row.Item
-
-            holder.content.setOnClickListener { openEntry(entry) }
-            holder.copy.setOnClickListener { copyEntry(entry) }
-            holder.anki.setOnClickListener { addToAnki(entry) }
-            holder.delete.setOnClickListener { confirmDelete(entry) }
-        }
-    }
-
     /** Groups by calendar day; headers render the locale's medium date,
      *  rows the short time only (the day is the section header's job). */
     private val dayKeyFormat = SimpleDateFormat("yyyyMMdd", Locale.US)
@@ -344,12 +276,9 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
         DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
 
     private companion object {
-        private const val TYPE_HEADER = 0
-        private const val TYPE_ITEM = 1
-
-        /** Rows loaded per view. Lower than the store's cap on purpose: the
-         *  page is one scroll surface, so every loaded row inflates (nested
-         *  scrolling off disables recycling); paging can come later. */
+        /** Rows loaded per view. The page is one scroll surface, so every
+         *  loaded row stays inflated (reused by id across renders); paging
+         *  can come later. */
         const val LOAD_LIMIT = 200
     }
 }

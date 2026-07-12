@@ -152,6 +152,31 @@ object TranslationHistoryStore {
         _revision.value++
     }
 
+    /** Fill the NEWEST translation-less row bearing [normKey] with a
+     *  translation that arrived after recording (history-tap re-translate,
+     *  drag flows whose translation lands later than the lookup). Returns
+     *  rows affected — 0 means no such row exists and the caller should
+     *  record normally instead. */
+    suspend fun attachTranslationByKey(
+        ctx: Context,
+        normKey: String,
+        translation: String,
+        backendDisplayName: String?,
+    ): Int = withContext(dispatcher) {
+        val db = openDb(ctx)
+        db.execSQL(
+            "UPDATE entries SET translation = ?, backend = COALESCE(?, backend) WHERE id = (" +
+                "SELECT id FROM entries WHERE norm_key = ? AND " +
+                "(translation IS NULL OR translation = '') ORDER BY id DESC LIMIT 1)",
+            arrayOf(translation, backendDisplayName, normKey),
+        )
+        val affected = db.rawQuery("SELECT changes()", null).use { c ->
+            c.moveToFirst(); c.getInt(0)
+        }
+        if (affected > 0) _revision.value++
+        affected
+    }
+
     /** Newest first. */
     suspend fun recent(ctx: Context, limit: Int): List<HistoryEntry> = withContext(dispatcher) {
         val out = ArrayList<HistoryEntry>(limit)

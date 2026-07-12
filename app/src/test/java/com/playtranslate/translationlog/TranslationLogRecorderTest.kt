@@ -55,6 +55,14 @@ class TranslationLogRecorderTest {
             row.translation = translation
             row.normKey = normKey
         }
+
+        override suspend fun attachByKey(normKey: String, translation: String, backendDisplayName: String?): Int {
+            val target = rows.entries.lastOrNull {
+                it.value.normKey == normKey && it.value.translation.isNullOrEmpty()
+            } ?: return 0
+            target.value.translation = translation
+            return 1
+        }
     }
 
     private lateinit var sink: FakeSink
@@ -191,11 +199,30 @@ class TranslationLogRecorderTest {
     }
 
     @Test
+    fun deliberateTranslationAttachesByKeyWhenRowIsNoLongerTracked() {
+        // A History-tapped entry can be far older than the recorder's
+        // tracked window: the attach must reach the store by key.
+        recorder.onShownDeliberate(
+            "こんにちは、世界のみなさん。", null, null, "ja", "en",
+            TranslationHistoryStore.PROVENANCE_LOOKUP,
+        )
+        recorder.onHistoryCleared() // drops the tracked-row map (not the sink rows)
+        recorder.onDeliberateTranslation(
+            "こんにちは、世界のみなさん。", "Hello, everyone.", "ja", "en",
+            TranslationHistoryStore.PROVENANCE_LOOKUP,
+        )
+        assertEquals(1, sink.rows.size)
+        assertEquals("Hello, everyone.", sink.rows.getValue(1L).translation)
+    }
+
+    @Test
     fun deliberateTranslationWithoutTrackedRowFallsBackToAppend() {
         recorder.onDeliberateTranslation(
             "こんにちは、世界のみなさん。", "Hello.", "ja", "en",
             TranslationHistoryStore.PROVENANCE_LOOKUP,
         )
+        // The no-row fallback hops to Main for the fresh record.
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
         assertEquals(1, sink.rows.size)
         assertEquals("Hello.", sink.rows.getValue(1L).translation)
     }

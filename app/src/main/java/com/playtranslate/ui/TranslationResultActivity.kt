@@ -713,6 +713,19 @@ class TranslationResultActivity :
         lifecycleScope.launch {
             try {
                 val groupTranslation = svc.translateOnce(sentenceText)
+                // Feed the translation back to the log: fills the entry this
+                // sentence came from (History tap / drag lookup) instead of
+                // leaving it translation-less forever.
+                if (groupTranslation.text.isNotEmpty()) {
+                    val logPrefs = Prefs(applicationContext)
+                    svc.translationLogRecorder.onDeliberateTranslation(
+                        sentenceText, groupTranslation.text,
+                        com.playtranslate.language.SourceLanguageProfiles[logPrefs.sourceLangId].translationCode,
+                        logPrefs.targetLang,
+                        com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_LOOKUP,
+                        groupTranslation.backendDisplayName,
+                    )
+                }
                 val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                 val result = TranslationResult(
                     originalText       = sentenceText,

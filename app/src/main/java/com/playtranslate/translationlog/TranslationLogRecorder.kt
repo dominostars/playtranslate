@@ -52,6 +52,8 @@ class TranslationLogRecorder(
         ): Long
 
         suspend fun update(rowId: Long, sourceText: String, translation: String?, atMs: Long, normKey: String)
+
+        suspend fun attachByKey(normKey: String, translation: String, backendDisplayName: String?): Int
     }
 
     private class StoreSink(private val ctx: Context) : HistorySink {
@@ -66,6 +68,9 @@ class TranslationLogRecorder(
 
         override suspend fun update(rowId: Long, sourceText: String, translation: String?, atMs: Long, normKey: String) =
             TranslationHistoryStore.update(ctx, rowId, sourceText, translation, atMs, normKey)
+
+        override suspend fun attachByKey(normKey: String, translation: String, backendDisplayName: String?): Int =
+            TranslationHistoryStore.attachTranslationByKey(ctx, normKey, translation, backendDisplayName)
     }
 
     private val prefs = Prefs(appContext)
@@ -190,18 +195,40 @@ class TranslationLogRecorder(
         val key = LogWriteGate.normalizedKey(source, sourceLang)
         val now = System.currentTimeMillis()
         val tracked = rowIds[key]
-        if (tracked == null) {
-            onShownDeliberate(source, translation, null, sourceLang, targetLang, provenance, backendDisplayName)
+        if (tracked != null) {
+            if (historyOn) {
+                scope.launch {
+                    runCatching {
+                        sink.update(tracked.await(), source, translation, now, key)
+                    }.onFailure { Log.w(TAG, "translation attach failed: ${it.message}") }
+                }
+            }
+            if (contextOn) {
+                ring.push(ContextRing.ContextPair(source, translation, now, key, sourceLang, targetLang))
+            }
             return@guarded
         }
+        // Row not in the tracked window (older entry tapped from History,
+        // recorder recreated since the lookup): attach by key at the store —
+        // fills the newest translation-less row — and only record fresh
+        // when no such row exists. The ring push rides the same outcome so
+        // the fallback's own push can't double-add the pair.
         if (historyOn) {
             scope.launch {
                 runCatching {
-                    sink.update(tracked.await(), source, translation, now, key)
-                }.onFailure { Log.w(TAG, "translation attach failed: ${it.message}") }
+                    val affected = sink.attachByKey(key, translation, backendDisplayName)
+                    if (affected > 0) {
+                        if (contextOn) {
+                            ring.push(ContextRing.ContextPair(source, translation, now, key, sourceLang, targetLang))
+                        }
+                    } else {
+                        kotlinx.coroutines.withContext(Dispatchers.Main) {
+                            onShownDeliberate(source, translation, null, sourceLang, targetLang, provenance, backendDisplayName)
+                        }
+                    }
+                }.onFailure { Log.w(TAG, "translation attach-by-key failed: ${it.message}") }
             }
-        }
-        if (contextOn) {
+        } else if (contextOn) {
             ring.push(ContextRing.ContextPair(source, translation, now, key, sourceLang, targetLang))
         }
     }

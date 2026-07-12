@@ -90,26 +90,16 @@
                 android:gravity="center"
                 android:visibility="gone" />
 
-            <!-- GONE while empty — no floating empty card. -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardHistory"
+            <!-- Date sections (settings_group_header + history_section_card
+                 per day), built programmatically with per-entry view reuse.
+                 GONE while empty — no floating empty chrome. -->
+            <LinearLayout
+                android:id="@+id/historySections"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginVertical="10dp"
-                android:visibility="gone"
-                app:cardBackgroundColor="?attr/ptCard"
-                app:cardCornerRadius="@dimen/pt_radius"
-                app:cardElevation="0dp"
-                app:strokeColor="?attr/ptDivider"
-                app:strokeWidth="1dp">
-
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/rvHistory"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:nestedScrollingEnabled="false" />
-
-            </com.google.android.material.card.MaterialCardView>
+                android:orientation="vertical"
+                android:layout_marginTop="2dp"
+                android:visibility="gone" />
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
