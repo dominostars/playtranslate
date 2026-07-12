@@ -501,6 +501,9 @@
                     <include layout="@layout/settings_row_hub"
                         android:id="@+id/rowToolDictionary" />
 
+                    <include layout="@layout/settings_row_hub"
+                        android:id="@+id/rowToolHistory" />
+
                 </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>

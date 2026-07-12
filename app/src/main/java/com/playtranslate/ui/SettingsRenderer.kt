@@ -875,8 +875,8 @@ class SettingsRenderer(
 
     // ── Tools ────────────────────────────────────────────────────────────
 
-    /** TOOLS: a single static hub cell opening the dictionary lookup screen.
-     *  Bound once at setup — there's no VM-driven digest like CONFIGURE has. */
+    /** TOOLS: static hub cells opening the dictionary lookup and translation
+     *  history screens. Bound once at setup — no VM-driven digest. */
     private fun setupToolsSection() {
         setGroupHeader(R.id.headerTools, ctx.getString(R.string.settings_header_tools))
         bindHubCell(
@@ -885,8 +885,18 @@ class SettingsRenderer(
                 iconRes = R.drawable.ic_dictionary,
                 title = ctx.getString(R.string.settings_cell_dictionary),
                 summary = ctx.getString(R.string.settings_cell_dictionary_summary),
-                isLast = true,
+                isLast = false,
                 onClick = { ctx.startActivity(Intent(ctx, DictionaryLookupActivity::class.java)) },
+            ),
+        )
+        bindHubCell(
+            root.findViewById(R.id.rowToolHistory),
+            HubCell(
+                iconRes = R.drawable.ic_history,
+                title = ctx.getString(R.string.settings_cell_history),
+                summary = ctx.getString(R.string.settings_cell_history_summary),
+                isLast = true,
+                onClick = { ctx.startActivity(Intent(ctx, TranslationHistoryActivity::class.java)) },
             ),
         )
     }

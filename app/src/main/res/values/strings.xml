@@ -2700,6 +2700,36 @@
     <string name="settings_header_tools">Tools</string>
     <!-- Title of the Tools hub cell that opens the dictionary lookup screen. -->
     <string name="settings_cell_dictionary">Dictionary</string>
+    <!-- Tools hub cell title in Settings: opens the translation-history screen. -->
+    <string name="settings_cell_history">History</string>
+    <!-- Summary line under the History hub cell in Settings → Tools. -->
+    <string name="settings_cell_history_summary">Sentences translated for you while playing</string>
+    <!-- Toolbar title of the translation-history screen (Settings → Tools → History). -->
+    <string name="history_screen_title">History</string>
+    <!-- Master toggle row title at the top of the History screen. -->
+    <string name="history_toggle_title">Keep text history</string>
+    <!-- Subtitle under the History master toggle. -->
+    <string name="history_toggle_subtitle">Save translated lines on this device</string>
+    <!-- Empty-state body on the History screen when the master toggle is off (doubles as onboarding). -->
+    <string name="history_empty_off">Text history is off. Turn it on to keep the sentences PlayTranslate translates while you play.</string>
+    <!-- Empty-state body on the History screen when the toggle is on but nothing is recorded yet. -->
+    <string name="history_empty_none">Nothing here yet — lines appear as you translate.</string>
+    <!-- Expanded-row action on the History screen: copy the entry to the clipboard. -->
+    <string name="history_action_copy">Copy</string>
+    <!-- Expanded-row action on the History screen: open the Anki sentence-card composer for this entry. -->
+    <string name="history_action_anki">Add to Anki</string>
+    <!-- Expanded-row action on the History screen: delete this entry (also the confirm button of its dialog). -->
+    <string name="history_action_delete">Delete</string>
+    <!-- Toolbar overflow item on the History screen: delete every entry (also the confirm button of its dialog). -->
+    <string name="history_clear_menu">Clear history</string>
+    <!-- Title of the clear-all confirm dialog on the History screen. -->
+    <string name="history_clear_confirm_title">Clear all history?</string>
+    <!-- Body of the clear-all confirm dialog on the History screen. -->
+    <string name="history_clear_confirm_message">Every saved line will be deleted from this device.</string>
+    <!-- Title of the per-entry delete confirm dialog on the History screen; the entry text is the dialog body. -->
+    <string name="history_delete_confirm_title">Delete this entry?</string>
+    <!-- Toast after copying a History entry to the clipboard. -->
+    <string name="history_copied_toast">Copied</string>
     <!-- Summary line under the Dictionary hub cell title in settings. -->
     <string name="settings_cell_dictionary_summary">Look up word definitions</string>
 

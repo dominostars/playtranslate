@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Toolbar overflow for the History screen: destructive clear-all,
+     confirmed via OverlayAlert in TranslationHistoryActivity. -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_clear_history"
+        android:title="@string/history_clear_menu"
+        app:showAsAction="never" />
+
+</menu>

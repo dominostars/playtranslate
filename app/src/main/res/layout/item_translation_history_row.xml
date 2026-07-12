@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Translation-history row: compact source/translation pair that expands
+     in place to an action strip (copy · Anki · delete). Rendered inside a
+     MaterialCardView; the divider is hidden on the last row by the adapter. -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:id="@+id/historyRowContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:minHeight="@dimen/pt_row_min_height"
+        android:paddingHorizontal="@dimen/pt_row_h_padding"
+        android:paddingVertical="@dimen/pt_row_v_padding"
+        android:background="?attr/selectableItemBackground">
+
+        <TextView
+            android:id="@+id/tvHistorySource"
+            style="@style/Text.PT.RowTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="3"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/tvHistoryTranslation"
+            style="@style/Text.PT.RowSubtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:maxLines="3"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/tvHistoryMeta"
+            style="@style/Text.PT.RowSubtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="?attr/ptTextHint" />
+    </LinearLayout>
+
+    <!-- Expanded-state action strip. -->
+    <LinearLayout
+        android:id="@+id/historyRowActions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingHorizontal="@dimen/pt_row_h_padding"
+        android:paddingBottom="10dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/btnHistoryCopy"
+            style="@style/Text.PT.RowTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingVertical="6dp"
+            android:paddingHorizontal="12dp"
+            android:textColor="?attr/ptAccent"
+            android:background="?attr/selectableItemBackground"
+            android:text="@string/history_action_copy" />
+
+        <TextView
+            android:id="@+id/btnHistoryAnki"
+            style="@style/Text.PT.RowTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:paddingVertical="6dp"
+            android:paddingHorizontal="12dp"
+            android:textColor="?attr/ptAccent"
+            android:background="?attr/selectableItemBackground"
+            android:text="@string/history_action_anki" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/btnHistoryDelete"
+            style="@style/Text.PT.RowTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingVertical="6dp"
+            android:paddingHorizontal="12dp"
+            android:textColor="?attr/ptDanger"
+            android:background="?attr/selectableItemBackground"
+            android:text="@string/history_action_delete" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/historyRowDivider"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginStart="@dimen/pt_row_h_padding"
+        android:background="?attr/ptDivider" />
+
+</LinearLayout>

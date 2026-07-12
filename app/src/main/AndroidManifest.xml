@@ -185,6 +185,12 @@
             android:theme="@style/Theme.PlayTranslate"
             android:windowSoftInputMode="adjustResize" />
 
+        <activity
+            android:name=".ui.TranslationHistoryActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate" />
+
         <!-- Hotkeys sub-page (QS tile + hotkeys), launched from Settings → Configure. -->
         <activity
             android:name=".ui.HotkeysSettingsActivity"
