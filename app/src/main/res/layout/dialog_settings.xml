@@ -499,10 +499,10 @@
                     android:orientation="vertical">
 
                     <include layout="@layout/settings_row_hub"
-                        android:id="@+id/rowToolDictionary" />
+                        android:id="@+id/rowToolHistory" />
 
                     <include layout="@layout/settings_row_hub"
-                        android:id="@+id/rowToolHistory" />
+                        android:id="@+id/rowToolDictionary" />
 
                 </LinearLayout>
 

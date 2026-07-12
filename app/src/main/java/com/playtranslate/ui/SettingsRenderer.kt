@@ -875,20 +875,10 @@ class SettingsRenderer(
 
     // ── Tools ────────────────────────────────────────────────────────────
 
-    /** TOOLS: static hub cells opening the dictionary lookup and translation
-     *  history screens. Bound once at setup — no VM-driven digest. */
+    /** TOOLS: static hub cells — translation history on top, then the
+     *  dictionary lookup screen. Bound once at setup — no VM-driven digest. */
     private fun setupToolsSection() {
         setGroupHeader(R.id.headerTools, ctx.getString(R.string.settings_header_tools))
-        bindHubCell(
-            root.findViewById(R.id.rowToolDictionary),
-            HubCell(
-                iconRes = R.drawable.ic_dictionary,
-                title = ctx.getString(R.string.settings_cell_dictionary),
-                summary = ctx.getString(R.string.settings_cell_dictionary_summary),
-                isLast = false,
-                onClick = { ctx.startActivity(Intent(ctx, DictionaryLookupActivity::class.java)) },
-            ),
-        )
         bindHubCell(
             root.findViewById(R.id.rowToolHistory),
             HubCell(
@@ -900,8 +890,18 @@ class SettingsRenderer(
                     if (Prefs(ctx).translationHistoryEnabled) R.string.settings_cell_history_summary_on
                     else R.string.settings_cell_history_summary_off
                 ),
-                isLast = true,
+                isLast = false,
                 onClick = { ctx.startActivity(Intent(ctx, TranslationHistoryActivity::class.java)) },
+            ),
+        )
+        bindHubCell(
+            root.findViewById(R.id.rowToolDictionary),
+            HubCell(
+                iconRes = R.drawable.ic_dictionary,
+                title = ctx.getString(R.string.settings_cell_dictionary),
+                summary = ctx.getString(R.string.settings_cell_dictionary_summary),
+                isLast = true,
+                onClick = { ctx.startActivity(Intent(ctx, DictionaryLookupActivity::class.java)) },
             ),
         )
     }

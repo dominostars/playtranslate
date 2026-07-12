@@ -116,9 +116,22 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
 
     private suspend fun reloadNow() {
         val fresh = TranslationHistoryStore.recent(this, LOAD_LIMIT)
+        // Diff instead of reset: new lines land as top-insertions, so the
+        // viewport stays anchored on whatever the user is reading while the
+        // page live-updates (dual-screen auto-translate), and at-top viewers
+        // still see the newest line arrive.
+        val diff = androidx.recyclerview.widget.DiffUtil.calculateDiff(object : androidx.recyclerview.widget.DiffUtil.Callback() {
+            override fun getOldListSize() = entries.size
+            override fun getNewListSize() = fresh.size
+            override fun areItemsTheSame(old: Int, new: Int) = entries[old].id == fresh[new].id
+            override fun areContentsTheSame(old: Int, new: Int) = entries[old] == fresh[new]
+        })
         entries.clear()
         entries.addAll(fresh)
-        adapter.notifyDataSetChanged()
+        diff.dispatchUpdatesTo(adapter)
+        // The last-row divider is a bind-time decision; a removal can move
+        // "last" onto a row the diff didn't touch — rebind the tail.
+        if (entries.isNotEmpty()) adapter.notifyItemChanged(entries.size - 1)
         updateEmptyState()
     }
 
