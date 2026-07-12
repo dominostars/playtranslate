@@ -34,6 +34,8 @@ class TranslationLogRecorderTest {
             val provenance: String,
             val sessionId: String,
             var normKey: String,
+            val sourceLang: String,
+            val targetLang: String,
         )
 
         val rows = LinkedHashMap<Long, Row>()
@@ -45,7 +47,7 @@ class TranslationLogRecorderTest {
             rect: Rect?, backendDisplayName: String?,
         ): Long {
             val id = nextId++
-            rows[id] = Row(sourceText, translation, provenance, sessionId, normKey)
+            rows[id] = Row(sourceText, translation, provenance, sessionId, normKey, sourceLang, targetLang)
             return id
         }
 
@@ -56,9 +58,13 @@ class TranslationLogRecorderTest {
             row.normKey = normKey
         }
 
-        override suspend fun attachByKey(normKey: String, translation: String, backendDisplayName: String?): Int {
+        override suspend fun attachByKey(
+            normKey: String, translation: String,
+            sourceLang: String, targetLang: String, backendDisplayName: String?,
+        ): Int {
             val target = rows.entries.lastOrNull {
-                it.value.normKey == normKey && it.value.translation.isNullOrEmpty()
+                it.value.normKey == normKey && it.value.translation.isNullOrEmpty() &&
+                    it.value.sourceLang == sourceLang && it.value.targetLang == targetLang
             } ?: return 0
             target.value.translation = translation
             return 1
@@ -224,6 +230,26 @@ class TranslationLogRecorderTest {
         assertEquals(null, sink.rows.getValue(2L).translation)
         // The completed pair still feeds the context ring.
         assertTrue(recorder.contextBlockFor("ja", "en").contains("Hello, everyone."))
+    }
+
+    @Test
+    fun crossPairDelayedTranslationRecordsFresh_neverCorruptsTheOldPairRow() {
+        // Codex regression: row recorded translation-less under (ja,en);
+        // the target language switches before the delayed translation
+        // lands. The (ja,fr) translation must not touch the (ja,en) row.
+        recorder.onShownDeliberate(
+            "こんにちは、世界のみなさん。", null, null, "ja", "en",
+            TranslationHistoryStore.PROVENANCE_LOOKUP,
+        )
+        recorder.onDeliberateTranslation(
+            "こんにちは、世界のみなさん。", "Bonjour tout le monde.", "ja", "fr",
+            TranslationHistoryStore.PROVENANCE_LOOKUP,
+        )
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertEquals(null, sink.rows.getValue(1L).translation) // old pair untouched
+        assertEquals(2, sink.rows.size)                         // fresh row, new pair
+        assertEquals("fr", sink.rows.getValue(2L).targetLang)
+        assertEquals("Bonjour tout le monde.", sink.rows.getValue(2L).translation)
     }
 
     @Test

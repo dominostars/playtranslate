@@ -26,7 +26,12 @@ private const val TAG = "TranslationLogRecorder"
  *
  * Passive by design (no thread, no run-gate): the pipeline seams call in.
  * All mutating entry points are MAIN-THREAD ONLY (every seam already runs
- * on Main), which keeps the gate and the row-id map lock-free;
+ * on Main), which keeps the gate and the row-id map lock-free — and it is
+ * also the CLEAR-ORDERING INVARIANT: because every history write launches
+ * from Main and the store runs one FIFO dispatcher, a Clear tapped after a
+ * commit always lands after that commit's insert; no pre-clear write can
+ * resurrect cleared history. A future non-Main caller would break that
+ * guarantee and would need a write-generation barrier here;
  * [contextBlockFor] is the one cross-thread read and is safe via the
  * ring's snapshot semantics and live pref reads. Every entry point
  * swallows its own failures — a recorder bug must never reach a capture
@@ -53,7 +58,10 @@ class TranslationLogRecorder(
 
         suspend fun update(rowId: Long, sourceText: String, translation: String?, atMs: Long, normKey: String)
 
-        suspend fun attachByKey(normKey: String, translation: String, backendDisplayName: String?): Int
+        suspend fun attachByKey(
+            normKey: String, translation: String,
+            sourceLang: String, targetLang: String, backendDisplayName: String?,
+        ): Int
 
         suspend fun attachById(rowId: Long, translation: String, backendDisplayName: String?)
     }
@@ -71,8 +79,12 @@ class TranslationLogRecorder(
         override suspend fun update(rowId: Long, sourceText: String, translation: String?, atMs: Long, normKey: String) =
             TranslationHistoryStore.update(ctx, rowId, sourceText, translation, atMs, normKey)
 
-        override suspend fun attachByKey(normKey: String, translation: String, backendDisplayName: String?): Int =
-            TranslationHistoryStore.attachTranslationByKey(ctx, normKey, translation, backendDisplayName)
+        override suspend fun attachByKey(
+            normKey: String, translation: String,
+            sourceLang: String, targetLang: String, backendDisplayName: String?,
+        ): Int = TranslationHistoryStore.attachTranslationByKey(
+            ctx, normKey, translation, sourceLang, targetLang, backendDisplayName,
+        )
 
         override suspend fun attachById(rowId: Long, translation: String, backendDisplayName: String?) =
             TranslationHistoryStore.attachTranslationById(ctx, rowId, translation, backendDisplayName)
@@ -87,12 +99,22 @@ class TranslationLogRecorder(
     @Volatile
     private var sessionId: String = UUID.randomUUID().toString()
 
-    /** normKey → pending/known rowId for the gate's supersession window.
-     *  Deferred, because inserts are async: a Replace awaits its Append's
-     *  row id, and the store's single-thread dispatcher keeps the UPDATE
-     *  strictly after the INSERT. Access-ordered, hard-capped. */
-    private val rowIds = object : LinkedHashMap<String, CompletableDeferred<Long>>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CompletableDeferred<Long>>?) =
+    /** A tracked pending row: its (async) id plus the language pair it was
+     *  RECORDED under — late attaches must match that pair or record fresh
+     *  (a target-language switch mid-flight must never write a new-pair
+     *  translation onto an old-pair row). */
+    private class PendingRow(
+        val id: CompletableDeferred<Long>,
+        val sourceLang: String,
+        val targetLang: String,
+    )
+
+    /** normKey → pending/known row for the gate's supersession window.
+     *  Deferred ids, because inserts are async: a Replace awaits its
+     *  Append's row id, and the store's single-thread dispatcher keeps the
+     *  UPDATE strictly after the INSERT. Access-ordered, hard-capped. */
+    private val rowIds = object : LinkedHashMap<String, PendingRow>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, PendingRow>?) =
             size > ROW_ID_CAP
     }
 
@@ -231,12 +253,18 @@ class TranslationLogRecorder(
         if (!historyOn && !contextOn) return@guarded
         val key = LogWriteGate.normalizedKey(source, sourceLang)
         val now = System.currentTimeMillis()
-        val tracked = rowIds[key]
+        // Pair equality is part of row identity: a tracked row recorded
+        // under a different pair (target switched mid-flight) must NOT
+        // receive this translation — fall through to the pair-constrained
+        // store attach, which then records fresh under the new pair.
+        val tracked = rowIds[key]?.takeIf {
+            it.sourceLang == sourceLang && it.targetLang == targetLang
+        }
         if (tracked != null) {
             if (historyOn) {
                 scope.launch {
                     runCatching {
-                        sink.update(tracked.await(), source, translation, now, key)
+                        sink.update(tracked.id.await(), source, translation, now, key)
                     }.onFailure { Log.w(TAG, "translation attach failed: ${it.message}") }
                 }
             }
@@ -246,22 +274,30 @@ class TranslationLogRecorder(
             return@guarded
         }
         // Row not in the tracked window (older entry tapped from History,
-        // recorder recreated since the lookup): attach by key at the store —
-        // fills the newest translation-less row — and only record fresh
-        // when no such row exists. The ring push rides the same outcome so
-        // the fallback's own push can't double-add the pair.
+        // recorder recreated since the lookup, or a pair mismatch above):
+        // attach by key AND pair at the store — fills the newest matching
+        // translation-less row — and only record fresh when none exists.
+        // The ring push rides the same outcome so the fallback's own push
+        // can't double-add the pair.
         if (historyOn) {
+            val session = sessionId
             scope.launch {
                 runCatching {
-                    val affected = sink.attachByKey(key, translation, backendDisplayName)
-                    if (affected > 0) {
-                        if (contextOn) {
-                            ring.push(ContextRing.ContextPair(source, translation, now, key, sourceLang, targetLang))
-                        }
-                    } else {
-                        kotlinx.coroutines.withContext(Dispatchers.Main) {
-                            onShownDeliberate(source, translation, null, sourceLang, targetLang, provenance, backendDisplayName)
-                        }
+                    val affected = sink.attachByKey(key, translation, sourceLang, targetLang, backendDisplayName)
+                    if (affected == 0) {
+                        // Fresh record under THIS pair, inserted directly:
+                        // the gate's seen map is pair-blind and would
+                        // suppress a text already logged under another
+                        // pair, but a new-pair record is semantically a
+                        // new entry — and its dedupe already happened
+                        // pair-correctly in attachByKey.
+                        sink.insert(
+                            now, source, translation, sourceLang, targetLang,
+                            provenance, session, key, null, backendDisplayName,
+                        )
+                    }
+                    if (contextOn) {
+                        ring.push(ContextRing.ContextPair(source, translation, now, key, sourceLang, targetLang))
                     }
                 }.onFailure { Log.w(TAG, "translation attach-by-key failed: ${it.message}") }
             }
@@ -287,7 +323,7 @@ class TranslationLogRecorder(
             is LogWriteGate.Decision.Append -> {
                 if (historyOn) {
                     val deferred = CompletableDeferred<Long>()
-                    rowIds[decision.entry.key] = deferred
+                    rowIds[decision.entry.key] = PendingRow(deferred, sourceLang, targetLang)
                     val session = sessionId
                     scope.launch {
                         runCatching {
@@ -309,11 +345,11 @@ class TranslationLogRecorder(
             }
             is LogWriteGate.Decision.Replace -> {
                 if (historyOn) {
-                    val prevDeferred = rowIds.remove(decision.previous.key)
-                    if (prevDeferred != null) rowIds[decision.entry.key] = prevDeferred
+                    val prev = rowIds.remove(decision.previous.key)
+                    if (prev != null) rowIds[decision.entry.key] = prev
                     scope.launch {
                         runCatching {
-                            val rowId = prevDeferred?.await()
+                            val rowId = prev?.id?.await()
                             if (rowId != null) {
                                 sink.update(rowId, source, translation, now, decision.entry.key)
                             } else {

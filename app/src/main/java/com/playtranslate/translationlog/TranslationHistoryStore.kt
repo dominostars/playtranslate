@@ -161,14 +161,18 @@ object TranslationHistoryStore {
         ctx: Context,
         normKey: String,
         translation: String,
+        sourceLang: String,
+        targetLang: String,
         backendDisplayName: String?,
     ): Int = withContext(dispatcher) {
         val db = openDb(ctx)
+        // Pair columns are part of the match: a translation produced under
+        // one pair must never land on a row recorded under another.
         db.execSQL(
             "UPDATE entries SET translation = ?, backend = COALESCE(?, backend) WHERE id = (" +
-                "SELECT id FROM entries WHERE norm_key = ? AND " +
+                "SELECT id FROM entries WHERE norm_key = ? AND source_lang = ? AND target_lang = ? AND " +
                 "(translation IS NULL OR translation = '') ORDER BY id DESC LIMIT 1)",
-            arrayOf(translation, backendDisplayName, normKey),
+            arrayOf(translation, backendDisplayName, normKey, sourceLang, targetLang),
         )
         val affected = db.rawQuery("SELECT changes()", null).use { c ->
             c.moveToFirst(); c.getInt(0)
