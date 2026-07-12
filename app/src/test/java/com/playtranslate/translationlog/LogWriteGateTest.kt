@@ -135,6 +135,34 @@ class LogWriteGateTest {
         assertEquals(a, b)
     }
 
+    @Test
+    fun keyFoldsOcrJitterEquivalentForms() {
+        // Width flips (NFKC) and kana-size flips must not mint new keys —
+        // both Luna and GSM fold before comparing for this exact reason.
+        assertEquals(
+            LogWriteGate.normalizedKey("メニューを開いてください。", "ja"),
+            LogWriteGate.normalizedKey("ﾒﾆｭｰを開いてください。", "ja"),
+        )
+        assertEquals(
+            LogWriteGate.normalizedKey("行きましょう。", "ja"),
+            LogWriteGate.normalizedKey("行きましよう。", "ja"),
+        )
+    }
+
+    @Test
+    fun kanaSizeFlippedRepeatIsExactDuplicate() {
+        val g = ja()
+        assertTrue(
+            g.offer("それでは、行きましょう。", dialogueBox, 0, 1)
+                is LogWriteGate.Decision.Append,
+        )
+        val d = g.offer("それでは、行きましよう。", dialogueBox, 30_000, 20)
+        assertEquals(
+            LogWriteGate.SuppressReason.DUPLICATE,
+            (d as LogWriteGate.Decision.Suppress).reason,
+        )
+    }
+
     // ── Near-duplicate collapse (OCR jitter re-reads) ────────────────────
 
     @Test

@@ -321,8 +321,29 @@ class LogWriteGate(private val sourceLang: String) {
         private const val WORD_MIN = 3
         private const val WORD_MIN_WITH_TERMINAL = 2
 
+        /** Fold OCR-jitter-equivalent forms before any comparison: NFKC
+         *  (half/full-width flips — ﾊﾛｰ/ハロー, ＡＢＣ/ＡBC — otherwise read
+         *  as changes frame-to-frame) plus small→big kana (ょ→よ; engines
+         *  flip kana size on re-reads). Both LunaTranslator and
+         *  GameSentenceMiner fold BEFORE comparing for exactly this reason.
+         *  Comparison-only: entry text stays raw for display. */
+        fun fold(text: String): String {
+            val nfkc = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFKC)
+            val sb = StringBuilder(nfkc.length)
+            for (c in nfkc) sb.append(SMALL_KANA_FOLD[c] ?: c)
+            return sb.toString()
+        }
+
+        private val SMALL_KANA_FOLD = mapOf(
+            'ぁ' to 'あ', 'ぃ' to 'い', 'ぅ' to 'う', 'ぇ' to 'え', 'ぉ' to 'お',
+            'っ' to 'つ', 'ゃ' to 'や', 'ゅ' to 'ゆ', 'ょ' to 'よ', 'ゎ' to 'わ',
+            'ァ' to 'ア', 'ィ' to 'イ', 'ゥ' to 'ウ', 'ェ' to 'エ', 'ォ' to 'オ',
+            'ッ' to 'ツ', 'ャ' to 'ヤ', 'ュ' to 'ユ', 'ョ' to 'ヨ', 'ヮ' to 'ワ',
+            'ヵ' to 'カ', 'ヶ' to 'ケ',
+        )
+
         fun isSentenceLike(text: String, lang: String): Boolean {
-            val trimmed = text.trim().trimEnd { it in CLOSERS }
+            val trimmed = fold(text).trim().trimEnd { it in CLOSERS }
             if (trimmed.isEmpty()) return false
             val hasTerminal = trimmed.last() in TERMINALS
             return if (lang in CHAR_METRIC_LANGS) {
@@ -337,10 +358,11 @@ class LogWriteGate(private val sourceLang: String) {
 
         private val WHITESPACE = Regex("\\s+")
 
-        /** The pipeline's dedupKey normalization: source-language characters
-         *  only (see OverlayToolkit.runOcrPipeline). */
+        /** The pipeline's dedupKey normalization — source-language characters
+         *  only (see OverlayToolkit.runOcrPipeline) — over [fold]ed text, so
+         *  width/kana-size jitter can't mint distinct keys. */
         fun normalizedKey(text: String, lang: String): String =
-            text.filter { OcrManager.isSourceLangChar(it, lang) }
+            fold(text).filter { OcrManager.isSourceLangChar(it, lang) }
 
         private fun sameRegion(a: Rect, b: Rect): Boolean {
             val ix = maxOf(0, minOf(a.right, b.right) - maxOf(a.left, b.left))
