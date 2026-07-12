@@ -1542,6 +1542,8 @@
     <!-- Keyword-legend line in the prompt editor, next to the literal
          {text} keyword. -->
     <string name="llm_prompt_kw_text_desc">The text to translate</string>
+    <!-- Keyword legend row in the LLM prompt editor (Translation prompt): describes the {context} token. -->
+    <string name="llm_prompt_kw_context_desc">Recent lines, when context is enabled</string>
     <!-- Keyword-legend line in the prompt editor, next to the literal
          {N} keyword. -->
     <string name="llm_prompt_kw_count_desc">The number of phrases in the batch</string>

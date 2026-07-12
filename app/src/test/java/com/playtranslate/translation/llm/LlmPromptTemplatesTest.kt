@@ -52,6 +52,39 @@ class LlmPromptTemplatesTest {
         )
     }
 
+    // ── {context} seam ──────────────────────────────────────────────────
+
+    @Test
+    fun `context block is inserted once, before the instruction`() {
+        LlmPromptTemplates.contextProvider = { _, _ ->
+            "Recent dialogue for context:\n- 行くぞ → Let's go.\n\n"
+        }
+        assertEquals(
+            "Recent dialogue for context:\n- 行くぞ → Let's go.\n\n" +
+                "Please translate the following Japanese text into English:\n\nこんにちは",
+            LlmPromptTemplates.translationUserMessage("こんにちは", "ja", "en"),
+        )
+    }
+
+    @Test
+    fun `context content is literal - dollars and tokens are not re-expanded`() {
+        LlmPromptTemplates.contextProvider = { _, _ -> "Price {text} \$100 \\n:\n\n" }
+        val out = LlmPromptTemplates.translationUserMessage("hi", "ja", "en")
+        assertTrue(out.startsWith("Price {text} \$100 \\n:\n\n"))
+        // The template's own {text} still resolved to the payload exactly once.
+        assertTrue(out.endsWith("into English:\n\nhi"))
+    }
+
+    @Test
+    fun `resetOverrides clears the context provider`() {
+        LlmPromptTemplates.contextProvider = { _, _ -> "SHOULD NOT APPEAR\n\n" }
+        LlmPromptTemplates.resetOverrides()
+        assertEquals(
+            "Please translate the following Japanese text into English:\n\nこんにちは",
+            LlmPromptTemplates.translationUserMessage("こんにちは", "ja", "en"),
+        )
+    }
+
     @Test
     fun `default batch user message matches pre-refactor text`() {
         assertEquals(

@@ -60,8 +60,10 @@ enum class PromptKind(
     ),
     TRANSLATION(
         default = LlmPromptTemplates.DEFAULT_TRANSLATION,
-        keywords = LlmPromptTemplates.LANGUAGE_KEYWORDS +
+        keywords = LlmPromptTemplates.LANGUAGE_KEYWORDS + listOf(
             KeywordInfo(LlmPromptTemplates.TOKEN_TEXT, R.string.llm_prompt_kw_text_desc),
+            KeywordInfo(LlmPromptTemplates.TOKEN_CONTEXT, R.string.llm_prompt_kw_context_desc),
+        ),
         readPref = { it.llmTranslationPrompt },
         writePref = { p, v -> p.llmTranslationPrompt = v },
     ),
@@ -105,6 +107,12 @@ object LlmPromptTemplates {
     const val TOKEN_COUNT = "{N}"
     const val TOKEN_STRINGS = "{strings}"
 
+    /** Recent source→translation pairs, or "" when the feature is off /
+     *  nothing qualifies. The provider's non-empty value is a self-contained
+     *  block ENDING IN "\n\n", so the default template renders byte-identical
+     *  to the pre-context prompt whenever context is absent. */
+    const val TOKEN_CONTEXT = "{context}"
+
     /** Advisory threshold — a template this long risks slowing (or
      *  overflowing the context of) the on-device models at prefill. */
     const val PROMPT_LENGTH_ADVISORY_CHARS = 4_000
@@ -125,7 +133,7 @@ object LlmPromptTemplates {
     const val DEFAULT_SYSTEM = DEFAULT_SYSTEM_PERSONA + "\n\n" + DEFAULT_SYSTEM_OUTPUT
 
     const val DEFAULT_TRANSLATION =
-        "Please translate the following {source} text into {target}:\n\n{text}"
+        "{context}Please translate the following {source} text into {target}:\n\n{text}"
 
     const val DEFAULT_BATCH = "Translate each of these {N} strings:\n{strings}"
 
@@ -160,6 +168,7 @@ object LlmPromptTemplates {
         listOf(
             TOKEN_SOURCE_CODE, TOKEN_TARGET_CODE, TOKEN_STRINGS,
             TOKEN_SOURCE, TOKEN_TARGET, TOKEN_TEXT, TOKEN_COUNT,
+            TOKEN_CONTEXT,
         ).joinToString("|") { Regex.escape(it) }
     )
 
@@ -177,9 +186,19 @@ object LlmPromptTemplates {
     @Volatile
     var overrideProvider: (PromptKind) -> String? = { null }
 
+    /** Composition-root hook for `{context}` (recent source→translation
+     *  pairs), same static-seam rationale as [overrideProvider]. Re-read on
+     *  every [translationUserMessage] call, and called from backend threads
+     *  (MNN's coroutine, cloud backends on IO) — implementations must be
+     *  thread-safe. Must return "" (never null) when nothing qualifies, and
+     *  a "\n\n"-terminated block otherwise (see [TOKEN_CONTEXT]). */
+    @Volatile
+    var contextProvider: (source: String, target: String) -> String = { _, _ -> "" }
+
     @VisibleForTesting
     fun resetOverrides() {
         overrideProvider = { null }
+        contextProvider = { _, _ -> "" }
     }
 
     /** The raw template for [kind] — the user's override if saved, else the
@@ -192,11 +211,14 @@ object LlmPromptTemplates {
     fun systemPrompt(source: String, target: String): String =
         substitute(effectiveTemplate(PromptKind.SYSTEM), languageValues(source, target))
 
-    /** The user-turn prose wrapped around one text to translate. */
+    /** The user-turn prose wrapped around one text to translate. `{context}`
+     *  resolves through [contextProvider] here — backends and chat templates
+     *  never see it, so no signature anywhere changes with the feature. */
     fun translationUserMessage(text: String, source: String, target: String): String =
         substitute(
             effectiveTemplate(PromptKind.TRANSLATION),
-            languageValues(source, target) + (TOKEN_TEXT to text),
+            languageValues(source, target) +
+                mapOf(TOKEN_TEXT to text, TOKEN_CONTEXT to contextProvider(source, target)),
         )
 
     /**

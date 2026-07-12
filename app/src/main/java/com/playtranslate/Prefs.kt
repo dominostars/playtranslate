@@ -518,6 +518,21 @@ class Prefs internal constructor(
             if (v == null) remove(KEY_LLM_BATCH_PROMPT) else putString(KEY_LLM_BATCH_PROMPT, v)
         }
 
+    /** Feed the last few translated lines to LLM-tier backends as `{context}`
+     *  in the Translation prompt (Translation Services → Advanced LLM
+     *  Configuration). Ephemeral in-memory pairs only — independent of
+     *  [translationHistoryEnabled]; see
+     *  [com.playtranslate.translationlog.TranslationLogRecorder]. */
+    var llmContextEnabled: Boolean
+        get() = sp.getBoolean(KEY_LLM_CONTEXT_ENABLED, false)
+        set(v) = sp.edit { putBoolean(KEY_LLM_CONTEXT_ENABLED, v) }
+
+    /** Persist translated lines to the on-device History store (Settings →
+     *  Tools → History; the master switch lives on that screen). */
+    var translationHistoryEnabled: Boolean
+        get() = sp.getBoolean(KEY_TRANSLATION_HISTORY_ENABLED, false)
+        set(v) = sp.edit { putBoolean(KEY_TRANSLATION_HISTORY_ENABLED, v) }
+
     /** True when [openaiBaseUrl] points somewhere other than the canonical
      *  OpenAI endpoint (trailing-slash / whitespace insensitive). The single
      *  definition of "is this still real OpenAI?" — drives the model-list
@@ -1257,6 +1272,8 @@ class Prefs internal constructor(
         const val KEY_LLM_SYSTEM_PROMPT             = "llm_system_prompt"
         const val KEY_LLM_TRANSLATION_PROMPT        = "llm_translation_prompt"
         const val KEY_LLM_BATCH_PROMPT              = "llm_batch_prompt"
+        private const val KEY_LLM_CONTEXT_ENABLED           = "llm_context_enabled"
+        private const val KEY_TRANSLATION_HISTORY_ENABLED   = "translation_history_enabled"
 
         /** Default selected model — chosen to match the first entry in
          *  the picker after filtering + sorting (newest alias by
