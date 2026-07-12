@@ -2702,8 +2702,10 @@
     <string name="settings_cell_dictionary">Dictionary</string>
     <!-- Tools hub cell title in Settings: opens the translation-history screen. -->
     <string name="settings_cell_history">History</string>
-    <!-- Summary line under the History hub cell in Settings → Tools. -->
-    <string name="settings_cell_history_summary">Sentences translated for you while playing</string>
+    <!-- Summary under the History hub cell in Settings → Tools when the history toggle is ON. -->
+    <string name="settings_cell_history_summary_on">On · Sentences translated for you while playing</string>
+    <!-- Summary under the History hub cell in Settings → Tools when the history toggle is OFF. -->
+    <string name="settings_cell_history_summary_off">Off · Sentences translated for you while playing</string>
     <!-- Toolbar title of the translation-history screen (Settings → Tools → History). -->
     <string name="history_screen_title">History</string>
     <!-- Master toggle row title at the top of the History screen. -->
@@ -2713,7 +2715,7 @@
     <!-- Empty-state body on the History screen when the master toggle is off (doubles as onboarding). -->
     <string name="history_empty_off">Text history is off. Turn it on to keep the sentences PlayTranslate translates while you play.</string>
     <!-- Empty-state body on the History screen when the toggle is on but nothing is recorded yet. -->
-    <string name="history_empty_none">Nothing here yet — lines appear as you translate.</string>
+    <string name="history_empty_none">Nothing here yet. Lines appear as they translate.</string>
     <!-- Expanded-row action on the History screen: copy the entry to the clipboard. -->
     <string name="history_action_copy">Copy</string>
     <!-- Expanded-row action on the History screen: open the Anki sentence-card composer for this entry. -->

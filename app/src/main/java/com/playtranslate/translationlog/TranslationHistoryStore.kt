@@ -42,8 +42,15 @@ object TranslationHistoryStore {
         val targetLang: String,
         val provenance: String,
         val sessionId: String,
+        val normKey: String,
         val backendDisplayName: String?,
     )
+
+    /** Bumped after every mutation — the History screen collects this to
+     *  live-update while visible (dual-screen: the page can be on screen
+     *  during auto-translate). StateFlow conflates bursts naturally. */
+    private val _revision = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    val revision: kotlinx.coroutines.flow.StateFlow<Long> get() = _revision
 
     /** Provenance values — stored as TEXT, stable once shipped. */
     const val PROVENANCE_AUTO = "auto"
@@ -122,6 +129,7 @@ object TranslationHistoryStore {
             "DELETE FROM entries WHERE id NOT IN " +
                 "(SELECT id FROM entries ORDER BY id DESC LIMIT $MAX_ROWS)"
         )
+        _revision.value++
         id
     }
 
@@ -141,6 +149,7 @@ object TranslationHistoryStore {
             put("at_ms", atMs)
             put("norm_key", normKey)
         }, "id = ?", arrayOf(rowId.toString()))
+        _revision.value++
     }
 
     /** Newest first. */
@@ -148,7 +157,7 @@ object TranslationHistoryStore {
         val out = ArrayList<HistoryEntry>(limit)
         openDb(ctx).rawQuery(
             "SELECT id, at_ms, source_text, translation, source_lang, target_lang, " +
-                "provenance, session_id, backend FROM entries ORDER BY id DESC LIMIT ?",
+                "provenance, session_id, norm_key, backend FROM entries ORDER BY id DESC LIMIT ?",
             arrayOf(limit.toString()),
         ).use { c ->
             while (c.moveToNext()) {
@@ -162,7 +171,8 @@ object TranslationHistoryStore {
                         targetLang = c.getString(5),
                         provenance = c.getString(6),
                         sessionId = c.getString(7),
-                        backendDisplayName = if (c.isNull(8)) null else c.getString(8),
+                        normKey = c.getString(8),
+                        backendDisplayName = if (c.isNull(9)) null else c.getString(9),
                     )
                 )
             }
@@ -172,10 +182,12 @@ object TranslationHistoryStore {
 
     suspend fun delete(ctx: Context, id: Long): Unit = withContext(dispatcher) {
         openDb(ctx).delete("entries", "id = ?", arrayOf(id.toString()))
+        _revision.value++
     }
 
     suspend fun clear(ctx: Context): Unit = withContext(dispatcher) {
         openDb(ctx).delete("entries", null, null)
+        _revision.value++
     }
 
     suspend fun count(ctx: Context): Long = withContext(dispatcher) {

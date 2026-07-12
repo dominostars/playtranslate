@@ -186,6 +186,20 @@ class LogWriteGateTest {
     }
 
     @Test
+    fun forgetMakesADeletedLineRecordableAgain() {
+        // User-reported: delete a history line, encounter the same sentence
+        // again → it must record again. forget() purges every dedupe memory.
+        val g = ja()
+        val first = g.offer("こんにちは、世界のみなさん。", dialogueBox, 0, 1)
+        val key = (first as LogWriteGate.Decision.Append).entry.key
+        g.forget(key)
+        assertTrue(
+            g.offer("こんにちは、世界のみなさん。", dialogueBox, 60_000, 90)
+                is LogWriteGate.Decision.Append,
+        )
+    }
+
+    @Test
     fun deliberateEntriesNeverBecomeSupersessionTargets() {
         val g = ja()
         g.offerDeliberate("こんにちは、世界", 0, 1)

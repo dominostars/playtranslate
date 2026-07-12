@@ -153,6 +153,21 @@ class TranslationLogRecorder(
         ring.clear()
     }
 
+    /** The user cleared History: reset every dedupe memory so lines can
+     *  record again (the store is empty — nothing is a duplicate of it).
+     *  The context ring is deliberately untouched: independent contract. */
+    fun onHistoryCleared() = guarded {
+        gate = null
+        gateSourceLang = null
+        rowIds.clear()
+    }
+
+    /** One entry deleted from History: its next sighting must record again. */
+    fun onEntryDeleted(normKey: String) = guarded {
+        gate?.forget(normKey)
+        rowIds.remove(normKey)
+    }
+
     private fun apply(
         decision: LogWriteGate.Decision,
         source: String,

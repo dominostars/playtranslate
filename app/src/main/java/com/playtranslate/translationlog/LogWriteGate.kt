@@ -229,6 +229,15 @@ class LogWriteGate(private val sourceLang: String) {
     private fun churnRegionFor(bounds: Rect): ChurnRegion? =
         churnRegions.lastOrNull { sameRegion(it.bounds, bounds) }
 
+    /** The user deleted this line from history: drop every dedupe memory of
+     *  it so the next sighting records again. Without this, a cleared line
+     *  can never re-enter history for the rest of the session. */
+    fun forget(key: String) {
+        seen.remove(key)
+        recent.removeAll { it.key == key }
+        if (lastEntry?.key == key) lastEntry = null
+    }
+
     companion object {
         private const val SEEN_CAP = 512
 

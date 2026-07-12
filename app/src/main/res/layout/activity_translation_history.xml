@@ -48,12 +48,17 @@
         android:gravity="center"
         android:visibility="gone" />
 
+    <!-- wrap_content + the parent's AT_MOST constraint: the card hugs a
+         short list and caps at the remaining screen height for a long one
+         (the RecyclerView then scrolls internally). GONE while empty — no
+         floating empty card. -->
     <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardHistory"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_height="wrap_content"
         android:layout_marginHorizontal="14dp"
         android:layout_marginVertical="10dp"
+        android:visibility="gone"
         app:cardBackgroundColor="?attr/ptCard"
         app:cardCornerRadius="@dimen/pt_radius"
         app:cardElevation="0dp"
@@ -63,9 +68,7 @@
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvHistory"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:paddingBottom="8dp"
-            android:clipToPadding="false" />
+            android:layout_height="wrap_content" />
 
     </com.google.android.material.card.MaterialCardView>
 

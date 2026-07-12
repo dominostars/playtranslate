@@ -11,13 +11,16 @@ import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.isVisible
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.AnkiManager
+import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.themeColor
@@ -25,17 +28,19 @@ import com.playtranslate.translationlog.TranslationHistoryStore
 import com.playtranslate.translationlog.TranslationHistoryStore.HistoryEntry
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 /**
  * Tools → History: the reading surface for the translation log. Hosts its
  * OWN master switch (enable/consume/clear all live at one address — the
- * empty state doubles as onboarding when the feature is off), a compact
- * reverse-chronological list, tap-to-expand per-row actions (copy /
- * add-to-Anki / delete), swipe-to-delete, and Clear History in the
- * toolbar overflow. Reads [TranslationHistoryStore]; writes arrive from
- * [com.playtranslate.translationlog.TranslationLogRecorder] while the
- * capture pipelines run.
+ * empty state doubles as onboarding when the feature is off) and a
+ * reverse-chronological list whose rows carry an inline action cluster
+ * (copy / add-to-Anki / delete) mirroring WordResultCell's header-button
+ * idiom. Live-updates via [TranslationHistoryStore.revision] — the page
+ * can sit on the second screen while auto-translate feeds it. Deletes and
+ * clears also reset the recorder's dedupe memory so a removed line can
+ * record again ([TranslationLogRecorder.onEntryDeleted]/[onHistoryCleared]).
  */
 class TranslationHistoryActivity : SettingsSubPageActivity() {
 
@@ -44,9 +49,7 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
     private val entries = mutableListOf<HistoryEntry>()
     private lateinit var adapter: HistoryAdapter
     private lateinit var emptyView: TextView
-
-    /** The single expanded row's entry id, or -1. */
-    private var expandedId: Long = -1
+    private lateinit var listCard: View
 
     override fun onContentCreated(savedInstanceState: Bundle?) {
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
@@ -58,6 +61,7 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
         }
 
         emptyView = findViewById(R.id.tvHistoryEmpty)
+        listCard = findViewById(R.id.cardHistory)
         bindMasterToggle()
 
         val recycler = findViewById<RecyclerView>(R.id.rvHistory)
@@ -82,13 +86,14 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
             }
         }).attachToRecyclerView(recycler)
 
-        reload()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Fresh after returning from the Anki composer or a play session.
-        reload()
+        // Initial load + live updates while visible: the store's revision
+        // bumps on every mutation and StateFlow replays/conflates, so this
+        // both loads now and coalesces bursts from live-mode cycles.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                TranslationHistoryStore.revision.collectLatest { reloadNow() }
+            }
+        }
     }
 
     private fun bindMasterToggle() {
@@ -109,19 +114,18 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
         }
     }
 
-    private fun reload() {
-        lifecycleScope.launch {
-            val fresh = TranslationHistoryStore.recent(this@TranslationHistoryActivity, LOAD_LIMIT)
-            entries.clear()
-            entries.addAll(fresh)
-            adapter.notifyDataSetChanged()
-            updateEmptyState()
-        }
+    private suspend fun reloadNow() {
+        val fresh = TranslationHistoryStore.recent(this, LOAD_LIMIT)
+        entries.clear()
+        entries.addAll(fresh)
+        adapter.notifyDataSetChanged()
+        updateEmptyState()
     }
 
     private fun updateEmptyState() {
         val empty = entries.isEmpty()
         emptyView.isVisible = empty
+        listCard.isVisible = !empty
         if (empty) {
             emptyView.setText(
                 if (Prefs(this).translationHistoryEnabled) R.string.history_empty_none
@@ -142,8 +146,8 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
             ) {
                 lifecycleScope.launch {
                     TranslationHistoryStore.clear(this@TranslationHistoryActivity)
-                    expandedId = -1
-                    reload()
+                    // The store is empty — nothing is a duplicate anymore.
+                    CaptureService.instance?.translationLogRecorderIfInitialized?.onHistoryCleared()
                 }
             }
             .addCancelButton()
@@ -162,8 +166,9 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
             ) {
                 lifecycleScope.launch {
                     TranslationHistoryStore.delete(this@TranslationHistoryActivity, entry.id)
-                    if (expandedId == entry.id) expandedId = -1
-                    reload()
+                    // Un-remember the line so its next sighting records again.
+                    CaptureService.instance?.translationLogRecorderIfInitialized
+                        ?.onEntryDeleted(entry.normKey)
                 }
             }
             .addCancelButton()
@@ -198,14 +203,12 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
     private inner class HistoryAdapter : RecyclerView.Adapter<HistoryAdapter.VH>() {
 
         inner class VH(view: View) : RecyclerView.ViewHolder(view) {
-            val content: View = view.findViewById(R.id.historyRowContent)
-            val source: TextView = view.findViewById(R.id.tvHistorySource)
-            val translation: TextView = view.findViewById(R.id.tvHistoryTranslation)
             val meta: TextView = view.findViewById(R.id.tvHistoryMeta)
-            val actions: View = view.findViewById(R.id.historyRowActions)
             val copy: View = view.findViewById(R.id.btnHistoryCopy)
             val anki: View = view.findViewById(R.id.btnHistoryAnki)
             val delete: View = view.findViewById(R.id.btnHistoryDelete)
+            val source: TextView = view.findViewById(R.id.tvHistorySource)
+            val translation: TextView = view.findViewById(R.id.tvHistoryTranslation)
             val divider: View = view.findViewById(R.id.historyRowDivider)
         }
 
@@ -219,25 +222,15 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
 
         override fun onBindViewHolder(holder: VH, position: Int) {
             val entry = entries[position]
-            holder.source.text = entry.sourceText
-            holder.translation.text = entry.translation.orEmpty()
-            holder.translation.isVisible = !entry.translation.isNullOrEmpty()
             holder.meta.text = listOfNotNull(
                 timeFormat.format(Date(entry.atMs)),
                 entry.backendDisplayName,
             ).joinToString(" · ")
-            holder.actions.isVisible = entry.id == expandedId
+            holder.source.text = entry.sourceText
+            holder.translation.text = entry.translation.orEmpty()
+            holder.translation.isVisible = !entry.translation.isNullOrEmpty()
             holder.divider.isVisible = position < entries.size - 1
 
-            holder.content.setOnClickListener {
-                val previous = expandedId
-                expandedId = if (expandedId == entry.id) -1 else entry.id
-                if (previous != -1L) {
-                    val prevPos = entries.indexOfFirst { e -> e.id == previous }
-                    if (prevPos >= 0) notifyItemChanged(prevPos)
-                }
-                notifyItemChanged(holder.bindingAdapterPosition)
-            }
             holder.copy.setOnClickListener { copyEntry(entry) }
             holder.anki.setOnClickListener { addToAnki(entry) }
             holder.delete.setOnClickListener { confirmDelete(entry) }

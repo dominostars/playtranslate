@@ -33,11 +33,15 @@ class TranslationHistoryStoreTest {
 
     @Test
     fun insertAndReadNewestFirst(): Unit = runBlocking {
+        val revisionBefore = TranslationHistoryStore.revision.value
         insert("one", atMs = 100)
         insert("two", atMs = 200)
         val entries = TranslationHistoryStore.recent(ctx, 10)
         assertEquals(listOf("two", "one"), entries.map { it.sourceText })
         assertEquals("TestBackend", entries[0].backendDisplayName)
+        assertEquals("key-two", entries[0].normKey)
+        // Live-update signal: every mutation bumps the revision.
+        assertTrue(TranslationHistoryStore.revision.value >= revisionBefore + 2)
     }
 
     @Test

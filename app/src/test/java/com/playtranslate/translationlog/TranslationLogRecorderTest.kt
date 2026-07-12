@@ -151,6 +151,27 @@ class TranslationLogRecorderTest {
     }
 
     @Test
+    fun clearHistoryResetsDedupe_sameLineRecordsAgain() {
+        recorder.onShown("こんにちは、世界のみなさん。", "Hello.", box, "ja", "en")
+        assertEquals(1, sink.rows.size)
+        recorder.onHistoryCleared()
+        recorder.onShown("こんにちは、世界のみなさん。", "Hello.", box, "ja", "en")
+        assertEquals(2, sink.rows.size)
+    }
+
+    @Test
+    fun deleteEntryResetsItsDedupe_sameLineRecordsAgain() {
+        recorder.onShown("こんにちは、世界のみなさん。", "Hello.", box, "ja", "en")
+        val key = sink.rows.getValue(1L).normKey
+        recorder.onEntryDeleted(key)
+        recorder.onShown("こんにちは、世界のみなさん。", "Hello.", box, "ja", "en")
+        assertEquals(2, sink.rows.size)
+        // An untouched line still dedupes.
+        recorder.onShown("こんにちは、世界のみなさん。", "Hello.", box, "ja", "en")
+        assertEquals(2, sink.rows.size)
+    }
+
+    @Test
     fun contextBlockRespectsLanguagePair() {
         recorder.onShown("こんにちは、世界のみなさん。", "Hello.", box, "ja", "en")
         assertEquals("", recorder.contextBlockFor("ja", "fr"))

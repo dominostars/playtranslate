@@ -894,7 +894,12 @@ class SettingsRenderer(
             HubCell(
                 iconRes = R.drawable.ic_history,
                 title = ctx.getString(R.string.settings_cell_history),
-                summary = ctx.getString(R.string.settings_cell_history_summary),
+                // On/Off prefix reflects the in-screen master switch; fresh
+                // per bind (the settings sheet rebinds on every open).
+                summary = ctx.getString(
+                    if (Prefs(ctx).translationHistoryEnabled) R.string.settings_cell_history_summary_on
+                    else R.string.settings_cell_history_summary_off
+                ),
                 isLast = true,
                 onClick = { ctx.startActivity(Intent(ctx, TranslationHistoryActivity::class.java)) },
             ),
