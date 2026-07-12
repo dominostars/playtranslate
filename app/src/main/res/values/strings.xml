@@ -1501,7 +1501,7 @@
          feeds recent translated lines to LLM backends as prompt context. -->
     <string name="settings_llm_context_title">Use recent lines as context</string>
     <!-- Subtitle under the recent-lines-as-context toggle row. -->
-    <string name="settings_llm_context_subtitle">Give LLM translators the last few lines for more consistent pronouns and names</string>
+    <string name="settings_llm_context_subtitle">Give LLM translators the last few lines of recorded text for more consistent pronouns and names.</string>
     <!-- Title of the System-prompt row on the Translation services page;
          also the editor screen's toolbar title. -->
     <string name="llm_prompt_row_system_title">System prompt</string>
@@ -2702,16 +2702,19 @@
     <string name="settings_cell_dictionary">Dictionary</string>
     <!-- Tools hub cell title in Settings: opens the translation-history screen. -->
     <string name="settings_cell_history">History</string>
-    <!-- Summary under the History hub cell in Settings → Tools when the history toggle is ON. -->
-    <string name="settings_cell_history_summary_on">On · Sentences translated for you while playing</string>
+    <!-- Summary under the History hub cell in Settings → Tools when the history toggle is ON.
+         Deliberately reader-anchored and translation-agnostic: entries include untranslated
+         lookups, and readers may be in manga, not games. -->
+    <string name="settings_cell_history_summary_on">On · Record of sentences you\'ve read</string>
     <!-- Summary under the History hub cell in Settings → Tools when the history toggle is OFF. -->
-    <string name="settings_cell_history_summary_off">Off · Sentences translated for you while playing</string>
+    <string name="settings_cell_history_summary_off">Off · Record of sentences you\'ve read</string>
     <!-- Toolbar title of the translation-history screen (Settings → Tools → History). -->
     <string name="history_screen_title">History</string>
     <!-- Master toggle row title at the top of the History screen. -->
     <string name="history_toggle_title">Keep text history</string>
-    <!-- Subtitle under the History master toggle. -->
-    <string name="history_toggle_subtitle">Save translated lines on this device</string>
+    <!-- Subtitle under the History master toggle. Translation-agnostic on purpose:
+         entries are lines the app read (some arrive untranslated). -->
+    <string name="history_toggle_subtitle">Save the sentences you\'ve read on this device</string>
     <!-- Empty-state body on the History screen when the master toggle is off (doubles as onboarding). -->
     <string name="history_empty_off">Text history is off. Turn it on to keep the sentences PlayTranslate translates while you play.</string>
     <!-- Empty-state body on the History screen when the toggle is on but nothing is recorded yet. -->
