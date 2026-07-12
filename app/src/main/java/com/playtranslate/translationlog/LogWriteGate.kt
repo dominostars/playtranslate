@@ -93,6 +93,25 @@ class LogWriteGate(private val sourceLang: String) {
 
     private val churnRegions = ArrayDeque<ChurnRegion>()
 
+    /** Deliberate-action entries (one-shot, drag-lookup): the user asked for
+     *  this translation, so noise gates don't apply — but the SAME exact-
+     *  dedupe as auto entries does, sharing [seen] so a one-shot of a line
+     *  live mode already logged still collapses. No supersession and no
+     *  effect on [lastEntry]/[recent]: a deliberate capture is a complete
+     *  result, never a typewriter partial, and must not become a Replace
+     *  target for unrelated auto commits. */
+    fun offerDeliberate(text: String, atMs: Long, cycle: Int): Decision {
+        if (text.isBlank()) return Decision.Suppress(SuppressReason.NOT_SENTENCE)
+        val key = normalizedKey(text, sourceLang)
+        if (key.isEmpty()) return Decision.Suppress(SuppressReason.NOT_SENTENCE)
+        if (seen.containsKey(key)) {
+            seen[key] = atMs
+            return Decision.Suppress(SuppressReason.DUPLICATE)
+        }
+        seen[key] = atMs
+        return Decision.Append(Entry(text, Rect(), atMs, cycle, key))
+    }
+
     fun offer(text: String, bounds: Rect, atMs: Long, cycle: Int): Decision {
         if (!isSentenceLike(text, sourceLang)) {
             return Decision.Suppress(SuppressReason.NOT_SENTENCE)

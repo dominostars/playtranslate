@@ -163,6 +163,38 @@ class LogWriteGateTest {
         )
     }
 
+    // ── Deliberate entries (one-shot / lookup) ───────────────────────────
+
+    @Test
+    fun deliberateEntriesBypassNoiseGatesButShareExactDedupe() {
+        val g = ja()
+        // A bare name fails the auto sentence floor but is a deliberate
+        // capture — the user asked for it.
+        assertTrue(g.offerDeliberate("アリス", 0, 1) is LogWriteGate.Decision.Append)
+        // Exact repeat dedupes...
+        assertEquals(
+            LogWriteGate.SuppressReason.DUPLICATE,
+            (g.offerDeliberate("アリス", 1000, 2) as LogWriteGate.Decision.Suppress).reason,
+        )
+        // ...and the seen map is SHARED with the auto path: a deliberate
+        // capture of a line auto mode already logged collapses too.
+        g.offer("こんにちは、世界のみなさん。", dialogueBox, 2000, 3)
+        assertEquals(
+            LogWriteGate.SuppressReason.DUPLICATE,
+            (g.offerDeliberate("こんにちは、世界のみなさん。", 3000, 4) as LogWriteGate.Decision.Suppress).reason,
+        )
+    }
+
+    @Test
+    fun deliberateEntriesNeverBecomeSupersessionTargets() {
+        val g = ja()
+        g.offerDeliberate("こんにちは、世界", 0, 1)
+        // An auto commit that would look like typewriter growth of the
+        // deliberate entry must APPEND, not replace it.
+        val d = g.offer("こんにちは、世界のみなさんお元気ですか。", dialogueBox, 500, 2)
+        assertTrue(d is LogWriteGate.Decision.Append)
+    }
+
     // ── Near-duplicate collapse (OCR jitter re-reads) ────────────────────
 
     @Test
