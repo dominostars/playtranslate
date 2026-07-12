@@ -92,8 +92,10 @@ class SentenceAnkiContentFragment : Fragment() {
     private var gameAudioDurationMs = 0L
 
     /** THIS card's snapshot — a unique immutable file this fragment owns and
-     *  deletes in onDestroyView. Other cards snapshot to their own files, so
-     *  nothing external can invalidate this one (the churn-bug class fix). */
+     *  deletes on provably-final teardown (see onDestroyView: finishing
+     *  activity, or dismissal with no saved state). Other cards snapshot to
+     *  their own files, so nothing external can invalidate this one (the
+     *  churn-bug class fix). */
     private var gameAudioSnapshotFile: File? = null
 
     /** The snapshot file the panel last loaded — reload guard. */
@@ -404,11 +406,12 @@ class SentenceAnkiContentFragment : Fragment() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        // Game-audio state survives process death: the snapshot file stays
-        // on disk (onDestroyView never runs when the process dies), so the
-        // path + selection key + review flag fully reconstruct the cell —
-        // a trimmed clip must not silently degrade to Auto/TTS on restore
-        // (adversarial-review finding).
+        // Game-audio state survives process death AND saved-state destroys:
+        // once this bundle exists onDestroyView keeps the file (isStateSaved
+        // gate), and process death never runs onDestroyView at all — either
+        // way the path + selection key + review flag fully reconstruct the
+        // cell. A trimmed clip must not silently degrade to Auto/TTS on
+        // restore (adversarial-review finding).
         val wav = gameAudioSnapshotFile ?: return
         outState.putString(STATE_GAME_SNAPSHOT_PATH, wav.absolutePath)
         val sel = sentenceSelection
@@ -418,11 +421,12 @@ class SentenceAnkiContentFragment : Fragment() {
         }
     }
 
-    /** Rebuild the game-audio cell after process death. No-ops (cell stays
-     *  Auto, like a card opened without recording) when nothing was saved or
-     *  the snapshot didn't survive — realistic restores happen minutes after
-     *  death and find the file; only a >6 h zombie loses it to the orphan
-     *  sweep or an OS cache purge. */
+    /** Rebuild the game-audio cell after process death or a saved-state
+     *  destroy (activity released while stopped, e.g. behind the trim
+     *  editor). No-ops (cell stays Auto, like a card opened without
+     *  recording) when nothing was saved or the snapshot didn't survive —
+     *  realistic restores happen minutes later and find the file; only a
+     *  >6 h zombie loses it to the orphan sweep or an OS cache purge. */
     private fun restoreGameAudioState(state: Bundle) {
         val path = state.getString(STATE_GAME_SNAPSHOT_PATH) ?: return
         val wav = File(path)
@@ -451,14 +455,26 @@ class SentenceAnkiContentFragment : Fragment() {
         gameAudioPanel = null
         gameAudioWave = null
         gameAudioLoadedFile = null
-        // We own this card's snapshot. Delete it when the flow is truly over
-        // — but NOT through a configuration-change recreation, where the
-        // just-saved instance state points at this file and the recreated
-        // fragment re-owns it (process death never runs this at all; a
-        // recreation that never completes is the orphan sweep's job).
+        // We own this card's snapshot. Delete it only on provably-final
+        // teardown: the activity is finishing (finished activities are never
+        // restored), or the teardown ran with no state saved AND the host
+        // not even stopped (plain dismissal while resumed — no bundle exists
+        // that could recreate this card). Everything else is a potential
+        // saved-state destroy — the activity released while stopped behind
+        // the trim editor / audio picker, memory pressure, don't-keep-
+        // activities — and MUST keep the file: the just-saved bundle
+        // references it and the restored fragment re-owns it. Both clauses
+        // matter: isStateSaved alone is not "a bundle exists" (FragmentManager
+        // reports true for a merely-stopped host, so finish-from-stopped
+        // would leak every file to the sweep), and isFinishing alone misses
+        // resumed-state dismissal. Process death skips this method entirely;
+        // a restore that never happens is the orphan sweep's job. Don't
+        // replace this with a hand-tracked flag or an isChangingConfigurations
+        // proxy — those enumerate single recreation paths and re-open the
+        // deleted-snapshot-on-restore hole.
         gameAudioSnapshotFile?.let { f ->
             if (GameAudioSnapshot.active == f) GameAudioSnapshot.active = null
-            if (activity?.isChangingConfigurations != true) f.delete()
+            if (activity?.isFinishing == true || !isStateSaved) f.delete()
         }
         gameAudioSnapshotFile = null
         ivPhoto?.setImageBitmap(null)
@@ -1381,8 +1397,9 @@ class SentenceAnkiContentFragment : Fragment() {
     }
 
     companion object {
-        /** Process-death restore of the game-audio state (the snapshot file
-         *  survives on disk — onDestroyView never ran). */
+        /** Restore of the game-audio state after process death (onDestroyView
+         *  never ran) or a saved-state destroy (onDestroyView ran but kept
+         *  the file — see the isStateSaved gate there). */
         private const val STATE_GAME_SNAPSHOT_PATH = "game_snapshot_path"
         private const val STATE_GAME_SEL_KEY = "game_sel_key"
         private const val STATE_GAME_REVIEWED = "game_reviewed"
