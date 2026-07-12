@@ -72,6 +72,7 @@ enum class PromptKind(
         keywords = LlmPromptTemplates.LANGUAGE_KEYWORDS + listOf(
             KeywordInfo(LlmPromptTemplates.TOKEN_COUNT, R.string.llm_prompt_kw_count_desc),
             KeywordInfo(LlmPromptTemplates.TOKEN_STRINGS, R.string.llm_prompt_kw_strings_desc),
+            KeywordInfo(LlmPromptTemplates.TOKEN_CONTEXT, R.string.llm_prompt_kw_context_desc),
         ),
         readPref = { it.llmBatchPrompt },
         writePref = { p, v -> p.llmBatchPrompt = v },
@@ -135,7 +136,11 @@ object LlmPromptTemplates {
     const val DEFAULT_TRANSLATION =
         "{context}Please translate the following {source} text into {target}:\n\n{text}"
 
-    const val DEFAULT_BATCH = "Translate each of these {N} strings:\n{strings}"
+    // {context} prefixes the batch default for the same reason as the
+    // single-text default: the user's context toggle must alter EVERY LLM
+    // path it claims to (cloud multi-group live cycles batch), and an
+    // empty provider renders byte-identical to the pre-context prompt.
+    const val DEFAULT_BATCH = "{context}Translate each of these {N} strings:\n{strings}"
 
     /**
      * The batch response contract, appended verbatim (substituted, never
@@ -238,13 +243,17 @@ object LlmPromptTemplates {
         return substitute(persona, values) + "\n\n" + substitute(BATCH_JSON_CONTRACT, values)
     }
 
-    /** The cloud batch user message; [texts] ride along as a JSON array. */
+    /** The cloud batch user message; [texts] ride along as a JSON array.
+     *  `{context}` resolves here exactly like the single-text path — the
+     *  JSON contract's "exactly one string per input" keeps context lines
+     *  out of the response array. */
     fun batchUserMessage(texts: List<String>, source: String, target: String): String =
         substitute(
             effectiveTemplate(PromptKind.BATCH),
             languageValues(source, target) + mapOf(
                 TOKEN_COUNT to texts.size.toString(),
                 TOKEN_STRINGS to PtJson.lenient.encodeToString(texts),
+                TOKEN_CONTEXT to contextProvider(source, target),
             ),
         )
 

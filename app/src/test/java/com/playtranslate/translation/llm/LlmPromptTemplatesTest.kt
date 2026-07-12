@@ -76,6 +76,18 @@ class LlmPromptTemplatesTest {
     }
 
     @Test
+    fun `batch user message carries context too - the toggle must alter every LLM path`() {
+        LlmPromptTemplates.contextProvider = { _, _ ->
+            "Recent dialogue lines, for context only:\n- 行くぞ → Let's go.\n\n"
+        }
+        assertEquals(
+            "Recent dialogue lines, for context only:\n- 行くぞ → Let's go.\n\n" +
+                "Translate each of these 2 strings:\n[\"おはよう\",\"メニュー\"]",
+            LlmPromptTemplates.batchUserMessage(listOf("おはよう", "メニュー"), "ja", "en"),
+        )
+    }
+
+    @Test
     fun `resetOverrides clears the context provider`() {
         LlmPromptTemplates.contextProvider = { _, _ -> "SHOULD NOT APPEAR\n\n" }
         LlmPromptTemplates.resetOverrides()
