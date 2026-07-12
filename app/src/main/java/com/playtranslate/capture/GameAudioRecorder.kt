@@ -47,7 +47,13 @@ private const val TAG = "GameAudioRecorder"
  * while the reader is paused, and audio captured minutes ago must survive a
  * transient pause (the mining loop can trail a voice line by minutes). The
  * cost is a splice seam in the waveform where a pause happened; for a
- * manually-trimmed buffer that is visible but harmless. Our own playback
+ * manually-trimmed buffer that is visible but harmless. Writes pass a
+ * [SilenceGate]: contiguous EXACT-ZERO audio beyond 2 s is dropped, so the
+ * 180 s of capacity skews toward retained sound — quiet stretches the
+ * CARD_FLOW_PAUSE freeze doesn't cover (game paused behind another app,
+ * music-less menus) stretch the ring's wall-clock coverage instead of
+ * consuming it. Nonzero-but-quiet audio is never dropped, whatever its
+ * level (see the gate's kdoc). Our own playback
  * never appears in the ring — the capture config excludes our uid (see
  * [start]; the manifest-level opt-out is off-limits on the Thor).
  */
@@ -254,6 +260,10 @@ class GameAudioRecorder(
 
     private fun readerLoop(rec: AudioRecord) {
         val chunk = ShortArray(SAMPLE_RATE / 10) // 100 ms
+        // Write-time silence collapse ([SilenceGate]): per-run state — a
+        // fresh run after pause/resume starts a fresh 2 s budget, which is
+        // fine because the pause itself already splices the waveform there.
+        val gate = SilenceGate(SAMPLE_RATE)
         // Periodic level line: distinguishes "capturing real audio" from
         // "running but the game's audio is opted out of capture" (silence)
         // without any UI. One line per ~15 s.
@@ -267,20 +277,23 @@ class GameAudioRecorder(
                 if (shouldRun) stop("read returned $n")
                 return
             }
+            var chunkPeak = 0
             for (i in 0 until n) {
                 val a = abs(chunk[i].toInt())
-                if (a > windowPeak) windowPeak = a
+                if (a > chunkPeak) chunkPeak = a
             }
-            synchronized(lock) {
+            if (chunkPeak > windowPeak) windowPeak = chunkPeak
+            val keep = gate.admit(chunkPeak, n)
+            if (keep > 0) synchronized(lock) {
                 if (!shouldRun) return
                 var p = writePos
-                for (i in 0 until n) {
+                for (i in 0 until keep) {
                     ring[p] = chunk[i]
                     p++
                     if (p == ring.size) p = 0
                 }
                 writePos = p
-                framesWritten += n
+                framesWritten += keep
             }
             windowFrames += n
             if (windowFrames >= SAMPLE_RATE * 15) {
@@ -290,7 +303,8 @@ class GameAudioRecorder(
                 Log.i(
                     TAG,
                     "capturing: buffered=${minOf(framesWritten, ring.size.toLong()) / SAMPLE_RATE}s " +
-                        "peak15s=${"%.0f".format(db)}dB",
+                        "peak15s=${"%.0f".format(db)}dB " +
+                        "droppedSilence=${gate.droppedFrames / SAMPLE_RATE}s",
                 )
                 windowPeak = 0
                 windowFrames = 0
