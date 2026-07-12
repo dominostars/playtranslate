@@ -166,6 +166,9 @@ class SettingsBottomSheet : DialogFragment() {
         // for these, so resume is the catch-up point.
         rootVm.refresh()
         renderer?.refreshOverlayIconState()
+        // The History hub cell's On/Off summary mirrors a switch the user can
+        // flip on the History screen while this sheet waits underneath.
+        renderer?.refreshToolsSection()
         // The toolbar hosts the Turn On/Off button on the MediaProjection
         // backend — re-check its visibility in case the accessibility grant
         // changed while we were away (same catch-up reason as the rows here).

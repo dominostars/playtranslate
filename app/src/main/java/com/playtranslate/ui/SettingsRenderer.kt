@@ -876,24 +876,10 @@ class SettingsRenderer(
     // ── Tools ────────────────────────────────────────────────────────────
 
     /** TOOLS: static hub cells — translation history on top, then the
-     *  dictionary lookup screen. Bound once at setup — no VM-driven digest. */
+     *  dictionary lookup screen. */
     private fun setupToolsSection() {
         setGroupHeader(R.id.headerTools, ctx.getString(R.string.settings_header_tools))
-        bindHubCell(
-            root.findViewById(R.id.rowToolHistory),
-            HubCell(
-                iconRes = R.drawable.ic_history,
-                title = ctx.getString(R.string.settings_cell_history),
-                // On/Off prefix reflects the in-screen master switch; fresh
-                // per bind (the settings sheet rebinds on every open).
-                summary = ctx.getString(
-                    if (Prefs(ctx).translationHistoryEnabled) R.string.settings_cell_history_summary_on
-                    else R.string.settings_cell_history_summary_off
-                ),
-                isLast = false,
-                onClick = { ctx.startActivity(Intent(ctx, TranslationHistoryActivity::class.java)) },
-            ),
-        )
+        refreshToolsSection()
         bindHubCell(
             root.findViewById(R.id.rowToolDictionary),
             HubCell(
@@ -902,6 +888,26 @@ class SettingsRenderer(
                 summary = ctx.getString(R.string.settings_cell_dictionary_summary),
                 isLast = true,
                 onClick = { ctx.startActivity(Intent(ctx, DictionaryLookupActivity::class.java)) },
+            ),
+        )
+    }
+
+    /** Rebind the History hub cell — its On/Off summary mirrors the master
+     *  switch on the History screen, which the user can flip while the
+     *  settings sheet is still open underneath. The sheet calls this from
+     *  onResume so the summary is fresh on every return. */
+    fun refreshToolsSection() {
+        bindHubCell(
+            root.findViewById(R.id.rowToolHistory),
+            HubCell(
+                iconRes = R.drawable.ic_history,
+                title = ctx.getString(R.string.settings_cell_history),
+                summary = ctx.getString(
+                    if (Prefs(ctx).translationHistoryEnabled) R.string.settings_cell_history_summary_on
+                    else R.string.settings_cell_history_summary_off
+                ),
+                isLast = false,
+                onClick = { ctx.startActivity(Intent(ctx, TranslationHistoryActivity::class.java)) },
             ),
         )
     }

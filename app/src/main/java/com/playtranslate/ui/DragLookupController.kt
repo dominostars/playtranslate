@@ -839,13 +839,16 @@ class DragLookupController(
                 lastWord = popupData.word
                 currentEntry = popupData.entry
                 lastReading = popupData.reading
+                var sentenceToRecord: String? = null
                 currentSentence?.let { sent ->
                     if (sent != lastSentSentence) {
                         lastSentSentence = sent
+                        sentenceToRecord = sent
                         sendLineToMainApp(sent)
                     }
                 }
                 withContext(Dispatchers.Main) {
+                    sentenceToRecord?.let { recordLookupSentence(it) }
                     magnifier.setDefinitions(popupData.toLensData(), label)
                     magnifier.makeInteractive()
                     // Lens is now in DEFINITIONS mode — the zoom no longer
@@ -1425,6 +1428,24 @@ class DragLookupController(
         wordLookupJob = scope.launch {
             LastSentenceCache.awaitOrStartWordLookups(context, sentence)
         }
+    }
+
+    /** Recording backend (Text History): the sentence the user looked up.
+     *  SINGLE-SCREEN ONLY — no sentence translation exists in this mode, so
+     *  the entry records translation-less by design (the History row hides
+     *  an empty translation). Dual-screen lookups record their complete
+     *  pair when MainActivity's translation lands instead; recording here
+     *  too would exact-dedupe the pair entry out of existence. Main thread
+     *  (caller hops); recorder swallows its own failures. */
+    private fun recordLookupSentence(sentence: String) {
+        if (!Prefs.isSingleScreen(context)) return
+        val prefs = Prefs(context)
+        CaptureService.instance?.translationLogRecorder?.onShownDeliberate(
+            sentence, null, null,
+            com.playtranslate.language.SourceLanguageProfiles[prefs.sourceLangId].translationCode,
+            prefs.targetLang,
+            com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_LOOKUP,
+        )
     }
 
     private fun sendLineToMainApp(lineText: String) {
