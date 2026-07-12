@@ -2703,20 +2703,21 @@
     <!-- Tools hub cell title in Settings: opens the translation-history screen. -->
     <string name="settings_cell_history">History</string>
     <!-- Summary under the History hub cell in Settings → Tools when the history toggle is ON.
-         Deliberately reader-anchored and translation-agnostic: entries include untranslated
-         lookups, and readers may be in manga, not games. -->
-    <string name="settings_cell_history_summary_on">On · Record of sentences you\'ve read</string>
+         "Captured" is the app's own established verb, and deliberately claims neither
+         translation (lookups can arrive untranslated), nor games (manga readers), nor
+         completeness (only records while the switch is on). -->
+    <string name="settings_cell_history_summary_on">On · Record of captured sentences</string>
     <!-- Summary under the History hub cell in Settings → Tools when the history toggle is OFF. -->
-    <string name="settings_cell_history_summary_off">Off · Record of sentences you\'ve read</string>
+    <string name="settings_cell_history_summary_off">Off · Record of captured sentences</string>
     <!-- Toolbar title of the translation-history screen (Settings → Tools → History). -->
     <string name="history_screen_title">History</string>
     <!-- Master toggle row title at the top of the History screen. -->
     <string name="history_toggle_title">Keep text history</string>
-    <!-- Subtitle under the History master toggle. Translation-agnostic on purpose:
-         entries are lines the app read (some arrive untranslated). -->
-    <string name="history_toggle_subtitle">Save the sentences you\'ve read on this device</string>
+    <!-- Subtitle under the History master toggle. "Captured" per the hub summary's
+         rationale; "on this device" is the privacy statement. -->
+    <string name="history_toggle_subtitle">Save captured sentences on this device</string>
     <!-- Empty-state body on the History screen when the master toggle is off (doubles as onboarding). -->
-    <string name="history_empty_off">Text history is off. Turn it on to keep the sentences PlayTranslate translates while you play.</string>
+    <string name="history_empty_off">Text history is off. Turn it on to keep the sentences <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> captures.</string>
     <!-- Empty-state body on the History screen when the toggle is on but nothing is recorded yet. -->
     <string name="history_empty_none">Nothing here yet. Lines appear as they translate.</string>
     <!-- Expanded-row action on the History screen: copy the entry to the clipboard. -->
