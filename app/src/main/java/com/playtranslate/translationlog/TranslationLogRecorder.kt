@@ -38,9 +38,10 @@ private const val TAG = "TranslationLogRecorder"
  * loop (the LogTraceRecorder contract).
  *
  * Sessions: a fresh [sessionId] is minted at construction, on
- * [onLiveStarted], and on a source-language change (which also recreates
- * the gate and clears the ring). [onLiveStopped] clears the ring — the
- * DB persists across sessions, context never does.
+ * [onLiveStarted], and on a language-PAIR change — source or target —
+ * which also recreates the gate, drops tracked rows, and clears the ring.
+ * [onLiveStopped] clears the ring — the DB persists across sessions,
+ * context never does.
  */
 class TranslationLogRecorder(
     private val appContext: Context,
@@ -94,7 +95,15 @@ class TranslationLogRecorder(
     private val ring = ContextRing()
 
     private var gate: LogWriteGate? = null
+
+    /** The FULL language pair the current session state was built under.
+     *  Pair identity is state identity: gate dedupe memory, tracked rows,
+     *  ring pairs, and the session id are all meaningless across a pair
+     *  change — source OR target (the target-blind version of this let a
+     *  re-read line die as an old-target "duplicate" and a supersession
+     *  update cross pairs). */
     private var gateSourceLang: String? = null
+    private var gateTargetLang: String? = null
 
     @Volatile
     private var sessionId: String = UUID.randomUUID().toString()
@@ -131,7 +140,7 @@ class TranslationLogRecorder(
         val historyOn = prefs.translationHistoryEnabled
         val contextOn = prefs.llmContextEnabled
         if (!historyOn && !contextOn) return@guarded
-        val gate = ensureGate(sourceLang)
+        val gate = ensureGate(sourceLang, targetLang)
         val now = System.currentTimeMillis()
         apply(
             gate.offer(source, bounds, now, cycle = 0),
@@ -155,7 +164,7 @@ class TranslationLogRecorder(
         val historyOn = prefs.translationHistoryEnabled
         val contextOn = prefs.llmContextEnabled
         if (!historyOn && !contextOn) return@guarded
-        val gate = ensureGate(sourceLang)
+        val gate = ensureGate(sourceLang, targetLang)
         val now = System.currentTimeMillis()
         apply(
             gate.offerDeliberate(source, now, cycle = 0),
@@ -191,6 +200,7 @@ class TranslationLogRecorder(
     fun onHistoryCleared() = guarded {
         gate = null
         gateSourceLang = null
+        gateTargetLang = null
         rowIds.clear()
     }
 
@@ -372,15 +382,19 @@ class TranslationLogRecorder(
         }
     }
 
-    /** Language switch = new session: fresh gate state, empty ring —
-     *  cross-language pairs must never become context (the LunaTranslator
-     *  failure mode). */
-    private fun ensureGate(sourceLang: String): LogWriteGate {
+    /** Language-PAIR switch = new session: fresh gate state, cleared
+     *  tracked rows, empty ring, new session id — cross-pair state must
+     *  never dedupe, supersede, or contextualize across the switch (the
+     *  LunaTranslator failure mode, and the pair-blind supersession bug). */
+    private fun ensureGate(sourceLang: String, targetLang: String): LogWriteGate {
         val existing = gate
-        if (existing != null && gateSourceLang == sourceLang) return existing
+        if (existing != null && gateSourceLang == sourceLang && gateTargetLang == targetLang) {
+            return existing
+        }
         val fresh = LogWriteGate(sourceLang)
         gate = fresh
         gateSourceLang = sourceLang
+        gateTargetLang = targetLang
         ring.clear()
         rowIds.clear()
         sessionId = UUID.randomUUID().toString()

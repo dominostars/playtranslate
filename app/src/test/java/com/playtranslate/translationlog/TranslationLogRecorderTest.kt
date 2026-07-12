@@ -138,6 +138,35 @@ class TranslationLogRecorderTest {
     }
 
     @Test
+    fun targetSwitchStartsFreshState_reReadLineRecordsUnderNewPair() {
+        // Codex regression: target-blind session state let a re-read line
+        // die as an old-target duplicate and let a typewriter supersession
+        // update the old-pair row with a new-pair translation.
+        recorder.onShown("こんにちは、世界", "Hello, world", box, "ja", "en")
+        recorder.onShown("こんにちは、世界", "Bonjour le monde", box, "ja", "fr")
+        // New pair ⇒ new row, not a duplicate of the (ja,en) entry.
+        assertEquals(2, sink.rows.size)
+        assertEquals("en", sink.rows.getValue(1L).targetLang)
+        assertEquals("fr", sink.rows.getValue(2L).targetLang)
+        assertTrue(sink.rows.getValue(1L).sessionId != sink.rows.getValue(2L).sessionId)
+        // Old-pair context cleared; new pair present.
+        assertEquals("", recorder.contextBlockFor("ja", "en"))
+        assertTrue(recorder.contextBlockFor("ja", "fr").contains("Bonjour"))
+    }
+
+    @Test
+    fun typewriterGrowthNeverSupersedesAcrossATargetSwitch() {
+        recorder.onShown("こんにちは、世界", "Hello, world", box, "ja", "en")
+        // The grown read arrives under a NEW target: must append its own
+        // row — the (ja,en) row keeps its original text and translation.
+        recorder.onShown("こんにちは、世界のみなさん。", "Bonjour tout le monde.", box, "ja", "fr")
+        assertEquals(2, sink.rows.size)
+        assertEquals("こんにちは、世界", sink.rows.getValue(1L).sourceText)
+        assertEquals("Hello, world", sink.rows.getValue(1L).translation)
+        assertEquals("fr", sink.rows.getValue(2L).targetLang)
+    }
+
+    @Test
     fun languageSwitchClearsRingAndStartsNewSession() {
         recorder.onShown("こんにちは、世界のみなさん。", "Hello.", box, "ja", "en")
         val firstSession = sink.rows.getValue(1L).sessionId
