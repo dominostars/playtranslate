@@ -87,12 +87,14 @@
             </FrameLayout>
         </LinearLayout>
 
+        <!-- +2sp over the row styles (15/13): reading text, not row chrome. -->
         <TextView
             android:id="@+id/tvHistorySource"
             style="@style/Text.PT.RowTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
+            android:textSize="17sp"
             android:maxLines="3"
             android:ellipsize="end" />
 
@@ -102,6 +104,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
+            android:textSize="15sp"
             android:maxLines="3"
             android:ellipsize="end" />
     </LinearLayout>

@@ -10,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.view.doOnNextLayout
 import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -17,7 +18,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
@@ -37,7 +37,10 @@ import kotlinx.coroutines.launch
  * empty state doubles as onboarding when the feature is off) and a
  * reverse-chronological list whose rows carry an inline action cluster
  * (copy / add-to-Anki / delete) mirroring WordResultCell's header-button
- * idiom. Live-updates via [TranslationHistoryStore.revision] — the page
+ * idiom; Clear history is a danger row under the switch. The whole page
+ * is one scroll surface (the list inflates fully; reload compensates the
+ * scroll offset on top-inserts to keep the reading position anchored).
+ * Live-updates via [TranslationHistoryStore.revision] — the page
  * can sit on the second screen while auto-translate feeds it. Deletes and
  * clears also reset the recorder's dedupe memory so a removed line can
  * record again ([TranslationLogRecorder.onEntryDeleted]/[onHistoryCleared]).
@@ -50,19 +53,14 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
     private lateinit var adapter: HistoryAdapter
     private lateinit var emptyView: TextView
     private lateinit var listCard: View
+    private lateinit var scroll: androidx.core.widget.NestedScrollView
 
     override fun onContentCreated(savedInstanceState: Bundle?) {
-        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
-        toolbar.inflateMenu(R.menu.menu_translation_history)
-        toolbar.setOnMenuItemClickListener { item ->
-            if (item.itemId == R.id.action_clear_history) {
-                confirmClear(); true
-            } else false
-        }
-
         emptyView = findViewById(R.id.tvHistoryEmpty)
         listCard = findViewById(R.id.cardHistory)
+        scroll = findViewById(R.id.historyScroll)
         bindMasterToggle()
+        findViewById<View>(R.id.rowClearHistory).setOnClickListener { confirmClear() }
 
         val recycler = findViewById<RecyclerView>(R.id.rvHistory)
         recycler.layoutManager = LinearLayoutManager(this)
@@ -116,22 +114,33 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
 
     private suspend fun reloadNow() {
         val fresh = TranslationHistoryStore.recent(this, LOAD_LIMIT)
-        // Diff instead of reset: new lines land as top-insertions, so the
-        // viewport stays anchored on whatever the user is reading while the
-        // page live-updates (dual-screen auto-translate), and at-top viewers
-        // still see the newest line arrive.
+        // Diff instead of reset so live updates rebind only what changed.
         val diff = androidx.recyclerview.widget.DiffUtil.calculateDiff(object : androidx.recyclerview.widget.DiffUtil.Callback() {
             override fun getOldListSize() = entries.size
             override fun getNewListSize() = fresh.size
             override fun areItemsTheSame(old: Int, new: Int) = entries[old].id == fresh[new].id
             override fun areContentsTheSame(old: Int, new: Int) = entries[old] == fresh[new]
         })
+        // The outer NestedScrollView owns scrolling (the list is fully
+        // inflated), so a top-insert grows the card and would shove the
+        // reading position down by the new rows' height. Compensate: if the
+        // user has scrolled into the list, restore their anchor by scrolling
+        // down by the card's height delta after layout. At the top (or in
+        // the header) no compensation — the newest line should appear.
+        val grewFrom = listCard.height
+        val anchored = scroll.scrollY > listCard.top
         entries.clear()
         entries.addAll(fresh)
         diff.dispatchUpdatesTo(adapter)
         // The last-row divider is a bind-time decision; a removal can move
         // "last" onto a row the diff didn't touch — rebind the tail.
         if (entries.isNotEmpty()) adapter.notifyItemChanged(entries.size - 1)
+        if (anchored) {
+            listCard.doOnNextLayout {
+                val delta = it.height - grewFrom
+                if (delta > 0) scroll.scrollBy(0, delta)
+            }
+        }
         updateEmptyState()
     }
 
@@ -254,8 +263,9 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
         DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
 
     private companion object {
-        /** Rows loaded per view — the store holds up to
-         *  [TranslationHistoryStore.MAX_ROWS]; paging can come later. */
-        const val LOAD_LIMIT = 500
+        /** Rows loaded per view. Lower than the store's cap on purpose: the
+         *  page is one scroll surface, so every loaded row inflates (nested
+         *  scrolling off disables recycling); paging can come later. */
+        const val LOAD_LIMIT = 200
     }
 }

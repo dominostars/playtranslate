@@ -2722,7 +2722,7 @@
     <string name="history_action_anki">Add to Anki</string>
     <!-- Expanded-row action on the History screen: delete this entry (also the confirm button of its dialog). -->
     <string name="history_action_delete">Delete</string>
-    <!-- Toolbar overflow item on the History screen: delete every entry (also the confirm button of its dialog). -->
+    <!-- Danger row under the History master switch: deletes every entry (also the confirm button of its dialog). -->
     <string name="history_clear_menu">Clear history</string>
     <!-- Title of the clear-all confirm dialog on the History screen. -->
     <string name="history_clear_confirm_title">Clear all history?</string>

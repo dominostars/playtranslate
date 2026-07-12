@@ -20,56 +20,98 @@
         android:layout_height="1dp"
         android:background="?attr/ptDivider" />
 
-    <!-- Master switch: the feature's enable lives ON this screen (the
-         empty state below doubles as onboarding when it's off). -->
-    <com.google.android.material.card.MaterialCardView
+    <!-- One scroll surface for the whole page: toggle, clear, and the list
+         move together. The RecyclerView has nested scrolling off, so it
+         measures fully and the outer scroll view owns all scrolling;
+         reloadNow() compensates the scroll offset on top-inserts to keep
+         the reading position anchored. -->
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/historyScroll"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginHorizontal="14dp"
-        android:layout_marginTop="10dp"
-        app:cardBackgroundColor="?attr/ptCard"
-        app:cardCornerRadius="@dimen/pt_radius"
-        app:cardElevation="0dp"
-        app:strokeColor="?attr/ptDivider"
-        app:strokeWidth="1dp">
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:paddingHorizontal="14dp"
+        android:paddingBottom="20dp"
+        android:clipToPadding="false">
 
-        <include layout="@layout/settings_row_switch"
-            android:id="@+id/rowHistoryToggle" />
-
-    </com.google.android.material.card.MaterialCardView>
-
-    <TextView
-        android:id="@+id/tvHistoryEmpty"
-        style="@style/Text.PT.RowSubtitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingHorizontal="28dp"
-        android:paddingVertical="24dp"
-        android:gravity="center"
-        android:visibility="gone" />
-
-    <!-- wrap_content + the parent's AT_MOST constraint: the card hugs a
-         short list and caps at the remaining screen height for a long one
-         (the RecyclerView then scrolls internally). GONE while empty — no
-         floating empty card. -->
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/cardHistory"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginHorizontal="14dp"
-        android:layout_marginVertical="10dp"
-        android:visibility="gone"
-        app:cardBackgroundColor="?attr/ptCard"
-        app:cardCornerRadius="@dimen/pt_radius"
-        app:cardElevation="0dp"
-        app:strokeColor="?attr/ptDivider"
-        app:strokeWidth="1dp">
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rvHistory"
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
 
-    </com.google.android.material.card.MaterialCardView>
+            <!-- Master switch: the feature's enable lives ON this screen (the
+                 empty state below doubles as onboarding when it's off). -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowHistoryToggle" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider" />
+
+                    <!-- Destructive clear-all, confirmed via OverlayAlert. -->
+                    <TextView
+                        android:id="@+id/rowClearHistory"
+                        style="@style/Text.PT.RowTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/pt_row_min_height"
+                        android:gravity="center"
+                        android:textColor="?attr/ptDanger"
+                        android:background="?attr/selectableItemBackground"
+                        android:text="@string/history_clear_menu" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                android:id="@+id/tvHistoryEmpty"
+                style="@style/Text.PT.RowSubtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="14dp"
+                android:paddingVertical="24dp"
+                android:gravity="center"
+                android:visibility="gone" />
+
+            <!-- GONE while empty — no floating empty card. -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardHistory"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginVertical="10dp"
+                android:visibility="gone"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvHistory"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false" />
+
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 
 </LinearLayout>
