@@ -6,6 +6,7 @@ import android.util.Log
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.LiveCaptureSource
 import com.playtranslate.capture.StreamKind
+import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -454,6 +455,21 @@ class ReconcilerLiveMode(
                     showBoxes(kept + partial)
                 },
             )
+            // Recording backend (Text History / LLM context): the presenter
+            // return is the one seam where source, translation, and rect
+            // co-locate for BOTH fresh and cache-hit boxes. Purely additive —
+            // reads nothing from reconciler state, recorder swallows failures.
+            if (presenter.flavor == OverlayFlavor.TRANSLATION) {
+                val src = SourceLanguageProfiles[Prefs(service).sourceLangId].translationCode
+                val tgt = Prefs(service).targetLang
+                finalAnchors.forEach { box ->
+                    if (box.sourceText.isNotEmpty() && box.translatedText.isNotEmpty()) {
+                        service.translationLogRecorder.onShown(
+                            box.sourceText, box.translatedText, box.bounds, src, tgt,
+                        )
+                    }
+                }
+            }
             cachedBoxes = kept + finalAnchors
             showBoxes(kept + finalAnchors)
             presenter.emitApplied(kept + finalAnchors, pipeline?.ocrResult, frame.includesSystemUi) {

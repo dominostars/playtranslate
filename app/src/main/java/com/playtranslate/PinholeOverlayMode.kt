@@ -78,6 +78,21 @@ class PinholeOverlayMode(
     private val logTrace =
         com.playtranslate.translationlog.LogTraceRecorder.createIfEnabled(service, displayId)
 
+    /** Production recording backend (Text History / LLM context): feed the
+     *  shown stream — group source + the translation it got — for indices
+     *  where [translationFor] returns non-empty. The recorder no-ops while
+     *  both features are off and swallows its own failures. */
+    private fun recordShown(groups: List<FarGroup>, translationFor: (Int) -> String) {
+        val src = SourceLanguageProfiles[Prefs(service).sourceLangId].translationCode
+        val tgt = Prefs(service).targetLang
+        groups.forEachIndexed { i, g ->
+            val translation = translationFor(i)
+            if (translation.isNotEmpty()) {
+                service.translationLogRecorder.onShown(g.text, translation, g.bounds, src, tgt)
+            }
+        }
+    }
+
     private enum class PinholeResult { KEEP, REMOVE }
 
     /** Result of [checkPinholes] plus the metrics that drove the
@@ -784,12 +799,22 @@ class PinholeOverlayMode(
                     cachedBoxes = merged
                     showOverlayAndCapture(merged, cropLeft, cropTop, screenshotW, screenshotH)
 
+                    // Recording backend: cache-hits are shown right here and
+                    // never reach translatePlaceholders — record them now.
+                    recordShown(farOcrGroups) { i -> partial[i].translatedText }
+
                     if (anyUncached) {
                         val translated = translatePlaceholders(placeholders, farTexts)
                         val existing = cachedBoxes?.dropLast(placeholders.size) ?: emptyList()
                         val mergedFinal = existing + translated
                         cachedBoxes = mergedFinal
                         showOverlayAndCapture(mergedFinal, cropLeft, cropTop, screenshotW, screenshotH)
+                        // Freshly translated boxes only — the cache-hits above
+                        // already recorded (gate dedupe would absorb a double,
+                        // but don't lean on it).
+                        recordShown(farOcrGroups) { i ->
+                            if (partial[i].translatedText.isEmpty()) translated[i].translatedText else ""
+                        }
                     }
 
                 }

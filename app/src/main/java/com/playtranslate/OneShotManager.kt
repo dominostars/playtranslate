@@ -3,6 +3,7 @@ package com.playtranslate
 import android.graphics.Bitmap
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.language.SourceLanguageEngines
+import com.playtranslate.language.SourceLanguageProfiles
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -191,6 +192,23 @@ class OneShotManager(private val service: CaptureService) {
             // 6. Show final overlay
             if (boxes.isNotEmpty()) {
                 service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH, force = true, oneShot = true, displayId = displayId)
+            }
+
+            // Deliberate capture → recording backend. Boxes are index-aligned
+            // with ocrResult.groups (buildBoxes zips per-group results); the
+            // processor type gates out furigana one-shots.
+            if (processor is TranslationOneShotProcessor) {
+                val src = SourceLanguageProfiles[Prefs(service).sourceLangId].translationCode
+                val tgt = Prefs(service).targetLang
+                boxes.forEachIndexed { i, box ->
+                    val group = ocrResult.groups.getOrNull(i) ?: return@forEachIndexed
+                    if (box.translatedText.isNotEmpty()) {
+                        service.translationLogRecorder.onShownDeliberate(
+                            group.text, box.translatedText, group.bounds, src, tgt,
+                            com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_ONE_SHOT,
+                        )
+                    }
+                }
             }
 
             // 7. Send translation to in-app panel — only the panel-target

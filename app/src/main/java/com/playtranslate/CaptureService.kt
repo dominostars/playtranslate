@@ -1044,6 +1044,19 @@ class CaptureService : Service() {
         gameAudioRecorder.reconcile()
     }
 
+    /** Shared recording backend for Text History + LLM context (both prefs
+     *  default off; the recorder no-ops per call while they stay off). Same
+     *  explicit-[Lazy] idiom; taps init it on first commit, the session
+     *  hooks and the context provider never force-init just to observe. */
+    private val translationLogRecorderLazy = lazy {
+        com.playtranslate.translationlog.TranslationLogRecorder(applicationContext)
+    }
+    internal val translationLogRecorder: com.playtranslate.translationlog.TranslationLogRecorder
+        by translationLogRecorderLazy
+
+    internal val translationLogRecorderIfInitialized: com.playtranslate.translationlog.TranslationLogRecorder?
+        get() = if (translationLogRecorderLazy.isInitialized()) translationLogRecorder else null
+
     /** Overlay-window host for MediaProjection mode (TYPE_APPLICATION_OVERLAY). */
     internal val mediaProjectionOverlayHost by lazy {
         OverlayHost(this, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
@@ -1336,6 +1349,7 @@ class CaptureService : Service() {
         val prefs = Prefs(this)
         val activeIds = gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }
         Log.d(TAG, "startLive: activeIds=$activeIds prefs.overlayMode=${prefs.overlayMode}")
+        translationLogRecorderIfInitialized?.onLiveStarted()
         // setLiveDisplays handles capturableTargets + shouldSkipDisplay
         // resolution centrally — every caller (start, reconcile, multi-
         // window, the display listener) gets the same shim.
@@ -1757,6 +1771,9 @@ class CaptureService : Service() {
         // false, unregister the display listener) without going through the
         // shim.
         tearDownAllLiveModes()
+        // Session over for the recording backend: the LLM-context ring must
+        // not leak into the next play session (history persists by design).
+        translationLogRecorderIfInitialized?.onLiveStopped()
         setDegraded(false)
         // Belt-and-suspenders fan-out — each LiveMode.stop() should already
         // have torn down its own loop / input / overlay, but historically these
@@ -2395,6 +2412,20 @@ class CaptureService : Service() {
             onOcrReady?.invoke(ocrResult.fullText, ocrResult.segments, ocrProvenanceFor(ocrResult, displayId, region, srcId, frameIncludesUi))
 
             val perGroup = translateGroupsSeparately(ocrResult.groups.map { it.text })
+            // Deliberate capture → recording backend (per-group pairs with
+            // rects; the recorder no-ops unless a log feature is enabled).
+            run {
+                val src = SourceLanguageProfiles[srcId].translationCode
+                val tgt = Prefs(this@CaptureService).targetLang
+                ocrResult.groups.forEachIndexed { i, g ->
+                    val tr = perGroup.getOrNull(i)?.text.orEmpty()
+                    if (tr.isNotEmpty()) translationLogRecorder.onShownDeliberate(
+                        g.text, tr, g.bounds, src, tgt,
+                        com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_ONE_SHOT,
+                        perGroup.getOrNull(i)?.backendDisplayName,
+                    )
+                }
+            }
             val translated = perGroup.joinToString("\n\n") { it.text }
             val note = perGroup.mapNotNull { it.note }.firstOrNull()
             val backendDisplayName = perGroup.mapNotNull { it.backendDisplayName }.firstOrNull()

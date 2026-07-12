@@ -81,6 +81,14 @@ class PlayTranslateApplication : Application() {
         // registry rebuild.
         com.playtranslate.translation.llm.LlmPromptTemplates.overrideProvider =
             { kind -> kind.read(Prefs(this)) }
+        // {context} resolves against the live recording backend. Never
+        // force-inits the recorder (no context can exist before a first
+        // commit anyway); called from backend threads — contextBlockFor is
+        // thread-safe and returns "" whenever the feature is off.
+        com.playtranslate.translation.llm.LlmPromptTemplates.contextProvider = { source, target ->
+            CaptureService.instance?.translationLogRecorderIfInitialized
+                ?.contextBlockFor(source, target) ?: ""
+        }
         val sharedPrefs = getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
         OnlineServiceStore.init(this)
         val onlineBackends = OnlineServiceStore.all().map {
