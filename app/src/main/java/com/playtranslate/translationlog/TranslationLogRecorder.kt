@@ -294,7 +294,10 @@ class TranslationLogRecorder(
             if (historyOn) {
                 scope.launch {
                     runCatching {
-                        sink.update(tracked.id.await(), source, translation, now, key)
+                        // Attach-style update, NOT the supersession update:
+                        // this row's capture moment didn't change and the
+                        // backend that produced the translation must stick.
+                        sink.attachById(tracked.id.await(), translation, backendDisplayName)
                     }.onFailure { Log.w(TAG, "translation attach failed: ${it.message}") }
                 }
             }

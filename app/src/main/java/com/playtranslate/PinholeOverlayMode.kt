@@ -80,17 +80,28 @@ class PinholeOverlayMode(
 
     /** Production recording backend (Text History / LLM context): feed the
      *  shown stream — group source + the translation it got — for indices
-     *  where [translationFor] returns non-empty. The recorder no-ops while
-     *  both features are off and swallows its own failures. */
-    private fun recordShown(groups: List<FarGroup>, translationFor: (Int) -> String) {
-        val src = SourceLanguageProfiles[Prefs(service).sourceLangId].translationCode
-        val tgt = Prefs(service).targetLang
+     *  where [translationFor] returns non-empty. Callers pass the pair
+     *  captured BEFORE any translate call, so a mid-flight language change
+     *  can't relabel old-pair rows. The recorder no-ops while both
+     *  features are off and swallows its own failures. */
+    private fun recordShown(
+        groups: List<FarGroup>,
+        src: String,
+        tgt: String,
+        translationFor: (Int) -> String,
+    ) {
         groups.forEachIndexed { i, g ->
             val translation = translationFor(i)
             if (translation.isNotEmpty()) {
                 service.translationLogRecorder.onShown(g.text, translation, g.bounds, src, tgt)
             }
         }
+    }
+
+    /** The recording pair at this instant (translation code + target). */
+    private fun recordPair(): Pair<String, String> {
+        val prefs = Prefs(service)
+        return SourceLanguageProfiles[prefs.sourceLangId].translationCode to prefs.targetLang
     }
 
     private enum class PinholeResult { KEEP, REMOVE }
@@ -801,7 +812,9 @@ class PinholeOverlayMode(
 
                     // Recording backend: cache-hits are shown right here and
                     // never reach translatePlaceholders — record them now.
-                    recordShown(farOcrGroups) { i -> partial[i].translatedText }
+                    // Pair captured pre-translate for the fresh tap below.
+                    val (recordSrc, recordTgt) = recordPair()
+                    recordShown(farOcrGroups, recordSrc, recordTgt) { i -> partial[i].translatedText }
 
                     if (anyUncached) {
                         val translated = translatePlaceholders(placeholders, farTexts)
@@ -812,7 +825,7 @@ class PinholeOverlayMode(
                         // Freshly translated boxes only — the cache-hits above
                         // already recorded (gate dedupe would absorb a double,
                         // but don't lean on it).
-                        recordShown(farOcrGroups) { i ->
+                        recordShown(farOcrGroups, recordSrc, recordTgt) { i ->
                             if (partial[i].translatedText.isEmpty()) translated[i].translatedText else ""
                         }
                     }

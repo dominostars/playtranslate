@@ -36,6 +36,7 @@ class TranslationLogRecorderTest {
             var normKey: String,
             val sourceLang: String,
             val targetLang: String,
+            var backend: String? = null,
         )
 
         val rows = LinkedHashMap<Long, Row>()
@@ -47,7 +48,10 @@ class TranslationLogRecorderTest {
             rect: Rect?, backendDisplayName: String?,
         ): Long {
             val id = nextId++
-            rows[id] = Row(sourceText, translation, provenance, sessionId, normKey, sourceLang, targetLang)
+            rows[id] = Row(
+                sourceText, translation, provenance, sessionId, normKey,
+                sourceLang, targetLang, backendDisplayName,
+            )
             return id
         }
 
@@ -71,7 +75,10 @@ class TranslationLogRecorderTest {
         }
 
         override suspend fun attachById(rowId: Long, translation: String, backendDisplayName: String?) {
-            rows.getValue(rowId).translation = translation
+            rows.getValue(rowId).apply {
+                this.translation = translation
+                if (backendDisplayName != null) backend = backendDisplayName
+            }
         }
     }
 
@@ -247,10 +254,13 @@ class TranslationLogRecorderTest {
         assertEquals(1, sink.rows.size)
         recorder.onDeliberateTranslation(
             "こんにちは、世界のみなさん。", "Hello, everyone.", "ja", "en",
-            TranslationHistoryStore.PROVENANCE_LOOKUP,
+            TranslationHistoryStore.PROVENANCE_LOOKUP, "TestBackend",
         )
         assertEquals(1, sink.rows.size)
         assertEquals("Hello, everyone.", sink.rows.getValue(1L).translation)
+        // Attach-style update: the backend that produced the translation
+        // sticks to the row (the supersession update would drop it).
+        assertEquals("TestBackend", sink.rows.getValue(1L).backend)
         // The completed pair enters the context ring.
         assertTrue(recorder.contextBlockFor("ja", "en").contains("Hello, everyone."))
     }

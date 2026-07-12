@@ -712,15 +712,18 @@ class TranslationResultActivity :
         //  cache helper.
         lifecycleScope.launch {
             try {
+                // Pair captured BEFORE translateOnce, so the label matches
+                // the pair the translation is actually produced under even
+                // if prefs change mid-flight.
+                val logPrefs = Prefs(applicationContext)
+                val currentSource = com.playtranslate.language
+                    .SourceLanguageProfiles[logPrefs.sourceLangId].translationCode
+                val currentTarget = logPrefs.targetLang
                 val groupTranslation = svc.translateOnce(sentenceText)
                 // Feed the translation back to the log: fills the entry this
                 // sentence came from (History tap / drag lookup) instead of
                 // leaving it translation-less forever.
                 if (groupTranslation.text.isNotEmpty()) {
-                    val logPrefs = Prefs(applicationContext)
-                    val currentSource = com.playtranslate.language
-                        .SourceLanguageProfiles[logPrefs.sourceLangId].translationCode
-                    val currentTarget = logPrefs.targetLang
                     val historyRowId = intent.getLongExtra(EXTRA_HISTORY_ENTRY_ID, -1L)
                     if (historyRowId >= 0) {
                         // History row tap: attach to EXACTLY that row (twin

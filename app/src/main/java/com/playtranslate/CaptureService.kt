@@ -2411,20 +2411,20 @@ class CaptureService : Service() {
             // (slower) translation runs.
             onOcrReady?.invoke(ocrResult.fullText, ocrResult.segments, ocrProvenanceFor(ocrResult, displayId, region, srcId, frameIncludesUi))
 
+            // Recording pair captured BEFORE the translate call — a
+            // mid-flight language change must not relabel these rows.
+            val recordSrc = SourceLanguageProfiles[srcId].translationCode
+            val recordTgt = Prefs(this@CaptureService).targetLang
             val perGroup = translateGroupsSeparately(ocrResult.groups.map { it.text })
             // Deliberate capture → recording backend (per-group pairs with
             // rects; the recorder no-ops unless a log feature is enabled).
-            run {
-                val src = SourceLanguageProfiles[srcId].translationCode
-                val tgt = Prefs(this@CaptureService).targetLang
-                ocrResult.groups.forEachIndexed { i, g ->
-                    val tr = perGroup.getOrNull(i)?.text.orEmpty()
-                    if (tr.isNotEmpty()) translationLogRecorder.onShownDeliberate(
-                        g.text, tr, g.bounds, src, tgt,
-                        com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_ONE_SHOT,
-                        perGroup.getOrNull(i)?.backendDisplayName,
-                    )
-                }
+            ocrResult.groups.forEachIndexed { i, g ->
+                val tr = perGroup.getOrNull(i)?.text.orEmpty()
+                if (tr.isNotEmpty()) translationLogRecorder.onShownDeliberate(
+                    g.text, tr, g.bounds, recordSrc, recordTgt,
+                    com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_ONE_SHOT,
+                    perGroup.getOrNull(i)?.backendDisplayName,
+                )
             }
             val translated = perGroup.joinToString("\n\n") { it.text }
             val note = perGroup.mapNotNull { it.note }.firstOrNull()

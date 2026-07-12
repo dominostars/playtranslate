@@ -444,6 +444,14 @@ class ReconcilerLiveMode(
                 return pacing(prefs)
             }
 
+            // Recording pair snapshot BEFORE the translate call: present()
+            // can suspend for seconds in MT, and a mid-flight language
+            // change must not relabel rows produced under the old pair
+            // (the ms gap to the service's own snapshot is accepted).
+            val recordPrefs = Prefs(service)
+            val recordSrc = SourceLanguageProfiles[recordPrefs.sourceLangId].translationCode
+            val recordTgt = recordPrefs.targetLang
+
             // The presenter turns regions into anchors — serially, in-cycle,
             // so at most one OCR and one present pass (MT / tokenizer) are
             // ever in flight (the loop's backpressure). A provisional render
@@ -460,12 +468,10 @@ class ReconcilerLiveMode(
             // co-locate for BOTH fresh and cache-hit boxes. Purely additive —
             // reads nothing from reconciler state, recorder swallows failures.
             if (presenter.flavor == OverlayFlavor.TRANSLATION) {
-                val src = SourceLanguageProfiles[Prefs(service).sourceLangId].translationCode
-                val tgt = Prefs(service).targetLang
                 finalAnchors.forEach { box ->
                     if (box.sourceText.isNotEmpty() && box.translatedText.isNotEmpty()) {
                         service.translationLogRecorder.onShown(
-                            box.sourceText, box.translatedText, box.bounds, src, tgt,
+                            box.sourceText, box.translatedText, box.bounds, recordSrc, recordTgt,
                         )
                     }
                 }

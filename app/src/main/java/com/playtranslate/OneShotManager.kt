@@ -178,6 +178,11 @@ class OneShotManager(private val service: CaptureService) {
             val screenshotPath = service.captureSaveToCache(raw, displayId)
 
             // 5. Build boxes via processor (factory decides furigana vs translation)
+            // Recording pair captured BEFORE buildBoxes (it translates
+            // internally) — a mid-flight language change must not relabel.
+            val recordPrefs = Prefs(service)
+            val recordSrc = SourceLanguageProfiles[recordPrefs.sourceLangId].translationCode
+            val recordTgt = recordPrefs.targetLang
             val processor = createProcessor(cycle.forceMode)
             val boxes = processor.buildBoxes(ocrResult, raw, cropLeft, cropTop, screenshotW, screenshotH) { intermediate ->
                 // Shimmer placeholder callback. Gen-check so a superseded
@@ -198,13 +203,11 @@ class OneShotManager(private val service: CaptureService) {
             // with ocrResult.groups (buildBoxes zips per-group results); the
             // processor type gates out furigana one-shots.
             if (processor is TranslationOneShotProcessor) {
-                val src = SourceLanguageProfiles[Prefs(service).sourceLangId].translationCode
-                val tgt = Prefs(service).targetLang
                 boxes.forEachIndexed { i, box ->
                     val group = ocrResult.groups.getOrNull(i) ?: return@forEachIndexed
                     if (box.translatedText.isNotEmpty()) {
                         service.translationLogRecorder.onShownDeliberate(
-                            group.text, box.translatedText, group.bounds, src, tgt,
+                            group.text, box.translatedText, group.bounds, recordSrc, recordTgt,
                             com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_ONE_SHOT,
                         )
                     }

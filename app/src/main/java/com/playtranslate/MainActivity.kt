@@ -1479,16 +1479,19 @@ class MainActivity :
             // self-heals language managers on first call.
             lifecycleScope.launch {
                 try {
+                    // Recording pair captured BEFORE translateOnce — a
+                    // mid-flight language change must not relabel.
+                    val dragPrefs = Prefs(applicationContext)
+                    val recordSrc = com.playtranslate.language
+                        .SourceLanguageProfiles[dragPrefs.sourceLangId].translationCode
+                    val recordTgt = dragPrefs.targetLang
                     val groupTranslation = svc.translateOnce(lineText)
                     // The lookup itself was recorded translation-less at the
                     // drag release; this attaches the translation to that
                     // entry (or records fresh if the row is unknown).
                     if (groupTranslation.text.isNotEmpty()) {
-                        val dragPrefs = Prefs(applicationContext)
                         svc.translationLogRecorder.onDeliberateTranslation(
-                            lineText, groupTranslation.text,
-                            com.playtranslate.language.SourceLanguageProfiles[dragPrefs.sourceLangId].translationCode,
-                            dragPrefs.targetLang,
+                            lineText, groupTranslation.text, recordSrc, recordTgt,
                             com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_LOOKUP,
                             groupTranslation.backendDisplayName,
                         )
