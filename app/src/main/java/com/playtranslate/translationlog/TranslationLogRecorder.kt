@@ -208,7 +208,16 @@ class TranslationLogRecorder(
     /** The user cleared History: reset every dedupe memory so lines can
      *  record again (the store is empty — nothing is a duplicate of it).
      *  The context ring is deliberately untouched: independent contract. */
-    fun onHistoryCleared() = guarded {
+    fun onHistoryCleared() = guarded { resetDedupeState() }
+
+    /** History flipped ON mid-session: any seen-state accumulated during
+     *  context-only use marked lines as duplicates while nothing was
+     *  persisted — re-sightings must be recordable now. Ring untouched:
+     *  context continuity is unaffected by the history switch (the
+     *  independence contract cuts both ways). */
+    fun onHistoryEnabled() = guarded { resetDedupeState() }
+
+    private fun resetDedupeState() {
         gate = null
         gateSourceLang = null
         gateTargetLang = null

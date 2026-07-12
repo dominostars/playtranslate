@@ -198,6 +198,24 @@ class TranslationLogRecorderTest {
     }
 
     @Test
+    fun contextOnlyUseDoesNotBlockPersistenceAfterHistoryEnables() {
+        // Codex regression: with history off / context on, the gate marks
+        // lines seen while nothing persists; flipping history on must let
+        // re-sightings record.
+        Prefs(ctx).translationHistoryEnabled = false
+        recorder.onShown("こんにちは、世界のみなさん。", "Hello.", box, "ja", "en")
+        assertEquals(0, sink.rows.size)
+        assertTrue(recorder.contextBlockFor("ja", "en").isNotEmpty())
+
+        Prefs(ctx).translationHistoryEnabled = true
+        recorder.onHistoryEnabled()
+        recorder.onShown("こんにちは、世界のみなさん。", "Hello.", box, "ja", "en")
+        assertEquals(1, sink.rows.size)
+        // Ring continuity survived the flip (independence both ways).
+        assertTrue(recorder.contextBlockFor("ja", "en").isNotEmpty())
+    }
+
+    @Test
     fun clearHistoryResetsDedupe_sameLineRecordsAgain() {
         recorder.onShown("こんにちは、世界のみなさん。", "Hello.", box, "ja", "en")
         assertEquals(1, sink.rows.size)

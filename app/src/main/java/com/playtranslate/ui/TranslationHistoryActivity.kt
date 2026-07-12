@@ -96,6 +96,11 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
         // checked-change listener. The row tap only toggles.
         toggle.setOnCheckedChangeListener { _, checked ->
             Prefs(this).translationHistoryEnabled = checked
+            if (checked) {
+                // Dedupe accumulated during context-only use must not block
+                // the first persistence of re-sighted lines.
+                CaptureService.instance?.translationLogRecorderIfInitialized?.onHistoryEnabled()
+            }
             updateEmptyState()
         }
         row.setOnClickListener { toggle.toggle() }
