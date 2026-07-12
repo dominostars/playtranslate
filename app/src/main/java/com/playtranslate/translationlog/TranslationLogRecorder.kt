@@ -37,11 +37,19 @@ private const val TAG = "TranslationLogRecorder"
  * swallows its own failures — a recorder bug must never reach a capture
  * loop (the LogTraceRecorder contract).
  *
- * Sessions: a fresh [sessionId] is minted at construction, on
- * [onLiveStarted], and on a language-PAIR change — source or target —
- * which also recreates the gate, drops tracked rows, and clears the ring.
+ * Two different lifetimes, on purpose — don't "unify" them:
+ *  - [sessionId] is a row-grouping LABEL, re-minted at construction, on
+ *    [onLiveStarted], and on a language-pair change.
+ *  - DEDUPE lifetime (gate seen/near-dup/region-mute state, tracked rows)
+ *    is the recorder's lifetime within one language pair. Live stop/start
+ *    deliberately does NOT reset it: a restart in the same scene re-OCRs
+ *    the whole visible screen, and a reset would re-log every line as
+ *    fresh and force muted UI regions to re-earn their mutes after every
+ *    toggle. Dedupe resets ONLY on a pair change or an explicit history
+ *    clear/delete. (Long-range dedupe is a deliberate improvement over
+ *    LunaTranslator's consecutive-only and GSM's 2-second window.)
  * [onLiveStopped] clears the ring — the DB persists across sessions,
- * context never does.
+ * LLM context never does.
  */
 class TranslationLogRecorder(
     private val appContext: Context,
@@ -185,6 +193,9 @@ class TranslationLogRecorder(
         }
     }
 
+    /** New live session: fresh grouping label ONLY. Deliberately does not
+     *  touch the gate/tracked rows — see the class doc's two-lifetimes
+     *  contract before "fixing" that. */
     fun onLiveStarted() = guarded {
         sessionId = UUID.randomUUID().toString()
     }
