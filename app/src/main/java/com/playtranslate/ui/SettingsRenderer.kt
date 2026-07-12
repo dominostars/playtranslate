@@ -1105,6 +1105,18 @@ class SettingsRenderer(
         }
         rowLogGrouping.setOnClickListener { switchLogGrouping.toggle() }
 
+        // Record live-mode commit trace (translation-log validation feed)
+        val rowLogTrace = root.findViewById<View>(R.id.rowLogTrace)
+        val switchLogTrace = rowLogTrace.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        rowLogTrace.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_log_trace)
+        switchLogTrace.isChecked = prefs.debugLogTrace
+        switchLogTrace.setOnCheckedChangeListener { _, checked ->
+            // Takes effect at the next live-mode start (the recorder is
+            // created with the mode, one trace file per session).
+            prefs.debugLogTrace = checked
+        }
+        rowLogTrace.setOnClickListener { switchLogTrace.toggle() }
+
         // OCR engine selection moved to the production Settings "OCR" section
         // (per source language; Phase 3). The debug engine picker + PaddleOCR A/B
         // rows are retired — hide their layout rows so they don't render empty.

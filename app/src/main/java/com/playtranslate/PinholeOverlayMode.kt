@@ -71,6 +71,13 @@ class PinholeOverlayMode(
      *  transition summary and the surrounding render-offscreen lines. */
     private var cycleNum = 0
 
+    /** Debug-gated trace of the commit stream (step-12 far groups) — the
+     *  offline feed for translation-log write-gate validation. Null unless
+     *  [Prefs.debugLogTrace]; a null check per cycle, an async append per
+     *  committing cycle. */
+    private val logTrace =
+        com.playtranslate.translationlog.LogTraceRecorder.createIfEnabled(service, displayId)
+
     private enum class PinholeResult { KEEP, REMOVE }
 
     /** Result of [checkPinholes] plus the metrics that drove the
@@ -755,6 +762,10 @@ class PinholeOverlayMode(
 
             // 12. Show new text (with skeletons for uncached, instant for cached)
             if (farOcrGroups.isNotEmpty()) {
+                // Commit-stream trace (translation-log validation): the far
+                // groups are this mode's analog of the reconciler's
+                // toTranslate — the new/changed text entering the overlay.
+                logTrace?.onCommitGroups(cycleNum, System.currentTimeMillis(), farOcrGroups)
                 val farTexts = farOcrGroups.map { it.text }
                 val farBounds = farOcrGroups.map { it.bounds }
                 val farLineCounts = farOcrGroups.map { it.lineCount }

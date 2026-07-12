@@ -109,6 +109,13 @@ class ReconcilerLiveMode(
     private var cycleNum = 0
 
     private val stabilityHold = StabilityHold()
+
+    /** Debug-gated trace of the commit stream (post-hold `toTranslate`) —
+     *  the offline feed for translation-log write-gate validation. Null
+     *  unless [Prefs.debugLogTrace]; the hook is a null check per cycle
+     *  and an async append per committing cycle. */
+    private val logTrace =
+        com.playtranslate.translationlog.LogTraceRecorder.createIfEnabled(service, displayId)
     /** Earliest open hold's cap deadline (uptime ms) — the delivery gate
      *  parks only until this, so a typewriter that finishes into a static
      *  screen still gets its releasing read. */
@@ -395,6 +402,7 @@ class ReconcilerLiveMode(
 
             val kept = verdicts.keptBoxes + holdOut.heldBoxes
             val toTranslate = holdOut.toTranslate
+            if (toTranslate.isNotEmpty()) logTrace?.onCommit(cycleNum, captureAtMs, toTranslate)
             // Every anchor leaving the display is announced: REMOVEs, and the
             // boxes RETRANSLATE entries replace (post-hold — a held region's
             // box stays displayed). Presenters with per-anchor state depend

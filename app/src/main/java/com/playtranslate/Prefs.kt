@@ -1102,6 +1102,15 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_DEBUG_LOG_GROUPING, false)
         set(v) = sp.edit { putBoolean(KEY_DEBUG_LOG_GROUPING, v) }
 
+    /** Debug-only: append every live-mode committed region set
+     *  (post-StabilityHold `toTranslate`) to a JSONL trace under
+     *  external-files/log-traces/ — the offline feed for validating the
+     *  translation-log write gate on real sessions. See
+     *  [com.playtranslate.translationlog.LogTraceRecorder]. */
+    var debugLogTrace: Boolean
+        get() = sp.getBoolean(KEY_DEBUG_LOG_TRACE, false)
+        set(v) = sp.edit { putBoolean(KEY_DEBUG_LOG_TRACE, v) }
+
     /** Set to true after the user dismisses the target-pack migration dialog. */
     var targetPackMigrationDismissed: Boolean
         get() = sp.getBoolean(KEY_TARGET_PACK_MIGRATION_DISMISSED, false)
@@ -1289,6 +1298,7 @@ class Prefs internal constructor(
         private const val KEY_DEBUG_LIVE_MODE                = "debug_live_mode"
         private const val KEY_DEBUG_SAVE_OCR_SEED            = "debug_save_ocr_seed"
         private const val KEY_DEBUG_LOG_GROUPING             = "debug_log_grouping"
+        private const val KEY_DEBUG_LOG_TRACE                = "debug_log_trace"
         const val KEY_HOTKEY_TRANSLATION                   = "hotkey_translation"
         const val KEY_HOTKEY_FURIGANA                      = "hotkey_furigana"
         const val KEY_HOTKEY_TRANSLATION_TAP               = "hotkey_translation_tap"

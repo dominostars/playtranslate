@@ -2979,6 +2979,8 @@
     <string name="settings_debug_log_pinhole">Log live-mode pinhole metrics</string>
     <string name="settings_debug_save_ocr_seed">Save OCR captures as seeds</string>
     <string name="settings_debug_log_grouping">Log OCR grouping decisions</string>
+    <!-- Toggle row title in Settings → Debug (debug builds only): records live-mode commits to a trace file for offline validation. -->
+    <string name="settings_debug_log_trace">Record translation-log trace</string>
     <string name="settings_debug_force_crash_title">Force crash</string>
 
     <!-- Button on the force-crash row.  Dev-only. -->
