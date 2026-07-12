@@ -32,7 +32,21 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:paddingHorizontal="12dp" />
+            android:paddingHorizontal="12dp">
+
+            <!-- Optional centered title (EXTRA_TOOLBAR_TITLE — e.g. a History
+                 entry's date/time). Never coexists with the drag-word pill:
+                 that mode doesn't pass a title. -->
+            <TextView
+                android:id="@+id/tvResultToolbarTitle"
+                style="@style/Text.PT.RowTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:singleLine="true"
+                android:ellipsize="end"
+                android:visibility="gone" />
+        </FrameLayout>
 
         <View
             android:layout_width="44dp"

@@ -13,9 +13,11 @@
     android:orientation="vertical">
 
     <LinearLayout
+        android:id="@+id/historyRowContent"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
+        android:background="?attr/selectableItemBackground"
         android:paddingHorizontal="@dimen/pt_row_h_padding"
         android:paddingTop="6dp"
         android:paddingBottom="@dimen/pt_row_v_padding">
@@ -82,6 +84,22 @@
                     android:layout_height="22dp"
                     android:layout_gravity="center"
                     android:src="@drawable/ic_delete"
+                    android:importantForAccessibility="no"
+                    app:tint="?attr/ptTextHint" />
+            </FrameLayout>
+
+            <!-- Non-interactive "opens detail" affordance — taps fall
+                 through to the row (WordResultCell's chevron idiom). -->
+            <FrameLayout
+                android:layout_width="36dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="16dp">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_chevron_right"
                     android:importantForAccessibility="no"
                     app:tint="?attr/ptTextHint" />
             </FrameLayout>

@@ -306,6 +306,13 @@ class TranslationResultActivity :
             signalCaptureOverlayReturnIfNeeded()
             finish()
         }
+        // Optional toolbar title (History entries pass their date/time).
+        intent.getStringExtra(EXTRA_TOOLBAR_TITLE)?.takeIf { it.isNotEmpty() }?.let { title ->
+            findViewById<TextView>(R.id.tvResultToolbarTitle).apply {
+                text = title
+                isVisible = true
+            }
+        }
         // A user-initiated system back also counts as "returning" to the overlay.
         // Registered before any fragment's callback, so it's lowest priority — an
         // internal back (e.g. the word↔sentence toggle) is consumed first and this
@@ -842,6 +849,10 @@ class TranslationResultActivity :
          *  in the sentence tab so the cached path matches the regular translate
          *  path's bottom label. Null when the source wasn't captured at lens time. */
         const val EXTRA_DRAG_SENTENCE_TRANSLATION_SOURCE = "extra_drag_sentence_translation_source"
+
+        /** Optional toolbar title (centered) — History entry launches pass
+         *  the entry's date/time. Absent for every other launch path. */
+        const val EXTRA_TOOLBAR_TITLE = "extra_toolbar_title"
         /** Sentence's tokenized word lookups, serialized as four parallel
          *  arrays (mirrors [WordDetailBottomSheet]'s args bundle layout).
          *  Captured by the drag controller at lens-dismiss time so the
