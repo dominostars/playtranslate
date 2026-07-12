@@ -168,6 +168,44 @@ class TranslationLogRecorder(
         rowIds.remove(normKey)
     }
 
+    /** A translation arrived for a deliberate entry recorded earlier
+     *  translation-less (drag lookups record at the lookup; the dual-screen
+     *  flow translates later and only when MainActivity is foreground).
+     *  Attaches in place when the entry's row is still tracked — going
+     *  through the gate instead would exact-dedupe the pair against its
+     *  own source-only entry. Falls back to a normal deliberate offer when
+     *  the row is unknown (recorder recreated, map evicted). Main only. */
+    fun onDeliberateTranslation(
+        source: String,
+        translation: String,
+        sourceLang: String,
+        targetLang: String,
+        provenance: String,
+        backendDisplayName: String? = null,
+    ) = guarded {
+        if (source.isBlank() || translation.isBlank()) return@guarded
+        val historyOn = prefs.translationHistoryEnabled
+        val contextOn = prefs.llmContextEnabled
+        if (!historyOn && !contextOn) return@guarded
+        val key = LogWriteGate.normalizedKey(source, sourceLang)
+        val now = System.currentTimeMillis()
+        val tracked = rowIds[key]
+        if (tracked == null) {
+            onShownDeliberate(source, translation, null, sourceLang, targetLang, provenance, backendDisplayName)
+            return@guarded
+        }
+        if (historyOn) {
+            scope.launch {
+                runCatching {
+                    sink.update(tracked.await(), source, translation, now, key)
+                }.onFailure { Log.w(TAG, "translation attach failed: ${it.message}") }
+            }
+        }
+        if (contextOn) {
+            ring.push(ContextRing.ContextPair(source, translation, now, key, sourceLang, targetLang))
+        }
+    }
+
     private fun apply(
         decision: LogWriteGate.Decision,
         source: String,

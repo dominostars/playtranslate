@@ -172,6 +172,35 @@ class TranslationLogRecorderTest {
     }
 
     @Test
+    fun deliberateTranslationAttachesToItsSourceOnlyEntry() {
+        // Drag lookup: source recorded at release, translation arrives later
+        // from the dual-screen flow — same row, completed in place.
+        recorder.onShownDeliberate(
+            "こんにちは、世界のみなさん。", null, null, "ja", "en",
+            TranslationHistoryStore.PROVENANCE_LOOKUP,
+        )
+        assertEquals(1, sink.rows.size)
+        recorder.onDeliberateTranslation(
+            "こんにちは、世界のみなさん。", "Hello, everyone.", "ja", "en",
+            TranslationHistoryStore.PROVENANCE_LOOKUP,
+        )
+        assertEquals(1, sink.rows.size)
+        assertEquals("Hello, everyone.", sink.rows.getValue(1L).translation)
+        // The completed pair enters the context ring.
+        assertTrue(recorder.contextBlockFor("ja", "en").contains("Hello, everyone."))
+    }
+
+    @Test
+    fun deliberateTranslationWithoutTrackedRowFallsBackToAppend() {
+        recorder.onDeliberateTranslation(
+            "こんにちは、世界のみなさん。", "Hello.", "ja", "en",
+            TranslationHistoryStore.PROVENANCE_LOOKUP,
+        )
+        assertEquals(1, sink.rows.size)
+        assertEquals("Hello.", sink.rows.getValue(1L).translation)
+    }
+
+    @Test
     fun contextBlockRespectsLanguagePair() {
         recorder.onShown("こんにちは、世界のみなさん。", "Hello.", box, "ja", "en")
         assertEquals("", recorder.contextBlockFor("ja", "fr"))

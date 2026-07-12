@@ -1480,12 +1480,13 @@ class MainActivity :
             lifecycleScope.launch {
                 try {
                     val groupTranslation = svc.translateOnce(lineText)
-                    // Deliberate lookup → recording backend (dual-screen only
-                    // by construction: single-screen drags never reach here).
+                    // The lookup itself was recorded translation-less at the
+                    // drag release; this attaches the translation to that
+                    // entry (or records fresh if the row is unknown).
                     if (groupTranslation.text.isNotEmpty()) {
                         val dragPrefs = Prefs(applicationContext)
-                        svc.translationLogRecorder.onShownDeliberate(
-                            lineText, groupTranslation.text, null,
+                        svc.translationLogRecorder.onDeliberateTranslation(
+                            lineText, groupTranslation.text,
                             com.playtranslate.language.SourceLanguageProfiles[dragPrefs.sourceLangId].translationCode,
                             dragPrefs.targetLang,
                             com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_LOOKUP,

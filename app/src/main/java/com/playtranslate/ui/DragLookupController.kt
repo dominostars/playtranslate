@@ -1430,15 +1430,16 @@ class DragLookupController(
         }
     }
 
-    /** Recording backend (Text History): the sentence the user looked up.
-     *  SINGLE-SCREEN ONLY — no sentence translation exists in this mode, so
-     *  the entry records translation-less by design (the History row hides
-     *  an empty translation). Dual-screen lookups record their complete
-     *  pair when MainActivity's translation lands instead; recording here
-     *  too would exact-dedupe the pair entry out of existence. Main thread
-     *  (caller hops); recorder swallows its own failures. */
+    /** Recording backend (Text History): the sentence the user looked up,
+     *  recorded AT THE LOOKUP, unconditionally — every downstream pipeline
+     *  is conditional (dual-screen translation needs MainActivity foreground
+     *  on the app display; single-screen has no sentence translation at
+     *  all), so this is the only seam that sees every lookup. The entry
+     *  starts translation-less; when the dual-screen flow does produce a
+     *  translation, it ATTACHES to this entry via
+     *  [TranslationLogRecorder.onDeliberateTranslation] instead of racing
+     *  it into the dedupe gate. Main thread (caller hops). */
     private fun recordLookupSentence(sentence: String) {
-        if (!Prefs.isSingleScreen(context)) return
         val prefs = Prefs(context)
         CaptureService.instance?.translationLogRecorder?.onShownDeliberate(
             sentence, null, null,
