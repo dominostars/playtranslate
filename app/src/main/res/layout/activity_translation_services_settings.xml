@@ -191,6 +191,13 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
+                    <!-- Feed recent translated lines to LLM backends as
+                         {context} in the Translation prompt. -->
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowLlmContext" />
+
+                    <include layout="@layout/settings_row_divider" />
+
                     <!-- User-editable prompt templates, global across all
                          eligible LLM backends (HyMt excluded — its
                          model-card format is fixed). Each row opens

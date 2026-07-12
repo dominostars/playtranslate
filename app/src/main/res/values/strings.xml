@@ -1497,6 +1497,11 @@
          services page (rendered uppercase by the header style). -->
     <string name="settings_header_advanced_llm">Advanced LLM configuration</string>
 
+    <!-- Toggle row title in Translation services → Advanced LLM Configuration:
+         feeds recent translated lines to LLM backends as prompt context. -->
+    <string name="settings_llm_context_title">Use recent lines as context</string>
+    <!-- Subtitle under the recent-lines-as-context toggle row. -->
+    <string name="settings_llm_context_subtitle">Give LLM translators the last few lines for more consistent pronouns and names</string>
     <!-- Title of the System-prompt row on the Translation services page;
          also the editor screen's toolbar title. -->
     <string name="llm_prompt_row_system_title">System prompt</string>

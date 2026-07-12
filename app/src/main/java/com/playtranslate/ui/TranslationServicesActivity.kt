@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.os.Bundle
 import android.view.View
 import android.widget.TextView
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.playtranslate.CaptureService
@@ -42,6 +43,23 @@ class TranslationServicesActivity : SettingsSubPageActivity() {
         setGroupHeader(R.id.headerOnlineTranslations, R.string.settings_header_online_translations)
         setGroupHeader(R.id.headerOfflineTranslations, R.string.settings_header_offline_translations)
         setGroupHeader(R.id.headerAdvancedLlm, R.string.settings_header_advanced_llm)
+
+        // Recent-lines-as-context toggle. Plain pref switch — the recorder
+        // and the {context} provider read the pref live, so no push needed.
+        val rowLlmContext = findViewById<View>(R.id.rowLlmContext)
+        val switchLlmContext = rowLlmContext.findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.switchRowToggle)
+        rowLlmContext.findViewById<TextView>(R.id.tvRowTitle).text =
+            getString(R.string.settings_llm_context_title)
+        rowLlmContext.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            text = getString(R.string.settings_llm_context_subtitle)
+            isVisible = true
+        }
+        switchLlmContext.isChecked = Prefs(this).llmContextEnabled
+        switchLlmContext.setOnCheckedChangeListener { _, checked ->
+            Prefs(this).llmContextEnabled = checked
+        }
+        rowLlmContext.setOnClickListener { switchLlmContext.toggle() }
+
         wirePromptRow(
             R.id.rowPromptSystem,
             R.string.llm_prompt_row_system_title,
