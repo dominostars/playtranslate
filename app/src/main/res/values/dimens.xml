@@ -13,4 +13,11 @@
          SettingsRenderer when the row is in its inert "disabled" state, which
          tightens the title→reason-line spacing. -->
     <dimen name="offline_row_header_min_height">48dp</dimen>
+
+    <!-- Material's minTouchTargetSize, which MaterialSwitch enforces as its own
+         android:minHeight. A row whose trailing control is a switch is therefore
+         at least this tall before padding; a row that trails something smaller
+         (the Add row's "+") has to claim the same floor explicitly, or it sits
+         short of the switch rows it shares a card with. -->
+    <dimen name="pt_touch_target">48dp</dimen>
 </resources>

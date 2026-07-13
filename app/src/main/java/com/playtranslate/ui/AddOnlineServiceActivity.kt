@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.content.Context
 import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -19,6 +20,7 @@ import com.playtranslate.R
 import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.applyTheme
 import com.playtranslate.themeColor
+import com.playtranslate.translation.OnlineBackendFactory
 import com.playtranslate.translation.OnlineServiceInstance
 import com.playtranslate.translation.OnlineServiceMutations
 import com.playtranslate.translation.OnlineServiceStore
@@ -81,30 +83,17 @@ class AddOnlineServiceActivity : AppCompatActivity() {
         val card = inflater.inflate(R.layout.language_list_section, parent, false) as MaterialCardView
         val rowContainer = card.findViewById<LinearLayout>(R.id.sectionRows)
 
-        // OpenAI leads: its provider preset (DeepSeek / custom endpoints)
-        // makes it the entry most users are here for.
-        val services = listOf(
+        val services = CATALOG.map { type ->
             ServiceRow(
-                getString(R.string.add_service_openai_customizable),
-                getString(R.string.add_service_sub_requires_key),
-                ServiceType.OPENAI,
-            ),
-            ServiceRow(
-                getString(R.string.gemini_display_name),
-                getString(R.string.add_service_sub_requires_key),
-                ServiceType.GEMINI,
-            ),
-            ServiceRow(
-                getString(R.string.deepl_display_name),
-                getString(R.string.add_service_sub_requires_key_free),
-                ServiceType.DEEPL,
-            ),
-            ServiceRow(
-                getString(R.string.lingva_display_name),
-                getString(R.string.add_service_sub_no_key),
-                ServiceType.LINGVA,
-            ),
-        )
+                title = catalogTitle(this, type),
+                subtitle = when (type) {
+                    ServiceType.DEEPL -> getString(R.string.add_service_sub_requires_key_free)
+                    ServiceType.LINGVA -> getString(R.string.add_service_sub_no_key)
+                    else -> getString(R.string.add_service_sub_requires_key)
+                },
+                type = type,
+            )
+        }
         services.forEachIndexed { idx, row ->
             if (idx > 0) {
                 rowContainer.addView(
@@ -171,5 +160,27 @@ class AddOnlineServiceActivity : AppCompatActivity() {
 
     companion object {
         private const val KEY_PENDING_ID = "pending_new_id"
+
+        /** Every service this picker offers, in the order it offers them —
+         *  OpenAI leads because its provider preset (DeepSeek / custom
+         *  endpoints) makes it the entry most users are here for. Also the
+         *  order the services page's Add row names them in
+         *  ([OnlineServicesController]), so a new service surfaces in both
+         *  places at once. */
+        val CATALOG = listOf(
+            ServiceType.OPENAI,
+            ServiceType.GEMINI,
+            ServiceType.DEEPL,
+            ServiceType.LINGVA,
+        )
+
+        /** The name a catalog service goes by wherever we offer it — this
+         *  picker's rows and the services page's Add-row subtitle. OpenAI
+         *  advertises its provider preset ("OpenAI (Customizable)"); the
+         *  rest are just their brand. */
+        fun catalogTitle(context: Context, type: ServiceType): String = when (type) {
+            ServiceType.OPENAI -> context.getString(R.string.add_service_openai_customizable)
+            else -> OnlineBackendFactory.typeDisplayName(context, type)
+        }
     }
 }

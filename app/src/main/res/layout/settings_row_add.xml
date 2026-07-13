@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- "Add Online Translation Service" action row: title + right-aligned
-     "+" icon. Sits above the reorderable instance list, outside the
-     RecyclerView, so it can't be dragged; hidden in edit mode. -->
+<!-- "Add Online Translation Service" action row: title + subtitle naming
+     the services on offer + right-aligned "+" icon. Sits above the
+     reorderable instance list, outside the RecyclerView, so it can't be
+     dragged; hidden in edit mode. Text stack, 9dp vertical padding and
+     48dp trailing floor all mirror item_online_service's rowMain, so this
+     row measures the same height as the instance cells below it whatever
+     the font metrics. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -11,24 +15,51 @@
     android:orientation="horizontal"
     android:gravity="center_vertical"
     android:paddingHorizontal="@dimen/pt_row_h_padding"
-    android:paddingVertical="@dimen/pt_row_v_padding"
+    android:paddingVertical="9dp"
     android:background="?attr/selectableItemBackground"
     android:clickable="true"
     android:focusable="true"
     tools:ignore="Overdraw">
 
-    <TextView
-        android:id="@+id/tvRowTitle"
+    <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:text="@string/tr_service_add_online"
-        style="@style/Text.PT.RowTitle" />
+        android:orientation="vertical"
+        android:layout_marginEnd="16dp">
 
+        <TextView
+            android:id="@+id/tvRowTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/tr_service_add_online"
+            style="@style/Text.PT.RowTitle" />
+
+        <!-- Filled by OnlineServicesController from the add-picker's
+             catalog, so a new service shows up here for free. Single-line:
+             a wrap would make this row taller than the instance cells it
+             is meant to stand level with, so a narrow screen ellipsizes
+             the tail of the list instead. -->
+        <TextView
+            android:id="@+id/tvRowSubtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            style="@style/Text.PT.RowSubtitle"
+            tools:text="OpenAI (Customizable), Gemini, DeepL, Lingva" />
+    </LinearLayout>
+
+    <!-- 48dp tall, not 24: the instance rows below trail a MaterialSwitch,
+         whose 48dp min-touch-target is what sets their height (their text
+         stack is shorter than that). The glyph still draws at its natural
+         24dp — scaleType only centers it in the taller slot. -->
     <ImageView
         android:id="@+id/ivRowIcon"
         android:layout_width="24dp"
-        android:layout_height="24dp"
+        android:layout_height="@dimen/pt_touch_target"
+        android:scaleType="center"
         android:src="@drawable/ic_add"
         app:tint="?attr/ptAccent"
         android:importantForAccessibility="no" />

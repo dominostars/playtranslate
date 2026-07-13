@@ -133,6 +133,17 @@ object OnlineBackendFactory {
             ServiceType.LINGVA -> context.getString(R.string.lingva_display_name)
         }
 
+    /** The service brand itself, with no instance to take a preset from —
+     *  for naming the catalog of services rather than one configured
+     *  instance. OPENAI is the brand here, not its DeepSeek/Custom
+     *  presets, which are reached through it. */
+    fun typeDisplayName(context: Context, type: ServiceType): String = when (type) {
+        ServiceType.GEMINI -> context.getString(R.string.gemini_display_name)
+        ServiceType.OPENAI -> context.getString(R.string.openai_display_name)
+        ServiceType.DEEPL -> context.getString(R.string.deepl_display_name)
+        ServiceType.LINGVA -> context.getString(R.string.lingva_display_name)
+    }
+
     private fun modelOf(instance: OnlineServiceInstance): String =
         instance.model.ifBlank { defaultModelFor(instance.type, instance.preset) }
 }

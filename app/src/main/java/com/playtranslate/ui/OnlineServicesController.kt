@@ -77,6 +77,10 @@ class OnlineServicesController(
     init {
         recycler.layoutManager = LinearLayoutManager(activity)
         recycler.adapter = adapter
+        rowAdd.findViewById<TextView>(R.id.tvRowSubtitle).text =
+            AddOnlineServiceActivity.CATALOG.joinToString(", ") {
+                AddOnlineServiceActivity.catalogTitle(activity, it)
+            }
         rowAdd.setOnClickListener {
             activity.startActivity(Intent(activity, AddOnlineServiceActivity::class.java))
         }
