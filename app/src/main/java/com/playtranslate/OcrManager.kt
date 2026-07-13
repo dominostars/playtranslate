@@ -215,8 +215,15 @@ class OcrManager private constructor() {
         if (result.fullText.isBlank()) return null
 
         android.util.Log.d("DetectionLog", "OCR raw: ${result.groups.size} groups")
-        for ((i, g) in result.groups.withIndex()) {
-            android.util.Log.d("DetectionLog", "  group[$i]: \"${g.text.take(50)}\"")
+        // Recognized TEXT is user content — game screens, and now arbitrary
+        // camera frames (documents, mail). Release logs must carry only
+        // counts/backend/timing: logcat rides along in exported diagnostics,
+        // and the DEBUG gate here is what makes the camera path's own
+        // DEBUG-gated content logging actually hold.
+        if (BuildConfig.DEBUG) {
+            for ((i, g) in result.groups.withIndex()) {
+                android.util.Log.d("DetectionLog", "  group[$i]: \"${g.text.take(50)}\"")
+            }
         }
         return result
     }
