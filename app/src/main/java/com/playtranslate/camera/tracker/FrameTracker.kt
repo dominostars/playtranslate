@@ -91,8 +91,14 @@ class FrameTracker {
 
     private var anchor: Anchor? = null
 
-    /** Previous CN gray frame (copy — the caller's Mat is reused). */
-    private val prevGray = Mat()
+    /** Previous CN gray frame — a BORROWED reference to the caller's Mat.
+     *  [track]'s input contract: curGray must stay valid (and unmodified)
+     *  until the next [track] call; [CnFrameConverter] double-buffers for
+     *  exactly this, saving a ~0.5 MB copy per frame. The one exception is
+     *  the install-without-prior-frame path, which copies the keyframe into
+     *  [ownedPrevKeyframe] (the keyframe's owner recycles it under us). */
+    private var prevGray: Mat? = null
+    private val ownedPrevKeyframe = Mat()
     private var hasPrev = false
 
     /** Live correspondences: positions in anchor space (fixed) and in the
@@ -142,7 +148,7 @@ class FrameTracker {
         anchor?.release()
         anchor = newAnchor
         framesSinceRematch = 0
-        val seedTarget = if (hasPrev) prevGray else keyframeGray
+        val seedTarget = prevGray.takeIf { hasPrev } ?: keyframeGray
         rematch(seedTarget)
         val (h, verified) = pruneToVerified()
         if (h != null && verified >= TrackerConfig.MIN_INLIERS_ACQUIRE) {
@@ -150,7 +156,8 @@ class FrameTracker {
         }
         recomputeBaselines()
         if (!hasPrev) {
-            keyframeGray.copyTo(prevGray)
+            keyframeGray.copyTo(ownedPrevKeyframe)
+            prevGray = ownedPrevKeyframe
             hasPrev = true
         }
         return verified
@@ -322,14 +329,17 @@ class FrameTracker {
         regionRects = arrayOf()
         regionBaselines = IntArray(0)
         hasPrev = false
+        prevGray = null // borrowed — never released here
     }
 
     /** Probe points for anchorless motion measurement (Idle). */
     private var probePts: List<Point> = emptyList()
 
     /**
-     * Track one frame. [curGray] is the upright CN gray of the current frame
-     * (caller-owned; copied internally for the next LK pass).
+     * Track one frame. [curGray] is the upright CN gray of the current frame,
+     * caller-owned and HELD BY REFERENCE as the next call's previous frame —
+     * it must stay valid and unmodified until the next [track] call (the
+     * converter double-buffers for exactly this).
      *
      * With no anchor installed this degrades to a motion probe: a few dozen
      * good-features corners LK-tracked frame-to-frame purely for the median
@@ -339,7 +349,7 @@ class FrameTracker {
         if (anchor == null) return probeMotion(curGray)
 
         if (!hasPrev) {
-            curGray.copyTo(prevGray)
+            prevGray = curGray
             hasPrev = true
             return TrackMeasurement(null, 0, -1.0, anchorPts.size)
         }
@@ -382,7 +392,7 @@ class FrameTracker {
             }
             recomputeBaselines()
         }
-        curGray.copyTo(prevGray)
+        prevGray = curGray
         return measurement
     }
 
@@ -397,11 +407,12 @@ class FrameTracker {
     private fun probeMotion(curGray: Mat): TrackMeasurement {
         var motion = -1.0
         val survivors = ArrayList<Point>(probePts.size)
-        if (hasPrev && probePts.isNotEmpty()) {
+        val prevFrame = prevGray
+        if (hasPrev && prevFrame != null && probePts.isNotEmpty()) {
             val prev = MatOfPoint2f(*probePts.toTypedArray())
             val next = MatOfPoint2f()
             Video.calcOpticalFlowPyrLK(
-                prevGray, curGray, prev, next, lkStatus, lkErr,
+                prevFrame, curGray, prev, next, lkStatus, lkErr,
                 lkWin, TrackerConfig.LK_MAX_LEVEL,
             )
             val status = lkStatus.toArray()
@@ -432,7 +443,7 @@ class FrameTracker {
         } else {
             probePts = survivors
         }
-        curGray.copyTo(prevGray)
+        prevGray = curGray
         hasPrev = true
         return TrackMeasurement(null, 0, motion, 0)
     }
@@ -445,17 +456,18 @@ class FrameTracker {
     private fun stepLk(curGray: Mat) {
         lastMedianDisp = -1.0
         if (currentPts.isEmpty()) return
+        val prevFrame = prevGray ?: return
         val prevPts = MatOfPoint2f(*currentPts.toTypedArray())
         val nextPts = MatOfPoint2f()
         Video.calcOpticalFlowPyrLK(
-            prevGray, curGray, prevPts, nextPts, lkStatus, lkErr,
+            prevFrame, curGray, prevPts, nextPts, lkStatus, lkErr,
             lkWin, TrackerConfig.LK_MAX_LEVEL,
         )
         // Backward pass: next → prev must land where we started.
         val backPts = MatOfPoint2f()
         val backStatus = MatOfByte()
         Video.calcOpticalFlowPyrLK(
-            curGray, prevGray, nextPts, backPts, backStatus, lkErr,
+            curGray, prevFrame, nextPts, backPts, backStatus, lkErr,
             lkWin, TrackerConfig.LK_MAX_LEVEL,
         )
 
@@ -688,7 +700,7 @@ class FrameTracker {
 
     fun release() {
         clearAnchor()
-        prevGray.release()
+        ownedPrevKeyframe.release()
         lkStatus.release()
         lkErr.release()
         emptyMask.release()

@@ -370,13 +370,17 @@ class CameraTrackerBenchmark {
                 )
             )
 
-            val cur = Mat()
+            // track() holds its input as the previous frame BY REFERENCE
+            // (the production converter double-buffers for this) — alternate
+            // two Mats so warping the next frame doesn't mutate the held one.
+            val curBufs = arrayOf(Mat(), Mat())
             var lockedFrames = 0
             var regionFrames = 0
             var maxErr = 0.0
             val probe = Point(270.0, 480.0)
             for (f in 1..60) {
                 nowMs += 33
+                val cur = curBufs[f % 2]
                 // Continuous pan + slow rotation, always warped fresh from base.
                 val affine = Imgproc.getRotationMatrix2D(Point(CN_W / 2.0, CN_H / 2.0), 0.02 * f, 1.0)
                 val hTrue = Mat.eye(3, 3, CvType.CV_64F)
@@ -407,7 +411,7 @@ class CameraTrackerBenchmark {
             // EMA lags a continuously-moving target by ~(1-α)/α of the
             // per-frame delta (~1.3 px here); anything under 5 px is healthy.
             assertTrue("max projection error %.2f px".format(maxErr), maxErr < 5.0)
-            cur.release()
+            curBufs.forEach { it.release() }
         } finally {
             tracker.release()
             base.release()
