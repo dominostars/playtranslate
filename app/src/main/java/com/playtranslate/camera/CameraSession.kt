@@ -382,7 +382,15 @@ class CameraSession(
                     val buffers = AcquireBuffers(toUprightBitmap(proxy), cn.clone())
                     val gen = generation.get()
                     Log.d(TAG, "acquire#$acquireId: keyframe ${buffers.keyframe.width}x${buffers.keyframe.height}")
-                    acquireJob = scope.launch(Dispatchers.Default) { runAcquire(buffers, gen, acquireId) }
+                    // ATOMIC: a cancel that lands before first dispatch (mode
+                    // toggle/reset in that window) must still run the body up
+                    // to its first suspension, so the finally can close the
+                    // buffers and complete the engine's acquire — a silently
+                    // skipped body leaks the keyframe and pins ACQUIRING
+                    // until the 30 s watchdog.
+                    acquireJob = scope.launch(Dispatchers.Default, kotlinx.coroutines.CoroutineStart.ATOMIC) {
+                        runAcquire(buffers, gen, acquireId)
+                    }
                 }
             }
 
