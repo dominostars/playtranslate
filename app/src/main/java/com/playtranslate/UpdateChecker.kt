@@ -29,6 +29,15 @@ object UpdateChecker {
         val tag: String,
         /** Release page URL to hand to ACTION_VIEW. */
         val url: String,
+        /** Direct-download URL of the release's `.apk` asset, or null when
+         *  the release carries none — the in-app download offer needs it. */
+        val apkUrl: String? = null,
+        /** Exact byte size of the APK asset (0 when [apkUrl] is null). */
+        val apkSize: Long = 0L,
+        /** Lowercase hex SHA-256 from the asset's `digest` field, or null on
+         *  releases predating that GitHub API field — checksum verification
+         *  is skipped (structural checks still gate). */
+        val apkSha256: String? = null,
     )
 
     private val client by lazy {
@@ -80,7 +89,24 @@ object UpdateChecker {
             val url = json.optString("html_url", "").ifEmpty {
                 "https://github.com/dominostars/playtranslate/releases/tag/$tag"
             }
-            return Release(tag, url)
+            var apkUrl: String? = null
+            var apkSize = 0L
+            var apkSha256: String? = null
+            val assets = json.optJSONArray("assets")
+            if (assets != null) {
+                for (i in 0 until assets.length()) {
+                    val asset = assets.optJSONObject(i) ?: continue
+                    if (!asset.optString("name").endsWith(".apk")) continue
+                    apkUrl = asset.optString("browser_download_url").takeIf { it.isNotEmpty() }
+                    apkSize = asset.optLong("size", 0L)
+                    apkSha256 = asset.optString("digest")
+                        .takeIf { it.startsWith("sha256:") }
+                        ?.removePrefix("sha256:")
+                        ?.lowercase()
+                    break
+                }
+            }
+            return Release(tag, url, apkUrl, apkSize, apkSha256)
         }
     }
 

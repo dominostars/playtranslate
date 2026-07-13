@@ -1160,6 +1160,16 @@ class Prefs internal constructor(
         get() = sp.getString(KEY_UPDATE_SKIP_TAG, "") ?: ""
         set(v) = sp.edit { putString(KEY_UPDATE_SKIP_TAG, v) }
 
+    /** Tag whose APK is fully downloaded + validated in cache/updates/,
+     *  awaiting the system-installer hand-off. Set only after the whole
+     *  [com.playtranslate.update.ApkUpdateManager] validation ladder passes;
+     *  cleared once the update is installed, skipped, or the cached file
+     *  stops validating. Bridges process death between download and install
+     *  (the unknown-sources grant can kill the app). */
+    var updateDownloadedTag: String
+        get() = sp.getString(KEY_UPDATE_DOWNLOADED_TAG, "") ?: ""
+        set(v) = sp.edit { putString(KEY_UPDATE_DOWNLOADED_TAG, v) }
+
 
     /** SYSTEM follows the OS uiMode; DARK/LIGHT are explicit overrides. */
     var themeMode: ThemeMode
@@ -1347,6 +1357,7 @@ class Prefs internal constructor(
         private const val KEY_LAST_YOMITAN_UPDATE_CHECK    = "last_yomitan_update_check"
         private const val KEY_YOMITAN_UPDATE_BACKFILL_DONE = "yomitan_update_backfill_done"
         private const val KEY_UPDATE_SKIP_TAG              = "update_skip_tag"
+        private const val KEY_UPDATE_DOWNLOADED_TAG        = "update_downloaded_tag"
         private const val KEY_TARGET_PACK_MIGRATION_DISMISSED = "target_pack_migration_dismissed"
 
         /**

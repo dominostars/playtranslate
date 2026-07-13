@@ -15,6 +15,9 @@
     <!-- Game-audio recording for Anki sentence cards: AudioPlaybackCapture on
          the MediaProjection session — never the microphone. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- In-app self-update: hand the downloaded release APK to the system
+         package installer (com.playtranslate.update.ApkUpdateManager). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <queries>
         <package android:name="com.ichi2.anki" />

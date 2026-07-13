@@ -2413,14 +2413,83 @@
          (e.g. "v2.3.0"). -->
     <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> is available on <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
 
-    <!-- "View release" button on the update dialog. -->
-    <string name="update_dialog_view_release">View release</string>
+    <!-- "View release notes" button on the update dialog (opens the GitHub
+         release page in a browser). -->
+    <string name="update_dialog_view_release">View release notes</string>
 
     <!-- "Skip this version" button on the update dialog. -->
     <string name="update_dialog_skip">Skip this version</string>
 
     <!-- "Ask again later" cancel button on the update dialog. -->
     <string name="update_dialog_ask_again_later">Ask again later</string>
+
+    <!-- Primary button on the update dialog: download the APK in-app and
+         hand it to the system installer. -->
+    <string name="update_dialog_download">Download &amp; install</string>
+
+    <!-- Appended to the update-dialog body when in-app download is offered.
+         %1$s = human-readable download size (e.g. "128 MB"). -->
+    <string name="update_dialog_size_note">Download size: <xliff:g id="size" example="128 MB">%1$s</xliff:g></string>
+
+    <!-- Extra line under the size note when the active connection is
+         metered (mobile data). -->
+    <string name="update_dialog_metered_note">You\'re on a metered connection.</string>
+
+    <!-- Title of the download-progress popup. "PlayTranslate" is the app
+         name; do not translate. -->
+    <string name="update_progress_title">Updating <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- Byte progress line: received / total. Locale-neutral. -->
+    <string name="update_progress_downloading" translatable="false">%1$s / %2$s</string>
+
+    <!-- Progress-popup message while the downloaded APK's checksum and
+         signature are being verified. -->
+    <string name="update_progress_verifying">Verifying…</string>
+
+    <!-- Title of the explainer shown when the "install unknown apps"
+         permission hasn't been granted yet. -->
+    <string name="update_unknown_sources_title">Allow installing updates</string>
+
+    <!-- Body of the unknown-sources explainer. Warns that Android may
+         restart the app when the permission is toggled. "PlayTranslate" is
+         the app name; do not translate. -->
+    <string name="update_unknown_sources_message">To finish updating, allow <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> to install app updates on the settings screen that opens. Android may restart the app when the permission is turned on. The downloaded update is kept and installation continues automatically.</string>
+
+    <!-- Button on the unknown-sources explainer that opens the system
+         settings screen. -->
+    <string name="update_unknown_sources_button">Open settings</string>
+
+    <!-- Title shared by all update-failure dialogs. -->
+    <string name="update_error_title">Update failed</string>
+
+    <!-- Failure body: download ended short / transport error. Retryable. -->
+    <string name="update_error_incomplete">The download didn\'t finish correctly. Try again, or get the update from <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <!-- Failure body: checksum mismatch against the release manifest.
+         Retryable. -->
+    <string name="update_error_verification">The downloaded file couldn\'t be verified. Try again, or get the update from <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <!-- Failure body: the file isn't a PlayTranslate APK at all.
+         "PlayTranslate" is the app name; do not translate. -->
+    <string name="update_error_wrong_package">The downloaded file isn\'t a <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> update. Get the update from <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> instead.</string>
+
+    <!-- Failure body: the downloaded APK's version isn't newer than the
+         installed one (the system installer would reject the downgrade). -->
+    <string name="update_error_downgrade">The downloaded version isn\'t newer than the installed version.</string>
+
+    <!-- Failure body: the APK's signing certificate doesn't match this
+         install, so the system installer would refuse it. -->
+    <string name="update_error_signature">This update can\'t be installed over the current build. Install it manually from <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <!-- Failure body: not enough free storage. %1$s = human-readable byte
+         count still needed (e.g. "230 MB"). -->
+    <string name="update_error_no_space">Not enough free space to download the update (<xliff:g id="needed" example="230 MB">%1$s</xliff:g> needed).</string>
+
+    <!-- Retry button on recoverable update failures. -->
+    <string name="update_error_retry">Try again</string>
+
+    <!-- Toast shown if the system package installer can't be launched. -->
+    <string name="update_error_install_launch">Couldn\'t open the system installer.</string>
 
     <!-- Toast shown if no browser is installed to open the release URL. -->
     <string name="toast_no_browser_available">No browser available</string>

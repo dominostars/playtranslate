@@ -96,7 +96,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import androidx.core.view.isVisible
-import androidx.core.net.toUri
 import androidx.core.view.isGone
 
 class MainActivity :
@@ -135,6 +134,8 @@ class MainActivity :
     private val welcomeTargetInstaller by lazy {
         com.playtranslate.ui.TargetPackInstaller(this, lifecycleScope)
     }
+    /** In-app update download + install flow (see [maybeCheckForUpdates]). */
+    private val updateInstaller by lazy { com.playtranslate.ui.UpdateInstallController(this) }
     private lateinit var editOverlay: android.widget.LinearLayout
     private lateinit var etEditOriginal: android.widget.EditText
 
@@ -1901,37 +1902,20 @@ class MainActivity :
         // (not the onboardingContainer view, which route() updates async): when
         // this runs straight after refreshReadiness() the view may still be stale.
         if (onboardingVm.state.value !is AppReadiness.Ready) return
+        // A validated APK from a previous session takes this resume cycle —
+        // one-tap install prompt instead of the debounced check.
+        if (updateInstaller.resumeIfPending()) return
+        // Returning from a "View release" browser detour re-shows the update
+        // dialog (the alert dismissed on pause; the debounce would block it).
+        if (updateInstaller.reshowIfPending()) return
         lifecycleScope.launch {
             val release = UpdateChecker.maybeCheck(this@MainActivity) ?: return@launch
             if (!isInForeground || isFinishing || isDestroyed) return@launch
             if (onboardingVm.state.value !is AppReadiness.Ready) return@launch
-            showUpdatePopup(release)
-        }
-    }
-
-    private fun showUpdatePopup(release: UpdateChecker.Release) {
-        OverlayAlert.Builder(this)
-            .setTitle(getString(R.string.update_dialog_title))
-            .setMessage(getString(R.string.update_dialog_message, release.tag))
-            .addButton(getString(R.string.update_dialog_view_release), themeColor(R.attr.ptAccent)) {
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, release.url.toUri()))
-                } catch (_: Exception) {
-                    Toast.makeText(this, getString(R.string.toast_no_browser_available), Toast.LENGTH_SHORT).show()
-                }
-            }
-            .addButton(
-                getString(R.string.update_dialog_skip),
-                themeColor(R.attr.ptDivider),
-                themeColor(R.attr.ptDanger)
-            ) {
-                prefs.updateCheckSkippedTag = release.tag
-            }
             // 24h debounce timestamp was already committed inside
-            // UpdateChecker.maybeCheck — no per-dismissal bookkeeping
-            // needed; both cancel-button tap and scrim tap end the alert.
-            .addCancelButton(getString(R.string.update_dialog_ask_again_later))
-            .show()
+            // UpdateChecker.maybeCheck — no per-dismissal bookkeeping needed.
+            updateInstaller.promptUpdate(release)
+        }
     }
 
     private fun showRestrictedSettingsDialog() {
