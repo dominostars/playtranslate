@@ -10,3 +10,7 @@ wordfreq
 # >=2.0.0 for the Arabic stemmer (org.tartarus.snowball.ext.ArabicStemmer); must
 # match the Lucene Snowball version LatinEngine uses at runtime.
 snowballstemmer>=2.0.0
+# build_zh_dict.py calls wordfreq.word_frequency(w, "zh"), and wordfreq imports
+# jieba to tokenize Chinese. It is not a wordfreq dependency, so without this the
+# zh build dies on its first CC-CEDICT entry.
+jieba

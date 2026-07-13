@@ -33,10 +33,14 @@ from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent.parent
 HOME = ROOT.parent
-WORK = ROOT / "local" / "source-v2"
+WORK = ROOT / "local" / "source-v3"
 WORK.mkdir(parents=True, exist_ok=True)
 SUMMARY = WORK / "SUMMARY.json"
-PACK_VERSION = 2
+# Must track the packVersion the catalog serves (bumped to 3 when the entry_id
+# indexes shipped). A stale value here stamps old-version manifests into
+# new-version packs, which the app reads as permanently stale — an upgrade prompt
+# that re-fires on every launch and can never be satisfied.
+PACK_VERSION = 3
 
 # code -> kaikki language name (per-language source extract).
 LANGS: dict[str, str] = {
