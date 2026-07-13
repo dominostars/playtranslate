@@ -40,7 +40,11 @@ class MlKitBackend : TranslationBackend {
      *  OfflineFallbackTranslators. */
     override val usableAsOfflineFallback: Boolean = true
 
-    override val status: BackendStatus = BackendStatus.Info("Bundled with the app, used as a fallback")
+    // No status line: the offline rows render only Warning-toned status, so
+    // ML Kit's old neutral "Bundled with the app, used as a fallback" never
+    // reached the screen. Left to the interface default (BackendStatus.Hidden)
+    // rather than kept as a string nobody sees and twelve translators would
+    // have had to translate. The offline card's footer already says it.
 
     override fun isUsable(source: String, target: String): Boolean = true
 

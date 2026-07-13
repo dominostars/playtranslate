@@ -10,20 +10,22 @@ import org.junit.Test
  */
 class StaticBackendStatusTest {
 
-    @Test fun `Lingva status is the no-API-key info regardless of enabled state`() {
+    @Test fun `Lingva status is the no-account requirement regardless of enabled state`() {
         val onBackend  = LingvaBackend(enabledProvider = { true })
         val offBackend = LingvaBackend(enabledProvider = { false })
 
-        val expected = BackendStatus.Info("No API key required")
+        // The requirement, not the sentence — Lingva has no Context to word it
+        // with, so the renderer resolves AccountRequirement.labelRes.
+        val expected = BackendStatus.Account(AccountRequirement.NONE)
         assertEquals(expected, onBackend.status)
         assertEquals(expected, offBackend.status)
     }
 
-    @Test fun `MlKit status is the bundled-fallback info`() {
-        val backend = MlKitBackend()
-        assertEquals(
-            BackendStatus.Info("Bundled with the app, used as a fallback"),
-            backend.status,
-        )
+    @Test fun `MlKit shows no status line`() {
+        // Deliberate, not an oversight: the offline rows render only
+        // Warning-toned status, so ML Kit's old neutral "Bundled with the app"
+        // line never reached the screen. Pinned here so a future backend
+        // doesn't quietly re-add a status nobody can see.
+        assertEquals(BackendStatus.Hidden, MlKitBackend().status)
     }
 }

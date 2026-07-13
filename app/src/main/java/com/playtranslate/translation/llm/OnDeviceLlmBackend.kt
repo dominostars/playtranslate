@@ -124,20 +124,29 @@ abstract class OnDeviceLlmBackend(
     fun meetsHardwareRequirements(): Boolean = supportsRequiredAbi() && hasEnoughTotalMemory()
 
     /**
-     * Localized human-readable explanation for *why* the device doesn't meet
-     * the hardware requirements, or null if it does. Surfaced in the row's
-     * status line when the switch is hidden.
+     * Why the device doesn't meet the hardware requirements, as an unresolved
+     * [BackendStatus.Info], or null if it does. Unresolved so it can be
+     * returned from [status] as-is — [BackendStatus] carries resources, never
+     * rendered text.
      */
-    fun hardwareIncompatibilityReason(): String? {
-        if (!supportsRequiredAbi()) {
-            return context.getString(R.string.llm_hardware_unsupported_arm64)
-        }
-        if (!hasEnoughTotalMemory()) {
+    private fun hardwareIncompatibility(): BackendStatus.Info? = when {
+        !supportsRequiredAbi() ->
+            BackendStatus.Info(R.string.llm_hardware_unsupported_arm64)
+        !hasEnoughTotalMemory() -> {
             val needGb = (totalMemFloorBytes + 999_999_999L) / 1_000_000_000L
-            return context.getString(R.string.llm_hardware_unsupported_ram, needGb)
+            BackendStatus.Info(R.string.llm_hardware_unsupported_ram, listOf(needGb))
         }
-        return null
+        else -> null
     }
+
+    /**
+     * The same explanation as prose, or null if the device does meet them.
+     * Read by the offline row's inert "disabled" line, which is plain text
+     * rather than a status line, so it needs the sentence rather than the
+     * resource.
+     */
+    fun hardwareIncompatibilityReason(): String? =
+        hardwareIncompatibility()?.resolve(context)
 
     /**
      * True iff this process is running 64-bit (and therefore can load MNN).
@@ -213,9 +222,7 @@ abstract class OnDeviceLlmBackend(
             // Surface hardware incompatibility as the line-2 status — takes
             // precedence over download/enabled/ready states because there's
             // no point telling the user "downloaded" if the model can't run.
-            hardwareIncompatibilityReason()?.let {
-                return BackendStatus.Info(it, Tone.Neutral)
-            }
+            hardwareIncompatibility()?.let { return it }
             val sizeStr = modelHelper.humanSize(context)
             // Neutral tone across all states so an enabled on-device LLM doesn't
             // visually outweigh sibling rows (DeepL, Lingva); accent would read
@@ -235,12 +242,14 @@ abstract class OnDeviceLlmBackend(
             return when {
                 !modelHelper.isInstalled(context) ->
                     BackendStatus.Info(
-                        context.getString(statusStringIds.notDownloaded, memStr, sizeStr),
+                        statusStringIds.notDownloaded,
+                        listOf(memStr, sizeStr),
                         Tone.Neutral,
                     )
                 !enabledProvider() ->
                     BackendStatus.Info(
-                        context.getString(statusStringIds.disabled, sizeStr),
+                        statusStringIds.disabled,
+                        listOf(sizeStr),
                         Tone.Neutral,
                     )
                 !hasEnoughAvailMemory() ->
@@ -251,12 +260,13 @@ abstract class OnDeviceLlmBackend(
                     // the next time the row is refreshed after memory
                     // recovers.
                     BackendStatus.Info(
-                        context.getString(R.string.llm_status_low_memory_badge),
-                        Tone.Warning,
+                        R.string.llm_status_low_memory_badge,
+                        tone = Tone.Warning,
                     )
                 else ->
                     BackendStatus.Info(
-                        context.getString(statusStringIds.ready, memStr, sizeStr),
+                        statusStringIds.ready,
+                        listOf(memStr, sizeStr),
                         Tone.Neutral,
                     )
             }

@@ -78,8 +78,8 @@ object BadgeChips {
     /**
      * One imported frequency dictionary's chip: "JPDB: 1234". A neutral data
      * chip on every surface (frequency is information, not a highlight), so
-     * callers pass the muted text colour and [R.drawable.bg_anki_meta_chip]-
-     * style background. The source name is never ellipsized — long names
+     * callers pass the muted text colour and [R.drawable.bg_meta_chip]-style
+     * background. The source name is never ellipsized — long names
      * wrap with their row's FlowLayout.
      */
     fun freqChip(

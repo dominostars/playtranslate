@@ -219,7 +219,7 @@ class WordDefinitionsView @JvmOverloads constructor(
     }
 
     /** [metaChipFill] as the lightly-rounded data-chip shape (the
-     *  programmatic equivalent of bg_anki_meta_chip). Fresh instance per
+     *  programmatic equivalent of bg_meta_chip). Fresh instance per
      *  chip — drawables can't be shared across views. */
     private fun metaChipBackground(): GradientDrawable = GradientDrawable().apply {
         setColor(metaChipFill)

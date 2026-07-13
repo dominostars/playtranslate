@@ -30,14 +30,63 @@
         android:gravity="center_vertical"
         android:minHeight="@dimen/offline_row_header_min_height">
 
-        <TextView
-            android:id="@+id/tvOfflineTitle"
+        <!-- Title + "LLM" chip, packed against the left with the slack to
+             their right, so the chip rides beside the title instead of
+             drifting out to the status icon.
+
+             ConstraintLayout, not a nested LinearLayout, because the two want
+             opposite things when space runs short (a deprecated row spends
+             ~110dp of this line on its badge, and every width here scales with
+             the user's font size): the chip must keep its full width, the
+             title must give way. A horizontal LinearLayout can't express that
+             — it measures children in order, so a wrap_content title takes
+             what it wants and the chip behind it measures to zero and
+             silently disappears. Here the packed chain (bias 0) hugs the
+             start, and layout_constrainedWidth lets only the title shrink and
+             ellipsize.
+
+             The wrapper keeps the weight the title used to carry, so it is
+             still measured last, from what the icon and switch leave behind —
+             that is what stops a long title from pushing the switch off the
+             row. -->
+        <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:singleLine="true"
-            android:ellipsize="end"
-            style="@style/Text.PT.RowTitle" />
+            android:layout_weight="1">
+
+            <TextView
+                android:id="@+id/tvOfflineTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:singleLine="true"
+                android:ellipsize="end"
+                app:layout_constrainedWidth="true"
+                app:layout_constraintHorizontal_bias="0"
+                app:layout_constraintHorizontal_chainStyle="packed"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toStartOf="@+id/tvLlmBadge"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                style="@style/Text.PT.RowTitle" />
+
+            <!-- Shown by TranslationServicesBinder.renderOfflineBackendRow for
+                 every OnDeviceLlmBackend row (Gemma · Hunyuan-MT · Qwen);
+                 Firefox Translations and ML Kit are classic NMT engines and
+                 stay unlabelled. GONE collapses it out of the chain, leaving
+                 the title packed alone against the start. -->
+            <TextView
+                android:id="@+id/tvLlmBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/service_llm_badge"
+                android:visibility="gone"
+                app:layout_constraintStart_toEndOf="@id/tvOfflineTitle"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                style="@style/Text.PT.MetaLabel" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
         <!-- Deprecation badge: warning-colored "DEPRECATED" flanked by warning
              triangles. Shown by SettingsRenderer.renderOfflineBackendRow only

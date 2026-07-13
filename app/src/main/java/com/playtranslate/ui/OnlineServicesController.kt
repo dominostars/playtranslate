@@ -222,6 +222,7 @@ class OnlineServicesController(
             val rowMain: View = view.findViewById(R.id.rowMain)
             val dragHandle: ImageView = view.findViewById(R.id.ivDragHandle)
             val title: TextView = view.findViewById(R.id.tvRowTitle)
+            val llmBadge: TextView = view.findViewById(R.id.tvLlmBadge)
             val keyTail: TextView = view.findViewById(R.id.tvKeyTail)
             val switch: MaterialSwitch = view.findViewById(R.id.switchRowToggle)
             val delete: ImageView = view.findViewById(R.id.ivDelete)
@@ -244,6 +245,7 @@ class OnlineServicesController(
             val backend = TranslationBackendRegistry.byId(instance.id)
 
             holder.title.text = OnlineBackendFactory.displayName(activity, instance)
+            holder.llmBadge.isVisible = instance.type.isLlm
 
             val key = OnlineServiceStore.readKey(instance.id)
             if (key.isBlank()) {
@@ -309,8 +311,7 @@ class OnlineServicesController(
          *  enabled (i.e. a key has been saved — the picker needs a real
          *  key to call /models with). */
         private fun bindModelRow(holder: VH, instance: OnlineServiceInstance) {
-            val isLlm = instance.type == ServiceType.GEMINI || instance.type == ServiceType.OPENAI
-            if (!isLlm || !instance.enabled) {
+            if (!instance.type.isLlm || !instance.enabled) {
                 holder.sectionModel.isGone = true
                 return
             }
@@ -360,9 +361,17 @@ class OnlineServicesController(
                 tv.isVisible = true
             }
             is BackendStatus.Info -> {
-                tv.text = status.text
+                tv.text = status.resolve(activity)
                 applyTone(tv, status.tone)
                 applyItalic(tv, status.italic)
+                tv.isVisible = true
+            }
+            is BackendStatus.Account -> {
+                tv.text = activity.getString(status.requirement.labelRes)
+                // Pinned Neutral: needing an account is configuration, not
+                // alarm. A freshly-added service shouldn't look broken.
+                applyTone(tv, Tone.Neutral)
+                applyItalic(tv, false)
                 tv.isVisible = true
             }
             is BackendStatus.Quota -> {

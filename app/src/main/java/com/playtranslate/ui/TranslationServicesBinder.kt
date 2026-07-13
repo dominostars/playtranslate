@@ -509,6 +509,13 @@ class TranslationServicesBinder(
         // Warning-colored "⚠ DEPRECATED ⚠" badge on the title line (deprecated
         // + installed rows only; the not-installed case returned above).
         row.findViewById<TextView>(R.id.tvOfflineDeprecatedBadge).isVisible = deprecated
+        // "LLM" chip on the title line — the offline half of the question
+        // ServiceType.isLlm answers for the online rows. Bergamot and ML Kit
+        // are classic NMT engines and get none. Set before the disabled branch
+        // below returns: what a backend *is* doesn't depend on whether this
+        // device can run it.
+        val llmBadge = row.findViewById<TextView>(R.id.tvLlmBadge)
+        llmBadge.isVisible = onDeviceLlm != null
 
         val isMlKit = backend is MlKitBackend
 
@@ -546,6 +553,11 @@ class TranslationServicesBinder(
             val vPad = row.paddingBottom   // 10dp from the layout
             row.setPadding(row.paddingLeft, vPad, row.paddingRight, vPad)
             title.setTextColor(ctx.themeColor(R.attr.ptTextHint))
+            // Recede the LLM chip with the title. Left at its default
+            // ptTextMuted it would outshine the ptTextHint title it sits
+            // beside — the brightest thing in a row that is meant to read as
+            // one inactive group.
+            llmBadge.setTextColor(ctx.themeColor(R.attr.ptTextHint))
             grid.isGone = true
             incompat.text = disabledReason
             incompat.isVisible = true
@@ -558,13 +570,14 @@ class TranslationServicesBinder(
 
         // Enabled presentation — restore the header floor, the layout's top
         // padding (0dp; the header's height supplies the top inset), and the
-        // primary title color. The row View is recycled across refreshes and
-        // backends, so an earlier disabled pass may have collapsed/padded/muted
-        // them.
+        // primary title + chip colors. The row View is recycled across
+        // refreshes and backends, so an earlier disabled pass may have
+        // collapsed/padded/muted them.
         header.minimumHeight =
             ctx.resources.getDimensionPixelSize(R.dimen.offline_row_header_min_height)
         row.setPadding(row.paddingLeft, 0, row.paddingRight, row.paddingBottom)
         title.setTextColor(ctx.themeColor(R.attr.ptText))
+        llmBadge.setTextColor(ctx.themeColor(R.attr.ptTextMuted))
         grid.isVisible = true
         incompat.isGone = true
         iconWrap.isVisible = true
@@ -705,7 +718,7 @@ class TranslationServicesBinder(
         val tv = row.findViewById<TextView>(R.id.tvOfflineWarningLine)
         val status = backend.status
         if (status is BackendStatus.Info && status.tone == Tone.Warning) {
-            tv.text = status.text
+            tv.text = status.resolve(ctx)
             tv.isVisible = true
         } else {
             tv.isGone = true

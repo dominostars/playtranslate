@@ -1,13 +1,10 @@
 package com.playtranslate.ui
 
 import android.content.Context
-import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -19,7 +16,6 @@ import com.google.android.material.card.MaterialCardView
 import com.playtranslate.R
 import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.applyTheme
-import com.playtranslate.themeColor
 import com.playtranslate.translation.OnlineBackendFactory
 import com.playtranslate.translation.OnlineServiceInstance
 import com.playtranslate.translation.OnlineServiceMutations
@@ -86,12 +82,13 @@ class AddOnlineServiceActivity : AppCompatActivity() {
 
         val services = CATALOG.map { type ->
             ServiceRow(
-                title = catalogTitle(this, type),
-                subtitle = when (type) {
-                    ServiceType.DEEPL -> getString(R.string.add_service_sub_requires_key_free)
-                    ServiceType.LINGVA -> getString(R.string.add_service_sub_no_key)
-                    else -> getString(R.string.add_service_sub_requires_key)
-                },
+                title = OnlineBackendFactory.typeDisplayName(this, type),
+                // OpenAI's row names the providers it reaches on its own
+                // line; every other service's row is just its own name.
+                providers = if (type == ServiceType.OPENAI) openAiPresetList(this) else null,
+                // Same requirement, same words as the service's cell on the
+                // services page once it's added — both read ServiceType.account.
+                subtitle = getString(type.account.labelRes),
                 type = type,
             )
         }
@@ -106,28 +103,25 @@ class AddOnlineServiceActivity : AppCompatActivity() {
         parent.addView(card)
     }
 
-    private data class ServiceRow(val title: String, val subtitle: String, val type: ServiceType)
+    private data class ServiceRow(
+        val title: String,
+        /** The providers this row reaches beyond its own name (OpenAI's
+         *  presets); null for services that only stand for themselves. */
+        val providers: String?,
+        val subtitle: String,
+        val type: ServiceType,
+    )
 
     private fun buildServiceRow(container: ViewGroup, row: ServiceRow): View {
         val view = LayoutInflater.from(this)
-            .inflate(R.layout.language_list_row, container, false)
+            .inflate(R.layout.item_add_online_service, container, false)
         view.findViewById<TextView>(R.id.tvRowTitle).text = row.title
-        view.findViewById<TextView>(R.id.tvRowEndonym).apply {
-            text = row.subtitle
-            isVisible = true
+        view.findViewById<TextView>(R.id.tvLlmBadge).isVisible = row.type.isLlm
+        view.findViewById<TextView>(R.id.tvRowProviders).apply {
+            text = row.providers.orEmpty()
+            isVisible = row.providers != null
         }
-        // Repurpose the row's trailing slot as a passive chevron (the
-        // model picker does the same for its check icon).
-        val trailing = view.findViewById<FrameLayout>(R.id.btnDelete)
-        trailing.isVisible = true
-        trailing.isClickable = false
-        trailing.isFocusable = false
-        trailing.foreground = null
-        trailing.contentDescription = null
-        view.findViewById<ImageView>(R.id.ivDeleteIcon).apply {
-            setImageResource(R.drawable.ic_chevron_right)
-            imageTintList = ColorStateList.valueOf(themeColor(R.attr.ptTextMuted))
-        }
+        view.findViewById<TextView>(R.id.tvRowSubtitle).text = row.subtitle
         view.setOnClickListener { onServicePicked(row.type) }
         return view
     }
@@ -175,22 +169,32 @@ class AddOnlineServiceActivity : AppCompatActivity() {
             ServiceType.LINGVA,
         )
 
-        /** The name a catalog service goes by wherever we offer it — this
-         *  picker's rows and the services page's Add-row subtitle.
+        /** The providers OpenAI reaches beyond itself — "DeepSeek, Mistral,
+         *  Groq, OpenRouter, Custom". They have no catalog entry of their
+         *  own; they live behind its Provider setting, so without naming
+         *  them a user hunting for Mistral would find nothing. Read off
+         *  [OpenAiPreset] (minus OPENAI, which is the row's own name), so
+         *  adding a preset there surfaces it in the UI with no string to
+         *  remember.
          *
-         *  OpenAI names the other providers it reaches — "OpenAI (DeepSeek,
-         *  Mistral, Custom)" — because they have no catalog entry of their
-         *  own; they live behind its Provider setting, and a user hunting
-         *  for Mistral would otherwise find nothing. The list is read off
-         *  [OpenAiPreset] (minus OPENAI, already in the name), so adding a
-         *  provider there updates both surfaces with no string to remember. */
+         *  This picker gives the list its own line under the OpenAI row's
+         *  title; the services page folds it into [catalogTitle]. */
+        fun openAiPresetList(context: Context): String =
+            OpenAiPreset.entries
+                .filter { it != OpenAiPreset.OPENAI }
+                .joinToString(", ") { OnlineBackendFactory.presetDisplayName(context, it) }
+
+        /** The name a catalog service goes by in the services page's Add-row
+         *  subtitle, which names the whole catalog on one line and so has to
+         *  carry OpenAI's providers inside its own entry: "OpenAI (DeepSeek,
+         *  Mistral, …), Gemini, DeepL, Lingva". This picker has room to give
+         *  that list a line of its own, so its rows title themselves with the
+         *  plain [OnlineBackendFactory.typeDisplayName] instead. */
         fun catalogTitle(context: Context, type: ServiceType): String = when (type) {
             ServiceType.OPENAI -> context.getString(
                 R.string.add_service_openai_providers_fmt,
                 OnlineBackendFactory.typeDisplayName(context, ServiceType.OPENAI),
-                OpenAiPreset.entries
-                    .filter { it != OpenAiPreset.OPENAI }
-                    .joinToString(", ") { OnlineBackendFactory.presetDisplayName(context, it) },
+                openAiPresetList(context),
             )
             else -> OnlineBackendFactory.typeDisplayName(context, type)
         }

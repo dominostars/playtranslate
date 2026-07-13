@@ -1611,22 +1611,36 @@
     <string name="tr_service_add_online">Add Online Translation Service</string>
     <!-- Toolbar title of the add-service picker screen. -->
     <string name="add_online_service_title">Add Translation Service</string>
-    <!-- Title of the OpenAI row in the add-service picker, e.g.
-         "OpenAI (DeepSeek, Mistral, Custom)": %1$s is the OpenAI brand and
-         %2$s the other providers its Provider setting reaches, listed from
-         the OpenAiPreset enum so a new provider needs no string edit. Brands
-         and punctuation only — the one translatable word in it ("Custom")
-         is translated at its own key, llm_backend_preset_custom. -->
+    <!-- Names OpenAI together with the other providers its Provider setting
+         reaches — "OpenAI (DeepSeek, Mistral, Custom)" — inside the Add row's
+         subtitle on the services page, which lists the whole catalog. %1$s is
+         the OpenAI brand and %2$s the provider list, read off the OpenAiPreset
+         enum so a new provider needs no string edit. (The add-service picker
+         gives that list its own line under the title instead, so it doesn't
+         use this.) Brands and punctuation only — the one translatable word in
+         it ("Custom") is translated at its own key, llm_backend_preset_custom. -->
     <string name="add_service_openai_providers_fmt" translatable="false">%1$s (%2$s)</string>
-    <!-- Subtitle under a service's row in the add-service picker: the
-         service needs an API key before it can translate. -->
-    <string name="add_service_sub_requires_key">API Key Required</string>
-    <!-- Subtitle under DeepL's row in the add-service picker: needs an
-         API key, and DeepL offers a free key tier. -->
-    <string name="add_service_sub_requires_key_free">API Key Required (Free option)</string>
-    <!-- Subtitle under Lingva's row in the add-service picker: works
-         without any API key. -->
-    <string name="add_service_sub_no_key">No API key required</string>
+    <!-- Chip beside a provider's name, on the Translation services page and
+         in the add-service picker, marking it as a large-language-model
+         backend — the rows the Advanced LLM Configuration prompts govern.
+         An acronym: most languages keep the Latin "LLM"; translate only where
+         the acronym genuinely isn't used. Must stay very short — it rides on
+         the title's line. -->
+    <string name="service_llm_badge">LLM</string>
+    <!-- A service's credential requirement, worded once for both surfaces that
+         state it: the subtitle under its row in the add-service picker, and
+         the status line under its cell on the Translation services page. Both
+         resolve AccountRequirement.labelRes, so they can't word it
+         differently.
+
+         "Account" rather than "API key" deliberately: what the user has to go
+         and get is an account with the provider; the key is a detail of it. -->
+    <!-- The provider needs an account before it can translate. -->
+    <string name="service_account_required">Account required</string>
+    <!-- Same, for a provider whose account has a free tier (DeepL). -->
+    <string name="service_account_required_free">Account required (Free option)</string>
+    <!-- The provider needs no account at all (Lingva). -->
+    <string name="service_no_account_required">No account required</string>
     <!-- Subtitle line under a service cell's title on the Translation
          services page, e.g. "Key ••••4f2a". %1$s = the last 4 characters
          of the instance's API key; distinguishes two instances of the
@@ -1664,6 +1678,32 @@
          already containing the used / total counts; %2$s = the reset
          date or duration (formatted by the runtime). -->
     <string name="tr_service_status_quota_with_reset_fmt"><xliff:g id="quota_line" example="120,345 / 500,000 characters used">%1$s</xliff:g> · resets <xliff:g id="reset_date" example="Jun 1">%2$s</xliff:g></string>
+
+    <!-- The rest of the per-backend status lines. These lived as hardcoded
+         English inside the backends until now (the online ones hold no
+         Context, so they could not resolve a resource), which is why they are
+         new keys with no history in any locale. -->
+
+    <!-- The saved key was rejected by the provider. Shown in the danger color:
+         translations through this service are failing. -->
+    <string name="tr_service_status_invalid_key">Invalid API Key</string>
+
+    <!-- The usage/quota check couldn't reach the provider. Covers a genuinely
+         offline device and an unreachable endpoint alike; the line is a muted
+         italic transient, not an error. -->
+    <string name="tr_service_status_no_internet">No internet, can\'t check usage</string>
+
+    <!-- The usage/quota check reached the provider but its answer couldn't be
+         read (malformed response). Deliberately vaguer than the line above:
+         the user can't act on the difference. -->
+    <string name="tr_service_status_check_failed">Couldn\'t check usage</string>
+
+    <!-- An LLM service that has a key but hasn't been used yet today. -->
+    <string name="tr_service_status_no_usage_today">No usage today</string>
+
+    <!-- Today's token spend on an LLM service.  %1$s = the token count,
+         already grouped for the locale (e.g. "12,345"). -->
+    <string name="tr_service_status_usage_today_fmt">Today: <xliff:g id="tokens" example="12,345">%1$s</xliff:g> tokens</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          BACKEND QUALITY / SPEED LABELS — used in the offline-row
@@ -2033,7 +2073,7 @@
          Cleared by the next successful translation on this backend.
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="llm_status_low_memory_badge">Low memory — translations using fallback</string>
+    <string name="llm_status_low_memory_badge">Low memory, translations using fallback</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          FLOATING-ICON MENU WARNING PILL.  Two strings cover the same

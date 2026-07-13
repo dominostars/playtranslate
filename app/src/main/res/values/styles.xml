@@ -251,6 +251,23 @@
         <item name="android:textColor">?attr/ptTextMuted</item>
     </style>
 
+    <!-- A neutral metadata chip riding alongside a row title (the "LLM"
+         provider label on the Translation services rows). The dictionary
+         result cell's meta-chip treatment (BadgeChips.freqChip: muted
+         medium text on a 4dp-radius ptSurface fill) expressed in XML, so
+         the two surfaces can't drift apart. Rows pair it with
+         layout_gravity=center_vertical — it rides the title's line rather
+         than sharing its baseline, since the fill would otherwise sit
+         high. -->
+    <style name="Text.PT.MetaLabel" parent="">
+        <item name="android:textSize">11.5sp</item>
+        <item name="android:textColor">?attr/ptTextMuted</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:background">@drawable/bg_meta_chip</item>
+        <item name="android:paddingHorizontal">8dp</item>
+        <item name="android:paddingVertical">2dp</item>
+    </style>
+
     <!-- ── Onboarding feature-row typography ────────────────────────────── -->
 
     <style name="Text.PT.FeatureTitle" parent="">

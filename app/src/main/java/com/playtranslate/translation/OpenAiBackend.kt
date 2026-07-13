@@ -2,6 +2,7 @@ package com.playtranslate.translation
 
 import android.util.Log
 import com.playtranslate.PtJson
+import com.playtranslate.R
 import com.playtranslate.net.PtHttp
 import com.playtranslate.translation.llm.LlmBatchPrompt
 import com.playtranslate.translation.llm.cleanLlmOutput
@@ -105,13 +106,19 @@ class OpenAiBackend(
         get() {
             val key = keyProvider()
             if (key.isNullOrBlank()) {
-                return BackendStatus.Info("API Key Required", Tone.Neutral)
+                // Every OpenAI preset (DeepSeek, Mistral, Groq, OpenRouter,
+                // Custom) is an OPENAI-type instance, and all of them want an
+                // account — so the type's requirement covers the whole family.
+                return BackendStatus.Account(ServiceType.OPENAI.account)
             }
             val total = usageTracker.todayTotal()
             return if (total == 0L) {
-                BackendStatus.Info("No usage today", italic = true)
+                BackendStatus.Info(R.string.tr_service_status_no_usage_today, italic = true)
             } else {
-                BackendStatus.Info("Today: ${usageTracker.todayString()} tokens")
+                BackendStatus.Info(
+                    R.string.tr_service_status_usage_today_fmt,
+                    listOf(usageTracker.todayString()),
+                )
             }
         }
 

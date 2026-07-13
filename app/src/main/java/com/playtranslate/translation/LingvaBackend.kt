@@ -38,7 +38,8 @@ class LingvaBackend(
     override val isDegradedFallback: Boolean = false
     override val qualityStars: StarRating = 4.0f
 
-    override val status: BackendStatus = BackendStatus.Info("No API key required")
+    /** Constant: Lingva has no key to hold, so it never leaves this state. */
+    override val status: BackendStatus = BackendStatus.Account(ServiceType.LINGVA.account)
 
     private val client = PtHttp.clientBuilder()
         .connectTimeout(5, TimeUnit.SECONDS)

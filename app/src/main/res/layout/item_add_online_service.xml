@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One offerable service in the add-service picker: title + "LLM" chip,
+     an optional provider line, the account-requirement subtitle, and a
+     passive chevron.
+
+     Its own layout rather than language_list_row (which it used to borrow):
+     that row is shared by the language setup, Anki deck and LLM model
+     pickers, and none of them wants a chip on the title line or a second
+     line under it — nor did they want the trailing trash slot this screen
+     was reaching in to repurpose as a chevron. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:baselineAligned="false"
+    android:minHeight="@dimen/pt_row_min_height"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="@dimen/pt_row_h_padding"
+    android:paddingEnd="@dimen/pt_row_h_padding"
+    android:paddingVertical="@dimen/pt_row_v_padding"
+    android:foreground="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <!-- Title line: the service brand + its "LLM" chip. The chip rides
+             the title's line (center_vertical) rather than sharing its
+             baseline — a filled box on a baseline sits high. -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tvRowTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:ellipsize="end"
+                style="@style/Text.PT.RowTitle"
+                tools:text="OpenAI" />
+
+            <!-- Shown by AddOnlineServiceActivity for ServiceType.isLlm. -->
+            <TextView
+                android:id="@+id/tvLlmBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:layout_marginStart="8dp"
+                android:text="@string/service_llm_badge"
+                android:visibility="gone"
+                style="@style/Text.PT.MetaLabel" />
+        </LinearLayout>
+
+        <!-- The other providers this service's row reaches, e.g. OpenAI's
+             "DeepSeek, Mistral, Groq, OpenRouter, Custom" — they have no
+             catalog row of their own, so this line is how a user hunting
+             for one finds it. Title colour, unbolded: they are real
+             destinations, just not the name of the row. -->
+        <TextView
+            android:id="@+id/tvRowProviders"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:fontFamily="sans-serif"
+            android:visibility="gone"
+            style="@style/Text.PT.RowTitle"
+            tools:text="DeepSeek, Mistral, Groq, OpenRouter, Custom"
+            tools:visibility="visible" />
+
+        <TextView
+            android:id="@+id/tvRowSubtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            style="@style/Text.PT.RowSubtitle"
+            tools:text="Account required" />
+
+    </LinearLayout>
+
+    <ImageView
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_marginStart="12dp"
+        android:src="@drawable/ic_chevron_right"
+        app:tint="?attr/ptTextMuted"
+        android:importantForAccessibility="no" />
+
+</LinearLayout>

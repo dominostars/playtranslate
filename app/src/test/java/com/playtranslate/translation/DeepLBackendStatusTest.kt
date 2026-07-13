@@ -1,5 +1,6 @@
 package com.playtranslate.translation
 
+import com.playtranslate.R
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -22,32 +23,43 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class DeepLBackendStatusTest {
 
-    @Test fun `status reports NoKey neutral when keyProvider returns null`() {
+    // DeepL's key-less status names its free tier — the one thing that decides
+    // whether a user bothers setting it up. It reports the *requirement*, not a
+    // sentence: DeepLBackend has no Context to localize one with, so the
+    // renderer resolves AccountRequirement.labelRes.
+    //
+    // The old "quiet, not alarming" tone assertion is gone with the tone — the
+    // key-less state was Tone.Warning historically, which made a freshly-added
+    // service look broken. BackendStatus.Account carries no tone at all and the
+    // renderer pins it Neutral, so that regression is now unrepresentable
+    // rather than merely tested against.
+
+    @Test fun `status reports the free-tier account requirement when keyProvider returns null`() {
         val backend = DeepLBackend(
             keyProvider     = { null },
             enabledProvider = { true },
             client          = cannedClient(200, "{}"),
         )
         val s = backend.status
-        assertTrue("expected Info, got $s", s is BackendStatus.Info)
-        s as BackendStatus.Info
-        assertEquals("API Key Required (Free option)", s.text)
-        // Production reads the "missing key" state as configuration, not
-        // alarm — Tone.Neutral keeps the row visually quiet next to
-        // already-configured backends. Was Tone.Warning historically.
-        assertEquals(Tone.Neutral, s.tone)
+        assertTrue("expected Account, got $s", s is BackendStatus.Account)
+        assertEquals(
+            AccountRequirement.REQUIRED_FREE_TIER,
+            (s as BackendStatus.Account).requirement,
+        )
     }
 
-    @Test fun `status reports NoKey neutral when key is blank`() {
+    @Test fun `status reports the free-tier account requirement when key is blank`() {
         val backend = DeepLBackend(
             keyProvider     = { "   " },
             enabledProvider = { true },
             client          = cannedClient(200, "{}"),
         )
         val s = backend.status
-        assertTrue(s is BackendStatus.Info)
-        assertEquals("API Key Required (Free option)", (s as BackendStatus.Info).text)
-        assertEquals(Tone.Neutral, s.tone)
+        assertTrue("expected Account, got $s", s is BackendStatus.Account)
+        assertEquals(
+            AccountRequirement.REQUIRED_FREE_TIER,
+            (s as BackendStatus.Account).requirement,
+        )
     }
 
     @Test fun `status surfaces cached usage even when toggle is off`() = runBlocking {
@@ -108,7 +120,9 @@ class DeepLBackendStatusTest {
         val s = backend.refreshStatus()
         assertTrue("expected Info, got $s", s is BackendStatus.Info)
         s as BackendStatus.Info
-        assertEquals("Invalid API Key", s.text)
+        // The resource, not the sentence: DeepLBackend has no Context to word
+        // it with, so the renderer resolves textRes.
+        assertEquals(R.string.tr_service_status_invalid_key, s.textRes)
         assertEquals(Tone.Danger, s.tone)
     }
 
@@ -119,9 +133,9 @@ class DeepLBackendStatusTest {
             client          = ioFailingClient(),
         )
         val s = backend.refreshStatus()
-        assertTrue(s is BackendStatus.Info)
+        assertTrue("expected Info, got $s", s is BackendStatus.Info)
         s as BackendStatus.Info
-        assertEquals("No internet — can't check usage", s.text)
+        assertEquals(R.string.tr_service_status_no_internet, s.textRes)
         assertTrue("expected italic", s.italic)
     }
 
@@ -132,8 +146,9 @@ class DeepLBackendStatusTest {
             client          = cannedClient(503, "Service Unavailable"),
         )
         val s = backend.refreshStatus()
-        assertTrue(s is BackendStatus.Info)
-        assertEquals("No internet — can't check usage", (s as BackendStatus.Info).text)
+        assertTrue("expected Info, got $s", s is BackendStatus.Info)
+        s as BackendStatus.Info
+        assertEquals(R.string.tr_service_status_no_internet, s.textRes)
         assertTrue(s.italic)
     }
 
@@ -150,7 +165,7 @@ class DeepLBackendStatusTest {
         val s = backend.refreshStatus()
         assertTrue("expected Info, got $s", s is BackendStatus.Info)
         s as BackendStatus.Info
-        assertEquals("Couldn't check usage", s.text)
+        assertEquals(R.string.tr_service_status_check_failed, s.textRes)
         assertTrue("expected italic", s.italic)
     }
 
@@ -202,11 +217,14 @@ class DeepLBackendStatusTest {
             enabledProvider = { true },
             client          = cannedClient(200, """{"character_count":7,"character_limit":42}"""),
         )
-        // First refresh with no key surfaces the warning info (and internally
-        // resets the dynamic cache to Loading).
-        val warning = backend.refreshStatus()
-        assertTrue(warning is BackendStatus.Info)
-        assertEquals("API Key Required (Free option)", (warning as BackendStatus.Info).text)
+        // First refresh with no key surfaces the account requirement (and
+        // internally resets the dynamic cache to Loading).
+        val keyless = backend.refreshStatus()
+        assertTrue("expected Account, got $keyless", keyless is BackendStatus.Account)
+        assertEquals(
+            AccountRequirement.REQUIRED_FREE_TIER,
+            (keyless as BackendStatus.Account).requirement,
+        )
 
         // After a key is added, the next refresh fetches and produces a Quota.
         key = "new-key:fx"

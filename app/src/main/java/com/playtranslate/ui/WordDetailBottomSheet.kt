@@ -1029,7 +1029,7 @@ class WordDetailBottomSheet : DialogFragment() {
                         else ctx.themeColor(R.attr.ptTextMuted),
                     background = tag.accentColor?.let {
                         GradientDrawable().apply { setColor(it); cornerRadius = dp(4).toFloat() }
-                    } ?: (AppCompatResources.getDrawable(ctx, R.drawable.bg_anki_meta_chip)
+                    } ?: (AppCompatResources.getDrawable(ctx, R.drawable.bg_meta_chip)
                         ?: GradientDrawable()),
                     textSizeSp = 11f,
                     horizontalPadPx = dp(10),

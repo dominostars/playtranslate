@@ -47,10 +47,12 @@
             android:orientation="vertical"
             android:layout_marginEnd="16dp">
 
-            <!-- Title line: service name + inline masked key tail
-                 ("Key ••••4f2a", subtitle size/color) — distinguishes
-                 multiple instances of the same service. Baseline-aligned
-                 so the smaller tail sits on the title's text line. -->
+            <!-- Title line: service name + "LLM" chip + inline masked key
+                 tail ("Key ••••4f2a", subtitle size/color) — the tail
+                 distinguishes multiple instances of the same service.
+                 Baseline-aligned so the smaller tail sits on the title's
+                 text line; the chip opts out (center_vertical) because a
+                 filled box shares a line better than a baseline. -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -61,6 +63,18 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     style="@style/Text.PT.RowTitle" />
+
+                <!-- Shown by OnlineServicesController for ServiceType.isLlm
+                     instances (OpenAI + its presets, Gemini). -->
+                <TextView
+                    android:id="@+id/tvLlmBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/service_llm_badge"
+                    android:visibility="gone"
+                    style="@style/Text.PT.MetaLabel" />
 
                 <TextView
                     android:id="@+id/tvKeyTail"

@@ -1,6 +1,7 @@
 package com.playtranslate.translation
 
 import com.playtranslate.PtJson
+import com.playtranslate.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -115,7 +116,7 @@ class DeepLBackend(
         get() {
             val key = keyProvider()
             if (key.isNullOrBlank()) {
-                return BackendStatus.Info("API Key Required (Free option)", Tone.Neutral)
+                return BackendStatus.Account(ServiceType.DEEPL.account)
             }
             // Surface the cached fetch result regardless of [enabledProvider]
             // so the user sees their DeepL quota even when the toggle is
@@ -143,20 +144,20 @@ class DeepLBackend(
             // cancel us when Settings tears down. Don't swallow.
             throw e
         } catch (e: DeepLAuthException) {
-            BackendStatus.Info("Invalid API Key", Tone.Danger)
+            BackendStatus.Info(R.string.tr_service_status_invalid_key, tone = Tone.Danger)
         } catch (e: IOException) {
             // Approximate: any IO failure surfaces as "no internet". A
             // ConnectivityManager check could disambiguate offline vs
             // endpoint-down, but a single italic muted line is enough
             // for the user to understand the state.
-            BackendStatus.Info("No internet — can't check usage", italic = true)
+            BackendStatus.Info(R.string.tr_service_status_no_internet, italic = true)
         } catch (e: Exception) {
             // Defensive: malformed JSON, OOM during parse, or any other
             // unexpected runtime exception from the network/parse path.
             // Map to a safe "couldn't check" state instead of letting
             // the exception escape into the renderer's launched
             // coroutine and crash Settings.
-            BackendStatus.Info("Couldn't check usage", italic = true)
+            BackendStatus.Info(R.string.tr_service_status_check_failed, italic = true)
         }
         cachedDynamic = newState
         newState
