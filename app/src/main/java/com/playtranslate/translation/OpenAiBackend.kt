@@ -22,6 +22,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -71,6 +72,13 @@ class OpenAiBackend(
      *  not under /v1, and pointing /models at /v1/models returns an
      *  HTTP 200 with an empty body that listModels then rejects. */
     private val modelsUrlProvider: () -> String = baseUrlProvider,
+    /** Builds, from a base URL, the endpoint whose 401 proves a key bad
+     *  ([validateKey]). Defaults to `{base}/models`, which every provider
+     *  authenticates — except OpenRouter, which serves its catalog publicly
+     *  and needs `{base}/key` instead. Takes the base as a parameter rather
+     *  than reading [baseUrlProvider] because the settings page validates a
+     *  URL the user has typed but not yet saved. */
+    private val keyProbeUrlProvider: (String) -> String = { "${it.trimEnd('/')}/models" },
     private val usageTracker: UsageTracker,
     /** Returns true when [listModels] should apply OpenAI's first-party
      *  `owned_by` filter (strips fine-tunes / user-uploaded models on
@@ -168,12 +176,10 @@ class OpenAiBackend(
                     when (response.code) {
                         401 -> throw OpenAiAuthException()
                         429 -> {
-                            val retryAfter = response.header("retry-after")
-                            val resetReq   = response.header("x-ratelimit-reset-requests")
-                            val resetTok   = response.header("x-ratelimit-reset-tokens")
+                            val hints = RateLimitHints.from(response)
                             val body = response.body.string()
-                            Log.w(TAG, "429 retryAfter=$retryAfter resetReq=$resetReq resetTok=$resetTok body=${body.take(500)}")
-                            recordOpenAi429(body, retryAfter, resetReq, resetTok)
+                            Log.w(TAG, "429 $hints body=${body.take(500)}")
+                            recordOpenAi429(body, hints)
                             throw OpenAiRateLimitException()
                         }
                         else -> if (!response.isSuccessful) {
@@ -268,12 +274,10 @@ class OpenAiBackend(
                 when (response.code) {
                     401 -> throw OpenAiAuthException()
                     429 -> {
-                        val retryAfter = response.header("retry-after")
-                        val resetReq   = response.header("x-ratelimit-reset-requests")
-                        val resetTok   = response.header("x-ratelimit-reset-tokens")
+                        val hints = RateLimitHints.from(response)
                         val body = response.body.string()
-                        Log.w(TAG, "429 retryAfter=$retryAfter resetReq=$resetReq resetTok=$resetTok body=${body.take(500)}")
-                        recordOpenAi429(body, retryAfter, resetReq, resetTok)
+                        Log.w(TAG, "429 $hints body=${body.take(500)}")
+                        recordOpenAi429(body, hints)
                         throw OpenAiRateLimitException()
                     }
                     400 -> {
@@ -357,23 +361,53 @@ class OpenAiBackend(
     override suspend fun validateKey(overrideKey: String?, overrideBaseUrl: String?): KeyStatus = withContext(Dispatchers.IO) {
         val apiKey = (overrideKey ?: keyProvider())?.takeIf { it.isNotBlank() }
             ?: return@withContext KeyStatus.Invalid("API key blank")
-        val modelsUrl = (overrideBaseUrl ?: modelsUrlProvider()).trim().trimEnd('/')
-        val request = Request.Builder()
-            .url("$modelsUrl/models")
-            .addHeader("Authorization", "Bearer $apiKey")
-            .build()
+        val probeUrl = keyProbeUrlProvider((overrideBaseUrl ?: modelsUrlProvider()).trim())
         try {
-            client.newCall(request).execute().use { response ->
-                when (response.code) {
-                    in 200..299 -> KeyStatus.Ok
-                    401, 403 -> KeyStatus.Invalid("HTTP ${response.code}")
-                    else -> KeyStatus.Unreachable
+            val keyed = probe(probeUrl, apiKey)
+            when (keyed) {
+                in 200..299 -> {
+                    // A 2xx only means "the key was accepted" if the endpoint
+                    // would have REFUSED us without one. Several OpenAI-
+                    // compatible hosts serve /models publicly (OpenRouter,
+                    // NVIDIA, DeepInfra, the HF router …), and there the same
+                    // 2xx comes back for a key of pure gibberish. Ask the
+                    // endpoint what it does with no key at all: if it still
+                    // says 2xx, this probe cannot see keys, and reporting Ok
+                    // would be a verification we never performed.
+                    if (probe(probeUrl, apiKey = null) in 200..299) {
+                        Log.w(TAG, "key probe endpoint is unauthenticated, cannot verify: $probeUrl")
+                        KeyStatus.Unreachable
+                    } else {
+                        KeyStatus.Ok
+                    }
                 }
+                401, 403 -> KeyStatus.Invalid("HTTP $keyed")
+                else -> KeyStatus.Unreachable
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
             KeyStatus.Unreachable
+        }
+    }
+
+    /** GET [url], with a Bearer key when [apiKey] is non-null. Returns the
+     *  status code; -1 when the control probe itself fails, which reads as
+     *  "not a 2xx" and so leaves a keyed 2xx standing — a flaky second
+     *  request must never turn a good key into a rejected one. */
+    private fun probe(url: String, apiKey: String?): Int {
+        val request = Request.Builder()
+            .url(url)
+            .apply { apiKey?.let { addHeader("Authorization", "Bearer $it") } }
+            .build()
+        return if (apiKey != null) {
+            client.newCall(request).execute().use { it.code }
+        } else {
+            try {
+                client.newCall(request).execute().use { it.code }
+            } catch (e: IOException) {
+                -1
+            }
         }
     }
 
@@ -484,31 +518,64 @@ class OpenAiBackend(
     )
 
     /**
-     * Parse OpenAI's 429 response to decide what kind of cooldown to
-     * record. The decision tree is:
+     * The "come back later" hints a 429 can carry. Every OpenAI-compatible
+     * provider expresses the same idea in its own header dialect, and the
+     * response is the only place it is ever stated, so we read them all and
+     * let [recordOpenAi429] take the longest wait any of them names.
+     *
+     *  - OpenAI and Groq: `retry-after` (integer seconds) plus Go-duration
+     *    `x-ratelimit-reset-requests` / `-tokens`.
+     *  - OpenRouter: `retry-after`, but only when an upstream provider gave
+     *    it one; often absent.
+     *  - Mistral: none of the above. Its limits are token-denominated (it
+     *    has no request-count header at all) and it reports the window in
+     *    `ratelimitbysize-reset`, integer seconds. Note that Mistral's own
+     *    docs tell you to read `X-RateLimit-Remaining`, a header it does not
+     *    send — don't "fix" this by trusting them over the wire.
+     *  - DeepSeek: never gets here; it holds the connection instead of
+     *    429ing, which is why it has no [cooldownState] at all.
+     */
+    private data class RateLimitHints(
+        /** Integer seconds. */
+        val retryAfter: String?,
+        /** Go-style duration ("1s", "6m0s", "4m12.172s"). */
+        val resetRequests: String?,
+        /** Go-style duration. */
+        val resetTokens: String?,
+        /** Integer seconds (Mistral). */
+        val resetBySize: String?,
+    ) {
+        companion object {
+            fun from(response: Response) = RateLimitHints(
+                retryAfter = response.header("retry-after"),
+                resetRequests = response.header("x-ratelimit-reset-requests"),
+                resetTokens = response.header("x-ratelimit-reset-tokens"),
+                resetBySize = response.header("ratelimitbysize-reset"),
+            )
+        }
+    }
+
+    /**
+     * Parse a 429 response to decide what kind of cooldown to record. The
+     * decision tree is:
      *
      *  1. `error.code == "insufficient_quota"` → billing dead, not a
      *     timer-based rate limit. Fixed 5 min cooldown surfaced as
      *     "Billing exhausted" so the row stays visible long enough for
      *     the user to notice and short enough that fixing billing
-     *     doesn't leave them waiting.
-     *  2. Otherwise compute `max(retry-after, reset-requests,
-     *     reset-tokens)` — `retry-after` is integer seconds;
-     *     `x-ratelimit-reset-*` are Go-style duration strings
-     *     ("1s", "6m0s", "4m12.172s"). Azure and the new Responses API
-     *     have been returning `-1` / `0` for these in 2025-2026; the
-     *     sanity guard drops any value ≤ 0 ms so a spurious 0 doesn't
-     *     translate to "ready right now."
-     *  3. Nothing usable → fall through to the rate-limit ladder.
+     *     doesn't leave them waiting. (OpenAI-only in practice: Mistral's
+     *     429 body is a bare `{"message": ...}` with no code to read.)
+     *  2. Otherwise take the longest wait any [RateLimitHints] header names.
+     *     Azure and the new Responses API have been returning `-1` / `0` for
+     *     these in 2025-2026; the sanity guard drops any value ≤ 0 ms so a
+     *     spurious 0 doesn't translate to "ready right now."
+     *  3. Nothing usable → fall through to the rate-limit ladder, which
+     *     guesses an exponential backoff. Every header we learn to read is
+     *     one provider that no longer has to be guessed at.
      *
      * No-op when [cooldownState] is null (DeepSeek path).
      */
-    private fun recordOpenAi429(
-        body: String,
-        retryAfter: String?,
-        resetReq: String?,
-        resetTok: String?,
-    ) {
+    private fun recordOpenAi429(body: String, hints: RateLimitHints) {
         val state = cooldownState ?: return
         val errorCode = try {
             PtJson.lenient.decodeFromString<OpenAiErrorEnvelope>(body).error?.code
@@ -522,12 +589,13 @@ class OpenAiBackend(
             )
             return
         }
-        val retryAfterMs = retryAfter?.trim()?.toLongOrNull()?.let { it * 1000 }
-        val resetReqMs = GoDuration.parse(resetReq)?.inWholeMilliseconds
-        val resetTokMs = GoDuration.parse(resetTok)?.inWholeMilliseconds
-        val maxMs = listOfNotNull(retryAfterMs, resetReqMs, resetTokMs)
-            .filter { it > 0 }
-            .maxOrNull()
+        fun seconds(raw: String?): Long? = raw?.trim()?.toLongOrNull()?.let { it * 1000 }
+        val maxMs = listOfNotNull(
+            seconds(hints.retryAfter),
+            GoDuration.parse(hints.resetRequests)?.inWholeMilliseconds,
+            GoDuration.parse(hints.resetTokens)?.inWholeMilliseconds,
+            seconds(hints.resetBySize),
+        ).filter { it > 0 }.maxOrNull()
         if (maxMs != null) {
             state.recordParsedFailure(
                 retryAt = System.currentTimeMillis() + maxMs,

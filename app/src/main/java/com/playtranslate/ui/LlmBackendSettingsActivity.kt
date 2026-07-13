@@ -172,11 +172,8 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         popup.show()
     }
 
-    private fun presetLabel(p: OpenAiPreset): String = when (p) {
-        OpenAiPreset.OPENAI -> getString(R.string.openai_display_name)
-        OpenAiPreset.DEEPSEEK -> getString(R.string.deepseek_display_name)
-        OpenAiPreset.CUSTOM -> getString(R.string.llm_backend_preset_custom)
-    }
+    private fun presetLabel(p: OpenAiPreset): String =
+        OnlineBackendFactory.presetDisplayName(this, p)
 
     private fun refreshProviderValue() {
         findViewById<View>(R.id.rowProvider)
@@ -190,6 +187,9 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         preset = newPreset
         config = LlmBackendConfigs.forInstance(this, instanceId, type, preset)
         toolbar.title = config.displayName
+        // The key placeholder is preset-derived too (only some providers
+        // have a key prefix worth showing), so it moves with the dropdown.
+        etApiKey.hint = config.keyHint
         wireGetKeyLink(findViewById(R.id.rowGetKeyLink))
         refreshProviderValue()
         applyPresetToUrlField()
@@ -270,11 +270,15 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
             // Validate against a shell built from the page state (NOT the
             // registered backend): an unsaved preset switch must ping the
             // newly selected provider's endpoint, and in CREATE mode no
-            // backend is registered yet.
+            // backend is registered yet. live = false is what makes the
+            // first half of that true — a live shell reads its endpoint back
+            // out of the saved record, which for a preset the user just
+            // switched is the wrong provider entirely.
             val shell = OnlineBackendFactory.build(
                 this@LlmBackendSettingsActivity,
                 getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE),
                 pageInstance,
+                live = false,
             )
             val status = try {
                 (shell as? KeyValidator)?.validateKey(key, customUrlOrNull())

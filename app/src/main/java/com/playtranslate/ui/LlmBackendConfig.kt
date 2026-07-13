@@ -65,10 +65,7 @@ object LlmBackendConfigs {
             type = type,
             preset = preset,
             displayName = OnlineBackendFactory.displayName(context, shell),
-            keyHint = when (type) {
-                ServiceType.GEMINI -> "AIza..."
-                else -> "sk-..."
-            },
+            keyHint = keyHintFor(type, preset),
             getKeyUrl = keyUrlFor(type, preset),
             getKey = { OnlineServiceStore.readKey(instanceId) },
             getModel = {
@@ -88,6 +85,35 @@ object LlmBackendConfigs {
         )
     }
 
+    /**
+     * Placeholder for the API-key field. It is a FORMAT EXAMPLE, so it may
+     * only appear where the provider actually issues keys of that shape:
+     * OpenAI (`sk-`, `sk-proj-`) and DeepSeek (`sk-`) do; Gemini's are
+     * `AIza`-prefixed.
+     *
+     * Groq issues `gsk_` and OpenRouter `sk-or-v1-`. Mistral's are not
+     * prefixed at all, and CUSTOM can point at anyone — a raw JWT (MiniMax),
+     * an opaque token, anything. Those two show no placeholder rather than an
+     * `sk-...` that would have the user hunting for a key they don't have.
+     * The field carries a visible "API Key" label, so the placeholder is a
+     * nicety and its absence costs nothing.
+     *
+     * No prefix here is a contract — not one provider publishes a key format,
+     * and Groq's and OpenRouter's are read off their own examples — so this
+     * is a hint only. Never validate a pasted key against it.
+     */
+    private fun keyHintFor(type: ServiceType, preset: OpenAiPreset): String = when (type) {
+        ServiceType.GEMINI -> "AIza..."
+        ServiceType.OPENAI -> when (preset) {
+            OpenAiPreset.OPENAI, OpenAiPreset.DEEPSEEK -> "sk-..."
+            OpenAiPreset.GROQ -> "gsk_..."
+            OpenAiPreset.OPENROUTER -> "sk-or-v1-..."
+            OpenAiPreset.MISTRAL, OpenAiPreset.CUSTOM -> ""
+        }
+        // DeepL and Lingva don't route through this screen.
+        ServiceType.DEEPL, ServiceType.LINGVA -> ""
+    }
+
     /** Where to get a key for this provider. CUSTOM keeps OpenAI's page —
      *  the legacy custom-URL flow lived on the OpenAI screen with this
      *  same link, and most custom endpoints (OpenRouter, proxies) accept
@@ -96,6 +122,9 @@ object LlmBackendConfigs {
         ServiceType.GEMINI -> "https://aistudio.google.com/app/apikey"
         ServiceType.OPENAI -> when (preset) {
             OpenAiPreset.DEEPSEEK -> "https://platform.deepseek.com/api_keys"
+            OpenAiPreset.MISTRAL -> "https://console.mistral.ai/api-keys"
+            OpenAiPreset.GROQ -> "https://console.groq.com/keys"
+            OpenAiPreset.OPENROUTER -> "https://openrouter.ai/keys"
             else -> "https://platform.openai.com/api-keys"
         }
         // DeepL and Lingva don't route through this screen.

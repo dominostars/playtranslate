@@ -3,18 +3,25 @@ package com.playtranslate.translation
 import kotlinx.serialization.Serializable
 
 /** Which online translation service an [OnlineServiceInstance] is an
- *  instance of. DeepSeek is deliberately absent — it is an OPENAI-type
- *  instance with [OpenAiPreset.DEEPSEEK] (same chat-completions API,
- *  different base URL). */
+ *  instance of. DeepSeek and Mistral are deliberately absent — they are
+ *  OPENAI-type instances with [OpenAiPreset.DEEPSEEK] / [OpenAiPreset.MISTRAL]
+ *  (same chat-completions API, different base URL). */
 @Serializable
 enum class ServiceType { GEMINI, OPENAI, DEEPL, LINGVA }
 
-/** Provider preset for OPENAI-type instances. OPENAI and DEEPSEEK pin the
- *  base URL to the provider's canonical endpoint; CUSTOM uses the
+/** Provider preset for OPENAI-type instances. Every preset but CUSTOM pins
+ *  the base URL to that provider's canonical endpoint; CUSTOM uses the
  *  instance's stored [OnlineServiceInstance.baseUrl]. The preset also
- *  names the instance's cell on the services page. */
+ *  names the instance's cell on the services page.
+ *
+ *  Declaration order is display order: it drives the provider dropdown and
+ *  the Add row's "OpenAI (DeepSeek, Mistral, Custom)" subtitle, both of
+ *  which enumerate this enum rather than restating it — so a new provider
+ *  surfaces in the UI from this line alone. Keep OPENAI first (the default)
+ *  and CUSTOM last (the escape hatch). Serialization is by name, so
+ *  inserting a value doesn't disturb stored instances. */
 @Serializable
-enum class OpenAiPreset { OPENAI, DEEPSEEK, CUSTOM }
+enum class OpenAiPreset { OPENAI, DEEPSEEK, MISTRAL, GROQ, OPENROUTER, CUSTOM }
 
 /**
  * One user-configured online translation service. Users can hold any

@@ -47,6 +47,25 @@ object OnlineServiceStore {
     const val DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
     const val DEEPSEEK_MODELS_URL = "https://api.deepseek.com"
 
+    /** Mistral serves both chat-completions and /models under /v1, so it
+     *  needs no models-URL override the way DeepSeek does. */
+    const val MISTRAL_BASE_URL = "https://api.mistral.ai/v1"
+
+    /** Groq's OpenAI-compatible surface is nested under /openai — the host
+     *  root serves Groq's own API. */
+    const val GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+
+    /** Note the /api: users reliably guess "openrouter.ai/v1" and get a 404,
+     *  which is half the reason this is a preset rather than a Custom URL.
+     *
+     *  OpenRouter's /models is PUBLIC — it answers 200 with no key at all
+     *  (verified) — so it cannot double as a key check the way every other
+     *  provider's does. [KEY_PROBE_PATH] names the endpoint that can:
+     *  GET /key reports the key's own credit and rate-limit state and 401s
+     *  without a valid one. */
+    const val OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+    const val OPENROUTER_KEY_PROBE_PATH = "/key"
+
     /** Migrated instances keep the legacy encrypted key slots so no
      *  ciphertext ever moves: SecretCodec binds each blob to its slot
      *  name as GCM AAD, so a copy to a new slot would not decrypt. */

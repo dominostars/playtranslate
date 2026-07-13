@@ -1293,6 +1293,28 @@ class Prefs internal constructor(
         // mirrors the "small/fast/cheap" default we use on Gemini
         // (flash-lite-latest).
         const val DEFAULT_DEEPSEEK_MODEL  = "deepseek-v4-flash"
+        // Mistral Small 4 — their small/fast/cheap tier, pinned by dated id
+        // like DeepSeek's above and NOT to a "mistral-small-latest" alias:
+        // docs.mistral.ai documents no -latest alias for it (neither the
+        // models overview nor the model card lists one; only stale examples
+        // inside their OpenAPI spec still use it). Gemini's rolling alias is
+        // documented, so we take it there — here we'd be guessing, and an
+        // alias that doesn't resolve 400s every new Mistral instance on its
+        // first translation, because key validation probes /models and never
+        // touches the model id. A dated id ages instead of breaking, and the
+        // model picker reads the live catalog when the user wants to move.
+        // Revisit when Mistral Small 5 lands.
+        const val DEFAULT_MISTRAL_MODEL   = "mistral-small-2603"
+        // Groq's cheapest model is llama-3.1-8b-instant, but an 8B model
+        // translates game/manga text badly — the 20B is $0.075/$0.30 and
+        // still runs at ~1000 tok/s, which is the whole reason to be on
+        // Groq. Open-weights, so no vendor deprecation clock on the id.
+        const val DEFAULT_GROQ_MODEL      = "openai/gpt-oss-20b"
+        // OpenRouter ids are provider-namespaced and carry no rolling
+        // -latest alias, so this pins a specific model: flash-lite is the
+        // same small/fast/cheap tier we default to on Gemini, and holds up
+        // on CJK short text far better than the cheaper open models.
+        const val DEFAULT_OPENROUTER_MODEL = "google/gemini-2.5-flash-lite"
         private const val KEY_LEGACY_THEME_INDEX    = "theme_index"
         const val KEY_THEME_MODE                    = "theme_mode"
         const val KEY_ACCENT_NAME                   = "accent_name"

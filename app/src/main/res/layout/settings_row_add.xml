@@ -2,10 +2,11 @@
 <!-- "Add Online Translation Service" action row: title + subtitle naming
      the services on offer + right-aligned "+" icon. Sits above the
      reorderable instance list, outside the RecyclerView, so it can't be
-     dragged; hidden in edit mode. Text stack, 9dp vertical padding and
-     48dp trailing floor all mirror item_online_service's rowMain, so this
-     row measures the same height as the instance cells below it whatever
-     the font metrics. -->
+     dragged; hidden in edit mode. Padding, text stack and the 48dp
+     trailing floor mirror item_online_service's rowMain (whose height its
+     MaterialSwitch sets, not its text), so the two rows measure alike —
+     until the subtitle's service list is too long for the screen and
+     wraps, which is the accepted trade. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -36,19 +37,18 @@
             style="@style/Text.PT.RowTitle" />
 
         <!-- Filled by OnlineServicesController from the add-picker's
-             catalog, so a new service shows up here for free. Single-line:
-             a wrap would make this row taller than the instance cells it
-             is meant to stand level with, so a narrow screen ellipsizes
-             the tail of the list instead. -->
+             catalog, so a new service shows up here for free. Allowed to
+             wrap: naming every service beats standing level with the rows
+             below, so on a screen too narrow for the whole list this row
+             grows a line rather than ellipsizing the tail away. Where the
+             list does fit on one line, the heights still match. -->
         <TextView
             android:id="@+id/tvRowSubtitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:maxLines="1"
-            android:ellipsize="end"
             style="@style/Text.PT.RowSubtitle"
-            tools:text="OpenAI (Customizable), Gemini, DeepL, Lingva" />
+            tools:text="OpenAI (DeepSeek, Mistral, Custom), Gemini, DeepL, Lingva" />
     </LinearLayout>
 
     <!-- 48dp tall, not 24: the instance rows below trail a MaterialSwitch,

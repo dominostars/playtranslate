@@ -24,6 +24,7 @@ import com.playtranslate.translation.OnlineBackendFactory
 import com.playtranslate.translation.OnlineServiceInstance
 import com.playtranslate.translation.OnlineServiceMutations
 import com.playtranslate.translation.OnlineServiceStore
+import com.playtranslate.translation.OpenAiPreset
 import com.playtranslate.translation.ServiceType
 import java.util.UUID
 
@@ -175,11 +176,22 @@ class AddOnlineServiceActivity : AppCompatActivity() {
         )
 
         /** The name a catalog service goes by wherever we offer it — this
-         *  picker's rows and the services page's Add-row subtitle. OpenAI
-         *  advertises its provider preset ("OpenAI (Customizable)"); the
-         *  rest are just their brand. */
+         *  picker's rows and the services page's Add-row subtitle.
+         *
+         *  OpenAI names the other providers it reaches — "OpenAI (DeepSeek,
+         *  Mistral, Custom)" — because they have no catalog entry of their
+         *  own; they live behind its Provider setting, and a user hunting
+         *  for Mistral would otherwise find nothing. The list is read off
+         *  [OpenAiPreset] (minus OPENAI, already in the name), so adding a
+         *  provider there updates both surfaces with no string to remember. */
         fun catalogTitle(context: Context, type: ServiceType): String = when (type) {
-            ServiceType.OPENAI -> context.getString(R.string.add_service_openai_customizable)
+            ServiceType.OPENAI -> context.getString(
+                R.string.add_service_openai_providers_fmt,
+                OnlineBackendFactory.typeDisplayName(context, ServiceType.OPENAI),
+                OpenAiPreset.entries
+                    .filter { it != OpenAiPreset.OPENAI }
+                    .joinToString(", ") { OnlineBackendFactory.presetDisplayName(context, it) },
+            )
             else -> OnlineBackendFactory.typeDisplayName(context, type)
         }
     }

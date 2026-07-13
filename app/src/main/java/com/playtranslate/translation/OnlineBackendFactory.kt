@@ -30,20 +30,30 @@ object OnlineBackendFactory {
      *  tiers (25+), below nothing that matters. */
     private const val ONLINE_PRIORITY = 15
 
+    /**
+     * [live] = true: every per-call closure re-reads this instance from
+     * [OnlineServiceStore], so a registered backend picks up a config edit
+     * without being rebuilt.
+     *
+     * [live] = false pins the backend to the [instance] passed in. The config
+     * page builds a throwaway SHELL from unsaved page state to validate a key
+     * before saving, and there the store record is precisely the stale thing
+     * the user is changing: a live shell would take the Groq key just typed,
+     * read the *saved* record's OpenAI preset, probe api.openai.com with it,
+     * collect a 401 and tell the user their good key was rejected. A shell
+     * must answer from the page, not from the store it is about to overwrite.
+     * (This only bites in EDIT mode — in CREATE mode there is no record to
+     * read through to, which is why it went unnoticed.)
+     */
     fun build(
         context: Context,
         sharedPrefs: SharedPreferences,
         instance: OnlineServiceInstance,
+        live: Boolean = true,
     ): TranslationBackend {
         val appContext = context.applicationContext
         val id = instance.id
-        // Per-call closures read the live store record, falling back to
-        // the construction snapshot. The fallback matters for SHELL
-        // backends — the config page builds a throwaway backend from its
-        // unsaved page state to run key validation before any store
-        // record exists; for registered backends the store record always
-        // wins.
-        fun current() = OnlineServiceStore.byId(id) ?: instance
+        fun current() = if (live) OnlineServiceStore.byId(id) ?: instance else instance
         return when (instance.type) {
             ServiceType.GEMINI -> GeminiBackend(
                 id = id,
@@ -54,7 +64,7 @@ object OnlineBackendFactory {
                 usageTracker = UsageTracker(sharedPrefs, id),
                 cooldownState = CooldownState(appContext, id),
             )
-            ServiceType.OPENAI -> buildOpenAi(appContext, sharedPrefs, instance)
+            ServiceType.OPENAI -> buildOpenAi(appContext, sharedPrefs, instance, live)
             ServiceType.DEEPL -> DeepLBackend(
                 id = id,
                 priority = ONLINE_PRIORITY,
@@ -74,9 +84,10 @@ object OnlineBackendFactory {
         appContext: Context,
         sharedPrefs: SharedPreferences,
         instance: OnlineServiceInstance,
+        live: Boolean,
     ): OpenAiBackend {
         val id = instance.id
-        fun current() = OnlineServiceStore.byId(id) ?: instance
+        fun current() = if (live) OnlineServiceStore.byId(id) ?: instance else instance
         return OpenAiBackend(
             id = id,
             displayName = displayName(appContext, instance),
@@ -90,11 +101,18 @@ object OnlineBackendFactory {
                 if (c.preset == OpenAiPreset.DEEPSEEK) OnlineServiceStore.DEEPSEEK_MODELS_URL
                 else resolveBaseUrl(c)
             },
+            keyProbeUrlProvider = { base -> base.trimEnd('/') + keyProbePathFor(current().preset) },
             usageTracker = UsageTracker(sharedPrefs, id),
             // owned_by filtering only makes sense against the canonical
-            // first-party OpenAI catalog; DeepSeek and custom endpoints
-            // tag models with their own org and would filter to empty.
+            // first-party OpenAI catalog; every other provider tags models
+            // with its own org (Mistral "mistralai", Groq the upstream lab,
+            // OpenRouter the routed provider) and would filter to empty.
             applyOwnedByFilter = { current().preset == OpenAiPreset.OPENAI },
+            // DeepSeek is the one provider with no cooldown to record: it
+            // doesn't 429 on rate limit, it holds the request open (docs say
+            // up to ~10 minutes), so there is no retry signal to read and a
+            // timer would be invented. Everyone else 429s — see
+            // OpenAiBackend.recordOpenAi429 for the header dialects.
             cooldownState = if (instance.preset == OpenAiPreset.DEEPSEEK) null
             else CooldownState(appContext, id),
         )
@@ -106,15 +124,32 @@ object OnlineBackendFactory {
     fun resolveBaseUrl(instance: OnlineServiceInstance): String = when (instance.preset) {
         OpenAiPreset.OPENAI -> Prefs.DEFAULT_OPENAI_BASE_URL
         OpenAiPreset.DEEPSEEK -> OnlineServiceStore.DEEPSEEK_BASE_URL
+        OpenAiPreset.MISTRAL -> OnlineServiceStore.MISTRAL_BASE_URL
+        OpenAiPreset.GROQ -> OnlineServiceStore.GROQ_BASE_URL
+        OpenAiPreset.OPENROUTER -> OnlineServiceStore.OPENROUTER_BASE_URL
         OpenAiPreset.CUSTOM -> instance.baseUrl.ifBlank { Prefs.DEFAULT_OPENAI_BASE_URL }
     }
 
     fun defaultModelFor(type: ServiceType, preset: OpenAiPreset): String = when (type) {
         ServiceType.GEMINI -> Prefs.DEFAULT_GEMINI_MODEL
-        ServiceType.OPENAI ->
-            if (preset == OpenAiPreset.DEEPSEEK) Prefs.DEFAULT_DEEPSEEK_MODEL
-            else Prefs.DEFAULT_OPENAI_MODEL
+        ServiceType.OPENAI -> when (preset) {
+            OpenAiPreset.DEEPSEEK -> Prefs.DEFAULT_DEEPSEEK_MODEL
+            OpenAiPreset.MISTRAL -> Prefs.DEFAULT_MISTRAL_MODEL
+            OpenAiPreset.GROQ -> Prefs.DEFAULT_GROQ_MODEL
+            OpenAiPreset.OPENROUTER -> Prefs.DEFAULT_OPENROUTER_MODEL
+            OpenAiPreset.OPENAI, OpenAiPreset.CUSTOM -> Prefs.DEFAULT_OPENAI_MODEL
+        }
         ServiceType.DEEPL, ServiceType.LINGVA -> ""
+    }
+
+    /** Path, relative to the base URL, whose 401 tells us a key is bad.
+     *  Everyone authenticates /models — except OpenRouter, which serves it
+     *  publicly, so a 200 there says nothing about the key (see
+     *  [OpenAiBackend.validateKey], which independently guards against this
+     *  for user-entered CUSTOM endpoints, where the dialect is unknowable). */
+    private fun keyProbePathFor(preset: OpenAiPreset): String = when (preset) {
+        OpenAiPreset.OPENROUTER -> OnlineServiceStore.OPENROUTER_KEY_PROBE_PATH
+        else -> "/models"
     }
 
     /** User-facing name for the instance — the service brand, except
@@ -124,14 +159,22 @@ object OnlineBackendFactory {
     fun displayName(context: Context, instance: OnlineServiceInstance): String =
         when (instance.type) {
             ServiceType.GEMINI -> context.getString(R.string.gemini_display_name)
-            ServiceType.OPENAI -> when (instance.preset) {
-                OpenAiPreset.OPENAI -> context.getString(R.string.openai_display_name)
-                OpenAiPreset.DEEPSEEK -> context.getString(R.string.deepseek_display_name)
-                OpenAiPreset.CUSTOM -> context.getString(R.string.llm_backend_preset_custom)
-            }
+            ServiceType.OPENAI -> presetDisplayName(context, instance.preset)
             ServiceType.DEEPL -> context.getString(R.string.deepl_display_name)
             ServiceType.LINGVA -> context.getString(R.string.lingva_display_name)
         }
+
+    /** The provider a preset stands for — the sole naming of [OpenAiPreset]
+     *  in the app. Read by the instance cell title, the provider dropdown
+     *  and the Add row's provider list, so a new preset is named once. */
+    fun presetDisplayName(context: Context, preset: OpenAiPreset): String = when (preset) {
+        OpenAiPreset.OPENAI -> context.getString(R.string.openai_display_name)
+        OpenAiPreset.DEEPSEEK -> context.getString(R.string.deepseek_display_name)
+        OpenAiPreset.MISTRAL -> context.getString(R.string.mistral_display_name)
+        OpenAiPreset.GROQ -> context.getString(R.string.groq_display_name)
+        OpenAiPreset.OPENROUTER -> context.getString(R.string.openrouter_display_name)
+        OpenAiPreset.CUSTOM -> context.getString(R.string.llm_backend_preset_custom)
+    }
 
     /** The service brand itself, with no instance to take a preset from —
      *  for naming the catalog of services rather than one configured

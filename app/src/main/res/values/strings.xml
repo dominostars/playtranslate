@@ -1424,6 +1424,9 @@
     <string name="openai_display_name" translatable="false">OpenAI</string>
     <string name="gemini_display_name" translatable="false">Gemini</string>
     <string name="deepseek_display_name" translatable="false">DeepSeek</string>
+    <string name="mistral_display_name" translatable="false">Mistral</string>
+    <string name="groq_display_name" translatable="false">Groq</string>
+    <string name="openrouter_display_name" translatable="false">OpenRouter</string>
     <string name="deepl_display_name" translatable="false">DeepL</string>
     <!-- Cell title + provider-preset pill label for an OpenAI-compatible
          service pointed at a user-entered URL (LM Studio, OpenRouter, …). -->
@@ -1608,11 +1611,13 @@
     <string name="tr_service_add_online">Add Online Translation Service</string>
     <!-- Toolbar title of the add-service picker screen. -->
     <string name="add_online_service_title">Add Translation Service</string>
-    <!-- Title of the OpenAI row in the add-service picker. "(Customizable)"
-         flags that this entry also covers DeepSeek and custom
-         OpenAI-compatible endpoints via its Provider setting; "OpenAI"
-         itself is a brand name — don't translate it. -->
-    <string name="add_service_openai_customizable">OpenAI (Customizable)</string>
+    <!-- Title of the OpenAI row in the add-service picker, e.g.
+         "OpenAI (DeepSeek, Mistral, Custom)": %1$s is the OpenAI brand and
+         %2$s the other providers its Provider setting reaches, listed from
+         the OpenAiPreset enum so a new provider needs no string edit. Brands
+         and punctuation only — the one translatable word in it ("Custom")
+         is translated at its own key, llm_backend_preset_custom. -->
+    <string name="add_service_openai_providers_fmt" translatable="false">%1$s (%2$s)</string>
     <!-- Subtitle under a service's row in the add-service picker: the
          service needs an API key before it can translate. -->
     <string name="add_service_sub_requires_key">API Key Required</string>
