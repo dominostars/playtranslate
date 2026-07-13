@@ -4,9 +4,13 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
+import android.util.Log
 import android.view.View
+import com.playtranslate.BuildConfig
 import com.playtranslate.ui.TextBox
 import com.playtranslate.ui.TranslationOverlayView
+
+private const val TAG = "OverlayRasterizer"
 
 /** One warpable overlay region: its rendered pixels, where those pixels sit
  *  in AnalysisUpright (keyframe) space, and which tracked region's refined
@@ -91,6 +95,18 @@ class OverlayRasterizer(
         view.setBoxes(renderBoxes, 0, 0, vw, vh)
         view.measure(wSpec, hSpec)
         view.layout(0, 0, vw, vh)
+
+        // The child-i ↔ box-i pairing below is load-bearing: trackKeys (which
+        // homography each raster warps with) and the dirty diff both index by
+        // it. TranslationOverlayView currently builds exactly one child per
+        // box; if that contract ever changes (skipped/merged boxes), every
+        // raster after the divergence silently rides the wrong region.
+        if (view.childCount != renderBoxes.size) {
+            check(!BuildConfig.DEBUG) {
+                "rasterizer child/box mismatch: ${view.childCount} children for ${renderBoxes.size} boxes"
+            }
+            Log.w(TAG, "child/box mismatch (${view.childCount} vs ${renderBoxes.size}); trackKey pairing suspect")
+        }
 
         val regions = ArrayList<RasterRegion>(view.childCount)
         for (i in 0 until view.childCount) {
