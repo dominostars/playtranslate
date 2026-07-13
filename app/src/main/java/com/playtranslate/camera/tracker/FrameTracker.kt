@@ -124,6 +124,15 @@ class FrameTracker {
     private val lkWin = Size(TrackerConfig.LK_WIN_SIZE, TrackerConfig.LK_WIN_SIZE)
     private val emptyMask = Mat()
     private val affineInliers = Mat()
+    private val lkPrevPts = MatOfPoint2f()
+    private val lkNextPts = MatOfPoint2f()
+    private val lkBackPts = MatOfPoint2f()
+    private val lkBackStatus = MatOfByte()
+    // Shared by the sequential fit paths (pruneToVerified → fitRegions →
+    // probeAnchor); never live across two of them at once.
+    private val fitSrc = MatOfPoint2f()
+    private val fitDst = MatOfPoint2f()
+    private val fitMask = Mat()
 
     /** Install a new anchor (takes ownership; releases the old one).
      *
@@ -270,31 +279,24 @@ class FrameTracker {
         kps.release(); desc.release()
         if (srcPts.size < 4) return null
 
-        val src = MatOfPoint2f(*srcPts.toTypedArray())
-        val dst = MatOfPoint2f(*dstPts.toTypedArray())
-        val mask = Mat()
-        val h = Calib3d.findHomography(src, dst, Calib3d.RANSAC, TrackerConfig.RANSAC_REPROJ_PX, mask)
-        src.release(); dst.release()
+        fitSrc.fromArray(*srcPts.toTypedArray())
+        fitDst.fromArray(*dstPts.toTypedArray())
+        val h = Calib3d.findHomography(fitSrc, fitDst, Calib3d.RANSAC, TrackerConfig.RANSAC_REPROJ_PX, fitMask)
         if (h.empty()) {
             h.release() // empty Mat still owns a native header
-            mask.release()
             return null
         }
         val hArr = matToArray(h)
         h.release()
-        if (!Homography.isValid(hArr)) {
-            mask.release()
-            return null
-        }
+        if (!Homography.isValid(hArr)) return null
         val inSrc = ArrayList<Point>()
         val inDst = ArrayList<Point>()
         for (i in srcPts.indices) {
-            if (mask.get(i, 0)[0].toInt() == 1) {
+            if (fitMask.get(i, 0)[0].toInt() == 1) {
                 inSrc.add(srcPts[i])
                 inDst.add(dstPts[i])
             }
         }
-        mask.release()
         return RelockProbe(inSrc.size, inSrc, inDst, hArr, curGray.cols(), curGray.rows())
     }
 
@@ -409,15 +411,14 @@ class FrameTracker {
         val survivors = ArrayList<Point>(probePts.size)
         val prevFrame = prevGray
         if (hasPrev && prevFrame != null && probePts.isNotEmpty()) {
-            val prev = MatOfPoint2f(*probePts.toTypedArray())
-            val next = MatOfPoint2f()
+            lkPrevPts.fromArray(*probePts.toTypedArray())
             Video.calcOpticalFlowPyrLK(
-                prevFrame, curGray, prev, next, lkStatus, lkErr,
+                prevFrame, curGray, lkPrevPts, lkNextPts, lkStatus, lkErr,
                 lkWin, TrackerConfig.LK_MAX_LEVEL,
             )
             val status = lkStatus.toArray()
-            val prevArr = prev.toArray()
-            val nextArr = next.toArray()
+            val prevArr = lkPrevPts.toArray()
+            val nextArr = lkNextPts.toArray()
             val disps = ArrayList<Double>(prevArr.size)
             for (i in prevArr.indices) {
                 if (status.getOrNull(i)?.toInt() == 1) {
@@ -429,7 +430,6 @@ class FrameTracker {
                 disps.sort()
                 motion = disps[disps.size / 2]
             }
-            prev.release(); next.release()
         }
         probeFramesSinceReseed++
         if (survivors.size < TrackerConfig.PROBE_RESEED_MIN_POINTS ||
@@ -457,25 +457,22 @@ class FrameTracker {
         lastMedianDisp = -1.0
         if (currentPts.isEmpty()) return
         val prevFrame = prevGray ?: return
-        val prevPts = MatOfPoint2f(*currentPts.toTypedArray())
-        val nextPts = MatOfPoint2f()
+        lkPrevPts.fromArray(*currentPts.toTypedArray())
         Video.calcOpticalFlowPyrLK(
-            prevFrame, curGray, prevPts, nextPts, lkStatus, lkErr,
+            prevFrame, curGray, lkPrevPts, lkNextPts, lkStatus, lkErr,
             lkWin, TrackerConfig.LK_MAX_LEVEL,
         )
         // Backward pass: next → prev must land where we started.
-        val backPts = MatOfPoint2f()
-        val backStatus = MatOfByte()
         Video.calcOpticalFlowPyrLK(
-            curGray, prevFrame, nextPts, backPts, backStatus, lkErr,
+            curGray, prevFrame, lkNextPts, lkBackPts, lkBackStatus, lkErr,
             lkWin, TrackerConfig.LK_MAX_LEVEL,
         )
 
         val fwd = lkStatus.toArray()
-        val bwd = backStatus.toArray()
-        val next = nextPts.toArray()
-        val back = backPts.toArray()
-        val prev = prevPts.toArray()
+        val bwd = lkBackStatus.toArray()
+        val next = lkNextPts.toArray()
+        val back = lkBackPts.toArray()
+        val prev = lkPrevPts.toArray()
 
         val newAnchor = ArrayList<Point>(next.size)
         val newCurrent = ArrayList<Point>(next.size)
@@ -494,7 +491,6 @@ class FrameTracker {
             disps.sort()
             lastMedianDisp = disps[disps.size / 2]
         }
-        prevPts.release(); nextPts.release(); backPts.release(); backStatus.release()
     }
 
     /** ORB on the current frame + Hamming knn ratio-test match against the
@@ -559,31 +555,24 @@ class FrameTracker {
      *  unpruned (a degenerate fit's mask means nothing). */
     private fun pruneToVerified(): Pair<DoubleArray?, Int> {
         if (anchorPts.size < 4) return null to 0
-        val src = MatOfPoint2f(*anchorPts.toTypedArray())
-        val dst = MatOfPoint2f(*currentPts.toTypedArray())
-        val mask = Mat()
-        val h = Calib3d.findHomography(src, dst, Calib3d.RANSAC, TrackerConfig.RANSAC_REPROJ_PX, mask)
-        src.release(); dst.release()
+        fitSrc.fromArray(*anchorPts.toTypedArray())
+        fitDst.fromArray(*currentPts.toTypedArray())
+        val h = Calib3d.findHomography(fitSrc, fitDst, Calib3d.RANSAC, TrackerConfig.RANSAC_REPROJ_PX, fitMask)
         if (h.empty()) {
             h.release() // empty Mat still owns a native header
-            mask.release()
             return null to 0
         }
         val hArr = matToArray(h)
         h.release()
-        if (!Homography.isValid(hArr)) {
-            mask.release()
-            return null to 0
-        }
+        if (!Homography.isValid(hArr)) return null to 0
         val keepAnchor = ArrayList<Point>(anchorPts.size)
         val keepCurrent = ArrayList<Point>(currentPts.size)
         for (i in anchorPts.indices) {
-            if (mask.get(i, 0)[0].toInt() == 1) {
+            if (fitMask.get(i, 0)[0].toInt() == 1) {
                 keepAnchor.add(anchorPts[i])
                 keepCurrent.add(currentPts[i])
             }
         }
-        mask.release()
         anchorPts = keepAnchor
         currentPts = keepCurrent
         return hArr to keepAnchor.size
@@ -619,12 +608,11 @@ class FrameTracker {
             // matrices that smeared overlays across the screen on device. A
             // similarity (rotate+scale+translate) is well-posed from 2 points
             // and can't generate perspective slivers.
-            val src = MatOfPoint2f(*memberAnchor.toTypedArray())
-            val dst = MatOfPoint2f(*memberCurrent.toTypedArray())
+            fitSrc.fromArray(*memberAnchor.toTypedArray())
+            fitDst.fromArray(*memberCurrent.toTypedArray())
             val affine = Calib3d.estimateAffinePartial2D(
-                src, dst, affineInliers, Calib3d.RANSAC, TrackerConfig.RANSAC_REPROJ_PX, 2000, 0.99, 10,
+                fitSrc, fitDst, affineInliers, Calib3d.RANSAC, TrackerConfig.RANSAC_REPROJ_PX, 2000, 0.99, 10,
             )
-            src.release(); dst.release()
             if (!affine.empty()) {
                 val arr = doubleArrayOf(
                     affine.get(0, 0)[0], affine.get(0, 1)[0], affine.get(0, 2)[0],
@@ -705,5 +693,12 @@ class FrameTracker {
         lkErr.release()
         emptyMask.release()
         affineInliers.release()
+        lkPrevPts.release()
+        lkNextPts.release()
+        lkBackPts.release()
+        lkBackStatus.release()
+        fitSrc.release()
+        fitDst.release()
+        fitMask.release()
     }
 }
