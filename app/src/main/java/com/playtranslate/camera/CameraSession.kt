@@ -403,6 +403,10 @@ class CameraSession(
         }
     }
 
+    /** True when the last posted update hid the overlays (null homography).
+     *  Analysis thread only. */
+    private var lastPublishHid = false
+
     /** Push the frame's homographies (CN→AU-conjugated) and pill text to main. */
     private fun publish(decision: FrameDecision, frameMs: Double) {
         val anchorScale = frameTracker.currentAnchor()?.cnScale
@@ -418,6 +422,12 @@ class CameraSession(
                 decision.scale, frameMs,
             )
         } else null
+        // While hidden (Idle/Lost) the update is identical every frame, and
+        // applyHomography(null) invalidates — an empty full-view redraw at
+        // 25-30 fps in exactly the state the idle backoff makes cheap. Post
+        // the FIRST hide (the warp view must actually blank), skip repeats.
+        if (hAu == null && pill == null && lastPublishHid) return
+        lastPublishHid = hAu == null
         overlayHost.post {
             warpView?.applyHomography(hAu, perRegionAu)
             if (decision.state == TrackState.LOCKED && decision.scale > 0f) {
