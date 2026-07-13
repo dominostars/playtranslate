@@ -488,11 +488,19 @@ class CameraSession(
         fun close() {
             if (!keyframe.isRecycled) keyframe.recycle()
             colorRef?.takeIf { !colorRefKept && !it.isRecycled }?.recycle()
-            if (!analysisExecutor.isShutdown) {
-                analysisExecutor.execute { cnKeyframe.release() }
-            } else {
-                cnKeyframe.release()
+            try {
+                if (!analysisExecutor.isShutdown) {
+                    analysisExecutor.execute { cnKeyframe.release() }
+                    return
+                }
+            } catch (_: java.util.concurrent.RejectedExecutionException) {
+                // shutdown() raced the isShutdown check. Fall through.
             }
+            // Direct release is safe here: close() only runs in runAcquire's
+            // finally, so if the install block is still queued we got here
+            // via cancellation — and the block refuses on its job-liveness
+            // check before ever touching this Mat.
+            cnKeyframe.release()
         }
     }
 
@@ -599,8 +607,13 @@ class CameraSession(
             // cancelled coroutine) and idempotent (the finish is a no-op when
             // the install path already completed this id).
             buffers.close()
-            if (!analysisExecutor.isShutdown) {
-                analysisExecutor.execute { engine.finishAcquire(acquireId, locked = false) }
+            try {
+                if (!analysisExecutor.isShutdown) {
+                    analysisExecutor.execute { engine.finishAcquire(acquireId, locked = false) }
+                }
+            } catch (_: java.util.concurrent.RejectedExecutionException) {
+                // shutdown() raced the check; the engine died with the
+                // executor, so there is nothing left to complete.
             }
         }
     }
