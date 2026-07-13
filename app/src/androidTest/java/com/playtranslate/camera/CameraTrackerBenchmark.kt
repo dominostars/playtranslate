@@ -95,15 +95,17 @@ class CameraTrackerBenchmark {
         return img
     }
 
-    /** Sparse variant: a handful of text bars, no salt noise — starves ORB
-     *  so descriptor matches stay well below the tracing-point seed budget,
-     *  the adversarial regime for seed placement (a seed majority can
-     *  outvote the matches in RANSAC). */
+    /** Sparse variant: a handful of text bars plus light salt (bare
+     *  rectangles alone give near-identical descriptors that the ratio test
+     *  then kills — 7 matches observed). The salt keeps descriptor matching
+     *  healthy while the page stays poor enough that matches sit well below
+     *  the tracing-point seed budget — the adversarial regime for seed
+     *  placement (a seed majority can outvote the matches in RANSAC). */
     private fun sparsePage(seed: Int): Mat {
         val rnd = Random(seed)
         val img = Mat(CN_H, CN_W, CvType.CV_8UC1, Scalar(200.0))
-        var y = 100
-        while (y < CN_H - 100) {
+        var y = 90
+        while (y < CN_H - 90) {
             var x = 40 + rnd.nextInt(60)
             val lineH = 16 + rnd.nextInt(8)
             var words = 0
@@ -117,7 +119,12 @@ class CameraTrackerBenchmark {
                 x += wordW + 25 + rnd.nextInt(35)
                 words++
             }
-            y += lineH + 90 + rnd.nextInt(30)
+            y += lineH + 70 + rnd.nextInt(25)
+        }
+        repeat(500) {
+            val px = rnd.nextInt(CN_W)
+            val py = rnd.nextInt(CN_H)
+            img.put(py, px, rnd.nextDouble(0.0, 255.0))
         }
         return img
     }
