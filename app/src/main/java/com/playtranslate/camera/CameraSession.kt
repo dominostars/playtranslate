@@ -316,8 +316,17 @@ class CameraSession(
             if (idleStreak > IDLE_BACKOFF_AFTER_FRAMES && frameCount % 2 == 1L) return
             val cn = cnConverter.convert(proxy)
             val m = frameTracker.track(cn)
-            // AF scans veto acquire offers — a keyframe mid-scan is defocused.
-            val decision = engine.onFrame(m, canAcquire = !afScanning)
+            // canAcquire is the engine's documented launch-capacity contract:
+            // AF scans veto offers (a keyframe mid-scan is defocused), and so
+            // does a live acquire job — the engine leaves ACQUIRING at anchor
+            // install, but the job's display tail (translation, rasterize)
+            // still describes the PREVIOUS acquire. A second acquire started
+            // under it interleaves showRegions calls and can pair the new
+            // anchor with the old scene's payload in the LRU.
+            val decision = engine.onFrame(
+                m,
+                canAcquire = !afScanning && acquireJob?.isActive != true,
+            )
 
             // Keep tracker and engine agreeing about anchor existence. When
             // the engine settles on IDLE (dead anchor, lost-decay, watchdog)
@@ -343,12 +352,10 @@ class CameraSession(
 
             // Anchor LRU: while Idle, periodically probe one cached scene —
             // glancing back at known text re-locks with zero OCR/translation.
-            if (decision.state == TrackState.IDLE && !frameTracker.hasAnchor() &&
+            val relocked = decision.state == TrackState.IDLE && !frameTracker.hasAnchor() &&
                 anchorCache.isNotEmpty() &&
-                frameCount % TrackerConfig.RELOCK_PROBE_INTERVAL_FRAMES == 0L
-            ) {
+                frameCount % TrackerConfig.RELOCK_PROBE_INTERVAL_FRAMES == 0L &&
                 tryRelock(cn)
-            }
 
             // Diagnostic heartbeat for on-device tuning.
             if (frameCount % 15 == 0L) {
@@ -362,10 +369,14 @@ class CameraSession(
                 )
             }
 
-            if (decision.requestAcquire) {
+            if (decision.requestAcquire && !relocked) {
                 // A decision is an OFFER; the engine transitions only when we
                 // commit to launching (beginAcquire), and completions must
-                // quote the id — stale ones are structurally ignored.
+                // quote the id — stale ones are structurally ignored. An offer
+                // computed BEFORE a successful relock this same frame is
+                // stale: the engine is now LOCKED on the restored anchor, and
+                // launching would immediately re-OCR the scene the relock
+                // just restored for free.
                 val acquireId = engine.beginAcquire()
                 if (acquireId != 0L) {
                     val buffers = AcquireBuffers(toUprightBitmap(proxy), cn.clone())
@@ -807,8 +818,10 @@ class CameraSession(
 
     /** While Idle with cached scenes, probe one per call (round-robin); on a
      *  strong ORB match, reinstall the cached anchor + its display payload —
-     *  a full re-lock with zero OCR/translation. Analysis thread only. */
-    private fun tryRelock(cn: Mat) {
+     *  a full re-lock with zero OCR/translation. Returns true when a re-lock
+     *  actually happened (the caller must then discard this frame's stale
+     *  acquire offer). Analysis thread only. */
+    private fun tryRelock(cn: Mat): Boolean {
         val lk = langKey()
         val mode = prefs.overlayMode
         // Entries built under a different language/flavor can't be shown;
@@ -821,7 +834,7 @@ class CameraSession(
                 it.remove()
             }
         }
-        if (anchorCache.isEmpty()) return
+        if (anchorCache.isEmpty()) return false
         relockCursor %= anchorCache.size
         val (anchor, payload) = anchorCache.elementAt(relockCursor)
         relockCursor++
@@ -831,14 +844,14 @@ class CameraSession(
         // (and destroys the cache entry). Verification happens BEFORE the
         // entry is consumed.
         val matches = frameTracker.verifiedMatchCount(anchor, cn)
-        if (matches < TrackerConfig.MIN_INLIERS_ACQUIRE) return
+        if (matches < TrackerConfig.MIN_INLIERS_ACQUIRE) return false
 
         val id = engine.beginAcquire()
-        if (id == 0L) return
+        if (id == 0L) return false
         anchorCache.remove(anchor to payload)
         val seeded = frameTracker.installAnchor(anchor, anchor.cnGray)
         engine.finishAcquire(id, locked = seeded >= TrackerConfig.MIN_INLIERS_ACQUIRE)
-        if (seeded < TrackerConfig.MIN_INLIERS_ACQUIRE) return
+        if (seeded < TrackerConfig.MIN_INLIERS_ACQUIRE) return false
         Log.d(TAG, "relock: anchor #${anchor.id} restored with $matches matches, $seeded seeded")
 
         synchronized(stateLock) {
@@ -849,7 +862,10 @@ class CameraSession(
             lastBuilt = payload
         }
         val gen = generation.get()
-        scope.launch(Dispatchers.Default) {
+        // Tracked as THE acquire job: the relock's display tail is acquire
+        // display work like any other — canAcquire stays false until it
+        // lands, and mode/language invalidation can cancel it.
+        acquireJob = scope.launch(Dispatchers.Default) {
             try {
                 installTrackRegions(payload.trackRegionsAu)
                 showRegions(payload.boxes, payload.trackKeys, payload.auW, payload.auH, gen)
@@ -858,6 +874,7 @@ class CameraSession(
                 Log.w(TAG, "relock display failed", e)
             }
         }
+        return true
     }
 
     /** Key of the line rect nearest to [box]'s center (reading marks sit
