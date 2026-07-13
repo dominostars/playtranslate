@@ -934,6 +934,7 @@ class CameraSession(
                     )
                 }
             )
+            engine.onRegionsReplaced()
         }
     }
 

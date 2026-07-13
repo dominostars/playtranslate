@@ -137,6 +137,14 @@ class TrackerEngine(
         }
     }
 
+    /** The session replaced the tracked region set (flavor change or
+     *  re-flavor). Collapse streaks are keyed by small ints reused across
+     *  flavors — a streak accumulated by an OLD region must not count a new
+     *  region toward the re-OCR trigger. */
+    fun onRegionsReplaced() {
+        regionCollapseStreaks.clear()
+    }
+
     fun reset() {
         state = TrackState.IDLE
         activeAcquireId = 0L

@@ -282,6 +282,25 @@ class TrackerEngineTest {
     }
 
     @Test
+    fun regionReplacementResetsCollapseStreaks() {
+        val e = engine()
+        lockEngine(e)
+        nowMs += TrackerConfig.ACQUIRE_COOLDOWN_MS + 1
+        val collapsed = goodMeasurement().copy(perRegionSurvival = mapOf(3 to 0.2f))
+        repeat(TrackerConfig.REGION_COLLAPSE_FRAMES - 1) {
+            assertFalse(e.onFrame(collapsed).requestAcquire)
+        }
+        // Flavor change re-registers the regions: key 3 now names a DIFFERENT
+        // region, so the old streak must not count it toward the trigger.
+        e.onRegionsReplaced()
+        repeat(TrackerConfig.REGION_COLLAPSE_FRAMES - 1) {
+            assertFalse(e.onFrame(collapsed).requestAcquire)
+        }
+        // An uninterrupted streak still fires at the threshold.
+        assertTrue(e.onFrame(collapsed).requestAcquire)
+    }
+
+    @Test
     fun deadAnchorEscapesToIdleDespiteRematchSpikes() {
         val e = engine()
         lockEngine(e)
