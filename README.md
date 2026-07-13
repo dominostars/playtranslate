@@ -160,12 +160,16 @@ PlayTranslate translates from **25 game languages** (the text it can read off th
 
 ## Optional: Online Translation Backends
 
-By default, translation uses [Lingva](https://github.com/thedaviddelta/lingva-translate) with ML Kit as an offline fallback. For higher quality translations, you can plug in an API key for any of the following under **Settings → Translation**:
+By default, translation uses [Lingva](https://github.com/thedaviddelta/lingva-translate) with ML Kit as an offline fallback. For higher quality translations, you can plug in an API key for any of the following under **Settings → Translation services**. Add as many as you like — each service is its own entry in the list, so you can keep several configured and reorder them to pick which one translates first:
 
 - **DeepL**: free tier at [deepl.com/en/pro#developer](https://www.deepl.com/en/pro#developer)
-- **OpenAI**: [platform.openai.com](https://platform.openai.com/) — pick a model at runtime
-- **Gemini**: [aistudio.google.com](https://aistudio.google.com/) — pick a model at runtime
-- **DeepSeek**: [platform.deepseek.com](https://platform.deepseek.com/) — pick a model at runtime
+- **OpenAI**: [platform.openai.com](https://platform.openai.com/api-keys) — pick a model at runtime
+- **Gemini**: [aistudio.google.com](https://aistudio.google.com/app/apikey) — pick a model at runtime
+- **DeepSeek**: [platform.deepseek.com](https://platform.deepseek.com/api_keys) — pick a model at runtime
+- **Mistral**: [console.mistral.ai](https://console.mistral.ai/api-keys) — pick a model at runtime
+- **Groq**: [console.groq.com](https://console.groq.com/keys) — pick a model at runtime
+- **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys) — pick a model at runtime
+- **Custom**: any other OpenAI-compatible endpoint — point it at your own base URL
 
 ## Optional: Anki Flashcards
 
@@ -201,7 +205,7 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - Hunyuan-MT 1.5 1.8B (Tencent): translation-specialised model, downloadable as an optional offline pack (Tencent HY Community License — not available in the EU, UK, or South Korea)
 - [PaddleOCR PP-OCRv5+v6 recognizers](https://github.com/PaddlePaddle/PaddleOCR): optional per-script OCR recognizer packs for additional scripts (e.g. Korean, Arabic, Cyrillic, Thai), downloadable per source language (Apache 2.0)
 - [Meiki](https://github.com/rtr46/meikiocr): high-accuracy Japanese OCR model (D-FINE), downloadable as an optional offline pack (LGPL 3.0)
-- [Firefox Translations (Bergamot)](https://github.com/mozilla/firefox-translations-models): Mozilla's offline NMT model pairs, downloadable for offline translation
+- [Firefox Translations (Bergamot)](https://github.com/mozilla/translations): Mozilla's offline NMT model pairs, downloadable for offline translation (CC BY-SA 4.0)
 
 ### Linguistic data
 
