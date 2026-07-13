@@ -163,10 +163,14 @@ class CameraSession(
     private val stateLock = Any()
     private var cachedOcr: OcrManager.OcrResult? = null
 
-    /** ×4-downscaled keyframe for background-color sampling — all the
-     *  re-flavor path needs (the full-res keyframe is recycled right after
-     *  OCR; 0.5 MB instead of 8 MB). */
-    private var cachedColorRef: Bitmap? = null
+    /** Per-group (bg, text) colors sampled from the keyframe at acquire —
+     *  all the re-flavor path needs, index-aligned with the cached (gated)
+     *  OCR groups. Colors are sampled ONCE so no bitmap is retained: the
+     *  cached color-ref bitmap this replaces was aliased between this cache,
+     *  [lastBuilt], and the anchor LRU across two threads, which made
+     *  deterministic recycling a use-after-recycle trap and left reclamation
+     *  to GC. */
+    private var cachedGroupColors: List<Pair<Int, Int>>? = null
     private var cachedAuW = 0
     private var cachedAuH = 0
 
@@ -180,7 +184,7 @@ class CameraSession(
         val boxes: List<TextBox>,
         val trackKeys: List<Int>,
         val trackRegionsAu: List<Pair<Int, android.graphics.Rect>>,
-        val colorRef: Bitmap,
+        val groupColors: List<Pair<Int, Int>>,
         val auW: Int,
         val auH: Int,
         val mode: OverlayMode,
@@ -464,15 +468,16 @@ class CameraSession(
         val keyframe: Bitmap,
         val cnKeyframe: Mat,
     ) {
-        var colorRef: Bitmap? = null
-            private set
-        private var colorRefKept = false
+        private var colorRef: Bitmap? = null
 
         val auW = keyframe.width
         val auH = keyframe.height
 
         /** Create the ×4 color reference and immediately drop the multi-MB
-         *  keyframe — nothing downstream needs full resolution. */
+         *  keyframe — nothing downstream needs full resolution. The returned
+         *  bitmap stays OWNED by these buffers (sample from it inside the
+         *  acquire, cache the sampled colors): close() recycles it
+         *  unconditionally, so nothing bitmap-shaped outlives the acquire. */
         fun deriveColorRef(): Bitmap {
             val c = keyframe.scale(auW / COLOR_SCALE, auH / COLOR_SCALE, false)
             colorRef = c
@@ -480,19 +485,13 @@ class CameraSession(
             return c
         }
 
-        /** Transfer colorRef ownership to the session cache / LRU payload —
-         *  close() will no longer touch it. */
-        fun keepColorRef() {
-            colorRefKept = true
-        }
-
         /** The single close path, safe on every exit (early return,
-         *  exception, cancellation): recycles what wasn't transferred; the
-         *  cnKeyframe Mat release is serialized onto the analysis executor
-         *  behind any pending install block that may still be using it. */
+         *  exception, cancellation): recycles both bitmaps; the cnKeyframe
+         *  Mat release is serialized onto the analysis executor behind any
+         *  pending install block that may still be using it. */
         fun close() {
             if (!keyframe.isRecycled) keyframe.recycle()
-            colorRef?.takeIf { !colorRefKept && !it.isRecycled }?.recycle()
+            colorRef?.takeIf { !it.isRecycled }?.recycle()
             try {
                 if (!analysisExecutor.isShutdown) {
                     analysisExecutor.execute { cnKeyframe.release() }
@@ -545,7 +544,7 @@ class CameraSession(
                 // describing a previous one. finally completes the acquire.
                 synchronized(stateLock) {
                     cachedOcr = null
-                    cachedColorRef = null
+                    cachedGroupColors = null
                     lastBuilt = null
                 }
                 withContext(Dispatchers.Main) { warpView?.clearRegions() }
@@ -553,6 +552,12 @@ class CameraSession(
                 return
             }
             postHint(false)
+            // Sample the per-group colors NOW: the ×4 color-ref bitmap dies
+            // with the buffers instead of being retained (and aliased) by the
+            // session cache, lastBuilt, and the anchor LRU.
+            val groupColors = OverlayToolkit.sampleGroupColors(
+                colorRef, groups.map { it.bounds }, 0, 0, COLOR_SCALE,
+            )
 
             // Anchor install first (fast, ~15 ms) so tracking starts while
             // rasterization/translation still run. The engine's active-id
@@ -592,16 +597,14 @@ class CameraSession(
 
             if (!installed) return
             // The re-flavor cache describes the CURRENTLY ANCHORED scene —
-            // set only after the lock actually succeeded. colorRef ownership
-            // transfers to the cache here.
-            buffers.keepColorRef()
+            // set only after the lock actually succeeded.
             synchronized(stateLock) {
                 cachedOcr = gated
-                cachedColorRef = colorRef
+                cachedGroupColors = groupColors
                 cachedAuW = auW
                 cachedAuH = auH
             }
-            buildAndShow(gated!!, colorRef, auW, auH, gen)
+            buildAndShow(gated!!, groupColors, auW, auH, gen)
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Log.w(TAG, "acquire failed", e)
@@ -751,7 +754,7 @@ class CameraSession(
      *  flavor. */
     private suspend fun buildAndShow(
         ocr: OcrManager.OcrResult,
-        colorRef: Bitmap,
+        groupColors: List<Pair<Int, Int>>,
         auW: Int,
         auH: Int,
         gen: Int,
@@ -759,6 +762,9 @@ class CameraSession(
         val mode = prefs.overlayMode
         when (mode) {
             OverlayMode.TRANSLATION -> {
+                // usableGroups already dropped blank groups, so this filter is
+                // a no-op that KEEPS the index alignment with [groupColors]
+                // (sampled per gated group at acquire).
                 val groups = ocr.groups.filter { it.text.isNotBlank() }
                 val texts = groups.map { it.text }
                 // One tracked region per group: key = group index.
@@ -766,7 +772,7 @@ class CameraSession(
                 val regions = groups.mapIndexed { idx, g -> idx to g.bounds }
                 installTrackRegions(regions)
 
-                val placeholders = buildPlaceholderBoxes(groups, colorRef)
+                val placeholders = buildPlaceholderBoxes(groups, groupColors)
                 showRegions(placeholders, trackKeys, auW, auH, gen)
 
                 val t0 = System.currentTimeMillis()
@@ -785,7 +791,7 @@ class CameraSession(
                     ph.copy(translatedText = translations.getOrElse(idx) { "" })
                 }
                 showRegions(filled, trackKeys, auW, auH, gen)
-                rememberBuilt(ocr, filled, trackKeys, regions, colorRef, auW, auH, mode)
+                rememberBuilt(ocr, filled, trackKeys, regions, groupColors, auW, auH, mode)
             }
             OverlayMode.FURIGANA -> {
                 val engine = SourceLanguageEngines.get(context, prefs.sourceLangId)
@@ -812,7 +818,7 @@ class CameraSession(
                     }
                 }
                 showRegions(boxes, trackKeys, auW, auH, gen)
-                rememberBuilt(ocr, boxes, trackKeys, lineRegions, colorRef, auW, auH, mode)
+                rememberBuilt(ocr, boxes, trackKeys, lineRegions, groupColors, auW, auH, mode)
             }
         }
     }
@@ -824,13 +830,13 @@ class CameraSession(
         boxes: List<TextBox>,
         trackKeys: List<Int>,
         regions: List<Pair<Int, android.graphics.Rect>>,
-        colorRef: Bitmap,
+        groupColors: List<Pair<Int, Int>>,
         auW: Int,
         auH: Int,
         mode: OverlayMode,
     ) {
         synchronized(stateLock) {
-            lastBuilt = BuiltOverlays(ocr, boxes, trackKeys, regions, colorRef, auW, auH, mode, langKey())
+            lastBuilt = BuiltOverlays(ocr, boxes, trackKeys, regions, groupColors, auW, auH, mode, langKey())
         }
     }
 
@@ -885,7 +891,7 @@ class CameraSession(
 
         synchronized(stateLock) {
             cachedOcr = payload.ocr
-            cachedColorRef = payload.colorRef
+            cachedGroupColors = payload.groupColors
             cachedAuW = payload.auW
             cachedAuH = payload.auH
             lastBuilt = payload
@@ -948,12 +954,10 @@ class CameraSession(
 
     private fun buildPlaceholderBoxes(
         groups: List<OcrManager.OcrGroup>,
-        colorRef: Bitmap,
+        groupColors: List<Pair<Int, Int>>,
     ): List<TextBox> {
-        val bounds = groups.map { it.bounds }
-        val colors = OverlayToolkit.sampleGroupColors(colorRef, bounds, 0, 0, COLOR_SCALE)
         return groups.mapIndexed { idx, group ->
-            val (bg, tc) = colors.getOrElse(idx) { Pair(Color.argb(224, 0, 0, 0), Color.WHITE) }
+            val (bg, tc) = groupColors.getOrElse(idx) { Pair(Color.argb(224, 0, 0, 0), Color.WHITE) }
             TextBox(
                 translatedText = "",
                 bounds = group.bounds,
@@ -1061,19 +1065,19 @@ class CameraSession(
         acquireJob?.cancel()
         val gen = generation.incrementAndGet()
         val ocr: OcrManager.OcrResult?
-        val colorRef: Bitmap?
+        val groupColors: List<Pair<Int, Int>>?
         val auW: Int
         val auH: Int
         synchronized(stateLock) {
             ocr = cachedOcr
-            colorRef = cachedColorRef
+            groupColors = cachedGroupColors
             auW = cachedAuW
             auH = cachedAuH
         }
-        if (ocr == null || colorRef == null || colorRef.isRecycled || auW == 0) return
+        if (ocr == null || groupColors == null || auW == 0) return
         scope.launch(Dispatchers.Default) {
             try {
-                buildAndShow(ocr, colorRef, auW, auH, gen)
+                buildAndShow(ocr, groupColors, auW, auH, gen)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 Log.w(TAG, "re-flavor failed", e)
@@ -1088,7 +1092,7 @@ class CameraSession(
         generation.incrementAndGet()
         synchronized(stateLock) {
             cachedOcr = null
-            cachedColorRef = null
+            cachedGroupColors = null
             cachedAuW = 0
             cachedAuH = 0
             lastBuilt = null
@@ -1120,7 +1124,7 @@ class CameraSession(
         analysisExecutor.shutdown()
         synchronized(stateLock) {
             cachedOcr = null
-            cachedColorRef = null
+            cachedGroupColors = null
             lastBuilt = null
         }
     }
