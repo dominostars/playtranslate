@@ -95,6 +95,33 @@ class CameraTrackerBenchmark {
         return img
     }
 
+    /** Sparse variant: a handful of text bars, no salt noise — starves ORB
+     *  so descriptor matches stay well below the tracing-point seed budget,
+     *  the adversarial regime for seed placement (a seed majority can
+     *  outvote the matches in RANSAC). */
+    private fun sparsePage(seed: Int): Mat {
+        val rnd = Random(seed)
+        val img = Mat(CN_H, CN_W, CvType.CV_8UC1, Scalar(200.0))
+        var y = 100
+        while (y < CN_H - 100) {
+            var x = 40 + rnd.nextInt(60)
+            val lineH = 16 + rnd.nextInt(8)
+            var words = 0
+            while (x < CN_W - 100 && words < 4) {
+                val wordW = 40 + rnd.nextInt(60)
+                Imgproc.rectangle(
+                    img, Point(x.toDouble(), y.toDouble()),
+                    Point((x + wordW).toDouble(), (y + lineH).toDouble()),
+                    Scalar(30.0 + rnd.nextInt(40)), -1,
+                )
+                x += wordW + 25 + rnd.nextInt(35)
+                words++
+            }
+            y += lineH + 90 + rnd.nextInt(30)
+        }
+        return img
+    }
+
     /** Hand-jitter-scale ground-truth homography: ~5 px translate + 0.6° rotate. */
     private fun jitterHomography(): Mat {
         val affine = Imgproc.getRotationMatrix2D(Point(CN_W / 2.0, CN_H / 2.0), 0.6, 1.0)
@@ -246,6 +273,57 @@ class CameraTrackerBenchmark {
             pageB.release()
             warpedA.release()
             hTrue.release()
+        }
+    }
+
+    /**
+     * Adversarial install: the live view has PANNED since the keyframe was
+     * captured (a slow OCR outlived the framing) — descriptor matches span
+     * the pan, but tracing-point seeds used to enter at raw keyframe
+     * positions, forming a RANSAC consensus for "nothing moved" that could
+     * outvote the true matches (sparse page: matches ≪ seed budget) and pin
+     * overlays to the old position until the next drift reset. The install
+     * must verify geometry and PROJECT its seeds: the very next fitted
+     * homography has to report the pan, not identity.
+     */
+    @Test
+    fun installAfterPanLocksOntoTrueMotionNotIdentity() {
+        ensureOpenCv()
+        val tracker = FrameTracker()
+        val page = sparsePage(33)
+        val panned = Mat()
+        // Big enough that identity-position seeds are flagrant outliers of
+        // the true fit (≫ RANSAC_REPROJ_PX), small enough for healthy ORB
+        // matching.
+        val hPan = Mat.eye(3, 3, CvType.CV_64F)
+        hPan.put(0, 2, 60.0)
+        hPan.put(1, 2, -40.0)
+        Imgproc.warpPerspective(page, panned, hPan, Size(CN_W.toDouble(), CN_H.toDouble()))
+        try {
+            // Prime the tracker's "live previous frame" with the PANNED view;
+            // the anchor keyframe is the original page — exactly an acquire
+            // whose scene drifted mid-OCR.
+            tracker.track(panned)
+            val anchor = tracker.buildAnchor(page, 3L, 1080, 1920, 0.5, 0L)
+            val seeded = tracker.installAnchor(anchor, page)
+            // Precondition, not the property under test: the synthetic page
+            // must stay rich enough to verify a lock across this pan.
+            assertTrue("install precondition failed ($seeded inliers)", seeded >= TrackerConfig.MIN_INLIERS_ACQUIRE)
+            // Next frame, same panned view (scene holding still): the fit
+            // must report the pan. The identity-seeded install reported ~zero
+            // motion here whenever seeds outnumbered matches.
+            val m = tracker.track(panned)
+            assertTrue("no homography after install", m.hCn != null)
+            val p = Homography.project(m.hCn!!, 200.0, 300.0)
+            assertTrue(
+                "fit near identity, not the pan: (%.1f, %.1f) expected (260, 260)".format(p[0], p[1]),
+                abs(p[0] - 260.0) < 5.0 && abs(p[1] - 260.0) < 5.0,
+            )
+        } finally {
+            tracker.release()
+            page.release()
+            panned.release()
+            hPan.release()
         }
     }
 

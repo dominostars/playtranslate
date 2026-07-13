@@ -128,33 +128,50 @@ class FrameTracker {
      *  to lock stale overlays onto a departed scene. Matching against the
      *  live frame makes a stale completion fail to lock naturally.
      *
-     *  Returns the ORB match count — the caller's lock criterion. Identity
-     *  tracing-point seeds are added only when that count is healthy (the
-     *  live view still resembles the keyframe, so keyframe positions are
-     *  valid current positions), and never count toward the return value. */
+     *  The matches are then RANSAC-verified and pruned to inliers, and the
+     *  returned lock criterion is that VERIFIED count: a raw ratio-test
+     *  count is position-invariant — it proves the scene is visible, not
+     *  that it sits where the keyframe saw it — and can be high on
+     *  repetitive glyph patterns that agree on no geometry. Tracing-point
+     *  seeds enter at their positions PROJECTED through the verified fit;
+     *  seeding them at raw keyframe positions after the view drifted (slow
+     *  OCR) or moved (re-aimed re-lock) built a large RANSAC consensus for
+     *  "nothing moved" that outvoted the true motion and pinned overlays
+     *  to the old position until the next drift reset. */
     fun installAnchor(newAnchor: Anchor, keyframeGray: Mat): Int {
         anchor?.release()
         anchor = newAnchor
         framesSinceRematch = 0
         val seedTarget = if (hasPrev) prevGray else keyframeGray
         rematch(seedTarget)
-        val orbMatches = anchorPts.size
-        if (orbMatches >= TrackerConfig.MIN_INLIERS_ACQUIRE) {
-            // Tracing-point seeds, capped — LK cost is linear in live points
-            // and budget SoCs pay for every one.
-            val seedBudget = TrackerConfig.TOTAL_POINT_CAP - anchorPts.size
-            for ((i, p) in newAnchor.seedPts.withIndex()) {
-                if (i >= seedBudget) break
-                anchorPts.add(p)
-                currentPts.add(Point(p.x, p.y))
-            }
+        val (h, verified) = pruneToVerified()
+        if (h != null && verified >= TrackerConfig.MIN_INLIERS_ACQUIRE) {
+            addProjectedSeeds(newAnchor.seedPts, h, seedTarget.cols(), seedTarget.rows())
         }
         recomputeBaselines()
         if (!hasPrev) {
             keyframeGray.copyTo(prevGray)
             hasPrev = true
         }
-        return orbMatches
+        return verified
+    }
+
+    /** Tracing-point seeds at their [h]-projected current positions, capped
+     *  by [TrackerConfig.TOTAL_POINT_CAP] (LK cost is linear in live points
+     *  and budget SoCs pay for every one). Projections landing off-frame are
+     *  skipped — LK would only fail them next frame. */
+    private fun addProjectedSeeds(seeds: List<Point>, h: DoubleArray, frameW: Int, frameH: Int) {
+        var budget = TrackerConfig.TOTAL_POINT_CAP - anchorPts.size
+        for (p in seeds) {
+            if (budget <= 0) break
+            val q = Homography.project(h, p.x, p.y)
+            val qx = q[0].toDouble()
+            val qy = q[1].toDouble()
+            if (qx < 0 || qy < 0 || qx >= frameW || qy >= frameH) continue
+            anchorPts.add(p)
+            currentPts.add(Point(qx, qy))
+            budget--
+        }
     }
 
     /** Register the overlay warp units to refine per-region (anchor-CN
@@ -200,20 +217,34 @@ class FrameTracker {
         return a
     }
 
-    /** Geometrically VERIFIED match count of [candidate] against [curGray] —
-     *  the re-lock probe. Ratio-test descriptor matches are fit with a RANSAC
-     *  homography and only its inliers count: raw descriptor count alone can
-     *  be high on repetitive text/UI patterns while the matches agree on no
-     *  geometry, and re-locking on that restores stale overlays over the
-     *  wrong scene. Read-only: no tracker state changes. */
-    fun verifiedMatchCount(candidate: Anchor, curGray: Mat): Int {
-        if (candidate.descriptors.empty()) return 0
+    /** A [probeAnchor] result: RANSAC-verified inlier correspondences and
+     *  their fitted anchor→current homography, sufficient to install the
+     *  anchor without repeating the ORB pass. */
+    class RelockProbe internal constructor(
+        /** Verified inlier count — the caller's re-lock criterion. */
+        val inliers: Int,
+        internal val srcPts: List<Point>,
+        internal val dstPts: List<Point>,
+        internal val h: DoubleArray,
+        internal val frameW: Int,
+        internal val frameH: Int,
+    )
+
+    /** Geometrically VERIFY [candidate] against [curGray] — the re-lock
+     *  probe. Ratio-test descriptor matches are fit with a RANSAC homography
+     *  and only its inliers count: raw descriptor count alone can be high on
+     *  repetitive text/UI patterns while the matches agree on no geometry,
+     *  and re-locking on that restores stale overlays over the wrong scene.
+     *  Read-only: no tracker state changes. Null when no verifiable geometry
+     *  exists; a strong probe feeds [installFromProbe] directly. */
+    fun probeAnchor(candidate: Anchor, curGray: Mat): RelockProbe? {
+        if (candidate.descriptors.empty()) return null
         val kps = MatOfKeyPoint()
         val desc = Mat()
         orb.detectAndCompute(curGray, emptyMask, kps, desc)
         if (desc.empty()) {
             kps.release(); desc.release()
-            return 0
+            return null
         }
         val knn = mutableListOf<MatOfDMatch>()
         matcher.knnMatch(candidate.descriptors, desc, knn, 2)
@@ -230,7 +261,7 @@ class FrameTracker {
             pair.release()
         }
         kps.release(); desc.release()
-        if (srcPts.size < 4) return 0
+        if (srcPts.size < 4) return null
 
         val src = MatOfPoint2f(*srcPts.toTypedArray())
         val dst = MatOfPoint2f(*dstPts.toTypedArray())
@@ -240,18 +271,46 @@ class FrameTracker {
         if (h.empty()) {
             h.release() // empty Mat still owns a native header
             mask.release()
-            return 0
+            return null
         }
         val hArr = matToArray(h)
         h.release()
-        var inliers = 0
-        if (Homography.isValid(hArr)) {
-            for (i in srcPts.indices) {
-                if (mask.get(i, 0)[0].toInt() == 1) inliers++
+        if (!Homography.isValid(hArr)) {
+            mask.release()
+            return null
+        }
+        val inSrc = ArrayList<Point>()
+        val inDst = ArrayList<Point>()
+        for (i in srcPts.indices) {
+            if (mask.get(i, 0)[0].toInt() == 1) {
+                inSrc.add(srcPts[i])
+                inDst.add(dstPts[i])
             }
         }
         mask.release()
-        return inliers
+        return RelockProbe(inSrc.size, inSrc, inDst, hArr, curGray.cols(), curGray.rows())
+    }
+
+    /** Verified match count of [candidate] against [curGray] — see
+     *  [probeAnchor]. */
+    fun verifiedMatchCount(candidate: Anchor, curGray: Mat): Int =
+        probeAnchor(candidate, curGray)?.inliers ?: 0
+
+    /** Install [newAnchor] from its successful [probeAnchor] result — the
+     *  re-lock path. Takes ownership. The probe's verified inliers become
+     *  the live correspondence set (no second ORB pass), and tracing-point
+     *  seeds enter at their H-projected positions: the probe proved the
+     *  scene is VISIBLE, not that it sits where the keyframe saw it. */
+    fun installFromProbe(newAnchor: Anchor, probe: RelockProbe): Int {
+        anchor?.release()
+        anchor = newAnchor
+        framesSinceRematch = 0
+        anchorPts = ArrayList(probe.srcPts.take(TrackerConfig.MAX_TRACK_POINTS))
+        currentPts = ArrayList(probe.dstPts.take(TrackerConfig.MAX_TRACK_POINTS))
+        lastMedianDisp = -1.0
+        addProjectedSeeds(newAnchor.seedPts, probe.h, probe.frameW, probe.frameH)
+        recomputeBaselines()
+        return probe.inliers
     }
 
     fun clearAnchor() {
@@ -289,10 +348,12 @@ class FrameTracker {
         // re-match before declaring the frame unusable. Throttled: when the
         // scene is genuinely gone, an every-frame re-match burns ~14 ms per
         // frame recovering the same handful of spurious points.
+        var didRematch = false
         if (currentPts.size < TrackerConfig.MIN_INLIERS_KEEP) {
             if (++framesSinceRematch >= TrackerConfig.STARVED_REMATCH_INTERVAL_FRAMES) {
                 rematch(curGray)
                 recomputeBaselines()
+                didRematch = true
             } else {
                 stepLk(curGray)
             }
@@ -300,11 +361,27 @@ class FrameTracker {
             // Periodic drift reset (~14 ms on device — inside a 33 ms slot).
             rematch(curGray)
             recomputeBaselines()
+            didRematch = true
         } else {
             stepLk(curGray)
         }
 
         val measurement = fitHomography()
+        if (didRematch) {
+            // A re-match replaces the correspondence set with pure ORB
+            // matches, dropping the tracing-point seeds — without
+            // replenishment, small regions starve below MIN_REGION_POINTS
+            // after the first drift reset and ride the global homography for
+            // the anchor's remaining life. Re-seed through the just-verified
+            // geometry (healthy fits only); a wrong H can't survive this —
+            // the seeds' next LK+RANSAC round prunes them along with it.
+            val a = anchor
+            val h = measurement.hCn
+            if (a != null && h != null && measurement.inliers >= TrackerConfig.MIN_INLIERS_KEEP) {
+                addProjectedSeeds(a.seedPts, h, curGray.cols(), curGray.rows())
+            }
+            recomputeBaselines()
+        }
         curGray.copyTo(prevGray)
         return measurement
     }
@@ -432,9 +509,28 @@ class FrameTracker {
     }
 
     private fun fitHomography(): TrackMeasurement {
-        if (anchorPts.size < 4) {
+        val (hArr, inliers) = pruneToVerified()
+        if (hArr == null) {
             return TrackMeasurement(null, 0, lastMedianDisp, anchorPts.size)
         }
+        val (perRegionH, perRegionSurvival) = fitRegions(hArr)
+        return TrackMeasurement(
+            hCn = hArr,
+            inliers = inliers,
+            medianDispPx = lastMedianDisp,
+            trackedPoints = anchorPts.size,
+            perRegionH = perRegionH,
+            perRegionSurvival = perRegionSurvival,
+        )
+    }
+
+    /** RANSAC-fit the live correspondence set and prune it to inliers (so
+     *  outliers don't poison the next LK step). Returns the fitted
+     *  anchor→current homography and the inlier count; (null, 0) when the
+     *  set is unfittable or the fit degenerate — the set is then left
+     *  unpruned (a degenerate fit's mask means nothing). */
+    private fun pruneToVerified(): Pair<DoubleArray?, Int> {
+        if (anchorPts.size < 4) return null to 0
         val src = MatOfPoint2f(*anchorPts.toTypedArray())
         val dst = MatOfPoint2f(*currentPts.toTypedArray())
         val mask = Mat()
@@ -443,37 +539,26 @@ class FrameTracker {
         if (h.empty()) {
             h.release() // empty Mat still owns a native header
             mask.release()
-            return TrackMeasurement(null, 0, lastMedianDisp, anchorPts.size)
+            return null to 0
         }
-
-        // Prune RANSAC outliers so they don't poison the next LK step.
-        var inliers = 0
+        val hArr = matToArray(h)
+        h.release()
+        if (!Homography.isValid(hArr)) {
+            mask.release()
+            return null to 0
+        }
         val keepAnchor = ArrayList<Point>(anchorPts.size)
         val keepCurrent = ArrayList<Point>(currentPts.size)
         for (i in anchorPts.indices) {
             if (mask.get(i, 0)[0].toInt() == 1) {
-                inliers++
                 keepAnchor.add(anchorPts[i])
                 keepCurrent.add(currentPts[i])
             }
         }
+        mask.release()
         anchorPts = keepAnchor
         currentPts = keepCurrent
-        mask.release()
-
-        val hArr = matToArray(h)
-        h.release()
-        val valid = Homography.isValid(hArr)
-
-        val (perRegionH, perRegionSurvival) = fitRegions(if (valid) hArr else null)
-        return TrackMeasurement(
-            hCn = if (valid) hArr else null,
-            inliers = inliers,
-            medianDispPx = lastMedianDisp,
-            trackedPoints = anchorPts.size,
-            perRegionH = perRegionH,
-            perRegionSurvival = perRegionSurvival,
-        )
+        return hArr to keepAnchor.size
     }
 
     /** Per-region refinement over the (already RANSAC-pruned) inlier set. */

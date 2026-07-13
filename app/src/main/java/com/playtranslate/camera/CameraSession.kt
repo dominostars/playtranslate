@@ -574,12 +574,12 @@ class CameraSession(
                 val seeded = frameTracker.installAnchor(anchor, cnKeyframe)
                 val locked = seeded >= TrackerConfig.MIN_INLIERS_ACQUIRE
                 engine.finishAcquire(acquireId, locked = locked)
-                Log.d(TAG, "acquire#$acquireId: anchor #${anchor.id} seeded $seeded correspondences locked=$locked")
+                Log.d(TAG, "acquire#$acquireId: anchor #${anchor.id} verified $seeded live-frame inliers locked=$locked")
                 if (!locked) {
-                    // Live-frame seeding failed (user moved away during the
-                    // slow OCR): the scene this keyframe describes is GONE.
-                    // Drop the dead anchor now; returning false below stops
-                    // its OCR output from being rasterized/cached/shown.
+                    // Live-frame verification failed (user moved away during
+                    // the slow OCR): the scene this keyframe describes is
+                    // GONE. Drop the dead anchor now; returning false below
+                    // stops its OCR output from being rasterized/cached/shown.
                     frameTracker.clearAnchor()
                 }
                 locked
@@ -863,17 +863,20 @@ class CameraSession(
         // text patterns match plentifully without agreeing on any geometry,
         // and a false re-lock shows stale translations over the wrong scene
         // (and destroys the cache entry). Verification happens BEFORE the
-        // entry is consumed.
-        val matches = frameTracker.verifiedMatchCount(anchor, cn)
-        if (matches < TrackerConfig.MIN_INLIERS_ACQUIRE) return false
+        // entry is consumed, and the successful probe IS the install — its
+        // verified correspondences and fitted H carry over, so no second
+        // ORB pass and no identity-position seeding of a re-aimed view.
+        val probe = frameTracker.probeAnchor(anchor, cn) ?: return false
+        if (probe.inliers < TrackerConfig.MIN_INLIERS_ACQUIRE) return false
 
         val id = engine.beginAcquire()
         if (id == 0L) return false
         anchorCache.remove(anchor to payload)
-        val seeded = frameTracker.installAnchor(anchor, anchor.cnGray)
-        engine.finishAcquire(id, locked = seeded >= TrackerConfig.MIN_INLIERS_ACQUIRE)
-        if (seeded < TrackerConfig.MIN_INLIERS_ACQUIRE) return false
-        Log.d(TAG, "relock: anchor #${anchor.id} restored with $matches matches, $seeded seeded")
+        val seeded = frameTracker.installFromProbe(anchor, probe)
+        // installFromProbe cannot fail: the probe already verified the lock
+        // criterion this call sits behind.
+        engine.finishAcquire(id, locked = true)
+        Log.d(TAG, "relock: anchor #${anchor.id} restored with $seeded verified inliers")
 
         synchronized(stateLock) {
             cachedOcr = payload.ocr
