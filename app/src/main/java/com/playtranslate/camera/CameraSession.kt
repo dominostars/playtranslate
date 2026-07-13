@@ -267,9 +267,13 @@ class CameraSession(
         }
     }
 
-    /** Build the analysis use case for the activity to bind. RGBA output
-     *  (no YUV handling; the tracker grays it via OpenCV); 16:9 to match the
-     *  Preview use case (shared FOV + deterministic FILL_CENTER mapping). */
+    /** Build the analysis use case for the activity to bind. YUV output —
+     *  the luma plane IS the tracker's gray channel for free, where
+     *  RGBA_8888 made CameraX run a YUV→RGBA conversion EVERY frame plus a
+     *  full-res cvtColor on our side to throw the color back away; color is
+     *  only needed once per acquire (keyframe + color ref) and is converted
+     *  there. 16:9 to match the Preview use case (shared FOV + deterministic
+     *  FILL_CENTER mapping). */
     fun buildAnalysisUseCase(): ImageAnalysis {
         ensureOpenCv()
         // The aspect-ratio strategy is load-bearing: without it the resolver
@@ -288,7 +292,6 @@ class CameraSession(
         return ImageAnalysis.Builder()
             .setResolutionSelector(selector)
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
             .build()
             .also { it.setAnalyzer(analysisExecutor, ::analyze) }
     }
@@ -424,19 +427,11 @@ class CameraSession(
         }
     }
 
-    /** RGBA ImageProxy → upright ARGB_8888 Bitmap (AnalysisUpright space).
-     *  Handles rowStride padding, then rotates upright. Keyframes only. */
+    /** YUV ImageProxy → upright ARGB_8888 Bitmap (AnalysisUpright space).
+     *  [ImageProxy.toBitmap] does the YUV→RGB conversion (plane strides
+     *  included); we rotate upright. Keyframes only — once per acquire. */
     private fun toUprightBitmap(proxy: ImageProxy): Bitmap {
-        val plane = proxy.planes[0]
-        val rowStridePx = plane.rowStride / plane.pixelStride
-        plane.buffer.rewind()
-        var bmp = Bitmap.createBitmap(rowStridePx, proxy.height, Bitmap.Config.ARGB_8888)
-        bmp.copyPixelsFromBuffer(plane.buffer)
-        if (rowStridePx != proxy.width) {
-            val cropped = Bitmap.createBitmap(bmp, 0, 0, proxy.width, proxy.height)
-            bmp.recycle()
-            bmp = cropped
-        }
+        var bmp = proxy.toBitmap()
         val rotation = proxy.imageInfo.rotationDegrees
         if (rotation != 0) {
             val m = Matrix().apply { postRotate(rotation.toFloat()) }

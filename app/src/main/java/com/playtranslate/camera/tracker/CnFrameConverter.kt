@@ -8,11 +8,12 @@ import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 
 /**
- * RGBA [ImageProxy] → upright canonical-space gray [Mat] for the tracker:
- * zero-copy wrap of the RGBA buffer → cvtColor gray → INTER_AREA downscale to
- * [CN_LONG_EDGE] on the long side → rotate upright per the proxy's
- * rotationDegrees. All scratch Mats are reused; the returned Mat is owned by
- * this converter and valid until the next [convert] call (clone to keep).
+ * YUV_420_888 [ImageProxy] → upright canonical-space gray [Mat] for the
+ * tracker: zero-copy wrap of the luma plane (Y IS the gray channel — no
+ * color conversion at all) → INTER_AREA downscale to [CN_LONG_EDGE] on the
+ * long side → rotate upright per the proxy's rotationDegrees. All scratch
+ * Mats are reused; the returned Mat is owned by this converter and valid
+ * until the next [convert] call (clone to keep).
  *
  * Analysis-thread only.
  */
@@ -22,7 +23,6 @@ class CnFrameConverter {
         const val CN_LONG_EDGE = 960
     }
 
-    private val grayFull = Mat()
     private val grayCn = Mat()
     private val grayUpright = Mat()
 
@@ -31,23 +31,22 @@ class CnFrameConverter {
         private set
 
     fun convert(proxy: ImageProxy): Mat {
-        val plane = proxy.planes[0]
-        plane.buffer.rewind()
-        // Zero-copy view over the RGBA buffer (rowStride-aware).
-        val rgba = Mat(
-            proxy.height, proxy.width, CvType.CV_8UC4,
-            plane.buffer, plane.rowStride.toLong(),
+        val yPlane = proxy.planes[0]
+        yPlane.buffer.rewind()
+        // Zero-copy view over the Y plane (rowStride-aware; the spec fixes
+        // the luma pixelStride at 1).
+        val gray = Mat(
+            proxy.height, proxy.width, CvType.CV_8UC1,
+            yPlane.buffer, yPlane.rowStride.toLong(),
         )
-        Imgproc.cvtColor(rgba, grayFull, Imgproc.COLOR_RGBA2GRAY)
-        rgba.release()
-
         val longEdge = maxOf(proxy.width, proxy.height)
         cnScale = CN_LONG_EDGE.toDouble() / longEdge
         Imgproc.resize(
-            grayFull, grayCn,
+            gray, grayCn,
             Size(proxy.width * cnScale, proxy.height * cnScale),
             0.0, 0.0, Imgproc.INTER_AREA,
         )
+        gray.release()
 
         return when (proxy.imageInfo.rotationDegrees) {
             90 -> { Core.rotate(grayCn, grayUpright, Core.ROTATE_90_CLOCKWISE); grayUpright }
@@ -58,7 +57,6 @@ class CnFrameConverter {
     }
 
     fun release() {
-        grayFull.release()
         grayCn.release()
         grayUpright.release()
     }
