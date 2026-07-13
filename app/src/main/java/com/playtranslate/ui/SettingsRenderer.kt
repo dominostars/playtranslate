@@ -881,15 +881,24 @@ class SettingsRenderer(
     private fun setupToolsSection() {
         setGroupHeader(R.id.headerTools, ctx.getString(R.string.settings_header_tools))
         refreshToolsSection()
-        bindHubCell(
-            root.findViewById(R.id.rowToolCamera),
-            HubCell(
-                iconRes = R.drawable.ic_camera,
-                title = ctx.getString(R.string.settings_cell_camera),
-                summary = ctx.getString(R.string.settings_cell_camera_summary),
-                onClick = { ctx.startActivity(Intent(ctx, CameraActivity::class.java)) },
-            ),
-        )
+        // Back camera required (the tool is aimed at external text; front
+        // cameras also break the overlay mapping — mirrored preview,
+        // unmirrored analysis). Camera-less handhelds just don't get the row.
+        val cameraRow = root.findViewById<View>(R.id.rowToolCamera)
+        val hasBackCamera =
+            ctx.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA)
+        cameraRow.isVisible = hasBackCamera
+        if (hasBackCamera) {
+            bindHubCell(
+                cameraRow,
+                HubCell(
+                    iconRes = R.drawable.ic_camera,
+                    title = ctx.getString(R.string.settings_cell_camera),
+                    summary = ctx.getString(R.string.settings_cell_camera_summary),
+                    onClick = { ctx.startActivity(Intent(ctx, CameraActivity::class.java)) },
+                ),
+            )
+        }
         bindHubCell(
             root.findViewById(R.id.rowToolDictionary),
             HubCell(

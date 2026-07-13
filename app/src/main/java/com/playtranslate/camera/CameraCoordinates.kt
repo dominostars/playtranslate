@@ -15,7 +15,10 @@ import kotlin.math.roundToInt
  * The preview is displayed with FILL_CENTER: the AU frame is uniformly scaled
  * to cover the view and center-cropped. Because the Preview and ImageAnalysis
  * use cases are bound with the same aspect ratio, both streams share a FOV and
- * this transform is fully determined by the two sizes.
+ * this transform is fully determined by the two sizes. It also assumes the
+ * preview is UNMIRRORED — true only for the back camera (PreviewView mirrors
+ * front-camera previews while analysis frames stay unmirrored), which is why
+ * the tool binds the back camera exclusively.
  *
  * Pure math — no Android camera types — so it is JVM-unit-testable.
  */

@@ -113,7 +113,13 @@ class CameraActivity : AppCompatActivity() {
 
         findViewById<ImageButton>(R.id.cameraBack).setOnClickListener { finish() }
 
-        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) {
+        // Back camera specifically (FEATURE_CAMERA), not FEATURE_CAMERA_ANY:
+        // the tool is "point the device at text", which a front camera can't
+        // aim — and PreviewView mirrors front-camera preview while
+        // ImageAnalysis frames stay unmirrored, so every overlay would render
+        // at the horizontally flipped position. Gating here also skips the
+        // CAMERA permission prompt on devices the tool can never work on.
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA)) {
             Toast.makeText(this, R.string.camera_unavailable, Toast.LENGTH_LONG).show()
             finish()
             return
@@ -204,17 +210,20 @@ class CameraActivity : AppCompatActivity() {
         providerFuture.addListener({
             if (isDestroyed || isFinishing) return@addListener
             val provider = providerFuture.get()
-            val selector = when {
-                provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) ->
-                    CameraSelector.DEFAULT_BACK_CAMERA
-                provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) ->
-                    CameraSelector.DEFAULT_FRONT_CAMERA
-                else -> {
-                    Toast.makeText(this, R.string.camera_unavailable, Toast.LENGTH_LONG).show()
-                    finish()
-                    return@addListener
-                }
+            // Back camera ONLY — no front fallback. The overlay path maps
+            // analysis-space coordinates to the view with a plain FILL_CENTER
+            // scale+offset (CameraCoordinates); a front camera breaks that
+            // contract because PreviewView mirrors its preview while analysis
+            // frames stay unmirrored, flipping every overlay horizontally.
+            // Mirror-compensating would also have to keep the rendered TEXT
+            // unmirrored per region — permanent warp-path complexity for a
+            // configuration the tool can't physically be aimed with.
+            if (!provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) {
+                Toast.makeText(this, R.string.camera_unavailable, Toast.LENGTH_LONG).show()
+                finish()
+                return@addListener
             }
+            val selector = CameraSelector.DEFAULT_BACK_CAMERA
             // 16:9 to match the analysis stream — same aspect ⇒ same FOV ⇒ the
             // FILL_CENTER mapping in CameraCoordinates is exact.
             val aspect = ResolutionSelector.Builder()
