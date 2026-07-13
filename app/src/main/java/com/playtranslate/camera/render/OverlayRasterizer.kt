@@ -37,8 +37,10 @@ class RasterRegion(
  * keyframe's AU size — identical box→child mapping to the live overlay
  * (auto-size fitting, GROW/ROTATE/STACK render modes, skeleton shimmer,
  * furigana outline) with zero duplicated logic. Each laid-out child is then
- * drawn into its own bitmap, and the child's frame IS its AU rect (the view
- * maps screenshot→view 1:1 when both are AU-sized).
+ * drawn into its own bitmap through its render transform, and its AU rect is
+ * the TRANSFORMED frame (the view maps screenshot→view 1:1 when both are
+ * AU-sized) — the layout frame alone is wrong for children the view
+ * positions via translationX/Y (furigana) or rotates in place (ROTATE mode).
  */
 class OverlayRasterizer(
     private val context: Context,
@@ -109,12 +111,33 @@ class OverlayRasterizer(
         }
 
         val regions = ArrayList<RasterRegion>(view.childCount)
+        val transform = android.graphics.Matrix()
+        val footprint = android.graphics.RectF()
         for (i in 0 until view.childCount) {
             val child = view.getChildAt(i)
             if (child.width <= 0 || child.height <= 0) continue
+            // A child's render position is not always its layout frame:
+            // mainline translation boxes are margin-positioned, but furigana
+            // children lay out at (0,0) and move via translationX/Y, and
+            // ROTATE-mode children add a 90° rotation about their pivot.
+            // Reproduce the parent-draw transform (view-property matrix, then
+            // the layout offset) and bake it into the raster: the footprint
+            // is the transformed frame, the pixels are drawn through the same
+            // matrix. Identity-transform children reduce to the old
+            // left/top path bit-for-bit.
+            transform.reset()
+            if (child.rotation != 0f) transform.setRotate(child.rotation, child.pivotX, child.pivotY)
+            transform.postTranslate(child.left + child.translationX, child.top + child.translationY)
+            footprint.set(0f, 0f, child.width.toFloat(), child.height.toFloat())
+            transform.mapRect(footprint)
+            val fpLeft = kotlin.math.floor(footprint.left)
+            val fpTop = kotlin.math.floor(footprint.top)
+            val bmpW = kotlin.math.ceil(footprint.right - fpLeft).toInt()
+            val bmpH = kotlin.math.ceil(footprint.bottom - fpTop).toInt()
+            if (bmpW <= 0 || bmpH <= 0) continue
             val auRect = Rect(
-                (child.left / s).toInt(), (child.top / s).toInt(),
-                (child.right / s).toInt(), (child.bottom / s).toInt(),
+                (fpLeft / s).toInt(), (fpTop / s).toInt(),
+                ((fpLeft + bmpW) / s).toInt(), ((fpTop + bmpH) / s).toInt(),
             )
             val box = boxes.getOrNull(i)
             // Dirty diff: same box content, same geometry, same scale →
@@ -127,8 +150,11 @@ class OverlayRasterizer(
                 regions.add(RasterRegion(reusable.bitmap, auRect, trackKeys.getOrElse(i) { -1 }, s, box))
                 continue
             }
-            val bmp = Bitmap.createBitmap(child.width, child.height, Bitmap.Config.ARGB_8888)
-            child.draw(Canvas(bmp))
+            val bmp = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bmp)
+            canvas.translate(-fpLeft, -fpTop)
+            canvas.concat(transform)
+            child.draw(canvas)
             regions.add(
                 RasterRegion(
                     bitmap = bmp,
