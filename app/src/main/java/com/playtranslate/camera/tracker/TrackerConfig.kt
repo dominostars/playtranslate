@@ -126,6 +126,14 @@ object TrackerConfig {
     /** Good-features budget for the anchorless (Idle) motion probe. */
     const val PROBE_POINTS = 40
 
+    /** Re-detect probe corners only when the LK-surviving set falls below
+     *  this floor, or every [PROBE_RESEED_INTERVAL_FRAMES] frames.
+     *  goodFeaturesToTrack is a whole-image pass (~2-5 ms on budget SoCs),
+     *  and Idle is exactly the state the analysis backoff exists to make
+     *  cheap — surviving corners keep measuring motion for free. */
+    const val PROBE_RESEED_MIN_POINTS = 20
+    const val PROBE_RESEED_INTERVAL_FRAMES = 30
+
     // ── Anchor LRU (re-lock on previously seen scenes without re-OCR) ─────
 
     /** Recently replaced anchors kept alive for instant re-lock. Each holds

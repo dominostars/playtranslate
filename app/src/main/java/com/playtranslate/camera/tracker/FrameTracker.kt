@@ -386,10 +386,17 @@ class FrameTracker {
         return measurement
     }
 
+    /** Frames since the probe corners were last re-detected. */
+    private var probeFramesSinceReseed = 0
+
     /** Anchorless motion probe: forward-LK the previous frame's probe corners
-     *  and report their median displacement; reseed on the current frame. */
+     *  and report their median displacement. Surviving corners carry over —
+     *  goodFeaturesToTrack is a whole-image pass, and Idle is the state the
+     *  analysis backoff exists to make cheap — with a re-detect when the set
+     *  starves or ages out (drifted corners lose distribution). */
     private fun probeMotion(curGray: Mat): TrackMeasurement {
         var motion = -1.0
+        val survivors = ArrayList<Point>(probePts.size)
         if (hasPrev && probePts.isNotEmpty()) {
             val prev = MatOfPoint2f(*probePts.toTypedArray())
             val next = MatOfPoint2f()
@@ -404,6 +411,7 @@ class FrameTracker {
             for (i in prevArr.indices) {
                 if (status.getOrNull(i)?.toInt() == 1) {
                     disps.add(abs(nextArr[i].x - prevArr[i].x) + abs(nextArr[i].y - prevArr[i].y))
+                    survivors.add(nextArr[i])
                 }
             }
             if (disps.isNotEmpty()) {
@@ -412,10 +420,18 @@ class FrameTracker {
             }
             prev.release(); next.release()
         }
-        val corners = MatOfPoint()
-        Imgproc.goodFeaturesToTrack(curGray, corners, TrackerConfig.PROBE_POINTS, 0.01, 12.0)
-        probePts = corners.toArray().toList()
-        corners.release()
+        probeFramesSinceReseed++
+        if (survivors.size < TrackerConfig.PROBE_RESEED_MIN_POINTS ||
+            probeFramesSinceReseed >= TrackerConfig.PROBE_RESEED_INTERVAL_FRAMES
+        ) {
+            val corners = MatOfPoint()
+            Imgproc.goodFeaturesToTrack(curGray, corners, TrackerConfig.PROBE_POINTS, 0.01, 12.0)
+            probePts = corners.toArray().toList()
+            corners.release()
+            probeFramesSinceReseed = 0
+        } else {
+            probePts = survivors
+        }
         curGray.copyTo(prevGray)
         hasPrev = true
         return TrackMeasurement(null, 0, motion, 0)
