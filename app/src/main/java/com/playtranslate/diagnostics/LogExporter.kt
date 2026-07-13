@@ -20,6 +20,13 @@ object LogExporter {
     private const val FILE_PROVIDER_AUTHORITY = "com.playtranslate.fileprovider"
     private const val LOGS_DIR = "logs"
     private const val LOGCAT_LINES = "5000"
+
+    /** A clip crosses a Binder transaction — ~1 MB per process, and text
+     *  parcels as UTF-16 — so a full [LOGCAT_LINES] dump can overflow it and
+     *  throw. ~200k chars lands at ~400 KB on the wire. */
+    private const val CLIPBOARD_MAX_CHARS = 200_000
+    private const val TRIM_MARKER = "[older lines trimmed to fit the clipboard]\n"
+
     private val FILE_NAME_FORMAT = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US)
     private val HEADER_FORMAT = SimpleDateFormat("yyyy-MM-dd HH:mm:ss z", Locale.US)
 
@@ -33,6 +40,26 @@ object LogExporter {
         val body = runLogcat()
         file.writeText(header + body)
         return file
+    }
+
+    /**
+     * The same header + logcat [exportLogcat] writes, as one blob capped to
+     * [CLIPBOARD_MAX_CHARS] — used by Settings → Export logs (long-press).
+     * Crash files are left to the share path: their stacks reach logcat through
+     * the default handler anyway, and the files outlive only a rolled-over log.
+     *
+     * Blocking (spawns `logcat`) — call off the main thread.
+     */
+    fun clipboardLogText(): String {
+        val header = buildHeader()
+        val body = runLogcat()
+        val room = CLIPBOARD_MAX_CHARS - header.length - TRIM_MARKER.length
+        if (body.length <= room) return header + body
+        // Drop the oldest output, never the newest — a bug report lives in the
+        // tail. Resume on a line boundary so the paste doesn't open mid-line.
+        val from = body.length - room
+        val start = body.indexOf('\n', from).let { if (it < 0) from else it + 1 }
+        return header + TRIM_MARKER + body.substring(start)
     }
 
     fun getCrashFiles(context: Context): List<File> {

@@ -937,6 +937,7 @@ class SettingsRenderer(
                 // the app via the system share sheet.
                 trailing = Trailing.EXTERNAL,
                 onClick = { exportLogs() },
+                onLongClick = { copyLogs() },
             ),
         )
         val donateUrl = "https://go.playtranslate.com/donate"
@@ -961,10 +962,41 @@ class SettingsRenderer(
 
     /** Long-press affordance on the external-link rows: copy the URL + toast. */
     private fun copyUrl(url: String) {
+        setClip("URL", url)
+        Toast.makeText(ctx, ctx.getString(R.string.toast_link_copied), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun setClip(label: CharSequence, text: CharSequence) {
         val clipboard =
             ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("URL", url))
-        Toast.makeText(ctx, ctx.getString(R.string.toast_link_copied), Toast.LENGTH_SHORT).show()
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
+    }
+
+    /** Long-press affordance on the Export logs row: the same logs a tap would
+     *  share, onto the clipboard instead of out through the share sheet. */
+    private fun copyLogs() {
+        lifecycleScope.launch {
+            val text = withContext(Dispatchers.IO) { LogExporter.clipboardLogText() }
+            // A clip this size can still be refused — an OEM clipboard cap, or a
+            // Binder buffer already loaded by other traffic. Toast, don't crash.
+            runCatching {
+                setClip(ctx.getString(R.string.settings_debug_export_logs_subject), text)
+            }.fold(
+                onSuccess = {
+                    Toast.makeText(ctx, ctx.getString(R.string.toast_copied), Toast.LENGTH_SHORT)
+                        .show()
+                },
+                onFailure = {
+                    Toast.makeText(
+                        ctx,
+                        ctx.getString(
+                            R.string.settings_debug_export_logs_failed, it.javaClass.simpleName,
+                        ),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                },
+            )
+        }
     }
 
     private fun exportLogs() {

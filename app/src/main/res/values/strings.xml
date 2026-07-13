@@ -3130,7 +3130,8 @@
     <!-- Subtitle on the export-logs row. -->
     <string name="settings_debug_export_logs_subtitle">Share recent logs for a bug report</string>
 
-    <!-- Share-sheet subject when sending log files. -->
+    <!-- Names the exported logs: share-sheet subject when sending the files, and
+         the clipboard label when the user long-presses the row to copy them. -->
     <string name="settings_debug_export_logs_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> logs</string>
 
     <!-- Error toast shown if log export failed. %1$s = exception
