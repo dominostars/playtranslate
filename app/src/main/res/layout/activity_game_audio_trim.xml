@@ -77,11 +77,20 @@
         android:layout_height="1dp"
         android:background="?attr/ptDivider" />
 
+    <!-- Vertical bar, one action per row. A horizontal row hands every child a
+         width budget the longest locale busts: "Use TTS instead" + "No audio" +
+         "Use selection" measure ~378dp at 360dp/fontScale 1.0 (~571dp in de,
+         ~565dp in tr), and LinearLayout overflows its LAST child — btnTrimSave,
+         the confirm — off the right edge, so the trim could not be committed at
+         all. Stacked, each child is measured against the bar's content width
+         (336dp at 360dp), so horizontal overflow is impossible in any locale at
+         any font scale; a label too long for one line wraps instead of clipping
+         (no M3 button style sets singleLine/ellipsize — only the .Dialog ones).
+         Order matches the old row, so TalkBack traversal is unchanged. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
+        android:orientation="vertical"
         android:padding="12dp">
 
         <com.google.android.material.button.MaterialButton
@@ -89,6 +98,7 @@
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="start"
             android:text="@string/game_audio_trim_use_tts"
             android:textAllCaps="false" />
 
@@ -97,19 +107,18 @@
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
+            android:layout_gravity="start"
             android:text="@string/game_audio_trim_no_audio"
             android:textAllCaps="false" />
 
-        <Space
-            android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:layout_weight="1" />
-
+        <!-- Primary confirm: full-width on its own row, below the secondaries it
+             concludes. 8dp clears the group (buttons carry 4dp insets, so the
+             gap reads as 16dp). -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnTrimSave"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
             android:text="@string/game_audio_trim_save"
             android:textAllCaps="false" />
 
