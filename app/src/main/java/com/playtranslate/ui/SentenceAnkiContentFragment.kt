@@ -291,8 +291,8 @@ class SentenceAnkiContentFragment : Fragment() {
                     // editor-return-before-panel-load case (duration 0).
                     getString(
                         R.string.game_audio_trim_duration,
-                        String.format(Locale.US, "%.1f", (range.second - range.first) / 1000.0),
-                        (maxOf(gameAudioDurationMs, range.second) / 1000).toString(),
+                        String.format(Locale.getDefault(), "%.1f", (range.second - range.first) / 1000.0),
+                        String.format(Locale.getDefault(), "%d", maxOf(gameAudioDurationMs, range.second) / 1000),
                     )
                 }
             }

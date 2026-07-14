@@ -29,7 +29,6 @@ import android.widget.TextView
 import com.playtranslate.R
 import com.playtranslate.RegionEntry
 import com.playtranslate.themeColor
-import java.text.BreakIterator
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.core.graphics.toColorInt
@@ -571,43 +570,31 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         )
     }
 
-    /** Sizes [tv]'s text so its longest unbreakable run fits the button's column.
+    /** Sizes [tv]'s text so every authored line fits the button's column.
      *
-     *  A label wraps to two lines at a legal break, but several translations are
-     *  a single long token with no break to take (ru "Автоперевод", th
-     *  "อัตโนมัติ"), and Android then splits the word mid-character. Stepping the
-     *  size down until that run fits keeps every break on a word boundary. It
-     *  also absorbs a large system font scale, which neither a fixed size nor a
-     *  hard-wrapped string could. */
+     *  The labels are written as one or two `\n`-separated lines and the view is
+     *  `maxLines = 2`, so a line wider than the column soft-wraps and pushes the
+     *  overflow past the cap, where it is dropped without a trace. Measuring each
+     *  whole LINE is what forbids that. Measuring the unbreakable runs inside a
+     *  line instead — as this did — only ever proves the pieces fit, never the
+     *  line: vi "Chụp\nmàn hình" breaks line 2 into "màn" and "hình", each of
+     *  which clears the column alone while the line does not, so "hình" silently
+     *  vanished at a large font scale.
+     *
+     *  Stepping the size down also keeps a single long token with no legal break
+     *  to take (ru "Автоперевод", th "อัตโนมัติ") off Android's mid-character
+     *  split, and absorbs a large system font scale, which neither a fixed size
+     *  nor a hard-wrapped string could. */
     private fun fitLabel(tv: TextView) {
         if (labelColumnPx <= 0) return
-        val runs = unbreakableRuns(tv.text?.toString().orEmpty())
-        if (runs.isEmpty()) return
+        val lines = tv.text?.toString().orEmpty().split('\n').filter { it.isNotBlank() }
+        if (lines.isEmpty()) return
         var size = labelMaxSp
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
-        while (size > labelMinSp && runs.maxOf { tv.paint.measureText(it) } > labelColumnPx) {
+        while (size > labelMinSp && lines.maxOf { tv.paint.measureText(it) } > labelColumnPx) {
             size -= 0.5f
             tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
         }
-    }
-
-    /** Splits [text] at every line-break opportunity the locale allows, so each
-     *  run is a span the line breaker cannot divide. Uses [BreakIterator] rather
-     *  than a space split because Thai and CJK break between words that have no
-     *  space between them; an embedded newline ends a run too. */
-    private fun unbreakableRuns(text: String): List<String> {
-        if (text.isBlank()) return emptyList()
-        val breaker = BreakIterator.getLineInstance(resources.configuration.locales[0])
-        breaker.setText(text)
-        val runs = mutableListOf<String>()
-        var start = breaker.first()
-        var end = breaker.next()
-        while (end != BreakIterator.DONE) {
-            text.substring(start, end).trim().takeIf { it.isNotEmpty() }?.let { runs += it }
-            start = end
-            end = breaker.next()
-        }
-        return runs
     }
 
     /** Refreshes the capture button's glyph + label from the active region

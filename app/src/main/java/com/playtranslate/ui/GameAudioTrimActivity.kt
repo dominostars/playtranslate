@@ -204,8 +204,8 @@ class GameAudioTrimActivity : AppCompatActivity() {
         // this session (up to the 180 s ring), not a guaranteed 3 minutes.
         tvDuration.text = getString(
             R.string.game_audio_trim_duration,
-            String.format(Locale.US, "%.1f", seconds),
-            (totalDurationMs / 1000).toString(),
+            String.format(Locale.getDefault(), "%.1f", seconds),
+            String.format(Locale.getDefault(), "%d", totalDurationMs / 1000),
         )
     }
 
