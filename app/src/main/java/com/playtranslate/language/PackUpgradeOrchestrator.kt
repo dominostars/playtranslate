@@ -331,8 +331,8 @@ class PackUpgradeOrchestrator(
                     activity.getString(
                         R.string.pack_upgrade_progress_format_with_bytes,
                         packLabel,
-                        humanSize(progress.bytesReceived),
-                        humanSize(progress.totalBytes),
+                        humanSize(activity, progress.bytesReceived),
+                        humanSize(activity, progress.totalBytes),
                     )
                 )
             }

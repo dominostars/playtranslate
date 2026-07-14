@@ -115,7 +115,7 @@ class OcrPackModelHelper(override val catalogKey: String) : ModelHelper {
         return entry.files?.sumOf { it.size } ?: entry.size
     }
 
-    override fun humanSize(ctx: Context): String = humanSize(expectedSize(ctx))
+    override fun humanSize(ctx: Context): String = humanSize(ctx, expectedSize(ctx))
 
     override fun delete(ctx: Context): Boolean {
         val dirGone = file(ctx).let { if (!it.exists()) true else it.deleteRecursively() }

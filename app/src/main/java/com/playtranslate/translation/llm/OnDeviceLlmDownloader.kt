@@ -92,6 +92,20 @@ class OnDeviceLlmDownloader(
 
     sealed interface Outcome {
         data object Success : Outcome
+
+        /**
+         * Pre-flight said no (RAM or disk). [reason] is USER-VISIBLE, not just a
+         * log line: `OfflineModelInstallController` interpolates it verbatim into
+         * the localized `*_download_failed` toast. Any byte size inside it must
+         * therefore be formatted with [humanSize] (which localizes number *and*
+         * unit); the OCR install path additionally logs it.
+         *
+         * Known gap: the carrier sentences themselves are still English literals
+         * (see [preflightRam]), so a French user gets a localized template around
+         * English words. Closing that means turning [reason] into a typed reason
+         * (@StringRes + args) so the UI can localize the whole sentence — a
+         * strings.xml change, deliberately out of scope here.
+         */
         data class Refused(val reason: String) : Outcome
         data class Failed(val reason: String, val cause: Throwable? = null) : Outcome
 
@@ -555,7 +569,7 @@ class OnDeviceLlmDownloader(
         // 5% headroom + 100 MB minimum on remaining bytes.
         val needed = (remaining * 105 / 100).coerceAtLeast(remaining + 100_000_000L)
         if (free < needed) {
-            return "Need ${humanSize(needed)} free, only ${humanSize(free)} available"
+            return "Need ${humanSize(context, needed)} free, only ${humanSize(context, free)} available"
         }
         return null
     }
@@ -617,7 +631,7 @@ class OnDeviceLlmDownloader(
             needed += (expectedSize * 25 / 10)
         }
         if (free < needed) {
-            return "Need ${humanSize(needed)} free, only ${humanSize(free)} available"
+            return "Need ${humanSize(context, needed)} free, only ${humanSize(context, free)} available"
         }
         return null
     }

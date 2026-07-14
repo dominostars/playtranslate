@@ -721,7 +721,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
      *  of reading as free. */
     private fun ocrSizeSubtitle(backend: OcrBackend): String =
         if (backend.isBuiltIn()) getString(R.string.settings_ocr_note_builtin)
-        else humanSize(backend.packKeys.sumOf { OcrPackModelHelper(it).expectedSize(this) })
+        else humanSize(this, backend.packKeys.sumOf { OcrPackModelHelper(it).expectedSize(this) })
 
     /** A backend is "built-in" — shown as such, with no size and no delete — when it
      *  needs no downloadable pack: ML Kit (no packs) or a recognizer bundled in the
@@ -758,7 +758,8 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
                                 overlay.setMessage(
                                     getString(
                                         R.string.install_downloading_with_bytes,
-                                        humanSize(p.received), humanSize(p.total),
+                                        humanSize(this@CaptureOverlaySettingsActivity, p.received),
+                                        humanSize(this@CaptureOverlaySettingsActivity, p.total),
                                     ),
                                 )
                             } else {
@@ -911,7 +912,8 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
                                 overlay.setMessage(
                                     getString(
                                         R.string.install_downloading_with_bytes,
-                                        humanSize(p.received), humanSize(p.total),
+                                        humanSize(this@CaptureOverlaySettingsActivity, p.received),
+                                        humanSize(this@CaptureOverlaySettingsActivity, p.total),
                                     ),
                                 )
                             } else {

@@ -67,7 +67,6 @@ import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.translation.llm.OnDeviceLlmBackend
 import com.playtranslate.translation.llm.OnDeviceLlmDownloader
 import com.playtranslate.translation.llm.humanSize
-import com.playtranslate.translation.llm.toGbDisplay
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.OcrBackend
 import com.playtranslate.ocr.registry.OcrModelManager
@@ -594,7 +593,7 @@ class TranslationServicesBinder(
         val ramText = when {
             backend is BergamotBackend ->
                 ctx.getString(R.string.offline_backend_bergamot_ram)
-            else -> onDeviceLlm?.availMemFloorBytes?.toGbDisplay()
+            else -> onDeviceLlm?.let { humanSize(ctx, it.availMemFloorBytes) }
                 ?: ctx.getString(R.string.offline_backend_mlkit_ram)
         }
         // On-device LLM rows show base + on-disk mmap-cache size, tinted with a

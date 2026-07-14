@@ -69,7 +69,6 @@ import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.translation.llm.OnDeviceLlmBackend
 import com.playtranslate.translation.llm.OnDeviceLlmDownloader
 import com.playtranslate.translation.llm.humanSize
-import com.playtranslate.translation.llm.toGbDisplay
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.OcrBackend
 import com.playtranslate.ocr.registry.OcrModelManager

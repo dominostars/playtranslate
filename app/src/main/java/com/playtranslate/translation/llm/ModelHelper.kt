@@ -68,7 +68,9 @@ interface ModelHelper {
     /** Catalog's expected file size in bytes. Returns 0 if the catalog entry is missing. */
     fun expectedSize(ctx: Context): Long
 
-    /** Human-readable expected size, e.g. "2.19 GB". */
+    /** Human-readable expected size, localized to [ctx]'s locale — e.g. "2.2 GB"
+     *  on an English device, "2,2 Go" on a French one. Implementations delegate
+     *  to the shared [com.playtranslate.translation.llm.humanSize]. */
     fun humanSize(ctx: Context): String
 
     /** Best-effort delete of both the verified file and any leftover partial.

@@ -43,12 +43,12 @@ fun OverlayProgress.showBergamotWarmupProgress(
         if (count > 1) {
             context.getString(
                 R.string.bergamot_warmup_downloading_multi,
-                index, count, humanSize(received), humanSize(total),
+                index, count, humanSize(context, received), humanSize(context, total),
             )
         } else {
             context.getString(
                 R.string.bergamot_warmup_downloading,
-                humanSize(received), humanSize(total),
+                humanSize(context, received), humanSize(context, total),
             )
         },
     )
@@ -65,7 +65,7 @@ fun OverlayProgress.showOcrDownloadProgress(context: Context, received: Long, to
     setMessage(
         context.getString(
             R.string.lang_setup_downloading_ocr_model,
-            humanSize(received), humanSize(total),
+            humanSize(context, received), humanSize(context, total),
         ),
     )
 }
@@ -80,7 +80,7 @@ fun OverlayProgress.showYomitanDownloadProgress(context: Context, received: Long
     setMessage(
         context.getString(
             R.string.yomitan_downloading_message,
-            humanSize(received), humanSize(total),
+            humanSize(context, received), humanSize(context, total),
         ),
     )
 }

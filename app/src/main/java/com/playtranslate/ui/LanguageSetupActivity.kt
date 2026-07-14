@@ -601,8 +601,8 @@ class LanguageSetupActivity : AppCompatActivity() {
                         dialog.setMessage(
                             getString(
                                 R.string.install_downloading_with_bytes,
-                                humanSize(progress.bytesReceived),
-                                humanSize(progress.totalBytes)
+                                humanSize(this@LanguageSetupActivity, progress.bytesReceived),
+                                humanSize(this@LanguageSetupActivity, progress.totalBytes)
                             )
                         )
                     }

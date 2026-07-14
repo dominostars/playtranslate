@@ -73,8 +73,8 @@ abstract class OnDeviceLlmBackend(
         if (isDeprecated()) modelHelper.deletePartials(context)
     }
 
-    /** Public read-through for the settings UI: pretty-formatted on-disk
-     *  size (e.g. "1.48 GB"). Wraps [ModelHelper.humanSize]. */
+    /** Public read-through for the settings UI: pretty-formatted on-disk size,
+     *  localized (e.g. "1.5 GB" / "1,5 Go"). Wraps [ModelHelper.humanSize]. */
     fun humanSize(): String = modelHelper.humanSize(context)
 
     /** Settings-row disk footprint: the base model size plus the on-disk mmap
@@ -83,7 +83,10 @@ abstract class OnDeviceLlmBackend(
      *  model is in use (dropped on disable/delete). */
     fun diskFootprint(): DiskFootprint {
         val cacheBytes = modelHelper.mmapCacheBytes(context)
-        return DiskFootprint(humanSize(modelHelper.expectedSize(context) + cacheBytes), cacheBytes > 0L)
+        return DiskFootprint(
+            humanSize(context, modelHelper.expectedSize(context) + cacheBytes),
+            cacheBytes > 0L,
+        )
     }
 
     final override val requiresInternet: Boolean = false
@@ -238,7 +241,7 @@ abstract class OnDeviceLlmBackend(
             // so the user-facing status line shows the per-call number. Devices
             // below totalMemFloorBytes never see this string — they get the
             // hardware-incompatibility reason from hardwareIncompatibilityReason().
-            val memStr = availMemFloorBytes.toGbDisplay()
+            val memStr = humanSize(context, availMemFloorBytes)
             return when {
                 !modelHelper.isInstalled(context) ->
                     BackendStatus.Info(

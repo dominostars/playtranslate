@@ -56,7 +56,7 @@ object Qwen35Mnn2bModel : ModelHelper {
 
     override fun expectedSize(ctx: Context): Long = catalogEntry(ctx)?.size ?: 0L
 
-    override fun humanSize(ctx: Context): String = humanSize(expectedSize(ctx))
+    override fun humanSize(ctx: Context): String = humanSize(ctx, expectedSize(ctx))
 
     override fun delete(ctx: Context): Boolean {
         val dirGone = file(ctx).let { if (!it.exists()) true else it.deleteRecursively() }

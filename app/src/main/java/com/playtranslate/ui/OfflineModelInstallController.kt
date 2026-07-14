@@ -241,8 +241,8 @@ class OfflineModelInstallController(
                     activity.runOnUiThread {
                         when (progress) {
                             is OnDeviceLlmDownloader.Progress.Downloading -> {
-                                val recv = humanSize(progress.received)
-                                val total = humanSize(progress.total)
+                                val recv = humanSize(activity, progress.received)
+                                val total = humanSize(activity, progress.total)
                                 progressDialog.setMessage(activity.getString(m.statusDownloading, recv, total))
                                 if (progress.total > 0) {
                                     progressDialog.setProgress(((progress.received * 100) / progress.total).toInt())
@@ -375,8 +375,8 @@ class OfflineModelInstallController(
             onProceed()
             return
         }
-        val needStr = formatGb(backend.availMemFloorBytes)
-        val freeStr = formatGb(mi.availMem)
+        val needStr = humanSize(activity, backend.availMemFloorBytes)
+        val freeStr = humanSize(activity, mi.availMem)
         val builder = OverlayAlert.Builder(activity)
             .setTitle(activity.getString(R.string.llm_low_memory_title))
             .setMessage(activity.getString(R.string.llm_low_memory_message, modelDisplayName, needStr, freeStr))
@@ -407,11 +407,6 @@ class OfflineModelInstallController(
             return true
         }
         return false
-    }
-
-    private fun formatGb(bytes: Long): String {
-        val gb = bytes / 1_000_000_000.0
-        return if (gb == gb.toLong().toDouble()) "${gb.toLong()} GB" else "%.1f GB".format(gb)
     }
 
     // ── Bergamot sibling (per-pair NMT, no descriptor) ───────────────────
@@ -455,8 +450,8 @@ class OfflineModelInstallController(
                     )
                     outcome = downloader.run { progress ->
                         if (progress is OnDeviceLlmDownloader.Progress.Downloading) {
-                            val recv = humanSize(progress.received)
-                            val total = humanSize(progress.total)
+                            val recv = humanSize(activity, progress.received)
+                            val total = humanSize(activity, progress.total)
                             activity.runOnUiThread {
                                 progressDialog.setMessage(activity.getString(R.string.bergamot_status_downloading, recv, total))
                                 if (progress.total > 0) {

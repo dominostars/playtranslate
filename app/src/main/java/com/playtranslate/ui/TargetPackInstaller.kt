@@ -77,8 +77,8 @@ class TargetPackInstaller(
                             dialog.setMessage(
                                 activity.getString(
                                     R.string.install_downloading_definitions_with_bytes,
-                                    humanSize(progress.bytesReceived),
-                                    humanSize(progress.totalBytes)
+                                    humanSize(activity, progress.bytesReceived),
+                                    humanSize(activity, progress.totalBytes)
                                 )
                             )
                         }

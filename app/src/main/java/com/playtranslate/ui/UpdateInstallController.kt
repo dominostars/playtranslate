@@ -87,7 +87,7 @@ class UpdateInstallController(private val activity: AppCompatActivity) {
                 append("\n\n")
                 append(
                     activity.getString(
-                        R.string.update_dialog_size_note, humanSize(release.apkSize),
+                        R.string.update_dialog_size_note, humanSize(activity, release.apkSize),
                     ),
                 )
                 if (OnDeviceLlmDownloader.isMetered(activity)) {
@@ -197,7 +197,7 @@ class UpdateInstallController(private val activity: AppCompatActivity) {
             .setMessage(
                 activity.getString(
                     R.string.update_progress_downloading,
-                    humanSize(0L), humanSize(release.apkSize),
+                    humanSize(activity, 0L), humanSize(activity, release.apkSize),
                 ),
             )
             .setProgress(0)
@@ -242,7 +242,7 @@ class UpdateInstallController(private val activity: AppCompatActivity) {
                             progress.setMessage(
                                 activity.getString(
                                     R.string.update_progress_downloading,
-                                    humanSize(p.bytesReceived), humanSize(p.totalBytes),
+                                    humanSize(activity, p.bytesReceived), humanSize(activity, p.totalBytes),
                                 ),
                             )
                         }
@@ -359,7 +359,11 @@ class UpdateInstallController(private val activity: AppCompatActivity) {
         OverlayAlert.Builder(activity)
             .hideIcon()
             .setTitle(activity.getString(R.string.update_error_title))
-            .setMessage(activity.getString(R.string.update_error_no_space, humanSize(neededBytes)))
+            .setMessage(
+                activity.getString(
+                    R.string.update_error_no_space, humanSize(activity, neededBytes),
+                ),
+            )
             .addButton(
                 activity.getString(R.string.update_error_retry),
                 activity.themeColor(R.attr.ptAccent),
