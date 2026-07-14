@@ -292,9 +292,9 @@
 
     <string name="cd_choose_ocr">OCRツールを選択</string>
 
-    <string name="cd_change_source_language">翻訳元の言語を変更</string>
+    <string name="cd_change_source_language">ゲームの言語を変更</string>
 
-    <string name="cd_change_target_language">翻訳先の言語を変更</string>
+    <string name="cd_change_target_language">使用する言語を変更</string>
 
     <string name="error_live_mode_unsupported_backend">現在の画面キャプチャ方式ではライブモードを利用できません。</string>
 
@@ -302,7 +302,7 @@
 
     <string name="error_single_app_not_fullscreen">翻訳を一時停止しています。キャプチャ対象のアプリが全画面表示になっていません。全画面表示に戻ると再開します。</string>
 
-    <string name="error_capture_blocked_secure">キャプチャ対象のアプリが画面キャプチャを許可していないため、何も読み取れません。</string>
+    <string name="error_capture_blocked_secure">保護されたコンテンツが画面キャプチャをブロックしているため、何も読み取れません。</string>
 
     <string name="probe_initializing">初期化中…</string>
 

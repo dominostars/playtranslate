@@ -286,15 +286,15 @@
     <string name="ocr_picker_title">选择 OCR 工具</string>
     <string name="ocr_picker_message">OCR 负责从截图中提取文字。不同的工具可能更适合不同的字体</string>
     <string name="cd_choose_ocr">选择 OCR 工具</string>
-    <string name="cd_change_source_language">更改源语言</string>
-    <string name="cd_change_target_language">更改目标语言</string>
+    <string name="cd_change_source_language">更改游戏语言</string>
+    <string name="cd_change_target_language">更改你的语言</string>
 
     <string name="error_live_mode_unsupported_backend">当前的屏幕截取方式不支持实时模式。</string>
 
     <string name="error_screen_capture_denied">实时模式已停止——屏幕截取权限被拒绝。</string>
 
     <string name="error_single_app_not_fullscreen">翻译已暂停——被截取的应用未占满屏幕。当该应用重新全屏时会自动恢复。</string>
-    <string name="error_capture_blocked_secure">无法读取任何内容——被截取的应用禁止屏幕截取。</string>
+    <string name="error_capture_blocked_secure">什么都无法读取——受保护的内容会阻止屏幕截取。</string>
     <string name="probe_initializing">正在初始化…</string>
 
     <string name="stream_kind_prompt_title">你选择了哪个共享选项？</string>

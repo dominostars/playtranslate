@@ -296,9 +296,9 @@
 
     <string name="cd_choose_ocr">Choisir l\'outil OCR</string>
 
-    <string name="cd_change_source_language">Changer la langue source</string>
+    <string name="cd_change_source_language">Changer la langue du jeu</string>
 
-    <string name="cd_change_target_language">Changer la langue cible</string>
+    <string name="cd_change_target_language">Changer votre langue</string>
 
     <string name="error_live_mode_unsupported_backend">Le mode en direct n\'est pas disponible avec la méthode de capture d\'écran actuelle.</string>
 
@@ -306,7 +306,7 @@
 
     <string name="error_single_app_not_fullscreen">La traduction est en pause — l\'appli capturée n\'occupe pas tout l\'écran. Elle reprend dès que l\'appli repasse en plein écran.</string>
 
-    <string name="error_capture_blocked_secure">Impossible de lire quoi que ce soit — l\'appli capturée bloque la capture d\'écran.</string>
+    <string name="error_capture_blocked_secure">Impossible de lire quoi que ce soit. Le contenu protégé bloque la capture d\'écran.</string>
 
     <string name="probe_initializing">Initialisation…</string>
 

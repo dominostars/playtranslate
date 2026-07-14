@@ -285,9 +285,9 @@
 
     <string name="cd_choose_ocr">اختيار أداة OCR</string>
 
-    <string name="cd_change_source_language">تغيير اللغة المصدر</string>
+    <string name="cd_change_source_language">تغيير لغة اللعبة</string>
 
-    <string name="cd_change_target_language">تغيير اللغة الهدف</string>
+    <string name="cd_change_target_language">تغيير لغتك</string>
 
     <string name="error_live_mode_unsupported_backend">الوضع المباشر غير متاح مع طريقة التقاط الشاشة الحالية.</string>
 
@@ -295,7 +295,7 @@
 
     <string name="error_single_app_not_fullscreen">الترجمة متوقفة مؤقتًا — التطبيق الملتقَط لا يملأ الشاشة. ستُستأنف عندما يعود التطبيق إلى وضع ملء الشاشة.</string>
 
-    <string name="error_capture_blocked_secure">لا يمكن قراءة أي شيء — التطبيق الملتقَط يحظر التقاط الشاشة.</string>
+    <string name="error_capture_blocked_secure">لا يمكن قراءة أي شيء — المحتوى المحمي يحظر التقاط الشاشة.</string>
 
     <string name="probe_initializing">جارٍ التهيئة…</string>
 

@@ -720,11 +720,16 @@
     <!-- Accessibility label (contentDescription) for the source OCR-attribution row + gear icon. -->
     <string name="cd_choose_ocr">Choose OCR tool</string>
     <!-- Accessibility label (contentDescription) for the tappable source-language
-         section header on the result screen; tapping it opens the language picker. -->
-    <string name="cd_change_source_language">Change source language</string>
+         section header on the result screen; tapping it opens the language picker.
+         Names the picker it opens (lang_translate_from, "Game Language"), not the
+         internal source/target vocabulary, so a screen-reader user is not told one
+         term and then shown another. Same contract as cd_choose_ocr / ocr_picker_title. -->
+    <string name="cd_change_source_language">Change game language</string>
     <!-- Accessibility label (contentDescription) for the tappable target-language
-         section header on the result screen; tapping it opens the language picker. -->
-    <string name="cd_change_target_language">Change target language</string>
+         section header on the result screen; tapping it opens the language picker.
+         Names the picker it opens (lang_translate_to, "Your Language"), not the
+         internal source/target vocabulary. -->
+    <string name="cd_change_target_language">Change your language</string>
 
     <!-- Error toast shown when the user tries to start live mode but
          the active capture backend doesn't support it. -->
@@ -735,10 +740,11 @@
     <string name="error_screen_capture_denied">Live mode stopped — screen capture permission was denied.</string>
     <!-- Single-app ("game only") capture stream states. Pending l10n batch. -->
     <!-- Status message in the in-app panel while live mode is paused because the user's chosen single-app capture target left fullscreen (split screen / freeform); clears itself. -->
-    <string name="error_single_app_not_fullscreen">Translation is paused — the captured app isn\'t filling the screen. It resumes when the app is fullscreen again.</string>
-    <!-- Status message in the in-app panel when every captured frame is black because the captured app sets FLAG_SECURE (banking apps, DRM video); live mode keeps polling. -->
-    <string name="error_capture_blocked_secure">Nothing can be read — this app blocks screen capture.</string>
-    <!-- Label on the small on-screen chip shown for ~1.5s at live-mode start while the capture stream is being classified; sits beside a small colored checker pattern. Keep short. -->
+    <string name="error_single_app_not_fullscreen">Translation is paused. The captured app isn\'t filling the screen. It resumes when the app is fullscreen again.</string>
+    <!-- Status message in the in-app panel when every captured frame is black because something on screen sets FLAG_SECURE (banking apps, DRM video); live mode keeps polling.
+         Two traps for translators, both of which this wording exists to dodge: it renders inside PlayTranslate's OWN panel, so "this app" reads as PlayTranslate, and its emitter (ReconcilerLiveMode) also runs when the user shared the WHOLE SCREEN, where there is no single captured app to name. Say what is protected, not who is blocking. -->
+    <string name="error_capture_blocked_secure">Nothing can be read. Protected content blocks screen capture.</string>
+    <!-- Label on the small on-screen chip shown for ~1.5s at live-mode start while the capture stream is being classified; sits beside a small colored checker pattern. The view measures its own localized label (StreamKindProbe.onMeasure), so there is no width limit: prefer the precise word over a short one. -->
     <string name="probe_initializing">Initializing…</string>
     <!-- Stream-scope prompt (this block): an on-screen alert dialog shown at live-mode start
          (MediaProjection-only backend) when the automatic probe could not determine which capture
@@ -1095,7 +1101,7 @@
 
     <!-- Toast shown from the same settings row when the recording
          permission is denied and the switch reverts to off. -->
-    <string name="anki_game_audio_permission_denied">Permission denied — game audio recording stays off</string>
+    <string name="anki_game_audio_permission_denied">Permission denied. Game audio recording stays off</string>
 
     <!-- Audio-source name: shown on the sentence cell's voice pill and as
          the source's section header in the audio picker. -->
@@ -1108,7 +1114,7 @@
     <!-- Subtitle under the enable switch shown in the audio picker's Game
          audio section while the feature is off (small grey text, may wrap):
          enabling helps future cards, not the one being edited. -->
-    <string name="audio_source_game_enable_hint">Not recording — turn on to capture game audio for future cards</string>
+    <string name="audio_source_game_enable_hint">Not recording. Turn on to capture game audio for future cards</string>
 
     <!-- Toolbar title of the game-audio trim editor screen. -->
     <string name="game_audio_trim_title">Trim Game Audio</string>
@@ -1554,10 +1560,10 @@
     <string name="llm_prompt_fatal_blank">The prompt can\'t be empty.</string>
     <!-- Line in the Save validation dialog (Translation prompt). Keep the
          literal {text} keyword verbatim. -->
-    <string name="llm_prompt_fatal_missing_text">The prompt must include {text} — without it, the phrase to translate is never sent to the model.</string>
+    <string name="llm_prompt_fatal_missing_text">The prompt must include {text}. Without it, the phrase to translate is never sent to the model.</string>
     <!-- Line in the Save validation dialog (Batch prompt). Keep the
          literal {strings} keyword verbatim. -->
-    <string name="llm_prompt_fatal_missing_strings">The prompt must include {strings} — without it, the phrases to translate are never sent to the model.</string>
+    <string name="llm_prompt_fatal_missing_strings">The prompt must include {strings}. Without it, the phrases to translate are never sent to the model.</string>
 
     <!-- Title of the bypassable dialog shown on Save when the prompt has
          advisory problems (degraded but functional; "Save anyway" saves). -->
@@ -1649,7 +1655,7 @@
 
     <!-- Footer below the offline (on-device) backends list — sets
          expectations about quality vs speed. -->
-    <string name="tr_service_offline_footer">Offline translations are used as a fallback when online translations are unavailable. <xliff:g id="brand_mlkit" example="MLKit">MLKit</xliff:g> translations are bad, but the other options can be very slow and taxing, be weary of using them for auto translation.</string>
+    <string name="tr_service_offline_footer">Offline translations are used as a fallback when online translations are unavailable. <xliff:g id="brand_mlkit" example="MLKit">MLKit</xliff:g> translations are bad, but the other options can be very slow and taxing, be wary of using them for auto translation.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          PER-BACKEND STATUS LINE on the cloud-backend rows.
@@ -2811,7 +2817,7 @@
     <!-- Expanded-row action on the History screen: copy the entry to the clipboard. -->
     <string name="history_action_copy">Copy</string>
     <!-- Expanded-row action on the History screen: open the Anki sentence-card composer for this entry. -->
-    <string name="history_action_anki">Add to Anki</string>
+    <string name="history_action_anki">Add to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
     <!-- Expanded-row action on the History screen: delete this entry (also the confirm button of its dialog). -->
     <string name="history_action_delete">Delete</string>
     <!-- Danger row under the History master switch: deletes every entry (also the confirm button of its dialog). -->

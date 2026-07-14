@@ -291,15 +291,15 @@
     <string name="ocr_picker_title">OCR-Tool auswählen</string>
     <string name="ocr_picker_message">OCR erkennt den Text auf einem Screenshot. Je nach Schriftart kann ein anderes Tool besser funktionieren</string>
     <string name="cd_choose_ocr">OCR-Tool auswählen</string>
-    <string name="cd_change_source_language">Ausgangssprache ändern</string>
-    <string name="cd_change_target_language">Zielsprache ändern</string>
+    <string name="cd_change_source_language">Spielsprache ändern</string>
+    <string name="cd_change_target_language">Deine Sprache ändern</string>
 
     <string name="error_live_mode_unsupported_backend">Der Live-Modus ist mit der aktuellen Bildschirmaufnahmemethode nicht verfügbar.</string>
 
     <string name="error_screen_capture_denied">Live-Modus gestoppt – die Berechtigung zur Bildschirmaufnahme wurde verweigert.</string>
 
     <string name="error_single_app_not_fullscreen">Die Übersetzung ist pausiert – die aufgenommene App füllt den Bildschirm nicht aus. Sie wird fortgesetzt, sobald die App wieder im Vollbild läuft.</string>
-    <string name="error_capture_blocked_secure">Es kann nichts gelesen werden – die App im Vordergrund blockiert die Bildschirmaufnahme.</string>
+    <string name="error_capture_blocked_secure">Es kann nichts gelesen werden. Geschützte Inhalte blockieren die Bildschirmaufnahme.</string>
     <string name="probe_initializing">Wird initialisiert…</string>
 
     <string name="stream_kind_prompt_title">Was hast du geteilt?</string>

@@ -288,15 +288,15 @@
     <string name="ocr_picker_title">Chọn công cụ OCR</string>
     <string name="ocr_picker_message">OCR là công nghệ trích xuất văn bản từ ảnh chụp màn hình. Các công cụ khác nhau có thể phù hợp hơn với những phông chữ khác nhau</string>
     <string name="cd_choose_ocr">Chọn công cụ OCR</string>
-    <string name="cd_change_source_language">Đổi ngôn ngữ nguồn</string>
-    <string name="cd_change_target_language">Đổi ngôn ngữ đích</string>
+    <string name="cd_change_source_language">Đổi ngôn ngữ trò chơi</string>
+    <string name="cd_change_target_language">Đổi ngôn ngữ của bạn</string>
 
     <string name="error_live_mode_unsupported_backend">Chế độ trực tiếp không khả dụng với phương thức chụp màn hình hiện tại.</string>
 
     <string name="error_screen_capture_denied">Đã dừng chế độ trực tiếp — quyền chụp màn hình đã bị từ chối.</string>
 
     <string name="error_single_app_not_fullscreen">Đã tạm dừng dịch — ứng dụng đang được chụp không hiển thị toàn màn hình. Việc dịch sẽ tiếp tục khi ứng dụng trở lại toàn màn hình.</string>
-    <string name="error_capture_blocked_secure">Không đọc được gì — ứng dụng này chặn việc chụp màn hình.</string>
+    <string name="error_capture_blocked_secure">Không đọc được gì — nội dung được bảo vệ chặn việc chụp màn hình.</string>
     <string name="probe_initializing">Đang khởi tạo…</string>
     <string name="stream_kind_prompt_title">Bạn đã chọn phương án chia sẻ nào?</string>
     <string name="stream_kind_prompt_message">Dịch trực tiếp hoạt động khác nhau giữa việc chia sẻ một ứng dụng và chia sẻ toàn bộ màn hình, và hệ thống không cho biết bạn đã chia sẻ cái nào.</string>

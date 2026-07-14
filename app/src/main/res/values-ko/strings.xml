@@ -289,15 +289,15 @@
     <string name="ocr_picker_title">OCR 도구 선택</string>
     <string name="ocr_picker_message">OCR은 스크린샷에서 텍스트를 추출합니다. 글꼴에 따라 다른 도구가 더 잘 작동할 수 있습니다</string>
     <string name="cd_choose_ocr">OCR 도구 선택</string>
-    <string name="cd_change_source_language">원본 언어 변경</string>
-    <string name="cd_change_target_language">대상 언어 변경</string>
+    <string name="cd_change_source_language">게임 언어 변경</string>
+    <string name="cd_change_target_language">내 언어 변경</string>
 
     <string name="error_live_mode_unsupported_backend">현재 화면 캡처 방식에서는 실시간 모드를 사용할 수 없습니다.</string>
 
     <string name="error_screen_capture_denied">실시간 모드가 중지되었습니다 — 화면 캡처 권한이 거부되었습니다.</string>
 
     <string name="error_single_app_not_fullscreen">번역이 일시정지되었습니다 — 캡처 대상 앱이 화면을 가득 채우지 않습니다. 앱이 다시 전체 화면이 되면 재개됩니다.</string>
-    <string name="error_capture_blocked_secure">아무것도 읽을 수 없습니다 — 캡처 대상 앱이 화면 캡처를 차단합니다.</string>
+    <string name="error_capture_blocked_secure">아무것도 읽을 수 없습니다 — 보호된 콘텐츠가 화면 캡처를 차단합니다.</string>
     <string name="probe_initializing">초기화 중…</string>
     <string name="stream_kind_prompt_title">어떤 공유 옵션을 선택하셨습니까?</string>
     <string name="stream_kind_prompt_message">실시간 번역은 앱 하나를 공유할 때와 전체 화면을 공유할 때 동작이 다르지만, 시스템은 무엇을 공유했는지 알려주지 않습니다.</string>

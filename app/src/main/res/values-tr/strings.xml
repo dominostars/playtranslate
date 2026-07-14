@@ -277,9 +277,9 @@
 
     <string name="cd_choose_ocr">OCR aracını seç</string>
 
-    <string name="cd_change_source_language">Kaynak dili değiştir</string>
+    <string name="cd_change_source_language">Oyun dilini değiştir</string>
 
-    <string name="cd_change_target_language">Hedef dili değiştir</string>
+    <string name="cd_change_target_language">Dilinizi değiştir</string>
 
     <string name="error_live_mode_unsupported_backend">Canlı mod, geçerli ekran yakalama yöntemiyle kullanılamıyor.</string>
 
@@ -287,7 +287,7 @@
 
     <string name="error_single_app_not_fullscreen">Çeviri duraklatıldı — yakalanan uygulama ekranı kaplamıyor. Uygulama tekrar tam ekran olduğunda devam eder.</string>
 
-    <string name="error_capture_blocked_secure">Hiçbir şey okunamıyor — yakalanan uygulama ekran yakalamayı engelliyor.</string>
+    <string name="error_capture_blocked_secure">Hiçbir şey okunamıyor — korumalı içerik ekran yakalamayı engelliyor.</string>
 
     <string name="probe_initializing">Hazırlanıyor…</string>
 

@@ -291,15 +291,15 @@
     <string name="ocr_picker_title">Elegir herramienta de OCR</string>
     <string name="ocr_picker_message">El OCR es lo que extrae el texto de una captura de pantalla. Distintas herramientas pueden funcionar mejor con distintos tipos de fuente</string>
     <string name="cd_choose_ocr">Elegir herramienta de OCR</string>
-    <string name="cd_change_source_language">Cambiar el idioma de origen</string>
-    <string name="cd_change_target_language">Cambiar el idioma de destino</string>
+    <string name="cd_change_source_language">Cambiar el idioma del juego</string>
+    <string name="cd_change_target_language">Cambiar tu idioma</string>
 
     <string name="error_live_mode_unsupported_backend">El modo en vivo no está disponible con el método de captura de pantalla actual.</string>
 
     <string name="error_screen_capture_denied">Modo en vivo detenido: se denegó el permiso de captura de pantalla.</string>
 
     <string name="error_single_app_not_fullscreen">La traducción está en pausa: la app capturada no ocupa toda la pantalla. Se reanudará cuando la app vuelva a estar en pantalla completa.</string>
-    <string name="error_capture_blocked_secure">No se puede leer nada: la app capturada bloquea la captura de pantalla.</string>
+    <string name="error_capture_blocked_secure">No se puede leer nada. El contenido protegido bloquea la captura de pantalla.</string>
     <string name="probe_initializing">Inicializando…</string>
     <string name="stream_kind_prompt_title">¿Qué opción de uso compartido elegiste?</string>
     <string name="stream_kind_prompt_message">La traducción en vivo funciona de forma distinta con una sola aplicación que con toda la pantalla, y el sistema no indica cuál se compartió.</string>

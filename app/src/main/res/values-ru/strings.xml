@@ -301,9 +301,9 @@
 
     <string name="cd_choose_ocr">Выбрать инструмент OCR</string>
 
-    <string name="cd_change_source_language">Изменить язык оригинала</string>
+    <string name="cd_change_source_language">Изменить язык игры</string>
 
-    <string name="cd_change_target_language">Изменить язык перевода</string>
+    <string name="cd_change_target_language">Изменить ваш язык</string>
 
     <string name="error_live_mode_unsupported_backend">Режим реального времени недоступен при текущем способе захвата экрана.</string>
 
@@ -311,7 +311,7 @@
 
     <string name="error_single_app_not_fullscreen">Перевод приостановлен — захватываемое приложение не занимает весь экран. Перевод возобновится, когда приложение снова развернётся на весь экран.</string>
 
-    <string name="error_capture_blocked_secure">Ничего не удаётся прочитать — захватываемое приложение блокирует захват экрана.</string>
+    <string name="error_capture_blocked_secure">Ничего не удаётся прочитать — защищённое содержимое блокирует захват экрана.</string>
 
     <string name="probe_initializing">Инициализация…</string>
 

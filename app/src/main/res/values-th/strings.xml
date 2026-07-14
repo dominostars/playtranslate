@@ -266,14 +266,14 @@
     <string name="ocr_picker_title">เลือกเครื่องมือ OCR</string>
     <string name="ocr_picker_message">OCR คือสิ่งที่ดึงข้อความออกมาจากภาพหน้าจอ เครื่องมือที่ต่างกันอาจเหมาะกับแบบอักษรที่ต่างกัน</string>
     <string name="cd_choose_ocr">เลือกเครื่องมือ OCR</string>
-    <string name="cd_change_source_language">เปลี่ยนภาษาต้นทาง</string>
-    <string name="cd_change_target_language">เปลี่ยนภาษาเป้าหมาย</string>
+    <string name="cd_change_source_language">เปลี่ยนภาษาของเกม</string>
+    <string name="cd_change_target_language">เปลี่ยนภาษาของคุณ</string>
 
     <string name="error_live_mode_unsupported_backend">โหมดสดไม่พร้อมใช้งานกับวิธีการจับภาพหน้าจอปัจจุบัน</string>
 
     <string name="error_screen_capture_denied">หยุดโหมดสดแล้ว — สิทธิ์การจับภาพหน้าจอถูกปฏิเสธ</string>
     <string name="error_single_app_not_fullscreen">การแปลหยุดชั่วคราว — แอปที่ถูกจับภาพไม่ได้แสดงเต็มหน้าจอ ระบบจะกลับมาแปลเมื่อแอปแสดงเต็มหน้าจออีกครั้ง</string>
-    <string name="error_capture_blocked_secure">อ่านข้อความไม่ได้ — แอปที่ถูกจับภาพบล็อกการจับภาพหน้าจอ</string>
+    <string name="error_capture_blocked_secure">อ่านข้อความไม่ได้ — เนื้อหาที่ได้รับการป้องกันบล็อกการจับภาพหน้าจอ</string>
     <string name="probe_initializing">กำลังเริ่มต้น…</string>
     <string name="stream_kind_prompt_title">คุณเลือกการแชร์แบบใด</string>
     <string name="stream_kind_prompt_message">การแปลสดทำงานต่างกันระหว่างการแชร์แอปเดียวกับการแชร์ทั้งหน้าจอ และระบบไม่ได้บอกว่าคุณแชร์แบบใด</string>
