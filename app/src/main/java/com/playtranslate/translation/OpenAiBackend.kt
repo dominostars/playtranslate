@@ -159,7 +159,9 @@ class OpenAiBackend(
             val baseUrl = baseUrlProvider().trim().trimEnd('/')
             val model = modelProvider()
             val system = QwenChatTemplate.systemPrompt(source, target)
-            val user = QwenChatTemplate.userMessage(text, source, target)
+            // Online backend: {context} is affordable here (server-side prefill)
+            // and is gated off for the on-device tiers. See TOKEN_CONTEXT.
+            val user = QwenChatTemplate.userMessage(text, source, target, includeContext = true)
             val translateStart = System.nanoTime()
             Log.i(TAG, "translate begin model=$model textLen=${text.length}")
 
@@ -234,7 +236,7 @@ class OpenAiBackend(
         val baseUrl = baseUrlProvider().trim().trimEnd('/')
         val model = modelProvider()
         val system = LlmBatchPrompt.systemPrompt(source, target)
-        val user = LlmBatchPrompt.userMessage(texts, source, target)
+        val user = LlmBatchPrompt.userMessage(texts, source, target, includeContext = true)
         val translateStart = System.nanoTime()
         Log.i(TAG, "translate batch begin model=$model batchSize=${texts.size} totalLen=${texts.sumOf { it.length }}")
 

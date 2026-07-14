@@ -28,9 +28,19 @@ object QwenChatTemplate {
     fun systemPrompt(source: String, target: String): String =
         LlmPromptTemplates.systemPrompt(source, target)
 
-    /** The user-turn body. Wrapped by the engine's `<|im_start|>user\n…<|im_end|>` markers. */
-    fun userMessage(text: String, source: String, target: String): String =
-        LlmPromptTemplates.translationUserMessage(text, source, target)
+    /**
+     * The user-turn body. Wrapped by the engine's `<|im_start|>user\n…<|im_end|>`
+     * markers on the MNN path, or sent as the API's user role by the cloud
+     * backends.
+     *
+     * This object is the one prose helper with consumers on BOTH sides of the
+     * `{context}` line — the cloud backends call this directly (online: pass
+     * `includeContext = true`), while [userBlock] reaches it for MNN (on-device:
+     * always false). Hence the un-defaulted parameter; see
+     * [LlmPromptTemplates.TOKEN_CONTEXT] for why on-device must not pay it.
+     */
+    fun userMessage(text: String, source: String, target: String, includeContext: Boolean): String =
+        LlmPromptTemplates.translationUserMessage(text, source, target, includeContext)
 
     /**
      * The system prompt with the full `<|im_start|>system\n…<|im_end|>\n`
@@ -50,9 +60,15 @@ object QwenChatTemplate {
      * The user turn with the full envelope plus the assistant role-open marker
      * so the model knows to start generating the response. Matches the spike's
      * `build_suffix` exactly (`mnn-spike/MNN/.../demo/llm_demo.cpp:125`).
+     *
+     * MNN-only (the envelope markers are what `use_template:false` expects), so
+     * `includeContext = false` is hardcoded, not passed: every on-device caller
+     * of this is by definition on the wrong side of the prefill budget. The
+     * on-device user turn is therefore byte-identical to its pre-{context} form.
      */
     fun userBlock(text: String, source: String, target: String): String =
-        "<|im_start|>user\n${userMessage(text, source, target)}<|im_end|>\n<|im_start|>assistant\n"
+        "<|im_start|>user\n${userMessage(text, source, target, includeContext = false)}" +
+            "<|im_end|>\n<|im_start|>assistant\n"
 
     /**
      * Qwen 3.5 user turn — identical to [userBlock] but opens the assistant turn

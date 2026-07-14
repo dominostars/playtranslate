@@ -72,6 +72,14 @@ object HyMtChatTemplate {
      * assistant-role open marker `<｜hy_Assistant｜>` so the model knows to
      * start generating the response. Matches the spike's `build_suffix`
      * exactly (`mnn-spike/MNN/.../demo/llm_demo.cpp`, MNN_HYMT branch).
+     *
+     * Carries no `{context}` — and must not grow one. That was originally a
+     * side-effect of Hunyuan-MT's model-card prompt being off-limits to the
+     * user-editable templates; it is now also the rule, because HyMt is an
+     * on-device tier and `{context}` is online-only
+     * ([com.playtranslate.translation.llm.LlmPromptTemplates.TOKEN_CONTEXT]).
+     * Wiring this object into `LlmPromptTemplates` would therefore break two
+     * invariants at once, not one.
      */
     @Suppress("UNUSED_PARAMETER")
     fun userBlock(text: String, source: String, target: String): String =

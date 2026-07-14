@@ -30,9 +30,11 @@ object GemmaE2BChatTemplate {
     fun systemPrompt(source: String, target: String): String =
         LlmPromptTemplates.systemPrompt(source, target)
 
-    /** Plain user-turn body. */
-    fun userMessage(text: String, source: String, target: String): String =
-        LlmPromptTemplates.translationUserMessage(text, source, target)
+    /** Plain user-turn body. [includeContext] is carried rather than hardcoded
+     *  so that a future online Gemma backend could not silently *lose* the
+     *  context feature; every caller today is MNN and passes false. */
+    fun userMessage(text: String, source: String, target: String, includeContext: Boolean): String =
+        LlmPromptTemplates.translationUserMessage(text, source, target, includeContext)
 
     /**
      * Full system block: `<bos><|turn>system\n{system}<turn|>\n`. `<bos>` is
@@ -53,5 +55,6 @@ object GemmaE2BChatTemplate {
      * EOS, where MNN's stop-token logic terminates the response.
      */
     fun userBlock(text: String, source: String, target: String): String =
-        "<|turn>user\n${userMessage(text, source, target)}<turn|>\n<|turn>model\n"
+        "<|turn>user\n${userMessage(text, source, target, includeContext = false)}" +
+            "<turn|>\n<|turn>model\n"
 }

@@ -108,10 +108,26 @@ object LlmPromptTemplates {
     const val TOKEN_COUNT = "{N}"
     const val TOKEN_STRINGS = "{strings}"
 
-    /** Recent source→translation pairs, or "" when the feature is off /
-     *  nothing qualifies. The provider's non-empty value is a self-contained
-     *  block ENDING IN "\n\n", so the default template renders byte-identical
-     *  to the pre-context prompt whenever context is absent. */
+    /** Recent source→translation pairs, or "" when the feature is off, nothing
+     *  qualifies, or the consumer is on-device. The provider's non-empty value
+     *  is a self-contained block ENDING IN "\n\n", so the default template
+     *  renders byte-identical to the pre-context prompt whenever context is
+     *  absent.
+     *
+     *  **ONLINE ONLY — a latency invariant, not a preference.** The block lands
+     *  in the USER turn, and the user turn is re-prefilled on every call:
+     *  [com.playtranslate.translation.mnn.MnnTranslator] caches the SYSTEM block
+     *  only. A server prefills the extra tokens for free; Thor (SD 8 Gen 2)
+     *  prefills at ~110 tok/s, i.e. ~9 ms per token, so a median 3-pair block
+     *  (~68 tokens) adds ~600 ms to EVERY on-device translation — roughly
+     *  doubling Qwen3.5-2B's 502 ms median. (Measured on the mnn-spike corpus:
+     *  reuse-vs-noreuse A/B, byte-identical output 500/500, 689 ms for the
+     *  77-token system block.)
+     *
+     *  That is why `includeContext` is a REQUIRED, un-defaulted parameter on
+     *  every builder below: a new backend must state which side of the line it
+     *  is on, so it can neither silently inherit a cost it cannot afford nor
+     *  silently lose the context it should have. */
     const val TOKEN_CONTEXT = "{context}"
 
     /** Advisory threshold — a template this long risks slowing (or
@@ -137,8 +153,8 @@ object LlmPromptTemplates {
         "{context}Please translate the following {source} text into {target}:\n\n{text}"
 
     // {context} prefixes the batch default for the same reason as the
-    // single-text default: the user's context toggle must alter EVERY LLM
-    // path it claims to (cloud multi-group live cycles batch), and an
+    // single-text default: the user's context toggle must alter every ONLINE
+    // LLM path it claims to (a cloud multi-group live cycle batches), and an
     // empty provider renders byte-identical to the pre-context prompt.
     const val DEFAULT_BATCH = "{context}Translate each of these {N} strings:\n{strings}"
 
@@ -192,11 +208,12 @@ object LlmPromptTemplates {
     var overrideProvider: (PromptKind) -> String? = { null }
 
     /** Composition-root hook for `{context}` (recent source→translation
-     *  pairs), same static-seam rationale as [overrideProvider]. Re-read on
-     *  every [translationUserMessage] call, and called from backend threads
-     *  (MNN's coroutine, cloud backends on IO) — implementations must be
-     *  thread-safe. Must return "" (never null) when nothing qualifies, and
-     *  a "\n\n"-terminated block otherwise (see [TOKEN_CONTEXT]). */
+     *  pairs), same static-seam rationale as [overrideProvider]. Reached ONLY
+     *  from a builder called with `includeContext = true` — i.e. the online
+     *  backends; the on-device paths never call it at all (see [TOKEN_CONTEXT]).
+     *  Re-read on every such call, from cloud-backend IO threads —
+     *  implementations must be thread-safe. Must return "" (never null) when
+     *  nothing qualifies, and a "\n\n"-terminated block otherwise. */
     @Volatile
     var contextProvider: (source: String, target: String) -> String = { _, _ -> "" }
 
@@ -217,14 +234,40 @@ object LlmPromptTemplates {
         substitute(effectiveTemplate(PromptKind.SYSTEM), languageValues(source, target))
 
     /** The user-turn prose wrapped around one text to translate. `{context}`
-     *  resolves through [contextProvider] here — backends and chat templates
-     *  never see it, so no signature anywhere changes with the feature. */
-    fun translationUserMessage(text: String, source: String, target: String): String =
+     *  resolves through [contextProvider] when [includeContext] is true and to
+     *  "" otherwise; [includeContext] is un-defaulted on purpose (see
+     *  [TOKEN_CONTEXT]) — the caller is the only thing that knows whether it can
+     *  afford the prefill. */
+    fun translationUserMessage(
+        text: String,
+        source: String,
+        target: String,
+        includeContext: Boolean,
+    ): String =
         substitute(
             effectiveTemplate(PromptKind.TRANSLATION),
-            languageValues(source, target) +
-                mapOf(TOKEN_TEXT to text, TOKEN_CONTEXT to contextProvider(source, target)),
+            languageValues(source, target) + mapOf(
+                TOKEN_TEXT to text,
+                TOKEN_CONTEXT to contextBlock(source, target, includeContext),
+            ),
         )
+
+    /**
+     * The `{context}` value for a consumer: the provider's block when the
+     * consumer is online, "" when it is not. The single place the online-only
+     * rule is enforced.
+     *
+     * Resolving to **""** rather than leaving the token unmapped is
+     * load-bearing: [substitute] passes tokens it has no value for through
+     * *literally*, and [DEFAULT_TRANSLATION] / [DEFAULT_BATCH] both open with
+     * `{context}` — so an omitted mapping would ship the characters "{context}"
+     * to the head of every on-device prompt. "" also preserves the
+     * renders-byte-identical-to-the-pre-context-prompt contract, which is what
+     * makes the on-device prompts bit-for-bit what they were before the feature
+     * existed (and what the MnnTranslator system-block cache is keyed on).
+     */
+    private fun contextBlock(source: String, target: String, includeContext: Boolean): String =
+        if (includeContext) contextProvider(source, target) else ""
 
     /**
      * The cloud batch system message: editable persona + fixed contract.
@@ -246,14 +289,21 @@ object LlmPromptTemplates {
     /** The cloud batch user message; [texts] ride along as a JSON array.
      *  `{context}` resolves here exactly like the single-text path — the
      *  JSON contract's "exactly one string per input" keeps context lines
-     *  out of the response array. */
-    fun batchUserMessage(texts: List<String>, source: String, target: String): String =
+     *  out of the response array. [includeContext] is parameterized even
+     *  though the batch path is cloud-only today ([LlmBatchPrompt]), so that an
+     *  on-device batch path could not silently inherit the prefill cost. */
+    fun batchUserMessage(
+        texts: List<String>,
+        source: String,
+        target: String,
+        includeContext: Boolean,
+    ): String =
         substitute(
             effectiveTemplate(PromptKind.BATCH),
             languageValues(source, target) + mapOf(
                 TOKEN_COUNT to texts.size.toString(),
                 TOKEN_STRINGS to PtJson.lenient.encodeToString(texts),
-                TOKEN_CONTEXT to contextProvider(source, target),
+                TOKEN_CONTEXT to contextBlock(source, target, includeContext),
             ),
         )
 

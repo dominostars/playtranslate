@@ -48,7 +48,7 @@ class LlmPromptTemplatesTest {
     fun `default translation prompt matches pre-refactor text`() {
         assertEquals(
             "Please translate the following Japanese text into English:\n\nこんにちは",
-            LlmPromptTemplates.translationUserMessage("こんにちは", "ja", "en"),
+            LlmPromptTemplates.translationUserMessage("こんにちは", "ja", "en", includeContext = true),
         )
     }
 
@@ -62,28 +62,28 @@ class LlmPromptTemplatesTest {
         assertEquals(
             "Recent dialogue for context:\n- 行くぞ → Let's go.\n\n" +
                 "Please translate the following Japanese text into English:\n\nこんにちは",
-            LlmPromptTemplates.translationUserMessage("こんにちは", "ja", "en"),
+            LlmPromptTemplates.translationUserMessage("こんにちは", "ja", "en", includeContext = true),
         )
     }
 
     @Test
     fun `context content is literal - dollars and tokens are not re-expanded`() {
         LlmPromptTemplates.contextProvider = { _, _ -> "Price {text} \$100 \\n:\n\n" }
-        val out = LlmPromptTemplates.translationUserMessage("hi", "ja", "en")
+        val out = LlmPromptTemplates.translationUserMessage("hi", "ja", "en", includeContext = true)
         assertTrue(out.startsWith("Price {text} \$100 \\n:\n\n"))
         // The template's own {text} still resolved to the payload exactly once.
         assertTrue(out.endsWith("into English:\n\nhi"))
     }
 
     @Test
-    fun `batch user message carries context too - the toggle must alter every LLM path`() {
+    fun `batch user message carries context too - the toggle must alter every ONLINE LLM path`() {
         LlmPromptTemplates.contextProvider = { _, _ ->
             "Recent dialogue lines, for context only:\n- 行くぞ → Let's go.\n\n"
         }
         assertEquals(
             "Recent dialogue lines, for context only:\n- 行くぞ → Let's go.\n\n" +
                 "Translate each of these 2 strings:\n[\"おはよう\",\"メニュー\"]",
-            LlmPromptTemplates.batchUserMessage(listOf("おはよう", "メニュー"), "ja", "en"),
+            LlmPromptTemplates.batchUserMessage(listOf("おはよう", "メニュー"), "ja", "en", includeContext = true),
         )
     }
 
@@ -93,7 +93,7 @@ class LlmPromptTemplatesTest {
         LlmPromptTemplates.resetOverrides()
         assertEquals(
             "Please translate the following Japanese text into English:\n\nこんにちは",
-            LlmPromptTemplates.translationUserMessage("こんにちは", "ja", "en"),
+            LlmPromptTemplates.translationUserMessage("こんにちは", "ja", "en", includeContext = true),
         )
     }
 
@@ -101,7 +101,7 @@ class LlmPromptTemplatesTest {
     fun `default batch user message matches pre-refactor text`() {
         assertEquals(
             "Translate each of these 2 strings:\n[\"おはよう\",\"メニュー\"]",
-            LlmPromptTemplates.batchUserMessage(listOf("おはよう", "メニュー"), "ja", "en"),
+            LlmPromptTemplates.batchUserMessage(listOf("おはよう", "メニュー"), "ja", "en", includeContext = true),
         )
     }
 
@@ -141,14 +141,14 @@ class LlmPromptTemplatesTest {
     @Test
     fun `injected text with backslashes and dollar signs survives literally`() {
         val text = "costs \$100 \\ path C:\\tmp \$1"
-        val out = LlmPromptTemplates.translationUserMessage(text, "ja", "en")
+        val out = LlmPromptTemplates.translationUserMessage(text, "ja", "en", includeContext = true)
         assertTrue(out.endsWith(":\n\n$text"))
     }
 
     @Test
     fun `json payload with quotes and newlines survives literally`() {
         val texts = listOf("say \"hi\"\nnow", "\$5 \\ ok")
-        val out = LlmPromptTemplates.batchUserMessage(texts, "ja", "en")
+        val out = LlmPromptTemplates.batchUserMessage(texts, "ja", "en", includeContext = true)
         // kotlinx emits \" and \n escapes inside the array — exactly these
         // bytes must land in the prompt (a group-ref-interpreting replace
         // would corrupt or throw on them).
@@ -157,7 +157,7 @@ class LlmPromptTemplatesTest {
 
     @Test
     fun `tokens inside injected values are not re-scanned`() {
-        val out = LlmPromptTemplates.translationUserMessage("literal {target} here", "ja", "en")
+        val out = LlmPromptTemplates.translationUserMessage("literal {target} here", "ja", "en", includeContext = true)
         assertTrue(out.contains("literal {target} here"))
     }
 
@@ -168,7 +168,7 @@ class LlmPromptTemplatesTest {
         }
         assertEquals(
             "{foo} hello {bar}",
-            LlmPromptTemplates.translationUserMessage("hello", "ja", "en"),
+            LlmPromptTemplates.translationUserMessage("hello", "ja", "en", includeContext = true),
         )
     }
 

@@ -19,6 +19,10 @@ object LlmBatchPrompt {
     fun systemPrompt(source: String, target: String): String =
         LlmPromptTemplates.batchSystemPrompt(source, target)
 
-    fun userMessage(texts: List<String>, source: String, target: String): String =
-        LlmPromptTemplates.batchUserMessage(texts, source, target)
+    fun userMessage(
+        texts: List<String>,
+        source: String,
+        target: String,
+        includeContext: Boolean,
+    ): String = LlmPromptTemplates.batchUserMessage(texts, source, target, includeContext)
 }
