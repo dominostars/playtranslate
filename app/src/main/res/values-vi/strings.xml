@@ -41,7 +41,7 @@
          QUICK SETTINGS TILE
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="tile_subtitle_a11y_required">Bật trợ năng</string>
+    <string name="tile_subtitle_a11y_required">Bật Hỗ trợ tiếp cận</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          STATUS MESSAGES
@@ -141,7 +141,7 @@
 
     <string name="restricted_settings_title">Cho phép Cài đặt bị hạn chế</string>
 
-    <string name="restricted_settings_message">Từ trang cài đặt Android của <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, hãy chọn nút có ba dấu chấm (⋮) ở góc trên bên phải, rồi chọn \"Cho phép cài đặt bị hạn chế\". Sau khi xác thực, bạn sẽ có thể bật quyền trợ năng.</string>
+    <string name="restricted_settings_message">Từ trang cài đặt Android của <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, hãy chọn nút có ba dấu chấm (⋮) ở góc trên bên phải, rồi chọn \"Cho phép cài đặt bị hạn chế\". Sau khi xác thực, bạn sẽ có thể bật quyền Hỗ trợ tiếp cận.</string>
 
     <string name="btn_open_app_settings">Mở Cài đặt <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
 
@@ -375,7 +375,7 @@
 
     <string name="mp_overlay_permission_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> cần quyền hiển thị trên các ứng dụng khác để các nút điều khiển màn hình trò chơi nổi có thể hiện lên trên trò chơi của bạn.</string>
 
-    <string name="mp_overlay_permission_button">Mở cài đặt</string>
+    <string name="mp_overlay_permission_button">Mở Cài đặt</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          FLOATING-ICON GESTURE HINTS
@@ -412,7 +412,7 @@
 
     <string name="enhanced_auto_translate_title">Tự động dịch nâng cao</string>
 
-    <string name="enhanced_auto_translate_subtitle_off">Dễ đọc hơn, phản hồi nhanh hơn, ổn định hơn. Cần quyền trợ năng.</string>
+    <string name="enhanced_auto_translate_subtitle_off">Dễ đọc hơn, phản hồi nhanh hơn, ổn định hơn. Cần quyền Hỗ trợ tiếp cận.</string>
 
     <string name="enhanced_auto_translate_subtitle_on">Đã bật</string>
 
@@ -513,7 +513,7 @@
 
     <string name="game_audio_trim_save">Dùng đoạn đã chọn</string>
 
-    <string name="game_audio_trim_use_tts">Dùng TTS thay thế</string>
+    <string name="game_audio_trim_use_tts">Dùng chuyển văn bản thành giọng nói</string>
 
     <string name="game_audio_trim_no_audio">Không có âm thanh</string>
 
@@ -1102,7 +1102,7 @@
 
     <string name="floating_icon_close_label_hide">Ẩn</string>
 
-    <string name="floating_menu_btn_capture_region">Vùng\nchụp</string>
+    <string name="floating_menu_btn_capture_region">Chụp\nvùng</string>
 
     <string name="floating_menu_capture_screen">Chụp\nmàn&#160;hình</string>
 

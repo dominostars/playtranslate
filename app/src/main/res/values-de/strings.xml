@@ -1106,7 +1106,7 @@
 
     <string name="floating_icon_close_label_hide">Ausblenden</string>
 
-    <string name="floating_menu_btn_capture_region">Aufnahme-\nbereich</string>
+    <string name="floating_menu_btn_capture_region">Bereich\naufnehmen</string>
 
     <string name="floating_menu_capture_screen">Bildschirm\naufnehmen</string>
 

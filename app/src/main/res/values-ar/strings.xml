@@ -257,7 +257,7 @@
 
     <string name="lang_section_update_packs_title">تحديث حزم اللغة</string>
     <string name="lang_section_offline_models_title">تنزيل النماذج دون اتصال</string>
-    <string name="lang_section_offline_models_subtitle">لم يتم تنزيل الترجمة دون اتصال لـ <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> ← <xliff:g id="target_language" example="English">%2$s</xliff:g>. لا يزال التطبيق يعمل عبر الإنترنت.</string>
+    <string name="lang_section_offline_models_subtitle">لم يتم تنزيل الترجمة دون اتصال (<xliff:g id="source_language" example="Japanese">%1$s</xliff:g> ← <xliff:g id="target_language" example="English">%2$s</xliff:g>). لا يزال التطبيق يعمل عبر الإنترنت.</string>
 
     <string name="settings_no_displays_found">لم يتم العثور على أي شاشات</string>
 
@@ -1042,7 +1042,7 @@
 
     <string name="floating_icon_close_label_hide">إخفاء</string>
 
-    <string name="floating_menu_btn_capture_region">منطقة\nالالتقاط</string>
+    <string name="floating_menu_btn_capture_region">التقاط\nالمنطقة</string>
 
     <string name="floating_menu_capture_screen">التقاط\nالشاشة</string>
 
@@ -1339,7 +1339,7 @@
 
     <string name="yomitan_no_space_title">مساحة غير كافية</string>
 
-    <string name="yomitan_no_space_message">يحتاج استيراد هذا القاموس إلى حوالي <xliff:g id="needed" example="180 MB">%1$s</xliff:g> من المساحة الحرة، لكن <xliff:g id="available" example="42 MB">%2$s</xliff:g> فقط متاحة. حرّر بعض المساحة وحاول مرة أخرى.</string>
+    <string name="yomitan_no_space_message">يحتاج استيراد هذا القاموس إلى حوالي <xliff:g id="needed" example="180 MB">%1$s</xliff:g> من مساحة التخزين، لكن <xliff:g id="available" example="42 MB">%2$s</xliff:g> فقط متاحة. حرّر بعض المساحة وحاول مرة أخرى.</string>
 
     <string name="yomitan_single_dict_title">عرض التعريفات من قاموس واحد فقط</string>
 

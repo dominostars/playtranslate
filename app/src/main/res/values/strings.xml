@@ -384,11 +384,11 @@
     <!-- Misc tag: endearing/affectionate. -->
     <string name="misc_endearing">Endearing</string>
     <!-- Misc tag: children's language. -->
-    <string name="misc_childrens">Children\'s</string>
+    <string name="misc_childrens">Children\'s language</string>
     <!-- Misc tag: used chiefly by/about women. -->
-    <string name="misc_female_speech">Female term</string>
+    <string name="misc_female_speech">Women\'s speech</string>
     <!-- Misc tag: used chiefly by/about men. -->
-    <string name="misc_male_speech">Male term</string>
+    <string name="misc_male_speech">Men\'s speech</string>
     <!-- Misc tag: archaic — no longer in normal use. -->
     <string name="misc_archaic">Archaic</string>
     <!-- Misc tag: obsolete. -->
@@ -716,7 +716,7 @@
          user switch OCR tools for the current source language. -->
     <string name="ocr_picker_title">Choose OCR tool</string>
     <!-- Body text of that same "Choose OCR tool" dialog, shown under the title. -->
-    <string name="ocr_picker_message">OCR is what extracts text from a screenshot. Different tools might be better for different fonts</string>
+    <string name="ocr_picker_message">OCR is what extracts text from a screenshot. Different tools might be better for different fonts.</string>
     <!-- Accessibility label (contentDescription) for the source OCR-attribution row + gear icon. -->
     <string name="cd_choose_ocr">Choose OCR tool</string>
     <!-- Accessibility label (contentDescription) for the tappable source-language
@@ -1632,7 +1632,7 @@
     <!-- The provider needs an account before it can translate. -->
     <string name="service_account_required">Account required</string>
     <!-- Same, for a provider whose account has a free tier (DeepL). -->
-    <string name="service_account_required_free">Account required (Free option)</string>
+    <string name="service_account_required_free">Account required (free option)</string>
     <!-- The provider needs no account at all (Lingva). -->
     <string name="service_no_account_required">No account required</string>
     <!-- Subtitle line under a service cell's title on the Translation
@@ -2115,7 +2115,7 @@
          variant). -->
     <string name="menu_capture_region">Capture Region</string>
 
-    <!-- Overflow-menu item that opens the Translations history. -->
+    <!-- Overflow-menu item that returns to the translations view: it dismisses the menu and hides the region picker (MainActivity, menuItemTranslations). It does NOT open the History screen, despite the row's history icon. An earlier version of this comment said it did, and ja/ko/zh faithfully translated the comment instead of the string, shipping "Translation history" on a row that opens no history. -->
     <string name="menu_translations">Translations</string>
 
     <!-- Overflow-menu item that closes the menu without a navigation. -->
@@ -2652,7 +2652,7 @@
     <string name="settings_ocr_use_manga_title">Use MangaOCR</string>
     <!-- Subtitle under the "Use MangaOCR" toggle cell in OCR settings — a speed warning. Auto is in reference to
          the auto translation feature -->
-    <string name="settings_ocr_use_manga_subtitle">WARNING: High quality, but slow. Not recommended for auto. MangaOCR is a supplement to the selected OCR, it cannot work alone</string>
+    <string name="settings_ocr_use_manga_subtitle">WARNING: High quality, but slow. Not recommended for auto. MangaOCR is a supplement to the selected OCR and cannot work alone.</string>
     <!-- Title of the confirmation dialog shown when the user turns the "Use MangaOCR" toggle off. -->
     <string name="settings_ocr_disable_manga_title">Turn off MangaOCR?</string>
     <!-- Body of the turn-off-MangaOCR dialog. %1$s = the downloaded model size, e.g. "68 MB". -->
@@ -2813,7 +2813,7 @@
     <!-- Empty-state body on the History screen when the master toggle is off (doubles as onboarding). -->
     <string name="history_empty_off">Text history is off. Turn it on to keep the sentences <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> captures.</string>
     <!-- Empty-state body on the History screen when the toggle is on but nothing is recorded yet. -->
-    <string name="history_empty_none">Nothing here yet. Lines appear as they translate.</string>
+    <string name="history_empty_none">Nothing here yet. Lines appear as they are translated.</string>
     <!-- Expanded-row action on the History screen: copy the entry to the clipboard. -->
     <string name="history_action_copy">Copy</string>
     <!-- Expanded-row action on the History screen: open the Anki sentence-card composer for this entry. -->

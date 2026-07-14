@@ -516,7 +516,7 @@
 
     <string name="game_audio_trim_save">Usar seleção</string>
 
-    <string name="game_audio_trim_use_tts">Usar TTS</string>
+    <string name="game_audio_trim_use_tts">Usar conversão de texto em voz</string>
 
     <string name="game_audio_trim_no_audio">Sem áudio</string>
 

@@ -1025,9 +1025,9 @@
 
     <string name="translate_button_subtitle_hold_to_hide_translations">กดค้างเพื่อซ่อนคำแปลบนหน้าจอเกม</string>
 
-    <string name="translate_button_subtitle_hold_to_show_translations_instead_of_hint">กดค้างเพื่อแสดงคำแปลแทน <xliff:g id="hint_label" example="furigana">%1$s</xliff:g></string>
+    <string name="translate_button_subtitle_hold_to_show_translations_instead_of_hint">กดค้างเพื่อแสดงคำแปลแทน<xliff:g id="hint_label" example="furigana">%1$s</xliff:g></string>
 
-    <string name="translate_button_subtitle_hold_to_show_hint">กดค้างเพื่อแสดง <xliff:g id="hint_label" example="furigana">%1$s</xliff:g> บนหน้าจอเกม</string>
+    <string name="translate_button_subtitle_hold_to_show_hint">กดค้างเพื่อแสดง<xliff:g id="hint_label" example="furigana">%1$s</xliff:g>บนหน้าจอเกม</string>
 
     <string name="translate_button_subtitle_hold_to_show_translations">กดค้างเพื่อแสดงคำแปลบนหน้าจอเกม</string>
 
@@ -1040,7 +1040,7 @@
 
     <string name="floating_icon_close_label_hide">ซ่อน</string>
 
-    <string name="floating_menu_btn_capture_region">พื้นที่\nจับภาพ</string>
+    <string name="floating_menu_btn_capture_region">จับภาพ\nพื้นที่</string>
 
     <string name="floating_menu_capture_screen">จับภาพ\nหน้าจอ</string>
 
@@ -1493,7 +1493,7 @@
 
     <string name="hotkey_show_hint_title">กดค้างเพื่อแสดง<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
 
-    <string name="hotkey_show_hint_dialog_title">แสดง <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+    <string name="hotkey_show_hint_dialog_title">แสดง<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
 
     <string name="hotkey_auto_hint_title">แตะเพื่อเริ่ม/หยุด<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g>อัตโนมัติ</string>
 

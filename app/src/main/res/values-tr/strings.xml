@@ -1131,7 +1131,7 @@
 
     <string name="floating_icon_close_label_hide">Gizle</string>
 
-    <string name="floating_menu_btn_capture_region">Yakalama\nBölgesi</string>
+    <string name="floating_menu_btn_capture_region">Bölgeyi\nYakala</string>
 
     <string name="floating_menu_capture_screen">Ekranı\nYakala</string>
 

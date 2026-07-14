@@ -1090,7 +1090,7 @@
 
     <string name="menu_capture_region">キャプチャ範囲</string>
 
-    <string name="menu_translations">翻訳履歴</string>
+    <string name="menu_translations">翻訳</string>
 
     <string name="menu_close">閉じる</string>
 
@@ -1409,7 +1409,7 @@
         <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g>件の辞書をインポート済み</item>
     </plurals>
 
-    <string name="yomitan_page_description">Yomitan辞書は、Yomitanブラウザ拡張機能で使われる、有志が作成した辞書ファイルです。追加の辞書、頻度データ、高低アクセントなどの機能があります。+ボタンで辞書（.zip）をインポートすると、<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>がアプリ全体にシームレスに組み込みます。</string>
+    <string name="yomitan_page_description">Yomitan辞書は、Yomitanブラウザ拡張機能で使われる、有志が作成した辞書ファイルです。追加の辞書、頻度データ、高低アクセントなどの機能があります。+ボタンで辞書（.zip）をインポートすると、PlayTranslateがアプリ全体にシームレスに組み込みます。</string>
 
     <string name="yomitan_import_action">辞書をインポート</string>
 

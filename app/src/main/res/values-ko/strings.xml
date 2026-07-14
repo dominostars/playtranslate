@@ -1038,7 +1038,7 @@
 
     <string name="menu_capture_region">캡처 영역</string>
 
-    <string name="menu_translations">번역 기록</string>
+    <string name="menu_translations">번역</string>
 
     <string name="menu_close">닫기</string>
 
@@ -1102,7 +1102,7 @@
 
     <string name="floating_icon_close_label_hide">숨기기</string>
 
-    <string name="floating_menu_btn_capture_region">캡처\n영역</string>
+    <string name="floating_menu_btn_capture_region">영역\n캡처</string>
 
     <string name="floating_menu_capture_screen">화면\n캡처</string>
 

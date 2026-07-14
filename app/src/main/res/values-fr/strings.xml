@@ -1246,7 +1246,7 @@
 
     <string name="crash_dialog_send">Envoyer</string>
 
-    <string name="crash_dialog_discard">Ignorer</string>
+    <string name="crash_dialog_discard">Abandonner</string>
 
     <string name="crash_dialog_later">Plus tard</string>
 
