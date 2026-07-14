@@ -13,6 +13,7 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -28,6 +29,7 @@ import android.widget.TextView
 import com.playtranslate.R
 import com.playtranslate.RegionEntry
 import com.playtranslate.themeColor
+import java.text.BreakIterator
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.core.graphics.toColorInt
@@ -265,6 +267,14 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private var collapsedLeftMargin = 0
     private var menuAnchorRight = false
 
+    // ── Primary label sizing ──────────────────────────────────────────────
+    /** Resting text size of a primary button's label, and the floor [fitLabel]
+     *  is allowed to shrink it to. */
+    private val labelMaxSp = 11f
+    private val labelMinSp = 8.5f
+    /** Text column inside a primary button: its width less the label's side padding. */
+    private var labelColumnPx = 0
+
     // ── Drag state ────────────────────────────────────────────────────────
     private var isDragging = false
     private var dragStartX = 0f
@@ -285,6 +295,11 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         val primarySize = (78 * dp).toInt()
         val primaryGap = (11 * dp).toInt()
         val secondarySize = (48 * dp).toInt()
+        // Keeps a primary's label off the button's rounded edges: wrap-content plus
+        // this padding caps the text at primarySize - 2 * labelSidePad, so long
+        // (or localized) labels wrap instead of running to the corners.
+        val labelSidePad = (6 * dp).toInt()
+        labelColumnPx = primarySize - 2 * labelSidePad
         // Secondary lane matches the primary lane's height so its three icons
         // distribute top-to-bottom (space-between) across the same span.
         val laneHeight = primarySize * 2 + primaryGap
@@ -342,10 +357,11 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             layoutParams = LinearLayout.LayoutParams((26 * dp).toInt(), (26 * dp).toInt())
         }
         captureLabel = TextView(context).apply {
-            textSize = 11f
+            textSize = labelMaxSp
             gravity = Gravity.CENTER
             maxLines = 2
             setTypeface(null, Typeface.BOLD)
+            setPadding(labelSidePad, 0, labelSidePad, 0)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = (5 * dp).toInt() }
@@ -370,10 +386,11 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         liveLabel = TextView(context).apply {
             text = context.getString(R.string.live_mode_auto_translate_label)
             setTextColor(onAccentColor)
-            textSize = 11f
+            textSize = labelMaxSp
             gravity = Gravity.CENTER
             maxLines = 2
             setTypeface(null, Typeface.BOLD)
+            setPadding(labelSidePad, 0, labelSidePad, 0)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = (5 * dp).toInt() }
@@ -393,6 +410,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             addView(liveLabel)
             setOnClickListener { onToggleLive?.invoke() }
         }
+        fitLabel(liveLabel)
 
         primaryLane = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -553,6 +571,45 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         )
     }
 
+    /** Sizes [tv]'s text so its longest unbreakable run fits the button's column.
+     *
+     *  A label wraps to two lines at a legal break, but several translations are
+     *  a single long token with no break to take (ru "Автоперевод", th
+     *  "อัตโนมัติ"), and Android then splits the word mid-character. Stepping the
+     *  size down until that run fits keeps every break on a word boundary. It
+     *  also absorbs a large system font scale, which neither a fixed size nor a
+     *  hard-wrapped string could. */
+    private fun fitLabel(tv: TextView) {
+        if (labelColumnPx <= 0) return
+        val runs = unbreakableRuns(tv.text?.toString().orEmpty())
+        if (runs.isEmpty()) return
+        var size = labelMaxSp
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
+        while (size > labelMinSp && runs.maxOf { tv.paint.measureText(it) } > labelColumnPx) {
+            size -= 0.5f
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
+        }
+    }
+
+    /** Splits [text] at every line-break opportunity the locale allows, so each
+     *  run is a span the line breaker cannot divide. Uses [BreakIterator] rather
+     *  than a space split because Thai and CJK break between words that have no
+     *  space between them; an embedded newline ends a run too. */
+    private fun unbreakableRuns(text: String): List<String> {
+        if (text.isBlank()) return emptyList()
+        val breaker = BreakIterator.getLineInstance(resources.configuration.locales[0])
+        breaker.setText(text)
+        val runs = mutableListOf<String>()
+        var start = breaker.first()
+        var end = breaker.next()
+        while (end != BreakIterator.DONE) {
+            text.substring(start, end).trim().takeIf { it.isNotEmpty() }?.let { runs += it }
+            start = end
+            end = breaker.next()
+        }
+        return runs
+    }
+
     /** Refreshes the capture button's glyph + label from the active region
      *  (full screen → "Capture screen"; a custom region → "Capture region"),
      *  and its colors from live state — the prominent accent tint at rest, or
@@ -567,6 +624,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             else R.string.floating_menu_btn_capture_region
         )
         captureBtn.contentDescription = captureLabel.text
+        fitLabel(captureLabel)
 
         // Live: neutral left-lane styling (override). Otherwise the strong accent
         // when this is the active primary, else the subdued accent tint.
@@ -817,6 +875,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             (liveBtn.background as? GradientDrawable)?.setColor(if (strong) accentColor else accentTintColor)
         }
         liveBtn.contentDescription = liveLabel.text
+        fitLabel(liveLabel)
     }
 
     override fun onDraw(canvas: Canvas) {
