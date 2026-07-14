@@ -34,7 +34,6 @@ import com.playtranslate.language.stackableTargetScript
 import com.playtranslate.language.targetSupportsVerticalText
 import com.playtranslate.ui.TextBox
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -115,11 +114,16 @@ class CameraSession(
 
     private val analysisExecutor = Executors.newSingleThreadExecutor()
 
-    /** Bumped on mode/language change and shutdown; in-flight acquires check
-     *  it before PUBLISHING so stale display work drops silently. Acquire
-     *  lifecycle itself is owned by the engine (begin/finish ids) — this
-     *  guards only the display path. */
-    private val generation = AtomicInteger(0)
+    /** Ownership counter for every display publication — see [DisplayEpoch].
+     *  Advanced (atomically with the re-flavor caches, under [stateLock]) by
+     *  EVERY publication source: anchor install, relock, mode change, scene
+     *  wipe, reset, shutdown. Its predecessor only counted config changes,
+     *  so its checks read like race guards while ordering nothing between
+     *  acquires — two display tails could share a value and interleave.
+     *  Acquire lifecycle itself is owned by the engine (begin/finish ids);
+     *  [acquireJob] remains as the launch-CAPACITY gate — a missed
+     *  enrollment there now wastes compute instead of corrupting display. */
+    private val displayEpoch = DisplayEpoch()
     private val nextAnchorId = AtomicLong(1L)
 
     /** The in-flight acquire's coroutine. Cancellation-first: invalidation
@@ -387,7 +391,7 @@ class CameraSession(
                 val acquireId = engine.beginAcquire()
                 if (acquireId != 0L) {
                     val buffers = AcquireBuffers(toUprightBitmap(proxy), cn.clone())
-                    val gen = generation.get()
+                    val launchEpoch = displayEpoch.current()
                     Log.d(TAG, "acquire#$acquireId: keyframe ${buffers.keyframe.width}x${buffers.keyframe.height}")
                     // ATOMIC: a cancel that lands before first dispatch (mode
                     // toggle/reset in that window) must still run the body up
@@ -396,7 +400,7 @@ class CameraSession(
                     // skipped body leaks the keyframe and pins ACQUIRING
                     // until the 30 s watchdog.
                     acquireJob = scope.launch(Dispatchers.Default, kotlinx.coroutines.CoroutineStart.ATOMIC) {
-                        runAcquire(buffers, gen, acquireId)
+                        runAcquire(buffers, launchEpoch, acquireId)
                     }
                 }
             }
@@ -508,8 +512,7 @@ class CameraSession(
         }
     }
 
-    private suspend fun runAcquire(buffers: AcquireBuffers, gen: Int, acquireId: Long) {
-        var installed = false
+    private suspend fun runAcquire(buffers: AcquireBuffers, launchEpoch: Int, acquireId: Long) {
         val cnKeyframe = buffers.cnKeyframe
         val auW = buffers.auW
         val auH = buffers.auH
@@ -527,7 +530,10 @@ class CameraSession(
                 screenshotWidth = auW,
                 regionPreFilter = cameraRegionPreFilter(),
             )
-            if (gen != generation.get()) return
+            // A newer publication source appeared while the OCR ran (mode
+            // toggle / reset — cancellation-first usually got here earlier;
+            // this is the structural backstop).
+            if (!displayEpoch.isCurrent(launchEpoch)) return
             val rawCount = ocr?.groups?.size ?: 0
             val groups = ocr?.let { usableGroups(it, auW, auH) }.orEmpty()
             Log.d(
@@ -541,11 +547,15 @@ class CameraSession(
 
             if (groups.isEmpty()) {
                 // No text in this scene: the re-flavor cache must not keep
-                // describing a previous one. finally completes the acquire.
+                // describing a previous one. The wipe IS a publication source
+                // (it owns the now-empty display), so it advances the epoch —
+                // atomically with the caches — and any older tail dies at its
+                // next commit. finally completes the acquire.
                 synchronized(stateLock) {
                     cachedOcr = null
                     cachedGroupColors = null
                     lastBuilt = null
+                    displayEpoch.advance()
                 }
                 withContext(Dispatchers.Main) { warpView?.clearRegions() }
                 postHint(true)
@@ -562,10 +572,11 @@ class CameraSession(
             // Anchor install first (fast, ~15 ms) so tracking starts while
             // rasterization/translation still run. The engine's active-id
             // check makes a stale completion (watchdog fired, reset) a no-op
-            // instead of a resurrection.
-            installed = onAnalysisThread {
-                if (!engine.isAcquireActive(acquireId)) return@onAnalysisThread false
-                if (selfJob?.isActive == false) return@onAnalysisThread false
+            // instead of a resurrection. Returns the display epoch this
+            // acquire's tail publishes under, or 0 when the install failed.
+            val installEpoch = onAnalysisThread {
+                if (!engine.isAcquireActive(acquireId)) return@onAnalysisThread 0
+                if (selfJob?.isActive == false) return@onAnalysisThread 0
                 // The replaced scene goes to the LRU (with its display
                 // payload) instead of being released — glancing back at it
                 // re-locks without re-OCR.
@@ -588,23 +599,28 @@ class CameraSession(
                 if (!locked) {
                     // Live-frame verification failed (user moved away during
                     // the slow OCR): the scene this keyframe describes is
-                    // GONE. Drop the dead anchor now; returning false below
-                    // stops its OCR output from being rasterized/cached/shown.
+                    // GONE. Drop the dead anchor now; returning 0 below stops
+                    // its OCR output from being rasterized/cached/shown.
                     frameTracker.clearAnchor()
+                    return@onAnalysisThread 0
                 }
-                locked
-            } ?: false
+                // The new anchor owns the display from here. Epoch and the
+                // re-flavor caches move together, atomically: a mode toggle
+                // racing this either read the OLD caches under an epoch this
+                // advance just staled, or reads THESE caches and re-flavors
+                // the new scene — never the old scene's content over the new
+                // anchor's geometry.
+                synchronized(stateLock) {
+                    cachedOcr = gated
+                    cachedGroupColors = groupColors
+                    cachedAuW = auW
+                    cachedAuH = auH
+                    displayEpoch.advance()
+                }
+            } ?: 0
 
-            if (!installed) return
-            // The re-flavor cache describes the CURRENTLY ANCHORED scene —
-            // set only after the lock actually succeeded.
-            synchronized(stateLock) {
-                cachedOcr = gated
-                cachedGroupColors = groupColors
-                cachedAuW = auW
-                cachedAuH = auH
-            }
-            buildAndShow(gated!!, groupColors, auW, auH, gen)
+            if (installEpoch == 0) return
+            buildAndShow(gated!!, groupColors, auW, auH, installEpoch)
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Log.w(TAG, "acquire failed", e)
@@ -757,7 +773,7 @@ class CameraSession(
         groupColors: List<Pair<Int, Int>>,
         auW: Int,
         auH: Int,
-        gen: Int,
+        epoch: Int,
     ) {
         val mode = prefs.overlayMode
         when (mode) {
@@ -770,10 +786,10 @@ class CameraSession(
                 // One tracked region per group: key = group index.
                 val trackKeys = groups.indices.toList()
                 val regions = groups.mapIndexed { idx, g -> idx to g.bounds }
-                installTrackRegions(regions)
+                installTrackRegions(regions, epoch)
 
                 val placeholders = buildPlaceholderBoxes(groups, groupColors)
-                showRegions(placeholders, trackKeys, auW, auH, gen)
+                showRegions(placeholders, trackKeys, auW, auH, epoch)
 
                 val t0 = System.currentTimeMillis()
                 val translations = translator.translate(texts)
@@ -786,12 +802,12 @@ class CameraSession(
                         Log.d(TAG, "acquire text[$i]: \"${src.take(120)}\" -> \"${translations.getOrElse(i) { "" }.take(120)}\"")
                     }
                 }
-                if (gen != generation.get()) return
+                if (!displayEpoch.isCurrent(epoch)) return
                 val filled = placeholders.mapIndexed { idx, ph ->
                     ph.copy(translatedText = translations.getOrElse(idx) { "" })
                 }
-                showRegions(filled, trackKeys, auW, auH, gen)
-                rememberBuilt(ocr, filled, trackKeys, regions, groupColors, auW, auH, mode)
+                showRegions(filled, trackKeys, auW, auH, epoch)
+                rememberBuilt(ocr, filled, trackKeys, regions, groupColors, auW, auH, mode, epoch)
             }
             OverlayMode.FURIGANA -> {
                 val engine = SourceLanguageEngines.get(context, prefs.sourceLangId)
@@ -806,7 +822,7 @@ class CameraSession(
                     lineRegions.addAll(keyed)
                     lineKeysByGroup[group.bounds] = keyed
                 }
-                installTrackRegions(lineRegions)
+                installTrackRegions(lineRegions, epoch)
 
                 val boxes = mutableListOf<TextBox>()
                 val trackKeys = mutableListOf<Int>()
@@ -817,8 +833,8 @@ class CameraSession(
                         trackKeys.add(nearestLineKey(box, groupLines))
                     }
                 }
-                showRegions(boxes, trackKeys, auW, auH, gen)
-                rememberBuilt(ocr, boxes, trackKeys, lineRegions, groupColors, auW, auH, mode)
+                showRegions(boxes, trackKeys, auW, auH, epoch)
+                rememberBuilt(ocr, boxes, trackKeys, lineRegions, groupColors, auW, auH, mode, epoch)
             }
         }
     }
@@ -834,8 +850,14 @@ class CameraSession(
         auW: Int,
         auH: Int,
         mode: OverlayMode,
+        epoch: Int,
     ) {
         synchronized(stateLock) {
+            // A stale tail must not snapshot: lastBuilt pairs with the
+            // CURRENT anchor at the next detach, and a stale payload here is
+            // how the LRU ends up serving one scene's content on another
+            // scene's geometry.
+            if (!displayEpoch.isCurrent(epoch)) return
             lastBuilt = BuiltOverlays(ocr, boxes, trackKeys, regions, groupColors, auW, auH, mode, langKey())
         }
     }
@@ -889,21 +911,22 @@ class CameraSession(
         engine.finishAcquire(id, locked = true)
         Log.d(TAG, "relock: anchor #${anchor.id} restored with $seeded verified inliers")
 
-        synchronized(stateLock) {
+        // The relocked scene owns the display: epoch and caches move together.
+        val epoch = synchronized(stateLock) {
             cachedOcr = payload.ocr
             cachedGroupColors = payload.groupColors
             cachedAuW = payload.auW
             cachedAuH = payload.auH
             lastBuilt = payload
+            displayEpoch.advance()
         }
-        val gen = generation.get()
         // Tracked as THE acquire job: the relock's display tail is acquire
         // display work like any other — canAcquire stays false until it
         // lands, and mode/language invalidation can cancel it.
         acquireJob = scope.launch(Dispatchers.Default) {
             try {
-                installTrackRegions(payload.trackRegionsAu)
-                showRegions(payload.boxes, payload.trackKeys, payload.auW, payload.auH, gen)
+                installTrackRegions(payload.trackRegionsAu, epoch)
+                showRegions(payload.boxes, payload.trackKeys, payload.auW, payload.auH, epoch)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 Log.w(TAG, "relock display failed", e)
@@ -936,9 +959,13 @@ class CameraSession(
 
     /** Register the flavor's warp units with the tracker as anchor-CN rects
      *  (AU rects × the anchor's cnScale). Serialized onto the analysis
-     *  thread; no-op when no anchor is installed yet. */
-    private suspend fun installTrackRegions(auRegions: List<Pair<Int, android.graphics.Rect>>) {
+     *  thread; no-op when no anchor is installed yet, or when [epoch] no
+     *  longer owns the display — a stale tail registering its rects against
+     *  a NEWER anchor's scale and points produces nonsense region membership
+     *  (garbage per-region fits, spurious collapse re-OCRs). */
+    private suspend fun installTrackRegions(auRegions: List<Pair<Int, android.graphics.Rect>>, epoch: Int) {
         onAnalysisThread {
+            if (!displayEpoch.isCurrent(epoch)) return@onAnalysisThread
             val cs = frameTracker.currentAnchor()?.cnScale ?: return@onAnalysisThread
             frameTracker.setTrackRegions(
                 auRegions.map { (key, r) ->
@@ -980,10 +1007,10 @@ class CameraSession(
         trackKeys: List<Int>,
         auW: Int,
         auH: Int,
-        gen: Int,
+        epoch: Int,
     ) {
         withContext(Dispatchers.Main) {
-            if (gen != generation.get()) return@withContext
+            if (!displayEpoch.isCurrent(epoch)) return@withContext
             val rasterizer = OverlayRasterizer(
                 context,
                 verticalTextTarget = targetSupportsVerticalText(prefs.targetLang),
@@ -1019,10 +1046,12 @@ class CameraSession(
         val auW = lastShownAuW
         val auH = lastShownAuH
         val targetScale = trackedScale.coerceIn(0.5f, 2.5f)
-        val gen = generation.get()
+        // Observer, not a source: re-rasters whatever currently owns the
+        // display, and dies if ownership changes before it lands.
+        val epoch = displayEpoch.current()
         scope.launch(Dispatchers.Main) {
             try {
-                if (gen != generation.get() || lastShownBoxes !== boxes) return@launch
+                if (!displayEpoch.isCurrent(epoch) || lastShownBoxes !== boxes) return@launch
                 val rasterizer = OverlayRasterizer(
                     context,
                     verticalTextTarget = targetSupportsVerticalText(prefs.targetLang),
@@ -1063,21 +1092,29 @@ class CameraSession(
         // later. Its finally completes the engine's acquire as failed, so the
         // next settle re-acquires under the new flavor.
         acquireJob?.cancel()
-        val gen = generation.incrementAndGet()
         val ocr: OcrManager.OcrResult?
         val groupColors: List<Pair<Int, Int>>?
         val auW: Int
         val auH: Int
+        val epoch: Int
+        // Authorization snapshot: the epoch advances INSIDE the same lock
+        // the caches are read under, so this re-flavor either owns the scene
+        // it read, or an acquire install that races the read stales it at
+        // its first commit — it can never publish an older scene's content
+        // over a newer anchor.
         synchronized(stateLock) {
             ocr = cachedOcr
             groupColors = cachedGroupColors
             auW = cachedAuW
             auH = cachedAuH
+            epoch = displayEpoch.advance()
         }
         if (ocr == null || groupColors == null || auW == 0) return
-        scope.launch(Dispatchers.Default) {
+        // Tracked as THE acquire job (display-work capacity): a fresh acquire
+        // must not launch under a still-translating re-flavor tail.
+        acquireJob = scope.launch(Dispatchers.Default) {
             try {
-                buildAndShow(ocr, groupColors, auW, auH, gen)
+                buildAndShow(ocr, groupColors, auW, auH, epoch)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 Log.w(TAG, "re-flavor failed", e)
@@ -1089,13 +1126,13 @@ class CameraSession(
      *  re-OCRs from scratch. */
     fun reset() {
         acquireJob?.cancel()
-        generation.incrementAndGet()
         synchronized(stateLock) {
             cachedOcr = null
             cachedGroupColors = null
             cachedAuW = 0
             cachedAuH = 0
             lastBuilt = null
+            displayEpoch.advance()
         }
         analysisExecutor.execute {
             frameTracker.clearAnchor()
@@ -1115,7 +1152,6 @@ class CameraSession(
 
     /** Final teardown from the Activity. Not restartable. */
     fun shutdown() {
-        generation.incrementAndGet()
         analysisExecutor.execute {
             frameTracker.release()
             cnConverter.release()
@@ -1126,6 +1162,7 @@ class CameraSession(
             cachedOcr = null
             cachedGroupColors = null
             lastBuilt = null
+            displayEpoch.advance()
         }
     }
 }
