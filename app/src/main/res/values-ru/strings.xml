@@ -293,9 +293,35 @@
 
     <string name="translation_source_label">Перевод: <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
 
+    <string name="ocr_source_label">Распознавание: <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <string name="ocr_picker_title">Выбор инструмента OCR</string>
+
+    <string name="ocr_picker_message">OCR извлекает текст со снимка экрана. Разные инструменты могут лучше работать с разными шрифтами</string>
+
+    <string name="cd_choose_ocr">Выбрать инструмент OCR</string>
+
+    <string name="cd_change_source_language">Изменить язык оригинала</string>
+
+    <string name="cd_change_target_language">Изменить язык перевода</string>
+
     <string name="error_live_mode_unsupported_backend">Режим реального времени недоступен при текущем способе захвата экрана.</string>
 
     <string name="error_screen_capture_denied">Режим реального времени остановлен — в разрешении на захват экрана отказано.</string>
+
+    <string name="error_single_app_not_fullscreen">Перевод приостановлен — захватываемое приложение не занимает весь экран. Перевод возобновится, когда приложение снова развернётся на весь экран.</string>
+
+    <string name="error_capture_blocked_secure">Ничего не удаётся прочитать — захватываемое приложение блокирует захват экрана.</string>
+
+    <string name="probe_initializing">Инициализация…</string>
+
+    <string name="stream_kind_prompt_title">Какой вариант демонстрации вы выбрали?</string>
+
+    <string name="stream_kind_prompt_message">Перевод в реальном времени работает по-разному для одного приложения и для всего экрана, а система не сообщает, что именно было показано.</string>
+
+    <string name="stream_kind_share_one_app">Показать приложение</string>
+
+    <string name="stream_kind_share_entire_screen">Показать весь экран</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SECTION HEADERS (translation-result screen)
@@ -488,6 +514,38 @@
     <string name="anki_audio_preview_content_description">Прослушать аудио</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         GAME-AUDIO RECORDING (Settings → Anki → Audio; trim editor)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_game_audio_row_title">Записывать звук игры</string>
+
+    <string name="anki_game_audio_row_subtitle">Сохранять последние несколько минут звука игры, чтобы новые карточки предложений могли использовать настоящую озвучку</string>
+
+    <string name="anki_game_audio_permission_denied">В разрешении отказано — запись звука игры остаётся выключенной</string>
+
+    <string name="audio_source_game_name">Звук игры</string>
+
+    <string name="audio_source_game_ready">Из недавней игры</string>
+
+    <string name="audio_source_game_enable_hint">Запись не ведётся — включите, чтобы записывать звук игры для будущих карточек</string>
+
+    <string name="game_audio_trim_title">Обрезка звука игры</string>
+
+    <string name="game_audio_trim_save">Использовать фрагмент</string>
+
+    <string name="game_audio_trim_use_tts">Использовать синтез речи</string>
+
+    <string name="game_audio_trim_no_audio">Без аудио</string>
+
+    <string name="game_audio_trim_play">Воспроизвести фрагмент</string>
+
+    <string name="game_audio_trim_stop">Остановить</string>
+
+    <string name="game_audio_trim_duration">Выбрано <xliff:g id="seconds" example="2.4">%1$s</xliff:g> с · записано <xliff:g id="total_seconds" example="147">%2$s</xliff:g> с</string>
+
+    <string name="anki_game_audio_cell_untrimmed">Обрезка при сохранении</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          CARD TYPE PICKER + FIELD MAPPING
          ═══════════════════════════════════════════════════════════════ -->
 
@@ -645,6 +703,8 @@
 
     <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> — сервис перевода, известный высоким качеством, особенно для европейских языков.</string>
 
+    <string name="llm_backend_preset_custom">Свой</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          GENERIC LLM BACKEND SETTINGS (OpenAI / Gemini / DeepSeek)
          ═══════════════════════════════════════════════════════════════ -->
@@ -653,8 +713,11 @@
 
     <string name="llm_backend_model_label">Модель</string>
 
+    <string name="llm_backend_provider_label">Поставщик</string>
 
     <string name="llm_backend_base_url_label">Свой URL</string>
+
+    <string name="llm_backend_base_url_custom_hint">Введите URL вашего сервера</string>
 
     <string name="llm_backend_base_url_invalid">Используйте https:// — http:// допустим только для локального адреса или адреса в сети LAN</string>
 
@@ -673,10 +736,103 @@
     <string name="llm_backend_invalid_key_alert_button">ОК</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         ADVANCED LLM CONFIGURATION — editable prompt templates.
+         The {token} keywords stay verbatim, in Latin.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_header_advanced_llm">Расширенная настройка LLM</string>
+
+    <string name="settings_llm_context_title">Использовать недавние строки как контекст</string>
+
+    <string name="settings_llm_context_subtitle">Только онлайн. Передавать онлайн-переводчикам на базе LLM последние несколько строк записанного текста для более согласованных местоимений и имён.</string>
+
+    <string name="llm_prompt_row_system_title">Системный промпт</string>
+
+    <string name="llm_prompt_row_system_subtitle">Роль и инструкции, отправляемые LLM-переводчикам — облачным и локальным.</string>
+
+    <string name="llm_prompt_row_translation_title">Промпт перевода</string>
+
+    <string name="llm_prompt_row_translation_subtitle">Запрос, в который оборачивается каждая искомая фраза.</string>
+
+    <string name="llm_prompt_row_batch_title">Пакетный промпт</string>
+
+    <string name="llm_prompt_row_batch_subtitle">Запрос, который облачные сервисы используют для перевода всего экрана сразу.</string>
+
+    <string name="llm_prompt_reset">Сбросить</string>
+
+    <string name="llm_prompt_keywords_header">Ключевые слова</string>
+
+    <string name="llm_prompt_save_anyway">Всё равно сохранить</string>
+
+    <string name="llm_prompt_kw_source_desc">Английское название исходного языка, напр. Japanese</string>
+
+    <string name="llm_prompt_kw_source_code_desc">Код исходного языка, напр. ja</string>
+
+    <string name="llm_prompt_kw_target_desc">Английское название целевого языка, напр. English</string>
+
+    <string name="llm_prompt_kw_target_code_desc">Код целевого языка, напр. en</string>
+
+    <string name="llm_prompt_kw_text_desc">Текст для перевода</string>
+
+    <string name="llm_prompt_kw_context_desc">Недавние строки, если контекст включён</string>
+
+    <string name="llm_prompt_kw_count_desc">Количество фраз в пакете</string>
+
+    <string name="llm_prompt_kw_strings_desc">Фразы для перевода в виде массива JSON</string>
+
+    <string name="llm_prompt_invalid_title">Этот промпт нельзя сохранить</string>
+
+    <string name="llm_prompt_fatal_blank">Промпт не может быть пустым.</string>
+
+    <string name="llm_prompt_fatal_missing_text">Промпт должен содержать {text} — без него фраза для перевода не будет отправлена модели.</string>
+
+    <string name="llm_prompt_fatal_missing_strings">Промпт должен содержать {strings} — без него фразы для перевода не будут отправлены модели.</string>
+
+    <string name="llm_prompt_warning_title">Проверьте этот промпт</string>
+
+    <string name="llm_prompt_advisory_missing_source">Отсутствует {source} или {source_code}: модель не узнает, с какого языка переводить.</string>
+
+    <string name="llm_prompt_advisory_missing_target">Отсутствует {target} или {target_code}: модель не узнает, на какой язык переводить.</string>
+
+    <string name="llm_prompt_advisory_missing_count">Отсутствует {N}: модель не узнает, сколько фраз ожидать.</string>
+
+    <string name="llm_prompt_advisory_foreign_token">Этот промпт не заполняет <xliff:g id="keyword" example="{text}">%1$s</xliff:g> — ключевое слово будет отправлено как обычный текст.</string>
+
+    <string name="llm_prompt_advisory_too_long">Этот промпт очень длинный. Локальные модели могут замедлиться или исчерпать контекст.</string>
+
+    <string name="llm_prompt_discard_title">Не сохранять изменения?</string>
+
+    <string name="llm_prompt_discard_message">Ваши изменения в этом промпте не сохранены.</string>
+
+    <string name="llm_prompt_discard_confirm">Не сохранять</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS FOOTERS (Translation Service sections)
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="tr_service_order_footer">Перевод пробует каждый включённый сервис в указанном порядке, переходя к следующему, если один недоступен. Онлайн-сервисы перевода получают захваченный текст. Перед включением ознакомьтесь с политикой конфиденциальности каждого поставщика.</string>
+
+    <string name="tr_service_add_online">Добавить онлайн-сервис перевода</string>
+
+    <string name="add_online_service_title">Добавить сервис перевода</string>
+
+    <string name="service_llm_badge">LLM</string>
+
+    <string name="service_account_required">Нужен аккаунт</string>
+
+    <string name="service_account_required_free">Нужен аккаунт (есть бесплатный тариф)</string>
+
+    <string name="service_no_account_required">Аккаунт не нужен</string>
+
+    <string name="tr_service_key_tail_fmt">Ключ ••••<xliff:g id="key_tail" example="4f2a">%1$s</xliff:g></string>
+
+    <string name="tr_service_remove_title_fmt">Убрать <xliff:g id="service_name" example="OpenAI">%1$s</xliff:g>?</string>
+
+    <string name="tr_service_remove_message">Сервис будет убран из списка, а сохранённый API-ключ удалён.</string>
+
+    <string name="tr_service_remove_confirm">Убрать</string>
+
+    <string name="tr_service_delete_cd">Убрать сервис</string>
 
     <string name="tr_service_offline_footer">Офлайн-переводы используются как запасной вариант, когда онлайн-переводы недоступны. Переводы <xliff:g id="brand_mlkit" example="MLKit">MLKit</xliff:g> плохие, но другие варианты могут быть очень медленными и ресурсоёмкими; будьте осторожны при их использовании для автоперевода.</string>
 
@@ -689,6 +845,16 @@
     <string name="tr_service_status_quota_fmt"><xliff:g id="used" example="120,345">%1$s</xliff:g> / <xliff:g id="total" example="500,000">%2$s</xliff:g> символов использовано</string>
 
     <string name="tr_service_status_quota_with_reset_fmt"><xliff:g id="quota_line" example="120,345 / 500,000 characters used">%1$s</xliff:g> · сброс <xliff:g id="reset_date" example="Jun 1">%2$s</xliff:g></string>
+
+    <string name="tr_service_status_invalid_key">Недействительный API-ключ</string>
+
+    <string name="tr_service_status_no_internet">Нет интернета, не удалось проверить использование</string>
+
+    <string name="tr_service_status_check_failed">Не удалось проверить использование</string>
+
+    <string name="tr_service_status_no_usage_today">Сегодня не использовался</string>
+
+    <string name="tr_service_status_usage_today_fmt">Токенов сегодня: <xliff:g id="tokens" example="12,345">%1$s</xliff:g></string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          BACKEND QUALITY / SPEED LABELS
@@ -900,7 +1066,7 @@
          WARNING-TONE LLM STATUS LINE
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="llm_status_low_memory_badge">Недостаточно памяти — перевод через резервный вариант</string>
+    <string name="llm_status_low_memory_badge">Недостаточно памяти — перевод через запасной вариант</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          FLOATING-ICON MENU WARNING PILL
@@ -995,6 +1161,16 @@
 
     <string name="floating_menu_btn_capture_region">Область\nзахвата</string>
 
+    <string name="floating_menu_capture_screen">Захват\nэкрана</string>
+
+    <string name="floating_menu_edit_region">Изменить область</string>
+
+    <string name="floating_menu_panel_language">Язык</string>
+
+    <string name="floating_menu_panel_overlays">Наложения</string>
+
+    <string name="floating_menu_panel_open_app">Открыть <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
+
     <string name="floating_menu_drag_instruction">Проведите пальцем, чтобы захватить определённую область</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
@@ -1061,6 +1237,8 @@
 
     <string name="cd_copy_original">Копировать оригинал</string>
 
+    <string name="cd_add_to_anki">Добавить в <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
     <string name="cd_toggle_original_visibility">Показать или скрыть оригинал</string>
 
     <string name="cd_toggle_words_visibility">Показать или скрыть слова</string>
@@ -1097,11 +1275,45 @@
 
     <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> доступен на <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
 
-    <string name="update_dialog_view_release">Посмотреть выпуск</string>
+    <string name="update_dialog_view_release">Посмотреть примечания к выпуску</string>
 
     <string name="update_dialog_skip">Пропустить эту версию</string>
 
     <string name="update_dialog_ask_again_later">Напомнить позже</string>
+
+    <string name="update_dialog_download">Скачать и установить</string>
+
+    <string name="update_dialog_size_note">Размер загрузки: <xliff:g id="size" example="128 MB">%1$s</xliff:g></string>
+
+    <string name="update_dialog_metered_note">Вы используете лимитное подключение.</string>
+
+    <string name="update_progress_title">Обновление <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="update_progress_verifying">Проверка…</string>
+
+    <string name="update_unknown_sources_title">Разрешить установку обновлений</string>
+
+    <string name="update_unknown_sources_message">Чтобы завершить обновление, на открывшемся экране настроек разрешите приложению <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> устанавливать обновления. Android может перезапустить приложение при включении этого разрешения. Скачанное обновление сохранится, и установка продолжится автоматически.</string>
+
+    <string name="update_unknown_sources_button">Открыть настройки</string>
+
+    <string name="update_error_title">Ошибка обновления</string>
+
+    <string name="update_error_incomplete">Скачивание завершилось некорректно. Повторите попытку или скачайте обновление с <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_error_verification">Не удалось проверить скачанный файл. Повторите попытку или скачайте обновление с <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_error_wrong_package">Скачанный файл не является обновлением <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>. Скачайте обновление с <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_error_downgrade">Скачанная версия не новее установленной.</string>
+
+    <string name="update_error_signature">Это обновление нельзя установить поверх текущей сборки. Установите его вручную с <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_error_no_space">Недостаточно свободного места для скачивания обновления (требуется <xliff:g id="needed" example="230 MB">%1$s</xliff:g>).</string>
+
+    <string name="update_error_retry">Повторить</string>
+
+    <string name="update_error_install_launch">Не удалось открыть системный установщик.</string>
 
     <string name="toast_no_browser_available">Нет доступного браузера</string>
 
@@ -1173,6 +1385,19 @@
     <string name="settings_ocr_installing">Установка…</string>
 
     <string name="settings_ocr_download_failed">Не удалось скачать модель OCR. Проверьте подключение и повторите попытку.</string>
+
+    <string name="settings_ocr_use_manga_title">Использовать MangaOCR</string>
+
+    <string name="settings_ocr_use_manga_subtitle">ВНИМАНИЕ: высокое качество, но медленно. Не рекомендуется для автоперевода. MangaOCR дополняет выбранный OCR и не работает самостоятельно</string>
+
+    <string name="settings_ocr_disable_manga_title">Выключить MangaOCR?</string>
+
+    <string name="settings_ocr_disable_manga_msg">Оставить скачанную модель (<xliff:g id="size" example="68 MB">%1$s</xliff:g>) или удалить её, чтобы освободить место?</string>
+
+    <string name="settings_ocr_disable_keep">Оставить модель</string>
+
+    <string name="settings_ocr_disable_delete">Удалить модель</string>
+
     <string name="settings_header_support">Поддержка</string>
 
     <string name="settings_header_configure">Настройка</string>
@@ -1182,6 +1407,15 @@
     <string name="settings_cell_anki">Карточки Anki</string>
     <string name="settings_cell_translation_services">Сервисы перевода</string>
     <string name="settings_cell_tts">Синтез речи</string>
+
+    <string name="settings_yomitan_empty_summary">Импортируйте словари, чтобы улучшить поиск слов</string>
+
+    <plurals name="settings_yomitan_count_summary">
+        <item quantity="one">Импортирован <xliff:g id="count" example="1">%d</xliff:g> словарь</item>
+        <item quantity="few">Импортировано <xliff:g id="count" example="2">%d</xliff:g> словаря</item>
+        <item quantity="many">Импортировано <xliff:g id="count" example="5">%d</xliff:g> словарей</item>
+        <item quantity="other">Импортировано <xliff:g id="count" example="1.5">%d</xliff:g> словаря</item>
+    </plurals>
 
     <string name="yomitan_page_description">Словари Yomitan — это созданные сообществом файлы словарей, которые использует расширение Yomitan для браузера. Среди возможностей — дополнительные словари, данные о частотности и тональное ударение. Импортируйте словарь (.zip) кнопкой «+», и PlayTranslate органично встроит его по всему приложению.</string>
 
@@ -1295,6 +1529,38 @@
 
     <string name="settings_cell_dictionary">Словарь</string>
 
+    <string name="settings_cell_history">История</string>
+
+    <string name="settings_cell_history_summary_on">Вкл. · Журнал захваченных предложений</string>
+
+    <string name="settings_cell_history_summary_off">Выкл. · Журнал захваченных предложений</string>
+
+    <string name="history_screen_title">История</string>
+
+    <string name="history_toggle_title">Хранить историю текста</string>
+
+    <string name="history_toggle_subtitle">Сохранять захваченные предложения на этом устройстве</string>
+
+    <string name="history_empty_off">История текста выключена. Включите её, чтобы сохранять предложения, которые захватывает <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>.</string>
+
+    <string name="history_empty_none">Здесь пока пусто. Строки появляются по мере перевода.</string>
+
+    <string name="history_action_copy">Копировать</string>
+
+    <string name="history_action_anki">Добавить в Anki</string>
+
+    <string name="history_action_delete">Удалить</string>
+
+    <string name="history_clear_menu">Очистить историю</string>
+
+    <string name="history_clear_confirm_title">Очистить всю историю?</string>
+
+    <string name="history_clear_confirm_message">Все сохранённые строки будут удалены с этого устройства.</string>
+
+    <string name="history_delete_confirm_title">Удалить эту запись?</string>
+
+    <string name="history_copied_toast">Скопировано</string>
+
     <string name="settings_cell_dictionary_summary">Поиск определений слов</string>
 
     <string name="settings_digest_none">Нет</string>
@@ -1363,13 +1629,23 @@
 
     <string name="hotkey_not_set_subtitle">Не задано</string>
 
-    <string name="hotkey_show_translations_title">Горячая клавиша: удерживайте для показа перевода</string>
+    <string name="hotkey_section_translations">Перевод</string>
+
+    <string name="hotkey_show_translations_title">Удерживайте для показа перевода</string>
 
     <string name="hotkey_show_translations_dialog_title">Показать перевод</string>
 
-    <string name="hotkey_show_hint_title">Горячая клавиша: удерживайте для показа подсказок (<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g>)</string>
+    <string name="hotkey_auto_translation_title">Нажмите для запуска/остановки автоперевода</string>
+
+    <string name="hotkey_auto_translation_dialog_title">Автоперевод</string>
+
+    <string name="hotkey_show_hint_title">Удерживайте для показа подсказок (<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g>)</string>
 
     <string name="hotkey_show_hint_dialog_title">Показать: <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="hotkey_auto_hint_title">Нажмите для запуска/остановки: Авто <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="hotkey_auto_hint_dialog_title">Авто <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Capture Display section
@@ -1420,6 +1696,7 @@
     <string name="settings_debug_log_pinhole">Журналировать метрики pinhole режима реального времени</string>
     <string name="settings_debug_save_ocr_seed">Сохранять захваты OCR как образцы</string>
     <string name="settings_debug_log_grouping">Журналировать решения группировки OCR</string>
+    <string name="settings_debug_log_trace">Записывать трассировку журнала переводов</string>
     <string name="settings_debug_force_crash_title">Принудительный сбой</string>
 
     <string name="dictionary_screen_title">Словарь</string>
@@ -1497,6 +1774,45 @@
     <string name="pos_abbreviation">Сокращение</string>
     <string name="pos_contraction">Сокращённая форма</string>
     <string name="pos_auxiliary">Вспомогательный глагол</string>
+    <!-- Misc register/usage tags (short chips); see values/strings.xml. -->
+    <string name="misc_kana_only">Только кана</string>
+    <string name="misc_kanji_only">Только кандзи</string>
+    <string name="misc_colloquial">Разговорное</string>
+    <string name="misc_informal">Неформальное</string>
+    <string name="misc_formal">Официальное</string>
+    <string name="misc_literary">Книжное</string>
+    <string name="misc_honorific">Почтительное</string>
+    <string name="misc_humble">Скромное</string>
+    <string name="misc_polite">Вежливое</string>
+    <string name="misc_familiar">Фамильярное</string>
+    <string name="misc_endearing">Ласкательное</string>
+    <string name="misc_childrens">Детское</string>
+    <string name="misc_female_speech">Женская речь</string>
+    <string name="misc_male_speech">Мужская речь</string>
+    <string name="misc_archaic">Архаичное</string>
+    <string name="misc_obsolete">Устаревшее</string>
+    <string name="misc_dated">Устаревающее</string>
+    <string name="misc_historical">Историческое</string>
+    <string name="misc_rare">Редкое</string>
+    <string name="misc_neologism">Неологизм</string>
+    <string name="misc_slang">Сленг</string>
+    <string name="misc_internet_slang">Интернет-сленг</string>
+    <string name="misc_manga_slang">Манга-сленг</string>
+    <string name="misc_idiomatic">Идиоматическое</string>
+    <string name="misc_figurative">Переносное</string>
+    <string name="misc_onomatopoeia">Звукоподражание</string>
+    <string name="misc_poetic">Поэтическое</string>
+    <string name="misc_humorous">Шутливое</string>
+    <string name="misc_derogatory">Уничижительное</string>
+    <string name="misc_offensive">Оскорбительное</string>
+    <string name="misc_vulgar">Вульгарное</string>
+    <string name="misc_slur">Дискриминационное</string>
+    <string name="misc_sensitive">Деликатное</string>
+    <string name="misc_euphemistic">Эвфемизм</string>
+    <string name="misc_sarcastic">Саркастическое</string>
+    <string name="misc_nonstandard">Нестандартное</string>
+    <string name="misc_yojijukugo">Идиома из 4 иероглифов</string>
+    <string name="misc_dialectal">Диалектное</string>
     <string name="inflection_causative">Каузатив</string>
     <string name="inflection_passive">Пассив/потенциалис</string>
     <string name="inflection_negative">Отрицание</string>

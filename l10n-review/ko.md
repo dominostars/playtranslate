@@ -91,3 +91,327 @@ Scope: Anki pitch/frequency content options, OpenAI custom base URL, Yomitan mul
 **Plurals:** both `<plurals>` correctly collapse to the single Korean `other`; each reads naturally because a counter (개) carries the quantity, so there is no English "1 dictionary / N dictionaries" singular/plural artifact bleeding through.
 
 **Net:** ship-ready. Zero ❌/⚠️ in the 29 keys; one 💬 cell-register nit (audio_error_loading). The particle-sensitive sites — the whole reason Korean is high-risk — are handled correctly via counters and colon-lists, never a bare particle on a variable.
+
+---
+
+# Delta review — 2026-07-14 sync (174 keys)
+
+Scope: the 170 newly translated + 4 changed-English keys (History screen, Advanced
+LLM prompt editor, in-app updater, game-audio trim, single-app capture, OCR picker,
+the 38 `misc_*` dictionary tags). Independent reviewer; the rest of the file is in
+scope only where a delta string **drifts from a committed one**.
+
+**Mechanical layer verified programmatically over all 174 keys:** every `name=`
+present in both files; `%n$s`/`%d` placeholder sets identical; all `<xliff:g>` spans
+byte-identical to EN (`id`, `example`, inner text); `\n` preserved
+(`floating_menu_capture_screen`); no raw `'`; `<plurals>` collapses to Korean's single
+`other` (**`settings_yomitan_count_summary` has `other` only — no invented `one`**);
+the bare Latin keyword tokens `{text}` `{source}` `{source_code}` `{target}`
+`{target_code}` `{context}` `{N}` `{strings}` survive verbatim in running prose; all 38
+`misc_*` labels are mutually distinct (required — `MiscLabels.renderMisc` calls
+`.distinct()` on the *localized* strings, so two codes sharing one label would silently
+drop a tag). The only diff-flag, `update_dialog_download`, is EN's `&amp;` rendered as
+Korean 및 — correct, not an escape bug. **No 🛑 build-breaking issues.**
+
+## Findings (delta)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| floating_menu_capture_screen | ❌ | 캡처\n화면 | 화면\n캡처 | **Noun order inverted.** Korean noun compounds are head-final, so 캡처 화면 = "the captured screen / the capture screen" (a screenshot, or the capture UI) — not the button's action. Per the EN comment this button performs "a single capture-and-translate of the whole screen": verb + object, which in Korean is 화면 캡처. That is also the file's own canonical term, 8× committed (`status_capturing` 화면 캡처 중…, `notif_channel_name` 화면 캡처, `error_screen_capture_denied`, `error_live_mode_unsupported_backend`, `region_overlay_drag_instruction`, `capture_lifecycle_on_title` 화면 캡처 허용됨, `capture_lifecycle_off_title`, and this very delta's `error_capture_blocked_secure` …화면 캡처를 차단합니다). The delta string inverts the app's own term. Same 2+2 two-line shape → no truncation change. |
+| misc_onomatopoeia | ⚠️ | 의성·의태어 | 상징어 | **Collides with the tag separator.** `MiscLabels.renderMiscText` joins the misc tags with `" · "` (5 live sites: `WordDetailBottomSheet` ×2, `WordAnkiReviewSheet` ×2, `WordDefinitionsView`). This is the only one of the 38 labels containing a middle dot, so a word tagged onomatopoeia + slang renders **의성·의태어 · 속어** — a phantom third tag. 상징어 is the standard Korean umbrella term covering both 의성어 and 의태어, one word, no separator, and matches the Sino-Korean register of the rest of the set. Conservative alternative if both senses must stay explicit: 의성/의태어. |
+| misc_familiar | ⚠️ | 친밀체 | 친밀 표현 | Coinage, and the only label in the set taking **-체** — a suffix that in Korean names the six *speech levels* (합니다체/해요체/해라체…), so it reads as a grammatical claim rather than a register label. Its own cluster siblings deliberately drop it (`misc_colloquial` 구어, `misc_literary` 문어 — not 구어체/문어체). 친밀 표현 parallels `misc_idiomatic` 관용 표현 and `misc_sensitive` 민감한 표현, already in this set. Cluster stays fully distinct: 구어 · 비격식 · 친밀 표현 · 속어. |
+| error_capture_blocked_secure | ⚠️ | …— 이 앱은 화면 캡처를 차단합니다. | …— 캡처 중인 앱이 화면 캡처를 차단합니다. | "이 앱" is ambiguous *in Korean specifically*: the message renders inside **PlayTranslate's own** in-app panel, so "this app" most readily attaches to the app the user is looking at — i.e. ours, which is the app doing the capturing, not blocking it. Its own delta sibling `error_single_app_not_fullscreen` already says 캡처 중인 앱 for exactly this referent; reusing it costs nothing and removes the misparse. (EN is equally loose, but Korean pays for it more here.) |
+| llm_prompt_discard_title + llm_prompt_discard_confirm | 💬 | 변경사항을 버리시겠습니까? / 버리기 | 저장하지 않고 나가시겠습니까? / 저장 안 함 | 버리다 for "discard" does appear in Korean UI (draft-discard dialogs), so this is defensible. But the EN comment says the dialog fires "when **leaving** the prompt editor with unsaved edits", and the idiomatic Korean for that dialog is 저장하지 않고 나가시겠습니까? / [저장 안 함]. Note the obvious alternative 취소 is unavailable (it is the Cancel button beside it) and 삭제 is the app's Delete — 저장 안 함 is the one clean non-colliding choice. |
+| misc_endearing | 💬 | 애칭 | 애정 표현 | 애칭 means specifically *pet name / nickname*; the tag marks affectionate **usage**, which is broader than names. Short and covers the common case, so low priority. |
+| update_progress_verifying + update_error_verification | 💬 | 확인 중… / 확인할 수 없습니다 | 검증 중… / 검증할 수 없습니다 | What is being verified is a checksum + signing certificate; Korean's precise verb is 검증. 확인 is also the file's verb for "check usage" (`tr_service_status_check_failed` 사용량을 확인할 수 없음), so the two senses currently share one word. Internally consistent as-is → optional. |
+| cd_change_source_language + cd_change_target_language | 💬 | 원본 언어 변경 / 대상 언어 변경 | (게임 언어 변경 / 내 언어 변경) | Faithful to EN, and 대상 언어 has committed precedent (`anki_content_sentence_translation_desc`). But these are TalkBack labels: the user hears 원본 언어, opens the picker, and it says **게임 언어** (`lang_translate_from` / `lang_translate_to` = 게임 언어 / 내 언어). EN carries the identical drift, so **declining is entirely reasonable** — raised only so the choice is deliberate rather than accidental. |
+| update_error_install_launch | 💬 | 시스템 설치 프로그램 | 패키지 설치 프로그램 | Android Korean names this component 패키지 설치 프로그램. EN says "the system installer", so the current text is faithful and understandable; nit only. |
+
+## Clean areas (delta)
+
+**Particles — the reason Korean is the highest-risk locale — are clean at every one of
+the 17 placeholder sites.** Not one bare batchim-sensitive particle lands on a runtime
+variable. Full census:
+
+- **Combined form on a variable (the mandated pattern):** `tr_service_remove_title_fmt`
+  `%1$s을(를) 제거하시겠습니까?` — works for both "OpenAI" (vowel-final) and "DeepL"
+  (ㄹ-final). Matches the committed `settings_ocr_delete_title` exactly. It is the only
+  site that needs a combined form, and it has one.
+- **Head noun carries the particle (the best fix):** `llm_prompt_advisory_foreign_token`
+  → `%1$s 키워드는 …` — 는 attaches to 키워드, never to the substituted token, and 키워드
+  matches `llm_prompt_keywords_header`. `settings_ocr_disable_manga_msg` →
+  `다운로드한 %1$s 모델을 …` (particle on 모델; the size sits attributively, mirroring the
+  committed `qwen_mnn_disable_message` `%1$s 모델이 설치되어 있습니다`).
+- **Counter absorbs the quantity:** `game_audio_trim_duration` `%1$s초 … %2$s초`;
+  `settings_yomitan_count_summary` `사전 %d개 가져옴`.
+- **No particle at all (deliberate, and the trap correctly dodged):** the three
+  reading-hint hotkey strings (`hotkey_show_hint_title` `길게 눌러 %1$s 표시`,
+  `hotkey_auto_hint_title`, `hotkey_auto_hint_dialog_title`) — `%1$s` is a *localized*
+  guide name (후리가나 vowel-final, 병음 consonant-final), so any bare particle would have
+  been wrong for one of them; none was attached. Likewise `ocr_source_label` `%1$s 인식`,
+  `floating_menu_panel_open_app` `%1$s 열기`, `tr_service_key_tail_fmt`,
+  `tr_service_status_usage_today_fmt`, `update_dialog_size_note`, `update_error_no_space`.
+- **Fixed names, direct particles, correct for the Korean reading:** `PlayTranslate가`
+  (플레이트랜슬레이트, vowel-final) ×2 · `Android가` (안드로이드, vowel-final) ·
+  `GitHub에서` ×3, `Anki에` (invariant) · `업데이트가 아닙니다` (particle on 업데이트, not on
+  the brand).
+- **Literal keyword tokens, pronunciation-based particles — all four correct:**
+  `{N}이` (엔 → ㄴ batchim → 이) · `{source_code}가` / `{target_code}가` (…코드 → 드,
+  open syllable → 가) · `{strings}를` (…스) · `{text}를` (…트). This follows the
+  convention the committed `llm_backend_base_url_invalid` (`https://를`, `http://는`)
+  already established. `llm_backend_base_url_custom_hint` `URL을` is right too (유아르**엘**
+  → ㄹ batchim → 을).
+- **Checked and deliberately NOT flagged:** `ocr_picker_message` `OCR은`. Under the
+  국립국어원 letter name 아르 (open syllable) this would want 는; under the dominant
+  colloquial reading 알 (cf. R&D → 알앤디) it wants 은. Real Korean tech prose
+  overwhelmingly writes OCR을/OCR이/OCR은, and there is no committed precedent either way
+  (this and `URL을` are the file's first two). **Leave it — a round-2 "fix" to OCR는 would
+  be a regression.**
+
+**The 38 `misc_*` chips — the four clusters are all internally distinguishable, and the
+headline risk passed:**
+
+- **Honorifics (the trio the brief called out): `misc_honorific` 존경어 / `misc_humble`
+  겸양어 / `misc_polite` 정중어.** These are exactly the standard Korean terms for
+  sonkeigo (尊敬語) / kenjougo (謙讓語) / teineigo (丁寧語) — the precise native
+  lexicographic set, not collapsed, and each distinct from `misc_formal` 격식 /
+  `misc_informal` 비격식. Nothing to fix.
+- **Offensiveness:** 비하 · 모욕 · 비속어 · 멸칭 — four distinct words. (멸칭 for *slur* is
+  exactly right. 모욕 leans "an insult (the act)" over a register label, but it is
+  unambiguous beside its three siblings — acceptable.)
+- **Obsolescence:** 고어 · 폐어 · 구식 · 역사 용어 — distinct; 고어/폐어 are the standard
+  dictionary labels. 구식 is the least dictionary-like of the four but Korean has no
+  established "dated" tier separate from 옛말, and it is clearly distinct — acceptable.
+- **Informality:** 구어 · 비격식 · 친밀체(→see finding) · 속어. Note the deliberate
+  oppositions the translator built: 구어/문어 and 격식/비격식. 속어 vs 비속어 differ by one
+  character but are the standard Korean pair for slang/vulgar and sit in different
+  clusters — collapsing either would be worse.
+- `misc_kana_only` 가나 전용 / `misc_kanji_only` 한자 전용 — correct: Korean does not
+  transliterate 漢字 as *간지*; 한자 **is** the loanword, and 전용 is the canonical
+  "written only in X" suffix (cf. 한글 전용). Matches the committed `yomitan_category_kanji`
+  한자.
+- `misc_yojijukugo` **사자성어** — exactly the term the glossary specifies for ko, not
+  romanized.
+- `misc_rare` **드물게 쓰임** is the only non-noun label, and that is deliberate: it is the
+  exact antonym of the committed `word_detail_common` **자주 쓰임**, which renders as a pill
+  on the same word-detail surface. Good catch by the translator, not drift.
+- **Register/brevity vs the committed `pos_*` tags:** pos_* are 2–4-char Sino-Korean nouns
+  (명사/동사/형용사/분류사…); the misc_* set is 2–4 chars for 29 of 38, with the longer ones
+  (인터넷 속어, 역사 용어, 민감한 표현, 드물게 쓰임) matching EN entries that are themselves
+  long. Since the tags render as a `" · "`-joined **text run**, not individual pills, and
+  Korean is far more compact than English here ("Colloquial · Vulgar · Slang · Male term"
+  → "구어 · 비속어 · 속어 · 남성어"), **truncation risk is strictly lower than EN's.** No
+  finding.
+
+**Terminology — reused from the committed file, not reinvented.** Every glossary term was
+grepped against the existing locale before judging: **Provider** → 제공업체 (already
+committed in `tr_service_order_footer` 각 제공업체의 개인정보처리방침) · **Translation
+service** → 번역 서비스, matching the committed page title `settings_cell_translation_services`,
+and 온라인 번역 서비스 추가 matching `settings_header_online_translations` 온라인 번역 ·
+**prompt** → 프롬프트 as the one noun across every `llm_prompt_*` **title**, with 요청 only in
+the two *subtitles*, which is where EN itself says "The request" (faithful, not drift) ·
+**keyword** → 키워드, one word, header and advisory · **History** → 기록 (`settings_cell_history`,
+`history_screen_title`, `history_toggle_title` 텍스트 기록 유지) · **Remove vs Delete** kept
+apart exactly as EN does: services are 제거 (`tr_service_remove_confirm`/`_delete_cd`,
+and `tr_service_remove_message` correctly uses **both** — 서비스를 제거하고 … API 키를 삭제합니다),
+history entries and models are 삭제 · **Clear** → 기록 전체 삭제, which is what Korean Android/Chrome
+actually say for clearing history, and 전체 carries the all-vs-one distinction against
+`history_action_delete` 삭제 / `history_delete_confirm_title` 이 항목 · **Trim** → 자르기, its
+selection consistently 선택 구간 (재생/사용) · **Game audio** → 게임 오디오, reads as a noun
+phrase both as the pill and as the section header · **LLM** kept as the initialism ·
+**metered** → 종량제 네트워크, the parameters-doc term, exactly · **Captured** → 캡처, the
+app's established verb, in `history_toggle_subtitle` / `settings_cell_history_summary_*` ·
+**Custom** → 사용자 지정, matching the committed 사용자 지정 URL · **on-device** → 온디바이스,
+which EN also distinguishes from "offline" (오프라인, committed) · **TTS** → the bare
+initialism in `game_audio_trim_use_tts`, which is what EN does there too and what the
+committed `tts_no_engine_get_google` / `_open_settings` already do, while the source name
+stays 텍스트 음성 변환.
+
+**`ocr_source_label` mirrors its sibling's structure, as the glossary requires:** committed
+`translation_source_label` = `%1$s 번역` → delta `ocr_source_label` = `%1$s 인식`. Same shape,
+no particle, and 인식 is the app's own OCR verb (`status_ocr` 텍스트 인식 중…).
+
+**Android wording — verified against AOSP source, not from memory:**
+
+- `stream_kind_share_one_app` **앱 하나 공유** and `stream_kind_share_entire_screen`
+  **전체 화면 공유** are **byte-identical to AOSP SystemUI `values-ko`**
+  (`screen_share_permission_dialog_option_single_app` / `_entire_screen`). This is the
+  deliberate decision working exactly as intended — the buttons quote the system consent
+  dialog the user just tapped. Positively confirmed, not merely left alone.
+- `update_unknown_sources_message`: the screen the intent opens shows, in Korean,
+  the switch **이 소스에서 가져온 앱 설치 허용** (AOSP Settings `external_source_switch_title`).
+  Our copy says "…앱 업데이트를 **설치**하도록 **허용**하세요" — both operative words present,
+  so the toggle is findable. EN paraphrases here too; KO matching EN is correct.
+
+**Register:** uniform 합니다체 in bodies; noun / ~하기 / ~하세요 for buttons and titles; no
+해요체, no 반말, no 당신. `llm_prompt_invalid_title` **이 프롬프트를 저장할 수 없음** is *not* a
+register break — the noun-form 「…할 수 없음」 is the file's established pattern for
+impossibility/failure dialog titles (`anki_send_failed_title` 카드를 추가할 수 없음,
+`llm_backend_invalid_key_alert_title` API 키를 확인할 수 없음), and it correctly contrasts with
+the *bypassable* advisory dialog's imperative title `llm_prompt_warning_title` 이 프롬프트를
+확인하세요. `settings_ocr_disable_manga_title` **MangaOCR 사용을 중지하시겠습니까?** matches the
+committed 사용을 중지 pattern (qwen/qwen35/gemma/hymt disable titles) and negates its own
+toggle label `settings_ocr_use_manga_title` MangaOCR 사용 — coherent.
+
+**띄어쓰기:** clean throughout. Space between a Latin run and the following Korean word
+(MangaOCR 사용, 고급 LLM 설정, 잘못된 API 키, 백엔드 URL, 대신 TTS 사용); particle glued directly
+to the Latin/token with no space (OCR은, URL을, Anki에, GitHub에서, PlayTranslate가, {text}를);
+unit glued to the numeral (2.4초, 3개); no space before an opening parenthesis, consistent
+with the committed file (계정 필요(무료 요금제 있음), …부족합니다(230 MB 필요), 최근 문장(문맥 사용 시),
+번역할 구문(JSON 배열) — cf. committed 게임 언어(Japanese), 현재 활성 엔진(Google TTS)은).
+
+**Plurals:** `settings_yomitan_count_summary` uses **`other` only** — correct for Korean, no
+invented `one`. It reads naturally at every count because the counter 개 carries the quantity
+(사전 1개 가져옴 / 사전 3개 가져옴), so EN's singular/plural split leaves no artifact.
+
+**Truncation:** `service_llm_badge` LLM (shortest possible) · `probe_initializing` 초기화 중…
+(5 chars vs EN's 13) · `floating_menu_capture_screen` 2+2 chars per line (unchanged by the
+suggested fix) · the misc_* run is shorter than EN's. No truncation risk anywhere in the delta.
+
+**Deliberate decisions honored, not flagged:** `llm_status_low_memory_badge` left untouched
+(its 줄표 is native punctuation) · `llm_prompt_kw_source_desc` / `_target_desc` keep
+**Japanese** / **English** in Latin, because those are the literal runtime expansions of
+`{source}` / `{target}` · the `stream_kind_share_*` AOSP wording (verified above).
+
+## Net
+
+**One ❌ to fix before ship — `floating_menu_capture_screen` (캡처\n화면 → 화면\n캡처), a
+head-final noun-order inversion that contradicts the app's own 8×-committed term 화면 캡처.**
+Three ⚠️: the `misc_onomatopoeia` middle dot colliding with the `" · "` tag separator, the
+coined `친밀체`, and the ambiguous 이 앱 in `error_capture_blocked_secure`. Five 💬.
+
+The two axes that make Korean the highest-risk locale both came back clean: **every one of
+the 17 placeholder sites is batchim-safe** (combined form where required, head noun or
+counter everywhere else, and the reading-hint trap correctly dodged with no particle at
+all), and **the four `misc_*` clusters are internally distinguishable**, with the honorific
+trio using the precise native terms 존경어 / 겸양어 / 정중어.
+
+### Same bug, outside the delta (FYI, not filed)
+
+`floating_menu_btn_capture_region` = **캡처\n영역** (committed) carries the identical
+inversion, and worse: it is byte-identical to `menu_capture_region` = 캡처 영역, which is a
+*noun* there ("the capture region") and correctly so. The button should be **영역\n캡처**
+— which fixes the verb reading and disambiguates the two at once. It sits in the same
+floating-menu slot as the delta key above, so fixing only one leaves the pair inconsistent.
+
+---
+
+## Delta review round 2 — 2026-07-14
+
+Fresh independent reviewer; wrote none of round 1 and reviewed none of it. Every one
+of the 174 keys re-derived from scratch against EN, with the eight round-1 fixes
+re-litigated on their merits and traced into the code that renders them.
+
+**Mechanical layer re-verified independently (not taken from round 1):** placeholder
+sets identical EN↔KO at all 174 keys (the lone diff is `settings_yomitan_count_summary`,
+where Korean correctly drops EN's `one` item — CLDR-correct, not a gap); every
+`<xliff:g>` span byte-identical in `id`/`example`/inner text; `\n` preserved in
+`floating_menu_capture_screen`; zero unescaped `'`, zero raw `&`; all eight literal
+`{token}` keywords survive verbatim; **all 38 `misc_*` labels mutually distinct**
+(required — `MiscLabels.renderMisc` calls `.distinct()` on the *localized* strings) and
+**none of the 38 contains a `·`**, so the `" · "` join in `renderMiscText` can no longer
+manufacture a phantom tag. **No 🛑.**
+
+### Verdict on the eight round-1 fixes
+
+| key | round-1 fix | round-2 verdict |
+|---|---|---|
+| `floating_menu_capture_screen` | 캡처\n화면 → 화면\n캡처 | **LANDED.** Head-final order is right, and it now matches the app's own 8×-committed 화면 캡처. Truncation re-checked *in the layout code*, not by eye: `FloatingIconMenu` gives the label `maxLines = 2` inside a 78dp primary with 6dp side padding (66dp text column) and `fitLabel()` shrinks 11sp→8.5sp only if a run overflows. Two 2-char lines at 11sp never come close. Also confirmed `floating_menu_capture_screen` and `floating_menu_btn_capture_region` occupy **one** button slot (`updateCaptureButton()` swaps them on `activeRegion.isFullScreen`), so they never render side by side — round 1's out-of-delta FYI on 캡처\n영역 stands, but there is no simultaneous inconsistency. `contentDescription` is set from the label, so TalkBack reads 화면 캡처. ✓ |
+| `misc_onomatopoeia` | 의성·의태어 → 상징어 | **LANDED.** 상징어(象徵語) is 표준국어대사전's umbrella term, explicitly defined as covering 의성어 + 의태어. One word, no `·`, distinct from all 37 siblings, and shorter than EN. ✓ |
+| `misc_familiar` | 친밀체 → 친밀 표현 | **LANDED**, with a side effect — see 💬 below. Dropping -체 was right (it names the six speech levels). |
+| `misc_endearing` | 애칭 → 애정 표현 | **LANDED**, same side effect. 애칭 was genuinely too narrow (pet *name*). |
+| `error_capture_blocked_secure` | 이 앱 → 캡처 중인 앱 | **DID NOT LAND — see ⚠️ below.** The diagnosis was right; the replacement is ambiguous in the same direction. |
+| `llm_prompt_discard_title` / `_confirm` | → 저장하지 않고 나가시겠습니까? / 저장 안 함 | **LANDED.** Traced to `LlmPromptEditorActivity.confirmDiscardOrFinish()` — it fires on leaving with unsaved edits and `finish()`es on confirm, so 나가시겠습니까 is literally what happens. Buttons resolve to **[저장 안 함]** (ptDanger) / **[취소]** (`btn_cancel`); 저장 안 함 collides with nothing (삭제/취소/확인/지우기 all checked). ✓ |
+| `update_error_install_launch` | 시스템 설치 프로그램 → 패키지 설치 프로그램 | **LANDED.** That is AOSP PackageInstaller's own Korean `app_name`, so the component the user lands on is the one we named. ✓ |
+
+### Findings (delta, round 2)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| error_single_app_not_fullscreen | ⚠️ | …— **캡처 중인 앱이** 화면을 가득 채우지 않습니다. 앱이 다시 전체 화면이 되면 재개됩니다. | …— **캡처 대상 앱이** 화면을 가득 채우지 않습니다. 앱이 다시 전체 화면이 되면 재개됩니다. | **`N-중인 X` assigns X the agent role of N whenever X *can* perform N** (통화 중인 사람, 공부 중인 학생); the patient reading only wins when it can't (공사 중인 도로, 다운로드 중인 파일). An **앱** can capture — and in *this* app it is the thing that captures. Worse, the committed `status_capturing` = **화면 캡처 중…** ("PlayTranslate is capturing") renders in **the very same TextView**: `emitError()` → `PanelState.Error` → `TranslationResultFragment` wraps it in `status_error` = 오류: %1$s. So one surface uses 캡처 중 for PlayTranslate one moment and for its opposite the next. Here the wrong reading is **not** self-defeating — "the app that is capturing isn't filling the screen" is a perfectly sensible false statement about our floating overlay, and the follow-up 「앱이 다시 전체 화면이 되면」 then points the user at the wrong app. 캡처 대상 앱 (or the explicit passive 캡처되는 앱) is unambiguous. EN's "the captured app" is a passive participle and carries no such ambiguity. |
+| error_capture_blocked_secure | ⚠️ | 아무것도 읽을 수 없습니다 — **캡처 중인 앱이** 화면 캡처를 차단합니다. | 아무것도 읽을 수 없습니다 — **캡처 대상 앱이** 화면 캡처를 차단합니다. | **Round 1's fix did not land.** It correctly killed 이 앱 (which, on PlayTranslate's own panel, attaches to PlayTranslate) — but it replaced it by copying 캡처 중인 앱 from the sibling above, and that phrasing was never itself examined. Same agent/patient ambiguity, same surface, plus a 캡처…캡처 stutter. This one *does* self-correct (an app that is capturing cannot also block capture, so the reader flips), which is why it is ⚠️ and not worse — but the same two-word change fixes both strings and costs nothing. |
+| misc_familiar + misc_endearing | 💬 | 친밀 표현 / 애정 표현 | 허물없는 말 / 애정 표현 (or 친밀 표현 / 다정한 표현) | **Side effect of round 1 editing both.** Before, the two labels named different *kinds* of thing (친밀체 = a speech style; 애칭 = a name). Now both are "___ 표현" separated only by 친밀 vs 애정 — near-synonyms in Korean, so a user reading the chip run cannot tell what distinguishes them. Not a bug: the strings are distinct (verified — no `.distinct()` collapse), the two codes essentially never co-occur on one entry, and JMdict's own `fam`/`end` are equally blurry in English. Worth noting only that the set now carries **four** `___ 표현` labels (관용/민감한/친밀/애정), which drains the suffix of contrast. |
+| misc_sarcastic | 💬 | 반어 | 비꼼 | 반어(反語) is *irony/antiphrasis* — the rhetorical figure taught as 반어법. "Sarcastic" is the mocking *tone*: 비꼼 / 빈정거림. Sitting between 비유 and 완곡어, 반어 will be read as a device, not a usage register. 비꼼 is 2 chars, distinct from all 37 siblings, and adds no fifth 표현. Defensible as-is (반어적 does get used for sarcastic usage), so nit only. Not a round-1 item — this is a fresh look. |
+
+### Clean areas (round 2) — independently re-derived, not inherited
+
+**Particles after `<xliff:g>` spans, read with the real runtime values.** All 17 sites, and
+the one that needs a combined form has one:
+- `tr_service_remove_title_fmt` `%1$s을(를) 제거하시겠습니까?` — the **only** site where a
+  batchim-sensitive particle touches a runtime variable, and the service list spans both
+  classes: **OpenAI** (오픈에이아이, vowel-final → 를) and **DeepL** (딥엘, ㄹ-final → 을).
+  The combined form is mandatory here and present. ✓
+- The reading-hint trap is dodged three times over: `hotkey_show_hint_title` 길게 눌러 %1$s **표시**,
+  `hotkey_auto_hint_title` 탭하여 자동 %1$s **시작/중지**, `hotkey_auto_hint_dialog_title` 자동 %1$s —
+  `%1$s` is the *localized* guide name (**후리가나** vowel-final vs **병음** ㅇ-final, resolved in
+  `HotkeysSettingsActivity.render()` from `HintTextKind`), so any bare particle would be wrong for
+  one of them. None is attached. ✓
+- Head noun carries the particle: `llm_prompt_advisory_foreign_token` `%1$s 키워드는…`;
+  `settings_ocr_disable_manga_msg` `다운로드한 %1$s 모델을…`. Counter absorbs the quantity:
+  `game_audio_trim_duration` `%1$s초 … %2$s초`, `settings_yomitan_count_summary` `사전 %d개`.
+  No particle at all where none is needed: `ocr_source_label`, `floating_menu_panel_open_app`,
+  `tr_service_key_tail_fmt`, `tr_service_status_usage_today_fmt` (…%1$s 토큰), `update_dialog_size_note`,
+  `update_error_no_space`.
+- Literal keyword tokens, particles by Korean pronunciation, all four right: `{N}`**이** (엔 → ㄴ),
+  `{source_code}`/`{target_code}`**가** (…코드, open), `{strings}`**를** (…스), `{text}`**를** (…트).
+  `URL을` (유아르엘 → ㄹ) ✓. `OCR은` — **checked and deliberately left** per the settled decision.
+
+**`llm_prompt_advisory_foreign_token` is more precise than EN, not less.** Read
+`LlmPromptTemplates.validate()`: a ForeignToken is `allTokens - available` — a **recognized**
+keyword that *this* prompt kind never fills (e.g. `{strings}` typed into the translation
+prompt). EN's bare "%1$s isn't filled in by this prompt" leaves that unstated; KO's
+「%1$s **키워드**는…」 names it correctly, and 키워드 matches `llm_prompt_keywords_header`. ✓
+
+**The 38 `misc_*` chips — every cluster still separable after the edits.**
+Honorifics 존경어/겸양어/정중어 are the exact native sonkeigo/kenjougo/teineigo set and stay clear
+of 격식/비격식. Offensiveness 비하·모욕·비속어·멸칭: four distinct words. Obsolescence
+고어·폐어·구식·역사 용어: distinct. Informality 구어·비격식·친밀 표현·속어: distinct, and the
+translator's deliberate 구어/문어 and 격식/비격식 oppositions survive. 속어 vs 비속어 differ by one
+character but are the standard Korean pair and sit in different clusters. `misc_rare` **드물게 쓰임**
+is the only verb-form label and that is correct: I verified in the committed file that
+`word_detail_common` **is** 자주 쓰임 (not the older 상용), so the two render as a true antonym pair
+on the same word-detail surface.
+
+**Round 1's declined 💬s re-examined — the declines were right.** `update_progress_verifying`
+확인 중… is **byte-identical to the committed `settings_ocr_verifying`** 확인 중…, exactly as EN's
+two "Verifying…" are; switching it to 검증 중… would have broken that parallel to fix nothing.
+`cd_change_source_language`/`_target_language` carry EN's own picker-vs-label drift and matching EN
+is the right call.
+
+**띄어쓰기.** Space between a Latin run and the following Korean word (MangaOCR 사용, 고급 LLM 설정,
+OCR 도구 선택, 대신 TTS 사용, 온라인 LLM 번역기, 백엔드 URL, 잘못된 API 키); particle glued with no space
+(OCR은, URL을, Anki에, GitHub에서, PlayTranslate가, {text}를); unit glued to the numeral (2.4초, 3개);
+no space before `(`. That last one I checked against a committed *predicate*-final case, not just
+noun-final ones: `anki_content_frequency_harmonic_desc` 「…조화 평균입니다(낮을수록 더 자주 쓰임)」 —
+so `update_error_no_space` 「…부족합니다(230 MB 필요).」 follows the file's own convention. ✓
+
+**Register.** Uniform 합니다체 in bodies; noun / ~하기 / ~하세요 in buttons and titles; no 해요체, no
+반말, no 당신. The new **탭하여** (tap) is a third press-verb beside the committed 눌러 / 길게 누르세요 —
+and that is correct, not drift: EN contrasts *Tap to…* against *Hold to…* in adjacent hotkey rows,
+and Korean 눌러 cannot carry that contrast. `llm_prompt_invalid_title` (noun-form 저장할 수 없음, no
+save path) vs `llm_prompt_warning_title` (imperative 확인하세요, bypassable) matches what the two
+code paths actually do — `showFatalAlert` offers only OK, `showAdvisoryAlert` offers Save-anyway.
+
+**Plurals.** `settings_yomitan_count_summary` is `other`-only (CLDR-correct for ko) and never has
+to read at zero: `RootSettingsViewModel:344` routes `count == 0` to `settings_yomitan_empty_summary`.
+The 개 counter carries the quantity, so 사전 1개 가져옴 / 사전 3개 가져옴 both read naturally.
+
+**Duplicate-value sweep across the whole file.** Every exact-duplicate KO value involving a delta
+key is a duplicate in EN too (OCR 도구 선택 ×2, 기록 ×2, 삭제/모델 삭제, 설정 열기, 복사됨, 자동 번역,
+번역, 확인 중…). No round-1 edit created a new collision.
+
+### Net
+
+**Zero 🛑, zero ❌, two ⚠️, two 💬.** The two ⚠️s are one bug: **캡처 중인 앱** in
+`error_capture_blocked_secure` and `error_single_app_not_fullscreen`. Round 1 correctly saw that
+이 앱 was ambiguous and then replaced it with a phrase that is ambiguous the same way — Korean
+`캡처 중인 X` defaults to *X is capturing*, which is what PlayTranslate does, on the exact TextView
+that says 화면 캡처 중… about itself. One term (**캡처 대상 앱**) fixes both strings.
+
+Six of the eight round-1 fixes are clean and two produced only a cosmetic side effect (the
+친밀 표현 / 애정 표현 near-synonymy, 💬). The two axes that make Korean the highest-risk locale both
+came back clean on a fully independent pass: **every placeholder site is batchim-safe**, and
+**all 38 `misc_*` labels are mutually distinct with no `·` anywhere** — the `.distinct()` collapse
+and the phantom-tag collision are both structurally impossible now.
+
+**Verdict: SHIP** (the two ⚠️s are a cheap pre-ship polish, not a blocker).

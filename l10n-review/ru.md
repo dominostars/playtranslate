@@ -90,3 +90,320 @@ Scope: Anki pitch/frequency content options, OpenAI custom base URL, Yomitan mul
 **The `Example:`/quoted-field-name as-is rule.** `anki_content_pitch_position_desc` keeps «Пример: 0,2» and the ★ glyph / quoted field names verbatim; `_frequency_values_desc` keeps «★» and «Frequency»; `_frequency_stylized_desc` keeps «FrequenciesStylized»; `_frequency_harmonic_desc` keeps «FreqSort»/«FrequencySort» and the «(меньше = чаще)» parenthetical — all correctly left in their original shape, only the surrounding explanation localized. «среднее гармоническое» is the correct math term for "harmonic mean".
 
 **Brands & quotes.** «Wikimedia Commons» (`audio_source_commons_name`), Lapis, JPMN left untranslated; all field-name citations use «» typographic quotes (no escaping needed, matches the file convention); no raw `'`/`"` in any of the 29 scope lines.
+
+---
+
+## Delta review — 2026-07-14 sync
+
+Scope: the 174 delta keys (170 new + 4 changed English). Independent review; the
+rest of the file was read only as the established style guide.
+
+Mechanical layer verified programmatically across all 174: every `%n$s`/`%d`
+present and matching EN; all `<xliff:g>` inner contents byte-identical; the bare
+`{text} {source} {source_code} {target} {target_code} {context} {N} {strings}`
+tokens byte-identical Latin in running prose; `\n` preserved
+(`floating_menu_capture_screen` = «Захват\nэкрана», two lines); no raw `'`/`"`;
+no double spaces; trailing-period parity with EN on all 174; `name=` untouched;
+`<plurals>` carries the full RU CLDR set (one/few/many/other).
+**No 🛑 build-breaking issues.**
+
+**Counts: 0 🛑 · 3 ❌ · 6 ⚠️ · 8 💬**
+
+### Findings (delta)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| llm_prompt_invalid_title | ❌ | «Не удалось сохранить этот промпт» | «Этот промпт нельзя сохранить» | Modality inverted. EN "Can't save this prompt" is a **permanent capability** statement — the dialog is non-bypassable because the prompt has *fatal* problems. «Не удалось» is past-tense transient failure ("the attempt failed"), which tells the user to **retry** when the truth is "fix your template". The file proves the translator knows the difference: `update_error_signature` correctly renders "can't be installed" as «**нельзя** установить». Contrast the sibling `llm_prompt_warning_title` «Проверьте этот промпт» ✓. |
+| llm_prompt_discard_title | ❌ | «Отменить изменения?» | «Не сохранять изменения?» | Breaks a cross-reference with its own dialog's buttons. This dialog's negative button is `btn_cancel` = «**Отмена**» (returns to the editor, **keeps** the edits) and its destructive button is `llm_prompt_discard_confirm` = «Не сохранять». A title asking «**Отменить** изменения?» primes «Отмена» as the *affirmative* answer — but «Отмена» does the opposite. One tap from data loss. Retitling to match the confirm button makes «Отмена» unambiguously "no". |
+| misc_slur | ❌ | «Бранное» | «Дискриминационное» | Wrong lexicographic category, and it collapses the cluster the glossary says must stay distinct. Russian «бран.» (бранное) marks **swearing / abuse** («сволочь», «дурак») — it lands squarely inside the вульгарное/оскорбительное space, so `Уничижительное · Оскорбительное · Вульгарное · Бранное` gives a reader three chips that all just read "rude word". A slur is a demeaning label for a *group*; «Дискриминационное» is instantly and categorically distinct. 17 ch — inside the existing chip range (committed `pos_auxiliary` = «Вспомогательный глагол», 22 ch). Russian lexicography has **no native помета** for "slur", so this is necessarily a coinage; alternative: «Оскорбительное прозвище». |
+| settings_ocr_use_manga_subtitle | ⚠️ | «…Не рекомендуется для **авто**. MangaOCR дополняет…» | «…Не рекомендуется для **автоперевода**. MangaOCR дополняет…» | Bare «авто» in Russian prose reads as *car* (авто = автомобиль). The committed file's established prose form is «для автоперевода» — verbatim in `tr_service_offline_footer`: «…будьте осторожны при их использовании **для автоперевода**». When the file does reference the *button label* it quotes it (`status_hold_hint`: «Удерживайте «Области» или «Авто»…»). |
+| anki_game_audio_row_subtitle | ⚠️ | «**Сохраняет** последние несколько минут звука игры, чтобы…» | «**Сохранять** последние несколько минут звука игры, чтобы…» | Grammatical form disagrees with its **own row title**: `anki_game_audio_row_title` = «Записыв**ать** звук игры» (infinitive), and with the sibling switch subtitle `history_toggle_subtitle` = «Сохран**ять** захваченные предложения…» (infinitive). EN uses one form for both. 3sg «Сохраняет» is the odd one out. |
+| misc_informal | ⚠️ | «Неофициальное» | «Неформальное» | «Неофициальное» means *unofficial* (of a document, a statement) — it is not a speech-**register** label. Russian for informal register is «неформальное» («неформальный стиль речи»). As written it reads as a bare antonym of `misc_formal` = «Официальное» rather than as a помета, and it weakens the informality cluster against «Разговорное»/«Фамильярное». (`misc_formal` = «Официальное» should **stay** — «Формальное» is a Russian false friend meaning *perfunctory*.) |
+| misc_dated | ⚠️ | «Старомодное» | «Устаревающее» | A gloss of the English, not a Russian помета — «старомодное» judges *fashion* (of clothes, of a hat), not word currency. Russian has an exact distinct pair sitting right there: `misc_obsolete` «Устаревшее» (out of use) vs `misc_dated` «Устаревающее» (on its way out). Keeps the obsolescence cluster native and correctly ordered against «Архаичное» / «Историческое». |
+| update_unknown_sources_message | ⚠️ | «…разрешите PlayTranslate устанавливать обновления приложений **на открывшемся экране настроек**.» | «Чтобы завершить обновление, **на открывшемся экране настроек** разрешите **приложению** <xliff:g …>PlayTranslate</xliff:g> устанавливать обновления. Android может перезапустить…» | Two problems, one fix. (1) Word order: the locative lands at the far end of the clause and misattaches to «устанавливать обновления», so it reads "install app updates **onto** the settings screen". (2) «разрешите PlayTranslate устанавливать» leaves the brand bare in a **dative** slot; the params doc's own technique (head noun «приложению») carries the case. Dropping «приложений» from «обновления приложений» avoids «приложению … приложений». |
+| stream_kind_prompt_message | ⚠️ | «**Перевод в реальном времени** работает по-разному…» | «**Автоперевод** работает по-разному для одного приложения и для всего экрана, а система не сообщает, что именно было показано.» | Terminology drift: this is the **only** occurrence of «в реальном времени» in the whole file. The RU file names this feature «Автоперевод» seven times over (`live_mode_auto_translate_label`, `settings_header_auto_translate`, `enhanced_auto_translate_title`, `hotkey_auto_translation_dialog_title`) and «авторежим» twice. The dialog fires *immediately after* the user tapped «Авто» — a third name for it here reads like a different feature. |
+| error_single_app_not_fullscreen | 💬 | «…не занимает весь **экран**. **Он** возобновится, когда…» | «…не занимает весь экран. **Перевод** возобновится, когда…» | «Он» is two nouns away from its antecedent «Перевод», and the nearer noun «экран» is *also* masculine — momentarily reads "the screen will resume". Semantics rescue it, so this is polish, not a defect. |
+| llm_prompt_row_system_subtitle, settings_llm_context_subtitle | 💬 | «переводчикам LLM» / «онлайн-переводчикам LLM» | «LLM-переводчикам» / «онлайн-переводчикам на базе LLM» | Acceptable Russian tech apposition (cf. «протокол HTTP»), but the hyphenated attributive is the more idiomatic modern form. Two keys, one fix. Low priority — do not churn if the orchestrator prefers the current shape. |
+| misc_manga_slang | 💬 | «Сленг манги» | «Манга-сленг» | Parallel with `misc_internet_slang` = «Интернет-сленг» (hyphenated compound, not a genitive phrase), and 3 ch shorter on a width-constrained chip. |
+| misc_yojijukugo | 💬 | «Идиома из 4 иероглифов» | «Идиома из 4 кандзи» | Correctly *described* rather than romanized, per the glossary ✓. 21 ch is fine against `pos_auxiliary` (22 ch), but «кандзи» is 3 ch shorter and reuses the loanword already committed at `misc_kanji_only` («Только кандзи»). |
+| llm_prompt_row_translation_subtitle | 💬 | «Запрос, в **который** оборачивается каждая фраза, **которую** вы ищете.» | «Запрос, в который оборачивается каждая искомая фраза.» | The «который…которую» chain is the classic Russian style flaw; the participial form is tighter and matches the sibling subtitles' length. |
+| tr_service_status_usage_today_fmt | 💬 | «Сегодня токенов: %1$s» | «Токенов сегодня: %1$s» | The restructure is **correct and necessary** — the runtime passes a pre-formatted string («12 345»), so `<plurals>` is unavailable and a trailing «токенов» would break on 1/2/5. Fronting the genitive noun is the right dodge; «Токенов сегодня:» is just the more natural word order for a stat line. |
+| probe_initializing | 💬 | «Инициализация…» (14 ch) | «Запуск…» (7 ch) if the chip is tight | Truncation watch only, per brief item 7 — the chip is explicitly "keep short" and rides beside a checker glyph for ~1.5 s. The committed `settings_ocr_downloading_msg` already uses «Запуск…» for a comparable start-up slot. Leave as-is if the chip measures fine on Thor. |
+| audio_source_game_ready | 💬 | «Из вашей недавней игры» | «Из недавней игры» | «вашей» is redundant in a row subtitle and costs width; the possessive adds nothing EN's "your recent gameplay" doesn't already imply from context. |
+| llm_backend_preset_custom | 💬 | «Свой» | «Другой» (only if it reads poorly in the catalog list) | Fine as a Provider dropdown value and pill. Flagged only because it also lands inside the composed catalog subtitle «OpenAI (DeepSeek, Mistral, Свой)», where «Другой» would read marginally better. Leave if intentional. |
+
+### Clean areas (delta) — checked, no findings
+
+**`settings_yomitan_count_summary` — the plurals. Clean; the previous cycle's bug
+class does not recur.** Verified structurally *and* by reading every category with
+a real number. The prior defect (`yomitan_import_summary_count`, fixed last cycle)
+was a **selector-vs-argument split** — the category was keyed to one quantity while
+the participle agreed with another, yielding «Импортирован **0**…». That split is
+structurally impossible here: the call site is
+`RootSettingsViewModel.kt:346` → `getQuantityString(R.plurals.settings_yomitan_count_summary, count, count)`
+— **selector and format arg are the same value**. Category by category:
+`one` (ends 1, ≠11) «Импортирован **1** словарь» / «Импортирован **21** словарь» — masc. sg. short participle + nom. sg. noun ✓ correct for *every* member of the band;
+`few` (ends 2–4, ≠12–14) «Импортировано **2** словаря» / «…**23** словаря» — impersonal neuter + gen. sg. ✓;
+`many` (0, 5–9, 11–14) «Импортировано **5** словарей» / «…**11** словарей» / «…**0** словарей» ✓;
+`other` (fractions) «Импортировано **1,5** словаря» — gen. sg., correct for Russian fractions ✓ (unreachable anyway: `count` is an `Int`, and `count == 0` short-circuits to `settings_yomitan_empty_summary` at line 344). The four `xliff:g example=` values (1 / 2 / 5 / 1.5) correctly diverge from EN's (1 / 3) because `few`/`many` **have no English counterpart** and EN's `other`="3" would be flatly wrong for a Russian fraction band — the same practice `values-ar` uses for its six categories (0/3/11/100). `example` is stripped by AAPT2 and has no runtime effect.
+
+**Share-scope buttons — verified against AOSP source, not from memory.** Fetched
+`aosp-mirror/platform_frameworks_base` → `packages/SystemUI/res/values-ru/strings.xml`:
+`screen_share_permission_dialog_option_single_app` = «**Показать приложение**» and
+`_entire_screen` = «**Показать весь экран**». Both `stream_kind_share_one_app` and
+`stream_kind_share_entire_screen` are **byte-identical to AOSP** ✓. (I had suspected
+the single-app one was missing «одно» — it is not; AOSP genuinely omits it. Recorded
+so a future reviewer doesn't re-raise it.)
+
+**The 38 `misc_*` chips — cluster distinctness.** Both traps named in the brief were
+**avoided**: `misc_nonstandard` is «Нестандартное», *not* «Ненормативное» (which
+means *obscene*) ✓; and «Уничижительное» is used **only** at `misc_derogatory` — it
+does **not** collide into the humble slot, where `misc_humble` correctly reads
+«Скромное» ✓. Honorifics (`Почтительное · Скромное · Вежливое`) are three-way
+distinct ✓. Obsolescence (`Архаичное · Устаревшее · Старомодное · Историческое`) is
+four-way distinct — the `misc_dated` finding above is about *register*, not about a
+collision. Several chips are the genuinely canonical Russian пометы and should be
+left alone: «Переносное» (перен.), «Книжное» (книжн.), «Разговорное» (разг.),
+«Ласкательное» (ласк.), «Шутливое» (шутл.), «Фамильярное» (фам.), «Звукоподражание»,
+«Деликатное» (correctly dodges the «Чувствительное» calque). Adjective-vs-noun mix
+(«Сленг», «Идиома», «Эвфемизм») is correct lexicographic practice and is *not* a
+defect — the sibling `pos_*` family is all nouns because POS tags are nouns, while
+register пометы are adjectives. Chip widths (14–17 ch) sit inside the committed
+range (`pos_auxiliary` = 22 ch): **no truncation risk**.
+
+**Noun case around every `<xliff:g>` — read with real values dropped in.** No raw
+placeholder is left in an oblique-case slot. Colon/parenthesis restructures used
+exactly where the params doc prescribes: `ocr_source_label` «Распознано: PaddleOCR»
+(mirrors the committed `translation_source_label` «Перевод: DeepL» — the glossary's
+prescribed structure, matched ✓); `update_dialog_size_note` «Размер загрузки: 128 МБ»;
+`hotkey_show_hint_title` «…показа подсказок (Фуригана)» and `hotkey_auto_hint_title`
+«…/остановки: Авто Фуригана» (both reproduce the committed
+`translate_button_subtitle_hold_to_show_hint` / `hotkey_show_hint_dialog_title`
+patterns ✓); `settings_ocr_disable_manga_msg` «…модель (68 МБ) или удалить **её**…»
+— «её» correctly agrees with fem. «модель» ✓; `update_error_no_space`
+«(требуется 230 МБ)»; `tr_service_remove_title_fmt` «Убрать OpenAI?» (indeclinable
+brand, acc = nom ✓); `game_audio_trim_duration` «Выбрано 2.4 с · записано 147 с»
+(fully restructured out of the numeral-agreement trap ✓);
+`tr_service_status_usage_today_fmt` fronts the genitive to dodge «12 345 токенов» vs
+«1 токен» ✓; `update_error_wrong_package` «не является обновлением PlayTranslate»
+(instrumental ✓). `hotkey_auto_hint_dialog_title` «Авто %1$s» is **not** a new
+invention — it reproduces the committed `live_mode_auto_with_hint` verbatim ✓.
+
+**Terminology — grepped against the committed file, not invented.** Every one of
+these matches an existing precedent: «Поставщик» (Provider) ← `tr_service_order_footer`
+«…каждого поставщика»; «инструмент OCR» ← `settings_ocr_footer` «Разные инструменты
+OCR…»; «Синтез речи» (TTS) ← `settings_cell_tts`; «лимитное подключение» (metered) ←
+the four `*_metered_warning_*` strings; «Наложения» (overlays) ←
+`settings_hide_overlays_during_auto_mode`; «Вкл.»/«Выкл.» ← `capture_lifecycle_state_on/off`;
+«захваченные/захватывает» (captured) ← `tr_service_order_footer` «получают захваченный
+текст»; «Удалить» for models ← `settings_ocr_delete_confirm`; «Проверка…» ←
+`settings_ocr_verifying`. The **Remove vs Delete** split the glossary asks for is
+executed cleanly and deliberately: services are «Убрать» (`tr_service_remove_*`,
+`tr_service_delete_cd`), history entries and models are «Удалить» — and
+`tr_service_remove_message` uses *both* in one sentence exactly as EN does
+(«Сервис будет **убран** из списка, а сохранённый API-ключ **удалён**») ✓. «Очистить»
+is reserved for Clear-all ✓. `service_llm_badge` keeps Latin «LLM» ✓. «Промпт» is one
+noun across all 22 `llm_prompt_*` keys ✓; «Ключевые слова» (keyword) is distinct from
+placeholder ✓.
+
+**Register & the deliberate decisions.** Formal lowercase **вы** held throughout
+(«вашего сервера», «вашей недавней игры», «которую вы ищете»); no «ты» anywhere in
+the delta. Sibling buttons share a form: «Оставить модель»/«Удалить модель»,
+«Воспроизвести фрагмент»/«Остановить», «Использовать фрагмент»/«Использовать синтез
+речи» — and «фрагмент» is used consistently for the glossary's *selection* ✓. The
+brief's four carve-outs were checked and left alone: the AOSP share buttons (above),
+the Latin «Japanese»/«English» in `llm_prompt_kw_source_desc`/`_target_desc` ✓,
+`llm_status_low_memory_badge` untouched ✓, and em dashes (тире) treated as native
+punctuation throughout ✓.
+
+---
+
+## Delta review round 2 — 2026-07-14
+
+Fresh independent re-derivation of all 174 delta keys against EN + the committed
+file. Primary target per the brief: **regressions introduced by the round-1
+fixes**.
+
+Mechanical layer re-verified programmatically across all 174: placeholders,
+`<xliff:g>` inner text + `id` attrs, the bare `{token}` literals, `\n`, markup,
+escaping, trailing-period parity, no double spaces, `name=` untouched, full RU
+CLDR plural set. **All clean — no 🛑.**
+
+**Counts: 0 🛑 · 1 ❌ · 1 ⚠️ · 3 💬**
+
+### Findings (delta round 2)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| game_audio_trim_use_tts + game_audio_trim_save | ❌ | «Использовать синтез речи» / «Использовать фрагмент» | «Синтез речи» / «Использовать» | **The trim button row overflows by 1.38×.** `activity_game_audio_trim.xml:80–116` is a horizontal `LinearLayout` (padding 12dp) holding three `wrap_content` MaterialButtons — two TextButtons (12dp side padding) and the filled primary (24dp) — separated by a weighted `Space`. At 14sp the three RU labels need **~464dp** of button against **~336dp** available on a 360dp phone. The `Space` collapses to 0 first, then the **last** child — `btnTrimSave`, the *primary* «Использовать фрагмент» — is clipped. The model calibrates on EN, which lands at **335dp vs 336dp** — i.e. EN is exactly at the limit, which is precisely why pt-BR was granted a measured width exception on this same row (`game_audio_trim_use_tts` = "Usar TTS"). RU is the widest locale in the set and got no such trim. The fix lands at **317dp (19dp headroom)**; «Синтез речи» keeps the `settings_cell_tts` term, and the "…instead" contrast is carried by the adjacent primary exactly as pt-BR's sanctioned label does. *Computed, not measured on-device — worth a Thor confirmation, but the EN calibration makes the direction unambiguous.* |
+| llm_status_low_memory_badge | ⚠️ | «…перевод через **резервный** вариант» | «…перевод через **запасной** вариант» | Terminology drift on "fallback". The committed file renders it **«запасной вариант»** twice — `tr_service_offline_footer` («используются как запасной вариант») and `yomitan_single_dict_subtitle` («последний запасной вариант») — and all three EN strings use the one word *fallback*. The delta introduces a third synonym for the same mechanism. One-word fix. (The em dash stays — settled.) |
+| misc_yojijukugo | 💬 | «Идиома из 4 иероглифов» | `misc_idiomatic` → «Идиоматическое», or `misc_yojijukugo` → «Из 4 иероглифов» | Prefix stutter against `misc_idiomatic` = «Идиома». `build_jmdict.py:526–540` collects **every** `<misc>` tag on a sense (`for m in sense.findall("misc")`), `renderMisc` maps each independently, and `.distinct()` only dedupes *identical* labels — so a sense tagged both `id` and `yoji` renders «**Идиома** · **Идиома** из 4 иероглифов». EN doesn't stutter because it contrasts an adjective ("Idiomatic") with a noun ("Four-character compound"); RU leads both with the same noun. Moving `misc_idiomatic` to «Идиоматическое» also joins the dominant adjectival pattern (Разговорное / Книжное / Переносное). **Caveat: I could not verify how often JMdict actually co-tags `id`+`yoji` — no JMdict on hand. The render path permits it; the corpus frequency is unverified.** Round 1 cleared the noun «Идиома» on lexicographic grounds and was right to — it simply didn't consider the yojijukugo collision. |
+| misc_dated | 💬 | «Устаревающее» | (keep — or revert to «Старомодное») | The round-1 fix is *linguistically correct*: the imperfective present participle («becoming obsolete») against `misc_obsolete`'s perfective «Устаревшее» («already obsolete») encodes exactly the EN Dated/Obsolete split. The cost it introduced: the two chips are now a near-minimal pair differing only mid-stem (устарев**ш**ее / устарев**аю**щее), where «Старомодное» was instantly distinct — and EN's own comment glosses *dated* as "old-fashioned". **Not a defect; flagged only so the trade is a conscious one.** Leave as-is if aspectual precision beats glance-legibility. |
+| llm_prompt_discard_message | 💬 | «Ваши изменения в этом промпте не сохранены.» | «Изменения в этом промпте пока не сохранены.» | The discard dialog now carries «сохран-» three times (title / body / button). The **title↔button** repetition is load-bearing and must stay — it is what kills the «Отмена» ambiguity (see below) — so only the body can vary, and EN does vary it ("Discard" / "edits" / "saved"). «пока» ("not yet") additionally removes the momentary "already lost?" reading of the bare short passive «не сохранены». Low priority; do not churn. |
+
+### The discard dialog, read as a whole — the round-1 fix holds ✓
+
+Traced against the real call site (`LlmPromptEditorActivity.kt:102–118`), which is
+the only thing that settles it:
+
+```
+Не сохранять изменения?                    ← llm_prompt_discard_title
+Ваши изменения в этом промпте не сохранены. ← llm_prompt_discard_message
+                    [Отмена]  [Не сохранять] ← btn_cancel · llm_prompt_discard_confirm (ptDanger → finish())
+```
+
+Round 1's defect was that the old title «**Отменить** изменения?» shared a root with
+`btn_cancel` = «**Отмена**», priming the *cancel* button as the affirmative answer
+when it in fact **keeps** the edits — one tap from data loss. **The fix resolves it
+and creates no new ambiguity:**
+
+- The word «Отмен-» no longer appears anywhere in the dialog, so the root collision
+  is gone outright — not merely weakened.
+- The confirm button label «Не сохранять» is now a **byte-exact restatement of the
+  title's predicate**. That is the strongest disambiguation available: the button
+  matching the title's verb *is* the affirmative, so the negative-polarity question
+  («Не сохранять…?») cannot be mis-answered.
+- «Отмена» is left with exactly one reading — "cancel this discard" → back to the
+  editor. This mirrors EN's own Cancel/Discard shape, so no locale-specific hazard
+  is introduced.
+
+The two sibling dialogs on the same screen were checked with it and are coherent:
+`showFatalAlert` is title «Этот промпт нельзя сохранить» + a lone **[ОК]** (`btn_ok`)
+— the permanent-capability «нельзя» is right for a dead-end dialog with no save path
+(«Не удалось» would have invited a pointless retry), and it matches the delta's own
+`update_error_signature` («нельзя установить») ✓; `showAdvisoryAlert` is «Проверьте
+этот промпт» + [Отмена] / [Всё равно сохранить] ✓.
+
+The **modality split is consistent across the whole delta**: permanent «нельзя»
+(`llm_prompt_invalid_title`, `update_error_signature`); one-shot past «не удалось»
+(`tr_service_status_check_failed`, `update_error_verification`, `update_error_install_launch`);
+ongoing present «не удаётся» (`error_capture_blocked_secure` — correct, live mode
+keeps polling).
+
+### Plurals — read at each count band ✓
+
+`settings_yomitan_count_summary`. Call site verified myself at
+`RootSettingsViewModel.kt:343–346`: `getQuantityString(…, count, count)` — **selector
+and format arg are the same value**, so last cycle's selector-vs-argument split
+(`yomitan_import_summary_count`) is structurally impossible here; and `count == 0`
+short-circuits to `settings_yomitan_empty_summary` at line 344, so `many`'s zero case
+is unreachable.
+
+- `one` (n≡1 mod 10, ≠11) → «Импортирован **1** словарь» / «Импортирован **21** словарь» — masc. sg. short participle + nom. sg. noun. Correct for *every* member of the band, precisely because selector == arg ✓
+- `few` (n≡2–4, ≠12–14) → «Импортировано **2** словаря» / «…**23** словаря» — impersonal neuter + gen. sg. ✓ (the neuter impersonal is the standard quantity-statement form, cf. «Продано 3 билета»)
+- `many` (0, 5–9, 11–14) → «Импортировано **5** словарей» / «…**11** словарей» — gen. pl. ✓
+- `other` (fractions) → «Импортировано **1,5** словаря» — gen. sg., correct for RU fractions ✓ (unreachable; `count` is an `Int`)
+
+The four `example=` values (1 / 2 / 5 / 1.5) rightly diverge from EN's (1 / 3): `few`
+and `many` have no English counterpart, and EN's `other`="3" would be flatly wrong for
+a Russian fraction band. `example` is stripped by AAPT2 — no runtime effect.
+
+### The 38 `misc_*` labels after the edits ✓
+
+Checked programmatically: **all 38 are distinct** — no two collapse under
+`renderMisc`'s `.distinct()` (`MiscLabels.kt:31`) — and none collides with the
+`pos_*` or `inflection_*` families that render in the same card. No label contains
+the `" · "` join separator (`MiscLabels.kt:37`).
+
+The four clusters survive round 1's three edits and remain internally distinguishable:
+
+- **Offensiveness** — Уничижительное · Оскорбительное · Вульгарное · **Дискриминационное** · Деликатное. The `misc_slur` fix is right: «Бранное» (swearing/abuse) sat squarely inside the vulgar/offensive space and gave the reader three chips that all just read "rude word". Russian lexicography has no native помета for *slur*, so a coinage is forced; «Дискриминационное» is categorically distinct (a slur demeans a *group*), is unambiguous in Russian, and «дискриминационная лексика» is attested usage. ✓
+- **Obsolescence** — Архаичное · Устаревшее · **Устаревающее** · Историческое ✓ (see the 💬 above).
+- **Informality** — Разговорное · **Неформальное** · Фамильярное · Сленг · Интернет-сленг · Манга-сленг · Официальное · Книжное. The `misc_informal` fix is right: «Неофициальное» means *unofficial* (of a document), not a speech register. The resulting **root asymmetry** «Официальное» / «Неформальное» is the accepted cost of keeping `misc_formal` off the «Формальное» false friend (settled) — it costs nothing functionally, since the two never co-occur and both are distinct, correct register terms. ✓
+- **Honorifics** — Почтительное · Скромное · Вежливое ✓ three-way distinct; «Уничижительное» is still used *only* at `misc_derogatory` and has not leaked into the humble slot.
+
+`misc_manga_slang` → «Манга-сленг» now parallels «Интернет-сленг» (hyphenated compound, not a genitive phrase) ✓.
+
+### Case agreement around every `<xliff:g>`, read with real values ✓
+
+No raw placeholder sits in an oblique-case slot. The round-1 restructures hold:
+
+- `ocr_source_label` → «**Распознавание:** PaddleOCR». The change from «Распознано:» is
+  right and is the *better* structure: it is now a noun + colon + name, an exact
+  structural mirror of `translation_source_label` «Перевод: DeepL» — the two lines sit
+  next to each other on the result screen, so the parallel is *visible*. It also reuses
+  the file's established OCR term (`status_ocr` «Распознавание текста…», `settings_header_ocr`
+  «Распознавание текста (OCR)») ✓
+- `update_unknown_sources_message` → the locative now precedes the verb («…на открывшемся
+  экране настроек **разрешите**…»), so it can no longer misattach as "install updates
+  *onto* the settings screen"; and the brand sits in apposition to the dative head noun
+  «приложению», which carries the case for the indeclinable Latin name ✓. Dropping
+  «приложений» avoids «приложению … приложений» without losing the pointer (the button
+  opens the screen anyway) ✓
+- `tr_service_status_usage_today_fmt` → «Токенов сегодня: 12 345» fronts the genitive
+  plural, which is agreement-proof for 1 / 2 / 5 (the runtime passes a *pre-formatted*
+  string, so `<plurals>` is unavailable). This is a genuinely idiomatic RU stat-line
+  shape («Шагов сегодня: 8 421») ✓
+- Nominative/citation fills: `hotkey_show_hint_title` «…показа подсказок (Фуригана)»,
+  `hotkey_show_hint_dialog_title` «Показать: Фуригана», `hotkey_auto_hint_title` «…/остановки:
+  Авто Фуригана», `update_dialog_size_note`, `settings_ocr_disable_manga_msg` («…или удалить
+  **её**» — fem., agrees with «модель» ✓), `update_error_no_space`, `tr_service_key_tail_fmt` ✓
+- Indeclinable-brand slots (acc = gen = nom): `tr_service_remove_title_fmt` «Убрать OpenAI?»,
+  `update_progress_title` «Обновление PlayTranslate», `cd_add_to_anki`, `floating_menu_panel_open_app`,
+  `update_error_wrong_package` («не является обновлением PlayTranslate» — instrumental ✓) ✓
+- `history_empty_off` — PlayTranslate is the nominative **subject** of «захватывает» ✓
+- `llm_prompt_advisory_foreign_token` — EN has `{text}` in *subject* position; RU flips to
+  active («Этот промпт не заполняет {text} — ключевое слово будет…»), which keeps the token
+  as an object where its indeclinability is harmless ✓. «без него» in `llm_prompt_fatal_missing_text`
+  /`_missing_strings` is safe for both masc. and neut. antecedents (same form) and matches the
+  neuter «ключевое слово» used in the sibling ✓
+
+### Other things checked, no finding
+
+- **`cd_change_source_language` / `cd_change_target_language`** = «Изменить язык **оригинала**» /
+  «…язык **перевода**». These look like a term drift against the delta's own
+  `llm_prompt_kw_source_desc` («исходного языка») — they are **not**. They are
+  contentDescriptions for the *tappable result-screen section headers*, and the visible
+  headers are `section_original` = «**Оригинал**» and `section_translation` = «**Перевод**».
+  Binding the a11y label to the label the user actually sees is exactly right (and is better
+  than the EN, whose headers say Original/Translation while its cd says source/target).
+  «исходный/целевой язык» is correct in its own place — the keyword legend explaining the
+  literal `{source}`/`{target}` tokens. Recorded so a future reviewer doesn't "fix" it.
+- **`probe_initializing`** — round 1's truncation watch was a **false positive**. The chip
+  measures its own localized string (`StreamKindProbe.kt:576–580`:
+  `labelPaint.measureText(labelText) + 2 * labelPadding`, code comment: *"Width is MEASURED
+  from the localized string — every locale fits exactly, no fixed guess"*). «Инициализация…»
+  cannot truncate. Leave it.
+- **`anki_game_audio_row_subtitle`** — the «Сохраняет» → «Сохранять» fix is right: the row
+  title `anki_game_audio_row_title` is the infinitive «Записывать звук игры», and the sibling
+  switch subtitle `history_toggle_subtitle` is the infinitive «Сохранять захваченные
+  предложения…». The 3sg was the odd one out; it now matches the file's dominant switch-row shape ✓
+- **`error_capture_blocked_secure`** — «захватываемое приложение» is right (EN's "this app" is
+  ambiguous between PlayTranslate and the capture target) and it now matches its panel sibling
+  `error_single_app_not_fullscreen` verbatim ✓. Ongoing-present «не удаётся» is correct — live
+  mode keeps polling.
+- **`settings_ocr_use_manga_subtitle`** — «для автоперевода» is right («авто» alone reads as
+  *car*) and matches the file's established «Автоперевод» (`hotkey_auto_translation_dialog_title`,
+  `settings_header_auto_translate`) ✓
+- **`llm_prompt_row_system_subtitle` / `settings_llm_context_subtitle`** — «LLM-переводчикам» vs
+  «онлайн-переводчикам на базе LLM» is a *motivated* variation, not a drift: the second stacks a
+  second modifier ("online") that would otherwise force the triple-hyphen «онлайн-LLM-переводчикам».
+  «облачным и локальным» correctly takes dative to agree with «LLM-переводчикам» ✓
+- **Seconds abbreviation** — `game_audio_trim_duration` uses «с» (no period), matching
+  `settings_capture_interval_seconds_suffix` = «с»; the period in `settings_capture_interval_hint`
+  is a sentence-final stop, not part of the symbol. Consistent ✓
+- **`stream_kind_*`** — «Какой вариант **демонстрации**…» + AOSP's «Показать приложение» /
+  «Показать весь экран» + «…что именно было **показано**» form one coherent set on Android's own
+  «демонстрация экрана» term ✓ (the AOSP buttons and `stream_kind_prompt_message`'s «в реальном
+  времени» are settled and were not re-litigated).
+- **`settings_ocr_disable_manga_*`** — the body's verbs («**Оставить** скачанную модель … или
+  **удалить** её») byte-match the button labels («Оставить модель» / «Удалить модель») ✓
+- **Remove vs Delete** — «Убрать» for services, «Удалить» for models/history entries, «Очистить»
+  for clear-all, with `tr_service_remove_message` using both in one sentence exactly as EN does ✓
+- **Truncation, remaining surfaces** — `service_account_required_free` (35 ch) renders in a
+  `match_parent` wrapping subtitle (`item_add_online_service.xml`, only the *title* has
+  `maxLines=1`), no risk ✓; `floating_menu_capture_screen` «Захват\nэкрана» (6/6 per line) is
+  shorter than the committed, known-fitting `floating_menu_btn_capture_region` «Область\nзахвата»
+  (7/7) ✓; the `misc_*` chips wrap (settled) ✓
+- **Known code defects (not locale bugs, per the brief; noted once)** — `game_audio_trim_duration`
+  will render «Выбрано 2**.**4 с» because `GameAudioTrimActivity` formats with `Locale.US`; Russian
+  wants a decimal comma. The RU *string* is structurally correct and needs no change.
+- **Register** — formal lowercase «вы» throughout; no «ты» anywhere in the delta.
+
+### Verdict
+
+**FIX FIRST.** One ❌ (the trim button row clips its primary action in RU — a two-string
+fix) and one ⚠️ (a one-word "fallback" term alignment). Everything round 1 changed
+re-derives as correct, including all three of its ❌ calls; **no regression was
+introduced by any of the fixes**, and the discard-dialog ambiguity it targeted is
+genuinely gone.

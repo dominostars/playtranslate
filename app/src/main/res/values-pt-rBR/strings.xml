@@ -287,9 +287,24 @@
 
     <string name="translation_source_label">Traduzido por <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
 
+    <string name="ocr_source_label">Reconhecido por <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g></string>
+    <string name="ocr_picker_title">Escolher ferramenta de OCR</string>
+    <string name="ocr_picker_message">O OCR é o que extrai o texto de uma captura de tela. Ferramentas diferentes podem funcionar melhor com fontes diferentes</string>
+    <string name="cd_choose_ocr">Escolher ferramenta de OCR</string>
+    <string name="cd_change_source_language">Alterar o idioma de origem</string>
+    <string name="cd_change_target_language">Alterar o idioma de destino</string>
+
     <string name="error_live_mode_unsupported_backend">O modo ao vivo não está disponível com o método de captura de tela atual.</string>
 
     <string name="error_screen_capture_denied">Modo ao vivo interrompido — a permissão de captura de tela foi negada.</string>
+
+    <string name="error_single_app_not_fullscreen">A tradução está pausada — o app capturado não está ocupando a tela inteira. Ela é retomada quando o app voltar para tela cheia.</string>
+    <string name="error_capture_blocked_secure">Nada pode ser lido — o app capturado bloqueia a captura de tela.</string>
+    <string name="probe_initializing">Inicializando…</string>
+    <string name="stream_kind_prompt_title">Qual opção de compartilhamento você escolheu?</string>
+    <string name="stream_kind_prompt_message">A tradução ao vivo funciona de forma diferente para um único app e para a tela inteira, e o sistema não informa qual das duas opções foi compartilhada.</string>
+    <string name="stream_kind_share_one_app">Compartilhar um app</string>
+    <string name="stream_kind_share_entire_screen">Compartilhar a tela inteira</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SECTION HEADERS (translation-result screen)
@@ -482,6 +497,38 @@
     <string name="anki_audio_preview_content_description">Ouvir prévia do áudio</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         GAME-AUDIO RECORDING (Settings → Anki → Audio; trim editor)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_game_audio_row_title">Gravar áudio do jogo</string>
+
+    <string name="anki_game_audio_row_subtitle">Mantém os últimos minutos do áudio do jogo para que novos cartões de frase possam usar a fala original</string>
+
+    <string name="anki_game_audio_permission_denied">Permissão negada — a gravação do áudio do jogo continua desativada</string>
+
+    <string name="audio_source_game_name">Áudio do jogo</string>
+
+    <string name="audio_source_game_ready">Do que você jogou recentemente</string>
+
+    <string name="audio_source_game_enable_hint">Não está gravando — ative para capturar o áudio do jogo nos próximos cartões</string>
+
+    <string name="game_audio_trim_title">Cortar áudio do jogo</string>
+
+    <string name="game_audio_trim_save">Usar seleção</string>
+
+    <string name="game_audio_trim_use_tts">Usar TTS</string>
+
+    <string name="game_audio_trim_no_audio">Sem áudio</string>
+
+    <string name="game_audio_trim_play">Reproduzir seleção</string>
+
+    <string name="game_audio_trim_stop">Parar</string>
+
+    <string name="game_audio_trim_duration">Seleção: <xliff:g id="seconds" example="2.4">%1$s</xliff:g> s · Gravação: <xliff:g id="total_seconds" example="147">%2$s</xliff:g> s</string>
+
+    <string name="anki_game_audio_cell_untrimmed">Cortar ao salvar</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          CARD TYPE PICKER + FIELD MAPPING
          ═══════════════════════════════════════════════════════════════ -->
 
@@ -639,6 +686,8 @@
 
     <string name="deepl_settings_about">O <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> é um serviço de tradução conhecido pela alta qualidade, especialmente em idiomas europeus.</string>
 
+    <string name="llm_backend_preset_custom">Personalizado</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          GENERIC LLM BACKEND SETTINGS (OpenAI / Gemini / DeepSeek)
          ═══════════════════════════════════════════════════════════════ -->
@@ -647,7 +696,10 @@
 
     <string name="llm_backend_model_label">Modelo</string>
 
+    <string name="llm_backend_provider_label">Provedor</string>
+
     <string name="llm_backend_base_url_label">URL personalizada</string>
+    <string name="llm_backend_base_url_custom_hint">Insira a URL do seu servidor</string>
     <string name="llm_backend_base_url_invalid">Use https:// — http:// só é permitido para um endereço local ou de rede local</string>
 
     <string name="llm_backend_get_key_title_fmt">Obter uma chave de API do <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
@@ -665,10 +717,66 @@
     <string name="llm_backend_invalid_key_alert_button">OK</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         ADVANCED LLM CONFIGURATION — editable prompt templates.
+         The {token} keywords are parsed at runtime: keep them verbatim.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_header_advanced_llm">Configuração avançada de LLM</string>
+
+    <string name="settings_llm_context_title">Usar as linhas recentes como contexto</string>
+    <string name="settings_llm_context_subtitle">Somente online. Envia as últimas linhas do texto registrado aos tradutores LLM para pronomes e nomes mais consistentes.</string>
+    <string name="llm_prompt_row_system_title">Prompt do sistema</string>
+    <string name="llm_prompt_row_system_subtitle">A persona e as instruções enviadas aos tradutores LLM, na nuvem e no dispositivo.</string>
+    <string name="llm_prompt_row_translation_title">Prompt de tradução</string>
+    <string name="llm_prompt_row_translation_subtitle">O prompt aplicado a cada frase que você consulta.</string>
+    <string name="llm_prompt_row_batch_title">Prompt em lote</string>
+    <string name="llm_prompt_row_batch_subtitle">O prompt que os serviços na nuvem usam para traduzir uma tela inteira de uma só vez.</string>
+
+    <string name="llm_prompt_reset">Redefinir</string>
+    <string name="llm_prompt_keywords_header">Palavras-chave</string>
+    <string name="llm_prompt_save_anyway">Salvar mesmo assim</string>
+
+    <string name="llm_prompt_kw_source_desc">O nome em inglês do idioma de origem, ex.: Japanese</string>
+    <string name="llm_prompt_kw_source_code_desc">O código do idioma de origem, ex.: ja</string>
+    <string name="llm_prompt_kw_target_desc">O nome em inglês do idioma de destino, ex.: English</string>
+    <string name="llm_prompt_kw_target_code_desc">O código do idioma de destino, ex.: en</string>
+    <string name="llm_prompt_kw_text_desc">O texto a ser traduzido</string>
+    <string name="llm_prompt_kw_context_desc">As linhas recentes, quando o contexto está ativado</string>
+    <string name="llm_prompt_kw_count_desc">O número de frases no lote</string>
+    <string name="llm_prompt_kw_strings_desc">As frases a serem traduzidas, como um array JSON</string>
+
+    <string name="llm_prompt_invalid_title">Não é possível salvar este prompt</string>
+    <string name="llm_prompt_fatal_blank">O prompt não pode ficar vazio.</string>
+    <string name="llm_prompt_fatal_missing_text">O prompt precisa incluir {text} — sem ele, a frase a ser traduzida nunca é enviada ao modelo.</string>
+    <string name="llm_prompt_fatal_missing_strings">O prompt precisa incluir {strings} — sem ele, as frases a serem traduzidas nunca são enviadas ao modelo.</string>
+
+    <string name="llm_prompt_warning_title">Verifique este prompt</string>
+    <string name="llm_prompt_advisory_missing_source">Falta {source} ou {source_code}: o modelo não saberá de qual idioma está traduzindo.</string>
+    <string name="llm_prompt_advisory_missing_target">Falta {target} ou {target_code}: o modelo não saberá para qual idioma traduzir.</string>
+    <string name="llm_prompt_advisory_missing_count">Falta {N}: o modelo não saberá quantas frases esperar.</string>
+    <string name="llm_prompt_advisory_foreign_token"><xliff:g id="keyword" example="{text}">%1$s</xliff:g> não é preenchido por este prompt e será enviado como texto literal.</string>
+    <string name="llm_prompt_advisory_too_long">Este prompt é muito longo. Os modelos no dispositivo podem ficar mais lentos ou esgotar o contexto.</string>
+
+    <string name="llm_prompt_discard_title">Descartar alterações?</string>
+    <string name="llm_prompt_discard_message">Suas edições neste prompt não foram salvas.</string>
+    <string name="llm_prompt_discard_confirm">Descartar</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS FOOTERS (Translation Service sections)
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="tr_service_order_footer">As traduções tentam cada serviço ativado na ordem exibida, recorrendo a outro quando um está indisponível. Os serviços de tradução online recebem o texto capturado. Revise a política de privacidade de cada provedor antes de ativar.</string>
+    <string name="tr_service_add_online">Adicionar serviço de tradução online</string>
+    <string name="add_online_service_title">Adicionar serviço de tradução</string>
+    <string name="service_llm_badge">LLM</string>
+    <string name="service_account_required">Requer conta</string>
+    <string name="service_account_required_free">Requer conta (opção gratuita)</string>
+    <string name="service_no_account_required">Não requer conta</string>
+    <string name="tr_service_key_tail_fmt">Chave ••••<xliff:g id="key_tail" example="4f2a">%1$s</xliff:g></string>
+    <string name="tr_service_remove_title_fmt">Remover o <xliff:g id="service_name" example="OpenAI">%1$s</xliff:g>?</string>
+    <string name="tr_service_remove_message">Isso remove o serviço da lista e exclui a chave de API salva.</string>
+    <string name="tr_service_remove_confirm">Remover</string>
+    <string name="tr_service_delete_cd">Remover serviço</string>
 
     <string name="tr_service_offline_footer">As traduções offline são usadas como alternativa quando as traduções online estão indisponíveis. As traduções do <xliff:g id="brand_mlkit" example="MLKit">MLKit</xliff:g> são ruins, mas as outras opções podem ser muito lentas e pesadas; tenha cuidado ao usá-las na tradução automática.</string>
 
@@ -681,6 +789,16 @@
     <string name="tr_service_status_quota_fmt"><xliff:g id="used" example="120,345">%1$s</xliff:g> / <xliff:g id="total" example="500,000">%2$s</xliff:g> caracteres usados</string>
 
     <string name="tr_service_status_quota_with_reset_fmt"><xliff:g id="quota_line" example="120,345 / 500,000 characters used">%1$s</xliff:g> · redefine em <xliff:g id="reset_date" example="Jun 1">%2$s</xliff:g></string>
+
+    <string name="tr_service_status_invalid_key">Chave de API inválida</string>
+
+    <string name="tr_service_status_no_internet">Sem internet, não é possível verificar o uso</string>
+
+    <string name="tr_service_status_check_failed">Não foi possível verificar o uso</string>
+
+    <string name="tr_service_status_no_usage_today">Nenhum uso hoje</string>
+
+    <string name="tr_service_status_usage_today_fmt">Hoje: <xliff:g id="tokens" example="12,345">%1$s</xliff:g> tokens</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          BACKEND QUALITY / SPEED LABELS
@@ -987,6 +1105,16 @@
 
     <string name="floating_menu_btn_capture_region">Capturar\nregião</string>
 
+    <string name="floating_menu_capture_screen">Capturar\ntela</string>
+
+    <string name="floating_menu_edit_region">Editar região</string>
+
+    <string name="floating_menu_panel_language">Idioma</string>
+
+    <string name="floating_menu_panel_overlays">Sobreposições</string>
+
+    <string name="floating_menu_panel_open_app">Abrir o <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
+
     <string name="floating_menu_drag_instruction">Arraste o dedo para capturar uma área específica</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
@@ -1053,6 +1181,8 @@
 
     <string name="cd_copy_original">Copiar original</string>
 
+    <string name="cd_add_to_anki">Adicionar ao <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
     <string name="cd_toggle_original_visibility">Mostrar/ocultar original</string>
 
     <string name="cd_toggle_words_visibility">Mostrar/ocultar palavras</string>
@@ -1089,11 +1219,45 @@
 
     <string name="update_dialog_message">O <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> está disponível no <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
 
-    <string name="update_dialog_view_release">Ver versão</string>
+    <string name="update_dialog_view_release">Ver notas da versão</string>
 
     <string name="update_dialog_skip">Ignorar esta versão</string>
 
     <string name="update_dialog_ask_again_later">Perguntar depois</string>
+
+    <string name="update_dialog_download">Baixar e instalar</string>
+
+    <string name="update_dialog_size_note">Tamanho do download: <xliff:g id="size" example="128 MB">%1$s</xliff:g></string>
+
+    <string name="update_dialog_metered_note">Você está em uma rede limitada.</string>
+
+    <string name="update_progress_title">Atualizando o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="update_progress_verifying">Verificando…</string>
+
+    <string name="update_unknown_sources_title">Permitir a instalação de atualizações</string>
+
+    <string name="update_unknown_sources_message">Para concluir a atualização, ative \"Permitir desta fonte\" para o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> na tela de configurações que será aberta. O Android pode reiniciar o app quando a permissão for ativada. A atualização baixada é mantida e a instalação continua automaticamente.</string>
+
+    <string name="update_unknown_sources_button">Abrir configurações</string>
+
+    <string name="update_error_title">Falha na atualização</string>
+
+    <string name="update_error_incomplete">O download não foi concluído corretamente. Tente novamente ou baixe a atualização no <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_error_verification">Não foi possível verificar o arquivo baixado. Tente novamente ou baixe a atualização no <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_error_wrong_package">O arquivo baixado não é uma atualização do <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>. Em vez disso, baixe a atualização no <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_error_downgrade">A versão baixada não é mais recente que a versão instalada.</string>
+
+    <string name="update_error_signature">Esta atualização não pode ser instalada sobre a versão atual. Instale-a manualmente pelo <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_error_no_space">Espaço livre insuficiente para baixar a atualização (necessário: <xliff:g id="needed" example="230 MB">%1$s</xliff:g>).</string>
+
+    <string name="update_error_retry">Tentar novamente</string>
+
+    <string name="update_error_install_launch">Não foi possível abrir o instalador do sistema.</string>
 
     <string name="toast_no_browser_available">Nenhum navegador disponível</string>
 
@@ -1165,6 +1329,12 @@
     <string name="settings_ocr_installing">Instalando…</string>
 
     <string name="settings_ocr_download_failed">Não foi possível baixar o modelo de OCR. Verifique sua conexão e tente novamente.</string>
+    <string name="settings_ocr_use_manga_title">Usar o MangaOCR</string>
+    <string name="settings_ocr_use_manga_subtitle">AVISO: tem alta qualidade, mas é lento. Não recomendado para o modo automático. O MangaOCR é um complemento do OCR selecionado, não funciona sozinho</string>
+    <string name="settings_ocr_disable_manga_title">Desativar o MangaOCR?</string>
+    <string name="settings_ocr_disable_manga_msg">Manter o modelo baixado (<xliff:g id="size" example="68 MB">%1$s</xliff:g>) ou excluí-lo para liberar espaço?</string>
+    <string name="settings_ocr_disable_keep">Manter modelo</string>
+    <string name="settings_ocr_disable_delete">Excluir modelo</string>
     <string name="settings_header_support">Suporte</string>
 
     <string name="settings_header_configure">Configurar</string>
@@ -1174,6 +1344,11 @@
     <string name="settings_cell_anki">Flashcards do Anki</string>
     <string name="settings_cell_translation_services">Serviços de tradução</string>
     <string name="settings_cell_tts">Conversão de texto em voz</string>
+    <string name="settings_yomitan_empty_summary">Importe dicionários para melhorar as consultas de palavras</string>
+    <plurals name="settings_yomitan_count_summary">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> dicionário importado</item>
+        <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g> dicionários importados</item>
+    </plurals>
 
     <string name="yomitan_page_description">Os dicionários Yomitan são arquivos de dicionário criados pela comunidade e usados pela extensão de navegador Yomitan. Os recursos incluem dicionários adicionais, dados de frequência e acento tonal. Importe um dicionário (.zip) com o botão +, e o PlayTranslate o integrará perfeitamente em todo o app.</string>
 
@@ -1283,6 +1458,23 @@
 
     <string name="settings_cell_dictionary">Dicionário</string>
 
+    <string name="settings_cell_history">Histórico</string>
+    <string name="settings_cell_history_summary_on">Ativado · Registro das frases capturadas</string>
+    <string name="settings_cell_history_summary_off">Desativado · Registro das frases capturadas</string>
+    <string name="history_screen_title">Histórico</string>
+    <string name="history_toggle_title">Manter o histórico de texto</string>
+    <string name="history_toggle_subtitle">Salva as frases capturadas neste dispositivo</string>
+    <string name="history_empty_off">O histórico de texto está desativado. Ative-o para manter as frases que o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> captura.</string>
+    <string name="history_empty_none">Nada aqui ainda. As linhas aparecem conforme são traduzidas.</string>
+    <string name="history_action_copy">Copiar</string>
+    <string name="history_action_anki">Adicionar ao Anki</string>
+    <string name="history_action_delete">Excluir</string>
+    <string name="history_clear_menu">Limpar histórico</string>
+    <string name="history_clear_confirm_title">Limpar todo o histórico?</string>
+    <string name="history_clear_confirm_message">Todas as linhas salvas serão excluídas deste dispositivo.</string>
+    <string name="history_delete_confirm_title">Excluir esta entrada?</string>
+    <string name="history_copied_toast">Copiado</string>
+
     <string name="settings_cell_dictionary_summary">Consulte definições de palavras</string>
 
     <string name="settings_digest_none">Nenhum</string>
@@ -1351,13 +1543,23 @@
 
     <string name="hotkey_not_set_subtitle">Não definido</string>
 
-    <string name="hotkey_show_translations_title">Atalho: segure para mostrar traduções</string>
+    <string name="hotkey_section_translations">Traduções</string>
+
+    <string name="hotkey_show_translations_title">Segure para mostrar traduções</string>
 
     <string name="hotkey_show_translations_dialog_title">Mostrar traduções</string>
 
-    <string name="hotkey_show_hint_title">Atalho: segure para mostrar <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+    <string name="hotkey_auto_translation_title">Toque para iniciar/parar a tradução automática</string>
+
+    <string name="hotkey_auto_translation_dialog_title">Tradução automática</string>
+
+    <string name="hotkey_show_hint_title">Segure para mostrar <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
 
     <string name="hotkey_show_hint_dialog_title">Mostrar <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="hotkey_auto_hint_title">Toque para iniciar/parar o <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g> automático</string>
+
+    <string name="hotkey_auto_hint_dialog_title"><xliff:g id="hint_label" example="Furigana">%1$s</xliff:g> automático</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Capture Display section
@@ -1408,6 +1610,7 @@
     <string name="settings_debug_log_pinhole">Registrar métricas de pinhole do modo ao vivo</string>
     <string name="settings_debug_save_ocr_seed">Salvar capturas de OCR como sementes</string>
     <string name="settings_debug_log_grouping">Registrar decisões de agrupamento de OCR</string>
+    <string name="settings_debug_log_trace">Registrar trace do log de traduções</string>
     <string name="settings_debug_force_crash_title">Forçar travamento</string>
 
     <string name="dictionary_screen_title">Dicionário</string>
@@ -1485,6 +1688,47 @@
     <string name="pos_abbreviation">Abreviação</string>
     <string name="pos_contraction">Contração</string>
     <string name="pos_auxiliary">Verbo auxiliar</string>
+
+    <!-- Misc register/usage tags (short chips); see values/strings.xml. -->
+    <string name="misc_kana_only">Somente kana</string>
+    <string name="misc_kanji_only">Somente kanji</string>
+    <string name="misc_colloquial">Coloquial</string>
+    <string name="misc_informal">Informal</string>
+    <string name="misc_formal">Formal</string>
+    <string name="misc_literary">Literário</string>
+    <string name="misc_honorific">Honorífico</string>
+    <string name="misc_humble">Humilde</string>
+    <string name="misc_polite">Cortês</string>
+    <string name="misc_familiar">Familiar</string>
+    <string name="misc_endearing">Afetivo</string>
+    <string name="misc_childrens">Infantil</string>
+    <string name="misc_female_speech">Fala feminina</string>
+    <string name="misc_male_speech">Fala masculina</string>
+    <string name="misc_archaic">Arcaico</string>
+    <string name="misc_obsolete">Obsoleto</string>
+    <string name="misc_dated">Antiquado</string>
+    <string name="misc_historical">Histórico</string>
+    <string name="misc_rare">Raro</string>
+    <string name="misc_neologism">Neologismo</string>
+    <string name="misc_slang">Gíria</string>
+    <string name="misc_internet_slang">Gíria da internet</string>
+    <string name="misc_manga_slang">Gíria de mangá</string>
+    <string name="misc_idiomatic">Idiomático</string>
+    <string name="misc_figurative">Figurado</string>
+    <string name="misc_onomatopoeia">Onomatopeia</string>
+    <string name="misc_poetic">Poético</string>
+    <string name="misc_humorous">Humorístico</string>
+    <string name="misc_derogatory">Pejorativo</string>
+    <string name="misc_offensive">Ofensivo</string>
+    <string name="misc_vulgar">Chulo</string>
+    <string name="misc_slur">Injúria</string>
+    <string name="misc_sensitive">Sensível</string>
+    <string name="misc_euphemistic">Eufemismo</string>
+    <string name="misc_sarcastic">Irônico</string>
+    <string name="misc_nonstandard">Não padrão</string>
+    <string name="misc_yojijukugo">Composto de quatro caracteres</string>
+    <string name="misc_dialectal">Dialetal</string>
+
     <string name="inflection_causative">Causativo</string>
     <string name="inflection_passive">Passivo/Potencial</string>
     <string name="inflection_negative">Negativo</string>

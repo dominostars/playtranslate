@@ -284,9 +284,24 @@
 
     <string name="translation_source_label">Dịch bởi <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
 
+    <string name="ocr_source_label">Nhận dạng bởi <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g></string>
+    <string name="ocr_picker_title">Chọn công cụ OCR</string>
+    <string name="ocr_picker_message">OCR là công nghệ trích xuất văn bản từ ảnh chụp màn hình. Các công cụ khác nhau có thể phù hợp hơn với những phông chữ khác nhau</string>
+    <string name="cd_choose_ocr">Chọn công cụ OCR</string>
+    <string name="cd_change_source_language">Đổi ngôn ngữ nguồn</string>
+    <string name="cd_change_target_language">Đổi ngôn ngữ đích</string>
+
     <string name="error_live_mode_unsupported_backend">Chế độ trực tiếp không khả dụng với phương thức chụp màn hình hiện tại.</string>
 
     <string name="error_screen_capture_denied">Đã dừng chế độ trực tiếp — quyền chụp màn hình đã bị từ chối.</string>
+
+    <string name="error_single_app_not_fullscreen">Đã tạm dừng dịch — ứng dụng đang được chụp không hiển thị toàn màn hình. Việc dịch sẽ tiếp tục khi ứng dụng trở lại toàn màn hình.</string>
+    <string name="error_capture_blocked_secure">Không đọc được gì — ứng dụng này chặn việc chụp màn hình.</string>
+    <string name="probe_initializing">Đang khởi tạo…</string>
+    <string name="stream_kind_prompt_title">Bạn đã chọn phương án chia sẻ nào?</string>
+    <string name="stream_kind_prompt_message">Dịch trực tiếp hoạt động khác nhau giữa việc chia sẻ một ứng dụng và chia sẻ toàn bộ màn hình, và hệ thống không cho biết bạn đã chia sẻ cái nào.</string>
+    <string name="stream_kind_share_one_app">Chia sẻ một ứng dụng</string>
+    <string name="stream_kind_share_entire_screen">Chia sẻ toàn bộ màn hình</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SECTION HEADERS (translation-result screen)
@@ -479,6 +494,38 @@
     <string name="anki_audio_preview_content_description">Nghe thử âm thanh</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         GAME-AUDIO RECORDING (Settings → Anki → Audio; trim editor)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_game_audio_row_title">Ghi lại âm thanh trò chơi</string>
+
+    <string name="anki_game_audio_row_subtitle">Giữ lại vài phút âm thanh trò chơi gần nhất để các thẻ câu mới có thể dùng chính lời thoại thật</string>
+
+    <string name="anki_game_audio_permission_denied">Quyền bị từ chối — tính năng ghi lại âm thanh trò chơi vẫn tắt</string>
+
+    <string name="audio_source_game_name">Âm thanh trò chơi</string>
+
+    <string name="audio_source_game_ready">Từ phiên chơi gần đây của bạn</string>
+
+    <string name="audio_source_game_enable_hint">Chưa ghi âm — hãy bật để ghi lại âm thanh trò chơi cho các thẻ sau này</string>
+
+    <string name="game_audio_trim_title">Cắt âm thanh trò chơi</string>
+
+    <string name="game_audio_trim_save">Dùng đoạn đã chọn</string>
+
+    <string name="game_audio_trim_use_tts">Dùng TTS thay thế</string>
+
+    <string name="game_audio_trim_no_audio">Không có âm thanh</string>
+
+    <string name="game_audio_trim_play">Phát đoạn đã chọn</string>
+
+    <string name="game_audio_trim_stop">Dừng</string>
+
+    <string name="game_audio_trim_duration">Đã chọn <xliff:g id="seconds" example="2.4">%1$s</xliff:g> giây · Đã ghi <xliff:g id="total_seconds" example="147">%2$s</xliff:g> giây</string>
+
+    <string name="anki_game_audio_cell_untrimmed">Cắt khi lưu</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          CARD TYPE PICKER + FIELD MAPPING
          ═══════════════════════════════════════════════════════════════ -->
 
@@ -636,6 +683,8 @@
 
     <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> là một dịch vụ dịch nổi tiếng với kết quả chất lượng cao, đặc biệt là với các ngôn ngữ châu Âu.</string>
 
+    <string name="llm_backend_preset_custom">Tùy chỉnh</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          GENERIC LLM BACKEND SETTINGS (OpenAI / Gemini / DeepSeek)
          ═══════════════════════════════════════════════════════════════ -->
@@ -644,7 +693,10 @@
 
     <string name="llm_backend_model_label">Mô hình</string>
 
+    <string name="llm_backend_provider_label">Nhà cung cấp</string>
+
     <string name="llm_backend_base_url_label">URL tùy chỉnh</string>
+    <string name="llm_backend_base_url_custom_hint">Nhập URL máy chủ của bạn</string>
     <string name="llm_backend_base_url_invalid">Hãy dùng https:// — http:// chỉ được phép cho địa chỉ cục bộ hoặc trong mạng LAN</string>
 
     <string name="llm_backend_get_key_title_fmt">Lấy khóa API <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
@@ -662,10 +714,68 @@
     <string name="llm_backend_invalid_key_alert_button">OK</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         ADVANCED LLM CONFIGURATION — user-editable prompt templates.
+         The {token} keywords are literal and stay in Latin, verbatim.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_header_advanced_llm">Cấu hình LLM nâng cao</string>
+
+    <string name="settings_llm_context_title">Dùng các dòng gần đây làm ngữ cảnh</string>
+    <string name="settings_llm_context_subtitle">Chỉ trực tuyến. Cung cấp cho các trình dịch LLM trực tuyến vài dòng văn bản đã ghi gần nhất để đại từ và tên gọi nhất quán hơn.</string>
+
+    <string name="llm_prompt_row_system_title">Câu lệnh hệ thống</string>
+    <string name="llm_prompt_row_system_subtitle">Vai trò và các chỉ dẫn được gửi tới các trình dịch LLM, cả trên đám mây lẫn trên thiết bị.</string>
+    <string name="llm_prompt_row_translation_title">Câu lệnh dịch</string>
+    <string name="llm_prompt_row_translation_subtitle">Yêu cầu bao quanh từng cụm từ mà bạn tra cứu.</string>
+    <string name="llm_prompt_row_batch_title">Câu lệnh hàng loạt</string>
+    <string name="llm_prompt_row_batch_subtitle">Yêu cầu mà các dịch vụ đám mây dùng để dịch cả màn hình cùng một lúc.</string>
+
+    <string name="llm_prompt_reset">Đặt lại</string>
+    <string name="llm_prompt_keywords_header">Từ khóa</string>
+    <string name="llm_prompt_save_anyway">Vẫn lưu</string>
+
+    <string name="llm_prompt_kw_source_desc">Tên tiếng Anh của ngôn ngữ nguồn, ví dụ: Japanese</string>
+    <string name="llm_prompt_kw_source_code_desc">Mã ngôn ngữ nguồn, ví dụ: ja</string>
+    <string name="llm_prompt_kw_target_desc">Tên tiếng Anh của ngôn ngữ đích, ví dụ: English</string>
+    <string name="llm_prompt_kw_target_code_desc">Mã ngôn ngữ đích, ví dụ: en</string>
+    <string name="llm_prompt_kw_text_desc">Văn bản cần dịch</string>
+    <string name="llm_prompt_kw_context_desc">Các dòng gần đây, khi ngữ cảnh được bật</string>
+    <string name="llm_prompt_kw_count_desc">Số cụm từ trong lô dịch</string>
+    <string name="llm_prompt_kw_strings_desc">Các cụm từ cần dịch, dưới dạng mảng JSON</string>
+
+    <string name="llm_prompt_invalid_title">Không thể lưu câu lệnh này</string>
+    <string name="llm_prompt_fatal_blank">Câu lệnh không được để trống.</string>
+    <string name="llm_prompt_fatal_missing_text">Câu lệnh phải có {text} — nếu thiếu, cụm từ cần dịch sẽ không bao giờ được gửi tới mô hình.</string>
+    <string name="llm_prompt_fatal_missing_strings">Câu lệnh phải có {strings} — nếu thiếu, các cụm từ cần dịch sẽ không bao giờ được gửi tới mô hình.</string>
+
+    <string name="llm_prompt_warning_title">Kiểm tra lại câu lệnh này</string>
+    <string name="llm_prompt_advisory_missing_source">Thiếu {source} hoặc {source_code}: mô hình sẽ không biết đang dịch từ ngôn ngữ nào.</string>
+    <string name="llm_prompt_advisory_missing_target">Thiếu {target} hoặc {target_code}: mô hình sẽ không biết cần dịch sang ngôn ngữ nào.</string>
+    <string name="llm_prompt_advisory_missing_count">Thiếu {N}: mô hình sẽ không biết có bao nhiêu cụm từ.</string>
+    <string name="llm_prompt_advisory_foreign_token">Câu lệnh này không điền giá trị cho <xliff:g id="keyword" example="{text}">%1$s</xliff:g>, nên từ khóa này sẽ được gửi đi nguyên văn.</string>
+    <string name="llm_prompt_advisory_too_long">Câu lệnh này rất dài. Các mô hình trên thiết bị có thể chậm lại hoặc hết ngữ cảnh.</string>
+
+    <string name="llm_prompt_discard_title">Bỏ thay đổi?</string>
+    <string name="llm_prompt_discard_message">Các chỉnh sửa của bạn với câu lệnh này chưa được lưu.</string>
+    <string name="llm_prompt_discard_confirm">Bỏ thay đổi</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS FOOTERS (Translation Service sections)
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="tr_service_order_footer">Bản dịch sẽ thử lần lượt từng dịch vụ đã bật theo thứ tự hiển thị, chuyển sang dịch vụ khác khi một dịch vụ không khả dụng. Các dịch vụ dịch trực tuyến sẽ nhận văn bản đã chụp. Hãy xem lại chính sách quyền riêng tư của từng nhà cung cấp trước khi bật.</string>
+
+    <string name="tr_service_add_online">Thêm dịch vụ dịch thuật trực tuyến</string>
+    <string name="add_online_service_title">Thêm dịch vụ dịch thuật</string>
+    <string name="service_llm_badge">LLM</string>
+    <string name="service_account_required">Cần tài khoản</string>
+    <string name="service_account_required_free">Cần tài khoản (có gói miễn phí)</string>
+    <string name="service_no_account_required">Không cần tài khoản</string>
+    <string name="tr_service_key_tail_fmt">Khóa ••••<xliff:g id="key_tail" example="4f2a">%1$s</xliff:g></string>
+    <string name="tr_service_remove_title_fmt">Gỡ <xliff:g id="service_name" example="OpenAI">%1$s</xliff:g>?</string>
+    <string name="tr_service_remove_message">Việc này sẽ gỡ dịch vụ khỏi danh sách và xóa khóa API đã lưu của nó.</string>
+    <string name="tr_service_remove_confirm">Gỡ</string>
+    <string name="tr_service_delete_cd">Gỡ dịch vụ</string>
 
     <string name="tr_service_offline_footer">Bản dịch ngoại tuyến được dùng dự phòng khi bản dịch trực tuyến không khả dụng. Bản dịch của <xliff:g id="brand_mlkit" example="MLKit">MLKit</xliff:g> kém, nhưng các lựa chọn khác có thể rất chậm và nặng, hãy thận trọng khi dùng chúng để tự động dịch.</string>
 
@@ -678,6 +788,16 @@
     <string name="tr_service_status_quota_fmt">Đã dùng <xliff:g id="used" example="120,345">%1$s</xliff:g> / <xliff:g id="total" example="500,000">%2$s</xliff:g> ký tự</string>
 
     <string name="tr_service_status_quota_with_reset_fmt"><xliff:g id="quota_line" example="120,345 / 500,000 characters used">%1$s</xliff:g> · đặt lại vào <xliff:g id="reset_date" example="Jun 1">%2$s</xliff:g></string>
+
+    <string name="tr_service_status_invalid_key">Khóa API không hợp lệ</string>
+
+    <string name="tr_service_status_no_internet">Không có internet, không thể kiểm tra mức sử dụng</string>
+
+    <string name="tr_service_status_check_failed">Không thể kiểm tra mức sử dụng</string>
+
+    <string name="tr_service_status_no_usage_today">Hôm nay chưa dùng</string>
+
+    <string name="tr_service_status_usage_today_fmt">Hôm nay: <xliff:g id="tokens" example="12,345">%1$s</xliff:g> token</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          BACKEND QUALITY / SPEED LABELS
@@ -984,6 +1104,16 @@
 
     <string name="floating_menu_btn_capture_region">Vùng\nchụp</string>
 
+    <string name="floating_menu_capture_screen">Chụp\nmàn&#160;hình</string>
+
+    <string name="floating_menu_edit_region">Chỉnh sửa vùng</string>
+
+    <string name="floating_menu_panel_language">Ngôn ngữ</string>
+
+    <string name="floating_menu_panel_overlays">Lớp phủ</string>
+
+    <string name="floating_menu_panel_open_app">Mở <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
+
     <string name="floating_menu_drag_instruction">Kéo ngón tay để chụp một khu vực cụ thể</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
@@ -1050,6 +1180,8 @@
 
     <string name="cd_copy_original">Sao chép văn bản gốc</string>
 
+    <string name="cd_add_to_anki">Thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
     <string name="cd_toggle_original_visibility">Bật/tắt hiển thị văn bản gốc</string>
 
     <string name="cd_toggle_words_visibility">Bật/tắt hiển thị từ</string>
@@ -1086,11 +1218,45 @@
 
     <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> đã có trên <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
 
-    <string name="update_dialog_view_release">Xem bản phát hành</string>
+    <string name="update_dialog_view_release">Xem ghi chú phát hành</string>
 
     <string name="update_dialog_skip">Bỏ qua phiên bản này</string>
 
     <string name="update_dialog_ask_again_later">Hỏi lại sau</string>
+
+    <string name="update_dialog_download">Tải xuống và cài đặt</string>
+
+    <string name="update_dialog_size_note">Dung lượng tải xuống: <xliff:g id="size" example="128 MB">%1$s</xliff:g></string>
+
+    <string name="update_dialog_metered_note">Bạn đang dùng kết nối có đo lượng dữ liệu.</string>
+
+    <string name="update_progress_title">Đang cập nhật <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="update_progress_verifying">Đang xác minh…</string>
+
+    <string name="update_unknown_sources_title">Cho phép cài đặt bản cập nhật</string>
+
+    <string name="update_unknown_sources_message">Để hoàn tất cập nhật, hãy cho phép <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> cài đặt bản cập nhật ứng dụng trên màn hình cài đặt sắp mở ra. Android có thể khởi động lại ứng dụng khi quyền này được bật. Bản cập nhật đã tải sẽ được giữ lại và việc cài đặt sẽ tự động tiếp tục.</string>
+
+    <string name="update_unknown_sources_button">Mở Cài đặt</string>
+
+    <string name="update_error_title">Cập nhật thất bại</string>
+
+    <string name="update_error_incomplete">Quá trình tải xuống chưa hoàn tất đúng cách. Hãy thử lại, hoặc tải bản cập nhật từ <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_error_verification">Không thể xác minh tệp đã tải xuống. Hãy thử lại, hoặc tải bản cập nhật từ <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_error_wrong_package">Tệp đã tải xuống không phải là bản cập nhật <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>. Thay vào đó, hãy tải bản cập nhật từ <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_error_downgrade">Phiên bản đã tải xuống không mới hơn phiên bản đã cài.</string>
+
+    <string name="update_error_signature">Không thể cài đặt bản cập nhật này đè lên bản dựng hiện tại. Hãy cài đặt thủ công từ <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_error_no_space">Không đủ dung lượng trống để tải bản cập nhật (cần <xliff:g id="needed" example="230 MB">%1$s</xliff:g>).</string>
+
+    <string name="update_error_retry">Thử lại</string>
+
+    <string name="update_error_install_launch">Không thể mở trình cài đặt của hệ thống.</string>
 
     <string name="toast_no_browser_available">Không có trình duyệt nào</string>
 
@@ -1162,6 +1328,14 @@
     <string name="settings_ocr_installing">Đang cài đặt…</string>
 
     <string name="settings_ocr_download_failed">Không thể tải mô hình OCR. Hãy kiểm tra kết nối và thử lại.</string>
+
+    <string name="settings_ocr_use_manga_title">Dùng MangaOCR</string>
+    <string name="settings_ocr_use_manga_subtitle">CẢNH BÁO: Chất lượng cao, nhưng chậm. Không khuyến nghị cho chế độ tự động. MangaOCR là phần bổ sung cho OCR đã chọn, nó không thể hoạt động một mình</string>
+    <string name="settings_ocr_disable_manga_title">Tắt MangaOCR?</string>
+    <string name="settings_ocr_disable_manga_msg">Giữ lại mô hình đã tải (<xliff:g id="size" example="68 MB">%1$s</xliff:g>) hay xóa nó để giải phóng dung lượng?</string>
+    <string name="settings_ocr_disable_keep">Giữ mô hình</string>
+    <string name="settings_ocr_disable_delete">Xóa mô hình</string>
+
     <string name="settings_header_support">Hỗ trợ</string>
 
     <string name="settings_header_configure">Cấu hình</string>
@@ -1171,6 +1345,10 @@
     <string name="settings_cell_anki">Thẻ ghi nhớ Anki</string>
     <string name="settings_cell_translation_services">Dịch vụ dịch thuật</string>
     <string name="settings_cell_tts">Chuyển văn bản thành giọng nói</string>
+    <string name="settings_yomitan_empty_summary">Nhập từ điển để tra cứu từ tốt hơn</string>
+    <plurals name="settings_yomitan_count_summary">
+        <item quantity="other">Đã nhập <xliff:g id="count" example="3">%d</xliff:g> từ điển</item>
+    </plurals>
 
     <string name="yomitan_page_description">Từ điển Yomitan là các tệp từ điển do cộng đồng tạo, được dùng bởi tiện ích mở rộng trình duyệt Yomitan. Tính năng bao gồm các từ điển bổ sung, dữ liệu tần suất và trọng âm cao độ. Hãy nhập một từ điển (.zip) bằng nút +, và PlayTranslate sẽ tích hợp nó liền mạch trong toàn bộ ứng dụng.</string>
 
@@ -1277,6 +1455,38 @@
 
     <string name="settings_cell_dictionary">Từ điển</string>
 
+    <string name="settings_cell_history">Lịch sử</string>
+
+    <string name="settings_cell_history_summary_on">Bật · Bản ghi các câu đã chụp</string>
+
+    <string name="settings_cell_history_summary_off">Tắt · Bản ghi các câu đã chụp</string>
+
+    <string name="history_screen_title">Lịch sử</string>
+
+    <string name="history_toggle_title">Giữ lịch sử văn bản</string>
+
+    <string name="history_toggle_subtitle">Lưu các câu đã chụp trên thiết bị này</string>
+
+    <string name="history_empty_off">Lịch sử văn bản đang tắt. Hãy bật để giữ lại những câu mà <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> chụp được.</string>
+
+    <string name="history_empty_none">Chưa có gì ở đây. Các dòng sẽ xuất hiện khi được dịch.</string>
+
+    <string name="history_action_copy">Sao chép</string>
+
+    <string name="history_action_anki">Thêm vào Anki</string>
+
+    <string name="history_action_delete">Xóa</string>
+
+    <string name="history_clear_menu">Xóa toàn bộ lịch sử</string>
+
+    <string name="history_clear_confirm_title">Xóa toàn bộ lịch sử?</string>
+
+    <string name="history_clear_confirm_message">Mọi dòng đã lưu sẽ bị xóa khỏi thiết bị này.</string>
+
+    <string name="history_delete_confirm_title">Xóa mục này?</string>
+
+    <string name="history_copied_toast">Đã sao chép</string>
+
     <string name="settings_cell_dictionary_summary">Tra cứu định nghĩa từ</string>
 
     <string name="settings_digest_none">Không có</string>
@@ -1345,13 +1555,23 @@
 
     <string name="hotkey_not_set_subtitle">Chưa đặt</string>
 
-    <string name="hotkey_show_translations_title">Phím tắt: giữ để hiện Bản dịch</string>
+    <string name="hotkey_section_translations">Bản dịch</string>
+
+    <string name="hotkey_show_translations_title">Giữ để hiện Bản dịch</string>
 
     <string name="hotkey_show_translations_dialog_title">Hiện bản dịch</string>
 
-    <string name="hotkey_show_hint_title">Phím tắt: giữ để hiện <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+    <string name="hotkey_auto_translation_title">Nhấn để bật/tắt Tự động dịch</string>
+
+    <string name="hotkey_auto_translation_dialog_title">Tự động dịch</string>
+
+    <string name="hotkey_show_hint_title">Giữ để hiện <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
 
     <string name="hotkey_show_hint_dialog_title">Hiện <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="hotkey_auto_hint_title">Nhấn để bật/tắt <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g> tự động</string>
+
+    <string name="hotkey_auto_hint_dialog_title"><xliff:g id="hint_label" example="Furigana">%1$s</xliff:g> tự động</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Capture Display section
@@ -1402,6 +1622,7 @@
     <string name="settings_debug_log_pinhole">Ghi nhật ký số liệu pinhole của chế độ trực tiếp</string>
     <string name="settings_debug_save_ocr_seed">Lưu các bản chụp OCR làm seed</string>
     <string name="settings_debug_log_grouping">Ghi nhật ký quyết định nhóm OCR</string>
+    <string name="settings_debug_log_trace">Ghi lại dấu vết nhật ký dịch</string>
     <string name="settings_debug_force_crash_title">Buộc gặp sự cố</string>
 
     <string name="dictionary_screen_title">Từ điển</string>
@@ -1476,6 +1697,47 @@
     <string name="pos_abbreviation">Chữ viết tắt</string>
     <string name="pos_contraction">Dạng rút gọn</string>
     <string name="pos_auxiliary">Trợ động từ</string>
+
+    <!-- Misc register/usage tags (short chips); see values/strings.xml. -->
+    <string name="misc_kana_only">Chỉ kana</string>
+    <string name="misc_kanji_only">Chỉ kanji</string>
+    <string name="misc_colloquial">Khẩu ngữ</string>
+    <string name="misc_informal">Không trang trọng</string>
+    <string name="misc_formal">Trang trọng</string>
+    <string name="misc_literary">Văn chương</string>
+    <string name="misc_honorific">Kính ngữ</string>
+    <string name="misc_humble">Khiêm nhường ngữ</string>
+    <string name="misc_polite">Lịch sự</string>
+    <string name="misc_familiar">Thân mật</string>
+    <string name="misc_endearing">Trìu mến</string>
+    <string name="misc_childrens">Từ trẻ em</string>
+    <string name="misc_female_speech">Từ nữ giới</string>
+    <string name="misc_male_speech">Từ nam giới</string>
+    <string name="misc_archaic">Từ cổ</string>
+    <string name="misc_obsolete">Không còn dùng</string>
+    <string name="misc_dated">Từ cũ</string>
+    <string name="misc_historical">Từ lịch sử</string>
+    <string name="misc_rare">Hiếm</string>
+    <string name="misc_neologism">Từ mới</string>
+    <string name="misc_slang">Tiếng lóng</string>
+    <string name="misc_internet_slang">Tiếng lóng mạng</string>
+    <string name="misc_manga_slang">Tiếng lóng manga</string>
+    <string name="misc_idiomatic">Thành ngữ</string>
+    <string name="misc_figurative">Nghĩa bóng</string>
+    <string name="misc_onomatopoeia">Từ tượng thanh</string>
+    <string name="misc_poetic">Thơ ca</string>
+    <string name="misc_humorous">Hài hước</string>
+    <string name="misc_derogatory">Miệt thị</string>
+    <string name="misc_offensive">Xúc phạm</string>
+    <string name="misc_vulgar">Thô tục</string>
+    <string name="misc_slur">Từ lăng mạ</string>
+    <string name="misc_sensitive">Nhạy cảm</string>
+    <string name="misc_euphemistic">Uyển ngữ</string>
+    <string name="misc_sarcastic">Mỉa mai</string>
+    <string name="misc_nonstandard">Không chuẩn</string>
+    <string name="misc_yojijukugo">Thành ngữ bốn chữ</string>
+    <string name="misc_dialectal">Phương ngữ</string>
+
     <string name="inflection_causative">Sai khiến</string>
     <string name="inflection_passive">Bị động/Khả năng</string>
     <string name="inflection_negative">Phủ định</string>

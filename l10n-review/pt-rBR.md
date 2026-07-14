@@ -57,3 +57,330 @@ Scope: Anki pitch/frequency content options, OpenAI custom base URL, Yomitan mul
 
 ## Verdict (delta)
 **Ship as-is.** 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬 across the 29 keys. Checked: BR-vs-EU vocabulary (incl. whole-file re-scan), você-register, placeholder/plural agreement (both `<plurals>` gender+number verified with real counts), terminology reuse (acento tonal / frequência / dicionário / importar / áudio / Conversão de texto em voz / baralho / cartão), Android loading/no-results/error idioms, short-label truncation, and the Anki `Exemplo:`/field-name-as-is rule. This delta does not touch the pre-existing 1 ❌ + 6 ⚠️ above (different keys).
+
+---
+
+# Delta review — 2026-07-14 sync (174 keys)
+
+Scope: the 170 newly translated + 4 changed-English keys (game-audio recording &
+trim editor, History screen, Advanced LLM Configuration / prompt editor, the 38
+`misc_*` dictionary chips, in-app updater, translation-service status lines,
+stream-scope prompt, hotkeys, floating-menu panel, OCR picker).
+
+**Mechanical layer verified programmatically over all 174 keys:** every key present
+and of the right type; all `%1$s`/`%2$s`/`%d` placeholders present and matching EN;
+every `<xliff:g>` span byte-identical to EN (inner content **and** `id`/`example`);
+the bare Latin keyword tokens `{text} {source} {source_code} {target} {target_code}
+{context} {N} {strings}` byte-identical in running prose (`llm_prompt_fatal_*`,
+`llm_prompt_advisory_*`); `\n` preserved in `floating_menu_capture_screen`; zero raw
+`'` or `"`; `<plurals>` = one/other (correct CLDR set for pt). **No 🛑
+build-breaking issues.** (`update_dialog_download` legitimately has no `&amp;` —
+pt-BR uses the word «e».)
+
+**Counts: 0 🛑 · 0 ❌ · 6 ⚠️ · 7 💬**
+
+## Findings (delta)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| game_audio_trim_use_tts | ⚠️ | `Usar TTS em vez disso` | `Usar conversão de texto em voz` (if width allows) — otherwise `Usar TTS` | **Terminology collision inside one flow.** The audio picker names this exact source `audio_source_tts_name` = «Conversão de texto em voz» (the Android pt-BR term, 7× in the file); the button that switches *to* it says «TTS». The file has never used a bare «TTS» before (only inside the product name «Google TTS»). Layout checked: `activity_game_audio_trim.xml` puts `btnTrimUseTts` + `btnTrimNoAudio` + `btnTrimSave` in **one horizontal row**, and «Usar TTS em vez disso» (21) is already the longest of the three — so the 30-char full term is width-hostile. Either way the current string should shrink: «em vez disso» is redundant next to «Sem áudio». If «TTS» is kept, record it as a deliberate width exception. |
+| llm_prompt_row_batch_subtitle · llm_prompt_row_translation_subtitle | ⚠️ | `A solicitação que os serviços na nuvem usam…` / `A solicitação que envolve cada frase que você consulta.` | `O prompt que os serviços na nuvem usam para traduzir uma tela inteira de uma só vez.` / `O prompt aplicado a cada frase que você consulta.` | **2 keys, one fix.** The glossary binds *prompt* to **one noun across all `llm_prompt_*`** and explicitly says *not "request", not "query"*. These two subtitles introduce «solicitação» (= request) for the very object their own row titles call «Prompt em lote» / «Prompt de tradução», so the card reads with two nouns for one thing. (EN gets away with "the request" because it reads as a gloss; in pt «solicitação» carries a bureaucratic "application/form" sense and lands as a second term.) Bonus: «que envolve cada frase» is ambiguous — «envolver» reads first as *to involve*, not *to wrap around*. |
+| hotkey_auto_hint_title · hotkey_auto_hint_dialog_title | ⚠️ | `Toque para iniciar/parar o Auto <xliff:g …>%1$s</xliff:g>` / `Auto <xliff:g …>%1$s</xliff:g>` | `Toque para iniciar/parar o <xliff:g …>%1$s</xliff:g> automático` / `<xliff:g …>%1$s</xliff:g> automático` | **2 keys, one fix.** `HotkeysSettingsActivity.render()` draws all four rows on one screen for JA/ZH: «Segure para mostrar traduções» / «Toque para iniciar/parar **a tradução automática**» then «Segure para mostrar Furigana» / «Toque para iniciar/parar **o Auto Furigana**». Same action, two treatments — one translated, one leaving raw English «Auto» in running prose. `hotkey_auto_hint_dialog_title` is currently byte-identical to English. The already-committed dialog-title pair is parallel («Mostrar traduções» / «Mostrar <hint>»), so the auto pair should be too: «Tradução automática» / «Furigana automático». Both hint values (Furigana, Pinyin) are masculine in pt, so «automático» agrees for every runtime value. *(Alternative, if the intent is to name the bottom-bar button `live_mode_auto_with_hint` = «Auto %1$s»: keep «Auto %1$s» here and change `hotkey_auto_translation_*` to match instead — but do not ship both conventions.)* |
+| stream_kind_prompt_message | ⚠️ | `…e o sistema não informa o que foi compartilhado.` | `…e o sistema não informa qual das duas opções foi compartilhada.` | EN says the system doesn't say **which** was shared (of the two). «o que foi compartilhado» = *what* was shared, which reads as "what content" and quietly undercuts the dialog's whole premise — and clashes with its own title, `stream_kind_prompt_title` = «**Qual** opção de compartilhamento você escolheu?». One word, «qual». |
+| llm_prompt_advisory_missing_target · llm_prompt_advisory_missing_source | ⚠️ | `…o modelo não será informado para qual idioma traduzir.` / `…o modelo não será informado de qual idioma está traduzindo.` | `…o modelo não saberá para qual idioma traduzir.` / `…o modelo não saberá de qual idioma está traduzindo.` | **2 keys, one fix** (optionally 3 — apply to `_missing_count` too, for a uniform «o modelo não saberá …» across the trio). «informado **para** qual» is ungrammatical in pt (*informar* takes *de/sobre*), and in `_missing_source` the single «de» has to serve both «informado de» and «traduzindo de», so one of the two ends up stranded. «não saberá» is idiomatic, shorter, and fixes both. Tokens `{source}`/`{source_code}`/`{target}`/`{target_code}` stay verbatim. |
+| update_unknown_sources_message | ⚠️ | `…permita que o PlayTranslate instale atualizações de apps na tela de configurações que será aberta.` | `…ative "Permitir desta fonte" para o PlayTranslate na tela de configurações que será aberta.` | Android-wording mismatch. The screen this opens is pt-BR **«Instalar apps desconhecidos»** and the switch on it reads **«Permitir desta fonte»** — a user hunting for a toggle called "instalar atualizações de apps" won't find it. Same class as the «Apps instalados» → «Apps baixados» finding from the previous pass (which was applied): inherited EN drift, fixable here or upstream. `update_unknown_sources_button` = «Abrir configurações» is byte-identical to the committed `btn_open_overlay_settings` / `mp_overlay_permission_button` ✓. |
+| misc_yojijukugo | 💬 | `Composto de quatro caracteres` (29) | `Composto de 4 kanji` (19) — or `Composto de 4 caracteres` (24) | Longest chip in the set by 12 chars, and 2× the longest committed `pos_*` («Verbo auxiliar», 14). Chips are width-constrained and render side by side. pt has no native lexicographic term, so a description is right (correctly *not* romanized) — just a shorter one. «kanji» is already a loanword in the file (`misc_kanji_only` = «Somente kanji»), and the tag only ever fires on Japanese. |
+| misc_slur | 💬 | `Insulto` | `Injúria` | Weakest link in the offensiveness cluster: the four are lexically distinct (Pejorativo · Ofensivo · Chulo · Insulto), but semantically «Insulto» and «Ofensivo» collapse into each other for a pt reader, losing the group-directed sense that makes a *slur* its own class. «Injúria» is a real pt term with exactly that force (cf. *injúria racial*), is shorter, and separates cleanly from «Ofensivo». |
+| floating_menu_capture_screen | 💬 | `Capturar\ntela` | keep — but apply the previously-filed fix to its sibling | Not wrong; it's the *pair* that's off. The same floating-menu button renders `floating_menu_capture_screen` = «Capturar\ntela» (verb-first) when the region is full-screen and the committed `floating_menu_btn_capture_region` = «Região de\ncaptura» (noun-first) otherwise. The 2026-06-23 review already suggested «Capturar\nregião» for the latter; applying it makes the two states «Capturar\ntela» / «Capturar\nregião» — one shape, both lines short. |
+| game_audio_trim_duration | 💬 | `%1$s s selecionados · %2$s s gravados` | `Seleção: %1$s s · Gravação: %2$s s` | Reads fine at realistic values («2,4 s selecionados · 147 s gravados»), but the selection genuinely can be 1.0 s → «1,0 s **selecionados**» (strict pt wants *selecionado*). The colon form carries the same information, drops both participles, and is shorter — useful since this string also serves as the card-editor row title. |
+| settings_llm_context_subtitle | 💬 | `Somente online. Fornece aos tradutores LLM online as últimas linhas do texto registrado…` | `Somente online. Envia as últimas linhas do texto registrado aos tradutores LLM para pronomes e nomes mais consistentes.` | «online» twice in one breath, and the dative-before-accusative inversion («Fornece aos tradutores … as últimas linhas») is heavy. The leading «Somente online.» already carries the scope, so the second «online» is redundant. |
+| audio_source_game_enable_hint · settings_ocr_use_manga_subtitle | 💬 | `…ative para capturar o áudio do jogo **para** os próximos cartões` / `AVISO: Alta qualidade, mas lento.` | `…ative para capturar o áudio do jogo nos próximos cartões` / `AVISO: tem alta qualidade, mas é lento.` | Two unrelated polish nits. (1) «para … para» in one clause. (2) «Alta qualidade, mas lento» puts a masculine adjective next to a feminine noun; the intended subject is *o MangaOCR*, but the surface reads as an agreement slip. Everything else in that warning is right — «o modo automático» matches the committed `settings_hide_overlays_during_auto_mode`. |
+| probe_initializing · misc_internet_slang · audio_source_game_ready | 💬 | `Inicializando…` / `Gíria de internet` / `Do que você jogou recentemente` | `Iniciando…` / `Gíria da internet` / `Da sua sessão de jogo recente` | Three one-liners. (1) The chip is a ~1.5 s transient beside a checker pattern and the EN comment says "keep short"; «Iniciando…» is 4 chars tighter. (2) BR says *gíria **da** internet*. (3) «Do que você jogou recentemente» is understandable but loose for a row subtitle. |
+
+## Clean areas (delta) — checked, no findings
+
+- **Brazilian-vs-European vocabulary — clean.** Zero hits across all 174 delta keys
+  for transferir/transferência, ecrã, eliminar, guardar, aplicação, telemóvel,
+  palavra-passe, ficheiro, utilizador, registar, "está a …". The delta is genuine
+  pt-BR: «Baixar e instalar» / «O download não foi concluído» / «baixe … no GitHub»
+  (never *transferir*), «tela» throughout (`error_capture_blocked_secure`,
+  `stream_kind_share_entire_screen`, `ocr_picker_message`), «excluir» for delete,
+  «salvar» for save, «app/apps» never *aplicação*, «arquivo baixado» never
+  *ficheiro*. BR orthography markers correct: «Onomatopeia» (no accent, post-1990),
+  «mangá», «irônico», «histórico».
+- **Register — consistent with the committed file's two-way convention.** Verified
+  against the committed strings, not assumed. *Buttons / action rows / toolbar
+  actions = infinitive*: Excluir · Copiar · Remover · Descartar · Redefinir ·
+  Parar · Manter modelo · Excluir modelo · Usar seleção · Reproduzir seleção ·
+  Baixar e instalar · Tentar novamente · Ver notas da versão · Abrir configurações ·
+  Salvar mesmo assim · Adicionar ao Anki · Compartilhar um app — 100% infinitive,
+  and «Excluir modelo» / «Abrir configurações» are byte-identical to committed
+  siblings (`bergamot_disable_delete`, `qwen_mnn_disable_delete`, `hymt_disable_delete`,
+  `llm_low_memory_delete` / `btn_open_overlay_settings`, `mp_overlay_permission_button`).
+  *Descriptive switch subtitles = 3rd-person indicative*: «Mantém os últimos
+  minutos…», «Salva as frases capturadas…», «Fornece aos tradutores…» — matching the
+  committed `settings_vertical_grow_subtitle` («Alarga as caixas…») and
+  `yomitan_single_dict_subtitle` («As definições vêm…»). *Actionable / CTA rows =
+  você-imperative*: «Importe dicionários…», «ative para capturar…», «Insira a URL…» —
+  matching committed `settings_cell_dictionary_summary` («Consulte definições…»),
+  `settings_anki_get_app_summary` («Baixe o AnkiDroid…»), `yomitan_alias_hint`
+  («Adicione um apelido»). **No você/tu mixing; zero tu/teu/tua in the delta.**
+- **Remover vs Excluir vs Limpar — all three stay distinct**, exactly as English
+  keeps them. Services are *removed*: `tr_service_remove_confirm` «Remover»,
+  `tr_service_delete_cd` «Remover serviço», `tr_service_remove_title_fmt` «Remover o
+  %1$s?». Entries and models are *deleted*: `history_action_delete` /
+  `history_delete_confirm_title` / `settings_ocr_disable_delete` → «Excluir…».
+  History is *cleared*: `history_clear_menu` «Limpar histórico» (matching the
+  committed `btn_clear` = «Limpar»). And `tr_service_remove_message` correctly
+  carries **both** verbs in one sentence — «Isso **remove** o serviço da lista e
+  **exclui** a chave de API salva.» — which is the string most likely to have
+  collapsed them, and didn't.
+- **`prompt` is one noun across `llm_prompt_*`** (aside from the «solicitação»
+  finding above): masculine «o prompt» everywhere — «O prompt não pode ficar vazio»,
+  «Este prompt é muito longo», «O prompt precisa incluir {strings}», «neste prompt»,
+  «por este prompt», and the three row titles «Prompt do sistema» / «Prompt de
+  tradução» / «Prompt em lote». Never *pedido*, never *consulta*, never *comando*.
+  `llm_prompt_keywords_header` = «Palavras-chave» keeps *keyword* distinct from
+  *placeholder* ✓.
+- **The 38 `misc_*` chips.** All four clusters internally distinguishable:
+  offensiveness = Pejorativo · Ofensivo · **Chulo** · Insulto; obsolescence =
+  Arcaico · Obsoleto · Antiquado · Histórico; informality = Coloquial · Informal ·
+  Familiar · Gíria; honorifics = Honorífico · Humilde · Cortês. They read as real pt
+  lexicographic labels, not glosses of English — «Figurado» (the *fig.* of Houaiss),
+  «Pejorativo», «Antiquado», «Eufemismo», «Dialetal», «Irônico» for *Sarcastic* (the
+  pt dictionary label; no `misc_ironic` key to collide with). **The `misc_vulgar`
+  false-friend trap is correctly handled: «Chulo», not «Vulgar»** (which in pt means
+  *common/banal*). «Humilde» / «Cortês» are the established pt renderings of kenjōgo
+  / teineigo. kana/kanji kept as loanwords per the glossary; `misc_yojijukugo` is
+  described, not romanized. Noun-vs-adjective mixing (Gíria, Neologismo,
+  Onomatopeia, Eufemismo, Insulto as nouns) is normal pt lexicographic practice and
+  matches the committed `pos_*` register and brevity.
+- **`settings_yomitan_count_summary` — one/other, both correct for their ranges.**
+  `one` → «1 dicionário importado» (singular noun + singular participle); `other` →
+  «3 dicionários importados» (both plural). Gender and number agree in both. The
+  0 case never reaches this plural (`settings_yomitan_empty_summary` covers it).
+- **Grammar around placeholders, read with real values.** «Manter o modelo baixado
+  (68 MB) ou **excluí-lo** para liberar espaço?» (correct enclisis, masculine
+  *modelo*); «Espaço livre insuficiente … (**necessário:** 230 MB)» — restructured
+  with a colon, dodging agreement entirely; «Ative-**o** para manter as frases…»
+  (masculine *o histórico*); «Todas as linhas salvas serão **excluídas**» (feminine
+  plural ✓); «A persona e as instruções **enviadas**» (feminine plural across a
+  coordinated subject ✓); «A tradução está pausada — … **Ela** é retomada» (feminine
+  ✓); «Hoje: 12.345 tokens» (locale-grouped ✓); «Tamanho do download: 128 MB» ✓.
+  `tr_service_remove_title_fmt` = «Remover **o** %1$s?» is precedented by the
+  committed `hymt_disable_title` / `qwen_mnn_disable_title` / `yomitan_delete_title`
+  («Desativar o Hunyuan-MT?», «Excluir o Jitendex.org?») and reads as *o [serviço]
+  OpenAI*; note the committed `settings_ocr_delete_title` drops the article
+  («Excluir PaddleOCR?»), so dropping it here would also be defensible and would
+  sidestep the *a OpenAI* (company, feminine) reading — left unflagged as the
+  precedent supports both.
+- **Cross-references into the committed file.** `ocr_source_label` = «Reconhecido
+  por %1$s» is a structural mirror of the committed `translation_source_label` =
+  «Traduzido por %1$s» ✓ (exactly what the glossary asks). `add_online_service_title`
+  / `tr_service_add_online` use «serviço de tradução», matching the committed page
+  title `settings_cell_translation_services` = «Serviços de tradução» ✓.
+  `llm_backend_provider_label` = «Provedor» matches the committed
+  `tr_service_order_footer` («a política de privacidade de cada **provedor**») ✓.
+  `floating_menu_panel_overlays` = «Sobreposições» matches the committed
+  `settings_overlay_mode_title` / `settings_hide_overlays_during_auto_mode` ✓.
+  `anki_game_audio_row_subtitle`'s «cartões de frase» is byte-identical to the
+  committed `anki_content_words_table` ✓. `settings_yomitan_empty_summary`'s
+  «consultas de palavras» is byte-identical to the committed
+  `onboarding_welcome_learn_body` ✓. `cd_choose_ocr` == `ocr_picker_title` ✓ (as in
+  EN). «captura/capturadas» reuses the app's established capture verb ✓.
+  `settings_debug_log_trace` keeping English *trace* matches the committed
+  `settings_debug_log_pinhole` and `crash_dialog_message` («stack trace») ✓.
+  «Segure» (hotkey combo) vs the committed «Mantenha pressionado» (UI long-press) is
+  **not** drift — EN distinguishes them too (`status_hold_hint` = "Long-press").
+- **Deliberate decisions honored:** `stream_kind_share_one_app` /
+  `_share_entire_screen` follow the system consent dialog's own pt-BR wording (not
+  re-derived from EN); `llm_prompt_kw_source_desc` / `_target_desc` keep *Japanese* /
+  *English* in Latin as the literal runtime expansions; `llm_status_low_memory_badge`
+  left untouched (its dash not flagged); `service_llm_badge` = «LLM» kept as the
+  initialism per the glossary.
+
+## Verdict (delta)
+
+**Fix-then-ship.** 0 🛑 / 0 ❌ / 6 ⚠️ / 7 💬 across 174 keys. Nothing is
+*wrong* — no mistranslation, no broken cross-reference, no agreement bug that fires
+on a real runtime value, and the two highest-risk groups (the 38 `misc_*` chips and
+the `Remover`/`Excluir`/`Limpar` triad) came through clean, including the
+`misc_vulgar` false-friend trap. The six ⚠️ are all **consistency** defects: three
+are one term/pattern rendered two ways inside a single screen (TTS on the trim row,
+*prompt* vs *solicitação* on the services card, *Auto X* vs *tradução automática* on
+the hotkeys screen), one is a precision loss that contradicts its own dialog title,
+one is a Portuguese grammar slip after *informado*, and one is inherited
+Android-wording drift from the English source. All have one-line fixes.
+
+---
+
+# Delta review round 2 — 2026-07-14
+
+Fresh independent pass over the corrected file. Primary target: **regressions
+introduced by the round-1 fixes** (19 strings changed). Every changed string
+re-derived from scratch; every placeholder read with a real runtime value; the 38
+`misc_*` labels re-checked for `.distinct()` collapse.
+
+**Mechanical layer re-verified programmatically over all 174 keys:** every key
+present and of the right type; `%1$s`/`%2$s`/`%d` parity with EN; every `<xliff:g>`
+span byte-identical to EN (inner text **and** `id`/`example`); the bare
+`{text} {source} {source_code} {target} {target_code} {N} {strings}` keywords
+byte-identical in running prose; `<b>`/`\n`/`\{ \}`/`&lt;&gt;&amp;` counts match;
+no raw `'` or `"`; `<plurals>` = one/other. **No 🛑.**
+
+**Counts: 0 🛑 · 0 ❌ · 1 ⚠️ · 1 💬**
+
+## Findings (round 2)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| probe_initializing | ⚠️ | `Iniciando…` | `Inicializando…` (revert) | **Regression from round 1, on a false premise.** Round 1 shortened this "4 chars tighter" for a width-constrained chip. **The chip has no width constraint.** `StreamKindProbe.ProbeView.onMeasure()` does `setMeasuredDimension(SIZE_PX + (labelPaint.measureText(labelText) + 2*labelPadding))` — it *sizes itself from the localized string* — and its own comment says so: *"Width is MEASURED from the localized string — every locale fits exactly, no fixed guess."* The 4 characters bought **0 dp** (measured: 86.5 dp vs 106.7 dp chip, both fine). What they cost: (a) precision — «Iniciando…» is *Starting…*, not *Initializing…*; (b) it now **byte-collides with the committed `settings_ocr_downloading_msg` = «Iniciando…»**, whose EN genuinely *is* "Starting…". Two distinct EN states, one pt string. They never co-render, so nothing breaks — but the change is a pure loss and the revert is free. |
+| hotkey_auto_hint_title · hotkey_auto_hint_dialog_title | 💬 | `…parar o %1$s automático` / `%1$s automático` | keep — but see note | **The fix is correct; this is a latent boundary condition.** Verified: `hintLabel` is filled from `overlay_mode_option_furigana` / `_pinyin` only (`HotkeysSettingsActivity:101`), and **both are masculine in pt** (*o furigana*, *o pinyin*) — so «o %1$s automático» agrees for every value the code can produce today. ✓ But the phrasing hard-codes masculine agreement, and `HintTextKind` already reserves a third value, `HARAKAT` (`Language.kt:217`, *"reserved so the architecture stays forward-compatible"*; deferred pending a diacritizer). Its natural pt label would be **feminine** («Vocalização») and would silently produce *«o Vocalização automático»*. Not a bug now — flagging so whoever wires HARAKAT up revisits this string (and the six other locales that took the same shape). Related, for the code owner: `HotkeysSettingsActivity`'s `when` maps HARAKAT through `else ->` to the **Furigana** label, so it would also mislabel the row. |
+
+## The trim-button row — measured
+
+The brief asked for a hard number. `activity_game_audio_trim.xml` bottom row:
+`btnTrimUseTts` (TextButton) · 4dp · `btnTrimNoAudio` (TextButton) · `Space` ·
+`btnTrimSave` (filled Button), inside a horizontal `LinearLayout` with 12dp padding.
+
+**One correction to the brief's premise:** the row is not weight-free — there *is* a
+`Space` with `layout_weight="1"` between NoAudio and Save. It changes nothing about
+the failure mode: a weighted `Space` absorbs *positive* slack only. When content
+exceeds the width, `LinearLayout` clamps its share to 0 and the **last** child
+(`btnTrimSave`) is pushed past the right edge and clipped — it is never re-measured
+smaller, because it sits *after* the weighted child and is therefore measured against
+the full parent width, not the remainder.
+
+Measured with real glyph advances (Roboto Medium, `TextAppearance.M3.Sys.Typescale.LabelLarge`
+= 14sp + 0.00714em letter-spacing), including the **88dp `android:minWidth` floor**
+that every `MaterialButton` inherits from `Base.Widget.AppCompat.Button`, and M3's
+12dp/12dp (text) and 24dp/24dp (filled) horizontal padding:
+
+| row | UseTTS | NoAudio | Save | **row total** | 360dp | 411dp |
+|---|---|---|---|---|---|---|
+| **pt-BR (current)** | «Usar TTS» → 88.0dp *(at the minWidth floor)* | «Sem áudio» → 91.3dp | «Usar seleção» → 130.1dp | **337.4dp** | **FITS, 22.6dp slack** | **FITS, 73.6dp slack** |
+| pt-BR before round 1 | «Usar TTS em vez disso» → 169.4dp | 91.3dp | 130.1dp | 418.8dp | overflow 58.8dp | overflow 7.8dp |
+| pt-BR w/ full term (rejected) | «Usar conversão de texto em voz» → 227.2dp | 91.3dp | 130.1dp | 476.6dp | overflow 116.6dp | overflow 65.6dp |
+| EN (baseline) | "Use TTS instead" → 128.0dp | 88.0dp | 133.7dp | 377.7dp | overflow 17.7dp | fits, 33.3dp |
+
+**`game_audio_trim_save` is fully visible and reachable on both a 360dp and a 411dp
+phone.** Three things fall out of the numbers:
+
+1. **The round-1 width exception was load-bearing and correctly called.** «Usar TTS em
+   vez disso» overflowed 360dp by 59dp *and 411dp by 8dp* — Save was clipped on both.
+   The full term («Usar conversão de texto em voz») overflowed every width. Settled
+   decision confirmed, not re-litigated.
+2. **«Usar TTS» sits exactly on the 88dp `minWidth` floor** (82.7dp of content clamped
+   up to 88dp). Any label under ~64dp of text costs the same. Shortening it further
+   would buy literally **0dp**; there is no remaining width lever here.
+3. **pt-BR is now 40dp *narrower* than English.** The EN row (377.7dp) already
+   overflows a 360dp phone by ~18dp at default font scale, clipping Save's right edge
+   in English. That is a **layout defect, not a locale defect** — pt-BR is strictly
+   safer than the source. Reported here for the code owner: `btnTrimSave` needs
+   `layout_weight`/ellipsize, or the row needs to wrap. pt-BR's own headroom on 360dp
+   runs out at about **fontScale 1.15** (row → 363dp); 411dp holds to ~1.3.
+
+## Clean areas (round 2) — checked, no findings
+
+- **All 19 round-1 edits re-derived. 18 are right; the 19th is the ⚠️ above.**
+  `misc_female_speech`/`_male_speech` → «Fala feminina/masculina» **fixes a real
+  false friend** the round-1 note undersold: *«Termo feminino»* in pt reads first as
+  *feminine-gender word* (grammatical gender), which is not what the tag means. «Fala»
+  kills that reading, matches the key name (`misc_female_speech`) and the EN comment
+  ("used chiefly by/about women"), and collides with nothing («a fala original» in
+  `anki_game_audio_row_subtitle` is a different screen and a different sense).
+  `misc_slur` → «Injúria» separates cleanly from «Ofensivo» and keeps the
+  group-directed force (*injúria racial*); it replaces a noun with a noun, so it does
+  not disturb the set's noun/adjective mix. `error_capture_blocked_secure` → «o app
+  capturado» now **byte-matches its sibling** `error_single_app_not_fullscreen` («o app
+  capturado não está ocupando a tela inteira») — the fix created consistency rather
+  than breaking it. `game_audio_trim_duration` → «Seleção: … · Gravação: …» dodges the
+  *1,0 s selecionados* agreement bug and re-uses «seleção» from `game_audio_trim_play`
+  /`_save`. `stream_kind_prompt_message` → «qual das duas opções foi compartilhada»
+  (feminine agreement ✓) now echoes its own title `stream_kind_prompt_title` («Qual
+  opção de compartilhamento…»). `settings_ocr_use_manga_subtitle` → «tem alta
+  qualidade, mas é lento» is a normal pt null-subject clause (pro-drop) with the
+  subject recoverable from the row title «Usar o MangaOCR» — no agreement slip left.
+- **«solicitação» is fully purged** — 0 hits file-wide. *prompt* is now one masculine
+  noun across all 10 `llm_prompt_*` strings that name it.
+- **The three `llm_prompt_advisory_missing_*` are now uniform and grammatical.**
+  «Falta {N}/{source}/{target}…: o modelo não saberá …» — singular «Falta» is correct
+  with the *ou*-coordinated subjects; «não saberá **de** qual idioma está traduzindo»
+  / «**para** qual idioma traduzir» take the right prepositions and mirror EN's own
+  progressive-vs-infinitive split. All tokens verbatim.
+- **`update_unknown_sources_message` names the real toggle.** Android pt-BR shows
+  **«Instalar apps desconhecidos»** with a **«Permitir desta fonte»** switch; the
+  string now says «ative "Permitir desta fonte" para o PlayTranslate». Findable.
+- **The 38 `misc_*` labels are all distinct** — verified programmatically, including
+  case- and accent-folded. **Nothing collapses through `renderMisc`'s `.distinct()`**
+  (`MiscLabels.kt:31`). All four clusters still separate after the edits:
+  offensiveness = Pejorativo · Ofensivo · Chulo · **Injúria** · Sensível;
+  obsolescence = Arcaico · Obsoleto · Antiquado · Histórico · Raro;
+  informality = Coloquial · Informal · Familiar · Gíria · Gíria da internet · Gíria de
+  mangá; honorifics = Honorífico · Humilde · Cortês. The `misc_vulgar` false-friend
+  trap stays correctly handled («Chulo», not «Vulgar»). Per the brief, **no label was
+  considered for shortening** — they wrap, they don't truncate. The `misc_historical`
+  = «Histórico» / `history_screen_title` = «Histórico» homograph is unavoidable in pt
+  (one word for *historical* and *history*), the two never co-render, and both are the
+  right word — checked and accepted.
+- **Placeholders read with real values.** «Furigana automático» / «Pinyin automático»
+  ✓ (both masculine — the round-1 assertion **verified in code**, not assumed);
+  «Reconhecido por PaddleOCR» ✓ (mirrors the committed `translation_source_label`);
+  «Remover o OpenAI?» ✓; «Hoje: 12.345 tokens» ✓ — confirmed locale-grouped in code
+  (`UsageTracker.todayString()` = `NumberFormat.getNumberInstance(Locale.getDefault())`),
+  so pt-BR really does get a dot as the thousands separator, not the EN comma;
+  «Manter o modelo baixado (68 MB) ou excluí-lo…» ✓; «Ative-o…» ✓ (masc. *o
+  histórico*); «Ela é retomada…» ✓ (fem. *a tradução*); «A persona e as instruções
+  enviadas» ✓ (fem. pl. across a coordinated subject).
+- **`settings_yomitan_count_summary` plurals.** one → «1 dicionário importado», other
+  → «3 dicionários importados» — noun *and* participle agree in both. pt's CLDR `one`
+  category also covers **0**, which would read «0 dicionário importado» — but
+  `RootSettingsViewModel.yomitanDigest()` short-circuits `count == 0` to
+  `settings_yomitan_empty_summary`, so the zero form is unreachable. Verified.
+- **`game_audio_trim_duration` does not wrap.** «Seleção: 2.4 s · Gravação: 147 s» =
+  213.7dp at 15sp (`Text.PT.RowTitle`) against 264dp available on a 360dp phone
+  (48dp side insets); worst realistic case «10.0 s / 999 s» = 222.2dp. Only ~8dp wider
+  than EN.
+- **BR-vs-EU vocabulary, register.** Re-scanned all 174 delta keys: zero hits for
+  transferir/ecrã/eliminar/guardar/aplicação/telemóvel/ficheiro/utilizador/registar/
+  "está a …". Zero tu/teu/tua. `você` appears in exactly the four places where 2nd
+  person is natural. BR orthography markers correct (Onomatopeia, mangá, Irônico,
+  Cortês, Injúria).
+- **The four delta strings identical to English are all correct, not leftovers:**
+  `misc_familiar`, `misc_formal`, `misc_informal` (the pt words *are* these), and
+  `service_llm_badge` = «LLM» (settled initialism).
+- **Short-label expansion.** Nothing in the delta lands in the tiny-label danger zone
+  (8sp bottom bar, two-line capture button). The worst ratios — «Personalizado» (2.2×),
+  «Escolher ferramenta de OCR» (1.7×), «Salvar mesmo assim» (1.6×) — sit in dialog
+  buttons, dialog titles and settings rows, all of which wrap or have room.
+- **Settled decisions honored, not re-litigated:** `game_audio_trim_use_tts` = «Usar
+  TTS» (width exception — and now *measured*, see above); the AOSP share-button
+  wording; `llm_prompt_kw_source_desc`/`_target_desc` keeping *Japanese*/*English*;
+  `llm_status_low_memory_badge`'s dash; `misc_*` never shortened for width. The two
+  round-1 💬s that were declined (`misc_yojijukugo`, `audio_source_game_ready`) are
+  not re-filed — declining `misc_yojijukugo` is now positively *correct* under the
+  no-shortening rule.
+
+## Code defects visible from pt-BR (not locale bugs — do not fix in `values-pt-rBR`)
+
+- Already known: `GameAudioTrimActivity` / `SentenceAnkiContentFragment` format
+  seconds with `Locale.US`, so `game_audio_trim_duration` renders **«Seleção: 2.4 s»**
+  where pt-BR requires **«2,4 s»**. `humanSize()` likewise forces a decimal point —
+  «Tamanho do download: 1.2 GB» should be «1,2 GB». (The *unit* half of the
+  `humanSize()` bug is invisible here: pt-BR uses MB/GB anyway.)
+- New, from this pass: the trim button row overflows a 360dp phone **in English**
+  (see the table above) — `btnTrimSave` needs a weight or the row needs to wrap.
+- New, from this pass: `HotkeysSettingsActivity`'s `hintLabel` `when` sends
+  `HintTextKind.HARAKAT` through `else ->` to the *Furigana* label. Dormant today
+  (HARAKAT is reserved and unused), but it will mislabel the row and break pt's
+  masculine agreement the day it's wired up.
+
+## Verdict (round 2)
+
+**SHIP.** 0 🛑 / 0 ❌ / 1 ⚠️ / 1 💬 across 174 keys. The round-1 corrections landed
+cleanly: 18 of 19 are right, several are better than their own rationale claimed, and
+none introduced an agreement, terminology or cross-reference regression. The single ⚠️
+(`probe_initializing`) is a free revert with zero user-visible impact, and the 💬 is a
+forward-looking note, not a defect. The two highest-risk surfaces both came through:
+the 38 `misc_*` chips are all distinct with every cluster intact, and the trim row now
+fits with 23dp to spare on a 360dp phone — 40dp narrower than the English source.

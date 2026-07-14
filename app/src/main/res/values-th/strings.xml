@@ -262,9 +262,23 @@
 
     <string name="translation_source_label">แปลโดย <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
 
+    <string name="ocr_source_label">อ่านโดย <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g></string>
+    <string name="ocr_picker_title">เลือกเครื่องมือ OCR</string>
+    <string name="ocr_picker_message">OCR คือสิ่งที่ดึงข้อความออกมาจากภาพหน้าจอ เครื่องมือที่ต่างกันอาจเหมาะกับแบบอักษรที่ต่างกัน</string>
+    <string name="cd_choose_ocr">เลือกเครื่องมือ OCR</string>
+    <string name="cd_change_source_language">เปลี่ยนภาษาต้นทาง</string>
+    <string name="cd_change_target_language">เปลี่ยนภาษาเป้าหมาย</string>
+
     <string name="error_live_mode_unsupported_backend">โหมดสดไม่พร้อมใช้งานกับวิธีการจับภาพหน้าจอปัจจุบัน</string>
 
     <string name="error_screen_capture_denied">หยุดโหมดสดแล้ว — สิทธิ์การจับภาพหน้าจอถูกปฏิเสธ</string>
+    <string name="error_single_app_not_fullscreen">การแปลหยุดชั่วคราว — แอปที่ถูกจับภาพไม่ได้แสดงเต็มหน้าจอ ระบบจะกลับมาแปลเมื่อแอปแสดงเต็มหน้าจออีกครั้ง</string>
+    <string name="error_capture_blocked_secure">อ่านข้อความไม่ได้ — แอปที่ถูกจับภาพบล็อกการจับภาพหน้าจอ</string>
+    <string name="probe_initializing">กำลังเริ่มต้น…</string>
+    <string name="stream_kind_prompt_title">คุณเลือกการแชร์แบบใด</string>
+    <string name="stream_kind_prompt_message">การแปลสดทำงานต่างกันระหว่างการแชร์แอปเดียวกับการแชร์ทั้งหน้าจอ และระบบไม่ได้บอกว่าคุณแชร์แบบใด</string>
+    <string name="stream_kind_share_one_app">แชร์แอปเดียว</string>
+    <string name="stream_kind_share_entire_screen">แชร์ทั้งหน้าจอ</string>
 
     <!-- ═══ SECTION HEADERS (translation-result screen) ═══ -->
 
@@ -436,6 +450,36 @@
 
     <string name="anki_audio_preview_content_description">ฟังตัวอย่างเสียง</string>
 
+    <!-- ═══ GAME-AUDIO RECORDING ═══ -->
+
+    <string name="anki_game_audio_row_title">บันทึกเสียงเกม</string>
+
+    <string name="anki_game_audio_row_subtitle">เก็บเสียงเกมช่วงไม่กี่นาทีล่าสุดไว้ เพื่อให้การ์ดประโยคใหม่ใช้เสียงพากย์จริงได้</string>
+
+    <string name="anki_game_audio_permission_denied">สิทธิ์ถูกปฏิเสธ — การบันทึกเสียงเกมจะยังคงปิดอยู่</string>
+
+    <string name="audio_source_game_name">เสียงเกม</string>
+
+    <string name="audio_source_game_ready">จากการเล่นเกมล่าสุดของคุณ</string>
+
+    <string name="audio_source_game_enable_hint">ยังไม่ได้บันทึก — เปิดเพื่อเก็บเสียงเกมไว้ใช้กับการ์ดในอนาคต</string>
+
+    <string name="game_audio_trim_title">ตัดเสียงเกม</string>
+
+    <string name="game_audio_trim_save">ใช้ช่วงที่เลือก</string>
+
+    <string name="game_audio_trim_use_tts">ใช้ TTS แทน</string>
+
+    <string name="game_audio_trim_no_audio">ไม่ใช้เสียง</string>
+
+    <string name="game_audio_trim_play">เล่นช่วงที่เลือก</string>
+
+    <string name="game_audio_trim_stop">หยุด</string>
+
+    <string name="game_audio_trim_duration">เลือกไว้ <xliff:g id="seconds" example="2.4">%1$s</xliff:g> วิ · บันทึกไว้ <xliff:g id="total_seconds" example="147">%2$s</xliff:g> วิ</string>
+
+    <string name="anki_game_audio_cell_untrimmed">ตัดเมื่อบันทึกการ์ด</string>
+
     <!-- ═══ CARD TYPE PICKER + FIELD MAPPING ═══ -->
 
     <string name="anki_card_type_row_label">ประเภทการ์ด</string>
@@ -582,14 +626,19 @@
 
     <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> เป็นบริการแปลที่ขึ้นชื่อเรื่องคุณภาพสูง โดยเฉพาะในภาษายุโรป</string>
 
+    <string name="llm_backend_preset_custom">กำหนดเอง</string>
+
     <!-- ═══ GENERIC LLM BACKEND SETTINGS ═══ -->
 
     <string name="llm_backend_api_key_label">คีย์ API</string>
 
     <string name="llm_backend_model_label">โมเดล</string>
 
+    <string name="llm_backend_provider_label">ผู้ให้บริการ</string>
 
     <string name="llm_backend_base_url_label">URL ที่กำหนดเอง</string>
+
+    <string name="llm_backend_base_url_custom_hint">ป้อน URL เซิร์ฟเวอร์ของคุณ</string>
 
     <string name="llm_backend_base_url_invalid">ใช้ https:// — http:// อนุญาตเฉพาะที่อยู่ในเครื่องหรือเครือข่าย LAN เท่านั้น</string>
 
@@ -607,9 +656,99 @@
 
     <string name="llm_backend_invalid_key_alert_button">ตกลง</string>
 
+    <!-- ═══ ADVANCED LLM CONFIGURATION ═══ -->
+
+    <string name="settings_header_advanced_llm">การกำหนดค่า LLM ขั้นสูง</string>
+
+    <string name="settings_llm_context_title">ใช้บรรทัดล่าสุดเป็นบริบท</string>
+
+    <string name="settings_llm_context_subtitle">สำหรับออนไลน์เท่านั้น ส่งข้อความที่บันทึกไว้ไม่กี่บรรทัดล่าสุดให้ตัวแปล LLM ออนไลน์ เพื่อให้สรรพนามและชื่อสอดคล้องกันมากขึ้น</string>
+
+    <string name="llm_prompt_row_system_title">พรอมต์ระบบ</string>
+
+    <string name="llm_prompt_row_system_subtitle">บุคลิกและคำสั่งที่ส่งไปยังตัวแปล LLM ทั้งบนคลาวด์และบนอุปกรณ์</string>
+
+    <string name="llm_prompt_row_translation_title">พรอมต์การแปล</string>
+
+    <string name="llm_prompt_row_translation_subtitle">คำขอที่ส่งไปพร้อมกับแต่ละวลีที่คุณค้นหา</string>
+
+    <string name="llm_prompt_row_batch_title">พรอมต์แบบกลุ่ม</string>
+
+    <string name="llm_prompt_row_batch_subtitle">คำขอที่บริการบนคลาวด์ใช้แปลทั้งหน้าจอในครั้งเดียว</string>
+
+    <string name="llm_prompt_reset">รีเซ็ต</string>
+
+    <string name="llm_prompt_keywords_header">คีย์เวิร์ด</string>
+
+    <string name="llm_prompt_save_anyway">บันทึกเลย</string>
+
+    <string name="llm_prompt_kw_source_desc">ชื่อภาษาต้นทางในภาษาอังกฤษ เช่น Japanese</string>
+
+    <string name="llm_prompt_kw_source_code_desc">รหัสภาษาต้นทาง เช่น ja</string>
+
+    <string name="llm_prompt_kw_target_desc">ชื่อภาษาเป้าหมายในภาษาอังกฤษ เช่น English</string>
+
+    <string name="llm_prompt_kw_target_code_desc">รหัสภาษาเป้าหมาย เช่น en</string>
+
+    <string name="llm_prompt_kw_text_desc">ข้อความที่จะแปล</string>
+
+    <string name="llm_prompt_kw_context_desc">บรรทัดล่าสุด เมื่อเปิดใช้งานบริบท</string>
+
+    <string name="llm_prompt_kw_count_desc">จำนวนวลีในกลุ่ม</string>
+
+    <string name="llm_prompt_kw_strings_desc">วลีที่จะแปล ในรูปแบบอาร์เรย์ JSON</string>
+
+    <string name="llm_prompt_invalid_title">ไม่สามารถบันทึกพรอมต์นี้ได้</string>
+
+    <string name="llm_prompt_fatal_blank">พรอมต์ต้องไม่ว่างเปล่า</string>
+
+    <string name="llm_prompt_fatal_missing_text">พรอมต์ต้องมี {text} — หากขาดคีย์เวิร์ดนี้ วลีที่จะแปลจะไม่ถูกส่งไปยังโมเดลเลย</string>
+
+    <string name="llm_prompt_fatal_missing_strings">พรอมต์ต้องมี {strings} — หากขาดคีย์เวิร์ดนี้ วลีที่จะแปลจะไม่ถูกส่งไปยังโมเดลเลย</string>
+
+    <string name="llm_prompt_warning_title">ตรวจสอบพรอมต์นี้</string>
+
+    <string name="llm_prompt_advisory_missing_source">ไม่มี {source} หรือ {source_code}: โมเดลจะไม่ทราบว่ากำลังแปลจากภาษาใด</string>
+
+    <string name="llm_prompt_advisory_missing_target">ไม่มี {target} หรือ {target_code}: โมเดลจะไม่ทราบว่าต้องแปลเป็นภาษาใด</string>
+
+    <string name="llm_prompt_advisory_missing_count">ไม่มี {N}: โมเดลจะไม่ทราบว่าจะได้รับวลีกี่วลี</string>
+
+    <string name="llm_prompt_advisory_foreign_token"><xliff:g id="keyword" example="{text}">%1$s</xliff:g> ไม่ถูกแทนค่าโดยพรอมต์นี้ และจะถูกส่งเป็นข้อความตามตัวอักษร</string>
+
+    <string name="llm_prompt_advisory_too_long">พรอมต์นี้ยาวมาก โมเดลบนอุปกรณ์อาจทำงานช้าลงหรือใช้บริบทจนหมด</string>
+
+    <string name="llm_prompt_discard_title">ละทิ้งการเปลี่ยนแปลงหรือไม่</string>
+
+    <string name="llm_prompt_discard_message">ยังไม่ได้บันทึกการแก้ไขพรอมต์นี้</string>
+
+    <string name="llm_prompt_discard_confirm">ละทิ้ง</string>
+
     <!-- ═══ SETTINGS FOOTERS ═══ -->
 
     <string name="tr_service_order_footer">การแปลจะลองใช้แต่ละบริการที่เปิดใช้งานตามลำดับที่แสดง โดยจะเปลี่ยนไปใช้บริการถัดไปเมื่อบริการใดไม่พร้อมใช้งาน บริการแปลออนไลน์จะได้รับข้อความที่จับภาพไว้ โปรดอ่านนโยบายความเป็นส่วนตัวของผู้ให้บริการแต่ละรายก่อนเปิดใช้งาน</string>
+
+    <string name="tr_service_add_online">เพิ่มบริการแปลออนไลน์</string>
+
+    <string name="add_online_service_title">เพิ่มบริการแปล</string>
+
+    <string name="service_llm_badge">LLM</string>
+
+    <string name="service_account_required">ต้องมีบัญชี</string>
+
+    <string name="service_account_required_free">ต้องมีบัญชี (มีตัวเลือกฟรี)</string>
+
+    <string name="service_no_account_required">ไม่ต้องมีบัญชี</string>
+
+    <string name="tr_service_key_tail_fmt">คีย์ ••••<xliff:g id="key_tail" example="4f2a">%1$s</xliff:g></string>
+
+    <string name="tr_service_remove_title_fmt">นำ <xliff:g id="service_name" example="OpenAI">%1$s</xliff:g> ออกหรือไม่</string>
+
+    <string name="tr_service_remove_message">การดำเนินการนี้จะนำบริการออกจากรายการ และลบคีย์ API ที่บันทึกไว้</string>
+
+    <string name="tr_service_remove_confirm">นำออก</string>
+
+    <string name="tr_service_delete_cd">นำบริการออก</string>
 
     <string name="tr_service_offline_footer">การแปลออฟไลน์ใช้เป็นทางเลือกสำรองเมื่อการแปลออนไลน์ไม่พร้อมใช้งาน การแปลของ <xliff:g id="brand_mlkit" example="MLKit">MLKit</xliff:g> มีคุณภาพไม่ดี แต่ตัวเลือกอื่นอาจช้ามากและใช้ทรัพยากรสูง โปรดระวังเมื่อใช้สำหรับการแปลอัตโนมัติ</string>
 
@@ -620,6 +759,16 @@
     <string name="tr_service_status_quota_fmt"><xliff:g id="used" example="120,345">%1$s</xliff:g> / <xliff:g id="total" example="500,000">%2$s</xliff:g> ตัวอักษรที่ใช้ไป</string>
 
     <string name="tr_service_status_quota_with_reset_fmt"><xliff:g id="quota_line" example="120,345 / 500,000 characters used">%1$s</xliff:g> · รีเซ็ต <xliff:g id="reset_date" example="Jun 1">%2$s</xliff:g></string>
+
+    <string name="tr_service_status_invalid_key">คีย์ API ไม่ถูกต้อง</string>
+
+    <string name="tr_service_status_no_internet">ไม่มีอินเทอร์เน็ต ตรวจสอบการใช้งานไม่ได้</string>
+
+    <string name="tr_service_status_check_failed">ตรวจสอบการใช้งานไม่สำเร็จ</string>
+
+    <string name="tr_service_status_no_usage_today">ยังไม่มีการใช้งานวันนี้</string>
+
+    <string name="tr_service_status_usage_today_fmt">วันนี้: <xliff:g id="tokens" example="12,345">%1$s</xliff:g> โทเค็น</string>
 
     <!-- ═══ BACKEND QUALITY / SPEED LABELS ═══ -->
 
@@ -893,6 +1042,16 @@
 
     <string name="floating_menu_btn_capture_region">พื้นที่\nจับภาพ</string>
 
+    <string name="floating_menu_capture_screen">จับภาพ\nหน้าจอ</string>
+
+    <string name="floating_menu_edit_region">แก้ไขพื้นที่</string>
+
+    <string name="floating_menu_panel_language">ภาษา</string>
+
+    <string name="floating_menu_panel_overlays">การซ้อนทับ</string>
+
+    <string name="floating_menu_panel_open_app">เปิด <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
+
     <string name="floating_menu_drag_instruction">ลากนิ้วเพื่อจับภาพพื้นที่ที่ต้องการ</string>
 
     <!-- ═══ DEEPL SETTINGS — API-key field label ═══ -->
@@ -951,6 +1110,8 @@
 
     <string name="cd_copy_original">คัดลอกต้นฉบับ</string>
 
+    <string name="cd_add_to_anki">เพิ่มไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
     <string name="cd_toggle_original_visibility">สลับการแสดงต้นฉบับ</string>
 
     <string name="cd_toggle_words_visibility">สลับการแสดงคำ</string>
@@ -983,11 +1144,45 @@
 
     <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> พร้อมใช้งานบน <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> แล้ว</string>
 
-    <string name="update_dialog_view_release">ดูเวอร์ชัน</string>
+    <string name="update_dialog_view_release">ดูบันทึกประจำรุ่น</string>
 
     <string name="update_dialog_skip">ข้ามเวอร์ชันนี้</string>
 
     <string name="update_dialog_ask_again_later">ถามอีกครั้งภายหลัง</string>
+
+    <string name="update_dialog_download">ดาวน์โหลดและติดตั้ง</string>
+
+    <string name="update_dialog_size_note">ขนาดการดาวน์โหลด: <xliff:g id="size" example="128 MB">%1$s</xliff:g></string>
+
+    <string name="update_dialog_metered_note">คุณกำลังใช้การเชื่อมต่อที่จำกัดปริมาณ</string>
+
+    <string name="update_progress_title">กำลังอัปเดต <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="update_progress_verifying">กำลังตรวจสอบ…</string>
+
+    <string name="update_unknown_sources_title">อนุญาตให้ติดตั้งการอัปเดต</string>
+
+    <string name="update_unknown_sources_message">หากต้องการอัปเดตให้เสร็จสิ้น โปรดอนุญาตให้ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ติดตั้งการอัปเดตแอปในหน้าการตั้งค่าที่จะเปิดขึ้น ทั้งนี้ Android อาจรีสตาร์ทแอปเมื่อเปิดสิทธิ์นี้ การอัปเดตที่ดาวน์โหลดไว้จะยังคงอยู่ และการติดตั้งจะดำเนินต่อโดยอัตโนมัติ</string>
+
+    <string name="update_unknown_sources_button">เปิดการตั้งค่า</string>
+
+    <string name="update_error_title">อัปเดตไม่สำเร็จ</string>
+
+    <string name="update_error_incomplete">การดาวน์โหลดไม่เสร็จสมบูรณ์ ลองอีกครั้ง หรือรับการอัปเดตจาก <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g></string>
+
+    <string name="update_error_verification">ไม่สามารถตรวจสอบไฟล์ที่ดาวน์โหลดมาได้ ลองอีกครั้ง หรือรับการอัปเดตจาก <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g></string>
+
+    <string name="update_error_wrong_package">ไฟล์ที่ดาวน์โหลดมาไม่ใช่การอัปเดตของ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ให้รับการอัปเดตจาก <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> แทน</string>
+
+    <string name="update_error_downgrade">เวอร์ชันที่ดาวน์โหลดมาไม่ได้ใหม่กว่าเวอร์ชันที่ติดตั้งอยู่</string>
+
+    <string name="update_error_signature">ไม่สามารถติดตั้งการอัปเดตนี้ทับบิลด์ปัจจุบันได้ ให้ติดตั้งด้วยตนเองจาก <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g></string>
+
+    <string name="update_error_no_space">พื้นที่ว่างไม่เพียงพอสำหรับดาวน์โหลดการอัปเดต (ต้องการ <xliff:g id="needed" example="230 MB">%1$s</xliff:g>)</string>
+
+    <string name="update_error_retry">ลองอีกครั้ง</string>
+
+    <string name="update_error_install_launch">ไม่สามารถเปิดตัวติดตั้งของระบบได้</string>
 
     <string name="toast_no_browser_available">ไม่มีเบราว์เซอร์ที่ใช้ได้</string>
 
@@ -1053,6 +1248,19 @@
     <string name="settings_ocr_installing">กำลังติดตั้ง…</string>
 
     <string name="settings_ocr_download_failed">ไม่สามารถดาวน์โหลดโมเดล OCR ได้ ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</string>
+
+    <string name="settings_ocr_use_manga_title">ใช้ MangaOCR</string>
+
+    <string name="settings_ocr_use_manga_subtitle">คำเตือน: คุณภาพสูงแต่ช้า ไม่แนะนำสำหรับโหมดอัตโนมัติ ทั้งนี้ MangaOCR เป็นส่วนเสริมของ OCR ที่เลือกไว้ จึงไม่สามารถทำงานเพียงลำพังได้</string>
+
+    <string name="settings_ocr_disable_manga_title">ปิด MangaOCR หรือไม่</string>
+
+    <string name="settings_ocr_disable_manga_msg">เก็บโมเดลที่ดาวน์โหลดไว้ (<xliff:g id="size" example="68 MB">%1$s</xliff:g>) หรือลบเพื่อเพิ่มพื้นที่ว่าง</string>
+
+    <string name="settings_ocr_disable_keep">เก็บโมเดลไว้</string>
+
+    <string name="settings_ocr_disable_delete">ลบโมเดล</string>
+
     <string name="settings_header_support">การสนับสนุน</string>
 
     <string name="settings_header_configure">กำหนดค่า</string>
@@ -1062,6 +1270,12 @@
     <string name="settings_cell_anki">แฟลชการ์ด Anki</string>
     <string name="settings_cell_translation_services">บริการแปล</string>
     <string name="settings_cell_tts">การอ่านออกเสียงข้อความ</string>
+
+    <string name="settings_yomitan_empty_summary">นำเข้าพจนานุกรมเพื่อเสริมการค้นหาคำ</string>
+
+    <plurals name="settings_yomitan_count_summary">
+        <item quantity="other">นำเข้าพจนานุกรมแล้ว <xliff:g id="count" example="3">%d</xliff:g> ฉบับ</item>
+    </plurals>
 
     <!-- ═══ YOMITAN — dictionary import page ═══ -->
 
@@ -1173,6 +1387,38 @@
 
     <string name="settings_cell_dictionary">พจนานุกรม</string>
 
+    <string name="settings_cell_history">ประวัติ</string>
+
+    <string name="settings_cell_history_summary_on">เปิด · รายการประโยคที่จับภาพไว้</string>
+
+    <string name="settings_cell_history_summary_off">ปิด · รายการประโยคที่จับภาพไว้</string>
+
+    <string name="history_screen_title">ประวัติ</string>
+
+    <string name="history_toggle_title">เก็บประวัติข้อความ</string>
+
+    <string name="history_toggle_subtitle">บันทึกประโยคที่จับภาพไว้ลงในอุปกรณ์นี้</string>
+
+    <string name="history_empty_off">ประวัติข้อความปิดอยู่ เปิดใช้งานเพื่อเก็บประโยคที่ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> จับภาพไว้</string>
+
+    <string name="history_empty_none">ยังไม่มีอะไรที่นี่ บรรทัดต่างๆ จะปรากฏขึ้นเมื่อมีการแปล</string>
+
+    <string name="history_action_copy">คัดลอก</string>
+
+    <string name="history_action_anki">เพิ่มไปยัง Anki</string>
+
+    <string name="history_action_delete">ลบ</string>
+
+    <string name="history_clear_menu">ล้างประวัติ</string>
+
+    <string name="history_clear_confirm_title">ล้างประวัติทั้งหมดหรือไม่</string>
+
+    <string name="history_clear_confirm_message">บรรทัดที่บันทึกไว้ทั้งหมดจะถูกลบออกจากอุปกรณ์นี้</string>
+
+    <string name="history_delete_confirm_title">ลบรายการนี้หรือไม่</string>
+
+    <string name="history_copied_toast">คัดลอกแล้ว</string>
+
     <string name="settings_cell_dictionary_summary">ค้นหาคำจำกัดความของคำ</string>
 
     <string name="settings_digest_none">ไม่มี</string>
@@ -1235,13 +1481,23 @@
 
     <string name="hotkey_not_set_subtitle">ยังไม่ได้ตั้งค่า</string>
 
-    <string name="hotkey_show_translations_title">ปุ่มลัด: กดค้างเพื่อแสดงคำแปล</string>
+    <string name="hotkey_section_translations">การแปล</string>
+
+    <string name="hotkey_show_translations_title">กดค้างเพื่อแสดงคำแปล</string>
 
     <string name="hotkey_show_translations_dialog_title">แสดงคำแปล</string>
 
-    <string name="hotkey_show_hint_title">ปุ่มลัด: กดค้างเพื่อแสดง <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+    <string name="hotkey_auto_translation_title">แตะเพื่อเริ่ม/หยุดการแปลอัตโนมัติ</string>
+
+    <string name="hotkey_auto_translation_dialog_title">แปลอัตโนมัติ</string>
+
+    <string name="hotkey_show_hint_title">กดค้างเพื่อแสดง<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
 
     <string name="hotkey_show_hint_dialog_title">แสดง <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="hotkey_auto_hint_title">แตะเพื่อเริ่ม/หยุด<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g>อัตโนมัติ</string>
+
+    <string name="hotkey_auto_hint_dialog_title"><xliff:g id="hint_label" example="Furigana">%1$s</xliff:g>อัตโนมัติ</string>
 
     <!-- ═══ SETTINGS — Capture Display section ═══ -->
 
@@ -1282,6 +1538,7 @@
     <string name="settings_debug_log_pinhole">บันทึกเมตริก pinhole ของโหมดสด</string>
     <string name="settings_debug_save_ocr_seed">บันทึกภาพ OCR เป็นซีด</string>
     <string name="settings_debug_log_grouping">บันทึกการตัดสินใจจัดกลุ่ม OCR</string>
+    <string name="settings_debug_log_trace">เก็บ trace ของบันทึกการแปล</string>
     <string name="settings_debug_force_crash_title">บังคับให้ขัดข้อง</string>
 
     <string name="dictionary_screen_title">พจนานุกรม</string>
@@ -1356,6 +1613,47 @@
     <string name="pos_abbreviation">คำย่อ</string>
     <string name="pos_contraction">รูปย่อ</string>
     <string name="pos_auxiliary">กริยาช่วย</string>
+
+    <!-- Misc register/usage tags; see values/strings.xml. -->
+    <string name="misc_kana_only">คานะเท่านั้น</string>
+    <string name="misc_kanji_only">คันจิเท่านั้น</string>
+    <string name="misc_colloquial">ภาษาพูด</string>
+    <string name="misc_informal">ไม่เป็นทางการ</string>
+    <string name="misc_formal">เป็นทางการ</string>
+    <string name="misc_literary">ภาษาเขียน</string>
+    <string name="misc_honorific">คำยกย่อง</string>
+    <string name="misc_humble">คำถ่อมตน</string>
+    <string name="misc_polite">คำสุภาพ</string>
+    <string name="misc_familiar">ภาษากันเอง</string>
+    <string name="misc_endearing">คำแสดงความรัก</string>
+    <string name="misc_childrens">ภาษาเด็ก</string>
+    <string name="misc_female_speech">ภาษาผู้หญิง</string>
+    <string name="misc_male_speech">ภาษาผู้ชาย</string>
+    <string name="misc_archaic">คำโบราณ</string>
+    <string name="misc_obsolete">เลิกใช้แล้ว</string>
+    <string name="misc_dated">ล้าสมัย</string>
+    <string name="misc_historical">ประวัติศาสตร์</string>
+    <string name="misc_rare">คำหายาก</string>
+    <string name="misc_neologism">คำใหม่</string>
+    <string name="misc_slang">คำสแลง</string>
+    <string name="misc_internet_slang">สแลงอินเทอร์เน็ต</string>
+    <string name="misc_manga_slang">สแลงมังงะ</string>
+    <string name="misc_idiomatic">เชิงสำนวน</string>
+    <string name="misc_figurative">โดยปริยาย</string>
+    <string name="misc_onomatopoeia">คำเลียนเสียง</string>
+    <string name="misc_poetic">ภาษากวี</string>
+    <string name="misc_humorous">ขำขัน</string>
+    <string name="misc_derogatory">คำดูถูก</string>
+    <string name="misc_offensive">คำไม่เหมาะสม</string>
+    <string name="misc_vulgar">คำหยาบ</string>
+    <string name="misc_slur">คำเหยียด</string>
+    <string name="misc_sensitive">คำอ่อนไหว</string>
+    <string name="misc_euphemistic">คำสละสลวย</string>
+    <string name="misc_sarcastic">คำประชด</string>
+    <string name="misc_nonstandard">ไม่เป็นมาตรฐาน</string>
+    <string name="misc_yojijukugo">สำนวนสี่อักษร</string>
+    <string name="misc_dialectal">ภาษาถิ่น</string>
+
     <string name="inflection_causative">รูปให้กระทำ</string>
     <string name="inflection_passive">ถูกกระทำ/ทำได้</string>
     <string name="inflection_negative">ปฏิเสธ</string>

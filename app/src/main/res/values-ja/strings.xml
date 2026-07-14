@@ -284,9 +284,35 @@
 
     <string name="translation_source_label"><xliff:g id="backend_name" example="DeepL">%1$s</xliff:g>による翻訳</string>
 
+    <string name="ocr_source_label"><xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g>による読み取り</string>
+
+    <string name="ocr_picker_title">OCRツールを選択</string>
+
+    <string name="ocr_picker_message">OCRはスクリーンショットからテキストを抽出する機能です。フォントによっては、別のツールの方が正確に読み取れることがあります</string>
+
+    <string name="cd_choose_ocr">OCRツールを選択</string>
+
+    <string name="cd_change_source_language">翻訳元の言語を変更</string>
+
+    <string name="cd_change_target_language">翻訳先の言語を変更</string>
+
     <string name="error_live_mode_unsupported_backend">現在の画面キャプチャ方式ではライブモードを利用できません。</string>
 
     <string name="error_screen_capture_denied">画面キャプチャの権限が拒否されたため、ライブモードを停止しました。</string>
+
+    <string name="error_single_app_not_fullscreen">翻訳を一時停止しています。キャプチャ対象のアプリが全画面表示になっていません。全画面表示に戻ると再開します。</string>
+
+    <string name="error_capture_blocked_secure">キャプチャ対象のアプリが画面キャプチャを許可していないため、何も読み取れません。</string>
+
+    <string name="probe_initializing">初期化中…</string>
+
+    <string name="stream_kind_prompt_title">どちらの共有方法を選択しましたか？</string>
+
+    <string name="stream_kind_prompt_message">1個のアプリを共有した場合と画面全体を共有した場合とで、ライブモードの動作は異なります。どちらを共有したかはシステムからは分かりません。</string>
+
+    <string name="stream_kind_share_one_app">1 個のアプリを共有</string>
+
+    <string name="stream_kind_share_entire_screen">画面全体を共有</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SECTION HEADERS (translation-result screen)
@@ -479,6 +505,38 @@
     <string name="anki_audio_preview_content_description">音声をプレビュー</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         GAME-AUDIO RECORDING (Settings → Anki → Audio; trim editor)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_game_audio_row_title">ゲーム音声を録音</string>
+
+    <string name="anki_game_audio_row_subtitle">直近数分間のゲーム音声を保持して、新しい文カードに実際のセリフの音声を使えるようにします</string>
+
+    <string name="anki_game_audio_permission_denied">権限が拒否されました。ゲーム音声の録音はオフのままです</string>
+
+    <string name="audio_source_game_name">ゲーム音声</string>
+
+    <string name="audio_source_game_ready">直近のゲームプレイから</string>
+
+    <string name="audio_source_game_enable_hint">録音していません。オンにすると、今後のカード用にゲーム音声を録音します</string>
+
+    <string name="game_audio_trim_title">ゲーム音声をトリミング</string>
+
+    <string name="game_audio_trim_save">選択範囲を使用</string>
+
+    <string name="game_audio_trim_use_tts">代わりにテキスト読み上げを使用</string>
+
+    <string name="game_audio_trim_no_audio">音声なし</string>
+
+    <string name="game_audio_trim_play">選択範囲を再生</string>
+
+    <string name="game_audio_trim_stop">停止</string>
+
+    <string name="game_audio_trim_duration">選択：<xliff:g id="seconds" example="2.4">%1$s</xliff:g>秒 · 録音済み：<xliff:g id="total_seconds" example="147">%2$s</xliff:g>秒</string>
+
+    <string name="anki_game_audio_cell_untrimmed">保存時にトリミング</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          CARD TYPE PICKER + FIELD MAPPING
          ═══════════════════════════════════════════════════════════════ -->
 
@@ -640,6 +698,8 @@
 
     <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g>は、特にヨーロッパ言語で高品質な出力で知られる翻訳サービスです。</string>
 
+    <string name="llm_backend_preset_custom">カスタム</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          GENERIC LLM BACKEND SETTINGS (OpenAI / Gemini / DeepSeek)
          ═══════════════════════════════════════════════════════════════ -->
@@ -648,8 +708,11 @@
 
     <string name="llm_backend_model_label">モデル</string>
 
+    <string name="llm_backend_provider_label">プロバイダー</string>
 
     <string name="llm_backend_base_url_label">カスタムURL</string>
+
+    <string name="llm_backend_base_url_custom_hint">バックエンドのURLを入力</string>
 
     <string name="llm_backend_base_url_invalid">https://を使用してください。http://はローカルまたはLANのアドレスでのみ使用できます</string>
 
@@ -668,10 +731,103 @@
     <string name="llm_backend_invalid_key_alert_button">OK</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         ADVANCED LLM CONFIGURATION — user-editable prompt templates.
+         The {token} keywords stay verbatim in Latin.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_header_advanced_llm">LLMの詳細設定</string>
+
+    <string name="settings_llm_context_title">直近の行をコンテキストとして使用</string>
+
+    <string name="settings_llm_context_subtitle">オンラインのみ。オンラインのLLM翻訳サービスにテキスト履歴の直近数行を渡し、代名詞や名前の一貫性を高めます。</string>
+
+    <string name="llm_prompt_row_system_title">システムプロンプト</string>
+
+    <string name="llm_prompt_row_system_subtitle">クラウドと端末内のLLM翻訳サービスに送られるペルソナと指示。</string>
+
+    <string name="llm_prompt_row_translation_title">翻訳プロンプト</string>
+
+    <string name="llm_prompt_row_translation_subtitle">調べるフレーズごとに送られるリクエスト。</string>
+
+    <string name="llm_prompt_row_batch_title">バッチプロンプト</string>
+
+    <string name="llm_prompt_row_batch_subtitle">クラウドサービスが画面全体を一度に翻訳するときに使うリクエスト。</string>
+
+    <string name="llm_prompt_reset">リセット</string>
+
+    <string name="llm_prompt_keywords_header">キーワード</string>
+
+    <string name="llm_prompt_save_anyway">このまま保存</string>
+
+    <string name="llm_prompt_kw_source_desc">翻訳元の言語の英語名（例：Japanese）</string>
+
+    <string name="llm_prompt_kw_source_code_desc">翻訳元の言語コード（例：ja）</string>
+
+    <string name="llm_prompt_kw_target_desc">翻訳先の言語の英語名（例：English）</string>
+
+    <string name="llm_prompt_kw_target_code_desc">翻訳先の言語コード（例：en）</string>
+
+    <string name="llm_prompt_kw_text_desc">翻訳するテキスト</string>
+
+    <string name="llm_prompt_kw_context_desc">直近の行（コンテキストが有効な場合）</string>
+
+    <string name="llm_prompt_kw_count_desc">バッチ内のフレーズ数</string>
+
+    <string name="llm_prompt_kw_strings_desc">翻訳するフレーズ（JSON配列）</string>
+
+    <string name="llm_prompt_invalid_title">このプロンプトは保存できません</string>
+
+    <string name="llm_prompt_fatal_blank">プロンプトを空にすることはできません。</string>
+
+    <string name="llm_prompt_fatal_missing_text">プロンプトには{text}が必要です。これがないと、翻訳するフレーズがモデルに送られません。</string>
+
+    <string name="llm_prompt_fatal_missing_strings">プロンプトには{strings}が必要です。これがないと、翻訳するフレーズがモデルに送られません。</string>
+
+    <string name="llm_prompt_warning_title">このプロンプトに問題があります</string>
+
+    <string name="llm_prompt_advisory_missing_source">{source}または{source_code}がありません。翻訳元の言語がモデルに伝わりません。</string>
+
+    <string name="llm_prompt_advisory_missing_target">{target}または{target_code}がありません。翻訳先の言語がモデルに伝わりません。</string>
+
+    <string name="llm_prompt_advisory_missing_count">{N}がありません。フレーズの数がモデルに伝わりません。</string>
+
+    <string name="llm_prompt_advisory_foreign_token"><xliff:g id="keyword" example="{text}">%1$s</xliff:g>はこのプロンプトでは置換されないため、そのままの文字列として送信されます。</string>
+
+    <string name="llm_prompt_advisory_too_long">このプロンプトは非常に長いです。端末内のモデルでは速度が低下したり、コンテキストが不足したりする可能性があります。</string>
+
+    <string name="llm_prompt_discard_title">変更を破棄しますか？</string>
+
+    <string name="llm_prompt_discard_message">このプロンプトの編集内容は保存されていません。</string>
+
+    <string name="llm_prompt_discard_confirm">破棄</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS FOOTERS (Translation Service sections)
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="tr_service_order_footer">翻訳は、有効なサービスを表示順に試し、利用できないものがあれば次に切り替えます。オンライン翻訳サービスにはキャプチャしたテキストが送信されます。有効にする前に各プロバイダーのプライバシーポリシーをご確認ください。</string>
+
+    <string name="tr_service_add_online">オンライン翻訳サービスを追加</string>
+
+    <string name="add_online_service_title">翻訳サービスを追加</string>
+
+    <string name="service_llm_badge">LLM</string>
+
+    <string name="service_account_required">アカウントが必要</string>
+
+    <string name="service_account_required_free">アカウントが必要（無料プランあり）</string>
+
+    <string name="service_no_account_required">アカウント不要</string>
+
+    <string name="tr_service_key_tail_fmt">キー：••••<xliff:g id="key_tail" example="4f2a">%1$s</xliff:g></string>
+
+    <string name="tr_service_remove_title_fmt"><xliff:g id="service_name" example="OpenAI">%1$s</xliff:g>を削除しますか？</string>
+
+    <string name="tr_service_remove_message">保存済みのAPIキーとともに、サービスをリストから削除します。</string>
+
+    <string name="tr_service_remove_confirm">削除</string>
+
+    <string name="tr_service_delete_cd">サービスを削除</string>
 
     <string name="tr_service_offline_footer">オフライン翻訳は、オンライン翻訳が利用できないときの代替として使用されます。<xliff:g id="brand_mlkit" example="MLKit">MLKit</xliff:g>の翻訳は品質が低く、その他の選択肢は非常に遅く負荷が高いことがあります。自動翻訳での使用にはご注意ください。</string>
 
@@ -684,6 +840,16 @@
     <string name="tr_service_status_quota_fmt"><xliff:g id="used" example="120,345">%1$s</xliff:g> / <xliff:g id="total" example="500,000">%2$s</xliff:g> 文字使用</string>
 
     <string name="tr_service_status_quota_with_reset_fmt"><xliff:g id="quota_line" example="120,345 / 500,000 characters used">%1$s</xliff:g> · <xliff:g id="reset_date" example="Jun 1">%2$s</xliff:g>にリセット</string>
+
+    <string name="tr_service_status_invalid_key">APIキーが無効です</string>
+
+    <string name="tr_service_status_no_internet">インターネット接続がなく、使用量を確認できません</string>
+
+    <string name="tr_service_status_check_failed">使用量を確認できませんでした</string>
+
+    <string name="tr_service_status_no_usage_today">本日：使用なし</string>
+
+    <string name="tr_service_status_usage_today_fmt">本日：<xliff:g id="tokens" example="12,345">%1$s</xliff:g>トークン</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          BACKEND QUALITY / SPEED LABELS
@@ -990,6 +1156,16 @@
 
     <string name="floating_menu_btn_capture_region">キャプチャ\n範囲</string>
 
+    <string name="floating_menu_capture_screen">キャプチャ\n全画面</string>
+
+    <string name="floating_menu_edit_region">範囲を編集</string>
+
+    <string name="floating_menu_panel_language">言語</string>
+
+    <string name="floating_menu_panel_overlays">オーバーレイ</string>
+
+    <string name="floating_menu_panel_open_app"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>を開く</string>
+
     <string name="floating_menu_drag_instruction">指でドラッグして特定の範囲をキャプチャ</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
@@ -1056,6 +1232,8 @@
 
     <string name="cd_copy_original">原文をコピー</string>
 
+    <string name="cd_add_to_anki"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加</string>
+
     <string name="cd_toggle_original_visibility">原文の表示・非表示を切り替え</string>
 
     <string name="cd_toggle_words_visibility">単語の表示・非表示を切り替え</string>
@@ -1092,11 +1270,45 @@
 
     <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g>が<xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>で公開されています。</string>
 
-    <string name="update_dialog_view_release">リリースを見る</string>
+    <string name="update_dialog_view_release">リリースノートを見る</string>
 
     <string name="update_dialog_skip">このバージョンをスキップ</string>
 
     <string name="update_dialog_ask_again_later">後で確認</string>
+
+    <string name="update_dialog_download">ダウンロードしてインストール</string>
+
+    <string name="update_dialog_size_note">ダウンロードサイズ：<xliff:g id="size" example="128 MB">%1$s</xliff:g></string>
+
+    <string name="update_dialog_metered_note">現在の接続は従量制です。</string>
+
+    <string name="update_progress_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>を更新中</string>
+
+    <string name="update_progress_verifying">検証中…</string>
+
+    <string name="update_unknown_sources_title">更新のインストールを許可</string>
+
+    <string name="update_unknown_sources_message">更新を完了するには、次に開く設定画面で<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>の「この提供元のアプリを許可」をオンにしてください。この権限をオンにすると、Androidがアプリを再起動することがあります。ダウンロード済みの更新は保持され、インストールは自動的に続行されます。</string>
+
+    <string name="update_unknown_sources_button">設定を開く</string>
+
+    <string name="update_error_title">更新に失敗しました</string>
+
+    <string name="update_error_incomplete">ダウンロードが正しく完了しませんでした。もう一度試すか、<xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>から更新を入手してください。</string>
+
+    <string name="update_error_verification">ダウンロードしたファイルを検証できませんでした。もう一度試すか、<xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>から更新を入手してください。</string>
+
+    <string name="update_error_wrong_package">ダウンロードしたファイルは<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>の更新ではありません。<xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>から更新を入手してください。</string>
+
+    <string name="update_error_downgrade">ダウンロードしたバージョンは、インストール済みのバージョンより新しくありません。</string>
+
+    <string name="update_error_signature">この更新は現在のビルドに上書きインストールできません。<xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>から手動でインストールしてください。</string>
+
+    <string name="update_error_no_space">更新のダウンロードには空き容量が足りません（あと<xliff:g id="needed" example="230 MB">%1$s</xliff:g>必要です）。</string>
+
+    <string name="update_error_retry">再試行</string>
+
+    <string name="update_error_install_launch">システムのインストーラーを開けませんでした。</string>
 
     <string name="toast_no_browser_available">利用できるブラウザがありません</string>
 
@@ -1168,6 +1380,19 @@
     <string name="settings_ocr_installing">インストール中…</string>
 
     <string name="settings_ocr_download_failed">OCRモデルをダウンロードできませんでした。接続を確認して、もう一度お試しください。</string>
+
+    <string name="settings_ocr_use_manga_title">MangaOCRを使用</string>
+
+    <string name="settings_ocr_use_manga_subtitle">注意：高品質ですが低速です。自動翻訳での使用は推奨しません。MangaOCRは選択中のOCRを補完するもので、単独では動作しません</string>
+
+    <string name="settings_ocr_disable_manga_title">MangaOCRをオフにしますか？</string>
+
+    <string name="settings_ocr_disable_manga_msg">ダウンロード済みのモデル（<xliff:g id="size" example="68 MB">%1$s</xliff:g>）を残しますか、それとも削除して空き容量を増やしますか？</string>
+
+    <string name="settings_ocr_disable_keep">モデルを残す</string>
+
+    <string name="settings_ocr_disable_delete">モデルを削除</string>
+
     <string name="settings_header_support">サポート</string>
 
     <string name="settings_header_configure">各種設定</string>
@@ -1177,6 +1402,12 @@
     <string name="settings_cell_anki">Ankiフラッシュカード</string>
     <string name="settings_cell_translation_services">翻訳サービス</string>
     <string name="settings_cell_tts">テキスト読み上げ</string>
+
+    <string name="settings_yomitan_empty_summary">辞書をインポートして単語検索を強化</string>
+
+    <plurals name="settings_yomitan_count_summary">
+        <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g>件の辞書をインポート済み</item>
+    </plurals>
 
     <string name="yomitan_page_description">Yomitan辞書は、Yomitanブラウザ拡張機能で使われる、有志が作成した辞書ファイルです。追加の辞書、頻度データ、高低アクセントなどの機能があります。+ボタンで辞書（.zip）をインポートすると、<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>がアプリ全体にシームレスに組み込みます。</string>
 
@@ -1284,6 +1515,38 @@
 
     <string name="settings_cell_dictionary">辞書</string>
 
+    <string name="settings_cell_history">履歴</string>
+
+    <string name="settings_cell_history_summary_on">オン · キャプチャした文の記録</string>
+
+    <string name="settings_cell_history_summary_off">オフ · キャプチャした文の記録</string>
+
+    <string name="history_screen_title">履歴</string>
+
+    <string name="history_toggle_title">テキスト履歴を保存</string>
+
+    <string name="history_toggle_subtitle">キャプチャした文をこの端末に保存</string>
+
+    <string name="history_empty_off">テキスト履歴はオフです。オンにすると、<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>がキャプチャした文を保存できます。</string>
+
+    <string name="history_empty_none">まだ何もありません。翻訳されたテキストがここに表示されます。</string>
+
+    <string name="history_action_copy">コピー</string>
+
+    <string name="history_action_anki">Ankiに追加</string>
+
+    <string name="history_action_delete">削除</string>
+
+    <string name="history_clear_menu">履歴を消去</string>
+
+    <string name="history_clear_confirm_title">すべての履歴を消去しますか？</string>
+
+    <string name="history_clear_confirm_message">保存されているすべてのテキストがこの端末から削除されます。</string>
+
+    <string name="history_delete_confirm_title">この項目を削除しますか？</string>
+
+    <string name="history_copied_toast">コピーしました</string>
+
     <string name="settings_cell_dictionary_summary">単語の定義を調べる</string>
 
     <string name="settings_digest_none">なし</string>
@@ -1352,13 +1615,23 @@
 
     <string name="hotkey_not_set_subtitle">未設定</string>
 
-    <string name="hotkey_show_translations_title">ホットキー：長押しで翻訳を表示</string>
+    <string name="hotkey_section_translations">翻訳</string>
+
+    <string name="hotkey_show_translations_title">長押しで翻訳を表示</string>
 
     <string name="hotkey_show_translations_dialog_title">翻訳を表示</string>
 
-    <string name="hotkey_show_hint_title">ホットキー：長押しで<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g>を表示</string>
+    <string name="hotkey_auto_translation_title">タップで自動翻訳を開始・停止</string>
+
+    <string name="hotkey_auto_translation_dialog_title">自動翻訳</string>
+
+    <string name="hotkey_show_hint_title">長押しで<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g>を表示</string>
 
     <string name="hotkey_show_hint_dialog_title"><xliff:g id="hint_label" example="Furigana">%1$s</xliff:g>を表示</string>
+
+    <string name="hotkey_auto_hint_title">タップで自動<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g>を開始・停止</string>
+
+    <string name="hotkey_auto_hint_dialog_title">自動<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Capture Display section
@@ -1409,6 +1682,7 @@
     <string name="settings_debug_log_pinhole">ライブモードのピンホール指標をログ</string>
     <string name="settings_debug_save_ocr_seed">OCRキャプチャをシードとして保存</string>
     <string name="settings_debug_log_grouping">OCRのグループ化判定をログ</string>
+    <string name="settings_debug_log_trace">翻訳ログのトレースを記録</string>
     <string name="settings_debug_force_crash_title">クラッシュを強制</string>
 
     <string name="dictionary_screen_title">辞書</string>
@@ -1483,6 +1757,45 @@
     <string name="pos_abbreviation">略語</string>
     <string name="pos_contraction">短縮形</string>
     <string name="pos_auxiliary">助動詞</string>
+    <!-- Misc register/usage tags (short chips); see values/strings.xml. -->
+    <string name="misc_kana_only">かな表記</string>
+    <string name="misc_kanji_only">漢字表記</string>
+    <string name="misc_colloquial">口語</string>
+    <string name="misc_informal">くだけた語</string>
+    <string name="misc_formal">改まった語</string>
+    <string name="misc_literary">文語</string>
+    <string name="misc_honorific">尊敬語</string>
+    <string name="misc_humble">謙譲語</string>
+    <string name="misc_polite">丁寧語</string>
+    <string name="misc_familiar">親しい間柄の語</string>
+    <string name="misc_endearing">親愛</string>
+    <string name="misc_childrens">幼児語</string>
+    <string name="misc_female_speech">女性語</string>
+    <string name="misc_male_speech">男性語</string>
+    <string name="misc_archaic">古語</string>
+    <string name="misc_obsolete">廃語</string>
+    <string name="misc_dated">古風</string>
+    <string name="misc_historical">歴史用語</string>
+    <string name="misc_rare">まれな語</string>
+    <string name="misc_neologism">新語</string>
+    <string name="misc_slang">俗語</string>
+    <string name="misc_internet_slang">ネットスラング</string>
+    <string name="misc_manga_slang">漫画スラング</string>
+    <string name="misc_idiomatic">慣用句</string>
+    <string name="misc_figurative">比喩</string>
+    <string name="misc_onomatopoeia">オノマトペ</string>
+    <string name="misc_poetic">雅語</string>
+    <string name="misc_humorous">おどけた語</string>
+    <string name="misc_derogatory">軽蔑語</string>
+    <string name="misc_offensive">不快語</string>
+    <string name="misc_vulgar">卑語</string>
+    <string name="misc_slur">差別語</string>
+    <string name="misc_sensitive">要注意</string>
+    <string name="misc_euphemistic">婉曲</string>
+    <string name="misc_sarcastic">皮肉</string>
+    <string name="misc_nonstandard">非標準</string>
+    <string name="misc_yojijukugo">四字熟語</string>
+    <string name="misc_dialectal">方言</string>
     <string name="inflection_causative">使役</string>
     <string name="inflection_passive">受身・可能</string>
     <string name="inflection_negative">否定</string>

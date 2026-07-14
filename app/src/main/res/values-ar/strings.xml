@@ -277,9 +277,35 @@
 
     <string name="translation_source_label">تمت الترجمة بواسطة <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
 
+    <string name="ocr_source_label">تمت القراءة بواسطة <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <string name="ocr_picker_title">اختيار أداة OCR</string>
+
+    <string name="ocr_picker_message">تقنية OCR هي التي تستخرج النص من لقطة الشاشة. قد تكون أدوات مختلفة أفضل مع خطوط مختلفة</string>
+
+    <string name="cd_choose_ocr">اختيار أداة OCR</string>
+
+    <string name="cd_change_source_language">تغيير اللغة المصدر</string>
+
+    <string name="cd_change_target_language">تغيير اللغة الهدف</string>
+
     <string name="error_live_mode_unsupported_backend">الوضع المباشر غير متاح مع طريقة التقاط الشاشة الحالية.</string>
 
     <string name="error_screen_capture_denied">تم إيقاف الوضع المباشر — تم رفض إذن التقاط الشاشة.</string>
+
+    <string name="error_single_app_not_fullscreen">الترجمة متوقفة مؤقتًا — التطبيق الملتقَط لا يملأ الشاشة. ستُستأنف عندما يعود التطبيق إلى وضع ملء الشاشة.</string>
+
+    <string name="error_capture_blocked_secure">لا يمكن قراءة أي شيء — التطبيق الملتقَط يحظر التقاط الشاشة.</string>
+
+    <string name="probe_initializing">جارٍ التهيئة…</string>
+
+    <string name="stream_kind_prompt_title">ما خيار المشاركة الذي اخترته؟</string>
+
+    <string name="stream_kind_prompt_message">تعمل الترجمة المباشرة بطريقة مختلفة عند مشاركة تطبيق واحد مقارنةً بمشاركة الشاشة بأكملها، والنظام لا يوضّح ما الذي تمت مشاركته.</string>
+
+    <string name="stream_kind_share_one_app">مشاركة تطبيق واحد</string>
+
+    <string name="stream_kind_share_entire_screen">مشاركة الشاشة بأكملها</string>
 
     <!-- ═══ SECTION HEADERS (translation-result screen) ═══ -->
 
@@ -451,6 +477,36 @@
 
     <string name="anki_audio_preview_content_description">معاينة الصوت</string>
 
+    <!-- ═══ GAME-AUDIO RECORDING (Settings → Anki → Audio; trim editor) ═══ -->
+
+    <string name="anki_game_audio_row_title">تسجيل صوت اللعبة</string>
+
+    <string name="anki_game_audio_row_subtitle">احتفظ بآخر بضع دقائق من صوت اللعبة لتتمكن بطاقات الجمل الجديدة من استخدام الصوت الأصلي للجملة</string>
+
+    <string name="anki_game_audio_permission_denied">تم رفض الإذن — يبقى تسجيل صوت اللعبة معطّلًا</string>
+
+    <string name="audio_source_game_name">صوت اللعبة</string>
+
+    <string name="audio_source_game_ready">من جلسة اللعب الأخيرة</string>
+
+    <string name="audio_source_game_enable_hint">التسجيل متوقف — فعّله لتسجيل صوت اللعبة للبطاقات المستقبلية</string>
+
+    <string name="game_audio_trim_title">اقتصاص صوت اللعبة</string>
+
+    <string name="game_audio_trim_save">استخدام التحديد</string>
+
+    <string name="game_audio_trim_use_tts">استخدام تحويل النص إلى كلام</string>
+
+    <string name="game_audio_trim_no_audio">بدون صوت</string>
+
+    <string name="game_audio_trim_play">تشغيل التحديد</string>
+
+    <string name="game_audio_trim_stop">إيقاف</string>
+
+    <string name="game_audio_trim_duration">تم تحديد <xliff:g id="seconds" example="2.4">%1$s</xliff:g> ث · تم تسجيل <xliff:g id="total_seconds" example="147">%2$s</xliff:g> ث</string>
+
+    <string name="anki_game_audio_cell_untrimmed">الاقتصاص عند الحفظ</string>
+
     <!-- ═══ CARD TYPE PICKER + FIELD MAPPING ═══ -->
 
     <string name="anki_card_type_row_label">نوع البطاقة</string>
@@ -599,13 +655,18 @@
 
     <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> هي خدمة ترجمة معروفة بجودتها العالية، خاصةً في اللغات الأوروبية.</string>
 
+    <string name="llm_backend_preset_custom">مخصص</string>
+
     <!-- ═══ GENERIC LLM BACKEND SETTINGS ═══ -->
 
     <string name="llm_backend_api_key_label">مفتاح API</string>
 
     <string name="llm_backend_model_label">النموذج</string>
 
+    <string name="llm_backend_provider_label">المزوّد</string>
+
     <string name="llm_backend_base_url_label">عنوان URL مخصص</string>
+    <string name="llm_backend_base_url_custom_hint">أدخل عنوان URL الخاص بخادمك</string>
     <string name="llm_backend_base_url_invalid">استخدم https:// — لا يُسمح بـ http:// إلا لعنوان محلي أو ضمن الشبكة المحلية (LAN)</string>
 
     <string name="llm_backend_get_key_title_fmt">الحصول على مفتاح API لـ <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
@@ -622,9 +683,74 @@
 
     <string name="llm_backend_invalid_key_alert_button">موافق</string>
 
+    <!-- ═══ ADVANCED LLM CONFIGURATION — user-editable prompt templates ═══ -->
+
+    <string name="settings_header_advanced_llm">التكوين المتقدم لـ LLM</string>
+
+    <string name="settings_llm_context_title">استخدام الأسطر الأخيرة كسياق</string>
+    <string name="settings_llm_context_subtitle">عبر الإنترنت فقط. امنح مترجِمات LLM عبر الإنترنت آخر بضعة أسطر من النص المسجَّل للحصول على ضمائر وأسماء أكثر اتساقًا.</string>
+
+    <string name="llm_prompt_row_system_title">موجّه النظام</string>
+    <string name="llm_prompt_row_system_subtitle">الشخصية والتعليمات المُرسَلة إلى مترجِمات LLM، السحابية والعاملة على الجهاز.</string>
+    <string name="llm_prompt_row_translation_title">موجّه الترجمة</string>
+    <string name="llm_prompt_row_translation_subtitle">الطلب الذي يُحيط بكل عبارة تبحث عنها.</string>
+    <string name="llm_prompt_row_batch_title">موجّه الدفعة</string>
+    <string name="llm_prompt_row_batch_subtitle">الطلب الذي تستخدمه الخدمات السحابية لترجمة شاشة كاملة دفعةً واحدة.</string>
+
+    <string name="llm_prompt_reset">إعادة تعيين</string>
+    <string name="llm_prompt_keywords_header">الكلمات المفتاحية</string>
+    <string name="llm_prompt_save_anyway">الحفظ على أي حال</string>
+
+    <string name="llm_prompt_kw_source_desc">الاسم الإنجليزي للغة المصدر، مثل Japanese</string>
+    <string name="llm_prompt_kw_source_code_desc">رمز اللغة المصدر، مثل ja</string>
+    <string name="llm_prompt_kw_target_desc">الاسم الإنجليزي للغة الهدف، مثل English</string>
+    <string name="llm_prompt_kw_target_code_desc">رمز اللغة الهدف، مثل en</string>
+    <string name="llm_prompt_kw_text_desc">النص المراد ترجمته</string>
+    <string name="llm_prompt_kw_context_desc">الأسطر الأخيرة، عند تفعيل السياق</string>
+    <string name="llm_prompt_kw_count_desc">عدد العبارات في الدفعة</string>
+    <string name="llm_prompt_kw_strings_desc">العبارات المراد ترجمتها، على شكل مصفوفة JSON</string>
+
+    <string name="llm_prompt_invalid_title">تعذّر حفظ هذا الموجّه</string>
+    <string name="llm_prompt_fatal_blank">لا يمكن أن يكون الموجّه فارغًا.</string>
+    <string name="llm_prompt_fatal_missing_text">يجب أن يتضمن الموجّه {text} — فبدون ذلك، لن تُرسَل العبارة المراد ترجمتها إلى النموذج أبدًا.</string>
+    <string name="llm_prompt_fatal_missing_strings">يجب أن يتضمن الموجّه {strings} — فبدون ذلك، لن تُرسَل العبارات المراد ترجمتها إلى النموذج أبدًا.</string>
+
+    <string name="llm_prompt_warning_title">راجِع هذا الموجّه</string>
+    <string name="llm_prompt_advisory_missing_source">لا يوجد {source} أو {source_code}: لن يُبلَّغ النموذج باللغة التي يترجم منها.</string>
+    <string name="llm_prompt_advisory_missing_target">لا يوجد {target} أو {target_code}: لن يُبلَّغ النموذج باللغة التي يترجم إليها.</string>
+    <string name="llm_prompt_advisory_missing_count">لا يوجد {N}: لن يُبلَّغ النموذج بعدد العبارات المتوقَّعة.</string>
+    <string name="llm_prompt_advisory_foreign_token">لا يملأ هذا الموجّه <xliff:g id="keyword" example="{text}">%1$s</xliff:g>، وسيُرسَل كنص حرفي.</string>
+    <string name="llm_prompt_advisory_too_long">هذا الموجّه طويل جدًا. قد تتباطأ النماذج العاملة على الجهاز أو ينفد سياقها.</string>
+
+    <string name="llm_prompt_discard_title">تجاهل التغييرات؟</string>
+    <string name="llm_prompt_discard_message">لم يتم حفظ تعديلاتك على هذا الموجّه.</string>
+    <string name="llm_prompt_discard_confirm">تجاهل</string>
+
     <!-- ═══ SETTINGS FOOTERS ═══ -->
 
     <string name="tr_service_order_footer">تجرّب الترجمات كل خدمة مفعّلة بالترتيب المعروض، وتنتقل إلى التالية عند عدم توفّر إحداها. تتلقى خدمات الترجمة عبر الإنترنت النص الملتقَط. راجع سياسة الخصوصية لكل مزوّد قبل تفعيله.</string>
+
+    <string name="tr_service_add_online">إضافة خدمة ترجمة عبر الإنترنت</string>
+
+    <string name="add_online_service_title">إضافة خدمة ترجمة</string>
+
+    <string name="service_llm_badge">LLM</string>
+
+    <string name="service_account_required">يتطلب حسابًا</string>
+
+    <string name="service_account_required_free">يتطلب حسابًا (خيار مجاني)</string>
+
+    <string name="service_no_account_required">لا يتطلب حسابًا</string>
+
+    <string name="tr_service_key_tail_fmt">المفتاح ••••<xliff:g id="key_tail" example="4f2a">%1$s</xliff:g></string>
+
+    <string name="tr_service_remove_title_fmt">إزالة <xliff:g id="service_name" example="OpenAI">%1$s</xliff:g>؟</string>
+
+    <string name="tr_service_remove_message">يؤدي هذا إلى إزالة الخدمة من القائمة وحذف مفتاح API المحفوظ الخاص بها.</string>
+
+    <string name="tr_service_remove_confirm">إزالة</string>
+
+    <string name="tr_service_delete_cd">إزالة الخدمة</string>
 
     <string name="tr_service_offline_footer">تُستخدم الترجمات دون اتصال كحل بديل عند عدم توفّر الترجمات عبر الإنترنت. ترجمات <xliff:g id="brand_mlkit" example="MLKit">MLKit</xliff:g> سيئة، لكن الخيارات الأخرى قد تكون بطيئة جدًا ومرهقة؛ كن حذرًا عند استخدامها للترجمة التلقائية.</string>
 
@@ -635,6 +761,16 @@
     <string name="tr_service_status_quota_fmt"><xliff:g id="used" example="120,345">%1$s</xliff:g> / <xliff:g id="total" example="500,000">%2$s</xliff:g> حرف مستخدَم</string>
 
     <string name="tr_service_status_quota_with_reset_fmt"><xliff:g id="quota_line" example="120,345 / 500,000 characters used">%1$s</xliff:g> · تُعاد التهيئة في <xliff:g id="reset_date" example="Jun 1">%2$s</xliff:g></string>
+
+    <string name="tr_service_status_invalid_key">مفتاح API غير صالح</string>
+
+    <string name="tr_service_status_no_internet">لا يوجد اتصال بالإنترنت، تعذّر التحقق من الاستخدام</string>
+
+    <string name="tr_service_status_check_failed">تعذّر التحقق من الاستخدام</string>
+
+    <string name="tr_service_status_no_usage_today">لا يوجد استخدام اليوم</string>
+
+    <string name="tr_service_status_usage_today_fmt">التوكنات اليوم: <xliff:g id="tokens" example="12,345">%1$s</xliff:g></string>
 
     <!-- ═══ BACKEND QUALITY / SPEED LABELS ═══ -->
 
@@ -908,6 +1044,16 @@
 
     <string name="floating_menu_btn_capture_region">منطقة\nالالتقاط</string>
 
+    <string name="floating_menu_capture_screen">التقاط\nالشاشة</string>
+
+    <string name="floating_menu_edit_region">تعديل المنطقة</string>
+
+    <string name="floating_menu_panel_language">اللغة</string>
+
+    <string name="floating_menu_panel_overlays">التراكبات</string>
+
+    <string name="floating_menu_panel_open_app">فتح <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
+
     <string name="floating_menu_drag_instruction">اسحب بإصبعك لالتقاط منطقة محددة</string>
 
     <!-- ═══ DEEPL SETTINGS — API-key field label ═══ -->
@@ -966,6 +1112,8 @@
 
     <string name="cd_copy_original">نسخ النص الأصلي</string>
 
+    <string name="cd_add_to_anki">إضافة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
     <string name="cd_toggle_original_visibility">إظهار/إخفاء النص الأصلي</string>
 
     <string name="cd_toggle_words_visibility">إظهار/إخفاء الكلمات</string>
@@ -998,11 +1146,45 @@
 
     <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> متاح على <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
 
-    <string name="update_dialog_view_release">عرض الإصدار</string>
+    <string name="update_dialog_view_release">عرض ملاحظات الإصدار</string>
 
     <string name="update_dialog_skip">تخطي هذا الإصدار</string>
 
     <string name="update_dialog_ask_again_later">اسألني لاحقًا</string>
+
+    <string name="update_dialog_download">تنزيل وتثبيت</string>
+
+    <string name="update_dialog_size_note">حجم التنزيل: <xliff:g id="size" example="128 MB">%1$s</xliff:g></string>
+
+    <string name="update_dialog_metered_note">أنت متصل بشبكة محدودة الاستخدام.</string>
+
+    <string name="update_progress_title">جارٍ تحديث <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="update_progress_verifying">جارٍ التحقق…</string>
+
+    <string name="update_unknown_sources_title">السماح بتثبيت التحديثات</string>
+
+    <string name="update_unknown_sources_message">لإكمال التحديث، اسمح لـ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> بتثبيت تحديثات التطبيقات في شاشة الإعدادات التي ستُفتح. قد يعيد Android تشغيل التطبيق عند تفعيل الإذن. يُحتفظ بالتحديث المنزَّل ويستمر التثبيت تلقائيًا.</string>
+
+    <string name="update_unknown_sources_button">فتح الإعدادات</string>
+
+    <string name="update_error_title">فشل التحديث</string>
+
+    <string name="update_error_incomplete">لم يكتمل التنزيل بشكل صحيح. حاول مرة أخرى، أو احصل على التحديث من <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_error_verification">تعذّر التحقق من الملف المنزَّل. حاول مرة أخرى، أو احصل على التحديث من <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_error_wrong_package">الملف المنزَّل ليس تحديثًا لـ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>. احصل على التحديث من <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> بدلاً من ذلك.</string>
+
+    <string name="update_error_downgrade">الإصدار المنزَّل ليس أحدث من الإصدار المثبَّت.</string>
+
+    <string name="update_error_signature">لا يمكن تثبيت هذا التحديث فوق الإصدار الحالي. ثبّته يدويًا من <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
+
+    <string name="update_error_no_space">لا توجد مساحة كافية لتنزيل التحديث (المطلوب <xliff:g id="needed" example="230 MB">%1$s</xliff:g>).</string>
+
+    <string name="update_error_retry">إعادة المحاولة</string>
+
+    <string name="update_error_install_launch">تعذّر فتح مثبِّت النظام.</string>
 
     <string name="toast_no_browser_available">لا يوجد متصفح متاح</string>
 
@@ -1068,6 +1250,14 @@
     <string name="settings_ocr_installing">جارٍ التثبيت…</string>
 
     <string name="settings_ocr_download_failed">تعذّر تنزيل نموذج OCR. تحقق من اتصالك وحاول مرة أخرى.</string>
+
+    <string name="settings_ocr_use_manga_title">استخدام MangaOCR</string>
+    <string name="settings_ocr_use_manga_subtitle">تحذير: جودة عالية لكنه بطيء. لا يُنصح به للترجمة التلقائية. وهو مكمّل لأداة OCR المحددة ولا يمكنه العمل بمفرده</string>
+    <string name="settings_ocr_disable_manga_title">إيقاف MangaOCR؟</string>
+    <string name="settings_ocr_disable_manga_msg">هل تريد الاحتفاظ بالنموذج المنزَّل (<xliff:g id="size" example="68 MB">%1$s</xliff:g>) أم حذفه لتحرير مساحة؟</string>
+    <string name="settings_ocr_disable_keep">الاحتفاظ بالنموذج</string>
+    <string name="settings_ocr_disable_delete">حذف النموذج</string>
+
     <string name="settings_header_support">الدعم</string>
 
     <string name="settings_header_configure">التكوين</string>
@@ -1077,6 +1267,17 @@
     <string name="settings_cell_anki">بطاقات Anki</string>
     <string name="settings_cell_translation_services">خدمات الترجمة</string>
     <string name="settings_cell_tts">تحويل النص إلى كلام</string>
+
+    <string name="settings_yomitan_empty_summary">استورد قواميس لتحسين البحث عن الكلمات</string>
+
+    <plurals name="settings_yomitan_count_summary">
+        <item quantity="zero">تم استيراد <xliff:g id="count" example="0">%d</xliff:g> قاموس</item>
+        <item quantity="one">تم استيراد قاموس واحد</item>
+        <item quantity="two">تم استيراد قاموسين</item>
+        <item quantity="few">تم استيراد <xliff:g id="count" example="3">%d</xliff:g> قواميس</item>
+        <item quantity="many">تم استيراد <xliff:g id="count" example="11">%d</xliff:g> قاموسًا</item>
+        <item quantity="other">تم استيراد <xliff:g id="count" example="100">%d</xliff:g> قاموس</item>
+    </plurals>
 
     <string name="yomitan_page_description">قواميس Yomitan هي ملفات قواميس أنشأها المجتمع وتُستخدم مع امتداد المتصفح Yomitan. تشمل ميزاتها قواميس إضافية وبيانات التكرار والنبرة الصوتية. استورد قاموسًا (.zip) باستخدام زر +، وسيدمجه PlayTranslate بسلاسة في جميع أنحاء التطبيق.</string>
 
@@ -1194,6 +1395,36 @@
 
     <string name="settings_cell_dictionary">القاموس</string>
 
+    <string name="settings_cell_history">السجل</string>
+    <string name="settings_cell_history_summary_on">مفعّل · سجل الجمل الملتقَطة</string>
+    <string name="settings_cell_history_summary_off">معطّل · سجل الجمل الملتقَطة</string>
+
+    <string name="history_screen_title">السجل</string>
+
+    <string name="history_toggle_title">الاحتفاظ بسجل النصوص</string>
+
+    <string name="history_toggle_subtitle">حفظ الجمل الملتقَطة على هذا الجهاز</string>
+
+    <string name="history_empty_off">سجل النصوص معطّل. فعّله للاحتفاظ بالجمل التي يلتقطها <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>.</string>
+
+    <string name="history_empty_none">لا يوجد شيء هنا بعد. تظهر الأسطر عند ترجمتها.</string>
+
+    <string name="history_action_copy">نسخ</string>
+
+    <string name="history_action_anki">إضافة إلى Anki</string>
+
+    <string name="history_action_delete">حذف</string>
+
+    <string name="history_clear_menu">مسح السجل</string>
+
+    <string name="history_clear_confirm_title">مسح كل السجل؟</string>
+
+    <string name="history_clear_confirm_message">سيتم حذف كل سطر محفوظ من هذا الجهاز.</string>
+
+    <string name="history_delete_confirm_title">حذف هذا السطر؟</string>
+
+    <string name="history_copied_toast">تم النسخ</string>
+
     <string name="settings_cell_dictionary_summary">البحث عن تعريفات الكلمات</string>
 
     <string name="settings_digest_none">لا شيء</string>
@@ -1256,13 +1487,23 @@
 
     <string name="hotkey_not_set_subtitle">غير معيّن</string>
 
-    <string name="hotkey_show_translations_title">اختصار: اضغط مطولاً لعرض الترجمات</string>
+    <string name="hotkey_section_translations">الترجمات</string>
+
+    <string name="hotkey_show_translations_title">اضغط مطولاً لعرض الترجمات</string>
 
     <string name="hotkey_show_translations_dialog_title">عرض الترجمات</string>
 
-    <string name="hotkey_show_hint_title">اختصار: اضغط مطولاً لعرض <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+    <string name="hotkey_auto_translation_title">اضغط لبدء/إيقاف الترجمة التلقائية</string>
+
+    <string name="hotkey_auto_translation_dialog_title">الترجمة التلقائية</string>
+
+    <string name="hotkey_show_hint_title">اضغط مطولاً لعرض <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
 
     <string name="hotkey_show_hint_dialog_title">عرض <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="hotkey_auto_hint_title">اضغط لبدء/إيقاف «<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g> تلقائيًا»</string>
+
+    <string name="hotkey_auto_hint_dialog_title"><xliff:g id="hint_label" example="Furigana">%1$s</xliff:g> تلقائيًا</string>
 
     <!-- ═══ SETTINGS — Capture Display section ═══ -->
 
@@ -1303,6 +1544,7 @@
     <string name="settings_debug_log_pinhole">تسجيل مقاييس pinhole للوضع المباشر</string>
     <string name="settings_debug_save_ocr_seed">حفظ التقاطات OCR كبذور</string>
     <string name="settings_debug_log_grouping">تسجيل قرارات تجميع OCR</string>
+    <string name="settings_debug_log_trace">تسجيل تتبُّع لسجل الترجمة</string>
     <string name="settings_debug_force_crash_title">فرض تعطّل</string>
 
     <string name="dictionary_screen_title">القاموس</string>
@@ -1382,6 +1624,47 @@
     <string name="pos_abbreviation">اختصار</string>
     <string name="pos_contraction">اختزال</string>
     <string name="pos_auxiliary">فعل مساعد</string>
+
+    <!-- Misc register/usage tags (short chips); see values/strings.xml. -->
+    <string name="misc_kana_only">كانا فقط</string>
+    <string name="misc_kanji_only">كانجي فقط</string>
+    <string name="misc_colloquial">محكي</string>
+    <string name="misc_informal">غير رسمي</string>
+    <string name="misc_formal">رسمي</string>
+    <string name="misc_literary">أدبي</string>
+    <string name="misc_honorific">تعظيمي</string>
+    <string name="misc_humble">تواضعي</string>
+    <string name="misc_polite">مهذب</string>
+    <string name="misc_familiar">ودّي</string>
+    <string name="misc_endearing">تحبّبي</string>
+    <string name="misc_childrens">لغة الأطفال</string>
+    <string name="misc_female_speech">لغة النساء</string>
+    <string name="misc_male_speech">لغة الرجال</string>
+    <string name="misc_archaic">مهجور</string>
+    <string name="misc_obsolete">بائد</string>
+    <string name="misc_dated">قديم الطراز</string>
+    <string name="misc_historical">تاريخي</string>
+    <string name="misc_rare">نادر</string>
+    <string name="misc_neologism">مُستحدَث</string>
+    <string name="misc_slang">دارجة</string>
+    <string name="misc_internet_slang">دارجة الإنترنت</string>
+    <string name="misc_manga_slang">دارجة المانغا</string>
+    <string name="misc_idiomatic">اصطلاحي</string>
+    <string name="misc_figurative">مجازي</string>
+    <string name="misc_onomatopoeia">محاكاة صوتية</string>
+    <string name="misc_poetic">شعري</string>
+    <string name="misc_humorous">فكاهي</string>
+    <string name="misc_derogatory">تحقيري</string>
+    <string name="misc_offensive">مسيء</string>
+    <string name="misc_vulgar">بذيء</string>
+    <string name="misc_slur">شتيمة</string>
+    <string name="misc_sensitive">حسّاس</string>
+    <string name="misc_euphemistic">تلطيفي</string>
+    <string name="misc_sarcastic">ساخر</string>
+    <string name="misc_nonstandard">غير معياري</string>
+    <string name="misc_yojijukugo">تعبير رباعي الأحرف</string>
+    <string name="misc_dialectal">لهجي</string>
+
     <string name="inflection_causative">السببية</string>
     <string name="inflection_passive">المبني للمجهول/الإمكان</string>
     <string name="inflection_negative">النفي</string>
