@@ -1816,6 +1816,18 @@
          Brand strings (display names) are translatable="false".
          ═══════════════════════════════════════════════════════════════ -->
 
+    <!-- ── Shared pre-flight refusal reasons ──────────────────────── -->
+    <!-- The downloader refuses before it starts when the device is short on RAM or
+         storage. These two render as the %1$s of the *_download_failed toasts below
+         ("Download failed: <this>"), for every MNN backend, so keep each one a
+         fragment that reads naturally after a colon. Both sizes arrive already
+         formatted and localized by the caller (e.g. "1,2 Go" on a French device);
+         do not add a unit. -->
+    <!-- %1$s = the RAM this device actually has; %2$s = the RAM the model needs. -->
+    <string name="model_refused_ram">Not enough memory (<xliff:g id="device_ram" example="3.8 GB">%1$s</xliff:g> on this device, <xliff:g id="needed_ram" example="4.0 GB">%2$s</xliff:g> needed)</string>
+    <!-- %1$s = the free space required; %2$s = the free space actually left. -->
+    <string name="model_refused_storage">Not enough free space (<xliff:g id="needed" example="1.2 GB">%1$s</xliff:g> needed, <xliff:g id="available" example="400 MB">%2$s</xliff:g> available)</string>
+
     <!-- ── MNN-backed Qwen 2.5 1.5B (live-mode tier) ──────────────── -->
 
     <string name="qwen_mnn_display_name" translatable="false">Qwen 2.5 1.5B</string>

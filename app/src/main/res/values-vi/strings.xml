@@ -859,6 +859,12 @@
          ON-DEVICE LLM TRANSLATION MODELS (MNN-backed)
          ═══════════════════════════════════════════════════════════════ -->
 
+    <!-- ── Shared pre-flight refusal reasons ──────────────────────── -->
+
+    <string name="model_refused_ram">Không đủ bộ nhớ (thiết bị này có <xliff:g id="device_ram" example="3.8 GB">%1$s</xliff:g>, cần <xliff:g id="needed_ram" example="4.0 GB">%2$s</xliff:g>)</string>
+
+    <string name="model_refused_storage">Không đủ dung lượng trống (cần <xliff:g id="needed" example="1.2 GB">%1$s</xliff:g>, còn <xliff:g id="available" example="400 MB">%2$s</xliff:g>)</string>
+
     <!-- ── Qwen 2.5 1.5B ──────────────────────────────────────────── -->
 
     <string name="qwen_mnn_status_not_downloaded">Cần bộ nhớ <xliff:g id="ram" example="4 GB">%1$s</xliff:g>, lưu trữ <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g></string>

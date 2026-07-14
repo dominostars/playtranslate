@@ -889,6 +889,12 @@
          ON-DEVICE LLM TRANSLATION MODELS (MNN-backed)
          ═══════════════════════════════════════════════════════════════ -->
 
+    <!-- ── Shared pre-flight refusal reasons ──────────────────────── -->
+
+    <string name="model_refused_ram">Yeterli bellek yok (bu cihazda <xliff:g id="device_ram" example="3.8 GB">%1$s</xliff:g> var, <xliff:g id="needed_ram" example="4.0 GB">%2$s</xliff:g> gerekiyor)</string>
+
+    <string name="model_refused_storage">Yeterli boş alan yok (<xliff:g id="needed" example="1.2 GB">%1$s</xliff:g> gerekiyor, <xliff:g id="available" example="400 MB">%2$s</xliff:g> kullanılabilir)</string>
+
     <!-- ── Qwen 2.5 1.5B ──────────────────────────────────────────── -->
 
     <string name="qwen_mnn_status_not_downloaded"><xliff:g id="ram" example="4 GB">%1$s</xliff:g> bellek, <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g> disk alanı gerektirir</string>

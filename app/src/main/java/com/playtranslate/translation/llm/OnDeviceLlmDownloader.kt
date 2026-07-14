@@ -6,6 +6,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.StatFs
 import android.util.Log
+import com.playtranslate.R
 import com.playtranslate.language.CatalogEntry
 import com.playtranslate.language.CatalogFile
 import com.playtranslate.language.LanguagePackDownloader
@@ -16,6 +17,38 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.coroutines.coroutineContext
+
+/**
+ * Why pre-flight refused a model download. Byte counts, not prose: the downloader
+ * measures, the UI phrases. Keeping it structured is what lets [localize] emit a
+ * fully translated sentence, and lets the OCR path log exact numbers instead of a
+ * rounded restatement of them.
+ */
+sealed interface RefusalReason {
+    /** Device RAM is below the model's floor. */
+    data class InsufficientRam(val deviceBytes: Long, val neededBytes: Long) : RefusalReason
+
+    /** Not enough free storage for the bytes still to fetch, plus headroom. */
+    data class InsufficientStorage(val neededBytes: Long, val freeBytes: Long) : RefusalReason
+}
+
+/**
+ * Render a [RefusalReason] as a localized sentence for the tail of the
+ * `*_download_failed` toast. Sizes go through [humanSize], so the number *and* the
+ * unit follow the device locale ("1,2 Go", not "1.2 GB").
+ */
+fun RefusalReason.localize(ctx: Context): String = when (this) {
+    is RefusalReason.InsufficientRam -> ctx.getString(
+        R.string.model_refused_ram,
+        humanSize(ctx, deviceBytes),
+        humanSize(ctx, neededBytes),
+    )
+    is RefusalReason.InsufficientStorage -> ctx.getString(
+        R.string.model_refused_storage,
+        humanSize(ctx, neededBytes),
+        humanSize(ctx, freeBytes),
+    )
+}
 
 /**
  * Drives a manifest-backed download of an on-device LLM artifact.
@@ -94,19 +127,17 @@ class OnDeviceLlmDownloader(
         data object Success : Outcome
 
         /**
-         * Pre-flight said no (RAM or disk). [reason] is USER-VISIBLE, not just a
-         * log line: `OfflineModelInstallController` interpolates it verbatim into
-         * the localized `*_download_failed` toast. Any byte size inside it must
-         * therefore be formatted with [humanSize] (which localizes number *and*
-         * unit); the OCR install path additionally logs it.
+         * Pre-flight said no (RAM or disk). [reason] carries the byte counts, not
+         * a sentence: the downloader knows what it measured, not how to phrase it.
+         * `OfflineModelInstallController` renders it through
+         * [RefusalReason.localize] into the `*_download_failed` toast; the OCR
+         * install path logs the data class, which prints exact byte counts.
          *
-         * Known gap: the carrier sentences themselves are still English literals
-         * (see [preflightRam]), so a French user gets a localized template around
-         * English words. Closing that means turning [reason] into a typed reason
-         * (@StringRes + args) so the UI can localize the whole sentence — a
-         * strings.xml change, deliberately out of scope here.
+         * This used to be a String the downloader wrote itself, which is how a
+         * French user got "Insufficient RAM (3 GB total, need 4 GB)" sitting inside
+         * an otherwise-localized toast.
          */
-        data class Refused(val reason: String) : Outcome
+        data class Refused(val reason: RefusalReason) : Outcome
         data class Failed(val reason: String, val cause: Throwable? = null) : Outcome
 
         /**
@@ -550,7 +581,7 @@ class OnDeviceLlmDownloader(
         totalBytes: Long,
         tmpDir: File,
         files: List<CatalogFile>,
-    ): String? {
+    ): RefusalReason? {
         val dir = context.noBackupFilesDir
         val sf = StatFs(dir.absolutePath)
         val free = sf.availableBytes
@@ -569,7 +600,7 @@ class OnDeviceLlmDownloader(
         // 5% headroom + 100 MB minimum on remaining bytes.
         val needed = (remaining * 105 / 100).coerceAtLeast(remaining + 100_000_000L)
         if (free < needed) {
-            return "Need ${humanSize(context, needed)} free, only ${humanSize(context, free)} available"
+            return RefusalReason.InsufficientStorage(needed, free)
         }
         return null
     }
@@ -597,19 +628,19 @@ class OnDeviceLlmDownloader(
 
     // -- Pre-flight helpers --------------------------------------------------------
 
-    private fun preflightRam(): String? {
+    private fun preflightRam(): RefusalReason? {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val mi = ActivityManager.MemoryInfo()
         am.getMemoryInfo(mi)
         if (mi.totalMem < totalMemFloorBytes) {
-            val totalGb = mi.totalMem / 1_000_000_000
-            val needGb = totalMemFloorBytes / 1_000_000_000
-            return "Insufficient RAM ($totalGb GB total, need $needGb GB)"
+            // Raw bytes, not truncated GB: the old integer division reported a
+            // 3.9 GB device as "3 GB", overstating the shortfall by nearly a GB.
+            return RefusalReason.InsufficientRam(mi.totalMem, totalMemFloorBytes)
         }
         return null
     }
 
-    private fun preflightStorage(expectedSize: Long, strategy: CommitStrategy): String? {
+    private fun preflightStorage(expectedSize: Long, strategy: CommitStrategy): RefusalReason? {
         val dir = context.noBackupFilesDir
         val sf = StatFs(dir.absolutePath)
         val free = sf.availableBytes
@@ -631,7 +662,7 @@ class OnDeviceLlmDownloader(
             needed += (expectedSize * 25 / 10)
         }
         if (free < needed) {
-            return "Need ${humanSize(context, needed)} free, only ${humanSize(context, free)} available"
+            return RefusalReason.InsufficientStorage(needed, free)
         }
         return null
     }

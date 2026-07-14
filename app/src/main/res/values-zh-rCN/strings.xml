@@ -895,6 +895,12 @@
          ON-DEVICE LLM TRANSLATION MODELS (MNN-backed)
          ═══════════════════════════════════════════════════════════════ -->
 
+    <!-- ── Shared pre-flight refusal reasons ──────────────────────── -->
+
+    <string name="model_refused_ram">内存不足（此设备有 <xliff:g id="device_ram" example="3.8 GB">%1$s</xliff:g>，需要 <xliff:g id="needed_ram" example="4.0 GB">%2$s</xliff:g>）</string>
+
+    <string name="model_refused_storage">可用空间不足（需要 <xliff:g id="needed" example="1.2 GB">%1$s</xliff:g>，仅有 <xliff:g id="available" example="400 MB">%2$s</xliff:g>）</string>
+
     <!-- ── Qwen 2.5 1.5B ──────────────────────────────────────────── -->
 
     <string name="qwen_mnn_status_not_downloaded">需要内存 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>，占用存储 <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g></string>

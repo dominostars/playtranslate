@@ -13,6 +13,7 @@ import com.playtranslate.translation.llm.ModelHelper
 import com.playtranslate.translation.llm.OnDeviceLlmBackend
 import com.playtranslate.translation.llm.OnDeviceLlmDownloader
 import com.playtranslate.translation.llm.humanSize
+import com.playtranslate.translation.llm.localize
 import com.playtranslate.translation.mnn.MnnTranslator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -272,7 +273,8 @@ class OfflineModelInstallController(
                         }
                         is OnDeviceLlmDownloader.Outcome.Refused -> {
                             android.widget.Toast.makeText(
-                                activity, activity.getString(m.downloadFailed, outcome.reason),
+                                activity,
+                                activity.getString(m.downloadFailed, outcome.reason.localize(activity)),
                                 android.widget.Toast.LENGTH_LONG,
                             ).show()
                             binder.refreshAllBackendStatuses()
