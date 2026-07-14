@@ -335,6 +335,39 @@ class CameraTrackerBenchmark {
     }
 
     /**
+     * Adversarial install: replacing a LIVE anchor with a featureless
+     * keyframe (no ORB descriptors → the seeding rematch can't run) must
+     * fail the lock — the previous scene's correspondences must not survive
+     * into the new install and "verify" its geometry. Installs directly over
+     * the live anchor, without the session's detach-first sequence, because
+     * the invariant belongs to installAnchor itself.
+     */
+    @Test
+    fun installOverLiveAnchorWithNoDescriptorsFailsCleanly() {
+        ensureOpenCv()
+        val tracker = FrameTracker()
+        val page = syntheticPage(55)
+        val flat = Mat(CN_H, CN_W, CvType.CV_8UC1, Scalar(128.0))
+        try {
+            val rich = tracker.buildAnchor(page, 1L, 1080, 1920, 0.5, 0L)
+            val locked = tracker.installAnchor(rich, page)
+            assertTrue("precondition: rich page must lock ($locked)", locked >= TrackerConfig.MIN_INLIERS_ACQUIRE)
+            tracker.track(page) // live correspondences established
+
+            val featureless = tracker.buildAnchor(flat, 2L, 1080, 1920, 0.5, 0L)
+            val verified = tracker.installAnchor(featureless, flat)
+            assertTrue(
+                "featureless install verified $verified inliers — stale correspondences leaked",
+                verified < TrackerConfig.MIN_INLIERS_ACQUIRE,
+            )
+        } finally {
+            tracker.release()
+            page.release()
+            flat.release()
+        }
+    }
+
+    /**
      * End-to-end synthetic trace of the production tracker (FrameTracker +
      * TrackerEngine, the exact classes CameraSession drives): install an
      * anchor, then feed a 60-frame continuous pan/rotate sequence with known

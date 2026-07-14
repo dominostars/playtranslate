@@ -134,7 +134,14 @@ class FrameTracker {
     private val fitDst = MatOfPoint2f()
     private val fitMask = Mat()
 
-    /** Install a new anchor (takes ownership; releases the old one).
+    /** Install a new anchor (takes ownership; releases the old one AND
+     *  drops its correspondences, so live replacement is safe without a
+     *  prior [detachAnchor] — the correspondence set must never outlive the
+     *  anchor it describes, and that invariant lives HERE, not in caller
+     *  discipline: [rematch] deliberately keeps the current points when it
+     *  can't match (load-bearing for mid-track drift-reset recovery), which
+     *  in the install role would let a featureless keyframe "verify" against
+     *  the previous scene's points).
      *
      *  Correspondences are seeded by ORB-matching the anchor against the
      *  LIVE previous frame when one exists — NOT the keyframe. A slow OCR
@@ -156,6 +163,8 @@ class FrameTracker {
     fun installAnchor(newAnchor: Anchor, keyframeGray: Mat): Int {
         anchor?.release()
         anchor = newAnchor
+        anchorPts.clear()
+        currentPts.clear()
         framesSinceRematch = 0
         val seedTarget = prevGray.takeIf { hasPrev } ?: keyframeGray
         rematch(seedTarget)
