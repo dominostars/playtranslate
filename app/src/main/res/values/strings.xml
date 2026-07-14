@@ -2692,19 +2692,17 @@
     <string name="settings_cell_anki">Anki Flashcards</string>
     <string name="settings_cell_translation_services">Translation services</string>
     <string name="settings_cell_tts">Text-to-speech</string>
-    <!-- Debug-only CONFIGURE cell (BuildConfig.DEBUG); brand name. -->
+    <!-- CONFIGURE cell for the Yomitan hub; brand name, so left untranslated. -->
     <string name="settings_cell_yomitan" translatable="false">Yomitan</string>
     <!-- Subtitle of the Yomitan hub cell when no dictionaries are imported yet. -->
-    <string name="settings_yomitan_empty_summary" translatable="false">Import dictionaries to enhance word lookups</string>
+    <string name="settings_yomitan_empty_summary">Import dictionaries to enhance word lookups</string>
     <!-- Subtitle of the Yomitan hub cell once dictionaries exist; %d = how many. -->
-    <plurals name="settings_yomitan_count_summary" translatable="false">
+    <plurals name="settings_yomitan_count_summary">
         <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> dictionary imported</item>
         <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g> dictionaries imported</item>
     </plurals>
 
-    <!-- YOMITAN — dictionary import page (Settings → Configure → Yomitan).
-         Currently English-only: the page shipped from a debug-only stage and
-         the values-<locale> translations haven't been backfilled yet. -->
+    <!-- YOMITAN — dictionary import page (Settings → Configure → Yomitan). -->
     <!-- Explainer paragraph at the top of the Yomitan page; also the empty state. -->
     <string name="yomitan_page_description">Yomitan dictionaries are community-created dictionary files used by the Yomitan browser extension. Features include additional dictionaries, frequency data, and pitch accent. Import a dictionary (.zip) with the + button, and PlayTranslate will integrate it seamlessly throughout the app.</string>
     <!-- Toolbar "+" button on the Yomitan page (icon-only; this is its a11y label). -->
