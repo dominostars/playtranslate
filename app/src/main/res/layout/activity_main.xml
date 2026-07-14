@@ -239,13 +239,16 @@
 
     <!-- ── Floating action buttons (top-right, drawn above all content) ─── -->
 
-    <!-- Onboarding overlay — shown until notification + capture permissions are set up -->
+    <!-- Onboarding overlay — shown until notification + capture permissions are set up.
+         Opaque ptBg fill: it covers the results/bottom-bar content beneath it, and
+         ptBg is what the window and the status/nav bars already paint, so the pages
+         run edge to edge with no seam. -->
     <LinearLayout
         android:id="@+id/onboardingContainer"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:orientation="vertical"
-        android:background="?attr/ptSurface"
+        android:background="?attr/ptBg"
         android:clickable="true"
         android:focusable="true"
         android:visibility="gone"
