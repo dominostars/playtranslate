@@ -2644,8 +2644,9 @@
     <!-- Title of the "Use MangaOCR" toggle cell at the bottom of the OCR section in
          Capture & overlay settings. "MangaOCR" is a proper noun (the model name), NOT translated. -->
     <string name="settings_ocr_use_manga_title">Use MangaOCR</string>
-    <!-- Subtitle under the "Use MangaOCR" toggle cell in OCR settings — a speed warning. -->
-    <string name="settings_ocr_use_manga_subtitle">WARNING: High quality, but very slow. Not recommended for auto</string>
+    <!-- Subtitle under the "Use MangaOCR" toggle cell in OCR settings — a speed warning. Auto is in reference to
+         the auto translation feature -->
+    <string name="settings_ocr_use_manga_subtitle">WARNING: High quality, but slow. Not recommended for auto. MangaOCR is a supplement to the selected OCR, it cannot work alone</string>
     <!-- Title of the confirmation dialog shown when the user turns the "Use MangaOCR" toggle off. -->
     <string name="settings_ocr_disable_manga_title">Turn off MangaOCR?</string>
     <!-- Body of the turn-off-MangaOCR dialog. %1$s = the downloaded model size, e.g. "68 MB". -->
