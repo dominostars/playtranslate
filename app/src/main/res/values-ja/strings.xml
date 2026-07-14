@@ -417,7 +417,6 @@
 
     <string name="anki_not_installed_get"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>を入手</string>
 
-    <string name="anki_section_description">語学を学んでいますか？分からない単語や文から<xliff:g id="target_language" example="English">%1$s</xliff:g>のフラッシュカードを作成し、無料で人気の間隔反復フラッシュカードアプリ<xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>で後から復習できます。</string>
 
     <string name="anki_permission_rationale_title"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>の権限が必要です</string>
 
@@ -649,7 +648,6 @@
 
     <string name="llm_backend_model_label">モデル</string>
 
-    <string name="llm_backend_advanced_header">詳細設定</string>
 
     <string name="llm_backend_base_url_label">カスタムURL</string>
 
@@ -886,7 +884,6 @@
 
     <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g>の実行には約<xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g>の空きメモリが必要です。現在の空きは<xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g>のみです。\n\n他のアプリを閉じてメモリを空けるか、このモデルが端末に合わない場合はキャンセルしてください。</string>
 
-    <string name="llm_low_memory_recheck">メモリを再確認</string>
 
     <string name="llm_low_memory_start_anyway">このまま開始</string>
 
@@ -1142,7 +1139,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="settings_header_auto_translate">自動翻訳</string>
-    <string name="settings_header_hotkeys">ホットキー</string>
     <string name="settings_header_capture_display">キャプチャするディスプレイ</string>
     <string name="settings_header_online_translations">オンライン翻訳</string>
     <string name="settings_header_offline_translations">オフライン翻訳</string>
@@ -1172,8 +1168,6 @@
     <string name="settings_ocr_installing">インストール中…</string>
 
     <string name="settings_ocr_download_failed">OCRモデルをダウンロードできませんでした。接続を確認して、もう一度お試しください。</string>
-    <string name="settings_header_text_to_speech">テキスト読み上げ</string>
-    <string name="settings_header_appearance">外観</string>
     <string name="settings_header_support">サポート</string>
 
     <string name="settings_header_configure">各種設定</string>
@@ -1310,7 +1304,6 @@
          SETTINGS — Text-to-Speech section
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="tts_voice_row_title">音声</string>
 
     <string name="tts_voice_numbered">音声<xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
 
@@ -1322,7 +1315,6 @@
 
     <string name="tts_voice_needs_download">ダウンロードが必要</string>
 
-    <string name="tts_no_engine_row_title">テキスト読み上げを設定</string>
 
     <string name="tts_no_engine_row_subtitle">利用できる音声エンジンがありません。タップして追加してください。</string>
 
@@ -1387,30 +1379,13 @@
     <string name="backend_cooldown_status_fmt"><xliff:g id="description" example="Rate limited">%1$s</xliff:g> · <xliff:g id="retry_time" example="3:42 PM">%3$s</xliff:g><xliff:g id="retry_word" example="Retry at">%2$s</xliff:g></string>
 
     <!-- ═══════════════════════════════════════════════════════════════
-         SETTINGS — Offline Translations / accessibility numeric labels
-         ═══════════════════════════════════════════════════════════════ -->
-
-    <string name="a11y_quality_label">品質</string>
-
-    <string name="a11y_speed_label">速度：</string>
-
-    <string name="a11y_quality_label_colon">品質：</string>
-
-    <string name="a11y_out_of_5_stars">（5つ星中）</string>
-
-    <string name="a11y_speed_label_comma">速度</string>
-
-    <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Anki rows + deck/card-type fallback labels
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">未選択</string>
 
-    <string name="anki_settings_get_ankidroid_title"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>をGoogle Playで無料で入手</string>
 
-    <string name="anki_settings_grant_access_title"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>へのアクセスを許可</string>
 
-    <string name="anki_settings_grant_access_subtitle"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>にフラッシュカードを追加するには、<xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>に<xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>へのアクセス権限が必要です。</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Support section rows

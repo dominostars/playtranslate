@@ -392,7 +392,6 @@
 
     <string name="anki_not_installed_get">الحصول على <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
-    <string name="anki_section_description">هل تتعلم لغة؟ أنشئ بطاقات بلغة <xliff:g id="target_language" example="English">%1$s</xliff:g> من الكلمات والجمل غير المألوفة، وراجعها لاحقًا باستخدام <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>، وهو تطبيق مجاني وشهير لبطاقات التكرار المتباعد.</string>
 
     <string name="anki_permission_rationale_title">إذن <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> مطلوب</string>
 
@@ -606,7 +605,6 @@
 
     <string name="llm_backend_model_label">النموذج</string>
 
-    <string name="llm_backend_advanced_header">خيارات متقدمة</string>
     <string name="llm_backend_base_url_label">عنوان URL مخصص</string>
     <string name="llm_backend_base_url_invalid">استخدم https:// — لا يُسمح بـ http:// إلا لعنوان محلي أو ضمن الشبكة المحلية (LAN)</string>
 
@@ -821,7 +819,6 @@
 
     <string name="llm_low_memory_message">يحتاج <xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> إلى حوالي <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> من الذاكرة الحرة للعمل. حاليًا <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> فقط متاحة.\n\nأغلق التطبيقات الأخرى لتحرير الذاكرة، أو ألغِ إذا كان هذا النموذج غير مناسب لجهازك.</string>
 
-    <string name="llm_low_memory_recheck">إعادة فحص الذاكرة</string>
 
     <string name="llm_low_memory_start_anyway">البدء على أي حال</string>
 
@@ -1042,7 +1039,6 @@
     <!-- ═══ SETTINGS — section group headers ═══ -->
 
     <string name="settings_header_auto_translate">الترجمة التلقائية</string>
-    <string name="settings_header_hotkeys">الاختصارات</string>
     <string name="settings_header_capture_display">شاشة الالتقاط</string>
     <string name="settings_header_online_translations">الترجمات عبر الإنترنت</string>
     <string name="settings_header_offline_translations">الترجمات دون اتصال</string>
@@ -1072,8 +1068,6 @@
     <string name="settings_ocr_installing">جارٍ التثبيت…</string>
 
     <string name="settings_ocr_download_failed">تعذّر تنزيل نموذج OCR. تحقق من اتصالك وحاول مرة أخرى.</string>
-    <string name="settings_header_text_to_speech">تحويل النص إلى كلام</string>
-    <string name="settings_header_appearance">المظهر</string>
     <string name="settings_header_support">الدعم</string>
 
     <string name="settings_header_configure">التكوين</string>
@@ -1218,7 +1212,6 @@
 
     <!-- ═══ SETTINGS — Text-to-Speech section ═══ -->
 
-    <string name="tts_voice_row_title">الصوت</string>
 
     <string name="tts_voice_numbered">الصوت <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
 
@@ -1230,7 +1223,6 @@
 
     <string name="tts_voice_needs_download">يتطلب تنزيلاً</string>
 
-    <string name="tts_no_engine_row_title">إعداد تحويل النص إلى كلام</string>
 
     <string name="tts_no_engine_row_subtitle">لا يوجد محرك صوت متاح. اضغط لإضافة واحد.</string>
 
@@ -1286,27 +1278,12 @@
 
     <string name="backend_cooldown_status_fmt"><xliff:g id="description" example="Rate limited">%1$s</xliff:g> · <xliff:g id="retry_word" example="Retry at">%2$s</xliff:g> <xliff:g id="retry_time" example="3:42 PM">%3$s</xliff:g></string>
 
-    <!-- ═══ SETTINGS — Offline Translations / accessibility numeric labels ═══ -->
-
-    <string name="a11y_quality_label">الجودة</string>
-
-    <string name="a11y_speed_label">السرعة:</string>
-
-    <string name="a11y_quality_label_colon">الجودة:</string>
-
-    <string name="a11y_out_of_5_stars">من 5 نجوم</string>
-
-    <string name="a11y_speed_label_comma">السرعة</string>
-
     <!-- ═══ SETTINGS — Anki rows + deck/card-type fallback labels ═══ -->
 
     <string name="anki_deck_not_selected_subtitle">غير محدد</string>
 
-    <string name="anki_settings_get_ankidroid_title">الحصول على <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> مجانًا من Google Play</string>
 
-    <string name="anki_settings_grant_access_title">منح الوصول إلى <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
-    <string name="anki_settings_grant_access_subtitle">لإضافة بطاقات إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>، يحتاج <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> إلى إذن للوصول إلى <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>.</string>
 
     <!-- ═══ SETTINGS — Support section rows ═══ -->
 

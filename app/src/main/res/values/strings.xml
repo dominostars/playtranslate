@@ -725,12 +725,6 @@
     <!-- Accessibility label (contentDescription) for the tappable target-language
          section header on the result screen; tapping it opens the language picker. -->
     <string name="cd_change_target_language">Change target language</string>
-    <!-- Toast shown when re-scanning with a newly-chosen OCR tool finds no text;
-         the previous result is kept on screen. %1$s = OCR engine name (proper noun, don't translate). -->
-    <string name="ocr_rescan_no_text">No text found with <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g></string>
-    <!-- Toast shown when re-scanning with a newly-chosen OCR tool fails (decode/error);
-         the previous result is kept on screen. %1$s = OCR engine name (proper noun, don't translate). -->
-    <string name="ocr_rescan_failed">Couldn\'t re-scan with <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g></string>
 
     <!-- Error toast shown when the user tries to start live mode but
          the active capture backend doesn't support it. -->
@@ -983,10 +977,6 @@
     <!-- Positive button on the not-installed dialog — opens the Play
          Store listing. -->
     <string name="anki_not_installed_get">Get <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
-
-    <!-- Footer / section description above the Anki Settings card.
-         %1$s = the user's target language display name. -->
-    <string name="anki_section_description">Are you a language learner? Create flashcards in <xliff:g id="target_language" example="English">%1$s</xliff:g> from unknown words and sentences, and review them later using <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>, a free and popular spaced-repetition flashcard app.</string>
 
     <!-- Play-store URL for AnkiDroid. Never translated. -->
     <string name="anki_play_store_url" translatable="false">https://play.google.com/store/apps/details?id=com.ichi2.anki</string>
@@ -1431,9 +1421,6 @@
     <!-- Cell title + provider-preset pill label for an OpenAI-compatible
          service pointed at a user-entered URL (LM Studio, OpenRouter, …). -->
     <string name="llm_backend_preset_custom">Custom</string>
-    <string name="openai_settings_title" translatable="false">OpenAI</string>
-    <string name="gemini_settings_title" translatable="false">Gemini</string>
-    <string name="deepseek_settings_title" translatable="false">DeepSeek</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          GENERIC LLM BACKEND SETTINGS (OpenAI / Gemini / DeepSeek).
@@ -1446,8 +1433,6 @@
     <!-- Row label for the model picker. -->
     <string name="llm_backend_model_label">Model</string>
 
-    <!-- Group header above the ADVANCED settings card (OpenAI sub-screen). -->
-    <string name="llm_backend_advanced_header">Advanced</string>
     <!-- Title of the Provider value cell at the top of the OpenAI config
          page; its value shows the selected preset and tapping opens a
          dropdown of providers. -->
@@ -2055,10 +2040,6 @@
          %3$s = currently-free memory (e.g. "1.2 GB"). -->
     <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> needs about <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> of free memory to run. Right now only <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> is free.\n\nClose other apps to free up memory, or cancel if this model isn\'t right for your device.</string>
 
-    <!-- Re-check memory button — re-reads ActivityManager.MemoryInfo
-         without dismissing. -->
-    <string name="llm_low_memory_recheck">Check memory again</string>
-
     <!-- "Start anyway" button: run the model despite low free memory, loading
          in mmap (reclaimable-weights) mode. -->
     <string name="llm_low_memory_start_anyway">Start anyway</string>
@@ -2276,11 +2257,6 @@
          while no custom region is active, prompting the user to
          drag-select an area on screen. -->
     <string name="floating_menu_drag_instruction">Drag finger to capture a specific area</string>
-
-    <!-- Unicode pause glyph (❚❚) rendered on the floating-icon menu's
-         Live-Mode button while live mode is active. translatable="false"
-         because it's a pure typographic symbol. -->
-    <string name="floating_menu_live_pause_glyph" translatable="false">❚❚</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          DEEPL SETTINGS — label above the API-key text field.
@@ -2607,7 +2583,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="settings_header_auto_translate">Auto-translate</string>
-    <string name="settings_header_hotkeys">Hotkeys</string>
     <string name="settings_header_capture_display">Capture display</string>
     <string name="settings_header_online_translations">Online translations</string>
     <string name="settings_header_offline_translations">Offline translations</string>
@@ -2681,9 +2656,6 @@
     <string name="settings_ocr_disable_delete">Delete model</string>
     <!-- More Settings section group headers (same ALL-CAPS rendering note
          as the top of this section). One short noun-phrase heading each. -->
-    <string name="settings_header_anki" translatable="false">Anki</string>
-    <string name="settings_header_text_to_speech">Text-to-speech</string>
-    <string name="settings_header_appearance">Appearance</string>
     <string name="settings_header_support">Support</string>
     <string name="settings_header_debug" translatable="false">Debug</string>
 
@@ -2891,9 +2863,6 @@
          SETTINGS — Text-to-Speech section
          ═══════════════════════════════════════════════════════════════ -->
 
-    <!-- Row title for the per-language voice picker. -->
-    <string name="tts_voice_row_title">Voice</string>
-
     <!-- Right-side value for the voice row when a numbered voice has
          been picked.  %1$d = the 1-based index. -->
     <string name="tts_voice_numbered">Voice <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
@@ -2914,9 +2883,6 @@
          hasn't downloaded it yet (KEY_FEATURE_NOT_INSTALLED); picking it
          would otherwise silently fall back to another voice. -->
     <string name="tts_voice_needs_download">Needs download</string>
-
-    <!-- Row title shown in Settings when no TTS engine is installed. -->
-    <string name="tts_no_engine_row_title">Set up Text-to-Speech</string>
 
     <!-- Subtitle on the same row. -->
     <string name="tts_no_engine_row_subtitle">No speech engine is available. Tap to add one.</string>
@@ -3052,37 +3018,6 @@
     <string name="backend_cooldown_status_fmt"><xliff:g id="description" example="Rate limited">%1$s</xliff:g> · <xliff:g id="retry_word" example="Retry at">%2$s</xliff:g> <xliff:g id="retry_time" example="3:42 PM">%3$s</xliff:g></string>
 
     <!-- ═══════════════════════════════════════════════════════════════
-         SETTINGS — Offline Translations / accessibility numeric labels.
-         The full TalkBack form looks like "Quality 4 out of 5 stars".
-         ═══════════════════════════════════════════════════════════════ -->
-
-    <!-- "Quality" label for the per-backend a11y description.  The
-         composing code joins it with the rating using a literal
-         space. -->
-    <string name="a11y_quality_label">Quality</string>
-
-    <!-- "Speed:" label used in the per-backend a11y description.
-         The composing code joins it with the rating using a literal
-         space. -->
-    <string name="a11y_speed_label">Speed:</string>
-
-    <!-- "Quality:" label (with colon) used as a row-label prefix.
-         The composing code joins it with the value using a literal
-         space. -->
-    <string name="a11y_quality_label_colon">Quality:</string>
-
-    <!-- Trailing clause appended to a star count in a11y descriptions
-         (e.g. "Quality 4 out of 5 stars").  The composing code adds
-         the leading space. -->
-    <string name="a11y_out_of_5_stars">out of 5 stars</string>
-
-    <!-- "Speed" word used as the second clause in the a11y description
-         (the full result is e.g. "Quality 4 out of 5 stars, Speed 2
-         out of 5 stars").  The composing code prepends ", " and
-         appends a space before the rating. -->
-    <string name="a11y_speed_label_comma">Speed</string>
-
-    <!-- ═══════════════════════════════════════════════════════════════
          LINGVA backend — translatable display name (Lingva is a brand
          name but the display is a sub-row title in settings).  Marked
          non-translatable.
@@ -3096,16 +3031,6 @@
 
     <!-- Fallback right-side value when no deck has been picked. -->
     <string name="anki_deck_not_selected_subtitle">Not selected</string>
-
-    <!-- Row title — install / get AnkiDroid. -->
-    <string name="anki_settings_get_ankidroid_title">Get <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> free on Google Play</string>
-
-    <!-- Row title — grant the AnkiDroid permission. -->
-    <string name="anki_settings_grant_access_title">Grant <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> Access</string>
-
-    <!-- Subtitle below the Grant AnkiDroid Access row.
-         %1$s = app name. -->
-    <string name="anki_settings_grant_access_subtitle">To add flashcards to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>, <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> needs permission to access <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Support section rows.

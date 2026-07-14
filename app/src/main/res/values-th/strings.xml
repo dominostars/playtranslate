@@ -377,7 +377,6 @@
 
     <string name="anki_not_installed_get">รับ <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
-    <string name="anki_section_description">กำลังเรียนภาษาอยู่ใช่ไหม สร้างการ์ดภาษา <xliff:g id="target_language" example="English">%1$s</xliff:g> จากคำและประโยคที่ไม่คุ้นเคย แล้วทบทวนภายหลังด้วย <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> ซึ่งเป็นแอปการ์ดทบทวนแบบเว้นช่วงที่ใช้ฟรีและได้รับความนิยม</string>
 
     <string name="anki_permission_rationale_title">ต้องมีสิทธิ์ <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
@@ -589,7 +588,6 @@
 
     <string name="llm_backend_model_label">โมเดล</string>
 
-    <string name="llm_backend_advanced_header">ขั้นสูง</string>
 
     <string name="llm_backend_base_url_label">URL ที่กำหนดเอง</string>
 
@@ -806,7 +804,6 @@
 
     <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> ต้องใช้หน่วยความจำว่างประมาณ <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> เพื่อทำงาน ขณะนี้มีว่างเพียง <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> เท่านั้น\n\nปิดแอปอื่นเพื่อเพิ่มหน่วยความจำว่าง หรือยกเลิกหากโมเดลนี้ไม่เหมาะกับอุปกรณ์ของคุณ</string>
 
-    <string name="llm_low_memory_recheck">ตรวจสอบหน่วยความจำอีกครั้ง</string>
 
     <string name="llm_low_memory_start_anyway">เริ่มใช้งานเลย</string>
 
@@ -1027,7 +1024,6 @@
     <!-- ═══ SETTINGS — section group headers ═══ -->
 
     <string name="settings_header_auto_translate">การแปลอัตโนมัติ</string>
-    <string name="settings_header_hotkeys">ปุ่มลัด</string>
     <string name="settings_header_capture_display">หน้าจอจับภาพ</string>
     <string name="settings_header_online_translations">การแปลออนไลน์</string>
     <string name="settings_header_offline_translations">การแปลออฟไลน์</string>
@@ -1057,8 +1053,6 @@
     <string name="settings_ocr_installing">กำลังติดตั้ง…</string>
 
     <string name="settings_ocr_download_failed">ไม่สามารถดาวน์โหลดโมเดล OCR ได้ ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</string>
-    <string name="settings_header_text_to_speech">การอ่านออกเสียงข้อความ</string>
-    <string name="settings_header_appearance">ลักษณะที่ปรากฏ</string>
     <string name="settings_header_support">การสนับสนุน</string>
 
     <string name="settings_header_configure">กำหนดค่า</string>
@@ -1197,7 +1191,6 @@
 
     <!-- ═══ SETTINGS — Text-to-Speech section ═══ -->
 
-    <string name="tts_voice_row_title">เสียง</string>
 
     <string name="tts_voice_numbered">เสียง <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
 
@@ -1209,7 +1202,6 @@
 
     <string name="tts_voice_needs_download">ต้องดาวน์โหลด</string>
 
-    <string name="tts_no_engine_row_title">ตั้งค่าการอ่านออกเสียงข้อความ</string>
 
     <string name="tts_no_engine_row_subtitle">ไม่มีเอนจินเสียงที่ใช้ได้ แตะเพื่อเพิ่ม</string>
 
@@ -1265,27 +1257,12 @@
 
     <string name="backend_cooldown_status_fmt"><xliff:g id="description" example="Rate limited">%1$s</xliff:g> · <xliff:g id="retry_word" example="Retry at">%2$s</xliff:g> <xliff:g id="retry_time" example="3:42 PM">%3$s</xliff:g></string>
 
-    <!-- ═══ SETTINGS — Offline Translations / accessibility numeric labels ═══ -->
-
-    <string name="a11y_quality_label">คุณภาพ</string>
-
-    <string name="a11y_speed_label">ความเร็ว:</string>
-
-    <string name="a11y_quality_label_colon">คุณภาพ:</string>
-
-    <string name="a11y_out_of_5_stars">จาก 5 ดาว</string>
-
-    <string name="a11y_speed_label_comma">ความเร็ว</string>
-
     <!-- ═══ SETTINGS — Anki rows + deck/card-type fallback labels ═══ -->
 
     <string name="anki_deck_not_selected_subtitle">ยังไม่ได้เลือก</string>
 
-    <string name="anki_settings_get_ankidroid_title">รับ <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> ฟรีบน Google Play</string>
 
-    <string name="anki_settings_grant_access_title">ให้สิทธิ์เข้าถึง <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
-    <string name="anki_settings_grant_access_subtitle"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> ต้องมีสิทธิ์ในการเข้าถึง <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> เพื่อเพิ่มการ์ดไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
 
     <!-- ═══ SETTINGS — Support section rows ═══ -->
 

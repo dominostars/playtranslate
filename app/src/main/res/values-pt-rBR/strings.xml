@@ -420,7 +420,6 @@
 
     <string name="anki_not_installed_get">Obter o <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
-    <string name="anki_section_description">Está aprendendo um idioma? Crie flashcards em <xliff:g id="target_language" example="English">%1$s</xliff:g> a partir de palavras e frases desconhecidas e revise-os depois usando o <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>, um app gratuito e popular de flashcards com repetição espaçada.</string>
 
     <string name="anki_permission_rationale_title">Permissão do <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> necessária</string>
 
@@ -648,7 +647,6 @@
 
     <string name="llm_backend_model_label">Modelo</string>
 
-    <string name="llm_backend_advanced_header">Avançado</string>
     <string name="llm_backend_base_url_label">URL personalizada</string>
     <string name="llm_backend_base_url_invalid">Use https:// — http:// só é permitido para um endereço local ou de rede local</string>
 
@@ -883,7 +881,6 @@
 
     <string name="llm_low_memory_message">O <xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> precisa de cerca de <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> de memória livre para funcionar. No momento, há apenas <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> livre.\n\nFeche outros apps para liberar memória ou cancele se este modelo não for adequado ao seu dispositivo.</string>
 
-    <string name="llm_low_memory_recheck">Verificar memória novamente</string>
 
     <string name="llm_low_memory_start_anyway">Iniciar mesmo assim</string>
 
@@ -1139,7 +1136,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="settings_header_auto_translate">Tradução automática</string>
-    <string name="settings_header_hotkeys">Atalhos</string>
     <string name="settings_header_capture_display">Tela de captura</string>
     <string name="settings_header_online_translations">Traduções online</string>
     <string name="settings_header_offline_translations">Traduções offline</string>
@@ -1169,8 +1165,6 @@
     <string name="settings_ocr_installing">Instalando…</string>
 
     <string name="settings_ocr_download_failed">Não foi possível baixar o modelo de OCR. Verifique sua conexão e tente novamente.</string>
-    <string name="settings_header_text_to_speech">Conversão de texto em voz</string>
-    <string name="settings_header_appearance">Aparência</string>
     <string name="settings_header_support">Suporte</string>
 
     <string name="settings_header_configure">Configurar</string>
@@ -1309,7 +1303,6 @@
          SETTINGS — Text-to-Speech section
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="tts_voice_row_title">Voz</string>
 
     <string name="tts_voice_numbered">Voz <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
 
@@ -1321,7 +1314,6 @@
 
     <string name="tts_voice_needs_download">Precisa baixar</string>
 
-    <string name="tts_no_engine_row_title">Configurar a conversão de texto em voz</string>
 
     <string name="tts_no_engine_row_subtitle">Nenhum mecanismo de voz disponível. Toque para adicionar um.</string>
 
@@ -1386,30 +1378,13 @@
     <string name="backend_cooldown_status_fmt"><xliff:g id="description" example="Rate limited">%1$s</xliff:g> · <xliff:g id="retry_word" example="Retry at">%2$s</xliff:g> <xliff:g id="retry_time" example="3:42 PM">%3$s</xliff:g></string>
 
     <!-- ═══════════════════════════════════════════════════════════════
-         SETTINGS — Offline Translations / accessibility numeric labels
-         ═══════════════════════════════════════════════════════════════ -->
-
-    <string name="a11y_quality_label">Qualidade</string>
-
-    <string name="a11y_speed_label">Velocidade:</string>
-
-    <string name="a11y_quality_label_colon">Qualidade:</string>
-
-    <string name="a11y_out_of_5_stars">de 5 estrelas</string>
-
-    <string name="a11y_speed_label_comma">Velocidade</string>
-
-    <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Anki rows + deck/card-type fallback labels
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">Não selecionado</string>
 
-    <string name="anki_settings_get_ankidroid_title">Obter o <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> grátis no Google Play</string>
 
-    <string name="anki_settings_grant_access_title">Conceder acesso ao <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
-    <string name="anki_settings_grant_access_subtitle">Para adicionar flashcards ao <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>, o <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> precisa de permissão para acessar o <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Support section rows

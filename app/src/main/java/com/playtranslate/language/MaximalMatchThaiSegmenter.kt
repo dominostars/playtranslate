@@ -42,8 +42,16 @@ class MaximalMatchThaiSegmenter(private val dict: ThaiWordTrie) : ThaiSegmenter 
         var endPos = 0
         val nonThai = PAT_NONTHAI.matcher(text)
 
-        while (posList.peek() < lenText) {
-            val beginPos = posList.poll()
+        // `posList` is a java.util.PriorityQueue, so peek()/poll() hand back a platform
+        // `Int!` that the rest of this port consumes as a plain `Int` — an unguarded
+        // unbox on every use. The queue is in fact non-empty at every loop top, but
+        // only by construction: the `0 ->` branch below always re-adds, and the `1 ->`
+        // branch leaves its sole element in place. That invariant is non-local, so
+        // state it here once rather than let eleven sites unbox on faith.
+        while (true) {
+            val beginPos = posList.peek() ?: break // unreachable; see the invariant above
+            if (beginPos >= lenText) break
+            posList.poll() // == beginPos; the peek above is the loop's guard
             for (len in dict.prefixLengths(text, beginPos)) {
                 val endCand = beginPos + len
                 if (validPos[endCand]) {
@@ -57,7 +65,7 @@ class MaximalMatchThaiSegmenter(private val dict: ThaiWordTrie) : ThaiSegmenter 
                 1 -> {
                     // No longer ambiguous: commit the (shortest = fewest-words)
                     // path from the last committed endPos to the sole frontier.
-                    val goal = posList.peek()
+                    val goal = posList.peek()!! // size == 1 — this is that branch
                     val path = bfsFirstPath(graph, endPos, goal)
                     graphSize = 0
                     graph.clear()

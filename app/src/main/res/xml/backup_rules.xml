@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The API 29-30 half of the backup policy (android:fullBackupContent). Its Android 12+
+    counterpart, which additionally covers device-to-device transfer, is
+    res/xml/data_extraction_rules.xml — read that one first; it carries the reasoning.
+
+    Strictly speaking this file is belt-and-braces: android:allowBackup="false" already
+    turns backup off wholesale on API 29-30, and (unlike on 12+) there is no separate D2D
+    channel there for it to miss. It exists so the exclusions are stated on every API
+    level we ship, rather than resting on a single boolean — if allowBackup is ever
+    flipped to true, the user's API keys and translation history stay out of the backup
+    on 29-30 instead of silently starting to flow.
+
+    Same syntax trap as the 12+ file: `path` is required, and `path="."` means the
+    domain root and everything under it.
+-->
+<full-backup-content>
+    <exclude domain="root" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="external" path="." />
+    <exclude domain="device_root" path="." />
+    <exclude domain="device_file" path="." />
+    <exclude domain="device_database" path="." />
+    <exclude domain="device_sharedpref" path="." />
+</full-backup-content>

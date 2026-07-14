@@ -361,8 +361,9 @@ class OverlayHost(
          * `fitInsetsTypes = 0` a non-focusable TYPE_APPLICATION_OVERLAY (the
          * translation overlay) is laid out inside the system-bar insets —
          * offset from the capture — which shifts every box.
-         * `FLAG_LAYOUT_NO_LIMITS` alone does not prevent that;
-         * `LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS` covers the display cutout.
+         * `FLAG_LAYOUT_NO_LIMITS` alone does not prevent that; the cutout mode
+         * (`..._ALWAYS` from API 30, `..._SHORT_EDGES` on 29) covers the display
+         * cutout.
          *
          * Idempotent. Honors callers that explicitly set a non-DEFAULT cutout
          * mode — only the DEFAULT case is upgraded.
@@ -390,8 +391,20 @@ class OverlayHost(
             if (params.layoutInDisplayCutoutMode ==
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
             ) {
+                // ALWAYS (extend into the cutout on ALL edges) is API 30+. On 29 — our
+                // minSdk — it isn't a mode the window manager recognises, so assigning it
+                // there left the window on DEFAULT: no cutout coverage at all, silently
+                // breaking the very 1:1 overlay/capture mapping this method exists to
+                // guarantee. SHORT_EDGES is the pre-30 spelling of the same intent, and
+                // it's sufficient in practice: Android only permits cutouts on the short
+                // edges of a display, so "short edges" and "all edges" pick out the same
+                // region on any device that actually has one.
                 params.layoutInDisplayCutoutMode =
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                    } else {
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    }
             }
         }
     }

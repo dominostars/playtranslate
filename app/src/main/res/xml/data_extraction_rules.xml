@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Backup / transfer policy for Android 12+ (API 31), referenced from
+    android:dataExtractionRules in the manifest.
+
+    android:allowBackup="false" is still what governs API 29-30, and it still turns off
+    cloud backup everywhere. What it no longer governs, from Android 12, is device-to-
+    device transfer: per the Auto Backup docs, "on devices from some device
+    manufacturers, specifying android:allowBackup='false' disables cloud-based backup
+    and restore ... but doesn't disable device-to-device transfers for the app."
+
+    So without this file, migrating to a new phone could copy this app's private data
+    across — including shared_prefs/playtranslate_prefs.xml, which holds the user's
+    DeepL / OpenAI / Gemini / DeepSeek API keys, and the translation-history database,
+    which is a record of what the user has been reading.
+
+    Every domain is therefore excluded from every channel. Nothing this app stores wants
+    to ride to another device silently: it is either secret (API keys), private (history),
+    or bulky and re-downloadable (LLM models, dictionary packs, OCR models) — and the
+    bulky half would blow the backup quota anyway.
+
+    Two syntax traps worth knowing before editing:
+      * `path` is REQUIRED on a rule. A rule with no path is silently SKIPPED, so
+        `<exclude domain="root" />` would look like an opt-out and do nothing.
+      * `path="."` means the domain's root directory, and a directory rule applies
+        recursively to everything beneath it.
+
+    The third section, <cross-platform-transfer> (Android-to-iOS, from Android 16 QPR2 /
+    API 36.1), is deliberately absent, and ADDING IT WOULD BE A MISTAKE. It is not a hole.
+
+    The two sections above are on by default — omit them and the mode is "fully enabled
+    for all content" — which is why they exclude every domain exhaustively. Cross-platform
+    transfer inverts that: the section is how an app *joins* the channel, not how it leaves.
+    It requires platform="ios" plus a <platform-specific-params> child carrying the bundleId,
+    teamId and contentVersion of a counterpart iOS app, and those IDs ARE the destination —
+    per the Auto Backup docs they ensure "data is only transferred to the specified app on
+    the other platform". PlayTranslate has no iOS build, so there is no counterpart to name,
+    nowhere for data to go, and nothing to exclude. Note the shape of the argument: an app
+    without an iOS twin cannot author a valid section here at all, so the mode cannot be
+    on-by-default — the apps that would most need an opt-out could not express one.
+
+    Writing the section anyway (with invented IDs, since we have no real ones) is the single
+    action that would opt us in, and a missing required attribute makes this whole file fail
+    to parse — which falls back to the DEFAULT rules and reopens cloud backup and D2D. So the
+    "fix" costs more than the imaginary bug. If PlayTranslate ever ships on iOS, revisit with
+    real IDs; until then, absence is the correct and safe configuration.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
+    </cloud-backup>
+
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
+    </device-transfer>
+</data-extraction-rules>
