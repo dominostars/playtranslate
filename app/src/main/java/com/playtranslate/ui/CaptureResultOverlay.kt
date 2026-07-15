@@ -191,6 +191,9 @@ class CaptureResultOverlay(
     private var backdropSmall: Bitmap? = null
     private val backdropPaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val backdropDst = Rect()
+    /** Frost offset the body's display list was last recorded with — the
+     *  pre-draw hook re-invalidates the body when it drifts (see syncShadow). */
+    private var lastFrostOff = Int.MIN_VALUE
 
     private var binder: TranslationSectionBinder? = null
 
@@ -861,6 +864,18 @@ class CaptureResultOverlay(
         // earlier (e.g. skeletons before a translation failure) are off the table.
         overlayData = null
         updateShowOnScreenAction()
+        // The proportional loading floor (20% of screen height) is SHORTER than
+        // the status block itself on a landscape screen — "Recognizing text"
+        // rendered clipped to invisibility in horizontal mode. Floor the panel
+        // at what the status actually measures; bindResult's own fit takes over
+        // from there.
+        statusText.measure(
+            View.MeasureSpec.makeMeasureSpec(screenW, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+        )
+        val needed =
+            statusText.measuredHeight + dp(HANDLE_HEIGHT_DP) + topInsetPx + bottomInsetPx
+        if (panelHeightPx < needed) setPanelHeight(needed)
     }
 
     private fun bindResult(result: TranslationResult) {
@@ -1710,6 +1725,18 @@ class CaptureResultOverlay(
         // The bitmap's contour line (its silhouette's straight top edge) sits at
         // shadowHeight - cornerRadius; land it exactly on the sheet's top.
         edgeShadow.translationY = sheetTop - shadowHeightPx + cornerRadiusPx
+        // The frost dst depends on the panel's LIVE position, but draw() only
+        // re-executes on invalidation — translationY animates on the render
+        // thread without re-recording, so a moved panel keeps the frost slice
+        // recorded at its OLD position. The entrance recorded it parked
+        // off-screen: every status panel rendered frost-less until the result
+        // bind's relayout (the 2026-07-15 flat-transparency bug). Re-record
+        // whenever the offset actually changes; a no-op when nothing moved.
+        val frostOff = (panel.top + panel.translationY + body.top).toInt()
+        if (frostOff != lastFrostOff) {
+            lastFrostOff = frostOff
+            body.invalidate()
+        }
     }
 
     /** Bake the sheet's bottom-edge drop shadow ONCE into a software bitmap —
