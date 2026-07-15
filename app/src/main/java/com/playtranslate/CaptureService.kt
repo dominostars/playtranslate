@@ -1166,6 +1166,15 @@ class CaptureService : Service() {
         }
         oneShotCaptureJob?.cancel()
 
+        // One feedback session per start — engine warm-up, startup chip,
+        // first-cycle gate, busy tracking ([LiveSessionFeedback]). The
+        // previous session dies atomically first, so nothing it scheduled
+        // (timers, chip, in-flight pass tokens) can leak into this one.
+        // Construction also starts the eager warm-up, in parallel with
+        // everything below (consent dialog, probe, virtual-display setup).
+        liveFeedback?.dispose()
+        liveFeedback = LiveSessionFeedback(serviceScope, mediaProjectionController, sourceLang)
+
         // Secure capture readiness — the MediaProjection screen-record consent
         // token — BEFORE the live-mode loop and its touch sentinel exist. A
         // consent dialog launched from inside the running loop has its Cancel
@@ -1204,6 +1213,7 @@ class CaptureService : Service() {
         pendingLiveStart?.cancel()
         pendingLiveStart = null
         if (backend.canCaptureWithoutPrompting && !wantMpStreamConsent && !needsStreamKind) {
+            liveFeedback?.armChipGrace()
             beginLiveCapture()
         } else {
             pendingLiveStart = serviceScope.launch {
@@ -1213,6 +1223,9 @@ class CaptureService : Service() {
                     MediaProjectionCaptureBackend.ensureCaptureReady()
                 } else if (!backend.ensureCaptureReady()) {
                     emitError(getString(R.string.error_screen_capture_denied))
+                    // No session this start — its feedback dies with it.
+                    liveFeedback?.dispose()
+                    liveFeedback = null
                     return@launch
                 }
                 // A cancel that raced the await lands here at the next
@@ -1229,20 +1242,46 @@ class CaptureService : Service() {
                 // stamp task frames as full-display and crop game content
                 // off panel OCR (round-13 finding).
                 if (mediaProjectionController.hasConsent) {
-                    val kind = mediaProjectionController.resolveStreamKind()
+                    // One continuous status chip spans the probe AND the
+                    // engine warm-up already running in parallel. The checker
+                    // variant only when a probe will actually run this start;
+                    // resolveStreamKind draws its pattern into the chip
+                    // instead of a self-owned window that would vanish right
+                    // before the warm-up wait.
+                    val willProbe =
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+                            mediaProjectionController.streamKind == StreamKind.UNKNOWN
+                    if (willProbe) liveFeedback?.showProbeChip()
+                    val kind = mediaProjectionController.resolveStreamKind(
+                        liveFeedback?.probeSurface
+                    )
+                    // Whatever it settled to, the pattern's job is done:
+                    // label-only, and stop consuming center-screen taps.
+                    liveFeedback?.onVerdictSettled()
                     ensureActive()
                     // A live session never RUNS on an unmeasured verdict
                     // (2026-07-10 decision, replacing the UNKNOWN-session
                     // handling): settle it — accessibility fallback, or ask
                     // the user — or abandon this start.
-                    if (kind == StreamKind.UNKNOWN &&
-                        mediaProjectionController.hasConsent &&
-                        !settleUnknownStreamKind(backend)
-                    ) {
-                        return@launch
+                    if (kind == StreamKind.UNKNOWN && mediaProjectionController.hasConsent) {
+                        // The MP-only backend settles by ASKING — hide the
+                        // chip for the dialog's duration (an "Initializing…"
+                        // chip over a question wrongly says no action is
+                        // needed). The accessibility backend settles
+                        // silently; its chip stays up.
+                        val asksUser = !backend.requiresAccessibilityService
+                        if (asksUser) liveFeedback?.setChipVisible(false)
+                        if (!settleUnknownStreamKind(backend)) {
+                            // Start abandoned — no session to narrate.
+                            liveFeedback?.dispose()
+                            liveFeedback = null
+                            return@launch
+                        }
+                        if (asksUser) liveFeedback?.setChipVisible(true)
                     }
                     ensureActive()
                 }
+                liveFeedback?.armChipGrace()
                 beginLiveCapture()
             }
             // No completion-nulling: cancel() on a completed Job is a no-op,
@@ -1255,6 +1294,24 @@ class CaptureService : Service() {
      *  stop must never be undone by a stale start resuming. Main-thread
      *  confined like the rest of the live-mode mutators. */
     private var pendingLiveStart: Job? = null
+
+    /** This start's feedback session — warm-up, chip, gate, busy tracking
+     *  ([LiveSessionFeedback]). Created by [startLive], disposed by
+     *  [stopLive], explicit start-aborts, and the next start. Main-confined
+     *  like the rest of the live-mode mutators. */
+    private var liveFeedback: LiveSessionFeedback? = null
+
+    /** The pre-first-cycle gate, delegated to the session — see
+     *  [LiveSessionFeedback.awaitFirstCycleClear] for the return contract
+     *  (false = not proven clear; the caller retries instead of capturing).
+     *  Called by the modes' [LiveCycleEngine.firstCycleGate] and
+     *  FuriganaMode's gated startLoop; runs in the CALLER's scope, so a
+     *  mode stop cancels it like any parked cycle. No session → nothing to
+     *  wait for. */
+    internal suspend fun awaitFirstCycleClear(
+        displayId: Int,
+        source: com.playtranslate.capture.LiveCaptureSource?,
+    ): Boolean = liveFeedback?.awaitFirstCycleClear(displayId, source) ?: true
 
     /**
      * The stream kind could not be MEASURED for a session holding MP
@@ -1776,6 +1833,10 @@ class CaptureService : Service() {
         // win against a start that resumes later (see pendingLiveStart).
         pendingLiveStart?.cancel()
         pendingLiveStart = null
+        // Session feedback dies with the session — every timer, the chip,
+        // and outstanding pass tokens, atomically ([LiveSessionFeedback]).
+        liveFeedback?.dispose()
+        liveFeedback = null
         Log.i(TAG, "stopLive() called (isLive=$isLive, modes=${liveModes.keys})", Throwable("stopLive caller"))
         // Stop bypasses setLiveDisplays: we genuinely want zero live modes,
         // not "fall back to the backend's capturable default" — which is what
@@ -2128,14 +2189,23 @@ class CaptureService : Service() {
                 { bitmap, result -> OcrSeedWriter.writeSeed(this, bitmap, result) }
             } else null
         val statusBarHeight = statusBarHeightForFrame(displayId, frameIncludesSystemUi)
-        return OverlayToolkit.runOcrPipeline(
-            raw,
-            activeRegionForDisplay(displayId),
-            sourceLang,
-            ocrManager,
-            statusBarHeight,
-            seedWriter = seedWriter
-        )
+        // Session captured at entry: a pass that outlives a stop (native
+        // inference cancels lazily) finalizes into ITS session — disposed
+        // and inert — never the next one's ([LiveSessionFeedback]).
+        val feedback = if (isLive) liveFeedback else null
+        val busyToken = feedback?.beginOcrPass()
+        try {
+            return OverlayToolkit.runOcrPipeline(
+                raw,
+                activeRegionForDisplay(displayId),
+                sourceLang,
+                ocrManager,
+                statusBarHeight,
+                seedWriter = seedWriter
+            )
+        } finally {
+            if (feedback != null && busyToken != null) feedback.endOcrPass(busyToken)
+        }
     }
 
     /**

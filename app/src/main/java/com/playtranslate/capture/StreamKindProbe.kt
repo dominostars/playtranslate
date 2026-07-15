@@ -75,8 +75,11 @@ import kotlin.coroutines.resume
  * window type on either backend) but is deliberately NOT registered with the
  * host: a registered window can be alpha-blanked by a concurrent clean
  * capture's [com.playtranslate.overlay.OverlayHost.prepareForCleanCapture],
- * which would hide the probe mid-measurement and fake a CLEAN verdict. The
- * probe owns its addView/removeViewImmediate lifecycle directly. Total
+ * which would hide the probe mid-measurement and fake a CLEAN verdict. By
+ * default the probe owns its addView/removeViewImmediate lifecycle directly
+ * ([EphemeralProbeSurface]); a caller may instead supply its own
+ * [ProbeSurface] whose window outlives the measurement (the live-start
+ * status chip) — same not-host-registered rule applies to it. Total
  * budget ~1s, once per consent session. Concurrent resolvers are SERIALIZED
  * by [MediaProjectionController.resolveStreamKind]'s mutex — two live probes
  * would stack windows at the same coordinates and read each other's phase,
@@ -87,7 +90,41 @@ import kotlin.coroutines.resume
  */
 object StreamKindProbe {
 
-    suspend fun measure(controller: MediaProjectionController): StreamKind {
+    /**
+     * The window surface [measure] draws its checker into. Default (null
+     * `external`) is the self-contained [EphemeralProbeSurface]: measure()
+     * adds its own window and removes it when the verdict settles. A caller
+     * may instead supply a surface it OWNS — the live-start chip — whose
+     * window outlives the measurement; measure() then never adds or removes
+     * anything, it only drives the pattern.
+     *
+     * Contract for implementations: after [armPattern] returns null,
+     * [patternAddedSeq] must precede the current phase's first composition
+     * and [drawCountAtArm] must precede its first draw — round 1's freshness
+     * and draw proofs anchor there. A REUSED surface (a retry within the same
+     * window lifetime) must re-anchor both and force real pixel damage, or
+     * round 1 would read a stale latched frame / an old draw as evidence —
+     * the false-CLEAN shape the anchors exist to prevent.
+     */
+    interface ProbeSurface {
+        /** Make the checker visible and anchor round 1. Returns an abort
+         *  reason, or null on success. */
+        fun armPattern(controller: MediaProjectionController): String?
+        val patternAddedSeq: Long
+        val drawCountAtArm: Int
+        suspend fun awaitPatternLaidOut(): Boolean
+        /** The checker grid's on-screen rect, from laid-out coordinates —
+         *  immune to gravity/inset surprises. Never includes the label. */
+        val patternScreenRect: Rect
+        var patternSwap: Boolean
+        val patternDrawCount: Int
+        fun invalidatePattern()
+    }
+
+    suspend fun measure(
+        controller: MediaProjectionController,
+        external: ProbeSurface? = null,
+    ): StreamKind {
         val host = CaptureBackendResolver.active().overlayHost
             ?: return aborted("no overlay host")
         // The HOST's context, not the capture service's — accessibility
@@ -95,58 +132,19 @@ object StreamKindProbe {
         // service's own context.
         val displayContext = host.displayContextFor(controller.projectedDisplayId)
             ?: return aborted("projected display missing")
-        val wm = displayContext.getSystemService(WindowManager::class.java)
-            ?: return aborted("no WindowManager")
-
-        val view = ProbeView(displayContext)
         val size = displayContext.displaySizePx()
-        // Deliberately TOUCHABLE (no FLAG_NOT_TOUCHABLE): pass-through
-        // overlays get their composited opacity clamped by the untrusted-
-        // touch rules (~84% measured on the Moto G, 2026-07-10 — enough to
-        // flunk an absolute color match), while a window that consumes its
-        // own touches is exempt and renders at true full alpha. The cost is
-        // a 48px-tall strip (checker + "Initializing…" label) eating taps
-        // for ~1.4s right after the consent dialog closes. NOT_TOUCH_MODAL
-        // keeps every other touch flowing.
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT, SIZE_PX,
-            host.windowType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            // Center: where a loading chip naturally lives, clear of every
-            // edge artifact (cutouts, rounded corners, letterbox seams), and
-            // position-neutral for detection — a clean stream never contains
-            // the window, a contaminated one contains it anywhere. Cost: the
-            // touchable strip eats center-screen taps for its ~1.4s life,
-            // which the visible label makes self-explaining.
-            gravity = Gravity.CENTER
-            // Position in full-display coordinates, not inside system-bar
-            // insets — the frame is display-sized, and the pattern test uses
-            // screen coords. (The probe only runs on API 34+, but the guard
-            // keeps the compiler honest about the API 30 method.)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
-        }
-        // Anchor BEFORE the window exists: on a contaminated mirror the add's
-        // own composition delivers a frame above this seq — the freshness
-        // proof scanForPattern demands.
-        val seqAtAdd = controller.deliverySeqNow
-        try {
-            wm.addView(view, params)
-        } catch (e: Exception) {
-            return aborted("probe window add failed: ${e.message}")
+
+        var ephemeral: EphemeralProbeSurface? = null
+        val surface: ProbeSurface = external ?: run {
+            val wm = displayContext.getSystemService(WindowManager::class.java)
+                ?: return aborted("no WindowManager")
+            EphemeralProbeSurface(displayContext, host.windowType, wm)
+                .also { ephemeral = it }
         }
         try {
-            if (!awaitLaidOut(view)) return aborted("probe layout timeout")
-            // The laid-out location is the ground truth for where the pattern
-            // sits on screen — immune to gravity/inset surprises.
-            val loc = IntArray(2)
-            view.getLocationOnScreen(loc)
-            // Scan ONLY the checker grid — the window is wider than the
-            // pattern (the "Initializing…" label sits to its right), and the
-            // label must never contribute cells to the verdict.
-            val rect = Rect(loc[0], loc[1], loc[0] + SIZE_PX, loc[1] + SIZE_PX)
+            surface.armPattern(controller)?.let { return aborted(it) }
+            if (!surface.awaitPatternLaidOut()) return aborted("probe layout timeout")
+            val rect = surface.patternScreenRect
             // Frames are scanned at these laid-out screen coordinates, which
             // is only meaningful on a display-sized frame (the VD is created
             // at display size). Anything else is unscannable, not absent.
@@ -182,24 +180,24 @@ object StreamKindProbe {
             var round = 0
             while (true) {
                 round++
-                // Round 1's freshness anchor is [seqAtAdd] — the add's own
-                // composition (the delivery that carries pattern A on a
-                // display mirror) lands between the add and this loop, and
-                // must count. Later rounds anchor at their own toggle.
-                val seq = if (round == 1) seqAtAdd else controller.deliverySeqNow
-                val drawsBefore = if (round == 1) 0 else view.drawCount
+                // Round 1's freshness anchor is the surface's arm point — the
+                // composition that first carries this phase (for a fresh
+                // window, the add itself) lands after it and must count.
+                // Later rounds anchor at their own toggle.
+                val seq = if (round == 1) surface.patternAddedSeq else controller.deliverySeqNow
+                val drawsBefore = if (round == 1) surface.drawCountAtArm else surface.patternDrawCount
                 if (round > 1) {
-                    view.swap = !view.swap
-                    view.invalidate()
+                    surface.patternSwap = !surface.patternSwap
+                    surface.invalidatePattern()
                 }
                 // Evidence-validity precondition: this round's phase provably
                 // rendered. A window that never draws proves nothing — its
                 // silence must not be read as a task mirror.
-                if (!awaitDrawAfter(view, drawsBefore)) {
+                if (!awaitDrawAfter(surface, drawsBefore)) {
                     return aborted("window never drew (round $round)")
                 }
                 val scan = scanForPattern(
-                    controller, rect, swap = view.swap,
+                    controller, rect, swap = surface.patternSwap,
                     budgetMs = if (round == 1) FIRST_ROUND_BUDGET_MS else ROUND_BUDGET_MS,
                     minSeq = seq,
                     expectedW = expectedW, expectedH = expectedH,
@@ -207,7 +205,7 @@ object StreamKindProbe {
                 val settled = ledger.observe(scan) ?: continue
                 val reason = when {
                     scan == Scan.FOUND ->
-                        "pattern ${if (view.swap) "B" else "A"} visible (round $round)"
+                        "pattern ${if (surface.patternSwap) "B" else "A"} visible (round $round)"
                     scan == Scan.CHECKER_POS || scan == Scan.CHECKER_NEG ->
                         "luma checker flipped with commanded phase (round $round)"
                     scan == Scan.FAILED ->
@@ -222,7 +220,10 @@ object StreamKindProbe {
                 return verdict(settled, reason)
             }
         } finally {
-            try { wm.removeViewImmediate(view) } catch (_: Exception) {}
+            // Only the surface measure() itself created gets torn down here.
+            // An external surface outlives the measurement by design — its
+            // owner removes the window.
+            ephemeral?.remove()
         }
     }
 
@@ -546,12 +547,111 @@ object StreamKindProbe {
 
     // ── Probe window ─────────────────────────────────────────────────────
 
-    private class ProbeView(context: Context) : View(context) {
+    /** The classic self-contained probe window: [armPattern] adds it,
+     *  measure()'s finally removes it. One instance per measure() call —
+     *  never reused, so the fresh-window anchors (seq captured before the
+     *  add, draw count zero) are correct by construction. */
+    private class EphemeralProbeSurface(
+        displayContext: Context,
+        windowType: Int,
+        private val wm: WindowManager,
+    ) : ProbeSurface {
+
+        private val view = ProbeView(displayContext)
+
+        // Deliberately TOUCHABLE (no FLAG_NOT_TOUCHABLE): pass-through
+        // overlays get their composited opacity clamped by the untrusted-
+        // touch rules (~84% measured on the Moto G, 2026-07-10 — enough to
+        // flunk an absolute color match), while a window that consumes its
+        // own touches is exempt and renders at true full alpha. The cost is
+        // a 48px-tall strip (checker + "Initializing…" label) eating taps
+        // for ~1.4s right after the consent dialog closes. NOT_TOUCH_MODAL
+        // keeps every other touch flowing.
+        private val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT, SIZE_PX,
+            windowType,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            // Center: where a loading chip naturally lives, clear of every
+            // edge artifact (cutouts, rounded corners, letterbox seams), and
+            // position-neutral for detection — a clean stream never contains
+            // the window, a contaminated one contains it anywhere. Cost: the
+            // touchable strip eats center-screen taps for its ~1.4s life,
+            // which the visible label makes self-explaining.
+            gravity = Gravity.CENTER
+            // Position in full-display coordinates, not inside system-bar
+            // insets — the frame is display-sized, and the pattern test uses
+            // screen coords. (The probe only runs on API 34+, but the guard
+            // keeps the compiler honest about the API 30 method.)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
+        }
+
+        override var patternAddedSeq = 0L
+            private set
+        override val drawCountAtArm = 0
+
+        override fun armPattern(controller: MediaProjectionController): String? {
+            // Anchor BEFORE the window exists: on a contaminated mirror the
+            // add's own composition delivers a frame above this seq — the
+            // freshness proof scanForPattern demands.
+            patternAddedSeq = controller.deliverySeqNow
+            return try {
+                wm.addView(view, params)
+                null
+            } catch (e: Exception) {
+                "probe window add failed: ${e.message}"
+            }
+        }
+
+        override suspend fun awaitPatternLaidOut(): Boolean = awaitLaidOut(view)
+
+        override val patternScreenRect: Rect
+            get() {
+                // The laid-out location is the ground truth for where the
+                // pattern sits on screen — immune to gravity/inset surprises.
+                // Scan ONLY the checker grid — the window is wider than the
+                // pattern (the "Initializing…" label sits to its right), and
+                // the label must never contribute cells to the verdict.
+                val loc = IntArray(2)
+                view.getLocationOnScreen(loc)
+                return Rect(loc[0], loc[1], loc[0] + SIZE_PX, loc[1] + SIZE_PX)
+            }
+
+        override var patternSwap: Boolean
+            get() = view.swap
+            set(value) { view.swap = value }
+
+        override val patternDrawCount: Int get() = view.drawCount
+
+        override fun invalidatePattern() {
+            view.invalidate()
+        }
+
+        fun remove() {
+            try { wm.removeViewImmediate(view) } catch (_: Exception) {}
+        }
+    }
+
+    internal class ProbeView(context: Context) : View(context) {
         /** Inverts the checker phase; set + invalidate for the second pass. */
         var swap = false
         /** Draws observed — the evidence-validity signal ([awaitDrawAfter]).
          *  Main-thread only, like all View state. */
         var drawCount = 0
+        /** Chip host only: false retires the checker once the verdict has
+         *  settled, leaving the label to cover engine warm-up. The window is
+         *  WRAP_CONTENT, so the view re-measures and the centered window
+         *  shrinks around the label. The ephemeral probe window never clears
+         *  this — it is removed instead. */
+        var showPattern = true
+            set(value) {
+                if (field == value) return
+                field = value
+                requestLayout()
+                invalidate()
+            }
         private val paint = Paint()
 
         // "Initializing…" chip to the RIGHT of the grid, so the ~1.4s
@@ -575,27 +675,31 @@ object StreamKindProbe {
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             val labelW = (labelPaint.measureText(labelText) + 2 * labelPadding).toInt()
-            setMeasuredDimension(SIZE_PX + labelW, SIZE_PX)
+            val patternW = if (showPattern) SIZE_PX else 0
+            setMeasuredDimension(patternW + labelW, SIZE_PX)
         }
 
         override fun onDraw(canvas: Canvas) {
             drawCount++
-            val cells = SIZE_PX / CELL_PX
-            for (r in 0 until cells) {
-                for (c in 0 until cells) {
-                    paint.color = if (cellIsA(r, c, swap)) COLOR_A else COLOR_B
-                    canvas.drawRect(
-                        (c * CELL_PX).toFloat(), (r * CELL_PX).toFloat(),
-                        ((c + 1) * CELL_PX).toFloat(), ((r + 1) * CELL_PX).toFloat(),
-                        paint,
-                    )
+            val patternW = if (showPattern) SIZE_PX else 0
+            if (showPattern) {
+                val cells = SIZE_PX / CELL_PX
+                for (r in 0 until cells) {
+                    for (c in 0 until cells) {
+                        paint.color = if (cellIsA(r, c, swap)) COLOR_A else COLOR_B
+                        canvas.drawRect(
+                            (c * CELL_PX).toFloat(), (r * CELL_PX).toFloat(),
+                            ((c + 1) * CELL_PX).toFloat(), ((r + 1) * CELL_PX).toFloat(),
+                            paint,
+                        )
+                    }
                 }
             }
             canvas.drawRect(
-                SIZE_PX.toFloat(), 0f, width.toFloat(), SIZE_PX.toFloat(), labelBgPaint,
+                patternW.toFloat(), 0f, width.toFloat(), SIZE_PX.toFloat(), labelBgPaint,
             )
             val baseline = SIZE_PX / 2f - (labelPaint.descent() + labelPaint.ascent()) / 2f
-            canvas.drawText(labelText, SIZE_PX + labelPadding, baseline, labelPaint)
+            canvas.drawText(labelText, patternW + labelPadding, baseline, labelPaint)
         }
     }
 
@@ -613,23 +717,23 @@ object StreamKindProbe {
     private fun aborted(reason: String): StreamKind =
         verdict(StreamKind.UNKNOWN, "probe aborted: $reason")
 
-    /** Suspend until the probe view has drawn again (count above
-     *  [sinceCount]) or [DRAW_TIMEOUT_MS] passes. Both this poll and onDraw
-     *  run on the main thread — delay() suspends, letting the draw happen. */
-    private suspend fun awaitDrawAfter(view: ProbeView, sinceCount: Int): Boolean =
+    /** Suspend until the pattern has drawn again (count above [sinceCount])
+     *  or [DRAW_TIMEOUT_MS] passes. Both this poll and onDraw run on the
+     *  main thread — delay() suspends, letting the draw happen. */
+    private suspend fun awaitDrawAfter(surface: ProbeSurface, sinceCount: Int): Boolean =
         withTimeoutOrNull(DRAW_TIMEOUT_MS) {
-            while (view.drawCount <= sinceCount) delay(16)
+            while (surface.patternDrawCount <= sinceCount) delay(16)
             true
         } != null
 
-    private suspend fun awaitLaidOut(view: View): Boolean =
+    internal suspend fun awaitLaidOut(view: View): Boolean =
         withTimeoutOrNull(LAYOUT_TIMEOUT_MS) {
             suspendCancellableCoroutine { cont ->
                 view.doOnLayout { if (cont.isActive) cont.resume(Unit) }
             }
         } != null
 
-    private const val SIZE_PX = 48
+    internal const val SIZE_PX = 48
     private const val CELL_PX = 8
     /** Yellow/blue, not the original magenta/green: exact RGB complements
      *  (inversion swaps them, preserving the checker), maximal on BOTH

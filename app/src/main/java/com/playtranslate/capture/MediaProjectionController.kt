@@ -658,7 +658,9 @@ class MediaProjectionController(private val service: CaptureService) {
      * and caching the stale result over that reset would poison the next
      * session (adversarial-review finding).
      */
-    suspend fun resolveStreamKind(): StreamKind {
+    suspend fun resolveStreamKind(
+        probeSurface: StreamKindProbe.ProbeSurface? = null,
+    ): StreamKind {
         streamKind.takeIf { it != StreamKind.UNKNOWN }?.let { return it }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             streamKind = StreamKind.CONTAMINATED
@@ -677,14 +679,16 @@ class MediaProjectionController(private val service: CaptureService) {
         return streamKindMutex.withLock {
             streamKind.takeIf { it != StreamKind.UNKNOWN }?.let { return@withLock it }
             if (!hasConsent) return@withLock StreamKind.UNKNOWN
-            var kind = StreamKindProbe.measure(this)
+            var kind = StreamKindProbe.measure(this, probeSurface)
             if (kind == StreamKind.UNKNOWN && hasConsent) {
                 // One retry: the probe is the SOLE classifier, so a transient
                 // abort (layout/draw timing, buffer contention) would otherwise
                 // consign the whole session to the degraded tier. The log line
                 // is the field abort-rate signal — this app has no telemetry,
                 // so exported logs are the only place the rate can ever show up.
-                val second = StreamKindProbe.measure(this)
+                // A reused surface re-anchors itself in armPattern — the
+                // retry must not trust the first call's add-time anchors.
+                val second = StreamKindProbe.measure(this, probeSurface)
                 DetectionLog.log(
                     "MP stream kind: retry after UNKNOWN → $second"
                 )

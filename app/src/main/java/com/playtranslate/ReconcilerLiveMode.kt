@@ -131,6 +131,7 @@ class ReconcilerLiveMode(
         scope, service, displayId, TAG,
         source = ::liveSource,
         parkDeadlineMs = { holdDeadlineMs },
+        firstCycleGate = { service.awaitFirstCycleClear(displayId, liveSource()) },
     ) { runCycle() }
 
     /** Uptime when the current run of all-black frames began (0 = screen is

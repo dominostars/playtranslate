@@ -132,6 +132,7 @@ class PinholeOverlayMode(
     private val engine = LiveCycleEngine(
         scope, service, displayId, "PinholeOverlayMode",
         source = ::liveSource,
+        firstCycleGate = { service.awaitFirstCycleClear(displayId, liveSource()) },
     ) { runCycle() }
 
     override fun start() {

@@ -54,6 +54,7 @@ class FuriganaMode(
     private var cleanProcessingJob: Job? = null
     private var rawOcrJob: Job? = null
     private var restartJob: Job? = null
+    private var startLoopJob: Job? = null
 
     // ── Mode-owned state ──────────────────────────────────────────────────
 
@@ -103,6 +104,7 @@ class FuriganaMode(
         cleanProcessingJob?.cancel()
         rawOcrJob?.cancel()
         restartJob?.cancel()
+        startLoopJob?.cancel()
         clearState()
         scope.cancel()
         CaptureBackendResolver.active().stopInputMonitoring(displayId)
@@ -126,16 +128,42 @@ class FuriganaMode(
     }
 
     private fun startLoop(source: LiveCaptureSource) {
-        source.startLoop(displayId, service.serviceScope,
-            onCleanFrame = ::handleCleanFrame,
-            onRawFrame = ::handleRawFrame
-        )
+        startLoopJob?.cancel()
+        startLoopJob = scope.launch {
+            // Same pre-first-cycle gate the LiveCycleEngine modes run: the
+            // engine warm-up joined and the startup chip provably out of the
+            // frames this loop will read. Idempotent — restarts (dismiss,
+            // refresh) pass straight through once it has reported clear.
+            // Not-clear (whole-display mirror hasn't delivered a post-chip
+            // frame) retries rather than letting the loop OCR our own chip;
+            // a stop cancels the retry with the job.
+            while (!service.awaitFirstCycleClear(displayId, source)) {
+                delay(Prefs(service).captureIntervalMs)
+            }
+            // A hold can arrive while the gate is parked, and its global
+            // stopAllLoops only stops loops that EXIST — a start that hasn't
+            // fired yet isn't one of them. Same rule as the dismiss-restart
+            // guard below: never start into a hold-preview; hotkeyHoldEnd's
+            // refresh() restarts the loop cleanly on release.
+            if (service.holdActive) {
+                DetectionLog.log("furigana startLoop skipped (holdActive)")
+                return@launch
+            }
+            source.startLoop(displayId, service.serviceScope,
+                onCleanFrame = ::handleCleanFrame,
+                onRawFrame = ::handleRawFrame
+            )
+        }
     }
 
     override fun dismiss() {
         val source = CaptureBackendResolver.activeLiveCaptureSource ?: return
         cleanProcessingJob?.cancel()
         rawOcrJob?.cancel()
+        // A gated start still parked in awaitFirstCycleClear has no loop for
+        // stopLoop below to stop — cancel it, or it would fire into the
+        // dismiss interval (or a hold) the restart guard exists to protect.
+        startLoopJob?.cancel()
         source.stopLoop(displayId)
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
         clearState()

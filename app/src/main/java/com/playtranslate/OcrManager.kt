@@ -14,6 +14,8 @@ import com.playtranslate.ocr.mangaocr.MangaOcrBridge
 import com.playtranslate.ocr.registry.OcrEngineRegistry
 import com.playtranslate.ocr.registry.OcrModelManager
 import androidx.core.graphics.get
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Public facade for on-device OCR.
@@ -59,6 +61,25 @@ class OcrManager private constructor() {
         // in-flight OCR (the framework's documented quiescent point); interactive teardown
         // uses the locked MangaOcrBridge.close() instead.
         MangaOcrBridge.closeForTrim()
+    }
+
+    /**
+     * Resolve — and thereby construct and cache — the OCR engine for
+     * [sourceLang] ahead of the first recognition pass. Live mode calls this at
+     * start so the multi-second Meiki/Paddle native session load overlaps
+     * MediaProjection setup instead of landing inside cycle 1's [recognise].
+     *
+     * Returns when engine resolution has SETTLED, whatever it settled to — a
+     * real engine, the ML Kit floor, or the no-OCR empty engine. Failures are
+     * swallowed: the first real pass will surface them through its own path.
+     * Safe against a concurrent [recognise]: the bridges' engine() accessors
+     * are synchronized and idempotent, so both callers get the same cached
+     * session.
+     */
+    suspend fun warmUpEngine(sourceLang: String) {
+        withContext(Dispatchers.Default) {
+            runCatching { registry.engineFor(sourceLang) }
+        }
     }
 
     /** True when manga-ocr refinement should run for [sourceLang]: enabled by the user

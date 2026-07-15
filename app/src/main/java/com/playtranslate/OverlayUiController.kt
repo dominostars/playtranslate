@@ -250,6 +250,13 @@ class OverlayUiController(
         iconHandles.values.forEach { it.icon.liveMode = liveMode }
     }
 
+    /** Slow-pass feedback: a live OCR pass has been in flight past its grace
+     *  period (or finished). Every display's icon breathes in sync — the pass
+     *  itself isn't per-display information worth splitting. */
+    fun setIconsBusy(busy: Boolean) {
+        iconHandles.values.forEach { it.icon.ocrBusy = busy }
+    }
+
     fun anyIconInDragMode(): Boolean = iconHandles.values.any { it.icon.inDragMode }
 
     fun dismissAllDragLookupPopups() {
