@@ -390,7 +390,7 @@ class TranslationResultFragment : Fragment() {
                 // fit it now — not when the translation later lands, which would
                 // make it visibly resize. revealResultsContentFitted is the shared
                 // hide→fit→show both states run, so the two can't drift on sizing.
-                revealResultsContentFitted(generation) { resultsContent.scrollToTopSilently(scrollListener) }
+                revealResultsContentFitted(generation) { scrollToFreshResultStart(generation) }
             }
             is ResultState.Ready -> {
                 val result = state.result
@@ -420,9 +420,32 @@ class TranslationResultFragment : Fragment() {
                 resultActionButtons.isVisible = showsClearAction
                 revealResultsContentFitted(generation) {
                     if (scrollAnchor != null) restoreScrollAnchor(scrollAnchor)
-                    else resultsContent.scrollToTopSilently(scrollListener)
+                    else scrollToFreshResultStart(generation)
                 }
             }
+        }
+    }
+
+    /** Fresh-result scroll reset. Normally the top — but with the translation
+     *  section hidden via its eye, the collapsed header is dead space at the top
+     *  of every new result, so park the scroll at the source header instead
+     *  (scrolling up still reveals the header to un-hide). Posted because the
+     *  header row's offset needs the reveal's layout pass — and generation-
+     *  guarded like every other posted scroll write, so a stale park can't
+     *  yank a newer render's position (e.g. the preserve-scroll restore of a
+     *  fast Translating→Ready promotion). scrollTo clamps, so a page that fits
+     *  without scrolling simply stays at the top. */
+    private fun scrollToFreshResultStart(generation: Int) {
+        if (!prefs.hideTranslationSection) {
+            resultsContent.scrollToTopSilently(scrollListener)
+            return
+        }
+        resultsContent.scrollToTopSilently(scrollListener)
+        resultsContent.post {
+            if (view == null || generation != renderGeneration) return@post
+            val headerRow =
+                view?.findViewById<View>(R.id.labelOriginal)?.parent as? View ?: return@post
+            resultsContent.restoreScrollSilently(headerRow.top, scrollListener)
         }
     }
 

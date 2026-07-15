@@ -39,6 +39,26 @@
             android:layout_height="wrap_content"
             android:layout_weight="1" />
 
+        <!-- Capture overlay only: collapses the panel to its sliver and paints
+             the translations over the game. GONE by default — the in-app results
+             page never enables it (TranslationSectionBinder.setShowOnScreenAction
+             is called solely by CaptureResultOverlay). A worded button, not an
+             icon: no common glyph reads as "move these onto the screen". -->
+        <TextView
+            android:id="@+id/btnShowOnScreen"
+            style="@style/Text.PT.GroupHeader"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:layout_marginEnd="16dp"
+            android:paddingHorizontal="12dp"
+            android:gravity="center"
+            android:background="@drawable/bg_outlined_text_button"
+            android:clickable="true"
+            android:focusable="true"
+            android:textSize="9sp"
+            android:text="@string/capture_show_on_screen"
+            android:visibility="gone" />
+
         <ImageButton
             android:id="@+id/btnCopyTranslation"
             android:layout_width="36dp"

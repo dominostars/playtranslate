@@ -68,6 +68,7 @@ class TranslationSectionBinder(
     private val translationContent: View = root.findViewById(R.id.translationContent)
     private val btnCopyOriginal: ImageButton = root.findViewById(R.id.btnCopyOriginal)
     private val btnCopyTranslation: ImageButton = root.findViewById(R.id.btnCopyTranslation)
+    private val btnShowOnScreen: TextView = root.findViewById(R.id.btnShowOnScreen)
     private val btnEditOriginal: ImageButton = root.findViewById(R.id.btnEditOriginal)
     private val btnSpeakOriginal: ImageButton = root.findViewById(R.id.btnSpeakOriginal)
     private val btnToggleTranslation: ImageButton = root.findViewById(R.id.btnToggleTranslation)
@@ -77,6 +78,24 @@ class TranslationSectionBinder(
     private val sourceNoteRow: View = root.findViewById(R.id.sourceNoteRow)
     private val tvSourceNote: TextView = root.findViewById(R.id.tvSourceNote)
     private val btnSourceOcr: ImageView = root.findViewById(R.id.btnSourceOcr)
+
+    init {
+        // The layouts declare app:tint on these icons, but that attribute is
+        // applied by AppCompat's layout inflater — which the in-app results
+        // screen has and the capture overlay does not. Tint explicitly so both
+        // surfaces render the results-screen style (muted icons, hint-toned
+        // gear). The speak button re-tints itself per state (accent while
+        // speaking, muted when idle) on top of this base.
+        val muted = ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextMuted))
+        for (btn in listOf(
+            btnCopyOriginal, btnCopyTranslation, btnEditOriginal, btnSpeakOriginal,
+            btnToggleTranslation, btnToggleOriginal, btnToggleFurigana,
+        )) {
+            btn.imageTintList = muted
+        }
+        btnSourceOcr.imageTintList =
+            ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextHint))
+    }
 
     private var speakButton: OriginalSpeakButton? = null
 
@@ -280,6 +299,26 @@ class TranslationSectionBinder(
         btnToggleTranslation.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
     }
 
+    /** Wire the capture overlay's "show on screen" action into the target
+     *  header. Only the overlay calls this — the in-app results page keeps the
+     *  button GONE even though the shared layout carries it. */
+    fun setShowOnScreenAction(onClick: () -> Unit) {
+        btnShowOnScreen.setOnClickListener { onClick() }
+    }
+
+    /** Whether the show-on-screen action currently has something to show
+     *  (overlay boxes exist and the panel isn't already collapsed). GONE when
+     *  not, so surfaces that never enable it lose no header space. Deliberately
+     *  independent of the section's hidden state — the action presents the
+     *  whole result over the game, not this card, and hiding the card while
+     *  reading the boxes in place is a legitimate combination. ACCEPTED gap
+     *  (2026-07-15): in SIDE-BY-SIDE mode, hiding the translation collapses the
+     *  whole column — header and this button included — so that combo has no
+     *  manual switch; the persisted on-screen preference still auto-collapses. */
+    fun setShowOnScreenAvailable(available: Boolean) {
+        btnShowOnScreen.visibility = if (available) View.VISIBLE else View.GONE
+    }
+
     /** Flip a section's hidden pref, re-apply its visibility, and notify the host
      *  so it can re-layout. Both the section's own eye button and the panel's
      *  collapsed-strip eye route through these. */
@@ -357,11 +396,10 @@ class TranslationSectionBinder(
     ) {
         if (onAddToAnki != null) {
             // Results page (and later the capture overlay): the copy button becomes
-            // "add to Anki"; copy moves to a long-press on the text itself.
-            val ankiTint = ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextMuted))
+            // "add to Anki"; copy moves to a long-press on the text itself. The
+            // muted tint from init survives setImageResource.
             for (btn in listOf(btnCopyOriginal, btnCopyTranslation)) {
                 btn.setImageResource(R.drawable.ic_card_stack_add)
-                btn.imageTintList = ankiTint   // explicit so it's muted even where app:tint isn't applied (overlay)
                 btn.contentDescription = ctx.getString(R.string.cd_add_to_anki)
                 btn.setOnClickListener { onAddToAnki() }
                 if (onAnkiOneTap != null) {

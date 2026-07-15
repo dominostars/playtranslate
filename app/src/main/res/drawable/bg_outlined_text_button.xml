@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Compact outlined text-button background for section-header actions (the
+     capture overlay's "Show on screen"): a ripple over a rounded-rect stroke in
+     the header icons' own tint, sized by the view. The 7dp radius is half
+     pt_radius — the full 14dp reads as a pill on a 32dp-tall button. Theme
+     attrs resolve at inflation, so it renders the same under the overlay's
+     non-AppCompat inflater as on the results screen. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="?attr/ptDivider">
+    <!-- The visual box is inset 5dp top+bottom: the button DRAWS 10dp shorter
+         than its view, while the view's full bounds keep the touch target.
+         The ripple masks to the inset shape, so press feedback matches the
+         visible box. -->
+    <item
+        android:top="5dp"
+        android:bottom="5dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="7dp" />
+            <stroke android:width="2dp" android:color="?attr/ptTextMuted" />
+        </shape>
+    </item>
+</ripple>

@@ -12,7 +12,6 @@ import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
-import android.graphics.drawable.LayerDrawable
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Rect
@@ -138,6 +137,11 @@ class CaptureResultOverlay(
      *  return to it (the sliver itself parks the height at [sliverHeightPx]). */
     private var preSliverHeightPx = 0
 
+    /** One-shot: after a bind with the translation section hidden, the next
+     *  layouts park the scroll just past its collapsed header (see hiddenTopPx).
+     *  Cleared once the scroll lands so later user scrolling is untouched. */
+    private var pendingHiddenTopScroll = false
+
     private var sessionJob: Job? = null
     /** The active service one-shot session (OCR + translate). Held so dismissal
      *  cancels the headless service work, not just our UI collector. */
@@ -172,9 +176,6 @@ class CaptureResultOverlay(
     }
     private val contentRow = LinearLayout(ctx)
     private val handle = HandleView(ctx)
-    // The panel ↔ on-screen-boxes switch. A ROOT child (not a panel child) so
-    // its sheet-edge-straddling position stays tappable; see the addView note.
-    private val showOnScreenPill = TextView(ctx)
     // A soft drop shadow cast above the sheet's top edge. The blur is BAKED ONCE
     // into [shadowBitmap]; the view only blits it and is repositioned via
     // translationY as the sheet grows/slides — never re-blurred (see [bakeEdgeShadow]).
@@ -331,42 +332,6 @@ class CaptureResultOverlay(
             )
             addView(editContainer, FrameLayout.LayoutParams(MATCH, MATCH))
         }
-        showOnScreenPill.apply {
-            text = ctx.getString(R.string.capture_show_on_screen)
-            textSize = 12f
-            setTextColor(ctx.themeColor(R.attr.ptTextMuted))
-            gravity = Gravity.CENTER
-            // Floating chrome (a mini-FAB), not sheet frame: OPAQUE fill,
-            // because content near the sheet's top edge may scroll UNDER it and
-            // a translucent pill over moving text reads as noise. The "shadow"
-            // is two baked halo rings peeking below the body — deliberately NOT
-            // elevation: a render-thread cast shadow lands wherever the light
-            // model says, right where the sheet's own baked edge shadow lives
-            // (same no-live-shadows rule as bakeEdgeShadow).
-            val pillRadius = dp(SWITCH_PILL_HEIGHT_DP) / 2f
-            fun halo(alpha: Int, radius: Float) = GradientDrawable().apply {
-                setColor(Color.argb(alpha, 0, 0, 0))
-                cornerRadius = radius
-            }
-            background = LayerDrawable(
-                arrayOf(
-                    halo(0x22, pillRadius),
-                    halo(0x22, pillRadius - dp(1)),
-                    GradientDrawable().apply {
-                        setColor(ctx.themeColor(R.attr.ptBg))
-                        cornerRadius = pillRadius
-                        setStroke(dp(1), ctx.themeColor(R.attr.ptDivider))
-                    },
-                ),
-            ).apply {
-                setLayerInset(0, 0, dp(2), 0, 0)
-                setLayerInset(1, dp(1), dp(3), dp(1), dp(1))
-                setLayerInset(2, 0, 0, 0, dp(3))
-            }
-            setPadding(dp(12), 0, dp(12), dp(3))
-            visibility = View.GONE
-            setOnClickListener { collapseToSliver() }
-        }
         panel.apply {
             orientation = LinearLayout.VERTICAL
             // The grabber floats OUTSIDE the sheet, in a transparent strip above
@@ -378,17 +343,27 @@ class CaptureResultOverlay(
         // soft fade cast above its top edge.
         root.addView(edgeShadow, FrameLayout.LayoutParams(MATCH, shadowHeightPx, Gravity.TOP))
         root.addView(panel, FrameLayout.LayoutParams(MATCH, 0, Gravity.BOTTOM))
-        // The pill rides the ROOT, not the panel: it straddles the sheet's TOP
-        // edge, and the half outside the panel's bounds would be visible but
-        // untouchable as a panel child (parents hit-test children by their own
-        // bounds). [syncShadow] glues it to the live sheet edge every frame, the
-        // same way the shadow tracks.
-        root.addView(
-            showOnScreenPill,
-            FrameLayout.LayoutParams(WRAP, dp(SWITCH_PILL_HEIGHT_DP), Gravity.TOP or Gravity.END).apply {
-                marginEnd = dp(16)
-            },
-        )
+        // One-shot after each bind: park the scroll just past the hidden
+        // translation section's collapsed header (see hiddenTopPx). Layout-
+        // driven because the needed scroll range only exists once the grow
+        // animation's card fill has laid out.
+        scroll.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (!pendingHiddenTopScroll) return@addOnLayoutChangeListener
+            // Stable-state recheck: a pref flip or layout-mode change while
+            // waiting cancels the parking rather than leaving it pending.
+            if (isSideBySide || !prefs.hideTranslationSection) {
+                pendingHiddenTopScroll = false
+                return@addOnLayoutChangeListener
+            }
+            // Await measurement: 0 means the target header hasn't laid out yet
+            // (fresh overlay, showWithResult) — not "nothing to park".
+            if (hiddenTopPx() <= 0) return@addOnLayoutChangeListener
+            // Settle 3dp shy of fully off-screen — parking flush clipped the
+            // source header's first pixels.
+            val target = hiddenTopPx() - dp(3)
+            scroll.scrollTo(0, target)
+            if (scroll.scrollY >= target) pendingHiddenTopScroll = false
+        }
     }
 
     // ── Public API ───────────────────────────────────────────────────────
@@ -404,12 +379,12 @@ class CaptureResultOverlay(
         // Inset the body's content below the status bar (the sheet fill, drawn on
         // the full body bounds, still reaches the screen top). Explicit side-zeros
         // keep overriding the InsetDrawable's reported negative top padding.
-        // Bottom sheet: no status-bar inset (the sheet's top edge is mid-screen).
-        // topInsetPx is the content's gap below the sheet's top edge; the height
-        // formulas (contentHeight, autoSizeAndFit, sliverHeightPx) reserve
-        // HANDLE_HEIGHT_DP (the grabber strip above the sheet) + topInsetPx, so
-        // they agree with the strip + this padding.
-        topInsetPx = dp(10)
+        // Bottom sheet: no status-bar inset (the sheet's top edge is mid-screen);
+        // a hairline of breathing room above the content, the rest carried by
+        // the section headers' own top padding. The height formulas reserve
+        // HANDLE_HEIGHT_DP (the grabber strip above the sheet) + topInsetPx,
+        // so they stay in agreement.
+        topInsetPx = dp(1)
         body.setPadding(0, topInsetPx, 0, 0)
         autoMaxPx = CaptureResultGeometry.autoMaxHeight(screenH)
         // Load at the minimum (drag-resize floor) height; grow to fit on Done.
@@ -439,6 +414,9 @@ class CaptureResultOverlay(
             onAddToAnki = { openSentenceAnkiReview() },
             onAnkiOneTap = { oneTapSentenceFromOverlay() },
         )
+        // Overlay-only: the target header's show-on-screen action collapses the
+        // panel to its sliver with the boxes painted over the game.
+        b.setShowOnScreenAction { collapseToSliver() }
         b.onSectionVisibilityChanged = {
             applySideBySideCollapse()
             // A section was hidden/shown — grow/shrink the panel to the new content.
@@ -558,6 +536,12 @@ class CaptureResultOverlay(
                     // OCR done: show the source now with a "Translating…" placeholder
                     // (blank translatedText renders it); Done fills it in + re-fits.
                     is CaptureState.Translating -> {
+                        // Skeleton boxes exist from OCR time — expose them BEFORE the
+                        // bind so the header's show-on-screen action is offered while
+                        // the translation is still running (a tap then shows the same
+                        // pulsing placeholders the auto-collapse shows, and the Done
+                        // promotion fills them in place either way).
+                        overlayData = state.overlayData
                         bindResult(
                             TranslationResult(
                                 originalText = state.originalText,
@@ -574,7 +558,6 @@ class CaptureResultOverlay(
                         // (The first bind's synchronous fit no-ops pre-layout and the
                         // posted ones are sliver-guarded, so nothing re-expands.)
                         if (prefs.captureResultOnScreenPreferred && state.overlayData != null) {
-                            overlayData = state.overlayData
                             collapseToSliver()
                         }
                     }
@@ -707,7 +690,6 @@ class CaptureResultOverlay(
         val data = overlayData ?: return
         if (!showChips(data)) return
         sliverMode = true
-        showOnScreenPill.visibility = View.GONE
         dismissWordLens()
         preSliverHeightPx = panelHeightPx
         // The sections are about to be a 12dp strip — fade them out rather than
@@ -725,7 +707,7 @@ class CaptureResultOverlay(
         scroll.animate().alpha(1f).setDuration(SLIVER_FADE_MS).start()
         val target = preSliverHeightPx.coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
         animateSliverHeight(target) {
-            updatePillVisibility()
+            updateShowOnScreenAction()
             // Re-run the fit the sliver suppressed (an auto-collapse lands before
             // the Done grow-to-fit ever ran, so the height may still be the
             // loading floor). Skipped when a status replaced the content (the
@@ -767,7 +749,7 @@ class CaptureResultOverlay(
             // Adopt the dragged height like endResize does, so re-fits keep it.
             autoMaxPx = panelHeightPx
             reFitText()
-            updatePillVisibility()
+            updateShowOnScreenAction()
         } else {
             val data = overlayData
             if (data != null && showChips(data)) {
@@ -827,13 +809,36 @@ class CaptureResultOverlay(
     private fun sliverHeightPx(): Int =
         topInsetPx + dp(SLIVER_SHEET_DP + HANDLE_HEIGHT_DP) + bottomInsetPx
 
-    /** The switch pill shows only when there is something to switch TO (overlay
-     *  boxes for the bound result) and the panel is expanded. */
-    private fun updatePillVisibility() {
-        showOnScreenPill.visibility =
-            if (!sliverMode && overlayData != null) View.VISIBLE
-            else View.GONE
+    /** The target header's show-on-screen action is offered whenever there is
+     *  something to switch TO — skeleton boxes count (a mid-translation tap
+     *  shows the same pulsing placeholders the auto-collapse does). Deliberately
+     *  NOT gated on sliverMode: the button is scroll content, so the collapse
+     *  fades it out with the sections instead of yanking it to GONE, and it's
+     *  unreachable while slivered anyway (the root consumes every touch). */
+    private fun updateShowOnScreenAction() {
+        binder?.setShowOnScreenAvailable(overlayData != null)
     }
+
+    /** Extra content height beyond the visible body when the translation
+     *  section (stacked mode's TOP section) is hidden via its eye: its collapsed
+     *  header + the divider live ABOVE the scroll fold — the source card is
+     *  sized as if they weren't there, and a fresh bind parks the scroll just
+     *  below them (scrolling up still reveals the header to un-hide). */
+    private fun hiddenTopPx(): Int {
+        val b = binder ?: return 0
+        if (isSideBySide || !prefs.hideTranslationSection) return 0
+        val headerH = b.targetHeaderHeight()
+        if (headerH <= 0) return 0
+        // Just the header: the stacked layout has no divider, so nothing else
+        // sits between the collapsed header and the source section — reserving
+        // more here would show as phantom buffer under the hidden header.
+        return headerH
+    }
+
+    /** The height the FIT machinery works against: the visible body plus the
+     *  above-the-fold strip from [hiddenTopPx], so the visible sections fill
+     *  the body exactly while the hidden header overflows into scroll range. */
+    private fun fitBodyHeight(panelPx: Int): Int = contentHeight(panelPx) + hiddenTopPx()
 
     // ── State rendering ──────────────────────────────────────────────────
 
@@ -855,7 +860,7 @@ class CaptureResultOverlay(
         // A status means no shown result — whatever boxes the session produced
         // earlier (e.g. skeletons before a translation failure) are off the table.
         overlayData = null
-        showOnScreenPill.visibility = View.GONE
+        updateShowOnScreenAction()
     }
 
     private fun bindResult(result: TranslationResult) {
@@ -864,7 +869,13 @@ class CaptureResultOverlay(
         populateSentenceCache(result)
         statusText.visibility = View.GONE
         scroll.visibility = View.VISIBLE
-        updatePillVisibility()
+        updateShowOnScreenAction()
+        // Fresh result with the translation section hidden: park its collapsed
+        // header above the scroll fold once the fit lays out (see hiddenTopPx).
+        // From STABLE state, not hiddenTopPx() — that reads the header's
+        // measured height, which is still 0 on a fresh overlay's first bind
+        // (and showWithResult), and would silently disable the parking.
+        pendingHiddenTopScroll = !isSideBySide && prefs.hideTranslationSection
         b.bindResult(result)   // also paints furigana (bindResult → bindSource)
         // Tap-a-word → definition: tokenize the source so taps resolve to spans.
         // Readings refine on tap via the resolver, so an empty lookupToReading
@@ -942,7 +953,7 @@ class CaptureResultOverlay(
                 (if (prefs.hideOriginalSection) 0 else b.sourceTextHeightAtMax()) +
                 (if (prefs.hideTranslationSection) 0 else b.targetTextHeightAtMax())
         }
-        val neededHeight = naturalContent + dp(HANDLE_HEIGHT_DP) + topInsetPx + bottomInsetPx
+        val neededHeight = naturalContent + dp(HANDLE_HEIGHT_DP) + topInsetPx + bottomInsetPx - hiddenTopPx()
         maxNeededHeightPx = neededHeight.coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
         val target = CaptureResultGeometry.autoPanelHeight(neededHeight, screenH, autoMaxPx)
         animatePanelHeight(target)
@@ -1044,7 +1055,7 @@ class CaptureResultOverlay(
     /** Size the text to the current panel height (continuous). Called per drag frame. */
     private fun reFitText() {
         val b = binder ?: return
-        val bodyH = contentHeight(panelHeightPx)
+        val bodyH = fitBodyHeight(panelHeightPx)
         applyCardFill(b, bodyH)
         val (src, tgt) = fitSizes(b, bodyH)
         b.setSizes(src, tgt)
@@ -1057,9 +1068,9 @@ class CaptureResultOverlay(
         heightAnimator?.cancel()
         val b = binder ?: return
         val startH = panelHeightPx
-        val (srcStart, tgtStart) = fitSizes(b, contentHeight(startH))
-        val (srcEnd, tgtEnd) = fitSizes(b, contentHeight(target))
-        applyCardFill(b, contentHeight(startH))
+        val (srcStart, tgtStart) = fitSizes(b, fitBodyHeight(startH))
+        val (srcEnd, tgtEnd) = fitSizes(b, fitBodyHeight(target))
+        applyCardFill(b, fitBodyHeight(startH))
         b.setSizes(srcStart, tgtStart)
         if (startH == target) return
         heightAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
@@ -1073,7 +1084,7 @@ class CaptureResultOverlay(
                 val f = anim.animatedValue as Float
                 val h = (startH + (target - startH) * f).toInt()
                 setPanelHeight(h)
-                applyCardFill(b, contentHeight(h))
+                applyCardFill(b, fitBodyHeight(h))
                 b.setSizes(srcStart + (srcEnd - srcStart) * f, tgtStart + (tgtEnd - tgtStart) * f)
             }
             start()
@@ -1400,7 +1411,7 @@ class CaptureResultOverlay(
         // The capture's per-group boxes translate the OLD source — the edit
         // orphans them, so drop the on-screen presentation for this result.
         overlayData = null
-        updatePillVisibility()
+        updateShowOnScreenAction()
         val gen = ++editGeneration
         b.bindSource(edited.segments)   // sets text + paints furigana
         b.setTargetTranslatingPlaceholder()
@@ -1477,11 +1488,14 @@ class CaptureResultOverlay(
             // (fragment_translation_result includes target before source), and
             // the reading order that fits a sheet rising from the bottom.
             inflater().inflate(R.layout.section_target, contentRow, true)
-            setHeaderTop(contentRow.getChildAt(0), HEADER_TOP_DP)
-            contentRow.addView(horizontalDivider())
+            // One extra dp over the shared pad for the stacked top section.
+            setHeaderTop(contentRow.getChildAt(0), HEADER_TOP_DP + 1)
             val sourceHeaderIndex = contentRow.childCount
             inflater().inflate(R.layout.section_source, contentRow, true)
-            setHeaderTop(contentRow.getChildAt(sourceHeaderIndex), HEADER_TOP_DP)
+            // No divider between the stacked sections, and the source header
+            // rides 1dp tighter than the shared pad — the section boundary is
+            // carried by the cards themselves.
+            setHeaderTop(contentRow.getChildAt(sourceHeaderIndex), HEADER_TOP_DP - 1)
         }
     }
 
@@ -1491,7 +1505,8 @@ class CaptureResultOverlay(
         val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         val expanded = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         inflater().inflate(layoutRes, expanded, true)
-        setHeaderTop(expanded.getChildAt(0), HEADER_TOP_DP)
+        // One extra dp over the shared pad for the side-by-side headers.
+        setHeaderTop(expanded.getChildAt(0), HEADER_TOP_DP + 1)
         // The card stays wrap here; its height is pinned explicitly each frame by
         // [applyCardFill] (deterministic — a weight/fillViewport chain doesn't
         // reliably shrink the card during a drag).
@@ -1624,14 +1639,6 @@ class CaptureResultOverlay(
         }
     }
 
-    private fun horizontalDivider(): View = View(ctx).apply {
-        setBackgroundColor(ctx.themeColor(R.attr.ptDivider))
-        layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply {
-            topMargin = dp(8)
-            bottomMargin = dp(8)
-        }
-    }
-
     private fun inflater() = android.view.LayoutInflater.from(ctx)
 
     // ── Resize (drag the handle / the band just below it to grow-shrink) ──
@@ -1703,9 +1710,6 @@ class CaptureResultOverlay(
         // The bitmap's contour line (its silhouette's straight top edge) sits at
         // shadowHeight - cornerRadius; land it exactly on the sheet's top.
         edgeShadow.translationY = sheetTop - shadowHeightPx + cornerRadiusPx
-        // The switch pill rides the same hook: centered on the sheet's TOP edge,
-        // half over the fill and half over the game above.
-        showOnScreenPill.translationY = sheetTop - showOnScreenPill.height / 2f
     }
 
     /** Bake the sheet's bottom-edge drop shadow ONCE into a software bitmap —
@@ -1881,11 +1885,6 @@ class CaptureResultOverlay(
             }
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    // The switch pill straddles the resize band — route touches on
-                    // it to the pill (a root child) instead of starting a resize.
-                    if (showOnScreenPill.visibility == View.VISIBLE && pillHit(ev)) {
-                        return super.dispatchTouchEvent(ev)
-                    }
                     val panelTop = panel.top + panel.translationY
                     // Resize zone = the grabber strip inside the sheet's top +
                     // EXTRA_GRAB_PAST_EDGE_DP above it, past the sheet's edge.
@@ -1908,17 +1907,6 @@ class CaptureResultOverlay(
                 MotionEvent.ACTION_OUTSIDE -> { animateOutAndDismiss(); return true }
             }
             return super.dispatchTouchEvent(ev)
-        }
-
-        /** Whether [ev] lands on the switch pill (with a small slop halo). The
-         *  pill is positioned by translationY off a TOP|END layout slot, so
-         *  hit-test its translated on-screen rect, not its layout bounds. */
-        private fun pillHit(ev: MotionEvent): Boolean {
-            val slop = dp(8)
-            val px = showOnScreenPill.left.toFloat()
-            val py = showOnScreenPill.top + showOnScreenPill.translationY
-            return ev.x >= px - slop && ev.x <= px + showOnScreenPill.width + slop &&
-                ev.y >= py - slop && ev.y <= py + showOnScreenPill.height + slop
         }
     }
 
@@ -2030,9 +2018,6 @@ class CaptureResultOverlay(
         const val MATCH = LinearLayout.LayoutParams.MATCH_PARENT
         const val WRAP = LinearLayout.LayoutParams.WRAP_CONTENT
         const val HANDLE_HEIGHT_DP = 20
-        /** Height of the "Show on screen" switch pill; it sits centered on the
-         *  sheet's bottom edge, half over the fill and half over the handle strip. */
-        const val SWITCH_PILL_HEIGHT_DP = 30
         /** Sheet-fill strip left visible (below the grabber strip) when the
          *  panel collapses to its sliver state. */
         const val SLIVER_SHEET_DP = 12
@@ -2060,13 +2045,13 @@ class CaptureResultOverlay(
         const val BACKDROP_BLUR_RADIUS = 5
         const val SECTION_H_PAD_DP = 12
         /** Space below the filled side-by-side cards (to the panel's bottom). */
-        const val SIDE_BY_SIDE_BOTTOM_BUFFER_DP = 6
+        const val SIDE_BY_SIDE_BOTTOM_BUFFER_DP = 5
         /** Space below the stacked content (to the panel's bottom). */
-        const val STACKED_BOTTOM_BUFFER_DP = 4
+        const val STACKED_BOTTOM_BUFFER_DP = 3
         /** Top padding applied to EVERY panel section header (the shared layout uses
          *  pt_group_gap = 20dp). One value so all four headers — source/target,
          *  side-by-side/stacked — render the same height. */
-        const val HEADER_TOP_DP = 6
+        const val HEADER_TOP_DP = 7
         /** Corner radius as a multiple of pt_radius — between the original 1x and
          *  the 2x briefly tried. */
         const val CORNER_RADIUS_MULT = 1.5f

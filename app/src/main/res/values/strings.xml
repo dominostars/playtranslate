@@ -112,10 +112,11 @@
     <!-- Status line shown while the captured text is being translated. -->
     <string name="status_translating">Translating…</string>
 
-    <!-- Label of the small pill button on the capture-result panel's bottom
-         edge. Tapping it collapses the panel to a sliver and paints the
-         translations in place over the game text instead. Keep it short:
-         the pill wraps this label at caption size. -->
+    <!-- Label of the small outlined text button in the capture-result panel's
+         Translation header. Tapping it collapses the panel to a sliver and
+         paints the translations in place over the game text instead. Keep it
+         short: the button wraps this label at caption size in a row of
+         32dp icon buttons. -->
     <string name="capture_show_on_screen">Show on screen</string>
 
     <!-- Shown when OCR returns no source-language text. %1$s = source
