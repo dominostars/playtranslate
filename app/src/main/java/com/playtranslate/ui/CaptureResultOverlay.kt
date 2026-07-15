@@ -1473,12 +1473,15 @@ class CaptureResultOverlay(
         } else {
             contentRow.orientation = LinearLayout.VERTICAL
             contentRow.setPadding(hPad, 0, hPad, dp(STACKED_BOTTOM_BUFFER_DP))
-            inflater().inflate(R.layout.section_source, contentRow, true)
+            // Translation ABOVE source: the order the in-app results page uses
+            // (fragment_translation_result includes target before source), and
+            // the reading order that fits a sheet rising from the bottom.
+            inflater().inflate(R.layout.section_target, contentRow, true)
             setHeaderTop(contentRow.getChildAt(0), HEADER_TOP_DP)
             contentRow.addView(horizontalDivider())
-            val targetHeaderIndex = contentRow.childCount
-            inflater().inflate(R.layout.section_target, contentRow, true)
-            setHeaderTop(contentRow.getChildAt(targetHeaderIndex), HEADER_TOP_DP)
+            val sourceHeaderIndex = contentRow.childCount
+            inflater().inflate(R.layout.section_source, contentRow, true)
+            setHeaderTop(contentRow.getChildAt(sourceHeaderIndex), HEADER_TOP_DP)
         }
     }
 
@@ -1990,7 +1993,14 @@ class CaptureResultOverlay(
 
     /** A centered grab-pill in the transparent strip above the sheet. */
     private inner class HandleView(c: Context) : View(c) {
+        // Sheet-colored fill under a 1dp ptTextMuted ring: the pill floats over
+        // raw game content, and the fill/ring pair opposes in both themes so
+        // one of the two contrasts against any frame (ptDivider was tried for
+        // the ring and sat too close to ptBg to read).
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = ctx.themeColor(R.attr.ptBg)
+        }
+        private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = ctx.themeColor(R.attr.ptTextMuted)
         }
         private val rect = RectF()
@@ -1998,8 +2008,11 @@ class CaptureResultOverlay(
         override fun onDraw(canvas: Canvas) {
             val w = dp(40).toFloat()
             val h = dp(5).toFloat()
+            val border = density * 1f
             val left = (width - w) / 2f
             val top = (height - h) / 2f
+            rect.set(left - border, top - border, left + w + border, top + h + border)
+            canvas.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, borderPaint)
             rect.set(left, top, left + w, top + h)
             canvas.drawRoundRect(rect, h / 2f, h / 2f, paint)
         }
