@@ -12,6 +12,7 @@ import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.LayerDrawable
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Rect
@@ -27,6 +28,7 @@ import android.view.ViewConfiguration
 import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver
 import android.view.WindowManager
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.EditorInfo
@@ -43,12 +45,15 @@ import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
+import com.playtranslate.OneShotOverlayData
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.OcrBackend
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
+import com.playtranslate.language.stackableTargetScript
+import com.playtranslate.language.targetSupportsVerticalText
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.model.TextSegments
@@ -107,6 +112,28 @@ class CaptureResultOverlay(
      *  when the user backs out of the detail screen. Null → the lens just dismisses. */
     var onNavigateToDetail: ((TranslationResult) -> Unit)? = null
 
+    /** Overlay boxes for the currently-bound result: skeletons from
+     *  [CaptureState.Translating] while an auto-collapse is showing placeholders,
+     *  then the translated boxes from [CaptureState.Done]. Null otherwise (stash
+     *  re-show, no-text, post-edit) — null keeps the switch pill hidden. */
+    private var overlayData: OneShotOverlayData? = null
+
+    /** The in-place boxes, rendered INSIDE this window (bottom-most root child).
+     *  Same window ⇒ the window stays touchable, so MediaProjection's QTI clamp
+     *  never dims the boxes, they can never draw over the sliver, and teardown
+     *  is the window's own. Created on first show, then faded/re-fed via
+     *  [TranslationOverlayView.setBoxes] (skeleton → translated). */
+    private var chipsView: TranslationOverlayView? = null
+
+    /** True from the moment the panel starts collapsing to its top-edge sliver
+     *  (on-screen boxes showing) until it starts expanding back. Root touch
+     *  handling swaps to sliver rules while set. */
+    private var sliverMode = false
+
+    /** The panel height when the sliver collapse started, so a tap-expand can
+     *  return to it (the sliver itself parks the height at [sliverHeightPx]). */
+    private var preSliverHeightPx = 0
+
     private var sessionJob: Job? = null
     /** The active service one-shot session (OCR + translate). Held so dismissal
      *  cancels the headless service work, not just our UI collector. */
@@ -127,9 +154,17 @@ class CaptureResultOverlay(
     private val panel = TopSheetPanel(ctx)
     private val body = BodyView(ctx)
     private val statusText = TextView(ctx)
-    private val scroll = NestedScrollView(ctx)
+    // Bottom-only fading edge: the stock two-sided fade also darkens the strip
+    // under the section headers once scrolled, which reads as a misplaced inner
+    // shadow against the sheet's baked edge shadow.
+    private val scroll = object : NestedScrollView(ctx) {
+        override fun getTopFadingEdgeStrength(): Float = 0f
+    }
     private val contentRow = LinearLayout(ctx)
     private val handle = HandleView(ctx)
+    // The panel ↔ on-screen-boxes switch. A ROOT child (not a panel child) so
+    // its sheet-edge-straddling position stays tappable; see the addView note.
+    private val showOnScreenPill = TextView(ctx)
     // A soft drop shadow under the sheet's bottom edge. The blur is BAKED ONCE
     // into [shadowBitmap]; the view only blits it and is repositioned via
     // translationY as the sheet grows/slides — never re-blurred (see [bakeBottomShadow]).
@@ -202,10 +237,20 @@ class CaptureResultOverlay(
         scroll.apply {
             isFillViewport = true
             visibility = View.GONE
+            // The pill clearance lives INSIDE contentRow (updatePillClearance), so
+            // this view stays unpadded — that pins the fade band exactly to the
+            // sheet's bottom edge with nothing able to draw past it. (A scroll-level
+            // padding + clipToPadding=false variant let content render below the
+            // fade line: the hovering-gradient artifact of 2026-07-14.)
+            isVerticalFadingEdgeEnabled = true
+            setFadingEdgeLength(dp(24))
             addView(
                 contentRow,
                 FrameLayout.LayoutParams(MATCH, WRAP),
             )
+        }
+        contentRow.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updatePillClearance()
         }
         editText.apply {
             setTextColor(ctx.themeColor(R.attr.ptText))
@@ -275,6 +320,43 @@ class CaptureResultOverlay(
             )
             addView(editContainer, FrameLayout.LayoutParams(MATCH, MATCH))
         }
+        showOnScreenPill.apply {
+            text = ctx.getString(R.string.capture_show_on_screen)
+            textSize = 12f
+            setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+            gravity = Gravity.CENTER
+            // Floating chrome (a mini-FAB), not sheet frame: OPAQUE fill,
+            // because overflowing content is allowed to scroll UNDER it (see
+            // updatePillClearance) and a translucent pill over moving text reads
+            // as noise. The "shadow" is two baked halo rings peeking below the
+            // body — deliberately NOT elevation: a render-thread cast shadow
+            // lands wherever the light model says, right where the sheet's own
+            // baked edge shadow lives (same no-live-shadows rule as
+            // bakeBottomShadow).
+            val pillRadius = dp(SWITCH_PILL_HEIGHT_DP) / 2f
+            fun halo(alpha: Int, radius: Float) = GradientDrawable().apply {
+                setColor(Color.argb(alpha, 0, 0, 0))
+                cornerRadius = radius
+            }
+            background = LayerDrawable(
+                arrayOf(
+                    halo(0x22, pillRadius),
+                    halo(0x22, pillRadius - dp(1)),
+                    GradientDrawable().apply {
+                        setColor(ctx.themeColor(R.attr.ptBg))
+                        cornerRadius = pillRadius
+                        setStroke(dp(1), ctx.themeColor(R.attr.ptDivider))
+                    },
+                ),
+            ).apply {
+                setLayerInset(0, 0, dp(2), 0, 0)
+                setLayerInset(1, dp(1), dp(3), dp(1), dp(1))
+                setLayerInset(2, 0, 0, 0, dp(3))
+            }
+            setPadding(dp(12), 0, dp(12), dp(3))
+            visibility = View.GONE
+            setOnClickListener { collapseToSliver() }
+        }
         panel.apply {
             orientation = LinearLayout.VERTICAL
             addView(body, LinearLayout.LayoutParams(MATCH, 0, 1f))
@@ -284,6 +366,17 @@ class CaptureResultOverlay(
         // soft fade below its bottom edge.
         root.addView(bottomShadow, FrameLayout.LayoutParams(MATCH, shadowHeightPx, Gravity.TOP))
         root.addView(panel, FrameLayout.LayoutParams(MATCH, 0, Gravity.TOP))
+        // The pill rides the ROOT, not the panel: it straddles the sheet's bottom
+        // edge, and the half outside the panel's bounds would be visible but
+        // untouchable as a panel child (parents hit-test children by their own
+        // bounds). [syncShadow] glues it to the live sheet edge every frame, the
+        // same way the shadow tracks.
+        root.addView(
+            showOnScreenPill,
+            FrameLayout.LayoutParams(WRAP, dp(SWITCH_PILL_HEIGHT_DP), Gravity.TOP or Gravity.END).apply {
+                marginEnd = dp(16)
+            },
+        )
     }
 
     // ── Public API ───────────────────────────────────────────────────────
@@ -395,19 +488,45 @@ class CaptureResultOverlay(
                     is CaptureState.InProgress -> setStatus(state.message)
                     // OCR done: show the source now with a "Translating…" placeholder
                     // (blank translatedText renders it); Done fills it in + re-fits.
-                    is CaptureState.Translating -> bindResult(
-                        TranslationResult(
-                            originalText = state.originalText,
-                            segments = state.segments,
-                            translatedText = "",
-                            timestamp = "",
-                            ocrProvenance = state.ocrProvenance,
-                            langContext = prefs.langContext(),
-                        ),
-                    )
-                    is CaptureState.Done -> bindResult(state.result)
+                    is CaptureState.Translating -> {
+                        bindResult(
+                            TranslationResult(
+                                originalText = state.originalText,
+                                segments = state.segments,
+                                translatedText = "",
+                                timestamp = "",
+                                ocrProvenance = state.ocrProvenance,
+                                langContext = prefs.langContext(),
+                            ),
+                        )
+                        // Chips-preferred: collapse the moment OCR lands and show the
+                        // skeleton boxes over the game while the translation runs —
+                        // the panel must not grow again until the user asks for it.
+                        // (The first bind's synchronous fit no-ops pre-layout and the
+                        // posted ones are sliver-guarded, so nothing re-expands.)
+                        if (prefs.captureResultOnScreenPreferred && state.overlayData != null) {
+                            overlayData = state.overlayData
+                            collapseToSliver()
+                        }
+                    }
+                    is CaptureState.Done -> {
+                        overlayData = state.overlayData
+                        if (sliverMode) {
+                            // Promote the skeletons in place; if the translation
+                            // produced nothing paintable, fall back to the panel
+                            // rather than leave placeholders pulsing forever.
+                            val data = state.overlayData
+                            if (data != null) updateChips(data) else expandFromSliver()
+                        }
+                        bindResult(state.result)
+                    }
                     is CaptureState.NoText -> setStatus(state.message, state.ocrProvenance, state.screenshotPath)
-                    is CaptureState.Failed -> setStatus(state.message)
+                    is CaptureState.Failed -> {
+                        // A translation failure after a skeleton collapse must bring
+                        // the panel back — the status is unreadable in a sliver.
+                        if (sliverMode) expandFromSliver()
+                        setStatus(state.message)
+                    }
                     CaptureState.Cancelled -> dismiss()
                 }
             }
@@ -425,6 +544,16 @@ class CaptureResultOverlay(
     fun dismiss() {
         if (dismissed) return
         dismissed = true
+        // "It opens how you left it": remember which presentation this result was
+        // dismissed from — but only while a result is actually being PRESENTED.
+        // lastResult alone is not enough: a Translating placeholder sets it, and a
+        // translation failure then swaps to a status via setStatus() without
+        // clearing it — recording there would let a failed capture silently flip
+        // the preference. Every status path hides the scroll; both real
+        // presentations (expanded panel, sliver) keep it visible.
+        if (lastResult != null && scroll.visibility == View.VISIBLE) {
+            prefs.captureResultOnScreenPreferred = sliverMode
+        }
         heightAnimator?.cancel()
         dismissWordLens()
         sessionJob?.cancel()
@@ -460,6 +589,207 @@ class CaptureResultOverlay(
             .start()
     }
 
+    // ── Sliver state (result shown as on-screen boxes) ───────────────────
+
+    /** Paint [data]'s boxes over the game (bottom-most child of this window).
+     *  False when the overlay surface isn't ours to draw on (live mode). */
+    private fun showChips(data: OneShotOverlayData): Boolean {
+        if (CaptureService.instance?.isLive == true) return false
+        val v = chipsView ?: TranslationOverlayView(
+            android.view.ContextThemeWrapper(ctx, android.R.style.Theme_DeviceDefault),
+            oneShot = true,
+            verticalTextTarget = targetSupportsVerticalText(prefs.targetLang),
+            verticalTextStackable = stackableTargetScript(prefs.targetLang),
+            verticalGrowEnabled = prefs.verticalTextGrow,
+        ).also {
+            chipsView = it
+            root.addView(it, 0, FrameLayout.LayoutParams(MATCH, MATCH))
+        }
+        v.animate().cancel()
+        v.alpha = 1f
+        v.setBoxes(data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH)
+        return true
+    }
+
+    /** Swap the boxes in place — the skeleton → translated promotion when Done
+     *  lands while slivered. No-op unless the boxes are up. */
+    private fun updateChips(data: OneShotOverlayData) {
+        val v = chipsView ?: return
+        if (v.alpha == 0f) return
+        v.setBoxes(data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH)
+    }
+
+    /** Fade the boxes out. The view stays attached (alpha 0) for cheap re-shows;
+     *  it dies with the window. */
+    private fun hideChips() {
+        val v = chipsView ?: return
+        v.animate().alpha(0f).setDuration(SLIVER_FADE_MS).start()
+    }
+
+    /** Collapse the sheet to a top-edge sliver and paint the result's boxes in
+     *  place over the game. Height-based (the sheet's bottom edge retracts, like
+     *  the grow-to-fit in reverse) so the sliver drag below is the plain resize
+     *  gesture with a lower floor. The user comes back via a tap (auto-expand)
+     *  or a drag on the sliver zone, or dismisses everything by tapping
+     *  anywhere else. */
+    private fun collapseToSliver() {
+        if (dismissed || animatingOut || sliverMode) return
+        if (editContainer.visibility == View.VISIBLE) return
+        val data = overlayData ?: return
+        if (!showChips(data)) return
+        sliverMode = true
+        showOnScreenPill.visibility = View.GONE
+        dismissWordLens()
+        preSliverHeightPx = panelHeightPx
+        // The sections are about to be a 12dp strip — fade them out rather than
+        // showing a clipped line of text in the sliver.
+        scroll.animate().alpha(0f).setDuration(SLIVER_FADE_MS).start()
+        animateSliverHeight(sliverHeightPx())
+    }
+
+    /** A tap on the sliver: grow the sheet back to its pre-collapse height and
+     *  fade the sections back in; the on-screen boxes fade out as it returns. */
+    private fun expandFromSliver() {
+        if (dismissed || animatingOut || !sliverMode) return
+        sliverMode = false
+        hideChips()
+        scroll.animate().alpha(1f).setDuration(SLIVER_FADE_MS).start()
+        val target = preSliverHeightPx.coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
+        animateSliverHeight(target) {
+            updatePillVisibility()
+            // Re-run the fit the sliver suppressed (an auto-collapse lands before
+            // the Done grow-to-fit ever ran, so the height may still be the
+            // loading floor). Skipped when a status replaced the content (the
+            // Failed-while-slivered recovery) — there's no text to fit.
+            if (lastResult != null && scroll.visibility == View.VISIBLE) autoSizeAndFit()
+        }
+    }
+
+    /** The sliver drag has passed touch slop: the user is pulling the sheet edge
+     *  to a height of their choosing, so the drag owns the height from here.
+     *  The boxes leave as soon as the panel starts coming back — a slow drag
+     *  shouldn't read as both presentations at once. */
+    private fun beginSliverDrag() {
+        heightAnimator?.cancel()
+        hideChips()
+        scroll.animate().alpha(1f).setDuration(SLIVER_FADE_MS).start()
+    }
+
+    /** Per-frame sliver drag: the resize math with the floor lowered to the
+     *  sliver itself (the standard floor is the commit threshold, not a clamp,
+     *  so the sheet must be able to sit below it mid-drag). */
+    private fun updateSliverDrag(dy: Float) {
+        val h = CaptureResultGeometry.clampPanelHeight(
+            sliverHeightPx() + dy.toInt(), screenH, minFraction = 0f,
+        )
+            .coerceAtMost(maxNeededHeightPx)
+            .coerceAtLeast(sliverHeightPx())
+        setPanelHeight(h)
+        if (h >= CaptureResultGeometry.minPanelHeight(screenH)) reFitText()
+    }
+
+    /** Release of a sliver drag. Past the threshold (the normal resize floor)
+     *  the panel is committed exactly where the drag left it; under it, the
+     *  sheet settles back into the sliver and the boxes return. */
+    private fun endSliverDrag() {
+        if (dismissed) return
+        if (panelHeightPx >= CaptureResultGeometry.minPanelHeight(screenH)) {
+            sliverMode = false
+            // Adopt the dragged height like endResize does, so re-fits keep it.
+            autoMaxPx = panelHeightPx
+            reFitText()
+            updatePillVisibility()
+        } else {
+            val data = overlayData
+            if (data != null && showChips(data)) {
+                scroll.animate().alpha(0f).setDuration(SLIVER_FADE_MS).start()
+                animateSliverHeight(sliverHeightPx())
+            } else {
+                // The overlay surface got claimed mid-drag (live mode) — expand
+                // rather than strand a sliver with nothing behind it.
+                expandFromSliver()
+            }
+        }
+    }
+
+    /** Dismiss everything from the sliver: the boxes start fading immediately
+     *  (not after the slide), the sliver slides off, and [dismiss] records the
+     *  on-screen exit preference because [sliverMode] is still set. */
+    private fun dismissFromSliver() {
+        hideChips()
+        animateOutAndDismiss()
+    }
+
+    /** Plain height slide for the sliver transitions. Unlike [animatePanelHeight]
+     *  it leaves the text sizes alone: the sections are faded (or fading) for
+     *  every frame where an intermediate fit would matter, fitting to sliver
+     *  heights computes degenerate sizes, and the expand path re-runs the real
+     *  fit when it lands. */
+    private fun animateSliverHeight(target: Int, onEnd: (() -> Unit)? = null) {
+        heightAnimator?.cancel()
+        heightAnimator = ValueAnimator.ofInt(panelHeightPx, target).apply {
+            duration = SLIVER_DURATION_MS
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener { anim ->
+                if (dismissed) {
+                    anim.cancel()
+                    return@addUpdateListener
+                }
+                setPanelHeight(anim.animatedValue as Int)
+            }
+            if (onEnd != null) {
+                addListener(object : android.animation.AnimatorListenerAdapter() {
+                    private var cancelled = false
+                    override fun onAnimationCancel(animation: android.animation.Animator) {
+                        cancelled = true
+                    }
+                    override fun onAnimationEnd(animation: android.animation.Animator) {
+                        if (!cancelled && !dismissed) onEnd()
+                    }
+                })
+            }
+            start()
+        }
+    }
+
+    /** Visible height of the collapsed sheet: a strip of the sheet's bottom plus
+     *  the handle row, pushed down by the status-bar inset so the sliver isn't
+     *  buried under system UI when a status bar is present. */
+    private fun sliverHeightPx(): Int =
+        topInsetPx + dp(SLIVER_SHEET_DP + HANDLE_HEIGHT_DP)
+
+    /** The switch pill shows only when there is something to switch TO (overlay
+     *  boxes for the bound result) and the panel is expanded. */
+    private fun updatePillVisibility() {
+        showOnScreenPill.visibility =
+            if (!sliverMode && overlayData != null) View.VISIBLE
+            else View.GONE
+        updatePillClearance()
+    }
+
+    /** Bottom clearance so overflowing content never RESTS under the floating
+     *  pill (it may still pass under it mid-scroll — that's the FAB idiom the
+     *  opaque pill exists for). The clearance extends contentRow's own bottom
+     *  buffer — INSIDE the content, never as scroll padding, so the fading edge
+     *  stays pinned to the sheet's bottom edge with nothing drawing past it.
+     *  Applied only when the content actually overflows: padding a fitted
+     *  layout would make everything scrollable and quietly break the body
+     *  swipe-to-dismiss, which is gated on scrollability. The overflow test
+     *  subtracts the current bottom padding first, so it's stable no matter
+     *  which state it's re-entered from. */
+    private fun updatePillClearance() {
+        if (dismissed) return
+        val base = dp(if (isSideBySide) SIDE_BY_SIDE_BOTTOM_BUFFER_DP else STACKED_BOTTOM_BUFFER_DP)
+        val contentH = contentRow.height - contentRow.paddingBottom
+        val overflows = contentH + base > scroll.height
+        val target = base + if (overflows && overlayData != null) dp(PILL_CLEARANCE_DP) else 0
+        if (contentRow.paddingBottom != target) {
+            contentRow.setPadding(
+                contentRow.paddingLeft, contentRow.paddingTop, contentRow.paddingRight, target,
+            )
+        }
+    }
+
     // ── State rendering ──────────────────────────────────────────────────
 
     private fun setStatus(message: String, ocrProvenance: OcrProvenance? = null, screenshotPath: String? = null) {
@@ -477,6 +807,10 @@ class CaptureResultOverlay(
         )
         statusText.visibility = View.VISIBLE
         scroll.visibility = View.GONE
+        // A status means no shown result — whatever boxes the session produced
+        // earlier (e.g. skeletons before a translation failure) are off the table.
+        overlayData = null
+        showOnScreenPill.visibility = View.GONE
     }
 
     private fun bindResult(result: TranslationResult) {
@@ -485,6 +819,7 @@ class CaptureResultOverlay(
         populateSentenceCache(result)
         statusText.visibility = View.GONE
         scroll.visibility = View.VISIBLE
+        updatePillVisibility()
         b.bindResult(result)   // also paints furigana (bindResult → bindSource)
         // Tap-a-word → definition: tokenize the source so taps resolve to spans.
         // Readings refine on tap via the resolver, so an empty lookupToReading
@@ -542,6 +877,9 @@ class CaptureResultOverlay(
      *  and animate the panel to fit it (capped at 50% of screen, floored at min),
      *  smoothly scaling the text alongside. */
     private fun autoSizeAndFit() {
+        // Slivered: the sections are faded out and the height is parked; the
+        // expand path re-runs this when the panel comes back.
+        if (sliverMode) return
         val b = binder ?: return
         if (body.height <= 0 || contentRow.width <= 0) return
         measureCardInset(b)
@@ -1014,6 +1352,10 @@ class CaptureResultOverlay(
             ocrProvenance = null,
         )
         lastResult = edited
+        // The capture's per-group boxes translate the OLD source — the edit
+        // orphans them, so drop the on-screen presentation for this result.
+        overlayData = null
+        updatePillVisibility()
         val gen = ++editGeneration
         b.bindSource(edited.segments)   // sets text + paints furigana
         b.setTargetTranslatingPlaceholder()
@@ -1307,8 +1649,11 @@ class CaptureResultOverlay(
         // Land the bitmap's contour line (y=cornerRadius, the sheet's straight
         // bottom edge) exactly on the sheet's bottom; the corner arcs above it sit
         // behind the rounded sheet, the cast blur below shows.
-        bottomShadow.translationY =
-            panel.translationY + panelHeightPx - dp(HANDLE_HEIGHT_DP) - cornerRadiusPx
+        val sheetBottom = panel.translationY + panelHeightPx - dp(HANDLE_HEIGHT_DP)
+        bottomShadow.translationY = sheetBottom - cornerRadiusPx
+        // The switch pill rides the same hook: centered on the sheet's bottom
+        // edge, half over the fill and half over the handle strip.
+        showOnScreenPill.translationY = sheetBottom - showOnScreenPill.height / 2f
     }
 
     /** Bake the sheet's bottom-edge drop shadow ONCE into a software bitmap —
@@ -1428,9 +1773,58 @@ class CaptureResultOverlay(
      *  band drags the panel height; a DOWN below that band is on the game and
      *  dismisses. (Rotation dismisses too, via the controller's display listener.) */
     private inner class CaptureResultRoot(c: Context) : FrameLayout(c) {
+        // Sliver gesture state: a DOWN on the sliver zone becomes either a tap
+        // (auto-expand to the pre-collapse height) or a drag (the user pulls the
+        // sheet edge themselves; see endSliverDrag for the commit threshold).
+        private var sliverTouch = false
+        private var sliverDragging = false
+        private var sliverDownRawY = 0f
+
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+            if (sliverMode) {
+                when (ev.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        val panelBottom = panel.bottom + panel.translationY
+                        // A touch on the sliver (plus the same below-edge band the
+                        // resize grab uses) starts a tap-or-drag; anywhere else
+                        // dismisses boxes and sliver together.
+                        if (ev.y <= panelBottom + dp(EXTRA_DRAG_BELOW_DP)) {
+                            sliverTouch = true
+                            sliverDragging = false
+                            sliverDownRawY = ev.rawY
+                        } else {
+                            dismissFromSliver()
+                        }
+                    }
+                    MotionEvent.ACTION_MOVE -> if (sliverTouch) {
+                        val dy = ev.rawY - sliverDownRawY
+                        if (!sliverDragging && dy > touchSlop) {
+                            sliverDragging = true
+                            beginSliverDrag()
+                        }
+                        if (sliverDragging) updateSliverDrag(dy)
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (sliverTouch) {
+                        sliverTouch = false
+                        when {
+                            sliverDragging -> endSliverDrag()
+                            ev.actionMasked == MotionEvent.ACTION_UP -> expandFromSliver()
+                        }
+                        sliverDragging = false
+                    }
+                    MotionEvent.ACTION_OUTSIDE -> dismissFromSliver()
+                }
+                // The sliver has no inner interactions — consume everything so
+                // no child ever sees a gesture that started under sliver rules.
+                return true
+            }
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    // The switch pill straddles the resize band — route touches on
+                    // it to the pill (a root child) instead of starting a resize.
+                    if (showOnScreenPill.visibility == View.VISIBLE && pillHit(ev)) {
+                        return super.dispatchTouchEvent(ev)
+                    }
                     val panelBottom = panel.bottom + panel.translationY
                     // Resize zone = the handle strip + EXTRA_DRAG_BELOW_DP below the
                     // panel, so the grab target extends past the sheet's edge.
@@ -1451,6 +1845,17 @@ class CaptureResultOverlay(
                 MotionEvent.ACTION_OUTSIDE -> { animateOutAndDismiss(); return true }
             }
             return super.dispatchTouchEvent(ev)
+        }
+
+        /** Whether [ev] lands on the switch pill (with a small slop halo). The
+         *  pill is positioned by translationY off a TOP|END layout slot, so
+         *  hit-test its translated on-screen rect, not its layout bounds. */
+        private fun pillHit(ev: MotionEvent): Boolean {
+            val slop = dp(8)
+            val px = showOnScreenPill.left.toFloat()
+            val py = showOnScreenPill.top + showOnScreenPill.translationY
+            return ev.x >= px - slop && ev.x <= px + showOnScreenPill.width + slop &&
+                ev.y >= py - slop && ev.y <= py + showOnScreenPill.height + slop
         }
     }
 
@@ -1549,6 +1954,20 @@ class CaptureResultOverlay(
         const val MATCH = LinearLayout.LayoutParams.MATCH_PARENT
         const val WRAP = LinearLayout.LayoutParams.WRAP_CONTENT
         const val HANDLE_HEIGHT_DP = 20
+        /** Height of the "Show on screen" switch pill; it sits centered on the
+         *  sheet's bottom edge, half over the fill and half over the handle strip. */
+        const val SWITCH_PILL_HEIGHT_DP = 30
+        /** Sheet-fill strip left visible (above the handle row) when the panel
+         *  collapses to its sliver state. */
+        const val SLIVER_SHEET_DP = 12
+        /** Duration of the collapse-to-sliver / expand-from-sliver slide. */
+        const val SLIVER_DURATION_MS = 220L
+        /** Duration of the section fade that rides the sliver transitions. */
+        const val SLIVER_FADE_MS = 150L
+        /** Scroll-bottom clearance under overflowing content, so its rest
+         *  position sits above the floating pill (which overlaps the sheet's
+         *  bottom ~15dp). */
+        const val PILL_CLEARANCE_DP = 10
         /** How far below the panel's bottom edge the resize grab zone extends. */
         const val EXTRA_DRAG_BELOW_DP = 26
         /** Blurry drop shadow under the sheet's rounded bottom edge (baked once).

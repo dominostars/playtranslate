@@ -3,6 +3,7 @@ package com.playtranslate
 import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
@@ -77,6 +78,23 @@ class CaptureSession internal constructor(
     fun cancel() { job.cancel() }
 }
 
+/**
+ * Everything needed to paint a one-shot result as in-place overlay boxes over
+ * the game (the capture panel's collapsed "show on screen" state): color-sampled
+ * [boxes] plus the crop/screen geometry [com.playtranslate.ui.TranslationOverlayView]
+ * maps them with. Built at pipeline time — the raw frame the colors come from is
+ * recycled before any state lands. On [CaptureState.Translating] the boxes are
+ * SKELETONS (empty [TextBox.translatedText] → the overlay view renders pulsing
+ * placeholder lines); on [CaptureState.Done] they carry the translations.
+ */
+data class OneShotOverlayData(
+    val boxes: List<TextBox>,
+    val cropLeft: Int,
+    val cropTop: Int,
+    val screenshotW: Int,
+    val screenshotH: Int,
+)
+
 sealed class CaptureState {
     /** Pipeline is in flight. [message] is the user-facing status
      *  text for this stage (Capturing / OCR). */
@@ -92,10 +110,21 @@ sealed class CaptureState {
          *  "Scanned by …" attribution can show as soon as OCR finishes — before the
          *  translation lands. Null for non-OCR placeholders (drag/sentence/edit). */
         val ocrProvenance: OcrProvenance? = null,
+        /** SKELETON overlay boxes (empty text, colors + bounds sampled) for the
+         *  capture panel's on-screen presentation, so an auto-collapse can show
+         *  pulsing placeholders over the game while the translation runs. Null
+         *  when there's nothing paintable. */
+        val overlayData: OneShotOverlayData? = null,
     ) : CaptureState()
 
-    /** Pipeline finished with a translation. */
-    data class Done(val result: TranslationResult) : CaptureState()
+    /** Pipeline finished with a translation. [overlayData] carries the
+     *  on-screen overlay boxes for the capture panel's "show on screen"
+     *  presentation — null when the pipeline couldn't build them (no
+     *  groups, count mismatch, every translation blank). */
+    data class Done(
+        val result: TranslationResult,
+        val overlayData: OneShotOverlayData? = null,
+    ) : CaptureState()
 
     /** Pipeline finished without producing usable text (OCR found
      *  nothing recognisable). Not an error — [message] is shown as

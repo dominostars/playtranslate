@@ -829,6 +829,7 @@ class CaptureService : Service() {
             return
         }
         var bitmap: Bitmap = raw
+        var colorRef: Bitmap? = null
         try {
             state.value = CaptureState.InProgress(getString(R.string.status_capturing))
             val screenshotPath = captureSaveToCache(raw, displayId)
@@ -845,6 +846,10 @@ class CaptureService : Service() {
             val left   = (raw.width  * region.left).toInt()
             val bottom = (raw.height * region.bottom).toInt()
             val right  = (raw.width  * region.right).toInt()
+            val rawW = raw.width
+            val rawH = raw.height
+            // Snapshot the color-sampling reference now — cropBitmap recycles raw.
+            colorRef = oneShotColorRef(raw)
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
             // The floating icon is always rendered in compact mode (a small
@@ -867,28 +872,36 @@ class CaptureService : Service() {
             }
 
             // Reveal the page on OCR: show the source now, translate in the section.
+            // The skeleton boxes ride along so a chips-preferred panel can collapse
+            // NOW and show pulsing placeholders over the game while we translate.
+            val skeletonData = buildOneShotOverlayData(ocrResult, colorRef, left, top, rawW, rawH)
             state.value = CaptureState.Translating(
-                ocrResult.fullText, ocrResult.segments, ocrProvenanceFor(ocrResult, displayId, region, srcId, frameIncludesSystemUi),
+                ocrResult.fullText, ocrResult.segments,
+                ocrProvenanceFor(ocrResult, displayId, region, srcId, frameIncludesSystemUi),
+                overlayData = skeletonData,
             )
             // Pin translation to the SAME source language OCR used (srcId), not current
             // Prefs — for a re-OCR after a source-language change they'd otherwise disagree,
             // sending the recognized text through the wrong source/target cache key and
             // translator. No-op for a fresh capture, where srcId == Prefs.sourceLangId.
-            val groupTranslation = translateGroups(ocrResult.groups.map { it.text }, srcId)
+            // Per-group (same batch [translateGroups] wraps) so the on-screen overlay
+            // boxes get their per-group texts; the panel text is the same join.
+            val perGroup = translateGroupsSeparately(ocrResult.groups.map { it.text }, srcId)
 
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
             state.value = CaptureState.Done(
                 TranslationResult(
                     originalText        = ocrResult.fullText,
                     segments            = ocrResult.segments,
-                    translatedText      = groupTranslation.text,
+                    translatedText      = perGroup.joinToString("\n\n") { it.text },
                     timestamp           = timestamp,
                     screenshotPath      = screenshotPath,
-                    note                = groupTranslation.note,
-                    backendDisplayName  = groupTranslation.backendDisplayName,
+                    note                = perGroup.mapNotNull { it.note }.firstOrNull(),
+                    backendDisplayName  = perGroup.mapNotNull { it.backendDisplayName }.firstOrNull(),
                     ocrProvenance       = ocrProvenanceFor(ocrResult, displayId, region, srcId, frameIncludesSystemUi),
                     langContext         = Prefs(this@CaptureService).langContext(srcId),
-                )
+                ),
+                overlayData = fillOneShotOverlayData(skeletonData, perGroup),
             )
         } catch (e: CancellationException) {
             // Let cancellation propagate; invokeOnCompletion writes Cancelled.
@@ -897,6 +910,7 @@ class CaptureService : Service() {
             Log.e(TAG, "Process cycle failed: ${e.message}", e)
             state.value = CaptureState.Failed(e.message ?: "Unknown error")
         } finally {
+            colorRef?.recycle()
             if (!bitmap.isRecycled) bitmap.recycle()
         }
     }
@@ -2321,6 +2335,10 @@ class CaptureService : Service() {
          *  before [configureSaved] runs and as the defensive fallback in
          *  [activeRegion]. Centralized so the literal isn't duplicated. */
         val DEFAULT_REGION = RegionEntry("", 0f, 1f)
+
+        /** Downscale factor for the one-shot color-sampling reference — the same
+         *  1/4 the press-and-hold path uses ([TranslationOneShotProcessor]). */
+        const val ONE_SHOT_COLOR_SCALE = 4
     }
 
     fun resetConfiguration() {
@@ -2350,7 +2368,10 @@ class CaptureService : Service() {
         val groupTranslations: List<String>,
         val cropLeft: Int, val cropTop: Int,
         val screenshotW: Int, val screenshotH: Int,
-        val ocrResult: OcrManager.OcrResult? = null
+        val ocrResult: OcrManager.OcrResult? = null,
+        /** In-place overlay boxes for the capture panel's "show on screen"
+         *  presentation; null when nothing paintable. */
+        val overlayData: OneShotOverlayData? = null,
     )
 
     /** Outcome of [runCaptureOcrTranslate]. Callers translate to their
@@ -2371,7 +2392,12 @@ class CaptureService : Service() {
     internal suspend fun runCaptureOcrTranslate(
         displayId: Int,
         onScreenshotTaken: (() -> Unit)? = null,
-        onOcrReady: ((originalText: String, segments: List<TextSegment>, ocrProvenance: OcrProvenance?) -> Unit)? = null,
+        onOcrReady: ((
+            originalText: String,
+            segments: List<TextSegment>,
+            ocrProvenance: OcrProvenance?,
+            overlayData: OneShotOverlayData?,
+        ) -> Unit)? = null,
     ): PipelineOutcome {
         // The frame carries its own capture-time facts (CapturedFrame) —
         // nothing is re-derived from mutable state downstream.
@@ -2383,6 +2409,7 @@ class CaptureService : Service() {
         val frameIncludesUi = frame.includesSystemUi
         onScreenshotTaken?.invoke()
         var bitmap: Bitmap? = raw
+        var colorRef: Bitmap? = null
         try {
             val screenshotPath = captureSaveToCache(raw, displayId)
 
@@ -2392,6 +2419,10 @@ class CaptureService : Service() {
             val left   = (raw.width  * region.left).toInt()
             val bottom = (raw.height * region.bottom).toInt()
             val right  = (raw.width  * region.right).toInt()
+            val rawW = raw.width
+            val rawH = raw.height
+            // Snapshot the color-sampling reference now — cropBitmap recycles raw.
+            colorRef = oneShotColorRef(raw)
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
             // No pre-OCR icon blackout — the floating icon is always rendered
@@ -2408,8 +2439,14 @@ class CaptureService : Service() {
             }
 
             // OCR is in — surface the source now so the page can reveal before the
-            // (slower) translation runs.
-            onOcrReady?.invoke(ocrResult.fullText, ocrResult.segments, ocrProvenanceFor(ocrResult, displayId, region, srcId, frameIncludesUi))
+            // (slower) translation runs. The skeleton boxes ride along for the
+            // chips-preferred collapse-with-placeholders flow.
+            val skeletonData = buildOneShotOverlayData(ocrResult, colorRef, left, top, rawW, rawH)
+            onOcrReady?.invoke(
+                ocrResult.fullText, ocrResult.segments,
+                ocrProvenanceFor(ocrResult, displayId, region, srcId, frameIncludesUi),
+                skeletonData,
+            )
 
             // Recording pair captured BEFORE the translate call — a
             // mid-flight language change must not relabel these rows.
@@ -2447,8 +2484,9 @@ class CaptureService : Service() {
                     groupBounds = ocrResult.groups.map { it.bounds },
                     groupTranslations = perGroup.map { it.text },
                     cropLeft = left, cropTop = top,
-                    screenshotW = raw.width, screenshotH = raw.height,
-                    ocrResult = ocrResult
+                    screenshotW = rawW, screenshotH = rawH,
+                    ocrResult = ocrResult,
+                    overlayData = fillOneShotOverlayData(skeletonData, perGroup),
                 )
             )
         } catch (e: CancellationException) {
@@ -2461,6 +2499,7 @@ class CaptureService : Service() {
             Log.e(TAG, "Capture cycle failed: ${e.message}", e)
             return PipelineOutcome.Failed(e.message ?: "Unknown error")
         } finally {
+            colorRef?.recycle()
             bitmap?.let { if (!it.isRecycled) it.recycle() }
         }
     }
@@ -2478,12 +2517,14 @@ class CaptureService : Service() {
             displayId = displayId,
             onScreenshotTaken = { flashRegionIndicator(displayId) },
             // Reveal the source as soon as OCR finishes; translation lands on Done.
-            onOcrReady = { originalText, segments, ocrProvenance ->
-                state.value = CaptureState.Translating(originalText, segments, ocrProvenance)
+            onOcrReady = { originalText, segments, ocrProvenance, overlayData ->
+                state.value =
+                    CaptureState.Translating(originalText, segments, ocrProvenance, overlayData)
             },
         )
         state.value = when (outcome) {
-            is PipelineOutcome.Success -> CaptureState.Done(outcome.pipeline.result)
+            is PipelineOutcome.Success ->
+                CaptureState.Done(outcome.pipeline.result, outcome.pipeline.overlayData)
             is PipelineOutcome.NoText ->
                 CaptureState.NoText(noTextMessage(displayId), outcome.ocrProvenance, outcome.screenshotPath)
             is PipelineOutcome.Failed -> CaptureState.Failed(outcome.message)
@@ -2630,15 +2671,72 @@ class CaptureService : Service() {
             .map { it.copy(text = target.localize(it.text)) }
     }
 
-    private suspend fun translateGroups(
-        groupTexts: List<String>,
-        sourceOverride: SourceLangId? = null,
-    ): GroupTranslation {
-        val results = translateGroupsSeparately(groupTexts, sourceOverride)
-        val translated = results.joinToString("\n\n") { it.text }
-        val note = results.mapNotNull { it.note }.firstOrNull()
-        val backendDisplayName = results.mapNotNull { it.backendDisplayName }.firstOrNull()
-        return GroupTranslation(translated, note, backendDisplayName)
+    /** Downscaled copy of [raw] for [OverlayToolkit.sampleGroupColors], at
+     *  1/[ONE_SHOT_COLOR_SCALE]. Taken BEFORE [cropBitmap] — which recycles the
+     *  raw frame when it crops — so the one-shot cycles can still color-sample
+     *  overlay boxes after OCR + translation. Best-effort: null on ANY
+     *  allocation failure, including [OutOfMemoryError] (an Error, which the
+     *  cycles' `catch (Exception)` arms would NOT contain) — the on-screen
+     *  presentation is optional and must never fail a capture that OCR +
+     *  translation could complete. Caller recycles. */
+    private fun oneShotColorRef(raw: Bitmap): Bitmap? = try {
+        Bitmap.createScaledBitmap(
+            raw,
+            (raw.width / ONE_SHOT_COLOR_SCALE).coerceAtLeast(1),
+            (raw.height / ONE_SHOT_COLOR_SCALE).coerceAtLeast(1),
+            false,
+        )
+    } catch (e: Exception) {
+        Log.w(TAG, "one-shot color ref failed — capture continues without overlay boxes", e)
+        null
+    } catch (e: OutOfMemoryError) {
+        Log.w(TAG, "one-shot color ref OOM — capture continues without overlay boxes")
+        null
+    }
+
+    /** Build the SKELETON in-place overlay boxes for a one-shot capture — the same
+     *  color-matched placeholders the press-and-hold preview paints while its
+     *  translation runs ([TranslationOneShotProcessor]): empty text (the overlay
+     *  view renders pulsing skeleton lines for those), sampled colors, OCR bounds.
+     *  One box per OCR group, index-aligned, so [fillOneShotOverlayData] can zip
+     *  the per-group translations in later. Null when there are no groups or no
+     *  color reference (its allocation is best-effort — see [oneShotColorRef]). */
+    private fun buildOneShotOverlayData(
+        ocrResult: OcrManager.OcrResult,
+        colorRef: Bitmap?,
+        cropLeft: Int, cropTop: Int,
+        screenshotW: Int, screenshotH: Int,
+    ): OneShotOverlayData? {
+        if (colorRef == null || ocrResult.groups.isEmpty()) return null
+        val colors = OverlayToolkit.sampleGroupColors(
+            colorRef, ocrResult.groups.map { it.bounds }, cropLeft, cropTop, ONE_SHOT_COLOR_SCALE,
+        )
+        val boxes = ocrResult.groups.mapIndexed { idx, g ->
+            val (bgColor, textColor) = colors.getOrElse(idx) {
+                Pair(Color.argb(200, 0, 0, 0), Color.WHITE)
+            }
+            com.playtranslate.ui.TextBox(
+                "", g.bounds, bgColor, textColor, g.lines.size,
+                orientation = g.orientation, alignment = g.alignment,
+            )
+        }
+        return OneShotOverlayData(boxes, cropLeft, cropTop, screenshotW, screenshotH)
+    }
+
+    /** Zip the per-group translations into [skeleton]'s index-aligned boxes and
+     *  drop the ones that came back blank. Null when nothing survives (count
+     *  mismatch, every translation blank) — callers then keep/clear the panel's
+     *  presentation rather than paint empty boxes. */
+    private fun fillOneShotOverlayData(
+        skeleton: OneShotOverlayData?,
+        perGroup: List<GroupTranslation>,
+    ): OneShotOverlayData? {
+        if (skeleton == null || skeleton.boxes.size != perGroup.size) return null
+        val filled = skeleton.boxes.mapIndexed { idx, box ->
+            box.copy(translatedText = perGroup[idx].text)
+        }.filter { it.translatedText.isNotBlank() }
+        if (filled.isEmpty()) return null
+        return skeleton.copy(boxes = filled)
     }
 
     /** On-demand translation for a single text string (used by edit overlay, drag-sentence, etc.). */

@@ -759,6 +759,15 @@ class Prefs internal constructor(
         get() = sp.getBoolean("hide_game_overlays", false)
         set(v) = sp.edit { putBoolean("hide_game_overlays", v) }
 
+    /** Which presentation the over-game capture result was last dismissed from:
+     *  true = the collapsed on-screen-overlay state, so the next capture goes
+     *  straight there once results land; false = the full panel (the default).
+     *  Written on every panel dismissal that had a bound result — "it opens how
+     *  you left it". */
+    var captureResultOnScreenPreferred: Boolean
+        get() = sp.getBoolean("capture_result_on_screen_preferred", false)
+        set(v) = sp.edit { putBoolean("capture_result_on_screen_preferred", v) }
+
     /** When on (the default), touching the game screen during auto translation
      *  dismisses the current overlay and re-captures. Off makes screen touches
      *  a no-op for refresh; the detection loop and gamepad input still refresh.
