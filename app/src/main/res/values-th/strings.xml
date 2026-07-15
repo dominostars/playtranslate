@@ -12,8 +12,11 @@
         Brand names stay untranslated. “ ” are quote glyphs (no escaping).
       • translatable="false" entries are omitted and fall back to English.
       • Plurals use only "other" (Thai has no grammatical plural). Thai is
-        written without spaces between words; spaces only border Latin /
-        numbers / placeholders.
+        written without spaces between words; spaces border Latin / numbers
+        / symbols, and mark phrase or sentence boundaries. A placeholder
+        takes the spacing of whatever it FILLS WITH: one that resolves to
+        Thai (a language name, a hint label) is Thai text and takes no
+        space. ภาษา%1$s is the compound ภาษาญี่ปุ่น; ภาษา %1$s severs it.
 -->
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
 
@@ -53,7 +56,7 @@
 
     <string name="status_translating">กำลังแปล…</string>
 
-    <string name="status_no_text">ไม่พบข้อความภาษา <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> ใน “<xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g>”</string>
+    <string name="status_no_text">ไม่พบข้อความภาษา<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>ใน “<xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g>”</string>
 
     <string name="status_error">ข้อผิดพลาด: <xliff:g id="error_message" example="Network timeout">%1$s</xliff:g></string>
 
@@ -194,7 +197,7 @@
     <string name="lang_setup_offline_model_unavailable">ขณะนี้ไม่สามารถใช้การแปลออฟไลน์บนอุปกรณ์นี้ได้ การค้นหาในพจนานุกรมและการแปลออนไลน์ยังใช้งานได้</string>
 
     <string name="lang_setup_requires_64bit">ต้องใช้อุปกรณ์ 64 บิต</string>
-    <string name="lang_setup_requires_64bit_msg">การจดจำข้อความภาษา <xliff:g id="language" example="Russian">%1$s</xliff:g> ต้องใช้อุปกรณ์ 64 บิต แต่อุปกรณ์นี้ไม่ใช่</string>
+    <string name="lang_setup_requires_64bit_msg">การจดจำข้อความภาษา<xliff:g id="language" example="Russian">%1$s</xliff:g> ต้องใช้อุปกรณ์ 64 บิต แต่อุปกรณ์นี้ไม่ใช่</string>
 
     <string name="lang_delete_pack">ลบแพ็กภาษา</string>
 
@@ -242,7 +245,7 @@
 
     <string name="lang_section_update_packs_title">อัปเดตแพ็กภาษา</string>
     <string name="lang_section_offline_models_title">ดาวน์โหลดโมเดลออฟไลน์</string>
-    <string name="lang_section_offline_models_subtitle">ยังไม่ได้ดาวน์โหลดการแปลออฟไลน์สำหรับ <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> → <xliff:g id="target_language" example="English">%2$s</xliff:g> แอปยังคงทำงานแบบออนไลน์ได้</string>
+    <string name="lang_section_offline_models_subtitle">ยังไม่ได้ดาวน์โหลดการแปลออฟไลน์สำหรับภาษา<xliff:g id="source_language" example="Japanese">%1$s</xliff:g> → ภาษา <xliff:g id="target_language" example="English">%2$s</xliff:g> แอปยังคงทำงานแบบออนไลน์ได้</string>
 
     <string name="settings_no_displays_found">ไม่พบจอแสดงผล</string>
 
@@ -1459,7 +1462,7 @@
 
     <string name="tts_voice_picker_title">เสียง</string>
 
-    <string name="tts_voices_section_header">เสียงภาษา <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
+    <string name="tts_voices_section_header">เสียงภาษา<xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
 
     <string name="tts_no_engine_dialog_title">ไม่มีการอ่านออกเสียงข้อความ</string>
 

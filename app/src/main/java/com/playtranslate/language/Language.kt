@@ -64,7 +64,24 @@ enum class SourceLangId(val code: String) {
     /** Display name in [locale]. e.g. `JA.displayName(Locale.forLanguageTag("en"))` → "Japanese";
      *  `JA.displayName(Locale.forLanguageTag("ja"))` → "日本語". Defaults to system locale.
      *  First-char casing uses the display [locale] so Turkish display names
-     *  title-case correctly (e.g. "ispanyolca" → "İspanyolca"). */
+     *  title-case correctly (e.g. "ispanyolca" → "İspanyolca").
+     *
+     *  INVARIANT (load-bearing): the result is a name *in [locale]'s own script*,
+     *  from CLDR. Thai UI relies on this: because Thai does not space between
+     *  words, several `values-th` strings concatenate this value directly into a
+     *  compound (`ภาษา%1$s` = ภาษาญี่ปุ่น), which is only correct while the name
+     *  comes back in Thai (ญี่ปุ่น), not Latin (Japanese). CLDR has Thai names for
+     *  every language the enum ships (verified: 25/25, no Latin fallback), so the
+     *  invariant holds — but a language added without a CLDR Thai name would render
+     *  the seam as `ภาษาXxx`. Check that before adding one, or those strings must
+     *  re-introduce a space.
+     *
+     *  This holds ONLY when [locale] is the UI locale (the default). The target-
+     *  language migration/offline strings deliberately format with the *target's
+     *  own* locale instead (`getDisplayLanguage(targetLocale)`), yielding an
+     *  endonym — Español, Français, 日本語 — which is usually Latin, so those Thai
+     *  seams keep their space. Same method, opposite spacing, because the locale
+     *  argument differs. See docs/l10n-language-parameters.md (Thai block). */
     fun displayName(locale: java.util.Locale = java.util.Locale.getDefault()): String = when (this) {
         ZH      -> java.util.Locale.forLanguageTag("zh-Hans").getDisplayName(locale)
             .replaceFirstChar { it.uppercase(locale) }
