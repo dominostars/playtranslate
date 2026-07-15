@@ -18,9 +18,11 @@ import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.os.Build
 import android.text.InputType
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.WindowInsets
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
@@ -61,7 +63,6 @@ import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
-import com.playtranslate.statusBarHeightPx
 import com.playtranslate.themeColor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -74,15 +75,18 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 /**
- * The over-game capture result panel: a top-anchored sheet (default 40% of the
- * screen) showing the source section on the left and the target section on the
- * right (stacked when too narrow), drawn over the game without leaving it.
+ * The over-game capture result panel: a bottom-anchored sheet (default 40% of
+ * the screen) showing the source section on the left and the target section on
+ * the right (stacked when too narrow), drawn over the game without leaving it.
+ * The grabber floats in a transparent strip above the sheet's top edge; content
+ * buffers above the navigation bar the way a top sheet buffers under the status
+ * bar (the fill still reaches the screen edge behind the system bar).
  *
  * Built fresh on [OverlayHost] (the shared window primitive). Mirrors the three
  * load-bearing patterns from [MagnifierLens]: a FIXED full-screen window whose
  * visible child is resized via layout — never the window, which would flash at
  * the gravity anchor — and a transparent full-screen root that catches off-panel
- * taps to dismiss. The drag-handle resize and the swipe/fling-up dismiss are
+ * taps to dismiss. The drag-handle resize and the swipe/fling-down dismiss are
  * net-new (the lens grows programmatically and has neither).
  *
  * Sections come from the shared [TranslationSectionBinder], so they render and
@@ -125,9 +129,9 @@ class CaptureResultOverlay(
      *  [TranslationOverlayView.setBoxes] (skeleton → translated). */
     private var chipsView: TranslationOverlayView? = null
 
-    /** True from the moment the panel starts collapsing to its top-edge sliver
-     *  (on-screen boxes showing) until it starts expanding back. Root touch
-     *  handling swaps to sliver rules while set. */
+    /** True from the moment the panel starts collapsing to its bottom-edge
+     *  sliver (on-screen boxes showing) until it starts expanding back. Root
+     *  touch handling swaps to sliver rules while set. */
     private var sliverMode = false
 
     /** The panel height when the sliver collapse started, so a tap-expand can
@@ -144,6 +148,12 @@ class CaptureResultOverlay(
     private var screenW = 0
     private var screenH = 0
     private var panelHeightPx = 0
+    // Navigation-bar buffer at the body's bottom, mirroring how a top sheet
+    // handles the status bar: the sheet FILL still reaches the screen edge
+    // behind the bar; only the content (and the sliver's visible strip) sits
+    // above it. 0 while the bars are hidden (immersive game). Written by the
+    // inset listener in [show], which also handles the API 29 fallback.
+    private var bottomInsetPx = 0
     // Status-bar-height buffer reserved at the body's top so the section headers
     // clear the system status bar. Applied as body top padding (the sheet fill
     // still spans to the screen top behind it) and folded into every panel↔content
@@ -151,7 +161,7 @@ class CaptureResultOverlay(
     private var topInsetPx = 0
 
     private val root = CaptureResultRoot(ctx)
-    private val panel = TopSheetPanel(ctx)
+    private val panel = BottomSheetPanel(ctx)
     private val body = BodyView(ctx)
     private val statusText = TextView(ctx)
     // Bottom-only fading edge: the stock two-sided fade also darkens the strip
@@ -165,10 +175,10 @@ class CaptureResultOverlay(
     // The panel ↔ on-screen-boxes switch. A ROOT child (not a panel child) so
     // its sheet-edge-straddling position stays tappable; see the addView note.
     private val showOnScreenPill = TextView(ctx)
-    // A soft drop shadow under the sheet's bottom edge. The blur is BAKED ONCE
+    // A soft drop shadow cast above the sheet's top edge. The blur is BAKED ONCE
     // into [shadowBitmap]; the view only blits it and is repositioned via
-    // translationY as the sheet grows/slides — never re-blurred (see [bakeBottomShadow]).
-    private val bottomShadow = BottomShadowView(ctx)
+    // translationY as the sheet grows/slides — never re-blurred (see [bakeEdgeShadow]).
+    private val edgeShadow = EdgeShadowView(ctx)
     private var shadowBitmap: Bitmap? = null
     // The shadow tracks the sheet through a single pre-draw hook (see [syncShadow])
     // rather than per-mover wiring — so no drag/animation path can move the sheet
@@ -237,20 +247,18 @@ class CaptureResultOverlay(
         scroll.apply {
             isFillViewport = true
             visibility = View.GONE
-            // The pill clearance lives INSIDE contentRow (updatePillClearance), so
-            // this view stays unpadded — that pins the fade band exactly to the
-            // sheet's bottom edge with nothing able to draw past it. (A scroll-level
-            // padding + clipToPadding=false variant let content render below the
-            // fade line: the hovering-gradient artifact of 2026-07-14.)
+            // This view stays unpadded — the content buffer lives INSIDE
+            // contentRow (buildContent) and the nav-bar buffer on the body —
+            // which pins the fade band exactly to the viewport bottom with
+            // nothing able to draw past it. (A scroll-level padding +
+            // clipToPadding=false variant let content render below the fade
+            // line: the hovering-gradient artifact of 2026-07-14.)
             isVerticalFadingEdgeEnabled = true
             setFadingEdgeLength(dp(24))
             addView(
                 contentRow,
                 FrameLayout.LayoutParams(MATCH, WRAP),
             )
-        }
-        contentRow.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            updatePillClearance()
         }
         editText.apply {
             setTextColor(ctx.themeColor(R.attr.ptText))
@@ -294,21 +302,24 @@ class CaptureResultOverlay(
                     cornerRadius = cornerRadiusPx
                     setStroke(dp(1), ctx.themeColor(R.attr.ptDivider))
                 },
-                0, -cornerRadiusPx.toInt(), 0, 0,
+                // BOTTOM-SHEET EXPERIMENT: the rounded BOTTOM is pushed off-view
+                // so only the top corners + edge show (mirror of the shipped
+                // top-sheet, whose top was lifted).
+                0, 0, 0, -cornerRadiusPx.toInt(),
             )
-            // The InsetDrawable's negative top inset is a DRAWING trick (lift the
-            // rounded top + stroke off-screen). Applied as a background it ALSO
-            // reports that inset as a negative top PADDING, which silently inflated
-            // the scroll's content area by the corner radius — pushing the scroll's
-            // bottom (and so the last card + buffer) below the visible body at full
-            // scroll. Pin layout padding to zero so only the drawing is affected.
+            // The InsetDrawable's negative inset is a DRAWING trick (push the
+            // rounded bottom + stroke off-screen). Applied as a background it ALSO
+            // reports that inset as negative PADDING, which silently inflated
+            // the scroll's content area by the corner radius. Pin layout padding
+            // to zero so only the drawing is affected (show() sets the real
+            // grabber padding).
             setPadding(0, 0, 0, 0)
             outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: Outline) {
-                    // Push the rounded rect's top above the view so only the bottom
-                    // two corners round (the top edge is flush with the screen).
+                    // Extend the rounded rect's bottom below the view so only the
+                    // top two corners round (the bottom edge sits on the screen edge).
                     outline.setRoundRect(
-                        0, -cornerRadiusPx.toInt(), view.width, view.height, cornerRadiusPx,
+                        0, 0, view.width, view.height + cornerRadiusPx.toInt(), cornerRadiusPx,
                     )
                 }
             }
@@ -326,13 +337,12 @@ class CaptureResultOverlay(
             setTextColor(ctx.themeColor(R.attr.ptTextMuted))
             gravity = Gravity.CENTER
             // Floating chrome (a mini-FAB), not sheet frame: OPAQUE fill,
-            // because overflowing content is allowed to scroll UNDER it (see
-            // updatePillClearance) and a translucent pill over moving text reads
-            // as noise. The "shadow" is two baked halo rings peeking below the
-            // body — deliberately NOT elevation: a render-thread cast shadow
-            // lands wherever the light model says, right where the sheet's own
-            // baked edge shadow lives (same no-live-shadows rule as
-            // bakeBottomShadow).
+            // because content near the sheet's top edge may scroll UNDER it and
+            // a translucent pill over moving text reads as noise. The "shadow"
+            // is two baked halo rings peeking below the body — deliberately NOT
+            // elevation: a render-thread cast shadow lands wherever the light
+            // model says, right where the sheet's own baked edge shadow lives
+            // (same no-live-shadows rule as bakeEdgeShadow).
             val pillRadius = dp(SWITCH_PILL_HEIGHT_DP) / 2f
             fun halo(alpha: Int, radius: Float) = GradientDrawable().apply {
                 setColor(Color.argb(alpha, 0, 0, 0))
@@ -359,14 +369,16 @@ class CaptureResultOverlay(
         }
         panel.apply {
             orientation = LinearLayout.VERTICAL
-            addView(body, LinearLayout.LayoutParams(MATCH, 0, 1f))
+            // The grabber floats OUTSIDE the sheet, in a transparent strip above
+            // its top edge — the mirror of the top sheet's below-panel pill.
             addView(handle, LinearLayout.LayoutParams(MATCH, dp(HANDLE_HEIGHT_DP)))
+            addView(body, LinearLayout.LayoutParams(MATCH, 0, 1f))
         }
         // Shadow first → behind the panel, so the opaque sheet covers all but the
-        // soft fade below its bottom edge.
-        root.addView(bottomShadow, FrameLayout.LayoutParams(MATCH, shadowHeightPx, Gravity.TOP))
-        root.addView(panel, FrameLayout.LayoutParams(MATCH, 0, Gravity.TOP))
-        // The pill rides the ROOT, not the panel: it straddles the sheet's bottom
+        // soft fade cast above its top edge.
+        root.addView(edgeShadow, FrameLayout.LayoutParams(MATCH, shadowHeightPx, Gravity.TOP))
+        root.addView(panel, FrameLayout.LayoutParams(MATCH, 0, Gravity.BOTTOM))
+        // The pill rides the ROOT, not the panel: it straddles the sheet's TOP
         // edge, and the half outside the panel's bounds would be visible but
         // untouchable as a panel child (parents hit-test children by their own
         // bounds). [syncShadow] glues it to the live sheet edge every frame, the
@@ -392,21 +404,26 @@ class CaptureResultOverlay(
         // Inset the body's content below the status bar (the sheet fill, drawn on
         // the full body bounds, still reaches the screen top). Explicit side-zeros
         // keep overriding the InsetDrawable's reported negative top padding.
-        topInsetPx = ctx.statusBarHeightPx()
+        // Bottom sheet: no status-bar inset (the sheet's top edge is mid-screen).
+        // topInsetPx is the content's gap below the sheet's top edge; the height
+        // formulas (contentHeight, autoSizeAndFit, sliverHeightPx) reserve
+        // HANDLE_HEIGHT_DP (the grabber strip above the sheet) + topInsetPx, so
+        // they agree with the strip + this padding.
+        topInsetPx = dp(10)
         body.setPadding(0, topInsetPx, 0, 0)
         autoMaxPx = CaptureResultGeometry.autoMaxHeight(screenH)
         // Load at the minimum (drag-resize floor) height; grow to fit on Done.
         panelHeightPx = CaptureResultGeometry.minPanelHeight(screenH)
         (panel.layoutParams as FrameLayout.LayoutParams).height = panelHeightPx
-        shadowBitmap = bakeBottomShadow(screenW)
-        bottomShadow.invalidate()
+        shadowBitmap = bakeEdgeShadow(screenW)
+        edgeShadow.invalidate()
         backdrop?.let {
             backdropSmall = blurBackdrop(it)
             backdropDst.set(0, 0, screenW, screenH)
             body.invalidate()
         }
-        // Park above the top edge; the entrance animation (below) drops it in.
-        panel.translationY = -panelHeightPx.toFloat()
+        // Park below the bottom edge; the entrance animation (below) raises it.
+        panel.translationY = panelHeightPx.toFloat()
 
         val sideBySide = CaptureResultGeometry.shouldUseSideBySide(
             screenW, dp(1), (CaptureResultGeometry.SIDE_BY_SIDE_FALLBACK_SECTION_DP * density).toInt(),
@@ -460,6 +477,58 @@ class CaptureResultOverlay(
             y = 0
         }
         windowParams = lp
+        // Bottom sheet: buffer the CONTENT above the navigation bar while it's
+        // visible, the same way a top sheet buffers under the status bar — the
+        // sheet fill keeps reaching the screen edge behind the bar, so nothing
+        // gets cut off and nothing floats. The IME is different: it's far taller
+        // than the panel's buffers can absorb, so it LIFTS the whole sheet via a
+        // bottom margin instead (FLAG_LAYOUT_NO_LIMITS makes the window ignore
+        // ADJUST_RESIZE, so the in-place edit would otherwise type under the
+        // keyboard). Listener-driven: both collapse to 0 when hidden.
+        // Best-effort: transient reveals in sticky immersive may not dispatch a
+        // visibility change to other windows on every OEM.
+        root.setOnApplyWindowInsetsListener { _, insets ->
+            val navInset: Int
+            val imeLift: Int
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val nav = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
+                navInset = if (insets.isVisible(WindowInsets.Type.navigationBars())) nav else 0
+                val ime = insets.getInsets(WindowInsets.Type.ime()).bottom
+                imeLift = if (insets.isVisible(WindowInsets.Type.ime())) ime else 0
+            } else {
+                // API 29: the deprecated insets are the only signal.
+                // stableInsetBottom is the nav bar's reserved height
+                // (IME-independent); systemWindowInsetBottom is what's currently
+                // consumed — 0 with bars hidden, the nav height with bars up,
+                // the IME height while typing. min() isolates the visible nav
+                // bar; anything past stable is the IME.
+                @Suppress("DEPRECATION")
+                val current = insets.systemWindowInsetBottom
+                @Suppress("DEPRECATION")
+                val stable = insets.stableInsetBottom
+                navInset = minOf(current, stable)
+                imeLift = if (current > stable) current else 0
+            }
+            if (navInset != bottomInsetPx) {
+                bottomInsetPx = navInset
+                body.setPadding(
+                    body.paddingLeft, body.paddingTop, body.paddingRight, navInset,
+                )
+                // The buffer participates in every height formula — re-park
+                // the sliver / re-fit the content to the new inner height.
+                if (sliverMode) {
+                    setPanelHeight(sliverHeightPx())
+                } else if (lastResult != null) {
+                    autoSizeAndFit()
+                }
+            }
+            val panelLp = panel.layoutParams as FrameLayout.LayoutParams
+            if (panelLp.bottomMargin != imeLift) {
+                panelLp.bottomMargin = imeLift
+                panel.requestLayout()
+            }
+            insets
+        }
         overlayHost.addOverlayWindow(root, wm, lp, displayId)
         // ONE place that keeps the drop shadow glued to the sheet: a pre-draw hook
         // re-reads the panel's live position every frame, so the shadow follows
@@ -468,7 +537,7 @@ class CaptureResultOverlay(
         shadowSync = ViewTreeObserver.OnPreDrawListener { syncShadow(); true }.also {
             root.viewTreeObserver.addOnPreDrawListener(it)
         }
-        // Ease in from the top — a plain decelerate, no overshoot/bounce.
+        // Ease in from the bottom — a plain decelerate, no overshoot/bounce.
         panel.animate()
             .translationY(0f)
             .setDuration(ENTER_DURATION_MS)
@@ -574,7 +643,7 @@ class CaptureResultOverlay(
     }
 
     /** Slide the panel up off the top edge, then remove it — so tap-outside and
-     *  swipe/fling-up dismissals animate out instead of vanishing. Other paths
+     *  swipe/fling-down dismissals animate out instead of vanishing. Other paths
      *  (Cancelled, supersede, teardown) call [dismiss] directly for immediate
      *  removal. */
     private fun animateOutAndDismiss() {
@@ -582,7 +651,7 @@ class CaptureResultOverlay(
         animatingOut = true
         dismissWordLens()
         panel.animate()
-            .translationY(-(panelHeightPx.toFloat()))
+            .translationY(panelHeightPx.toFloat())
             .setDuration(EXIT_DURATION_MS)
             .setInterpolator(AccelerateInterpolator())
             .withEndAction { dismiss() }
@@ -626,7 +695,7 @@ class CaptureResultOverlay(
         v.animate().alpha(0f).setDuration(SLIVER_FADE_MS).start()
     }
 
-    /** Collapse the sheet to a top-edge sliver and paint the result's boxes in
+    /** Collapse the sheet to a bottom-edge sliver and paint the result's boxes in
      *  place over the game. Height-based (the sheet's bottom edge retracts, like
      *  the grow-to-fit in reverse) so the sliver drag below is the plain resize
      *  gesture with a lower floor. The user comes back via a tap (auto-expand)
@@ -752,11 +821,11 @@ class CaptureResultOverlay(
         }
     }
 
-    /** Visible height of the collapsed sheet: a strip of the sheet's bottom plus
-     *  the handle row, pushed down by the status-bar inset so the sliver isn't
-     *  buried under system UI when a status bar is present. */
+    /** Visible height of the collapsed sheet: the grabber strip + a strip of the
+     *  sheet's top (with its content gap), raised by the nav-bar buffer so the
+     *  sliver isn't buried under the system bar when it's present. */
     private fun sliverHeightPx(): Int =
-        topInsetPx + dp(SLIVER_SHEET_DP + HANDLE_HEIGHT_DP)
+        topInsetPx + dp(SLIVER_SHEET_DP + HANDLE_HEIGHT_DP) + bottomInsetPx
 
     /** The switch pill shows only when there is something to switch TO (overlay
      *  boxes for the bound result) and the panel is expanded. */
@@ -764,30 +833,6 @@ class CaptureResultOverlay(
         showOnScreenPill.visibility =
             if (!sliverMode && overlayData != null) View.VISIBLE
             else View.GONE
-        updatePillClearance()
-    }
-
-    /** Bottom clearance so overflowing content never RESTS under the floating
-     *  pill (it may still pass under it mid-scroll — that's the FAB idiom the
-     *  opaque pill exists for). The clearance extends contentRow's own bottom
-     *  buffer — INSIDE the content, never as scroll padding, so the fading edge
-     *  stays pinned to the sheet's bottom edge with nothing drawing past it.
-     *  Applied only when the content actually overflows: padding a fitted
-     *  layout would make everything scrollable and quietly break the body
-     *  swipe-to-dismiss, which is gated on scrollability. The overflow test
-     *  subtracts the current bottom padding first, so it's stable no matter
-     *  which state it's re-entered from. */
-    private fun updatePillClearance() {
-        if (dismissed) return
-        val base = dp(if (isSideBySide) SIDE_BY_SIDE_BOTTOM_BUFFER_DP else STACKED_BOTTOM_BUFFER_DP)
-        val contentH = contentRow.height - contentRow.paddingBottom
-        val overflows = contentH + base > scroll.height
-        val target = base + if (overflows && overlayData != null) dp(PILL_CLEARANCE_DP) else 0
-        if (contentRow.paddingBottom != target) {
-            contentRow.setPadding(
-                contentRow.paddingLeft, contentRow.paddingTop, contentRow.paddingRight, target,
-            )
-        }
     }
 
     // ── State rendering ──────────────────────────────────────────────────
@@ -897,7 +942,7 @@ class CaptureResultOverlay(
                 (if (prefs.hideOriginalSection) 0 else b.sourceTextHeightAtMax()) +
                 (if (prefs.hideTranslationSection) 0 else b.targetTextHeightAtMax())
         }
-        val neededHeight = naturalContent + dp(HANDLE_HEIGHT_DP) + topInsetPx
+        val neededHeight = naturalContent + dp(HANDLE_HEIGHT_DP) + topInsetPx + bottomInsetPx
         maxNeededHeightPx = neededHeight.coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
         val target = CaptureResultGeometry.autoPanelHeight(neededHeight, screenH, autoMaxPx)
         animatePanelHeight(target)
@@ -994,7 +1039,7 @@ class CaptureResultOverlay(
      *  from panel height to the [applyCardFill] / [fitSizes] content height, so the
      *  top inset stays in sync everywhere the panel grows or is dragged. */
     private fun contentHeight(panelPx: Int): Int =
-        (panelPx - dp(HANDLE_HEIGHT_DP) - topInsetPx).coerceAtLeast(0)
+        (panelPx - dp(HANDLE_HEIGHT_DP) - topInsetPx - bottomInsetPx).coerceAtLeast(0)
 
     /** Size the text to the current panel height (continuous). Called per drag frame. */
     private fun reFitText() {
@@ -1606,7 +1651,8 @@ class CaptureResultOverlay(
 
     private fun updateResize(e: MotionEvent) {
         resizeTracker?.addMovement(e)
-        val dy = (e.rawY - resizeStartRawY).toInt()
+        // Bottom sheet: dragging the grabber UP grows the panel.
+        val dy = (resizeStartRawY - e.rawY).toInt()
         // Clamp to [min, 90%], then cap at the content's max-needed height so the
         // drag can't grow the panel into empty space beyond the content.
         setPanelHeight(
@@ -1623,8 +1669,8 @@ class CaptureResultOverlay(
         resizeTracker?.recycle()
         resizeTracker = null
         resizing = false
-        // A fast up-fling on the handle dismisses (slides out).
-        if (vy < -FLING_DISMISS_VEL) {
+        // A fast down-fling on the grabber dismisses (slides out the bottom).
+        if (vy > FLING_DISMISS_VEL) {
             animateOutAndDismiss()
         } else {
             // Adopt the user's dragged height as the auto-size ceiling, so a later
@@ -1649,11 +1695,14 @@ class CaptureResultOverlay(
         // Land the bitmap's contour line (y=cornerRadius, the sheet's straight
         // bottom edge) exactly on the sheet's bottom; the corner arcs above it sit
         // behind the rounded sheet, the cast blur below shows.
-        val sheetBottom = panel.translationY + panelHeightPx - dp(HANDLE_HEIGHT_DP)
-        bottomShadow.translationY = sheetBottom - cornerRadiusPx
-        // The switch pill rides the same hook: centered on the sheet's bottom
-        // edge, half over the fill and half over the handle strip.
-        showOnScreenPill.translationY = sheetBottom - showOnScreenPill.height / 2f
+        // The sheet's visual top sits below the transparent grabber strip.
+        val sheetTop = panel.top + panel.translationY + dp(HANDLE_HEIGHT_DP)
+        // The bitmap's contour line (its silhouette's straight top edge) sits at
+        // shadowHeight - cornerRadius; land it exactly on the sheet's top.
+        edgeShadow.translationY = sheetTop - shadowHeightPx + cornerRadiusPx
+        // The switch pill rides the same hook: centered on the sheet's TOP edge,
+        // half over the fill and half over the game above.
+        showOnScreenPill.translationY = sheetTop - showOnScreenPill.height / 2f
     }
 
     /** Bake the sheet's bottom-edge drop shadow ONCE into a software bitmap —
@@ -1661,7 +1710,7 @@ class CaptureResultOverlay(
      *  host on the hardware layer (same trick as MagnifierLens.insetShadowBitmap).
      *  The rounded-rect "sheet" extends far up off the bitmap, so only its bottom
      *  edge + corners cast their blur DOWNWARD into the [shadowHeightPx]-tall strip. */
-    private fun bakeBottomShadow(width: Int): Bitmap {
+    private fun bakeEdgeShadow(width: Int): Bitmap {
         val w = width.coerceAtLeast(1)
         val h = shadowHeightPx.coerceAtLeast(1)
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -1672,10 +1721,11 @@ class CaptureResultOverlay(
             // bottom contour (curving at the corners) rather than a flat line.
             maskFilter = BlurMaskFilter(density * SHADOW_BLUR_DP, BlurMaskFilter.Blur.OUTER)
         }
-        // Sheet silhouette: straight bottom edge at y=cornerRadius so the corner
-        // arcs sit INSIDE the bitmap; the body extends far up off it.
+        // Sheet silhouette: straight top edge at y = h - cornerRadius so the
+        // corner arcs sit INSIDE the bitmap; the body extends far down off it.
+        // The OUTER blur then casts UPWARD into the strip above the sheet.
         c.drawRoundRect(
-            0f, -h.toFloat() * 2f, w.toFloat(), cornerRadiusPx,
+            0f, h - cornerRadiusPx, w.toFloat(), h.toFloat() * 3f,
             cornerRadiusPx, cornerRadiusPx, paint,
         )
         return bitmap
@@ -1748,7 +1798,7 @@ class CaptureResultOverlay(
 
     /** Blits the pre-baked [shadowBitmap] (never re-blurs); positioned via
      *  [syncShadow]'s translationY. */
-    private inner class BottomShadowView(c: Context) : View(c) {
+    private inner class EdgeShadowView(c: Context) : View(c) {
         // A backgroundless View has WILL_NOT_DRAW set → onDraw is skipped. Clear it
         // (same as HandleView) or the baked shadow never blits.
         init { setWillNotDraw(false) }
@@ -1762,7 +1812,14 @@ class CaptureResultOverlay(
      *  body shows the captured frame's top strip 1:1; clipToOutline rounds it. */
     private inner class BodyView(c: Context) : FrameLayout(c) {
         override fun draw(canvas: Canvas) {
-            backdropSmall?.let { canvas.drawBitmap(it, null, backdropDst, backdropPaint) }
+            backdropSmall?.let {
+                // Align the fullscreen-scaled frost with the screen region the
+                // body actually covers — it no longer sits at y = 0, and it
+                // moves per frame during entrance/exit/resize.
+                val yOff = (panel.top + panel.translationY + top).toInt()
+                backdropDst.set(0, -yOff, screenW, screenH - yOff)
+                canvas.drawBitmap(it, null, backdropDst, backdropPaint)
+            }
             super.draw(canvas)
         }
     }
@@ -1784,11 +1841,11 @@ class CaptureResultOverlay(
             if (sliverMode) {
                 when (ev.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
-                        val panelBottom = panel.bottom + panel.translationY
-                        // A touch on the sliver (plus the same below-edge band the
+                        val panelTop = panel.top + panel.translationY
+                        // A touch on the sliver (plus the same above-edge band the
                         // resize grab uses) starts a tap-or-drag; anywhere else
                         // dismisses boxes and sliver together.
-                        if (ev.y <= panelBottom + dp(EXTRA_DRAG_BELOW_DP)) {
+                        if (ev.y >= panelTop - dp(EXTRA_GRAB_PAST_EDGE_DP)) {
                             sliverTouch = true
                             sliverDragging = false
                             sliverDownRawY = ev.rawY
@@ -1797,7 +1854,8 @@ class CaptureResultOverlay(
                         }
                     }
                     MotionEvent.ACTION_MOVE -> if (sliverTouch) {
-                        val dy = ev.rawY - sliverDownRawY
+                        // Bottom sheet: dragging UP from the sliver expands.
+                        val dy = sliverDownRawY - ev.rawY
                         if (!sliverDragging && dy > touchSlop) {
                             sliverDragging = true
                             beginSliverDrag()
@@ -1825,16 +1883,18 @@ class CaptureResultOverlay(
                     if (showOnScreenPill.visibility == View.VISIBLE && pillHit(ev)) {
                         return super.dispatchTouchEvent(ev)
                     }
-                    val panelBottom = panel.bottom + panel.translationY
-                    // Resize zone = the handle strip + EXTRA_DRAG_BELOW_DP below the
-                    // panel, so the grab target extends past the sheet's edge.
-                    val resizeTop = panelBottom - dp(HANDLE_HEIGHT_DP)
-                    val resizeBottom = panelBottom + dp(EXTRA_DRAG_BELOW_DP)
+                    val panelTop = panel.top + panel.translationY
+                    // Resize zone = the grabber strip inside the sheet's top +
+                    // EXTRA_GRAB_PAST_EDGE_DP above it, past the sheet's edge.
+                    val resizeTop = panelTop - dp(EXTRA_GRAB_PAST_EDGE_DP)
+                    val resizeBottom = panelTop + dp(HANDLE_HEIGHT_DP)
                     if (ev.y >= resizeTop && ev.y <= resizeBottom) {
                         beginResize(ev.rawY)
                         return true
                     }
-                    if (ev.y > resizeBottom) {
+                    // Above the sheet, or in the nav-bar gap below it when the
+                    // sheet is lifted — both are "outside" and dismiss.
+                    if (ev.y < resizeTop || ev.y > panel.bottom + panel.translationY) {
                         animateOutAndDismiss()
                         return true
                     }
@@ -1859,12 +1919,13 @@ class CaptureResultOverlay(
         }
     }
 
-    /** The visible top sheet. When the content fits (no inner scroll), a vertical
-     *  up-drag/fling on the body dismisses (swipe-to-dismiss). When the content
-     *  is scrollable it scrolls instead, and dismissal is via the handle fling or
-     *  a tap outside — the top-sheet rule that keeps scroll vs dismiss
-     *  unambiguous. Drags starting on the handle are left to the resize listener. */
-    private inner class TopSheetPanel(c: Context) : LinearLayout(c) {
+    /** The visible bottom sheet. When the content fits (no inner scroll), a
+     *  vertical down-drag/fling on the body dismisses (swipe-to-dismiss). When
+     *  the content is scrollable it scrolls instead, and dismissal is via the
+     *  grabber fling or a tap outside — the sheet rule that keeps scroll vs
+     *  dismiss unambiguous. Drags starting on the grabber strip are left to the
+     *  resize listener. */
+    private inner class BottomSheetPanel(c: Context) : LinearLayout(c) {
         private var downX = 0f
         private var downY = 0f
         private var downRawY = 0f
@@ -1874,7 +1935,7 @@ class CaptureResultOverlay(
         private fun contentScrollable() =
             scroll.canScrollVertically(1) || scroll.canScrollVertically(-1)
 
-        private fun inHandle(y: Float) = y >= body.bottom
+        private fun inHandle(y: Float) = y <= dp(HANDLE_HEIGHT_DP)
 
         override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
             when (ev.actionMasked) {
@@ -1901,8 +1962,8 @@ class CaptureResultOverlay(
                 MotionEvent.ACTION_MOVE -> {
                     if (!dragging) return false
                     dragTracker?.addMovement(ev)
-                    // Up only — this is a dismiss gesture, not a reposition.
-                    translationY = minOf(0f, ev.rawY - downRawY)
+                    // Down only — this is a dismiss gesture, not a reposition.
+                    translationY = maxOf(0f, ev.rawY - downRawY)
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (!dragging) return false
@@ -1911,8 +1972,10 @@ class CaptureResultOverlay(
                     } ?: 0f
                     dragTracker?.recycle(); dragTracker = null
                     dragging = false
+                    // The predicate is written for the top sheet (negative = away);
+                    // mirror both inputs rather than fork the geometry helper.
                     if (CaptureResultGeometry.shouldDismissFromDrag(
-                            translationY, vy, DISMISS_DISTANCE_DP * density, FLING_DISMISS_VEL,
+                            -translationY, -vy, DISMISS_DISTANCE_DP * density, FLING_DISMISS_VEL,
                         )
                     ) {
                         animateOutAndDismiss()
@@ -1925,7 +1988,7 @@ class CaptureResultOverlay(
         }
     }
 
-    /** A centered grab-pill at the bottom of the panel. */
+    /** A centered grab-pill in the transparent strip above the sheet. */
     private inner class HandleView(c: Context) : View(c) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = ctx.themeColor(R.attr.ptTextMuted)
@@ -1957,20 +2020,16 @@ class CaptureResultOverlay(
         /** Height of the "Show on screen" switch pill; it sits centered on the
          *  sheet's bottom edge, half over the fill and half over the handle strip. */
         const val SWITCH_PILL_HEIGHT_DP = 30
-        /** Sheet-fill strip left visible (above the handle row) when the panel
-         *  collapses to its sliver state. */
+        /** Sheet-fill strip left visible (below the grabber strip) when the
+         *  panel collapses to its sliver state. */
         const val SLIVER_SHEET_DP = 12
         /** Duration of the collapse-to-sliver / expand-from-sliver slide. */
         const val SLIVER_DURATION_MS = 220L
         /** Duration of the section fade that rides the sliver transitions. */
         const val SLIVER_FADE_MS = 150L
-        /** Scroll-bottom clearance under overflowing content, so its rest
-         *  position sits above the floating pill (which overlaps the sheet's
-         *  bottom ~15dp). */
-        const val PILL_CLEARANCE_DP = 10
-        /** How far below the panel's bottom edge the resize grab zone extends. */
-        const val EXTRA_DRAG_BELOW_DP = 26
-        /** Blurry drop shadow under the sheet's rounded bottom edge (baked once).
+        /** How far past the sheet's edge the resize grab zone extends. */
+        const val EXTRA_GRAB_PAST_EDGE_DP = 26
+        /** Blurry drop shadow above the sheet's rounded top edge (baked once).
          *  The OUTER blur lands the cast edge at ~half this alpha (visible peak
          *  ~100/255). Tune these two for darker/softer. */
         const val SHADOW_BLUR_DP = 11f
@@ -1988,9 +2047,9 @@ class CaptureResultOverlay(
         const val BACKDROP_BLUR_RADIUS = 5
         const val SECTION_H_PAD_DP = 12
         /** Space below the filled side-by-side cards (to the panel's bottom). */
-        const val SIDE_BY_SIDE_BOTTOM_BUFFER_DP = 12
+        const val SIDE_BY_SIDE_BOTTOM_BUFFER_DP = 6
         /** Space below the stacked content (to the panel's bottom). */
-        const val STACKED_BOTTOM_BUFFER_DP = 10
+        const val STACKED_BOTTOM_BUFFER_DP = 4
         /** Top padding applied to EVERY panel section header (the shared layout uses
          *  pt_group_gap = 20dp). One value so all four headers — source/target,
          *  side-by-side/stacked — render the same height. */
