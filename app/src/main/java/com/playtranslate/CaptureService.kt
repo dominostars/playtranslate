@@ -3168,7 +3168,24 @@ class CaptureService : Service() {
         // leave the projection warm with neither live mode nor a floating icon
         // up — iconShowing || isLive alone would then stopForeground() out
         // from under an active projection and the system would tear it down.
-        if (iconShowing || isLive || mediaProjectionController.hasConsent) {
+        //
+        // mediaProjectionActivated: foreground status follows the SESSION, not
+        // the transient window state. onProjectionLost's hideAll → reconcile
+        // sweep re-enters this method through the per-icon hide hook at an
+        // instant where icons, live, and consent are all momentarily gone;
+        // demoting there turns the reinstall's startForeground milliseconds
+        // later into a background FGS start, which is fatal on API 31+ when
+        // the revoke came from the status-bar chip with the app backgrounded
+        // (ForegroundServiceStartNotAllowedException — field crashes
+        // 2026-07-15). Foreground is a ratchet the app can always release but
+        // can only re-acquire while exempt, so never release it mid-session.
+        // Turn Off ([CaptureLifecycle.deactivate]) and backend swap
+        // ([CaptureBackendResolver.reresolve]) both clear the flag BEFORE
+        // their hide cascades, so the genuine end-of-session demote still
+        // reaches stopForeground.
+        if (iconShowing || isLive || mediaProjectionController.hasConsent ||
+            mediaProjectionActivated
+        ) {
             enterForeground()
         } else {
             stopForeground(STOP_FOREGROUND_REMOVE)
