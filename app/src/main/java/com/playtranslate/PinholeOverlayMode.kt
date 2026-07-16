@@ -249,7 +249,7 @@ class PinholeOverlayMode(
     /** Run one capture-detect-translate cycle. Returns the delay (ms) before the next cycle. */
     private suspend fun runCycle(): Long {
         val prefs = Prefs(service)
-        if (service.holdActive) return 100L
+        if (service.livePaused) return 100L
         val mgr = liveSource()
         if (mgr == null) {
             // Backend unavailable (service unbinding / mid-swap). Retry
@@ -533,10 +533,10 @@ class PinholeOverlayMode(
                 if (ocrImage !== raw && !ocrImage.isRecycled) ocrImage.recycle()
             }
 
-            // A hold may have started during OCR suspension. Bail now to
-            // avoid wasting CPU on classification/translation the blocked
-            // showLiveOverlay will never render.
-            if (service.holdActive) return 100L
+            // A hold (or the rescue alert) may have started during the OCR
+            // suspension. Bail now to avoid wasting CPU on classification/
+            // translation the blocked showLiveOverlay will never render.
+            if (service.livePaused) return 100L
 
             // No text on screen and no overlays → nothing to do
             if (pipeline == null && !hasOverlays()) {

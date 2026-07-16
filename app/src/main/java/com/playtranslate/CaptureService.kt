@@ -2454,7 +2454,11 @@ class CaptureService : Service() {
         displayId: Int = primaryGameDisplayId(),
         authoritativeBounds: Boolean = false,
     ) {
-        if (!force && holdActive) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: holdActive=true"); return }
+        // livePaused, not just holdActive: no live overlay may render under
+        // the rescue alert either — the backstop that keeps ANY live mode,
+        // present or future, from painting beneath the modal. force remains
+        // the deliberate escape hatch (hold-preview's own render).
+        if (!force && livePaused) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: livePaused=true"); return }
         val ui = CaptureBackendResolver.activeOverlayUi
         if (ui == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: overlayUi=null"); return }
         val dm = getSystemService(DisplayManager::class.java)
