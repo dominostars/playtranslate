@@ -177,7 +177,6 @@ class OnlineServicesController(
 
     private fun confirmDelete(instance: OnlineServiceInstance) {
         OverlayAlert.Builder(activity)
-            .hideIcon()
             .setTitle(
                 activity.getString(
                     R.string.tr_service_remove_title_fmt,

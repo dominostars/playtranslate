@@ -760,7 +760,6 @@ private fun configureAnkiNotInstalled(
     // paths resolve the same.
     val themed = overlayThemedContext(context)
     return builder
-        .hideIcon()
         .setTitle(themed.getString(R.string.anki_not_installed_title))
         .setMessage(themed.getString(R.string.anki_not_installed_message))
         .addButton(
@@ -785,7 +784,6 @@ private fun configureAnkiPermissionRationale(
 ): OverlayAlert.Builder {
     val themed = overlayThemedContext(context)
     return builder
-        .hideIcon()
         .setTitle(themed.getString(R.string.anki_permission_rationale_title))
         .setMessage(themed.getString(R.string.anki_permission_rationale_message))
         .addButton(
@@ -970,7 +968,6 @@ fun DialogFragment.applyAnkiSendResult(
         is AnkiSendResult.Failed -> {
             val ctx = requireContext()
             OverlayAlert.Builder(ctx)
-                .hideIcon()
                 .setTitle(getString(R.string.anki_send_failed_title))
                 .setMessage(getString(result.messageRes))
                 .addButton(

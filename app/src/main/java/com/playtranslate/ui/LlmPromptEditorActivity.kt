@@ -105,7 +105,6 @@ class LlmPromptEditorActivity : SettingsSubPageActivity() {
             return
         }
         OverlayAlert.Builder(this)
-            .hideIcon()
             .setTitle(getString(R.string.llm_prompt_discard_title))
             .setMessage(getString(R.string.llm_prompt_discard_message))
             .addButton(
@@ -136,7 +135,6 @@ class LlmPromptEditorActivity : SettingsSubPageActivity() {
      *  (advisory lines included, so one pass fixes it all); no save path. */
     private fun showFatalAlert(result: PromptValidation) {
         OverlayAlert.Builder(this)
-            .hideIcon()
             .setTitle(getString(R.string.llm_prompt_invalid_title))
             .setMessage(issuesMessage(result.fatal + result.advisory))
             .addCancelButton(getString(R.string.btn_ok))
@@ -147,7 +145,6 @@ class LlmPromptEditorActivity : SettingsSubPageActivity() {
      *  confirm bypasses. */
     private fun showAdvisoryAlert(result: PromptValidation, text: String) {
         OverlayAlert.Builder(this)
-            .hideIcon()
             .setTitle(getString(R.string.llm_prompt_warning_title))
             .setMessage(issuesMessage(result.advisory))
             .addButton(

@@ -1411,7 +1411,7 @@ class OverlayUiController(
 
         val builder = OverlayAlert.Builder(
             displayCtx, overlayHost, overlayWm, display.displayId,
-        )
+        ).showIcon()
 
         // MediaProjection mode, or single-screen: the floating icon's
         // "Turn Off" turns PlayTranslate off (turned back on from the app), so

@@ -341,7 +341,6 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
 
     private fun showInvalidKeyAlert() {
         OverlayAlert.Builder(this)
-            .hideIcon()
             .setTitle(getString(R.string.llm_backend_invalid_key_alert_title))
             .setMessage(
                 getString(

@@ -98,7 +98,6 @@ class UpdateInstallController(private val activity: AppCompatActivity) {
         }
 
         val builder = OverlayAlert.Builder(activity)
-            .hideIcon()
             .setTitle(activity.getString(R.string.update_dialog_title))
             .setMessage(message)
         if (canSelfUpdate) {
@@ -290,7 +289,6 @@ class UpdateInstallController(private val activity: AppCompatActivity) {
     private fun fireInstall(apk: File) {
         if (!ApkUpdateManager.canInstall(activity)) {
             OverlayAlert.Builder(activity)
-                .hideIcon()
                 .setTitle(activity.getString(R.string.update_unknown_sources_title))
                 .setMessage(activity.getString(R.string.update_unknown_sources_message))
                 .addButton(
@@ -332,7 +330,6 @@ class UpdateInstallController(private val activity: AppCompatActivity) {
         val retryable = failure == ValidationFailure.Incomplete ||
             failure == ValidationFailure.ChecksumMismatch
         val builder = OverlayAlert.Builder(activity)
-            .hideIcon()
             .setTitle(activity.getString(R.string.update_error_title))
             .setMessage(activity.getString(messageRes))
         if (retryable) {
@@ -357,7 +354,6 @@ class UpdateInstallController(private val activity: AppCompatActivity) {
 
     private fun showNoSpaceError(neededBytes: Long, release: UpdateChecker.Release) {
         OverlayAlert.Builder(activity)
-            .hideIcon()
             .setTitle(activity.getString(R.string.update_error_title))
             .setMessage(
                 activity.getString(

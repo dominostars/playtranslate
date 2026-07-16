@@ -199,7 +199,6 @@ class OfflineModelInstallController(
         OverlayAlert.Builder(activity)
             .setTitle(activity.getString(legal.title))
             .setMessage(activity.getString(legal.message))
-            .hideIcon()
             .addButton(activity.getString(legal.agree), activity.themeColor(R.attr.ptAccent)) {
                 legal.accept(activity)
                 proceed()
@@ -316,7 +315,6 @@ class OfflineModelInstallController(
         OverlayAlert.Builder(activity)
             .setTitle(activity.getString(m.disableTitle))
             .setMessage(activity.getString(m.disableMessage, sizeStr))
-            .hideIcon()
             .addButton(activity.getString(m.disableKeep), activity.themeColor(R.attr.ptAccent)) {
                 m.setEnabled(activity, false)
                 // Disabled but kept: drop the mmap weight cache (~model-sized).
@@ -382,7 +380,6 @@ class OfflineModelInstallController(
         val builder = OverlayAlert.Builder(activity)
             .setTitle(activity.getString(R.string.llm_low_memory_title))
             .setMessage(activity.getString(R.string.llm_low_memory_message, modelDisplayName, needStr, freeStr))
-            .hideIcon()
             .addButton(activity.getString(R.string.llm_low_memory_start_anyway), activity.themeColor(R.attr.ptAccent)) {
                 // Enable despite the low-memory warning. mmap-vs-anon is decided
                 // automatically at load time from live availMem (see
@@ -499,7 +496,6 @@ class OfflineModelInstallController(
         OverlayAlert.Builder(activity)
             .setTitle(activity.getString(R.string.bergamot_disable_title))
             .setMessage(activity.getString(R.string.bergamot_disable_message))
-            .hideIcon()
             .addButton(activity.getString(R.string.bergamot_disable_keep), activity.themeColor(R.attr.ptAccent)) {
                 Prefs(activity).bergamotEnabled = false
             }

@@ -963,7 +963,6 @@ class LanguageSetupActivity : AppCompatActivity() {
 
     private fun showDeleteConfirm(title: String, message: String, onConfirm: () -> Unit) {
         OverlayAlert.Builder(this)
-            .hideIcon()
             .setTitle(title)
             .setMessage(message)
             .addButton(

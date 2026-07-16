@@ -564,7 +564,6 @@ class WordDetailBottomSheet : DialogFragment() {
             is AnkiSendResult.Failed -> {
                 val ctx = requireContext()
                 OverlayAlert.Builder(requireActivity())
-                    .hideIcon()
                     .setTitle(getString(R.string.anki_send_failed_title))
                     .setMessage(getString(result.messageRes))
                     .addButton(

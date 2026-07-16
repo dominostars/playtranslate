@@ -718,7 +718,6 @@ class TranslationResultFragment : Fragment() {
                 is AnkiSendResult.Failed -> {
                     val ctx = requireContext()
                     OverlayAlert.Builder(requireActivity())
-                        .hideIcon()
                         .setTitle(getString(R.string.anki_send_failed_title))
                         .setMessage(getString(sendResult.messageRes))
                         .addButton(

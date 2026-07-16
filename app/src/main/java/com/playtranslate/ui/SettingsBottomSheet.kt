@@ -460,7 +460,6 @@ class SettingsBottomSheet : DialogFragment() {
      *  MediaProjection floating controls (TYPE_APPLICATION_OVERLAY windows). */
     private fun showOverlayPermissionAlert(activity: androidx.appcompat.app.AppCompatActivity) {
         OverlayAlert.Builder(activity)
-            .hideIcon()
             .setTitle(getString(R.string.mp_overlay_permission_title))
             .setMessage(getString(R.string.mp_overlay_permission_message))
             .addButton(

@@ -52,7 +52,7 @@ class OverlayAlert private constructor(
     private val title: String,
     private val message: String?,
     private val buttons: List<ButtonConfig>,
-    private val showIcon: Boolean,
+    private val showAppIcon: Boolean,
     private val onCancel: ((DismissReason) -> Unit)?,
 ) {
     private val context: Context = overlayThemedContext(rawContext)
@@ -72,7 +72,7 @@ class OverlayAlert private constructor(
         private var title = ""
         private var message: String? = null
         private val buttons = mutableListOf<ButtonConfig>()
-        private var showIcon = true
+        private var showAppIcon = false
         /** Set by [addCancelButton]. Invoked on cancel-button tap, scrim
          *  tap, back-press, AND host-activity pause — all paths receive a
          *  [DismissReason] so callers with side effects can branch on USER. */
@@ -104,10 +104,11 @@ class OverlayAlert private constructor(
         fun setTitle(title: String) = apply { this.title = title }
         fun setMessage(message: String) = apply { this.message = message }
 
-        /** Suppresses the circular app-icon header above the title. Use for
-         *  utility popups where branding is noise (e.g. settings-scoped
-         *  confirms). */
-        fun hideIcon() = apply { this.showIcon = false }
+        /** Shows the circular app-icon header above the title. Off by
+         *  default — on the app's utility popups the brand mark is just
+         *  noise, so callers opt in only where it belongs (currently only
+         *  the floating-icon Turn Off / Hide confirmation). */
+        fun showIcon() = apply { this.showAppIcon = true }
 
         fun addButton(label: String, color: Int, textColor: Int = context.themeColor(R.attr.ptCard), leadingIconRes: Int? = null, onClick: () -> Unit) = apply {
             buttons.add(ButtonConfig(label, color, textColor, leadingIconRes, onClick))
@@ -139,7 +140,7 @@ class OverlayAlert private constructor(
                 "OverlayAlert.showAsOverlay() requires the " +
                     "(context, overlayHost, wm, displayId) constructor"
             )
-            val alert = OverlayAlert(context, title, message, buttons, showIcon, onCancel)
+            val alert = OverlayAlert(context, title, message, buttons, showAppIcon, onCancel)
             // wm is non-null whenever overlayHost is — both are set together
             // by the overlay-window constructor.
             alert.showAsOverlay(host, wm!!, displayId)
@@ -159,7 +160,7 @@ class OverlayAlert private constructor(
          *  app dismisses the alert instead of leaving it hidden behind the
          *  new top window. Back-press dismisses the same way. */
         fun show(): OverlayAlert {
-            val alert = OverlayAlert(context, title, message, buttons, showIcon, onCancel)
+            val alert = OverlayAlert(context, title, message, buttons, showAppIcon, onCancel)
             PlayTranslateApplication.runWithForegroundActivity { activity ->
                 if (alert.dismissed || activity.isFinishing || activity.isDestroyed) return@runWithForegroundActivity
                 alert.attachToForeground(activity)
@@ -173,7 +174,7 @@ class OverlayAlert private constructor(
          *  must pin the alert to a specific [dialog] not reachable from the
          *  foreground activity's fragment tree. */
         fun showInDialog(dialog: Dialog): OverlayAlert {
-            val alert = OverlayAlert(context, title, message, buttons, showIcon, onCancel)
+            val alert = OverlayAlert(context, title, message, buttons, showAppIcon, onCancel)
             alert.showInDialog(dialog)
             return alert
         }
@@ -221,9 +222,9 @@ class OverlayAlert private constructor(
         }
 
         // App icon — larger image centered in a clipped circle (matches FloatingIconMenu).
-        // Suppressed when the caller opted out via Builder.hideIcon() — utility
-        // popups don't need the brand mark.
-        if (showIcon) {
+        // Shown only when the caller opted in via Builder.showIcon() — off by
+        // default because the app's utility popups don't need the brand mark.
+        if (showAppIcon) {
             val circleSize = (56 * dp).toInt()
             val imgSize = (circleSize * 1.5f).toInt()
             val imgOffset = (circleSize - imgSize) / 2

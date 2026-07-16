@@ -22,7 +22,6 @@ fun Activity.showAccessibilityRequiredAlert(requirement: AccessibilityRequiremen
     // need Android 11 instead of pointing at settings that can't help.
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
         OverlayAlert.Builder(this)
-            .hideIcon()
             .setTitle(getString(R.string.requires_android_11_title))
             .setMessage(getString(R.string.requires_android_11_message))
             .addButton(
@@ -42,7 +41,6 @@ fun Activity.showAccessibilityRequiredAlert(requirement: AccessibilityRequiremen
             getString(R.string.a11y_required_enhanced_message)
     }
     OverlayAlert.Builder(this)
-        .hideIcon()
         .setTitle(getString(R.string.a11y_required_alert_title))
         .setMessage(message)
         .addButton(

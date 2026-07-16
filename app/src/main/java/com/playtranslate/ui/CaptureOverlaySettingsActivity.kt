@@ -806,7 +806,6 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             getString(R.string.settings_ocr_delete_shared_msg, backend.ocrLabel, names)
         }
         OverlayAlert.Builder(this)
-            .hideIcon()
             .setTitle(getString(R.string.settings_ocr_delete_title, backend.ocrLabel))
             .setMessage(message)
             .addButton(
@@ -951,7 +950,6 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
      *  offline-model disable dialog). Cancel leaves it on. */
     private fun confirmDisableMangaOcr() {
         OverlayAlert.Builder(this)
-            .hideIcon()
             .setTitle(getString(R.string.settings_ocr_disable_manga_title))
             .setMessage(
                 getString(

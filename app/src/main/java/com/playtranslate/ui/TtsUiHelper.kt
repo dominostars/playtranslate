@@ -59,7 +59,6 @@ sealed interface TtsAlertTarget {
 fun showTtsNoEngineDialog(target: TtsAlertTarget, onActionSelected: () -> Unit) {
     val themed = overlayThemedContext(target.context)
     showTtsAlert(target) {
-        hideIcon()
         setTitle(themed.getString(R.string.tts_no_engine_dialog_title))
         setMessage(themed.getString(R.string.tts_no_engine_dialog_message))
         addButton(
@@ -99,7 +98,6 @@ fun showTtsLanguageUnsupportedDialog(
         themed.getString(R.string.tts_language_unsupported_unknown_engine_message, langName)
     }
     showTtsAlert(target) {
-        hideIcon()
         setTitle(themed.getString(R.string.tts_language_unsupported_dialog_title))
         setMessage(message)
         addButton(

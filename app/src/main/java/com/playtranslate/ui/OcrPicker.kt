@@ -57,8 +57,7 @@ object OcrPicker {
         onReOcr: () -> Unit,
         onDownload: (OcrBackend) -> Unit,
     ): OverlayAlert.Builder {
-        builder.hideIcon()
-            .setTitle(ctx.getString(R.string.ocr_picker_title))
+        builder.setTitle(ctx.getString(R.string.ocr_picker_title))
             .setMessage(ctx.getString(R.string.ocr_picker_message))
         for (backend in OcrModelManager.availableBackends(ctx, id)) {
             val applied = backend.selectionToken == appliedToken

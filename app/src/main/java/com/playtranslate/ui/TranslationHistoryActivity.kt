@@ -192,7 +192,6 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
 
     private fun confirmClear() {
         OverlayAlert.Builder(this)
-            .hideIcon()
             .setTitle(getString(R.string.history_clear_confirm_title))
             .setMessage(getString(R.string.history_clear_confirm_message))
             .addButton(
@@ -212,7 +211,6 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
 
     private fun confirmDelete(entry: HistoryEntry) {
         OverlayAlert.Builder(this)
-            .hideIcon()
             .setTitle(getString(R.string.history_delete_confirm_title))
             .setMessage(entry.sourceText)
             .addButton(
@@ -241,7 +239,6 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
     private fun addToAnki(entry: HistoryEntry) {
         if (!AnkiManager(this).isAnkiDroidInstalled()) {
             OverlayAlert.Builder(this)
-                .hideIcon()
                 .setTitle(getString(R.string.anki_not_installed_title))
                 .setMessage(getString(R.string.anki_not_installed_message))
                 .addCancelButton()

@@ -1381,7 +1381,6 @@ class CaptureService : Service() {
         liveFeedback?.setChipVisible(false)
         val alert = com.playtranslate.ui.OverlayAlert
             .Builder(themed, host, wm, display.displayId)
-            .hideIcon()
             .setTitle(getString(R.string.slow_ocr_prompt_title))
             // The settings path is fed from the LIVE section labels, so the
             // breadcrumb follows any rename or re-translation of those
@@ -1506,8 +1505,6 @@ class CaptureService : Service() {
             }
             val alert = com.playtranslate.ui.OverlayAlert
                 .Builder(themed, host, wm, Display.DEFAULT_DISPLAY)
-                // No app icon — a utility prompt, per the design decision.
-                .hideIcon()
                 .setTitle(getString(R.string.stream_kind_prompt_title))
                 .setMessage(getString(R.string.stream_kind_prompt_message))
                 .addButton(

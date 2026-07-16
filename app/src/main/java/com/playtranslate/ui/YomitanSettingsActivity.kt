@@ -260,7 +260,6 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
 
     private fun showImportAlert(title: String, message: String) {
         OverlayAlert.Builder(this)
-            .hideIcon()
             .setTitle(title)
             .setMessage(message)
             .addButton(
@@ -508,7 +507,6 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
             getString(R.string.yomitan_delete_message)
         }
         OverlayAlert.Builder(this)
-            .hideIcon()
             .setTitle(getString(R.string.yomitan_delete_title, dictionary.title))
             .setMessage(message)
             .addButton(
