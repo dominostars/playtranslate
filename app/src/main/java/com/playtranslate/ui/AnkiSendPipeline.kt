@@ -8,10 +8,7 @@ import com.playtranslate.audio.AudioSelection
 import com.playtranslate.audio.AudioSelections
 import com.playtranslate.audio.ResolvedAudio
 import com.playtranslate.language.SourceLangId
-import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.model.FrequencyTag
-import com.playtranslate.tts.TtsEngine
-import com.playtranslate.tts.ttsTextForWord
 import java.io.File
 
 /**
@@ -57,19 +54,14 @@ data class SentenceSendInput(
     val sourceLangId: SourceLangId,
     val screenshotPath: String?,
     val includeSentenceAudio: Boolean,
-    /** Voice override for the sentence audio. null = engine default. */
-    val sentenceVoice: String? = null,
     /** Words whose per-target audio is enabled. Empty in one-tap (the
      *  sheet's per-word toggle isn't surfaced). */
     val targetWordAudioWords: Set<String> = emptySet(),
-    /** Voice overrides for per-target-word audio. null entries =
-     *  engine default. */
-    val wordAudioVoices: Map<String, String?> = emptyMap(),
-    /** Multi-source audio selection for the sentence cell. null = the legacy
-     *  TTS path via [sentenceVoice] (one-tap callers). */
-    val sentenceSelection: AudioSelection? = null,
-    /** Per-target-word audio selections. Missing entry = legacy TTS via
-     *  [wordAudioVoices]. */
+    /** Multi-source audio selection for the sentence cell. [AudioSelection.Auto]
+     *  (the default, and what one-tap sends) is the registry's Commons-first →
+     *  TTS resolution with the user's saved voice — a fresh sheet's behavior. */
+    val sentenceSelection: AudioSelection = AudioSelection.Auto,
+    /** Per-target-word audio selections. Missing entry = [AudioSelection.Auto]. */
     val wordSelections: Map<String, AudioSelection> = emptyMap(),
     /** Pre-built Tatoeba "more examples" block for the structured
      *  path's EXAMPLE_SENTENCES content source. The word-tab's
@@ -98,12 +90,10 @@ data class WordSendInput(
     val sourceLangId: SourceLangId,
     val screenshotPath: String?,
     val includeWordAudio: Boolean,
-    /** Voice override for the word audio. null = engine default. Used only by
-     *  the legacy path when [wordSelection] is null. */
-    val wordVoice: String? = null,
     /** Multi-source audio selection for the headword (Commons-first → TTS).
-     *  null = the legacy TTS path via [wordVoice] (one-tap callers). */
-    val wordSelection: AudioSelection? = null,
+     *  [AudioSelection.Auto] (the default, and what one-tap sends) resolves
+     *  the user's saved voice — see [SentenceSendInput.sentenceSelection]. */
+    val wordSelection: AudioSelection = AudioSelection.Auto,
     /** Definition body for the legacy v004 back. Built with
      *  [classStyler] in the sheet (the back's CSS block supplies the
      *  gl-* classes); one-tap passes the inline-styled flat fallback
@@ -131,22 +121,15 @@ suspend fun Context.sendSentenceCard(
     deckId: Long,
 ): AnkiSendResult {
     val ctx = this
-    // Sentence audio: a multi-source selection (sheet) resolves Commons-first
-    // → TTS; the legacy one-tap path (null selection) synthesizes TTS directly.
+    // Sentence audio: multi-source resolution, Commons-first → TTS floor with
+    // the user's saved voice. Every caller — sheet and one-tap — goes through
+    // the registry; the TTS floor speaks SpokenText's kana pronunciation, so
+    // compound readings (初夏 → はつか) aren't re-guessed by the engine.
     val sentenceResolved: ResolvedAudio? = if (input.includeSentenceAudio) {
-        val sel = input.sentenceSelection
-        if (sel != null) {
-            AudioSelections.toFile(ctx, sel, AudioRequest.sentence(input.original, input.sourceLangId))
-        } else {
-            // Speak the kana pronunciation so the engine doesn't re-guess compound
-            // readings (初夏 → はつか) in the card's sentence audio; identity for non-JA.
-            val spokenOriginal = SourceLanguageEngines.get(ctx, input.sourceLangId)
-                .spokenForm(input.original)
-            TtsEngine.synthesizeToFile(
-                ctx, spokenOriginal, input.sourceLangId,
-                voiceNameOverride = input.sentenceVoice,
-            )?.let { ResolvedAudio(it, null) }
-        }
+        AudioSelections.toFile(
+            ctx, input.sentenceSelection,
+            AudioRequest.sentence(input.original, input.sourceLangId),
+        )
     } else null
     val audioFile: File? = sentenceResolved?.file
     // Per-target-word audio. Words whose synth/fetch returns null are skipped —
@@ -155,20 +138,10 @@ suspend fun Context.sendSentenceCard(
     val readingByWord = input.words.associate { it.word to it.reading }
     val wordResolved: Map<String, ResolvedAudio> = buildMap {
         for (word in input.targetWordAudioWords) {
-            val sel = input.wordSelections[word]
-            val resolved = if (sel != null) {
-                AudioSelections.toFile(
-                    ctx, sel,
-                    AudioRequest.word(word, readingByWord[word]?.ifBlank { null }, input.sourceLangId),
-                )
-            } else {
-                TtsEngine.synthesizeToFile(
-                    ctx,
-                    ttsTextForWord(word, readingByWord[word]?.ifBlank { null }, input.sourceLangId),
-                    input.sourceLangId,
-                    voiceNameOverride = input.wordAudioVoices[word],
-                )?.let { ResolvedAudio(it, null) }
-            }
+            val resolved = AudioSelections.toFile(
+                ctx, input.wordSelections[word] ?: AudioSelection.Auto,
+                AudioRequest.word(word, readingByWord[word]?.ifBlank { null }, input.sourceLangId),
+            )
             if (resolved != null) put(word, resolved)
         }
     }
@@ -226,10 +199,11 @@ suspend fun Context.sendSentenceCard(
         wordResolved.values.forEach { if (it.ephemeral) it.file.delete() }
     }
     // The dispatcher only knows about UPLOAD failures (audioPath was
-    // non-null but addMediaFromFile dropped it). Synthesis failures
-    // (TtsEngine.synthesizeToFile returned null) never reach it because
-    // we pass null audioPath in that case. Fold them in here so
-    // callers can read a single "audio requested but missing" flag.
+    // non-null but addMediaFromFile dropped it). Resolution failures
+    // (AudioSelections.toFile returned null — synth error, dead pick,
+    // blown budget) never reach it because we pass null audioPath in
+    // that case. Fold them in here so callers can read a single
+    // "audio requested but missing" flag.
     return result.foldInLocalAudioMisses(
         sentenceMissing = input.includeSentenceAudio && audioFile == null,
         wordAudioMissing = input.targetWordAudioWords.isNotEmpty() &&
@@ -246,23 +220,13 @@ suspend fun Context.sendWordCard(
     deckId: Long,
 ): AnkiSendResult {
     val ctx = this
-    // Headword audio: a multi-source selection (sheet) resolves Commons-first
-    // → TTS; the legacy one-tap path (null selection) synthesizes TTS directly.
+    // Headword audio: multi-source resolution (Commons-first → TTS floor with
+    // the user's saved voice), same registry walk for sheet and one-tap.
     val wordResolved: ResolvedAudio? = if (input.includeWordAudio) {
-        val sel = input.wordSelection
-        if (sel != null) {
-            AudioSelections.toFile(
-                ctx, sel,
-                AudioRequest.word(input.word, input.reading.ifBlank { null }, input.sourceLangId),
-            )
-        } else {
-            TtsEngine.synthesizeToFile(
-                ctx,
-                ttsTextForWord(input.word, input.reading.ifBlank { null }, input.sourceLangId),
-                input.sourceLangId,
-                voiceNameOverride = input.wordVoice,
-            )?.let { ResolvedAudio(it, null) }
-        }
+        AudioSelections.toFile(
+            ctx, input.wordSelection,
+            AudioRequest.word(input.word, input.reading.ifBlank { null }, input.sourceLangId),
+        )
     } else null
     val audioFile: File? = wordResolved?.file
     // CC credit for a Commons clip, co-located with the word audio field so the
@@ -390,6 +354,4 @@ private fun SentenceSendInput.toCardData(): SentenceAnkiContentFragment.CardData
         screenshotPath = screenshotPath,
         sourceLangId = sourceLangId,
         targetWordAudioWords = targetWordAudioWords,
-        sentenceVoice = sentenceVoice,
-        wordAudioVoices = wordAudioVoices,
     )

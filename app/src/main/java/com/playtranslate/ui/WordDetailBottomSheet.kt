@@ -523,28 +523,40 @@ class WordDetailBottomSheet : DialogFragment() {
         }
 
         pill.setLoading(true)
-        viewLifecycleOwner.lifecycleScope.launch {
-            val (reading, pos, definition) = buildAnkiWordFields(entry, defResult, word)
-            val hw = entry.headwordDisplay(entry.selectHeadword(word, word, readingHint), word)
-            // The word-vs-sentence decision (incl. the single-word-sentence
-            // rule) lives in oneTapSend, shared by every long-press path.
-            // mode informs the NeedsMapping dialog's defaults.
-            val (result, mode) = requireContext().oneTapSend(
-                word = word,
-                reading = reading,
-                pos = pos,
-                fallbackDefinition = definition,
-                freqScore = entry.freqScore,
-                pitch = hw.pitch,
-                frequencies = hw.frequencies,
-                sentenceOriginal = sentenceOriginal,
-                sentenceTranslation = sentenceTranslation,
-                wordsPayload = sentenceWordsPayload,
-                screenshotPath = screenshotPath,
-                sourceLangId = sourceLangId,
-            )
-            handleOneTapWordResult(result, pill, mode)
-        }
+        val appCtx = requireContext().applicationContext
+        // Built before the send detaches from the sheet's lifecycle — it
+        // reads fragment context (target-lang pref), which must resolve now.
+        val (reading, pos, definition) = buildAnkiWordFields(entry, defResult, word)
+        val hw = entry.headwordDisplay(entry.selectHeadword(word, word, readingHint), word)
+        // launchOneTapSend: dismissing the sheet mid-send must not cancel the
+        // card; the pill/dialog handling runs only while the sheet's view is
+        // STARTED, else the result degrades to an app-context toast.
+        launchOneTapSend(
+            appCtx = appCtx,
+            send = {
+                // The word-vs-sentence decision (incl. the single-word-sentence
+                // rule) lives in oneTapSend, shared by every long-press path.
+                // mode informs the NeedsMapping dialog's defaults.
+                appCtx.oneTapSend(
+                    word = word,
+                    reading = reading,
+                    pos = pos,
+                    fallbackDefinition = definition,
+                    freqScore = entry.freqScore,
+                    pitch = hw.pitch,
+                    frequencies = hw.frequencies,
+                    sentenceOriginal = sentenceOriginal,
+                    sentenceTranslation = sentenceTranslation,
+                    wordsPayload = sentenceWordsPayload,
+                    screenshotPath = screenshotPath,
+                    sourceLangId = sourceLangId,
+                )
+            },
+            resultOf = { it.first },
+            presentResult = { (result, mode) ->
+                handleOneTapWordResult(result, pill, mode)
+            },
+        )
     }
 
     private fun handleOneTapWordResult(

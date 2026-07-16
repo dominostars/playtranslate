@@ -1349,17 +1349,25 @@ class CaptureResultOverlay(
         val translation = result.translatedText.takeIf { it.isNotEmpty() }
         val langId = prefs.sourceLangId
         android.widget.Toast.makeText(app, R.string.anki_adding_in_progress, android.widget.Toast.LENGTH_SHORT).show()
-        ankiSendScope.launch {
+        // Process-lived scope, NOT [scope] — the overlay cancels [scope] on
+        // dismiss, which would silently kill an in-flight send (no card, no
+        // result toast). The toasts target the app context, so they still
+        // fire after the panel is gone.
+        ankiOneTapSendScope.launch {
             val sendResult = app.oneTapSendSentence(
                 original = sentence, translation = translation, wordsPayload = payload,
                 screenshotPath = result.screenshotPath, sourceLangId = langId,
             )
             when (sendResult) {
-                is AnkiSendResult.Success -> android.widget.Toast.makeText(app,
-                    if (sendResult.audioDropped || sendResult.wordAudioDropped) R.string.anki_added_no_audio else R.string.anki_added_success,
-                    android.widget.Toast.LENGTH_SHORT).show()
-                is AnkiSendResult.Failed -> android.widget.Toast.makeText(app, sendResult.messageRes, android.widget.Toast.LENGTH_LONG).show()
-                is AnkiSendResult.NeedsMapping -> openSentenceAnkiReview()
+                // Reopening the review is the mapping recovery — but only
+                // while the panel is still up. Once the user has dismissed
+                // it, stealing the game's screen with an activity they
+                // didn't ask for is worse than the dispatcher's explanatory
+                // NeedsMapping toast (already shown); match the fragment
+                // paths' degraded contract instead. Both this coroutine and
+                // dismiss() run on Main, so the read doesn't race.
+                is AnkiSendResult.NeedsMapping -> if (!dismissed) openSentenceAnkiReview()
+                else -> oneTapResultToast(app, sendResult)
             }
         }
     }
@@ -2037,12 +2045,6 @@ class CaptureResultOverlay(
     private fun dp(v: Int): Int = (v * density).toInt()
 
     private companion object {
-        /** Fire-and-forget one-tap Anki sends run here, NOT on [scope] — the overlay
-         *  cancels [scope] on dismiss, which would silently kill an in-flight send
-         *  (no card, no result toast). Process-lived; mirrors SourceLensActions.sendScope.
-         *  The toasts target the app context, so they still fire after the panel is gone. */
-        private val ankiSendScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-
         const val MATCH = LinearLayout.LayoutParams.MATCH_PARENT
         const val WRAP = LinearLayout.LayoutParams.WRAP_CONTENT
         const val HANDLE_HEIGHT_DP = 20

@@ -11,6 +11,7 @@ import com.playtranslate.audio.AudioSource
 import com.playtranslate.audio.CandidateLabel
 import com.playtranslate.audio.PlayOutcome
 import com.playtranslate.language.SourceLangId
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -31,8 +32,13 @@ class AudioSelectionsToFileTest {
     private val ctx: Context = ApplicationProvider.getApplicationContext()
     private val req = AudioRequest.word("行く", "いく", SourceLangId.JA)
 
-    /** Minimal AudioSource whose [toFile] yields [out] (null = can't produce). */
-    private class FakeSource(override val id: String, private val out: File?) : AudioSource {
+    /** Minimal AudioSource whose [toFile] yields [out] (null = can't produce)
+     *  after an optional [delayMs] (models a hung fetch/synthesis). */
+    private class FakeSource(
+        override val id: String,
+        private val out: File?,
+        private val delayMs: Long = 0L,
+    ) : AudioSource {
         override fun label(ctx: Context) = id
         override val toggleable = false
         override val remote = false
@@ -45,7 +51,10 @@ class AudioSelectionsToFileTest {
             ctx: Context, candidate: AudioCandidate, req: AudioRequest,
             awaitCompletion: Boolean, onStart: (() -> Unit)?,
         ) = PlayOutcome.Played
-        override suspend fun toFile(ctx: Context, candidate: AudioCandidate, req: AudioRequest): File? = out
+        override suspend fun toFile(ctx: Context, candidate: AudioCandidate, req: AudioRequest): File? {
+            if (delayMs > 0) delay(delayMs)
+            return out
+        }
     }
 
     @Test fun explicit_failure_returns_null_and_does_not_substitute_auto() = runBlocking {
@@ -81,6 +90,44 @@ class AudioSelectionsToFileTest {
             assertEquals(picked, resolved?.file)
         } finally {
             picked.delete()
+        }
+    }
+
+    // ── Send budget (hang backstop) ─────────────────────────────────────────
+
+    @Test fun auto_blown_budget_falls_through_to_next_source() = runBlocking {
+        val floor = File.createTempFile("floor", ".wav").apply { writeBytes(byteArrayOf(7)) }
+        try {
+            val hung = FakeSource("wikimedia_commons", out = floor, delayMs = 60_000)
+            val tts = FakeSource("tts", out = floor)
+            val resolved = AudioSelections.toFile(
+                ctx, AudioSelection.Auto, req,
+                enabledInOrder = { listOf(hung, tts) },
+                sourceFor = { error("unused") },
+                sourceBudgetMs = 100,
+            )
+            assertEquals("a hung source must not stall Auto — the floor still resolves",
+                floor, resolved?.file)
+            assertEquals(true, resolved?.ephemeral)
+        } finally {
+            floor.delete()
+        }
+    }
+
+    @Test fun explicit_blown_budget_reports_missing_not_substituted() = runBlocking {
+        val substitute = File.createTempFile("auto", ".wav").apply { writeBytes(byteArrayOf(1)) }
+        try {
+            val hung = FakeSource("wikimedia_commons", out = substitute, delayMs = 60_000)
+            val sel = AudioSelection.Explicit("wikimedia_commons", "k", locator = "https://x/y.wav")
+            val resolved = AudioSelections.toFile(
+                ctx, sel, req,
+                enabledInOrder = { emptyList() },
+                sourceFor = { hung },
+                sourceBudgetMs = 100,
+            )
+            assertNull("a hung explicit pick reports the audio missing", resolved)
+        } finally {
+            substitute.delete()
         }
     }
 }

@@ -13,9 +13,6 @@ import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.selectHeadword
 import com.playtranslate.overlay.OverlayHost
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /** The looked-up word context the lens actions operate on, snapshotted at
@@ -175,11 +172,11 @@ class SourceLensActions(
         CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
         lens.dismiss()
         Toast.makeText(context, R.string.anki_adding_in_progress, Toast.LENGTH_SHORT).show()
-        // Run on a PROCESS-lived scope, not a caller scope — the capture overlay
-        // cancels its scope on dismiss, which would silently kill an in-flight send
-        // (no card, no result toast). The toast targets the app context, so it
-        // still fires after any UI is gone.
-        sendScope.launch {
+        // Run on the PROCESS-lived one-tap scope, not a caller scope — the
+        // capture overlay cancels its scope on dismiss, which would silently
+        // kill an in-flight send (no card, no result toast). The toast targets
+        // the app context, so it still fires after any UI is gone.
+        ankiOneTapSendScope.launch {
             // Sentence card (dragged word bolded) vs word card routing — incl.
             // the single-word-sentence rule — is shared via oneTapSend.
             val (result, _) = context.oneTapSend(
@@ -197,17 +194,8 @@ class SourceLensActions(
                 sourceLangId = sourceLangId,
             )
             when (result) {
-                is AnkiSendResult.Success -> {
-                    val msgRes = if (result.audioDropped || result.wordAudioDropped)
-                        R.string.anki_added_no_audio
-                    else
-                        R.string.anki_added_success
-                    Toast.makeText(context, msgRes, Toast.LENGTH_SHORT).show()
-                }
-                is AnkiSendResult.Failed ->
-                    Toast.makeText(context, result.messageRes, Toast.LENGTH_LONG).show()
-                is AnkiSendResult.NeedsMapping ->
-                    launchWordAnkiActivity(snap)
+                is AnkiSendResult.NeedsMapping -> launchWordAnkiActivity(snap)
+                else -> oneTapResultToast(context.applicationContext, result)
             }
         }
     }
@@ -274,9 +262,4 @@ class SourceLensActions(
         onLaunchedActivity(LaunchKind.Anki)
     }
 
-    private companion object {
-        /** Fire-and-forget one-tap Anki sends run here so a dismissed caller (the
-         *  capture overlay) can't cancel a card mid-flight. */
-        private val sendScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    }
 }

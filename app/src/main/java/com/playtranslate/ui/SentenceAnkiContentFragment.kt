@@ -360,14 +360,6 @@ class SentenceAnkiContentFragment : Fragment() {
          *  send path doesn't need false entries or stale ones. Defaults
          *  to empty for callers/tests that don't care. */
         val targetWordAudioWords: Set<String> = emptySet(),
-        /** Voice for the sentence audio cell — passed to
-         *  [TtsEngine.synthesizeToFile]'s `voiceNameOverride`. null
-         *  means "explicit engine default". */
-        val sentenceVoice: String? = null,
-        /** Per-target-word voice. Missing entry = "use engine default".
-         *  Only words in [targetWordAudioWords] need an entry here; the
-         *  send path looks up by word. */
-        val wordAudioVoices: Map<String, String?> = emptyMap(),
         /** Multi-source audio selection for the sentence cell. */
         val sentenceSelection: AudioSelection = AudioSelection.Auto,
         /** Per-target-word audio selections (only [targetWordAudioWords]). */

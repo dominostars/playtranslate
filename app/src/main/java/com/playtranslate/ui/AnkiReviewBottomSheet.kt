@@ -176,9 +176,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
             sourceLangId = data.sourceLangId,
             screenshotPath = data.screenshotPath,
             includeSentenceAudio = content.sentenceAudioEnabled,
-            sentenceVoice = data.sentenceVoice,
             targetWordAudioWords = data.targetWordAudioWords,
-            wordAudioVoices = data.wordAudioVoices,
             sentenceSelection = data.sentenceSelection,
             wordSelections = data.wordSelections,
         )

@@ -1,10 +1,22 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import android.util.Log
+import android.widget.Toast
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.withStarted
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
+import com.playtranslate.R
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.FrequencyTag
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 
 /**
  * "Headless" card-creation helpers — entry points used when the user
@@ -22,10 +34,123 @@ import com.playtranslate.model.FrequencyTag
  * long-press to edit.
  *
  * These helpers do NOT show progress indicators, dismiss UI, or open
- * the mapping dialog — surface UX stays with the call site. Callers
- * launch in their own coroutine scope; cancelling the scope cancels
- * the pipeline cleanly.
+ * the mapping dialog — surface UX stays with the call site. Fragment
+ * callers go through [launchOneTapSend]; overlay/service callers launch
+ * on [ankiOneTapSendScope] directly and degrade their result UX via
+ * [oneTapResultToast] when their surface is gone.
  */
+
+/**
+ * Process-lived scope for one-tap sends. A long-press send runs detached
+ * from the surface that launched it: the card (and its result toast) must
+ * land even when that overlay / sheet / fragment is dismissed mid-send —
+ * a lifecycle scope would silently cancel the card. One shared scope so
+ * no call site re-derives the lifetime decision.
+ */
+val ankiOneTapSendScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+/**
+ * Runs [send] on [ankiOneTapSendScope] and presents its result on this
+ * fragment — with the send's lifetime and the presentation's lifetime
+ * deliberately decoupled, because they have opposite requirements: the
+ * card must OUTLIVE the fragment, while the result UI must NOT.
+ *
+ * Rather than guarding the presentation with lifecycle flags (`isAdded`
+ * proves only attachment — not that the view exists, nor that dialogs
+ * may be shown; each result arm needs a different check, which is how
+ * this went wrong the first time), the safety rules are encoded
+ * structurally, so there is nothing to check and nothing to race:
+ *
+ *  - [presentResult] runs in the VIEW-lifecycle scope, deferred by
+ *    [withStarted] until the view is at least STARTED. View death
+ *    cancels it before it can touch anything; STARTED implies the
+ *    fragment is attached and — on minSdk 29, where onStop precedes
+ *    onSaveInstanceState — that FragmentManager commits (the
+ *    NeedsMapping dialog) are legal. A send that finishes while the
+ *    app is backgrounded simply presents when the user returns.
+ *  - If the presentation coroutine is CANCELLED before it ran (view
+ *    destroyed mid-send, or while parked in [withStarted]), its
+ *    completion cause triggers the degraded path: [oneTapResultToast]
+ *    on [appCtx] once the send lands. The cancellation cause is the
+ *    handoff signal — exactly one path presents, with no shared flag.
+ *
+ * [resultOf] extracts the [AnkiSendResult] from [send]'s payload for
+ * the degraded toast (identity for sentence sends; `first` for the
+ * word path's result+mode pair).
+ *
+ * [send] is exception-free by design — the whole pipeline models
+ * failures as [AnkiSendResult] values (the cache helpers, audio
+ * resolution, and AnkiManager all contain their own throws). A bug
+ * that escaped anyway would crash the app from a detached coroutine,
+ * disconnected from the gesture and possibly after the UI is gone —
+ * so the seam contains it: loud log plus a failure toast, exactly
+ * once, through whichever presentation path is live.
+ */
+fun <T> Fragment.launchOneTapSend(
+    appCtx: Context,
+    send: suspend () -> T,
+    resultOf: (T) -> AnkiSendResult,
+    presentResult: (T) -> Unit,
+) {
+    val sendJob = ankiOneTapSendScope.async {
+        try {
+            Result.success(send())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(ONE_TAP_TAG, "one-tap send escaped an exception", e)
+            Result.failure(e)
+        }
+    }
+    val viewLifecycle = viewLifecycleOwner
+    val presentation = viewLifecycle.lifecycleScope.launch {
+        val payload = sendJob.await().getOrElse {
+            oneTapSendFailedToast(appCtx)
+            return@launch
+        }
+        viewLifecycle.lifecycle.withStarted { presentResult(payload) }
+    }
+    presentation.invokeOnCompletion { cause ->
+        if (cause is CancellationException) {
+            ankiOneTapSendScope.launch {
+                sendJob.await().fold(
+                    onSuccess = { oneTapResultToast(appCtx, resultOf(it)) },
+                    onFailure = { oneTapSendFailedToast(appCtx) },
+                )
+            }
+        }
+    }
+}
+
+/** Failure surface for a send whose exception was contained at the
+ *  [launchOneTapSend] boundary: same message the dispatcher uses for a
+ *  rejected card, on the app context so it works from any state. */
+private fun oneTapSendFailedToast(appCtx: Context) {
+    Toast.makeText(appCtx, R.string.anki_send_failed_message, Toast.LENGTH_LONG).show()
+}
+
+private const val ONE_TAP_TAG = "AnkiOneTap"
+
+/**
+ * Result surfacing for a one-tap send whose launching UI is gone by the
+ * time the send finishes: success / failure toasts on the app context.
+ * [AnkiSendResult.NeedsMapping] adds nothing here — the dispatcher already
+ * toasted the explanation, and the mapping dialog needs UI that no longer
+ * exists.
+ */
+fun oneTapResultToast(appCtx: Context, result: AnkiSendResult) {
+    when (result) {
+        is AnkiSendResult.Success -> Toast.makeText(
+            appCtx,
+            if (result.audioDropped || result.wordAudioDropped) R.string.anki_added_no_audio
+            else R.string.anki_added_success,
+            Toast.LENGTH_SHORT,
+        ).show()
+        is AnkiSendResult.Failed ->
+            Toast.makeText(appCtx, result.messageRes, Toast.LENGTH_LONG).show()
+        is AnkiSendResult.NeedsMapping -> Unit
+    }
+}
 
 /**
  * Sentence one-tap. Awaits any in-flight translation / word-lookup
@@ -72,7 +197,10 @@ suspend fun Context.oneTapSendSentence(
         // running CaptureService's on-demand translator. If the
         // service isn't alive we have no way to translate, so fall
         // back to the empty string — the card will land without a
-        // translation field rather than failing the send.
+        // translation field rather than failing the send. The error()
+        // below is how the lambda signals that: awaitOrStartTranslation
+        // catches lambda throws, logs them, and returns a null outcome —
+        // it does NOT propagate out of this function.
         val outcome = LastSentenceCache.awaitOrStartTranslation(original) { text ->
             val svc = CaptureService.instance ?: error("CaptureService unavailable")
             val gt = svc.translateOnce(text)
@@ -138,12 +266,12 @@ suspend fun Context.oneTapSendSentence(
         sourceLangId = sourceLangId,
         screenshotPath = screenshotPath,
         includeSentenceAudio = prefs.ankiSentenceAudioEnabled,
-        // Voice override null = engine default for the user's saved
-        // voice preference. The sheet's CardData seeds these from prefs
-        // and lets the user tweak per-cell; one-tap takes the default.
-        sentenceVoice = null,
+        // Audio selections stay at their Auto defaults — the registry's
+        // Commons-first → TTS resolution with the user's saved voice,
+        // exactly what a freshly-opened sheet sends. (One-tap used to
+        // bypass the registry and synthesize with the engine-default
+        // voice, silently ignoring the picked voice.)
         targetWordAudioWords = targetWordAudio,
-        wordAudioVoices = emptyMap(),
         examplesHtml = "",
     )
     return ctx.sendSentenceCard(input, deckId = prefs.ankiDeckId)
@@ -181,7 +309,8 @@ suspend fun Context.oneTapSendWord(
         sourceLangId = sourceLangId,
         screenshotPath = screenshotPath,
         includeWordAudio = prefs.ankiWordAudioEnabled,
-        wordVoice = null,
+        // wordSelection stays Auto — saved-voice TTS (Commons-first when
+        // enabled), matching the sheet's default cell.
         classDefinitionHtml = flatDefinitionHtml,
         inlineDefinitionHtml = flatDefinitionHtml,
         inlineExamplesHtml = "",

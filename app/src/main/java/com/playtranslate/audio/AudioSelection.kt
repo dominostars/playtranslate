@@ -7,6 +7,8 @@ import com.playtranslate.audio.sources.TtsAudioSource
 import com.playtranslate.audio.sources.WikimediaCommonsAudioSource
 import com.playtranslate.tts.TtsEngine
 import com.playtranslate.tts.TtsVoiceLabels
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
 /**
@@ -42,6 +44,15 @@ data class ResolvedAudio(val file: File, val attribution: Attribution?, val ephe
  *  and send pipeline. */
 object AudioSelections {
 
+    /** Hang backstop for ONE source's send-time resolution in [toFile].
+     *  Commons HTTP calls are already OkHttp-capped (8s per call), but the
+     *  TTS engine's synthesis has no deadline of its own — a network voice
+     *  can stall indefinitely inside the engine. Generous on purpose: sends
+     *  run detached from UI, so this bounds "hangs forever", not perceived
+     *  latency. On timeout the source counts as "no result": Auto falls
+     *  through to the next source; an Explicit pick reports audio missing. */
+    const val SEND_SOURCE_BUDGET_MS = 20_000L
+
     /** The candidate handed to a source for an explicit pick — carries the
      *  [AudioSelection.Explicit.locator] (URL) and attribution so Commons can
      *  fetch and credit the EXACT selected clip without relying on cache state.
@@ -66,6 +77,10 @@ object AudioSelections {
      *  recording on the card. (Preview's [play] still falls back, since auditioning
      *  *something* beats silence.)
      *
+     *  Each source attempt is bounded by [sourceBudgetMs] (see
+     *  [SEND_SOURCE_BUDGET_MS]) so one hung fetch or synthesis can't stall the
+     *  send forever.
+     *
      *  [enabledInOrder]/[sourceFor] default to the real [AudioSourceRegistry];
      *  they're injectable so tests can drive the resolution deterministically. */
     suspend fun toFile(
@@ -74,21 +89,31 @@ object AudioSelections {
         req: AudioRequest,
         enabledInOrder: (Context) -> List<AudioSource> = AudioSourceRegistry::enabledInOrder,
         sourceFor: (String) -> AudioSource = AudioSourceRegistry::sourceFor,
+        sourceBudgetMs: Long = SEND_SOURCE_BUDGET_MS,
     ): ResolvedAudio? =
         when (selection) {
             AudioSelection.Auto -> {
                 var out: ResolvedAudio? = null
                 for (source in enabledInOrder(ctx)) {
-                    val c = runCatching { source.defaultCandidate(ctx, req) }.getOrNull() ?: continue
-                    val f = runCatching { source.toFile(ctx, c, req) }.getOrNull() ?: continue
-                    out = ResolvedAudio(f, c.attribution, ephemeral = source.id == TtsAudioSource.ID); break
+                    val resolved = withTimeoutOrNull(sourceBudgetMs) {
+                        val c = sourceFailureToNull { source.defaultCandidate(ctx, req) }
+                            ?: return@withTimeoutOrNull null
+                        sourceFailureToNull { source.toFile(ctx, c, req) }?.let {
+                            ResolvedAudio(it, c.attribution, ephemeral = source.id == TtsAudioSource.ID)
+                        }
+                    }
+                    if (resolved != null) {
+                        out = resolved; break
+                    }
                 }
                 out
             }
             is AudioSelection.Explicit -> {
                 val source = sourceFor(selection.sourceId)
                 val candidate = explicitCandidate(selection)
-                val f = runCatching { source.toFile(ctx, candidate, req) }.getOrNull()
+                val f = withTimeoutOrNull(sourceBudgetMs) {
+                    sourceFailureToNull { source.toFile(ctx, candidate, req) }
+                }
                 if (f != null) {
                     val attr = selection.attribution ?: attributionFor(ctx, selection)
                     ResolvedAudio(f, attr, ephemeral = selection.sourceId == TtsAudioSource.ID)
@@ -96,6 +121,20 @@ object AudioSelections {
                     null // honor the explicit pick or report it missing — never substitute
                 }
             }
+        }
+
+    /** A source failure (network, decode, engine error) resolves to null so
+     *  the caller can fall through to the next source — but cancellation must
+     *  propagate: swallowing it (as runCatching would) leaves the walk
+     *  attempting further sources inside a cancelled coroutine, and would eat
+     *  the per-source budget's own timeout signal. */
+    private suspend fun <T> sourceFailureToNull(block: suspend () -> T?): T? =
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
         }
 
     /** Play a selection live (preview chip). Explicit falls back to the Auto

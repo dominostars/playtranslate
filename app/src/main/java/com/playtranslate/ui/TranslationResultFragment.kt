@@ -696,44 +696,55 @@ class TranslationResultFragment : Fragment() {
             LastSentenceCache.WordsPayload(it.toLegacyMap(), it.toSurfaceMap(), it.toEnrichmentMap())
         }
         val screenshotPath = result.screenshotPath
-        Toast.makeText(requireContext(), R.string.anki_adding_in_progress, Toast.LENGTH_SHORT).show()
-        viewLifecycleOwner.lifecycleScope.launch {
-            val sendResult = requireContext().oneTapSendSentence(
-                original = original,
-                translation = translation,
-                wordsPayload = wordsPayload,
-                screenshotPath = screenshotPath,
-                sourceLangId = prefs.sourceLangId,
-            )
-            if (!isAdded) return@launch
-            when (sendResult) {
-                is AnkiSendResult.Success -> {
-                    val msgRes = if (sendResult.audioDropped || sendResult.wordAudioDropped)
-                        R.string.anki_added_no_audio
-                    else
-                        R.string.anki_added_success
-                    Toast.makeText(requireContext(), msgRes, Toast.LENGTH_SHORT).show()
-                    refreshWordBadges()
+        val appCtx = requireContext().applicationContext
+        val langId = prefs.sourceLangId
+        Toast.makeText(appCtx, R.string.anki_adding_in_progress, Toast.LENGTH_SHORT).show()
+        // launchOneTapSend: the send outlives this fragment (navigating away
+        // must not cancel a card the user already asked for); the result UI
+        // runs only with the view lifecycle STARTED, else it degrades to an
+        // app-context toast.
+        launchOneTapSend(
+            appCtx = appCtx,
+            send = {
+                appCtx.oneTapSendSentence(
+                    original = original,
+                    translation = translation,
+                    wordsPayload = wordsPayload,
+                    screenshotPath = screenshotPath,
+                    sourceLangId = langId,
+                )
+            },
+            resultOf = { it },
+            presentResult = { sendResult ->
+                when (sendResult) {
+                    is AnkiSendResult.Success -> {
+                        val msgRes = if (sendResult.audioDropped || sendResult.wordAudioDropped)
+                            R.string.anki_added_no_audio
+                        else
+                            R.string.anki_added_success
+                        Toast.makeText(appCtx, msgRes, Toast.LENGTH_SHORT).show()
+                        refreshWordBadges()
+                    }
+                    is AnkiSendResult.Failed -> {
+                        val ctx = requireContext()
+                        OverlayAlert.Builder(requireActivity())
+                            .setTitle(getString(R.string.anki_send_failed_title))
+                            .setMessage(getString(sendResult.messageRes))
+                            .addButton(
+                                getString(android.R.string.ok),
+                                ctx.themeColor(R.attr.ptAccent),
+                                ctx.themeColor(R.attr.ptAccentOn),
+                            ) {}
+                            .show()
+                    }
+                    is AnkiSendResult.NeedsMapping -> {
+                        // Dispatcher already toasted; open the mapping dialog
+                        // so the user can fix the unmapped card type.
+                        showAnkiCardTypeMappingDialog(sendResult.model, CardMode.SENTENCE) { _, _ -> }
+                    }
                 }
-                is AnkiSendResult.Failed -> {
-                    val ctx = requireContext()
-                    OverlayAlert.Builder(requireActivity())
-                        .setTitle(getString(R.string.anki_send_failed_title))
-                        .setMessage(getString(sendResult.messageRes))
-                        .addButton(
-                            getString(android.R.string.ok),
-                            ctx.themeColor(R.attr.ptAccent),
-                            ctx.themeColor(R.attr.ptAccentOn),
-                        ) {}
-                        .show()
-                }
-                is AnkiSendResult.NeedsMapping -> {
-                    // Dispatcher already toasted; open the mapping dialog
-                    // so the user can fix the unmapped card type.
-                    showAnkiCardTypeMappingDialog(sendResult.model, CardMode.SENTENCE) { _, _ -> }
-                }
-            }
-        }
+            },
+        )
     }
 
     /**
@@ -783,51 +794,58 @@ class TranslationResultFragment : Fragment() {
             LastSentenceCache.WordsPayload(it.toLegacyMap(), it.toSurfaceMap(), it.toEnrichmentMap())
         }
         dismissWordPopup()
-        Toast.makeText(
-            activity, R.string.anki_adding_in_progress, Toast.LENGTH_SHORT,
-        ).show()
-        viewLifecycleOwner.lifecycleScope.launch {
-            val hw = entry.headwordDisplay(entry.selectHeadword(word, word, readingClean), word)
-            // Shared word-vs-sentence routing (single-word-sentence rule
-            // included) lives in oneTapSend; the popup ignores the returned mode.
-            val (result, _) = requireContext().oneTapSend(
-                word = word,
-                reading = readingClean,
-                pos = pos,
-                fallbackDefinition = definition,
-                freqScore = entry.freqScore,
-                pitch = hw.pitch,
-                frequencies = hw.frequencies,
-                sentenceOriginal = ready_sentence,
-                sentenceTranslation = ready_translation,
-                wordsPayload = wordsPayload,
-                screenshotPath = screenshotPath,
-                sourceLangId = prefs.sourceLangId,
-            )
-            when (result) {
-                is AnkiSendResult.Success -> {
-                    // Sentence-mode one-tap can drop per-target-word
-                    // audio (the target word may fail TTS or upload);
-                    // surface that the same way the other handlers do.
-                    val msgRes = if (result.audioDropped || result.wordAudioDropped)
-                        R.string.anki_added_no_audio
-                    else
-                        R.string.anki_added_success
-                    Toast.makeText(requireContext(), msgRes, Toast.LENGTH_SHORT).show()
-                    refreshWordBadges()
+        val appCtx = activity.applicationContext
+        val langId = prefs.sourceLangId
+        Toast.makeText(appCtx, R.string.anki_adding_in_progress, Toast.LENGTH_SHORT).show()
+        // launchOneTapSend — see oneTapSentenceFromResult.
+        launchOneTapSend(
+            appCtx = appCtx,
+            send = {
+                val hw = entry.headwordDisplay(entry.selectHeadword(word, word, readingClean), word)
+                // Shared word-vs-sentence routing (single-word-sentence rule
+                // included) lives in oneTapSend; the popup ignores the returned mode.
+                appCtx.oneTapSend(
+                    word = word,
+                    reading = readingClean,
+                    pos = pos,
+                    fallbackDefinition = definition,
+                    freqScore = entry.freqScore,
+                    pitch = hw.pitch,
+                    frequencies = hw.frequencies,
+                    sentenceOriginal = ready_sentence,
+                    sentenceTranslation = ready_translation,
+                    wordsPayload = wordsPayload,
+                    screenshotPath = screenshotPath,
+                    sourceLangId = langId,
+                )
+            },
+            resultOf = { it.first },
+            presentResult = { (result, _) ->
+                when (result) {
+                    is AnkiSendResult.Success -> {
+                        // Sentence-mode one-tap can drop per-target-word
+                        // audio (the target word may fail TTS or upload);
+                        // surface that the same way the other handlers do.
+                        val msgRes = if (result.audioDropped || result.wordAudioDropped)
+                            R.string.anki_added_no_audio
+                        else
+                            R.string.anki_added_success
+                        Toast.makeText(appCtx, msgRes, Toast.LENGTH_SHORT).show()
+                        refreshWordBadges()
+                    }
+                    is AnkiSendResult.Failed -> {
+                        Toast.makeText(appCtx, result.messageRes,
+                            Toast.LENGTH_LONG).show()
+                    }
+                    is AnkiSendResult.NeedsMapping -> {
+                        // Re-launch the Activity so the user can configure
+                        // the mapping inside the sheet (dialog needs
+                        // Fragment infrastructure).
+                        launchWordAnki(activity, word, reading, entry)
+                    }
                 }
-                is AnkiSendResult.Failed -> {
-                    Toast.makeText(requireContext(), result.messageRes,
-                        Toast.LENGTH_LONG).show()
-                }
-                is AnkiSendResult.NeedsMapping -> {
-                    // Re-launch the Activity so the user can configure
-                    // the mapping inside the sheet (dialog needs
-                    // Fragment infrastructure).
-                    launchWordAnki(activity, word, reading, entry)
-                }
-            }
-        }
+            },
+        )
     }
 
     /** Anki button tap handler — view-side dialog work, kept fragment-
