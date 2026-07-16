@@ -12,6 +12,7 @@ import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
 import kotlin.math.abs
 import androidx.core.graphics.toColorInt
+import androidx.core.graphics.withSave
 
 /**
  * Full-screen view placed on the game display via TYPE_ACCESSIBILITY_OVERLAY.
@@ -117,11 +118,14 @@ class RegionDragView(context: Context) : View(context) {
         dotStrokePaint.strokeWidth = 2f * dp
         val dotRadius = 5f * dp
 
-        // Dark areas outside the box
-        if (t > 0f) canvas.drawRect(0f, 0f, w, t, darkPaint)
-        if (b < h)  canvas.drawRect(0f, b, w, h, darkPaint)
-        if (l > 0f) canvas.drawRect(0f, t, l, b, darkPaint)
-        if (r < w)  canvas.drawRect(r, t, w, b, darkPaint)
+        // Dark area outside the box — one full-screen rect with the box
+        // clipped out. Four abutting band rects don't tessellate at the
+        // shared fractional edges: a hairline transparent seam shows at
+        // y=t and y=b across the whole screen.
+        canvas.withSave {
+            clipOutRect(l, t, r, b)
+            drawRect(0f, 0f, w, h, darkPaint)
+        }
 
         // Card-colored solid border
         val half = cardBorderPaint.strokeWidth / 2f

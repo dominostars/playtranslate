@@ -203,6 +203,7 @@ class OverlayUiController(
         bringIconToFront = { id -> bringFloatingIconsToFront(id) },
         hideTranslationOverlay = { hideTranslationOverlay() },
         onRegionSelected = { id, region -> handleRegionSelection(id, region) },
+        onRegionCleared = { id -> clearRegionForDisplay(id) },
     )
 
     // ── Floating icon registry ───────────────────────────────────────────
@@ -1261,15 +1262,7 @@ class OverlayUiController(
             }
         }
         menu.onClearRegion = {
-            val prefs = Prefs(context)
-            prefs.setSelectedRegionIdForDisplay(display.displayId, Prefs.DEFAULT_REGION_LIST[0].id)
-            val svc = CaptureService.instance
-            if (svc != null && svc.isConfigured) {
-                svc.clearOverride(display.displayId)
-            }
-            if (MainActivity.isInForeground) {
-                sendMainActivityIntent(MainActivity.ACTION_REFRESH_REGION_LABEL)
-            }
+            clearRegionForDisplay(display.displayId)
         }
         menu.onCaptureRegion = {
             dismissFloatingMenu()
@@ -1572,6 +1565,24 @@ class OverlayUiController(
                 putExtra(MainActivity.EXTRA_TARGET_DISPLAY_ID, displayId)
             }
             context.startActivity(intent)
+        }
+    }
+
+    /**
+     * Resets [displayId] to the full-screen default region: rewrites the
+     * persisted selection, drops any runtime override, and refreshes the
+     * in-app region label. Shared by the floating menu's clear-region action
+     * and the region editor's trash button.
+     */
+    private fun clearRegionForDisplay(displayId: Int) {
+        val prefs = Prefs(context)
+        prefs.setSelectedRegionIdForDisplay(displayId, Prefs.DEFAULT_REGION_LIST[0].id)
+        val svc = CaptureService.instance
+        if (svc != null && svc.isConfigured) {
+            svc.clearOverride(displayId)
+        }
+        if (MainActivity.isInForeground) {
+            sendMainActivityIntent(MainActivity.ACTION_REFRESH_REGION_LABEL)
         }
     }
 

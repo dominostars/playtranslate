@@ -30,6 +30,7 @@ class RegionOverlayController(
     private val bringIconToFront: (displayId: Int) -> Unit,
     private val hideTranslationOverlay: () -> Unit,
     private val onRegionSelected: (displayId: Int, region: RegionEntry) -> Unit,
+    private val onRegionCleared: (displayId: Int) -> Unit,
 ) {
 
     private var dragView: RegionDragView? = null
@@ -175,12 +176,13 @@ class RegionOverlayController(
                 val b = h * liveRegion.bottom
 
                 // Persistent indicator (region picker): darken outside the region.
-                // Flash indicator: leave background untouched.
+                // Flash indicator: leave background untouched. One clipped rect,
+                // not four bands — abutting bands seam at fractional edges.
                 if (persistent) {
-                    if (t > 0f) canvas.drawRect(0f, 0f, w, t, dimPaint)
-                    if (b < h) canvas.drawRect(0f, b, w, h, dimPaint)
-                    if (l > 0f) canvas.drawRect(0f, t, l, b, dimPaint)
-                    if (r < w) canvas.drawRect(r, t, w, b, dimPaint)
+                    canvas.withSave {
+                        clipOutRect(l, t, r, b)
+                        drawRect(0f, 0f, w, h, dimPaint)
+                    }
                 }
 
                 // Outside-only shadow + accent glow
@@ -388,6 +390,31 @@ class RegionOverlayController(
             }
         }
 
+        val trashBtn = android.widget.ImageView(ctx).apply {
+            // Inflate on the themed context — the vector's ?attr tint doesn't
+            // resolve on the raw display context (see RegionDragView).
+            setImageDrawable(themed.getDrawable(R.drawable.ic_delete))
+            imageTintList = android.content.res.ColorStateList.valueOf(textColor)
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            val iconPad = (12 * dp).toInt()
+            setPadding(iconPad, iconPad, iconPad, iconPad)
+            contentDescription = ctx.getString(R.string.btn_clear)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(cardColor)
+                cornerRadius = btnRadius
+            }
+            layoutParams = android.widget.LinearLayout.LayoutParams(btnSize, btnSize).apply {
+                marginEnd = gap
+            }
+            setOnClickListener {
+                hideRegionEditor()
+                onRegionCleared(display.displayId)
+                if (CaptureService.instance?.isLive == true) {
+                    CaptureService.instance?.refreshLiveOverlay()
+                }
+            }
+        }
+
         val useBtn = android.widget.TextView(ctx).apply {
             text = "✓"
             setTextColor(accentOnColor)
@@ -412,6 +439,7 @@ class RegionOverlayController(
         }
 
         bar.addView(cancelBtn)
+        bar.addView(trashBtn)
         bar.addView(useBtn)
 
         val barParams = WindowManager.LayoutParams(
