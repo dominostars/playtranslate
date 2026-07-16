@@ -179,6 +179,14 @@ class Prefs internal constructor(
         sp.edit { putString("ocr_backend_${id.code}", token) }
     fun clearOcrBackendToken(id: SourceLangId) = sp.edit { remove("ocr_backend_${id.code}") }
 
+    /** The slow-OCR rescue prompt was answered for [id] — either way, it
+     *  never shows again for that language (the OCR picker is the standing
+     *  change-your-mind path). */
+    fun slowOcrPromptAnswered(id: SourceLangId): Boolean =
+        sp.getBoolean("slow_ocr_prompt_answered_${id.code}", false)
+    fun setSlowOcrPromptAnswered(id: SourceLangId) =
+        sp.edit { putBoolean("slow_ocr_prompt_answered_${id.code}", true) }
+
     /** The user's preferred TTS voice for [lang], by [android.speech.tts.Voice]
      *  name, or null to use the engine default. Voices are stored per language
      *  because a voice is locale-specific. */

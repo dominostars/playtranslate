@@ -1173,7 +1173,11 @@ class CaptureService : Service() {
         // Construction also starts the eager warm-up, in parallel with
         // everything below (consent dialog, probe, virtual-display setup).
         liveFeedback?.dispose()
-        liveFeedback = LiveSessionFeedback(serviceScope, mediaProjectionController, sourceLang)
+        dismissSlowOcrPrompt()
+        liveFeedback = LiveSessionFeedback(
+            serviceScope, mediaProjectionController, sourceLang,
+            onSlowPass = { maybeShowSlowOcrPrompt() },
+        )
 
         // Secure capture readiness — the MediaProjection screen-record consent
         // token — BEFORE the live-mode loop and its touch sentinel exist. A
@@ -1322,6 +1326,79 @@ class CaptureService : Service() {
     ): T {
         val feedback = liveFeedback ?: return grab()
         return feedback.blinkCardForFirstGrab(displayId, source, grab)
+    }
+
+    // ── Slow-OCR rescue prompt ───────────────────────────────────────────
+
+    /** The rescue alert currently on screen, if any. Dismissed on session
+     *  boundaries (stopLive, a superseding start): the offer belongs to the
+     *  session whose slow pass earned it, and a programmatic dismiss does
+     *  NOT record an answer — the next slow session may offer again. */
+    private var slowOcrAlert: com.playtranslate.ui.OverlayAlert? = null
+
+    private fun dismissSlowOcrPrompt() {
+        slowOcrAlert?.dismiss()
+        slowOcrAlert = null
+    }
+
+    /**
+     * A live OCR pass has been in flight past the slow threshold
+     * ([LiveSessionFeedback.OCR_SLOW_PROMPT_MS]) — offer the one-tap switch
+     * to the always-available ML Kit floor, at most once per language ever
+     * (either answer is remembered; the OCR picker in Settings is the
+     * standing change-your-mind path). Fires MID-pass, while the user is
+     * staring at the wait — the moment the offer explains itself. Gated
+     * out when: the language has no floor (RU/AR/TH have nothing faster to
+     * offer), the floor is already what's selected (the slowness IS the
+     * fast engine), or an alert is already up. The startup card yields
+     * while the alert shows and returns if the user keeps their engine.
+     */
+    private fun maybeShowSlowOcrPrompt() {
+        if (!isLive || slowOcrAlert != null) return
+        val prefs = Prefs(this)
+        val id = prefs.sourceLangId
+        if (prefs.slowOcrPromptAnswered(id)) return
+        val floor = SourceLanguageProfiles[id].mlKitFloor ?: return
+        val selected = OcrModelManager.selectedBackend(this, id) ?: return
+        if (selected.selectionToken == floor.selectionToken) return
+
+        val host = CaptureBackendResolver.active().overlayHost ?: return
+        val display = getSystemService(DisplayManager::class.java)
+            ?.getDisplay(Display.DEFAULT_DISPLAY) ?: return
+        val displayCtx = createDisplayContext(display)
+        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
+        val themed = overlayThemedContext(displayCtx)
+
+        liveFeedback?.setChipVisible(false)
+        DetectionLog.log("slow-OCR prompt shown for ${id.code} (selected=${selected.selectionToken})")
+        slowOcrAlert = com.playtranslate.ui.OverlayAlert
+            .Builder(themed, host, wm, Display.DEFAULT_DISPLAY)
+            .hideIcon()
+            .setTitle(getString(R.string.slow_ocr_prompt_title))
+            .setMessage(getString(R.string.slow_ocr_prompt_message))
+            .addButton(
+                getString(R.string.slow_ocr_prompt_switch),
+                themed.themeColor(R.attr.ptAccent),
+            ) {
+                slowOcrAlert = null
+                prefs.setSlowOcrPromptAnswered(id)
+                prefs.setOcrBackendToken(id, floor.selectionToken)
+                DetectionLog.log("slow-OCR prompt: ${id.code} switched to ${floor.selectionToken}")
+                liveFeedback?.setChipVisible(true)
+                // Cancel the still-running slow pass and re-run promptly on
+                // the floor engine (the registry resolves per pass).
+                refreshLiveOverlay()
+            }
+            .addCancelButton(getString(R.string.slow_ocr_prompt_keep)) { reason ->
+                slowOcrAlert = null
+                // Only an explicit user dismissal (button, scrim, back) is
+                // a decision; anything else may offer again next session.
+                if (reason == com.playtranslate.ui.DismissReason.USER) {
+                    prefs.setSlowOcrPromptAnswered(id)
+                }
+                liveFeedback?.setChipVisible(true)
+            }
+            .showAsOverlay()
     }
 
     /**
@@ -1848,6 +1925,7 @@ class CaptureService : Service() {
         // and outstanding pass tokens, atomically ([LiveSessionFeedback]).
         liveFeedback?.dispose()
         liveFeedback = null
+        dismissSlowOcrPrompt()
         Log.i(TAG, "stopLive() called (isLive=$isLive, modes=${liveModes.keys})", Throwable("stopLive caller"))
         // Stop bypasses setLiveDisplays: we genuinely want zero live modes,
         // not "fall back to the backend's capturable default" — which is what

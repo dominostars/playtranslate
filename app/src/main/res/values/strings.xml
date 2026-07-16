@@ -755,6 +755,18 @@
     <string name="probe_initializing">Initializing…</string>
     <!-- Label under the detection grid / loading spinner on the live-start status card (StartupChip), shown from live-mode start until the first translations can appear. "Auto mode" is the floating menu's name for live translation. Pending l10n batch. -->
     <string name="startup_initializing_auto_mode">Initializing auto mode…</string>
+    <!-- Slow-OCR rescue prompt (this block): an on-screen alert offered at most once per language,
+         fired while a live text-recognition pass has been running ~2s — the devices whose users
+         read live mode's silence as "broken". One-tap switch to the always-available ML Kit
+         engine; declining is remembered and the prompt never repeats. Pending l10n batch. -->
+    <!-- Title of the slow-OCR rescue alert dialog (shown over the game as an overlay). -->
+    <string name="slow_ocr_prompt_title">Text recognition is slow</string>
+    <!-- Body text of the slow-OCR rescue alert dialog, under the title. "Engine" = the OCR engine the user can also change in Settings > OCR; keep the same word the OCR settings section uses. -->
+    <string name="slow_ocr_prompt_message">This device is taking a while to read the screen. The faster engine is more responsive, though its reading quality can be slightly lower. You can switch engines anytime in Settings.</string>
+    <!-- Action button on the slow-OCR rescue alert: switches OCR to the faster ML Kit engine immediately. -->
+    <string name="slow_ocr_prompt_switch">Use the faster engine</string>
+    <!-- Dismiss button on the slow-OCR rescue alert: keeps the current OCR engine and never asks again. -->
+    <string name="slow_ocr_prompt_keep">Keep the current engine</string>
     <!-- Stream-scope prompt (this block): an on-screen alert dialog shown at live-mode start
          (MediaProjection-only backend) when the automatic probe could not determine which capture
          scope the user picked in the SYSTEM consent dialog. The two choice-button labels mirror the

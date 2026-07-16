@@ -43,6 +43,11 @@ internal class LiveSessionFeedback(
     parentScope: CoroutineScope,
     private val controller: MediaProjectionController,
     sourceLang: String,
+    /** Invoked at most once per session, on Main, when a live OCR pass has
+     *  been in flight past [OCR_SLOW_PROMPT_MS] — the slow-device signal
+     *  the rescue prompt fires on. Runs in [scope]: a disposed session can
+     *  never fire it. */
+    private val onSlowPass: () -> Unit = {},
 ) {
 
     private val scope = CoroutineScope(
@@ -244,6 +249,13 @@ internal class LiveSessionFeedback(
     private val busyPasses = mutableSetOf<Any>()
     private var busyArmJob: Job? = null
 
+    /** The slow-pass rescue timer: armed alongside the breathe timer, fires
+     *  [onSlowPass] once per session when a pass has been in flight past
+     *  [OCR_SLOW_PROMPT_MS] — while the user is staring at the wait, not
+     *  after it. */
+    private var slowPassJob: Job? = null
+    private var slowPassFired = false
+
     /** Register an in-flight live OCR pass; hand the token back to
      *  [endOcrPass] from the pass's finally. */
     fun beginOcrPass(): Any {
@@ -254,6 +266,16 @@ internal class LiveSessionFeedback(
             busyArmJob = scope.launch {
                 delay(OCR_BUSY_GRACE_MS)
                 if (busyPasses.isNotEmpty()) setIconsBusy(true)
+            }
+            if (!slowPassFired) {
+                slowPassJob?.cancel()
+                slowPassJob = scope.launch {
+                    delay(OCR_SLOW_PROMPT_MS)
+                    if (busyPasses.isNotEmpty() && !slowPassFired) {
+                        slowPassFired = true
+                        onSlowPass()
+                    }
+                }
             }
         }
         return token
@@ -266,6 +288,8 @@ internal class LiveSessionFeedback(
         if (busyPasses.isEmpty()) {
             busyArmJob?.cancel()
             busyArmJob = null
+            slowPassJob?.cancel()
+            slowPassJob = null
             setIconsBusy(false)
         }
     }
@@ -311,5 +335,12 @@ internal class LiveSessionFeedback(
          *  whole-display mirror, so this resolves in a frame or two; a
          *  timeout falls back to exclusion for that pass. */
         const val BLINK_FRESH_CAP_MS = 600L
+
+        /** In-flight duration past which a pass counts as SLOW and the
+         *  rescue prompt may fire ([onSlowPass]). The gap between fast and
+         *  slow devices is seconds-scale bimodal, so the threshold is not
+         *  delicate; well above [OCR_BUSY_GRACE_MS] so the breathe always
+         *  precedes the prompt. */
+        const val OCR_SLOW_PROMPT_MS = 2_000L
     }
 }
