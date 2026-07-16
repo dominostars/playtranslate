@@ -257,11 +257,10 @@ object LayoutAnalyzer {
      * whole-box branch, whose refH is the full height), and per-line height
      * similarity within the cross-frame cap.
      *
-     * Deliberately NOT a general shrink-direction re-normalization: testing
-     * the block relationship per-line would re-admit the unrelated-text-
-     * below-the-paragraph false match that the caller's growth-direction
-     * asymmetry exists to prevent (see classifyOcrResults) — a fragment
-     * below the box always fails the band check here. Unlike the inline
+     * Deliberately NOT a general shrink-direction re-normalization: a
+     * fragment below the box always fails the band check here — the
+     * next-row reveal shape has its own gated probe,
+     * [blockContinuesBelow]. Unlike the inline
      * branch it mirrors, the probe is DIRECTIONAL: a continuation extends
      * the last line in reading direction only (rightward for LTR [rtl] =
      * false, leftward for RTL), strictly beside the union rect — the
@@ -299,6 +298,73 @@ object LayoutAnalyzer {
             if (rtl) boxRect.left - fresh.right else fresh.left - boxRect.right
         if (forwardGap < 0) return false
         if (forwardGap >= (lineH * INLINE_GAP_MULTIPLIER).toInt()) return false
+        val lo = minOf(lineH, fresh.height())
+        val hi = maxOf(lineH, fresh.height())
+        return (hi - lo).toDouble() / lo <= sizeRatioCap(GroupingMode.CROSS_FRAME_SAME_REGION)
+    }
+
+    /**
+     * Cross-frame block-continuation probe for the OTHER shrink-direction
+     * shape [wouldGroup]'s classification caller de-normalizes: is [fresh]
+     * a single line revealed directly BELOW [boxRect] — the next wrapped
+     * line of the paragraph the box covers?
+     *
+     * Line-by-line typewriter reveals produce exactly this geometry: the
+     * box was placed on a partial read (rows 1–2 mid-reveal), the next row
+     * then appears below it, and the whole-box branch compares the row's
+     * height against the box's full stacked extent (グラウス trace
+     * 2026-07-12 c14: 126px two-line box vs 55px third row → delta 1.29
+     * over the cap, sentence stranded as a persistent 2+1 split; the box's
+     * own under-box reveal read 2.0% pinholes — below the removal bar —
+     * so no other signal could ever converge it). This probe re-tests the
+     * BLOCK conditions on the box's per-line height instead: gap under
+     * [BLOCK_GAP_MULTIPLIER]× the per-line reference, start-or-center
+     * alignment at the per-line tolerance (half the slack the
+     * de-normalized branch grants), and per-line height similarity within
+     * the cross-frame cap. [shortAboveLongBlock] still vetoes a
+     * clearly-short box above a wide fresh line.
+     *
+     * Deliberately NOT a general shrink-direction re-normalization, same
+     * discipline as [inlineContinuesLastLine]: the fresh side must be a
+     * single line (callers gate lineCount == 1) and strictly below the
+     * box — downward is the reveal direction for horizontal text; a
+     * fragment above is a heading or name plate, never a continuation.
+     * The consciously-priced trade (2026-07-16): an unrelated label that
+     * matches all three per-line conditions now stales the box, costing
+     * one recoverable blank-and-regroup cycle in which the same-pass
+     * grouper re-decides with full evidence — while the false-refuse this
+     * closes was a permanently split sentence with no convergence path.
+     * Horizontal text only; the vertical twin (next column beside a
+     * multi-column box) is unobserved and deferred.
+     */
+    fun blockContinuesBelow(
+        boxRect: Rect,
+        boxLineCount: Int,
+        fresh: Rect,
+        rtl: Boolean = false,
+    ): Boolean {
+        // Single-line boxes already get a correct block comparison from
+        // wouldGroup (raw height == line height); only multi-line boxes
+        // need the per-line rescue.
+        if (boxLineCount < 2) return false
+        val lineH = boxRect.height() / boxLineCount
+        if (lineH <= 0 || fresh.height() <= 0) return false
+        // Strictly below only. Negative dy means overlap or fresh-above:
+        // overlap is the inline probe's territory, and a line above a
+        // paragraph is a heading/name-plate shape, not a reveal.
+        val dy = fresh.top - boxRect.bottom
+        if (dy < 0) return false
+        if (shortAboveLongBlock(boxRect, fresh, TextOrientation.HORIZONTAL) != null) return false
+        val refH = maxOf(lineH, fresh.height())
+        if (dy >= (refH * BLOCK_GAP_MULTIPLIER).toInt()) return false
+        // Same alignment contract as wouldGroup's block branch, at the
+        // per-line tolerance.
+        val alignTolerance = (refH * 0.5f).toInt()
+        val aStart = if (rtl) boxRect.right else boxRect.left
+        val bStart = if (rtl) fresh.right else fresh.left
+        val startAligned = kotlin.math.abs(aStart - bStart) <= alignTolerance
+        val centerAligned = kotlin.math.abs(boxRect.centerX() - fresh.centerX()) <= alignTolerance
+        if (!startAligned && !centerAligned) return false
         val lo = minOf(lineH, fresh.height())
         val hi = maxOf(lineH, fresh.height())
         return (hi - lo).toDouble() / lo <= sizeRatioCap(GroupingMode.CROSS_FRAME_SAME_REGION)

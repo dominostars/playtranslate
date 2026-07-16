@@ -352,18 +352,19 @@ class ClassificationTest {
     }
 
     @Test
-    fun classify_proximity_shrinkDirection_multiLineCachedSingleLineFresh_doesNotMatch() {
-        // Cached 3-line dialogue with an unrelated single-line label
-        // appearing just below it. Geometrically this is symmetric to the
-        // growth case (per-line heights match, alignment matches, small
-        // gap), but it is far more likely to be adjacent unrelated text
-        // than a one-line continuation of a cached multi-line paragraph
-        // — so the proximity check must fall back to raw heights here
-        // and reject. The ratio (150 vs 50 = 2.0) exceeds the 0.50
-        // cross-frame cap, leaving the cached translation visible and
-        // queuing the fresh text as its own far placeholder.
-        val cachedBounds = Rect(0, 0, 200, 150)           // 3 lines, h=150
-        val freshBounds = Rect(0, 160, 200, 210)          // 1 line, h=50
+    fun classify_belowProbe_scaleMismatchedLabelBelow_staysFar() {
+        // The shrink direction's protected case, re-pinned post-2026-07-16:
+        // a fresh single line below a cached multi-line box stales it ONLY
+        // when the per-line geometry reads as the paragraph's next row
+        // (blockContinuesBelow). A label in a clearly different type size
+        // fails the per-line cap ((50-30)/30 = 0.67 > 0.50) and must stay
+        // far, leaving the cached translation visible. (The pre-fix pin on
+        // this fixture asserted that an EQUAL-height aligned line below
+        // stays far too; the グラウス trace 2026-07-12 falsified that prior
+        // for line-by-line typewriter dialogue, so that shape now
+        // deliberately stales — see the belowLineContinuation tests.)
+        val cachedBounds = Rect(0, 0, 200, 150)           // 3 lines, per-line h=50
+        val freshBounds = Rect(0, 160, 200, 190)          // 1 line, h=30
         val ocr = OcrManager.OcrResult(
             fullText = "",
             segments = emptyList(),
@@ -376,7 +377,7 @@ class ClassificationTest {
             coords = identityCoords,
         )
         assertTrue(
-            "shrink-direction adjacency must NOT stale the cached box",
+            "scale-mismatched below-line must NOT stale the cached box",
             result.staleOverlayIndices.isEmpty(),
         )
         assertEquals(
@@ -596,20 +597,36 @@ class ClassificationTest {
     }
 
     @Test
-    fun classify_lastLineProbe_freshLineBelowParagraph_staysFar() {
-        // The asymmetry's protected case: a fresh single line directly BELOW
-        // the cached paragraph, left-aligned, plausible line height. The
-        // probe tests inline geometry only — a below-the-box fragment always
-        // fails the last-line band check — so this must stay unmatched.
+    fun classify_belowLineContinuation_alignedLineBelowParagraph_stalesBox() {
+        // FLIPPED PIN (2026-07-16). This fixture — a fresh single line
+        // directly below the cached paragraph, start-aligned, per-line
+        // heights within the cap, tight gap — was pinned as stays-far
+        // under the pre-fix asymmetry ("more likely unrelated text than a
+        // continuation"). The グラウス trace 2026-07-12 falsified that
+        // prior: line-by-line typewriter reveals produce exactly this
+        // geometry, and refusing it stranded a sentence as a permanent
+        // 2+1 split (the under-box reveal sat below the pinhole removal
+        // bar, so nothing else could converge it). blockContinuesBelow
+        // now stales the box; the fresh line is suppressed so the forced
+        // follow-up look re-reads the whole uncovered region and the
+        // same-pass grouper decides with full evidence. Priced trade: an
+        // unrelated label matching ALL per-line conditions costs one
+        // recoverable blank-and-regroup cycle.
         val cached = box(Rect(100, 100, 500, 200), sourceText = "two line paragraph", lineCount = 2)
         val result = classifyOcrResults(
-            ocrResult = ocrResult("unrelated below" to Rect(100, 210, 400, 255)),
+            ocrResult = ocrResult("next revealed row" to Rect(100, 210, 400, 255)),
             boxes = listOf(cached),
             ocrBitmapRects = listOf(cached.bounds),
             coords = identityCoords,
         )
-        assertTrue(result.staleOverlayIndices.isEmpty())
-        assertEquals(1, result.farOcrGroups.size)
+        assertEquals(
+            "aligned same-scale below-line must stale the cached box",
+            setOf(0), result.staleOverlayIndices,
+        )
+        assertTrue(
+            "fresh line must be suppressed so next cycle re-OCRs the full paragraph",
+            result.farOcrGroups.isEmpty(),
+        )
     }
 
     @Test
@@ -710,6 +727,155 @@ class ClassificationTest {
         )
         assertTrue(result.staleOverlayIndices.isEmpty())
         assertEquals(1, result.farOcrGroups.size)
+    }
+
+    // ── classifyOcrResults: shrink-direction below-line continuation ─────
+    //
+    // Vectors from the グラウス trace (2026-07-12, DetectionLog 13:55 +
+    // trace-1783889714647): a three-row typewriter dialogue whose box was
+    // placed mid-reveal on rows 1+2, with row 3 appearing below it next
+    // cycle. All rects are the trace's real OCR rects.
+
+    @Test
+    fun classify_belowLineContinuation_typewriterThirdRow_stalesBox() {
+        // c14: cached box "今年は、作物のできも悪いしこのま" (2 lines,
+        // 126px), third row "こせないかもしれんなぁ・・" 15px below it.
+        // The whole-box raw comparison rejects on scale ((126-55)/55 =
+        // 1.29 > 0.50) and the under-box reveal read only 2.0% pinholes,
+        // so pre-fix this stranded a permanent 2+1 split. The below probe
+        // must stale the box (per-line 63 vs 55 → 0.145; gap 15 < 56;
+        // start Δ5 ≤ 31) and suppress the fresh row.
+        val cached = box(
+            Rect(550, 811, 1240, 937),
+            sourceText = "今年は、作物のできも悪いしこのま",
+            lineCount = 2,
+        )
+        val result = classifyOcrResults(
+            ocrResult = ocrResult("こせないかもしれんなぁ・・" to Rect(555, 952, 1246, 1007)),
+            boxes = listOf(cached),
+            ocrBitmapRects = listOf(cached.bounds),
+            coords = identityCoords,
+        )
+        assertEquals(setOf(0), result.staleOverlayIndices)
+        assertTrue("third row must be suppressed, not placed", result.farOcrGroups.isEmpty())
+    }
+
+    @Test
+    fun classify_belowProbe_misalignedPartialRevealBox_staysFarForDeferral() {
+        // c4 of the same trace, full two-group replay: the cached box is
+        // the PARTIAL reveal "北の、グラウス山にモン" whose rect is
+        // narrower than the finished rows, so the third row misses the
+        // below probe on alignment (start Δ38 > 31, center Δ72 > 31) and
+        // stays far. The same-row tail 「いて」 still stales the box via
+        // the last-line probe — which is what hands the far third row to
+        // step-9b deferral (the box is stale-DYING; see
+        // FragmentDeferralTest's stale-dying vectors for that half).
+        val cached = box(
+            Rect(521, 812, 1034, 936),
+            sourceText = "北の、グラウス山にモン",
+            lineCount = 2,
+        )
+        val result = classifyOcrResults(
+            ocrResult = ocrResult(
+                "いて" to Rect(1047, 886, 1153, 937),
+                "うしを盗ってくんだ・" to Rect(559, 949, 1140, 1006),
+            ),
+            boxes = listOf(cached),
+            ocrBitmapRects = listOf(cached.bounds),
+            coords = identityCoords,
+        )
+        assertEquals(
+            "same-row tail stales the partial box via the last-line probe",
+            setOf(0), result.staleOverlayIndices,
+        )
+        assertEquals(
+            "misaligned third row stays far (deferral, not staling, owns it)",
+            1, result.farOcrGroups.size,
+        )
+        assertEquals("うしを盗ってくんだ・", result.farOcrGroups[0].text)
+    }
+
+    @Test
+    fun classify_belowProbe_gapTooLarge_staysFar() {
+        // The probe's gap ceiling is per-line (0.9 × 50 = 45), deliberately
+        // TIGHTER than the de-normalized whole-box ceiling (0.9 × 150 =
+        // 135) — a row-and-a-half of clearance below a paragraph is a
+        // separate block, not its next line.
+        val cached = box(Rect(0, 0, 200, 150), sourceText = "three lines", lineCount = 3)
+        val result = classifyOcrResults(
+            ocrResult = ocrResult("distant line" to Rect(0, 215, 200, 265)),
+            boxes = listOf(cached),
+            ocrBitmapRects = listOf(cached.bounds),
+            coords = identityCoords,
+        )
+        assertTrue(result.staleOverlayIndices.isEmpty())
+        assertEquals(1, result.farOcrGroups.size)
+    }
+
+    @Test
+    fun classify_belowProbe_freshLineAboveBox_staysFar() {
+        // Directional: reveals grow downward. A single line ABOVE a
+        // multi-line box (speaker name plate, heading) must not stale it
+        // even when aligned, close, and per-line height-compatible.
+        val cached = box(Rect(100, 200, 500, 300), sourceText = "two line dialogue", lineCount = 2)
+        val result = classifyOcrResults(
+            ocrResult = ocrResult("name plate" to Rect(100, 150, 300, 195)),
+            boxes = listOf(cached),
+            ocrBitmapRects = listOf(cached.bounds),
+            coords = identityCoords,
+        )
+        assertTrue(result.staleOverlayIndices.isEmpty())
+        assertEquals(1, result.farOcrGroups.size)
+    }
+
+    @Test
+    fun classify_belowProbe_multiLineFresh_staysFar() {
+        // The probe is gated to single fresh lines (mirroring the last-line
+        // probe): a multi-line fresh group below a taller cached box is an
+        // unobserved shape and keeps the de-normalized whole-box verdict.
+        val cached = box(Rect(0, 0, 200, 150), sourceText = "three lines", lineCount = 3)
+        val ocr = OcrManager.OcrResult(
+            fullText = "",
+            segments = emptyList(),
+            groups = listOf(grp("two fresh lines", Rect(0, 160, 200, 240), lineCount = 2)),
+        )
+        val result = classifyOcrResults(
+            ocrResult = ocr,
+            boxes = listOf(cached),
+            ocrBitmapRects = listOf(cached.bounds),
+            coords = identityCoords,
+        )
+        assertTrue(result.staleOverlayIndices.isEmpty())
+        assertEquals(1, result.farOcrGroups.size)
+    }
+
+    @Test
+    fun classify_belowProbe_rtlMirror_matchesRightAlignedRefusesLtr() {
+        // RTL sources align continuations on the RIGHT edge. The same
+        // ragged-left below-line that matches under rtl=true (right edges
+        // 700 vs 702) must stay far under rtl=false, where neither the
+        // left edges (Δ150) nor the centers (Δ76) align at the per-line
+        // tolerance (25).
+        val cached = box(Rect(300, 100, 700, 200), sourceText = "rtl paragraph", lineCount = 2)
+        val rtlResult = classifyOcrResults(
+            ocrResult = ocrResult("تكملة السطر" to Rect(450, 210, 702, 255)),
+            boxes = listOf(cached),
+            ocrBitmapRects = listOf(cached.bounds),
+            coords = identityCoords,
+            rtl = true,
+        )
+        assertEquals(setOf(0), rtlResult.staleOverlayIndices)
+        assertTrue(rtlResult.farOcrGroups.isEmpty())
+
+        val ltrResult = classifyOcrResults(
+            ocrResult = ocrResult("ragged line" to Rect(450, 210, 702, 255)),
+            boxes = listOf(cached),
+            ocrBitmapRects = listOf(cached.bounds),
+            coords = identityCoords,
+            rtl = false,
+        )
+        assertTrue(ltrResult.staleOverlayIndices.isEmpty())
+        assertEquals(1, ltrResult.farOcrGroups.size)
     }
 
     @Test

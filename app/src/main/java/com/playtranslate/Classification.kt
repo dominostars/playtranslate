@@ -50,25 +50,38 @@ data class FarGroup(
  * inflating each dying rect by [inflatePx]) any box being pinhole-removed
  * this cycle?
  *
- * A fresh OCR group next to a box whose UNDER-BOX content just proved
- * changed is suspect by construction: the group was read while the box
- * still blinded the region it borders, so it may be only the visible tail
- * of the text the removal is about to uncover (dialogue advance to a
- * slightly longer message — the fragment-box dance, 2026-07-10). Placing
- * it strands a fragment over the new message's end; deferring costs one
- * floor-paced forced look, after which the full region is uncovered and
- * whatever is really there places whole.
+ * A fresh OCR group next to a box being removed this cycle is suspect by
+ * construction: the group was read while the box still blinded the region
+ * it borders, so it may be only the visible tail of the text the removal
+ * is about to uncover (dialogue advance to a slightly longer message —
+ * the fragment-box dance, 2026-07-10). Placing it strands a fragment over
+ * the new message's end; deferring costs one floor-paced forced look,
+ * after which the full region is uncovered and whatever is really there
+ * places whole.
  *
  * Geometry deliberately CANNOT distinguish a continuation tail from an
- * independent neighbor — the discriminator is the pinhole verdict on the
- * box, which is why the caller keys this on pinhole removals only (a box
- * that reads KEEP protects its neighbors' placements). EVERY pinhole
- * removal qualifies, including boxes that also content-matched: the match
- * only proves the box's text reappeared elsewhere, not that the removal
- * uncovers background (taxi-prompt trace 2026-07-10 — the dying talk
- * prompt's text re-matched the dialogue name plate, the dying set went
- * empty, and a broken message fragment placed, churning the scene for
- * five cycles). The content-match no-defer promise rides on the paired
+ * independent neighbor — the discriminator is whether the box's removal
+ * UNCOVERS its region this cycle (a box that survives protects its
+ * neighbors' placements). Two removal families qualify:
+ *
+ *  - Pinhole REMOVEs — the under-box pixels changed. EVERY one counts,
+ *    including boxes that also content-matched: the match only proves the
+ *    box's text reappeared elsewhere, not that the removal uncovers
+ *    background (taxi-prompt trace 2026-07-10 — the dying talk prompt's
+ *    text re-matched the dialogue name plate, the dying set went empty,
+ *    and a broken message fragment placed, churning the scene for five
+ *    cycles).
+ *  - Adjacency-stale + cascade removals (added 2026-07-16) — the box is
+ *    dying precisely BECAUSE fresh adjacent text proved its region
+ *    mid-update, so a bordering fragment is the same partial-read risk
+ *    (グラウス trace 2026-07-12 c4: the partial typewriter box died stale
+ *    via its same-row tail, and the freshly-revealed third row abutting
+ *    it at 13px placed as a stranded solo box for a cycle).
+ *
+ * Content-match-ONLY removals do NOT qualify: they are routine position
+ * updates (scrolling text content-matches every cycle), and deferring
+ * fresh text entering beside them would starve it for as long as the
+ * motion lasts. The content-match no-defer promise rides on the paired
  * replacement itself — [FarGroup.paired], honored by
  * [deferDyingBoxFragments]. [inflatePx] is tight
  * ([PinholeCalibration.FRAGMENT_DEFER_ABUT_PX]) — the old FAR-suppression
@@ -86,17 +99,19 @@ fun abutsAnyInflated(dying: List<Rect>, rect: Rect, inflatePx: Int): Boolean =
 
 /**
  * Step-9b deferral filter: drop FAR groups that abut (per
- * [abutsAnyInflated]) any box being pinhole-removed this cycle — except
- * paired content-match replacements ([FarGroup.paired]), which place
+ * [abutsAnyInflated]) any box dying this cycle — except paired
+ * content-match replacements ([FarGroup.paired]), which place
  * unconditionally. Dropped groups are deferred, not lost: the removal
  * that triggered the drop already forces a floor-paced follow-up look
  * that re-OCRs the uncovered region and places whatever is really there,
  * complete.
  *
- * [dyingRects] must be the RENDERED (padded) rects of every box with a
- * pinhole REMOVE verdict this cycle, content-matched or not — see
- * [abutsAnyInflated]'s kdoc for why a content match must not shrink the
- * dying set. [FarGroup.bounds] are OCR-crop space; [coords] maps them
+ * [dyingRects] must be the RENDERED (padded) rects of every box whose
+ * removal uncovers its region this cycle: pinhole REMOVEs plus
+ * stale/cascade removals, content-matched or not — see
+ * [abutsAnyInflated]'s kdoc for the two families, why a content match
+ * must not shrink the dying set, and why content-match-ONLY removals
+ * stay out. [FarGroup.bounds] are OCR-crop space; [coords] maps them
  * into the dying rects' bitmap space.
  */
 fun deferDyingBoxFragments(
@@ -253,11 +268,15 @@ fun classifyOcrResults(
             // adjacent. Falling back to raw heights for the shrink
             // direction preserves pre-fix behavior there (the cached
             // translation stays, the new adjacent text gets its own
-            // placeholder via the far path). The one legitimate shrink-
-            // direction shape — a same-row continuation of the box's LAST
-            // line (typewriter tail, campfire trace 2026-07-10) — is
-            // rescued by the inline-only last-line probe below; the block
-            // direction stays de-normalized on purpose.
+            // placeholder via the far path). Two legitimate shrink-
+            // direction shapes are rescued by tightly-gated directional
+            // probes below: a same-row continuation of the box's LAST
+            // line (typewriter tail, campfire trace 2026-07-10 —
+            // inlineContinuesLastLine) and a single next row revealed
+            // directly BELOW the box (line-by-line typewriter, グラウス
+            // trace 2026-07-12 — blockContinuesBelow). The whole-box path
+            // stays de-normalized so every shape outside those two keeps
+            // the pre-fix behavior.
             val boxRect = ocrBitmapRects[boxIdx]
             val boxLineCount = boxes[boxIdx].lineCount
             // Per-line normalization only applies when orientations agree
@@ -285,18 +304,24 @@ fun classifyOcrResults(
                 bLineCount = bLn,
                 rtl = rtl,
             )
-            // Shrink-direction inline rescue: the de-normalized raw-height
-            // path above can never accept a same-row continuation of a
-            // multi-line box's last line (the fragment is compared against
-            // the whole box's height). Probe the last-line INLINE geometry
-            // only, on the forward reading side only — the block direction
-            // stays de-normalized on purpose. Horizontal only; the vertical
-            // twin is unobserved (deferred).
+            // Shrink-direction rescues: the de-normalized raw-height path
+            // above can never accept a single-line continuation of a
+            // multi-line box (the fragment is compared against the whole
+            // box's stacked height). Two directional probes re-test the
+            // per-line geometry for the two continuation shapes typewriter
+            // reveals actually produce — same-row tail (inline, forward
+            // reading side only) and next row directly below (block,
+            // downward only). Horizontal only; the vertical twins are
+            // unobserved (deferred).
             val lastLineMatched = !wholeBoxMatched && orientMatch &&
                 orient == TextOrientation.HORIZONTAL &&
                 boxLineCount > 1 && ocrLineCount == 1 &&
                 LayoutAnalyzer.inlineContinuesLastLine(boxRect, boxLineCount, ocrFullRect, rtl)
-            val matched = wholeBoxMatched || lastLineMatched
+            val belowLineMatched = !wholeBoxMatched && !lastLineMatched && orientMatch &&
+                orient == TextOrientation.HORIZONTAL &&
+                boxLineCount > 1 && ocrLineCount == 1 &&
+                LayoutAnalyzer.blockContinuesBelow(boxRect, boxLineCount, ocrFullRect, rtl)
+            val matched = wholeBoxMatched || lastLineMatched || belowLineMatched
             if (OcrManager.instance.debugLogGroupingEnabled) {
                 val decision = LayoutAnalyzer.groupDecision(
                     boxRect, ocrFullRect, orient,
@@ -307,6 +332,7 @@ fun classifyOcrResults(
                 )
                 val verdict = when {
                     lastLineMatched -> "MATCH-lastline"
+                    belowLineMatched -> "MATCH-belowline"
                     matched -> "MATCH"
                     else -> "MISS"
                 }

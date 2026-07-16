@@ -231,8 +231,10 @@ class PinholeOverlayMode(
     // correct menu items near an unrelated dying box, and the deferral's
     // "one confirming look" was structurally impossible under the A2 gate.
     // A narrowly-scoped successor to 9b exists at runCycle step 9b
-    // (2026-07-10): pinhole-removals-only trigger, tight abutment, zero
-    // state — see abutsAnyInflated's kdoc for how it differs and why.
+    // (2026-07-10): removal-triggered (pinhole-only at first;
+    // stale/cascade removals added 2026-07-16 after the グラウス trace),
+    // tight abutment, zero state — see abutsAnyInflated's kdoc for how it
+    // differs from the deleted guard and why.
 
     // ── Unified Cycle ───────────────────────────────────────────────────
 
@@ -669,25 +671,28 @@ class PinholeOverlayMode(
             // 9. Resolve: compute final state from immutable snapshot in one pass
             val allRemovals = cascadedRemovals + pinholeRemovals + contentMatchRemovals
 
-            // 9b. Defer FAR fragments abutting a box being PINHOLE-removed
-            //     this cycle (see abutsAnyInflated's kdoc for the full
-            //     rationale). The group was OCR'd while the dying box still
-            //     blinded the region it borders — it may be only the tail of
-            //     the text the removal uncovers. The removal already forces
-            //     a floor-paced follow-up look (step 14 + the forced-look
-            //     gate bypass), which sees the whole uncovered region and
-            //     places it complete. EVERY pinhole REMOVE counts as dying,
-            //     including boxes that also content-matched — the match only
-            //     proves the text reappeared elsewhere, not that the removal
-            //     uncovers background (taxi-prompt trace 2026-07-10: the
-            //     dying prompt's text re-matched the dialogue name plate,
-            //     the dying set went empty, and a broken message fragment
-            //     placed). The content-match placement promise is carried by
+            // 9b. Defer FAR fragments abutting a box dying this cycle (see
+            //     abutsAnyInflated's kdoc for the full rationale). The group
+            //     was OCR'd while the dying box still blinded the region it
+            //     borders — it may be only the tail of the text the removal
+            //     uncovers. The removal already forces a floor-paced
+            //     follow-up look (step 14 + the forced-look gate bypass),
+            //     which sees the whole uncovered region and places it
+            //     complete. Dying = pinhole REMOVEs (incl. boxes that also
+            //     content-matched — taxi-prompt trace 2026-07-10) PLUS
+            //     stale/cascade removals (2026-07-16 — the グラウス trace's
+            //     partial typewriter box died adjacency-stale and its
+            //     freshly-revealed third row placed as a stranded solo box).
+            //     Content-match-ONLY removals stay out: scrolling text
+            //     content-matches every cycle, and deferring fresh text
+            //     entering beside those would starve it for the whole
+            //     scroll. The content-match placement promise is carried by
             //     the paired FARs themselves (FarGroup.paired), which the
             //     filter never drops — so an unrelated dying neighbor can't
             //     defer them either (the conversation-close prompt gap).
             val cc = classifyCoords
-            val dyingRects = pinholeRemovals.mapNotNull { bitmapRects.getOrNull(it) }
+            val dyingRects =
+                (pinholeRemovals + cascadedRemovals).mapNotNull { bitmapRects.getOrNull(it) }
             if (cc != null && dyingRects.isNotEmpty() && farOcrGroups.isNotEmpty()) {
                 val before = farOcrGroups.size
                 farOcrGroups = deferDyingBoxFragments(
@@ -696,7 +701,7 @@ class PinholeOverlayMode(
                 if (debug && before != farOcrGroups.size) {
                     DetectionLog.log(
                         "D$displayId c$cycleNum deferred ${before - farOcrGroups.size} FAR " +
-                            "fragment(s) abutting ${dyingRects.size} pinhole-removed box(es)"
+                            "fragment(s) abutting ${dyingRects.size} dying box(es)"
                     )
                 }
             }
