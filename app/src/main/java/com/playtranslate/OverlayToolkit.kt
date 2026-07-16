@@ -9,6 +9,7 @@ import com.playtranslate.language.HintTextAnnotation
 import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
+import com.playtranslate.model.TextSegments
 import com.playtranslate.ui.TextBox
 import androidx.core.graphics.get
 import androidx.core.graphics.createBitmap
@@ -584,7 +585,15 @@ object OverlayToolkit {
      * bitmap a failing repro produced, including the "recognise returned
      * null" case that wouldn't otherwise be recoverable from a manual
      * capture (manual capture operates on the raw screen with no overlay
-     * fills applied).
+     * fills applied). The seed always carries the UNFILTERED result — the
+     * engine's true output for that bitmap; [excludeRect] is applied after.
+     *
+     * [excludeRect], when non-null (screen coordinates), drops every
+     * recognized group whose bounds intersect it — the live-start status
+     * card may be inside the captured frame (whole-display mirrors,
+     * accessibility screenshots), and the app must never OCR its own
+     * chrome. Frames are display-sized on both capture paths, so screen →
+     * cropped-bitmap mapping is the crop offset alone.
      */
     suspend fun runOcrPipeline(
         raw: Bitmap,
@@ -592,7 +601,8 @@ object OverlayToolkit {
         sourceLang: String,
         ocrManager: OcrManager,
         statusBarHeight: Int,
-        seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? = null
+        seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? = null,
+        excludeRect: Rect? = null,
     ): OcrPipelineResult? {
         val crop = computeOcrCrop(raw.width, raw.height, activeRegion, statusBarHeight)
         val needsCrop = crop.top > 0 || crop.left > 0 || crop.bottom < raw.height || crop.right < raw.width
@@ -600,7 +610,7 @@ object OverlayToolkit {
             Bitmap.createBitmap(raw, crop.left, crop.top, (crop.right - crop.left).coerceAtLeast(1), (crop.bottom - crop.top).coerceAtLeast(1))
         else raw
 
-        val ocrResult: OcrManager.OcrResult?
+        var ocrResult: OcrManager.OcrResult?
         try {
             ocrResult = ocrManager.recognise(bitmap, sourceLang, screenshotWidth = raw.width)
             seedWriter?.invoke(bitmap, ocrResult)
@@ -609,12 +619,43 @@ object OverlayToolkit {
             if (bitmap !== raw && !bitmap.isRecycled) bitmap.recycle()
         }
 
+        if (excludeRect != null && ocrResult != null) {
+            val exCropped = Rect(excludeRect).apply { offset(-crop.left, -crop.top) }
+            ocrResult = dropGroupsIntersecting(ocrResult, exCropped)
+        }
         if (ocrResult == null) return null
 
         val dedupKey = ocrResult.fullText.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
         if (dedupKey.isEmpty()) return null
 
         return OcrPipelineResult(ocrResult, dedupKey, crop.left, crop.top, raw.width, raw.height)
+    }
+
+    /**
+     * A copy of [result] without the groups intersecting [exclude]
+     * (cropped-bitmap coordinates), or null when nothing survives. The
+     * derived projections are rebuilt the way [OcrManager] builds them —
+     * [OcrManager.OcrResult.fullText] as the space-joined group texts,
+     * segments via [TextSegments.ofGroupTexts] — and every surviving line's
+     * baked-in groupIndex is re-pointed at its group's new position.
+     * debugBoxes are left untouched: showing the dropped region's boxes in
+     * the debug overlay is a feature, not a leak.
+     */
+    private fun dropGroupsIntersecting(
+        result: OcrManager.OcrResult,
+        exclude: Rect,
+    ): OcrManager.OcrResult? {
+        val kept = result.groups.filter { !Rect.intersects(it.bounds, exclude) }
+        if (kept.size == result.groups.size) return result
+        if (kept.isEmpty()) return null
+        val reindexed = kept.mapIndexed { gi, group ->
+            group.copy(lines = group.lines.map { it.copy(groupIndex = gi) })
+        }
+        return result.copy(
+            fullText = reindexed.joinToString(" ") { it.text }.trim(),
+            segments = TextSegments.ofGroupTexts(reindexed.map { it.text }),
+            groups = reindexed,
+        )
     }
 
     // ── Placeholder boxes + translation (shared by live overlay modes) ─────

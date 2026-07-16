@@ -58,16 +58,11 @@ import kotlinx.coroutines.withTimeoutOrNull
  *   compares against.
  * @param parkDeadlineMs uptime deadline past which a park must end in a
  *   forced cycle, re-read each wait; null = park indefinitely.
- * @param firstCycleGate suspends before cycle 1's park and reports whether
- *   the session is PROVEN clear to capture (engine warm-up joined, startup
- *   chip off screen and provably out of the frames this mode will read).
- *   False = not proven (a whole-display mirror hasn't delivered a post-chip
- *   frame yet): the engine reschedules the gate at the capture interval
- *   WITHOUT running a cycle — a frame that may show our own chip must never
- *   be OCR'd, and on a dead pipeline idling here matches what the delivery
- *   park would do anyway. Latched as done only on true; a CANCELLED gate
- *   (stop, input kick) re-runs on the relaunch; any other failure marks it
- *   done so a broken gate cannot re-park the loop forever.
+ * @param firstCycleGate suspends exactly once, before cycle 1's park — the
+ *   live-start gate (engine warm-up joined, so no cycle pays the lazy model
+ *   load mid-pass). A CANCELLED gate (stop, input kick) re-runs on the
+ *   relaunch; any other failure marks it done so a broken gate cannot
+ *   re-park the loop forever.
  * @param cycle one full capture→detect→apply pass; returns the delay (ms)
  *   before the next cycle.
  */
@@ -78,7 +73,7 @@ internal class LiveCycleEngine(
     private val tag: String,
     private val source: () -> LiveCaptureSource?,
     private val parkDeadlineMs: () -> Long? = { null },
-    private val firstCycleGate: suspend () -> Boolean = { true },
+    private val firstCycleGate: suspend () -> Unit = {},
     private val cycle: suspend () -> Long,
 ) {
 
@@ -95,12 +90,12 @@ internal class LiveCycleEngine(
     private var inputBurstUntilMs = 0L
     private var lastInputKickMs = 0L
 
-    /** The one-time [firstCycleGate] reported clear. Cancellation must not
-     *  set it: [onGameInput] cancels the current job and relaunches, and a
-     *  gate killed mid-park (warm-up unjoined, startup chip still up) must
-     *  run again on the relaunch. A non-cancellation failure DOES set it —
-     *  a broken gate must not re-park the loop forever (the gate itself is
-     *  idempotent, so re-running after cancellation is safe). */
+    /** The one-time [firstCycleGate] COMPLETED. Cancellation must not set
+     *  it: [onGameInput] cancels the current job and relaunches, and a gate
+     *  killed mid-park (warm-up unjoined) must run again on the relaunch. A
+     *  non-cancellation failure DOES set it — a broken gate must not
+     *  re-park the loop forever (the gate itself is idempotent, so
+     *  re-running after cancellation is safe). */
     private var firstCycleGateRan = false
 
     /** Launch the next link of the chain: pace → park → cycle → relaunch. */
@@ -109,20 +104,13 @@ internal class LiveCycleEngine(
             try {
                 if (delayMs > 0) delay(delayMs)
                 if (!firstCycleGateRan) {
-                    val clear = try {
+                    try {
                         firstCycleGate()
+                        firstCycleGateRan = true
                     } catch (e: Exception) {
                         if (e !is CancellationException) firstCycleGateRan = true
                         throw e
                     }
-                    if (!clear) {
-                        // Not proven clear — retry the gate next round; no
-                        // capture may happen off an unproven frame.
-                        ensureActive()
-                        scheduleNext(Prefs(service).captureIntervalMs)
-                        return@launch
-                    }
-                    firstCycleGateRan = true
                 }
                 awaitCycleReason()
                 val nextDelay = cycle()

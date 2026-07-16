@@ -1302,17 +1302,15 @@ class CaptureService : Service() {
      *  like the rest of the live-mode mutators. */
     private var liveFeedback: LiveSessionFeedback? = null
 
-    /** The pre-first-cycle gate, delegated to the session — see
-     *  [LiveSessionFeedback.awaitFirstCycleClear] for the return contract
-     *  (false = not proven clear; the caller retries instead of capturing).
-     *  Called by the modes' [LiveCycleEngine.firstCycleGate] and
-     *  FuriganaMode's gated startLoop; runs in the CALLER's scope, so a
-     *  mode stop cancels it like any parked cycle. No session → nothing to
-     *  wait for. */
-    internal suspend fun awaitFirstCycleClear(
-        displayId: Int,
-        source: com.playtranslate.capture.LiveCaptureSource?,
-    ): Boolean = liveFeedback?.awaitFirstCycleClear(displayId, source) ?: true
+    /** The pre-first-cycle gate, delegated to the session — joins the
+     *  engine warm-up so cycle 1 never pays the lazy model load mid-pass
+     *  ([LiveSessionFeedback.awaitFirstCycleClear]). Called by the modes'
+     *  [LiveCycleEngine.firstCycleGate] and FuriganaMode's gated startLoop;
+     *  runs in the CALLER's scope, so a mode stop cancels it like any
+     *  parked cycle. No session → nothing to wait for. */
+    internal suspend fun awaitFirstCycleClear() {
+        liveFeedback?.awaitFirstCycleClear()
+    }
 
     /**
      * The stream kind could not be MEASURED for a session holding MP
@@ -2196,14 +2194,23 @@ class CaptureService : Service() {
         val feedback = if (isLive) liveFeedback else null
         val busyToken = feedback?.beginOcrPass()
         try {
-            return OverlayToolkit.runOcrPipeline(
+            val result = OverlayToolkit.runOcrPipeline(
                 raw,
                 activeRegionForDisplay(displayId),
                 sourceLang,
                 ocrManager,
                 statusBarHeight,
-                seedWriter = seedWriter
+                seedWriter = seedWriter,
+                // The startup card may be inside this frame (whole-display
+                // mirrors, a11y screenshots) — never OCR our own chrome.
+                excludeRect = feedback?.ocrExclusionRect(displayId),
             )
+            // A completed pass — a null result means "nothing to translate",
+            // which is also an answer — ends the startup card's narration on
+            // its display. Deliberately NOT in the finally: a cancelled pass
+            // answered nothing.
+            feedback?.onFirstOcrComplete(displayId)
+            return result
         } finally {
             if (feedback != null && busyToken != null) feedback.endOcrPass(busyToken)
         }

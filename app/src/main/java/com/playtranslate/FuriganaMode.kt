@@ -131,15 +131,10 @@ class FuriganaMode(
         startLoopJob?.cancel()
         startLoopJob = scope.launch {
             // Same pre-first-cycle gate the LiveCycleEngine modes run: the
-            // engine warm-up joined and the startup chip provably out of the
-            // frames this loop will read. Idempotent — restarts (dismiss,
-            // refresh) pass straight through once it has reported clear.
-            // Not-clear (whole-display mirror hasn't delivered a post-chip
-            // frame) retries rather than letting the loop OCR our own chip;
-            // a stop cancels the retry with the job.
-            while (!service.awaitFirstCycleClear(displayId, source)) {
-                delay(Prefs(service).captureIntervalMs)
-            }
+            // engine warm-up joined, so no frame pays the lazy model load
+            // mid-pass. Idempotent — restarts (dismiss, refresh) pass
+            // straight through once the warm-up has settled.
+            service.awaitFirstCycleClear()
             // A hold can arrive while the gate is parked, and its global
             // stopAllLoops only stops loops that EXIST — a start that hasn't
             // fired yet isn't one of them. Same rule as the dismiss-restart

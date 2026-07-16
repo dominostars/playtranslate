@@ -43,9 +43,12 @@ import com.playtranslate.themeColor
  * several seconds, so [onVerdictSettled] flips it to FLAG_NOT_TOUCHABLE the
  * moment the pattern retires: only the ~1.4s probe phase may eat taps.
  *
- * The card must never be OCR'd: the session removes it before the first
- * live cycle is allowed to capture (the first-cycle gate), on stopLive, on a
- * superseding start, and via a hard-cap timer as a leak guard.
+ * The card spans the whole startup, including the first OCR pass: it is
+ * removed when that pass COMPLETES (or on stopLive, a superseding start, or
+ * the hard-cap leak guard). Its own text must still never be OCR'd — CLEAN
+ * task mirrors never composite it, and on every other capture path the
+ * pipeline excludes recognized groups intersecting [onScreenRect]
+ * (LiveSessionFeedback.ocrExclusionRect).
  */
 internal class StartupChip private constructor(
     private val wm: WindowManager,
@@ -135,6 +138,19 @@ internal class StartupChip private constructor(
         if (isRemoved) return
         root.visibility = if (visible) View.VISIBLE else View.GONE
     }
+
+    /** The card's current on-screen bounds while it can appear in captured
+     *  frames — null when removed, hidden, or not yet laid out (a zero-size
+     *  rect excludes nothing, so pre-layout passes lose no text). Live per
+     *  call: whatever moves the window moves the exclusion with it. */
+    val onScreenRect: Rect?
+        get() {
+            if (isRemoved || root.visibility != View.VISIBLE) return null
+            if (root.width == 0 || root.height == 0) return null
+            val loc = IntArray(2)
+            root.getLocationOnScreen(loc)
+            return Rect(loc[0], loc[1], loc[0] + root.width, loc[1] + root.height)
+        }
 
     /** Remove the window. Idempotent — callable from any of the removal
      *  sites (first-cycle gate, stopLive, superseding start, hard cap). */

@@ -1,8 +1,8 @@
 package com.playtranslate
 
+import android.graphics.Rect
 import android.view.Display
 import com.playtranslate.capture.CaptureBackendResolver
-import com.playtranslate.capture.LiveCaptureSource
 import com.playtranslate.capture.MediaProjectionController
 import com.playtranslate.capture.StartupChip
 import com.playtranslate.capture.StreamKind
@@ -18,9 +18,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * One live session's feedback machinery: the eager OCR engine warm-up, the
- * startup chip (probe checker → warm-up label) with its grace and leak-guard
- * timers, the pre-first-cycle gate, and the slow-pass busy tracking that
- * drives the floating icons' breathe.
+ * startup card (probe checker → warm-up spinner, on screen from live start
+ * until the FIRST COMPLETED OCR pass, so the user is never left staring at
+ * a dead screen) with its grace and leak-guard timers, the OCR exclusion
+ * that keeps the card's own text out of results wherever frames can contain
+ * it, the warm-up gate, and the slow-pass busy tracking that drives the
+ * floating icons' breathe.
  *
  * Created by [CaptureService.startLive], disposed by stopLive and by the
  * next start — the Region-session idiom: the old session is cancelled and
@@ -57,17 +60,6 @@ internal class LiveSessionFeedback(
     private var chip: StartupChip? = null
     private var chipHardCap: Job? = null
     private var chipGrace: Job? = null
-
-    /** Delivery seq stamped when the chip left the screen (from the MP
-     *  controller — the chip only ever lives on the projected display, and
-     *  every MP-backed source's DeliverySignal shares that counter).
-     *  -1 = no chip shown this session. */
-    private var chipRemovalSeq = -1L
-
-    /** A gate's post-removal fresh-frame wait completed — later gate entries
-     *  (a mode's loop restarting) skip straight through. Never set by a
-     *  cancelled wait, which re-runs. */
-    private var chipFreshWaitDone = false
 
     /** Show the checker chip ahead of a stream-kind probe. The probe draws
      *  its pattern into it via [probeSurface]. */
@@ -124,81 +116,56 @@ internal class LiveSessionFeedback(
         }
     }
 
-    /** Remove the chip window. Idempotent — called from the first-cycle
-     *  gate, the hard cap, explicit start-aborts, and [dispose]. */
+    /** Remove the chip window. Idempotent — called from the first-result
+     *  hook, the hard cap, explicit start-aborts, and [dispose]. */
     fun removeChip() {
         chipHardCap?.cancel()
         chipHardCap = null
-        chip?.let {
-            if (!it.isRemoved) {
-                it.remove()
-                chipRemovalSeq = controller.deliverySeqNow
-            }
-        }
+        chip?.remove()
         chip = null
+    }
+
+    /** The card's on-screen rect while it could appear in captured frames —
+     *  null on a CLEAN stream (a task mirror structurally never composites
+     *  our windows; excluding there would drop REAL game text under the
+     *  card), null when no card is up or it is hidden. Everything else —
+     *  whole-display mirrors, accessibility screenshots (no consent ⇒ not
+     *  CLEAN) — sees the card in its pixels, and the app must never OCR its
+     *  own chrome. Queried per pass so the rect always reflects the card's
+     *  live position. */
+    fun ocrExclusionRect(displayId: Int): Rect? {
+        if (displayId != Display.DEFAULT_DISPLAY) return null
+        if (controller.streamKind == StreamKind.CLEAN) return null
+        return chip?.onScreenRect
+    }
+
+    /** A live OCR pass ran to completion on [displayId] — including the
+     *  "nothing to translate" outcome, which is also an answer. The card's
+     *  narration is done on the display it lives on: remove it. Frames
+     *  captured from here on are post-card; the removal composition itself
+     *  wakes the delivery-gated tiers, whose next cycle re-reads the region
+     *  the card occupied. */
+    fun onFirstOcrComplete(displayId: Int) {
+        if (displayId != Display.DEFAULT_DISPLAY) return
+        removeChip()
     }
 
     // ── Pre-first-cycle gate ─────────────────────────────────────────────
 
     /**
-     * A live cycle may not capture until
-     *  1. the engine warm-up SETTLED — otherwise the lazy session load lands
-     *     mid-cycle and then OCRs a frame that went stale while the model
-     *     loaded; and
-     *  2. the chip is off screen and provably outside the frame the cycle
-     *     will read — its label must never be OCR'd and boxed as game text.
-     *     The chip only exists on the projected (default) display, so only
-     *     that display's mode pays the wait.
-     * Returns true when the cycle is PROVEN clear to capture; false when a
-     * whole-display mirror has not yet delivered a post-chip frame — the
-     * caller must retry the gate instead of capturing, because the latched
-     * frame likely still shows the chip. Idempotent and safe to re-enter
-     * (loop restarts, input kicks, retries). Runs in the CALLER's scope, so
-     * a mode stop cancels it like any parked cycle. Every wait is capped:
-     * feedback must never wedge the feature.
+     * A live cycle may not capture until the engine warm-up SETTLED —
+     * otherwise the lazy session load lands mid-cycle and then OCRs a frame
+     * that went stale while the model loaded. That is the gate's whole job
+     * now: the card no longer has to leave the screen before cycle 1 (it
+     * stays up until the first completed pass), because frames that could
+     * contain it have its rect excluded from OCR ([ocrExclusionRect]) —
+     * CLEAN mirrors never composite it at all. Idempotent and safe to
+     * re-enter (loop restarts, input kicks). Runs in the CALLER's scope, so
+     * a mode stop cancels it like any parked cycle; the cap is a hang
+     * guard, not policy — warmUpEngine always returns.
      */
-    suspend fun awaitFirstCycleClear(displayId: Int, source: LiveCaptureSource?): Boolean {
-        // warmUpEngine always returns (failure settles to the floor/empty
-        // engine); the cap is a hang guard, not policy.
+    suspend fun awaitFirstCycleClear() {
         withTimeoutOrNull(WARMUP_JOIN_CAP_MS) { warmUpJob.join() }
-        removeChip()
-        if (displayId != Display.DEFAULT_DISPLAY) return true
-        if (chipRemovalSeq < 0 || chipFreshWaitDone) return true
-        // A CLEAN grant is a task mirror: our windows are structurally
-        // absent from its stream (the probe's own detection premise), so
-        // the chip was never in these frames and there is nothing to wait
-        // for. Waiting would also never RESOLVE on a static game — the
-        // removal composites on the display, not into the task mirror —
-        // and would burn the whole cap on every quiet single-app start.
-        if (controller.streamKind == StreamKind.CLEAN) {
-            chipFreshWaitDone = true
-            return true
-        }
-        val signal = source?.deliverySignal
-        if (signal != null) {
-            // Whole-display mirror: the chip WAS in the stream, and its
-            // removal forces a composition into it, so on a healthy
-            // pipeline this resolves within a frame or two. A timeout means
-            // the pipeline is wedged or very late and the latched frame
-            // likely still shows the chip — report not-clear so the caller
-            // retries the gate rather than OCR'ing our own label.
-            val fresh = withTimeoutOrNull(FRESH_FRAME_TIMEOUT_MS) {
-                signal.awaitSeqAfter(chipRemovalSeq)
-            } != null
-            if (!fresh) {
-                DetectionLog.log(
-                    "startup chip fresh-frame wait timed out; holding first cycle"
-                )
-                return false
-            }
-        } else {
-            // Accessibility capture has no delivery signal (and takes its
-            // screenshots at call time, so there is no latched frame to go
-            // stale); a short settle lets the removal reach the screen.
-            delay(A11Y_CHIP_SETTLE_MS)
-        }
-        chipFreshWaitDone = true
-        return true
     }
 
     // ── Slow-pass busy tracking ──────────────────────────────────────────
@@ -267,19 +234,14 @@ internal class LiveSessionFeedback(
          *  still running after this grace. */
         const val CHIP_GRACE_MS = 300L
 
-        /** Chip leak guard — fires only when no first cycle ever ran to
-         *  remove the chip. */
-        const val CHIP_HARD_CAP_MS = 12_000L
+        /** Chip leak guard — fires only when no completed first pass ever
+         *  removed the card. Sized above worst-case probe (~3.4s) + warm-up
+         *  join cap (8s) + a slow first pass, which all now legitimately
+         *  live inside the card's window. */
+        const val CHIP_HARD_CAP_MS = 25_000L
 
-        // Gate caps — hang guards, not policy; each covers a wait that
-        // resolves far sooner on every healthy path.
+        /** Warm-up join cap — a hang guard, not policy; warmUpEngine always
+         *  returns on every healthy path. */
         const val WARMUP_JOIN_CAP_MS = 8_000L
-
-        /** Post-removal fresh-delivery cap (whole-display mirrors only —
-         *  CLEAN streams skip the wait). The removal composites into the
-         *  mirror, so this resolves in a frame or two normally; a timeout
-         *  reports not-clear and the caller retries the gate. */
-        const val FRESH_FRAME_TIMEOUT_MS = 2_000L
-        const val A11Y_CHIP_SETTLE_MS = 200L
     }
 }
