@@ -74,8 +74,7 @@ internal class LiveSessionFeedback(
         get() = chip?.takeIf { !it.isRemoved }
 
     /** The stream-kind verdict settled (whatever it settled to): the card's
-     *  grid slot swaps to the loading spinner, and the window stops
-     *  consuming center-screen taps. */
+     *  grid slot swaps to the loading spinner. */
     fun onVerdictSettled() {
         chip?.onVerdictSettled()
     }

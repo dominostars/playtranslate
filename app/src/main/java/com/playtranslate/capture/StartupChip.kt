@@ -37,11 +37,12 @@ import com.playtranslate.themeColor
  * it never adds or removes this window. Like the ephemeral probe window, the
  * card is deliberately NOT registered with the OverlayHost (a registered
  * window can be alpha-blanked by a concurrent clean capture, faking a CLEAN
- * verdict) and is TOUCHABLE while the pattern shows (a pass-through window's
- * composited opacity is clamped by the untrusted-touch rules — ~84% measured
- * — enough to flunk the color match). Unlike the probe window it may live
- * several seconds, so [onVerdictSettled] flips it to FLAG_NOT_TOUCHABLE the
- * moment the pattern retires: only the ~1.4s probe phase may eat taps.
+ * verdict) and is TOUCHABLE — for its whole life, both variants: a
+ * pass-through window's composited opacity is clamped by the
+ * untrusted-touch rules (~84% measured — enough to flunk the probe's color
+ * match, and enough that startup chrome reads as broken glass). The cost —
+ * the small centered card eats its own taps during a loading phase — is
+ * accepted; NOT_TOUCH_MODAL keeps every other touch flowing.
  *
  * The card spans the whole startup, including the first OCR pass: it is
  * removed when that pass COMPLETES (or on stopLive, a superseding start, or
@@ -55,7 +56,6 @@ internal class StartupChip private constructor(
     private val root: View,
     private val pattern: StreamKindProbe.PatternView,
     private val spinner: ProgressBar,
-    private val params: WindowManager.LayoutParams,
 ) : StreamKindProbe.ProbeSurface {
 
     override var patternAddedSeq = 0L
@@ -115,20 +115,17 @@ internal class StartupChip private constructor(
 
     /** The stream-kind verdict settled (whatever it settled to): the grid's
      *  slot swaps to the loading spinner — INVISIBLE keeps the grid's
-     *  bounds, and the slot is fixed-size, so the card does not resize —
-     *  and the window stops consuming taps. The untrusted-touch opacity
-     *  exemption only matters while the pattern is being measured; a status
-     *  card may render clamped, but must not eat the center of the screen
-     *  for the seconds warm-up can take. */
+     *  bounds, and the slot is fixed-size, so the card does not resize.
+     *  The window stays TOUCHABLE for its whole life: a pass-through
+     *  overlay's composited opacity is clamped to ~84% by the
+     *  untrusted-touch rules, and startup chrome rendering translucent
+     *  reads as broken. The cost — the small centered card eats its own
+     *  taps during a loading phase — is accepted (2026-07-15 decision);
+     *  NOT_TOUCH_MODAL keeps every other touch flowing. */
     fun onVerdictSettled() {
         if (isRemoved) return
         pattern.visibility = View.INVISIBLE
         spinner.visibility = View.VISIBLE
-        params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-        try {
-            wm.updateViewLayout(root, params)
-        } catch (_: Exception) {
-        }
     }
 
     /** Hide/re-show without removing — used around the UNKNOWN stream-kind
@@ -172,8 +169,7 @@ internal class StartupChip private constructor(
          * allowed to block the feature it narrates.
          *
          * [withPattern] false builds the spinner-from-birth variant (no
-         * probe this start — engine warm-up is the only wait), which never
-         * needs the touch-consuming exemption and is born FLAG_NOT_TOUCHABLE.
+         * probe this start — engine warm-up is the only wait).
          */
         fun show(controller: MediaProjectionController, withPattern: Boolean): StartupChip? {
             val host = CaptureBackendResolver.active().overlayHost ?: return null
@@ -247,22 +243,23 @@ internal class StartupChip private constructor(
             }
 
             // Same window contract as the ephemeral probe (touchable +
-            // center + inset rationale documented there), minus
-            // touchability when there is no pattern to protect.
-            val baseFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            // center + inset rationale documented there). Touchable for the
+            // card's WHOLE life, both variants: pass-through overlays get
+            // their composited opacity clamped to ~84% by the
+            // untrusted-touch rules, and this card must render fully opaque
+            // (see onVerdictSettled).
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 host.windowType,
-                if (withPattern) baseFlags
-                else baseFlags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT,
             ).apply {
                 gravity = Gravity.CENTER
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
             }
-            val chip = StartupChip(wm, card, pattern, spinner, params)
+            val chip = StartupChip(wm, card, pattern, spinner)
             // Anchor BEFORE the window exists — the add's own composition is
             // round-1 freshness evidence (the ephemeral probe's seqAtAdd,
             // transferred faithfully).
