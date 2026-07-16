@@ -274,11 +274,14 @@ internal class LiveSessionFeedback(
     private val busyPasses = mutableSetOf<OcrPassToken>()
     private var busyArmJob: Job? = null
 
-    /** The slow-pass rescue timer: armed alongside the breathe timer, fires
-     *  [onSlowPass] once per session when a pass has been in flight past
+    /** The slow-pass rescue timers, one per in-flight pass: each fires
+     *  [onSlowPass] when ITS OWN pass has been in flight past
      *  [OCR_SLOW_PROMPT_MS] — while the user is staring at the wait, not
-     *  after it. */
-    private var slowPassJob: Job? = null
+     *  after it. Per-token, not one shared timer, so overlapping passes
+     *  cannot misattribute one pass's age to a younger survivor (review
+     *  finding); a pass's finally cancels exactly its own timer. The
+     *  session-wide [slowPassFired] latch keeps the callback once-only. */
+    private val slowPassJobs = mutableMapOf<OcrPassToken, Job>()
     private var slowPassFired = false
 
     /** Register an in-flight live OCR pass; hand the token back to
@@ -292,17 +295,16 @@ internal class LiveSessionFeedback(
                 delay(OCR_BUSY_GRACE_MS)
                 if (busyPasses.isNotEmpty()) setIconsBusy(true)
             }
-            if (!slowPassFired) {
-                slowPassJob?.cancel()
-                slowPassJob = scope.launch {
-                    delay(OCR_SLOW_PROMPT_MS)
-                    // Report a CURRENTLY in-flight pass's display — the one
-                    // that armed this timer may have ended if passes overlap.
-                    val slowDisplay = busyPasses.firstOrNull()?.displayId
-                    if (slowDisplay != null && !slowPassFired) {
-                        slowPassFired = true
-                        onSlowPass(slowDisplay)
-                    }
+        }
+        if (!slowPassFired) {
+            slowPassJobs[token] = scope.launch {
+                delay(OCR_SLOW_PROMPT_MS)
+                // Reaching here means THIS pass ran the full threshold
+                // (endOcrPass cancels the timer with the pass). The set
+                // check is a belt against ordering surprises only.
+                if (!slowPassFired && token in busyPasses) {
+                    slowPassFired = true
+                    onSlowPass(token.displayId)
                 }
             }
         }
@@ -310,14 +312,13 @@ internal class LiveSessionFeedback(
     }
 
     fun endOcrPass(token: OcrPassToken) {
+        slowPassJobs.remove(token)?.cancel()
         // A token absent from the set is a pass that outlived its session
         // ([dispose] cleared it) — inert by construction.
         if (!busyPasses.remove(token)) return
         if (busyPasses.isEmpty()) {
             busyArmJob?.cancel()
             busyArmJob = null
-            slowPassJob?.cancel()
-            slowPassJob = null
             setIconsBusy(false)
         }
     }
@@ -335,6 +336,7 @@ internal class LiveSessionFeedback(
         scope.cancel()
         removeChip()
         busyPasses.clear()
+        slowPassJobs.clear()
         setIconsBusy(false)
     }
 
