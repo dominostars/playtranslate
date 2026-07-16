@@ -181,6 +181,13 @@ class OverlayAlert private constructor(
 
     private var scrim: FrameLayout? = null
     private var dismissAction: (() -> Unit)? = null
+
+    /** True while the alert is actually attached to a window. False after
+     *  dismiss — and, crucially, after a [Builder.showAsOverlay] whose
+     *  window add FAILED: callers that gate behavior on an alert being
+     *  visible (e.g. pausing live cycles beneath it) must check this
+     *  rather than assume construction implies presence. */
+    val isShowing: Boolean get() = scrim != null
     private var attachedActivity: Activity? = null
     private var lifecycleCallback: Application.ActivityLifecycleCallbacks? = null
     private var backPressedCallback: OnBackPressedCallback? = null

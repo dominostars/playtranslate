@@ -1176,7 +1176,7 @@ class CaptureService : Service() {
         dismissSlowOcrPrompt()
         liveFeedback = LiveSessionFeedback(
             serviceScope, mediaProjectionController, sourceLang,
-            onSlowPass = { maybeShowSlowOcrPrompt() },
+            onSlowPass = { slowDisplayId -> maybeShowSlowOcrPrompt(slowDisplayId) },
         )
 
         // Secure capture readiness — the MediaProjection screen-record consent
@@ -1347,13 +1347,19 @@ class CaptureService : Service() {
      * to the always-available ML Kit floor, at most once per language ever
      * (either answer is remembered; the OCR picker in Settings is the
      * standing change-your-mind path). Fires MID-pass, while the user is
-     * staring at the wait — the moment the offer explains itself. Gated
-     * out when: the language has no floor (RU/AR/TH have nothing faster to
-     * offer), the floor is already what's selected (the slowness IS the
-     * fast engine), or an alert is already up. The startup card yields
-     * while the alert shows and returns if the user keeps their engine.
+     * staring at the wait — the moment the offer explains itself — and
+     * renders on [slowDisplayId], the display whose capture is grinding
+     * (an alert on a screen the user isn't watching would pause everything
+     * behind their back; review finding). Gated out when: the language has
+     * no floor (RU/AR/TH have nothing faster to offer), the floor is
+     * already what's selected (the slowness IS the fast engine), or an
+     * alert is already up. The startup card yields while the alert shows
+     * and returns if the user keeps their engine. [livePaused] engages only
+     * once the alert PROVABLY attached ([OverlayAlert.isShowing]) — a
+     * failed window add must never freeze cycles under an alert nobody
+     * can see.
      */
-    private fun maybeShowSlowOcrPrompt() {
+    private fun maybeShowSlowOcrPrompt(slowDisplayId: Int) {
         if (!isLive || slowOcrAlert != null) return
         val prefs = Prefs(this)
         val id = prefs.sourceLangId
@@ -1363,16 +1369,18 @@ class CaptureService : Service() {
         if (selected.selectionToken == floor.selectionToken) return
 
         val host = CaptureBackendResolver.active().overlayHost ?: return
-        val display = getSystemService(DisplayManager::class.java)
-            ?.getDisplay(Display.DEFAULT_DISPLAY) ?: return
+        val dm = getSystemService(DisplayManager::class.java) ?: return
+        // The slow pass's display, falling back to the default if it
+        // disconnected between the timer firing and now.
+        val display = dm.getDisplay(slowDisplayId)
+            ?: dm.getDisplay(Display.DEFAULT_DISPLAY) ?: return
         val displayCtx = createDisplayContext(display)
         val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
         val themed = overlayThemedContext(displayCtx)
 
         liveFeedback?.setChipVisible(false)
-        DetectionLog.log("slow-OCR prompt shown for ${id.code} (selected=${selected.selectionToken})")
-        slowOcrAlert = com.playtranslate.ui.OverlayAlert
-            .Builder(themed, host, wm, Display.DEFAULT_DISPLAY)
+        val alert = com.playtranslate.ui.OverlayAlert
+            .Builder(themed, host, wm, display.displayId)
             .hideIcon()
             .setTitle(getString(R.string.slow_ocr_prompt_title))
             // The settings path is fed from the LIVE section labels, so the
@@ -1412,6 +1420,19 @@ class CaptureService : Service() {
                 refreshLiveOverlay()
             }
             .showAsOverlay()
+        if (!alert.isShowing) {
+            // Window add failed — no alert on any screen, so nothing may
+            // pause. The once-per-session latch already fired; this session
+            // just goes unrescued rather than frozen.
+            DetectionLog.log("slow-OCR prompt failed to attach (display ${display.displayId})")
+            liveFeedback?.setChipVisible(true)
+            return
+        }
+        DetectionLog.log(
+            "slow-OCR prompt shown for ${id.code} on display ${display.displayId} " +
+                "(selected=${selected.selectionToken})"
+        )
+        slowOcrAlert = alert
     }
 
     /**
@@ -2305,7 +2326,7 @@ class CaptureService : Service() {
         // inference cancels lazily) finalizes into ITS session — disposed
         // and inert — never the next one's ([LiveSessionFeedback]).
         val feedback = if (isLive) liveFeedback else null
-        val busyToken = feedback?.beginOcrPass()
+        val busyToken = feedback?.beginOcrPass(displayId)
         try {
             val result = OverlayToolkit.runOcrPipeline(
                 raw,

@@ -45,9 +45,12 @@ internal class LiveSessionFeedback(
     sourceLang: String,
     /** Invoked at most once per session, on Main, when a live OCR pass has
      *  been in flight past [OCR_SLOW_PROMPT_MS] — the slow-device signal
-     *  the rescue prompt fires on. Runs in [scope]: a disposed session can
-     *  never fire it. */
-    private val onSlowPass: () -> Unit = {},
+     *  the rescue prompt fires on. Receives the displayId of an in-flight
+     *  slow pass, so the prompt can render on the screen whose capture is
+     *  actually grinding (review finding: multi-display setups must not get
+     *  the alert on a display the user isn't watching). Runs in [scope]: a
+     *  disposed session can never fire it. */
+    private val onSlowPass: (Int) -> Unit = {},
 ) {
 
     private val scope = CoroutineScope(
@@ -246,7 +249,12 @@ internal class LiveSessionFeedback(
     // removes only its own token from its own session, so the books cannot
     // drift and no generation tagging is needed.
 
-    private val busyPasses = mutableSetOf<Any>()
+    /** One in-flight live OCR pass. Identity is the token; [displayId]
+     *  rides along so the slow-pass prompt can target the display whose
+     *  capture is actually slow. */
+    class OcrPassToken internal constructor(internal val displayId: Int)
+
+    private val busyPasses = mutableSetOf<OcrPassToken>()
     private var busyArmJob: Job? = null
 
     /** The slow-pass rescue timer: armed alongside the breathe timer, fires
@@ -258,8 +266,8 @@ internal class LiveSessionFeedback(
 
     /** Register an in-flight live OCR pass; hand the token back to
      *  [endOcrPass] from the pass's finally. */
-    fun beginOcrPass(): Any {
-        val token = Any()
+    fun beginOcrPass(displayId: Int): OcrPassToken {
+        val token = OcrPassToken(displayId)
         busyPasses.add(token)
         if (busyPasses.size == 1) {
             busyArmJob?.cancel()
@@ -271,9 +279,12 @@ internal class LiveSessionFeedback(
                 slowPassJob?.cancel()
                 slowPassJob = scope.launch {
                     delay(OCR_SLOW_PROMPT_MS)
-                    if (busyPasses.isNotEmpty() && !slowPassFired) {
+                    // Report a CURRENTLY in-flight pass's display — the one
+                    // that armed this timer may have ended if passes overlap.
+                    val slowDisplay = busyPasses.firstOrNull()?.displayId
+                    if (slowDisplay != null && !slowPassFired) {
                         slowPassFired = true
-                        onSlowPass()
+                        onSlowPass(slowDisplay)
                     }
                 }
             }
@@ -281,7 +292,7 @@ internal class LiveSessionFeedback(
         return token
     }
 
-    fun endOcrPass(token: Any) {
+    fun endOcrPass(token: OcrPassToken) {
         // A token absent from the set is a pass that outlived its session
         // ([dispose] cleared it) — inert by construction.
         if (!busyPasses.remove(token)) return
