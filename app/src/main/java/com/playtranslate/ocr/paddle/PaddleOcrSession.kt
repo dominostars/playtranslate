@@ -49,6 +49,7 @@ class PaddleOcrSession private constructor(
     private val det: MnnInterpreter,
     private val rec: MnnInterpreter,
     private val keys: List<String>,
+    private val detLimitSide: Int,
 ) : Closeable {
 
     /** One recognized region: box in ORIGINAL-bitmap coords, text, confidence. */
@@ -230,14 +231,14 @@ class PaddleOcrSession private constructor(
 
     private class DetInput(val data: FloatArray, val resizedW: Int, val resizedH: Int)
 
-    /** Resize so the longest side stays within Cfg.DET_LIMIT_SIDE, both dims
+    /** Resize so the longest side stays within [detLimitSide], both dims
      *  rounded to a multiple of 32, then normalize (RGB, ImageNet mean/std,
      *  NCHW). */
     private fun detPreprocess(bitmap: Bitmap): DetInput {
         val ow = bitmap.width; val oh = bitmap.height
         var ratio = 1f
         val longest = max(ow, oh)
-        if (longest > Cfg.DET_LIMIT_SIDE) ratio = Cfg.DET_LIMIT_SIDE.toFloat() / longest
+        if (longest > detLimitSide) ratio = detLimitSide.toFloat() / longest
         fun round32(v: Int): Int = max(32, (v / 32.0).roundToInt() * 32)
         val rw = round32((ow * ratio).roundToInt())
         val rh = round32((oh * ratio).roundToInt())
@@ -381,14 +382,17 @@ class PaddleOcrSession private constructor(
 
     // Canonical PP-OCRv5 inference constants. Verified against inference.yml.
     private object Cfg {
-        // Longest-side cap for the detector input. PP's default is 960, but our
-        // captures are 1080p — capping at 960 downscaled 1920→960, HALVING every
-        // character's pixels before detection and starving small-kana detail
-        // (dakuten, small っ). Raised to 1920 so 1080p frames pass through at
-        // native resolution: more pixels per character upstream of the crop,
-        // where the detail still exists. See docs/paddleocr-kana-research.md
-        // (option B). Cost: larger detector input → slower det (the det stage
-        // was already the latency sink at 960; expect a further increase).
+        // Longest-side cap for the detector input (default; per-session override
+        // via create()'s detLimitSide). PP's default is 960; raised to 1920 during
+        // the JA small-kana experiment (27ef092f) so 1080p frames reach the
+        // detector unscaled. The experiment then FALSIFIED the raise — no effect
+        // on the kana symptom (docs/paddleocr-kana-research.md empirical table;
+        // "detection resolution wasn't the bottleneck") — and the cap never
+        // touched recognition detail anyway: rec crops are warped from the
+        // ORIGINAL bitmap, so this only changes which boxes are FOUND, at ~4×
+        // det compute vs 960 on a 1080p frame (det is the latency sink).
+        // Kept at 1920 pending a det-recall A/B across the Paddle languages
+        // (OcrAbHarnessTest "detcap-paddle" sweeps 960/1280/1920).
         // Rounded to a multiple of 32 in detPreprocess regardless.
         const val DET_LIMIT_SIDE = 1920
         // NormalizeImage (det): ImageNet mean/std, scale 1/255, RGB order.
@@ -458,7 +462,13 @@ class PaddleOcrSession private constructor(
         }
 
         /**
-         * @param precision MnnInterpreter precision flag: 0 Normal, 1 High, 2 Low-fp16.
+         * @param precision MnnInterpreter precision flag for the DETECTOR (and the
+         *   recognizer's default): 0 Normal/fp32, 1 High, 2 Low-fp16.
+         * @param recPrecision recognizer override. Mixed precision (det 2, rec 0)
+         *   targets the det stage — Paddle's latency sink — while keeping CTC
+         *   recognition at fp32, where precision loss shows up as changed readings.
+         * @param detLimitSide longest-side cap for the detector input (see
+         *   [Cfg.DET_LIMIT_SIDE]); non-default values are for the A/B harness.
          */
         fun create(
             detModelPath: String,
@@ -466,13 +476,15 @@ class PaddleOcrSession private constructor(
             keysPath: String,
             numThread: Int = 4,
             precision: Int = 0,
+            recPrecision: Int = precision,
+            detLimitSide: Int = Cfg.DET_LIMIT_SIDE,
         ): PaddleOcrSession {
             ensureOpenCv()
             val keys = File(keysPath).readLines()
             val det = MnnInterpreter.fromFile(detModelPath, numThread, precision)
-            val rec = MnnInterpreter.fromFile(recModelPath, numThread, precision)
+            val rec = MnnInterpreter.fromFile(recModelPath, numThread, recPrecision)
             Log.i(TAG, "PaddleOcrSession: det=$detModelPath rec=$recModelPath keys=${keys.size}")
-            return PaddleOcrSession(det, rec, keys)
+            return PaddleOcrSession(det, rec, keys, detLimitSide)
         }
     }
 }

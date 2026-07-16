@@ -1,5 +1,7 @@
 package com.playtranslate.ocr.composites
 
+import android.util.Log
+import com.playtranslate.BuildConfig
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextDirection
 import com.playtranslate.ocr.core.DetectedRegion
@@ -58,12 +60,21 @@ class DetectThenRecognize(
     }
 
     private suspend fun runStages(image: OcrImage): List<RecognizedRegion> {
+        val detStart = System.nanoTime()
         val detected: List<DetectedRegion> = detector.detect(image)
+        val detMs = (System.nanoTime() - detStart) / 1_000_000
         coroutineContext.ensureActive()
         val recognized = ArrayList<RecognizedRegion>(detected.size)
+        val recStart = System.nanoTime()
         for (region in detected) {
             coroutineContext.ensureActive()
             recognizer.recognize(image, region)?.let { recognized += it }
+        }
+        if (BuildConfig.DEBUG) {
+            // Stage-split observability for the MNN engines (Meiki/Paddle); rec is
+            // the per-region loop only, excluding the RTL/assembly post-pass below.
+            Log.d("OcrTiming", "det=${detMs}ms rec=${(System.nanoTime() - recStart) / 1_000_000}ms " +
+                "regions=${detected.size} lang=${image.sourceLang}")
         }
         // RTL source scripts (Arabic): the CTC recognizer emits glyphs in visual
         // (strip left-to-right) order, which for RTL is reversed-logical. Convert

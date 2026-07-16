@@ -15,6 +15,7 @@ import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import java.io.Closeable
 import java.io.File
+import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -125,13 +126,140 @@ class MeikiSession private constructor(
             NamedTensor("images", intArrayOf(1, 3, ih, iw), TensorData.Floats(input)),
             NamedTensor("orig_target_sizes", intArrayOf(1, 2), TensorData.Ints(intArrayOf(iw, ih))),
         ))
+        // Reading axis is Y for vertical, X for horizontal.
+        val axLo = if (vertical) 1 else 0
+        val kept = dedupByAxisOverlap(candidatesOf(outs, axLo))
+        return buildResult(
+            kept, effW = newW.toFloat(), effH = newH.toFloat(),
+            cropW = cropW, cropH = cropH, shiftX = 0f, shiftY = 0f,
+        )
+    }
+
+    /**
+     * Recognize [crops] (all of the same [vertical] orientation) by PACKING
+     * multiple aspect-resized crops onto shared fixed canvases — the utilization
+     * experiment: a short crop wastes most of the fixed 960×32 / 32×480 canvas in
+     * [recognize], so packing N short crops into one forward pass divides rec
+     * compute by ~N, at the risk of cross-crop interference (which the A/B
+     * harness measures). Canvas shape is UNCHANGED — no untested graph dims.
+     *
+     * Placement: content anchored at 0 on the across axis, slots separated by
+     * [PACK_GAP] black px along the reading axis; greedy binning in input order,
+     * flushed on canvas overflow or the [PACK_CHAR_BUDGET] estimate (the model
+     * recognizes ~48 chars per canvas, a shared budget when packing). Candidates
+     * are assigned to the slot whose content range they overlap most (gap-only
+     * phantoms dropped) and deduped within their slot only.
+     *
+     * Returns one [RecResult] per input crop, index-aligned, with CROP-LOCAL
+     * coordinates exactly like [recognize]. Not thread-safe (same sessions).
+     */
+    fun recognizePacked(crops: List<Mat>, vertical: Boolean): List<RecResult> {
+        val iw = if (vertical) REC_V_W else REC_H_W
+        val ih = if (vertical) REC_V_H else REC_H_H
+        val canvasAlong = if (vertical) ih else iw
+        val results = arrayOfNulls<RecResult>(crops.size)
+
+        // Aspect-resize dims per crop — same formula as recognize().
+        class Sized(val idx: Int, val newW: Int, val newH: Int, val cropW: Int, val cropH: Int) {
+            val along get() = if (vertical) newH else newW
+        }
+        val sized = ArrayList<Sized>(crops.size)
+        for ((i, crop) in crops.withIndex()) {
+            val cropW = crop.cols(); val cropH = crop.rows()
+            if (cropW < 2 || cropH < 2) { results[i] = RecResult("", emptyList(), 0f); continue }
+            var newW: Int; var newH: Int
+            if (vertical) {
+                newW = iw; newH = max(1, (cropH * (iw.toDouble() / cropW)).roundToInt())
+                if (newH > ih) { newH = ih; newW = max(1, (cropW * (ih.toDouble() / cropH)).roundToInt()) }
+            } else {
+                newH = ih; newW = max(1, (cropW * (ih.toDouble() / cropH)).roundToInt())
+                if (newW > iw) { newW = iw; newH = max(1, (cropH * (iw.toDouble() / cropW)).roundToInt()) }
+            }
+            sized += Sized(i, newW, newH, cropW, cropH)
+        }
+
+        // Greedy binning in input order; an oversize single crop still gets its
+        // own canvas (limits only trip when the bin is non-empty).
+        val bins = ArrayList<ArrayList<Sized>>()
+        var bin = ArrayList<Sized>(); var along = 0; var chars = 0
+        for (s in sized) {
+            val est = ceil(s.along / EST_CHAR_PITCH.toDouble()).toInt()
+            if (bin.isNotEmpty() &&
+                (along + PACK_GAP + s.along > canvasAlong || chars + est > PACK_CHAR_BUDGET)) {
+                bins += bin; bin = ArrayList(); along = 0; chars = 0
+            }
+            if (bin.isNotEmpty()) along += PACK_GAP
+            bin += s; along += s.along; chars += est
+        }
+        if (bin.isNotEmpty()) bins += bin
+
+        for (b in bins) {
+            var cursor = 0
+            val slots = ArrayList<Pair<Sized, Int>>(b.size)   // (crop dims, axisStart)
+            val padded = Mat.zeros(ih, iw, CvType.CV_8UC3)
+            for (s in b) {
+                val resized = Mat()
+                val src = crops[s.idx]
+                val interp = if (s.newH < s.cropH || s.newW < s.cropW) Imgproc.INTER_AREA else Imgproc.INTER_CUBIC
+                Imgproc.resize(src, resized, Size(s.newW.toDouble(), s.newH.toDouble()), 0.0, 0.0, interp)
+                if (vertical) resized.copyTo(padded.submat(cursor, cursor + s.newH, 0, s.newW))
+                else resized.copyTo(padded.submat(0, s.newH, cursor, cursor + s.newW))
+                resized.release()
+                slots += s to cursor
+                cursor += s.along + PACK_GAP
+            }
+            val input = matToNchwBgr(padded, iw, ih)
+            padded.release()
+            val outs = recSession(vertical).run(listOf(
+                NamedTensor("images", intArrayOf(1, 3, ih, iw), TensorData.Floats(input)),
+                NamedTensor("orig_target_sizes", intArrayOf(1, 2), TensorData.Ints(intArrayOf(iw, ih))),
+            ))
+            val axLo = if (vertical) 1 else 0
+            val all = candidatesOf(outs, axLo)
+            // Assign each candidate to the slot whose CONTENT range it overlaps
+            // most along the reading axis (ties -> earlier slot). Center-based
+            // assignment let a glyph near a boundary migrate to the neighbor slot
+            // (trailing 、 prepending itself to the next crop) and then perturb
+            // that slot's overlap dedup. A candidate overlapping no content range
+            // sits entirely in a black gap — a phantom, dropped.
+            val slotCands = Array(slots.size) { ArrayList<Cand>() }
+            for (c in all) {
+                var best = -1
+                var bestOv = 0f
+                for ((k, sp) in slots.withIndex()) {
+                    val (s, start) = sp
+                    val ov = min(c.hi, (start + s.along).toFloat()) - max(c.lo, start.toFloat())
+                    if (ov > bestOv) { bestOv = ov; best = k }
+                }
+                if (best >= 0) slotCands[best] += c
+            }
+            for ((k, sp) in slots.withIndex()) {
+                val (s, start) = sp
+                results[s.idx] = buildResult(
+                    dedupByAxisOverlap(slotCands[k]),
+                    effW = s.newW.toFloat(), effH = s.newH.toFloat(),
+                    cropW = s.cropW, cropH = s.cropH,
+                    shiftX = if (vertical) 0f else start.toFloat(),
+                    shiftY = if (vertical) start.toFloat() else 0f,
+                )
+            }
+        }
+        return List(crops.size) { results[it] ?: RecResult("", emptyList(), 0f) }
+    }
+
+    private fun recSession(vertical: Boolean) = if (vertical) recV else recH
+
+    // ── Shared recognizer post-processing (single-crop and packed paths) ─────
+
+    /** One character candidate: [lo]/[hi] are its extent along the reading axis
+     *  (canvas coords); [b] the full canvas-coord box. */
+    private class Cand(val s: String, val sc: Float, val lo: Float, val hi: Float, val b: FloatArray)
+
+    /** Confidence/codepoint-filter the raw D-FINE outputs into candidates. */
+    private fun candidatesOf(outs: List<NamedTensor>, axLo: Int): ArrayList<Cand> {
         val codes = codesOf(outs)
         val boxes = boxesOf(outs)
         val scores = scoresOf(outs)
-
-        // Candidate chars; reading axis is Y for vertical, X for horizontal.
-        val axLo = if (vertical) 1 else 0
-        data class Cand(val s: String, val sc: Float, val lo: Float, val hi: Float, val b: FloatArray)
         val cands = ArrayList<Cand>(scores.size)
         for (i in scores.indices) {
             if (scores[i] < REC_CONF) continue
@@ -141,6 +269,11 @@ class MeikiSession private constructor(
             val b = floatArrayOf(boxes[i * 4], boxes[i * 4 + 1], boxes[i * 4 + 2], boxes[i * 4 + 3])
             cands += Cand(s, scores[i], b[axLo], b[axLo + 2], b)
         }
+        return cands
+    }
+
+    /** Score-descending greedy dedup by reading-axis overlap, then reading order. */
+    private fun dedupByAxisOverlap(cands: ArrayList<Cand>): List<Cand> {
         cands.sortByDescending { it.sc }
         val kept = ArrayList<Cand>(cands.size)
         for (c in cands) {
@@ -151,25 +284,32 @@ class MeikiSession private constructor(
             if (!overlapped) kept += c
         }
         kept.sortBy { it.lo }
+        return kept
+    }
 
+    /** Assemble kept candidates into a [RecResult], mapping canvas-coord boxes to
+     *  CROP-LOCAL rects: shifted by [shiftX]/[shiftY] (a packed slot's along-axis
+     *  offset; 0 for the single-crop path), content [effW]×[effH] scaled to
+     *  [cropW]×[cropH]. */
+    private fun buildResult(
+        kept: List<Cand>, effW: Float, effH: Float, cropW: Int, cropH: Int,
+        shiftX: Float, shiftY: Float,
+    ): RecResult {
         val sb = StringBuilder()
         val chars = ArrayList<CharHit>(kept.size)
-        val effW = newW.toFloat(); val effH = newH.toFloat()
         var confSum = 0f
         for (c in kept) {
             val offset = sb.length
             sb.append(c.s)
             confSum += c.sc
-            fun mapX(v: Float) = (v.coerceIn(0f, effW) / effW * cropW).roundToInt()
-            fun mapY(v: Float) = (v.coerceIn(0f, effH) / effH * cropH).roundToInt()
+            fun mapX(v: Float) = ((v - shiftX).coerceIn(0f, effW) / effW * cropW).roundToInt()
+            fun mapY(v: Float) = ((v - shiftY).coerceIn(0f, effH) / effH * cropH).roundToInt()
             val rect = Rect(mapX(c.b[0]), mapY(c.b[1]), mapX(c.b[2]), mapY(c.b[3]))
             chars += CharHit(c.s, rect, offset)
         }
         val conf = if (kept.isNotEmpty()) confSum / kept.size else 0f
         return RecResult(sb.toString(), chars, conf)
     }
-
-    private fun recSession(vertical: Boolean) = if (vertical) recV else recH
 
     /** CV_8UC3 BGR Mat (h×w) → NCHW float /255, channels in stored (B,G,R) order. */
     private fun matToNchwBgr(mat: Mat, w: Int, h: Int): FloatArray {
@@ -204,6 +344,13 @@ class MeikiSession private constructor(
         private const val REC_V_H = 480
         private const val REC_CONF = 0.1f
         private const val OVERLAP = 0.3f
+        // recognizePacked knobs: black gap between packed slots along the reading
+        // axis; conservative estimated glyph pitch (canvas px per char) and the
+        // per-canvas char budget — the model recognizes ~48 chars per canvas
+        // (upstream README), a budget that packing makes SHARED across crops.
+        private const val PACK_GAP = 32
+        private const val EST_CHAR_PITCH = 20
+        private const val PACK_CHAR_BUDGET = 44
 
         @Volatile private var cvLoaded = false
         private fun ensureOpenCv() {
@@ -226,17 +373,26 @@ class MeikiSession private constructor(
         private fun scoresOf(outs: List<NamedTensor>): FloatArray =
             (outs.first { it.data is TensorData.Floats && it.shape.size < 3 }.data as TensorData.Floats).data
 
+        /**
+         * @param precision MnnInterpreter precision flag for the DETECTOR (and the
+         *   recognizers' default): 0 Normal/fp32, 1 High, 2 Low/fp16.
+         * @param recPrecision recognizer override. Mixed precision (det 2, rec 0)
+         *   exists because fp16 left Meiki's det boxes byte-stable in the A/B but
+         *   flipped marginal rec classifications (small っ → つ) — the recognizers
+         *   carry the reading-fidelity risk, the detector doesn't.
+         */
         fun create(
             detPath: String,
             recHorizontalPath: String,
             recVerticalPath: String,
             numThread: Int = 4,
             precision: Int = 0,
+            recPrecision: Int = precision,
         ): MeikiSession {
             ensureOpenCv()
             val det = MnnInterpreter.fromFile(detPath, numThread, precision)
-            val recH = MnnInterpreter.fromFile(recHorizontalPath, numThread, precision)
-            val recV = MnnInterpreter.fromFile(recVerticalPath, numThread, precision)
+            val recH = MnnInterpreter.fromFile(recHorizontalPath, numThread, recPrecision)
+            val recV = MnnInterpreter.fromFile(recVerticalPath, numThread, recPrecision)
             Log.i(TAG, "MeikiSession: det=$detPath recH=$recHorizontalPath recV=$recVerticalPath")
             return MeikiSession(det, recH, recV)
         }
