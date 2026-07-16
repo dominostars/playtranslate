@@ -12,9 +12,10 @@ import java.io.File
  * Owner of PaddleOCR's native MNN sessions (the lifecycle contract's "one
  * owner"). Builds a [DetectThenRecognize] (Paddle detector + recognizer) over a
  * session that pairs the **APK-bundled shared detector** with the selected
- * language's **recognizer pack**, caching engine+session by recognizer pack key.
- * Construction is lazy + read-only; sessions close ONLY at the quiescent teardown
- * via [close], never on a selection switch.
+ * language's **recognizer pack**, caching engine+session by (recognizer pack
+ * key, speed tier) — the same pack can be open at both tiers. Construction is
+ * lazy + read-only; sessions close ONLY at the quiescent teardown via [close],
+ * never on a selection switch.
  *
  * Detector: bundled `assets/ocr/paddle_det.mnn`, copied once to
  * `noBackupFilesDir/ocr/`. Recognizer pack (`noBackupFilesDir/models/<recPackKey>/`):
@@ -26,34 +27,45 @@ object PaddleOcrBridge {
     private const val BUNDLED_DET_ASSET = "ocr/paddle_det.mnn"
     private const val BUNDLED_DET_SHA = "paddle_det.sha"
 
-    private val sessions = HashMap<String, PaddleOcrSession>()
-    private val engines = HashMap<String, OcrEngine>()
+    /** Cache key: the same recognizer pack can be open at BOTH speed tiers. */
+    private data class Key(val recPackKey: String, val fast: Boolean)
+
+    private val sessions = HashMap<Key, PaddleOcrSession>()
+    private val engines = HashMap<Key, OcrEngine>()
     @Volatile private var detFile: File? = null
 
-    /** Cached engine for recognizer [recPackKey], or null if det/rec files absent. */
+    /** Cached engine for recognizer [recPackKey] at the [fast] or accurate tier,
+     *  or null if det/rec files absent. */
     @Synchronized
-    fun engine(ctx: Context, recPackKey: String): OcrEngine? {
-        engines[recPackKey]?.let { return it }
-        val s = sessionFor(ctx, recPackKey) ?: return null
-        return DetectThenRecognize(PaddleDetector(s), PaddleRecognizer(s)).also { engines[recPackKey] = it }
+    fun engine(ctx: Context, recPackKey: String, fast: Boolean = false): OcrEngine? {
+        val key = Key(recPackKey, fast)
+        engines[key]?.let { return it }
+        val s = sessionFor(ctx, key) ?: return null
+        return DetectThenRecognize(PaddleDetector(s), PaddleRecognizer(s)).also { engines[key] = it }
     }
 
+    /** True if ANY tier of [recPackKey] holds a live session (sweep must not
+     *  delete its files). */
     @Synchronized
-    fun isLoaded(recPackKey: String): Boolean = sessions.containsKey(recPackKey)
+    fun isLoaded(recPackKey: String): Boolean = sessions.keys.any { it.recPackKey == recPackKey }
 
-    /** Close + drop the cached engine/session for a SINGLE [recPackKey], for the
-     *  interactive pack delete (OcrModelManager.deleteOcrPack). No-op if none is
-     *  held; unlike [close] it leaves every other pack's live session intact. */
+    /** Close + drop the cached engines/sessions (both tiers) for a SINGLE
+     *  [recPackKey], for the interactive pack delete (OcrModelManager.deleteOcrPack).
+     *  No-op if none is held; unlike [close] it leaves every other pack's live
+     *  sessions intact. */
     @Synchronized
     fun close(recPackKey: String) {
-        engines.remove(recPackKey)?.let { runCatching { it.close() } }
-        sessions.remove(recPackKey)?.let { runCatching { it.close() } }
+        for (fast in booleanArrayOf(false, true)) {
+            val key = Key(recPackKey, fast)
+            engines.remove(key)?.let { runCatching { it.close() } }
+            sessions.remove(key)?.let { runCatching { it.close() } }
+        }
     }
 
-    private fun sessionFor(ctx: Context, recPackKey: String): PaddleOcrSession? {
-        sessions[recPackKey]?.let { return it }
+    private fun sessionFor(ctx: Context, key: Key): PaddleOcrSession? {
+        sessions[key]?.let { return it }
         val det = bundledDetector(ctx) ?: return null
-        val helper = OcrPackModelHelper(recPackKey)
+        val helper = OcrPackModelHelper(key.recPackKey)
         // Materialize a bundled recognizer (e.g. paddle-rec-unified) from APK assets
         // into the models dir on first use; no-op for downloaded packs.
         helper.ensureBundledMaterialized(ctx)
@@ -66,10 +78,20 @@ object PaddleOcrBridge {
             return null
         }
         return try {
-            PaddleOcrSession.create(det.absolutePath, rec.absolutePath, keys.absolutePath)
-                .also { sessions[recPackKey] = it; Log.i(TAG, "Paddle session ready ($recPackKey)") }
+            // Fast tier = fp16 + 960px detector cap: ~3.5× faster end-to-end on a
+            // 1080p frame, at the cost of small-text detection recall and
+            // occasional edge-glyph reading changes (characterized by the
+            // OcrAbHarnessTest fp16/detcap A/Bs, 2026-07-16). Accurate tier keeps
+            // the fp32 / DET_LIMIT_SIDE production defaults.
+            val session =
+                if (key.fast) PaddleOcrSession.create(
+                    det.absolutePath, rec.absolutePath, keys.absolutePath,
+                    precision = 2, detLimitSide = 960,
+                )
+                else PaddleOcrSession.create(det.absolutePath, rec.absolutePath, keys.absolutePath)
+            session.also { sessions[key] = it; Log.i(TAG, "Paddle session ready ($key)") }
         } catch (e: Throwable) {
-            Log.e(TAG, "PaddleOcrSession.create failed ($recPackKey) — using ML Kit", e); null
+            Log.e(TAG, "PaddleOcrSession.create failed ($key) — using ML Kit", e); null
         }
     }
 

@@ -294,7 +294,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
         }
         // No-floor languages (e.g. Russian on a 32-bit device) can resolve to no
         // backend — omit the OCR label rather than show a placeholder.
-        OcrModelManager.selectedBackend(ctx, prefs.sourceLangId)?.let { parts += it.ocrLabel }
+        OcrModelManager.selectedBackend(ctx, prefs.sourceLangId)?.let { parts += it.ocrLabel(ctx) }
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
         parts += ctx.getString(overlayModeLabelRes(prefs.overlayMode, hintKind))
         return parts.joinToString(" → ")

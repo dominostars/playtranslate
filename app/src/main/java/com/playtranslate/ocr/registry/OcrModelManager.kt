@@ -3,6 +3,7 @@ package com.playtranslate.ocr.registry
 import android.content.Context
 import android.util.Log
 import com.playtranslate.Prefs
+import com.playtranslate.R
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.OcrBackend
 import com.playtranslate.language.SourceLangId
@@ -96,7 +97,7 @@ object OcrModelManager {
                     MeikiBridge.engine(ctx, chosen.packKey)?.let { chosen to it } else null
             is OcrBackend.Paddle ->
                 if (OcrPackModelHelper(chosen.recPackKey).isInstalled(ctx))
-                    PaddleOcrBridge.engine(ctx, chosen.recPackKey)?.let { chosen to it } else null
+                    PaddleOcrBridge.engine(ctx, chosen.recPackKey, chosen.fast)?.let { chosen to it } else null
             else -> null // ML Kit floor — registry builds it
         }
     }
@@ -507,23 +508,42 @@ object OcrModelManager {
         }
     }
 
+    /** May the Settings OCR trash be offered on [row] while [selected] is the
+     *  current source language's resolved backend? False whenever the two share
+     *  a pack: since the Paddle speed tiers, a language's own backends CAN
+     *  reference the same pack (accurate + fast over one recognizer), so
+     *  deleting an unselected sibling row would pull the files out from under
+     *  the backend a live capture resolves. Pure (JVM-testable); the caller
+     *  layers on the ctx-dependent checks (downloaded, built-in). */
+    fun canOfferOcrDelete(row: OcrBackend, selected: OcrBackend?): Boolean =
+        selected == null || row.packKeys.none { it in selected.packKeys }
+
     /** Delete a SINGLE OCR pack interactively (the Settings OCR trash), outside
-     *  the launch-time [sweepOrphans] pass. Safe off-quiescence ONLY because the
-     *  caller offers the trash exclusively on a backend the current source
-     *  language has NOT selected — never the pack a live capture is resolving (a
-     *  capture only ever resolves the *selected* backend, and a language's own
-     *  backends never share a pack). Any session still cached for [packKey] is
-     *  therefore a stale one from a prior selection: close just it — so we never
-     *  unlink files under a live mmap — then delete, leaving every other
-     *  language's live session intact.
+     *  the launch-time [sweepOrphans] pass. Safe off-quiescence ONLY when
+     *  [packKey] is not resolved by the current source language's selection —
+     *  a live capture only ever resolves the *selected* backend. The trash is
+     *  gated by [canOfferOcrDelete] (since the Paddle speed tiers, a language's
+     *  own backends can SHARE a pack, so unselected-row ≠ unused pack), and this
+     *  method re-checks the same invariant as defense in depth: refused deletes
+     *  return false. Any session still cached for a deletable [packKey] is a
+     *  stale one from a prior selection or a non-source language: close just it
+     *  — so we never unlink files under a live mmap — then delete, leaving
+     *  every other language's live session intact.
      *
      *  Other languages that selected [packKey] keep their choice; the missing
      *  pack re-downloads through the normal source-switch path
      *  (downloadDefaultForSource) the next time one becomes the source. */
-    fun deleteOcrPack(ctx: Context, packKey: String) {
+    fun deleteOcrPack(ctx: Context, packKey: String): Boolean {
+        val current = Prefs(ctx).sourceLangId
+        if (selectedBackend(ctx, current)?.packKeys?.contains(packKey) == true) {
+            Log.w(TAG, "refusing to delete '$packKey': the current source " +
+                "(${current.code})'s selected backend resolves it")
+            return false
+        }
         MeikiBridge.close(packKey)
         PaddleOcrBridge.close(packKey)
         helper(packKey).delete(ctx)
+        return true
     }
 
     /** Quiescent teardown: close every bridge session + engine cache. Caller must
@@ -534,23 +554,28 @@ object OcrModelManager {
 }
 
 /** Coarse selection tag persisted in Prefs; unique within a language's
- *  `ocrBackends` (each language has at most one Meiki / Paddle / ML Kit entry). */
+ *  `ocrBackends`. Meiki / ML Kit appear at most once per language; PaddleOCR
+ *  appears as two speed tiers — "paddle" is the accurate tier AND the legacy
+ *  token, so selections stored before tiers existed keep meaning exactly what
+ *  they meant. */
 val OcrBackend.selectionToken: String
     get() = when (this) {
         is OcrBackend.Meiki -> "meiki"
-        is OcrBackend.Paddle -> "paddle"
+        is OcrBackend.Paddle -> if (fast) "paddle-fast" else "paddle"
         else -> "mlkit"
     }
 
-/** Human-facing engine name for the Settings OCR picker. Proper nouns — not
- *  translated. */
-val OcrBackend.ocrLabel: String
-    get() = when (this) {
-        is OcrBackend.Meiki -> "Meiki"
-        is OcrBackend.Paddle -> "PaddleOCR"
-        is OcrBackend.Tesseract -> "Tesseract"
-        else -> "ML Kit"
-    }
+/** Human-facing engine name for the OCR pickers. Engine names are proper nouns
+ *  (never translated); the PaddleOCR speed-tier qualifier is a localizable
+ *  resource, hence the [ctx]. */
+fun OcrBackend.ocrLabel(ctx: Context): String = when (this) {
+    is OcrBackend.Meiki -> "Meiki"
+    is OcrBackend.Paddle -> ctx.getString(
+        if (fast) R.string.ocr_label_paddle_fast else R.string.ocr_label_paddle_accurate,
+    )
+    is OcrBackend.Tesseract -> "Tesseract"
+    else -> "ML Kit"
+}
 
 /** True iff every pack [this] needs is on disk, so the engine can actually run.
  *  ML Kit (no packs) and APK-bundled recognizers read as downloaded

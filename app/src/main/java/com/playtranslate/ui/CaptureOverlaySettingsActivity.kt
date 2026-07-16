@@ -603,7 +603,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     ): View {
         val view = LayoutInflater.from(this)
             .inflate(R.layout.language_list_row, container, false)
-        view.findViewById<TextView>(R.id.tvRowTitle).text = backend.ocrLabel
+        view.findViewById<TextView>(R.id.tvRowTitle).text = backend.ocrLabel(this)
 
         // "Downloaded" (strict) gates the trash + re-tap; ML Kit (no packs) is
         // never "downloaded" but is always "available" for the status icon.
@@ -611,8 +611,11 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             backend.packKeys.all { OcrPackModelHelper(it).isInstalled(this) }
         val available = downloaded || backend.packKeys.isEmpty()
         // Built-in packs (ML Kit, or a recognizer bundled in the APK) have no
-        // reclaimable on-disk footprint → no trash, like ML Kit.
-        val deletable = downloaded && !backend.isBuiltIn()
+        // reclaimable on-disk footprint → no trash, like ML Kit. A row sharing a
+        // pack with the SELECTED backend (a Paddle speed-tier sibling) gets no
+        // trash either — deleting it would remove the selected engine's files.
+        val deletable = downloaded && !backend.isBuiltIn() &&
+            OcrModelManager.canOfferOcrDelete(backend, OcrModelManager.selectedBackend(this, id))
 
         // Subtitle: the model's package size (or "Built-in"), led by the same
         // download-state icon the offline translation cells use — an accent
@@ -660,7 +663,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
                 trailingIcon.setImageResource(R.drawable.ic_delete)
                 trailingIcon.imageTintList = ColorStateList.valueOf(themeColor(R.attr.ptTextMuted))
                 trailing.contentDescription =
-                    getString(R.string.settings_ocr_delete_cd, backend.ocrLabel)
+                    getString(R.string.settings_ocr_delete_cd, backend.ocrLabel(this))
                 trailing.setOnClickListener { confirmAndDeleteOcr(id, backend) }
             }
             // else: trailing stays GONE.
@@ -719,9 +722,18 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
      *  Always the model's real size — not an "incremental" cost — so a pack
      *  shared with another language still shows its true download size instead
      *  of reading as free. */
-    private fun ocrSizeSubtitle(backend: OcrBackend): String =
-        if (backend.isBuiltIn()) getString(R.string.settings_ocr_note_builtin)
+    private fun ocrSizeSubtitle(backend: OcrBackend): String {
+        val size = if (backend.isBuiltIn()) getString(R.string.settings_ocr_note_builtin)
         else humanSize(this, backend.packKeys.sumOf { OcrPackModelHelper(it).expectedSize(this) })
+        // Paddle tier rows lead with the speed/recall tradeoff so the choice is
+        // legible where it's made; other engines keep the plain size subtitle.
+        if (backend !is OcrBackend.Paddle) return size
+        val note = getString(
+            if (backend.fast) R.string.settings_ocr_tier_fast_note
+            else R.string.settings_ocr_tier_accurate_note,
+        )
+        return "$note · $size"
+    }
 
     /** A backend is "built-in" — shown as such, with no size and no delete — when it
      *  needs no downloadable pack: ML Kit (no packs) or a recognizer bundled in the
@@ -742,7 +754,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         }
         var job: Job? = null
         val overlay = OverlayProgress.Builder(this)
-            .setTitle(getString(R.string.settings_ocr_downloading_title, backend.ocrLabel))
+            .setTitle(getString(R.string.settings_ocr_downloading_title, backend.ocrLabel(this)))
             .setMessage(getString(R.string.settings_ocr_downloading_msg))
             .setProgress(0)
             .setOnDismiss { reason -> if (reason == DismissReason.USER) job?.cancel() }
@@ -800,13 +812,13 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             }
             .sortedBy { it.displayName() }
         val message = if (dependents.isEmpty()) {
-            getString(R.string.settings_ocr_delete_msg, backend.ocrLabel)
+            getString(R.string.settings_ocr_delete_msg, backend.ocrLabel(this))
         } else {
             val names = dependents.joinToString("\n") { it.displayName() }
-            getString(R.string.settings_ocr_delete_shared_msg, backend.ocrLabel, names)
+            getString(R.string.settings_ocr_delete_shared_msg, backend.ocrLabel(this), names)
         }
         OverlayAlert.Builder(this)
-            .setTitle(getString(R.string.settings_ocr_delete_title, backend.ocrLabel))
+            .setTitle(getString(R.string.settings_ocr_delete_title, backend.ocrLabel(this)))
             .setMessage(message)
             .addButton(
                 getString(R.string.settings_ocr_delete_confirm),

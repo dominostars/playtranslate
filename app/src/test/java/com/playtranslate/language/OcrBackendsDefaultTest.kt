@@ -44,24 +44,59 @@ class OcrBackendsDefaultTest {
         assertEquals("meiki", backends(SourceLangId.JA).first().selectionToken)
     }
 
-    @Test fun russianHasOnlyTheCyrillicPaddleRecognizerAndNoMlKitFloor() {
+    @Test fun russianHasOnlyTheCyrillicPaddleTiersAndNoMlKitFloor() {
         val ru = backends(SourceLangId.RU)
-        assertEquals("Cyrillic Paddle is Russian's only backend", 1, ru.size)
-        assertTrue(ru.any { it is OcrBackend.Paddle && it.recPackKey == "paddle-rec-cyrillic" })
+        assertEquals(
+            "Russian's backends are exactly the two cyrillic Paddle tiers, accurate first",
+            listOf(
+                OcrBackend.Paddle("paddle-rec-cyrillic"),
+                OcrBackend.Paddle("paddle-rec-cyrillic", fast = true),
+            ),
+            ru,
+        )
         assertFalse(
             "Russian has no ML Kit floor (no ML Kit Cyrillic recognizer)",
             OcrModelManager.hasMlKitFloor(SourceLangId.RU),
         )
     }
 
-    @Test fun thaiHasOnlyTheThaiPaddleRecognizerAndNoMlKitFloor() {
+    @Test fun thaiHasOnlyTheThaiPaddleTiersAndNoMlKitFloor() {
         val th = backends(SourceLangId.TH)
-        assertEquals("Thai Paddle is Thai's only backend", 1, th.size)
-        assertTrue(th.any { it is OcrBackend.Paddle && it.recPackKey == "paddle-rec-thai" })
+        assertEquals(
+            "Thai's backends are exactly the two thai Paddle tiers, accurate first",
+            listOf(
+                OcrBackend.Paddle("paddle-rec-thai"),
+                OcrBackend.Paddle("paddle-rec-thai", fast = true),
+            ),
+            th,
+        )
         assertFalse(
             "Thai has no ML Kit floor (no ML Kit Thai recognizer)",
             OcrModelManager.hasMlKitFloor(SourceLangId.TH),
         )
+    }
+
+    // ── Paddle speed tiers ────────────────────────────────────────────────
+    // Every Paddle recognizer is offered as accurate + fast over the SAME pack:
+    // the tier is runtime configuration, not a second download. The accurate
+    // tier keeps the legacy "paddle" token so pre-tier selections are unchanged.
+
+    @Test fun paddleLanguagesOfferBothTiersOverOneSharedPack() {
+        for (id in listOf(SourceLangId.FR, SourceLangId.ZH, SourceLangId.KO, SourceLangId.AR)) {
+            val paddles = backends(id).filterIsInstance<OcrBackend.Paddle>()
+            assertEquals("$id offers exactly two Paddle tiers", 2, paddles.size)
+            assertFalse("$id: accurate tier first", paddles[0].fast)
+            assertTrue("$id: fast tier second", paddles[1].fast)
+            assertEquals("$id: tiers share one pack", paddles[0].recPackKey, paddles[1].recPackKey)
+        }
+    }
+
+    @Test fun tierTokensAreDistinctAndAccurateKeepsTheLegacyToken() {
+        assertEquals("paddle", OcrBackend.Paddle("paddle-rec-unified").selectionToken)
+        assertEquals("paddle-fast", OcrBackend.Paddle("paddle-rec-unified", fast = true).selectionToken)
+        // Tokens stay unique within a language's list (the picker's identity key).
+        val fr = backends(SourceLangId.FR)
+        assertEquals(fr.size, fr.map { it.selectionToken }.toSet().size)
     }
 
     @Test fun hindiHasOnlyTheMlKitDevanagariFloorAndNoPaddle() {

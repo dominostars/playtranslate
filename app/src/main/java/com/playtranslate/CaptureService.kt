@@ -958,7 +958,7 @@ class CaptureService : Service() {
     ): OcrProvenance? {
         val backend = OcrModelManager.selectedBackend(this, srcId) ?: return null
         return OcrProvenance(
-            backend.ocrLabel, backend.selectionToken, displayId, srcId, region,
+            backend.ocrLabel(this), backend.selectionToken, displayId, srcId, region,
             frameIncludesSystemUi = frameIncludesSystemUi,
             frameIncludesOwnOverlays = frameIncludesOwnOverlays,
         )
@@ -2582,7 +2582,7 @@ class CaptureService : Service() {
         // proper nouns untranslated like ocrLabel) and keep the selection token on
         // the base engine so the re-OCR gear still keys the picker correctly.
         val label =
-            if (ocrResult.mangaOcrUsed) "${backend.ocrLabel} + MangaOCR" else backend.ocrLabel
+            if (ocrResult.mangaOcrUsed) "${backend.ocrLabel(this)} + MangaOCR" else backend.ocrLabel(this)
         return OcrProvenance(
             label, backend.selectionToken, displayId, sourceLangId, region,
             frameIncludesSystemUi = frameIncludesSystemUi,

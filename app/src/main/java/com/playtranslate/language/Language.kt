@@ -214,8 +214,12 @@ sealed interface OcrBackend {
         override val packKeys = setOf(packKey)
         override val requiresMnn = true
     }
-    /** PaddleOCR: one per-script recognizer pack ([recPackKey]); detector bundled. */
-    data class Paddle(val recPackKey: String) : OcrBackend {
+    /** PaddleOCR: one per-script recognizer pack ([recPackKey]); detector bundled.
+     *  [fast] picks the speed tier — fp16 + reduced detector input (much faster;
+     *  may miss very small text) vs the default accurate fp32/full-res config.
+     *  Both tiers share the same pack files: the tier is runtime configuration
+     *  only, so it costs no extra download and the pack planner sees one pack. */
+    data class Paddle(val recPackKey: String, val fast: Boolean = false) : OcrBackend {
         override val packKeys = setOf(recPackKey)
         override val requiresMnn = true
     }
@@ -275,17 +279,25 @@ data class SourceLanguageProfile(
             // the list as a secondary, user-selectable option.
             val mlKitDefault = (id == SourceLangId.VI || id == SourceLangId.TR) && mlKitFloor != null
             if (mlKitDefault) add(mlKitFloor)  // smart-cast non-null via mlKitDefault
+            // Each Paddle recognizer is offered as TWO speed tiers over the same
+            // pack: accurate (fp32, full-res detection — the default tier, first)
+            // and fast (fp16 + reduced detector input; opt-in, may miss very small
+            // text). Same pack key, so download/dedup/delete see one pack.
+            fun addPaddleTiers(recPackKey: String) {
+                add(OcrBackend.Paddle(recPackKey))
+                add(OcrBackend.Paddle(recPackKey, fast = true))
+            }
             when (scriptFamily) {
                 // PP-OCRv6 unified recognizer: one pack for Simp/Trad Chinese +
                 // English + Japanese + 46 Latin scripts (replaces paddle-rec-cjk +
                 // paddle-rec-latin). Shared by key, so ja/zh/en/latin all dedup.
                 ScriptFamily.CJK_JAPANESE, ScriptFamily.CJK_CHINESE ->
-                    add(OcrBackend.Paddle("paddle-rec-unified"))
-                ScriptFamily.CJK_KOREAN -> add(OcrBackend.Paddle("paddle-rec-korean"))
-                ScriptFamily.LATIN -> add(OcrBackend.Paddle("paddle-rec-unified"))
-                ScriptFamily.CYRILLIC -> add(OcrBackend.Paddle("paddle-rec-cyrillic"))
-                ScriptFamily.ARABIC -> add(OcrBackend.Paddle("paddle-rec-arabic"))
-                ScriptFamily.THAI -> add(OcrBackend.Paddle("paddle-rec-thai"))
+                    addPaddleTiers("paddle-rec-unified")
+                ScriptFamily.CJK_KOREAN -> addPaddleTiers("paddle-rec-korean")
+                ScriptFamily.LATIN -> addPaddleTiers("paddle-rec-unified")
+                ScriptFamily.CYRILLIC -> addPaddleTiers("paddle-rec-cyrillic")
+                ScriptFamily.ARABIC -> addPaddleTiers("paddle-rec-arabic")
+                ScriptFamily.THAI -> addPaddleTiers("paddle-rec-thai")
                 ScriptFamily.DEVANAGARI -> {} // floor = ML Kit Devanagari (via mlKitFloor); paddle-rec-devanagari dormant
             }
             // ML Kit floor last (unless already first, or null for no-floor scripts).

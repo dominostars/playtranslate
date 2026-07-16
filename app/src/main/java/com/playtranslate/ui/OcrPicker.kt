@@ -65,7 +65,7 @@ object OcrPicker {
             val bg = if (applied) ctx.themeColor(R.attr.ptAccent) else ctx.themeColor(R.attr.ptDivider)
             val fg = if (applied) ctx.themeColor(R.attr.ptAccentOn) else ctx.themeColor(R.attr.ptText)
             val icon = if (!downloaded) R.drawable.ic_download else null
-            builder.addButton(backend.ocrLabel, bg, fg, icon) {
+            builder.addButton(backend.ocrLabel(ctx), bg, fg, icon) {
                 when {
                     !downloaded -> onDownload(backend)
                     applied -> { /* already the result's engine — just dismiss */ }

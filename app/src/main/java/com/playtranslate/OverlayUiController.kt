@@ -1169,7 +1169,7 @@ class OverlayUiController(
 
         // Expanded settings-panel table: data + row actions.
         val languageName = prefs.sourceLangId.displayName()
-        val ocrName = OcrModelManager.selectedBackend(context, prefs.sourceLangId)?.ocrLabel ?: "ML Kit"
+        val ocrName = OcrModelManager.selectedBackend(context, prefs.sourceLangId)?.ocrLabel(context) ?: "ML Kit"
         val overlayValue = if (hintKind != HintTextKind.NONE)
             overlayModeLabel(prefs.overlayMode, hintKind) else null
         menu.onSelectLanguage = {

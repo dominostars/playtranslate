@@ -2642,6 +2642,23 @@
          source language. -->
     <string name="settings_ocr_default_badge">Default</string>
 
+    <!-- Accurate-tier PaddleOCR engine name: Settings OCR row title, in-result
+         "Choose OCR tool" picker button, and the "Scanned by ..." provenance
+         label. "PaddleOCR" is a proper noun and stays untranslated; localize
+         only the parenthetical tier word (e.g. Japanese 高精度), adapting the
+         parentheses to the locale's convention. -->
+    <string name="ocr_label_paddle_accurate">PaddleOCR (Accurate)</string>
+    <!-- Fast-tier PaddleOCR engine name: same surfaces and rules as
+         ocr_label_paddle_accurate; localize only the tier word (e.g.
+         Japanese 高速). -->
+    <string name="ocr_label_paddle_fast">PaddleOCR (Fast)</string>
+    <!-- One-line tradeoff note in the accurate-tier Settings row subtitle,
+         shown before the pack size. -->
+    <string name="settings_ocr_tier_accurate_note">Finds small text, slower</string>
+    <!-- One-line tradeoff note in the fast-tier Settings row subtitle, shown
+         before the pack size. -->
+    <string name="settings_ocr_tier_fast_note">Much faster, may miss very small text</string>
+
     <!-- Footer under the OCR engine list, suggesting the user try a
          different engine when on-screen text is being misread. -->
     <string name="settings_ocr_footer">If PlayTranslate is having a hard time accurately reading the screen text, try experimenting with different selections. Different OCR tools may work better for different font types or text orientations.</string>
