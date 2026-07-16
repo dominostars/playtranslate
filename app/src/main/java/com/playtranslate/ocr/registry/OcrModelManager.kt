@@ -179,6 +179,27 @@ object OcrModelManager {
      *  whose only OCR is a downloadable MNN pack. PURE (profile-only). */
     fun hasMlKitFloor(id: SourceLangId): Boolean = SourceLanguageProfiles[id].mlKitFloor != null
 
+    /** The engine the slow-OCR rescue prompt offers when [selected] is dragging.
+     *  Floored languages keep the ML Kit [mlKitFloor]: its latency is flat with
+     *  text density — the right property for the text-heavy captures that trip
+     *  the slow threshold, where the glyph-count-bound MNN engines converge with
+     *  or fall behind it. No-floor languages (Cyrillic/Arabic/Thai) get the
+     *  Paddle FAST tier instead — the only faster option they have; it shares
+     *  the selected accurate tier's pack files, so whenever accurate is running
+     *  (a slow pass just proved it is), fast is installed by construction.
+     *  Null when there is nothing faster to offer: the selection already IS the
+     *  rescue engine, or no fast tier exists in [available]. PURE. */
+    fun slowOcrRescue(
+        available: List<OcrBackend>,
+        selected: OcrBackend,
+        mlKitFloor: OcrBackend?,
+    ): OcrBackend? {
+        val rescue = mlKitFloor
+            ?: available.firstOrNull { (it as? OcrBackend.Paddle)?.fast == true }
+            ?: return null
+        return rescue.takeIf { it.selectionToken != selected.selectionToken }
+    }
+
     /** True iff [id]'s mandatory OCR is satisfied. A floored language always is
      *  (ML Kit needs no pack); a no-floor language (Russian) is iff the backend it
      *  would actually resolve to is deliverable on this device AND its packs are on

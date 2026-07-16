@@ -1375,29 +1375,33 @@ class CaptureService : Service() {
     /**
      * A live OCR pass has been in flight past the slow threshold
      * ([LiveSessionFeedback.OCR_SLOW_PROMPT_MS]) — offer the one-tap switch
-     * to the always-available ML Kit floor, at most once per language ever
-     * (either answer is remembered; the OCR picker in Settings is the
-     * standing change-your-mind path). Fires MID-pass, while the user is
-     * staring at the wait — the moment the offer explains itself — and
-     * renders on [slowDisplayId], the display whose capture is grinding
-     * (an alert on a screen the user isn't watching would pause everything
-     * behind their back; review finding). Gated out when: the language has
-     * no floor (RU/AR/TH have nothing faster to offer), the floor is
-     * already what's selected (the slowness IS the fast engine), or an
-     * alert is already up. The startup card yields while the alert shows
-     * and returns if the user keeps their engine. [livePaused] engages only
-     * once the alert PROVABLY attached ([OverlayAlert.isShowing]) — a
-     * failed window add must never freeze cycles under an alert nobody
-     * can see.
+     * to the rescue engine ([OcrModelManager.slowOcrRescue]: the ML Kit
+     * floor where one exists, the Paddle FAST tier for no-floor languages
+     * like RU/AR/TH), at most once per language ever (either answer is
+     * remembered; the OCR picker in Settings is the standing
+     * change-your-mind path). Fires MID-pass, while the user is staring at
+     * the wait — the moment the offer explains itself — and renders on
+     * [slowDisplayId], the display whose capture is grinding (an alert on
+     * a screen the user isn't watching would pause everything behind their
+     * back; review finding). Gated out when: nothing faster exists (the
+     * rescue engine is already what's selected — the slowness IS the fast
+     * option), or an alert is already up. The startup card yields while
+     * the alert shows and returns if the user keeps their engine.
+     * [livePaused] engages only once the alert PROVABLY attached
+     * ([OverlayAlert.isShowing]) — a failed window add must never freeze
+     * cycles under an alert nobody can see.
      */
     private fun maybeShowSlowOcrPrompt(slowDisplayId: Int) {
         if (!isLive || slowOcrAlert != null) return
         val prefs = Prefs(this)
         val id = prefs.sourceLangId
         if (prefs.slowOcrPromptAnswered(id)) return
-        val floor = SourceLanguageProfiles[id].mlKitFloor ?: return
         val selected = OcrModelManager.selectedBackend(this, id) ?: return
-        if (selected.selectionToken == floor.selectionToken) return
+        val rescue = OcrModelManager.slowOcrRescue(
+            available = OcrModelManager.availableBackends(this, id),
+            selected = selected,
+            mlKitFloor = SourceLanguageProfiles[id].mlKitFloor,
+        ) ?: return
 
         val host = CaptureBackendResolver.active().overlayHost ?: return
         val dm = getSystemService(DisplayManager::class.java) ?: return
@@ -1430,8 +1434,8 @@ class CaptureService : Service() {
             ) {
                 slowOcrAlert = null
                 prefs.setSlowOcrPromptAnswered(id)
-                prefs.setOcrBackendToken(id, floor.selectionToken)
-                DetectionLog.log("slow-OCR prompt: ${id.code} switched to ${floor.selectionToken}")
+                prefs.setOcrBackendToken(id, rescue.selectionToken)
+                DetectionLog.log("slow-OCR prompt: ${id.code} switched to ${rescue.selectionToken}")
                 liveFeedback?.setChipVisible(true)
                 // Cancel the still-running slow pass and re-run promptly on
                 // the floor engine (the registry resolves per pass).

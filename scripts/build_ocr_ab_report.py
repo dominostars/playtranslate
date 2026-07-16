@@ -55,7 +55,7 @@ CROP_PAD = 6           # px of visual context around each rendered crop
 
 # Baseline config per experiment; anything else seen is a variant.
 BASELINE = {"fp16-meiki": "p0", "fp16-paddle": "p0", "detcap-paddle": "det1920",
-            "pack-meiki": "nopack"}
+            "pack-meiki": "nopack", "mlkit-vs-fast": "mlkit"}
 
 # Human meaning of each config label (rendered as a legend per experiment).
 # pN = the MnnInterpreter precision flag; detN = PaddleOcrSession detLimitSide.
@@ -68,6 +68,8 @@ CONFIG_LEGEND = {
     "det960": "detector input long-side cap 960px (PaddleOCR upstream default)",
     "nopack": "one crop per rec canvas — current production",
     "pack": "multiple crops packed per rec canvas (32px gaps, shared char budget)",
+    "mlkit": "ML Kit floor via the production pipeline (includes its preprocess + upscale)",
+    "fast": "PaddleOCR (Fast) tier: fp16 + det960, via the paddle-fast token",
 }
 
 PILES = ("identical", "jitter", "text_differs", "merge_split", "only_base", "only_var", "noise")

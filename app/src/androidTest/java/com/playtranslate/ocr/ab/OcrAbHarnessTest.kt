@@ -6,7 +6,13 @@ import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.playtranslate.OcrManager
+import com.playtranslate.Prefs
+import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextOrientation
+import com.playtranslate.ocr.registry.OcrModelManager
+import com.playtranslate.ocr.registry.isDownloaded
+import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.ocr.composites.DetectThenRecognize
 import com.playtranslate.ocr.core.OcrEngine
 import com.playtranslate.ocr.core.OcrImage
@@ -54,6 +60,15 @@ import kotlin.math.roundToInt
  *    ([MeikiSession.recognizePacked] — multiple crops per canvas). Both fp32;
  *    det is deterministic, so both configs emit identical box sets and every
  *    diff is a pure packing effect.
+ *  - `mlkit-vs-fast` — the floor vs the Fast tier, measured PIPELINE-level
+ *    through the production [OcrManager] by flipping the language's selection
+ *    token (restored afterwards): the ML Kit arm carries its true in-app cost
+ *    (preprocess recipe + upscale + grouping), the fast arm runs Paddle
+ *    fp16+det960 exactly as the `paddle-fast` token resolves. Each case
+ *    verifies via [OcrManager.OcrResult.engineBackend] that the intended
+ *    engine actually ran. Regions here are post-grouping paragraphs, so the
+ *    report's diff piles are coarse; the timing table is the deliverable.
+ *    Skipped for languages lacking an ML Kit floor or an installed pack.
  *
  * Cases = the bundled golden JA PNGs (`androidTest/assets/ocr_golden`; the
  * `.txt` ground truth is deliberately NOT read) + optional staged corpora — PNGs
@@ -104,9 +119,10 @@ class OcrAbHarnessTest {
                 "fp16-paddle" -> runFp16Paddle(sink)
                 "detcap-paddle" -> runDetcapPaddle(sink)
                 "pack-meiki" -> runPackMeiki(sink)
+                "mlkit-vs-fast" -> runMlkitVsFast(sink)
                 null -> {
                     runFp16Meiki(sink); runFp16Paddle(sink); runDetcapPaddle(sink)
-                    runPackMeiki(sink)
+                    runPackMeiki(sink); runMlkitVsFast(sink)
                 }
                 else -> {
                     Log.w(TAG, "unknown experiment '$experiment'")
@@ -314,6 +330,71 @@ class OcrAbHarnessTest {
                     quad = r.quad?.map { intArrayOf(it.x.roundToInt(), it.y.roundToInt()) })
             }
             sink.case(exp, c.id, c.lang, cfg, "ok", regions.size, detMs = detMs)
+        } catch (t: Throwable) {
+            Log.w(TAG, "$exp/$cfg/${c.id} failed", t)
+            sink.case(exp, c.id, c.lang, cfg, "error", 0,
+                reason = "${t.javaClass.simpleName}: ${t.message}")
+        } finally {
+            bmp?.recycle()
+        }
+    }
+
+    private fun runMlkitVsFast(sink: ResultSink) {
+        val exp = "mlkit-vs-fast"
+        val prefs = Prefs(appCtx)
+        val byLang = (goldenJaCases() + stagedCases()).groupBy { it.lang }.toSortedMap()
+        for ((lang, cases) in byLang) {
+            val profile = SourceLanguageProfiles.forCode(lang)
+            if (profile == null) { sink.skip(exp, "unknown staged lang '$lang'"); continue }
+            val id = profile.id
+            val backends = OcrModelManager.availableBackends(appCtx, id)
+            val fastBackend = backends.firstOrNull { it.selectionToken == "paddle-fast" }
+            if (backends.none { it.selectionToken == "mlkit" } ||
+                fastBackend == null || !fastBackend.isDownloaded(appCtx)) {
+                sink.skip(exp, "$lang: needs an ML Kit floor AND an installed Paddle pack")
+                continue
+            }
+            val original = prefs.ocrBackendToken(id)
+            try {
+                for (token in listOf("mlkit", "paddle-fast")) {   // baseline mlkit first
+                    prefs.setOcrBackendToken(id, token)
+                    val cfg = if (token == "mlkit") "mlkit" else "fast"
+                    for (c in cases) runManaged(sink, exp, cfg, token, c)
+                }
+            } finally {
+                if (original == null) prefs.clearOcrBackendToken(id)
+                else prefs.setOcrBackendToken(id, original)
+            }
+        }
+        // Drop the engines/sessions this experiment resolved through the
+        // production caches (registry + bridges); quiescent here by construction.
+        OcrManager.instance.releaseAll()
+    }
+
+    /** One case through the PRODUCTION pipeline (OcrManager.recognise with the
+     *  language's default recipe). Emits post-grouping paragraphs as regions and
+     *  hard-fails the case if the resolved engine isn't the one the flipped
+     *  token was meant to select (a silent fallback would corrupt the timing). */
+    private fun runManaged(sink: ResultSink, exp: String, cfg: String, expectedToken: String, c: CaseRef) {
+        var bmp: Bitmap? = null
+        try {
+            bmp = loadBitmap(c)
+            val t0 = System.nanoTime()
+            val result = runBlocking {
+                OcrManager.instance.recognise(bitmap = bmp, sourceLang = c.lang, screenshotWidth = bmp.width)
+            }
+            val totalMs = (System.nanoTime() - t0) / 1_000_000
+            val ranToken = result?.engineBackend?.selectionToken
+            if (result == null || ranToken != expectedToken) {
+                sink.case(exp, c.id, c.lang, cfg, "error", 0,
+                    reason = "resolved engine '$ranToken' != expected '$expectedToken' (fallback?)")
+                return
+            }
+            result.groups.forEachIndexed { i, g ->
+                sink.region(exp, c.id, cfg, i, g.bounds.run { intArrayOf(left, top, right, bottom) },
+                    vert = g.orientation == TextOrientation.VERTICAL, text = g.text)
+            }
+            sink.case(exp, c.id, c.lang, cfg, "ok", result.groups.size, totalMs = totalMs)
         } catch (t: Throwable) {
             Log.w(TAG, "$exp/$cfg/${c.id} failed", t)
             sink.case(exp, c.id, c.lang, cfg, "error", 0,

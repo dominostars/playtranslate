@@ -757,8 +757,9 @@
     <string name="startup_initializing_auto_mode">Initializing auto mode…</string>
     <!-- Slow-OCR rescue prompt (this block): an on-screen alert offered at most once per language,
          fired while a live text-recognition pass has been running ~2s — the devices whose users
-         read live mode's silence as "broken". One-tap switch to the always-available ML Kit
-         engine; declining is remembered and the prompt never repeats. Pending l10n batch. -->
+         read live mode's silence as "broken". One-tap switch to the rescue engine (the ML Kit
+         floor, or the PaddleOCR Fast tier for languages ML Kit can't read); declining is
+         remembered and the prompt never repeats. Pending l10n batch. -->
     <!-- Title of the slow-OCR rescue alert dialog (shown over the game as an overlay). -->
     <string name="slow_ocr_prompt_title">Text recognition is slow</string>
     <!-- Body text of the slow-OCR rescue alert dialog, under the title. The settings path on the
@@ -767,7 +768,8 @@
          UI; translators may reorder the placeholders if the path reads differently in their
          locale. -->
     <string name="slow_ocr_prompt_message">This device is taking a while to read the screen. Change to the faster engine for faster processing, though its reading quality may be slightly lower. You can switch anytime in settings:\n\n<xliff:g id="settings" example="Settings">%1$s</xliff:g> → <xliff:g id="section" example="Capture &amp; overlay">%2$s</xliff:g> → <xliff:g id="ocr_header" example="Text recognition (OCR)">%3$s</xliff:g></string>
-    <!-- Action button on the slow-OCR rescue alert: switches OCR to the faster ML Kit engine immediately. -->
+    <!-- Action button on the slow-OCR rescue alert: switches OCR to the rescue engine
+         (ML Kit floor, or PaddleOCR Fast where no floor exists) immediately. -->
     <string name="slow_ocr_prompt_switch">Use the faster engine</string>
     <!-- Dismiss button on the slow-OCR rescue alert: keeps the current OCR engine and never asks again. -->
     <string name="slow_ocr_prompt_keep">Keep the current engine</string>
