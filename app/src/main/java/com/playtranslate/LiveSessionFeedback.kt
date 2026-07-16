@@ -3,6 +3,7 @@ package com.playtranslate
 import android.graphics.Rect
 import android.view.Display
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.capture.LiveCaptureSource
 import com.playtranslate.capture.MediaProjectionController
 import com.playtranslate.capture.StartupChip
 import com.playtranslate.capture.StreamKind
@@ -128,15 +129,78 @@ internal class LiveSessionFeedback(
     /** The card's on-screen rect while it could appear in captured frames —
      *  null on a CLEAN stream (a task mirror structurally never composites
      *  our windows; excluding there would drop REAL game text under the
-     *  card), null when no card is up or it is hidden. Everything else —
-     *  whole-display mirrors, accessibility screenshots (no consent ⇒ not
-     *  CLEAN) — sees the card in its pixels, and the app must never OCR its
-     *  own chrome. Queried per pass so the rect always reflects the card's
-     *  live position. */
+     *  card), null when no card is up or it is hidden, and null for the one
+     *  pass whose frame was grabbed through a successful pre-grab blink
+     *  ([blinkCardForFirstGrab] — that frame is proven card-free, and
+     *  excluding would drop real text). Everything else — whole-display
+     *  mirrors, accessibility screenshots (no consent ⇒ not CLEAN) — sees
+     *  the card in its pixels, and the app must never OCR its own chrome.
+     *  Queried per pass so the rect always reflects the card's live
+     *  position. */
     fun ocrExclusionRect(displayId: Int): Rect? {
         if (displayId != Display.DEFAULT_DISPLAY) return null
+        if (lastGrabCardFree) {
+            // Consume-and-clear: the flag describes exactly one grabbed
+            // frame; the next grab re-evaluates from scratch.
+            lastGrabCardFree = false
+            return null
+        }
         if (controller.streamKind == StreamKind.CLEAN) return null
         return chip?.onScreenRect
+    }
+
+    // ── Pre-grab blink (whole-display mirrors) ───────────────────────────
+
+    /** The blink ran this session — at most once. Later pre-completion
+     *  grabs (guard-branch retries, black-screen boot loops) fall back to
+     *  exclusion rather than blinking the card at the user repeatedly. */
+    private var blinkAttempted = false
+
+    /** The LATEST default-display grab served a proven card-free frame.
+     *  Consumed (and cleared) by [ocrExclusionRect]; reset by every
+     *  default-display grab so it can never describe an older frame than
+     *  the one about to be OCR'd. Known residual: a hold-to-translate pass
+     *  interleaving in the ms between blink-grab and the cycle's OCR can
+     *  consume the flag meant for the cycle — both misdirections degrade
+     *  safely (a needless exclusion on a card-free frame, or at worst one
+     *  transient hold result containing the card label). */
+    private var lastGrabCardFree = false
+
+    /**
+     * Bracket the FIRST whole-display frame grab with a one-time card
+     * blink: hide the card, wait for the hide's composition to latch (the
+     * hide forces one into the mirror), run [grab] — which then serves a
+     * card-free frame, giving pass 1 the full screen INCLUDING the text
+     * under the card — and re-show. Capped: a wedged pipeline degrades to
+     * exclusion, never to self-OCR. Re-show is in a finally so a cancelled
+     * cycle can never strand the card hidden. CLEAN streams skip (their
+     * frames never contain the card); the blink never repeats.
+     */
+    suspend fun <T> blinkCardForFirstGrab(
+        displayId: Int,
+        source: LiveCaptureSource?,
+        grab: suspend () -> T,
+    ): T {
+        if (displayId != Display.DEFAULT_DISPLAY) return grab()
+        lastGrabCardFree = false
+        val c = chip
+        if (c == null || c.isRemoved || blinkAttempted ||
+            controller.streamKind == StreamKind.CLEAN
+        ) {
+            return grab()
+        }
+        val signal = source?.deliverySignal ?: return grab()
+        blinkAttempted = true
+        val seqAtHide = signal.seqNow()
+        c.setVisible(false)
+        return try {
+            lastGrabCardFree = withTimeoutOrNull(BLINK_FRESH_CAP_MS) {
+                signal.awaitSeqAfter(seqAtHide)
+            } != null
+            grab()
+        } finally {
+            c.setVisible(true)
+        }
     }
 
     /** A live OCR pass ran to completion on [displayId] — including the
@@ -243,5 +307,10 @@ internal class LiveSessionFeedback(
         /** Warm-up join cap — a hang guard, not policy; warmUpEngine always
          *  returns on every healthy path. */
         const val WARMUP_JOIN_CAP_MS = 8_000L
+
+        /** Pre-grab blink freshness cap. The hide composites into the
+         *  whole-display mirror, so this resolves in a frame or two; a
+         *  timeout falls back to exclusion for that pass. */
+        const val BLINK_FRESH_CAP_MS = 600L
     }
 }

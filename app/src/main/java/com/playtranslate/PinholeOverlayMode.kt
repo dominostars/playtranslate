@@ -287,7 +287,9 @@ class PinholeOverlayMode(
         // CapturedFrame unwrap: this mode never runs on CLEAN streams
         // (routing), so its frames are always full-display; the pinhole
         // pipeline itself stays byte-identical on the unwrapped bitmap.
-        val raw = mgr.requestRaw(displayId)?.bitmap
+        val raw = service.withFirstGrabCardBlink(displayId, mgr) {
+            mgr.requestRaw(displayId)
+        }?.bitmap
 
         if (raw == null) {
             // Transient capture failure — a persistently failing capture must

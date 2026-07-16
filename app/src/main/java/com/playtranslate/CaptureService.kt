@@ -1312,6 +1312,19 @@ class CaptureService : Service() {
         liveFeedback?.awaitFirstCycleClear()
     }
 
+    /** Bracket a live frame grab with the one-time startup-card blink —
+     *  see [LiveSessionFeedback.blinkCardForFirstGrab]. Structured so a
+     *  null session runs [grab] exactly once (an elvis on the result would
+     *  double-grab whenever T is nullable and the grab returns null). */
+    internal suspend fun <T> withFirstGrabCardBlink(
+        displayId: Int,
+        source: com.playtranslate.capture.LiveCaptureSource?,
+        grab: suspend () -> T,
+    ): T {
+        val feedback = liveFeedback ?: return grab()
+        return feedback.blinkCardForFirstGrab(displayId, source, grab)
+    }
+
     /**
      * The stream kind could not be MEASURED for a session holding MP
      * consent — settle it terminally, so live mode never runs on a guess

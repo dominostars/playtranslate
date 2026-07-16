@@ -301,10 +301,12 @@ class ReconcilerLiveMode(
         // requestClean does not advance the delivery-gate cursor, so
         // contaminated-source panel sessions poll at the interval — exactly
         // the deleted mode's pacing.
-        val frame = if (presenter.rendersOverlays || !mgr.framesIncludeSystemUi) {
-            mgr.requestRaw(displayId)
-        } else {
-            mgr.requestClean(displayId)
+        val frame = service.withFirstGrabCardBlink(displayId, mgr) {
+            if (presenter.rendersOverlays || !mgr.framesIncludeSystemUi) {
+                mgr.requestRaw(displayId)
+            } else {
+                mgr.requestClean(displayId)
+            }
         }
         if (frame == null) {
             // Generators of a null capture, enumerated: transient failure
