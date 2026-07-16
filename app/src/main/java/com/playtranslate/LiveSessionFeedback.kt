@@ -80,8 +80,9 @@ internal class LiveSessionFeedback(
     val probeSurface: StreamKindProbe.ProbeSurface?
         get() = chip?.takeIf { !it.isRemoved }
 
-    /** The stream-kind verdict settled (whatever it settled to): label-only,
-     *  and stop consuming center-screen taps. */
+    /** The stream-kind verdict settled (whatever it settled to): the card's
+     *  grid slot swaps to the loading spinner, and the window stops
+     *  consuming center-screen taps. */
     fun onVerdictSettled() {
         chip?.onVerdictSettled()
     }
@@ -93,12 +94,12 @@ internal class LiveSessionFeedback(
         chip?.setVisible(visible)
     }
 
-    /** Label-only grace chip for starts where no probe runs (accessibility
-     *  tier, cached stream kind): engine warm-up is then the only wait, and
-     *  chrome should exist only when the wait is real. Armed once per start,
-     *  after the probe question is settled — a label-only chip must never
-     *  collide with a pattern the probe is about to measure. A warm engine
-     *  never flashes chrome. */
+    /** Spinner-variant grace chip for starts where no probe runs
+     *  (accessibility tier, cached stream kind): engine warm-up is then the
+     *  only wait, and chrome should exist only when the wait is real. Armed
+     *  once per start, after the probe question is settled — a spinner card
+     *  must never collide with a pattern the probe is about to measure. A
+     *  warm engine never flashes chrome. */
     fun armChipGrace() {
         if (chip?.isRemoved == false) return // probe chip already up
         chipGrace?.cancel()

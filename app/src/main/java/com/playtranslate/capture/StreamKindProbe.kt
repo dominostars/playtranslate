@@ -634,24 +634,50 @@ object StreamKindProbe {
         }
     }
 
+    /** The checker grid alone, for a host window that lays it out among its
+     *  own children (the live-start chip). Kept HERE, beside the scanner —
+     *  drawn geometry and scan geometry must never drift apart. */
+    internal class PatternView(context: Context) : View(context) {
+        /** Inverts the checker phase; set + invalidate for the second pass. */
+        var swap = false
+        /** Draws observed — the evidence-validity signal ([awaitDrawAfter]).
+         *  Main-thread only, like all View state. */
+        var drawCount = 0
+        private val paint = Paint()
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            setMeasuredDimension(SIZE_PX, SIZE_PX)
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            drawCount++
+            drawPatternCells(canvas, swap, paint)
+        }
+    }
+
+    /** The one definition of the checker's pixels — shared by [PatternView]
+     *  and the ephemeral [ProbeView] so [scanForPattern]'s cell model always
+     *  matches what was drawn. */
+    private fun drawPatternCells(canvas: Canvas, swap: Boolean, paint: Paint) {
+        val cells = SIZE_PX / CELL_PX
+        for (r in 0 until cells) {
+            for (c in 0 until cells) {
+                paint.color = if (cellIsA(r, c, swap)) COLOR_A else COLOR_B
+                canvas.drawRect(
+                    (c * CELL_PX).toFloat(), (r * CELL_PX).toFloat(),
+                    ((c + 1) * CELL_PX).toFloat(), ((r + 1) * CELL_PX).toFloat(),
+                    paint,
+                )
+            }
+        }
+    }
+
     internal class ProbeView(context: Context) : View(context) {
         /** Inverts the checker phase; set + invalidate for the second pass. */
         var swap = false
         /** Draws observed — the evidence-validity signal ([awaitDrawAfter]).
          *  Main-thread only, like all View state. */
         var drawCount = 0
-        /** Chip host only: false retires the checker once the verdict has
-         *  settled, leaving the label to cover engine warm-up. The window is
-         *  WRAP_CONTENT, so the view re-measures and the centered window
-         *  shrinks around the label. The ephemeral probe window never clears
-         *  this — it is removed instead. */
-        var showPattern = true
-            set(value) {
-                if (field == value) return
-                field = value
-                requestLayout()
-                invalidate()
-            }
         private val paint = Paint()
 
         // "Initializing…" chip to the RIGHT of the grid, so the ~1.4s
@@ -675,31 +701,17 @@ object StreamKindProbe {
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             val labelW = (labelPaint.measureText(labelText) + 2 * labelPadding).toInt()
-            val patternW = if (showPattern) SIZE_PX else 0
-            setMeasuredDimension(patternW + labelW, SIZE_PX)
+            setMeasuredDimension(SIZE_PX + labelW, SIZE_PX)
         }
 
         override fun onDraw(canvas: Canvas) {
             drawCount++
-            val patternW = if (showPattern) SIZE_PX else 0
-            if (showPattern) {
-                val cells = SIZE_PX / CELL_PX
-                for (r in 0 until cells) {
-                    for (c in 0 until cells) {
-                        paint.color = if (cellIsA(r, c, swap)) COLOR_A else COLOR_B
-                        canvas.drawRect(
-                            (c * CELL_PX).toFloat(), (r * CELL_PX).toFloat(),
-                            ((c + 1) * CELL_PX).toFloat(), ((r + 1) * CELL_PX).toFloat(),
-                            paint,
-                        )
-                    }
-                }
-            }
+            drawPatternCells(canvas, swap, paint)
             canvas.drawRect(
-                patternW.toFloat(), 0f, width.toFloat(), SIZE_PX.toFloat(), labelBgPaint,
+                SIZE_PX.toFloat(), 0f, width.toFloat(), SIZE_PX.toFloat(), labelBgPaint,
             )
             val baseline = SIZE_PX / 2f - (labelPaint.descent() + labelPaint.ascent()) / 2f
-            canvas.drawText(labelText, patternW + labelPadding, baseline, labelPaint)
+            canvas.drawText(labelText, SIZE_PX + labelPadding, baseline, labelPaint)
         }
     }
 

@@ -2,22 +2,40 @@ package com.playtranslate.capture
 
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
+import com.playtranslate.R
+import com.playtranslate.overlayThemedContext
+import com.playtranslate.themeColor
 
 /**
- * The live-start status window: one centered chip spanning the whole startup
- * — stream-kind probe (checker + "Initializing…" label), then OCR engine
- * warm-up (label only) — so the user sees a single continuous affordance
- * instead of a probe window that vanishes right before the longest wait (the
- * multi-second engine load slow devices read as "live mode is broken").
+ * The live-start status card: one centered window spanning the whole startup
+ * — stream-kind probe, then OCR engine warm-up — so the user sees a single
+ * continuous affordance instead of a probe window that vanishes right before
+ * the longest wait (the multi-second engine load slow devices read as "live
+ * mode is broken").
  *
- * Owned by [com.playtranslate.CaptureService]; [StreamKindProbe.measure]
+ * Styled after [com.playtranslate.ui.OverlayAlert]'s card (ptSurface fill,
+ * ptDivider hairline, 16dp radius) with the detection grid centered above
+ * the label. When the verdict settles the grid's slot swaps to an
+ * indeterminate spinner — same footprint, so the card never resizes — and
+ * the spinner carries the warm-up phase. The no-probe variant is born in
+ * the spinner state. Deliberately NO entrance animation: round 1 of the
+ * probe counts the add's own composition as evidence, so the pattern must
+ * render at full alpha from the very first frame.
+ *
+ * Owned by [com.playtranslate.LiveSessionFeedback]; [StreamKindProbe.measure]
  * only DRIVES the pattern through the [StreamKindProbe.ProbeSurface] seam,
  * it never adds or removes this window. Like the ephemeral probe window, the
- * chip is deliberately NOT registered with the OverlayHost (a registered
+ * card is deliberately NOT registered with the OverlayHost (a registered
  * window can be alpha-blanked by a concurrent clean capture, faking a CLEAN
  * verdict) and is TOUCHABLE while the pattern shows (a pass-through window's
  * composited opacity is clamped by the untrusted-touch rules — ~84% measured
@@ -25,13 +43,15 @@ import android.view.WindowManager
  * several seconds, so [onVerdictSettled] flips it to FLAG_NOT_TOUCHABLE the
  * moment the pattern retires: only the ~1.4s probe phase may eat taps.
  *
- * The chip must never be OCR'd: the service removes it before the first
+ * The card must never be OCR'd: the session removes it before the first
  * live cycle is allowed to capture (the first-cycle gate), on stopLive, on a
  * superseding start, and via a hard-cap timer as a leak guard.
  */
 internal class StartupChip private constructor(
     private val wm: WindowManager,
-    private val view: StreamKindProbe.ProbeView,
+    private val root: View,
+    private val pattern: StreamKindProbe.PatternView,
+    private val spinner: ProgressBar,
     private val params: WindowManager.LayoutParams,
 ) : StreamKindProbe.ProbeSurface {
 
@@ -48,7 +68,7 @@ internal class StartupChip private constructor(
 
     override fun armPattern(controller: MediaProjectionController): String? {
         if (isRemoved) return "startup chip already removed"
-        if (!view.showPattern) return "startup chip pattern already retired"
+        if (pattern.visibility != View.VISIBLE) return "startup chip pattern already retired"
         if (armed) {
             // A retry within the same window lifetime: the add-time anchors
             // are stale — round 1 would read a latched pre-pattern frame, or
@@ -56,24 +76,24 @@ internal class StartupChip private constructor(
             // shape the anchors exist to prevent). Re-anchor both and force
             // real pixel damage, the mechanism rounds > 1 already trust.
             // No window blink: the phase toggles in place.
-            drawCountAtArm = view.drawCount
+            drawCountAtArm = pattern.drawCount
             patternAddedSeq = controller.deliverySeqNow
-            view.swap = !view.swap
-            view.invalidate()
+            pattern.swap = !pattern.swap
+            pattern.invalidate()
         }
         armed = true
         return null
     }
 
-    override suspend fun awaitPatternLaidOut(): Boolean = StreamKindProbe.awaitLaidOut(view)
+    override suspend fun awaitPatternLaidOut(): Boolean = StreamKindProbe.awaitLaidOut(pattern)
 
     override val patternScreenRect: Rect
         get() {
-            // Laid-out location is ground truth (immune to gravity/inset
-            // surprises); only the checker grid — the label to its right must
-            // never contribute cells to the verdict.
+            // The grid child's own laid-out location is ground truth (immune
+            // to gravity/inset/padding surprises); only the checker — the
+            // card around it must never contribute cells to the verdict.
             val loc = IntArray(2)
-            view.getLocationOnScreen(loc)
+            pattern.getLocationOnScreen(loc)
             return Rect(
                 loc[0], loc[1],
                 loc[0] + StreamKindProbe.SIZE_PX, loc[1] + StreamKindProbe.SIZE_PX,
@@ -81,36 +101,39 @@ internal class StartupChip private constructor(
         }
 
     override var patternSwap: Boolean
-        get() = view.swap
-        set(value) { view.swap = value }
+        get() = pattern.swap
+        set(value) { pattern.swap = value }
 
-    override val patternDrawCount: Int get() = view.drawCount
+    override val patternDrawCount: Int get() = pattern.drawCount
 
     override fun invalidatePattern() {
-        view.invalidate()
+        pattern.invalidate()
     }
 
-    /** The stream-kind verdict settled (whatever it settled to): retire the
-     *  checker — label-only from here — and stop consuming taps. The
-     *  untrusted-touch opacity exemption only matters while the pattern is
-     *  being measured; a label may render clamped, but must not eat the
-     *  center of the screen for the seconds warm-up can take. */
+    /** The stream-kind verdict settled (whatever it settled to): the grid's
+     *  slot swaps to the loading spinner — INVISIBLE keeps the grid's
+     *  bounds, and the slot is fixed-size, so the card does not resize —
+     *  and the window stops consuming taps. The untrusted-touch opacity
+     *  exemption only matters while the pattern is being measured; a status
+     *  card may render clamped, but must not eat the center of the screen
+     *  for the seconds warm-up can take. */
     fun onVerdictSettled() {
         if (isRemoved) return
-        view.showPattern = false
+        pattern.visibility = View.INVISIBLE
+        spinner.visibility = View.VISIBLE
         params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         try {
-            wm.updateViewLayout(view, params)
+            wm.updateViewLayout(root, params)
         } catch (_: Exception) {
         }
     }
 
     /** Hide/re-show without removing — used around the UNKNOWN stream-kind
-     *  prompt, where an "Initializing…" chip floating over a question would
+     *  prompt, where an "Initializing…" card floating over a question would
      *  wrongly say no action is needed. */
     fun setVisible(visible: Boolean) {
         if (isRemoved) return
-        view.visibility = if (visible) View.VISIBLE else View.GONE
+        root.visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     /** Remove the window. Idempotent — callable from any of the removal
@@ -119,40 +142,102 @@ internal class StartupChip private constructor(
         if (isRemoved) return
         isRemoved = true
         try {
-            wm.removeViewImmediate(view)
+            wm.removeViewImmediate(root)
         } catch (_: Exception) {
         }
     }
 
     companion object {
         /**
-         * Build and add the chip on the projected display (MediaProjection
+         * Build and add the card on the projected display (MediaProjection
          * only ever mirrors [android.view.Display.DEFAULT_DISPLAY]). Returns
          * null when the overlay host / display / WindowManager is missing or
          * the add fails — startup proceeds without a chip; feedback is never
          * allowed to block the feature it narrates.
          *
-         * [withPattern] false builds the label-only variant (no probe this
-         * start — engine warm-up is the only wait), which never needs the
-         * touch-consuming exemption and is born FLAG_NOT_TOUCHABLE.
+         * [withPattern] false builds the spinner-from-birth variant (no
+         * probe this start — engine warm-up is the only wait), which never
+         * needs the touch-consuming exemption and is born FLAG_NOT_TOUCHABLE.
          */
         fun show(controller: MediaProjectionController, withPattern: Boolean): StartupChip? {
             val host = CaptureBackendResolver.active().overlayHost ?: return null
             // The HOST's context — accessibility overlay window types can
             // only be added from the accessibility service's own context.
+            // Theme-wrapped so the OverlayAlert pt* tokens resolve.
             val displayContext = host.displayContextFor(controller.projectedDisplayId)
+                ?.let { overlayThemedContext(it) }
                 ?: return null
             val wm = displayContext.getSystemService(WindowManager::class.java) ?: return null
-            val view = StreamKindProbe.ProbeView(displayContext).apply {
-                showPattern = withPattern
+            val dp = displayContext.resources.displayMetrics.density
+
+            val pattern = StreamKindProbe.PatternView(displayContext).apply {
+                visibility = if (withPattern) View.VISIBLE else View.INVISIBLE
             }
-            // Same window shape as the ephemeral probe (see its params for
-            // the touchable + center + inset rationale), minus touchability
-            // when there is no pattern to protect.
+            val spinner = ProgressBar(displayContext).apply {
+                isIndeterminate = true
+                visibility = if (withPattern) View.INVISIBLE else View.VISIBLE
+            }
+            // Fixed slot fitting both occupants: the grid is SIZE_PX raw
+            // pixels (a scan artifact, not dp), the spinner 24dp. Whichever
+            // shows, the slot — and therefore the card — keeps one size.
+            val spinnerPx = (24 * dp).toInt()
+            val slotPx = maxOf(StreamKindProbe.SIZE_PX, spinnerPx)
+            val slot = FrameLayout(displayContext).apply {
+                addView(
+                    pattern,
+                    FrameLayout.LayoutParams(
+                        StreamKindProbe.SIZE_PX, StreamKindProbe.SIZE_PX, Gravity.CENTER,
+                    ),
+                )
+                addView(spinner, FrameLayout.LayoutParams(spinnerPx, spinnerPx, Gravity.CENTER))
+            }
+
+            val label = TextView(displayContext).apply {
+                text = displayContext.getString(R.string.startup_initializing_auto_mode)
+                setTextColor(displayContext.themeColor(R.attr.ptText))
+                textSize = 13f
+                gravity = Gravity.CENTER
+            }
+
+            // OverlayAlert's card, scaled down for a passive status chip —
+            // and with NO entrance animation (see class doc: round 1 counts
+            // the add's own composition).
+            val card = LinearLayout(displayContext).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                background = GradientDrawable().apply {
+                    setColor(displayContext.themeColor(R.attr.ptSurface))
+                    setStroke((1 * dp).toInt(), displayContext.themeColor(R.attr.ptDivider))
+                    cornerRadius = 16 * dp
+                }
+                setPadding(
+                    (20 * dp).toInt(), (14 * dp).toInt(),
+                    (20 * dp).toInt(), (12 * dp).toInt(),
+                )
+                addView(
+                    slot,
+                    LinearLayout.LayoutParams(slotPx, slotPx).apply {
+                        gravity = Gravity.CENTER_HORIZONTAL
+                        bottomMargin = (10 * dp).toInt()
+                    },
+                )
+                addView(
+                    label,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply { gravity = Gravity.CENTER_HORIZONTAL },
+                )
+            }
+
+            // Same window contract as the ephemeral probe (touchable +
+            // center + inset rationale documented there), minus
+            // touchability when there is no pattern to protect.
             val baseFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
             val params = WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT, StreamKindProbe.SIZE_PX,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
                 host.windowType,
                 if (withPattern) baseFlags
                 else baseFlags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
@@ -161,13 +246,13 @@ internal class StartupChip private constructor(
                 gravity = Gravity.CENTER
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
             }
-            val chip = StartupChip(wm, view, params)
+            val chip = StartupChip(wm, card, pattern, spinner, params)
             // Anchor BEFORE the window exists — the add's own composition is
             // round-1 freshness evidence (the ephemeral probe's seqAtAdd,
             // transferred faithfully).
             chip.patternAddedSeq = controller.deliverySeqNow
             return try {
-                wm.addView(view, params)
+                wm.addView(card, params)
                 chip
             } catch (_: Exception) {
                 null

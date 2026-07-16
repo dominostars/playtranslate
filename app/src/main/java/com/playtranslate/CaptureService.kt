@@ -1256,7 +1256,8 @@ class CaptureService : Service() {
                         liveFeedback?.probeSurface
                     )
                     // Whatever it settled to, the pattern's job is done:
-                    // label-only, and stop consuming center-screen taps.
+                    // swap the grid for the spinner and stop consuming
+                    // center-screen taps.
                     liveFeedback?.onVerdictSettled()
                     ensureActive()
                     // A live session never RUNS on an unmeasured verdict

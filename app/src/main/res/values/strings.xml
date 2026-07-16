@@ -753,6 +753,8 @@
     <string name="error_capture_blocked_secure">Nothing can be read. Protected content blocks screen capture.</string>
     <!-- Label on the small on-screen chip shown for ~1.5s at live-mode start while the capture stream is being classified; sits beside a small colored checker pattern. The view measures its own localized label (StreamKindProbe.onMeasure), so there is no width limit: prefer the precise word over a short one. -->
     <string name="probe_initializing">Initializing…</string>
+    <!-- Label under the detection grid / loading spinner on the live-start status card (StartupChip), shown from live-mode start until the first translations can appear. "Auto mode" is the floating menu's name for live translation. Pending l10n batch. -->
+    <string name="startup_initializing_auto_mode">Initializing auto mode…</string>
     <!-- Stream-scope prompt (this block): an on-screen alert dialog shown at live-mode start
          (MediaProjection-only backend) when the automatic probe could not determine which capture
          scope the user picked in the SYSTEM consent dialog. The two choice-button labels mirror the
