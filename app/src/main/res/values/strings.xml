@@ -761,8 +761,12 @@
          engine; declining is remembered and the prompt never repeats. Pending l10n batch. -->
     <!-- Title of the slow-OCR rescue alert dialog (shown over the game as an overlay). -->
     <string name="slow_ocr_prompt_title">Text recognition is slow</string>
-    <!-- Body text of the slow-OCR rescue alert dialog, under the title. "Engine" = the OCR engine the user can also change in Settings > OCR; keep the same word the OCR settings section uses. -->
-    <string name="slow_ocr_prompt_message">This device is taking a while to read the screen. The faster engine is more responsive, though its reading quality can be slightly lower. You can switch engines anytime in Settings.</string>
+    <!-- Body text of the slow-OCR rescue alert dialog, under the title. The settings path on the
+         last line is composed from the LIVE section labels (settings_title,
+         settings_cell_capture_overlay, settings_header_ocr) so it can never drift from the real
+         UI; translators may reorder the placeholders if the path reads differently in their
+         locale. -->
+    <string name="slow_ocr_prompt_message">This device is taking a while to read the screen. Change to the faster engine for faster processing, though its reading quality may be slightly lower. You can switch anytime in settings:\n\n<xliff:g id="settings" example="Settings">%1$s</xliff:g> → <xliff:g id="section" example="Capture &amp; overlay">%2$s</xliff:g> → <xliff:g id="ocr_header" example="Text recognition (OCR)">%3$s</xliff:g></string>
     <!-- Action button on the slow-OCR rescue alert: switches OCR to the faster ML Kit engine immediately. -->
     <string name="slow_ocr_prompt_switch">Use the faster engine</string>
     <!-- Dismiss button on the slow-OCR rescue alert: keeps the current OCR engine and never asks again. -->

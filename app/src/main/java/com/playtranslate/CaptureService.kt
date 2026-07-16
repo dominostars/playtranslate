@@ -1383,7 +1383,17 @@ class CaptureService : Service() {
             .Builder(themed, host, wm, Display.DEFAULT_DISPLAY)
             .hideIcon()
             .setTitle(getString(R.string.slow_ocr_prompt_title))
-            .setMessage(getString(R.string.slow_ocr_prompt_message))
+            // The settings path is fed from the LIVE section labels, so the
+            // breadcrumb follows any rename or re-translation of those
+            // screens automatically.
+            .setMessage(
+                getString(
+                    R.string.slow_ocr_prompt_message,
+                    getString(R.string.settings_title),
+                    getString(R.string.settings_cell_capture_overlay),
+                    getString(R.string.settings_header_ocr),
+                )
+            )
             .addButton(
                 getString(R.string.slow_ocr_prompt_switch),
                 themed.themeColor(R.attr.ptAccent),
