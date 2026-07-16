@@ -1341,14 +1341,6 @@ class CaptureService : Service() {
         slowOcrAlert = null
     }
 
-    /** TEMPORARY testing switch (2026-07-15): bypasses the answered and
-     *  floor-already-selected gates so the rescue alert can be exercised
-     *  repeatedly (toggle live off/on between shows — the once-per-session
-     *  latch still applies). Answers still persist and the switch still
-     *  applies, so flipping this back restores production behavior with
-     *  whatever state the testing left. MUST be false before merge. */
-    private val debugSlowOcrPromptRepeat = true
-
     /**
      * A live OCR pass has been in flight past the slow threshold
      * ([LiveSessionFeedback.OCR_SLOW_PROMPT_MS]) — offer the one-tap switch
@@ -1365,10 +1357,10 @@ class CaptureService : Service() {
         if (!isLive || slowOcrAlert != null) return
         val prefs = Prefs(this)
         val id = prefs.sourceLangId
-        if (!debugSlowOcrPromptRepeat && prefs.slowOcrPromptAnswered(id)) return
+        if (prefs.slowOcrPromptAnswered(id)) return
         val floor = SourceLanguageProfiles[id].mlKitFloor ?: return
         val selected = OcrModelManager.selectedBackend(this, id) ?: return
-        if (!debugSlowOcrPromptRepeat && selected.selectionToken == floor.selectionToken) return
+        if (selected.selectionToken == floor.selectionToken) return
 
         val host = CaptureBackendResolver.active().overlayHost ?: return
         val display = getSystemService(DisplayManager::class.java)
