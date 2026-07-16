@@ -251,7 +251,7 @@ class ReconcilerLiveMode(
      *  next cycle. */
     private suspend fun runCycle(): Long {
         val prefs = Prefs(service)
-        if (service.holdActive) return 100L
+        if (service.livePaused) return 100L
         val controller = service.mediaProjectionController
         if (presenter.rendersOverlays && controller.streamKind != StreamKind.CLEAN) {
             // Consent teardown reset the verdict (a backend switch can follow
@@ -372,8 +372,9 @@ class ReconcilerLiveMode(
             val pipeline = service.runOcr(raw, displayId, frame.includesSystemUi)
             val ocrMs = SystemClock.uptimeMillis() - ocrStartMs
 
-            // A hold gesture may have started during the OCR suspension.
-            if (service.holdActive) return 100L
+            // A hold gesture (or the rescue alert) may have started during
+            // the OCR suspension.
+            if (service.livePaused) return 100L
 
             val boxes = cachedBoxes ?: emptyList()
             if (pipeline == null && boxes.isEmpty()) {

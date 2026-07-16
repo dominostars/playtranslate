@@ -1341,6 +1341,14 @@ class CaptureService : Service() {
         slowOcrAlert = null
     }
 
+    /** TEMPORARY testing switch (2026-07-15): bypasses the answered and
+     *  floor-already-selected gates so the rescue alert can be exercised
+     *  repeatedly (toggle live off/on between shows — the once-per-session
+     *  latch still applies). Answers still persist and the switch still
+     *  applies, so flipping this back restores production behavior with
+     *  whatever state the testing left. MUST be false before merge. */
+    private val debugSlowOcrPromptRepeat = true
+
     /**
      * A live OCR pass has been in flight past the slow threshold
      * ([LiveSessionFeedback.OCR_SLOW_PROMPT_MS]) — offer the one-tap switch
@@ -1357,10 +1365,10 @@ class CaptureService : Service() {
         if (!isLive || slowOcrAlert != null) return
         val prefs = Prefs(this)
         val id = prefs.sourceLangId
-        if (prefs.slowOcrPromptAnswered(id)) return
+        if (!debugSlowOcrPromptRepeat && prefs.slowOcrPromptAnswered(id)) return
         val floor = SourceLanguageProfiles[id].mlKitFloor ?: return
         val selected = OcrModelManager.selectedBackend(this, id) ?: return
-        if (selected.selectionToken == floor.selectionToken) return
+        if (!debugSlowOcrPromptRepeat && selected.selectionToken == floor.selectionToken) return
 
         val host = CaptureBackendResolver.active().overlayHost ?: return
         val display = getSystemService(DisplayManager::class.java)
@@ -1397,6 +1405,9 @@ class CaptureService : Service() {
                     prefs.setSlowOcrPromptAnswered(id)
                 }
                 liveFeedback?.setChipVisible(true)
+                // The alert paused cycles ([livePaused]); kick everything
+                // back to life the same way hold-release does.
+                refreshLiveOverlay()
             }
             .showAsOverlay()
     }
@@ -1980,6 +1991,16 @@ class CaptureService : Service() {
 
     /** True while a hold gesture or modal UI is active — suppresses overlay display in live mode. */
     var holdActive = false
+
+    /** Global live-cycle pause: a hold-preview in progress OR the slow-OCR
+     *  rescue alert on screen. The alert must pause cycles for two reasons:
+     *  it is itself a host-registered overlay, so whole-display mirrors
+     *  would capture and OCR its own text; and the device it appears on is
+     *  by definition choking — the decision UI should not compete with
+     *  another multi-second pass. Checked at every site that pauses cycles
+     *  for holds, as one derived property so the two pause sources can
+     *  never drift apart. */
+    val livePaused: Boolean get() = holdActive || slowOcrAlert != null
 
     /**
      * Common hold-to-preview begin sequence used by both the in-app button

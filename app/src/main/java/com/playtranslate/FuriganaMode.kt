@@ -138,10 +138,11 @@ class FuriganaMode(
             // A hold can arrive while the gate is parked, and its global
             // stopAllLoops only stops loops that EXIST — a start that hasn't
             // fired yet isn't one of them. Same rule as the dismiss-restart
-            // guard below: never start into a hold-preview; hotkeyHoldEnd's
-            // refresh() restarts the loop cleanly on release.
-            if (service.holdActive) {
-                DetectionLog.log("furigana startLoop skipped (holdActive)")
+            // guard below: never start into a hold-preview or under the
+            // rescue alert; hotkeyHoldEnd's refresh() (or the alert handlers'
+            // refreshLiveOverlay) restarts the loop cleanly.
+            if (service.livePaused) {
+                DetectionLog.log("furigana startLoop skipped (livePaused)")
                 return@launch
             }
             source.startLoop(displayId, service.serviceScope,
@@ -170,8 +171,8 @@ class FuriganaMode(
             // scheduling itself. Instead, skip the restart if a hold-preview
             // is now in progress — hotkeyHoldEnd's refresh() will restart the
             // loop cleanly on release.
-            if (service.holdActive) {
-                DetectionLog.log("dismiss restart skipped (holdActive)")
+            if (service.livePaused) {
+                DetectionLog.log("dismiss restart skipped (livePaused)")
                 return@launch
             }
             startLoop(source)
@@ -190,7 +191,7 @@ class FuriganaMode(
         // Skip frames while a capture hold is active (floating menu / hold-to-
         // preview), so the loop stops requesting overlay-blanking clean captures
         // behind it. Processing resumes once the hold clears.
-        if (service.holdActive) { raw.recycle(); return }
+        if (service.livePaused) { raw.recycle(); return }
         cleanProcessingJob?.cancel()
         cleanProcessingJob = scope.launch {
             try {
@@ -296,7 +297,7 @@ class FuriganaMode(
         val bitmap = frame.bitmap
         val frameIncludesSystemUi = frame.includesSystemUi
         // Skip frames while a capture hold is active — see handleCleanFrame.
-        if (service.holdActive) { bitmap.recycle(); return }
+        if (service.livePaused) { bitmap.recycle(); return }
         if (cleanProcessingJob?.isActive == true || rawOcrJob?.isActive == true) {
             bitmap.recycle()
             return

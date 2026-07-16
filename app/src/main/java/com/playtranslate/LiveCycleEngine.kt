@@ -196,7 +196,7 @@ internal class LiveCycleEngine(
         val signal = source()?.deliverySignal ?: return
         val debug = Prefs(service).debugLiveMode
         var parkedAtMs = 0L
-        while (!forceNextCycle && !service.holdActive &&
+        while (!forceNextCycle && !service.livePaused &&
             signal.seqNow() <= signal.lastServedSeq
         ) {
             val deadline = parkDeadlineMs()
@@ -219,7 +219,7 @@ internal class LiveCycleEngine(
         if (parkedAtMs != 0L && debug) {
             val why = when {
                 forceNextCycle -> "forced"
-                service.holdActive -> "hold"
+                service.livePaused -> "paused"
                 else -> "delivery seq=${signal.seqNow()}"
             }
             val ms = SystemClock.uptimeMillis() - parkedAtMs
