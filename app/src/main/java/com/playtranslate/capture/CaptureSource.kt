@@ -27,6 +27,15 @@ class CapturedFrame(
      *  to keep the clock/battery glyphs out of OCR, would instead eat game
      *  content on such frames. Stamped by the source at serve time. */
     val includesSystemUi: Boolean,
+    /** Whether the frame can contain THIS app's own overlay windows (the
+     *  floating icon above all — its chevron OCRs as a ‹-class glyph).
+     *  False for clean captures (windows blanked pre-grab) and for CLEAN
+     *  task mirrors (our windows never composite in); true for raw grabs of
+     *  contaminated sources. OCR consumers black the icon rect out of the
+     *  OCR input when true — keyed on THIS stamp, never on the backend or
+     *  stream kind, because the bitmap outlives both (screenshot cache →
+     *  re-OCR). Stamped by the source at serve time. */
+    val includesOwnOverlays: Boolean,
     /** Uptime when the source served the frame — the anchor time-based
      *  consumers (e.g. [com.playtranslate.StabilityHold]'s cap) should use
      *  instead of reading a clock around their capture call. */
@@ -35,7 +44,8 @@ class CapturedFrame(
     /** Same facts, different pixels — for pipeline stages that OCR a mutated
      *  COPY of the frame (overlay-region fills, clean-ref patches). The
      *  derived frame owns [newBitmap]; the parent's bitmap is untouched. */
-    fun derive(newBitmap: Bitmap) = CapturedFrame(newBitmap, includesSystemUi, capturedAtMs)
+    fun derive(newBitmap: Bitmap) =
+        CapturedFrame(newBitmap, includesSystemUi, includesOwnOverlays, capturedAtMs)
 
     fun recycle() {
         if (!bitmap.isRecycled) bitmap.recycle()

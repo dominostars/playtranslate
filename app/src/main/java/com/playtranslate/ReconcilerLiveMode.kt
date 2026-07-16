@@ -369,7 +369,9 @@ class ReconcilerLiveMode(
             // OCR the full crop. No status-bar exclusion: a task stream
             // contains no system UI — those top rows are game content.
             val ocrStartMs = SystemClock.uptimeMillis()
-            val pipeline = service.runOcr(raw, displayId, frame.includesSystemUi)
+            val pipeline = service.runOcr(
+                raw, displayId, frame.includesSystemUi, frame.includesOwnOverlays,
+            )
             val ocrMs = SystemClock.uptimeMillis() - ocrStartMs
 
             // A hold gesture (or the rescue alert) may have started during
@@ -441,7 +443,10 @@ class ReconcilerLiveMode(
                     presenter.emitNoText()
                 } else {
                     showBoxes(kept)
-                    presenter.emitApplied(kept, pipeline?.ocrResult, frame.includesSystemUi) {
+                    presenter.emitApplied(
+                        kept, pipeline?.ocrResult,
+                        frame.includesSystemUi, frame.includesOwnOverlays,
+                    ) {
                         mgr.saveToCache(raw, displayId)
                     }
                 }
@@ -482,7 +487,10 @@ class ReconcilerLiveMode(
             }
             cachedBoxes = kept + finalAnchors
             showBoxes(kept + finalAnchors)
-            presenter.emitApplied(kept + finalAnchors, pipeline?.ocrResult, frame.includesSystemUi) {
+            presenter.emitApplied(
+                kept + finalAnchors, pipeline?.ocrResult,
+                frame.includesSystemUi, frame.includesOwnOverlays,
+            ) {
                 mgr.saveToCache(raw, displayId)
             }
             return pacing(prefs)

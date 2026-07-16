@@ -852,10 +852,28 @@ class CaptureService : Service() {
             colorRef = oneShotColorRef(raw)
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
-            // The floating icon is always rendered in compact mode (a small
-            // edge-arrow), so the pre-OCR icon blackout is gone — we feed
-            // OCR the crop directly. Cleanup of `bitmap` is the outer
-            // finally's job.
+            // The frame is stamped as possibly containing our own overlay
+            // windows (a re-OCR of a cached live raw frame) — black the
+            // floating icon out before OCR reads its chevron as text.
+            // In-place only when cropBitmap produced a fresh copy; a no-op
+            // crop leaves `bitmap === raw`, and the frame must never be
+            // drawn into (uniform rule — here the cache write and colorRef
+            // snapshot already happened, but the safety must not depend on
+            // that ordering). Cleanup of `bitmap` is the outer finally's job.
+            if (frame.includesOwnOverlays) {
+                val iconRect =
+                    CaptureBackendResolver.activeOverlayUi?.getFloatingIconRect(displayId)
+                if (iconRect != null) {
+                    val blacked = OverlayToolkit.blackoutFloatingIcon(
+                        bitmap, left, top, iconRect,
+                        allowInPlace = bitmap !== raw,
+                    )
+                    if (blacked !== bitmap) {
+                        bitmap.recycle()
+                        bitmap = blacked
+                    }
+                }
+            }
             state.value = CaptureState.InProgress(getString(R.string.status_ocr))
             val ocrResult = ocrManager.recognise(
                 bitmap, SourceLanguageProfiles[srcId].translationCode, screenshotWidth = raw.width,
@@ -866,7 +884,12 @@ class CaptureService : Service() {
 
             if (ocrResult == null) {
                 state.value = CaptureState.NoText(
-                    noTextMessage(displayId), noTextProvenanceFor(displayId, region, srcId, frameIncludesSystemUi), screenshotPath,
+                    noTextMessage(displayId),
+                    noTextProvenanceFor(
+                        displayId, region, srcId, frameIncludesSystemUi,
+                        frame.includesOwnOverlays,
+                    ),
+                    screenshotPath,
                 )
                 return
             }
@@ -877,7 +900,10 @@ class CaptureService : Service() {
             val skeletonData = buildOneShotOverlayData(ocrResult, colorRef, left, top, rawW, rawH)
             state.value = CaptureState.Translating(
                 ocrResult.fullText, ocrResult.segments,
-                ocrProvenanceFor(ocrResult, displayId, region, srcId, frameIncludesSystemUi),
+                ocrProvenanceFor(
+                    ocrResult, displayId, region, srcId, frameIncludesSystemUi,
+                    frame.includesOwnOverlays,
+                ),
                 overlayData = skeletonData,
             )
             // Pin translation to the SAME source language OCR used (srcId), not current
@@ -898,7 +924,10 @@ class CaptureService : Service() {
                     screenshotPath      = screenshotPath,
                     note                = perGroup.mapNotNull { it.note }.firstOrNull(),
                     backendDisplayName  = perGroup.mapNotNull { it.backendDisplayName }.firstOrNull(),
-                    ocrProvenance       = ocrProvenanceFor(ocrResult, displayId, region, srcId, frameIncludesSystemUi),
+                    ocrProvenance       = ocrProvenanceFor(
+                        ocrResult, displayId, region, srcId, frameIncludesSystemUi,
+                        frame.includesOwnOverlays,
+                    ),
                     langContext         = Prefs(this@CaptureService).langContext(srcId),
                 ),
                 overlayData = fillOneShotOverlayData(skeletonData, perGroup),
@@ -925,11 +954,13 @@ class CaptureService : Service() {
         region: RegionEntry,
         srcId: SourceLangId,
         frameIncludesSystemUi: Boolean,
+        frameIncludesOwnOverlays: Boolean,
     ): OcrProvenance? {
         val backend = OcrModelManager.selectedBackend(this, srcId) ?: return null
         return OcrProvenance(
             backend.ocrLabel, backend.selectionToken, displayId, srcId, region,
             frameIncludesSystemUi = frameIncludesSystemUi,
+            frameIncludesOwnOverlays = frameIncludesOwnOverlays,
         )
     }
 
@@ -2307,11 +2338,23 @@ class CaptureService : Service() {
      *  7+8). A task-scoped ("single app") frame has no status bar to crop,
      *  and cropping would eat game content instead. Callers without a source
      *  in hand keep the default — the full-display assumption, the safe
-     *  direction. */
+     *  direction.
+     *
+     *  [frameIncludesOwnOverlays]: whether [raw] can contain this app's own
+     *  overlay windows — [com.playtranslate.capture.CapturedFrame]'s stamped
+     *  fact, forwarded by the caller. True → the floating icon's rect is
+     *  blacked out of the OCR input (the chevron OCRs as a ‹-class glyph);
+     *  false → no fill, because on an icon-free frame the fill would eat
+     *  game text under the dock spot. REQUIRED, no default: neither
+     *  direction is safe to assume, so every caller — present and future —
+     *  must state its frame's provenance (2026-07-16 adversarial-review
+     *  finding: the furigana raw path silently kept feeding icon-bearing
+     *  frames after the blackout moved into one mode). */
     internal suspend fun runOcr(
         raw: Bitmap,
         displayId: Int,
         frameIncludesSystemUi: Boolean = true,
+        frameIncludesOwnOverlays: Boolean,
     ): OverlayToolkit.OcrPipelineResult? {
         val prefs = Prefs(this)
         val seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? =
@@ -2323,7 +2366,7 @@ class CaptureService : Service() {
         // inference cancels lazily) finalizes into ITS session — disposed
         // and inert — never the next one's ([LiveSessionFeedback]).
         val feedback = if (isLive) liveFeedback else null
-        val busyToken = feedback?.beginOcrPass(displayId)
+        val passToken = feedback?.beginOcrPass(displayId)
         try {
             val result = OverlayToolkit.runOcrPipeline(
                 raw,
@@ -2335,6 +2378,14 @@ class CaptureService : Service() {
                 // The startup card may be inside this frame (whole-display
                 // mirrors, a11y screenshots) — never OCR our own chrome.
                 excludeRect = feedback?.ocrExclusionRect(displayId),
+                // Same principle for the floating icon, keyed on the frame's
+                // stamped fact. The rect is the icon's CURRENT dock — right
+                // for frames OCR'd in-cycle; for a cached frame re-entering
+                // OCR later it is the persisted dock position, which only
+                // drifts if the user moved the icon since (accepted).
+                blackoutIconRect = if (frameIncludesOwnOverlays) {
+                    CaptureBackendResolver.activeOverlayUi?.getFloatingIconRect(displayId)
+                } else null,
             )
             // A completed pass — a null result means "nothing to translate",
             // which is also an answer — ends the startup card's narration.
@@ -2348,7 +2399,7 @@ class CaptureService : Service() {
             )
             return result
         } finally {
-            if (feedback != null && busyToken != null) feedback.endOcrPass(busyToken)
+            if (feedback != null && passToken != null) feedback.endOcrPass(passToken)
         }
     }
 
@@ -2362,6 +2413,7 @@ class CaptureService : Service() {
         screenshotPath: String?,
         displayId: Int,
         frameIncludesSystemUi: Boolean,
+        frameIncludesOwnOverlays: Boolean,
         forceShow: Boolean = false
     ): List<GroupTranslation>? {
         if (!forceShow) {
@@ -2385,6 +2437,7 @@ class CaptureService : Service() {
                 ocrProvenance      = ocrProvenanceFor(
                     ocrResult, displayId, activeRegionForDisplay(displayId),
                     Prefs(this).sourceLangId, frameIncludesSystemUi,
+                    frameIncludesOwnOverlays,
                 ),
                 langContext        = Prefs(this).langContext(),
             )
@@ -2504,9 +2557,10 @@ class CaptureService : Service() {
         ocrResult: OcrManager.OcrResult,
         displayId: Int,
         frameIncludesSystemUi: Boolean,
+        frameIncludesOwnOverlays: Boolean,
     ): OcrProvenance? = ocrProvenanceFor(
         ocrResult, displayId, activeRegionForDisplay(displayId),
-        Prefs(this).sourceLangId, frameIncludesSystemUi,
+        Prefs(this).sourceLangId, frameIncludesSystemUi, frameIncludesOwnOverlays,
     )
 
     private fun ocrProvenanceFor(
@@ -2514,11 +2568,13 @@ class CaptureService : Service() {
         displayId: Int,
         region: RegionEntry,
         sourceLangId: SourceLangId,
-        // The captured frame's stamped fact, when the caller has the frame in
-        // hand — persists with the result so a re-OCR re-crops the same
-        // pixels. Null (panel-emit paths without a frame) reads as legacy /
-        // full-display downstream.
+        // The captured frame's stamped facts, when the caller has the frame
+        // in hand — they persist with the result so a re-OCR re-crops the
+        // same pixels and re-blacks our own chrome out of raw frames. Null
+        // (panel-emit paths without a frame) reads as legacy — full-display,
+        // clean — downstream.
         frameIncludesSystemUi: Boolean? = null,
+        frameIncludesOwnOverlays: Boolean? = null,
     ): OcrProvenance? {
         val backend = ocrResult.engineBackend ?: return null
         // MangaOCR is a refinement layer over the base engine, not a selectable
@@ -2530,6 +2586,7 @@ class CaptureService : Service() {
         return OcrProvenance(
             label, backend.selectionToken, displayId, sourceLangId, region,
             frameIncludesSystemUi = frameIncludesSystemUi,
+            frameIncludesOwnOverlays = frameIncludesOwnOverlays,
         )
     }
 
@@ -2643,8 +2700,27 @@ class CaptureService : Service() {
             colorRef = oneShotColorRef(raw)
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
-            // No pre-OCR icon blackout — the floating icon is always rendered
-            // in compact mode so it doesn't bleed into the OCR region.
+            // Black the floating icon out of frames stamped as possibly
+            // containing our own overlays. This path's frames come from
+            // requestClean (stamp false, no-op today) — keyed on the stamp,
+            // not the path, so a routing change can't silently reopen it.
+            // In-place only when cropBitmap produced a fresh copy; a no-op
+            // crop leaves `bitmap === raw`, and the frame must never be
+            // drawn into.
+            if (frame.includesOwnOverlays) {
+                val iconRect =
+                    CaptureBackendResolver.activeOverlayUi?.getFloatingIconRect(displayId)
+                if (iconRect != null) {
+                    val blacked = OverlayToolkit.blackoutFloatingIcon(
+                        bitmap, left, top, iconRect,
+                        allowInPlace = bitmap !== raw,
+                    )
+                    if (blacked !== bitmap) {
+                        bitmap.recycle()
+                        bitmap = blacked
+                    }
+                }
+            }
             // Snapshot the exact source language (variant included) once for provenance.
             val srcId = Prefs(this@CaptureService).sourceLangId
             val ocrResult = ocrManager.recognise(bitmap, sourceLang, screenshotWidth = raw.width)
@@ -2653,7 +2729,12 @@ class CaptureService : Service() {
             }
 
             if (ocrResult == null) {
-                return PipelineOutcome.NoText(noTextProvenanceFor(displayId, region, srcId, frameIncludesUi), screenshotPath)
+                return PipelineOutcome.NoText(
+                    noTextProvenanceFor(
+                        displayId, region, srcId, frameIncludesUi, frame.includesOwnOverlays,
+                    ),
+                    screenshotPath,
+                )
             }
 
             // OCR is in — surface the source now so the page can reveal before the
@@ -2662,7 +2743,10 @@ class CaptureService : Service() {
             val skeletonData = buildOneShotOverlayData(ocrResult, colorRef, left, top, rawW, rawH)
             onOcrReady?.invoke(
                 ocrResult.fullText, ocrResult.segments,
-                ocrProvenanceFor(ocrResult, displayId, region, srcId, frameIncludesUi),
+                ocrProvenanceFor(
+                    ocrResult, displayId, region, srcId, frameIncludesUi,
+                    frame.includesOwnOverlays,
+                ),
                 skeletonData,
             )
 
@@ -2696,7 +2780,10 @@ class CaptureService : Service() {
                         screenshotPath     = screenshotPath,
                         note               = note,
                         backendDisplayName = backendDisplayName,
-                        ocrProvenance      = ocrProvenanceFor(ocrResult, displayId, region, srcId, frameIncludesUi),
+                        ocrProvenance      = ocrProvenanceFor(
+                            ocrResult, displayId, region, srcId, frameIncludesUi,
+                            frame.includesOwnOverlays,
+                        ),
                         langContext        = Prefs(this@CaptureService).langContext(srcId),
                     ),
                     groupBounds = ocrResult.groups.map { it.bounds },

@@ -190,6 +190,7 @@ class MainActivity :
                 svc.processScreenshot(
                     com.playtranslate.capture.CapturedFrame(
                         bmp, includesSystemUi = prov.frameIncludesSystemUi ?: true,
+                        includesOwnOverlays = prov.frameIncludesOwnOverlays ?: false,
                     ),
                     prov.displayId, prov.region, prov.sourceLangId,
                 )

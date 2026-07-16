@@ -41,6 +41,13 @@ data class OcrProvenance(
      *  before this field existed deserialize as null, and readers apply
      *  `?: true` (legacy saves were always full-display). */
     val frameIncludesSystemUi: Boolean? = null,
+    /** Whether the saved screenshot can contain this app's own overlay
+     *  windows — true for live raw frames (e.g. furigana's raw-delegated
+     *  first pass caches an icon-bearing frame), so a re-OCR must black the
+     *  floating icon back out ([com.playtranslate.capture.CapturedFrame]).
+     *  Same nullable-for-Gson idiom as [frameIncludesSystemUi]; readers
+     *  apply `?: false` (matches pre-field behavior). */
+    val frameIncludesOwnOverlays: Boolean? = null,
 )
 
 /**

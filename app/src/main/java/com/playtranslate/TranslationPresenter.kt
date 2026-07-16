@@ -52,6 +52,7 @@ class TranslationPresenter(
         anchors: List<TextBox>,
         ocrResult: OcrManager.OcrResult?,
         frameIncludesSystemUi: Boolean,
+        frameIncludesOwnOverlays: Boolean,
         screenshotPath: () -> String?,
     ) {
         if (!service.appPanelVisible()) return
@@ -59,7 +60,9 @@ class TranslationPresenter(
             OverlayToolkit.panelTexts(OverlayToolkit.panelReadingOrder(anchors, ocrResult)),
             screenshotPath(),
             ocrProvenance = ocrResult?.let {
-                service.panelOcrProvenance(it, displayId, frameIncludesSystemUi)
+                service.panelOcrProvenance(
+                    it, displayId, frameIncludesSystemUi, frameIncludesOwnOverlays,
+                )
             },
         )
     }

@@ -53,18 +53,6 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     var degraded = false
         set(value) { field = value; invalidate() }
 
-    /** When true, a live OCR pass has been in flight past its grace period —
-     *  the chevron breathes (slow alpha pulse) so a user wondering whether
-     *  anything is happening can read "working" off the persistent chrome.
-     *  Fast passes never set this: the grace timer in CaptureService.runOcr
-     *  keeps the icon perfectly still on devices where cycles are quick. */
-    var ocrBusy = false
-        set(value) {
-            if (field == value) return
-            field = value
-            if (value) startBreathe() else stopBreathe()
-        }
-
     // ── Normal mode paints ──────────────────────────────────────────────
     private val defaultCircleColor = "#CC000000".toColorInt()
     private val liveCircleColor = "#CC990000".toColorInt()
@@ -340,12 +328,6 @@ class FloatingOverlayIcon(context: Context) : View(context) {
          *  the thin chevron's pixels each get regular off-frames. */
         private const val ORBIT_STEP_MS = 30_000L
         private val ORBIT_WAVE = intArrayOf(0, 1, 2, 3, 4, 3, 2, 1, 0, -1, -2, -3, -4, -3, -2, -1)
-        /** Breathe: chevron alpha rides a sinusoid between 1.0 and 0.6, one
-         *  period per WAVE.size × STEP_MS = 1.25s (~0.8Hz) — slow enough to
-         *  read as a calm heartbeat, not a spinner. */
-        private const val BREATHE_STEP_MS = 125L
-        private val BREATHE_WAVE =
-            floatArrayOf(1f, 0.96f, 0.86f, 0.74f, 0.64f, 0.6f, 0.64f, 0.74f, 0.86f, 0.96f)
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
@@ -386,7 +368,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
             // Arrow in the visible slice, nudged toward the screen edge.
             val arrowNudge = r * 0.65f
             val arrowCx = if (currentEdge == Edge.LEFT) cx + arrowNudge else cx - arrowNudge
-            applyDim(arrowPaint, arrowBaseAlpha, if (ocrBusy) breatheFactor else 1f)
+            applyDim(arrowPaint, arrowBaseAlpha)
             drawEdgeArrow(canvas, arrowCx, center, r * 0.22f)
         }
     }
@@ -695,8 +677,8 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     }
 
     // ── OLED burn-in mitigation: idle-dim + micro-orbit drivers ─────────
-    private fun applyDim(paint: Paint, baseAlpha: Int, extraFactor: Float = 1f) {
-        paint.alpha = (baseAlpha * dimLevel * extraFactor).toInt().coerceIn(0, 255)
+    private fun applyDim(paint: Paint, baseAlpha: Int) {
+        paint.alpha = (baseAlpha * dimLevel).toInt().coerceIn(0, 255)
     }
 
     private val idleDimRunnable = object : Runnable {
@@ -751,44 +733,11 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         orbitDy = 0f
     }
 
-    // ── OCR-busy breathe ────────────────────────────────────────────────
-    // A slow alpha pulse on the chevron while a live OCR pass runs long.
-    // Handler-stepped like the orbit, NOT a ValueAnimator: this only ever
-    // shows on devices whose CPU is already pegged by the pass it reports
-    // on, so it must cost next to nothing — eight coarse steps a second on
-    // a 56dp glyph, invisible as discrete steps at this contrast.
-    private var breatheStep = 0
-    private var breatheFactor = 1f
-
-    private val breatheRunnable = object : Runnable {
-        override fun run() {
-            breatheStep = (breatheStep + 1) % BREATHE_WAVE.size
-            breatheFactor = BREATHE_WAVE[breatheStep]
-            // Drag mode's branch never draws the chevron — skip the redraw
-            // but keep stepping so the phase stays continuous.
-            if (!inDragMode) invalidate()
-            postDelayed(this, BREATHE_STEP_MS)
-        }
-    }
-
-    private fun startBreathe() {
-        removeCallbacks(breatheRunnable)
-        postDelayed(breatheRunnable, BREATHE_STEP_MS)
-    }
-
-    private fun stopBreathe() {
-        removeCallbacks(breatheRunnable)
-        breatheStep = 0
-        breatheFactor = 1f
-        invalidate()
-    }
-
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         dimLevel = 1f
         postDelayed(idleDimRunnable, IDLE_DIM_DELAY_MS)
         startOrbit()
-        if (ocrBusy) startBreathe()
     }
 
     override fun onDetachedFromWindow() {
@@ -799,7 +748,6 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         dimAnimator = null
         dimLevel = 1f
         stopOrbit()
-        stopBreathe()
     }
 
     /** Call when the icon is permanently removed, not just temporarily detached.

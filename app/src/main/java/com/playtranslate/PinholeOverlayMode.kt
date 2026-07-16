@@ -286,20 +286,22 @@ class PinholeOverlayMode(
         // Capture. Boxes that pinhole detection flags as changed are
         // removed and re-OCR'd on the next cycle; there is no longer a
         // dirty-companion buffer (see docs/dirty-overlay-archived-design.md).
-        // CapturedFrame unwrap: this mode never runs on CLEAN streams
-        // (routing), so its frames are always full-display; the pinhole
-        // pipeline itself stays byte-identical on the unwrapped bitmap.
-        val raw = service.withFirstGrabCardBlink(displayId, mgr) {
+        // The frame's stamped facts ride into step 6's runOcr; the pinhole
+        // pipeline itself works on the unwrapped bitmap (this mode never
+        // runs on CLEAN streams (routing), so frames are always
+        // full-display).
+        val frame = service.withFirstGrabCardBlink(displayId, mgr) {
             mgr.requestRaw(displayId)
-        }?.bitmap
+        }
 
-        if (raw == null) {
+        if (frame == null) {
             // Transient capture failure — a persistently failing capture must
             // keep retrying every interval, not park silently until the
             // screen happens to change.
             engine.forceNext()
             return prefs.captureIntervalMs
         }
+        val raw = frame.bitmap
 
         try {
             // Mid-cycle dimension changes (rotation, display resize) invalidate
@@ -391,6 +393,18 @@ class PinholeOverlayMode(
 
             val bitmapRects = coords.viewListToBitmap(rects)
 
+            // The floating icon is inside every raw frame this mode consumes
+            // (whole-display mirrors / a11y screenshots — never CLEAN
+            // streams). Its window rect is excluded from the outside gate
+            // below: the burn-in micro-orbit and idle dim repaint it, and
+            // self-chrome motion must never wake OCR. (The OCR-input
+            // blackout itself is central — runOcr keys it on the
+            // frameIncludesOwnOverlays fact passed at step 6.) Screen
+            // coords index the frame directly: this mode runs at identity
+            // scale only (guard above).
+            val iconRect =
+                CaptureBackendResolver.activeOverlayUi?.getFloatingIconRect(displayId)
+
             // ── A2: cheap change gate in front of OCR ──────────────────
             // Pixel evidence BEFORE the expensive stages: the pinhole check
             // (under boxes — computed once here, reused by step 8) plus a
@@ -443,7 +457,7 @@ class PinholeOverlayMode(
                             -PinholeCalibration.GATE_EXCLUDE_INFLATE_PX,
                         )
                     }
-                }
+                } + listOfNotNull(iconRect)
                 val outside =
                     OutsideChangeGate.check(raw, gateRef, crop, exclude, gateBuffers, outsideGrid)
                 reconcileCycle =
@@ -518,7 +532,10 @@ class PinholeOverlayMode(
                 cleanRefBitmap?.let { updateCleanRef(raw, it, bitmapRects) }
             }
 
-            // 5. Prepare OCR image: fill overlay regions with bgColor
+            // 5. Prepare OCR image: fill overlay regions with bgColor.
+            //    Only this copy is mutated; the gate, the pinhole checks,
+            //    and cleanRef all keep reading the honest raw. (The floating
+            //    icon is blacked out inside runOcr, step 6.)
             val ocrImage: Bitmap
             if (hasOverlays()) {
                 ocrImage = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
@@ -529,8 +546,13 @@ class PinholeOverlayMode(
 
             // 6. OCR — try/finally ensures the copy is recycled even if runOcr
             //          throws (e.g. CancellationException from resetState).
+            //    The frame's stamped fact (raw grab of a contaminated
+            //    source ⇒ true) drives the floating-icon blackout inside.
             val pipeline = try {
-                service.runOcr(ocrImage, displayId)
+                service.runOcr(
+                    ocrImage, displayId,
+                    frameIncludesOwnOverlays = frame.includesOwnOverlays,
+                )
             } finally {
                 if (ocrImage !== raw && !ocrImage.isRecycled) ocrImage.recycle()
             }

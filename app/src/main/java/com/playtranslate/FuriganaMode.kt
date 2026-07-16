@@ -195,7 +195,7 @@ class FuriganaMode(
         cleanProcessingJob?.cancel()
         cleanProcessingJob = scope.launch {
             try {
-                processCleanFrame(raw, frame.includesSystemUi)
+                processCleanFrame(raw, frame.includesSystemUi, frame.includesOwnOverlays)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 if (service.isLive) {
                     CaptureBackendResolver.activeLiveCaptureSource?.requestCleanCapture(displayId)
@@ -205,14 +205,27 @@ class FuriganaMode(
         }
     }
 
-    private suspend fun processCleanFrame(raw: Bitmap, frameIncludesSystemUi: Boolean) {
+    /** [frameIncludesOwnOverlays]: despite this function's name, its input
+     *  is not always a clean capture — [handleRawFrame] delegates RAW frames
+     *  here when no overlay exists yet ("inherently clean" of furigana, but
+     *  still carrying the floating icon). The frame's stamped fact travels
+     *  in so runOcr blacks the icon out exactly when it is really there
+     *  (2026-07-16 adversarial-review finding). */
+    private suspend fun processCleanFrame(
+        raw: Bitmap,
+        frameIncludesSystemUi: Boolean,
+        frameIncludesOwnOverlays: Boolean,
+    ) {
         if (!service.isConfigured) { raw.recycle(); return }
 
         try {
-            // Shared OCR pipeline: crop → blackout icon → OCR → filter
-            // source chars. The status-bar crop decision comes from the
-            // frame's own stamped fact (CapturedFrame).
-            val pipeline = service.runOcr(raw, displayId, frameIncludesSystemUi)
+            // Shared OCR pipeline: crop → icon blackout (stamped raw frames
+            // only) → OCR → filter source chars. The status-bar crop and
+            // blackout decisions come from the frame's own stamped facts
+            // (CapturedFrame).
+            val pipeline = service.runOcr(
+                raw, displayId, frameIncludesSystemUi, frameIncludesOwnOverlays,
+            )
 
             if (pipeline == null) {
                 cachedFuriganaBoxes = null
@@ -279,6 +292,7 @@ class FuriganaMode(
             val screenshotPath = service.captureSaveToCache(raw, displayId)
             service.translateAndSendToPanel(
                 ocrResult, screenshotPath, displayId, frameIncludesSystemUi,
+                frameIncludesOwnOverlays,
             )
         } finally {
             if (!raw.isRecycled) raw.recycle()
@@ -296,6 +310,7 @@ class FuriganaMode(
     private fun handleRawFrame(frame: com.playtranslate.capture.CapturedFrame) {
         val bitmap = frame.bitmap
         val frameIncludesSystemUi = frame.includesSystemUi
+        val frameIncludesOwnOverlays = frame.includesOwnOverlays
         // Skip frames while a capture hold is active — see handleCleanFrame.
         if (service.livePaused) { bitmap.recycle(); return }
         if (cleanProcessingJob?.isActive == true || rawOcrJob?.isActive == true) {
@@ -394,10 +409,15 @@ class FuriganaMode(
             return
         }
 
-        // OCR the patched frame asynchronously
+        // OCR the patched frame asynchronously. The patch replaced only the
+        // furigana overlay rects with cleanRef pixels — the floating icon
+        // survives in every other region of this raw frame, so the stamped
+        // fact must ride into runOcr's blackout (2026-07-16 finding).
         rawOcrJob = scope.launch {
             try {
-                val pipeline = service.runOcr(patched, displayId, frameIncludesSystemUi)
+                val pipeline = service.runOcr(
+                    patched, displayId, frameIncludesSystemUi, frameIncludesOwnOverlays,
+                )
                 if (pipeline != null) {
                     val prevText = lastOcrText
                     val prevKanji = if (prevText != null) kanjiOnly(prevText) else ""

@@ -1,6 +1,7 @@
 package com.playtranslate
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
@@ -573,10 +574,17 @@ object OverlayToolkit {
      * Crop to active region, run OCR, filter source-lang chars. Returns null
      * if no text detected. Does NOT do dedup, translation, or display.
      *
-     * The floating icon is now always rendered in compact mode (~1/4 of a
-     * circle pressed against the screen edge), so the old icon-blackout step
-     * is gone — the small edge-arrow doesn't bleed into the OCR region
-     * enough to be worth a per-frame rect fill.
+     * [blackoutIconRect], when non-null (screen coordinates), is filled
+     * black in the OCR input after the crop — the floating icon's window
+     * rect, resolved by the caller from the frame's stamped
+     * [com.playtranslate.capture.CapturedFrame.includesOwnOverlays] fact.
+     * Raw frames of contaminated sources contain the icon, and its compact
+     * chevron OCRs as a ‹-class glyph (observed producing overlay boxes,
+     * 2026-07-16). Frames that structurally cannot contain the icon (clean
+     * captures, CLEAN task mirrors) must pass null: filling their rect
+     * would eat real game text under the dock spot. Pixel fill rather than
+     * result-space exclusion so the glyph can never merge into an adjacent
+     * real text line and take it down with it.
      *
      * [seedWriter], when non-null, is invoked after [OcrManager.recognise]
      * with the bitmap that was actually fed to OCR and the result (possibly
@@ -603,12 +611,29 @@ object OverlayToolkit {
         statusBarHeight: Int,
         seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? = null,
         excludeRect: Rect? = null,
+        blackoutIconRect: Rect? = null,
     ): OcrPipelineResult? {
         val crop = computeOcrCrop(raw.width, raw.height, activeRegion, statusBarHeight)
         val needsCrop = crop.top > 0 || crop.left > 0 || crop.bottom < raw.height || crop.right < raw.width
-        val bitmap = if (needsCrop)
+        var bitmap = if (needsCrop)
             Bitmap.createBitmap(raw, crop.left, crop.top, (crop.right - crop.left).coerceAtLeast(1), (crop.bottom - crop.top).coerceAtLeast(1))
         else raw
+        if (blackoutIconRect != null) {
+            // In-place only into the pipeline-owned crop copy. When the crop
+            // was a no-op, `bitmap` IS the caller-owned frame — reused after
+            // this call as the untouched screen image — so the fill must land
+            // on a copy no matter how mutable the frame is.
+            val blacked = blackoutFloatingIcon(
+                bitmap, crop.left, crop.top, blackoutIconRect,
+                allowInPlace = bitmap !== raw,
+            )
+            if (blacked !== bitmap) {
+                // The helper copied. Retire the superseded crop copy; never
+                // the caller-owned raw.
+                if (bitmap !== raw) bitmap.recycle()
+                bitmap = blacked
+            }
+        }
 
         var ocrResult: OcrManager.OcrResult?
         try {
@@ -629,6 +654,50 @@ object OverlayToolkit {
         if (dedupKey.isEmpty()) return null
 
         return OcrPipelineResult(ocrResult, dedupKey, crop.left, crop.top, raw.width, raw.height)
+    }
+
+    /** Opaque fill for the floating icon's window rect in OCR input — a
+     *  solid rect produces no recognizer output, unlike the chevron glyph. */
+    private val iconBlackoutPaint = Paint().apply { color = Color.BLACK }
+
+    /**
+     * Black out [iconRect] (screen coordinates) in [bitmap], whose (0,0)
+     * sits at ([cropLeft], [cropTop]) in screen space. Returns [bitmap]
+     * untouched when the rect misses it entirely; otherwise a bitmap with
+     * the region filled black.
+     *
+     * [allowInPlace] is the OWNERSHIP declaration, not an optimization
+     * flag: pass true only for a bitmap the call site owns outright and
+     * discards after OCR (a crop copy, a pre-fill copy). Pass false for
+     * anything that outlives the OCR call — above all a captured frame,
+     * which downstream code reuses as the untouched screen image (cache
+     * saves, cleanRef baselines, pinhole checks; 2026-07-16 adversarial
+     * finding: both capture backends serve MUTABLE frames, so a
+     * mutability test alone draws straight into them on no-op crops).
+     * With false — or an immutable bitmap — the fill lands on a mutable
+     * copy. NEVER recycles the input, even when it copies: the caller
+     * owns both bitmaps and reconciles (the original 7ad22ff5 helper
+     * recycled inside, which entangled ownership with the crop logic).
+     */
+    fun blackoutFloatingIcon(
+        bitmap: Bitmap,
+        cropLeft: Int,
+        cropTop: Int,
+        iconRect: Rect,
+        allowInPlace: Boolean,
+    ): Bitmap {
+        val left = (iconRect.left - cropLeft).coerceAtLeast(0)
+        val top = (iconRect.top - cropTop).coerceAtLeast(0)
+        val right = (iconRect.right - cropLeft).coerceAtMost(bitmap.width)
+        val bottom = (iconRect.bottom - cropTop).coerceAtMost(bitmap.height)
+        if (left >= right || top >= bottom) return bitmap
+        val out = if (allowInPlace && bitmap.isMutable) bitmap
+            else bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true)
+        Canvas(out).drawRect(
+            left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(),
+            iconBlackoutPaint,
+        )
+        return out
     }
 
     /**

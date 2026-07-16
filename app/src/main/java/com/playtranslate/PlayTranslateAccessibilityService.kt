@@ -341,8 +341,10 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             val ocr = debugOcrManager
             val result = try {
                 kotlinx.coroutines.withContext(Dispatchers.Default) {
-                    // No pre-OCR icon blackout — the floating icon is always
-                    // compact and doesn't bleed into the OCR region.
+                    // No pre-OCR icon blackout: this frame is a CLEAN capture
+                    // (requestClean above blanks our windows pre-grab), so
+                    // the floating icon is structurally absent — filling its
+                    // rect would hide real content from the debug overlay.
                     ocr.recognise(
                         cropped,
                         SourceLanguageProfiles[prefs.sourceLangId].translationCode,

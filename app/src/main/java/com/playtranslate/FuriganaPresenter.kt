@@ -100,11 +100,13 @@ class FuriganaPresenter(
         anchors: List<TextBox>,
         ocrResult: OcrManager.OcrResult?,
         frameIncludesSystemUi: Boolean,
+        frameIncludesOwnOverlays: Boolean,
         screenshotPath: () -> String?,
     ) {
         if (ocrResult == null || !service.appPanelVisible()) return
         service.translateAndSendToPanel(
             ocrResult, screenshotPath(), displayId, frameIncludesSystemUi,
+            frameIncludesOwnOverlays,
         )
     }
 

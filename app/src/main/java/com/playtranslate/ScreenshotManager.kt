@@ -155,9 +155,15 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
      * overlays. The caller owns the returned [Bitmap] and must recycle it.
      */
     /** Accessibility screenshots are always the full display, system UI
-     *  included — stamp every served frame accordingly ([CapturedFrame]). */
-    private fun stamp(bitmap: Bitmap): CapturedFrame =
-        CapturedFrame(bitmap, includesSystemUi = true)
+     *  included — stamp every served frame accordingly ([CapturedFrame]).
+     *  [ownOverlaysBlanked] is the serve-site's cleanliness: clean paths
+     *  blanked our windows before the grab, raw paths left them visible. */
+    private fun stamp(bitmap: Bitmap, ownOverlaysBlanked: Boolean): CapturedFrame =
+        CapturedFrame(
+            bitmap,
+            includesSystemUi = true,
+            includesOwnOverlays = !ownOverlaysBlanked,
+        )
 
     override suspend fun requestClean(displayId: Int): CapturedFrame? = captureMutex.withLock {
         awaitScreenshotInterval()
@@ -192,7 +198,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
                 if (retry == null) DetectionLog.log("Clean capture retry also failed")
             }
             noteOutcome(clean = true, served = bitmap != null)
-            bitmap?.let { stamp(it) }
+            bitmap?.let { stamp(it, ownOverlaysBlanked = true) }
         } finally {
             // Belt-and-suspenders: the takeScreenshot callback can fail to
             // fire (coroutine cancellation discards the OS-side request, OS
@@ -224,7 +230,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
         val bitmap = doTakeScreenshot(displayId, onCaptured)
         if (bitmap == null) DetectionLog.log("Raw capture failed")
         noteOutcome(clean = false, served = bitmap != null)
-        bitmap?.let { stamp(it) }
+        bitmap?.let { stamp(it, ownOverlaysBlanked = false) }
     }
 
     /**
@@ -318,7 +324,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
                     noteOutcome(clean = true, served = bitmap != null)
                     if (bitmap != null) {
                         DetectionLog.log("Loop[$displayId]: clean frame captured (${bitmap.width}x${bitmap.height})")
-                        onCleanFrame(stamp(bitmap))
+                        onCleanFrame(stamp(bitmap, ownOverlaysBlanked = true))
                     } else {
                         DetectionLog.log("Loop[$displayId]: clean capture failed")
                     }
@@ -329,7 +335,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
                     }
                     noteOutcome(clean = false, served = bitmap != null)
                     if (bitmap != null) {
-                        onRawFrame(stamp(bitmap))
+                        onRawFrame(stamp(bitmap, ownOverlaysBlanked = false))
                     }
                     // null = timeout or failure, logged by doTakeScreenshot
                 }

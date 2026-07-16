@@ -2,7 +2,6 @@ package com.playtranslate
 
 import android.graphics.Rect
 import android.view.Display
-import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.LiveCaptureSource
 import com.playtranslate.capture.MediaProjectionController
 import com.playtranslate.capture.StartupChip
@@ -23,8 +22,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  * until the FIRST COMPLETED OCR pass, so the user is never left staring at
  * a dead screen) with its grace and leak-guard timers, the OCR exclusion
  * that keeps the card's own text out of results wherever frames can contain
- * it, the warm-up gate, and the slow-pass busy tracking that drives the
- * floating icons' breathe.
+ * it, the warm-up gate, and the slow-pass tracking that drives the rescue
+ * prompt.
  *
  * Created by [CaptureService.startLive], disposed by stopLive and by the
  * next start — the Region-session idiom: the old session is cancelled and
@@ -256,23 +255,21 @@ internal class LiveSessionFeedback(
         withTimeoutOrNull(WARMUP_JOIN_CAP_MS) { warmUpJob.join() }
     }
 
-    // ── Slow-pass busy tracking ──────────────────────────────────────────
+    // ── Slow-pass tracking ───────────────────────────────────────────────
     // On devices where an OCR pass runs multi-second, live mode shows
-    // nothing while it works and users read the silence as "broken". After
-    // any pass has been in flight past the grace period, every floating
-    // icon breathes until none is. Membership tokens, not a counter: passes
-    // overlap (per-display cycles, a hold fan-out over a still-unwinding
-    // live pass), and a token identifies its pass — a stale finalizer
-    // removes only its own token from its own session, so the books cannot
-    // drift and no generation tagging is needed.
+    // nothing while it works and users read the silence as "broken" — the
+    // rescue prompt ([onSlowPass]) is the answer. Membership tokens, not a
+    // counter: passes overlap (per-display cycles, a hold fan-out over a
+    // still-unwinding live pass), and a token identifies its pass — a stale
+    // finalizer removes only its own token from its own session, so the
+    // books cannot drift and no generation tagging is needed.
 
     /** One in-flight live OCR pass. Identity is the token; [displayId]
      *  rides along so the slow-pass prompt can target the display whose
      *  capture is actually slow. */
     class OcrPassToken internal constructor(internal val displayId: Int)
 
-    private val busyPasses = mutableSetOf<OcrPassToken>()
-    private var busyArmJob: Job? = null
+    private val inFlightPasses = mutableSetOf<OcrPassToken>()
 
     /** The slow-pass rescue timers, one per in-flight pass: each fires
      *  [onSlowPass] when ITS OWN pass has been in flight past
@@ -288,21 +285,14 @@ internal class LiveSessionFeedback(
      *  [endOcrPass] from the pass's finally. */
     fun beginOcrPass(displayId: Int): OcrPassToken {
         val token = OcrPassToken(displayId)
-        busyPasses.add(token)
-        if (busyPasses.size == 1) {
-            busyArmJob?.cancel()
-            busyArmJob = scope.launch {
-                delay(OCR_BUSY_GRACE_MS)
-                if (busyPasses.isNotEmpty()) setIconsBusy(true)
-            }
-        }
+        inFlightPasses.add(token)
         if (!slowPassFired) {
             slowPassJobs[token] = scope.launch {
                 delay(OCR_SLOW_PROMPT_MS)
                 // Reaching here means THIS pass ran the full threshold
                 // (endOcrPass cancels the timer with the pass). The set
                 // check is a belt against ordering surprises only.
-                if (!slowPassFired && token in busyPasses) {
+                if (!slowPassFired && token in inFlightPasses) {
                     slowPassFired = true
                     onSlowPass(token.displayId)
                 }
@@ -315,38 +305,22 @@ internal class LiveSessionFeedback(
         slowPassJobs.remove(token)?.cancel()
         // A token absent from the set is a pass that outlived its session
         // ([dispose] cleared it) — inert by construction.
-        if (!busyPasses.remove(token)) return
-        if (busyPasses.isEmpty()) {
-            busyArmJob?.cancel()
-            busyArmJob = null
-            setIconsBusy(false)
-        }
-    }
-
-    private fun setIconsBusy(busy: Boolean) {
-        CaptureBackendResolver.activeOverlayUi?.setIconsBusy(busy)
+        inFlightPasses.remove(token)
     }
 
     // ── Teardown ─────────────────────────────────────────────────────────
 
     /** Tear the session down atomically: every timer dies with [scope], the
-     *  chip leaves the screen, the icons stop breathing, and outstanding
-     *  pass tokens become inert. Idempotent. */
+     *  chip leaves the screen, and outstanding pass tokens become inert.
+     *  Idempotent. */
     fun dispose() {
         scope.cancel()
         removeChip()
-        busyPasses.clear()
+        inFlightPasses.clear()
         slowPassJobs.clear()
-        setIconsBusy(false)
     }
 
     companion object {
-        /** How long a live OCR pass may run before the icons start
-         *  breathing. Above typical fast-device cycles (quick passes never
-         *  flicker the icon), well under the multi-second passes slow
-         *  devices experience — the population the signal exists for. */
-        const val OCR_BUSY_GRACE_MS = 700L
-
         /** No-probe starts show the label-only chip only when warm-up is
          *  still running after this grace. */
         const val CHIP_GRACE_MS = 300L
@@ -374,8 +348,7 @@ internal class LiveSessionFeedback(
         /** In-flight duration past which a pass counts as SLOW and the
          *  rescue prompt may fire ([onSlowPass]). The gap between fast and
          *  slow devices is seconds-scale bimodal, so the threshold is not
-         *  delicate; well above [OCR_BUSY_GRACE_MS] so the breathe always
-         *  precedes the prompt. */
+         *  delicate. */
         const val OCR_SLOW_PROMPT_MS = 2_000L
     }
 }

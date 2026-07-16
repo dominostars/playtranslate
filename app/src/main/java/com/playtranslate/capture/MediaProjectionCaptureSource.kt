@@ -55,9 +55,17 @@ class MediaProjectionCaptureSource(
 
     /** Wrap a just-captured bitmap with the facts as they are AT SERVE
      *  TIME — the single stamping point for this source; consumers read the
-     *  frame, never the live properties (see [CapturedFrame]). */
-    private fun stamp(bitmap: Bitmap): CapturedFrame =
-        CapturedFrame(bitmap, includesSystemUi = framesIncludeSystemUi)
+     *  frame, never the live properties (see [CapturedFrame]).
+     *  [ownOverlaysBlanked]: whether this serve path blanked our overlay
+     *  windows pre-grab ([cleanCapture]). On a CLEAN task mirror the answer
+     *  is moot — our windows never composite in, so the frame is
+     *  own-overlay-free either way ([framesIncludeSystemUi] false). */
+    private fun stamp(bitmap: Bitmap, ownOverlaysBlanked: Boolean): CapturedFrame =
+        CapturedFrame(
+            bitmap,
+            includesSystemUi = framesIncludeSystemUi,
+            includesOwnOverlays = framesIncludeSystemUi && !ownOverlaysBlanked,
+        )
 
     override suspend fun requestClean(displayId: Int): CapturedFrame? {
         // One-shot capture: prompt for consent up front so first-use paths
@@ -81,7 +89,8 @@ class MediaProjectionCaptureSource(
         // (our windows don't composite into the mirror), so cleanCapture
         // must know to short-circuit. Cached per session; instant thereafter.
         controller.resolveStreamKind()
-        return captureMutex.withLock { cleanCapture(displayId) }?.let { stamp(it) }
+        return captureMutex.withLock { cleanCapture(displayId) }
+            ?.let { stamp(it, ownOverlaysBlanked = true) }
     }
 
     override suspend fun requestRaw(displayId: Int, onCaptured: (() -> Unit)?): CapturedFrame? =
@@ -95,7 +104,7 @@ class MediaProjectionCaptureSource(
                 // PinholeOverlayMode drives its own cycle via requestRaw (not
                 // startLoop), so the loop's consent guard wouldn't cover it.
                 checkConsentLost(it)
-            }?.let { stamp(it) }
+            }?.let { stamp(it, ownOverlaysBlanked = false) }
         }
 
     /**
@@ -205,7 +214,8 @@ class MediaProjectionCaptureSource(
 
                 when {
                     bitmap != null ->
-                        if (isClean) onCleanFrame(stamp(bitmap)) else onRawFrame(stamp(bitmap))
+                        if (isClean) onCleanFrame(stamp(bitmap, ownOverlaysBlanked = true))
+                        else onRawFrame(stamp(bitmap, ownOverlaysBlanked = false))
                     checkConsentLost(bitmap) -> {
                         // Consent denied or revoked — checkConsentLost stopped
                         // live mode; exit before the next captureFrame would

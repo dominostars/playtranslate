@@ -166,7 +166,11 @@ class OneShotManager(private val service: CaptureService) {
             // backend's capture source — forward it so the status-bar crop
             // matches the frame's contents (a single-app stream has no bar,
             // and cropping would eat game content).
-            val pipeline = service.runOcr(raw, displayId, frameIncludesSystemUi = frameIncludesUi)
+            val pipeline = service.runOcr(
+                raw, displayId,
+                frameIncludesSystemUi = frameIncludesUi,
+                frameIncludesOwnOverlays = frame.includesOwnOverlays,
+            )
             if (cycle.generation != currentGeneration) return HoldOutcome.Superseded
 
             if (pipeline == null) return HoldOutcome.NoText
@@ -222,6 +226,7 @@ class OneShotManager(private val service: CaptureService) {
             if (displayId == cycle.panelDisplayId) {
                 service.translateAndSendToPanel(
                     ocrResult, screenshotPath, displayId, frameIncludesUi,
+                    frame.includesOwnOverlays,
                 )
             }
             return HoldOutcome.Success

@@ -74,9 +74,11 @@ object OutsideChangeGate {
 
     /**
      * Sample the strided grid over [bounds] (typically the OCR crop),
-     * skipping samples inside [exclude] (the rendered box rects, inflated by
-     * the caller past their anti-aliased edges), and report whether the
-     * fit-normalized residuals say something outside the overlays changed.
+     * skipping samples inside [exclude] (the rendered box rects — inflated
+     * by the caller past their anti-aliased edges — plus the floating
+     * icon's window rect, whose burn-in animations are self-chrome motion,
+     * not screen change), and report whether the fit-normalized residuals
+     * say something outside the overlays changed.
      * [raw] and [ref] must share dimensions.
      */
     fun check(

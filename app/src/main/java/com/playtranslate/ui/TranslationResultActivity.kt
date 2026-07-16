@@ -203,6 +203,7 @@ class TranslationResultActivity :
             observeSession(svc.processScreenshot(
                 com.playtranslate.capture.CapturedFrame(
                     bmp, includesSystemUi = prov.frameIncludesSystemUi ?: true,
+                    includesOwnOverlays = prov.frameIncludesOwnOverlays ?: false,
                 ),
                 prov.displayId, prov.region, prov.sourceLangId,
             ))
@@ -620,6 +621,9 @@ class TranslationResultActivity :
                     includesSystemUi = intent.getBooleanExtra(
                         EXTRA_SCREENSHOT_INCLUDES_SYSTEM_UI, true,
                     ),
+                    // The pre-shot is a clean capture (our windows blanked
+                    // pre-grab), and shared-in images carry no icon either.
+                    includesOwnOverlays = false,
                 ),
                 targetDisplayId,
             )

@@ -57,6 +57,7 @@ class PanelPresenter(
         anchors: List<TextBox>,
         ocrResult: OcrManager.OcrResult?,
         frameIncludesSystemUi: Boolean,
+        frameIncludesOwnOverlays: Boolean,
         screenshotPath: () -> String?,
     ) {
         val texts = OverlayToolkit.panelTexts(
@@ -69,7 +70,9 @@ class PanelPresenter(
         service.emitPanelResult(
             texts, screenshotPath(),
             ocrProvenance = ocrResult?.let {
-                service.panelOcrProvenance(it, displayId, frameIncludesSystemUi)
+                service.panelOcrProvenance(
+                    it, displayId, frameIncludesSystemUi, frameIncludesOwnOverlays,
+                )
             },
         )
     }
