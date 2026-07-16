@@ -2340,10 +2340,15 @@ class CaptureService : Service() {
                 excludeRect = feedback?.ocrExclusionRect(displayId),
             )
             // A completed pass — a null result means "nothing to translate",
-            // which is also an answer — ends the startup card's narration on
-            // its display. Deliberately NOT in the finally: a cancelled pass
-            // answered nothing.
-            feedback?.onFirstOcrComplete(displayId)
+            // which is also an answer — ends the startup card's narration.
+            // cardDisplayLive tells the session whether the card's display
+            // is even part of this session (secondary-only captures must
+            // clear the card off any display's pass). Deliberately NOT in
+            // the finally: a cancelled pass answered nothing.
+            feedback?.onFirstOcrComplete(
+                displayId,
+                cardDisplayLive = liveModes.containsKey(Display.DEFAULT_DISPLAY),
+            )
             return result
         } finally {
             if (feedback != null && busyToken != null) feedback.endOcrPass(busyToken)

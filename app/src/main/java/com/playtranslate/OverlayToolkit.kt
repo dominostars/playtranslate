@@ -632,9 +632,14 @@ object OverlayToolkit {
     }
 
     /**
-     * A copy of [result] without the groups intersecting [exclude]
+     * A copy of [result] without the groups whose TEXT intersects [exclude]
      * (cropped-bitmap coordinates), or null when nothing survives. The
-     * derived projections are rebuilt the way [OcrManager] builds them —
+     * intersection is judged per LINE, not on the group's bounding box: a
+     * full-width dialogue group whose bbox merely passes under the excluded
+     * rect must not be discarded when none of its actual lines touches it
+     * (review finding — bbox-level exclusion over-drops real game text).
+     * Groups without line detail fall back to the bbox test. The derived
+     * projections are rebuilt the way [OcrManager] builds them —
      * [OcrManager.OcrResult.fullText] as the space-joined group texts,
      * segments via [TextSegments.ofGroupTexts] — and every surviving line's
      * baked-in groupIndex is re-pointed at its group's new position.
@@ -645,7 +650,14 @@ object OverlayToolkit {
         result: OcrManager.OcrResult,
         exclude: Rect,
     ): OcrManager.OcrResult? {
-        val kept = result.groups.filter { !Rect.intersects(it.bounds, exclude) }
+        val kept = result.groups.filter { group ->
+            val hit = if (group.lines.isNotEmpty()) {
+                group.lines.any { Rect.intersects(it.bounds, exclude) }
+            } else {
+                Rect.intersects(group.bounds, exclude)
+            }
+            !hit
+        }
         if (kept.size == result.groups.size) return result
         if (kept.isEmpty()) return null
         val reindexed = kept.mapIndexed { gi, group ->

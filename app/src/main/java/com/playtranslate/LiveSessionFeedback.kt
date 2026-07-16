@@ -174,14 +174,20 @@ internal class LiveSessionFeedback(
     private var lastGrabCardFree = false
 
     /**
-     * Bracket the FIRST whole-display frame grab with a one-time card
-     * blink: hide the card, wait for the hide's composition to latch (the
-     * hide forces one into the mirror), run [grab] — which then serves a
-     * card-free frame, giving pass 1 the full screen INCLUDING the text
-     * under the card — and re-show. Capped: a wedged pipeline degrades to
-     * exclusion, never to self-OCR. Re-show is in a finally so a cancelled
-     * cycle can never strand the card hidden. CLEAN streams skip (their
-     * frames never contain the card); the blink never repeats.
+     * Bracket the FIRST frame grab that could contain the card with a
+     * one-time blink: hide the card, prove (or settle) its absence from
+     * the frame, run [grab] — which then serves a card-free frame, giving
+     * pass 1 the full screen INCLUDING the text under the card — and
+     * re-show. Whole-display mirrors prove freshness by waiting for the
+     * hide's own composition to latch (capped: a wedged pipeline degrades
+     * to exclusion, never to self-OCR). Sources with no delivery signal —
+     * accessibility screenshots, which read the live window state at call
+     * time — get a short compositor settle instead: the best assurance
+     * available there, and far better than leaning on post-OCR exclusion
+     * for the first pass (review finding: exclusion can drop real game
+     * text that grouped with or under the card). Re-show is in a finally
+     * so a cancelled cycle can never strand the card hidden. CLEAN streams
+     * skip (their frames never contain the card); the blink never repeats.
      */
     suspend fun <T> blinkCardForFirstGrab(
         displayId: Int,
@@ -191,19 +197,24 @@ internal class LiveSessionFeedback(
         if (displayId != Display.DEFAULT_DISPLAY) return grab()
         lastGrabCardFree = false
         val c = chip
-        if (c == null || c.isRemoved || blinkAttempted ||
+        if (c == null || c.isRemoved || blinkAttempted || source == null ||
             controller.streamKind == StreamKind.CLEAN
         ) {
             return grab()
         }
-        val signal = source?.deliverySignal ?: return grab()
         blinkAttempted = true
-        val seqAtHide = signal.seqNow()
+        val signal = source.deliverySignal
+        val seqAtHide = signal?.seqNow() ?: 0L
         c.setVisible(false)
         return try {
-            lastGrabCardFree = withTimeoutOrNull(BLINK_FRESH_CAP_MS) {
-                signal.awaitSeqAfter(seqAtHide)
-            } != null
+            lastGrabCardFree = if (signal != null) {
+                withTimeoutOrNull(BLINK_FRESH_CAP_MS) {
+                    signal.awaitSeqAfter(seqAtHide)
+                } != null
+            } else {
+                delay(BLINK_A11Y_SETTLE_MS)
+                true
+            }
             grab()
         } finally {
             c.setVisible(true)
@@ -211,13 +222,19 @@ internal class LiveSessionFeedback(
     }
 
     /** A live OCR pass ran to completion on [displayId] — including the
-     *  "nothing to translate" outcome, which is also an answer. The card's
-     *  narration is done on the display it lives on: remove it. Frames
-     *  captured from here on are post-card; the removal composition itself
-     *  wakes the delivery-gated tiers, whose next cycle re-reads the region
-     *  the card occupied. */
-    fun onFirstOcrComplete(displayId: Int) {
-        if (displayId != Display.DEFAULT_DISPLAY) return
+     *  "nothing to translate" outcome, which is also an answer. The card
+     *  lives on the default display: when that display is part of the
+     *  session ([cardDisplayLive]), only ITS first pass ends the narration —
+     *  a secondary display finishing first must not strand the primary back
+     *  in dead air. When it is NOT part of the session (secondary-only
+     *  capture; the probe still ran on the projected display), ANY completed
+     *  pass clears the card — otherwise nothing ever would, and the
+     *  touchable card would squat until the hard cap (review finding).
+     *  Frames captured from here on are post-card; the removal composition
+     *  itself wakes the delivery-gated tiers, whose next cycle re-reads the
+     *  region the card occupied. */
+    fun onFirstOcrComplete(displayId: Int, cardDisplayLive: Boolean) {
+        if (cardDisplayLive && displayId != Display.DEFAULT_DISPLAY) return
         removeChip()
     }
 
@@ -346,6 +363,11 @@ internal class LiveSessionFeedback(
          *  whole-display mirror, so this resolves in a frame or two; a
          *  timeout falls back to exclusion for that pass. */
         const val BLINK_FRESH_CAP_MS = 600L
+
+        /** Pre-grab settle for sources with no delivery signal
+         *  (accessibility screenshots): time for the hide to reach the
+         *  compositor before the screenshot reads the window state. */
+        const val BLINK_A11Y_SETTLE_MS = 200L
 
         /** In-flight duration past which a pass counts as SLOW and the
          *  rescue prompt may fire ([onSlowPass]). The gap between fast and
