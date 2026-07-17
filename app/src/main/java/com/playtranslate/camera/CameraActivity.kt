@@ -156,9 +156,15 @@ class CameraActivity : AppCompatActivity() {
             backButton = findViewById(R.id.cameraBack),
             playPauseButton = findViewById(R.id.cameraPlayPause),
             shutterButton = findViewById(R.id.cameraShutter),
+            regionButton = findViewById(R.id.cameraRegionSelect),
             modeToggle = findViewById(R.id.cameraModeToggle),
             freezeFrame = findViewById(R.id.cameraFreezeFrame),
             panelHost = findViewById(R.id.cameraPanelHost),
+            regionUi = CameraRegionUi(
+                activity = this,
+                fullBleedHost = findViewById(R.id.cameraOverlayHost),
+                controlsHost = controls,
+            ),
             modeToggleSupported = {
                 SourceLanguageProfiles[prefs.sourceLangId].hintTextKind != HintTextKind.NONE
             },
@@ -166,7 +172,11 @@ class CameraActivity : AppCompatActivity() {
         )
         onBackPressedDispatcher.addCallback(this) {
             val controller = snapshotController
-            if (controller?.isFrozen == true) controller.unfreeze() else finish()
+            when {
+                controller?.isCropActive == true -> controller.cancelCrop()
+                controller?.isFrozen == true -> controller.unfreeze()
+                else -> finish()
+            }
         }
 
         val hint = findViewById<TextView>(R.id.cameraHint)

@@ -14,6 +14,42 @@ import kotlin.math.abs
 import androidx.core.graphics.toColorInt
 import androidx.core.graphics.withSave
 
+/** Region dash pattern (dp) — shared by the drag editor and the camera
+ *  snapshot's active-region indicator so the two read as one visual family. */
+internal const val REGION_DASH_DP = 8f
+internal const val REGION_GAP_DP = 6f
+
+/** Draws dashes along an axis-aligned line at FIXED screen-space positions
+ *  (period-aligned to the canvas origin), so the pattern doesn't swim when
+ *  the box edges move. Endpoints clip mid-dash. */
+internal fun drawScreenSpaceDashes(
+    canvas: Canvas,
+    paint: Paint,
+    x1: Float, y1: Float, x2: Float, y2: Float,
+    dashPx: Float, gapPx: Float,
+) {
+    val period = dashPx + gapPx
+    if (y1 == y2) {
+        var pos = (x1 / period).toInt() * period
+        if (pos > x1) pos -= period
+        while (pos < x2) {
+            val segStart = pos.coerceAtLeast(x1)
+            val segEnd = (pos + dashPx).coerceAtMost(x2)
+            if (segEnd > segStart) canvas.drawLine(segStart, y1, segEnd, y1, paint)
+            pos += period
+        }
+    } else {
+        var pos = (y1 / period).toInt() * period
+        if (pos > y1) pos -= period
+        while (pos < y2) {
+            val segStart = pos.coerceAtLeast(y1)
+            val segEnd = (pos + dashPx).coerceAtMost(y2)
+            if (segEnd > segStart) canvas.drawLine(x1, segStart, x1, segEnd, paint)
+            pos += period
+        }
+    }
+}
+
 /**
  * Full-screen view placed on the game display via TYPE_ACCESSIBILITY_OVERLAY.
  * All four edges and four corners are independently draggable.
@@ -64,8 +100,8 @@ class RegionDragView(context: Context) : View(context) {
         style = Paint.Style.STROKE
     }
     // Dash params in dp — fixed screen-space intervals
-    private val dashLen = 8f
-    private val gapLen = 6f
+    private val dashLen = REGION_DASH_DP
+    private val gapLen = REGION_GAP_DP
 
     // Scratch reused in onLayout — allocating per frame is lint DrawAllocation.
     private val gestureRect = Rect()
@@ -134,11 +170,10 @@ class RegionDragView(context: Context) : View(context) {
         // Accent dashed border — screen-space stable (dashes at fixed positions)
         val dashPx = dashLen * dp
         val gapPx = gapLen * dp
-        val period = dashPx + gapPx
-        drawScreenSpaceDashes(canvas, l, t, r, t, dashPx, gapPx, period, true)  // top
-        drawScreenSpaceDashes(canvas, r, t, r, b, dashPx, gapPx, period, false) // right
-        drawScreenSpaceDashes(canvas, l, b, r, b, dashPx, gapPx, period, true)  // bottom
-        drawScreenSpaceDashes(canvas, l, t, l, b, dashPx, gapPx, period, false) // left
+        drawScreenSpaceDashes(canvas, accentDashPaint, l, t, r, t, dashPx, gapPx) // top
+        drawScreenSpaceDashes(canvas, accentDashPaint, r, t, r, b, dashPx, gapPx) // right
+        drawScreenSpaceDashes(canvas, accentDashPaint, l, b, r, b, dashPx, gapPx) // bottom
+        drawScreenSpaceDashes(canvas, accentDashPaint, l, t, l, b, dashPx, gapPx) // left
 
         // 8 dots (muted fill + accent border): 4 corners + 4 midpoints,
         // each pushed 3dp outward from the box center along its axis.
@@ -158,41 +193,6 @@ class RegionDragView(context: Context) : View(context) {
     private fun drawDot(canvas: Canvas, x: Float, y: Float, radius: Float) {
         canvas.drawCircle(x, y, radius, dotFillPaint)
         canvas.drawCircle(x, y, radius, dotStrokePaint)
-    }
-
-    /** Draws dashes along a line at fixed screen-space positions (no swimming on drag). */
-    private fun drawScreenSpaceDashes(
-        canvas: Canvas,
-        x1: Float, y1: Float, x2: Float, y2: Float,
-        dashPx: Float, gapPx: Float, period: Float,
-        horizontal: Boolean
-    ) {
-        if (horizontal) {
-            val y = y1
-            // Start at the nearest period-aligned position before x1
-            var pos = (x1 / period).toInt() * period
-            if (pos > x1) pos -= period
-            while (pos < x2) {
-                val segStart = pos.coerceAtLeast(x1)
-                val segEnd = (pos + dashPx).coerceAtMost(x2)
-                if (segEnd > segStart) {
-                    canvas.drawLine(segStart, y, segEnd, y, accentDashPaint)
-                }
-                pos += period
-            }
-        } else {
-            val x = x1
-            var pos = (y1 / period).toInt() * period
-            if (pos > y1) pos -= period
-            while (pos < y2) {
-                val segStart = pos.coerceAtLeast(y1)
-                val segEnd = (pos + dashPx).coerceAtMost(y2)
-                if (segEnd > segStart) {
-                    canvas.drawLine(x, segStart, x, segEnd, accentDashPaint)
-                }
-                pos += period
-            }
-        }
     }
 
     /** Required by ClickableViewAccessibility — this view is drag-only, no

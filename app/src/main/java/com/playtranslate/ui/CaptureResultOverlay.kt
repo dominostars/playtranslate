@@ -170,6 +170,14 @@ class CaptureResultOverlay(
      *  in-app host has no business creating; false disables the tap. */
     var wordLensEnabled: Boolean = true
 
+    /** Host the tap-a-word lens as an ACTIVITY window (TYPE_APPLICATION_PANEL
+     *  through [wm], which must then be an Activity's WindowManager) instead
+     *  of an overlay window — the in-app hosting the camera snapshot panel
+     *  uses. Also reroutes the lens actions' Anki-not-installed dialog
+     *  through [showAnkiNotInstalled] and drops the capture-overlay detail
+     *  return tag (there is no over-game overlay to signal back to). */
+    var wordLensInActivity: Boolean = false
+
     /** Card-level Anki "not installed" dialog. Default (null): the
      *  overlay-window dialog. */
     var showAnkiNotInstalled: (() -> Unit)? = null
@@ -495,6 +503,19 @@ class CaptureResultOverlay(
         b.setShowOnScreenAction { collapseToSliver() }
         b.onSectionVisibilityChanged = {
             applySideBySideCollapse()
+            // Stacked hidden-translation parks the collapsed header above the
+            // scroll fold; bindResult arms the park for fresh results, and a
+            // LIVE eye toggle must arm it too — every height formula subtracts
+            // hiddenTopPx on the assumption the header is scrolled off, so an
+            // unparked toggle left the panel (and its drag ceiling) exactly
+            // one header short: the source text clipped at full drag. The
+            // un-hide direction unwinds the park, else the just-revealed
+            // translation section starts half-scrolled-off.
+            if (!isSideBySide && prefs.hideTranslationSection) {
+                pendingHiddenTopScroll = true
+            } else if (scroll.scrollY != 0) {
+                scroll.scrollTo(0, 0)
+            }
             // A section was hidden/shown — grow/shrink the panel to the new content.
             // Two frames: the collapse AND the other column's re-widen must settle
             // before we measure, else we'd size to the stale pre-collapse layout.
@@ -635,7 +656,17 @@ class CaptureResultOverlay(
                         }
                         bindResult(state.result)
                     }
-                    is CaptureState.NoText -> setStatus(state.message, state.ocrProvenance, state.screenshotPath)
+                    is CaptureState.NoText -> {
+                        // A re-run (OCR gear, camera region change) can land
+                        // NoText while boxes own the frame — slivered, or the
+                        // camera's kept-live-boxes load. A status is unreadable
+                        // in a sliver, and boxes over "no text" are a stale
+                        // scene: same recovery as Failed, plus the box
+                        // teardown (expandFromSliver's hideChips covers the
+                        // sliver path).
+                        if (sliverMode) expandFromSliver() else hideChips()
+                        setStatus(state.message, state.ocrProvenance, state.screenshotPath)
+                    }
                     is CaptureState.Failed -> {
                         // A translation failure after a skeleton collapse must bring
                         // the panel back — the status is unreadable in a sliver.
@@ -938,14 +969,18 @@ class CaptureResultOverlay(
         // the status block itself on a landscape screen — "Recognizing text"
         // rendered clipped to invisibility in horizontal mode. Floor the panel
         // at what the status actually measures; bindResult's own fit takes over
-        // from there.
+        // from there. NOT while slivered: a camera region re-run drives the
+        // loading status through a parked sliver (boxes stay the presentation),
+        // and growing the sheet here would yank it half-open — the terminal
+        // states that need reading (Failed/NoText) expand BEFORE their
+        // setStatus, so they still get the floor.
         statusText.measure(
             View.MeasureSpec.makeMeasureSpec(screenW, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
         )
         val needed =
             statusText.measuredHeight + dp(HANDLE_HEIGHT_DP) + topInsetPx + bottomInsetPx
-        if (panelHeightPx < needed) setPanelHeight(needed)
+        if (!sliverMode && panelHeightPx < needed) setPanelHeight(needed)
     }
 
     private fun bindResult(result: TranslationResult) {
@@ -1240,7 +1275,15 @@ class CaptureResultOverlay(
                 val screenX = loc[0] + wordCenterX
                 val anchorY = loc[1] + lineTop
                 dismissWordLens()
-                val lens = MagnifierLens(ctx, wm, displayId, overlayHost, showAnkiChip = resolved.entry != null)
+                // Null host = the lens's activity-window mode (see
+                // [wordLensInActivity]); the camera panel's wm IS its
+                // Activity's WindowManager, so the panel window attaches to
+                // the activity token without any overlay permission.
+                val lens = MagnifierLens(
+                    ctx, wm, displayId,
+                    overlayHost = if (wordLensInActivity) null else overlayHost,
+                    showAnkiChip = resolved.entry != null,
+                )
                 lens.onDismiss = {
                     binder?.setWordHighlight(null)
                     wordSpeakChip?.release()
@@ -1260,18 +1303,25 @@ class CaptureResultOverlay(
                     // Anki review pushes a full screen → tear the sheet down. Open-detail
                     // stashes this result so the controller can re-show the sheet when the
                     // user backs out of the detail screen (falls back to dismiss when no
-                    // controller / no bound result).
+                    // controller / no bound result). In-activity hosts keep the sheet
+                    // through launches instead — the launched screen stacks ON TOP of the
+                    // hosting activity and the sheet restores on back
+                    // (dismissOnActivityLaunch, same contract as the sentence-level Anki
+                    // flow).
                     onLaunchedActivity = { kind ->
                         when (kind) {
-                            SourceLensActions.LaunchKind.Anki -> dismiss()
+                            SourceLensActions.LaunchKind.Anki ->
+                                if (dismissOnActivityLaunch) dismiss()
                             SourceLensActions.LaunchKind.Detail -> {
                                 val r = lastResult
                                 val nav = onNavigateToDetail
-                                if (r != null && nav != null) nav(r) else dismiss()
+                                if (r != null && nav != null) nav(r)
+                                else if (dismissOnActivityLaunch) dismiss()
                             }
                         }
                     },
-                    tagDetailReturn = true,
+                    tagDetailReturn = !wordLensInActivity,
+                    showAnkiNotInstalled = if (wordLensInActivity) showAnkiNotInstalled else null,
                 ) {
                     LensActionContext(
                         resolved.word,

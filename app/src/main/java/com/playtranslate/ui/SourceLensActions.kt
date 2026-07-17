@@ -48,6 +48,10 @@ class SourceLensActions(
     /** When true (the capture overlay), the open-detail launch is tagged so
      *  [TranslationResultActivity] can signal a return back to the overlay on back. */
     private val tagDetailReturn: Boolean = false,
+    /** In-activity hosts (the camera snapshot panel) route the "AnkiDroid
+     *  not installed" dialog through their own presenter — the default
+     *  overlay window needs a permission an activity flow may not have. */
+    private val showAnkiNotInstalled: (() -> Unit)? = null,
     private val current: () -> LensActionContext,
 ) {
     /** Which Activity an action launched, so the caller can react differently. */
@@ -144,7 +148,8 @@ class SourceLensActions(
         val entry = cur.entry ?: return
         val ankiManager = AnkiManager(context)
         if (!ankiManager.isAnkiDroidInstalled()) {
-            showAnkiNotInstalledDialog(lens.rawCtx, overlayHost, lens.wm, displayId)
+            showAnkiNotInstalled?.invoke()
+                ?: showAnkiNotInstalledDialog(lens.rawCtx, overlayHost, lens.wm, displayId)
             return
         }
         val snap = snapshotLensFieldsForAnki(word, entry, cur)

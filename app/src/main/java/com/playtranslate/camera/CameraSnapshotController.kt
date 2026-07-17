@@ -51,9 +51,11 @@ class CameraSnapshotController(
     private val backButton: ImageButton,
     private val playPauseButton: ImageButton,
     private val shutterButton: ImageButton,
+    private val regionButton: ImageButton,
     private val modeToggle: View,
     private val freezeFrame: ImageView,
     private val panelHost: ViewGroup,
+    private val regionUi: CameraRegionUi,
     /** Whether the Translation/Furigana toggle is available at all for the
      *  current source language (the activity owns that decision). */
     private val modeToggleSupported: () -> Boolean,
@@ -63,6 +65,16 @@ class CameraSnapshotController(
     private val prefs = Prefs(activity)
 
     private var frozenBitmap: Bitmap? = null
+
+    /** User-drawn snapshot region (AU px of the frozen frame), or null for
+     *  the whole frame. Scoped to ONE frozen episode: a new snapshot starts
+     *  regionless (the camera has moved — a stale rect would silently drop
+     *  text the user is looking at). */
+    private var regionAu: android.graphics.Rect? = null
+
+    /** True while the crop editor owns the screen (panel hidden, region
+     *  drag box + confirm bar up). */
+    private var cropActive = false
 
     /** The previous snapshot's frame, retained (not recycled) until the next
      *  freeze or [release]: pipeline cancellation is cooperative, so the
@@ -102,7 +114,112 @@ class CameraSnapshotController(
         playPauseButton.setOnClickListener { togglePlayPause() }
         shutterButton.setOnClickListener { freeze() }
         backButton.setOnClickListener { if (isFrozen) unfreeze() else onExit() }
+        regionButton.setOnClickListener { enterCropMode() }
         syncControls()
+    }
+
+    // ── Snapshot region (crop) ──────────────────────────────────────────
+
+    val isCropActive: Boolean get() = cropActive
+
+    /** System back while the crop editor is up: cancel the edit, keep the
+     *  snapshot. */
+    fun cancelCrop() = exitCropMode(rerun = false)
+
+    private fun enterCropMode() {
+        if (!isFrozen || cropActive || frozenBitmap == null) return
+        cropActive = true
+        // The editor replaces both region surfaces: the indicator (it IS the
+        // editable version of it) and the panel ("temporarily hide" — the
+        // sheet comes back exactly as left; visibility only, no dismissal).
+        regionUi.hideIndicator()
+        panelHost.isVisible = false
+        syncControls()
+        regionUi.showEditor(
+            init = editorInitFractions(),
+            onCancel = { exitCropMode(rerun = false) },
+            onClear = {
+                val had = regionAu != null
+                regionAu = null
+                exitCropMode(rerun = had)
+            },
+            onConfirm = { fractions ->
+                val au = fractionsToAu(fractions)
+                val changed = au != regionAu
+                regionAu = au
+                exitCropMode(rerun = changed)
+            },
+        )
+    }
+
+    private fun exitCropMode(rerun: Boolean) {
+        if (!cropActive) return
+        cropActive = false
+        regionUi.hideEditor()
+        panelHost.isVisible = true
+        syncControls()
+        syncIndicator()
+        if (rerun) reRunSnapshot()
+    }
+
+    /** Show/hide the dashed active-region indicator to match [regionAu]. */
+    private fun syncIndicator() {
+        val au = regionAu
+        val bmp = frozenBitmap
+        if (au == null || bmp == null || !isFrozen || cropActive) {
+            regionUi.hideIndicator()
+            return
+        }
+        val (w, h) = hostSize()
+        regionUi.showIndicator(CameraCoordinates(bmp.width, bmp.height, w, h).auToView(au)) {
+            removeRegion()
+        }
+    }
+
+    /** The indicator's Remove pill: drop the region and read the whole
+     *  frame again. */
+    private fun removeRegion() {
+        if (regionAu == null) return
+        regionAu = null
+        syncIndicator()
+        reRunSnapshot()
+    }
+
+    /** The current region as screen fractions for the editor, or null for
+     *  the editor's default box. */
+    private fun editorInitFractions(): android.graphics.RectF? {
+        val au = regionAu ?: return null
+        val bmp = frozenBitmap ?: return null
+        val (w, h) = hostSize()
+        val vr = CameraCoordinates(bmp.width, bmp.height, w, h).auToView(au)
+        return android.graphics.RectF(
+            vr.left.toFloat() / w,
+            vr.top.toFloat() / h,
+            vr.right.toFloat() / w,
+            vr.bottom.toFloat() / h,
+        )
+    }
+
+    /** Confirmed drag fractions → AU px on the frozen frame, clamped to the
+     *  frame. Null (nothing intersects — unreachable for an on-screen drag,
+     *  the frame covers the view) clears the region. */
+    private fun fractionsToAu(f: android.graphics.RectF): android.graphics.Rect? {
+        val bmp = frozenBitmap ?: return null
+        val (w, h) = hostSize()
+        val viewRect = android.graphics.Rect(
+            Math.round(f.left * w),
+            Math.round(f.top * h),
+            Math.round(f.right * w),
+            Math.round(f.bottom * h),
+        )
+        val au = CameraCoordinates(bmp.width, bmp.height, w, h).viewToAu(viewRect)
+        return if (au.intersect(0, 0, bmp.width, bmp.height)) au else null
+    }
+
+    private fun hostSize(): Pair<Int, Int> {
+        val w = panelHost.width.takeIf { it > 0 } ?: activity.resources.displayMetrics.widthPixels
+        val h = panelHost.height.takeIf { it > 0 } ?: activity.resources.displayMetrics.heightPixels
+        return w to h
     }
 
     private fun togglePlayPause() {
@@ -189,7 +306,9 @@ class CameraSnapshotController(
                 }
         }
         o.ttsAlertTarget = TtsAlertTarget.InActivity(activity)
-        o.wordLensEnabled = false
+        // Tap-a-word lens hosted as an activity window (the panel's wm IS
+        // the activity's WindowManager) — no overlay permission involved.
+        o.wordLensInActivity = true
         o.showAnkiNotInstalled = { showAnkiNotInstalledDialog(activity) }
         // Anki review launches on top of the camera activity; the frozen
         // frame + sheet stay behind it and restore when the user backs out.
@@ -237,7 +356,7 @@ class CameraSnapshotController(
         val backdrop = renderViewSpaceBackdrop(bitmap, w, h)
         o.show(w, h, backdrop)
         backdrop?.recycle()
-        val s = session.runSnapshot(bitmap)
+        val s = session.runSnapshot(bitmap, regionAu)
         snapshotSession = s
         o.observe(s)
     }
@@ -265,13 +384,15 @@ class CameraSnapshotController(
         }
     }
 
-    /** Gear re-OCR: run a fresh snapshot session over the SAME frozen frame
-     *  (recognise picks up the engine selection the picker just persisted)
-     *  and drive the same panel through the loading stages again. */
+    /** Gear re-OCR and region changes: run a fresh snapshot session over the
+     *  SAME frozen frame (recognise picks up the engine selection the picker
+     *  just persisted; the current [regionAu] rides along) and drive the same
+     *  panel through the loading stages again — observe() cancels the prior
+     *  session. */
     private fun reRunSnapshot() {
         val o = overlay ?: return
         val bitmap = frozenBitmap ?: return
-        val s = session.runSnapshot(bitmap)
+        val s = session.runSnapshot(bitmap, regionAu)
         snapshotSession = s
         o.observe(s)
     }
@@ -293,6 +414,14 @@ class CameraSnapshotController(
         snapshotSession = null
         overlaysShowing = false
         keptLiveOverlays = false
+        // Region + its UI die with the frozen episode (see regionAu).
+        if (cropActive) {
+            cropActive = false
+            regionUi.hideEditor()
+            panelHost.isVisible = true
+        }
+        regionAu = null
+        regionUi.hideIndicator()
         if (session.mode == CameraSession.Mode.FROZEN) {
             session.unfreeze(preFreezeMode)
         }
@@ -315,6 +444,11 @@ class CameraSnapshotController(
         backButton.contentDescription = backButton.context.getString(
             if (frozen) R.string.camera_close_cd else R.string.camera_back_cd
         )
+        // The crop editor owns the whole screen while active: its own bar
+        // carries cancel/confirm, so the X (and the crop button itself)
+        // step aside until it closes.
+        backButton.isVisible = !cropActive
+        regionButton.isVisible = frozen && !cropActive
         playPauseButton.isVisible = !frozen
         playPauseButton.setImageResource(
             if (mode == CameraSession.Mode.PAUSED) R.drawable.ic_play else R.drawable.ic_pause
@@ -330,7 +464,7 @@ class CameraSnapshotController(
         // translations come from the translator's LRU, no fresh backend
         // call). Panel-expanded FROZEN hides it: the flavor only affects
         // boxes that aren't showing.
-        fadeToggle((!frozen || overlaysShowing) && modeToggleSupported())
+        fadeToggle((!frozen || overlaysShowing) && modeToggleSupported() && !cropActive)
     }
 
     /** The switcher's target visibility, so repeated syncControls calls
@@ -368,6 +502,7 @@ class CameraSnapshotController(
 
     fun release() {
         released = true
+        regionUi.destroy()
         // Suppress finishUnfreeze — the activity is dying; there is no UI
         // state to restore, and the session's executors are about to shut
         // down. dismiss() still cancels the snapshot session.

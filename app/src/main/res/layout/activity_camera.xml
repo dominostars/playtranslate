@@ -77,6 +77,20 @@
             android:src="@drawable/ic_pause"
             app:tint="@android:color/white" />
 
+        <!-- Snapshot region select (FROZEN only — it takes over the top-right
+             slot play/pause vacates): crop the reading to a drawn region. -->
+        <ImageButton
+            android:id="@+id/cameraRegionSelect"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_gravity="end|top"
+            android:layout_margin="8dp"
+            android:background="@drawable/bg_camera_control_scrim"
+            android:contentDescription="@string/camera_region_cd"
+            android:src="@drawable/ic_crop"
+            android:visibility="gone"
+            app:tint="@android:color/white" />
+
         <!-- Snapshot shutter: freezes the current frame and reads it once. -->
         <ImageButton
             android:id="@+id/cameraShutter"

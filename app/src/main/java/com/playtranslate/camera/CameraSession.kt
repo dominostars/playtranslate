@@ -348,6 +348,11 @@ class CameraSession(
                 freezeCallback = null
                 val keepOverlays = freezeKeepsOverlays
                 mode = Mode.FROZEN
+                // The no-usable-text hint narrates AUTO-detection; a snapshot
+                // replaces that mode, and no frame will ever clear the hint
+                // while frozen (pause gets this for free from wipeDisplay —
+                // the freeze deliberately skips the wipe to keep overlays).
+                postHint(false)
                 acquireJob?.takeIf { it.isActive }?.cancel()
                 val frozen = toUprightBitmap(proxy)
                 synchronized(stateLock) {
@@ -748,13 +753,22 @@ class CameraSession(
          *  (a full-frame document is exactly what the edge gate would gut),
          *  keeping only the center-out priority order. */
         dropEdgeClipped: Boolean = true,
+        /** Snapshot region (AU px): detections whose center falls outside are
+         *  dropped before recognition. A recognition-cost saver ONLY —
+         *  single-model engines (ML Kit) ignore the detect/recognize seam
+         *  entirely, so the correctness gate is the group-level region filter
+         *  in [runSnapshotCycle]. */
+        clipTo: android.graphics.Rect? = null,
     ): com.playtranslate.ocr.core.RegionPreFilter {
         val translating = dropEdgeClipped &&
             SourceLanguageProfiles[prefs.sourceLangId].translationCode != prefs.targetLang
         return com.playtranslate.ocr.core.RegionPreFilter { regions, w, h ->
+            val inRegion = if (clipTo == null) regions else regions.filter { r ->
+                clipTo.contains(r.box.bounds.centerX(), r.box.bounds.centerY())
+            }
             val mx = (w * edgeMarginFrac).toInt()
             val my = (h * edgeMarginFrac).toInt()
-            val kept = if (!translating) regions else regions.filter { r ->
+            val kept = if (!translating) inRegion else inRegion.filter { r ->
                 val b = r.box.bounds
                 val clipped = when (r.orientation) {
                     com.playtranslate.language.TextOrientation.VERTICAL ->
@@ -763,8 +777,11 @@ class CameraSession(
                 }
                 !clipped
             }
-            if (kept.size != regions.size) {
-                Log.d(TAG, "gate: skipped recognition for ${regions.size - kept.size} edge-clipped detections")
+            if (inRegion.size != regions.size) {
+                Log.d(TAG, "gate: skipped recognition for ${regions.size - inRegion.size} outside-region detections")
+            }
+            if (kept.size != inRegion.size) {
+                Log.d(TAG, "gate: skipped recognition for ${inRegion.size - kept.size} edge-clipped detections")
             }
             val cx = w / 2f
             val cy = h / 2f
@@ -1337,6 +1354,10 @@ class CameraSession(
      *  pre-snapshot mode — a paused camera stays paused. */
     fun unfreeze(to: Mode) {
         require(to != Mode.FROZEN) { "unfreeze target must be LIVE or PAUSED" }
+        // Outstanding snapshot cycles are superseded: a zombie whose engine
+        // outlived the cooperative cancel must not write snapshot caches
+        // into the live/paused display state.
+        snapshotGeneration.incrementAndGet()
         mode = to
         wipeDisplay(purgeAnchorCache = false)
     }
@@ -1351,6 +1372,16 @@ class CameraSession(
         com.playtranslate.translationlog.TranslationLogRecorder(context.applicationContext)
     }
 
+    /** Bumped by every [runSnapshot] and by [unfreeze]. A snapshot cycle may
+     *  publish the shared display caches ONLY while its generation is still
+     *  current: cancellation is cooperative, and an older cycle whose OCR
+     *  engine doesn't observe it can return from recognise AFTER a newer
+     *  region re-run already published — its straight-line tail would then
+     *  land a stale cache write + epoch advance LAST, and the frozen boxes
+     *  would show a different region than the panel (Codex adversarial
+     *  review finding). */
+    private val snapshotGeneration = java.util.concurrent.atomic.AtomicLong()
+
     /**
      * One-shot OCR + translate of the [frozen] snapshot, mirroring the
      * service's deliberate one-shot orchestration (attribution, provenance,
@@ -1363,11 +1394,12 @@ class CameraSession(
      * snapshot is a publication source), so [showFrozenOverlays] and mode
      * re-flavors read a coherent scene.
      */
-    fun runSnapshot(frozen: Bitmap): CaptureSession {
+    fun runSnapshot(frozen: Bitmap, regionAu: android.graphics.Rect? = null): CaptureSession {
         val state = MutableStateFlow<CaptureState>(
             CaptureState.InProgress(context.getString(com.playtranslate.R.string.status_ocr))
         )
-        val job = scope.launch(Dispatchers.Default) { runSnapshotCycle(frozen, state) }
+        val gen = snapshotGeneration.incrementAndGet()
+        val job = scope.launch(Dispatchers.Default) { runSnapshotCycle(frozen, state, regionAu, gen) }
         job.invokeOnCompletion { cause ->
             cancelledStateOrNull(cause, state.value)?.let { state.value = it }
         }
@@ -1377,6 +1409,11 @@ class CameraSession(
     private suspend fun runSnapshotCycle(
         frozen: Bitmap,
         state: MutableStateFlow<CaptureState>,
+        /** User-drawn snapshot region (AU px): only text inside it is shown,
+         *  translated, and surfaced in the panel. Null = whole frame. */
+        regionAu: android.graphics.Rect? = null,
+        /** This cycle's [snapshotGeneration] stamp — see the field. */
+        gen: Long = snapshotGeneration.get(),
     ) {
         val srcId = prefs.sourceLangId
         val sourceLang = SourceLanguageProfiles[srcId].translationCode
@@ -1388,9 +1425,21 @@ class CameraSession(
             frozen,
             sourceLang,
             screenshotWidth = auW,
-            regionPreFilter = cameraRegionPreFilter(dropEdgeClipped = false),
+            regionPreFilter = cameraRegionPreFilter(dropEdgeClipped = false, clipTo = regionAu),
         )
-        val groups = ocr?.let { usableGroups(it, auW, auH, skipEdgeGate = true) }.orEmpty()
+        // The region gate proper lives HERE, at group level, not in the
+        // pre-filter: single-model engines (ML Kit) never see the
+        // detect/recognize seam, and a group is the translation/Anki unit —
+        // center-inside keeps whole paragraphs, never half-clipped ones.
+        // Superseded while the recognizer ran (region re-run, unfreeze)?
+        // Abandon before touching any shared state — cancellation alone
+        // can't be relied on (an engine that never checks it returns here
+        // normally after the cancel).
+        if (snapshotGeneration.get() != gen) return
+        val gatedGroups = ocr?.let { usableGroups(it, auW, auH, skipEdgeGate = true) }.orEmpty()
+        val groups = if (regionAu == null) gatedGroups else gatedGroups.filter {
+            regionAu.contains(it.bounds.centerX(), it.bounds.centerY())
+        }
         val provenance = snapshotProvenance(ocr, srcId)
         if (ocr == null || groups.isEmpty()) {
             state.value = CaptureState.NoText(
@@ -1413,7 +1462,11 @@ class CameraSession(
         // The snapshot owns the display: epoch and caches move together,
         // same protocol as the acquire install. Translations are not in yet
         // — showFrozenOverlays renders skeletons until they land below.
+        // Generation re-checked INSIDE the lock: a newer run bumps the
+        // counter before its own cycle can reach this block, so a stale
+        // cycle can never publish after (or over) a newer one.
         synchronized(stateLock) {
+            if (snapshotGeneration.get() != gen) return
             cachedOcr = gated
             cachedGroupColors = groupColors
             cachedAuW = auW
@@ -1448,6 +1501,13 @@ class CameraSession(
         val recordSrc = sourceLang
         val recordTgt = prefs.targetLang
         val perGroup = translator.translateDetailed(groups.map { it.text })
+        // Superseded while translating: mirror the post-recognise check for
+        // the remaining side effects (History rows, Done). Today the
+        // withContext below would refuse the cancelled job anyway — every
+        // generation bump travels with a cancel in one main-thread block —
+        // but that pairing is call-site convention, and History records
+        // "shown" translations, which a superseded run never shows.
+        if (snapshotGeneration.get() != gen) return
         // Deliberate capture → History, exactly like the service one-shot.
         // The recorder is main-thread-only.
         withContext(Dispatchers.Main) {
