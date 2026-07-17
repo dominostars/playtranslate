@@ -174,6 +174,13 @@ class CaptureResultOverlay(
      *  overlay-window dialog. */
     var showAnkiNotInstalled: (() -> Unit)? = null
 
+    /** Whether launching a full-screen activity (the Anki review) tears the
+     *  sheet down. True for the over-game window — it would otherwise sit
+     *  ABOVE the launched activity. False for in-app hosts: their activity
+     *  naturally goes behind the launch, and backing out of it should find
+     *  the sheet (and the camera's frozen frame) exactly as left. */
+    var dismissOnActivityLaunch: Boolean = true
+
     /** Overlay boxes for the currently-bound result: skeletons from
      *  [CaptureState.Translating] while an auto-collapse is showing placeholders,
      *  then the translated boxes from [CaptureState.Done]. Null otherwise (stash
@@ -1384,7 +1391,10 @@ class CaptureResultOverlay(
         val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: displayId
         val opts = android.app.ActivityOptions.makeBasic().setLaunchDisplayId(targetDisplay).toBundle()
         app.startActivity(intent, opts)
-        dismiss()   // tear the sheet down — it'd otherwise sit over the review/trampoline
+        // Window hosting: tear the sheet down — it'd otherwise sit over the
+        // review/trampoline. In-app hosting keeps it; the host activity goes
+        // behind the review and restores as left.
+        if (dismissOnActivityLaunch) dismiss()
     }
 
     // Long-press = headless one-tap send of the captured sentence. Runs on a

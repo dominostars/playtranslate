@@ -101,6 +101,12 @@ class ActivitySheetHost(private val parent: ViewGroup) : SheetHost {
                 ViewGroup.LayoutParams.MATCH_PARENT,
             ),
         )
+        // A window root receives insets on window attach; a child added
+        // mid-tree does NOT get a dispatch of its own. Without this the
+        // sheet's nav-bar buffer (and the sliver's rest position above the
+        // gesture pill) reads 0 and the sliver parks flush with the screen
+        // bottom.
+        root.requestApplyInsets()
     }
 
     override fun detach(root: View) {

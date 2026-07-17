@@ -166,6 +166,9 @@ class CameraSnapshotController(
         o.ttsAlertTarget = TtsAlertTarget.InActivity(activity)
         o.wordLensEnabled = false
         o.showAnkiNotInstalled = { showAnkiNotInstalledDialog(activity) }
+        // Anki review launches on top of the camera activity; the frozen
+        // frame + sheet stay behind it and restore when the user backs out.
+        o.dismissOnActivityLaunch = false
         o.retranslate = { text ->
             session.translateForPanel(text)
         }
@@ -296,12 +299,20 @@ class CameraSnapshotController(
 
     fun release() {
         released = true
-        overlay?.dismiss()
+        // Suppress finishUnfreeze — the activity is dying; there is no UI
+        // state to restore, and the session's executors are about to shut
+        // down. dismiss() still cancels the snapshot session.
+        overlay?.let { o ->
+            o.onDismiss = null
+            o.dismiss()
+        }
         overlay = null
         snapshotSession = null
-        frozenBitmap?.recycle()
+        // Deliberately NOT recycled: the snapshot pipeline's cancellation is
+        // cooperative, so the recognizer may still be reading either bitmap
+        // for a moment after the cancel above. Dropping the references lets
+        // GC reclaim them once the cancelled job's own reference dies.
         frozenBitmap = null
-        retiredBitmap?.recycle()
         retiredBitmap = null
     }
 }
