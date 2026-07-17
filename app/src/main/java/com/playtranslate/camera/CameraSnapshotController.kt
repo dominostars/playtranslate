@@ -86,6 +86,25 @@ class CameraSnapshotController(
     /** Mode to restore when the snapshot closes. */
     private var preFreezeMode = CameraSession.Mode.LIVE
 
+    /** Orientation request to restore when the snapshot closes. While
+     *  FROZEN the activity is pinned to its shutter-time orientation — a
+     *  rotation would recreate the activity and destroy the snapshot (the
+     *  V1 behavior); the live/paused viewfinder keeps rotating freely. */
+    private var preFreezeOrientation =
+        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+
+    /** True while the freeze-time orientation pin is applied — gives the
+     *  restore exactly-once semantics on WHATEVER exit path runs (normal
+     *  close, activity teardown), instead of relying on the call-site fact
+     *  that today's teardown coincides with activity death. */
+    private var orientationPinned = false
+
+    private fun restoreOrientation() {
+        if (!orientationPinned) return
+        orientationPinned = false
+        activity.requestedOrientation = preFreezeOrientation
+    }
+
     /** Play state at shutter time — the first-ever snapshot's presentation
      *  default (auto-detecting → on-frame overlays, paused → panel). */
     private var wasPlayingAtShutter = true
@@ -273,6 +292,18 @@ class CameraSnapshotController(
             frozenBitmap = bitmap
             freezeFrame.setImageBitmap(bitmap)
             freezeFrame.isVisible = true
+            // Pin the orientation for the snapshot's lifetime (see
+            // preFreezeOrientation); LOCKED = whatever the shutter caught.
+            // The stash is guarded so a re-entrant pin — no path today,
+            // freeze() rejects while FROZEN — can never record the LOCKED
+            // value it itself set as "the state to restore": pin and
+            // restore own their idempotence as a matched pair.
+            if (!orientationPinned) {
+                preFreezeOrientation = activity.requestedOrientation
+                orientationPinned = true
+            }
+            activity.requestedOrientation =
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
             syncControls()
             startSnapshot(bitmap)
         }
@@ -450,6 +481,7 @@ class CameraSnapshotController(
         if (session.mode == CameraSession.Mode.FROZEN) {
             session.unfreeze(preFreezeMode)
         }
+        restoreOrientation()
         freezeFrame.isVisible = false
         freezeFrame.setImageBitmap(null)
         // Not recycled here — see retiredBitmap.
@@ -527,6 +559,10 @@ class CameraSnapshotController(
 
     fun release() {
         released = true
+        // Not load-bearing today (release coincides with activity death and
+        // requestedOrientation dies with the activity) — but the restore is
+        // owned by the pin's lifecycle, not by that call-site fact.
+        restoreOrientation()
         wordLookup.destroy()
         regionUi.destroy()
         // Suppress finishUnfreeze — the activity is dying; there is no UI
