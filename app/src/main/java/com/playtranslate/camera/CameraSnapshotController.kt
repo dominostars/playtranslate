@@ -78,6 +78,16 @@ class CameraSnapshotController(
      *  default (auto-detecting → on-frame overlays, paused → panel). */
     private var wasPlayingAtShutter = true
 
+    /** True while snapshot overlays own the frame (sliver engaged, or the
+     *  live boxes kept through the load) — drives the flavor switcher's
+     *  visibility in FROZEN. */
+    private var overlaysShowing = false
+
+    /** The live overlays were kept as this snapshot's loading state: the
+     *  presenter must NOT paint skeletons over them at Translating; the Done
+     *  promotion swaps them for the snapshot's boxes. */
+    private var keptLiveOverlays = false
+
     private var overlay: CaptureResultOverlay? = null
     private var snapshotSession: CaptureSession? = null
 
@@ -108,10 +118,17 @@ class CameraSnapshotController(
         if (session.mode == CameraSession.Mode.FROZEN) return
         preFreezeMode = session.mode
         wasPlayingAtShutter = session.mode == CameraSession.Mode.LIVE
+        // Overlays-preferred snapshot taken while live boxes are up: keep
+        // them through the load (they track the very frame being frozen) and
+        // swap in the snapshot's boxes at Done — no skeleton flash.
+        val keepOverlays =
+            (prefs.cameraSnapshotOnScreenPreferred ?: wasPlayingAtShutter) && session.hasLiveOverlays()
+        keptLiveOverlays = keepOverlays
+        overlaysShowing = keepOverlays
         // One freeze in flight at a time; re-enabled by syncControls on
         // either outcome.
         shutterButton.isEnabled = false
-        session.requestFreeze { bitmap ->
+        session.requestFreeze(keepOverlays) { bitmap ->
             if (released) {
                 bitmap.recycle()
                 return@requestFreeze
@@ -141,18 +158,26 @@ class CameraSnapshotController(
         )
         o.boxPresenter = object : CaptureResultOverlay.BoxPresenter {
             override fun show(data: OneShotOverlayData): Boolean {
-                session.showFrozenOverlays()
+                overlaysShowing = true
+                syncControls()
+                // Kept live boxes ARE the loading presentation — don't paint
+                // skeletons over them; Done's update() does the swap.
+                if (!keptLiveOverlays) session.showFrozenOverlays()
                 return true
             }
 
             override fun update(data: OneShotOverlayData) {
-                // Done landed while slivered: re-render — the pipeline's
-                // translations are in the session's snapshot cache now, so
-                // the skeletons promote to filled boxes.
+                // Done landed while slivered: render the snapshot's boxes —
+                // the pipeline's translations are in the session's snapshot
+                // cache now, so this fills (and replaces any kept live boxes).
+                keptLiveOverlays = false
                 session.showFrozenOverlays()
             }
 
             override fun hide() {
+                keptLiveOverlays = false
+                overlaysShowing = false
+                syncControls()
                 session.hideFrozenOverlays()
             }
         }
@@ -169,6 +194,9 @@ class CameraSnapshotController(
         // Anki review launches on top of the camera activity; the frozen
         // frame + sheet stay behind it and restore when the user backs out.
         o.dismissOnActivityLaunch = false
+        // Leaving the frozen snapshot is the explicit X only — outside taps
+        // and drag/fling-downs settle instead of dismissing.
+        o.dismissOnGesture = false
         o.retranslate = { text ->
             session.translateForPanel(text)
         }
@@ -263,6 +291,8 @@ class CameraSnapshotController(
     private fun finishUnfreeze() {
         overlay = null
         snapshotSession = null
+        overlaysShowing = false
+        keptLiveOverlays = false
         if (session.mode == CameraSession.Mode.FROZEN) {
             session.unfreeze(preFreezeMode)
         }
@@ -294,7 +324,13 @@ class CameraSnapshotController(
         )
         shutterButton.isVisible = !frozen
         shutterButton.isEnabled = !frozen
-        modeToggle.isVisible = !frozen && modeToggleSupported()
+        // The flavor switcher stays available whenever boxes are on the
+        // frame — live modes, and the snapshot's overlays presentation (a
+        // toggle there re-flavors the frozen boxes from the snapshot caches;
+        // translations come from the translator's LRU, no fresh backend
+        // call). Panel-expanded FROZEN hides it: the flavor only affects
+        // boxes that aren't showing.
+        modeToggle.isVisible = (!frozen || overlaysShowing) && modeToggleSupported()
     }
 
     fun release() {

@@ -181,6 +181,14 @@ class CaptureResultOverlay(
      *  the sheet (and the camera's frozen frame) exactly as left. */
     var dismissOnActivityLaunch: Boolean = true
 
+    /** Whether gestures dismiss the sheet: tap-outside, swipe/fling-down,
+     *  and the sliver's tap-away. True for the over-game window (the sheet
+     *  is a guest over the game; every exit ramp matters). False for the
+     *  camera host, where dismissal means leaving the frozen snapshot — that
+     *  exit is the explicit X only; gated gestures settle back (drag clamps
+     *  at the resize floor, outside taps are consumed and ignored). */
+    var dismissOnGesture: Boolean = true
+
     /** Overlay boxes for the currently-bound result: skeletons from
      *  [CaptureState.Translating] while an auto-collapse is showing placeholders,
      *  then the translated boxes from [CaptureState.Done]. Null otherwise (stash
@@ -1763,7 +1771,7 @@ class CaptureResultOverlay(
         resizeTracker = null
         resizing = false
         // A fast down-fling on the grabber dismisses (slides out the bottom).
-        if (vy > FLING_DISMISS_VEL) {
+        if (dismissOnGesture && vy > FLING_DISMISS_VEL) {
             animateOutAndDismiss()
         } else {
             // Adopt the user's dragged height as the auto-size ceiling, so a later
@@ -1951,7 +1959,7 @@ class CaptureResultOverlay(
                             sliverTouch = true
                             sliverDragging = false
                             sliverDownRawY = ev.rawY
-                        } else {
+                        } else if (dismissOnGesture) {
                             dismissFromSliver()
                         }
                     }
@@ -1972,7 +1980,7 @@ class CaptureResultOverlay(
                         }
                         sliverDragging = false
                     }
-                    MotionEvent.ACTION_OUTSIDE -> dismissFromSliver()
+                    MotionEvent.ACTION_OUTSIDE -> if (dismissOnGesture) dismissFromSliver()
                 }
                 // The sliver has no inner interactions — consume everything so
                 // no child ever sees a gesture that started under sliver rules.
@@ -1990,16 +1998,20 @@ class CaptureResultOverlay(
                         return true
                     }
                     // Above the sheet, or in the nav-bar gap below it when the
-                    // sheet is lifted — both are "outside" and dismiss.
+                    // sheet is lifted — both are "outside" and dismiss. Consumed
+                    // either way so an outside tap can't leak to the host.
                     if (ev.y < resizeTop || ev.y > panel.bottom + panel.translationY) {
-                        animateOutAndDismiss()
+                        if (dismissOnGesture) animateOutAndDismiss()
                         return true
                     }
                 }
                 MotionEvent.ACTION_MOVE -> if (resizing) { updateResize(ev); return true }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
                     if (resizing) { endResize(ev); return true }
-                MotionEvent.ACTION_OUTSIDE -> { animateOutAndDismiss(); return true }
+                MotionEvent.ACTION_OUTSIDE -> {
+                    if (dismissOnGesture) animateOutAndDismiss()
+                    return true
+                }
             }
             return super.dispatchTouchEvent(ev)
         }
@@ -2060,7 +2072,7 @@ class CaptureResultOverlay(
                     dragging = false
                     // The predicate is written for the top sheet (negative = away);
                     // mirror both inputs rather than fork the geometry helper.
-                    if (CaptureResultGeometry.shouldDismissFromDrag(
+                    if (dismissOnGesture && CaptureResultGeometry.shouldDismissFromDrag(
                             -translationY, -vy, DISMISS_DISTANCE_DP * density, FLING_DISMISS_VEL,
                         )
                     ) {

@@ -28,6 +28,11 @@ class WarpOverlayView(context: Context) : View(context) {
     private var matrices: Array<Matrix> = emptyArray()
     private var visibleCount = 0
 
+    /** True while regions are actually being drawn (installed AND a live
+     *  homography applied). Main thread. */
+    val hasVisibleRegions: Boolean
+        get() = visibleCount > 0
+
     /** AU dims of the keyframe the current regions were rastered against. */
     private var auWidth = 0
     private var auHeight = 0

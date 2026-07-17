@@ -330,6 +330,7 @@ class CameraSession(
             // acquire's OCR rather than letting it run for nobody.
             freezeCallback?.let { onFrozen ->
                 freezeCallback = null
+                val keepOverlays = freezeKeepsOverlays
                 mode = Mode.FROZEN
                 acquireJob?.takeIf { it.isActive }?.cancel()
                 val frozen = toUprightBitmap(proxy)
@@ -341,13 +342,19 @@ class CameraSession(
                     displayEpoch.advance()
                 }
                 overlayHost.post {
-                    warpView?.clearRegions()
-                    lastShownBoxes = null
-                    lastShownRegions = null
-                    lastShownKeys = emptyList()
-                    lastShownAuW = 0
-                    lastShownAuH = 0
-                    rasterScale = 1f
+                    // Overlays-preferred snapshots keep the live boxes as the
+                    // loading state: analysis is halted, so they stay pinned
+                    // at the exact transform of the frame just frozen. The
+                    // snapshot's own showRegions swap replaces them at Done.
+                    if (!keepOverlays) {
+                        warpView?.clearRegions()
+                        lastShownBoxes = null
+                        lastShownRegions = null
+                        lastShownKeys = emptyList()
+                        lastShownAuW = 0
+                        lastShownAuH = 0
+                        rasterScale = 1f
+                    }
                     onFrozen(frozen)
                 }
                 return
@@ -1237,6 +1244,16 @@ class CameraSession(
     @Volatile
     private var freezeCallback: ((Bitmap) -> Unit)? = null
 
+    /** When set, the freeze leaves the CURRENT warp overlays on screen (the
+     *  overlays-preferred snapshot flow keeps the live boxes as its loading
+     *  state — they were tracking the very frame being frozen, so they sit
+     *  correctly on it). Written before [freezeCallback] on the main thread;
+     *  the volatile callback write publishes it to the analysis thread. */
+    private var freezeKeepsOverlays = false
+
+    /** Whether warp overlays are currently being drawn. Main thread. */
+    fun hasLiveOverlays(): Boolean = warpView?.hasVisibleRegions == true
+
     /** Stop auto-detection and clear the display; the viewfinder stays live. */
     fun pause() {
         mode = Mode.PAUSED
@@ -1251,8 +1268,10 @@ class CameraSession(
 
     /** Freeze the next frame. The pipeline enters FROZEN on the analysis
      *  thread BEFORE the callback is posted, so no live tail can publish
-     *  over the snapshot. */
-    fun requestFreeze(onFrozen: (Bitmap) -> Unit) {
+     *  over the snapshot. [keepOverlays] leaves the current warp overlays
+     *  up as the snapshot's loading state. */
+    fun requestFreeze(keepOverlays: Boolean = false, onFrozen: (Bitmap) -> Unit) {
+        freezeKeepsOverlays = keepOverlays
         freezeCallback = onFrozen
     }
 

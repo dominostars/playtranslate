@@ -350,8 +350,14 @@ class CameraActivity : AppCompatActivity() {
     }
 
     /** Re-flavor the camera overlays from the cached OCR result — the scene
-     *  didn't change, so no re-OCR. */
+     *  didn't change, so no re-OCR. While FROZEN (the switcher is visible in
+     *  the snapshot's overlays presentation) the frozen render path is used
+     *  instead: it reads the new flavor and never calls the translator, so a
+     *  toggle mid-load can't duplicate the snapshot pipeline's in-flight
+     *  backend batch — translation boxes show skeletons until the pipeline's
+     *  own results land. */
     private fun onOverlayModeChanged(@Suppress("UNUSED_PARAMETER") mode: OverlayMode) {
-        session?.onOverlayModeChanged()
+        val s = session ?: return
+        if (snapshotController?.isFrozen == true) s.showFrozenOverlays() else s.onOverlayModeChanged()
     }
 }
