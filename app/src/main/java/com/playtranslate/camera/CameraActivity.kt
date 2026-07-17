@@ -113,13 +113,15 @@ class CameraActivity : AppCompatActivity() {
 
         findViewById<ImageButton>(R.id.cameraBack).setOnClickListener { finish() }
 
-        // Back camera specifically (FEATURE_CAMERA), not FEATURE_CAMERA_ANY:
-        // the tool is "point the device at text", which a front camera can't
-        // aim — and PreviewView mirrors front-camera preview while
-        // ImageAnalysis frames stay unmirrored, so every overlay would render
-        // at the horizontally flipped position. Gating here also skips the
-        // CAMERA permission prompt on devices the tool can never work on.
-        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA)) {
+        // Back camera specifically, and ENUMERATED rather than declared —
+        // handheld ROMs built from phone BSPs declare FEATURE_CAMERA with no
+        // camera device behind it. The tool is "point the device at text",
+        // which a front camera can't aim — and PreviewView mirrors
+        // front-camera preview while ImageAnalysis frames stay unmirrored,
+        // so every overlay would render at the horizontally flipped
+        // position. Gating here also skips the CAMERA permission prompt on
+        // devices the tool can never work on.
+        if (!CameraAvailability.hasBackCamera(this)) {
             Toast.makeText(this, R.string.camera_unavailable, Toast.LENGTH_LONG).show()
             finish()
             return

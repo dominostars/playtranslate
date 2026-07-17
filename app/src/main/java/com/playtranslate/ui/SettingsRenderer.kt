@@ -875,8 +875,8 @@ class SettingsRenderer(
 
     // ── Tools ────────────────────────────────────────────────────────────
 
-    /** TOOLS: hub cells opening the standalone tool screens — translation
-     *  history on top, then the camera tool, then the dictionary lookup
+    /** TOOLS: hub cells opening the standalone tool screens — the camera
+     *  tool on top, then translation history, then the dictionary lookup
      *  screen. Only History carries live state; the rest bind once here. */
     private fun setupToolsSection() {
         setGroupHeader(R.id.headerTools, ctx.getString(R.string.settings_header_tools))
@@ -885,9 +885,9 @@ class SettingsRenderer(
         // cameras also break the overlay mapping — mirrored preview,
         // unmirrored analysis). Camera-less devices still SEE the cell —
         // visible but inert, with the reason as its summary — so users on a
-        // handheld learn the tool exists on their phone.
-        val hasBackCamera =
-            ctx.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA)
+        // handheld learn the tool exists on their phone. Runtime enumeration,
+        // not the feature flag: handheld ROMs declare cameras they don't have.
+        val hasBackCamera = com.playtranslate.camera.CameraAvailability.hasBackCamera(ctx)
         bindHubCell(
             root.findViewById(R.id.rowToolCamera),
             HubCell(
