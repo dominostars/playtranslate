@@ -566,6 +566,12 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         header?.visibility = View.VISIBLE
         card?.visibility = View.VISIBLE
         setGroupHeader(R.id.headerOcr, R.string.settings_header_ocr)
+        // Footer takes the Default-badge label as a placeholder so its wording
+        // can never drift from the badge itself.
+        findViewById<TextView>(R.id.tvOcrFooter)?.text = getString(
+            R.string.settings_ocr_footer_guidance,
+            getString(R.string.settings_ocr_default_badge),
+        )
 
         val selectedToken = OcrModelManager.selectedBackend(this, id)?.selectionToken
         // The language's recommended engine (top of the priority list) wears the
@@ -725,14 +731,18 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private fun ocrSizeSubtitle(backend: OcrBackend): String {
         val size = if (backend.isBuiltIn()) getString(R.string.settings_ocr_note_builtin)
         else humanSize(this, backend.packKeys.sumOf { OcrPackModelHelper(it).expectedSize(this) })
-        // Paddle tier rows lead with the speed/recall tradeoff so the choice is
-        // legible where it's made; other engines keep the plain size subtitle.
-        if (backend !is OcrBackend.Paddle) return size
-        val note = getString(
-            if (backend.fast) R.string.settings_ocr_tier_fast_note
-            else R.string.settings_ocr_tier_accurate_note,
-        )
-        return "$note · $size"
+        // Every engine row carries a one-line "when to pick this" note so the
+        // choice is legible where it's made, after the size/built-in tag.
+        val noteRes = when (backend) {
+            is OcrBackend.Paddle ->
+                if (backend.fast) R.string.settings_ocr_tier_fast_note
+                else R.string.settings_ocr_tier_accurate_note
+            is OcrBackend.Meiki -> R.string.settings_ocr_note_meiki
+            OcrBackend.MLKitLatin, OcrBackend.MLKitChinese, OcrBackend.MLKitJapanese,
+            OcrBackend.MLKitKorean, OcrBackend.MLKitDevanagari -> R.string.settings_ocr_note_mlkit
+            else -> return size
+        }
+        return "$size · ${getString(noteRes)}"
     }
 
     /** A backend is "built-in" — shown as such, with no size and no delete — when it

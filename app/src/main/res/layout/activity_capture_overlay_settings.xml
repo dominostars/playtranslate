@@ -116,13 +116,16 @@
                         android:layout_height="wrap_content"
                         android:orientation="vertical" />
 
+                    <!-- Text set from setupOcrSection: the guidance string takes the
+                         Default-badge label as a placeholder, which a static
+                         android:text reference can't supply. -->
                     <TextView
+                        android:id="@+id/tvOcrFooter"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:background="@drawable/bg_word_tatoeba_attribution"
                         android:paddingHorizontal="16dp"
                         android:paddingVertical="10dp"
-                        android:text="@string/settings_ocr_footer"
                         android:textColor="?attr/ptTextHint"
                         android:textSize="11sp" />
 

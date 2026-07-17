@@ -2655,15 +2655,26 @@
          Japanese 高速). -->
     <string name="ocr_label_paddle_fast">PaddleOCR (Fast)</string>
     <!-- One-line tradeoff note in the accurate-tier Settings row subtitle,
-         shown before the pack size. -->
+         shown after the pack size. -->
     <string name="settings_ocr_tier_accurate_note">Finds small text, slower</string>
     <!-- One-line tradeoff note in the fast-tier Settings row subtitle, shown
-         before the pack size. -->
-    <string name="settings_ocr_tier_fast_note">Much faster, may miss very small text</string>
+         after the pack size. -->
+    <string name="settings_ocr_tier_fast_note">Much faster, may miss small text</string>
+    <!-- One-line "when to pick this" note in the Meiki OCR row subtitle
+         (Settings OCR list, Japanese only), shown after the pack size. -->
+    <string name="settings_ocr_note_meiki">Best for games, most precise word lookup</string>
+    <!-- One-line "when to pick this" note in the ML Kit OCR row subtitle
+         (Settings OCR list), shown after the Built-in tag. ML Kit's latency
+         stays flat as on-screen text grows, unlike the other engines; the
+         wording must not reuse the literal Fast tier label. -->
+    <string name="settings_ocr_note_mlkit">Quick, even on text-heavy screens</string>
 
-    <!-- Footer under the OCR engine list, suggesting the user try a
-         different engine when on-screen text is being misread. -->
-    <string name="settings_ocr_footer">If PlayTranslate is having a hard time accurately reading the screen text, try experimenting with different selections. Different OCR tools may work better for different font types or text orientations.</string>
+    <!-- Footer under the OCR engine list: points at the Default badge and maps
+         symptoms to switches. %1$s is the settings_ocr_default_badge label, fed
+         from code so the wording can never drift from the badge. Renamed from
+         settings_ocr_footer (retired) so the l10n batch re-translates it and
+         reaps the old key from the locale files. -->
+    <string name="settings_ocr_footer_guidance">The engine marked <xliff:g id="default_badge" example="Default">%1$s</xliff:g> is the recommendation for this language. If reading is slow, try a faster option. If small or stylized text is misread, try a different engine.</string>
 
     <!-- contentDescription for the trash icon on a downloaded OCR-engine
          cell.  %1$s = engine display name. -->
