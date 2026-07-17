@@ -14,10 +14,18 @@ import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.core.graphics.scale
+import com.playtranslate.CaptureSession
+import com.playtranslate.CaptureState
 import com.playtranslate.OcrManager
+import com.playtranslate.OneShotOverlayData
 import com.playtranslate.OverlayMode
 import com.playtranslate.OverlayToolkit
 import com.playtranslate.Prefs
+import com.playtranslate.cancelledStateOrNull
+import com.playtranslate.ocr.registry.ocrLabel
+import com.playtranslate.ocr.registry.selectionToken
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import com.playtranslate.camera.render.OverlayRasterizer
 import com.playtranslate.camera.render.RasterRegion
 import com.playtranslate.camera.render.WarpOverlayView
@@ -687,8 +695,14 @@ class CameraSession(
      *    a cancellation) cuts the pass short, the text the user is aiming
      *    at is what got recognized.
      */
-    private fun cameraRegionPreFilter(): com.playtranslate.ocr.core.RegionPreFilter {
-        val translating =
+    private fun cameraRegionPreFilter(
+        /** Live acquires drop edge-clipped detections before the expensive
+         *  recognition stage; a deliberate SNAPSHOT reads the whole frame
+         *  (a full-frame document is exactly what the edge gate would gut),
+         *  keeping only the center-out priority order. */
+        dropEdgeClipped: Boolean = true,
+    ): com.playtranslate.ocr.core.RegionPreFilter {
+        val translating = dropEdgeClipped &&
             SourceLanguageProfiles[prefs.sourceLangId].translationCode != prefs.targetLang
         return com.playtranslate.ocr.core.RegionPreFilter { regions, w, h ->
             val mx = (w * edgeMarginFrac).toInt()
@@ -731,13 +745,17 @@ class CameraSession(
         ocr: OcrManager.OcrResult,
         auWidth: Int,
         auHeight: Int,
+        /** Snapshots keep the confidence gate (blur garbage still translates
+         *  into fluent nonsense) but skip the edge gate — the user asked for
+         *  THIS frame, clipped lines included. */
+        skipEdgeGate: Boolean = false,
     ): List<OcrManager.OcrGroup> {
         // Edge-clipped fragments only hurt when TRANSLATED (a cut-off line
         // renders as a fluent non sequitur). In same-language OCR-only mode
         // a clipped line is still honest output — and on a full-frame
         // document the edge gate would otherwise discard most of the page
         // (28 of 36 groups observed).
-        val translating =
+        val translating = !skipEdgeGate &&
             SourceLanguageProfiles[prefs.sourceLangId].translationCode != prefs.targetLang
         val confThreshold =
             if (ocr.engineBackend?.toString()?.startsWith("MLKit") == true) MIN_GROUP_CONFIDENCE_MLKIT
@@ -1235,6 +1253,217 @@ class CameraSession(
         require(to != Mode.FROZEN) { "unfreeze target must be LIVE or PAUSED" }
         mode = to
         wipeDisplay(purgeAnchorCache = false)
+    }
+
+    // ── Snapshot pipeline (frozen-frame one-shot) ──────────────────────────
+
+    /** Camera-owned recorder: rows land in the process-wide history store —
+     *  the same History screen the capture flows feed. Main-thread only;
+     *  the {context} ring being instance-local (separate from the
+     *  service's) is accepted. */
+    private val snapshotLogRecorder by lazy {
+        com.playtranslate.translationlog.TranslationLogRecorder(context.applicationContext)
+    }
+
+    /**
+     * One-shot OCR + translate of the [frozen] snapshot, mirroring the
+     * service's deliberate one-shot orchestration (attribution, provenance,
+     * History recording) on the camera's own gating and translator — no
+     * CaptureService involved; the service may not be running. The caller
+     * owns [frozen] and must keep it unrecycled until the returned session
+     * reaches a terminal state or is cancelled.
+     *
+     * Also primes the re-flavor caches and advances the display epoch (the
+     * snapshot is a publication source), so [showFrozenOverlays] and mode
+     * re-flavors read a coherent scene.
+     */
+    fun runSnapshot(frozen: Bitmap): CaptureSession {
+        val state = MutableStateFlow<CaptureState>(
+            CaptureState.InProgress(context.getString(com.playtranslate.R.string.status_ocr))
+        )
+        val job = scope.launch(Dispatchers.Default) { runSnapshotCycle(frozen, state) }
+        job.invokeOnCompletion { cause ->
+            cancelledStateOrNull(cause, state.value)?.let { state.value = it }
+        }
+        return CaptureSession(state.asStateFlow(), job)
+    }
+
+    private suspend fun runSnapshotCycle(
+        frozen: Bitmap,
+        state: MutableStateFlow<CaptureState>,
+    ) {
+        val srcId = prefs.sourceLangId
+        val sourceLang = SourceLanguageProfiles[srcId].translationCode
+        val auW = frozen.width
+        val auH = frozen.height
+        val screenshotPath = saveSnapshotToCache(frozen)
+
+        val ocr = OcrManager.instance.recognise(
+            frozen,
+            sourceLang,
+            screenshotWidth = auW,
+            regionPreFilter = cameraRegionPreFilter(dropEdgeClipped = false),
+        )
+        val groups = ocr?.let { usableGroups(it, auW, auH, skipEdgeGate = true) }.orEmpty()
+        val provenance = snapshotProvenance(ocr, srcId)
+        if (ocr == null || groups.isEmpty()) {
+            state.value = CaptureState.NoText(
+                context.getString(com.playtranslate.R.string.camera_snapshot_no_text),
+                provenance,
+                screenshotPath,
+            )
+            return
+        }
+
+        val gated = ocr.copy(groups = groups)
+        // Color sampling matches the acquire path: sample a transient ×4
+        // reference, never retain a bitmap.
+        val colorRef = frozen.scale(auW / COLOR_SCALE, auH / COLOR_SCALE, false)
+        val groupColors = try {
+            OverlayToolkit.sampleGroupColors(colorRef, groups.map { it.bounds }, 0, 0, COLOR_SCALE)
+        } finally {
+            colorRef.recycle()
+        }
+        // The snapshot owns the display: epoch and caches move together,
+        // same protocol as the acquire install.
+        synchronized(stateLock) {
+            cachedOcr = gated
+            cachedGroupColors = groupColors
+            cachedAuW = auW
+            cachedAuH = auH
+            displayEpoch.advance()
+        }
+
+        // Panel text must match what gets translated. When the confidence
+        // gate dropped nothing (the common case) the recognizer's own
+        // fullText/segments are used verbatim (they carry the richer
+        // per-line segmentation); otherwise rebuild both from the gated
+        // groups so source and translation stay paragraph-aligned.
+        val originalText: String
+        val segments: List<com.playtranslate.model.TextSegment>
+        if (groups.size == ocr.groups.size) {
+            originalText = ocr.fullText
+            segments = ocr.segments
+        } else {
+            originalText = groups.joinToString("\n\n") { it.text }
+            segments = com.playtranslate.model.TextSegments.ofText(originalText)
+        }
+
+        // Non-empty overlayData lights the panel's "Show on screen" action;
+        // the camera's BoxPresenter ignores the boxes themselves and paints
+        // through the warp path ([showFrozenOverlays]) instead.
+        val overlayData = OneShotOverlayData(emptyList(), 0, 0, auW, auH)
+        state.value = CaptureState.Translating(originalText, segments, provenance, overlayData)
+
+        // Recording pair captured BEFORE the translate call — a mid-flight
+        // language change must not relabel these rows.
+        val recordSrc = sourceLang
+        val recordTgt = prefs.targetLang
+        val perGroup = translator.translateDetailed(groups.map { it.text })
+        // Deliberate capture → History, exactly like the service one-shot.
+        // The recorder is main-thread-only.
+        withContext(Dispatchers.Main) {
+            groups.forEachIndexed { i, g ->
+                val tr = perGroup.getOrNull(i)?.text.orEmpty()
+                if (tr.isNotEmpty()) snapshotLogRecorder.onShownDeliberate(
+                    g.text, tr, g.bounds, recordSrc, recordTgt,
+                    com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_ONE_SHOT,
+                    perGroup.getOrNull(i)?.backendDisplayName,
+                )
+            }
+        }
+
+        val translated = perGroup.joinToString("\n\n") { it.text }
+        val note = perGroup.mapNotNull { it.note }.firstOrNull()
+        val backendDisplayName = perGroup.mapNotNull { it.backendDisplayName }.firstOrNull()
+        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date())
+        state.value = CaptureState.Done(
+            com.playtranslate.model.TranslationResult(
+                originalText = originalText,
+                segments = segments,
+                translatedText = translated,
+                timestamp = timestamp,
+                screenshotPath = screenshotPath,
+                note = note,
+                backendDisplayName = backendDisplayName,
+                ocrProvenance = provenance,
+                langContext = prefs.langContext(srcId),
+            ),
+            overlayData,
+        )
+    }
+
+    /** Mirror of the service's provenance builders: engine from the result
+     *  when OCR ran, else the currently-selected backend — the no-text
+     *  gear needs a token to key the picker. Full-frame region; frames are
+     *  camera keyframes (no system UI, no own overlays). */
+    private fun snapshotProvenance(
+        ocr: OcrManager.OcrResult?,
+        srcId: com.playtranslate.language.SourceLangId,
+    ): com.playtranslate.model.OcrProvenance? {
+        val backend = ocr?.engineBackend
+            ?: com.playtranslate.ocr.registry.OcrModelManager.selectedBackend(context, srcId)
+            ?: return null
+        val label =
+            if (ocr?.mangaOcrUsed == true) "${backend.ocrLabel(context)} + MangaOCR"
+            else backend.ocrLabel(context)
+        return com.playtranslate.model.OcrProvenance(
+            label, backend.selectionToken,
+            android.view.Display.DEFAULT_DISPLAY, srcId,
+            com.playtranslate.CaptureService.DEFAULT_REGION,
+            frameIncludesSystemUi = false,
+            frameIncludesOwnOverlays = false,
+        )
+    }
+
+    /** Save the frozen frame beside the capture flow's screenshots (its own
+     *  file name — it must not clobber a screen capture). Powers the
+     *  panel's no-text affordances and the re-OCR path. */
+    private fun saveSnapshotToCache(frozen: Bitmap): String? = try {
+        val dir = java.io.File(context.cacheDir, "screenshots").apply { mkdirs() }
+        val file = java.io.File(dir, "camera-snapshot.jpg")
+        file.outputStream().use { frozen.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+        file.absolutePath
+    } catch (e: Exception) {
+        Log.w(TAG, "snapshot save failed", e)
+        null
+    }
+
+    /** Paint the snapshot's boxes as the camera's own warp overlays: a
+     *  static IDENTITY homography over the frozen frame (centerCrop ==
+     *  FILL_CENTER == CameraCoordinates, so AU-space boxes land exactly on
+     *  the frozen text). Reuses [buildAndShow], so the boxes follow the
+     *  current flavor — furigana readings in furigana mode, translation
+     *  boxes otherwise. Analysis is halted in FROZEN, so nothing overwrites
+     *  the static transform. */
+    fun showFrozenOverlays() {
+        val ocr: OcrManager.OcrResult?
+        val colors: List<Pair<Int, Int>>?
+        val auW: Int
+        val auH: Int
+        val epoch: Int
+        synchronized(stateLock) {
+            ocr = cachedOcr
+            colors = cachedGroupColors
+            auW = cachedAuW
+            auH = cachedAuH
+            epoch = displayEpoch.current()
+        }
+        if (ocr == null || colors == null || auW == 0) return
+        overlayHost.post { ensureWarpView().applyHomography(Homography.IDENTITY) }
+        scope.launch(Dispatchers.Default) {
+            try {
+                buildAndShow(ocr, colors, auW, auH, epoch)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.w(TAG, "frozen overlay build failed", e)
+            }
+        }
+    }
+
+    fun hideFrozenOverlays() {
+        overlayHost.post { warpView?.clearRegions() }
     }
 
     /** Final teardown from the Activity. Not restartable. */

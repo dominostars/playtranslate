@@ -2930,6 +2930,8 @@
     <string name="camera_shutter_cd">Take snapshot</string>
     <!-- Content description of the X button that leaves the frozen snapshot and returns to the live camera. -->
     <string name="camera_close_cd">Close snapshot</string>
+    <!-- No-text status in the snapshot result panel (the frame is frozen, so no focus/move advice). -->
+    <string name="camera_snapshot_no_text">No readable text in this snapshot</string>
 
     <!-- Hub-cell status digests (the summary line under each cell title). -->
     <string name="settings_digest_none">None</string>

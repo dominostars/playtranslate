@@ -29,8 +29,16 @@ class CameraTranslator(private val context: Context) {
 
     private data class Key(val source: String, val target: String, val text: String)
 
-    private val cache = object : LinkedHashMap<Key, String>(64, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, String>): Boolean =
+    /** One translation plus the attribution the capture panel binds
+     *  ("Translated by …" + the degraded-fallback note). */
+    data class Detailed(val text: String, val note: String?, val backendDisplayName: String?)
+
+    // Values keep their attribution so a snapshot re-run served from cache
+    // still names its backend (only non-degraded outcomes are cached, so a
+    // cached note is always null). Text is stored UNLOCALIZED; the zh script
+    // variant applies at read time.
+    private val cache = object : LinkedHashMap<Key, Detailed>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, Detailed>): Boolean =
             size > MAX_CACHE_ENTRIES
     }
 
@@ -55,15 +63,23 @@ class CameraTranslator(private val context: Context) {
      * language. Returns one string per input, in order; a text whose
      * translation failed across the whole backend waterfall comes back empty.
      */
-    suspend fun translate(texts: List<String>): List<String> {
+    suspend fun translate(texts: List<String>): List<String> =
+        translateDetailed(texts).map { it.text }
+
+    /**
+     * [translate] plus per-text attribution — the snapshot pipeline mirrors
+     * the capture flow's orchestration, and its panel binds the backend name
+     * and degraded note.
+     */
+    suspend fun translateDetailed(texts: List<String>): List<Detailed> {
         if (texts.isEmpty()) return emptyList()
         val snap = Snapshot(context)
 
         // OCR-only bypass: source == target means OCR output IS the result
         // (modulo Simplified→Traditional conversion for zh variants).
-        if (snap.source == snap.target) return texts.map { snap.localize(it) }
+        if (snap.source == snap.target) return texts.map { Detailed(snap.localize(it), null, null) }
 
-        val results = arrayOfNulls<String>(texts.size)
+        val results = arrayOfNulls<Detailed>(texts.size)
         val uncachedIndices = mutableListOf<Int>()
         synchronized(cache) {
             texts.forEachIndexed { idx, text ->
@@ -87,17 +103,36 @@ class CameraTranslator(private val context: Context) {
             synchronized(cache) {
                 uncachedIndices.forEachIndexed { i, idx ->
                     val outcome = outcomes.getOrNull(i) ?: return@forEachIndexed
-                    results[idx] = outcome.text
+                    val detailed = Detailed(outcome.text, noteFor(outcome), outcome.backend.displayName)
+                    results[idx] = detailed
                     // Mirror the service's cache-write policy: skip degraded
                     // fallback output and LLM-displacement output so a
                     // transient failure doesn't pin a low-quality result.
                     if (!outcome.isDegraded && outcome.displacedLlmId == null) {
-                        cache[Key(snap.source, snap.target, texts[idx])] = outcome.text
+                        cache[Key(snap.source, snap.target, texts[idx])] = detailed
                     }
                 }
             }
         }
 
-        return results.map { it?.let(snap::localize) ?: "" }
+        return results.map { d ->
+            d?.copy(text = snap.localize(d.text)) ?: Detailed("", null, null)
+        }
+    }
+
+    /** Mirror of the service's degraded-note derivation — the subset the
+     *  panel renders inline (no icon-state aggregation here). */
+    private fun noteFor(outcome: com.playtranslate.translation.WaterfallResult): String? = when {
+        !outcome.isDegraded -> null
+        outcome.displacedLlmId != null ->
+            context.getString(com.playtranslate.R.string.note_low_memory_fallback)
+        isNetworkAvailable() ->
+            context.getString(com.playtranslate.R.string.note_mlkit_service_unavailable)
+        else -> context.getString(com.playtranslate.R.string.note_mlkit_no_internet)
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+        return cm?.activeNetwork != null
     }
 }
