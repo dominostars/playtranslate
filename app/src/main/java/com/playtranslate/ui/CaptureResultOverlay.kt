@@ -118,6 +118,62 @@ class CaptureResultOverlay(
      *  when the user backs out of the detail screen. Null → the lens just dismisses. */
     var onNavigateToDetail: ((TranslationResult) -> Unit)? = null
 
+    // ── Host behavior overrides (in-app hosting, e.g. the camera tool) ────
+    // Everything defaults to the over-game behavior; an in-app host swaps
+    // these for activity-local equivalents. Set before show().
+
+    /** Presents the "show on screen" boxes somewhere other than the default
+     *  in-window chips view (the camera renders its own warp overlays).
+     *  [show] returning false falls back to the panel presentation. */
+    interface BoxPresenter {
+        fun show(data: OneShotOverlayData): Boolean
+        fun update(data: OneShotOverlayData)
+        fun hide()
+    }
+
+    var boxPresenter: BoxPresenter? = null
+
+    /** The "reopens how you dismissed it" preference this sheet reads on
+     *  Translating (auto-collapse) and writes on dismiss. Default: the
+     *  shared capture pref; the camera substitutes its own, whose first-use
+     *  default derives from the play/pause state at shutter time. */
+    interface OnScreenPref {
+        var preferred: Boolean
+    }
+
+    var onScreenPreference: OnScreenPref = object : OnScreenPref {
+        override var preferred: Boolean
+            get() = prefs.captureResultOnScreenPreferred
+            set(value) {
+                prefs.captureResultOnScreenPreferred = value
+            }
+    }
+
+    /** One re-translation outcome for the in-place edit — the subset of the
+     *  service's GroupTranslation the panel binds. */
+    data class PanelTranslation(val text: String, val note: String?, val backendDisplayName: String?)
+
+    /** In-place-edit re-translation. Default (null): the capture service's
+     *  translateOnce. */
+    var retranslate: (suspend (String) -> PanelTranslation?)? = null
+
+    /** The OCR-engine affordance (a Ready result's gear + the no-text
+     *  status). Default (null): the overlay-window picker + in-place
+     *  service re-OCR. */
+    var chooseOcr: ((OcrProvenance, String) -> Unit)? = null
+
+    /** TTS "no engine" alert host for the speak buttons. Default (null): an
+     *  overlay window on this sheet's display. */
+    var ttsAlertTarget: TtsAlertTarget? = null
+
+    /** The source-tap word lens spawns its own overlay window, which an
+     *  in-app host has no business creating; false disables the tap. */
+    var wordLensEnabled: Boolean = true
+
+    /** Card-level Anki "not installed" dialog. Default (null): the
+     *  overlay-window dialog. */
+    var showAnkiNotInstalled: (() -> Unit)? = null
+
     /** Overlay boxes for the currently-bound result: skeletons from
      *  [CaptureState.Translating] while an auto-collapse is showing placeholders,
      *  then the translated boxes from [CaptureState.Done]. Null otherwise (stash
@@ -412,7 +468,7 @@ class CaptureResultOverlay(
 
         val b = TranslationSectionBinder(
             panel, ctx, prefs, scope,
-            TtsAlertTarget.Overlay(ctx, overlayHost, wm, displayId),
+            ttsAlertTarget ?: TtsAlertTarget.Overlay(ctx, overlayHost, wm, displayId),
         )
         b.setupSectionButtons(
             onEdit = { startInPlaceEdit() },
@@ -547,7 +603,7 @@ class CaptureResultOverlay(
                         // the panel must not grow again until the user asks for it.
                         // (The first bind's synchronous fit no-ops pre-layout and the
                         // posted ones are sliver-guarded, so nothing re-expands.)
-                        if (prefs.captureResultOnScreenPreferred && state.overlayData != null) {
+                        if (onScreenPreference.preferred && state.overlayData != null) {
                             collapseToSliver()
                         }
                     }
@@ -594,7 +650,7 @@ class CaptureResultOverlay(
         // the preference. Every status path hides the scroll; both real
         // presentations (expanded panel, sliver) keep it visible.
         if (lastResult != null && scroll.visibility == View.VISIBLE) {
-            prefs.captureResultOnScreenPreferred = sliverMode
+            onScreenPreference.preferred = sliverMode
         }
         heightAnimator?.cancel()
         dismissWordLens()
@@ -633,9 +689,11 @@ class CaptureResultOverlay(
 
     // ── Sliver state (result shown as on-screen boxes) ───────────────────
 
-    /** Paint [data]'s boxes over the game (bottom-most child of this window).
-     *  False when the overlay surface isn't ours to draw on (live mode). */
+    /** Paint [data]'s boxes over the game (bottom-most child of this window),
+     *  or hand them to the host's [boxPresenter] (the camera's warp overlays).
+     *  False when the surface isn't ours to draw on (live mode). */
     private fun showChips(data: OneShotOverlayData): Boolean {
+        boxPresenter?.let { return it.show(data) }
         if (CaptureService.instance?.isLive == true) return false
         val v = chipsView ?: TranslationOverlayView(
             android.view.ContextThemeWrapper(ctx, android.R.style.Theme_DeviceDefault),
@@ -656,6 +714,10 @@ class CaptureResultOverlay(
     /** Swap the boxes in place — the skeleton → translated promotion when Done
      *  lands while slivered. No-op unless the boxes are up. */
     private fun updateChips(data: OneShotOverlayData) {
+        boxPresenter?.let {
+            it.update(data)
+            return
+        }
         val v = chipsView ?: return
         if (v.alpha == 0f) return
         v.setBoxes(data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH)
@@ -664,6 +726,10 @@ class CaptureResultOverlay(
     /** Fade the boxes out. The view stays attached (alpha 0) for cheap re-shows;
      *  it dies with the window. */
     private fun hideChips() {
+        boxPresenter?.let {
+            it.hide()
+            return
+        }
         val v = chipsView ?: return
         v.animate().alpha(0f).setDuration(SLIVER_FADE_MS).start()
     }
@@ -1108,6 +1174,7 @@ class CaptureResultOverlay(
     /** Resolve the tapped word and show a display+speak lens over the game,
      *  anchored on the tapped line (no Anki / open-detail — see [showAnkiChip]). */
     private fun onSourceTapped(offset: Int) {
+        if (!wordLensEnabled) return
         val span = wordSpans.firstOrNull { offset in it.first } ?: return
         val b = binder ?: return
         val tv = b.tvOriginal
@@ -1146,7 +1213,7 @@ class CaptureResultOverlay(
                 wordLens = lens
                 wordSpeakChip = LensSpeakChip(
                     lens, scope,
-                    TtsAlertTarget.Overlay(ctx, overlayHost, wm, displayId),
+                    ttsAlertTarget ?: TtsAlertTarget.Overlay(ctx, overlayHost, wm, displayId),
                 ) { LensSpeakChip.Request(resolved.word, prefs.sourceLangId, reading = resolved.reading) }
                 // Open-detail tap + Anki chip — same actions as the drag flow. The captured
                 // [resolved] is this tap's word/entry; sentence + screenshot come from the
@@ -1197,6 +1264,10 @@ class CaptureResultOverlay(
      *  not-downloaded one deep-links to the OCR settings screen (and tears this sheet
      *  down). */
     private fun showOcrPicker(prov: OcrProvenance, path: String) {
+        chooseOcr?.let {
+            it(prov, path)
+            return
+        }
         OcrPicker.populate(
             OverlayAlert.Builder(ctx, overlayHost, wm, displayId),
             ctx,
@@ -1278,7 +1349,8 @@ class CaptureResultOverlay(
         // / no permission would reach a dead review sheet (no-op deck loader; the
         // save can only fail later).
         if (!AnkiManager(app).isAnkiDroidInstalled()) {
-            showAnkiNotInstalledDialog(ctx, overlayHost, wm, displayId)
+            showAnkiNotInstalled?.invoke()
+                ?: showAnkiNotInstalledDialog(ctx, overlayHost, wm, displayId)
             return
         }
         val cached = LastSentenceCache.takeIf { it.original == sentence }
@@ -1434,8 +1506,15 @@ class CaptureResultOverlay(
             // Otherwise the panel is stranded on "Translating…" forever. Mirror the
             // Activity edit path: fall back to a "—" placeholder. (Re-throw
             // CancellationException so dismissal stays silent.)
-            val gt = try {
-                CaptureService.instance?.translateOnce(newText)
+            val gt: PanelTranslation? = try {
+                val custom = retranslate
+                if (custom != null) {
+                    custom(newText)
+                } else {
+                    CaptureService.instance?.translateOnce(newText)?.let {
+                        PanelTranslation(it.text, it.note, it.backendDisplayName)
+                    }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
