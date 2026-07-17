@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.view.Gravity
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
@@ -109,6 +110,7 @@ class CameraActivity : AppCompatActivity() {
         permissionGate = findViewById(R.id.cameraPermissionGate)
         permissionText = findViewById(R.id.cameraPermissionText)
         permissionButton = findViewById(R.id.cameraPermissionButton)
+        orientShutter()
 
         // Only the floating controls avoid the system bars / cutout; the
         // preview underneath stays full-bleed. Bottom padding too — the
@@ -312,6 +314,51 @@ class CameraActivity : AppCompatActivity() {
             cameraBound = true
             installTapToFocus()
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    /** Anchor the shutter to the device's PHYSICAL bottom edge, like a
+     *  camera app: rotated to landscape, the natural bottom sits on a side
+     *  of the screen and the shutter follows it there, vertically centered
+     *  (ROTATION_90 = natural bottom at screen-right). Physical LEFT/RIGHT
+     *  gravities on purpose — this tracks device edges, not RTL reading
+     *  direction. The no-text hint keeps its bottom-center spot, but its
+     *  portrait lift exists only to clear the shutter — with the shutter
+     *  on a side edge, halve it. Rotation recreates the activity, so once
+     *  per create. */
+    private fun orientShutter() {
+        val shutter = findViewById<ImageButton>(R.id.cameraShutter)
+        val lp = shutter.layoutParams as FrameLayout.LayoutParams
+        val margin = (28 * resources.displayMetrics.density).toInt()
+        lp.setMargins(0, 0, 0, 0)
+        val rotation = display?.rotation ?: android.view.Surface.ROTATION_0
+        when (rotation) {
+            android.view.Surface.ROTATION_90 -> {
+                lp.gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
+                lp.rightMargin = margin
+            }
+            android.view.Surface.ROTATION_270 -> {
+                lp.gravity = Gravity.LEFT or Gravity.CENTER_VERTICAL
+                lp.leftMargin = margin
+            }
+            android.view.Surface.ROTATION_180 -> {
+                lp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                lp.topMargin = margin
+            }
+            else -> {
+                lp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                lp.bottomMargin = margin
+            }
+        }
+        shutter.layoutParams = lp
+        if (rotation == android.view.Surface.ROTATION_90 ||
+            rotation == android.view.Surface.ROTATION_270
+        ) {
+            val hint = findViewById<TextView>(R.id.cameraHint)
+            (hint.layoutParams as FrameLayout.LayoutParams).let {
+                it.bottomMargin /= 2
+                hint.layoutParams = it
+            }
+        }
     }
 
     /** Tap the preview to drive AF/AE metering at that point — continuous AF
