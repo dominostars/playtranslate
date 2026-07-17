@@ -22,8 +22,9 @@
          BACK camera specifically: the tool is aimed at external text, and the
          overlay mapping assumes an unmirrored preview — PreviewView mirrors
          front-camera preview while analysis frames stay unmirrored, which
-         would flip every overlay. The Tools row hides on devices without a
-         back camera (e.g. gaming handhelds); the activity double-checks. -->
+         would flip every overlay. On devices without a back camera (e.g.
+         gaming handhelds) the Tools cell shows disabled with a reason, so
+         users still learn the tool exists; the activity double-checks. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature
         android:name="android.hardware.camera"

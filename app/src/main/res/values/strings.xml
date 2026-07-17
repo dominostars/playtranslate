@@ -2903,6 +2903,9 @@
     <string name="settings_cell_camera">Camera</string>
     <!-- Summary line under the Camera hub cell title in settings. -->
     <string name="settings_cell_camera_summary">Point your camera at text to translate it</string>
+    <!-- Replaces the Camera hub cell summary when the device has no back camera:
+         the cell stays visible (so users learn the tool exists) but inert. -->
+    <string name="settings_cell_camera_unavailable">No camera detected</string>
 
     <!-- CAMERA TOOL — the live camera translation screen. -->
     <!-- Rationale shown on the camera screen before/after the CAMERA runtime permission ask. -->

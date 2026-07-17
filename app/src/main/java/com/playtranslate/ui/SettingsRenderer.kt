@@ -883,22 +883,22 @@ class SettingsRenderer(
         refreshToolsSection()
         // Back camera required (the tool is aimed at external text; front
         // cameras also break the overlay mapping — mirrored preview,
-        // unmirrored analysis). Camera-less handhelds just don't get the row.
-        val cameraRow = root.findViewById<View>(R.id.rowToolCamera)
+        // unmirrored analysis). Camera-less devices still SEE the cell —
+        // visible but inert, with the reason as its summary — so users on a
+        // handheld learn the tool exists on their phone.
         val hasBackCamera =
             ctx.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA)
-        cameraRow.isVisible = hasBackCamera
-        if (hasBackCamera) {
-            bindHubCell(
-                cameraRow,
-                HubCell(
-                    iconRes = R.drawable.ic_camera,
-                    title = ctx.getString(R.string.settings_cell_camera),
-                    summary = ctx.getString(R.string.settings_cell_camera_summary),
-                    onClick = { ctx.startActivity(Intent(ctx, CameraActivity::class.java)) },
-                ),
-            )
-        }
+        bindHubCell(
+            root.findViewById(R.id.rowToolCamera),
+            HubCell(
+                iconRes = R.drawable.ic_camera,
+                title = ctx.getString(R.string.settings_cell_camera),
+                summary = ctx.getString(R.string.settings_cell_camera_summary),
+                onClick = { ctx.startActivity(Intent(ctx, CameraActivity::class.java)) },
+                disabledReason = if (hasBackCamera) null
+                else ctx.getString(R.string.settings_cell_camera_unavailable),
+            ),
+        )
         bindHubCell(
             root.findViewById(R.id.rowToolDictionary),
             HubCell(
@@ -1062,22 +1062,41 @@ class SettingsRenderer(
         val onClick: (() -> Unit)?,
         /** Long-press action — e.g. copy the URL on external-link rows. */
         val onLongClick: (() -> Unit)? = null,
+        /** Non-null → "visible but inert", the offline backends' hardware-floor
+         *  treatment: the cell stays so the user learns the feature exists,
+         *  but reads as one recessed group — hint-toned icon/title, this
+         *  reason replacing the summary, no trailing affordance, no
+         *  interaction. */
+        val disabledReason: String? = null,
     )
 
     private fun bindHubCell(row: View, cell: HubCell) {
+        // "Visible but inert" (see HubCell.disabledReason): hint-toned icon
+        // and text, reason as the summary, no trailing, no interaction. Both
+        // branches set colors explicitly — rows are re-bound on refresh, so
+        // an earlier disabled pass must not leak into an enabled one.
+        val disabled = cell.disabledReason != null
         val icon = row.findViewById<ImageView>(R.id.hubRowIcon)
         icon.setImageResource(cell.iconRes)
-        icon.imageTintList = ColorStateList.valueOf(ctx.themeColor(cell.iconTint))
-        row.findViewById<TextView>(R.id.hubRowTitle).text = cell.title
+        icon.imageTintList = ColorStateList.valueOf(
+            ctx.themeColor(if (disabled) R.attr.ptTextHint else cell.iconTint)
+        )
+        val title = row.findViewById<TextView>(R.id.hubRowTitle)
+        title.text = cell.title
+        title.setTextColor(ctx.themeColor(if (disabled) R.attr.ptTextHint else R.attr.ptText))
         val summaryView = row.findViewById<TextView>(R.id.hubRowSummary)
-        if (cell.summary.isNullOrEmpty()) {
+        val summary = cell.disabledReason ?: cell.summary
+        if (summary.isNullOrEmpty()) {
             summaryView.isGone = true
         } else {
-            summaryView.text = cell.summary
+            summaryView.text = summary
             summaryView.isVisible = true
         }
+        summaryView.setTextColor(
+            ctx.themeColor(if (disabled) R.attr.ptTextHint else R.attr.ptTextMuted)
+        )
         val trailing = row.findViewById<ImageView>(R.id.hubRowTrailing)
-        val trailingRes = when (cell.trailing) {
+        val trailingRes = if (disabled) null else when (cell.trailing) {
             Trailing.CHEVRON -> R.drawable.ic_chevron_right
             Trailing.EXTERNAL -> R.drawable.ic_open_in_new
             Trailing.LOCK -> R.drawable.ic_lock
@@ -1090,7 +1109,8 @@ class SettingsRenderer(
             trailing.isVisible = true
         }
         row.findViewById<View>(R.id.hubRowDivider).isVisible = !cell.isLast
-        val click = cell.onClick
+        row.contentDescription = if (disabled) "${cell.title}. ${cell.disabledReason}" else null
+        val click = cell.onClick.takeUnless { disabled }
         if (click != null) {
             row.isClickable = true
             row.setOnClickListener { click() }
@@ -1098,11 +1118,12 @@ class SettingsRenderer(
             row.setOnClickListener(null)
             row.isClickable = false
         }
-        val longClick = cell.onLongClick
+        val longClick = cell.onLongClick.takeUnless { disabled }
         if (longClick != null) {
             row.setOnLongClickListener { longClick(); true }
         } else {
             row.setOnLongClickListener(null)
+            row.isLongClickable = false
         }
     }
 
