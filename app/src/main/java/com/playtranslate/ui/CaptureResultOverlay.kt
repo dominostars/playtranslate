@@ -616,8 +616,10 @@ class CaptureResultOverlay(
                         // Chips-preferred: collapse the moment OCR lands and show the
                         // skeleton boxes over the game while the translation runs —
                         // the panel must not grow again until the user asks for it.
-                        // (The first bind's synchronous fit no-ops pre-layout and the
-                        // posted ones are sliver-guarded, so nothing re-expands.)
+                        // (The first bind's synchronous fit no-ops pre-layout; the
+                        // posted ones run measure-only while slivered — they set the
+                        // drag ceiling + card chrome but never animate the height —
+                        // so nothing re-expands.)
                         if (onScreenPreference.preferred && state.overlayData != null) {
                             collapseToSliver()
                         }
@@ -1016,9 +1018,6 @@ class CaptureResultOverlay(
      *  and animate the panel to fit it (capped at 50% of screen, floored at min),
      *  smoothly scaling the text alongside. */
     private fun autoSizeAndFit() {
-        // Slivered: the sections are faded out and the height is parked; the
-        // expand path re-runs this when the panel comes back.
-        if (sliverMode) return
         val b = binder ?: return
         if (body.height <= 0 || contentRow.width <= 0) return
         measureCardInset(b)
@@ -1038,6 +1037,18 @@ class CaptureResultOverlay(
         }
         val neededHeight = naturalContent + dp(HANDLE_HEIGHT_DP) + topInsetPx + bottomInsetPx - hiddenTopPx()
         maxNeededHeightPx = neededHeight.coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
+        // Slivered: measure-only — the height is parked and the sections are
+        // faded, so growing the panel here would fight the collapse; the
+        // expand paths re-run this. The measurements above must NOT wait for
+        // that: in the overlays-first flow the panel binds and collapses
+        // without ever fitting expanded, and the sliver DRAG consumes the
+        // baselines directly — maxNeededHeightPx as its ceiling (MAX_VALUE
+        // until measured = a panel draggable into empty space) and the card
+        // chrome via reFitText (zeros = text fitted against phantom room).
+        // Measuring here also happens while the cards are still wrap, which
+        // the once-latched measureCardInset needs; the drag's applyCardFill
+        // pins them and would poison a later first measure.
+        if (sliverMode) return
         val target = CaptureResultGeometry.autoPanelHeight(neededHeight, screenH, autoMaxPx)
         animatePanelHeight(target)
     }
@@ -1138,6 +1149,17 @@ class CaptureResultOverlay(
     /** Size the text to the current panel height (continuous). Called per drag frame. */
     private fun reFitText() {
         val b = binder ?: return
+        // No content laid out yet — the pre-result status phase keeps the
+        // scroll GONE and the cards unmeasured (a grabber drag is live the
+        // whole time OCR runs). Fitting is meaningless there, and measuring
+        // would LATCH all-zero card insets that the real bind's wrap-measure
+        // could then never replace, undercounting every later fit and drag
+        // ceiling. Same laid-out guard autoSizeAndFit uses.
+        if (contentRow.width <= 0) return
+        // Latch the wrap-measure before the fill below can pin the cards —
+        // free once measured; load-bearing only if a drag outraces the
+        // bind's posted fits to be the very first fit machinery to run.
+        measureCardInset(b)
         val bodyH = fitBodyHeight(panelHeightPx)
         applyCardFill(b, bodyH)
         val (src, tgt) = fitSizes(b, bodyH)
