@@ -13,9 +13,13 @@ import com.playtranslate.CaptureSession
 import com.playtranslate.OneShotOverlayData
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.ui.ActivitySheetHost
+import com.playtranslate.ui.CaptureOverlaySettingsActivity
 import com.playtranslate.ui.CaptureResultOverlay
+import com.playtranslate.ui.OcrPicker
+import com.playtranslate.ui.OverlayAlert
 import com.playtranslate.ui.TtsAlertTarget
 import com.playtranslate.ui.showAnkiNotInstalledDialog
 
@@ -165,12 +169,46 @@ class CameraSnapshotController(
         o.retranslate = { text ->
             session.translateForPanel(text)
         }
+        o.chooseOcr = { prov, _ ->
+            // The shared picker's activity form (same one the in-app results
+            // page uses). A downloaded pick re-OCRs the SAME frozen frame —
+            // the bitmap is still held by this controller — through a fresh
+            // snapshot session on the same panel; a not-downloaded pick
+            // deep-links the OCR download screen and closes the snapshot
+            // (the app navigates away).
+            OcrPicker.populate(
+                OverlayAlert.Builder(activity),
+                activity,
+                prov.sourceLangId,
+                prov.engineToken,
+                onReOcr = { reRunSnapshot() },
+                onDownload = { backend ->
+                    activity.startActivity(
+                        CaptureOverlaySettingsActivity.downloadIntent(
+                            activity, prov.sourceLangId, backend.selectionToken,
+                        )
+                    )
+                    unfreeze()
+                },
+            ).show()
+        }
         o.onDismiss = { finishUnfreeze() }
         overlay = o
 
         val w = panelHost.width.takeIf { it > 0 } ?: activity.resources.displayMetrics.widthPixels
         val h = panelHost.height.takeIf { it > 0 } ?: activity.resources.displayMetrics.heightPixels
         o.show(w, h)
+        val s = session.runSnapshot(bitmap)
+        snapshotSession = s
+        o.observe(s)
+    }
+
+    /** Gear re-OCR: run a fresh snapshot session over the SAME frozen frame
+     *  (recognise picks up the engine selection the picker just persisted)
+     *  and drive the same panel through the loading stages again. */
+    private fun reRunSnapshot() {
+        val o = overlay ?: return
+        val bitmap = frozenBitmap ?: return
         val s = session.runSnapshot(bitmap)
         snapshotSession = s
         o.observe(s)
