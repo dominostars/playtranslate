@@ -1063,6 +1063,21 @@ class CameraSession(
 
     // ── Overlay display ────────────────────────────────────────────────────
 
+    /** Raster resolution: view pixels per AU pixel (the FILL_CENTER cover
+     *  scale). Rasterizing at VIEW scale — not AU scale — makes every
+     *  dp-based layout decision (grow thresholds, minimum legible widths,
+     *  autosize caps) evaluate in true display pixels, exactly like the
+     *  capture flow's on-screen boxes, and lands the rasters at 1:1
+     *  physical pixels instead of being blown up by the warp afterwards.
+     *  Falls back to 1 before the host lays out (never in practice — the
+     *  first OCR outlasts the first layout). Main thread. */
+    private fun baseRenderScale(auW: Int, auH: Int): Float {
+        val w = overlayHost.width
+        val h = overlayHost.height
+        if (w <= 0 || h <= 0 || auW <= 0 || auH <= 0) return 1f
+        return CameraCoordinates(auW, auH, w, h).scale
+    }
+
     /** Rasterize AU-space boxes (main thread — view machinery) and install
      *  them in the warp view. [trackKeys] parallels [boxes]. */
     private suspend fun showRegions(
@@ -1080,18 +1095,19 @@ class CameraSession(
                 verticalTextStackable = stackableTargetScript(prefs.targetLang),
                 verticalGrowEnabled = prefs.verticalTextGrow,
             )
+            val base = baseRenderScale(auW, auH)
             // Dirty diff against the last show at the same keyframe size —
             // a skeleton→filled swap re-renders only the boxes that changed.
             val previous = if (lastShownAuW == auW && lastShownAuH == auH) lastShownRegions else null
             val regions: List<RasterRegion> =
-                rasterizer.rasterize(boxes, auW, auH, trackKeys, renderScale = 1f, previous = previous)
+                rasterizer.rasterize(boxes, auW, auH, trackKeys, renderScale = base, previous = previous)
             ensureWarpView().setRegions(regions, auW, auH)
             lastShownBoxes = boxes
             lastShownKeys = trackKeys
             lastShownRegions = regions
             lastShownAuW = auW
             lastShownAuH = auH
-            rasterScale = 1f
+            rasterScale = base
         }
     }
 
@@ -1102,13 +1118,17 @@ class CameraSession(
     private fun maybeRerasterForScale(trackedScale: Float) {
         if (rerasterPending) return
         val boxes = lastShownBoxes ?: return
-        val ratio = if (trackedScale > rasterScale) trackedScale / rasterScale else rasterScale / trackedScale
+        // Desired raster resolution = the tracked zoom relative to the anchor
+        // TIMES the base view scale (rasters are view-resolution now, not
+        // AU-resolution) — both sides of the drift check share units.
+        val desired = trackedScale * baseRenderScale(lastShownAuW, lastShownAuH)
+        val ratio = if (desired > rasterScale) desired / rasterScale else rasterScale / desired
         if (ratio < RASTER_SCALE_DRIFT) return
         rerasterPending = true
         val keys = lastShownKeys
         val auW = lastShownAuW
         val auH = lastShownAuH
-        val targetScale = trackedScale.coerceIn(0.5f, 2.5f)
+        val targetScale = desired.coerceIn(0.5f, 2.5f)
         // Observer, not a source: re-rasters whatever currently owns the
         // display, and dies if ownership changes before it lands.
         val epoch = displayEpoch.current()

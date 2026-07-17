@@ -330,7 +330,40 @@ class CameraSnapshotController(
         // translations come from the translator's LRU, no fresh backend
         // call). Panel-expanded FROZEN hides it: the flavor only affects
         // boxes that aren't showing.
-        modeToggle.isVisible = (!frozen || overlaysShowing) && modeToggleSupported()
+        fadeToggle((!frozen || overlaysShowing) && modeToggleSupported())
+    }
+
+    /** The switcher's target visibility, so repeated syncControls calls
+     *  don't restart the fade; null until the first (instant) apply. */
+    private var toggleVisibleTarget: Boolean? = null
+
+    /** Fade the flavor switcher in/out as it enters/leaves the frame —
+     *  it comes and goes with presentation changes (sliver ↔ panel,
+     *  freeze ↔ live), and an instant pop reads as glitch. */
+    private fun fadeToggle(visible: Boolean) {
+        if (toggleVisibleTarget == visible) return
+        val first = toggleVisibleTarget == null
+        toggleVisibleTarget = visible
+        modeToggle.animate().cancel()
+        if (first) {
+            // Initial state: no animation to fade from.
+            modeToggle.alpha = if (visible) 1f else 0f
+            modeToggle.isVisible = visible
+            return
+        }
+        if (visible) {
+            if (!modeToggle.isVisible) modeToggle.alpha = 0f
+            modeToggle.isVisible = true
+            modeToggle.animate().alpha(1f).setDuration(TOGGLE_FADE_MS).start()
+        } else {
+            modeToggle.animate().alpha(0f).setDuration(TOGGLE_FADE_MS)
+                .withEndAction { if (toggleVisibleTarget == false) modeToggle.isVisible = false }
+                .start()
+        }
+    }
+
+    private companion object {
+        const val TOGGLE_FADE_MS = 160L
     }
 
     fun release() {

@@ -319,13 +319,13 @@ class CameraActivity : AppCompatActivity() {
      *  on every resume so a source-language change made elsewhere is picked
      *  up. Hidden entirely when the source language has no reading support. */
     private fun bindModeToggle() {
+        // Visibility is owned by CameraSnapshotController.syncControls (which
+        // onResume calls right after this): it folds the language's reading
+        // support together with the frozen/overlays presentation state, and
+        // fades the switcher rather than popping it.
         val container = findViewById<FrameLayout>(R.id.cameraModeToggle)
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
-        if (hintKind == HintTextKind.NONE) {
-            container.isVisible = false
-            return
-        }
-        container.isVisible = true
+        if (hintKind == HintTextKind.NONE) return
         val hintLabel = when (hintKind) {
             HintTextKind.PINYIN -> getString(R.string.overlay_mode_option_pinyin)
             else -> getString(R.string.overlay_mode_option_furigana)
