@@ -308,6 +308,36 @@ class CameraSession(
 
     private fun analyze(proxy: ImageProxy) {
         try {
+            // Snapshot freeze: serviced BEFORE the mode gate so a freeze
+            // works from PAUSED too. Entering FROZEN here (analysis thread)
+            // plus the epoch advance means no live display tail can publish
+            // over the snapshot; cancellation-first kills an in-flight
+            // acquire's OCR rather than letting it run for nobody.
+            freezeCallback?.let { onFrozen ->
+                freezeCallback = null
+                mode = Mode.FROZEN
+                acquireJob?.takeIf { it.isActive }?.cancel()
+                val frozen = toUprightBitmap(proxy)
+                synchronized(stateLock) {
+                    cachedOcr = null
+                    cachedGroupColors = null
+                    lastBuilt = null
+                    displayEpoch.advance()
+                }
+                overlayHost.post {
+                    warpView?.clearRegions()
+                    lastShownBoxes = null
+                    lastShownRegions = null
+                    lastShownKeys = emptyList()
+                    lastShownAuW = 0
+                    lastShownAuH = 0
+                    rasterScale = 1f
+                    onFrozen(frozen)
+                }
+                return
+            }
+            if (mode != Mode.LIVE) return
+
             val t0 = System.nanoTime()
             frameCount++
 
@@ -1124,7 +1154,14 @@ class CameraSession(
 
     /** Language/config change: drop everything; the next settled frame
      *  re-OCRs from scratch. */
-    fun reset() {
+    fun reset() = wipeDisplay(purgeAnchorCache = true)
+
+    /** Cancel display work and clear every live-scene artifact (overlays,
+     *  tracker anchor, engine state, re-flavor caches, stale hint). The
+     *  anchor LRU survives unless [purgeAnchorCache]: pause/unfreeze keep it
+     *  so a resumed session can re-lock a recent scene without re-OCR; a
+     *  language/config change must not serve stale-language scenes. */
+    private fun wipeDisplay(purgeAnchorCache: Boolean) {
         acquireJob?.cancel()
         synchronized(stateLock) {
             cachedOcr = null
@@ -1137,8 +1174,11 @@ class CameraSession(
         analysisExecutor.execute {
             frameTracker.clearAnchor()
             engine.reset()
-            while (anchorCache.isNotEmpty()) anchorCache.removeFirst().first.release()
+            if (purgeAnchorCache) {
+                while (anchorCache.isNotEmpty()) anchorCache.removeFirst().first.release()
+            }
         }
+        postHint(false)
         overlayHost.post {
             warpView?.clearRegions()
             lastShownBoxes = null
@@ -1148,6 +1188,53 @@ class CameraSession(
             lastShownAuH = 0
             rasterScale = 1f
         }
+    }
+
+    // ── Pipeline mode (play/pause + snapshot freeze) ───────────────────────
+
+    /** LIVE = auto-detection runs; PAUSED = user paused (clean viewfinder,
+     *  frames arrive but are ignored); FROZEN = a snapshot owns the screen.
+     *  Written from the main thread (controls) and the analysis thread (the
+     *  freeze service); read per-frame. */
+    enum class Mode { LIVE, PAUSED, FROZEN }
+
+    @Volatile
+    var mode: Mode = Mode.LIVE
+        private set
+
+    /** One-shot frame request serviced by the NEXT analyzed frame. Works
+     *  from LIVE and PAUSED alike — the analysis use case stays bound in
+     *  every mode, so frames keep reaching [analyze]; non-LIVE modes just
+     *  ignore them. The callback receives the upright AU-space keyframe on
+     *  the MAIN thread and owns the bitmap. */
+    @Volatile
+    private var freezeCallback: ((Bitmap) -> Unit)? = null
+
+    /** Stop auto-detection and clear the display; the viewfinder stays live. */
+    fun pause() {
+        mode = Mode.PAUSED
+        wipeDisplay(purgeAnchorCache = false)
+    }
+
+    /** Resume auto-detection: the next settled frame re-acquires, or
+     *  re-locks instantly from the anchor LRU that [pause] kept. */
+    fun resume() {
+        mode = Mode.LIVE
+    }
+
+    /** Freeze the next frame. The pipeline enters FROZEN on the analysis
+     *  thread BEFORE the callback is posted, so no live tail can publish
+     *  over the snapshot. */
+    fun requestFreeze(onFrozen: (Bitmap) -> Unit) {
+        freezeCallback = onFrozen
+    }
+
+    /** Leave FROZEN, dropping snapshot display state. [to] restores the
+     *  pre-snapshot mode — a paused camera stays paused. */
+    fun unfreeze(to: Mode) {
+        require(to != Mode.FROZEN) { "unfreeze target must be LIVE or PAUSED" }
+        mode = to
+        wipeDisplay(purgeAnchorCache = false)
     }
 
     /** Final teardown from the Activity. Not restartable. */

@@ -12,6 +12,7 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import android.hardware.camera2.CaptureRequest
@@ -62,6 +63,9 @@ class CameraActivity : AppCompatActivity() {
     /** Pipeline orchestrator; created once the layout exists. */
     private var session: CameraSession? = null
 
+    /** Play/pause + snapshot UI state; created alongside the session. */
+    private var snapshotController: CameraSnapshotController? = null
+
     /** Language config the session was last built/reset against — a change
      *  made in settings while we're paused must drop the cached OCR state. */
     private var sessionLangKey: String? = null
@@ -101,17 +105,17 @@ class CameraActivity : AppCompatActivity() {
         permissionButton = findViewById(R.id.cameraPermissionButton)
 
         // Only the floating controls avoid the system bars / cutout; the
-        // preview underneath stays full-bleed.
+        // preview underneath stays full-bleed. Bottom padding too — the
+        // controls layer is match_parent now so the shutter sits at the true
+        // screen bottom, above the nav bar.
         val controls = findViewById<FrameLayout>(R.id.cameraControls)
         ViewCompat.setOnApplyWindowInsetsListener(controls) { v, insets ->
             val bars = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
-            v.setPadding(bars.left, bars.top, bars.right, 0)
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
-
-        findViewById<ImageButton>(R.id.cameraBack).setOnClickListener { finish() }
 
         // Back camera specifically, and ENUMERATED rather than declared —
         // handheld ROMs built from phone BSPs declare FEATURE_CAMERA with no
@@ -134,6 +138,23 @@ class CameraActivity : AppCompatActivity() {
         )
         sessionLangKey = langKey()
 
+        snapshotController = CameraSnapshotController(
+            session = session!!,
+            backButton = findViewById(R.id.cameraBack),
+            playPauseButton = findViewById(R.id.cameraPlayPause),
+            shutterButton = findViewById(R.id.cameraShutter),
+            modeToggle = findViewById(R.id.cameraModeToggle),
+            freezeFrame = findViewById(R.id.cameraFreezeFrame),
+            modeToggleSupported = {
+                SourceLanguageProfiles[prefs.sourceLangId].hintTextKind != HintTextKind.NONE
+            },
+            onExit = { finish() },
+        )
+        onBackPressedDispatcher.addCallback(this) {
+            val controller = snapshotController
+            if (controller?.isFrozen == true) controller.unfreeze() else finish()
+        }
+
         val hint = findViewById<TextView>(R.id.cameraHint)
         hint.setText(R.string.camera_no_text_hint)
         session?.hintSink = { show -> hint.isVisible = show }
@@ -146,6 +167,8 @@ class CameraActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        snapshotController?.release()
+        snapshotController = null
         session?.shutdown()
         session = null
         super.onDestroy()
@@ -158,6 +181,10 @@ class CameraActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         bindModeToggle()
+        // bindModeToggle unconditionally shows the toggle for languages with
+        // reading support; re-derive control visibility so a resume while
+        // frozen doesn't resurrect it.
+        snapshotController?.syncControls()
         if (sessionLangKey != null && sessionLangKey != langKey()) {
             session?.reset()
             sessionLangKey = langKey()

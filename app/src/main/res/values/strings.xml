@@ -2922,6 +2922,14 @@
     <string name="camera_back_cd">Back</string>
     <!-- Hint shown when a camera scan found no usable text (nothing detected, or everything failed the quality gates). -->
     <string name="camera_no_text_hint">No readable text — try moving closer or tap to focus</string>
+    <!-- Content description of the top-right button while auto-translate is running (tapping pauses it). -->
+    <string name="camera_pause_cd">Pause auto-translate</string>
+    <!-- Content description of the top-right button while auto-translate is paused (tapping resumes it). -->
+    <string name="camera_play_cd">Resume auto-translate</string>
+    <!-- Content description of the big round shutter button that freezes the current frame. -->
+    <string name="camera_shutter_cd">Take snapshot</string>
+    <!-- Content description of the X button that leaves the frozen snapshot and returns to the live camera. -->
+    <string name="camera_close_cd">Close snapshot</string>
 
     <!-- Hub-cell status digests (the summary line under each cell title). -->
     <string name="settings_digest_none">None</string>
