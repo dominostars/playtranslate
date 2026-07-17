@@ -215,6 +215,9 @@ class CaptureResultOverlay(
      *  touch handling swaps to sliver rules while set. */
     private var sliverMode = false
 
+    /** Sliver-only "drag up for more options" hint (see the body's addView). */
+    private val sliverHint = TextView(ctx)
+
     /** The panel height when the sliver collapse started, so a tap-expand can
      *  return to it (the sliver itself parks the height at [sliverHeightPx]). */
     private var preSliverHeightPx = 0
@@ -329,6 +332,26 @@ class CaptureResultOverlay(
             val pad = dp(24)
             setPadding(pad, pad, pad, pad)
         }
+        sliverHint.apply {
+            setText(R.string.capture_sliver_expand_hint)
+            val hintColor = ctx.themeColor(R.attr.ptTextHint)
+            setTextColor(hintColor)
+            textSize = 11f
+            isSingleLine = true
+            // arrow_drop_up flanking both sides (direction-neutral, so the
+            // same pair serves RTL), tinted with the text and sized to its
+            // line — the 24dp intrinsic would dwarf 11sp text. Distinct
+            // instances: compound slots each need their own bounds owner.
+            val arrowPx = dp(16)
+            fun arrow() = ctx.getDrawable(R.drawable.ic_arrow_drop_up)?.mutate()?.apply {
+                setTint(hintColor)
+                setBounds(0, 0, arrowPx, arrowPx)
+            }
+            setCompoundDrawables(arrow(), null, arrow(), null)
+            compoundDrawablePadding = dp(4)
+            visibility = View.GONE
+            alpha = 0f
+        }
         scroll.apply {
             isFillViewport = true
             visibility = View.GONE
@@ -415,6 +438,15 @@ class CaptureResultOverlay(
                 FrameLayout.LayoutParams(MATCH, WRAP, Gravity.CENTER),
             )
             addView(editContainer, FrameLayout.LayoutParams(MATCH, MATCH))
+            // Sliver-only "drag up" hint: lives in the sheet strip the
+            // collapse leaves visible ([SLIVER_SHEET_DP] is sized to fit it),
+            // fading in as the sections fade out. Non-clickable — taps fall
+            // through to the root's sliver rules (tap = expand).
+            addView(
+                sliverHint,
+                FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
+                    .apply { topMargin = dp(3) },
+            )
         }
         panel.apply {
             orientation = LinearLayout.VERTICAL
@@ -796,10 +828,30 @@ class CaptureResultOverlay(
         sliverMode = true
         dismissWordLens()
         preSliverHeightPx = panelHeightPx
-        // The sections are about to be a 12dp strip — fade them out rather than
-        // showing a clipped line of text in the sliver.
+        // The sections are about to be a thin strip — fade them out rather
+        // than showing a clipped line of text in the sliver; the "drag up"
+        // hint crossfades in to take their place.
         scroll.animate().alpha(0f).setDuration(SLIVER_FADE_MS).start()
+        setSliverHintVisible(true)
         animateSliverHeight(sliverHeightPx())
+    }
+
+    /** Crossfade the sliver's "drag up for more options" hint with the
+     *  sections: in as they fade out (collapse, settle-back), out the moment
+     *  the sheet starts coming back (tap-expand, drag past slop). */
+    private fun setSliverHintVisible(visible: Boolean) {
+        sliverHint.animate().cancel()
+        if (visible) {
+            if (sliverHint.visibility != View.VISIBLE) {
+                sliverHint.alpha = 0f
+                sliverHint.visibility = View.VISIBLE
+            }
+            sliverHint.animate().alpha(1f).setDuration(SLIVER_FADE_MS).start()
+        } else {
+            sliverHint.animate().alpha(0f).setDuration(SLIVER_FADE_MS)
+                .withEndAction { sliverHint.visibility = View.GONE }
+                .start()
+        }
     }
 
     /** A tap on the sliver: grow the sheet back to its pre-collapse height and
@@ -809,6 +861,7 @@ class CaptureResultOverlay(
         sliverMode = false
         hideChips()
         scroll.animate().alpha(1f).setDuration(SLIVER_FADE_MS).start()
+        setSliverHintVisible(false)
         val target = preSliverHeightPx.coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
         animateSliverHeight(target) {
             updateShowOnScreenAction()
@@ -828,6 +881,7 @@ class CaptureResultOverlay(
         heightAnimator?.cancel()
         hideChips()
         scroll.animate().alpha(1f).setDuration(SLIVER_FADE_MS).start()
+        setSliverHintVisible(false)
     }
 
     /** Per-frame sliver drag: the resize math with the floor lowered to the
@@ -858,6 +912,7 @@ class CaptureResultOverlay(
             val data = overlayData
             if (data != null && showChips(data)) {
                 scroll.animate().alpha(0f).setDuration(SLIVER_FADE_MS).start()
+                setSliverHintVisible(true)
                 animateSliverHeight(sliverHeightPx())
             } else {
                 // The overlay surface got claimed mid-drag (live mode) — expand
@@ -2193,7 +2248,9 @@ class CaptureResultOverlay(
         const val HANDLE_HEIGHT_DP = 20
         /** Sheet-fill strip left visible (below the grabber strip) when the
          *  panel collapses to its sliver state. */
-        const val SLIVER_SHEET_DP = 12
+        /** Visible sheet strip while slivered — sized to seat the 11sp
+         *  "drag up for more options" hint with breathing room. */
+        const val SLIVER_SHEET_DP = 24
         /** Duration of the collapse-to-sliver / expand-from-sliver slide. */
         const val SLIVER_DURATION_MS = 220L
         /** Duration of the section fade that rides the sliver transitions. */

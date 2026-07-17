@@ -2946,6 +2946,8 @@
     <string name="camera_region_cd">Select a region</string>
     <!-- Tappable pill on the snapshot's active-region outline; tapping deletes the region and reads the whole frame again. -->
     <string name="camera_region_remove">Remove</string>
+    <!-- Hint on the collapsed capture sheet while on-screen boxes are showing; dragging the sheet up reveals the full result panel. Up arrows are added around it in code. -->
+    <string name="capture_sliver_expand_hint">Drag up for more options</string>
 
     <!-- Hub-cell status digests (the summary line under each cell title). -->
     <string name="settings_digest_none">None</string>
