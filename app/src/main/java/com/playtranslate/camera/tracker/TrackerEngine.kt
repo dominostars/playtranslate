@@ -176,7 +176,45 @@ class TrackerEngine(
             state = TrackState.IDLE
             noTextFailures++
         }
+        // A deliberate refocus landed while this acquire ran: it read the
+        // PRE-focus frame, so its bookkeeping above must not stand — expire
+        // the just-installed anchor (or clear the just-counted failure) so
+        // the next settled frame re-reads the sharp image.
+        if (refocusPendingDuringAcquire) {
+            refocusPendingDuringAcquire = false
+            anchorCreatedAtMs = 0L
+            noTextFailures = 0
+        }
     }
+
+    /** A deliberate refocus (tap-to-focus sweep completed) changed the
+     *  image without any motion: whatever this scene OCR'd as before —
+     *  garbage reads off a defocused frame that locked an anchor, or a
+     *  no-text verdict now backing off — no longer applies. Expire the
+     *  anchor's age so the STALENESS trigger re-OCRs on the next settled
+     *  frame (all its gates — settle, cooldown, capacity — still apply, so
+     *  the refresh reads a sharp, still frame), and clear the no-text
+     *  backoff exactly like deliberate re-aiming does. Without this, a
+     *  focus fix left a dead LOCKED anchor showing nothing for up to the
+     *  full 30 s refresh age. */
+    fun onDeliberateRefocus() {
+        anchorCreatedAtMs = 0L
+        noTextFailures = 0
+        // An acquire already in flight predates the focus change, and its
+        // completion bookkeeping (fresh anchor age on install, failure
+        // count on a no-text verdict) would silently ERASE this kick —
+        // the pre-focus keyframe would then rule for a full refresh age.
+        // Flag it so [onAcquireFinished] re-applies the expiry after its
+        // normal bookkeeping: the stale results install and show, then the
+        // staleness refresh re-reads the sharp frame within a settle.
+        if (state == TrackState.ACQUIRING) refocusPendingDuringAcquire = true
+    }
+
+    /** See [onDeliberateRefocus] — a kick that landed while an acquire was
+     *  in flight, to be re-applied when that acquire completes. Cleared by
+     *  the watchdog and [reset] so it can't expire a FUTURE (post-focus)
+     *  acquire and trigger a redundant re-OCR. */
+    private var refocusPendingDuringAcquire = false
 
     /** The session replaced the tracked region set (flavor change or
      *  re-flavor). Collapse streaks — and the smoothed/held region
@@ -195,6 +233,7 @@ class TrackerEngine(
         smoothedH = null
         clearDisplayState()
         motionEma = -1.0
+        refocusPendingDuringAcquire = false
         belowKeepStreak = 0
         lostFrames = 0
         lastAcquireRequestMs = 0L
@@ -241,6 +280,10 @@ class TrackerEngine(
                     activeAcquireId = 0L
                     smoothedH = null
                     clearDisplayState()
+                    // The wedged acquire's completion will never land (its id
+                    // is invalidated) — a pending refocus kick must not wait
+                    // for it, nor leak onto a future acquire's completion.
+                    refocusPendingDuringAcquire = false
                     decision(null, requestAcquire = false, m)
                 } else {
                     // Keep showing the previous anchor's overlays (if any)

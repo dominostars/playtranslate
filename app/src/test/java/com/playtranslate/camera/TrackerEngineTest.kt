@@ -436,6 +436,95 @@ class TrackerEngineTest {
         assertTrue("shaky-device settle never opened", acquired)
     }
 
+    @Test
+    fun deliberateRefocusExpiresLockedAnchor() {
+        val e = engine()
+        lockEngine(e)
+        nowMs += TrackerConfig.ACQUIRE_COOLDOWN_MS + 1
+        // Fresh anchor, settled and still: no trigger fires on its own — a
+        // defocused-frame lock would sit here for the full 30 s age.
+        repeat(TrackerConfig.SETTLE_FRAMES + 2) {
+            assertFalse(e.onFrame(goodMeasurement()).requestAcquire)
+        }
+        // Tap-to-focus completed: the image changed without motion, so the
+        // anchor is stale NOW and the staleness refresh must fire.
+        e.onDeliberateRefocus()
+        var offered = false
+        repeat(TrackerConfig.SETTLE_FRAMES + 2) {
+            if (e.onFrame(goodMeasurement()).requestAcquire) offered = true
+        }
+        assertTrue("refocus never forced a refresh", offered)
+        assertEquals(TrackState.LOCKED, e.state)
+    }
+
+    @Test
+    fun deliberateRefocusClearsNoTextBackoff() {
+        val e = engine()
+        lockAttemptFail(e)
+        // Backoff armed: cooldown alone has passed but the 1 s no-text
+        // backoff still blocks a retry.
+        nowMs += TrackerConfig.ACQUIRE_COOLDOWN_MS + 1
+        repeat(TrackerConfig.SETTLE_FRAMES + 2) {
+            assertFalse(e.onFrame(probe(STILL_DISP)).requestAcquire)
+        }
+        // The no-text verdict was read off a defocused frame; the focus fix
+        // clears it exactly like deliberate re-aiming does.
+        e.onDeliberateRefocus()
+        var offered = false
+        repeat(TrackerConfig.SETTLE_FRAMES + 2) {
+            if (e.onFrame(probe(STILL_DISP)).requestAcquire) offered = true
+        }
+        assertTrue("refocus never cleared the backoff", offered)
+    }
+
+    @Test
+    fun refocusDuringAcquireSurvivesTheInstall() {
+        val e = engine()
+        lockEngine(e)
+        // Staleness refresh puts us in ACQUIRING (the slow, pre-focus OCR).
+        nowMs += TrackerConfig.ANCHOR_REFRESH_AGE_MS + 1
+        var fired = false
+        repeat(TrackerConfig.SETTLE_FRAMES) {
+            if (e.onFrame(goodMeasurement()).requestAcquire) fired = true
+        }
+        assertTrue(fired)
+        val id = e.beginAcquire(nowMs = nowMs)
+        assertTrue(id != 0L)
+        // Tap-to-focus completes while that acquire is still running...
+        e.onDeliberateRefocus()
+        // ...and the PRE-focus acquire then installs. Its bookkeeping
+        // (fresh anchor age) must not erase the kick: the anchor must be
+        // stale ON ARRIVAL, refreshing on the next settled frame.
+        e.finishAcquire(id, locked = true, nowMs = nowMs)
+        assertEquals(TrackState.LOCKED, e.state)
+        nowMs += TrackerConfig.ACQUIRE_COOLDOWN_MS + 1
+        var offered = false
+        repeat(TrackerConfig.SETTLE_FRAMES + 2) {
+            if (e.onFrame(goodMeasurement()).requestAcquire) offered = true
+        }
+        assertTrue("pre-focus install erased the refocus kick", offered)
+    }
+
+    @Test
+    fun refocusDuringAcquireClearsTheFailureItOutlives() {
+        val e = engine()
+        assertTrue(settleUntilOffer(e))
+        val id = e.beginAcquire(nowMs = nowMs)
+        assertTrue(id != 0L)
+        e.onDeliberateRefocus()
+        // The blurry acquire finds nothing — normally that arms the 1 s
+        // no-text backoff, but the focus fix landed first: retry at plain
+        // cooldown instead of waiting the backoff out.
+        e.finishAcquire(id, locked = false, nowMs = nowMs)
+        assertEquals(TrackState.IDLE, e.state)
+        nowMs += TrackerConfig.ACQUIRE_COOLDOWN_MS + 1
+        var offered = false
+        repeat(TrackerConfig.SETTLE_FRAMES + 2) {
+            if (e.onFrame(probe(STILL_DISP)).requestAcquire) offered = true
+        }
+        assertTrue("no-text backoff outlived the refocus", offered)
+    }
+
     // ── Display stabilization: adaptive smoothing + deadband hold ─────────
 
     private fun measurementAt(tx: Double, ty: Double, disp: Double, inliers: Int = 100) =

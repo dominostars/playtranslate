@@ -321,8 +321,16 @@ class CameraActivity : AppCompatActivity() {
         previewView.setOnTouchListener { v, event ->
             if (event.actionMasked == android.view.MotionEvent.ACTION_UP) {
                 val point = previewView.meteringPointFactory.createPoint(event.x, event.y)
-                camera?.cameraControl?.startFocusAndMetering(
+                val future = camera?.cameraControl?.startFocusAndMetering(
                     FocusMeteringAction.Builder(point).build()
+                )
+                // When the sweep completes (focused OR failed — either way
+                // the image changed), kick the session: a defocused-frame
+                // anchor or no-text verdict must not sit out the 30 s
+                // staleness age when the user just fixed the focus.
+                future?.addListener(
+                    { session?.onDeliberateRefocus() },
+                    ContextCompat.getMainExecutor(this),
                 )
                 v.performClick()
             }

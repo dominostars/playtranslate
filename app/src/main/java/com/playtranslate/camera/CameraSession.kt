@@ -267,6 +267,21 @@ class CameraSession(
     @Volatile
     var afScanning: Boolean = false
 
+    /** Set when a TAP-to-focus sweep completes; consumed by the next
+     *  analyzed frame, which forwards it to the engine on the analysis
+     *  thread (the engine is thread-confined). Deliberate taps only —
+     *  kicking on every passive AF convergence would OCR-hammer scenes
+     *  where a budget module hunts continuously. */
+    @Volatile
+    private var pendingRefocusKick = false
+
+    /** The user's tap-to-focus finished: the image changed without motion,
+     *  so the current anchor/no-text verdict describes a stale picture.
+     *  Any thread. */
+    fun onDeliberateRefocus() {
+        pendingRefocusKick = true
+    }
+
     private val furiganaPaint by lazy {
         TextPaint().apply {
             typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
@@ -402,6 +417,14 @@ class CameraSession(
             if (idleStreak > IDLE_BACKOFF_AFTER_FRAMES && frameCount % 2 == 1L) return
             val cn = cnConverter.convert(proxy)
             val m = frameTracker.track(cn)
+            // A completed tap-to-focus invalidates whatever the scene read as
+            // while defocused — expire the anchor age / no-text backoff so
+            // the staleness trigger re-OCRs the now-sharp frame. Consumed
+            // here (analysis thread) because the engine is thread-confined.
+            if (pendingRefocusKick) {
+                pendingRefocusKick = false
+                engine.onDeliberateRefocus()
+            }
             // canAcquire is the engine's documented launch-capacity contract:
             // AF scans veto offers (a keyframe mid-scan is defocused), and so
             // does a live acquire job — the engine leaves ACQUIRING at anchor
