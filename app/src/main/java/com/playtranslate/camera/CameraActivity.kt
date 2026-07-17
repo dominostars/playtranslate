@@ -138,13 +138,20 @@ class CameraActivity : AppCompatActivity() {
         )
         sessionLangKey = langKey()
 
+        // The snapshot panel's in-place edit needs the IME to overlay the
+        // frozen frame, not resize the camera layout: the sheet lifts itself
+        // via its ime-inset bottom margin, same as its over-game window mode.
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+
         snapshotController = CameraSnapshotController(
+            activity = this,
             session = session!!,
             backButton = findViewById(R.id.cameraBack),
             playPauseButton = findViewById(R.id.cameraPlayPause),
             shutterButton = findViewById(R.id.cameraShutter),
             modeToggle = findViewById(R.id.cameraModeToggle),
             freezeFrame = findViewById(R.id.cameraFreezeFrame),
+            panelHost = findViewById(R.id.cameraPanelHost),
             modeToggleSupported = {
                 SourceLanguageProfiles[prefs.sourceLangId].hintTextKind != HintTextKind.NONE
             },

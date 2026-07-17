@@ -186,6 +186,13 @@ class CameraSession(
     private var cachedAuW = 0
     private var cachedAuH = 0
 
+    /** Snapshot-only: the pipeline's per-group translations, index-aligned
+     *  with [cachedOcr]'s groups. [showFrozenOverlays] renders skeletons
+     *  while null and filled boxes once set — it must never translate on its
+     *  own, or the overlays-first presentation would duplicate the
+     *  pipeline's backend call (both fire before either could cache). */
+    private var cachedSnapshotTranslations: List<String>? = null
+
     /** The display payload of the currently anchored scene once its final
      *  (filled) boxes exist — what the anchor LRU stores alongside the
      *  anchor for instant re-display on re-lock. */
@@ -329,6 +336,7 @@ class CameraSession(
                 synchronized(stateLock) {
                     cachedOcr = null
                     cachedGroupColors = null
+                    cachedSnapshotTranslations = null
                     lastBuilt = null
                     displayEpoch.advance()
                 }
@@ -1186,6 +1194,7 @@ class CameraSession(
             cachedGroupColors = null
             cachedAuW = 0
             cachedAuH = 0
+            cachedSnapshotTranslations = null
             lastBuilt = null
             displayEpoch.advance()
         }
@@ -1325,12 +1334,14 @@ class CameraSession(
             colorRef.recycle()
         }
         // The snapshot owns the display: epoch and caches move together,
-        // same protocol as the acquire install.
+        // same protocol as the acquire install. Translations are not in yet
+        // — showFrozenOverlays renders skeletons until they land below.
         synchronized(stateLock) {
             cachedOcr = gated
             cachedGroupColors = groupColors
             cachedAuW = auW
             cachedAuH = auH
+            cachedSnapshotTranslations = null
             displayEpoch.advance()
         }
 
@@ -1371,6 +1382,13 @@ class CameraSession(
                     perGroup.getOrNull(i)?.backendDisplayName,
                 )
             }
+        }
+
+        // Promote the frozen overlays' data source BEFORE emitting Done: the
+        // panel's Done handler asks the presenter to fill the on-frame boxes,
+        // which reads this cache.
+        synchronized(stateLock) {
+            if (cachedOcr === gated) cachedSnapshotTranslations = perGroup.map { it.text }
         }
 
         val translated = perGroup.joinToString("\n\n") { it.text }
@@ -1433,19 +1451,25 @@ class CameraSession(
     /** Paint the snapshot's boxes as the camera's own warp overlays: a
      *  static IDENTITY homography over the frozen frame (centerCrop ==
      *  FILL_CENTER == CameraCoordinates, so AU-space boxes land exactly on
-     *  the frozen text). Reuses [buildAndShow], so the boxes follow the
-     *  current flavor — furigana readings in furigana mode, translation
-     *  boxes otherwise. Analysis is halted in FROZEN, so nothing overwrites
-     *  the static transform. */
+     *  the frozen text). Boxes follow the current flavor — furigana
+     *  readings in furigana mode (via [buildAndShow]'s furigana branch,
+     *  which never translates), translation boxes otherwise — rendered from
+     *  the snapshot pipeline's own translations: skeletons while those are
+     *  in flight, filled once [cachedSnapshotTranslations] lands. Never
+     *  calls the translator itself. Analysis is halted in FROZEN, so
+     *  nothing overwrites the static transform. Safe to call again on the
+     *  Done promotion. */
     fun showFrozenOverlays() {
         val ocr: OcrManager.OcrResult?
         val colors: List<Pair<Int, Int>>?
+        val translations: List<String>?
         val auW: Int
         val auH: Int
         val epoch: Int
         synchronized(stateLock) {
             ocr = cachedOcr
             colors = cachedGroupColors
+            translations = cachedSnapshotTranslations
             auW = cachedAuW
             auH = cachedAuH
             epoch = displayEpoch.current()
@@ -1454,7 +1478,11 @@ class CameraSession(
         overlayHost.post { ensureWarpView().applyHomography(Homography.IDENTITY) }
         scope.launch(Dispatchers.Default) {
             try {
-                buildAndShow(ocr, colors, auW, auH, epoch)
+                when (prefs.overlayMode) {
+                    OverlayMode.FURIGANA -> buildAndShow(ocr, colors, auW, auH, epoch)
+                    OverlayMode.TRANSLATION ->
+                        showFrozenTranslationBoxes(ocr, colors, translations, auW, auH, epoch)
+                }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 Log.w(TAG, "frozen overlay build failed", e)
@@ -1462,8 +1490,40 @@ class CameraSession(
         }
     }
 
+    /** The translation-flavor frozen render: placeholder boxes, filled from
+     *  the pipeline's [translations] when available. No tracker regions —
+     *  the frame is static and everything rides the IDENTITY transform. */
+    private suspend fun showFrozenTranslationBoxes(
+        ocr: OcrManager.OcrResult,
+        colors: List<Pair<Int, Int>>,
+        translations: List<String>?,
+        auW: Int,
+        auH: Int,
+        epoch: Int,
+    ) {
+        val groups = ocr.groups.filter { it.text.isNotBlank() }
+        val trackKeys = groups.indices.toList()
+        val placeholders = buildPlaceholderBoxes(groups, colors)
+        val boxes = if (translations == null) placeholders
+        else placeholders.mapIndexed { idx, ph ->
+            ph.copy(translatedText = translations.getOrElse(idx) { "" })
+        }
+        showRegions(boxes, trackKeys, auW, auH, epoch)
+    }
+
     fun hideFrozenOverlays() {
         overlayHost.post { warpView?.clearRegions() }
+    }
+
+    /** The panel's in-place-edit re-translation, on the camera's translator.
+     *  Null when the whole waterfall failed — the panel binds its "—"
+     *  placeholder. */
+    suspend fun translateForPanel(text: String): com.playtranslate.ui.CaptureResultOverlay.PanelTranslation? {
+        val d = translator.translateDetailed(listOf(text)).firstOrNull() ?: return null
+        if (d.text.isEmpty()) return null
+        return com.playtranslate.ui.CaptureResultOverlay.PanelTranslation(
+            d.text, d.note, d.backendDisplayName,
+        )
     }
 
     /** Final teardown from the Activity. Not restartable. */

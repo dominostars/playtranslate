@@ -776,6 +776,24 @@ class Prefs internal constructor(
         get() = sp.getBoolean("capture_result_on_screen_preferred", false)
         set(v) = sp.edit { putBoolean("capture_result_on_screen_preferred", v) }
 
+    /** The camera tool's own "reopens how you dismissed it" for SNAPSHOT
+     *  results: true = on-frame overlays, false = the panel. Null = the user
+     *  has never dismissed a snapshot — the first one derives its default
+     *  from the play/pause state at shutter time (auto-detecting → overlays,
+     *  paused → panel). Deliberately separate from
+     *  [captureResultOnScreenPreferred]: the camera and the over-game
+     *  capture are different reading postures. */
+    var cameraSnapshotOnScreenPreferred: Boolean?
+        get() = if (sp.contains("camera_snapshot_on_screen_preferred")) {
+            sp.getBoolean("camera_snapshot_on_screen_preferred", false)
+        } else {
+            null
+        }
+        set(v) = sp.edit {
+            if (v == null) remove("camera_snapshot_on_screen_preferred")
+            else putBoolean("camera_snapshot_on_screen_preferred", v)
+        }
+
     /** When on (the default), touching the game screen during auto translation
      *  dismisses the current overlay and re-captures. Off makes screen touches
      *  a no-op for refresh; the detection loop and gamepad input still refresh.

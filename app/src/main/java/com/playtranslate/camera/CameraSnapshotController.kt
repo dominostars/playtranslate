@@ -1,43 +1,81 @@
 package com.playtranslate.camera
 
+import android.app.Activity
 import android.graphics.Bitmap
+import android.view.Display
 import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.ImageButton
 import android.widget.ImageView
 import androidx.core.view.isVisible
+import com.playtranslate.CaptureSession
+import com.playtranslate.OneShotOverlayData
+import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.ui.ActivitySheetHost
+import com.playtranslate.ui.CaptureResultOverlay
+import com.playtranslate.ui.TtsAlertTarget
+import com.playtranslate.ui.showAnkiNotInstalledDialog
 
 /**
  * Activity-scoped owner of the camera's play/pause + snapshot UI state:
- * control visibility per [CameraSession.Mode], the frozen-frame ImageView
- * and its bitmap lifetime, and (Phase 5) hosting the capture result panel
- * in-app.
+ * control visibility per [CameraSession.Mode], the frozen-frame ImageView and
+ * its bitmap lifetime, and the in-app capture result panel over the snapshot.
  *
  * Control states:
  *  - LIVE:   back + mode toggle + pause icon + shutter.
  *  - PAUSED: back + mode toggle + play icon + shutter; overlays cleared.
  *  - FROZEN: the back button becomes an X (close snapshot); everything else
- *    hides. X restores the PRE-snapshot mode — a paused camera stays paused.
+ *    hides. Every dismissal path — X, system back, panel drag/fling/tap-
+ *    outside — funnels through the panel's onDismiss and restores the
+ *    PRE-snapshot mode (a paused camera stays paused).
+ *
+ * The panel is the shared [CaptureResultOverlay] hosted in the activity's
+ * view tree ([ActivitySheetHost]), with every over-game behavior overridden:
+ * on-frame boxes render through the camera's warp path, the presentation
+ * preference is the camera's own (first-use default = play state at shutter),
+ * TTS alerts are activity dialogs, and the word lens is disabled (it is an
+ * overlay-window feature; extending it in-app is future work).
  *
  * Main thread only.
  */
 class CameraSnapshotController(
+    private val activity: Activity,
     private val session: CameraSession,
     private val backButton: ImageButton,
     private val playPauseButton: ImageButton,
     private val shutterButton: ImageButton,
     private val modeToggle: View,
     private val freezeFrame: ImageView,
+    private val panelHost: ViewGroup,
     /** Whether the Translation/Furigana toggle is available at all for the
      *  current source language (the activity owns that decision). */
     private val modeToggleSupported: () -> Boolean,
     /** LIVE/PAUSED back press — leave the screen. */
     private val onExit: () -> Unit,
 ) {
+    private val prefs = Prefs(activity)
+
     private var frozenBitmap: Bitmap? = null
+
+    /** The previous snapshot's frame, retained (not recycled) until the next
+     *  freeze or [release]: pipeline cancellation is cooperative, so the
+     *  recognizer may still be reading the bitmap briefly after a dismissal
+     *  cancels the session — recycling at unfreeze would race it. One
+     *  camera-frame-sized bitmap, bounded. */
+    private var retiredBitmap: Bitmap? = null
 
     /** Mode to restore when the snapshot closes. */
     private var preFreezeMode = CameraSession.Mode.LIVE
+
+    /** Play state at shutter time — the first-ever snapshot's presentation
+     *  default (auto-detecting → on-frame overlays, paused → panel). */
+    private var wasPlayingAtShutter = true
+
+    private var overlay: CaptureResultOverlay? = null
+    private var snapshotSession: CaptureSession? = null
 
     /** Set by the activity's onDestroy: a freeze landing afterwards must
      *  drop its bitmap instead of touching dead views. */
@@ -65,6 +103,7 @@ class CameraSnapshotController(
     private fun freeze() {
         if (session.mode == CameraSession.Mode.FROZEN) return
         preFreezeMode = session.mode
+        wasPlayingAtShutter = session.mode == CameraSession.Mode.LIVE
         // One freeze in flight at a time; re-enabled by syncControls on
         // either outcome.
         shutterButton.isEnabled = false
@@ -73,22 +112,93 @@ class CameraSnapshotController(
                 bitmap.recycle()
                 return@requestFreeze
             }
+            retiredBitmap?.recycle()
+            retiredBitmap = null
             frozenBitmap = bitmap
             freezeFrame.setImageBitmap(bitmap)
             freezeFrame.isVisible = true
             syncControls()
-            // Phase 4/5: launch the snapshot pipeline + capture panel here.
+            startSnapshot(bitmap)
         }
     }
 
-    /** X, system back, or (Phase 5) panel dismissal: drop the snapshot and
-     *  restore the pre-snapshot mode. */
+    /** Build the in-app panel with every over-game behavior overridden, then
+     *  run the camera's snapshot pipeline into it. */
+    private fun startSnapshot(bitmap: Bitmap) {
+        val o = CaptureResultOverlay(
+            activity,
+            activity.windowManager,
+            Display.DEFAULT_DISPLAY,
+            // Dead parameter in this configuration: every path that would
+            // spawn an overlay window is overridden below. Constructed only
+            // to satisfy the shared signature.
+            OverlayHost(activity, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY),
+            sheetHost = ActivitySheetHost(panelHost),
+        )
+        o.boxPresenter = object : CaptureResultOverlay.BoxPresenter {
+            override fun show(data: OneShotOverlayData): Boolean {
+                session.showFrozenOverlays()
+                return true
+            }
+
+            override fun update(data: OneShotOverlayData) {
+                // Done landed while slivered: re-render — the pipeline's
+                // translations are in the session's snapshot cache now, so
+                // the skeletons promote to filled boxes.
+                session.showFrozenOverlays()
+            }
+
+            override fun hide() {
+                session.hideFrozenOverlays()
+            }
+        }
+        o.onScreenPreference = object : CaptureResultOverlay.OnScreenPref {
+            override var preferred: Boolean
+                get() = prefs.cameraSnapshotOnScreenPreferred ?: wasPlayingAtShutter
+                set(value) {
+                    prefs.cameraSnapshotOnScreenPreferred = value
+                }
+        }
+        o.ttsAlertTarget = TtsAlertTarget.InActivity(activity)
+        o.wordLensEnabled = false
+        o.showAnkiNotInstalled = { showAnkiNotInstalledDialog(activity) }
+        o.retranslate = { text ->
+            session.translateForPanel(text)
+        }
+        o.onDismiss = { finishUnfreeze() }
+        overlay = o
+
+        val w = panelHost.width.takeIf { it > 0 } ?: activity.resources.displayMetrics.widthPixels
+        val h = panelHost.height.takeIf { it > 0 } ?: activity.resources.displayMetrics.heightPixels
+        o.show(w, h)
+        val s = session.runSnapshot(bitmap)
+        snapshotSession = s
+        o.observe(s)
+    }
+
+    /** X or system back: route through the panel's dismiss so every exit
+     *  path is the same path (the panel also dismisses via drag/fling/tap-
+     *  outside, which land in onDismiss → [finishUnfreeze] directly). */
     fun unfreeze() {
         if (!isFrozen) return
-        session.unfreeze(preFreezeMode)
+        val o = overlay
+        if (o != null) o.dismiss() else finishUnfreeze()
+    }
+
+    /** The single teardown: drop the panel + snapshot display, restore the
+     *  pre-snapshot mode. Runs exactly once per snapshot (the panel's
+     *  dismiss is idempotent). */
+    private fun finishUnfreeze() {
+        overlay = null
+        snapshotSession = null
+        if (session.mode == CameraSession.Mode.FROZEN) {
+            session.unfreeze(preFreezeMode)
+        }
         freezeFrame.isVisible = false
         freezeFrame.setImageBitmap(null)
-        frozenBitmap?.recycle()
+        // Not recycled here — see retiredBitmap.
+        retiredBitmap?.recycle()
+        retiredBitmap = frozenBitmap
         frozenBitmap = null
         syncControls()
     }
@@ -117,7 +227,12 @@ class CameraSnapshotController(
 
     fun release() {
         released = true
+        overlay?.dismiss()
+        overlay = null
+        snapshotSession = null
         frozenBitmap?.recycle()
         frozenBitmap = null
+        retiredBitmap?.recycle()
+        retiredBitmap = null
     }
 }
