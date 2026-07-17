@@ -8,12 +8,20 @@ enum class TrackState { IDLE, ACQUIRING, LOCKED, LOST }
 /** What the pipeline should do after a frame. */
 data class FrameDecision(
     val state: TrackState,
-    /** Smoothed anchor-CN→current-CN homography to render overlays with, or
-     *  null when overlays should hide (Idle / Lost / no fix yet). */
+    /** Displayed anchor-CN→current-CN homography to render overlays with, or
+     *  null when overlays should hide (Idle / Lost / no fix yet).
+     *  Speed-adaptively smoothed and run through the display deadband: while
+     *  it places content within [TrackerConfig.HOLD_DEVIATION_CN_PX] of the
+     *  live fit it does not move at all — tremor, RANSAC churn and rematch
+     *  pops freeze out — and past that it trails the live fit at exactly the
+     *  budget. Policy triggers read the LIVE smoothed transform, not this.
+     *  Engine-owned array, mutated on later frames: consume synchronously. */
     val hCn: DoubleArray?,
-    /** Per-region homography refinements (raw, unsmoothed — the small deltas
-     *  they add over [hCn] don't benefit from EMA). Regions absent here ride
-     *  the global homography. Empty whenever [hCn] is null. */
+    /** Per-region refinements, smoothed and deadband-held like [hCn]. A
+     *  region whose fit drops out keeps its last displayed transform for
+     *  [TrackerConfig.REGION_HOLD_FRAMES], then glides onto [hCn] and is
+     *  removed. Regions absent here ride the global homography. Empty
+     *  whenever [hCn] is null. Engine-owned map: consume synchronously. */
     val perRegionHCn: Map<Int, DoubleArray>,
     /** True when the session should start a fresh acquire (keyframe → OCR →
      *  new anchor). At most one in flight; the engine enforces the cooldown. */
@@ -37,7 +45,9 @@ data class FrameDecision(
  *
  * Triggers:
  *  - Idle + settled + cooldown (+ escalating no-text backoff) → acquire.
- *  - Locked: EMA-smooth the homography; drop to Lost after
+ *  - Locked: speed-adaptive EMA + display deadband on the emitted
+ *    transforms (policy reads the live smoothed H, rendering reads the
+ *    held display copy); drop to Lost after
  *    [TrackerConfig.FRAMES_TO_LOST] consecutive sub-floor frames.
  *  - Locked + settled: staleness, scale drift, or per-region tracing-point
  *    collapse → re-acquire.
@@ -52,7 +62,34 @@ class TrackerEngine(
     var state: TrackState = TrackState.IDLE
         private set
 
+    /** Live smoothed global H — what policy triggers evaluate. */
     private var smoothedH: DoubleArray? = null
+
+    /** Displayed global H: [smoothedH] run through the deadband
+     *  ([pullWithinBudget]). This is what [FrameDecision.hCn] emits. */
+    private var displayH: DoubleArray? = null
+
+    /** EMA of known median displacements — the speed estimate behind
+     *  [adaptiveAlpha]. Negative until the first known displacement. */
+    private var motionEma = -1.0
+
+    /** A region's live smoothed refinement + frames since its fit was last
+     *  present (fits flicker around [TrackerConfig.MIN_REGION_POINTS]). */
+    private class RegionSmooth(val h: DoubleArray) {
+        var missing = 0
+    }
+
+    private val regionSmooth = HashMap<Int, RegionSmooth>()
+
+    /** Displayed per-region transforms (deadband-held [regionSmooth]) —
+     *  what [FrameDecision.perRegionHCn] emits. */
+    private val regionDisplay = HashMap<Int, DoubleArray>()
+
+    /** CN frame extent for corner-deviation probes — the last real frame's
+     *  dims, a nominal CN box until one arrives (pure-JVM tests). */
+    private var frameW = 960
+    private var frameH = 540
+
     private var belowKeepStreak = 0
     private var lostFrames = 0
     private var lastAcquireRequestMs = 0L
@@ -119,6 +156,10 @@ class TrackerEngine(
     }
 
     private fun onAcquireFinished(locked: Boolean, nowMs: Long = clock()) {
+        // Either way the displayed transforms are stale: a fresh anchor is a
+        // new anchor space (blending across it would smear), and a failed
+        // acquire hides. The next emission re-seeds from live values.
+        clearDisplayState()
         if (locked) {
             state = TrackState.LOCKED
             anchorCreatedAtMs = nowMs
@@ -138,17 +179,22 @@ class TrackerEngine(
     }
 
     /** The session replaced the tracked region set (flavor change or
-     *  re-flavor). Collapse streaks are keyed by small ints reused across
-     *  flavors — a streak accumulated by an OLD region must not count a new
-     *  region toward the re-OCR trigger. */
+     *  re-flavor). Collapse streaks — and the smoothed/held region
+     *  transforms — are keyed by small ints reused across flavors: state
+     *  accumulated by an OLD region must not apply to a new one. The global
+     *  display hold survives (same anchor space). */
     fun onRegionsReplaced() {
         regionCollapseStreaks.clear()
+        regionSmooth.clear()
+        regionDisplay.clear()
     }
 
     fun reset() {
         state = TrackState.IDLE
         activeAcquireId = 0L
         smoothedH = null
+        clearDisplayState()
+        motionEma = -1.0
         belowKeepStreak = 0
         lostFrames = 0
         lastAcquireRequestMs = 0L
@@ -175,6 +221,10 @@ class TrackerEngine(
         canAcquire: Boolean = true,
         nowMs: Long = clock(),
     ): FrameDecision {
+        if (m != null && m.frameW > 0 && m.frameH > 0) {
+            frameW = m.frameW
+            frameH = m.frameH
+        }
         updateStillness(m)
 
         return when (state) {
@@ -190,6 +240,7 @@ class TrackerEngine(
                     state = TrackState.IDLE
                     activeAcquireId = 0L
                     smoothedH = null
+                    clearDisplayState()
                     decision(null, requestAcquire = false, m)
                 } else {
                     // Keep showing the previous anchor's overlays (if any)
@@ -208,7 +259,7 @@ class TrackerEngine(
                     belowKeepStreak = 0
                     lostFrames = 0
                     smoothedH = m!!.hCn!!.copyOf() // snap, don't blend across the gap
-                    decision(smoothedH, requestAcquire = false, m)
+                    emitDisplay(requestAcquire = false, m)
                 } else if (++lostFrames >= TrackerConfig.LOST_TO_IDLE_FRAMES) {
                     state = TrackState.IDLE
                     decision(null, requestAcquire = false, m)
@@ -237,6 +288,7 @@ class TrackerEngine(
             if (deadAnchorStreak >= TrackerConfig.DEAD_ANCHOR_FRAMES) {
                 state = TrackState.IDLE
                 smoothedH = null
+                clearDisplayState()
                 return decision(null, requestAcquire = false, m)
             }
         }
@@ -252,12 +304,14 @@ class TrackerEngine(
         if (good) {
             belowKeepStreak = 0
             val fresh = m!!.hCn!!
+            val alpha = adaptiveAlpha()
             val smoothed = smoothedH
             if (smoothed == null) {
                 smoothedH = fresh.copyOf()
             } else {
-                Homography.emaInPlace(smoothed, fresh, TrackerConfig.H_SMOOTHING_ALPHA)
+                Homography.emaInPlace(smoothed, fresh, alpha)
             }
+            updateRegionSmoothing(m.perRegionH, alpha)
         } else if (++belowKeepStreak >= TrackerConfig.FRAMES_TO_LOST) {
             if (allowTriggers) {
                 state = TrackState.LOST
@@ -265,6 +319,7 @@ class TrackerEngine(
             } else {
                 smoothedH = null // hide; completion decides what's next
             }
+            clearDisplayState()
             return decision(null, requestAcquire = false, m)
         }
 
@@ -293,16 +348,100 @@ class TrackerEngine(
                 acquire = true // an OFFER — the session launches, then beginAcquire()
             }
         }
-        // Emit the last smoothed H even on a briefly-bad frame — a short
-        // dropout shouldn't blank the overlays (hysteresis handles real loss).
-        return decision(smoothedH, acquire, m)
+        // Emit even on a briefly-bad frame — a short dropout shouldn't blank
+        // the overlays (hysteresis handles real loss).
+        return emitDisplay(acquire, m)
+    }
+
+    // ── Display stabilization: adaptive smoothing + deadband hold ─────────
+
+    /** Smoothing factor for this frame, from the measured motion level:
+     *  heavy at stillness (tremor, RANSAC churn and rematch pops get
+     *  crushed before the deadband even sees them), snappy under deliberate
+     *  motion (smoothing lag grows with speed; the deadband's trail does
+     *  not). Snappy when no displacement has been measured yet. */
+    private fun adaptiveAlpha(): Float {
+        val speed = motionEma
+        if (speed < 0) return TrackerConfig.H_ALPHA_MAX
+        val t = ((speed - TrackerConfig.H_ALPHA_DISP_LO) /
+            (TrackerConfig.H_ALPHA_DISP_HI - TrackerConfig.H_ALPHA_DISP_LO))
+            .coerceIn(0.0, 1.0).toFloat()
+        return TrackerConfig.H_ALPHA_MIN + t * (TrackerConfig.H_ALPHA_MAX - TrackerConfig.H_ALPHA_MIN)
+    }
+
+    /** Fold this frame's per-region fits into their smoothed copies; regions
+     *  without a fit this frame age toward retirement. */
+    private fun updateRegionSmoothing(fresh: Map<Int, DoubleArray>, alpha: Float) {
+        for ((key, h) in fresh) {
+            val entry = regionSmooth[key]
+            if (entry == null) {
+                regionSmooth[key] = RegionSmooth(h.copyOf())
+            } else {
+                entry.missing = 0
+                Homography.emaInPlace(entry.h, h, alpha)
+            }
+        }
+        for ((key, entry) in regionSmooth) if (key !in fresh) entry.missing++
+    }
+
+    /** Build the emitted decision: live smoothed transforms run through the
+     *  deadband. Regions with a live (or briefly-held) fit chase their
+     *  smoothed copy; retired fits glide onto the global display and drop
+     *  off, so the refined↔global handoff never pops. */
+    private fun emitDisplay(requestAcquire: Boolean, m: TrackMeasurement?): FrameDecision {
+        val live = smoothedH ?: return decision(null, requestAcquire, m)
+        val display = displayH
+            ?.also { Homography.pullWithinBudget(it, live, TrackerConfig.HOLD_DEVIATION_CN_PX, frameW, frameH) }
+            ?: live.copyOf().also { displayH = it }
+        val iter = regionSmooth.entries.iterator()
+        while (iter.hasNext()) {
+            val entry = iter.next()
+            val key = entry.key
+            val region = entry.value
+            if (region.missing <= TrackerConfig.REGION_HOLD_FRAMES) {
+                val shown = regionDisplay[key]
+                if (shown == null) {
+                    regionDisplay[key] = region.h.copyOf()
+                } else {
+                    Homography.pullWithinBudget(
+                        shown, region.h, TrackerConfig.HOLD_DEVIATION_CN_PX, frameW, frameH,
+                    )
+                }
+            } else {
+                val shown = regionDisplay[key]
+                if (shown == null) {
+                    iter.remove()
+                    continue
+                }
+                Homography.emaInPlace(shown, display, TrackerConfig.REGION_RETIRE_ALPHA)
+                if (Homography.maxCornerDeviation(shown, display, frameW, frameH) <=
+                    TrackerConfig.REGION_DISPLAY_DROP_CN_PX
+                ) {
+                    regionDisplay.remove(key)
+                    iter.remove()
+                }
+            }
+        }
+        return decision(display, requestAcquire, m, regionDisplay)
+    }
+
+    /** Drop every displayed transform (new anchor space, loss, teardown) —
+     *  the next emission re-seeds from the live smoothed values. */
+    private fun clearDisplayState() {
+        displayH = null
+        regionSmooth.clear()
+        regionDisplay.clear()
     }
 
     // ── Motion / settle (single source: tracker median displacement) ──────
 
     private fun updateStillness(m: TrackMeasurement?) {
         val disp = m?.medianDispPx ?: -1.0
-        if (disp >= 0) recordDisp(disp)
+        if (disp >= 0) {
+            recordDisp(disp)
+            motionEma = if (motionEma < 0) disp
+            else motionEma + TrackerConfig.MOTION_EMA_ALPHA * (disp - motionEma)
+        }
         when {
             disp < 0 -> Unit // unknown (rematch frame / first frame): neutral
             disp <= settleThreshold() -> stillFrames++
@@ -354,11 +493,16 @@ class TrackerEngine(
     private fun cooldownElapsed(nowMs: Long): Boolean =
         nowMs - lastAcquireRequestMs >= TrackerConfig.ACQUIRE_COOLDOWN_MS
 
-    private fun decision(h: DoubleArray?, requestAcquire: Boolean, m: TrackMeasurement?): FrameDecision =
+    private fun decision(
+        h: DoubleArray?,
+        requestAcquire: Boolean,
+        m: TrackMeasurement?,
+        perRegion: Map<Int, DoubleArray> = emptyMap(),
+    ): FrameDecision =
         FrameDecision(
             state = state,
             hCn = h,
-            perRegionHCn = if (h != null && m != null) m.perRegionH else emptyMap(),
+            perRegionHCn = if (h != null) perRegion else emptyMap(),
             requestAcquire = requestAcquire,
             inliers = m?.inliers ?: 0,
             scale = h?.let { Homography.scaleOf(it) } ?: 0f,

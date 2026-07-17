@@ -64,10 +64,47 @@ object TrackerConfig {
      *  a granted acquire request was silently not launched. */
     const val ACQUIRE_TIMEOUT_MS = 30_000L
 
-    /** EMA smoothing factor applied to the emitted homography (0..1, higher =
-     *  snappier). Deliberate v1 simplification over the reference's 8-DoF EKF;
-     *  same seam if an EKF upgrade is ever warranted. */
-    const val H_SMOOTHING_ALPHA = 0.6f
+    /** Speed-adaptive EMA on the tracked homographies (deliberate
+     *  simplification over the reference's 8-DoF EKF; same seam if an EKF
+     *  is ever warranted). The factor follows the smoothed median LK
+     *  displacement linearly, from [H_ALPHA_MIN] at/below [H_ALPHA_DISP_LO]
+     *  CN px/frame (holding still — the old fixed 0.6 passed 4–12 Hz hand
+     *  tremor through at 54–76 % amplitude) to [H_ALPHA_MAX] at/above
+     *  [H_ALPHA_DISP_HI] (deliberate pan — smoothing lag grows with speed,
+     *  unlike the display deadband's constant trail). */
+    const val H_ALPHA_MIN = 0.08f
+    const val H_ALPHA_MAX = 0.8f
+    const val H_ALPHA_DISP_LO = 0.4
+    const val H_ALPHA_DISP_HI = 3.0
+
+    /** EMA factor for the median-displacement estimate driving the adaptive
+     *  alpha (and nothing else — settle keeps its own quantile window). */
+    const val MOTION_EMA_ALPHA = 0.3
+
+    // ── Display deadband (stillness hold) ──────────────────────────────────
+
+    /** The emitted (displayed) transforms move only when they place content
+     *  farther than this from the live smoothed fit (max corner deviation,
+     *  CN px — ×~2.5 on screen), and then only back to this distance: a
+     *  velocity-independent rubber band. Held still, the display freezes
+     *  outright — tremor, RANSAC churn and rematch pops never reach the
+     *  renderer; panning, it follows at a constant sub-budget trail. Policy
+     *  triggers (scale drift, staleness, collapse) keep reading the LIVE
+     *  smoothed homography, so display and policy never diverge by more
+     *  than this budget. */
+    const val HOLD_DEVIATION_CN_PX = 1.2
+
+    /** A region whose refined fit disappears keeps its last displayed
+     *  transform for this many frames — fits flicker around
+     *  [MIN_REGION_POINTS], and each flicker used to pop the overlay
+     *  between its refined and global placements. */
+    const val REGION_HOLD_FRAMES = 5
+
+    /** Retiring region displays glide onto the global homography at this
+     *  EMA rate, and drop off once within [REGION_DISPLAY_DROP_CN_PX] of
+     *  it — the refined-vs-global handoff becomes a short slide, not a pop. */
+    const val REGION_RETIRE_ALPHA = 0.3f
+    const val REGION_DISPLAY_DROP_CN_PX = 0.25
 
     // ── Per-region refinement (Huawei US 12,190,612's per-text-line
     //    homographies, generalized to the overlay's warp unit: OCR groups for

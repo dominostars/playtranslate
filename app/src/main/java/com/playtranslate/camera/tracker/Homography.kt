@@ -69,6 +69,59 @@ object Homography {
         normalize(smoothed)
     }
 
+    /** Max L1 deviation between where [a] and [b] place the corners of a
+     *  [w]×[h] frame — "how far apart these transforms put content", the
+     *  display deadband's distance metric. */
+    fun maxCornerDeviation(a: DoubleArray, b: DoubleArray, w: Int, h: Int): Double {
+        var worst = 0.0
+        for (i in 0 until 4) {
+            val x = if (i and 1 == 0) 0.0 else w.toDouble()
+            val y = if (i and 2 == 0) 0.0 else h.toDouble()
+            val pa = project(a, x, y)
+            val pb = project(b, x, y)
+            val d = (abs(pa[0] - pb[0]) + abs(pa[1] - pb[1])).toDouble()
+            if (d > worst) worst = d
+        }
+        return worst
+    }
+
+    /** Slack on [pullWithinBudget]'s exit check (CN px, ~0.03 px on screen):
+     *  a pull that lands at budget+ε must count as converged, or boundary
+     *  chatter would burn the iteration cap and snap-to-live spuriously. */
+    private const val PULL_SLACK_PX = 0.01
+
+    /** Re-pulls before [pullWithinBudget] gives up and snaps: every
+     *  adversarial case found by randomized search converged in 2. */
+    private const val MAX_PULLS = 3
+
+    /**
+     * The display deadband: leave [display] untouched while it places
+     * content within [budget] px of [live] over a [w]×[h] frame
+     * ([maxCornerDeviation]), and when the gap exceeds the budget pull it
+     * back to the budget boundary — a velocity-independent rubber band, not
+     * a low-pass. Holding still the display freezes outright; sustained
+     * motion is followed at a constant sub-budget trail.
+     *
+     * The lerp factor `1 - budget/dev` is exact only where projections are
+     * linear in the matrix coefficients (affine). Perspective terms divide
+     * by w, so a single pull can UNDERSHOOT — up to 1.6 px past a 1.2 px
+     * budget at realistic magnitudes, unboundedly for wilder transforms
+     * (found by randomized search; opposing h6/h7 signs at large deviation,
+     * e.g. right after a rematch pop). So: re-measure and re-pull, and if
+     * [MAX_PULLS] don't converge, snap to [live] — rendering the live fit
+     * exactly is always legitimate, so the budget is a hard invariant.
+     */
+    fun pullWithinBudget(display: DoubleArray, live: DoubleArray, budget: Double, w: Int, h: Int) {
+        repeat(MAX_PULLS) {
+            val dev = maxCornerDeviation(display, live, w, h)
+            if (dev <= budget + PULL_SLACK_PX) return
+            emaInPlace(display, live, (1.0 - budget / dev).toFloat())
+        }
+        if (maxCornerDeviation(display, live, w, h) > budget + PULL_SLACK_PX) {
+            System.arraycopy(live, 0, display, 0, 9)
+        }
+    }
+
     /** Effective uniform scale of the mapping: sqrt(|det| of the top-left 2×2)
      *  (of the normalized H). 1.0 = same apparent size as the anchor frame. */
     fun scaleOf(h: DoubleArray): Float {

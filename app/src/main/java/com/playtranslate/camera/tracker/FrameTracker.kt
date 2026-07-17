@@ -65,6 +65,10 @@ data class TrackMeasurement(
      *  at install/rematch, so this measures decay since the last correspondence
      *  refresh — the Huawei tracing-point-ratio re-OCR signal. */
     val perRegionSurvival: Map<Int, Float> = emptyMap(),
+    /** CN dims of the frame this measurement was made on — the engine's
+     *  display-deadband probe geometry (0 when synthesized in tests). */
+    val frameW: Int = 0,
+    val frameH: Int = 0,
 )
 
 /**
@@ -362,7 +366,10 @@ class FrameTracker {
         if (!hasPrev) {
             prevGray = curGray
             hasPrev = true
-            return TrackMeasurement(null, 0, -1.0, anchorPts.size)
+            return TrackMeasurement(
+                null, 0, -1.0, anchorPts.size,
+                frameW = curGray.cols(), frameH = curGray.rows(),
+            )
         }
 
         // Starved (blur, occlusion, or plain loss) → try a descriptor
@@ -387,7 +394,7 @@ class FrameTracker {
             stepLk(curGray)
         }
 
-        val measurement = fitHomography()
+        val measurement = fitHomography(curGray.cols(), curGray.rows())
         if (didRematch) {
             // A re-match replaces the correspondence set with pure ORB
             // matches, dropping the tracing-point seeds — without
@@ -454,7 +461,7 @@ class FrameTracker {
         }
         prevGray = curGray
         hasPrev = true
-        return TrackMeasurement(null, 0, motion, 0)
+        return TrackMeasurement(null, 0, motion, 0, frameW = curGray.cols(), frameH = curGray.rows())
     }
 
     /** Advance [currentPts] from [prevGray] to [curGray] with forward LK +
@@ -541,10 +548,13 @@ class FrameTracker {
         kps.release(); desc.release()
     }
 
-    private fun fitHomography(): TrackMeasurement {
+    private fun fitHomography(frameW: Int, frameH: Int): TrackMeasurement {
         val (hArr, inliers) = pruneToVerified()
         if (hArr == null) {
-            return TrackMeasurement(null, 0, lastMedianDisp, anchorPts.size)
+            return TrackMeasurement(
+                null, 0, lastMedianDisp, anchorPts.size,
+                frameW = frameW, frameH = frameH,
+            )
         }
         val (perRegionH, perRegionSurvival) = fitRegions(hArr)
         return TrackMeasurement(
@@ -554,6 +564,8 @@ class FrameTracker {
             trackedPoints = anchorPts.size,
             perRegionH = perRegionH,
             perRegionSurvival = perRegionSurvival,
+            frameW = frameW,
+            frameH = frameH,
         )
     }
 

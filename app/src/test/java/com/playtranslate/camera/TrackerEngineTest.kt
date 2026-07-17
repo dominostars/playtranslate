@@ -436,6 +436,171 @@ class TrackerEngineTest {
         assertTrue("shaky-device settle never opened", acquired)
     }
 
+    // ── Display stabilization: adaptive smoothing + deadband hold ─────────
+
+    private fun measurementAt(tx: Double, ty: Double, disp: Double, inliers: Int = 100) =
+        TrackMeasurement(
+            hCn = doubleArrayOf(1.0, 0.0, tx, 0.0, 1.0, ty, 0.0, 0.0, 1.0),
+            inliers = inliers,
+            medianDispPx = disp,
+            trackedPoints = inliers,
+        )
+
+    @Test
+    fun displayFreezesUnderTremorWhileHoldingStill() {
+        val e = engine()
+        lockEngine(e)
+        e.onFrame(measurementAt(2.0, -1.0, disp = STILL_DISP)) // seed
+        var last: DoubleArray? = null
+        // Sub-pixel tremor around a fixed pose: the raw fits jitter every
+        // frame, the emitted transform must not move at all.
+        repeat(30) { i ->
+            val jitter = if (i % 2 == 0) 0.4 else -0.4
+            val d = e.onFrame(measurementAt(2.0 + jitter, -1.0 - jitter, disp = 0.4))
+            assertNotNull(d.hCn)
+            last?.let { assertTrue("display moved under tremor at frame $i", it.contentEquals(d.hCn!!)) }
+            last = d.hCn!!.copyOf()
+        }
+    }
+
+    @Test
+    fun displayFollowsSustainedDriftAtBoundedTrail() {
+        val e = engine()
+        lockEngine(e)
+        e.onFrame(measurementAt(0.0, 0.0, disp = STILL_DISP)) // seed
+        // Sustained 2 px/frame drift — exactly the shape the ADAPTIVE settle
+        // threshold (which climbs to 4.0 on such input) would misread as
+        // "still". The deadband is velocity-independent: the display must
+        // follow at a bounded trail, never freeze into a growing offset.
+        var lastTx = 0.0
+        for (f in 1..40) {
+            val tx = 2.0 * f
+            val d = e.onFrame(measurementAt(tx, 0.0, disp = 2.0))
+            assertNotNull(d.hCn)
+            lastTx = d.hCn!![2]
+            assertTrue("trail ${tx - lastTx} px at frame $f", tx - lastTx < 6.0)
+        }
+        assertTrue("display never followed the drift (tx=$lastTx)", lastTx > 60.0)
+    }
+
+    @Test
+    fun adaptiveSmoothingSnappyInMotionHeavyAtRest() {
+        // The same 10 px step, presented under pan-speed displacement and
+        // under stillness: the moving engine must converge far faster.
+        fun stepResponseAfter3Frames(disp: Double): Double {
+            val e = engine()
+            lockEngine(e)
+            e.onFrame(measurementAt(0.0, 0.0, disp = disp)) // seed
+            var tx = 0.0
+            repeat(3) { tx = e.onFrame(measurementAt(10.0, 0.0, disp = disp)).hCn!![2] }
+            return tx
+        }
+        assertTrue(stepResponseAfter3Frames(MOVING_DISP) > 7.0)
+        assertTrue(stepResponseAfter3Frames(STILL_DISP) < 3.0)
+    }
+
+    @Test
+    fun regionDisplayFrozenUnderTremorAndRetiresAfterDropout() {
+        val e = engine()
+        lockEngine(e)
+        fun withRegion(jitter: Double) = goodMeasurement(disp = 0.4).copy(
+            perRegionH = mapOf(7 to doubleArrayOf(1.0, 0.0, 3.0 + jitter, 0.0, 1.0, jitter, 0.0, 0.0, 1.0)),
+        )
+        e.onFrame(withRegion(0.0)) // seed global + region
+        var held: DoubleArray? = null
+        repeat(10) { i ->
+            val d = e.onFrame(withRegion(if (i % 2 == 0) 0.4 else -0.4))
+            val r = d.perRegionHCn[7]
+            assertNotNull("region display missing at frame $i", r)
+            held?.let { assertTrue("region display moved under tremor", it.contentEquals(r!!)) }
+            held = r!!.copyOf()
+        }
+        // Fit drops out: the displayed transform holds verbatim through the
+        // flicker window (no pop to the global H)...
+        repeat(TrackerConfig.REGION_HOLD_FRAMES) { i ->
+            val d = e.onFrame(goodMeasurement(disp = 0.4))
+            val r = d.perRegionHCn[7]
+            assertNotNull("hold window ended early at frame $i", r)
+            assertTrue(held!!.contentEquals(r!!))
+        }
+        // ...then glides onto the global transform and drops off entirely.
+        var gone = false
+        repeat(20) {
+            if (e.onFrame(goodMeasurement(disp = 0.4)).perRegionHCn.isEmpty()) gone = true
+        }
+        assertTrue("retired region never dropped off", gone)
+    }
+
+    @Test
+    fun regionsReplacedDropsHeldRegionDisplays() {
+        val e = engine()
+        lockEngine(e)
+        val withRegion = goodMeasurement(disp = 0.4).copy(
+            perRegionH = mapOf(3 to doubleArrayOf(1.0, 0.0, 5.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)),
+        )
+        repeat(3) { e.onFrame(withRegion) }
+        assertFalse(e.onFrame(withRegion).perRegionHCn.isEmpty())
+        // Re-flavor: key 3 now names a DIFFERENT region — without the clear,
+        // the old region's held transform would ride the flicker window onto
+        // frames that have no fresh fit for it.
+        e.onRegionsReplaced()
+        assertTrue(e.onFrame(goodMeasurement(disp = 0.4)).perRegionHCn.isEmpty())
+    }
+
+    @Test
+    fun freshAnchorSnapsDisplayToNewAnchorSpace() {
+        val e = engine()
+        lockEngine(e)
+        repeat(3) { e.onFrame(measurementAt(2.0, -1.0, disp = STILL_DISP)) }
+        // Staleness refresh → new anchor: the display must snap to the new
+        // anchor space, not blend from the held transform.
+        nowMs += TrackerConfig.ANCHOR_REFRESH_AGE_MS + 1
+        var offered = false
+        repeat(TrackerConfig.SETTLE_FRAMES + 1) {
+            if (e.onFrame(measurementAt(2.0, -1.0, disp = STILL_DISP)).requestAcquire) offered = true
+        }
+        assertTrue(offered)
+        val id = e.beginAcquire(nowMs = nowMs)
+        assertTrue(id != 0L)
+        e.finishAcquire(id, locked = true, nowMs = nowMs)
+        val d = e.onFrame(measurementAt(50.0, 0.0, disp = STILL_DISP))
+        assertEquals(50.0, d.hCn!![2], 1e-9)
+    }
+
+    @Test
+    fun pullWithinBudgetBoundsPerspectiveTransforms() {
+        val budget = TrackerConfig.HOLD_DEVIATION_CN_PX
+        // Adversarial display/live pairs found by randomized search: opposing
+        // perspective terms at large deviation (the post-rematch-pop shape).
+        // A single coefficient-space lerp UNDERSHOOTS on these (1.61 px and
+        // 53.5 px residuals against the 1.2 budget) because projection
+        // divides by w — the bound must hold anyway.
+        val adversarial = listOf(
+            doubleArrayOf(1.03139058, -0.02161146, -16.16445665, -0.01924385, 0.98394557, 9.05589995, 9.943e-05, 9.786e-05, 1.0) to
+                doubleArrayOf(0.99327152, -0.01326186, 17.29122582, 0.0464009, 1.0187865, -0.52714299, -9.524e-05, -9.464e-05, 1.0),
+            doubleArrayOf(1.03561654, 0.0105073, -92.14275758, -0.02516343, 1.00696048, 148.94562958, 8.0562e-04, 9.9901e-04, 1.0) to
+                doubleArrayOf(0.98736312, -0.00188266, -63.48333154, -0.02820324, 0.96203065, -63.93968025, -8.578e-04, -2.31e-04, 1.0),
+        )
+        for ((display, live) in adversarial) {
+            assertTrue(Homography.maxCornerDeviation(display, live, 960, 540) > budget)
+            Homography.pullWithinBudget(display, live, budget, 960, 540)
+            val after = Homography.maxCornerDeviation(display, live, 960, 540)
+            assertTrue("budget violated: $after px", after <= budget + 0.02)
+        }
+        // Within budget: untouched (the freeze that makes overlays rock-solid).
+        val held = Homography.IDENTITY.copyOf()
+        val near = doubleArrayOf(1.0, 0.0, 0.5, 0.0, 1.0, -0.4, 0.0, 0.0, 1.0)
+        Homography.pullWithinBudget(held, near, budget, 960, 540)
+        assertTrue(held.contentEquals(Homography.IDENTITY))
+        // Beyond budget on a plain translation: pulled to the boundary, NOT
+        // snapped onto the live fit — it's a rubber band, not a follower.
+        val trailing = Homography.IDENTITY.copyOf()
+        val far = doubleArrayOf(1.0, 0.0, 5.0, 0.0, 1.0, -3.0, 0.0, 0.0, 1.0)
+        Homography.pullWithinBudget(trailing, far, budget, 960, 540)
+        val dev = Homography.maxCornerDeviation(trailing, far, 960, 540)
+        assertTrue("expected ~budget trail, got $dev", dev > budget - 0.2 && dev <= budget + 0.02)
+    }
+
     @Test
     fun homographyMathSanity() {
         val hCn = doubleArrayOf(1.0, 0.0, 10.0, 0.0, 1.0, -4.0, 0.0, 0.0, 1.0)

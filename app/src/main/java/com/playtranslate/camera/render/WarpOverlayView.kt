@@ -42,6 +42,15 @@ class WarpOverlayView(context: Context) : View(context) {
     private var lastHAu: DoubleArray? = null
     private var lastPerRegionAu: Map<Int, DoubleArray> = emptyMap()
 
+    /** Fingerprint of the last full [applyHomography] run: the tracker's
+     *  stillness hold re-posts bit-identical transforms every frame, and the
+     *  matrix recompute + full-view redraw for those is exactly the per-frame
+     *  cost the hold exists to remove. [regionsDirty] forces a rebuild when
+     *  the region set changes under an unchanged homography. */
+    private var lastViewW = 0
+    private var lastViewH = 0
+    private var regionsDirty = false
+
     // Scratch for matrix composition (avoid per-frame allocation).
     private val scratch = DoubleArray(9)
 
@@ -53,6 +62,7 @@ class WarpOverlayView(context: Context) : View(context) {
         regions = newRegions
         auWidth = auW
         auHeight = auH
+        regionsDirty = true
         matrices = Array(newRegions.size) { Matrix() }
         for (o in old) {
             if (newRegions.none { it.bitmap === o.bitmap }) o.release()
@@ -78,6 +88,12 @@ class WarpOverlayView(context: Context) : View(context) {
      * for regions without one. Main thread.
      */
     fun applyHomography(hAu: DoubleArray?, perRegionAu: Map<Int, DoubleArray> = emptyMap()) {
+        if (!regionsDirty && hAu != null && lastHAu != null &&
+            width == lastViewW && height == lastViewH &&
+            hAu.contentEquals(lastHAu) && perRegionUnchanged(perRegionAu)
+        ) {
+            return // held frame: transforms identical, nothing to recompute
+        }
         lastHAu = hAu
         lastPerRegionAu = perRegionAu
         if (hAu == null || regions.isEmpty() || width == 0 || height == 0 ||
@@ -121,7 +137,20 @@ class WarpOverlayView(context: Context) : View(context) {
             Homography.toAndroidMatrix(scratch, matrices[i])
         }
         visibleCount = regions.size
+        lastViewW = width
+        lastViewH = height
+        regionsDirty = false
         invalidate()
+    }
+
+    private fun perRegionUnchanged(fresh: Map<Int, DoubleArray>): Boolean {
+        val last = lastPerRegionAu
+        if (fresh.size != last.size) return false
+        for ((key, h) in fresh) {
+            val prev = last[key] ?: return false
+            if (!h.contentEquals(prev)) return false
+        }
+        return true
     }
 
     override fun onDraw(canvas: Canvas) {
