@@ -197,10 +197,41 @@ class CameraSnapshotController(
 
         val w = panelHost.width.takeIf { it > 0 } ?: activity.resources.displayMetrics.widthPixels
         val h = panelHost.height.takeIf { it > 0 } ?: activity.resources.displayMetrics.heightPixels
-        o.show(w, h)
+        // The sheet's frosted body samples a SCREEN-SPACE image of what sits
+        // behind it (the capture flow passes the clean screen frame). Project
+        // the AU-space frozen frame through the same FILL_CENTER mapping the
+        // freeze ImageView displays it with, so the frost shows exactly the
+        // visible slice. show() copies what it needs (downscaled blur), so
+        // the projection is recycled immediately.
+        val backdrop = renderViewSpaceBackdrop(bitmap, w, h)
+        o.show(w, h, backdrop)
+        backdrop?.recycle()
         val s = session.runSnapshot(bitmap)
         snapshotSession = s
         o.observe(s)
+    }
+
+    /** The frozen AU frame drawn into a view-sized bitmap via the exact
+     *  [CameraCoordinates] FILL_CENTER transform (uniform cover-scale,
+     *  center-crop) — what the user actually sees behind the sheet. */
+    private fun renderViewSpaceBackdrop(frozen: Bitmap, viewW: Int, viewH: Int): Bitmap? {
+        if (viewW <= 0 || viewH <= 0 || frozen.isRecycled) return null
+        return try {
+            val coords = CameraCoordinates(frozen.width, frozen.height, viewW, viewH)
+            val out = Bitmap.createBitmap(viewW, viewH, Bitmap.Config.ARGB_8888)
+            val matrix = android.graphics.Matrix().apply {
+                setScale(coords.scale, coords.scale)
+                postTranslate(coords.offsetX, coords.offsetY)
+            }
+            android.graphics.Canvas(out).drawBitmap(
+                frozen, matrix,
+                android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG),
+            )
+            out
+        } catch (e: Exception) {
+            android.util.Log.w("CameraSnapshot", "backdrop projection failed", e)
+            null
+        }
     }
 
     /** Gear re-OCR: run a fresh snapshot session over the SAME frozen frame
