@@ -74,6 +74,12 @@ class CameraSession(
     private val context: Context,
     private val scope: CoroutineScope,
     private val overlayHost: FrameLayout,
+    /** A live acquire's OCR has been in flight past the shared slow
+     *  threshold ([LiveSessionFeedback.OCR_SLOW_PROMPT_MS]) — the slow-device
+     *  signal behind the rescue prompt. Fired on the main thread, at most
+     *  once per session ([slowOcrFired]); the receiver owns every further
+     *  gate (answered latch, rescue availability, frozen state). */
+    private val onSlowOcr: () -> Unit = {},
 ) {
     private companion object {
 
@@ -141,6 +147,16 @@ class CameraSession(
      *  remain as the backstop for anything that slips through. */
     @Volatile
     private var acquireJob: kotlinx.coroutines.Job? = null
+
+    /** Once-per-session latch for [onSlowOcr], mirroring live mode's
+     *  slowPassFired ([LiveSessionFeedback]): one slow pass earns one
+     *  callback; the receiver's persisted answered-latch handles forever.
+     *  Cleared by [reset] — a language change is a new-session boundary
+     *  (the prompt is per-language), same as a fresh live start. Camera
+     *  acquires are strictly serialized ([acquireJob]), so a plain flag
+     *  replaces live mode's per-pass token bookkeeping. */
+    @Volatile
+    private var slowOcrFired = false
 
     // OpenCV must be loaded BEFORE the tracker fields below construct their
     // first Mat — this session may be the process's first OpenCV user (fresh
@@ -577,12 +593,28 @@ class CameraSession(
             prewarmJob.join() // never race the engine's lazy construction
             val sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode
             val t0 = System.currentTimeMillis()
-            val ocr = OcrManager.instance.recognise(
-                buffers.keyframe,
-                sourceLang,
-                screenshotWidth = auW,
-                regionPreFilter = cameraRegionPreFilter(),
-            )
+            // Slow-pass rescue timer, live mode's threshold: fires MID-pass,
+            // while the user is staring at a viewfinder that shows nothing
+            // for their pointing. Started after the prewarm join so engine
+            // warm-up never counts as slowness; cancelled with the pass
+            // (finally), so a fast pass or a cancelled acquire never fires.
+            // [scope] is the activity's lifecycleScope — the callback lands
+            // on the main thread.
+            val slowTimer = if (!slowOcrFired) scope.launch {
+                kotlinx.coroutines.delay(com.playtranslate.LiveSessionFeedback.OCR_SLOW_PROMPT_MS)
+                slowOcrFired = true
+                onSlowOcr()
+            } else null
+            val ocr = try {
+                OcrManager.instance.recognise(
+                    buffers.keyframe,
+                    sourceLang,
+                    screenshotWidth = auW,
+                    regionPreFilter = cameraRegionPreFilter(),
+                )
+            } finally {
+                slowTimer?.cancel()
+            }
             // A newer publication source appeared while the OCR ran (mode
             // toggle / reset — cancellation-first usually got here earlier;
             // this is the structural backstop).
@@ -1206,8 +1238,14 @@ class CameraSession(
     }
 
     /** Language/config change: drop everything; the next settled frame
-     *  re-OCRs from scratch. */
-    fun reset() = wipeDisplay(purgeAnchorCache = true)
+     *  re-OCRs from scratch. Re-arms the slow-OCR callback — per-language
+     *  prompt, new-session boundary (the engine-switch reset re-arms too,
+     *  harmlessly: with the rescue engine selected the receiver finds no
+     *  faster offer and shows nothing). */
+    fun reset() {
+        slowOcrFired = false
+        wipeDisplay(purgeAnchorCache = true)
+    }
 
     /** Cancel display work and clear every live-scene artifact (overlays,
      *  tracker anchor, engine state, re-flavor caches, stale hint). The

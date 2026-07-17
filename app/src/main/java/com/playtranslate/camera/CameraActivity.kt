@@ -35,6 +35,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import com.playtranslate.CaptureService
+import com.playtranslate.DetectionLog
 import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.R
@@ -42,6 +43,11 @@ import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.applyTheme
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.ocr.registry.OcrModelManager
+import com.playtranslate.ocr.registry.selectionToken
+import com.playtranslate.themeColor
+import com.playtranslate.ui.DismissReason
+import com.playtranslate.ui.OverlayAlert
 import com.playtranslate.ui.buildPillToggle
 
 /**
@@ -135,6 +141,7 @@ class CameraActivity : AppCompatActivity() {
             context = this,
             scope = lifecycleScope,
             overlayHost = findViewById(R.id.cameraOverlayHost),
+            onSlowOcr = { maybeShowSlowOcrPrompt() },
         )
         sessionLangKey = langKey()
 
@@ -359,5 +366,80 @@ class CameraActivity : AppCompatActivity() {
     private fun onOverlayModeChanged(@Suppress("UNUSED_PARAMETER") mode: OverlayMode) {
         val s = session ?: return
         if (snapshotController?.isFrozen == true) s.showFrozenOverlays() else s.onOverlayModeChanged()
+    }
+
+    // ── Slow-OCR rescue prompt ─────────────────────────────────────────────
+
+    /** The rescue alert currently up, if any — the gate against re-offers
+     *  while one shows. The in-activity [OverlayAlert] detaches itself on
+     *  activity pause (LIFECYCLE_PAUSE), which records no answer — the next
+     *  slow session may offer again, same contract as live mode. */
+    private var slowOcrAlert: OverlayAlert? = null
+
+    /**
+     * A live camera acquire's OCR ran past the shared slow threshold
+     * ([com.playtranslate.LiveSessionFeedback.OCR_SLOW_PROMPT_MS]) — offer
+     * the one-tap switch to the rescue engine, live mode's offer
+     * ([CaptureService.maybeShowSlowOcrPrompt]) minus its overlay-window and
+     * multi-display machinery: the camera is an activity, so the plain
+     * in-activity alert form serves. Engine token and the once-per-language
+     * answered latch are the SHARED per-language state — a switch here
+     * switches live mode too, exactly like the snapshot gear picker, and an
+     * answer in either surface silences both. Gated out while FROZEN (the
+     * timer only wraps live acquires, but a freeze can race the callback;
+     * the snapshot panel has its own gear picker) and when nothing faster
+     * exists — the slowness IS the fast option. Cycles are deliberately NOT
+     * paused under the alert: a completing acquire just paints behind the
+     * scrim, and the switch action resets the pipeline anyway.
+     */
+    private fun maybeShowSlowOcrPrompt() {
+        if (isFinishing || isDestroyed) return
+        if (slowOcrAlert?.isShowing == true) return
+        if (snapshotController?.isFrozen == true) return
+        val id = prefs.sourceLangId
+        if (prefs.slowOcrPromptAnswered(id)) return
+        val selected = OcrModelManager.selectedBackend(this, id) ?: return
+        val rescue = OcrModelManager.slowOcrRescue(
+            available = OcrModelManager.availableBackends(this, id),
+            selected = selected,
+            mlKitFloor = SourceLanguageProfiles[id].mlKitFloor,
+        ) ?: return
+
+        slowOcrAlert = OverlayAlert.Builder(this)
+            .setTitle(getString(R.string.slow_ocr_prompt_title))
+            // Camera-worded body; the settings breadcrumb stays valid
+            // because the engine selection is the shared one.
+            .setMessage(
+                getString(
+                    R.string.slow_ocr_prompt_message_camera,
+                    getString(R.string.settings_title),
+                    getString(R.string.settings_cell_capture_overlay),
+                    getString(R.string.settings_header_ocr),
+                )
+            )
+            .addButton(
+                getString(R.string.slow_ocr_prompt_switch),
+                themeColor(R.attr.ptAccent),
+            ) {
+                slowOcrAlert = null
+                prefs.setSlowOcrPromptAnswered(id)
+                prefs.setOcrBackendToken(id, rescue.selectionToken)
+                DetectionLog.log("camera slow-OCR prompt: ${id.code} switched to ${rescue.selectionToken}")
+                // Cancel the still-grinding pass and purge the anchor LRU —
+                // cached scenes carry old-engine OCR payloads and would
+                // re-lock without re-OCR. The next settled frame acquires
+                // on the rescue engine (recognise resolves per pass).
+                session?.reset()
+            }
+            .addCancelButton(getString(R.string.slow_ocr_prompt_keep)) { reason ->
+                slowOcrAlert = null
+                // Only an explicit user dismissal (button, scrim, back) is
+                // a decision; a lifecycle detach may offer again.
+                if (reason == DismissReason.USER) prefs.setSlowOcrPromptAnswered(id)
+            }
+            .show()
+        DetectionLog.log(
+            "camera slow-OCR prompt shown for ${id.code} (selected=${selected.selectionToken})"
+        )
     }
 }

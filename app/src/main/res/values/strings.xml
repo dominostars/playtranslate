@@ -768,6 +768,16 @@
          UI; translators may reorder the placeholders if the path reads differently in their
          locale. -->
     <string name="slow_ocr_prompt_message">This device is taking a while to read the screen. Change to the faster engine for faster processing, though its reading quality may be slightly lower. You can switch anytime in settings:\n\n<xliff:g id="settings" example="Settings">%1$s</xliff:g> → <xliff:g id="section" example="Capture &amp; overlay">%2$s</xliff:g> → <xliff:g id="ocr_header" example="Text recognition (OCR)">%3$s</xliff:g></string>
+    <!-- Camera-tool variant of the slow-OCR rescue body, shown as an in-activity alert over the
+         live camera preview (Settings → Tools → Camera): the camera reads text through the lens,
+         not the screen. Shares the title/button strings above; the engine selection it switches
+         is the same shared per-language setting. The settings path on the last line is composed
+         from the live section labels — %1$s = settings_title ("Settings"), %2$s =
+         settings_cell_capture_overlay ("Capture &amp; overlay"), %3$s = settings_header_ocr
+         ("Text recognition (OCR)") — so it can never drift from the real UI; translators may
+         reorder the placeholders if the path reads differently in their locale. Pending l10n
+         batch. -->
+    <string name="slow_ocr_prompt_message_camera">This device is taking a while to read text from the camera. Change to the faster engine for faster processing, though its reading quality may be slightly lower. You can switch anytime in settings:\n\n<xliff:g id="settings" example="Settings">%1$s</xliff:g> → <xliff:g id="section" example="Capture &amp; overlay">%2$s</xliff:g> → <xliff:g id="ocr_header" example="Text recognition (OCR)">%3$s</xliff:g></string>
     <!-- Action button on the slow-OCR rescue alert: switches OCR to the rescue engine
          (ML Kit floor, or PaddleOCR Fast where no floor exists) immediately. -->
     <string name="slow_ocr_prompt_switch">Use the faster engine</string>
