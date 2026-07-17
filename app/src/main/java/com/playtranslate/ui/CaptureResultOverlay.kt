@@ -13,7 +13,6 @@ import android.graphics.Outline
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.Paint
-import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
@@ -98,6 +97,10 @@ class CaptureResultOverlay(
     private val wm: WindowManager,
     private val displayId: Int,
     private val overlayHost: OverlayHost,
+    /** Where the sheet lives — an overlay window by default (the floating-icon
+     *  flow), or an activity view tree ([ActivitySheetHost]) for in-app hosts
+     *  like the camera tool. */
+    private val sheetHost: SheetHost = WindowSheetHost(wm, displayId, overlayHost),
 ) {
     private val ctx = overlayThemedContext(rawCtx)
     private val density = ctx.resources.displayMetrics.density
@@ -229,7 +232,6 @@ class CaptureResultOverlay(
     private var wordSpeakChip: LensSpeakChip? = null
 
     // In-place edit (the panel window goes focusable so the IME shows over the game).
-    private var windowParams: WindowManager.LayoutParams? = null
     private var lastResult: TranslationResult? = null
     /** Last original text written into [LastSentenceCache] from here, so a re-bind
      *  of the same sentence (furigana toggle, re-fit) doesn't re-fire the lookups. */
@@ -443,21 +445,6 @@ class CaptureResultOverlay(
         // Reflect any persisted hide prefs (shared with the results page) up front.
         applySideBySideCollapse()
 
-        val lp = WindowManager.LayoutParams(
-            screenW, screenH,
-            0, // type stamped by OverlayHost
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = 0
-            y = 0
-        }
-        windowParams = lp
         // Bottom sheet: buffer the CONTENT above the navigation bar while it's
         // visible, the same way a top sheet buffers under the status bar — the
         // sheet fill keeps reaching the screen edge behind the bar, so nothing
@@ -510,7 +497,7 @@ class CaptureResultOverlay(
             }
             insets
         }
-        overlayHost.addOverlayWindow(root, wm, lp, displayId)
+        sheetHost.attach(root, screenW, screenH)
         // ONE place that keeps the drop shadow glued to the sheet: a pre-draw hook
         // re-reads the panel's live position every frame, so the shadow follows
         // through any move (handle drag, body swipe/fling, resize, entrance/exit)
@@ -619,7 +606,7 @@ class CaptureResultOverlay(
         binder?.release()
         shadowSync?.let { root.viewTreeObserver.removeOnPreDrawListener(it) }
         shadowSync = null
-        try { overlayHost.removeOverlayWindow(root) } catch (_: Exception) {}
+        sheetHost.detach(root)
         shadowBitmap?.recycle()
         shadowBitmap = null
         backdropSmall?.recycle()
@@ -1466,24 +1453,7 @@ class CaptureResultOverlay(
     }
 
     private fun setWindowFocusable(focusable: Boolean) {
-        val lp = windowParams ?: return
-        lp.flags = if (focusable) {
-            lp.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-        } else {
-            lp.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        }
-        lp.softInputMode = if (focusable) {
-            // ALWAYS_VISIBLE, not STATE_VISIBLE: the window only becomes focusable
-            // asynchronously via the updateViewLayout below, and ALWAYS_VISIBLE makes
-            // the system raise the IME the instant the window actually gains focus.
-            // STATE_VISIBLE wasn't reliably re-evaluated on that focus transition, so
-            // the keyboard only appeared once the user tapped into the field.
-            WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
-                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-        } else {
-            WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
-        }
-        try { wm.updateViewLayout(root, lp) } catch (_: Exception) {}
+        sheetHost.setFocusable(root, focusable)
     }
 
     // ── Responsive content ───────────────────────────────────────────────
