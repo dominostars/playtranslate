@@ -189,6 +189,14 @@ class CaptureResultOverlay(
      *  the sheet (and the camera's frozen frame) exactly as left. */
     var dismissOnActivityLaunch: Boolean = true
 
+    /** Routes outside-the-panel gestures (both presentations) to a host-side
+     *  consumer instead of the dismiss/ignore defaults — the camera hands
+     *  them to its frozen-frame word lookup. Receives the full DOWN..UP
+     *  stream; returning false on the DOWN declines the gesture (nothing
+     *  under the finger) and the default outside behavior applies. Never
+     *  consulted for sliver-band, grabber, or in-panel touches. */
+    var outsideLookupRouter: ((android.view.MotionEvent) -> Boolean)? = null
+
     /** Whether gestures dismiss the sheet: tap-outside, swipe/fling-down,
      *  and the sliver's tap-away. True for the over-game window (the sheet
      *  is a guest over the game; every exit ramp matters). False for the
@@ -343,9 +351,12 @@ class CaptureResultOverlay(
             // line — the 24dp intrinsic would dwarf 11sp text. Distinct
             // instances: compound slots each need their own bounds owner.
             val arrowPx = dp(16)
+            // Nudged 2dp down: the glyph's triangle rides high against the
+            // 11sp baseline when the boxes share the text's top edge.
+            val arrowDropPx = dp(2)
             fun arrow() = ctx.getDrawable(R.drawable.ic_arrow_drop_up)?.mutate()?.apply {
                 setTint(hintColor)
-                setBounds(0, 0, arrowPx, arrowPx)
+                setBounds(0, arrowDropPx, arrowPx, arrowPx + arrowDropPx)
             }
             setCompoundDrawables(arrow(), null, arrow(), null)
             compoundDrawablePadding = dp(4)
@@ -2074,19 +2085,50 @@ class CaptureResultOverlay(
         private var sliverDragging = false
         private var sliverDownRawY = 0f
 
+        /** True while an outside gesture is being streamed to
+         *  [outsideLookupRouter] (claimed at its DOWN). */
+        private var routingOutside = false
+
+        /** Offer an outside-zone DOWN to the router. True = claimed; the
+         *  rest of the gesture streams to it via [routeOutsideFollowUp]. */
+        private fun tryRouteOutsideDown(ev: MotionEvent): Boolean {
+            val router = outsideLookupRouter ?: return false
+            if (editContainer.visibility == View.VISIBLE) return false
+            if (router(ev)) {
+                routingOutside = true
+                return true
+            }
+            return false
+        }
+
+        /** Stream the rest of a claimed outside gesture; ends it on UP or
+         *  CANCEL. Returns true when the event belonged to the router. */
+        private fun routeOutsideFollowUp(ev: MotionEvent): Boolean {
+            if (!routingOutside) return false
+            outsideLookupRouter?.invoke(ev)
+            if (ev.actionMasked == MotionEvent.ACTION_UP ||
+                ev.actionMasked == MotionEvent.ACTION_CANCEL
+            ) {
+                routingOutside = false
+            }
+            return true
+        }
+
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+            if (routeOutsideFollowUp(ev)) return true
             if (sliverMode) {
                 when (ev.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         val panelTop = panel.top + panel.translationY
                         // A touch on the sliver (plus the same above-edge band the
                         // resize grab uses) starts a tap-or-drag; anywhere else
-                        // dismisses boxes and sliver together.
+                        // goes to the word-lookup router when it claims it,
+                        // else dismisses boxes and sliver together.
                         if (ev.y >= panelTop - dp(EXTRA_GRAB_PAST_EDGE_DP)) {
                             sliverTouch = true
                             sliverDragging = false
                             sliverDownRawY = ev.rawY
-                        } else if (dismissOnGesture) {
+                        } else if (!tryRouteOutsideDown(ev) && dismissOnGesture) {
                             dismissFromSliver()
                         }
                     }
@@ -2125,10 +2167,11 @@ class CaptureResultOverlay(
                         return true
                     }
                     // Above the sheet, or in the nav-bar gap below it when the
-                    // sheet is lifted — both are "outside" and dismiss. Consumed
-                    // either way so an outside tap can't leak to the host.
+                    // sheet is lifted — both are "outside": the word-lookup
+                    // router gets first claim, then dismiss. Consumed either
+                    // way so an outside tap can't leak to the host.
                     if (ev.y < resizeTop || ev.y > panel.bottom + panel.translationY) {
-                        if (dismissOnGesture) animateOutAndDismiss()
+                        if (!tryRouteOutsideDown(ev) && dismissOnGesture) animateOutAndDismiss()
                         return true
                     }
                 }

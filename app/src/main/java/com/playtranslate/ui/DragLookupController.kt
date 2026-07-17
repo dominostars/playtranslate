@@ -49,6 +49,12 @@ class DragLookupController(
     private val popup: WordLookupPopup,
     private val magnifier: MagnifierLens,
     private val overlayHost: OverlayHost,
+    /** In-activity hosts (the camera snapshot's frozen-frame lookup) route
+     *  TTS alerts and the Anki-not-installed dialog through activity
+     *  surfaces — the overlay-window defaults need a permission an
+     *  activity flow may not hold. Null = the over-game defaults. */
+    private val ttsAlertTarget: TtsAlertTarget? = null,
+    private val showAnkiNotInstalled: (() -> Unit)? = null,
 ) {
     /** Fires once per drag, on the main thread, when no popup will surface
      *  from this drag (release with no OCR / no hit / async lookup miss) or
@@ -88,6 +94,7 @@ class DragLookupController(
      *  this controller's live word/entry/sentence/screenshot at tap time. */
     private val lensActions = SourceLensActions(
         context, displayId, overlayHost, magnifier,
+        showAnkiNotInstalled = showAnkiNotInstalled,
     ) { LensActionContext(lastWord, lastReading, currentEntry, currentSentence, screenshotPath) }
 
     /** Screenshot bitmap captured at drag start, kept alive for the magnifier
@@ -168,7 +175,8 @@ class DragLookupController(
         speakChip = LensSpeakChip(
             magnifier,
             scope,
-            TtsAlertTarget.Overlay(magnifier.rawCtx, overlayHost, magnifier.wm, displayId),
+            ttsAlertTarget
+                ?: TtsAlertTarget.Overlay(magnifier.rawCtx, overlayHost, magnifier.wm, displayId),
         ) {
             lastWord?.let { word ->
                 LensSpeakChip.Request(
@@ -409,6 +417,51 @@ class DragLookupController(
                 if (ocrJob === thisJob) magnifier.setPillLoading(false)
             }
         }
+    }
+
+    /**
+     * Drag start for a PRE-CAPTURED scene (the camera's frozen snapshot):
+     * the caller supplies the screen-space bitmap and its OCR [lines]
+     * instead of this controller capturing and recognising. Ownership of
+     * [bitmap] transfers here — the usual hand-off machinery recycles it.
+     * The lens stays hidden until [revealLens]: the caller decides when the
+     * gesture became a drag/hold rather than a tap, and a tap goes straight
+     * to [onDragEnd]'s release lookup with the lens surfacing directly in
+     * its loading/definitions presentation.
+     */
+    fun onDragStartWithScene(
+        bitmap: Bitmap,
+        savedPath: String?,
+        lines: List<OcrManager.OcrLine>,
+    ) {
+        handOffDragBitmap()
+        ocrJob?.cancel()
+        lookupJob?.cancel()
+        handler.removeCallbacks(dwellRunnable)
+        dwellLookupJob?.cancel()
+        dwellScheduled = false
+        dwellResult = null
+        dwellAnchorToken = null
+        dragInProgress = true
+        magnifier.resetToZoom()
+        lensRevealed = false
+        magnifier.hide()
+        lastSentSentence = null
+        lineTokensCache = null
+        onScreenshotCaptured(bitmap, savedPath)
+        // Publish before pretokenizing, same as the capture paths — the
+        // release lookup only needs the lines; the tokens cache merely
+        // refines the hover readout. The job doubles as the bitmap's
+        // recycle anchor in handOffDragBitmap.
+        ocrLines = lines
+        ocrJob = scope.launch { pretokenizeLines(lines) }
+    }
+
+    /** Scene-mode reveal: bring the hidden lens up at the current finger
+     *  position. The lines are already in hand, so no loading spinner. */
+    fun revealLens() {
+        revealLensAfterCapture()
+        magnifier.setPillLoading(false)
     }
 
     /** Capture-before-reveal: bring the lens on screen at the finger's

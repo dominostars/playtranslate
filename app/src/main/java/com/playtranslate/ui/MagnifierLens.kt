@@ -231,7 +231,16 @@ class MagnifierLens(
 
     val isInteractive: Boolean get() = lensView?.isInteractive == true
 
+    /** Zoom source, held here as well as on the view: setBitmap can arrive
+     *  while the lens is hidden (the camera scene flow attaches the frame
+     *  BEFORE its deferred reveal creates the view), and a view-only write
+     *  would silently drop it — the zoom then renders as a black card. The
+     *  drag flow clears this via setBitmap(null) before every recycle, so
+     *  it can never dangle a recycled bitmap into the next show(). */
+    private var sourceBitmapForShow: Bitmap? = null
+
     fun setBitmap(bitmap: Bitmap?) {
+        sourceBitmapForShow = bitmap
         lensView?.setSourceBitmap(bitmap)
     }
 
@@ -621,6 +630,9 @@ class MagnifierLens(
         lensView = view
         lensRoot = root
         params = lp
+        // A bitmap attached before this view existed (deferred-reveal scene
+        // flow) applies now; null is a harmless no-op-equivalent.
+        view.setSourceBitmap(sourceBitmapForShow)
     }
 
     /**
@@ -1832,7 +1844,17 @@ class MagnifierLens(
             val pillNaturalWidth = measurePillNaturalWidth()
             val pillLeft = (viewW - pillNaturalWidth) / 2
             val pillRight = pillLeft + pillNaturalWidth
-            val chipTopMargin = pillAnchorY - chipHitSizePx / 2
+            // The vertical anchor is OWNED by applyCardHeightGeometry — keep
+            // whatever it last wrote. Recomputing from the live pillAnchorY
+            // here reads the ANIMATED card top when the reveal was deferred
+            // past a pill tween that ends mid-grow (the loading→definitions
+            // path: setLoading's pill tween is still running at
+            // makeInteractive), and endCardGrow only clears the draw-only
+            // ride — the mid-grow margin then strands the chips inside the
+            // grown card. The existing margin is always right: the grow's
+            // end-state (written at beginCardGrow) or the settled anchor.
+            val chipTopMargin = (leftChip.layoutParams as? LayoutParams)?.topMargin
+                ?: (pillAnchorY - chipHitSizePx / 2)
 
             leftChip.layoutParams = LayoutParams(
                 chipHitSizePx, chipHitSizePx,

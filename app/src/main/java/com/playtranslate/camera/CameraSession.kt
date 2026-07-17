@@ -359,6 +359,7 @@ class CameraSession(
                     cachedOcr = null
                     cachedGroupColors = null
                     cachedSnapshotTranslations = null
+                    cachedScreenshotPath = null
                     lastBuilt = null
                     displayEpoch.advance()
                 }
@@ -1372,6 +1373,44 @@ class CameraSession(
         com.playtranslate.translationlog.TranslationLogRecorder(context.applicationContext)
     }
 
+    /** Saved-to-cache path of the frozen frame the display caches describe —
+     *  rides the snapshot cache writes (same stateLock, same generation
+     *  guard) so the word-lookup scene can attach it to Anki cards. Only
+     *  meaningful while FROZEN with [cachedOcr] non-null. */
+    private var cachedScreenshotPath: String? = null
+
+    /** Frozen-frame word-lookup scene: the display cache's OCR lines
+     *  flattened to [OcrManager.OcrLine] (AU coordinates — the caller maps
+     *  to view space), plus the AU dims and the saved screenshot path.
+     *  Null unless a snapshot currently owns the display. */
+    fun frozenLookupScene(): FrozenLookupScene? {
+        if (mode != Mode.FROZEN) return null
+        synchronized(stateLock) {
+            val ocr = cachedOcr ?: return null
+            val lines = ocr.groups.flatMapIndexed { gi, g ->
+                g.lines.map { line ->
+                    OcrManager.OcrLine(
+                        text = line.text,
+                        bounds = line.bounds,
+                        groupIndex = gi,
+                        groupText = g.text,
+                        symbols = line.symbols,
+                        orientation = line.orientation,
+                    )
+                }
+            }
+            if (lines.isEmpty()) return null
+            return FrozenLookupScene(lines, cachedAuW, cachedAuH, cachedScreenshotPath)
+        }
+    }
+
+    data class FrozenLookupScene(
+        val lines: List<OcrManager.OcrLine>,
+        val auWidth: Int,
+        val auHeight: Int,
+        val screenshotPath: String?,
+    )
+
     /** Bumped by every [runSnapshot] and by [unfreeze]. A snapshot cycle may
      *  publish the shared display caches ONLY while its generation is still
      *  current: cancellation is cooperative, and an older cycle whose OCR
@@ -1442,6 +1481,22 @@ class CameraSession(
         }
         val provenance = snapshotProvenance(ocr, srcId)
         if (ocr == null || groups.isEmpty()) {
+            // A no-text verdict OWNS the display exactly like a successful
+            // run: a re-run (empty region, gear re-OCR) must not leave the
+            // PREVIOUS scene's caches behind — the frozen-frame word lookup
+            // reads them directly and would happily look up words the panel
+            // no longer describes (Codex review finding). Same generation
+            // guard + epoch protocol as the success write; the visible boxes
+            // are taken down by the panel's NoText recovery.
+            synchronized(stateLock) {
+                if (snapshotGeneration.get() == gen) {
+                    cachedOcr = null
+                    cachedGroupColors = null
+                    cachedSnapshotTranslations = null
+                    cachedScreenshotPath = null
+                    displayEpoch.advance()
+                }
+            }
             state.value = CaptureState.NoText(
                 context.getString(com.playtranslate.R.string.camera_snapshot_no_text),
                 provenance,
@@ -1472,6 +1527,7 @@ class CameraSession(
             cachedAuW = auW
             cachedAuH = auH
             cachedSnapshotTranslations = null
+            cachedScreenshotPath = screenshotPath
             displayEpoch.advance()
         }
 

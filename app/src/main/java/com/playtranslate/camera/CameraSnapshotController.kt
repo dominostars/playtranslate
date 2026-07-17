@@ -103,6 +103,22 @@ class CameraSnapshotController(
     private var overlay: CaptureResultOverlay? = null
     private var snapshotSession: CaptureSession? = null
 
+    /** Frozen-frame word lookup: tap/drag on the screenshot itself (outside
+     *  the sheet) drives the floating-icon lens machinery against the
+     *  snapshot's cached OCR. Gesture-time suppliers keep it current across
+     *  re-snapshots and region re-runs. */
+    private val wordLookup = CameraWordLookup(
+        activity, session,
+        frozenBitmap = { frozenBitmap },
+        renderViewSpace = { bmp, w, h -> renderViewSpaceBackdrop(bmp, w, h) },
+        hostSize = { hostSize() },
+        hostOrigin = {
+            val loc = IntArray(2)
+            panelHost.getLocationOnScreen(loc)
+            loc[0] to loc[1]
+        },
+    )
+
     /** Set by the activity's onDestroy: a freeze landing afterwards must
      *  drop its bitmap instead of touching dead views. */
     private var released = false
@@ -132,6 +148,8 @@ class CameraSnapshotController(
         // The editor replaces both region surfaces: the indicator (it IS the
         // editable version of it) and the panel ("temporarily hide" — the
         // sheet comes back exactly as left; visibility only, no dismissal).
+        // An open word-lookup lens goes too — it floats above the editor.
+        wordLookup.dismiss()
         regionUi.hideIndicator()
         panelHost.isVisible = false
         syncControls()
@@ -316,6 +334,9 @@ class CameraSnapshotController(
         // Leaving the frozen snapshot is the explicit X only — outside taps
         // and drag/fling-downs settle instead of dismissing.
         o.dismissOnGesture = false
+        // Outside gestures near recognised text become frozen-frame word
+        // lookups (tap = definition lens, drag = magnifier flow).
+        o.outsideLookupRouter = { ev -> wordLookup.onOutsideTouch(ev) }
         o.retranslate = { text ->
             session.translateForPanel(text)
         }
@@ -392,6 +413,9 @@ class CameraSnapshotController(
     private fun reRunSnapshot() {
         val o = overlay ?: return
         val bitmap = frozenBitmap ?: return
+        // The lookup lens describes the outgoing scene (its lines/region
+        // are about to be replaced) — take it down with the re-run.
+        wordLookup.dismiss()
         val s = session.runSnapshot(bitmap, regionAu)
         snapshotSession = s
         o.observe(s)
@@ -414,6 +438,7 @@ class CameraSnapshotController(
         snapshotSession = null
         overlaysShowing = false
         keptLiveOverlays = false
+        wordLookup.dismiss()
         // Region + its UI die with the frozen episode (see regionAu).
         if (cropActive) {
             cropActive = false
@@ -502,6 +527,7 @@ class CameraSnapshotController(
 
     fun release() {
         released = true
+        wordLookup.destroy()
         regionUi.destroy()
         // Suppress finishUnfreeze — the activity is dying; there is no UI
         // state to restore, and the session's executors are about to shut
