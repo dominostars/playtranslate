@@ -64,37 +64,33 @@
             android:src="@drawable/ic_arrow_back"
             app:tint="@android:color/white" />
 
-        <!-- Top-right control pill: [flavor] [play/pause | crop] [settings].
-             The flavor slot appears only when the source language has reading
-             support and boxes own the frame (the old segmented control's
-             conditions — it replaces that control); play/pause and crop swap
-             with the mode as before; settings is inert for now. -->
-        <!-- Height matches the 44dp back button so the two top corners align. -->
+        <!-- Top-right control pill: [play/pause | crop] [settings]. Play/pause
+             and crop swap with the mode; the gear expands the language / OCR /
+             overlays menu below the row (CameraGearMenu). -->
+        <!-- Height matches the 44dp back button so the two top corners align.
+             VERTICAL: the 44dp icon row on top, and the gear's expandable
+             menu (language + OCR rows) below it — CameraGearMenu animates
+             this container's size; end-gravity keeps the right edge pinned
+             so it grows leftward and downward. -->
         <LinearLayout
             android:id="@+id/cameraControlPill"
             android:layout_width="wrap_content"
-            android:layout_height="44dp"
+            android:layout_height="wrap_content"
             android:layout_gravity="end|top"
             android:layout_margin="8dp"
-            android:animateLayoutChanges="true"
             android:background="@drawable/bg_camera_control_pill"
+            android:orientation="vertical">
+
+        <LinearLayout
+            android:id="@+id/cameraPillIconRow"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:layout_gravity="end"
+            android:animateLayoutChanges="true"
             android:divider="@drawable/divider_camera_pill_gap"
             android:orientation="horizontal"
             android:paddingHorizontal="4dp"
             android:showDividers="middle">
-
-            <!-- Overlay flavor: shows the CURRENT flavor (translate glyph /
-                 furigana-pinyin icon); tapping switches to the other, exactly
-                 like the segmented control it replaces. -->
-            <ImageButton
-                android:id="@+id/cameraFlavorToggle"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="@null"
-                android:contentDescription="@string/camera_flavor_cd"
-                android:src="@drawable/ic_translate"
-                android:visibility="gone"
-                app:tint="@android:color/white" />
 
             <!-- Play/pause over auto-detection. Shows ic_pause while running
                  (tap to pause), ic_play while paused (tap to resume). -->
@@ -127,6 +123,17 @@
                 android:contentDescription="@string/camera_settings_cd"
                 android:src="@drawable/ic_settings"
                 app:tint="@android:color/white" />
+
+        </LinearLayout>
+
+        <!-- Gear menu rows (language / OCR), populated + revealed by
+             CameraGearMenu. -->
+        <LinearLayout
+            android:id="@+id/cameraPillMenu"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone" />
 
         </LinearLayout>
 

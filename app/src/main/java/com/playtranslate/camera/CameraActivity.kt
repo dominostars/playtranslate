@@ -71,6 +71,7 @@ class CameraActivity : AppCompatActivity() {
 
     /** Play/pause + snapshot UI state; created alongside the session. */
     private var snapshotController: CameraSnapshotController? = null
+    private var gearMenu: CameraGearMenu? = null
 
     /** Language config the session was last built/reset against — a change
      *  made in settings while we're paused must drop the cached OCR state. */
@@ -158,7 +159,6 @@ class CameraActivity : AppCompatActivity() {
             playPauseButton = findViewById(R.id.cameraPlayPause),
             shutterButton = findViewById(R.id.cameraShutter),
             regionButton = findViewById(R.id.cameraRegionSelect),
-            modeToggle = findViewById(R.id.cameraFlavorToggle),
             controlPill = findViewById(R.id.cameraControlPill),
             freezeFrame = findViewById(R.id.cameraFreezeFrame),
             panelHost = findViewById(R.id.cameraPanelHost),
@@ -167,14 +167,37 @@ class CameraActivity : AppCompatActivity() {
                 fullBleedHost = findViewById(R.id.cameraOverlayHost),
                 controlsHost = controls,
             ),
-            modeToggleSupported = {
-                SourceLanguageProfiles[prefs.sourceLangId].hintTextKind != HintTextKind.NONE
-            },
             onExit = { finish() },
+        )
+        gearMenu = CameraGearMenu(
+            activity = this,
+            pill = findViewById(R.id.cameraControlPill),
+            iconRow = findViewById(R.id.cameraPillIconRow),
+            menuHost = findViewById(R.id.cameraPillMenu),
+            gearButton = findViewById(R.id.cameraSettings),
+            controlsHost = controls,
+            onLanguageRow = {
+                // Same target as the floating menu's Language row: the source
+                // picker screen. Return lands in onResume, whose langKey diff
+                // routes the refresh (frozen re-read / live reset).
+                com.playtranslate.ui.LanguageSetupActivity.selectionDelegate = null
+                startActivity(
+                    android.content.Intent(this, com.playtranslate.ui.LanguageSetupActivity::class.java)
+                        .putExtra(
+                            com.playtranslate.ui.LanguageSetupActivity.EXTRA_MODE,
+                            com.playtranslate.ui.LanguageSetupActivity.MODE_SOURCE,
+                        )
+                )
+            },
+            onOcrRow = { showPillOcrPicker() },
+            onCycleOverlayMode = { cycleOverlayFlavor() },
         )
         onBackPressedDispatcher.addCallback(this) {
             val controller = snapshotController
             when {
+                // The gear menu is modal (full-screen tap catcher): back
+                // closes IT, never the snapshot or the screen beneath it.
+                gearMenu?.isOpen == true -> gearMenu?.close()
                 controller?.isCropActive == true -> controller.cancelCrop()
                 controller?.isFrozen == true -> controller.unfreeze()
                 else -> finish()
@@ -193,6 +216,8 @@ class CameraActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        gearMenu?.destroy()
+        gearMenu = null
         snapshotController?.release()
         snapshotController = null
         session?.shutdown()
@@ -200,20 +225,22 @@ class CameraActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    /** Language configuration fingerprint; a change invalidates cached OCR. */
+    /** Read-settings fingerprint — language configuration AND the selected
+     *  OCR engine; a change invalidates cached OCR. The token matters for
+     *  the pill gear's not-yet-downloaded picks: the download screen
+     *  persists the new engine while this activity is paused, and without
+     *  the token in the diff a kept-behind frozen snapshot (or a live
+     *  anchor, until its next re-acquire) would keep showing old-engine
+     *  results while the gear menu reports the new one. */
     private fun langKey(): String =
-        "${prefs.sourceLangId}|${prefs.targetLang}|${prefs.targetChineseVariant}"
+        "${prefs.sourceLangId}|${prefs.targetLang}|${prefs.targetChineseVariant}|" +
+            (OcrModelManager.selectedBackend(this, prefs.sourceLangId)?.selectionToken ?: "")
 
     override fun onResume() {
         super.onResume()
-        bindFlavorButton()
-        // The flavor button's visibility is owned by syncControls (language
-        // support × presentation state); re-derive it so a resume while
-        // frozen doesn't resurrect it.
         snapshotController?.syncControls()
         if (sessionLangKey != null && sessionLangKey != langKey()) {
-            session?.reset()
-            sessionLangKey = langKey()
+            refreshAfterReadSettingsChange()
         }
         if (hasCameraPermission()) {
             showCamera()
@@ -385,44 +412,64 @@ class CameraActivity : AppCompatActivity() {
         }
     }
 
-    // ── Flavor button (replaces the segmented Translation/Furigana toggle) ─
-
-    /** Wire the control pill's flavor button: its icon shows the CURRENT
-     *  flavor (translate glyph for translation; the language's furigana or
-     *  pinyin icon for readings) and a tap switches to the other, with the
-     *  segmented control's exact side effects. Idempotent — rerun on every
-     *  resume so a source-language or flavor change made elsewhere is
-     *  picked up. Visibility is owned by syncControls (language support ×
-     *  presentation state), same as the old switcher. */
-    private fun bindFlavorButton() {
-        val button = findViewById<ImageButton>(R.id.cameraFlavorToggle)
-        syncFlavorIcon(button)
-        button.setOnClickListener {
-            val next = if (prefs.overlayMode == OverlayMode.TRANSLATION) {
-                OverlayMode.FURIGANA
-            } else {
-                OverlayMode.TRANSLATION
-            }
-            prefs.overlayMode = next
-            // Same contract as the settings toggle: a running screen-capture
-            // live session is built for one flavor, so switching stops it.
-            if (CaptureService.instance?.isLive == true) {
-                CaptureService.instance?.stopLive()
-            }
-            onOverlayModeChanged(next)
-            syncFlavorIcon(button)
+    /** The read settings changed — source language (LanguageSetupActivity
+     *  return, detected via the langKey diff) or OCR engine (the pill's
+     *  picker persisted a new selection): re-read under them. While FROZEN
+     *  that means re-running the snapshot on the SAME retained frame; live
+     *  and paused reset the session so the next settle acquires fresh.
+     *  langKey is stamped here so onResume's diff doesn't double-fire. */
+    private fun refreshAfterReadSettingsChange() {
+        sessionLangKey = langKey()
+        val controller = snapshotController
+        if (controller?.isFrozen == true) {
+            controller.refreshSnapshot()
+        } else {
+            session?.reset()
         }
     }
 
-    private fun syncFlavorIcon(button: ImageButton) {
-        val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
-        button.setImageResource(
-            when {
-                prefs.overlayMode == OverlayMode.TRANSLATION -> R.drawable.ic_translate
-                hintKind == HintTextKind.PINYIN -> R.drawable.ic_pinyin
-                else -> R.drawable.ic_furigana
-            }
-        )
+    /** The pill gear menu's OCR row: the shared picker in its activity form.
+     *  A changed, downloaded pick re-reads in place; a not-downloaded pick
+     *  deep-links the OCR download screen (the frozen snapshot, if any,
+     *  stays behind it and restores on back). */
+    private fun showPillOcrPicker() {
+        val srcId = prefs.sourceLangId
+        val token = com.playtranslate.ocr.registry.OcrModelManager
+            .selectedBackend(this, srcId)?.selectionToken ?: ""
+        com.playtranslate.ui.OcrPicker.populate(
+            com.playtranslate.ui.OverlayAlert.Builder(this),
+            this,
+            srcId,
+            token,
+            onReOcr = { refreshAfterReadSettingsChange() },
+            onDownload = { backend ->
+                startActivity(
+                    com.playtranslate.ui.CaptureOverlaySettingsActivity.downloadIntent(
+                        this, srcId, backend.selectionToken,
+                    )
+                )
+            },
+        ).show()
+    }
+
+    // ── Overlay flavor (the gear menu's Overlays row) ──────────────────────
+
+    /** Cycle Translation ↔ Furigana/Pinyin with the old segmented control's
+     *  exact side effects. Fired by the gear menu's Overlays row, which
+     *  mirrors the floating icon menu's (cycles in place, menu stays open). */
+    private fun cycleOverlayFlavor() {
+        val next = if (prefs.overlayMode == OverlayMode.TRANSLATION) {
+            OverlayMode.FURIGANA
+        } else {
+            OverlayMode.TRANSLATION
+        }
+        prefs.overlayMode = next
+        // Same contract as the settings toggle: a running screen-capture
+        // live session is built for one flavor, so switching stops it.
+        if (CaptureService.instance?.isLive == true) {
+            CaptureService.instance?.stopLive()
+        }
+        onOverlayModeChanged(next)
     }
 
     /** Re-flavor the camera overlays from the cached OCR result — the scene
@@ -434,7 +481,18 @@ class CameraActivity : AppCompatActivity() {
      *  own results land. */
     private fun onOverlayModeChanged(@Suppress("UNUSED_PARAMETER") mode: OverlayMode) {
         val s = session ?: return
-        if (snapshotController?.isFrozen == true) s.showFrozenOverlays() else s.onOverlayModeChanged()
+        if (snapshotController?.isFrozen == true) {
+            // Repaint only when boxes are actually the current presentation.
+            // The old flavor toggle could only fire while boxes owned the
+            // frame (its visibility gate); the gear's Overlays row fires
+            // from any presentation, and painting here from an expanded
+            // panel would resurrect boxes it didn't ask for. The pref is
+            // written either way — the new flavor applies whenever boxes
+            // next show.
+            if (s.hasLiveOverlays()) s.showFrozenOverlays()
+        } else {
+            s.onOverlayModeChanged()
+        }
     }
 
     // ── Slow-OCR rescue prompt ─────────────────────────────────────────────
@@ -499,6 +557,10 @@ class CameraActivity : AppCompatActivity() {
                 // re-lock without re-OCR. The next settled frame acquires
                 // on the rescue engine (recognise resolves per pass).
                 session?.reset()
+                // The reset above IS this switch's refresh — stamp the
+                // read-settings fingerprint (now carrying the OCR token)
+                // so the next onResume doesn't refresh a second time.
+                sessionLangKey = langKey()
             }
             .addCancelButton(getString(R.string.slow_ocr_prompt_keep)) { reason ->
                 slowOcrAlert = null

@@ -29,8 +29,8 @@ import com.playtranslate.ui.showAnkiNotInstalledDialog
  * its bitmap lifetime, and the in-app capture result panel over the snapshot.
  *
  * Control states:
- *  - LIVE:   back + mode toggle + pause icon + shutter.
- *  - PAUSED: back + mode toggle + play icon + shutter; overlays cleared.
+ *  - LIVE:   back + control pill (pause, gear) + shutter.
+ *  - PAUSED: back + control pill (play, gear) + shutter; overlays cleared.
  *  - FROZEN: the back button becomes an X (close snapshot); everything else
  *    hides. Every dismissal path — X, system back, panel drag/fling/tap-
  *    outside — funnels through the panel's onDismiss and restores the
@@ -52,16 +52,12 @@ class CameraSnapshotController(
     private val playPauseButton: ImageButton,
     private val shutterButton: ImageButton,
     private val regionButton: ImageButton,
-    private val modeToggle: View,
-    /** The top-right control pill hosting flavor/play-pause/crop/settings —
+    /** The top-right control pill hosting play-pause/crop/settings —
      *  hidden wholesale while the crop editor owns the screen. */
     private val controlPill: View,
     private val freezeFrame: ImageView,
     private val panelHost: ViewGroup,
     private val regionUi: CameraRegionUi,
-    /** Whether the Translation/Furigana toggle is available at all for the
-     *  current source language (the activity owns that decision). */
-    private val modeToggleSupported: () -> Boolean,
     /** LIVE/PAUSED back press — leave the screen. */
     private val onExit: () -> Unit,
 ) {
@@ -111,11 +107,6 @@ class CameraSnapshotController(
     /** Play state at shutter time — the first-ever snapshot's presentation
      *  default (auto-detecting → on-frame overlays, paused → panel). */
     private var wasPlayingAtShutter = true
-
-    /** True while snapshot overlays own the frame (sliver engaged, or the
-     *  live boxes kept through the load) — drives the flavor switcher's
-     *  visibility in FROZEN. */
-    private var overlaysShowing = false
 
     /** The live overlays were kept as this snapshot's loading state: the
      *  presenter must NOT paint skeletons over them at Translating; the Done
@@ -281,7 +272,6 @@ class CameraSnapshotController(
         val keepOverlays =
             (prefs.cameraSnapshotOnScreenPreferred ?: wasPlayingAtShutter) && session.hasLiveOverlays()
         keptLiveOverlays = keepOverlays
-        overlaysShowing = keepOverlays
         // One freeze in flight at a time; re-enabled by syncControls on
         // either outcome.
         shutterButton.isEnabled = false
@@ -327,7 +317,6 @@ class CameraSnapshotController(
         )
         o.boxPresenter = object : CaptureResultOverlay.BoxPresenter {
             override fun show(data: OneShotOverlayData): Boolean {
-                overlaysShowing = true
                 syncControls()
                 // Kept live boxes ARE the loading presentation — don't paint
                 // skeletons over them; Done's update() does the swap.
@@ -345,7 +334,6 @@ class CameraSnapshotController(
 
             override fun hide() {
                 keptLiveOverlays = false
-                overlaysShowing = false
                 syncControls()
                 session.hideFrozenOverlays()
             }
@@ -439,6 +427,16 @@ class CameraSnapshotController(
         }
     }
 
+    /** Read settings changed (source language, OCR engine — the pill's gear
+     *  menu): re-read the SAME frozen frame under the new selections,
+     *  restarting the panel flow from its loading indication — the boxes
+     *  and results on display describe the OLD settings. */
+    fun refreshSnapshot() {
+        if (!isFrozen) return
+        overlay?.prepareForSettingsRefresh()
+        reRunSnapshot()
+    }
+
     /** Gear re-OCR and region changes: run a fresh snapshot session over the
      *  SAME frozen frame (recognise picks up the engine selection the picker
      *  just persisted; the current [regionAu] rides along) and drive the same
@@ -470,7 +468,6 @@ class CameraSnapshotController(
     private fun finishUnfreeze() {
         overlay = null
         snapshotSession = null
-        overlaysShowing = false
         keptLiveOverlays = false
         wordLookup.dismiss()
         // Region + its UI die with the frozen episode (see regionAu).
@@ -494,9 +491,8 @@ class CameraSnapshotController(
         syncControls()
     }
 
-    /** Re-derive every control from the session mode. Public because the
-     *  activity's onResume rebinds the mode toggle and must not resurrect
-     *  it while frozen. */
+    /** Re-derive every control from the session mode. Public for the
+     *  activity's onResume re-sync. */
     fun syncControls() {
         val mode = session.mode
         val frozen = mode == CameraSession.Mode.FROZEN
@@ -519,46 +515,6 @@ class CameraSnapshotController(
         )
         shutterButton.isVisible = !frozen
         shutterButton.isEnabled = !frozen
-        // The flavor switcher stays available whenever boxes are on the
-        // frame — live modes, and the snapshot's overlays presentation (a
-        // toggle there re-flavors the frozen boxes from the snapshot caches;
-        // translations come from the translator's LRU, no fresh backend
-        // call). Panel-expanded FROZEN hides it: the flavor only affects
-        // boxes that aren't showing.
-        fadeToggle((!frozen || overlaysShowing) && modeToggleSupported() && !cropActive)
-    }
-
-    /** The switcher's target visibility, so repeated syncControls calls
-     *  don't restart the fade; null until the first (instant) apply. */
-    private var toggleVisibleTarget: Boolean? = null
-
-    /** Fade the flavor switcher in/out as it enters/leaves the frame —
-     *  it comes and goes with presentation changes (sliver ↔ panel,
-     *  freeze ↔ live), and an instant pop reads as glitch. */
-    private fun fadeToggle(visible: Boolean) {
-        if (toggleVisibleTarget == visible) return
-        val first = toggleVisibleTarget == null
-        toggleVisibleTarget = visible
-        modeToggle.animate().cancel()
-        if (first) {
-            // Initial state: no animation to fade from.
-            modeToggle.alpha = if (visible) 1f else 0f
-            modeToggle.isVisible = visible
-            return
-        }
-        if (visible) {
-            if (!modeToggle.isVisible) modeToggle.alpha = 0f
-            modeToggle.isVisible = true
-            modeToggle.animate().alpha(1f).setDuration(TOGGLE_FADE_MS).start()
-        } else {
-            modeToggle.animate().alpha(0f).setDuration(TOGGLE_FADE_MS)
-                .withEndAction { if (toggleVisibleTarget == false) modeToggle.isVisible = false }
-                .start()
-        }
-    }
-
-    private companion object {
-        const val TOGGLE_FADE_MS = 160L
     }
 
     fun release() {

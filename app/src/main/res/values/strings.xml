@@ -2948,9 +2948,7 @@
     <string name="camera_region_remove">Remove</string>
     <!-- Hint on the collapsed capture sheet while on-screen boxes are showing; dragging the sheet up reveals the full result panel. Up arrows are added around it in code. -->
     <string name="capture_sliver_expand_hint">Drag up for more options</string>
-    <!-- Content description of the camera pill button that switches the overlay flavor (translation vs furigana or pinyin reading aids). -->
-    <string name="camera_flavor_cd">Switch overlay mode</string>
-    <!-- Content description of the camera pill's settings gear (not yet functional). -->
+    <!-- Content description of the camera pill's settings gear (opens the language/OCR/overlays menu). -->
     <string name="camera_settings_cd">Camera settings</string>
 
     <!-- Hub-cell status digests (the summary line under each cell title). -->

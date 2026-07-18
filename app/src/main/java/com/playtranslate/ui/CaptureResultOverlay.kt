@@ -722,6 +722,19 @@ class CaptureResultOverlay(
         }
     }
 
+    /** A read-settings refresh (source language / OCR engine changed)
+     *  restarts the capture flow from its loading state: leave the sliver
+     *  (a status is unreadable there) and take the on-screen boxes down —
+     *  everything they show is invalidated. Same recovery pair as
+     *  Failed/NoText. Region re-runs deliberately do NOT call this: their
+     *  boxes stay the presentation and swap in place. If the on-screen
+     *  presentation is preferred, the re-run's Translating auto-collapse
+     *  re-enters the sliver with fresh skeletons — the full first-snapshot
+     *  arc. */
+    fun prepareForSettingsRefresh() {
+        if (sliverMode) expandFromSliver() else hideChips()
+    }
+
     /** Re-show entry point for the controller's stash-and-rebind path: set up the
      *  window exactly like [show], then bind a previously-captured result directly
      *  (no capture session) — used when the user backs out of the detail screen. */
