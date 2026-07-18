@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pill-shaped dark scrim behind the top-right camera control cluster —
+     the multi-icon sibling of bg_camera_control_scrim (same alpha). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#66000000" />
+    <corners android:radius="22dp" />
+</shape>

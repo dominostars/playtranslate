@@ -64,32 +64,71 @@
             android:src="@drawable/ic_arrow_back"
             app:tint="@android:color/white" />
 
-        <!-- Play/pause over auto-detection. Shows ic_pause while running
-             (tap to pause), ic_play while paused (tap to resume). -->
-        <ImageButton
-            android:id="@+id/cameraPlayPause"
-            android:layout_width="44dp"
+        <!-- Top-right control pill: [flavor] [play/pause | crop] [settings].
+             The flavor slot appears only when the source language has reading
+             support and boxes own the frame (the old segmented control's
+             conditions — it replaces that control); play/pause and crop swap
+             with the mode as before; settings is inert for now. -->
+        <!-- Height matches the 44dp back button so the two top corners align. -->
+        <LinearLayout
+            android:id="@+id/cameraControlPill"
+            android:layout_width="wrap_content"
             android:layout_height="44dp"
             android:layout_gravity="end|top"
             android:layout_margin="8dp"
-            android:background="@drawable/bg_camera_control_scrim"
-            android:contentDescription="@string/camera_pause_cd"
-            android:src="@drawable/ic_pause"
-            app:tint="@android:color/white" />
+            android:animateLayoutChanges="true"
+            android:background="@drawable/bg_camera_control_pill"
+            android:divider="@drawable/divider_camera_pill_gap"
+            android:orientation="horizontal"
+            android:paddingHorizontal="4dp"
+            android:showDividers="middle">
 
-        <!-- Snapshot region select (FROZEN only — it takes over the top-right
-             slot play/pause vacates): crop the reading to a drawn region. -->
-        <ImageButton
-            android:id="@+id/cameraRegionSelect"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_gravity="end|top"
-            android:layout_margin="8dp"
-            android:background="@drawable/bg_camera_control_scrim"
-            android:contentDescription="@string/camera_region_cd"
-            android:src="@drawable/ic_crop"
-            android:visibility="gone"
-            app:tint="@android:color/white" />
+            <!-- Overlay flavor: shows the CURRENT flavor (translate glyph /
+                 furigana-pinyin icon); tapping switches to the other, exactly
+                 like the segmented control it replaces. -->
+            <ImageButton
+                android:id="@+id/cameraFlavorToggle"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@null"
+                android:contentDescription="@string/camera_flavor_cd"
+                android:src="@drawable/ic_translate"
+                android:visibility="gone"
+                app:tint="@android:color/white" />
+
+            <!-- Play/pause over auto-detection. Shows ic_pause while running
+                 (tap to pause), ic_play while paused (tap to resume). -->
+            <ImageButton
+                android:id="@+id/cameraPlayPause"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@null"
+                android:contentDescription="@string/camera_pause_cd"
+                android:src="@drawable/ic_pause"
+                app:tint="@android:color/white" />
+
+            <!-- Snapshot region select (FROZEN only — it takes over the slot
+                 play/pause vacates): crop the reading to a drawn region. -->
+            <ImageButton
+                android:id="@+id/cameraRegionSelect"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@null"
+                android:contentDescription="@string/camera_region_cd"
+                android:src="@drawable/ic_crop"
+                android:visibility="gone"
+                app:tint="@android:color/white" />
+
+            <ImageButton
+                android:id="@+id/cameraSettings"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@null"
+                android:contentDescription="@string/camera_settings_cd"
+                android:src="@drawable/ic_settings"
+                app:tint="@android:color/white" />
+
+        </LinearLayout>
 
         <!-- Snapshot shutter: freezes the current frame and reads it once. -->
         <ImageButton
@@ -101,16 +140,6 @@
             android:background="@null"
             android:contentDescription="@string/camera_shutter_cd"
             android:src="@drawable/bg_camera_shutter" />
-
-        <!-- Segmented Translation / Furigana-Pinyin toggle; GONE unless the
-             source language has reading support (hintTextKind != NONE). -->
-        <FrameLayout
-            android:id="@+id/cameraModeToggle"
-            android:layout_width="248dp"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal|top"
-            android:layout_marginTop="8dp"
-            android:visibility="gone" />
 
         <!-- User-facing status hint (e.g. "no readable text"): shown when a
              scan finds nothing usable, instead of silently showing nothing. -->

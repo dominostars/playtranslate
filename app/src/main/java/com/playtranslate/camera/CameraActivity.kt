@@ -49,7 +49,6 @@ import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.themeColor
 import com.playtranslate.ui.DismissReason
 import com.playtranslate.ui.OverlayAlert
-import com.playtranslate.ui.buildPillToggle
 
 /**
  * Camera tool (Settings → Tools → Camera): a full-bleed live camera view that
@@ -159,7 +158,8 @@ class CameraActivity : AppCompatActivity() {
             playPauseButton = findViewById(R.id.cameraPlayPause),
             shutterButton = findViewById(R.id.cameraShutter),
             regionButton = findViewById(R.id.cameraRegionSelect),
-            modeToggle = findViewById(R.id.cameraModeToggle),
+            modeToggle = findViewById(R.id.cameraFlavorToggle),
+            controlPill = findViewById(R.id.cameraControlPill),
             freezeFrame = findViewById(R.id.cameraFreezeFrame),
             panelHost = findViewById(R.id.cameraPanelHost),
             regionUi = CameraRegionUi(
@@ -206,9 +206,9 @@ class CameraActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        bindModeToggle()
-        // bindModeToggle unconditionally shows the toggle for languages with
-        // reading support; re-derive control visibility so a resume while
+        bindFlavorButton()
+        // The flavor button's visibility is owned by syncControls (language
+        // support × presentation state); re-derive it so a resume while
         // frozen doesn't resurrect it.
         snapshotController?.syncControls()
         if (sessionLangKey != null && sessionLangKey != langKey()) {
@@ -385,39 +385,43 @@ class CameraActivity : AppCompatActivity() {
         }
     }
 
-    // ── Mode toggle ────────────────────────────────────────────────────────
+    // ── Flavor button (replaces the segmented Translation/Furigana toggle) ─
 
-    /** (Re)build the Translation / Furigana-Pinyin toggle. Idempotent — rerun
-     *  on every resume so a source-language change made elsewhere is picked
-     *  up. Hidden entirely when the source language has no reading support. */
-    private fun bindModeToggle() {
-        // Visibility is owned by CameraSnapshotController.syncControls (which
-        // onResume calls right after this): it folds the language's reading
-        // support together with the frozen/overlays presentation state, and
-        // fades the switcher rather than popping it.
-        val container = findViewById<FrameLayout>(R.id.cameraModeToggle)
-        val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
-        if (hintKind == HintTextKind.NONE) return
-        val hintLabel = when (hintKind) {
-            HintTextKind.PINYIN -> getString(R.string.overlay_mode_option_pinyin)
-            else -> getString(R.string.overlay_mode_option_furigana)
+    /** Wire the control pill's flavor button: its icon shows the CURRENT
+     *  flavor (translate glyph for translation; the language's furigana or
+     *  pinyin icon for readings) and a tap switches to the other, with the
+     *  segmented control's exact side effects. Idempotent — rerun on every
+     *  resume so a source-language or flavor change made elsewhere is
+     *  picked up. Visibility is owned by syncControls (language support ×
+     *  presentation state), same as the old switcher. */
+    private fun bindFlavorButton() {
+        val button = findViewById<ImageButton>(R.id.cameraFlavorToggle)
+        syncFlavorIcon(button)
+        button.setOnClickListener {
+            val next = if (prefs.overlayMode == OverlayMode.TRANSLATION) {
+                OverlayMode.FURIGANA
+            } else {
+                OverlayMode.TRANSLATION
+            }
+            prefs.overlayMode = next
+            // Same contract as the settings toggle: a running screen-capture
+            // live session is built for one flavor, so switching stops it.
+            if (CaptureService.instance?.isLive == true) {
+                CaptureService.instance?.stopLive()
+            }
+            onOverlayModeChanged(next)
+            syncFlavorIcon(button)
         }
-        buildPillToggle(
-            container = container,
-            options = listOf(
-                getString(R.string.overlay_mode_option_translation) to OverlayMode.TRANSLATION,
-                hintLabel to OverlayMode.FURIGANA,
-            ),
-            selected = prefs.overlayMode,
-            onSelect = { mode ->
-                prefs.overlayMode = mode
-                // Same contract as the settings toggle: a running screen-capture
-                // live session is built for one flavor, so switching stops it.
-                if (CaptureService.instance?.isLive == true) {
-                    CaptureService.instance?.stopLive()
-                }
-                onOverlayModeChanged(mode)
-            },
+    }
+
+    private fun syncFlavorIcon(button: ImageButton) {
+        val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
+        button.setImageResource(
+            when {
+                prefs.overlayMode == OverlayMode.TRANSLATION -> R.drawable.ic_translate
+                hintKind == HintTextKind.PINYIN -> R.drawable.ic_pinyin
+                else -> R.drawable.ic_furigana
+            }
         )
     }
 

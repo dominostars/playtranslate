@@ -53,6 +53,9 @@ class CameraSnapshotController(
     private val shutterButton: ImageButton,
     private val regionButton: ImageButton,
     private val modeToggle: View,
+    /** The top-right control pill hosting flavor/play-pause/crop/settings —
+     *  hidden wholesale while the crop editor owns the screen. */
+    private val controlPill: View,
     private val freezeFrame: ImageView,
     private val panelHost: ViewGroup,
     private val regionUi: CameraRegionUi,
@@ -502,10 +505,11 @@ class CameraSnapshotController(
             if (frozen) R.string.camera_close_cd else R.string.camera_back_cd
         )
         // The crop editor owns the whole screen while active: its own bar
-        // carries cancel/confirm, so the X (and the crop button itself)
-        // step aside until it closes.
+        // carries cancel/confirm, so the X and the whole control pill
+        // (crop, settings, flavor) step aside until it closes.
         backButton.isVisible = !cropActive
-        regionButton.isVisible = frozen && !cropActive
+        controlPill.isVisible = !cropActive
+        regionButton.isVisible = frozen
         playPauseButton.isVisible = !frozen
         playPauseButton.setImageResource(
             if (mode == CameraSession.Mode.PAUSED) R.drawable.ic_play else R.drawable.ic_pause
