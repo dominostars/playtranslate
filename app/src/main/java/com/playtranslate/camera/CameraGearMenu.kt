@@ -119,8 +119,11 @@ class CameraGearMenu(
         }
     }
 
-    /** Snap closed with no animation — the pill just went invisible. */
-    private fun closeInstant() {
+    /** Snap closed with no animation. For exits that coincide with a
+     *  window transition (a row launched an activity; the activity is
+     *  pausing) — an animated collapse frozen mid-morph by the transition
+     *  reads as the pill deforming, and can strand an intermediate size. */
+    fun closeInstant() {
         expanded = false
         animator?.cancel()
         gearButton.imageTintList = ColorStateList.valueOf(Color.WHITE)
@@ -175,7 +178,9 @@ class CameraGearMenu(
             ?.ocrLabel(activity) ?: "ML Kit"
         menuHost.addView(divider())
         addRow(inflater, activity.getString(R.string.floating_menu_panel_language), languageName) {
-            close()
+            // Instant: this row launches an activity, and the collapse
+            // animation would play (and freeze) inside the transition.
+            closeInstant()
             onLanguageRow()
         }
         menuHost.addView(divider())

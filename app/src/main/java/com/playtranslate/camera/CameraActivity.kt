@@ -236,6 +236,14 @@ class CameraActivity : AppCompatActivity() {
         "${prefs.sourceLangId}|${prefs.targetLang}|${prefs.targetChineseVariant}|" +
             (OcrModelManager.selectedBackend(this, prefs.sourceLangId)?.selectionToken ?: "")
 
+    override fun onPause() {
+        super.onPause()
+        // Modal menus don't survive leaving the screen — and a collapse
+        // animation caught by the outgoing window transition (language row,
+        // OCR download, home) reads as the pill deforming mid-morph.
+        gearMenu?.closeInstant()
+    }
+
     override fun onResume() {
         super.onResume()
         snapshotController?.syncControls()
