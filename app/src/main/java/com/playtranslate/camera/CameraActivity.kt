@@ -373,7 +373,13 @@ class CameraActivity : AppCompatActivity() {
         val lp = shutter.layoutParams as FrameLayout.LayoutParams
         val margin = (28 * resources.displayMetrics.density).toInt()
         lp.setMargins(0, 0, 0, 0)
-        val rotation = display?.rotation ?: android.view.Surface.ROTATION_0
+        // Context.getDisplay() is API 30+; minSdk is 29 (Android 10), where
+        // the deprecated windowManager route is the only rotation source.
+        val rotation = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            display?.rotation ?: android.view.Surface.ROTATION_0
+        } else {
+            @Suppress("DEPRECATION") windowManager.defaultDisplay.rotation
+        }
         when (rotation) {
             android.view.Surface.ROTATION_90 -> {
                 lp.gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
