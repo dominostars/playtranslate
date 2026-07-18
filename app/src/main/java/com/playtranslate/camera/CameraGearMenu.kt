@@ -174,7 +174,12 @@ class CameraGearMenu(
         menuHost.removeAllViews()
         val inflater = LayoutInflater.from(activity)
         val languageName = prefs.sourceLangId.displayName()
-        val ocrName = OcrModelManager.selectedBackend(activity, prefs.sourceLangId)
+        // Camera-scoped resolution: the camera's own token, inheriting the
+        // global selection until set.
+        val ocrName = OcrModelManager
+            .selectedBackend(
+                activity, prefs.sourceLangId, prefs.cameraOcrBackendToken(prefs.sourceLangId),
+            )
             ?.ocrLabel(activity) ?: "ML Kit"
         menuHost.addView(divider())
         addRow(inflater, activity.getString(R.string.floating_menu_panel_language), languageName) {
@@ -207,12 +212,12 @@ class CameraGearMenu(
         }
     }
 
-    /** User-facing name of the CURRENT overlay mode, mirroring the floating
-     *  panel's labeling (the reading mode reads Pinyin for Pinyin languages,
-     *  Furigana otherwise). */
+    /** User-facing name of the CAMERA's current overlay flavor, mirroring the
+     *  floating panel's labeling (the reading mode reads Pinyin for Pinyin
+     *  languages, Furigana otherwise). */
     private fun overlayModeLabel(hintKind: HintTextKind): String =
         when {
-            prefs.overlayMode == OverlayMode.TRANSLATION ->
+            prefs.cameraOverlayMode == OverlayMode.TRANSLATION ->
                 activity.getString(R.string.overlay_mode_option_translation)
             hintKind == HintTextKind.PINYIN ->
                 activity.getString(R.string.overlay_mode_option_pinyin)

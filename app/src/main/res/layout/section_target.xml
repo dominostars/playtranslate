@@ -52,7 +52,7 @@
             android:layout_marginEnd="16dp"
             android:paddingHorizontal="12dp"
             android:gravity="center"
-            android:background="@drawable/bg_outlined_text_button"
+            android:background="@drawable/bg_toggle_text_button"
             android:clickable="true"
             android:focusable="true"
             android:textSize="9sp"

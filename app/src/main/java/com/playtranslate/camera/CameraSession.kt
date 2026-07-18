@@ -231,8 +231,16 @@ class CameraSession(
     private val anchorCache = ArrayDeque<Pair<com.playtranslate.camera.tracker.Anchor, BuiltOverlays>>()
     private var relockCursor = 0
 
+    // Includes the camera's effective OCR token (raw, not resolved — this runs
+    // on the analysis thread per relock probe): anchor payloads carry the
+    // engine's OCR output, so an engine switch must orphan cached scenes even
+    // if some future switch path forgets its session reset.
     private fun langKey(): String =
-        "${prefs.sourceLangId}|${prefs.targetLang}|${prefs.targetChineseVariant}"
+        "${prefs.sourceLangId}|${prefs.targetLang}|${prefs.targetChineseVariant}|" +
+            (
+                prefs.cameraOcrBackendToken(prefs.sourceLangId)
+                    ?: prefs.ocrBackendToken(prefs.sourceLangId) ?: ""
+            )
 
     /** The warp surface; created lazily on main. */
     private var warpView: WarpOverlayView? = null
@@ -312,7 +320,12 @@ class CameraSession(
                 )
             }
             val sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode
-            OcrManager.instance.recognise(bmp, sourceLang, screenshotWidth = bmp.width)
+            OcrManager.instance.recognise(
+                bmp,
+                sourceLang,
+                screenshotWidth = bmp.width,
+                engineTokenOverride = prefs.cameraOcrBackendToken(prefs.sourceLangId),
+            )
             bmp.recycle()
             Log.d(TAG, "prewarm: OCR engine ready in ${System.currentTimeMillis() - t0}ms")
         } catch (e: Exception) {
@@ -640,6 +653,7 @@ class CameraSession(
                     sourceLang,
                     screenshotWidth = auW,
                     regionPreFilter = cameraRegionPreFilter(),
+                    engineTokenOverride = prefs.cameraOcrBackendToken(prefs.sourceLangId),
                 )
             } finally {
                 slowTimer?.cancel()
@@ -899,11 +913,11 @@ class CameraSession(
         }
     }
 
-    /** Build boxes for the current [Prefs.overlayMode], register the flavor's
-     *  tracked regions (groups for translation, lines for reading — the
-     *  per-region homography units), rasterize, and hand the raster regions
-     *  to the warp view. Two-phase skeleton→filled for the translation
-     *  flavor. */
+    /** Build boxes for the camera's current [Prefs.cameraOverlayMode],
+     *  register the flavor's tracked regions (groups for translation, lines
+     *  for reading — the per-region homography units), rasterize, and hand
+     *  the raster regions to the warp view. Two-phase skeleton→filled for
+     *  the translation flavor. */
     private suspend fun buildAndShow(
         ocr: OcrManager.OcrResult,
         groupColors: List<Pair<Int, Int>>,
@@ -911,7 +925,7 @@ class CameraSession(
         auH: Int,
         epoch: Int,
     ) {
-        val mode = prefs.overlayMode
+        val mode = prefs.cameraOverlayMode
         when (mode) {
             OverlayMode.TRANSLATION -> {
                 // usableGroups already dropped blank groups, so this filter is
@@ -1013,7 +1027,7 @@ class CameraSession(
      *  acquire offer). Analysis thread only. */
     private fun tryRelock(cn: Mat): Boolean {
         val lk = langKey()
-        val mode = prefs.overlayMode
+        val mode = prefs.cameraOverlayMode
         // Entries built under a different language/flavor can't be shown;
         // drop them (release native Mats) rather than probing them forever.
         val it = anchorCache.iterator()
@@ -1488,6 +1502,7 @@ class CameraSession(
             sourceLang,
             screenshotWidth = auW,
             regionPreFilter = cameraRegionPreFilter(dropEdgeClipped = false, clipTo = regionAu),
+            engineTokenOverride = prefs.cameraOcrBackendToken(srcId),
         )
         // The region gate proper lives HERE, at group level, not in the
         // pre-filter: single-model engines (ML Kit) never see the
@@ -1637,7 +1652,9 @@ class CameraSession(
         srcId: com.playtranslate.language.SourceLangId,
     ): com.playtranslate.model.OcrProvenance? {
         val backend = ocr?.engineBackend
-            ?: com.playtranslate.ocr.registry.OcrModelManager.selectedBackend(context, srcId)
+            ?: com.playtranslate.ocr.registry.OcrModelManager.selectedBackend(
+                context, srcId, prefs.cameraOcrBackendToken(srcId),
+            )
             ?: return null
         val label =
             if (ocr?.mangaOcrUsed == true) "${backend.ocrLabel(context)} + MangaOCR"
@@ -1694,7 +1711,7 @@ class CameraSession(
         overlayHost.post { ensureWarpView().applyHomography(Homography.IDENTITY) }
         scope.launch(Dispatchers.Default) {
             try {
-                when (prefs.overlayMode) {
+                when (prefs.cameraOverlayMode) {
                     OverlayMode.FURIGANA -> buildAndShow(ocr, colors, auW, auH, epoch)
                     OverlayMode.TRANSLATION ->
                         showFrozenTranslationBoxes(ocr, colors, translations, auW, auH, epoch)

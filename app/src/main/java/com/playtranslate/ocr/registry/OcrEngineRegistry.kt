@@ -33,14 +33,16 @@ class OcrEngineRegistry {
 
     private val engines = ConcurrentHashMap<OcrBackend, OcrEngine>()
 
-    fun engineFor(sourceLang: String): ResolvedOcr {
+    /** [tokenOverride]: a caller-scoped selection token (the camera tool's)
+     *  resolved in place of the stored global one; null = global. */
+    fun engineFor(sourceLang: String, tokenOverride: String? = null): ResolvedOcr {
         // Production: the user's chosen Meiki/Paddle engine if its pack is
         // installed — built + owned by the bridge (NOT cached here, so a selection
         // switch never closes a live session out from under a capture). Falls
         // through to the ML Kit floor (cached; thread-safe, no native teardown).
         // This is the single point where the real chosen→floor→empty fallback is
         // observable, so it reports the resolved backend alongside the engine.
-        OcrModelManager.engineForSelected(sourceLang)?.let { (backend, engine) ->
+        OcrModelManager.engineForSelected(sourceLang, tokenOverride)?.let { (backend, engine) ->
             return ResolvedOcr(engine, backend)
         }
         val profile = SourceLanguageProfiles.forCode(sourceLang)

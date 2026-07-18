@@ -196,9 +196,12 @@ class OcrManager private constructor() {
         screenshotWidth: Int = 0,
         recipe: OcrPreprocessingRecipe = selectOcrRecipe(sourceLang),
         regionPreFilter: com.playtranslate.ocr.core.RegionPreFilter? = null,
+        /** Caller-scoped OCR selection token (the camera tool's per-flow engine
+         *  choice) resolved in place of the stored global one; null = global. */
+        engineTokenOverride: String? = null,
     ): OcrResult? {
         val output = OcrPipeline.run(
-            engineProvider = { registry.engineFor(sourceLang) },
+            engineProvider = { registry.engineFor(sourceLang, engineTokenOverride) },
             bitmap = bitmap,
             sourceLang = sourceLang,
             screenshotWidth = screenshotWidth,

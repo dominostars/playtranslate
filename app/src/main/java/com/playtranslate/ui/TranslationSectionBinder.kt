@@ -299,24 +299,39 @@ class TranslationSectionBinder(
         btnToggleTranslation.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
     }
 
-    /** Wire the capture overlay's "show on screen" action into the target
+    /** Wire the capture overlay's "show on screen" boxes toggle into the target
      *  header. Only the overlay calls this — the in-app results page keeps the
      *  button GONE even though the shared layout carries it. */
     fun setShowOnScreenAction(onClick: () -> Unit) {
         btnShowOnScreen.setOnClickListener { onClick() }
     }
 
-    /** Whether the show-on-screen action currently has something to show
-     *  (overlay boxes exist and the panel isn't already collapsed). GONE when
-     *  not, so surfaces that never enable it lose no header space. Deliberately
-     *  independent of the section's hidden state — the action presents the
-     *  whole result over the game, not this card, and hiding the card while
-     *  reading the boxes in place is a legitimate combination. ACCEPTED gap
-     *  (2026-07-15): in SIDE-BY-SIDE mode, hiding the translation collapses the
-     *  whole column — header and this button included — so that combo has no
-     *  manual switch; the persisted on-screen preference still auto-collapses. */
+    /** Whether the show-on-screen toggle currently has something to show
+     *  (overlay boxes exist for the bound result). GONE when not, so surfaces
+     *  that never enable it lose no header space. Deliberately independent of
+     *  the section's hidden state — the toggle presents the whole result over
+     *  the game, not this card, and hiding the card while reading the boxes in
+     *  place is a legitimate combination. ACCEPTED gap (2026-07-15): in
+     *  SIDE-BY-SIDE mode, hiding the translation collapses the whole column —
+     *  header and this button included — so that combo has no manual switch;
+     *  the boxes keep whatever state the toggle last set. */
     fun setShowOnScreenAvailable(available: Boolean) {
         btnShowOnScreen.visibility = if (available) View.VISIBLE else View.GONE
+    }
+
+    /** The show-on-screen toggle's visual state: a filled accent pill with
+     *  on-accent text while the boxes are ON; the drawable's stock look
+     *  (card-colored fill, muted text) while OFF. Tinting recolors the
+     *  drawable's solid fill, so one drawable serves both states. */
+    fun setShowOnScreenToggled(on: Boolean) {
+        if (on) {
+            btnShowOnScreen.setTextColor(ctx.themeColor(R.attr.ptAccentOn))
+            btnShowOnScreen.backgroundTintList =
+                ColorStateList.valueOf(ctx.themeColor(R.attr.ptAccent))
+        } else {
+            btnShowOnScreen.setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+            btnShowOnScreen.backgroundTintList = null
+        }
     }
 
     /** Flip a section's hidden pref, re-apply its visibility, and notify the host

@@ -181,11 +181,23 @@ class Prefs internal constructor(
 
     /** The slow-OCR rescue prompt was answered for [id] — either way, it
      *  never shows again for that language (the OCR picker is the standing
-     *  change-your-mind path). */
+     *  change-your-mind path). This is LIVE/over-game capture's latch; the
+     *  camera tool keeps its own ([cameraSlowOcrPromptAnswered]) because the
+     *  decision must scope with the engine selection it changes. */
     fun slowOcrPromptAnswered(id: SourceLangId): Boolean =
         sp.getBoolean("slow_ocr_prompt_answered_${id.code}", false)
     fun setSlowOcrPromptAnswered(id: SourceLangId) =
         sp.edit { putBoolean("slow_ocr_prompt_answered_${id.code}", true) }
+
+    /** Camera-scoped twin of [slowOcrPromptAnswered]: the camera tool's
+     *  rescue prompt was answered for [id]. Separate state so accepting the
+     *  camera's rescue (which switches only [cameraOcrBackendToken]) can't
+     *  silence live mode's own offer for its still-slow global engine, and
+     *  vice versa. */
+    fun cameraSlowOcrPromptAnswered(id: SourceLangId): Boolean =
+        sp.getBoolean("camera_slow_ocr_prompt_answered_${id.code}", false)
+    fun setCameraSlowOcrPromptAnswered(id: SourceLangId) =
+        sp.edit { putBoolean("camera_slow_ocr_prompt_answered_${id.code}", true) }
 
     /** The user's preferred TTS voice for [lang], by [android.speech.tts.Voice]
      *  name, or null to use the engine default. Voices are stored per language
@@ -767,32 +779,60 @@ class Prefs internal constructor(
         get() = sp.getBoolean("hide_game_overlays", false)
         set(v) = sp.edit { putBoolean("hide_game_overlays", v) }
 
-    /** Which presentation the over-game capture result was last dismissed from:
-     *  true = the collapsed on-screen-overlay state, so the next capture goes
-     *  straight there once results land; false = the full panel (the default).
-     *  Written on every panel dismissal that had a bound result — "it opens how
-     *  you left it". */
-    var captureResultOnScreenPreferred: Boolean
-        get() = sp.getBoolean("capture_result_on_screen_preferred", false)
-        set(v) = sp.edit { putBoolean("capture_result_on_screen_preferred", v) }
+    // ── Capture-result presentation (two independent axes per flow) ────────
+    // "Boxes" (on-frame overlays) and the panel's collapsed-start are separate
+    // switches, both per-flow: the over-game capture and the camera snapshot
+    // are different reading postures. Boxes are written by the header toggle
+    // the moment it's tapped; collapsed-start is written on dismissal — "it
+    // opens how you left it" for the panel position only.
 
-    /** The camera tool's own "reopens how you dismissed it" for SNAPSHOT
-     *  results: true = on-frame overlays, false = the panel. Null = the user
-     *  has never dismissed a snapshot — the first one derives its default
-     *  from the play/pause state at shutter time (auto-detecting → overlays,
-     *  paused → panel). Deliberately separate from
-     *  [captureResultOnScreenPreferred]: the camera and the over-game
-     *  capture are different reading postures. */
-    var cameraSnapshotOnScreenPreferred: Boolean?
-        get() = if (sp.contains("camera_snapshot_on_screen_preferred")) {
-            sp.getBoolean("camera_snapshot_on_screen_preferred", false)
-        } else {
-            null
-        }
-        set(v) = sp.edit {
-            if (v == null) remove("camera_snapshot_on_screen_preferred")
-            else putBoolean("camera_snapshot_on_screen_preferred", v)
-        }
+    /** Over-game capture: paint the result's boxes over the game (the header
+     *  toggle's state). Default ON. */
+    var captureBoxesEnabled: Boolean
+        get() = sp.getBoolean("capture_boxes_enabled", true)
+        set(v) = sp.edit { putBoolean("capture_boxes_enabled", v) }
+
+    /** Over-game capture: the panel was last dismissed from its collapsed
+     *  sliver, so the next capture starts there. */
+    var capturePanelStartCollapsed: Boolean
+        get() = sp.getBoolean("capture_panel_start_collapsed", false)
+        set(v) = sp.edit { putBoolean("capture_panel_start_collapsed", v) }
+
+    /** Camera snapshot: paint the result's boxes over the frozen frame.
+     *  Default ON. Also decides whether live overlays are kept through the
+     *  shutter's freeze (they track the very frame being frozen). */
+    var cameraBoxesEnabled: Boolean
+        get() = sp.getBoolean("camera_boxes_enabled", true)
+        set(v) = sp.edit { putBoolean("camera_boxes_enabled", v) }
+
+    /** Camera snapshot: the panel was last dismissed from its collapsed
+     *  sliver, so the next snapshot starts there. */
+    var cameraPanelStartCollapsed: Boolean
+        get() = sp.getBoolean("camera_panel_start_collapsed", false)
+        set(v) = sp.edit { putBoolean("camera_panel_start_collapsed", v) }
+
+    /** The camera tool's own overlay flavor (Translation vs Furigana/Pinyin),
+     *  cycled from the camera pill's gear menu. Inherit-until-set: unset reads
+     *  the global [overlayMode], so the camera starts wherever the app is; the
+     *  first camera-side cycle pins it, after which the two move independently
+     *  (a camera flavor change must not silently rebuild live mode's overlays,
+     *  and vice versa). */
+    var cameraOverlayMode: OverlayMode
+        get() = sp.getString("camera_overlay_mode", null)
+            ?.let { OverlayMode.fromStorageName(it) } ?: overlayMode
+        set(v) = sp.edit { putString("camera_overlay_mode", v.name) }
+
+    /** The camera tool's own OCR engine selection for [id], or null to
+     *  inherit the global [ocrBackendToken] — same inherit-until-set contract
+     *  as [cameraOverlayMode]. Resolved by `OcrModelManager.selectedBackend`
+     *  via its token override, so a stale camera token degrades exactly like
+     *  a stale global one (floor fallback, never an empty engine). */
+    fun cameraOcrBackendToken(id: SourceLangId): String? =
+        sp.getString("camera_ocr_backend_${id.code}", null)
+    fun setCameraOcrBackendToken(id: SourceLangId, token: String) =
+        sp.edit { putString("camera_ocr_backend_${id.code}", token) }
+    fun clearCameraOcrBackendToken(id: SourceLangId) =
+        sp.edit { remove("camera_ocr_backend_${id.code}") }
 
     /** When on (the default), touching the game screen during auto translation
      *  dismisses the current overlay and re-captures. Off makes screen touches

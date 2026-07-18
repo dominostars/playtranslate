@@ -104,10 +104,6 @@ class CameraSnapshotController(
         activity.requestedOrientation = preFreezeOrientation
     }
 
-    /** Play state at shutter time — the first-ever snapshot's presentation
-     *  default (auto-detecting → on-frame overlays, paused → panel). */
-    private var wasPlayingAtShutter = true
-
     /** The live overlays were kept as this snapshot's loading state: the
      *  presenter must NOT paint skeletons over them at Translating; the Done
      *  promotion swaps them for the snapshot's boxes. */
@@ -265,12 +261,10 @@ class CameraSnapshotController(
     private fun freeze() {
         if (session.mode == CameraSession.Mode.FROZEN) return
         preFreezeMode = session.mode
-        wasPlayingAtShutter = session.mode == CameraSession.Mode.LIVE
-        // Overlays-preferred snapshot taken while live boxes are up: keep
-        // them through the load (they track the very frame being frozen) and
-        // swap in the snapshot's boxes at Done — no skeleton flash.
-        val keepOverlays =
-            (prefs.cameraSnapshotOnScreenPreferred ?: wasPlayingAtShutter) && session.hasLiveOverlays()
+        // Boxes-on snapshot taken while live boxes are up: keep them through
+        // the load (they track the very frame being frozen) and swap in the
+        // snapshot's boxes at Done — no skeleton flash.
+        val keepOverlays = prefs.cameraBoxesEnabled && session.hasLiveOverlays()
         keptLiveOverlays = keepOverlays
         // One freeze in flight at a time; re-enabled by syncControls on
         // either outcome.
@@ -338,11 +332,16 @@ class CameraSnapshotController(
                 session.hideFrozenOverlays()
             }
         }
-        o.onScreenPreference = object : CaptureResultOverlay.OnScreenPref {
-            override var preferred: Boolean
-                get() = prefs.cameraSnapshotOnScreenPreferred ?: wasPlayingAtShutter
+        o.presentationPrefs = object : CaptureResultOverlay.PresentationPrefs {
+            override var boxesEnabled: Boolean
+                get() = prefs.cameraBoxesEnabled
                 set(value) {
-                    prefs.cameraSnapshotOnScreenPreferred = value
+                    prefs.cameraBoxesEnabled = value
+                }
+            override var startCollapsed: Boolean
+                get() = prefs.cameraPanelStartCollapsed
+                set(value) {
+                    prefs.cameraPanelStartCollapsed = value
                 }
         }
         o.ttsAlertTarget = TtsAlertTarget.InActivity(activity)
@@ -376,12 +375,20 @@ class CameraSnapshotController(
                 prov.engineToken,
                 onReOcr = { reRunSnapshot() },
                 onDownload = { backend ->
+                    // forCamera: the download screen persists the CAMERA
+                    // token, only on verified success — an aborted download
+                    // can't cost the user their current camera engine, and
+                    // the global/live engine never moves.
                     activity.startActivity(
                         CaptureOverlaySettingsActivity.downloadIntent(
-                            activity, prov.sourceLangId, backend.selectionToken,
+                            activity, prov.sourceLangId, backend.selectionToken, forCamera = true,
                         )
                     )
                     unfreeze()
+                },
+                // The camera's OCR choice is its own per-flow setting.
+                applyToken = { backend ->
+                    prefs.setCameraOcrBackendToken(prov.sourceLangId, backend.selectionToken)
                 },
             ).show()
         }

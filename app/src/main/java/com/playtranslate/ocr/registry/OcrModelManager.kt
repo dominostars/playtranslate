@@ -87,11 +87,15 @@ object OcrModelManager {
      * Selection only mutates Prefs, so this resolves fresh each call (no stale
      * cached engine); the native session is owned + cached by the bridge (closed
      * only at quiescent teardown).
+     *
+     * [tokenOverride] substitutes the stored global selection with a caller-scoped
+     * token (the camera tool's per-flow engine choice); resolution and fallback
+     * are otherwise identical.
      */
-    fun engineForSelected(sourceLang: String): Pair<OcrBackend, OcrEngine>? {
+    fun engineForSelected(sourceLang: String, tokenOverride: String? = null): Pair<OcrBackend, OcrEngine>? {
         val ctx = appContext ?: return null
         val profile = SourceLanguageProfiles.forCode(sourceLang) ?: SourceLanguageProfiles[SourceLangId.JA]
-        return when (val chosen = selectedBackend(ctx, profile.id)) {
+        return when (val chosen = selectedBackend(ctx, profile.id, tokenOverride)) {
             is OcrBackend.Meiki ->
                 if (OcrPackModelHelper(chosen.packKey).isInstalled(ctx))
                     MeikiBridge.engine(ctx, chosen.packKey)?.let { chosen to it } else null
@@ -150,11 +154,13 @@ object OcrModelManager {
     /** Chosen backend for [id]: the stored selection if still deliverable, else the
      *  ML Kit floor, else — for a no-floor language (Cyrillic) — its single deliverable
      *  recognizer. NULL only when nothing is deliverable on this device (a no-floor
-     *  language on a 32-bit process). See [resolveSelectedBackend] for the rule. */
-    fun selectedBackend(ctx: Context, id: SourceLangId): OcrBackend? =
+     *  language on a 32-bit process). See [resolveSelectedBackend] for the rule.
+     *  [tokenOverride] (non-null) resolves a caller-scoped selection — the camera
+     *  tool's — in place of the stored global token, under the same fallbacks. */
+    fun selectedBackend(ctx: Context, id: SourceLangId, tokenOverride: String? = null): OcrBackend? =
         resolveSelectedBackend(
             available = availableBackends(ctx, id),
-            token = Prefs(ctx).ocrBackendToken(id),
+            token = tokenOverride ?: Prefs(ctx).ocrBackendToken(id),
             mlKitFloor = SourceLanguageProfiles[id].mlKitFloor,
         )
 
@@ -553,13 +559,32 @@ object OcrModelManager {
      *
      *  Other languages that selected [packKey] keep their choice; the missing
      *  pack re-downloads through the normal source-switch path
-     *  (downloadDefaultForSource) the next time one becomes the source. */
+     *  (downloadDefaultForSource) the next time one becomes the source.
+     *
+     *  CAMERA-scoped selections naming [packKey]'s backend are CLEARED here
+     *  (reverting to inherit-global) instead of kept: the camera has no
+     *  source-switch re-download choke point, and a shippable-but-deleted
+     *  pack still RESOLVES as selected (availableBackends gates on shippable,
+     *  not installed) — a kept token would leave the camera gear naming an
+     *  engine while recognition silently runs the ML Kit floor. Done at this
+     *  choke point, not in the settings UI, so every delete caller gets the
+     *  cleanup; the consent prompt lives with the caller. */
     fun deleteOcrPack(ctx: Context, packKey: String): Boolean {
-        val current = Prefs(ctx).sourceLangId
+        val prefs = Prefs(ctx)
+        val current = prefs.sourceLangId
         if (selectedBackend(ctx, current)?.packKeys?.contains(packKey) == true) {
             Log.w(TAG, "refusing to delete '$packKey': the current source " +
                 "(${current.code})'s selected backend resolves it")
             return false
+        }
+        for (id in SourceLangId.entries) {
+            val token = prefs.cameraOcrBackendToken(id) ?: continue
+            val named = SourceLanguageProfiles[id].ocrBackends
+                .firstOrNull { it.selectionToken == token } ?: continue
+            if (packKey in named.packKeys) {
+                Log.i(TAG, "delete '$packKey': clearing camera OCR selection for ${id.code}")
+                prefs.clearCameraOcrBackendToken(id)
+            }
         }
         MeikiBridge.close(packKey)
         PaddleOcrBridge.close(packKey)

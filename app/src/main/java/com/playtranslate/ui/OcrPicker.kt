@@ -46,7 +46,9 @@ import com.playtranslate.themeColor
  *    and starts the download; the selection is persisted there, only on success).
  *  - downloaded & applied      → no-op (already the result's engine; just dismiss).
  *  - downloaded, not applied   → persist the new token HERE (so the re-OCR resolves
- *    the new engine from Prefs), then [onReOcr].
+ *    the new engine from Prefs), then [onReOcr]. [applyToken] substitutes the
+ *    persistence for surfaces with their own selection scope (the camera writes
+ *    its per-flow token instead of the global one); null = the global write.
  */
 object OcrPicker {
     fun populate(
@@ -56,6 +58,7 @@ object OcrPicker {
         appliedToken: String,
         onReOcr: () -> Unit,
         onDownload: (OcrBackend) -> Unit,
+        applyToken: ((OcrBackend) -> Unit)? = null,
     ): OverlayAlert.Builder {
         builder.setTitle(ctx.getString(R.string.ocr_picker_title))
             .setMessage(ctx.getString(R.string.ocr_picker_message))
@@ -70,7 +73,8 @@ object OcrPicker {
                     !downloaded -> onDownload(backend)
                     applied -> { /* already the result's engine — just dismiss */ }
                     else -> {
-                        Prefs(ctx).setOcrBackendToken(id, backend.selectionToken)
+                        applyToken?.invoke(backend)
+                            ?: Prefs(ctx).setOcrBackendToken(id, backend.selectionToken)
                         onReOcr()
                     }
                 }

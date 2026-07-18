@@ -754,11 +754,19 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     /** Select [backend] for [id]: persist immediately if its pack is already
      *  present, else download with a progress overlay and persist only on
      *  success (the previous picker's flow). Rebuilds the section so the check +
-     *  accent move to the new selection. */
-    private fun selectOcr(id: SourceLangId, backend: OcrBackend) {
+     *  accent move to the new selection.
+     *
+     *  [forCamera] scopes the persistence: the camera tool's deep-linked
+     *  downloads write ONLY [Prefs.setCameraOcrBackendToken] — a camera-only
+     *  action must not switch the over-game/live engine as a side effect.
+     *  This screen's own rows always persist the global selection (false). */
+    private fun selectOcr(id: SourceLangId, backend: OcrBackend, forCamera: Boolean = false) {
+        fun persist() =
+            if (forCamera) prefs.setCameraOcrBackendToken(id, backend.selectionToken)
+            else prefs.setOcrBackendToken(id, backend.selectionToken)
         val needsDownload = backend.packKeys.any { !OcrPackModelHelper(it).isInstalled(this) }
         if (!needsDownload) {
-            prefs.setOcrBackendToken(id, backend.selectionToken)
+            persist()
             setupOcrSection()
             return
         }
@@ -799,7 +807,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
                 }
             }
             if (installed) {
-                prefs.setOcrBackendToken(id, backend.selectionToken)
+                persist()
             }
             overlay.dismiss()
             setupOcrSection()
@@ -813,7 +821,11 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
      *  OverlayAlert; when another downloaded language's selected engine shares
      *  this model, the message also names them (they keep their choice —
      *  switching to one re-downloads the model through the normal source-setup
-     *  path). */
+     *  path). When the CAMERA tool's own selection (any installed language,
+     *  including this one — the trash only guards the GLOBAL selection)
+     *  resolves to the model, the message says the camera reverts to the
+     *  standard selection; the actual token clearing lives in
+     *  [OcrModelManager.deleteOcrPack] so no delete caller can skip it. */
     private fun confirmAndDeleteOcr(id: SourceLangId, backend: OcrBackend) {
         val dependents = LanguagePackStore.installedCodes(this)
             .filter { it != id }
@@ -821,11 +833,24 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
                 OcrModelManager.selectedBackend(this, other)?.packKeys?.any { it in backend.packKeys } == true
             }
             .sortedBy { it.displayName() }
-        val message = if (dependents.isEmpty()) {
+        // Raw token→backend naming, the same predicate deleteOcrPack sweeps
+        // with — resolution-with-fallback would hide a stored camera choice
+        // behind its floor fallback and under-warn.
+        val cameraAffected = LanguagePackStore.installedCodes(this).any { lang ->
+            prefs.cameraOcrBackendToken(lang)?.let { token ->
+                SourceLanguageProfiles[lang].ocrBackends
+                    .firstOrNull { it.selectionToken == token }
+                    ?.packKeys?.any { it in backend.packKeys }
+            } == true
+        }
+        var message = if (dependents.isEmpty()) {
             getString(R.string.settings_ocr_delete_msg, backend.ocrLabel(this))
         } else {
             val names = dependents.joinToString("\n") { it.displayName() }
             getString(R.string.settings_ocr_delete_shared_msg, backend.ocrLabel(this), names)
+        }
+        if (cameraAffected) {
+            message += "\n\n" + getString(R.string.settings_ocr_delete_camera_note)
         }
         OverlayAlert.Builder(this)
             .setTitle(getString(R.string.settings_ocr_delete_title, backend.ocrLabel(this)))
@@ -1015,27 +1040,33 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private fun maybeHandleOcrDownloadDeepLink() {
         val token = intent.getStringExtra(EXTRA_OCR_AUTODOWNLOAD) ?: return
         val langCode = intent.getStringExtra(EXTRA_OCR_LANG)
+        val forCamera = intent.getBooleanExtra(EXTRA_OCR_FOR_CAMERA, false)
         intent.removeExtra(EXTRA_OCR_AUTODOWNLOAD)
         intent.removeExtra(EXTRA_OCR_LANG)
+        intent.removeExtra(EXTRA_OCR_FOR_CAMERA)
         val id = SourceLangId.entries.firstOrNull { it.code == langCode } ?: prefs.sourceLangId
         val backend = OcrModelManager.availableBackends(this, id)
             .firstOrNull { it.selectionToken == token } ?: return
         findViewById<View>(R.id.cardOcr)?.let { card ->
             card.post { card.requestRectangleOnScreen(android.graphics.Rect(0, 0, card.width, card.height)) }
         }
-        selectOcr(id, backend)
+        selectOcr(id, backend, forCamera)
     }
 
     companion object {
         private const val EXTRA_OCR_LANG = "extra_ocr_lang"
         private const val EXTRA_OCR_AUTODOWNLOAD = "extra_ocr_autodownload"
+        private const val EXTRA_OCR_FOR_CAMERA = "extra_ocr_for_camera"
 
         /** Intent that opens this screen and immediately starts downloading the OCR
          *  pack for [token]'s backend under language [id] — the in-result OCR
-         *  picker's "not downloaded" path. */
-        fun downloadIntent(ctx: Context, id: SourceLangId, token: String): Intent =
+         *  picker's "not downloaded" path. [forCamera] scopes the on-success
+         *  selection write to the camera's own token (see [selectOcr]); the
+         *  over-game/in-app pickers use the global default. */
+        fun downloadIntent(ctx: Context, id: SourceLangId, token: String, forCamera: Boolean = false): Intent =
             Intent(ctx, CaptureOverlaySettingsActivity::class.java)
                 .putExtra(EXTRA_OCR_LANG, id.code)
                 .putExtra(EXTRA_OCR_AUTODOWNLOAD, token)
+                .putExtra(EXTRA_OCR_FOR_CAMERA, forCamera)
     }
 }

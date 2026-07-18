@@ -133,19 +133,28 @@ class CaptureResultOverlay(
 
     var boxPresenter: BoxPresenter? = null
 
-    /** The "reopens how you dismissed it" preference this sheet reads on
-     *  Translating (auto-collapse) and writes on dismiss. Default: the
-     *  shared capture pref; the camera substitutes its own, whose first-use
-     *  default derives from the play/pause state at shutter time. */
-    interface OnScreenPref {
-        var preferred: Boolean
+    /** The sheet's two persisted presentation axes, independent per host flow.
+     *  [boxesEnabled] is the header toggle's state — whether results paint
+     *  their boxes over the frame — written the moment the toggle is tapped.
+     *  [startCollapsed] is the panel's parked-in-the-sliver state — read when
+     *  a flow starts (the sheet enters collapsed) and written on dismissal
+     *  ("it opens how you left it"). Default: the over-game capture prefs;
+     *  the camera substitutes its own pair. */
+    interface PresentationPrefs {
+        var boxesEnabled: Boolean
+        var startCollapsed: Boolean
     }
 
-    var onScreenPreference: OnScreenPref = object : OnScreenPref {
-        override var preferred: Boolean
-            get() = prefs.captureResultOnScreenPreferred
+    var presentationPrefs: PresentationPrefs = object : PresentationPrefs {
+        override var boxesEnabled: Boolean
+            get() = prefs.captureBoxesEnabled
             set(value) {
-                prefs.captureResultOnScreenPreferred = value
+                prefs.captureBoxesEnabled = value
+            }
+        override var startCollapsed: Boolean
+            get() = prefs.capturePanelStartCollapsed
+            set(value) {
+                prefs.capturePanelStartCollapsed = value
             }
     }
 
@@ -219,9 +228,15 @@ class CaptureResultOverlay(
     private var chipsView: TranslationOverlayView? = null
 
     /** True from the moment the panel starts collapsing to its bottom-edge
-     *  sliver (on-screen boxes showing) until it starts expanding back. Root
-     *  touch handling swaps to sliver rules while set. */
+     *  sliver until it starts expanding back. Root touch handling swaps to
+     *  sliver rules while set. Purely the PANEL's position — the on-screen
+     *  boxes are the independent [PresentationPrefs.boxesEnabled] axis. */
     private var sliverMode = false
+
+    /** Whether the on-screen boxes are currently up (via [showChips]) — the
+     *  live counterpart of the persisted toggle, so Done knows to promote
+     *  in place ([updateChips]) vs present fresh, and hide paths can no-op. */
+    private var boxesShown = false
 
     /** Sliver-only "drag up for more options" hint (see the body's addView). */
     private val sliverHint = TextView(ctx)
@@ -515,8 +530,16 @@ class CaptureResultOverlay(
         body.setPadding(0, topInsetPx, 0, 0)
         autoMaxPx = CaptureResultGeometry.autoMaxHeight(screenH)
         // Load at the minimum (drag-resize floor) height; grow to fit on Done.
+        // A flow last dismissed from the collapsed sliver starts parked THERE
+        // instead: results land as boxes (when enabled) while the panel waits
+        // at the bottom edge until pulled up. setPanelHeight's crossfade sets
+        // the parked visuals (content transparent, hint up) from frame one.
         panelHeightPx = CaptureResultGeometry.minPanelHeight(screenH)
         (panel.layoutParams as FrameLayout.LayoutParams).height = panelHeightPx
+        if (presentationPrefs.startCollapsed) {
+            sliverMode = true
+            setPanelHeight(sliverHeightPx())
+        }
         shadowBitmap = bakeEdgeShadow(screenW)
         edgeShadow.invalidate()
         backdrop?.let {
@@ -541,9 +564,9 @@ class CaptureResultOverlay(
             onAddToAnki = { openSentenceAnkiReview() },
             onAnkiOneTap = { oneTapSentenceFromOverlay() },
         )
-        // Overlay-only: the target header's show-on-screen action collapses the
-        // panel to its sliver with the boxes painted over the game.
-        b.setShowOnScreenAction { collapseToSliver() }
+        // Overlay-only: the target header's show-on-screen toggle flips the
+        // on-frame boxes — accent while ON — without moving the panel.
+        b.setShowOnScreenAction { toggleBoxes() }
         b.onSectionVisibilityChanged = {
             applySideBySideCollapse()
             // Stacked hidden-translation parks the collapsed header above the
@@ -662,10 +685,9 @@ class CaptureResultOverlay(
                     // (blank translatedText renders it); Done fills it in + re-fits.
                     is CaptureState.Translating -> {
                         // Skeleton boxes exist from OCR time — expose them BEFORE the
-                        // bind so the header's show-on-screen action is offered while
-                        // the translation is still running (a tap then shows the same
-                        // pulsing placeholders the auto-collapse shows, and the Done
-                        // promotion fills them in place either way).
+                        // bind so the header's boxes toggle is offered while the
+                        // translation is still running (the Done promotion fills
+                        // them in place either way).
                         overlayData = state.overlayData
                         bindResult(
                             TranslationResult(
@@ -677,42 +699,74 @@ class CaptureResultOverlay(
                                 langContext = prefs.langContext(),
                             ),
                         )
-                        // Chips-preferred: collapse the moment OCR lands and show the
-                        // skeleton boxes over the game while the translation runs —
-                        // the panel must not grow again until the user asks for it.
-                        // (The first bind's synchronous fit no-ops pre-layout; the
-                        // posted ones run measure-only while slivered — they set the
-                        // drag ceiling + card chrome but never animate the height —
-                        // so nothing re-expands.)
-                        if (onScreenPreference.preferred && state.overlayData != null) {
-                            collapseToSliver()
+                        // Boxes are their own axis: skeletons go up the moment OCR
+                        // lands, whatever the panel is doing (a re-run with boxes
+                        // already showing swaps them in place). (Fits while
+                        // slivered run measure-only — they set the drag ceiling +
+                        // card chrome but never animate the height.)
+                        if (presentationPrefs.boxesEnabled) {
+                            state.overlayData?.let {
+                                if (boxesShown) updateChips(it) else showChips(it)
+                            }
                         }
+                        // Collapsed-start may park the panel (or keep show()'s
+                        // park) only while the sliver has something to stand on:
+                        // boxes actually painted, or the user's persisted
+                        // boxes-off posture. When boxes were EXPECTED but reality
+                        // refused them — the overlay surface is live mode's, or
+                        // OCR produced nothing paintable — a sliver would leave
+                        // NOTHING readable, so the panel comes (or stays) up
+                        // instead: the old success-gated collapse, split across
+                        // the two axes.
+                        val sliverJustified =
+                            boxesShown || !presentationPrefs.boxesEnabled
+                        if (presentationPrefs.startCollapsed && sliverJustified) {
+                            collapseToSliver()
+                        } else if (sliverMode && !sliverJustified) {
+                            expandFromSliver()
+                        }
+                        // bindResult rendered the toggle before the paint
+                        // attempt above — re-render now that boxesShown has
+                        // settled (same main-thread dispatch, so no flash).
+                        updateShowOnScreenAction()
                     }
                     is CaptureState.Done -> {
                         overlayData = state.overlayData
-                        if (sliverMode) {
-                            // Promote the skeletons in place; if the translation
-                            // produced nothing paintable, fall back to the panel
-                            // rather than leave placeholders pulsing forever.
-                            val data = state.overlayData
-                            if (data != null) updateChips(data) else expandFromSliver()
+                        val data = state.overlayData
+                        if (data == null) {
+                            // Nothing paintable came back: skeletons must not
+                            // pulse forever, and a sliver waiting on boxes has
+                            // nothing left to show — bring the panel back.
+                            hideChips()
+                            if (sliverMode && presentationPrefs.boxesEnabled) {
+                                expandFromSliver()
+                            }
+                        } else if (presentationPrefs.boxesEnabled) {
+                            // Promote showing skeletons in place; first paint
+                            // otherwise (e.g. the toggle was flipped on after
+                            // OCR, or the boxes surface was busy at Translating).
+                            if (boxesShown) updateChips(data) else showChips(data)
+                            // Boxes expected but refused (the surface got
+                            // claimed since Translating): a sliver with nothing
+                            // behind it is unreadable — bring the panel back.
+                            if (sliverMode && !boxesShown) expandFromSliver()
                         }
                         bindResult(state.result)
                     }
                     is CaptureState.NoText -> {
                         // A re-run (OCR gear, camera region change) can land
-                        // NoText while boxes own the frame — slivered, or the
-                        // camera's kept-live-boxes load. A status is unreadable
-                        // in a sliver, and boxes over "no text" are a stale
-                        // scene: same recovery as Failed, plus the box
-                        // teardown (expandFromSliver's hideChips covers the
-                        // sliver path).
-                        if (sliverMode) expandFromSliver() else hideChips()
+                        // NoText while boxes are up — they'd be a stale scene
+                        // over "no text", and a status is unreadable in a
+                        // sliver: take the boxes down and bring the panel back.
+                        hideChips()
+                        if (sliverMode) expandFromSliver()
                         setStatus(state.message, state.ocrProvenance, state.screenshotPath)
                     }
                     is CaptureState.Failed -> {
-                        // A translation failure after a skeleton collapse must bring
-                        // the panel back — the status is unreadable in a sliver.
+                        // A translation failure with skeletons up must not leave
+                        // them pulsing forever, and the status is unreadable in
+                        // a sliver — same recovery as NoText.
+                        hideChips()
                         if (sliverMode) expandFromSliver()
                         setStatus(state.message)
                     }
@@ -727,12 +781,12 @@ class CaptureResultOverlay(
      *  (a status is unreadable there) and take the on-screen boxes down —
      *  everything they show is invalidated. Same recovery pair as
      *  Failed/NoText. Region re-runs deliberately do NOT call this: their
-     *  boxes stay the presentation and swap in place. If the on-screen
-     *  presentation is preferred, the re-run's Translating auto-collapse
-     *  re-enters the sliver with fresh skeletons — the full first-snapshot
-     *  arc. */
+     *  boxes stay up and swap in place. A collapsed-start flow re-parks via
+     *  the re-run's Translating handler, with fresh skeletons when the boxes
+     *  toggle is on — the full first-snapshot arc. */
     fun prepareForSettingsRefresh() {
-        if (sliverMode) expandFromSliver() else hideChips()
+        hideChips()
+        if (sliverMode) expandFromSliver()
     }
 
     /** Re-show entry point for the controller's stash-and-rebind path: set up the
@@ -746,15 +800,16 @@ class CaptureResultOverlay(
     fun dismiss() {
         if (dismissed) return
         dismissed = true
-        // "It opens how you left it": remember which presentation this result was
-        // dismissed from — but only while a result is actually being PRESENTED.
+        // "It opens how you left it": remember whether the panel was parked in
+        // its sliver — but only while a result is actually being PRESENTED.
         // lastResult alone is not enough: a Translating placeholder sets it, and a
         // translation failure then swaps to a status via setStatus() without
         // clearing it — recording there would let a failed capture silently flip
-        // the preference. Every status path hides the scroll; both real
-        // presentations (expanded panel, sliver) keep it visible.
+        // the start state. Every status path hides the scroll; both real states
+        // (expanded panel, sliver) keep it visible. The boxes toggle is NOT
+        // recorded here — it persists itself the moment it's tapped.
         if (lastResult != null && scroll.visibility == View.VISIBLE) {
-            onScreenPreference.preferred = sliverMode
+            presentationPrefs.startCollapsed = sliverMode
         }
         heightAnimator?.cancel()
         dismissWordLens()
@@ -797,7 +852,13 @@ class CaptureResultOverlay(
      *  or hand them to the host's [boxPresenter] (the camera's warp overlays).
      *  False when the surface isn't ours to draw on (live mode). */
     private fun showChips(data: OneShotOverlayData): Boolean {
-        boxPresenter?.let { return it.show(data) }
+        boxPresenter?.let {
+            if (it.show(data)) {
+                boxesShown = true
+                return true
+            }
+            return false
+        }
         if (CaptureService.instance?.isLive == true) return false
         val v = chipsView ?: TranslationOverlayView(
             android.view.ContextThemeWrapper(ctx, android.R.style.Theme_DeviceDefault),
@@ -812,6 +873,7 @@ class CaptureResultOverlay(
         v.animate().cancel()
         v.alpha = 1f
         v.setBoxes(data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH)
+        boxesShown = true
         return true
     }
 
@@ -830,6 +892,7 @@ class CaptureResultOverlay(
     /** Fade the boxes out. The view stays attached (alpha 0) for cheap re-shows;
      *  it dies with the window. */
     private fun hideChips() {
+        boxesShown = false
         boxPresenter?.let {
             it.hide()
             return
@@ -838,74 +901,61 @@ class CaptureResultOverlay(
         v.animate().alpha(0f).setDuration(SLIVER_FADE_MS).start()
     }
 
-    /** Collapse the sheet to a bottom-edge sliver and paint the result's boxes in
-     *  place over the game. Height-based (the sheet's bottom edge retracts, like
-     *  the grow-to-fit in reverse) so the sliver drag below is the plain resize
-     *  gesture with a lower floor. The user comes back via a tap (auto-expand)
-     *  or a drag on the sliver zone, or dismisses everything by tapping
-     *  anywhere else. */
+    /** The header toggle: flip the on-frame boxes without moving the panel.
+     *  Turning ON paints the bound result's boxes (skeletons while the
+     *  translation is still running); the persisted state lands wherever
+     *  reality landed — the overlay surface can refuse the paint (live mode
+     *  owns it), and the accent state must never claim boxes that aren't
+     *  there. */
+    private fun toggleBoxes() {
+        if (boxesShown) {
+            presentationPrefs.boxesEnabled = false
+            hideChips()
+        } else {
+            val data = overlayData ?: return
+            presentationPrefs.boxesEnabled = showChips(data)
+        }
+        updateShowOnScreenAction()
+    }
+
+    /** Collapse the sheet to its bottom-edge sliver. Height-based (the sheet's
+     *  bottom edge retracts, like the grow-to-fit in reverse) so the sliver
+     *  drag below is the plain resize gesture with a lower floor; the
+     *  content↔hint crossfade rides the height itself (see
+     *  [applyCollapseCrossfade]). Purely the panel: the on-frame boxes are the
+     *  toggle's independent axis. The user comes back via a tap (auto-expand)
+     *  or a drag on the sliver zone. */
     private fun collapseToSliver() {
         if (dismissed || animatingOut || sliverMode) return
         if (editContainer.visibility == View.VISIBLE) return
-        val data = overlayData ?: return
-        if (!showChips(data)) return
         sliverMode = true
         dismissWordLens()
         preSliverHeightPx = panelHeightPx
-        // The sections are about to be a thin strip — fade them out rather
-        // than showing a clipped line of text in the sliver; the "drag up"
-        // hint crossfades in to take their place.
-        scroll.animate().alpha(0f).setDuration(SLIVER_FADE_MS).start()
-        setSliverHintVisible(true)
         animateSliverHeight(sliverHeightPx())
     }
 
-    /** Crossfade the sliver's "drag up for more options" hint with the
-     *  sections: in as they fade out (collapse, settle-back), out the moment
-     *  the sheet starts coming back (tap-expand, drag past slop). */
-    private fun setSliverHintVisible(visible: Boolean) {
-        sliverHint.animate().cancel()
-        if (visible) {
-            if (sliverHint.visibility != View.VISIBLE) {
-                sliverHint.alpha = 0f
-                sliverHint.visibility = View.VISIBLE
-            }
-            sliverHint.animate().alpha(1f).setDuration(SLIVER_FADE_MS).start()
-        } else {
-            sliverHint.animate().alpha(0f).setDuration(SLIVER_FADE_MS)
-                .withEndAction { sliverHint.visibility = View.GONE }
-                .start()
-        }
-    }
-
-    /** A tap on the sliver: grow the sheet back to its pre-collapse height and
-     *  fade the sections back in; the on-screen boxes fade out as it returns. */
+    /** A tap on the sliver: grow the sheet back to its pre-collapse height;
+     *  the crossfade brings the sections back as the height climbs. */
     private fun expandFromSliver() {
         if (dismissed || animatingOut || !sliverMode) return
         sliverMode = false
-        hideChips()
-        scroll.animate().alpha(1f).setDuration(SLIVER_FADE_MS).start()
-        setSliverHintVisible(false)
         val target = preSliverHeightPx.coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
         animateSliverHeight(target) {
             updateShowOnScreenAction()
-            // Re-run the fit the sliver suppressed (an auto-collapse lands before
-            // the Done grow-to-fit ever ran, so the height may still be the
-            // loading floor). Skipped when a status replaced the content (the
-            // Failed-while-slivered recovery) — there's no text to fit.
+            // Re-run the fit the sliver suppressed (a collapsed-start lands
+            // before the Done grow-to-fit ever ran, so the height may still be
+            // the loading floor). Skipped when a status replaced the content
+            // (the Failed-while-slivered recovery) — there's no text to fit.
             if (lastResult != null && scroll.visibility == View.VISIBLE) autoSizeAndFit()
         }
     }
 
     /** The sliver drag has passed touch slop: the user is pulling the sheet edge
-     *  to a height of their choosing, so the drag owns the height from here.
-     *  The boxes leave as soon as the panel starts coming back — a slow drag
-     *  shouldn't read as both presentations at once. */
+     *  to a height of their choosing, so the drag owns the height from here
+     *  (cancel any in-flight park/expand animation; the crossfade follows the
+     *  dragged height). */
     private fun beginSliverDrag() {
         heightAnimator?.cancel()
-        hideChips()
-        scroll.animate().alpha(1f).setDuration(SLIVER_FADE_MS).start()
-        setSliverHintVisible(false)
     }
 
     /** Per-frame sliver drag: the resize math with the floor lowered to the
@@ -923,7 +973,7 @@ class CaptureResultOverlay(
 
     /** Release of a sliver drag. Past the threshold (the normal resize floor)
      *  the panel is committed exactly where the drag left it; under it, the
-     *  sheet settles back into the sliver and the boxes return. */
+     *  sheet settles back into the sliver. */
     private fun endSliverDrag() {
         if (dismissed) return
         if (panelHeightPx >= CaptureResultGeometry.minPanelHeight(screenH)) {
@@ -933,16 +983,7 @@ class CaptureResultOverlay(
             reFitText()
             updateShowOnScreenAction()
         } else {
-            val data = overlayData
-            if (data != null && showChips(data)) {
-                scroll.animate().alpha(0f).setDuration(SLIVER_FADE_MS).start()
-                setSliverHintVisible(true)
-                animateSliverHeight(sliverHeightPx())
-            } else {
-                // The overlay surface got claimed mid-drag (live mode) — expand
-                // rather than strand a sliver with nothing behind it.
-                expandFromSliver()
-            }
+            animateSliverHeight(sliverHeightPx())
         }
     }
 
@@ -992,14 +1033,42 @@ class CaptureResultOverlay(
     private fun sliverHeightPx(): Int =
         topInsetPx + dp(SLIVER_SHEET_DP + HANDLE_HEIGHT_DP) + bottomInsetPx
 
-    /** The target header's show-on-screen action is offered whenever there is
-     *  something to switch TO — skeleton boxes count (a mid-translation tap
-     *  shows the same pulsing placeholders the auto-collapse does). Deliberately
-     *  NOT gated on sliverMode: the button is scroll content, so the collapse
-     *  fades it out with the sections instead of yanking it to GONE, and it's
-     *  unreachable while slivered anyway (the root consumes every touch). */
+    /** Height-driven content↔hint crossfade over the collapse band
+     *  [sliverHeightPx, minPanelHeight): the sections (or status) fade out as
+     *  the sheet approaches the sliver while the "drag up" hint fades in.
+     *  Driven from [setPanelHeight] — the single point every height path flows
+     *  through (drags, the park/expand animators, the collapsed start, inset
+     *  re-parks) — so every path lands on identical visuals with no per-path
+     *  fade wiring. Above the band it restores full content and retires the
+     *  hint, making it a no-op for all normal resizing. */
+    private fun applyCollapseCrossfade(h: Int) {
+        val min = CaptureResultGeometry.minPanelHeight(screenH)
+        val sliver = sliverHeightPx()
+        val f = when {
+            h >= min || min <= sliver -> 1f
+            h <= sliver -> 0f
+            else -> (h - sliver).toFloat() / (min - sliver).toFloat()
+        }
+        scroll.alpha = f
+        statusText.alpha = f
+        sliverHint.animate().cancel()
+        sliverHint.alpha = 1f - f
+        sliverHint.visibility = if (f >= 1f) View.GONE else View.VISIBLE
+    }
+
+    /** The target header's boxes toggle is offered whenever there is something
+     *  to paint — skeleton boxes count (a mid-translation flip shows the same
+     *  pulsing placeholders). Deliberately NOT gated on sliverMode: the button
+     *  is scroll content, so a collapse fades it out with the sections instead
+     *  of yanking it to GONE, and it's unreachable while slivered anyway (the
+     *  root consumes every touch). The accent state mirrors [boxesShown] — the
+     *  boxes actually painted — NOT the persisted pref: the surface can refuse
+     *  the paint (live mode), and the accent must never claim boxes that
+     *  aren't there. The pref stays untouched as the standing intent; only a
+     *  user tap re-lands it (see [toggleBoxes]). */
     private fun updateShowOnScreenAction() {
         binder?.setShowOnScreenAvailable(overlayData != null)
+        binder?.setShowOnScreenToggled(boxesShown)
     }
 
     /** Extra content height beyond the visible body when the translation
@@ -1661,8 +1730,9 @@ class CaptureResultOverlay(
         )
         lastResult = edited
         // The capture's per-group boxes translate the OLD source — the edit
-        // orphans them, so drop the on-screen presentation for this result.
+        // orphans them, so drop the data AND any boxes already painted from it.
         overlayData = null
+        hideChips()
         updateShowOnScreenAction()
         val gen = ++editGeneration
         b.bindSource(edited.segments)   // sets text + paints furigana
@@ -1905,13 +1975,28 @@ class CaptureResultOverlay(
         resizeTracker?.addMovement(e)
         // Bottom sheet: dragging the grabber UP grows the panel.
         val dy = (resizeStartRawY - e.rawY).toInt()
-        // Clamp to [min, 90%], then cap at the content's max-needed height so the
-        // drag can't grow the panel into empty space beyond the content.
+        // Clamp to [floor, 90%], then cap at the content's max-needed height so
+        // the drag can't grow the panel into empty space beyond the content.
+        // The floor is the SLIVER: the drag continues below the classic minimum
+        // into the collapse band, crossfading the content for the sliver hint
+        // on the way down (endResize commits or parks). The in-place edit keeps
+        // the classic floor — collapsing mid-edit would strand the IME over a
+        // sliver.
+        val floor = if (editContainer.visibility == View.VISIBLE) {
+            CaptureResultGeometry.minPanelHeight(screenH)
+        } else {
+            sliverHeightPx()
+        }
         setPanelHeight(
-            CaptureResultGeometry.clampPanelHeight(resizeStartHeight + dy, screenH)
-                .coerceAtMost(maxNeededHeightPx),
+            CaptureResultGeometry.clampPanelHeight(
+                resizeStartHeight + dy, screenH, minFraction = 0f,
+            )
+                .coerceAtMost(maxNeededHeightPx)
+                .coerceAtLeast(floor),
         )
-        reFitText()
+        // No re-fit inside the collapse band — fitting to sliver heights
+        // computes degenerate sizes, and the content is faded there anyway.
+        if (panelHeightPx >= CaptureResultGeometry.minPanelHeight(screenH)) reFitText()
     }
 
     private fun endResize(e: MotionEvent) {
@@ -1924,6 +2009,15 @@ class CaptureResultOverlay(
         // A fast down-fling on the grabber dismisses (slides out the bottom).
         if (dismissOnGesture && vy > FLING_DISMISS_VEL) {
             animateOutAndDismiss()
+        } else if (panelHeightPx < CaptureResultGeometry.minPanelHeight(screenH)) {
+            // Released inside the collapse band: the classic floor is the
+            // commit threshold (same as the sliver drag's), so the sheet
+            // parks in the sliver; a later tap-expand returns to the
+            // pre-drag height.
+            sliverMode = true
+            dismissWordLens()
+            preSliverHeightPx = resizeStartHeight
+            animateSliverHeight(sliverHeightPx())
         } else {
             // Adopt the user's dragged height as the auto-size ceiling, so a later
             // re-fit (furigana toggle, translation arriving) keeps this height
@@ -1936,6 +2030,7 @@ class CaptureResultOverlay(
         panelHeightPx = px
         (panel.layoutParams as FrameLayout.LayoutParams).height = px
         panel.requestLayout()
+        applyCollapseCrossfade(px)
     }
 
     /** Glue the pre-baked drop shadow to the sheet's bottom edge by re-reading the

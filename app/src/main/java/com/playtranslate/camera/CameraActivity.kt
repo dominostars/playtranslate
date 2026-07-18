@@ -53,7 +53,8 @@ import com.playtranslate.ui.OverlayAlert
 /**
  * Camera tool (Settings → Tools → Camera): a full-bleed live camera view that
  * translates text the camera is pointed at, or shows furigana/pinyin reading
- * hints, per the shared [Prefs.overlayMode].
+ * hints, per the camera's own [Prefs.cameraOverlayMode] (inheriting the
+ * global flavor until the pill gear first sets it).
  *
  * Deliberately NOT a [com.playtranslate.ui.SettingsSubPageActivity]: that
  * scaffold pads the whole content view with system-bar insets, which would
@@ -226,15 +227,22 @@ class CameraActivity : AppCompatActivity() {
     }
 
     /** Read-settings fingerprint — language configuration AND the selected
-     *  OCR engine; a change invalidates cached OCR. The token matters for
-     *  the pill gear's not-yet-downloaded picks: the download screen
-     *  persists the new engine while this activity is paused, and without
-     *  the token in the diff a kept-behind frozen snapshot (or a live
-     *  anchor, until its next re-acquire) would keep showing old-engine
-     *  results while the gear menu reports the new one. */
+     *  OCR engine; a change invalidates cached OCR. The engine is the
+     *  CAMERA-scoped resolution (the camera's own token, inheriting the
+     *  global until set). The token matters for the pickers'
+     *  not-yet-downloaded picks: the download screen persists the camera
+     *  token (forCamera deep-link, on verified success only) while this
+     *  activity is paused, and without the token in this diff a kept-behind
+     *  frozen snapshot (or a live anchor, until its next re-acquire) would
+     *  keep showing old-engine results while the gear menu reports the new
+     *  one. */
     private fun langKey(): String =
         "${prefs.sourceLangId}|${prefs.targetLang}|${prefs.targetChineseVariant}|" +
-            (OcrModelManager.selectedBackend(this, prefs.sourceLangId)?.selectionToken ?: "")
+            (
+                OcrModelManager.selectedBackend(
+                    this, prefs.sourceLangId, prefs.cameraOcrBackendToken(prefs.sourceLangId),
+                )?.selectionToken ?: ""
+            )
 
     override fun onPause() {
         super.onPause()
@@ -442,8 +450,9 @@ class CameraActivity : AppCompatActivity() {
      *  stays behind it and restores on back). */
     private fun showPillOcrPicker() {
         val srcId = prefs.sourceLangId
-        val token = com.playtranslate.ocr.registry.OcrModelManager
-            .selectedBackend(this, srcId)?.selectionToken ?: ""
+        val token = OcrModelManager
+            .selectedBackend(this, srcId, prefs.cameraOcrBackendToken(srcId))
+            ?.selectionToken ?: ""
         com.playtranslate.ui.OcrPicker.populate(
             com.playtranslate.ui.OverlayAlert.Builder(this),
             this,
@@ -451,32 +460,39 @@ class CameraActivity : AppCompatActivity() {
             token,
             onReOcr = { refreshAfterReadSettingsChange() },
             onDownload = { backend ->
+                // forCamera: the download screen persists the CAMERA token,
+                // only on verified success — an aborted download changes
+                // nothing, and the global/live engine never moves on a
+                // camera-only action. The onResume langKey diff picks the
+                // new resolution up on return.
                 startActivity(
                     com.playtranslate.ui.CaptureOverlaySettingsActivity.downloadIntent(
-                        this, srcId, backend.selectionToken,
+                        this, srcId, backend.selectionToken, forCamera = true,
                     )
                 )
+            },
+            // The camera's OCR choice is its own per-flow setting.
+            applyToken = { backend ->
+                prefs.setCameraOcrBackendToken(srcId, backend.selectionToken)
             },
         ).show()
     }
 
     // ── Overlay flavor (the gear menu's Overlays row) ──────────────────────
 
-    /** Cycle Translation ↔ Furigana/Pinyin with the old segmented control's
-     *  exact side effects. Fired by the gear menu's Overlays row, which
-     *  mirrors the floating icon menu's (cycles in place, menu stays open). */
+    /** Cycle the CAMERA's own Translation ↔ Furigana/Pinyin flavor. Fired by
+     *  the gear menu's Overlays row, which mirrors the floating icon menu's
+     *  (cycles in place, menu stays open) — but writes the camera-scoped
+     *  flavor, so it never touches the over-game surfaces (no stopping a
+     *  running screen-capture live session, which is built on the GLOBAL
+     *  flavor this setting no longer moves). */
     private fun cycleOverlayFlavor() {
-        val next = if (prefs.overlayMode == OverlayMode.TRANSLATION) {
+        val next = if (prefs.cameraOverlayMode == OverlayMode.TRANSLATION) {
             OverlayMode.FURIGANA
         } else {
             OverlayMode.TRANSLATION
         }
-        prefs.overlayMode = next
-        // Same contract as the settings toggle: a running screen-capture
-        // live session is built for one flavor, so switching stops it.
-        if (CaptureService.instance?.isLive == true) {
-            CaptureService.instance?.stopLive()
-        }
+        prefs.cameraOverlayMode = next
         onOverlayModeChanged(next)
     }
 
@@ -517,10 +533,12 @@ class CameraActivity : AppCompatActivity() {
      * the one-tap switch to the rescue engine, live mode's offer
      * ([CaptureService.maybeShowSlowOcrPrompt]) minus its overlay-window and
      * multi-display machinery: the camera is an activity, so the plain
-     * in-activity alert form serves. Engine token and the once-per-language
-     * answered latch are the SHARED per-language state — a switch here
-     * switches live mode too, exactly like the snapshot gear picker, and an
-     * answer in either surface silences both. Gated out while FROZEN (the
+     * in-activity alert form serves. Fully CAMERA-scoped state: the switch
+     * writes the camera's engine token (the slowness was observed here;
+     * live mode's own engine is untouched) and the answered latch is the
+     * camera's own — the decision scopes with the selection it changes, so
+     * answering here never silences live mode's offer for its still-slow
+     * global engine. Gated out while FROZEN (the
      * timer only wraps live acquires, but a freeze can race the callback;
      * the snapshot panel has its own gear picker) and when nothing faster
      * exists — the slowness IS the fast option. Cycles are deliberately NOT
@@ -532,8 +550,9 @@ class CameraActivity : AppCompatActivity() {
         if (slowOcrAlert?.isShowing == true) return
         if (snapshotController?.isFrozen == true) return
         val id = prefs.sourceLangId
-        if (prefs.slowOcrPromptAnswered(id)) return
-        val selected = OcrModelManager.selectedBackend(this, id) ?: return
+        if (prefs.cameraSlowOcrPromptAnswered(id)) return
+        val selected =
+            OcrModelManager.selectedBackend(this, id, prefs.cameraOcrBackendToken(id)) ?: return
         val rescue = OcrModelManager.slowOcrRescue(
             available = OcrModelManager.availableBackends(this, id),
             selected = selected,
@@ -542,23 +561,21 @@ class CameraActivity : AppCompatActivity() {
 
         slowOcrAlert = OverlayAlert.Builder(this)
             .setTitle(getString(R.string.slow_ocr_prompt_title))
-            // Camera-worded body; the settings breadcrumb stays valid
-            // because the engine selection is the shared one.
-            .setMessage(
-                getString(
-                    R.string.slow_ocr_prompt_message_camera,
-                    getString(R.string.settings_title),
-                    getString(R.string.settings_cell_capture_overlay),
-                    getString(R.string.settings_header_ocr),
-                )
-            )
+            // Camera-worded body: the change-your-mind path is the pill
+            // gear's OCR row (the switch below writes the CAMERA-scoped
+            // engine, which the app-wide Settings screen doesn't move).
+            .setMessage(getString(R.string.slow_ocr_prompt_message_camera))
             .addButton(
                 getString(R.string.slow_ocr_prompt_switch),
                 themeColor(R.attr.ptAccent),
             ) {
                 slowOcrAlert = null
-                prefs.setSlowOcrPromptAnswered(id)
-                prefs.setOcrBackendToken(id, rescue.selectionToken)
+                // Camera-scoped, BOTH pieces: the slowness was observed HERE,
+                // so only the camera's own engine switches — and the answered
+                // latch scopes with it, so this decision can't silence live
+                // mode's own offer for its still-slow global engine.
+                prefs.setCameraSlowOcrPromptAnswered(id)
+                prefs.setCameraOcrBackendToken(id, rescue.selectionToken)
                 DetectionLog.log("camera slow-OCR prompt: ${id.code} switched to ${rescue.selectionToken}")
                 // Cancel the still-grinding pass and purge the anchor LRU —
                 // cached scenes carry old-engine OCR payloads and would
@@ -574,7 +591,7 @@ class CameraActivity : AppCompatActivity() {
                 slowOcrAlert = null
                 // Only an explicit user dismissal (button, scrim, back) is
                 // a decision; a lifecycle detach may offer again.
-                if (reason == DismissReason.USER) prefs.setSlowOcrPromptAnswered(id)
+                if (reason == DismissReason.USER) prefs.setCameraSlowOcrPromptAnswered(id)
             }
             .show()
         DetectionLog.log(

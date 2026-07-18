@@ -777,7 +777,7 @@
          ("Text recognition (OCR)") — so it can never drift from the real UI; translators may
          reorder the placeholders if the path reads differently in their locale. Pending l10n
          batch. -->
-    <string name="slow_ocr_prompt_message_camera">This device is taking a while to read text from the camera. Change to the faster engine for faster processing, though its reading quality may be slightly lower. You can switch anytime in settings:\n\n<xliff:g id="settings" example="Settings">%1$s</xliff:g> → <xliff:g id="section" example="Capture &amp; overlay">%2$s</xliff:g> → <xliff:g id="ocr_header" example="Text recognition (OCR)">%3$s</xliff:g></string>
+    <string name="slow_ocr_prompt_message_camera">This device is taking a while to read text from the camera. Change to the faster engine for faster processing, though its reading quality may be slightly lower. You can switch the camera\'s engine anytime with the settings gear on this screen.</string>
     <!-- Action button on the slow-OCR rescue alert: switches OCR to the rescue engine
          (ML Kit floor, or PaddleOCR Fast where no floor exists) immediately. -->
     <string name="slow_ocr_prompt_switch">Use the faster engine</string>
@@ -2702,6 +2702,11 @@
          languages.  %1$s = engine display name; %2$s = the other languages
          that share it (a comma-separated, runtime-built list). -->
     <string name="settings_ocr_delete_shared_msg"><xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> is also used by these languages. Deleting frees the space now; it\'ll download again next time you switch to one:\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+    <!-- Appended to either delete-confirmation message when the camera tool's own
+         OCR selection (for any installed language) resolves to the engine being
+         deleted: the camera's per-flow choice is cleared back to following the
+         standard selection, and the user should hear that before confirming. -->
+    <string name="settings_ocr_delete_camera_note">The camera tool also uses this engine and will switch back to your standard selection.</string>
 
     <!-- Destructive confirm button on the delete dialog. -->
     <string name="settings_ocr_delete_confirm">Delete</string>
