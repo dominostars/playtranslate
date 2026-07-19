@@ -99,7 +99,12 @@ class CameraSnapshotController(
         panelHost = panelHost,
         regionUi = regionUi,
         backend = object : FrozenReviewBackend {
-            override fun runReview(bitmap: Bitmap, regionAu: android.graphics.Rect?): CaptureSession =
+            override fun runReview(
+                bitmap: Bitmap,
+                regionAu: android.graphics.Rect?,
+                preOcrDelayMs: Long,
+            ): CaptureSession =
+                // The camera has no page flips — the dwell is unused here.
                 session.runSnapshot(bitmap, regionAu)
 
             override fun lookupScene() = session.frozenLookupScene()

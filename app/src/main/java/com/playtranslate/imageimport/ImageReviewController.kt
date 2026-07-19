@@ -6,7 +6,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.Toast
 import androidx.core.view.isVisible
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.playtranslate.OcrTokenScope
 import com.playtranslate.OneShotOverlayData
 import com.playtranslate.Prefs
@@ -15,6 +19,11 @@ import com.playtranslate.camera.CameraCoordinates
 import com.playtranslate.camera.CameraRegionUi
 import com.playtranslate.camera.FrozenReviewPanel
 import com.playtranslate.ui.CaptureResultOverlay
+
+/** Page-flip OCR debounce: chevron-mashing to a distant page must not
+ *  queue a pipeline run per intermediate page. Lives INSIDE the cycle
+ *  (cancellable delay), so the loading state still shows immediately. */
+private const val PAGE_OCR_DWELL_MS = 350L
 
 /**
  * Activity-scoped owner of the import tool's review state: the imported
@@ -45,11 +54,16 @@ class ImageReviewController(
     private val imageFrame: ImageView,
     panelHost: ViewGroup,
     regionUi: CameraRegionUi,
+    /** The activity's lifecycleScope — page renders run on IO through it. */
+    private val scope: kotlinx.coroutines.CoroutineScope,
     /** Back tap while NOT reviewing (the landing) — leave the screen. */
     private val onExit: () -> Unit,
     /** The review was dismissed (X, system back) and its teardown finished —
      *  show the landing or finish. */
     private val onReviewClosed: () -> Unit,
+    /** Page position or count changed — the activity re-derives the page
+     *  chip. */
+    private val onPageStateChanged: () -> Unit = {},
 ) {
     private val prefs = Prefs(activity)
 
@@ -57,6 +71,27 @@ class ImageReviewController(
 
     /** The previous review's frame — see the class doc. */
     private var retiredBitmap: Bitmap? = null
+
+    // ── Paged document state ────────────────────────────────────────────
+
+    /** The document under review; owns its backing (renderer, working
+     *  copy). Closed at review end / release. */
+    private var source: PageSource? = null
+
+    private var pageIndex = 0
+
+    /** Completed scenes per page — see [PageResults] for the rules. */
+    private val pageResults = PageResults()
+
+    /** Single-flight page switching, the load-guard pattern: a chevron tap
+     *  during a render is ignored rather than queued. */
+    private var pageSwitchInFlight = false
+
+    val pageCount: Int get() = source?.pageCount ?: 0
+    val currentPage: Int get() = pageIndex
+
+    /** The document under review, for the page grid's thumbnails. */
+    val pageSource: PageSource? get() = source
 
     /** Orientation request to restore when the review closes. While
      *  reviewing, the activity is pinned to its load-time orientation — a
@@ -156,10 +191,86 @@ class ImageReviewController(
      *  review. */
     fun cancelCrop() = panel.cancelCrop()
 
+    /** Begin reviewing [document] with its already-rendered [firstPage]
+     *  (the activity renders page 0 off-main before handing over). Owns the
+     *  source from here; the slow-OCR prompt arms ONCE per document. */
+    fun startDocument(document: PageSource, firstPage: Bitmap) {
+        if (released) {
+            document.closeAsync()
+            return
+        }
+        source?.closeAsync()
+        source = document
+        pageResults.clear()
+        pageIndex = 0
+        pageSwitchInFlight = false
+        startReview(firstPage)
+        onPageStateChanged()
+    }
+
+    /** Chevron/grid navigation. Renders off-main; single-flight. */
+    fun goToPage(n: Int) {
+        val src = source ?: return
+        if (released || !isReviewing || pageSwitchInFlight) return
+        if (n == pageIndex || n !in 0 until src.pageCount) return
+        pageSwitchInFlight = true
+        scope.launch {
+            val bmp = withContext(Dispatchers.IO) { src.renderPage(n) }
+            pageSwitchInFlight = false
+            // Identity check alongside the state checks: the continuation
+            // must belong to the CURRENT document — a render from a
+            // dismissed document completing after a new one opened would
+            // otherwise show the wrong document's page (zombie-continuation
+            // family; structural guard beats timing arguments).
+            if (released || !isReviewing || src !== source) return@launch
+            if (bmp == null) {
+                Toast.makeText(activity, R.string.image_import_decode_failed, Toast.LENGTH_LONG)
+                    .show()
+                return@launch
+            }
+            showPage(n, bmp)
+        }
+    }
+
+    /** Swap the review to page [n]: scene-scoped state resets (zoom, region,
+     *  lens, presentation arc), the session's scene is wiped, and the page
+     *  either republishes from the cache (instant, skeleton-free) or runs
+     *  the pipeline behind the flip dwell. */
+    private fun showPage(n: Int, bmp: Bitmap) {
+        panel.prepareForSceneReplacement()
+        retiredBitmap = currentBitmap
+        currentBitmap = bmp
+        imageFrame.setImageBitmap(bmp)
+        // Wipes caches + retires the outgoing page's frame file + takes the
+        // boxes down; does NOT re-arm the slow prompt (per-document).
+        session.endEpisode()
+        pageIndex = n
+        onPageStateChanged()
+        val cached = pageResults.get(n)
+        if (cached != null) {
+            panel.observeSession(session.publishScene(bmp, cached))
+        } else {
+            panel.reRunReview(preOcrDelayMs = PAGE_OCR_DWELL_MS)
+        }
+    }
+
+    /** A cycle completed a full scene — admit it to the page cache unless a
+     *  region filtered it. Admission is keyed to the COMPLETING CYCLE's
+     *  generation ([cycleGen]): any supersession — including a settings
+     *  refresh, which clears this cache and bumps the generation WITHOUT
+     *  wiping the session caches — makes the stale callback export null
+     *  instead of re-admitting old-settings text after the clear.
+     *  [ImageImportSession.publishScene] does not fire this (republishing a
+     *  cached page must not re-admit). */
+    fun onSceneCompleted(cycleGen: Long) {
+        if (released || !isReviewing || panel.hasActiveRegion) return
+        session.exportScene(cycleGen)?.let { pageResults.put(pageIndex, it) }
+    }
+
     /** Begin reviewing [bitmap] (ownership transfers here — dropped for GC
      *  on replacement). Any active review is torn down first so its panel,
      *  region, and caches never describe the new image. */
-    fun startReview(bitmap: Bitmap) {
+    private fun startReview(bitmap: Bitmap) {
         if (released) return
         if (isReviewing) panel.dismissReview()
         retiredBitmap = null
@@ -178,10 +289,12 @@ class ImageReviewController(
     }
 
     /** Read settings changed (source language, OCR engine — the gear menu
-     *  or the slow-OCR rescue): re-read the SAME retained image under the
-     *  new selections. */
+     *  or the slow-OCR rescue): re-read the SAME retained page under the
+     *  new selections. Every cached page's text is stale under the new
+     *  settings — the page cache clears wholesale. */
     fun refreshReview() {
         if (!isReviewing) return
+        pageResults.clear()
         panel.refreshAfterSettings()
     }
 
@@ -203,6 +316,15 @@ class ImageReviewController(
         // Dropped for GC, never recycled — see the class doc.
         retiredBitmap = currentBitmap
         currentBitmap = null
+        // The document dies with the review (closing deletes a CBZ working
+        // copy and releases a PDF renderer/descriptor). Off-main: a PDF
+        // close contends for the render mutex, and an in-flight render must
+        // not stall the dismissal.
+        source?.closeAsync()
+        source = null
+        pageResults.clear()
+        pageIndex = 0
+        onPageStateChanged()
         syncControls()
         onReviewClosed()
     }
@@ -221,12 +343,19 @@ class ImageReviewController(
         backButton.isVisible = !cropActive
         controlPill.isVisible = reviewing && !cropActive
         regionButton.isVisible = reviewing
+        // The page chip derives from the same states (hidden during crop,
+        // absent outside review) — keep it in lockstep.
+        onPageStateChanged()
     }
 
     fun release() {
         released = true
         restoreOrientation()
         panel.release()
+        // closeAsync survives the dying lifecycleScope (plain thread).
+        source?.closeAsync()
+        source = null
+        pageResults.clear()
         // Deliberately NOT recycled — see the class doc.
         currentBitmap = null
         retiredBitmap = null

@@ -60,6 +60,11 @@ class ImageImportActivity : AppCompatActivity() {
 
     private lateinit var landingGroup: LinearLayout
     private lateinit var pasteChip: Button
+    private lateinit var pageChip: LinearLayout
+    private lateinit var pageLabel: android.widget.TextView
+    private lateinit var prevPage: android.widget.ImageButton
+    private lateinit var nextPage: android.widget.ImageButton
+    private var pageGrid: PageGridOverlay? = null
 
     /** Entered via the share sheet: dismissing the review finishes back to
      *  the sharing app instead of showing the picker landing. */
@@ -92,6 +97,12 @@ class ImageImportActivity : AppCompatActivity() {
 
         landingGroup = findViewById(R.id.importLandingGroup)
         pasteChip = findViewById(R.id.importPasteChip)
+        // Chip views bind BEFORE the controller: its construction syncs
+        // controls, which fans into updatePageChip.
+        pageChip = findViewById(R.id.importPageChip)
+        pageLabel = findViewById(R.id.importPageLabel)
+        prevPage = findViewById(R.id.importPrevPage)
+        nextPage = findViewById(R.id.importNextPage)
 
         // Only the floating controls avoid the system bars / cutout; the
         // image underneath stays full-bleed.
@@ -114,6 +125,7 @@ class ImageImportActivity : AppCompatActivity() {
             scope = lifecycleScope,
             overlayHost = findViewById(R.id.importOverlayHost),
             onSlowOcr = { maybeShowSlowOcrPrompt() },
+            onSceneCompleted = { gen -> controller.onSceneCompleted(gen) },
         )
         controller = ImageReviewController(
             activity = this,
@@ -128,10 +140,12 @@ class ImageImportActivity : AppCompatActivity() {
                 fullBleedHost = findViewById(R.id.importOverlayHost),
                 controlsHost = controls,
             ),
+            scope = lifecycleScope,
             onExit = { finish() },
             onReviewClosed = {
                 if (fromShare) finish() else landingGroup.isVisible = true
             },
+            onPageStateChanged = { updatePageChip() },
         )
         gearMenu = CameraGearMenu(
             activity = this,
@@ -163,13 +177,22 @@ class ImageImportActivity : AppCompatActivity() {
 
         onBackPressedDispatcher.addCallback(this) {
             when {
-                // The gear menu is modal (full-screen tap catcher): back
-                // closes IT, never the review or the screen beneath it.
+                // Modals close first: the page grid, then the gear menu —
+                // back never reaches the review under either.
+                pageGrid?.isOpen == true -> pageGrid?.close()
                 gearMenu?.isOpen == true -> gearMenu?.close()
                 controller.isCropActive -> controller.cancelCrop()
                 controller.isReviewing -> controller.dismissReview()
                 else -> finish()
             }
+        }
+
+        pageGrid = PageGridOverlay(this, controls, lifecycleScope)
+        prevPage.setOnClickListener { controller.goToPage(controller.currentPage - 1) }
+        nextPage.setOnClickListener { controller.goToPage(controller.currentPage + 1) }
+        pageLabel.setOnClickListener {
+            val src = controller.pageSource ?: return@setOnClickListener
+            pageGrid?.open(src, controller.currentPage) { page -> controller.goToPage(page) }
         }
 
         findViewById<Button>(R.id.importPickPhotos).setOnClickListener {
@@ -178,7 +201,15 @@ class ImageImportActivity : AppCompatActivity() {
             )
         }
         findViewById<Button>(R.id.importPickFiles).setOnClickListener {
-            pickFile.launch(arrayOf("image/*"))
+            pickFile.launch(
+                arrayOf(
+                    "image/*",
+                    "application/pdf",
+                    "application/zip",
+                    "application/x-cbz",
+                    "application/vnd.comicbook+zip",
+                ),
+            )
         }
         pasteChip.setOnClickListener { pasteFromClipboard() }
 
@@ -195,15 +226,28 @@ class ImageImportActivity : AppCompatActivity() {
         val restorePath = savedInstanceState?.getString(STATE_FRAME_PATH)
         lifecycleScope.launch(Dispatchers.IO) {
             ImageImportSession.sweepOrphanedFrames(this@ImageImportActivity, keepPath = restorePath)
+            // Comic-archive working copies orphaned by a crash (their
+            // review's close never ran) — same age gate as the frames.
+            val cutoff = System.currentTimeMillis() - CBZ_SWEEP_AGE_MS
+            cacheDir.listFiles()?.forEach { f ->
+                if (f.isFile && f.name.startsWith(CbzPageSource.TEMP_PREFIX) &&
+                    f.lastModified() < cutoff
+                ) {
+                    runCatching { f.delete() }
+                }
+            }
         }
+        val shareMime = intent?.type
         val sharedUri =
-            if (intent?.action == Intent.ACTION_SEND && intent.type?.startsWith("image/") == true) {
+            if (intent?.action == Intent.ACTION_SEND &&
+                (shareMime?.startsWith("image/") == true || shareMime == "application/pdf")
+            ) {
                 IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
             } else null
         fromShare = sharedUri != null
         when {
             restorePath != null -> restoreFromFile(java.io.File(restorePath))
-            sharedUri != null -> loadFromUri(sharedUri)
+            sharedUri != null -> loadFromUri(sharedUri, shareMime)
         }
     }
 
@@ -211,9 +255,12 @@ class ImageImportActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
         // Null before the first cache publication or on a no-text review —
         // those restores degrade to the landing, which loses nothing.
-        session.currentFramePath()?.takeIf { controller.isReviewing }?.let {
-            outState.putString(STATE_FRAME_PATH, it)
-        }
+        // SINGLE-IMAGE reviews only: documents are not retained across
+        // process death by design (a one-page frame restore of page N would
+        // masquerade as the whole document).
+        session.currentFramePath()
+            ?.takeIf { controller.isReviewing && controller.pageCount == 1 }
+            ?.let { outState.putString(STATE_FRAME_PATH, it) }
     }
 
     override fun onPause() {
@@ -241,53 +288,118 @@ class ImageImportActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        pageGrid?.destroy()
+        pageGrid = null
         gearMenu?.destroy()
         gearMenu = null
         if (::controller.isInitialized) controller.release()
         super.onDestroy()
     }
 
-    // ── Image sources ───────────────────────────────────────────────────
+    /** Re-derive the page chip from the controller's page + chrome state.
+     *  Fired on page/count changes AND every syncControls (crop hides the
+     *  chip with the rest of the chrome). */
+    private fun updatePageChip() {
+        if (!::controller.isInitialized) return
+        val count = controller.pageCount
+        val show = controller.isReviewing && count > 1 && !controller.isCropActive
+        pageChip.isVisible = show
+        if (!show) {
+            if (pageGrid?.isOpen == true) pageGrid?.close()
+            return
+        }
+        val current = controller.currentPage
+        pageLabel.text = getString(R.string.image_import_page_chip, current + 1, count)
+        prevPage.isEnabled = current > 0
+        prevPage.alpha = if (current > 0) 1f else 0.35f
+        nextPage.isEnabled = current < count - 1
+        nextPage.alpha = if (current < count - 1) 1f else 0.35f
+    }
 
-    private fun loadFromUri(uri: Uri) =
-        loadFrom { UprightImageDecoder.decode(this, uri) }
+    // ── File sources ────────────────────────────────────────────────────
 
-    /** Process-death restore: re-decode the review's own saved frame file.
-     *  A purged or swept file degrades to the landing like any bad source. */
-    private fun restoreFromFile(file: java.io.File) =
-        loadFrom { UprightImageDecoder.decode(file) }
+    private fun loadFromUri(uri: Uri, declaredMime: String? = null) =
+        loadFrom { openPageSource(this, uri, declaredMime) }
 
-    /** True while a decode is in flight. Loads are single-flight: a tap
-     *  during one is ignored rather than queued — kills double-tap jank
-     *  (paste chip) and makes a stale decode finishing after a newer one
+    /** Process-death restore: re-decode the review's own saved frame file
+     *  (single-image reviews only — documents are not retained across
+     *  process death by design; the user re-picks). A purged or swept file
+     *  degrades to the landing like any bad source. */
+    private fun restoreFromFile(file: java.io.File) = loadFrom {
+        when (val r = UprightImageDecoder.decode(file)) {
+            is UprightImageDecoder.Result.Success ->
+                OpenResult.Ready(ImagePageSource(r.bitmap))
+            is UprightImageDecoder.Result.Failure ->
+                OpenResult.Failure(OpenResult.FailureReason.CORRUPT)
+        }
+    }
+
+    /** True while an open/render is in flight. Loads are single-flight: a
+     *  tap during one is ignored rather than queued — kills double-tap jank
+     *  (paste chip) and makes a stale open finishing after a newer one
      *  structurally impossible. Main thread only. */
     private var loadInFlight = false
 
-    private fun loadFrom(decode: () -> UprightImageDecoder.Result) {
+    private fun loadFrom(open: () -> OpenResult) {
         if (loadInFlight) return
         loadInFlight = true
         lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) { decode() }
-            loadInFlight = false
-            if (isFinishing || isDestroyed) return@launch
-            when (result) {
-                is UprightImageDecoder.Result.Success -> {
-                    landingGroup.isVisible = false
-                    controller.startReview(result.bitmap)
+            // A source opened on IO is a CLOSEABLE (PDF descriptor/renderer,
+            // CBZ working copy). Cancellation bites at the withContext
+            // RESUME — the IO block completes but nothing after it runs —
+            // so the source must be captured where the coroutine's finally
+            // can reach it, and cleared only when ownership transfers to
+            // the controller. Without this, destroying the activity mid-open
+            // stranded the resource until process death / the orphan sweep.
+            var pending: PageSource? = null
+            try {
+                // Open + first-page render together off-main: the review
+                // starts with a ready bitmap, and an unreadable first page
+                // fails the whole open (nothing to land on).
+                val outcome = withContext(Dispatchers.IO) {
+                    when (val r = open()) {
+                        is OpenResult.Failure -> null to r.reason
+                        is OpenResult.Ready -> {
+                            pending = r.source
+                            val first = r.source.renderPage(0)
+                            if (first == null) {
+                                pending = null
+                                r.source.close()
+                                null to OpenResult.FailureReason.CORRUPT
+                            } else {
+                                Pair(r.source, first) to null
+                            }
+                        }
+                    }
                 }
-                is UprightImageDecoder.Result.Failure -> {
+                loadInFlight = false
+                if (isFinishing || isDestroyed) return@launch
+                val ready = outcome.first
+                if (ready != null) {
+                    landingGroup.isVisible = false
+                    controller.startDocument(ready.first, ready.second)
+                    // Ownership transferred — the finally must not close it.
+                    pending = null
+                } else {
                     Toast.makeText(
-                        this@ImageImportActivity,
-                        R.string.image_import_decode_failed,
-                        Toast.LENGTH_LONG,
+                        this@ImageImportActivity, failureText(outcome.second), Toast.LENGTH_LONG,
                     ).show()
-                    // A share entry with an unreadable image has nothing to
+                    // A share entry with an unreadable file has nothing to
                     // land on; the landing still offers the other sources.
                     landingGroup.isVisible = true
                     fromShare = false
                 }
+            } finally {
+                pending?.closeAsync()
             }
         }
+    }
+
+    private fun failureText(reason: OpenResult.FailureReason?): Int = when (reason) {
+        OpenResult.FailureReason.UNSUPPORTED -> R.string.image_import_unsupported
+        OpenResult.FailureReason.PASSWORD_PROTECTED -> R.string.image_import_password_protected
+        OpenResult.FailureReason.EMPTY -> R.string.image_import_empty
+        else -> R.string.image_import_decode_failed
     }
 
     private fun syncPasteChip() {
@@ -306,7 +418,16 @@ class ImageImportActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.image_import_decode_failed, Toast.LENGTH_LONG).show()
             return
         }
-        loadFromUri(uri)
+        // The clip DESCRIPTION already told us this is an image (the chip
+        // only shows on that) — pass that knowledge through so routing
+        // never depends on the clipboard provider's getType(), which may
+        // be null.
+        val desc = clipboard.primaryClipDescription
+        val imageMime = desc?.let { d ->
+            (0 until d.mimeTypeCount).map { d.getMimeType(it) }
+                .firstOrNull { it.startsWith("image/") }
+        } ?: "image/*"
+        loadFromUri(uri, imageMime)
     }
 
     // ── Read settings (language / OCR / flavor) ─────────────────────────
@@ -439,5 +560,9 @@ class ImageImportActivity : AppCompatActivity() {
          *  recreate. The review pins orientation, so this only fires on
          *  true process death. */
         const val STATE_FRAME_PATH = "import_frame_path"
+
+        /** Crash-orphan cutoff for CBZ working copies (mirrors the frame
+         *  sweep's 24h). */
+        const val CBZ_SWEEP_AGE_MS = 24 * 60 * 60 * 1000L
     }
 }

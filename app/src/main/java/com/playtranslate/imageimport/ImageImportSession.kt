@@ -72,6 +72,15 @@ class ImageImportSession(
      *  threshold (main thread). Re-armed by [startEpisode]; re-runs on the
      *  same image do not re-arm. */
     private val onSlowOcr: () -> Unit = {},
+    /** A cycle finished a COMPLETE scene (Done emitted) — the page cache's
+     *  hook to [exportScene]. Posted to the main thread with the completing
+     *  cycle's GENERATION: cache admission must depend on the cycle's own
+     *  identity, not on whatever the caches hold when the callback runs — a
+     *  settings refresh clears the page cache and bumps the generation
+     *  WITHOUT wiping the session caches, so a superseded cycle's callback
+     *  would otherwise export the intact old-settings scene into the
+     *  freshly-cleared cache (persistent wrong-language revisits). */
+    private val onSceneCompleted: (Long) -> Unit = {},
 ) : FrozenReviewBackend {
 
     private val prefs = Prefs(context)
@@ -83,7 +92,18 @@ class ImageImportSession(
     private var cachedGroupColors: List<Pair<Int, Int>>? = null
     private var cachedAuW = 0
     private var cachedAuH = 0
-    private var cachedTranslations: List<String>? = null
+
+    /** Per-group translations WITH attribution ([CameraTranslator.Detailed])
+     *  — the page cache re-emits Done from this, so text alone is not
+     *  enough. Null while the pipeline's translations are in flight. */
+    private var cachedPerGroup: List<CameraTranslator.Detailed>? = null
+
+    /** The scene's panel payload, retained so a revisited page republishes
+     *  without re-running anything. */
+    private var cachedProvenance: com.playtranslate.model.OcrProvenance? = null
+    private var cachedPanelText: String? = null
+    private var cachedSegments: List<com.playtranslate.model.TextSegment>? = null
+
     private var cachedScreenshotPath: String? = null
     private val displayEpoch = DisplayEpoch()
     private val generation = AtomicLong()
@@ -139,25 +159,41 @@ class ImageImportSession(
         val retired: String?
         synchronized(stateLock) {
             retired = cachedScreenshotPath
-            cachedOcr = null
-            cachedGroupColors = null
-            cachedTranslations = null
-            cachedScreenshotPath = null
+            wipeCachesLocked()
             displayEpoch.advance()
         }
         deleteQuiet(retired)
         hideOverlays()
     }
 
+    /** Callers hold [stateLock]. */
+    private fun wipeCachesLocked() {
+        cachedOcr = null
+        cachedGroupColors = null
+        cachedPerGroup = null
+        cachedProvenance = null
+        cachedPanelText = null
+        cachedSegments = null
+        cachedScreenshotPath = null
+    }
+
     // ── FrozenReviewBackend ─────────────────────────────────────────────
 
-    override fun runReview(bitmap: Bitmap, regionAu: android.graphics.Rect?): CaptureSession {
+    override fun runReview(
+        bitmap: Bitmap,
+        regionAu: android.graphics.Rect?,
+        preOcrDelayMs: Long,
+    ): CaptureSession {
         val state = MutableStateFlow<CaptureState>(
             CaptureState.InProgress(context.getString(com.playtranslate.R.string.status_ocr))
         )
         val gen = generation.incrementAndGet()
         val job = scope.launch(Dispatchers.Default) {
             try {
+                // The page-flip dwell: InProgress is already showing, and
+                // this delay is the cheapest cancellation point — a rapid
+                // flip's observe() cancels the job before any OCR spends.
+                if (preOcrDelayMs > 0) kotlinx.coroutines.delay(preOcrDelayMs)
                 runCycle(bitmap, state, regionAu, gen)
             } catch (e: CancellationException) {
                 // Let cancellation propagate; invokeOnCompletion writes Cancelled.
@@ -169,6 +205,82 @@ class ImageImportSession(
                 Log.e(TAG, "review cycle failed: ${e.message}", e)
                 state.value = CaptureState.Failed(e.message ?: "Unknown error")
             }
+        }
+        job.invokeOnCompletion { cause ->
+            cancelledStateOrNull(cause, state.value)?.let { state.value = it }
+        }
+        return CaptureSession(state.asStateFlow(), job)
+    }
+
+    /** A completed scene's full display + panel payload — what a revisited
+     *  page needs to republish without OCR or translation. */
+    data class CachedScene(
+        val gatedOcr: OcrManager.OcrResult,
+        val groupColors: List<Pair<Int, Int>>,
+        val perGroup: List<CameraTranslator.Detailed>,
+        val provenance: com.playtranslate.model.OcrProvenance?,
+        val panelText: String,
+        val segments: List<com.playtranslate.model.TextSegment>,
+        val auW: Int,
+        val auH: Int,
+    )
+
+    /** The current caches as a reusable scene, or null unless a COMPLETED
+     *  (translations promoted) scene owns the display — a wiped, superseded,
+     *  or still-translating scene self-guards to null. [expectedGen] is the
+     *  exporting cycle's generation: for CACHE ADMISSION it must be the
+     *  callback-carried value, so a superseded cycle exports null even when
+     *  the caches still hold its (or any) intact scene. The no-arg form
+     *  snapshots the current scene and must never feed the page cache. */
+    fun exportScene(expectedGen: Long = generation.get()): CachedScene? = synchronized(stateLock) {
+        if (generation.get() != expectedGen) return null
+        val ocr = cachedOcr ?: return null
+        val colors = cachedGroupColors ?: return null
+        val perGroup = cachedPerGroup ?: return null
+        val panelText = cachedPanelText ?: return null
+        val segments = cachedSegments ?: return null
+        CachedScene(ocr, colors, perGroup, cachedProvenance, panelText, segments, cachedAuW, cachedAuH)
+    }
+
+    /** Republish a completed [scene] for [bitmap] (a revisited page): no
+     *  OCR, no translation — save a fresh frame file (Anki attachments and
+     *  word lookup read it), publish the caches under the same
+     *  generation/epoch discipline as a live cycle, and emit Done. */
+    fun publishScene(bitmap: Bitmap, scene: CachedScene): CaptureSession {
+        val state = MutableStateFlow<CaptureState>(
+            CaptureState.InProgress(context.getString(com.playtranslate.R.string.status_ocr))
+        )
+        val gen = generation.incrementAndGet()
+        val job = scope.launch(Dispatchers.Default) {
+            val screenshotPath = saveToCache(bitmap)
+            var replaced: String? = null
+            var published = false
+            synchronized(stateLock) {
+                if (generation.get() == gen) {
+                    published = true
+                    replaced = cachedScreenshotPath
+                    cachedOcr = scene.gatedOcr
+                    cachedGroupColors = scene.groupColors
+                    cachedAuW = scene.auW
+                    cachedAuH = scene.auH
+                    cachedPerGroup = scene.perGroup
+                    cachedProvenance = scene.provenance
+                    cachedPanelText = scene.panelText
+                    cachedSegments = scene.segments
+                    cachedScreenshotPath = screenshotPath
+                    displayEpoch.advance()
+                }
+            }
+            if (!published) {
+                deleteQuiet(screenshotPath)
+                return@launch
+            }
+            if (replaced != screenshotPath) deleteQuiet(replaced)
+            state.value = SnapshotCore.doneState(
+                scene.panelText, scene.segments, scene.perGroup, screenshotPath,
+                scene.provenance, prefs.langContext(prefs.sourceLangId),
+                scene.auW, scene.auH,
+            )
         }
         job.invokeOnCompletion { cause ->
             cancelledStateOrNull(cause, state.value)?.let { state.value = it }
@@ -273,10 +385,7 @@ class ImageImportSession(
                 if (generation.get() == gen) {
                     won = true
                     replaced = cachedScreenshotPath
-                    cachedOcr = null
-                    cachedGroupColors = null
-                    cachedTranslations = null
-                    cachedScreenshotPath = null
+                    wipeCachesLocked()
                     displayEpoch.advance()
                 }
             }
@@ -294,6 +403,7 @@ class ImageImportSession(
 
         val gated = ocr.copy(groups = groups)
         val groupColors = SnapshotCore.sampleGroupColors(frame, groups.map { it.bounds })
+        val (originalText, segments) = SnapshotCore.panelTextFor(ocr, groups)
         // The run owns the display: epoch and caches move together.
         // Translations are not in yet — showOverlays renders skeletons until
         // they land below. Generation re-checked INSIDE the lock: a newer
@@ -312,7 +422,10 @@ class ImageImportSession(
                 cachedGroupColors = groupColors
                 cachedAuW = auW
                 cachedAuH = auH
-                cachedTranslations = null
+                cachedPerGroup = null
+                cachedProvenance = provenance
+                cachedPanelText = originalText
+                cachedSegments = segments
                 cachedScreenshotPath = screenshotPath
                 displayEpoch.advance()
             }
@@ -328,7 +441,6 @@ class ImageImportSession(
         // without a screenshot.
         if (replacedPath != screenshotPath) deleteQuiet(replacedPath)
 
-        val (originalText, segments) = SnapshotCore.panelTextFor(ocr, groups)
         val overlayData = com.playtranslate.OneShotOverlayData(emptyList(), 0, 0, auW, auH)
         state.value = CaptureState.Translating(originalText, segments, provenance, overlayData)
 
@@ -340,15 +452,22 @@ class ImageImportSession(
 
         // Promote the boxes' data source BEFORE emitting Done: the panel's
         // Done handler asks the presenter to fill the on-frame boxes, which
-        // reads this cache.
+        // reads this cache. The full Detailed list is retained — the page
+        // cache re-emits Done from it. The identity check alone suffices
+        // for wipe-style supersessions; the generation joins it as the belt
+        // for wipe-FREE ones (settings refresh), mirroring the camera's own
+        // belt-guard precedent.
         synchronized(stateLock) {
-            if (cachedOcr === gated) cachedTranslations = perGroup.map { it.text }
+            if (generation.get() == gen && cachedOcr === gated) cachedPerGroup = perGroup
         }
 
         state.value = SnapshotCore.doneState(
             originalText, segments, perGroup, screenshotPath, provenance,
             prefs.langContext(srcId), auW, auH,
         )
+        // [scope] is the activity's main-dispatched lifecycleScope. The
+        // cycle's own generation rides along — see [onSceneCompleted].
+        scope.launch { onSceneCompleted(gen) }
     }
 
     /** Save the reviewed frame under a unique per-cycle name — see
@@ -368,7 +487,7 @@ class ImageImportSession(
 
     /** Paint the review's boxes as static IDENTITY-warped overlays over the
      *  letterboxed image. Skeletons while translations are in flight, filled
-     *  once [cachedTranslations] lands; never calls the translator itself.
+     *  once [cachedPerGroup] lands; never calls the translator itself.
      *  Safe to call again on the Done promotion — each call is its own
      *  publication SOURCE (epoch advanced atomically with the cache read),
      *  so a slower earlier repaint can never land over a faster later one. */
@@ -382,7 +501,7 @@ class ImageImportSession(
         synchronized(stateLock) {
             ocr = cachedOcr
             colors = cachedGroupColors
-            translations = cachedTranslations
+            translations = cachedPerGroup?.map { it.text }
             auW = cachedAuW
             auH = cachedAuH
             epoch = displayEpoch.advance()

@@ -25,6 +25,12 @@ class RasterRegion(
     /** The box this raster was rendered from — the dirty-diff identity. */
     val sourceBox: TextBox? = null,
 ) {
+    /** A skeleton placeholder (source text awaiting its translation). The
+     *  live overlay animates its bars, but rasterizing bakes that view
+     *  static — the warp view pulses these regions' draw alpha instead. */
+    val isSkeleton: Boolean
+        get() = sourceBox?.let { it.translatedText.isEmpty() && it.sourceText.isNotEmpty() } == true
+
     fun release() = bitmap.recycle()
 }
 

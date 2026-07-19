@@ -76,6 +76,41 @@ class WarpOverlayView(context: Context) : View(context) {
     // Scratch for matrix composition (avoid per-frame allocation).
     private val scratch = DoubleArray(9)
 
+    /** The skeleton shimmer, restored at the warp layer: rasterizing bakes
+     *  the live overlay's bar animation into a static bitmap, so skeleton
+     *  REGIONS pulse their draw alpha here instead (same rhythm as
+     *  TranslationOverlayView's bar shimmer). Runs only while a skeleton is
+     *  actually visible; filled boxes draw at full alpha untouched. */
+    private var skeletonAlpha = 1f
+    private var shimmer: android.animation.ValueAnimator? = null
+
+    private fun syncShimmer() {
+        val needed = isAttachedToWindow && visibleCount > 0 && regions.any { it.isSkeleton }
+        if (needed && shimmer == null) {
+            shimmer = android.animation.ValueAnimator.ofFloat(0.85f, 0.4f).apply {
+                duration = 800
+                repeatMode = android.animation.ValueAnimator.REVERSE
+                repeatCount = android.animation.ValueAnimator.INFINITE
+                interpolator = android.view.animation.LinearInterpolator()
+                addUpdateListener { anim ->
+                    skeletonAlpha = anim.animatedValue as Float
+                    invalidate()
+                }
+                start()
+            }
+        } else if (!needed && shimmer != null) {
+            shimmer?.cancel()
+            shimmer = null
+            skeletonAlpha = 1f
+            invalidate()
+        }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        syncShimmer()
+    }
+
     /** Install freshly rastered regions for a keyframe of [auW]×[auH].
      *  Recycles previous bitmaps EXCEPT those carried over by the dirty
      *  diff (identity-shared with the new set). Main thread. */
@@ -90,6 +125,7 @@ class WarpOverlayView(context: Context) : View(context) {
             if (newRegions.none { it.bitmap === o.bitmap }) o.release()
         }
         applyHomography(lastHAu, lastPerRegionAu)
+        syncShimmer()
     }
 
     fun clearRegions() {
@@ -101,6 +137,7 @@ class WarpOverlayView(context: Context) : View(context) {
         lastPerRegionAu = emptyMap()
         old.forEach { it.release() }
         invalidate()
+        syncShimmer()
     }
 
     /**
@@ -123,6 +160,7 @@ class WarpOverlayView(context: Context) : View(context) {
         ) {
             visibleCount = 0
             invalidate()
+            syncShimmer()
             return
         }
         val coords = CameraCoordinates(auWidth, auHeight, width, height, fitMode)
@@ -165,6 +203,7 @@ class WarpOverlayView(context: Context) : View(context) {
         lastViewH = height
         regionsDirty = false
         invalidate()
+        syncShimmer()
     }
 
     private fun perRegionUnchanged(fresh: Map<Int, DoubleArray>): Boolean {
@@ -179,8 +218,16 @@ class WarpOverlayView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        val pulse = (skeletonAlpha * 255).toInt()
         for (i in 0 until visibleCount) {
-            canvas.drawBitmap(regions[i].bitmap, matrices[i], paint)
+            val region = regions[i]
+            if (region.isSkeleton && pulse < 255) {
+                paint.alpha = pulse
+                canvas.drawBitmap(region.bitmap, matrices[i], paint)
+                paint.alpha = 255
+            } else {
+                canvas.drawBitmap(region.bitmap, matrices[i], paint)
+            }
         }
     }
 

@@ -42,12 +42,23 @@ object UprightImageDecoder {
     fun decode(file: java.io.File): Result =
         decodeSource(file.path) { ImageDecoder.createSource(file) }
 
-    private inline fun decodeSource(label: String, source: () -> ImageDecoder.Source): Result = try {
+    /** In-memory decode — comic-archive entries ([CbzPageSource]); [cap]
+     *  lets grid thumbnails decode small. */
+    fun decode(bytes: ByteArray, cap: Int = MAX_DIMENSION_PX): Result =
+        decodeSource("bytes[${bytes.size}]", cap) {
+            ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))
+        }
+
+    private inline fun decodeSource(
+        label: String,
+        cap: Int = MAX_DIMENSION_PX,
+        source: () -> ImageDecoder.Source,
+    ): Result = try {
         val bitmap = ImageDecoder.decodeBitmap(source()) { decoder, info, _ ->
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             decoder.isMutableRequired = false
             decoder.setTargetSampleSize(
-                sampleSizeFor(info.size.width, info.size.height, MAX_DIMENSION_PX),
+                sampleSizeFor(info.size.width, info.size.height, cap),
             )
         }
         Result.Success(bitmap)

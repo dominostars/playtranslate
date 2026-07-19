@@ -2707,13 +2707,13 @@
          deleted: the camera's per-flow choice is cleared back to following the
          standard selection, and the user should hear that before confirming. -->
     <string name="settings_ocr_delete_camera_note">The camera tool also uses this engine and will switch back to your standard selection.</string>
-    <!-- Same as settings_ocr_delete_camera_note but for the image import tool's
-         own OCR selection (Tools > Import image). -->
-    <string name="settings_ocr_delete_import_note">The image import tool also uses this engine and will switch back to your standard selection.</string>
+    <!-- Same as settings_ocr_delete_camera_note but for the file import tool's
+         own OCR selection (Tools > Import file). -->
+    <string name="settings_ocr_delete_import_note">The file import tool also uses this engine and will switch back to your standard selection.</string>
     <!-- Same as settings_ocr_delete_camera_note but when BOTH the camera tool's
-         and the image import tool's own OCR selections resolve to the engine
+         and the file import tool's own OCR selections resolve to the engine
          being deleted. -->
-    <string name="settings_ocr_delete_camera_import_note">The camera and image import tools also use this engine and will switch back to your standard selection.</string>
+    <string name="settings_ocr_delete_camera_import_note">The camera and file import tools also use this engine and will switch back to your standard selection.</string>
 
     <!-- Destructive confirm button on the delete dialog. -->
     <string name="settings_ocr_delete_confirm">Delete</string>
@@ -2924,30 +2924,47 @@
     <!-- Shown in the import tool's result panel when OCR finds no readable text
          in the picked image (or inside the user-drawn region of it). -->
     <string name="image_import_no_text">No text found in this image. Try a clearer image, or check the source language.</string>
-    <!-- Title of the Tools hub cell that opens the import-image translation tool. -->
-    <string name="settings_cell_image_import">Import image</string>
-    <!-- Summary line under the Import image hub cell title in settings. -->
-    <string name="settings_cell_image_import_summary">Translate a saved image or screenshot</string>
+    <!-- Title of the Tools hub cell that opens the file-import translation tool
+         (images, PDF documents, comic archives). -->
+    <string name="settings_cell_image_import">Import file</string>
+    <!-- Summary line under the Import file hub cell title in settings. -->
+    <string name="settings_cell_image_import_summary">Translate a saved image or document</string>
     <!-- Heading on the import tool's picker landing screen, above the source buttons. -->
-    <string name="image_import_landing_title">Translate text in a picture</string>
+    <string name="image_import_landing_title">Translate text in a picture or document</string>
     <!-- Landing button that opens the system photo picker. -->
     <string name="image_import_pick_photos">Choose a photo</string>
-    <!-- Landing button that opens the system file browser filtered to images. -->
+    <!-- Landing button that opens the system file browser (images, PDFs, comic archives). -->
     <string name="image_import_pick_files">Browse files</string>
     <!-- Landing button shown only while the clipboard holds an image; tapping loads it. -->
     <string name="image_import_paste_image">Paste copied image</string>
-    <!-- Toast when a picked, shared, or pasted file cannot be decoded as an image. -->
-    <string name="image_import_decode_failed">Couldn\'t open that image.</string>
+    <!-- Toast when a picked, shared, or pasted file cannot be opened or decoded. -->
+    <string name="image_import_decode_failed">Couldn\'t open that file.</string>
+    <!-- Toast when the picked file's type is not one the import tool reads. -->
+    <string name="image_import_unsupported">That file type isn\'t supported. Choose an image, PDF, or comic archive.</string>
+    <!-- Toast when a picked PDF requires a password to open. -->
+    <string name="image_import_password_protected">This PDF is password protected and can\'t be opened.</string>
+    <!-- Toast when a picked document opens but contains no pages or images. -->
+    <string name="image_import_empty">No pages found in this file.</string>
     <!-- Content description of the import review's close (X) button. -->
-    <string name="image_import_close_cd">Close image</string>
+    <string name="image_import_close_cd">Close file</string>
     <!-- Content description of the import tool's settings gear (language / OCR /
          overlays menu). -->
-    <string name="image_import_settings_cd">Image import settings</string>
+    <string name="image_import_settings_cd">File import settings</string>
+    <!-- Page position label on the import review's page chip (top center of the
+         screen while reviewing a multi-page document). %1$d = current page number
+         (1-based); %2$d = total page count. -->
+    <string name="image_import_page_chip"><xliff:g id="page" example="3">%1$d</xliff:g> / <xliff:g id="count" example="14">%2$d</xliff:g></string>
+    <!-- Content description of the page chip's previous-page chevron. -->
+    <string name="image_import_prev_page_cd">Previous page</string>
+    <!-- Content description of the page chip's next-page chevron. -->
+    <string name="image_import_next_page_cd">Next page</string>
+    <!-- Content description of the page chip's count label; tapping opens the page grid. -->
+    <string name="image_import_page_grid_cd">Show all pages</string>
     <!-- Body of the slow-OCR rescue alert in the IMPORT tool, mirroring
          slow_ocr_prompt_message_camera; the change-your-mind path is the settings gear
          on the import screen (the switch writes the import tool's own engine).
          Pending l10n batch. -->
-    <string name="slow_ocr_prompt_message_import">This device is taking a while to read text from this image. Change to the faster engine for faster processing, though its reading quality may be slightly lower. You can switch this tool\'s engine anytime with the settings gear on this screen.</string>
+    <string name="slow_ocr_prompt_message_import">This device is taking a while to read text from this file. Change to the faster engine for faster processing, though its reading quality may be slightly lower. You can switch this tool\'s engine anytime with the settings gear on this screen.</string>
     <!-- Title of the Tools hub cell that opens the live camera translation screen. -->
     <string name="settings_cell_camera">Camera</string>
     <!-- Summary line under the Camera hub cell title in settings. -->

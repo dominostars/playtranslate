@@ -33,8 +33,10 @@ private const val RE_RASTER_DRIFT = 1.3f
  */
 interface FrozenReviewBackend {
     /** Run (or re-run) the review pipeline over [bitmap], optionally
-     *  region-filtered. Each call supersedes the previous run. */
-    fun runReview(bitmap: Bitmap, regionAu: android.graphics.Rect?): CaptureSession
+     *  region-filtered. Each call supersedes the previous run.
+     *  [preOcrDelayMs] is a cancellable dwell before any OCR spend — the
+     *  import tool's page-flip debounce; the camera never passes one. */
+    fun runReview(bitmap: Bitmap, regionAu: android.graphics.Rect?, preOcrDelayMs: Long = 0): CaptureSession
 
     /** The frozen scene currently owning the display, for word lookup. */
     fun lookupScene(): FrozenLookupScene?
@@ -233,6 +235,10 @@ class FrozenReviewPanel(
     /** True while a review episode is active (panel up or slivered). */
     val hasActiveReview: Boolean get() = overlay != null
 
+    /** A user-drawn region currently filters the scene — the page cache
+     *  must not admit region-filtered results. */
+    val hasActiveRegion: Boolean get() = regionAu != null
+
     // ── Review lifecycle ────────────────────────────────────────────────
 
     /** Build the in-app panel with every over-game behavior overridden, then
@@ -341,16 +347,46 @@ class FrozenReviewPanel(
      *  SAME retained frame (recognise picks up the engine selection the
      *  picker just persisted; the current [regionAu] rides along) and drive
      *  the same panel through the loading stages again — observe() cancels
-     *  the prior session. */
-    fun reRunReview() {
+     *  the prior session. [preOcrDelayMs] = the page-flip dwell. */
+    fun reRunReview(preOcrDelayMs: Long = 0) {
         val o = overlay ?: return
         val frame = bitmap() ?: return
         // The lookup lens describes the outgoing scene (its lines/region
         // are about to be replaced) — take it down with the re-run.
         wordLookup.dismiss()
-        val s = backend.runReview(frame, regionAu)
+        val s = backend.runReview(frame, regionAu, preOcrDelayMs)
         reviewSession = s
         o.observe(s)
+    }
+
+    /** Observe an externally created session (the page cache's instant
+     *  republish) on the same panel. */
+    fun observeSession(session: CaptureSession) {
+        val o = overlay ?: return
+        reviewSession = session
+        o.observe(session)
+    }
+
+    /** The current scene is being REPLACED by another page of the same
+     *  document: the panel survives, but every scene-scoped surface resets —
+     *  zoom to fit, region + indicator cleared (a rect drawn on page 3 would
+     *  silently filter page 4), lookup lens down, presentation back to its
+     *  loading arc. The caller wipes the session and starts the new page's
+     *  run/republish. */
+    fun prepareForSceneReplacement() {
+        if (overlay == null) return
+        zoomGesture.resetToFit()
+        onZoomSettled()
+        wordLookup.dismiss()
+        if (cropActive) {
+            cropActive = false
+            regionUi.hideEditor()
+            panelHost.isVisible = true
+            onControlsChanged()
+        }
+        regionAu = null
+        regionUi.hideIndicator()
+        overlay?.prepareForSettingsRefresh()
     }
 
     /** X or system back: route through the panel's dismiss so every exit

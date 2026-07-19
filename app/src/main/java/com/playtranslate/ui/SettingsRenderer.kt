@@ -905,7 +905,7 @@ class SettingsRenderer(
         bindHubCell(
             root.findViewById(R.id.rowToolImportImage),
             HubCell(
-                iconRes = R.drawable.ic_image,
+                iconRes = R.drawable.ic_attach_file,
                 title = ctx.getString(R.string.settings_cell_image_import),
                 summary = ctx.getString(R.string.settings_cell_image_import_summary),
                 onClick = {

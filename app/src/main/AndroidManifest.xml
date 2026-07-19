@@ -234,6 +234,10 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
+                <!-- PDFs share into the paged review. CBZ deliberately not a
+                     share target (archive mimes are unreliable in the wild);
+                     the file picker covers it. -->
+                <data android:mimeType="application/pdf" />
             </intent-filter>
         </activity>
 

@@ -24,7 +24,7 @@
             android:layout_width="56dp"
             android:layout_height="56dp"
             android:importantForAccessibility="no"
-            android:src="@drawable/ic_image"
+            android:src="@drawable/ic_attach_file"
             app:tint="@android:color/white" />
 
         <TextView
@@ -113,6 +113,53 @@
             android:contentDescription="@string/camera_back_cd"
             android:src="@drawable/ic_arrow_back"
             app:tint="@android:color/white" />
+
+        <!-- Page chip (multi-page documents only): [prev] 3 / 14 [next].
+             Top-center so page switching stays reachable in BOTH panel
+             postures (the sheet owns the bottom). Tapping the count opens
+             the page grid. -->
+        <LinearLayout
+            android:id="@+id/importPageChip"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:layout_gravity="center_horizontal|top"
+            android:layout_margin="8dp"
+            android:background="@drawable/bg_camera_control_pill"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <ImageButton
+                android:id="@+id/importPrevPage"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@null"
+                android:contentDescription="@string/image_import_prev_page_cd"
+                android:rotation="180"
+                android:src="@drawable/ic_chevron_right"
+                app:tint="@android:color/white" />
+
+            <TextView
+                android:id="@+id/importPageLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:background="@null"
+                android:contentDescription="@string/image_import_page_grid_cd"
+                android:gravity="center"
+                android:minWidth="56dp"
+                android:paddingHorizontal="4dp"
+                android:textColor="@android:color/white"
+                android:textSize="14sp" />
+
+            <ImageButton
+                android:id="@+id/importNextPage"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@null"
+                android:contentDescription="@string/image_import_next_page_cd"
+                android:src="@drawable/ic_chevron_right"
+                app:tint="@android:color/white" />
+
+        </LinearLayout>
 
         <!-- Top-right control pill: [crop] [settings]. The gear expands the
              language / OCR / overlays menu below the row (CameraGearMenu
