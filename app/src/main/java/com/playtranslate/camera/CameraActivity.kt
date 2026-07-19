@@ -300,63 +300,77 @@ class CameraActivity : AppCompatActivity() {
     private var cameraBound = false
     private var camera: Camera? = null
 
-    @androidx.annotation.OptIn(ExperimentalCamera2Interop::class)
     private fun showCamera() {
         permissionGate.isVisible = false
         if (cameraBound) return
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
             if (isDestroyed || isFinishing) return@addListener
-            val provider = providerFuture.get()
-            // Back camera ONLY — no front fallback. The overlay path maps
-            // analysis-space coordinates to the view with a plain FILL_CENTER
-            // scale+offset (CameraCoordinates); a front camera breaks that
-            // contract because PreviewView mirrors its preview while analysis
-            // frames stay unmirrored, flipping every overlay horizontally.
-            // Mirror-compensating would also have to keep the rendered TEXT
-            // unmirrored per region — permanent warp-path complexity for a
-            // configuration the tool can't physically be aimed with.
-            if (!provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) {
+            try {
+                bindCamera(providerFuture.get())
+            } catch (e: Exception) {
+                // The runtime gate's exit, not a crash: the camera service
+                // can be dead (future.get throws), the camera in use or
+                // disabled by device policy, or binding itself can fail —
+                // all on the main thread. Same exit as the no-back-camera
+                // case below.
+                android.util.Log.e("CameraActivity", "camera bind failed", e)
                 Toast.makeText(this, R.string.camera_unavailable, Toast.LENGTH_LONG).show()
                 finish()
-                return@addListener
             }
-            val selector = CameraSelector.DEFAULT_BACK_CAMERA
-            // 16:9 to match the analysis stream — same aspect ⇒ same FOV ⇒ the
-            // FILL_CENTER mapping in CameraCoordinates is exact.
-            val aspect = ResolutionSelector.Builder()
-                .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
-                .build()
-            val previewBuilder = Preview.Builder().setResolutionSelector(aspect)
-            // AF-state feed: an acquire fired mid-scan OCRs a defocused frame
-            // (observed as consistent ~0.4-confidence garbage reads). The
-            // session vetoes acquires while a scan runs.
-            Camera2Interop.Extender(previewBuilder).setSessionCaptureCallback(
-                object : CameraCaptureSession.CaptureCallback() {
-                    override fun onCaptureCompleted(
-                        s: CameraCaptureSession,
-                        r: CaptureRequest,
-                        result: TotalCaptureResult,
-                    ) {
-                        val af = result.get(CaptureResult.CONTROL_AF_STATE) ?: return
-                        session?.afScanning =
-                            af == CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN ||
-                            af == CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN
-                    }
-                }
-            )
-            val preview = previewBuilder.build()
-                .also { it.setSurfaceProvider(previewView.surfaceProvider) }
-            provider.unbindAll()
-            val analysis = session?.buildAnalysisUseCase()
-            camera = if (analysis != null) {
-                provider.bindToLifecycle(this, selector, preview, analysis)
-            } else {
-                provider.bindToLifecycle(this, selector, preview)
-            }
-            cameraBound = true
-            installTapToFocus()
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    @androidx.annotation.OptIn(ExperimentalCamera2Interop::class)
+    private fun bindCamera(provider: ProcessCameraProvider) {
+        // Back camera ONLY — no front fallback. The overlay path maps
+        // analysis-space coordinates to the view with a plain FILL_CENTER
+        // scale+offset (CameraCoordinates); a front camera breaks that
+        // contract because PreviewView mirrors its preview while analysis
+        // frames stay unmirrored, flipping every overlay horizontally.
+        // Mirror-compensating would also have to keep the rendered TEXT
+        // unmirrored per region — permanent warp-path complexity for a
+        // configuration the tool can't physically be aimed with.
+        if (!provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) {
+            Toast.makeText(this, R.string.camera_unavailable, Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+        val selector = CameraSelector.DEFAULT_BACK_CAMERA
+        // 16:9 to match the analysis stream — same aspect ⇒ same FOV ⇒ the
+        // FILL_CENTER mapping in CameraCoordinates is exact.
+        val aspect = ResolutionSelector.Builder()
+            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
+            .build()
+        val previewBuilder = Preview.Builder().setResolutionSelector(aspect)
+        // AF-state feed: an acquire fired mid-scan OCRs a defocused frame
+        // (observed as consistent ~0.4-confidence garbage reads). The
+        // session vetoes acquires while a scan runs.
+        Camera2Interop.Extender(previewBuilder).setSessionCaptureCallback(
+            object : CameraCaptureSession.CaptureCallback() {
+                override fun onCaptureCompleted(
+                    s: CameraCaptureSession,
+                    r: CaptureRequest,
+                    result: TotalCaptureResult,
+                ) {
+                    val af = result.get(CaptureResult.CONTROL_AF_STATE) ?: return
+                    session?.afScanning =
+                        af == CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN ||
+                        af == CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN
+                }
+            }
+        )
+        val preview = previewBuilder.build()
+            .also { it.setSurfaceProvider(previewView.surfaceProvider) }
+        provider.unbindAll()
+        val analysis = session?.buildAnalysisUseCase()
+        camera = if (analysis != null) {
+            provider.bindToLifecycle(this, selector, preview, analysis)
+        } else {
+            provider.bindToLifecycle(this, selector, preview)
+        }
+        cameraBound = true
+        installTapToFocus()
     }
 
     /** Anchor the shutter to the device's PHYSICAL bottom edge, like a
