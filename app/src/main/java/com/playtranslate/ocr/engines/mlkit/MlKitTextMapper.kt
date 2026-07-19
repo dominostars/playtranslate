@@ -70,8 +70,18 @@ object MlKitTextMapper {
         return out
     }
 
+    /** ML Kit populates line confidence only when the GMS-delivered
+     *  recognizer is new enough (Play services 22.30+, mid-2022); the
+     *  DOCUMENTED unavailable sentinel is 0, and platform version is not
+     *  the axis (an Android 10 device with current GMS computes real
+     *  confidences — the old SDK>=31 gate needlessly disabled the camera's
+     *  quality gate exactly on the low-end devices with the blurriest
+     *  frames). Map exactly-0 to the pipeline's own unknown sentinel: an
+     *  ancient-GMS device degrades to gate-skipped instead of every line
+     *  reading as confidence-0 and being dropped, and a genuine 0.0 read
+     *  is practically nonexistent (garbage reads land ~0.1-0.4). */
     private fun lineConfidence(line: Text.Line): Float =
-        if (android.os.Build.VERSION.SDK_INT >= 31) line.confidence else -1f
+        line.confidence.takeIf { it > 0f } ?: -1f
 
     private class Walked(
         val text: String,
