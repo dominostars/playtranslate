@@ -43,6 +43,7 @@ import com.playtranslate.language.targetSupportsVerticalText
 import com.playtranslate.ui.TextBox
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -1493,7 +1494,22 @@ class CameraSession(
             CaptureState.InProgress(context.getString(com.playtranslate.R.string.status_ocr))
         )
         val gen = snapshotGeneration.incrementAndGet()
-        val job = scope.launch(Dispatchers.Default) { runSnapshotCycle(frozen, state, regionAu, gen) }
+        val job = scope.launch(Dispatchers.Default) {
+            try {
+                runSnapshotCycle(frozen, state, regionAu, gen)
+            } catch (e: CancellationException) {
+                // Let cancellation propagate; invokeOnCompletion writes Cancelled.
+                throw e
+            } catch (e: Exception) {
+                // The service one-shot's catch, mirrored: a thrown OCR or
+                // translation failure (cloud backend with no network, a
+                // native engine error) becomes a readable terminal state.
+                // Without this the exception escaped to the lifecycleScope —
+                // which installs no handler — and crashed the app.
+                Log.e(TAG, "snapshot cycle failed: ${e.message}", e)
+                state.value = CaptureState.Failed(e.message ?: "Unknown error")
+            }
+        }
         job.invokeOnCompletion { cause ->
             cancelledStateOrNull(cause, state.value)?.let { state.value = it }
         }
