@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import com.playtranslate.camera.render.OverlayRasterizer
 import com.playtranslate.camera.render.RasterRegion
+import com.playtranslate.camera.render.SnapshotCore
 import com.playtranslate.camera.render.WarpOverlayView
 import com.playtranslate.camera.tracker.CnFrameConverter
 import com.playtranslate.camera.tracker.FrameDecision
@@ -52,6 +53,10 @@ import org.opencv.android.OpenCVLoader
 import org.opencv.core.Mat
 
 private const val TAG = "CameraSession"
+
+/** Saved-frame prefix for [SnapshotCore.saveFrame]/[SnapshotCore.sweepFrameFiles]
+ *  — distinct from the capture flow's and the import tool's names. */
+internal const val CAMERA_FRAME_PREFIX = "camera-snapshot-"
 
 /**
  * Camera-tool pipeline orchestrator (Phase 2: keyframe OCR + planar
@@ -87,8 +92,12 @@ class CameraSession(
         /** Debug pill refresh cadence (frames). */
         const val PILL_EVERY = 5
 
-        /** Downscale factor of the color-sampling reference bitmap. */
-        const val COLOR_SCALE = 4
+        /** Downscale factor of the color-sampling reference bitmap — the
+         *  live acquire's [AcquireBuffers] shares the snapshot pipeline's
+         *  sampling scale. Confidence/edge-gate thresholds live in
+         *  [SnapshotCore] (shared with the import tool); their calibration
+         *  notes moved with them. */
+        const val COLOR_SCALE = SnapshotCore.COLOR_SCALE
 
         /** Re-raster for crispness when tracked scale drifts this far from
          *  the raster's native scale (either direction). */
@@ -97,21 +106,6 @@ class CameraSession(
         /** Sustained anchor-less IDLE frames before the analysis rate halves
          *  (~12 s at 25 fps). Resets the moment anything locks. */
         const val IDLE_BACKOFF_AFTER_FRAMES = 300
-
-        /** Groups whose known line confidences average below the engine's
-         *  threshold are dropped before translation — garbage reads (rotated
-         *  text, blur) translate into fluent-sounding nonsense otherwise.
-         *  Engines that report no confidence (-1) are never gated.
-         *  Thresholds are per-engine-family, calibrated from device logs
-         *  (2026-07-07 Moto G): ML Kit good reads sit 0.76-0.84; Meiki
-         *  garbage sat 0.32-0.45. Extend as kept/dropped logs accumulate. */
-        const val MIN_GROUP_CONFIDENCE_DEFAULT = 0.5f
-        const val MIN_GROUP_CONFIDENCE_MLKIT = 0.6f
-
-        /** Groups whose bounds touch the frame edge (within this margin, AU
-         *  px) on their reading axis are dropped: the line continues off
-         *  frame, and fragment reads translate as non-sequiturs. */
-        const val EDGE_MARGIN_PX = 12
 
         @Volatile private var cvLoaded = false
         fun ensureOpenCv() {
@@ -384,14 +378,20 @@ class CameraSession(
                 postHint(false)
                 acquireJob?.takeIf { it.isActive }?.cancel()
                 val frozen = toUprightBitmap(proxy)
+                val retiredFrame: String?
                 synchronized(stateLock) {
                     cachedOcr = null
                     cachedGroupColors = null
                     cachedSnapshotTranslations = null
+                    retiredFrame = cachedScreenshotPath
                     cachedScreenshotPath = null
                     lastBuilt = null
                     displayEpoch.advance()
                 }
+                // The previous snapshot's saved frame is unreferenced now
+                // (frames are per-cycle unique files); an in-flight Anki
+                // send already pinned (copied) its own at send start.
+                SnapshotCore.deleteFrame(retiredFrame)
                 overlayHost.post {
                     // Overlays-preferred snapshots keep the live boxes as the
                     // loading state: analysis is halted, so they stay pinned
@@ -771,10 +771,6 @@ class CameraSession(
         }
     }
 
-    /** Fraction of the image dimension that counts as "touching the edge"
-     *  for pre-recognition gating (mirrors [EDGE_MARGIN_PX] post-OCR). */
-    private val edgeMarginFrac = 0.012f
-
     /**
      * Detection-stage gate + priority order, applied INSIDE composite
      * engines between detect and recognize (recognition is the expensive
@@ -785,6 +781,8 @@ class CameraSession(
      *  - recognize center-out, so if a future incremental-display path (or
      *    a cancellation) cuts the pass short, the text the user is aiming
      *    at is what got recognized.
+     * Implementation is the shared [SnapshotCore.regionPreFilter]; this
+     * wrapper binds the camera's language pair.
      */
     private fun cameraRegionPreFilter(
         /** Live acquires drop edge-clipped detections before the expensive
@@ -792,76 +790,22 @@ class CameraSession(
          *  (a full-frame document is exactly what the edge gate would gut),
          *  keeping only the center-out priority order. */
         dropEdgeClipped: Boolean = true,
-        /** Snapshot region (AU px, in the [clipFrameW]x[clipFrameH] frame):
-         *  detections whose center falls outside are dropped before
-         *  recognition. A recognition-cost saver ONLY — single-model engines
-         *  (ML Kit) ignore the detect/recognize seam entirely, so the
-         *  correctness gate is the group-level region filter in
-         *  [runSnapshotCycle]. */
+        /** Snapshot region — see [SnapshotCore.regionPreFilter]. */
         clipTo: android.graphics.Rect? = null,
-        /** The frame [clipTo] is expressed in. The filter itself runs in the
-         *  PROCESSED image's space — the OCR recipe scales common camera
-         *  frames — so the region is projected into the filter's space per
-         *  invocation; comparing spaces raw silently shrank the region's
-         *  effective coverage toward the top-left by the scale factor. */
         clipFrameW: Int = 0,
         clipFrameH: Int = 0,
-    ): com.playtranslate.ocr.core.RegionPreFilter {
-        val translating = dropEdgeClipped &&
-            SourceLanguageProfiles[prefs.sourceLangId].translationCode != prefs.targetLang
-        return com.playtranslate.ocr.core.RegionPreFilter { regions, w, h ->
-            val inRegion = if (clipTo == null) regions else {
-                val sx = if (clipFrameW > 0) w.toFloat() / clipFrameW else 1f
-                val sy = if (clipFrameH > 0) h.toFloat() / clipFrameH else 1f
-                val clip = android.graphics.Rect(
-                    (clipTo.left * sx).toInt(),
-                    (clipTo.top * sy).toInt(),
-                    (clipTo.right * sx).toInt(),
-                    (clipTo.bottom * sy).toInt(),
-                )
-                regions.filter { r ->
-                    clip.contains(r.box.bounds.centerX(), r.box.bounds.centerY())
-                }
-            }
-            val mx = (w * edgeMarginFrac).toInt()
-            val my = (h * edgeMarginFrac).toInt()
-            val kept = if (!translating) inRegion else inRegion.filter { r ->
-                val b = r.box.bounds
-                val clipped = when (r.orientation) {
-                    com.playtranslate.language.TextOrientation.VERTICAL ->
-                        b.top <= my || b.bottom >= h - my
-                    else -> b.left <= mx || b.right >= w - mx
-                }
-                !clipped
-            }
-            if (inRegion.size != regions.size) {
-                Log.d(TAG, "gate: skipped recognition for ${regions.size - inRegion.size} outside-region detections")
-            }
-            if (kept.size != inRegion.size) {
-                Log.d(TAG, "gate: skipped recognition for ${inRegion.size - kept.size} edge-clipped detections")
-            }
-            val cx = w / 2f
-            val cy = h / 2f
-            kept.sortedBy { r ->
-                val b = r.box.bounds
-                val dx = b.exactCenterX() - cx
-                val dy = b.exactCenterY() - cy
-                dx * dx + dy * dy
-            }
-        }
-    }
+    ): com.playtranslate.ocr.core.RegionPreFilter = SnapshotCore.regionPreFilter(
+        dropEdgeClipped = dropEdgeClipped &&
+            SourceLanguageProfiles[prefs.sourceLangId].translationCode != prefs.targetLang,
+        clipTo = clipTo,
+        clipFrameW = clipFrameW,
+        clipFrameH = clipFrameH,
+        tag = TAG,
+    )
 
-    /**
-     * Camera-frame quality gate. OCR output is deliberately NOT trusted here
-     * (camera frames — unlike screenshots — carry blur, rotation, and
-     * frame-edge clipping the engines weren't tuned for):
-     *  - drop groups whose known line confidences average below
-     *    [MIN_GROUP_CONFIDENCE] (garbage reads translate into fluent
-     *    nonsense); engines reporting no confidence are not gated;
-     *  - drop groups clipped at the frame edge on their reading axis
-     *    (the line continues off-frame; the fragment reads as a non
-     *    sequitur once translated).
-     */
+    /** Camera-frame quality gate — the shared [SnapshotCore.usableGroups]
+     *  (confidence + edge gates; rationale and thresholds live there); this
+     *  wrapper binds the camera's language pair. */
     private fun usableGroups(
         ocr: OcrManager.OcrResult,
         auWidth: Int,
@@ -870,50 +814,12 @@ class CameraSession(
          *  into fluent nonsense) but skip the edge gate — the user asked for
          *  THIS frame, clipped lines included. */
         skipEdgeGate: Boolean = false,
-    ): List<OcrManager.OcrGroup> {
-        // Edge-clipped fragments only hurt when TRANSLATED (a cut-off line
-        // renders as a fluent non sequitur). In same-language OCR-only mode
-        // a clipped line is still honest output — and on a full-frame
-        // document the edge gate would otherwise discard most of the page
-        // (28 of 36 groups observed).
-        val translating = !skipEdgeGate &&
-            SourceLanguageProfiles[prefs.sourceLangId].translationCode != prefs.targetLang
-        val confThreshold =
-            if (ocr.engineBackend?.toString()?.startsWith("MLKit") == true) MIN_GROUP_CONFIDENCE_MLKIT
-            else MIN_GROUP_CONFIDENCE_DEFAULT
-        return ocr.groups.filter { g ->
-            if (g.text.isBlank()) return@filter false
-            val known = g.lines.map { it.confidence }.filter { it >= 0f }
-            if (known.isNotEmpty() && known.average() < confThreshold) {
-                // Camera OCR content is PRIVATE (documents, screens) — raw
-                // text never reaches production logs, only debug builds.
-                if (com.playtranslate.BuildConfig.DEBUG) {
-                    Log.d(TAG, "gate: dropped low-confidence (%.2f) group \"%s\"".format(known.average(), g.text.take(40)))
-                }
-                return@filter false
-            }
-            if (known.isNotEmpty() && com.playtranslate.BuildConfig.DEBUG) {
-                // Kept-group confidences calibrate the threshold: we need to
-                // know where GOOD reads sit on this device, not just the bad.
-                Log.d(TAG, "gate: kept (%.2f) group \"%s\"".format(known.average(), g.text.take(40)))
-            }
-            if (translating) {
-                val clipped = when (g.orientation) {
-                    com.playtranslate.language.TextOrientation.VERTICAL ->
-                        g.bounds.top <= EDGE_MARGIN_PX || g.bounds.bottom >= auHeight - EDGE_MARGIN_PX
-                    else ->
-                        g.bounds.left <= EDGE_MARGIN_PX || g.bounds.right >= auWidth - EDGE_MARGIN_PX
-                }
-                if (clipped) {
-                    if (com.playtranslate.BuildConfig.DEBUG) {
-                        Log.d(TAG, "gate: dropped edge-clipped group \"${g.text.take(40)}\"")
-                    }
-                    return@filter false
-                }
-            }
-            true
-        }
-    }
+    ): List<OcrManager.OcrGroup> = SnapshotCore.usableGroups(
+        ocr, auWidth, auHeight,
+        translating = SourceLanguageProfiles[prefs.sourceLangId].translationCode != prefs.targetLang,
+        skipEdgeGate = skipEdgeGate,
+        tag = TAG,
+    )
 
     /** Run [block] on the analysis executor (the only thread allowed to touch
      *  [frameTracker]/[engine]) and await its result; null when shut down. */
@@ -1151,21 +1057,7 @@ class CameraSession(
     private fun buildPlaceholderBoxes(
         groups: List<OcrManager.OcrGroup>,
         groupColors: List<Pair<Int, Int>>,
-    ): List<TextBox> {
-        return groups.mapIndexed { idx, group ->
-            val (bg, tc) = groupColors.getOrElse(idx) { Pair(Color.argb(224, 0, 0, 0), Color.WHITE) }
-            TextBox(
-                translatedText = "",
-                bounds = group.bounds,
-                bgColor = bg,
-                textColor = tc,
-                lineCount = group.lines.size,
-                sourceText = group.text,
-                orientation = group.orientation,
-                alignment = group.alignment,
-            )
-        }
-    }
+    ): List<TextBox> = SnapshotCore.buildPlaceholderBoxes(groups, groupColors)
 
     // ── Overlay display ────────────────────────────────────────────────────
 
@@ -1435,11 +1327,9 @@ class CameraSession(
      *  meaningful while FROZEN with [cachedOcr] non-null. */
     private var cachedScreenshotPath: String? = null
 
-    /** Frozen-frame word-lookup scene: the display cache's OCR lines
-     *  flattened to [OcrManager.OcrLine] (AU coordinates — the caller maps
-     *  to view space), plus the AU dims and the saved screenshot path.
-     *  Null unless a snapshot currently owns the display. */
-    fun frozenLookupScene(): FrozenLookupScene? {
+    /** Frozen-frame word-lookup scene ([FrozenLookupScene]); null unless a
+     *  snapshot currently owns the display. */
+    fun frozenLookupScene(): com.playtranslate.camera.render.FrozenLookupScene? {
         if (mode != Mode.FROZEN) return null
         synchronized(stateLock) {
             val ocr = cachedOcr ?: return null
@@ -1456,16 +1346,11 @@ class CameraSession(
                 }
             }
             if (lines.isEmpty()) return null
-            return FrozenLookupScene(lines, cachedAuW, cachedAuH, cachedScreenshotPath)
+            return com.playtranslate.camera.render.FrozenLookupScene(
+                lines, cachedAuW, cachedAuH, cachedScreenshotPath,
+            )
         }
     }
-
-    data class FrozenLookupScene(
-        val lines: List<OcrManager.OcrLine>,
-        val auWidth: Int,
-        val auHeight: Int,
-        val screenshotPath: String?,
-    )
 
     /** Bumped by every [runSnapshot] and by [unfreeze]. A snapshot cycle may
      *  publish the shared display caches ONLY while its generation is still
@@ -1548,12 +1433,14 @@ class CameraSession(
         // Superseded while the recognizer ran (region re-run, unfreeze)?
         // Abandon before touching any shared state — cancellation alone
         // can't be relied on (an engine that never checks it returns here
-        // normally after the cancel).
-        if (snapshotGeneration.get() != gen) return
-        val gatedGroups = ocr?.let { usableGroups(it, auW, auH, skipEdgeGate = true) }.orEmpty()
-        val groups = if (regionAu == null) gatedGroups else gatedGroups.filter {
-            regionAu.contains(it.bounds.centerX(), it.bounds.centerY())
+        // normally after the cancel). This cycle's frame file was never
+        // published, so it dies with the cycle.
+        if (snapshotGeneration.get() != gen) {
+            SnapshotCore.deleteFrame(screenshotPath)
+            return
         }
+        val gatedGroups = ocr?.let { usableGroups(it, auW, auH, skipEdgeGate = true) }.orEmpty()
+        val groups = SnapshotCore.regionCenterFilter(gatedGroups, regionAu)
         val provenance = snapshotProvenance(ocr, srcId)
         if (ocr == null || groups.isEmpty()) {
             // A no-text verdict OWNS the display exactly like a successful
@@ -1562,16 +1449,24 @@ class CameraSession(
             // reads them directly and would happily look up words the panel
             // no longer describes (Codex review finding). Same generation
             // guard + epoch protocol as the success write; the visible boxes
-            // are taken down by the panel's NoText recovery.
+            // are taken down by the panel's NoText recovery. The frame-file
+            // handoff rides the guard: winning retires the replaced file
+            // (this cycle's own stays for the NoText panel until the orphan
+            // sweep); losing retires this cycle's never-published one.
+            var replaced: String? = null
+            var won = false
             synchronized(stateLock) {
                 if (snapshotGeneration.get() == gen) {
+                    won = true
                     cachedOcr = null
                     cachedGroupColors = null
                     cachedSnapshotTranslations = null
+                    replaced = cachedScreenshotPath
                     cachedScreenshotPath = null
                     displayEpoch.advance()
                 }
             }
+            SnapshotCore.deleteFrame(if (won) replaced else screenshotPath)
             state.value = CaptureState.NoText(
                 context.getString(com.playtranslate.R.string.camera_snapshot_no_text),
                 provenance,
@@ -1583,43 +1478,43 @@ class CameraSession(
         val gated = ocr.copy(groups = groups)
         // Color sampling matches the acquire path: sample a transient ×4
         // reference, never retain a bitmap.
-        val colorRef = frozen.scale(auW / COLOR_SCALE, auH / COLOR_SCALE, false)
-        val groupColors = try {
-            OverlayToolkit.sampleGroupColors(colorRef, groups.map { it.bounds }, 0, 0, COLOR_SCALE)
-        } finally {
-            colorRef.recycle()
-        }
+        val groupColors = SnapshotCore.sampleGroupColors(frozen, groups.map { it.bounds })
         // The snapshot owns the display: epoch and caches move together,
         // same protocol as the acquire install. Translations are not in yet
         // — showFrozenOverlays renders skeletons until they land below.
         // Generation re-checked INSIDE the lock: a newer run bumps the
         // counter before its own cycle can reach this block, so a stale
-        // cycle can never publish after (or over) a newer one.
+        // cycle can never publish after (or over) a newer one. The
+        // frame-file handoff rides the same guard: the file becomes shared
+        // state ONLY here (frames are per-cycle unique files).
+        var replacedFrame: String? = null
+        var published = false
         synchronized(stateLock) {
-            if (snapshotGeneration.get() != gen) return
-            cachedOcr = gated
-            cachedGroupColors = groupColors
-            cachedAuW = auW
-            cachedAuH = auH
-            cachedSnapshotTranslations = null
-            cachedScreenshotPath = screenshotPath
-            displayEpoch.advance()
+            if (snapshotGeneration.get() == gen) {
+                published = true
+                cachedOcr = gated
+                cachedGroupColors = groupColors
+                cachedAuW = auW
+                cachedAuH = auH
+                cachedSnapshotTranslations = null
+                replacedFrame = cachedScreenshotPath
+                cachedScreenshotPath = screenshotPath
+                displayEpoch.advance()
+            }
         }
+        if (!published) {
+            SnapshotCore.deleteFrame(screenshotPath)
+            return
+        }
+        // The predecessor re-run's frame (same episode, earlier cycle) is
+        // unreferenced now; an in-flight Anki send pinned its copy at send
+        // start, so the only exposure is a pin copy racing this delete —
+        // degrading to a card without a screenshot.
+        if (replacedFrame != screenshotPath) SnapshotCore.deleteFrame(replacedFrame)
 
-        // Panel text must match what gets translated. When the confidence
-        // gate dropped nothing (the common case) the recognizer's own
-        // fullText/segments are used verbatim (they carry the richer
-        // per-line segmentation); otherwise rebuild both from the gated
-        // groups so source and translation stay paragraph-aligned.
-        val originalText: String
-        val segments: List<com.playtranslate.model.TextSegment>
-        if (groups.size == ocr.groups.size) {
-            originalText = ocr.fullText
-            segments = ocr.segments
-        } else {
-            originalText = groups.joinToString("\n\n") { it.text }
-            segments = com.playtranslate.model.TextSegments.ofText(originalText)
-        }
+        // Panel text must match what gets translated — see
+        // [SnapshotCore.panelTextFor].
+        val (originalText, segments) = SnapshotCore.panelTextFor(ocr, groups)
 
         // Non-empty overlayData lights the panel's "Show on screen" action;
         // the camera's BoxPresenter ignores the boxes themselves and paints
@@ -1659,24 +1554,9 @@ class CameraSession(
             if (cachedOcr === gated) cachedSnapshotTranslations = perGroup.map { it.text }
         }
 
-        val translated = perGroup.joinToString("\n\n") { it.text }
-        val note = perGroup.mapNotNull { it.note }.firstOrNull()
-        val backendDisplayName = perGroup.mapNotNull { it.backendDisplayName }.firstOrNull()
-        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
-            .format(java.util.Date())
-        state.value = CaptureState.Done(
-            com.playtranslate.model.TranslationResult(
-                originalText = originalText,
-                segments = segments,
-                translatedText = translated,
-                timestamp = timestamp,
-                screenshotPath = screenshotPath,
-                note = note,
-                backendDisplayName = backendDisplayName,
-                ocrProvenance = provenance,
-                langContext = prefs.langContext(srcId),
-            ),
-            overlayData,
+        state.value = SnapshotCore.doneState(
+            originalText, segments, perGroup, screenshotPath, provenance,
+            prefs.langContext(srcId), auW, auH,
         )
     }
 
@@ -1687,36 +1567,17 @@ class CameraSession(
     private fun snapshotProvenance(
         ocr: OcrManager.OcrResult?,
         srcId: com.playtranslate.language.SourceLangId,
-    ): com.playtranslate.model.OcrProvenance? {
-        val backend = ocr?.engineBackend
-            ?: com.playtranslate.ocr.registry.OcrModelManager.selectedBackend(
-                context, srcId, prefs.cameraOcrBackendToken(srcId),
-            )
-            ?: return null
-        val label =
-            if (ocr?.mangaOcrUsed == true) "${backend.ocrLabel(context)} + MangaOCR"
-            else backend.ocrLabel(context)
-        return com.playtranslate.model.OcrProvenance(
-            label, backend.selectionToken,
-            android.view.Display.DEFAULT_DISPLAY, srcId,
-            com.playtranslate.CaptureService.DEFAULT_REGION,
-            frameIncludesSystemUi = false,
-            frameIncludesOwnOverlays = false,
-        )
-    }
+    ): com.playtranslate.model.OcrProvenance? = SnapshotCore.snapshotProvenance(
+        context, ocr, srcId, prefs.cameraOcrBackendToken(srcId),
+    )
 
-    /** Save the frozen frame beside the capture flow's screenshots (its own
-     *  file name — it must not clobber a screen capture). Powers the
-     *  panel's no-text affordances and the re-OCR path. */
-    private fun saveSnapshotToCache(frozen: Bitmap): String? = try {
-        val dir = java.io.File(context.cacheDir, "screenshots").apply { mkdirs() }
-        val file = java.io.File(dir, "camera-snapshot.jpg")
-        file.outputStream().use { frozen.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-        file.absolutePath
-    } catch (e: Exception) {
-        Log.w(TAG, "snapshot save failed", e)
-        null
-    }
+    /** Save the frozen frame under a unique per-cycle name — see
+     *  [SnapshotCore.saveFrame] for why fixed per-tool names were an
+     *  aliasing bug class (stacked activity instances share no generation
+     *  counter). Powers the panel's no-text affordances, Anki attachments,
+     *  and the re-OCR path. */
+    private fun saveSnapshotToCache(frozen: Bitmap): String? =
+        SnapshotCore.saveFrame(context, frozen, CAMERA_FRAME_PREFIX, TAG)
 
     /** Paint the snapshot's boxes as the camera's own warp overlays: a
      *  static IDENTITY homography over the frozen frame (centerCrop ==

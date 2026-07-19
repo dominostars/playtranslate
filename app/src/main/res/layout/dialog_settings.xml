@@ -502,6 +502,9 @@
                         android:id="@+id/rowToolCamera" />
 
                     <include layout="@layout/settings_row_hub"
+                        android:id="@+id/rowToolImportImage" />
+
+                    <include layout="@layout/settings_row_hub"
                         android:id="@+id/rowToolHistory" />
 
                     <include layout="@layout/settings_row_hub"

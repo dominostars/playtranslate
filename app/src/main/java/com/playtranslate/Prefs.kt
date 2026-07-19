@@ -37,6 +37,16 @@ enum class OverlayMode(@androidx.annotation.StringRes val displayNameRes: Int) {
     }
 }
 
+/**
+ * Which per-surface OCR engine selection a picker action persists to:
+ * the GLOBAL selection (over-game/live capture and the settings screen's
+ * own rows) or a tool's inherit-until-set override ([Prefs.cameraOcrBackendToken],
+ * [Prefs.importOcrBackendToken]). Travels through the OCR download deep link
+ * so the on-success write lands in the scope that initiated it — a tool-only
+ * action must never switch the live engine as a side effect.
+ */
+enum class OcrTokenScope { GLOBAL, CAMERA, IMPORT }
+
 /** A named capture region expressed as fractions of the screen dimensions. */
 data class RegionEntry(
     val label: String,
@@ -198,6 +208,14 @@ class Prefs internal constructor(
         sp.getBoolean("camera_slow_ocr_prompt_answered_${id.code}", false)
     fun setCameraSlowOcrPromptAnswered(id: SourceLangId) =
         sp.edit { putBoolean("camera_slow_ocr_prompt_answered_${id.code}", true) }
+
+    /** Import-tool twin of [cameraSlowOcrPromptAnswered], same scoping
+     *  rationale: the import rescue switches only [importOcrBackendToken],
+     *  so its answered-latch must scope with that selection. */
+    fun importSlowOcrPromptAnswered(id: SourceLangId): Boolean =
+        sp.getBoolean("import_slow_ocr_prompt_answered_${id.code}", false)
+    fun setImportSlowOcrPromptAnswered(id: SourceLangId) =
+        sp.edit { putBoolean("import_slow_ocr_prompt_answered_${id.code}", true) }
 
     /** The user's preferred TTS voice for [lang], by [android.speech.tts.Voice]
      *  name, or null to use the engine default. Voices are stored per language
@@ -833,6 +851,39 @@ class Prefs internal constructor(
         sp.edit { putString("camera_ocr_backend_${id.code}", token) }
     fun clearCameraOcrBackendToken(id: SourceLangId) =
         sp.edit { remove("camera_ocr_backend_${id.code}") }
+
+    /** Import tool: paint the result's boxes over the imported image.
+     *  Default ON. Twin of [cameraBoxesEnabled] for the import review. */
+    var importBoxesEnabled: Boolean
+        get() = sp.getBoolean("import_boxes_enabled", true)
+        set(v) = sp.edit { putBoolean("import_boxes_enabled", v) }
+
+    /** Import tool: the panel was last dismissed from its collapsed sliver,
+     *  so the next review starts there. */
+    var importPanelStartCollapsed: Boolean
+        get() = sp.getBoolean("import_panel_start_collapsed", false)
+        set(v) = sp.edit { putBoolean("import_panel_start_collapsed", v) }
+
+    /** The import tool's own overlay flavor — same inherit-until-set
+     *  contract and rationale as [cameraOverlayMode], inheriting from the
+     *  GLOBAL flavor (not the camera's: each tool pins independently off
+     *  the app-wide default). */
+    var importOverlayMode: OverlayMode
+        get() = sp.getString("import_overlay_mode", null)
+            ?.let { OverlayMode.fromStorageName(it) } ?: overlayMode
+        set(v) = sp.edit { putString("import_overlay_mode", v.name) }
+
+    /** The import tool's own OCR engine selection for [id], or null to
+     *  inherit the global [ocrBackendToken] — same inherit-until-set and
+     *  stale-token contracts as [cameraOcrBackendToken]. Swept alongside the
+     *  camera token by `OcrModelManager.deleteOcrPack` when its pack is
+     *  deleted. */
+    fun importOcrBackendToken(id: SourceLangId): String? =
+        sp.getString("import_ocr_backend_${id.code}", null)
+    fun setImportOcrBackendToken(id: SourceLangId, token: String) =
+        sp.edit { putString("import_ocr_backend_${id.code}", token) }
+    fun clearImportOcrBackendToken(id: SourceLangId) =
+        sp.edit { remove("import_ocr_backend_${id.code}") }
 
     /** When on (the default), touching the game screen during auto translation
      *  dismisses the current overlay and re-captures. Off makes screen touches

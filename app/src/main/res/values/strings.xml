@@ -2707,6 +2707,13 @@
          deleted: the camera's per-flow choice is cleared back to following the
          standard selection, and the user should hear that before confirming. -->
     <string name="settings_ocr_delete_camera_note">The camera tool also uses this engine and will switch back to your standard selection.</string>
+    <!-- Same as settings_ocr_delete_camera_note but for the image import tool's
+         own OCR selection (Tools > Import image). -->
+    <string name="settings_ocr_delete_import_note">The image import tool also uses this engine and will switch back to your standard selection.</string>
+    <!-- Same as settings_ocr_delete_camera_note but when BOTH the camera tool's
+         and the image import tool's own OCR selections resolve to the engine
+         being deleted. -->
+    <string name="settings_ocr_delete_camera_import_note">The camera and image import tools also use this engine and will switch back to your standard selection.</string>
 
     <!-- Destructive confirm button on the delete dialog. -->
     <string name="settings_ocr_delete_confirm">Delete</string>
@@ -2914,6 +2921,33 @@
     <string name="history_copied_toast">Copied</string>
     <!-- Summary line under the Dictionary hub cell title in settings. -->
     <string name="settings_cell_dictionary_summary">Look up word definitions</string>
+    <!-- Shown in the import tool's result panel when OCR finds no readable text
+         in the picked image (or inside the user-drawn region of it). -->
+    <string name="image_import_no_text">No text found in this image. Try a clearer image, or check the source language.</string>
+    <!-- Title of the Tools hub cell that opens the import-image translation tool. -->
+    <string name="settings_cell_image_import">Import image</string>
+    <!-- Summary line under the Import image hub cell title in settings. -->
+    <string name="settings_cell_image_import_summary">Translate a saved image or screenshot</string>
+    <!-- Heading on the import tool's picker landing screen, above the source buttons. -->
+    <string name="image_import_landing_title">Translate text in a picture</string>
+    <!-- Landing button that opens the system photo picker. -->
+    <string name="image_import_pick_photos">Choose a photo</string>
+    <!-- Landing button that opens the system file browser filtered to images. -->
+    <string name="image_import_pick_files">Browse files</string>
+    <!-- Landing button shown only while the clipboard holds an image; tapping loads it. -->
+    <string name="image_import_paste_image">Paste copied image</string>
+    <!-- Toast when a picked, shared, or pasted file cannot be decoded as an image. -->
+    <string name="image_import_decode_failed">Couldn\'t open that image.</string>
+    <!-- Content description of the import review's close (X) button. -->
+    <string name="image_import_close_cd">Close image</string>
+    <!-- Content description of the import tool's settings gear (language / OCR /
+         overlays menu). -->
+    <string name="image_import_settings_cd">Image import settings</string>
+    <!-- Body of the slow-OCR rescue alert in the IMPORT tool, mirroring
+         slow_ocr_prompt_message_camera; the change-your-mind path is the settings gear
+         on the import screen (the switch writes the import tool's own engine).
+         Pending l10n batch. -->
+    <string name="slow_ocr_prompt_message_import">This device is taking a while to read text from this image. Change to the faster engine for faster processing, though its reading quality may be slightly lower. You can switch this tool\'s engine anytime with the settings gear on this screen.</string>
     <!-- Title of the Tools hub cell that opens the live camera translation screen. -->
     <string name="settings_cell_camera">Camera</string>
     <!-- Summary line under the Camera hub cell title in settings. -->

@@ -42,12 +42,15 @@ import kotlin.math.abs
  */
 class CameraWordLookup(
     private val activity: Activity,
-    private val session: CameraSession,
+    /** The frozen scene currently owning the display, or null when none —
+     *  read at gesture time. The camera passes the session's
+     *  frozenLookupScene; the import tool its own session's. */
+    private val scene: () -> com.playtranslate.camera.render.FrozenLookupScene?,
     /** Current frozen frame (AU space), or null when none — read at gesture
      *  time so re-snapshots are picked up automatically. */
     private val frozenBitmap: () -> Bitmap?,
-    /** AU frame → view-size screen-space projection (the snapshot
-     *  controller's FILL_CENTER renderer). The returned bitmap's ownership
+    /** AU frame → view-size screen-space projection (the host controller's
+     *  renderer, in ITS coordinate mode). The returned bitmap's ownership
      *  transfers to the drag controller, which recycles it per gesture. */
     private val renderViewSpace: (Bitmap, Int, Int) -> Bitmap?,
     /** The full-bleed host's dims — the space [CameraCoordinates] maps to. */
@@ -55,8 +58,13 @@ class CameraWordLookup(
     /** The host's on-screen origin. This whole flow equates raw event
      *  coordinates with host-local ones (the drag stack is screen-space by
      *  design), which is only true while the host sits at the display
-     *  origin — fullscreen, the camera's only real configuration. */
+     *  origin — fullscreen, both tools' only real configuration. */
     private val hostOrigin: () -> Pair<Int, Int>,
+    /** How the AU frame maps onto the host — must match the flow's image
+     *  scale type ([CameraCoordinates.FitMode.FILL] for the camera's
+     *  centerCrop freeze frame, FIT for the import review's letterboxed
+     *  image) or line hit-tests land beside the text. */
+    private val fitMode: CameraCoordinates.FitMode = CameraCoordinates.FitMode.FILL,
 ) {
     private val magnifier = MagnifierLens(
         activity, activity.windowManager, Display.DEFAULT_DISPLAY,
@@ -99,7 +107,7 @@ class CameraWordLookup(
     fun onOutsideTouch(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                val scene = session.frozenLookupScene() ?: return false
+                val scene = scene() ?: return false
                 val bmp = frozenBitmap()?.takeIf { !it.isRecycled } ?: return false
                 val (w, h) = hostSize()
                 if (w <= 0 || h <= 0) return false
@@ -110,7 +118,7 @@ class CameraWordLookup(
                 // lookup is absent there rather than wrong (Codex finding).
                 val (ox, oy) = hostOrigin()
                 if (ox != 0 || oy != 0) return false
-                val coords = CameraCoordinates(scene.auWidth, scene.auHeight, w, h)
+                val coords = CameraCoordinates(scene.auWidth, scene.auHeight, w, h, fitMode)
                 val viewLines = scene.lines.map { line ->
                     line.copy(
                         bounds = coords.auToView(line.bounds),

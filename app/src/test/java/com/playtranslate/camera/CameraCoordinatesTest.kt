@@ -82,4 +82,51 @@ class CameraCoordinatesTest {
             assertRectNear(r, c.viewToAu(c.auToView(r)))
         }
     }
+
+    @Test
+    fun fitPicksTheSmallerScale() {
+        // Landscape 4:3 photo on a portrait screen: FIT is width-driven,
+        // FILL would be height-driven.
+        val c = CameraCoordinates(4000, 3000, 1080, 2340, CameraCoordinates.FitMode.FIT)
+        assertEquals(1080f / 4000f, c.scale)
+    }
+
+    @Test
+    fun fitLetterboxesWithNonNegativeOffsets() {
+        val c = CameraCoordinates(4000, 3000, 1080, 2340, CameraCoordinates.FitMode.FIT)
+        assertEquals(0f, c.offsetX)
+        assertTrue(c.offsetY > 0f)
+        // Tall receipt: pillarboxed instead.
+        val tall = CameraCoordinates(600, 3000, 1080, 2340, CameraCoordinates.FitMode.FIT)
+        assertTrue(tall.offsetX > 0f)
+        assertEquals(0f, tall.offsetY)
+    }
+
+    @Test
+    fun fitKeepsTheWholeFrameInsideTheView() {
+        val c = CameraCoordinates(4000, 3000, 1080, 2340, CameraCoordinates.FitMode.FIT)
+        val full = c.auToView(Rect(0, 0, 4000, 3000))
+        assertTrue(full.left >= 0 && full.top >= 0)
+        assertTrue(full.right <= 1080 && full.bottom <= 2340)
+        // The frame's center lands at the view's center.
+        val center = c.auToView(Rect(2000, 1500, 2000, 1500))
+        assertEquals(540, center.left)
+        assertEquals(1170, center.top)
+    }
+
+    @Test
+    fun fitRoundTripWithinOnePixel() {
+        val c = CameraCoordinates(4000, 3000, 1080, 2340, CameraCoordinates.FitMode.FIT)
+        val rects = listOf(
+            Rect(0, 0, 4000, 3000),
+            Rect(120, 260, 1600, 1400),
+            Rect(3901, 2800, 3999, 2999),
+        )
+        // FIT downscales here (~0.27×), so a view-space pixel spans ~4 AU
+        // pixels; the round trip is only accurate to that quantization.
+        val tolAu = (1f / c.scale).toInt() + 1
+        for (r in rects) {
+            assertRectNear(r, c.viewToAu(c.auToView(r)), tolPx = tolAu)
+        }
+    }
 }

@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Import-image tool: a picker landing and a full-bleed review that mirrors
+     the camera tool's frozen-snapshot stack. The review layers reproduce
+     activity_camera.xml's load-bearing z-order — image, overlay host, panel
+     host, controls — and only @id/importControls receives inset padding
+     (see ImageImportActivity). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <!-- Picker landing: shown until an image is loaded. -->
+    <LinearLayout
+        android:id="@+id/importLandingGroup"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="32dp">
+
+        <ImageView
+            android:id="@+id/importLandingIcon"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_image"
+            app:tint="@android:color/white" />
+
+        <TextView
+            android:id="@+id/importLandingTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            android:text="@string/image_import_landing_title"
+            android:textColor="@android:color/white"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/importPickPhotos"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:minWidth="240dp"
+            android:text="@string/image_import_pick_photos" />
+
+        <Button
+            android:id="@+id/importPickFiles"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:minWidth="240dp"
+            android:text="@string/image_import_pick_files" />
+
+        <!-- Clipboard chip: visible only while the clipboard holds an image
+             (checked silently via the clip DESCRIPTION on window focus; the
+             clip data itself is read only on tap, where the system's paste
+             notice is expected). -->
+        <Button
+            android:id="@+id/importPasteChip"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:minWidth="240dp"
+            android:text="@string/image_import_paste_image"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+    <!-- The imported image: fitCenter == CameraCoordinates FIT mode, so
+         identity-warped overlays land exactly on the letterboxed text. -->
+    <ImageView
+        android:id="@+id/importImageFrame"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="true"
+        android:focusable="false"
+        android:importantForAccessibility="no"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
+
+    <!-- Overlay layer host: the warp view's boxes and the region dim/dashes
+         render here, UNDER the sheet so its frost sits over them. -->
+    <FrameLayout
+        android:id="@+id/importOverlayHost"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Result panel host: the capture bottom sheet attaches here
+         (ActivitySheetHost). Sits BELOW importControls in z so the X stays
+         tappable above the sheet. -->
+    <FrameLayout
+        android:id="@+id/importPanelHost"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Floating controls — the ONLY view that gets system-bar inset
+         padding; non-clickable itself so touches outside its children fall
+         through to the panel/image. -->
+    <FrameLayout
+        android:id="@+id/importControls"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <ImageButton
+            android:id="@+id/importBack"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_gravity="start|top"
+            android:layout_margin="8dp"
+            android:background="@drawable/bg_camera_control_scrim"
+            android:contentDescription="@string/camera_back_cd"
+            android:src="@drawable/ic_arrow_back"
+            app:tint="@android:color/white" />
+
+        <!-- Top-right control pill: [crop] [settings]. The gear expands the
+             language / OCR / overlays menu below the row (CameraGearMenu
+             animates this container; end-gravity keeps the right edge
+             pinned so it grows leftward and downward). -->
+        <LinearLayout
+            android:id="@+id/importControlPill"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end|top"
+            android:layout_margin="8dp"
+            android:background="@drawable/bg_camera_control_pill"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/importPillIconRow"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:layout_gravity="end"
+                android:animateLayoutChanges="true"
+                android:divider="@drawable/divider_camera_pill_gap"
+                android:orientation="horizontal"
+                android:paddingHorizontal="4dp"
+                android:showDividers="middle">
+
+                <!-- Region select: crop the reading to a drawn region. -->
+                <ImageButton
+                    android:id="@+id/importRegionSelect"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@null"
+                    android:contentDescription="@string/camera_region_cd"
+                    android:src="@drawable/ic_crop"
+                    app:tint="@android:color/white" />
+
+                <ImageButton
+                    android:id="@+id/importSettings"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@null"
+                    android:contentDescription="@string/image_import_settings_cd"
+                    android:src="@drawable/ic_settings"
+                    app:tint="@android:color/white" />
+
+            </LinearLayout>
+
+            <!-- Gear menu rows (language / OCR / overlays), populated +
+                 revealed by CameraGearMenu. -->
+            <LinearLayout
+                android:id="@+id/importPillMenu"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+    </FrameLayout>
+
+</FrameLayout>

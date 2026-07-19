@@ -220,6 +220,23 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Import-image tool, launched from Settings → Tools and as a share
+             target: exported for ACTION_SEND (screenshot → Share →
+             PlayTranslate); SEND grants read on the streamed URI, so no
+             storage permission is involved. The review pins its own
+             orientation programmatically; the landing rotates freely. -->
+        <activity
+            android:name=".imageimport.ImageImportActivity"
+            android:exported="true"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity>
+
         <!-- Hotkeys sub-page (QS tile + hotkeys), launched from Settings → Configure. -->
         <activity
             android:name=".ui.HotkeysSettingsActivity"

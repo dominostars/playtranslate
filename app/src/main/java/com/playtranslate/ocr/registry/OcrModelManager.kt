@@ -561,14 +561,15 @@ object OcrModelManager {
      *  pack re-downloads through the normal source-switch path
      *  (downloadDefaultForSource) the next time one becomes the source.
      *
-     *  CAMERA-scoped selections naming [packKey]'s backend are CLEARED here
-     *  (reverting to inherit-global) instead of kept: the camera has no
-     *  source-switch re-download choke point, and a shippable-but-deleted
-     *  pack still RESOLVES as selected (availableBackends gates on shippable,
-     *  not installed) — a kept token would leave the camera gear naming an
-     *  engine while recognition silently runs the ML Kit floor. Done at this
-     *  choke point, not in the settings UI, so every delete caller gets the
-     *  cleanup; the consent prompt lives with the caller. */
+     *  CAMERA- and IMPORT-scoped selections naming [packKey]'s backend are
+     *  CLEARED here (reverting to inherit-global) instead of kept: those
+     *  tools have no source-switch re-download choke point, and a
+     *  shippable-but-deleted pack still RESOLVES as selected
+     *  (availableBackends gates on shippable, not installed) — a kept token
+     *  would leave the tool's gear naming an engine while recognition
+     *  silently runs the ML Kit floor. Done at this choke point, not in the
+     *  settings UI, so every delete caller gets the cleanup; the consent
+     *  prompt lives with the caller. */
     fun deleteOcrPack(ctx: Context, packKey: String): Boolean {
         val prefs = Prefs(ctx)
         val current = prefs.sourceLangId
@@ -577,15 +578,23 @@ object OcrModelManager {
                 "(${current.code})'s selected backend resolves it")
             return false
         }
-        for (id in SourceLangId.entries) {
-            val token = prefs.cameraOcrBackendToken(id) ?: continue
-            val named = SourceLanguageProfiles[id].ocrBackends
-                .firstOrNull { it.selectionToken == token } ?: continue
-            if (packKey in named.packKeys) {
-                Log.i(TAG, "delete '$packKey': clearing camera OCR selection for ${id.code}")
-                prefs.clearCameraOcrBackendToken(id)
+        fun sweepScope(
+            label: String,
+            token: (SourceLangId) -> String?,
+            clear: (SourceLangId) -> Unit,
+        ) {
+            for (id in SourceLangId.entries) {
+                val t = token(id) ?: continue
+                val named = SourceLanguageProfiles[id].ocrBackends
+                    .firstOrNull { it.selectionToken == t } ?: continue
+                if (packKey in named.packKeys) {
+                    Log.i(TAG, "delete '$packKey': clearing $label OCR selection for ${id.code}")
+                    clear(id)
+                }
             }
         }
+        sweepScope("camera", prefs::cameraOcrBackendToken, prefs::clearCameraOcrBackendToken)
+        sweepScope("import", prefs::importOcrBackendToken, prefs::clearImportOcrBackendToken)
         MeikiBridge.close(packKey)
         PaddleOcrBridge.close(packKey)
         helper(packKey).delete(ctx)

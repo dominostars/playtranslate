@@ -49,6 +49,7 @@ import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.themeColor
 import com.playtranslate.ui.DismissReason
 import com.playtranslate.ui.OverlayAlert
+import kotlinx.coroutines.launch
 
 /**
  * Camera tool (Settings → Tools → Camera): a full-bleed live camera view that
@@ -147,6 +148,17 @@ class CameraActivity : AppCompatActivity() {
             onSlowOcr = { maybeShowSlowOcrPrompt() },
         )
         sessionLangKey = langKey()
+        // Collect snapshot frames orphaned by a crash/process death (their
+        // cycle's guarded delete never ran). No restore target to keep —
+        // the camera doesn't restore snapshots across process death. Also
+        // retires the pre-unique-names build's fixed-name file, which
+        // nothing writes or reads anymore.
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            com.playtranslate.camera.render.SnapshotCore.sweepFrameFiles(
+                this@CameraActivity, CAMERA_FRAME_PREFIX, keepPath = null,
+            )
+            java.io.File(java.io.File(cacheDir, "screenshots"), "camera-snapshot.jpg").delete()
+        }
 
         // The snapshot panel's in-place edit needs the IME to overlay the
         // frozen frame, not resize the camera layout: the sheet lifts itself
@@ -480,14 +492,14 @@ class CameraActivity : AppCompatActivity() {
             token,
             onReOcr = { refreshAfterReadSettingsChange() },
             onDownload = { backend ->
-                // forCamera: the download screen persists the CAMERA token,
-                // only on verified success — an aborted download changes
-                // nothing, and the global/live engine never moves on a
-                // camera-only action. The onResume langKey diff picks the
+                // CAMERA scope: the download screen persists the CAMERA
+                // token, only on verified success — an aborted download
+                // changes nothing, and the global/live engine never moves on
+                // a camera-only action. The onResume langKey diff picks the
                 // new resolution up on return.
                 startActivity(
                     com.playtranslate.ui.CaptureOverlaySettingsActivity.downloadIntent(
-                        this, srcId, backend.selectionToken, forCamera = true,
+                        this, srcId, backend.selectionToken, scope = com.playtranslate.OcrTokenScope.CAMERA,
                     )
                 )
             },

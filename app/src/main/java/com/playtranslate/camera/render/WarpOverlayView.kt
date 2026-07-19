@@ -22,6 +22,13 @@ import com.playtranslate.camera.tracker.Homography
  */
 class WarpOverlayView(context: Context) : View(context) {
 
+    /** How the AU frame maps onto this view: FILL (cover/center-crop, the
+     *  camera preview and frozen snapshot) or FIT (letterbox, the import
+     *  review's arbitrary-aspect images). Must match the sibling ImageView's
+     *  scaleType or overlays land beside their text. Set before regions
+     *  install; not expected to change per-frame. */
+    var fitMode: CameraCoordinates.FitMode = CameraCoordinates.FitMode.FILL
+
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
 
     private var regions: List<RasterRegion> = emptyList()
@@ -103,7 +110,7 @@ class WarpOverlayView(context: Context) : View(context) {
             invalidate()
             return
         }
-        val coords = CameraCoordinates(auWidth, auHeight, width, height)
+        val coords = CameraCoordinates(auWidth, auHeight, width, height, fitMode)
         // viewFromAU as a homography (uniform scale + offset).
         val s = coords.scale.toDouble()
         val viewFromAu = doubleArrayOf(

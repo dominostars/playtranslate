@@ -876,8 +876,9 @@ class SettingsRenderer(
     // ── Tools ────────────────────────────────────────────────────────────
 
     /** TOOLS: hub cells opening the standalone tool screens — the camera
-     *  tool on top, then translation history, then the dictionary lookup
-     *  screen. Only History carries live state; the rest bind once here. */
+     *  tool on top, then image import, then translation history, then the
+     *  dictionary lookup screen. Only History carries live state; the rest
+     *  bind once here. */
     private fun setupToolsSection() {
         setGroupHeader(R.id.headerTools, ctx.getString(R.string.settings_header_tools))
         refreshToolsSection()
@@ -897,6 +898,21 @@ class SettingsRenderer(
                 onClick = { ctx.startActivity(Intent(ctx, CameraActivity::class.java)) },
                 disabledReason = if (hasBackCamera) null
                 else ctx.getString(R.string.settings_cell_camera_unavailable),
+            ),
+        )
+        // No hardware gate: the photo picker and SAF are permissionless and
+        // exist on every device.
+        bindHubCell(
+            root.findViewById(R.id.rowToolImportImage),
+            HubCell(
+                iconRes = R.drawable.ic_image,
+                title = ctx.getString(R.string.settings_cell_image_import),
+                summary = ctx.getString(R.string.settings_cell_image_import_summary),
+                onClick = {
+                    ctx.startActivity(
+                        Intent(ctx, com.playtranslate.imageimport.ImageImportActivity::class.java)
+                    )
+                },
             ),
         )
         bindHubCell(

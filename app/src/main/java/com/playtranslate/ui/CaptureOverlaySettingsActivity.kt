@@ -36,6 +36,7 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.BuildConfig
 import com.playtranslate.CaptureService
+import com.playtranslate.OcrTokenScope
 import com.playtranslate.OverlayMode
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.Prefs
@@ -756,14 +757,16 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
      *  success (the previous picker's flow). Rebuilds the section so the check +
      *  accent move to the new selection.
      *
-     *  [forCamera] scopes the persistence: the camera tool's deep-linked
-     *  downloads write ONLY [Prefs.setCameraOcrBackendToken] — a camera-only
-     *  action must not switch the over-game/live engine as a side effect.
-     *  This screen's own rows always persist the global selection (false). */
-    private fun selectOcr(id: SourceLangId, backend: OcrBackend, forCamera: Boolean = false) {
-        fun persist() =
-            if (forCamera) prefs.setCameraOcrBackendToken(id, backend.selectionToken)
-            else prefs.setOcrBackendToken(id, backend.selectionToken)
+     *  [scope] routes the persistence: a tool's deep-linked downloads write
+     *  ONLY that tool's own token — a tool-only action must not switch the
+     *  over-game/live engine as a side effect. This screen's own rows always
+     *  persist the global selection (GLOBAL). */
+    private fun selectOcr(id: SourceLangId, backend: OcrBackend, scope: OcrTokenScope = OcrTokenScope.GLOBAL) {
+        fun persist() = when (scope) {
+            OcrTokenScope.GLOBAL -> prefs.setOcrBackendToken(id, backend.selectionToken)
+            OcrTokenScope.CAMERA -> prefs.setCameraOcrBackendToken(id, backend.selectionToken)
+            OcrTokenScope.IMPORT -> prefs.setImportOcrBackendToken(id, backend.selectionToken)
+        }
         val needsDownload = backend.packKeys.any { !OcrPackModelHelper(it).isInstalled(this) }
         if (!needsDownload) {
             persist()
@@ -834,23 +837,31 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             }
             .sortedBy { it.displayName() }
         // Raw token→backend naming, the same predicate deleteOcrPack sweeps
-        // with — resolution-with-fallback would hide a stored camera choice
+        // with — resolution-with-fallback would hide a stored tool choice
         // behind its floor fallback and under-warn.
-        val cameraAffected = LanguagePackStore.installedCodes(this).any { lang ->
-            prefs.cameraOcrBackendToken(lang)?.let { token ->
-                SourceLanguageProfiles[lang].ocrBackends
-                    .firstOrNull { it.selectionToken == token }
-                    ?.packKeys?.any { it in backend.packKeys }
-            } == true
-        }
+        fun scopeAffected(token: (SourceLangId) -> String?): Boolean =
+            LanguagePackStore.installedCodes(this).any { lang ->
+                token(lang)?.let { t ->
+                    SourceLanguageProfiles[lang].ocrBackends
+                        .firstOrNull { it.selectionToken == t }
+                        ?.packKeys?.any { it in backend.packKeys }
+                } == true
+            }
+        val cameraAffected = scopeAffected(prefs::cameraOcrBackendToken)
+        val importAffected = scopeAffected(prefs::importOcrBackendToken)
         var message = if (dependents.isEmpty()) {
             getString(R.string.settings_ocr_delete_msg, backend.ocrLabel(this))
         } else {
             val names = dependents.joinToString("\n") { it.displayName() }
             getString(R.string.settings_ocr_delete_shared_msg, backend.ocrLabel(this), names)
         }
-        if (cameraAffected) {
-            message += "\n\n" + getString(R.string.settings_ocr_delete_camera_note)
+        when {
+            cameraAffected && importAffected ->
+                message += "\n\n" + getString(R.string.settings_ocr_delete_camera_import_note)
+            cameraAffected ->
+                message += "\n\n" + getString(R.string.settings_ocr_delete_camera_note)
+            importAffected ->
+                message += "\n\n" + getString(R.string.settings_ocr_delete_import_note)
         }
         OverlayAlert.Builder(this)
             .setTitle(getString(R.string.settings_ocr_delete_title, backend.ocrLabel(this)))
@@ -1040,33 +1051,40 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private fun maybeHandleOcrDownloadDeepLink() {
         val token = intent.getStringExtra(EXTRA_OCR_AUTODOWNLOAD) ?: return
         val langCode = intent.getStringExtra(EXTRA_OCR_LANG)
-        val forCamera = intent.getBooleanExtra(EXTRA_OCR_FOR_CAMERA, false)
+        val scope = intent.getStringExtra(EXTRA_OCR_SCOPE)
+            ?.let { name -> OcrTokenScope.entries.firstOrNull { it.name == name } }
+            ?: OcrTokenScope.GLOBAL
         intent.removeExtra(EXTRA_OCR_AUTODOWNLOAD)
         intent.removeExtra(EXTRA_OCR_LANG)
-        intent.removeExtra(EXTRA_OCR_FOR_CAMERA)
+        intent.removeExtra(EXTRA_OCR_SCOPE)
         val id = SourceLangId.entries.firstOrNull { it.code == langCode } ?: prefs.sourceLangId
         val backend = OcrModelManager.availableBackends(this, id)
             .firstOrNull { it.selectionToken == token } ?: return
         findViewById<View>(R.id.cardOcr)?.let { card ->
             card.post { card.requestRectangleOnScreen(android.graphics.Rect(0, 0, card.width, card.height)) }
         }
-        selectOcr(id, backend, forCamera)
+        selectOcr(id, backend, scope)
     }
 
     companion object {
         private const val EXTRA_OCR_LANG = "extra_ocr_lang"
         private const val EXTRA_OCR_AUTODOWNLOAD = "extra_ocr_autodownload"
-        private const val EXTRA_OCR_FOR_CAMERA = "extra_ocr_for_camera"
+        private const val EXTRA_OCR_SCOPE = "extra_ocr_scope"
 
         /** Intent that opens this screen and immediately starts downloading the OCR
          *  pack for [token]'s backend under language [id] — the in-result OCR
-         *  picker's "not downloaded" path. [forCamera] scopes the on-success
-         *  selection write to the camera's own token (see [selectOcr]); the
-         *  over-game/in-app pickers use the global default. */
-        fun downloadIntent(ctx: Context, id: SourceLangId, token: String, forCamera: Boolean = false): Intent =
+         *  picker's "not downloaded" path. [scope] routes the on-success
+         *  selection write to the initiating tool's own token (see [selectOcr]);
+         *  the over-game/in-app pickers use the global default. */
+        fun downloadIntent(
+            ctx: Context,
+            id: SourceLangId,
+            token: String,
+            scope: OcrTokenScope = OcrTokenScope.GLOBAL,
+        ): Intent =
             Intent(ctx, CaptureOverlaySettingsActivity::class.java)
                 .putExtra(EXTRA_OCR_LANG, id.code)
                 .putExtra(EXTRA_OCR_AUTODOWNLOAD, token)
-                .putExtra(EXTRA_OCR_FOR_CAMERA, forCamera)
+                .putExtra(EXTRA_OCR_SCOPE, scope.name)
     }
 }

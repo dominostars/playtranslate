@@ -49,6 +49,14 @@ class CameraGearMenu(
      *  mirrors the floating menu's Overlays row: cycles IN PLACE, updating
      *  its value without closing the menu. */
     private val onCycleOverlayMode: () -> Unit,
+    /** The hosting tool's OCR selection (raw scoped token, inheriting
+     *  global until set) — the OCR row's value label resolves through it.
+     *  Defaults to the camera's scope. */
+    private val ocrToken: (com.playtranslate.language.SourceLangId) -> String? =
+        { Prefs(activity).cameraOcrBackendToken(it) },
+    /** The hosting tool's overlay flavor — the Overlays row's value label.
+     *  Defaults to the camera's scope. */
+    private val overlayMode: () -> OverlayMode = { Prefs(activity).cameraOverlayMode },
 ) {
     private val prefs = Prefs(activity)
     private val density = activity.resources.displayMetrics.density
@@ -174,12 +182,10 @@ class CameraGearMenu(
         menuHost.removeAllViews()
         val inflater = LayoutInflater.from(activity)
         val languageName = prefs.sourceLangId.displayName()
-        // Camera-scoped resolution: the camera's own token, inheriting the
-        // global selection until set.
+        // Tool-scoped resolution: the hosting tool's own token, inheriting
+        // the global selection until set.
         val ocrName = OcrModelManager
-            .selectedBackend(
-                activity, prefs.sourceLangId, prefs.cameraOcrBackendToken(prefs.sourceLangId),
-            )
+            .selectedBackend(activity, prefs.sourceLangId, ocrToken(prefs.sourceLangId))
             ?.ocrLabel(activity) ?: "ML Kit"
         menuHost.addView(divider())
         addRow(inflater, activity.getString(R.string.floating_menu_panel_language), languageName) {
@@ -212,12 +218,12 @@ class CameraGearMenu(
         }
     }
 
-    /** User-facing name of the CAMERA's current overlay flavor, mirroring the
-     *  floating panel's labeling (the reading mode reads Pinyin for Pinyin
-     *  languages, Furigana otherwise). */
+    /** User-facing name of the hosting tool's current overlay flavor,
+     *  mirroring the floating panel's labeling (the reading mode reads
+     *  Pinyin for Pinyin languages, Furigana otherwise). */
     private fun overlayModeLabel(hintKind: HintTextKind): String =
         when {
-            prefs.cameraOverlayMode == OverlayMode.TRANSLATION ->
+            overlayMode() == OverlayMode.TRANSLATION ->
                 activity.getString(R.string.overlay_mode_option_translation)
             hintKind == HintTextKind.PINYIN ->
                 activity.getString(R.string.overlay_mode_option_pinyin)
