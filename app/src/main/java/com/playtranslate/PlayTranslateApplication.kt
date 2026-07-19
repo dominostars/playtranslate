@@ -39,6 +39,11 @@ class PlayTranslateApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashHandler.install(this)
+        // Collect Anki screenshot pins orphaned by a crash/process death
+        // (their send's finally never ran). Also swept opportunistically on
+        // every pin; this catches the "never sends again" tail. Off-main:
+        // cold start shouldn't pay for cache hygiene.
+        Thread { com.playtranslate.ui.AnkiScreenshotPin.sweepStale(this) }.start()
         // Push the persisted grouping-debug flag into the process-wide
         // OcrManager singleton before any OCR can run. The SettingsRenderer
         // toggle also writes this on change, so the in-memory copy stays in

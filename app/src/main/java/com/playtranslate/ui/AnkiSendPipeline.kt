@@ -121,6 +121,12 @@ suspend fun Context.sendSentenceCard(
     deckId: Long,
 ): AnkiSendResult {
     val ctx = this
+    // Pin the screenshot BEFORE the audio synthesis below: the capture
+    // surfaces overwrite fixed cache filenames, and the seconds this
+    // pipeline spends on audio + binder are exactly when a rapid re-capture
+    // would swap the frame under the upload. The card must attach what the
+    // user was looking at when they sent it.
+    val pinnedScreenshotPath = AnkiScreenshotPin.pin(ctx, input.screenshotPath)
     // Sentence audio: multi-source resolution, Commons-first → TTS floor with
     // the user's saved voice. Every caller — sheet and one-tap — goes through
     // the registry; the TTS floor speaks SpokenText's kana pronunciation, so
@@ -163,7 +169,7 @@ suspend fun Context.sendSentenceCard(
         ctx.dispatchSendToAnki(
             deckId = deckId,
             mode = CardMode.SENTENCE,
-            screenshotPath = input.screenshotPath,
+            screenshotPath = pinnedScreenshotPath,
             audioPath = audioFile?.absolutePath,
             wordAudioPaths = wordAudioFiles.mapValues { it.value.absolutePath },
             legacyFront = {
@@ -197,6 +203,9 @@ suspend fun Context.sendSentenceCard(
         // the audio cache for reuse.
         if (sentenceResolved?.ephemeral != false) audioFile?.delete()
         wordResolved.values.forEach { if (it.ephemeral) it.file.delete() }
+        // The upload (or its failure) is behind us — the pin's job is done.
+        // A synthesis throw above skips this; the pin sweep collects it.
+        AnkiScreenshotPin.release(ctx, pinnedScreenshotPath)
     }
     // The dispatcher only knows about UPLOAD failures (audioPath was
     // non-null but addMediaFromFile dropped it). Resolution failures
@@ -220,6 +229,8 @@ suspend fun Context.sendWordCard(
     deckId: Long,
 ): AnkiSendResult {
     val ctx = this
+    // Pin before synthesis — see sendSentenceCard.
+    val pinnedScreenshotPath = AnkiScreenshotPin.pin(ctx, input.screenshotPath)
     // Headword audio: multi-source resolution (Commons-first → TTS floor with
     // the user's saved voice), same registry walk for sheet and one-tap.
     val wordResolved: ResolvedAudio? = if (input.includeWordAudio) {
@@ -237,7 +248,7 @@ suspend fun Context.sendWordCard(
         ctx.dispatchSendToAnki(
             deckId = deckId,
             mode = CardMode.WORD,
-            screenshotPath = input.screenshotPath,
+            screenshotPath = pinnedScreenshotPath,
             audioPath = audioFile?.absolutePath,
             legacyFront = { WordAnkiHtmlBuilder.buildFrontHtml(input.word) },
             legacyBack = { imageFilename, audioFilename, _ ->
@@ -277,6 +288,7 @@ suspend fun Context.sendWordCard(
         // Only delete an ephemeral TTS temp file; a cached Commons clip stays
         // in the audio cache for reuse.
         if (wordResolved?.ephemeral != false) audioFile?.delete()
+        AnkiScreenshotPin.release(ctx, pinnedScreenshotPath)
     }
     return result.foldInLocalAudioMisses(
         sentenceMissing = input.includeWordAudio && audioFile == null,
