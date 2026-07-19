@@ -1712,7 +1712,11 @@ class CameraSession(
      *  in flight, filled once [cachedSnapshotTranslations] lands. Never
      *  calls the translator itself. Analysis is halted in FROZEN, so
      *  nothing overwrites the static transform. Safe to call again on the
-     *  Done promotion. */
+     *  Done promotion — each call is its own publication SOURCE (epoch
+     *  advanced atomically with the cache read, the live re-flavor's
+     *  pattern), so a slower earlier repaint (skeleton raster) can never
+     *  land over a faster later one (filled boxes on a cached-translation
+     *  re-snap, flavor double-cycle): its commits fail the epoch check. */
     fun showFrozenOverlays() {
         val ocr: OcrManager.OcrResult?
         val colors: List<Pair<Int, Int>>?
@@ -1726,7 +1730,7 @@ class CameraSession(
             translations = cachedSnapshotTranslations
             auW = cachedAuW
             auH = cachedAuH
-            epoch = displayEpoch.current()
+            epoch = displayEpoch.advance()
         }
         if (ocr == null || colors == null || auW == 0) return
         overlayHost.post { ensureWarpView().applyHomography(Homography.IDENTITY) }
