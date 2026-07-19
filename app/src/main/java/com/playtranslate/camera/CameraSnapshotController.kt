@@ -75,11 +75,13 @@ class CameraSnapshotController(
      *  drag box + confirm bar up). */
     private var cropActive = false
 
-    /** The previous snapshot's frame, retained (not recycled) until the next
-     *  freeze or [release]: pipeline cancellation is cooperative, so the
-     *  recognizer may still be reading the bitmap briefly after a dismissal
-     *  cancels the session — recycling at unfreeze would race it. One
-     *  camera-frame-sized bitmap, bounded. */
+    /** The previous snapshot's frame, retained until the next freeze or
+     *  [release] and then DROPPED for GC — never recycle()d anywhere:
+     *  pipeline cancellation is cooperative, so a cancelled recognizer can
+     *  still be reading the bitmap (ML Kit holds the original through its
+     *  whole pass), and no fixed spacing rule survives a fast X-then-resnap.
+     *  GC frees the pixels once the dead job's own reference dies; the cost
+     *  is one camera-frame bitmap living to the next GC. */
     private var retiredBitmap: Bitmap? = null
 
     /** Mode to restore when the snapshot closes. */
@@ -274,7 +276,7 @@ class CameraSnapshotController(
                 bitmap.recycle()
                 return@requestFreeze
             }
-            retiredBitmap?.recycle()
+            // Dropped for GC, never recycled — see retiredBitmap.
             retiredBitmap = null
             frozenBitmap = bitmap
             freezeFrame.setImageBitmap(bitmap)
@@ -491,8 +493,8 @@ class CameraSnapshotController(
         restoreOrientation()
         freezeFrame.isVisible = false
         freezeFrame.setImageBitmap(null)
-        // Not recycled here — see retiredBitmap.
-        retiredBitmap?.recycle()
+        // The outgoing retiree is dropped for GC, never recycled — see
+        // retiredBitmap.
         retiredBitmap = frozenBitmap
         frozenBitmap = null
         syncControls()
