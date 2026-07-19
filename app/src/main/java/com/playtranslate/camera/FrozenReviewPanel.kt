@@ -21,6 +21,11 @@ import com.playtranslate.ui.OverlayAlert
 import com.playtranslate.ui.TtsAlertTarget
 import com.playtranslate.ui.showAnkiNotInstalledDialog
 
+/** Re-raster hysteresis for the review zoom (the live path's
+ *  RASTER_SCALE_DRIFT): pinching around a midpoint must not re-bake the
+ *  rasters on every settle. */
+private const val RE_RASTER_DRIFT = 1.3f
+
 /**
  * The pipeline a [FrozenReviewPanel] drives: one-shot OCR + translate over a
  * retained still frame. The camera's [CameraSession] snapshot cluster and the
@@ -75,6 +80,22 @@ class FrozenReviewPanel(
     private val tokenScope: OcrTokenScope,
     /** AU→view mapping mode; must match the flow's image scale type. */
     private val fitMode: CameraCoordinates.FitMode,
+    /** The flow's zoom ceiling policy (IMPORT native-capped, CAMERA
+     *  photo-floored) — see [ReviewZoom]. */
+    private val zoomPolicy: ReviewZoom.CeilingPolicy,
+    /** Apply the review zoom to the flow's image view: a full Z·fit matrix,
+     *  or null at fit — null MUST restore the view's declared scale type
+     *  (fitCenter/centerCrop), the byte-identical regression path. */
+    private val setImageTransform: (android.graphics.Matrix?) -> Unit,
+    /** The session's warp-transform seam (null at fit). */
+    private val setOverlayTransform: (DoubleArray?) -> Unit,
+    /** The session's raster-crispness seam (1f at fit). */
+    private val setRenderScaleBoost: (Float) -> Unit,
+    /** Repaint the boxes from the session caches at the current transform +
+     *  boost. The HOST gates on boxes actually being the current
+     *  presentation (the flavor-cycle precedent: an ungated repaint would
+     *  resurrect boxes the user toggled off). */
+    private val repaintOverlays: () -> Unit,
     /** Chrome must re-derive visibility (crop editor took/released the
      *  screen, boxes presentation changed). */
     private val onControlsChanged: () -> Unit,
@@ -99,22 +120,113 @@ class FrozenReviewPanel(
      *  drag box + confirm bar up). */
     private var cropActive = false
 
+    /** The review zoom's state + gesture arbiter. The gesture layer wraps
+     *  the outside-touch stream: lookup at fit, pan/tap-define while
+     *  zoomed, pinch always (up to the policy ceiling). */
+    private val zoom = ReviewZoom(zoomPolicy)
+
     /** Frozen-frame word lookup: tap/drag on the still itself (outside the
      *  sheet) drives the floating-icon lens machinery against the review's
-     *  cached OCR. Gesture-time suppliers keep it current across re-runs. */
+     *  cached OCR. Gesture-time suppliers keep it current across re-runs.
+     *  The zoom transform composes into its line projection AND the
+     *  lens-backdrop projection — the drag stack's "bitmap == screen"
+     *  contract must hold in both zoom states (zoomed taps route through
+     *  this machine too). */
     private val wordLookup = CameraWordLookup(
         activity,
         scene = { backend.lookupScene() },
         frozenBitmap = { bitmap() },
-        renderViewSpace = { bmp, w, h -> renderViewSpaceBackdrop(bmp, w, h) },
+        renderViewSpace = { bmp, w, h -> renderViewSpaceBackdrop(bmp, w, h, zoomMatrix()) },
         hostSize = { hostSize() },
-        hostOrigin = {
-            val loc = IntArray(2)
-            panelHost.getLocationOnScreen(loc)
-            loc[0] to loc[1]
-        },
+        hostOrigin = { hostOrigin() },
         fitMode = fitMode,
+        viewTransform = { zoomMatrix() },
     )
+
+    private val zoomGesture = ReviewZoomGesture(
+        activity,
+        zoom,
+        wordLookup,
+        hostOrigin = { hostOrigin() },
+        onChanged = { onZoomChanged() },
+        onSettled = { onZoomSettled() },
+    )
+
+    /** The raster boost last committed to the session — the settle
+     *  hysteresis baseline (mirrors the live path's RASTER_SCALE_DRIFT). */
+    private var lastRasterBoost = 1f
+
+    private fun hostOrigin(): Pair<Int, Int> {
+        val loc = IntArray(2)
+        panelHost.getLocationOnScreen(loc)
+        return loc[0] to loc[1]
+    }
+
+    /** The current zoom as a view-space Matrix, or null at fit. */
+    private fun zoomMatrix(): android.graphics.Matrix? =
+        if (zoom.isAtFit) null
+        else android.graphics.Matrix().apply {
+            setScale(zoom.zoom, zoom.zoom)
+            postTranslate(zoom.panX, zoom.panY)
+        }
+
+    /** Transform fan-out: every consumer reads the same Z (or null at fit —
+     *  the byte-identical path). */
+    private fun onZoomChanged() {
+        val z = zoomMatrix()
+        if (z == null) {
+            setImageTransform(null)
+            setOverlayTransform(null)
+        } else {
+            val bmp = bitmap()
+            if (bmp != null) {
+                val (w, h) = hostSize()
+                val c = coords(bmp, w, h)
+                setImageTransform(
+                    android.graphics.Matrix().apply {
+                        setScale(c.scale, c.scale)
+                        postTranslate(c.offsetX, c.offsetY)
+                        postConcat(z)
+                    },
+                )
+            }
+            setOverlayTransform(zoom.toHomographyRow())
+        }
+        // The active-region indicator follows the transform in place.
+        val au = currentRegionForIndicator()
+        if (au != null) {
+            val bmp = bitmap()
+            if (bmp != null) {
+                val (w, h) = hostSize()
+                val viewRect = coords(bmp, w, h).auToView(au)
+                z?.let { m ->
+                    val rf = android.graphics.RectF(viewRect)
+                    m.mapRect(rf)
+                    viewRect.set(
+                        Math.round(rf.left), Math.round(rf.top),
+                        Math.round(rf.right), Math.round(rf.bottom),
+                    )
+                }
+                regionUi.updateIndicatorRect(viewRect)
+            }
+        }
+    }
+
+    private fun currentRegionForIndicator(): android.graphics.Rect? =
+        if (cropActive) null else regionAu
+
+    /** Gesture ended: re-raster for crispness when the zoom drifted far
+     *  enough from the last-baked resolution (1.3x hysteresis, the live
+     *  path's drift constant — pinching around a midpoint doesn't re-bake
+     *  every frame). */
+    private fun onZoomSettled() {
+        val target = if (zoom.isAtFit) 1f else zoom.zoom
+        val ratio = if (target > lastRasterBoost) target / lastRasterBoost else lastRasterBoost / target
+        if (ratio < RE_RASTER_DRIFT) return
+        lastRasterBoost = target
+        setRenderScaleBoost(target)
+        repaintOverlays()
+    }
 
     val isCropActive: Boolean get() = cropActive
 
@@ -149,9 +261,11 @@ class FrozenReviewPanel(
         // Leaving the review is the explicit X only — outside taps and
         // drag/fling-downs settle instead of dismissing.
         o.dismissOnGesture = false
-        // Outside gestures near recognised text become frozen-frame word
-        // lookups (tap = definition lens, drag = magnifier flow).
-        o.outsideLookupRouter = { ev -> wordLookup.onOutsideTouch(ev) }
+        // Outside gestures route through the zoom arbiter: lookup at fit
+        // (tap = definition lens, drag = magnifier flow), pan/tap-define
+        // while zoomed, pinch always. With a ceiling of 1 (at-native
+        // content) the arbiter is a pure passthrough to the lookup.
+        o.outsideLookupRouter = { ev -> zoomGesture.onOutsideTouch(ev) }
         o.retranslate = { text -> backend.translateForPanel(text) }
         o.chooseOcr = { prov, _ ->
             // The shared picker's activity form (same one the in-app results
@@ -188,6 +302,11 @@ class FrozenReviewPanel(
         overlay = o
 
         val (w, h) = hostSize()
+        // Bind the zoom to this frame's geometry (ceiling from content vs
+        // viewport) and start at fit with identity fanned out.
+        zoom.configure(frame.width, frame.height, w, h)
+        lastRasterBoost = 1f
+        onZoomChanged()
         // The sheet's frosted body samples a SCREEN-SPACE image of what sits
         // behind it (the capture flow passes the clean screen frame). Project
         // the AU-space frame through the same mapping the image view displays
@@ -248,6 +367,11 @@ class FrozenReviewPanel(
     private fun finishReview() {
         overlay = null
         reviewSession = null
+        // The zoom dies with the episode (the sessions also reset their own
+        // seams at endEpisode/unfreeze — this is the panel's share).
+        zoomGesture.resetToFit()
+        lastRasterBoost = 1f
+        setRenderScaleBoost(1f)
         wordLookup.dismiss()
         // Region + its UI die with the episode (see regionAu).
         if (cropActive) {
@@ -282,6 +406,10 @@ class FrozenReviewPanel(
 
     fun enterCropMode() {
         if (overlay == null || cropActive || bitmap() == null) return
+        // The editor's fraction↔AU math runs at fit — snap back first
+        // (user-decided design: crop precision lives at the fit view).
+        zoomGesture.resetToFit()
+        onZoomSettled()
         cropActive = true
         // The editor replaces both region surfaces: the indicator (it IS the
         // editable version of it) and the panel ("temporarily hide" — the
@@ -387,8 +515,16 @@ class FrozenReviewPanel(
      *  [CameraCoordinates] transform the image view displays it with —
      *  what the user actually sees behind the sheet. Under FIT the
      *  letterbox bars come out black (the projection canvas's default),
-     *  matching the screen. */
-    private fun renderViewSpaceBackdrop(frame: Bitmap, viewW: Int, viewH: Int): Bitmap? {
+     *  matching the screen. [transform] composes the review zoom for the
+     *  word-lens backdrop (bitmap == screen must hold zoomed too); the
+     *  sheet's frost passes null — it is captured at show(), when the zoom
+     *  is always at fit. */
+    private fun renderViewSpaceBackdrop(
+        frame: Bitmap,
+        viewW: Int,
+        viewH: Int,
+        transform: android.graphics.Matrix? = null,
+    ): Bitmap? {
         if (viewW <= 0 || viewH <= 0 || frame.isRecycled) return null
         return try {
             val c = coords(frame, viewW, viewH)
@@ -396,6 +532,7 @@ class FrozenReviewPanel(
             val matrix = android.graphics.Matrix().apply {
                 setScale(c.scale, c.scale)
                 postTranslate(c.offsetX, c.offsetY)
+                transform?.let { postConcat(it) }
             }
             android.graphics.Canvas(out).drawBitmap(
                 frame, matrix,

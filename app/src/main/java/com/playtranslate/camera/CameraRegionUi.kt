@@ -211,7 +211,7 @@ class CameraRegionUi(
 
     // ── Active-region indicator ─────────────────────────────────────────
 
-    private var indicatorView: View? = null
+    private var indicatorView: RegionIndicatorView? = null
     private var removePill: TextView? = null
 
     /** Show the persistent indicator for [viewRect] (view px of the
@@ -256,6 +256,22 @@ class CameraRegionUi(
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
         )
+        val (leftMargin, topMargin) = pillMarginsFor(pill, viewRect)
+        controlsHost.addView(
+            pill,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                this.leftMargin = leftMargin
+                this.topMargin = topMargin
+            },
+        )
+        removePill = pill
+    }
+
+    /** The pill placement rule (centered above the region, below it when
+     *  the top inset leaves no room), as controls-layer margins. */
+    private fun pillMarginsFor(pill: TextView, viewRect: Rect): Pair<Int, Int> {
         val margin = (8 * dp).toInt()
         val padL = controlsHost.paddingLeft
         val padT = controlsHost.paddingTop
@@ -266,16 +282,25 @@ class CameraRegionUi(
         val maxX = (hostW - controlsHost.paddingRight - pill.measuredWidth - margin)
             .coerceAtLeast(padL + margin)
         val screenX = (viewRect.centerX() - pill.measuredWidth / 2).coerceIn(padL + margin, maxX)
-        controlsHost.addView(
-            pill,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
-            ).apply {
-                leftMargin = (screenX - padL).coerceAtLeast(0)
-                topMargin = (screenY - padT).coerceAtLeast(0)
-            },
-        )
-        removePill = pill
+        return (screenX - padL).coerceAtLeast(0) to (screenY - padT).coerceAtLeast(0)
+    }
+
+    /** Move a visible indicator (and its Remove pill) to a new view rect IN
+     *  PLACE — the review zoom re-projects the region on every transform
+     *  change, and an addView/removeView per gesture frame would churn the
+     *  hierarchy. No-op while no indicator is up. */
+    fun updateIndicatorRect(viewRect: Rect) {
+        val v = indicatorView ?: return
+        v.moveTo(viewRect)
+        val pill = removePill ?: return
+        val (leftMargin, topMargin) = pillMarginsFor(pill, viewRect)
+        (pill.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+            if (lp.leftMargin != leftMargin || lp.topMargin != topMargin) {
+                lp.leftMargin = leftMargin
+                lp.topMargin = topMargin
+                pill.layoutParams = lp
+            }
+        }
     }
 
     fun hideIndicator() {
@@ -297,7 +322,15 @@ class CameraRegionUi(
      *  BlurMaskFilter renders on the hardware canvas (minSdk 30); this view
      *  must not be software-layered (full-screen layer cap — see
      *  RegionOverlayController's label shadow note). */
-    private inner class RegionIndicatorView(private val region: Rect) : View(activity) {
+    private inner class RegionIndicatorView(region: Rect) : View(activity) {
+        private val region = Rect(region)
+
+        /** Re-anchor in place (review zoom re-projection). */
+        fun moveTo(r: Rect) {
+            region.set(r)
+            invalidate()
+        }
+
         private val accent = activity.themeColor(R.attr.ptAccent)
         private val dimPaint = Paint().apply {
             color = Color.argb(200, 0, 0, 0)

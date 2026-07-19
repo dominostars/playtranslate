@@ -240,6 +240,23 @@ class CameraSession(
     /** The warp surface; created lazily on main. */
     private var warpView: WarpOverlayView? = null
 
+    /** Review-zoom crispness boost for the FROZEN display — 1f in every
+     *  live mode (gestures only exist while frozen; [unfreeze] resets), so
+     *  the live raster scale is untouched. Written on main at gesture
+     *  settle, read at raster time. */
+    @Volatile
+    private var frozenRenderBoost = 1f
+
+    /** The frozen review zoom's transform seams — see the import session's
+     *  twins. Main thread. */
+    fun setOverlayViewTransform(transform: DoubleArray?) {
+        overlayHost.post { warpView?.viewTransform = transform }
+    }
+
+    fun setFrozenRenderBoost(boost: Float) {
+        frozenRenderBoost = boost
+    }
+
     // Last-shown raster state (MAIN THREAD only): feeds the dirty diff and
     // the crispness re-raster on scale drift.
     private var lastShownBoxes: List<TextBox>? = null
@@ -1093,7 +1110,10 @@ class CameraSession(
                 verticalTextStackable = stackableTargetScript(prefs.targetLang),
                 verticalGrowEnabled = prefs.verticalTextGrow,
             )
-            val base = baseRenderScale(auW, auH)
+            // frozenRenderBoost: the review zoom's crispness factor — 1f in
+            // every live mode (gestures only exist while FROZEN; unfreeze
+            // resets it), so the live path's raster scale is untouched.
+            val base = baseRenderScale(auW, auH) * frozenRenderBoost
             // Dirty diff against the last show at the same keyframe size —
             // a skeleton→filled swap re-renders only the boxes that changed.
             val previous = if (lastShownAuW == auW && lastShownAuH == auH) lastShownRegions else null
@@ -1307,6 +1327,12 @@ class CameraSession(
         // outlived the cooperative cancel must not write snapshot caches
         // into the live/paused display state.
         snapshotGeneration.incrementAndGet()
+        // The review zoom dies with the snapshot — AUTHORITATIVE reset: the
+        // warp view serves the LIVE path next, and a leftover view
+        // transform would warp live boxes (the panel's dismiss funnel also
+        // resets, but this is the guarantee).
+        frozenRenderBoost = 1f
+        overlayHost.post { warpView?.viewTransform = null }
         mode = to
         wipeDisplay(purgeAnchorCache = false)
     }

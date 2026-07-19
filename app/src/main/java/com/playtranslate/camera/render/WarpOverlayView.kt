@@ -29,6 +29,21 @@ class WarpOverlayView(context: Context) : View(context) {
      *  install; not expected to change per-frame. */
     var fitMode: CameraCoordinates.FitMode = CameraCoordinates.FitMode.FILL
 
+    /** Optional view-space transform (the review pinch-zoom), pre-multiplied
+     *  onto the fit mapping: `viewFromAu' = Z · viewFromAu`. Null = identity
+     *  = byte-identical to a build without zoom. The setter re-derives the
+     *  matrices from the last-applied homographies immediately, so a zoom
+     *  change repaints without waiting for the next region install.
+     *  Deliberately NOT cleared by [clearRegions] — a boxes toggle mid-zoom
+     *  must keep the zoom; only the host's explicit resets (episode
+     *  boundaries, camera unfreeze) null it. Main thread. */
+    var viewTransform: DoubleArray? = null
+        set(value) {
+            field = value
+            regionsDirty = true
+            applyHomography(lastHAu, lastPerRegionAu)
+        }
+
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
 
     private var regions: List<RasterRegion> = emptyList()
@@ -111,13 +126,15 @@ class WarpOverlayView(context: Context) : View(context) {
             return
         }
         val coords = CameraCoordinates(auWidth, auHeight, width, height, fitMode)
-        // viewFromAU as a homography (uniform scale + offset).
+        // viewFromAU as a homography (uniform scale + offset), with the
+        // optional review-zoom transform pre-multiplied.
         val s = coords.scale.toDouble()
-        val viewFromAu = doubleArrayOf(
+        var viewFromAu = doubleArrayOf(
             s, 0.0, coords.offsetX.toDouble(),
             0.0, s, coords.offsetY.toDouble(),
             0.0, 0.0, 1.0,
         )
+        viewTransform?.let { viewFromAu = Homography.multiply(it, viewFromAu) }
         val combinedGlobal = Homography.multiply(viewFromAu, hAu)
         // Cache per-track-key compositions — regions sharing a key share one.
         val combinedByKey = HashMap<Int, DoubleArray>(perRegionAu.size)

@@ -65,6 +65,12 @@ class CameraWordLookup(
      *  centerCrop freeze frame, FIT for the import review's letterboxed
      *  image) or line hit-tests land beside the text. */
     private val fitMode: CameraCoordinates.FitMode = CameraCoordinates.FitMode.FILL,
+    /** The review zoom's view transform at gesture time, or null at fit
+     *  (the default and the pre-zoom behavior). Composed AFTER the fit
+     *  projection so line hit-tests land on the zoomed glyph positions —
+     *  the zoomed TAP path routes through this machine; the drag-magnifier
+     *  itself only runs at fit. */
+    private val viewTransform: () -> android.graphics.Matrix? = { null },
 ) {
     private val magnifier = MagnifierLens(
         activity, activity.windowManager, Display.DEFAULT_DISPLAY,
@@ -119,10 +125,21 @@ class CameraWordLookup(
                 val (ox, oy) = hostOrigin()
                 if (ox != 0 || oy != 0) return false
                 val coords = CameraCoordinates(scene.auWidth, scene.auHeight, w, h, fitMode)
+                val zoomMatrix = viewTransform()
+                fun project(r: Rect): Rect {
+                    val v = coords.auToView(r)
+                    val z = zoomMatrix ?: return v
+                    val rf = android.graphics.RectF(v)
+                    z.mapRect(rf)
+                    return Rect(
+                        Math.round(rf.left), Math.round(rf.top),
+                        Math.round(rf.right), Math.round(rf.bottom),
+                    )
+                }
                 val viewLines = scene.lines.map { line ->
                     line.copy(
-                        bounds = coords.auToView(line.bounds),
-                        symbols = line.symbols.map { s -> s.copy(bounds = coords.auToView(s.bounds)) },
+                        bounds = project(line.bounds),
+                        symbols = line.symbols.map { s -> s.copy(bounds = project(s.bounds)) },
                     )
                 }
                 // No near-text gate on the DOWN: a hold or drag ANYWHERE on
@@ -141,11 +158,29 @@ class CameraWordLookup(
                 handler.postDelayed(holdReveal, HOLD_REVEAL_MS)
                 return true
             }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                // A second finger is a pinch (or a pinch ATTEMPT on a
+                // surface with no zoom range) — never a lookup. Cancel the
+                // flow outright: on no-zoom content a lens appearing under
+                // a pinch reads as broken zoom, not as a feature.
+                if (!tracking) return false
+                endTracking()
+                controller.cancelDrag()
+                return true
+            }
             MotionEvent.ACTION_MOVE -> {
                 if (!tracking) return false
                 if (!revealed &&
-                    (abs(ev.rawX - downX) > touchSlop || abs(ev.rawY - downY) > touchSlop)
+                    (abs(ev.rawX - downX) > touchSlop || abs(ev.rawY - downY) > touchSlop) &&
+                    ev.eventTime - ev.downTime >= HOLD_REVEAL_MS
                 ) {
+                    // Slop alone used to reveal immediately — but a pinch's
+                    // first finger crosses slop in milliseconds, before the
+                    // second finger has landed, flashing the lens under a
+                    // zoom gesture. The reveal now waits out the same grace
+                    // the hold path uses; a genuine drag just sees its lens
+                    // ~a tenth of a second later, and the POINTER_DOWN
+                    // branch above cancels quietly inside the window.
                     reveal()
                 }
                 controller.onDragMove(ev.rawX, ev.rawY)
@@ -215,8 +250,12 @@ class CameraWordLookup(
     }
 
     private companion object {
-        /** Hold-still delay before the lens reveals without crossing slop —
-         *  comfortably under the controller's 1 s dwell timer. */
+        /** The lens-reveal floor: the hold-still delay AND the earliest a
+         *  slop-crossing drag may reveal. One window for both paths — it
+         *  doubles as the multi-touch grace period, so a pinch's second
+         *  finger (which lands well inside it) cancels the flow before
+         *  anything shows. Comfortably under the controller's 1 s dwell
+         *  timer; taps are unaffected (they resolve at release). */
         const val HOLD_REVEAL_MS = 160L
 
         /** Gesture-claim slack around line bounds (see [nearText]). */

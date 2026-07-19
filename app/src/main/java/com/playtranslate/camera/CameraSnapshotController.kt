@@ -145,6 +145,26 @@ class CameraSnapshotController(
         },
         tokenScope = OcrTokenScope.CAMERA,
         fitMode = CameraCoordinates.FitMode.FILL,
+        zoomPolicy = ReviewZoom.CeilingPolicy.CAMERA,
+        setImageTransform = { m ->
+            if (m == null) {
+                // The regression path: at fit the freeze frame runs its
+                // DECLARED centerCrop, byte-identical to a build without
+                // zoom. (Post-unfreeze the view is hidden and re-set fresh
+                // at the next freeze.)
+                freezeFrame.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+            } else {
+                freezeFrame.scaleType = android.widget.ImageView.ScaleType.MATRIX
+                freezeFrame.imageMatrix = m
+            }
+        },
+        setOverlayTransform = { session.setOverlayViewTransform(it) },
+        setRenderScaleBoost = { session.setFrozenRenderBoost(it) },
+        repaintOverlays = {
+            // Gated repaint (the flavor-cycle precedent): only when boxes
+            // own the frozen frame.
+            if (session.hasLiveOverlays()) session.showFrozenOverlays()
+        },
         onControlsChanged = { syncControls() },
         // A not-downloaded OCR pick navigates to the download screen; the
         // snapshot closes (the app navigates away).

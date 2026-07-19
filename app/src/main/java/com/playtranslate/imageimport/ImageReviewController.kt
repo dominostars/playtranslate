@@ -112,6 +112,25 @@ class ImageReviewController(
         },
         tokenScope = OcrTokenScope.IMPORT,
         fitMode = CameraCoordinates.FitMode.FIT,
+        zoomPolicy = com.playtranslate.camera.ReviewZoom.CeilingPolicy.IMPORT,
+        setImageTransform = { m ->
+            if (m == null) {
+                // The regression path: at fit the view runs its DECLARED
+                // scale type, byte-identical to a build without zoom.
+                imageFrame.scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            } else {
+                imageFrame.scaleType = android.widget.ImageView.ScaleType.MATRIX
+                imageFrame.imageMatrix = m
+            }
+        },
+        setOverlayTransform = { session.setOverlayViewTransform(it) },
+        setRenderScaleBoost = { session.setOverlayRenderBoost(it) },
+        repaintOverlays = {
+            // Gated repaint (the flavor-cycle precedent): only when boxes
+            // own the frame — an ungated showOverlays would resurrect boxes
+            // the user toggled off.
+            if (session.hasVisibleOverlays()) session.showOverlays()
+        },
         onControlsChanged = { syncControls() },
         // A not-downloaded OCR pick navigates to the download screen; the
         // review stays behind it and the activity's onResume langKey diff

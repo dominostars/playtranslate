@@ -93,6 +93,24 @@ class ImageImportSession(
 
     private var warpView: WarpOverlayView? = null
 
+    /** Review-zoom crispness boost multiplied into the raster resolution —
+     *  1f at fit (byte-identical rendering). Written on main at gesture
+     *  settle, read at raster time so every repaint (settle, Done
+     *  promotion, flavor cycle) bakes at the same effective scale. */
+    @Volatile
+    private var overlayRenderBoost = 1f
+
+    /** The review zoom's transform seams: apparent size via the warp view's
+     *  pre-multiplied transform, crispness via the raster boost. Main
+     *  thread. */
+    fun setOverlayViewTransform(transform: DoubleArray?) {
+        overlayHost.post { warpView?.viewTransform = transform }
+    }
+
+    fun setOverlayRenderBoost(boost: Float) {
+        overlayRenderBoost = boost
+    }
+
     private val furiganaPaint by lazy {
         TextPaint().apply {
             typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
@@ -105,6 +123,7 @@ class ImageImportSession(
      *  supersede any zombie run from the previous episode. */
     fun startEpisode() {
         slowOcrFired = false
+        overlayRenderBoost = 1f
         generation.incrementAndGet()
     }
 
@@ -115,6 +134,8 @@ class ImageImportSession(
      *  dismissal saves no restore state, so nothing will read it again. */
     fun endEpisode() {
         generation.incrementAndGet()
+        overlayRenderBoost = 1f
+        setOverlayViewTransform(null)
         val retired: String?
         synchronized(stateLock) {
             retired = cachedScreenshotPath
@@ -441,7 +462,9 @@ class ImageImportSession(
             val regions = rasterizer.rasterize(
                 boxes, auW, auH,
                 trackKeys = boxes.map { -1 },
-                renderScale = baseRenderScale(auW, auH),
+                // Boost read at raster time (not captured earlier) so a
+                // settle repaint and a Done promotion bake identically.
+                renderScale = baseRenderScale(auW, auH) * overlayRenderBoost,
             )
             // The rasterize above runs view machinery synchronously, but a
             // cycle on another thread may have advanced the epoch meanwhile —
