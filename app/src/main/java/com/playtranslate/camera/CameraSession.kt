@@ -791,18 +791,36 @@ class CameraSession(
          *  (a full-frame document is exactly what the edge gate would gut),
          *  keeping only the center-out priority order. */
         dropEdgeClipped: Boolean = true,
-        /** Snapshot region (AU px): detections whose center falls outside are
-         *  dropped before recognition. A recognition-cost saver ONLY —
-         *  single-model engines (ML Kit) ignore the detect/recognize seam
-         *  entirely, so the correctness gate is the group-level region filter
-         *  in [runSnapshotCycle]. */
+        /** Snapshot region (AU px, in the [clipFrameW]x[clipFrameH] frame):
+         *  detections whose center falls outside are dropped before
+         *  recognition. A recognition-cost saver ONLY — single-model engines
+         *  (ML Kit) ignore the detect/recognize seam entirely, so the
+         *  correctness gate is the group-level region filter in
+         *  [runSnapshotCycle]. */
         clipTo: android.graphics.Rect? = null,
+        /** The frame [clipTo] is expressed in. The filter itself runs in the
+         *  PROCESSED image's space — the OCR recipe scales common camera
+         *  frames — so the region is projected into the filter's space per
+         *  invocation; comparing spaces raw silently shrank the region's
+         *  effective coverage toward the top-left by the scale factor. */
+        clipFrameW: Int = 0,
+        clipFrameH: Int = 0,
     ): com.playtranslate.ocr.core.RegionPreFilter {
         val translating = dropEdgeClipped &&
             SourceLanguageProfiles[prefs.sourceLangId].translationCode != prefs.targetLang
         return com.playtranslate.ocr.core.RegionPreFilter { regions, w, h ->
-            val inRegion = if (clipTo == null) regions else regions.filter { r ->
-                clipTo.contains(r.box.bounds.centerX(), r.box.bounds.centerY())
+            val inRegion = if (clipTo == null) regions else {
+                val sx = if (clipFrameW > 0) w.toFloat() / clipFrameW else 1f
+                val sy = if (clipFrameH > 0) h.toFloat() / clipFrameH else 1f
+                val clip = android.graphics.Rect(
+                    (clipTo.left * sx).toInt(),
+                    (clipTo.top * sy).toInt(),
+                    (clipTo.right * sx).toInt(),
+                    (clipTo.bottom * sy).toInt(),
+                )
+                regions.filter { r ->
+                    clip.contains(r.box.bounds.centerX(), r.box.bounds.centerY())
+                }
             }
             val mx = (w * edgeMarginFrac).toInt()
             val my = (h * edgeMarginFrac).toInt()
@@ -1501,7 +1519,10 @@ class CameraSession(
             frozen,
             sourceLang,
             screenshotWidth = auW,
-            regionPreFilter = cameraRegionPreFilter(dropEdgeClipped = false, clipTo = regionAu),
+            regionPreFilter = cameraRegionPreFilter(
+                dropEdgeClipped = false, clipTo = regionAu,
+                clipFrameW = auW, clipFrameH = auH,
+            ),
             engineTokenOverride = prefs.cameraOcrBackendToken(srcId),
         )
         // The region gate proper lives HERE, at group level, not in the
