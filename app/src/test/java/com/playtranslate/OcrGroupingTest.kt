@@ -970,4 +970,112 @@ class OcrGroupingTest {
         )
         assertEquals(listOf(0, 2, 1), LayoutAnalyzer.readingOrderIndices(boxes, TextOrientation.HORIZONTAL))
     }
+
+    // ── document-pitch prior (file-import documents) ─────────────────────
+    //
+    // Geometry lifted verbatim from the Thor japanese-test.pdf DetectionLog
+    // (2026-07-19): a chapter heading over two paragraphs of airy
+    // (line-height 2) body text. Ink gaps run ~1.0× the glyph-tight line
+    // height — inside the corroborated band — and bare CJK line endings
+    // give no continuation cue, so without the prior the opening pair of
+    // every paragraph starves on pitch=n/a and the page shatters line by
+    // line.
+
+    private val pageHeading = box(191, 250, 842, 315)          // 第一章…
+    private val pagePara1 = listOf(
+        box(192, 441, 1589, 483),    // むかしむかし、…名前は
+        box(188, 525, 1587, 568),    // 健太といい、…夢見て
+        box(194, 614, 374, 650),     // いました。(narrow tail)
+    )
+    private val pagePara2 = listOf(
+        box(196, 737, 1611, 779),    // ある朝、村の長老が…
+        box(193, 825, 1281, 865),    // っているという。…
+    )
+    private val documentPage = listOf(pageHeading) + pagePara1 + pagePara2
+
+    @Test
+    fun documentPitch_dominantRhythm_ignoresParagraphGaps() {
+        // Raw row steps: 180 (heading gap), 84, 86, 126 (paragraph gap), 87.
+        // The out-of-window boundary steps must not shape the result; the
+        // surviving cluster {84, 86, 87} carries the page.
+        val pitch = LayoutAnalyzer.documentPitch(documentPage, TextOrientation.HORIZONTAL)
+        assertTrue("expected page pitch near 86, got $pitch", pitch != null && pitch in 84..87)
+    }
+
+    @Test
+    fun documentPitch_sparsePage_returnsNull() {
+        // Two rows give a single step — no measurable rhythm to borrow.
+        assertNull(LayoutAnalyzer.documentPitch(pagePara1.take(2), TextOrientation.HORIZONTAL))
+    }
+
+    @Test
+    fun documentPrior_airyParagraphs_groupWholePage() {
+        val groups = groupBoxesOnePass(
+            boxes = documentPage,
+            alignLefts = documentPage.map { it.left },
+            orientation = TextOrientation.HORIZONTAL,
+            documentPitchPrior = true,
+        )
+        // Heading alone (above-band); each paragraph whole. The first pair of
+        // each paragraph merges on the page pitch; later lines then ride the
+        // group's own established pitch.
+        assertEquals(listOf(listOf(0), listOf(1, 2, 3), listOf(4, 5)), groups)
+    }
+
+    @Test
+    fun withoutDocumentPrior_airyParagraphs_shatter() {
+        // Same geometry, prior off (game/live surfaces): the band refuses
+        // every pair — this pins the specimen the prior exists to fix AND
+        // proves the flag defaults to prior-free behavior.
+        val groups = groupBoxesOnePass(
+            boxes = documentPage,
+            alignLefts = documentPage.map { it.left },
+            orientation = TextOrientation.HORIZONTAL,
+        )
+        assertEquals(6, groups.size)
+    }
+
+    @Test
+    fun documentPrior_offRhythmInBandStep_staysSplit() {
+        // Uniform 76px rhythm establishes the prior; the third row sits at a
+        // 91px step — still inside the band (gap 51 < 1.3×40) but off the
+        // page's rhythm (±11px tolerance): a tight paragraph boundary. It
+        // must stay split, and the multi-row group above it must NOT borrow
+        // the page pitch after its own established pitch already refused.
+        val boxes = listOf(
+            box(100, 0, 900, 40),
+            box(100, 76, 900, 116),
+            box(100, 167, 900, 207),     // 91px step from the row above
+            box(100, 243, 900, 283),
+            box(100, 319, 900, 359),
+        )
+        val groups = groupBoxesOnePass(
+            boxes = boxes,
+            alignLefts = boxes.map { it.left },
+            orientation = TextOrientation.HORIZONTAL,
+            documentPitchPrior = true,
+        )
+        assertEquals(listOf(listOf(0, 1), listOf(2, 3, 4)), groups)
+    }
+
+    @Test
+    fun documentPrior_verticalColumns_bootstrapMerge() {
+        // Vertical CJK mirror: columns read right-to-left at a uniform 76px
+        // column pitch, inter-column ink gap 36px = 0.9× the 40px column
+        // width — the band's lower edge. Four columns establish the page
+        // rhythm; the opening pair merges on it.
+        val boxes = listOf(
+            box(400, 0, 440, 400),
+            box(324, 0, 364, 400),
+            box(248, 0, 288, 400),
+            box(172, 0, 212, 400),
+        )
+        val groups = groupBoxesOnePass(
+            boxes = boxes,
+            alignLefts = boxes.map { null },
+            orientation = TextOrientation.VERTICAL,
+            documentPitchPrior = true,
+        )
+        assertEquals(listOf(listOf(0, 1, 2, 3)), groups)
+    }
 }

@@ -52,6 +52,7 @@ object OcrPipeline {
         logGrouping: Boolean,
         refineWithMangaOcr: Boolean = false,
         regionPreFilter: com.playtranslate.ocr.core.RegionPreFilter? = null,
+        documentLayoutBias: Boolean = false,
     ): Output? = withContext(Dispatchers.Default) {
         // Run the whole pass OFF the main thread: preprocessing, the engine's
         // inference, and layout are all CPU-bound. The capture coroutine is
@@ -85,6 +86,7 @@ object OcrPipeline {
                 sourceLang = sourceLang,
                 screenshotWidthInRegionSpace = screenshotWidth * scaleFactor,
                 logDecisions = logGrouping,
+                documentPitchPrior = documentLayoutBias,
             )
             if (groups.isEmpty()) return@withContext null
             // Optional manga-ocr refinement, post-layout so both entry points share it.

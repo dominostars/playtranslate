@@ -31,8 +31,8 @@ object UprightImageDecoder {
         data class Failure(val reason: String?) : Result()
     }
 
-    fun decode(ctx: Context, uri: Uri): Result =
-        decodeSource("$uri") { ImageDecoder.createSource(ctx.contentResolver, uri) }
+    fun decode(ctx: Context, uri: Uri, cap: Int = MAX_DIMENSION_PX): Result =
+        decodeSource("$uri", cap) { ImageDecoder.createSource(ctx.contentResolver, uri) }
 
     /** File-source decode — the process-death restore path, which re-reads
      *  the review's own cache copy instead of the original content URI

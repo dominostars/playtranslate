@@ -783,10 +783,26 @@ class CaptureResultOverlay(
      *  Failed/NoText. Region re-runs deliberately do NOT call this: their
      *  boxes stay up and swap in place. A collapsed-start flow re-parks via
      *  the re-run's Translating handler, with fresh skeletons when the boxes
-     *  toggle is on — the full first-snapshot arc. */
-    fun prepareForSettingsRefresh() {
+     *  toggle is on — the full first-snapshot arc.
+     *
+     *  [preservePosture] (the paged import's CACHED page flips): the new
+     *  scene publishes straight to Done with no loading phase worth
+     *  reading, so a parked sliver stays parked instead of bouncing
+     *  open-and-closed. */
+    fun prepareForSettingsRefresh(preservePosture: Boolean = false) {
         hideChips()
-        if (sliverMode) expandFromSliver()
+        if (sliverMode && !preservePosture) expandFromSliver()
+    }
+
+    /** Persist the LIVE panel posture. Page switches in the paged import
+     *  are posture boundaries exactly like dismissals ("it opens how you
+     *  left it") — but the panel survives them, so the dismissal-time
+     *  record never runs. Same presented-result gate as [dismiss]: a
+     *  loading or failed state must not overwrite the user's real choice. */
+    fun persistPosture() {
+        if (lastResult != null && scroll.visibility == View.VISIBLE) {
+            presentationPrefs.startCollapsed = sliverMode
+        }
     }
 
     /** Re-show entry point for the controller's stash-and-rebind path: set up the

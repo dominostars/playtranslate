@@ -201,6 +201,7 @@ class ImageReviewController(
         }
         source?.closeAsync()
         source = document
+        session.documentLayoutBias = documentLayoutBiasFor(document)
         pageResults.clear()
         pageIndex = 0
         pageSwitchInFlight = false
@@ -237,7 +238,11 @@ class ImageReviewController(
      *  either republishes from the cache (instant, skeleton-free) or runs
      *  the pipeline behind the flip dwell. */
     private fun showPage(n: Int, bmp: Bitmap) {
-        panel.prepareForSceneReplacement()
+        val cached = pageResults.get(n)
+        // Cached pages publish straight to Done — a parked sliver stays
+        // parked; uncached pages show the loading arc and re-park via the
+        // Translating handler when the user's posture is collapsed.
+        panel.prepareForSceneReplacement(willShowLoading = cached == null)
         retiredBitmap = currentBitmap
         currentBitmap = bmp
         imageFrame.setImageBitmap(bmp)
@@ -246,7 +251,6 @@ class ImageReviewController(
         session.endEpisode()
         pageIndex = n
         onPageStateChanged()
-        val cached = pageResults.get(n)
         if (cached != null) {
             panel.observeSession(session.publishScene(bmp, cached))
         } else {

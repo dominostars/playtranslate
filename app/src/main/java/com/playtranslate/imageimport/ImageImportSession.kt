@@ -111,6 +111,14 @@ class ImageImportSession(
     @Volatile
     private var slowOcrFired = false
 
+    /** Whether OCR grouping may use the document-layout prior (page-rhythm
+     *  bootstrap in the ambiguous gap band). Set by the controller from the
+     *  SOURCE TYPE via [documentLayoutBiasFor] — declared documents (PDF /
+     *  CBZ / multi-image pages) only; a lone imported image is as likely a
+     *  game screenshot and stays prior-free (2026-07-19 review finding).
+     *  Defaults off so restore and any unwired path are screenshot-safe. */
+    var documentLayoutBias = false
+
     private var warpView: WarpOverlayView? = null
 
     /** Review-zoom crispness boost multiplied into the raster resolution —
@@ -352,6 +360,10 @@ class ImageImportSession(
                     clipFrameW = auW, clipFrameH = auH, tag = TAG,
                 ),
                 engineTokenOverride = importToken,
+                // Declared documents only (see the property's kdoc): PDFs
+                // and page-sets get the page-rhythm grouping prior; a lone
+                // imported screenshot must not.
+                documentLayoutBias = documentLayoutBias,
             )
         } finally {
             slowTimer?.cancel()

@@ -370,10 +370,14 @@ class FrozenReviewPanel(
     /** The current scene is being REPLACED by another page of the same
      *  document: the panel survives, but every scene-scoped surface resets —
      *  zoom to fit, region + indicator cleared (a rect drawn on page 3 would
-     *  silently filter page 4), lookup lens down, presentation back to its
-     *  loading arc. The caller wipes the session and starts the new page's
-     *  run/republish. */
-    fun prepareForSceneReplacement() {
+     *  silently filter page 4), lookup lens down. The user's LIVE panel
+     *  posture persists first (a page switch is a posture boundary like a
+     *  dismissal — collapse the panel on page 3 and page 4 honors it via
+     *  the Translating re-park). [willShowLoading] = false for CACHED pages
+     *  (instant Done): the sliver stays parked instead of bouncing open for
+     *  a loading phase that doesn't exist. The caller wipes the session and
+     *  starts the new page's run/republish. */
+    fun prepareForSceneReplacement(willShowLoading: Boolean = true) {
         if (overlay == null) return
         zoomGesture.resetToFit()
         onZoomSettled()
@@ -386,7 +390,8 @@ class FrozenReviewPanel(
         }
         regionAu = null
         regionUi.hideIndicator()
-        overlay?.prepareForSettingsRefresh()
+        overlay?.persistPosture()
+        overlay?.prepareForSettingsRefresh(preservePosture = !willShowLoading)
     }
 
     /** X or system back: route through the panel's dismiss so every exit

@@ -75,4 +75,13 @@ class OpenPageSourceTest {
         // branch fails its own way; the point is the routing.
         assertTrue(result is OpenResult.Failure)
     }
+
+    @Test fun documentLayoutBias_singleImageOff_declaredDocumentsOn() {
+        // 2026-07-19 review finding: a lone imported image is as likely a
+        // game screenshot as a document page — the page-rhythm grouping
+        // prior must stay off for it, and on only for declared documents.
+        val bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+        assertEquals(false, documentLayoutBiasFor(ImagePageSource(bitmap)))
+        assertEquals(true, documentLayoutBiasFor(MultiImagePageSource(ctx, emptyList())))
+    }
 }

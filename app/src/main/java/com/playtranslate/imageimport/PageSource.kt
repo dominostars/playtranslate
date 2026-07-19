@@ -57,6 +57,37 @@ class ImagePageSource(bitmap: Bitmap) : PageSource {
     }
 }
 
+/** A multi-selection of images reviewed as one document: page N = the Nth
+ *  picked URI, decoded on demand (pickers grant reads for the activity's
+ *  lifetime; nothing is copied). Selection order IS page order. The
+ *  activity rejects multi-selections containing a POSITIVELY identified
+ *  document (see [multiSelectionRejects]) before constructing this;
+ *  unknown-metadata picks still reach the per-page decode attempt, whose
+ *  failure surfaces as that page's decode toast. Nothing to close (no
+ *  restore across process death, like every document). */
+class MultiImagePageSource(
+    context: Context,
+    private val uris: List<Uri>,
+) : PageSource {
+    private val appContext = context.applicationContext
+
+    override val pageCount: Int get() = uris.size
+
+    override fun renderPage(index: Int): Bitmap? = decodeAt(index, UprightImageDecoder.MAX_DIMENSION_PX)
+
+    override fun renderThumb(index: Int, maxDim: Int): Bitmap? = decodeAt(index, maxDim)
+
+    private fun decodeAt(index: Int, cap: Int): Bitmap? {
+        val uri = uris.getOrNull(index) ?: return null
+        return when (val r = UprightImageDecoder.decode(appContext, uri, cap)) {
+            is UprightImageDecoder.Result.Success -> r.bitmap
+            is UprightImageDecoder.Result.Failure -> null
+        }
+    }
+
+    override fun close() = Unit
+}
+
 /** Close on a worker thread. A [PdfPageSource]'s close contends for the
  *  render mutex — an in-flight page render would stall the MAIN thread for
  *  its remainder if close ran there — and teardown paths (review dismissal,
@@ -73,7 +104,7 @@ sealed class OpenResult {
     class Ready(val source: PageSource) : OpenResult()
     class Failure(val reason: FailureReason) : OpenResult()
 
-    enum class FailureReason { UNSUPPORTED, PASSWORD_PROTECTED, CORRUPT, EMPTY }
+    enum class FailureReason { UNSUPPORTED, PASSWORD_PROTECTED, CORRUPT, EMPTY, MIXED_SELECTION }
 }
 
 /** What a mime/filename pair routes to — pure, JVM-tested. */
@@ -98,6 +129,24 @@ fun classifySource(mime: String?, fileName: String?): SourceKind {
         else -> SourceKind.UNKNOWN
     }
 }
+
+/** Multi-selection admission: several picks review as images-as-pages, so a
+ *  URI POSITIVELY identified as a document (PDF/archive) cannot participate
+ *  — it would reach the image decoder and fail obscurely (or poison page
+ *  navigation). UNKNOWN stays admitted: the decode-first floor (metadata
+ *  may redirect, never reject) holds for multi-selections too, so an
+ *  octet-stream image from a sloppy provider keeps working. Pure —
+ *  JVM-tested. */
+fun multiSelectionRejects(kinds: List<SourceKind>): Boolean =
+    kinds.any { it == SourceKind.PDF || it == SourceKind.ARCHIVE }
+
+/** Document-layout bias admission (2026-07-19 review finding): only sources
+ *  with DECLARED document structure (a PDF, a comic archive, a multi-image
+ *  selection reviewed as pages) enable the page-rhythm grouping prior. A
+ *  lone image is as likely a game screenshot as a document page, and the
+ *  prior's menu-merge residue is priced for documents — single images stay
+ *  on the prior-free path. Pure — JVM-tested. */
+fun documentLayoutBiasFor(source: PageSource): Boolean = source !is ImagePageSource
 
 /**
  * Open [uri] as a paged source. Blocking (decode / copy / renderer setup) —
@@ -147,7 +196,7 @@ fun openPageSource(
  *  lastPathSegment is typically an OPAQUE document id (no extension) — the
  *  provider's DISPLAY_NAME is the real name; the raw segment remains the
  *  fallback for file:// URIs and unqueryable providers. */
-private fun displayNameOf(ctx: Context, uri: Uri): String? {
+internal fun displayNameOf(ctx: Context, uri: Uri): String? {
     runCatching {
         ctx.contentResolver.query(
             uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null,

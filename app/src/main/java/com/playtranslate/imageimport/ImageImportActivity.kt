@@ -77,14 +77,19 @@ class ImageImportActivity : AppCompatActivity() {
      *  paused. */
     private var sessionLangKey: String? = null
 
+    // Multi-select on both pickers: N picks review as an N-page document
+    // (selection order = page order); a single pick keeps the full
+    // image/PDF/CBZ routing. Both contracts return an EMPTY list on cancel.
+    // PickMultipleVisualMedia's no-arg ctor uses the platform's own
+    // selection limit.
     private val pickPhoto =
-        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-            uri?.let(::loadFromUri)
+        registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+            if (uris.isNotEmpty()) loadFromUris(uris)
         }
 
     private val pickFile =
-        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            uri?.let(::loadFromUri)
+        registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+            if (uris.isNotEmpty()) loadFromUris(uris)
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -321,6 +326,31 @@ class ImageImportActivity : AppCompatActivity() {
     private fun loadFromUri(uri: Uri, declaredMime: String? = null) =
         loadFrom { openPageSource(this, uri, declaredMime) }
 
+    /** Multi-selection: one pick routes normally (image/PDF/CBZ); several
+     *  review as an images-as-pages document, after rejecting selections
+     *  that contain a positively identified document (the file picker
+     *  advertises PDF/CBZ for the SINGLE-pick path, so a user can
+     *  multi-select them; images-as-pages would feed them to the image
+     *  decoder and fail obscurely). Unknown-metadata picks pass through to
+     *  the per-page decode attempt (decode-first floor). */
+    private fun loadFromUris(uris: List<Uri>) {
+        if (uris.size == 1) {
+            loadFromUri(uris[0])
+        } else {
+            loadFrom {
+                val kinds = uris.map { uri ->
+                    val mime = runCatching { contentResolver.getType(uri) }.getOrNull()
+                    classifySource(mime, displayNameOf(this, uri))
+                }
+                if (multiSelectionRejects(kinds)) {
+                    OpenResult.Failure(OpenResult.FailureReason.MIXED_SELECTION)
+                } else {
+                    OpenResult.Ready(MultiImagePageSource(this, uris))
+                }
+            }
+        }
+    }
+
     /** Process-death restore: re-decode the review's own saved frame file
      *  (single-image reviews only — documents are not retained across
      *  process death by design; the user re-picks). A purged or swept file
@@ -399,6 +429,7 @@ class ImageImportActivity : AppCompatActivity() {
         OpenResult.FailureReason.UNSUPPORTED -> R.string.image_import_unsupported
         OpenResult.FailureReason.PASSWORD_PROTECTED -> R.string.image_import_password_protected
         OpenResult.FailureReason.EMPTY -> R.string.image_import_empty
+        OpenResult.FailureReason.MIXED_SELECTION -> R.string.image_import_mixed_selection
         else -> R.string.image_import_decode_failed
     }
 

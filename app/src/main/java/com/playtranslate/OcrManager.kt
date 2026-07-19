@@ -199,6 +199,12 @@ class OcrManager private constructor() {
         /** Caller-scoped OCR selection token (the camera tool's per-flow engine
          *  choice) resolved in place of the stored global one; null = global. */
         engineTokenOverride: String? = null,
+        /** Document layout bias: grouping may borrow the page's dominant line
+         *  rhythm as bootstrap evidence in the ambiguous gap band (airy
+         *  document leading otherwise starves there — see
+         *  LayoutAnalyzer.documentPitch). Game/live surfaces leave this off:
+         *  menus are rhythmic too, and the band's refusal protects them. */
+        documentLayoutBias: Boolean = false,
     ): OcrResult? {
         val output = OcrPipeline.run(
             engineProvider = { registry.engineFor(sourceLang, engineTokenOverride) },
@@ -210,6 +216,7 @@ class OcrManager private constructor() {
             logGrouping = debugLogGroupingEnabled,
             refineWithMangaOcr = shouldRefineMangaOcr(sourceLang),
             regionPreFilter = regionPreFilter,
+            documentLayoutBias = documentLayoutBias,
         ) ?: return null
 
         val result = buildOcrResult(

@@ -2945,6 +2945,8 @@
     <string name="image_import_password_protected">This PDF is password protected and can\'t be opened.</string>
     <!-- Toast when a picked document opens but contains no pages or images. -->
     <string name="image_import_empty">No pages found in this file.</string>
+    <!-- Toast when a multi-selection in the file picker includes a PDF or comic archive. Multi-select reviews images as pages; documents must be opened one at a time. -->
+    <string name="image_import_mixed_selection">To import several files at once, choose images only. PDFs and comic archives open one at a time.</string>
     <!-- Content description of the import review's close (X) button. -->
     <string name="image_import_close_cd">Close file</string>
     <!-- Content description of the import tool's settings gear (language / OCR /

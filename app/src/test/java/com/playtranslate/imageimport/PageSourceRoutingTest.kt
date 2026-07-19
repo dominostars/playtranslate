@@ -66,4 +66,22 @@ class PageSourceRoutingTest {
             listOf("ab.jpg", "a1.jpg", "a.jpg").sortedWith(NaturalOrder),
         )
     }
+
+    // ── multiSelectionRejects ───────────────────────────────────────────
+
+    @Test fun multiSelection_allImages_admitted() {
+        assertEquals(false, multiSelectionRejects(listOf(SourceKind.IMAGE, SourceKind.IMAGE)))
+    }
+
+    @Test fun multiSelection_unknownMetadata_admitted() {
+        // Decode-first floor holds for multi-selections: an octet-stream
+        // image from a sloppy provider reaches the per-page decode attempt.
+        assertEquals(false, multiSelectionRejects(listOf(SourceKind.IMAGE, SourceKind.UNKNOWN)))
+    }
+
+    @Test fun multiSelection_positivelyIdentifiedDocument_rejected() {
+        assertEquals(true, multiSelectionRejects(listOf(SourceKind.IMAGE, SourceKind.PDF)))
+        assertEquals(true, multiSelectionRejects(listOf(SourceKind.PDF, SourceKind.PDF)))
+        assertEquals(true, multiSelectionRejects(listOf(SourceKind.ARCHIVE, SourceKind.IMAGE)))
+    }
 }

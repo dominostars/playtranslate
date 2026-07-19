@@ -168,6 +168,31 @@ object LayoutAnalyzer {
     private const val PITCH_TAIL_MAX_EXTENT_RATIO = 0.7f
 
     /**
+     * Document-pitch prior (opt-in per pass — the file-import pipeline only;
+     * see [analyze]'s documentPitchPrior). A single-row group can never
+     * establish its own pitch, so the FIRST pair of every paragraph starved
+     * in the gap band even on pages whose line rhythm is overwhelming: the
+     * Thor japanese-test.pdf page carries body rows at 84–87px steps against
+     * a page-dominant 86px, yet every opening pair logged "ext-band: no
+     * corroboration (pitch=n/a, cont=false)" because bare CJK line endings
+     * are deliberately not a continuation cue (the menu guard). The
+     * page-dominant pitch stands in for the group's own at bootstrap, riding
+     * the SAME merge rule (tolerance, tail/scale caps) as established pitch.
+     *
+     * [DOC_PITCH_MAX_SIZE_MULT] windows which row steps may vote: the band
+     * ceiling admits edge gaps under [BAND_GAP_MULTIPLIER]× refH, i.e.
+     * center-to-center steps up to roughly 2.3–2.4× a row's size — a step
+     * beyond that could never be a line advance, so it is a paragraph or
+     * section gap BY DEFINITION and must not shape the prior. That filter is
+     * load-bearing: on the test page boundary steps (120–180px) OUTNUMBER
+     * line steps (four at 84–87px), so a plain median would land on a
+     * boundary. [DOC_PITCH_MIN_SAMPLES] in-window steps must agree within
+     * [pitchTolerance] before a page is deemed to have a rhythm at all.
+     */
+    private const val DOC_PITCH_MIN_SAMPLES = 3
+    private const val DOC_PITCH_MAX_SIZE_MULT = 2.4f
+
+    /**
      * Accepted range (× reference line height) for a first-line indent between a
      * single-line group and a continuation candidate below it: JA 一字下げ prose
      * (web novels) indents the first line by exactly one full-width character
@@ -932,6 +957,49 @@ object LayoutAnalyzer {
         maxOf((pitch * PITCH_MATCH_TOLERANCE).toInt(), PITCH_MIN_TOLERANCE_PX)
 
     /**
+     * Page-dominant line pitch: the best-supported cluster of consecutive
+     * row-center steps that could plausibly BE line advances (see
+     * [DOC_PITCH_MAX_SIZE_MULT]). Rows via [rowBands] over the whole pass'
+     * boxes, so an inline label pair or a second column at the same Y folds
+     * into one row instead of donating a bogus near-zero step. Ties between
+     * equally-supported clusters go to the SMALLEST step (sorted iteration +
+     * strict `>`), the conservative merge distance. Null when the page has
+     * no rhythm worth borrowing. Pure — JVM-tested.
+     */
+    internal fun documentPitch(boxes: List<Rect>, orientation: TextOrientation): Int? {
+        val rows = rowBands(boxes, orientation)
+        if (rows.size < DOC_PITCH_MIN_SAMPLES + 1) return null
+        val vertical = orientation == TextOrientation.VERTICAL
+        val rects = rows.map { idxs -> unionRect(idxs.map { boxes[it] }) }
+        val centers = rects.map { if (vertical) (it.left + it.right) / 2 else (it.top + it.bottom) / 2 }
+        val sizes = rects.map { if (vertical) it.width() else it.height() }.sorted()
+        val medianSize = sizes[sizes.size / 2]
+        if (medianSize <= 0) return null
+        val ceiling = (medianSize * DOC_PITCH_MAX_SIZE_MULT).toInt()
+        val deltas = ArrayList<Int>(centers.size - 1)
+        for (i in 1 until centers.size) {
+            // Reading flow: top-to-bottom rows (horizontal), right-to-left
+            // columns (vertical).
+            val d = if (vertical) centers[i - 1] - centers[i] else centers[i] - centers[i - 1]
+            if (d in medianSize..ceiling) deltas.add(d)
+        }
+        if (deltas.size < DOC_PITCH_MIN_SAMPLES) return null
+        deltas.sort()
+        var bestSeed = 0
+        var bestCount = 0
+        for (seed in deltas) {
+            val count = deltas.count { kotlin.math.abs(it - seed) <= pitchTolerance(seed) }
+            if (count > bestCount) {
+                bestCount = count
+                bestSeed = seed
+            }
+        }
+        if (bestCount < DOC_PITCH_MIN_SAMPLES) return null
+        val members = deltas.filter { kotlin.math.abs(it - bestSeed) <= pitchTolerance(bestSeed) }
+        return members[members.size / 2]
+    }
+
+    /**
      * Group-aware merge evidence layered on top of the pairwise [wouldGroup]
      * predicate by [groupBoxesOnePass] — same-pass layout only; cross-frame
      * callers never see this. Evaluated only after [wouldGroup] said no.
@@ -972,16 +1040,19 @@ object LayoutAnalyzer {
         lastCue: TextFlowCue? = null,
         candidateCue: TextFlowCue? = null,
         spacedScript: Boolean = true,
+        docPitch: Int? = null,
     ): GroupDecision {
         shortAboveLongBlock(groupRect, candidate, orientation)?.let {
             return GroupDecision.NotGrouped("ext: $it")
         }
         return if (orientation == TextOrientation.VERTICAL) {
-            samePassBlockExtrasVertical(groupRect, candidate, memberBoxes, bracketBalance, lastCue)
+            samePassBlockExtrasVertical(
+                groupRect, candidate, memberBoxes, bracketBalance, lastCue, docPitch,
+            )
         } else {
             samePassBlockExtrasHorizontal(
                 groupRect, candidate, groupAlignLeft, candidateAlignLeft, rtl,
-                memberBoxes, bracketBalance, lastCue, candidateCue, spacedScript,
+                memberBoxes, bracketBalance, lastCue, candidateCue, spacedScript, docPitch,
             )
         }
     }
@@ -997,6 +1068,7 @@ object LayoutAnalyzer {
         lastCue: TextFlowCue?,
         candidateCue: TextFlowCue?,
         spacedScript: Boolean,
+        docPitch: Int?,
     ): GroupDecision {
         val aH = a.height()
         val bH = b.height()
@@ -1035,7 +1107,24 @@ object LayoutAnalyzer {
         val candidatePitch = groupPitch?.let { b.centerY() - it.lastRowCenter }
         val pitchOk = groupPitch != null && candidatePitch != null && candidatePitch > 0 &&
             kotlin.math.abs(candidatePitch - groupPitch.pitch) <= pitchTolerance(groupPitch.pitch)
-        val pitchStr = if (groupPitch != null) "$candidatePitch vs ${groupPitch.pitch}" else "n/a"
+        // Document-pitch prior: bootstrap-only stand-in for a pitch the group
+        // cannot yet own (see DOC_PITCH_MIN_SAMPLES kdoc). Single-ROW groups
+        // only — a multi-row group whose own spacing failed establishedPitch
+        // had its chance and doesn't get to borrow the page's rhythm.
+        val docStep = if (docPitch != null && groupPitch == null &&
+            rowBands(memberBoxes, TextOrientation.HORIZONTAL).size == 1
+        ) {
+            val row = unionRect(memberBoxes)
+            b.centerY() - (row.top + row.bottom) / 2
+        } else null
+        val docPitchOk = docPitch != null && docStep != null && docStep > 0 &&
+            kotlin.math.abs(docStep - docPitch) <= pitchTolerance(docPitch)
+        val pitchRef = groupPitch?.pitch ?: docPitch
+        val pitchStr = when {
+            groupPitch != null -> "$candidatePitch vs ${groupPitch.pitch}"
+            docStep != null -> "doc $docStep vs $docPitch"
+            else -> "n/a"
+        }
 
         val lo = minOf(aH, bH)
         val hi = maxOf(aH, bH)
@@ -1051,7 +1140,7 @@ object LayoutAnalyzer {
         // pitch still merges, but only through the corroborated cap: no
         // cap-free path without tail-shape evidence.
         val tailShaped = b.width() < a.width() * PITCH_TAIL_MAX_EXTENT_RATIO
-        val pitchMerge = pitchOk && (tailShaped || scaleOk)
+        val pitchMerge = (pitchOk || docPitchOk) && (tailShaped || scaleOk)
         val pitchDetail =
             if (tailShaped) "tail w=${b.width()}<${PITCH_TAIL_MAX_EXTENT_RATIO}×${a.width()}, scale waived"
             else "scaleOk"
@@ -1060,7 +1149,7 @@ object LayoutAnalyzer {
         return if (dy < vgapThreshold) {
             when {
                 pitchMerge -> GroupDecision.Grouped(
-                    "ext-pitch (dy=$dy, pitch $pitchStr ±${pitchTolerance(groupPitch!!.pitch)}px, $pitchDetail)"
+                    "ext-pitch (dy=$dy, pitch $pitchStr ±${pitchTolerance(pitchRef!!)}px, $pitchDetail)"
                 )
                 firstLineIndent && scaleOk -> GroupDecision.Grouped(
                     "ext-indent (dy=$dy, indentΔ=$indentDelta ≈ 1em of refH=$refH)"
@@ -1092,6 +1181,7 @@ object LayoutAnalyzer {
         memberBoxes: List<Rect>,
         bracketBalance: Int,
         lastCue: TextFlowCue?,
+        docPitch: Int?,
     ): GroupDecision {
         val aW = a.width()
         val bW = b.width()
@@ -1121,7 +1211,21 @@ object LayoutAnalyzer {
         val candidatePitch = groupPitch?.let { it.lastRowCenter - ((b.left + b.right) / 2) }
         val pitchOk = groupPitch != null && candidatePitch != null && candidatePitch > 0 &&
             kotlin.math.abs(candidatePitch - groupPitch.pitch) <= pitchTolerance(groupPitch.pitch)
-        val pitchStr = if (groupPitch != null) "$candidatePitch vs ${groupPitch.pitch}" else "n/a"
+        // Document-pitch prior, bootstrap-only — see the horizontal path.
+        val docStep = if (docPitch != null && groupPitch == null &&
+            rowBands(memberBoxes, TextOrientation.VERTICAL).size == 1
+        ) {
+            val row = unionRect(memberBoxes)
+            ((row.left + row.right) / 2) - ((b.left + b.right) / 2)
+        } else null
+        val docPitchOk = docPitch != null && docStep != null && docStep > 0 &&
+            kotlin.math.abs(docStep - docPitch) <= pitchTolerance(docPitch)
+        val pitchRef = groupPitch?.pitch ?: docPitch
+        val pitchStr = when {
+            groupPitch != null -> "$candidatePitch vs ${groupPitch.pitch}"
+            docStep != null -> "doc $docStep vs $docPitch"
+            else -> "n/a"
+        }
 
         val lo = minOf(aW, bW)
         val hi = maxOf(aW, bW)
@@ -1135,7 +1239,7 @@ object LayoutAnalyzer {
         // (fewer characters down the column length) — see the horizontal
         // path for the rationale.
         val tailShaped = b.height() < a.height() * PITCH_TAIL_MAX_EXTENT_RATIO
-        val pitchMerge = pitchOk && (tailShaped || scaleOk)
+        val pitchMerge = (pitchOk || docPitchOk) && (tailShaped || scaleOk)
         val pitchDetail =
             if (tailShaped) "tail h=${b.height()}<${PITCH_TAIL_MAX_EXTENT_RATIO}×${a.height()}, scale waived"
             else "scaleOk"
@@ -1144,7 +1248,7 @@ object LayoutAnalyzer {
         return if (dx < hgapThreshold) {
             when {
                 pitchMerge -> GroupDecision.Grouped(
-                    "ext-pitch (dx=$dx, pitch $pitchStr ±${pitchTolerance(groupPitch!!.pitch)}px, $pitchDetail)"
+                    "ext-pitch (dx=$dx, pitch $pitchStr ±${pitchTolerance(pitchRef!!)}px, $pitchDetail)"
                 )
                 else -> GroupDecision.NotGrouped(
                     "ext: base zone, pitch=$pitchStr, tail=$tailShaped, scaleOk=$scaleOk"
@@ -1193,6 +1297,10 @@ object LayoutAnalyzer {
      *   band then merges on pitch evidence alone.
      * - [spacedScript] : whether the source language separates words with
      *   whitespace; gates the Latin/Cyrillic lowercase-continuation cue.
+     * - [documentPitchPrior] : opt-in page-rhythm bootstrap evidence for the
+     *   corroborated gap band (see [documentPitch]) — the file-import
+     *   pipeline's document bias. Off for game/live surfaces: menus are
+     *   rhythmic too, and there the band's refusal is the wanted behavior.
      *
      * Returns a list of groups, each group being the indices into
      * [boxes] that ended up together, in encounter order.
@@ -1206,6 +1314,7 @@ object LayoutAnalyzer {
         rtl: Boolean = false,
         cues: List<TextFlowCue>? = null,
         spacedScript: Boolean = true,
+        documentPitchPrior: Boolean = false,
     ): List<List<Int>> {
         require(boxes.size == alignLefts.size) {
             "boxes and alignLefts must match length"
@@ -1219,6 +1328,13 @@ object LayoutAnalyzer {
         if (boxes.isEmpty()) return emptyList()
         val groups = mutableListOf<MutableList<Int>>()
         val orientChar = orientation.name[0]
+        val docPitch = if (documentPitchPrior) documentPitch(boxes, orientation) else null
+        if (documentPitchPrior && logDecisions) {
+            android.util.Log.d(
+                "DetectionLog",
+                "[group:$orientChar] doc-pitch=" + (docPitch?.let { "${it}px" } ?: "none")
+            )
+        }
         for (idx in boxes.indices) {
             val lineBox = boxes[idx]
             if (groups.isEmpty()) {
@@ -1311,6 +1427,7 @@ object LayoutAnalyzer {
                     lastCue = cues?.get(candidateGroup.last()),
                     candidateCue = cues?.get(idx),
                     spacedScript = spacedScript,
+                    docPitch = docPitch,
                 )
                 val groupMerged = baseMerged || extras is GroupDecision.Grouped
                 if (logDecisions) {
@@ -1388,6 +1505,7 @@ object LayoutAnalyzer {
         sourceLang: String,
         screenshotWidthInRegionSpace: Float,
         logDecisions: Boolean = false,
+        documentPitchPrior: Boolean = false,
     ): List<LayoutGroup> {
         if (regions.isEmpty()) return emptyList()
         val profile = SourceLanguageProfiles.forCode(sourceLang)
@@ -1395,10 +1513,12 @@ object LayoutAnalyzer {
         val spacedScript = profile?.wordsSeparatedByWhitespace != false
         val (vertical, horizontal) = regions.partition { it.orientation == TextOrientation.VERTICAL }
         val hGroups = groupRegions(
-            horizontal.sortedBy { it.box.bounds.top }, TextOrientation.HORIZONTAL, logDecisions, rtl, spacedScript
+            horizontal.sortedBy { it.box.bounds.top }, TextOrientation.HORIZONTAL, logDecisions, rtl, spacedScript,
+            documentPitchPrior,
         )
         val vGroups = groupRegions(
-            vertical.sortedByDescending { it.box.bounds.right }, TextOrientation.VERTICAL, logDecisions, rtl, spacedScript
+            vertical.sortedByDescending { it.box.bounds.right }, TextOrientation.VERTICAL, logDecisions, rtl, spacedScript,
+            documentPitchPrior,
         )
         val rawGroups = (hGroups + vGroups).filter { group ->
             group.any { r -> r.text.any { isSourceLangChar(it, sourceLang) } }
@@ -1427,6 +1547,7 @@ object LayoutAnalyzer {
         logDecisions: Boolean,
         rtl: Boolean,
         spacedScript: Boolean,
+        documentPitchPrior: Boolean,
     ): List<List<RecognizedRegion>> {
         if (sorted.isEmpty()) return emptyList()
         val boxes = sorted.map { it.box.bounds }
@@ -1437,8 +1558,10 @@ object LayoutAnalyzer {
         }
         val texts = if (logDecisions) sorted.map { it.text } else null
         val cues = sorted.map { textFlowCue(it.text) }
-        val idxGroups =
-            groupBoxesOnePass(boxes, alignLefts, orientation, logDecisions, texts, rtl, cues, spacedScript)
+        val idxGroups = groupBoxesOnePass(
+            boxes, alignLefts, orientation, logDecisions, texts, rtl, cues, spacedScript,
+            documentPitchPrior,
+        )
         return idxGroups.map { idxs -> idxs.map { sorted[it] } }
     }
 
