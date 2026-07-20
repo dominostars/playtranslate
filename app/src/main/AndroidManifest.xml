@@ -241,6 +241,25 @@
             </intent-filter>
         </activity>
 
+        <!-- Select-to-translate: the system text-selection toolbar's
+             "PlayTranslate" entry. Launched by other apps with the selected
+             string (PROCESS_TEXT runs in the CALLER's task), so: exported,
+             no affinity with our task, out of recents, and transparent — the
+             capture panel shows over the still-visible calling app. -->
+        <activity
+            android:name=".processtext.ProcessTextActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.PlayTranslate.Transparent">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
         <!-- Hotkeys sub-page (QS tile + hotkeys), launched from Settings → Configure. -->
         <activity
             android:name=".ui.HotkeysSettingsActivity"

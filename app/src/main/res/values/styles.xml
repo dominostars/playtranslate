@@ -123,6 +123,24 @@
         <item name="android:windowSoftInputMode">adjustResize</item>
     </style>
 
+    <!-- ── Transparent overlay-style activities ─────────────────────────── -->
+    <!-- The select-to-translate panel host: the calling app stays visible
+         behind the sheet, so the window is translucent with no background
+         and no dim. Material parents (not the bare framework Translucent
+         theme) keep the activity's own dialogs — TTS missing, Anki not
+         installed — styled. -->
+    <style name="Theme.PlayTranslate.Transparent" parent="Theme.PlayTranslate">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+
+    <style name="Theme.PlayTranslate.White.Transparent" parent="Theme.PlayTranslate.White">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+
     <!-- ══════════════════════════════════════════════════════════════════ -->
     <!-- Accent overlays — applied on top of either base theme via         -->
     <!-- theme.applyStyle(R.style.ThemeOverlay_PT_Accent_<Name>, true).    -->

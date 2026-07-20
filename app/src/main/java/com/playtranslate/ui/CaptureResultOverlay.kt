@@ -171,6 +171,13 @@ class CaptureResultOverlay(
      *  service re-OCR. */
     var chooseOcr: ((OcrProvenance, String) -> Unit)? = null
 
+    /** The language headers' tap action. Default (null): dismiss this sheet
+     *  and open the language picker — the user re-captures on return. A host
+     *  that still holds its input across the round trip (the PROCESS_TEXT
+     *  flow keeps the selected string) overrides this to launch the picker
+     *  WITHOUT tearing the sheet down, then re-drives [observe] on return. */
+    var chooseLanguage: ((isSource: Boolean) -> Unit)? = null
+
     /** TTS "no engine" alert host for the speak buttons. Default (null): an
      *  overlay window on this sheet's display. */
     var ttsAlertTarget: TtsAlertTarget? = null
@@ -213,6 +220,13 @@ class CaptureResultOverlay(
      *  exit is the explicit X only; gated gestures settle back (drag clamps
      *  at the resize floor, outside taps are consumed and ignored). */
     var dismissOnGesture: Boolean = true
+
+    /** Firms up the sheet + text-card fills for hosts with no screenshot
+     *  behind the panel: the translucency is tuned for the frosted backdrop,
+     *  and un-blurred live app content bleeding through reads as distracting
+     *  haze. Goes near-opaque ([SHEET_ALPHA_NO_IMAGE] /
+     *  [CARD_FILL_ALPHA_NO_IMAGE]) — barely transparent. Set before [show]. */
+    var opaqueBackgroundBoost: Boolean = false
 
     /** Overlay boxes for the currently-bound result: skeletons from
      *  [CaptureState.Translating] while an auto-collapse is showing placeholders,
@@ -297,6 +311,10 @@ class CaptureResultOverlay(
     // drawn at full-screen scale UNDER the translucent sheet fill and clipped to
     // the rounded body. Static — no live re-blur.
     private var backdropSmall: Bitmap? = null
+
+    /** The sheet fill inside [body]'s InsetDrawable — held as a field so
+     *  [show] can firm it up for no-backdrop hosts ([opaqueBackgroundBoost]). */
+    private val sheetFill = GradientDrawable()
     private val backdropPaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val backdropDst = Rect()
     /** Frost offset the body's display list was last recorded with — the
@@ -428,7 +446,7 @@ class CaptureResultOverlay(
             // the view by the corner radius — so, like the clip outline, only the
             // bottom corners + sides show and there's no boundary line across the top.
             background = InsetDrawable(
-                GradientDrawable().apply {
+                sheetFill.apply {
                     // Slightly translucent sheet fill — the game shows faintly
                     // through (stroke stays opaque). SHEET_ALPHA is the dial.
                     val bg = ctx.themeColor(R.attr.ptBg)
@@ -542,6 +560,14 @@ class CaptureResultOverlay(
         }
         shadowBitmap = bakeEdgeShadow(screenW)
         edgeShadow.invalidate()
+        // A no-backdrop host asked for firmer fills — recolor the sheet fill
+        // built at init (the flag lands after construction, before show()).
+        if (opaqueBackgroundBoost) {
+            val bg = ctx.themeColor(R.attr.ptBg)
+            sheetFill.setColor(
+                Color.argb(SHEET_ALPHA_NO_IMAGE, Color.red(bg), Color.green(bg), Color.blue(bg)),
+            )
+        }
         backdrop?.let {
             backdropSmall = blurBackdrop(it)
             backdropDst.set(0, 0, screenW, screenH)
@@ -591,7 +617,7 @@ class CaptureResultOverlay(
         }
         // Furigana changes the source's rendered height (async on / sync off) — re-fit.
         b.onSourceTextHeightChanged = { if (!dismissed) autoSizeAndFit() }
-        b.setCardFillAlpha(CARD_FILL_ALPHA)
+        b.setCardFillAlpha(if (opaqueBackgroundBoost) CARD_FILL_ALPHA_NO_IMAGE else CARD_FILL_ALPHA)
         b.onChooseOcr = {
             val r = lastResult
             val p = r?.ocrProvenance
@@ -1564,6 +1590,7 @@ class CaptureResultOverlay(
      *  language section headers and the tappable language name in the no-text status. The
      *  user re-captures to see it in the new language. */
     private fun changeLanguage(isSource: Boolean) {
+        chooseLanguage?.let { it(isSource); return }
         LanguageSetupActivity.selectionDelegate = null
         dismiss()
         launchLanguageSetup(
@@ -2435,6 +2462,11 @@ class CaptureResultOverlay(
         /** Text-card fill opacity (0–1) — very slightly translucent so the frost
          *  shows faintly behind the text too. */
         const val CARD_FILL_ALPHA = 0.8f
+        /** [opaqueBackgroundBoost] variants — barely transparent for hosts
+         *  with no frosted backdrop behind the sheet (the un-blurred app
+         *  behind is distracting at the normal translucency). */
+        const val SHEET_ALPHA_NO_IMAGE = 247
+        const val CARD_FILL_ALPHA_NO_IMAGE = 0.96f
         /** Backdrop downscale before the box blur (cheapness; the blur does the
          *  smoothing now, so this no longer needs to be aggressive). */
         const val BACKDROP_DOWNSCALE = 6

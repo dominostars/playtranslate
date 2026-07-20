@@ -3338,4 +3338,10 @@
          fetching its recordings failed (e.g. no network). -->
     <string name="audio_error_loading">Couldn\'t load</string>
 
+    <!-- ══════════ Select-to-translate (ACTION_PROCESS_TEXT) ══════════ -->
+
+    <!-- Panel status when translating text selected in another app failed
+         (backend error or empty result; there is no OCR in this flow). -->
+    <string name="process_text_translation_failed">Couldn\'t translate the selected text. Check your connection or language settings.</string>
+
 </resources>
