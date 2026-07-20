@@ -571,6 +571,14 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_TRANSLATION_HISTORY_ENABLED, false)
         set(v) = sp.edit { putBoolean(KEY_TRANSLATION_HISTORY_ENABLED, v) }
 
+    /** Save one image per capture session alongside History rows (camera
+     *  and screen captures only — never auto/live). Sub-toggle under the
+     *  History master switch; meaningless while
+     *  [translationHistoryEnabled] is off. */
+    var captureImageHistoryEnabled: Boolean
+        get() = sp.getBoolean(KEY_CAPTURE_IMAGE_HISTORY_ENABLED, false)
+        set(v) = sp.edit { putBoolean(KEY_CAPTURE_IMAGE_HISTORY_ENABLED, v) }
+
     /** True when [openaiBaseUrl] points somewhere other than the canonical
      *  OpenAI endpoint (trailing-slash / whitespace insensitive). The single
      *  definition of "is this still real OpenAI?" — drives the model-list
@@ -1410,6 +1418,7 @@ class Prefs internal constructor(
         const val KEY_LLM_BATCH_PROMPT              = "llm_batch_prompt"
         private const val KEY_LLM_CONTEXT_ENABLED           = "llm_context_enabled"
         private const val KEY_TRANSLATION_HISTORY_ENABLED   = "translation_history_enabled"
+        private const val KEY_CAPTURE_IMAGE_HISTORY_ENABLED = "capture_image_history_enabled"
 
         /** Default selected model — chosen to match the first entry in
          *  the picker after filtering + sorting (newest alias by

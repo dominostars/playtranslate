@@ -912,7 +912,31 @@ class CaptureService : Service() {
             // translator. No-op for a fresh capture, where srcId == Prefs.sourceLangId.
             // Per-group (same batch [translateGroups] wraps) so the on-screen overlay
             // boxes get their per-group texts; the panel text is the same join.
+            // Recording target captured BEFORE the translate call — a
+            // mid-flight language change must not relabel these rows
+            // (srcId is already pinned above).
+            val recordTgt = Prefs(this@CaptureService).targetLang
             val perGroup = translateGroupsSeparately(ocrResult.groups.map { it.text }, srcId)
+
+            // Deliberate capture → recording backend, FRESH captures only:
+            // override-carrying calls are re-OCRs of an already-recorded
+            // capture (engine change from the results surface), and a
+            // refinement must not mint a second session's worth of rows.
+            if (regionOverride == null && sourceLangIdOverride == null) {
+                val recordSrc = SourceLanguageProfiles[srcId].translationCode
+                val token = translationLogRecorder.beginCaptureSession()
+                ocrResult.groups.forEachIndexed { i, g ->
+                    val tr = perGroup.getOrNull(i)?.text.orEmpty()
+                    if (tr.isNotEmpty()) translationLogRecorder.onCaptureShown(
+                        token, g.text, tr, g.bounds, recordSrc, recordTgt,
+                        com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_ONE_SHOT,
+                        perGroup.getOrNull(i)?.backendDisplayName,
+                        captureImage = screenshotPath?.let {
+                            com.playtranslate.translationlog.HistoryImageStore.Source.FromPath(it)
+                        },
+                    )
+                }
+            }
 
             val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
             state.value = CaptureState.Done(
@@ -2756,14 +2780,19 @@ class CaptureService : Service() {
             val recordSrc = SourceLanguageProfiles[srcId].translationCode
             val recordTgt = Prefs(this@CaptureService).targetLang
             val perGroup = translateGroupsSeparately(ocrResult.groups.map { it.text })
-            // Deliberate capture → recording backend (per-group pairs with
-            // rects; the recorder no-ops unless a log feature is enabled).
+            // Deliberate capture → recording backend, one capture session
+            // per invocation (per-group pairs with rects; the recorder
+            // no-ops unless a log feature is enabled).
+            val token = translationLogRecorder.beginCaptureSession()
             ocrResult.groups.forEachIndexed { i, g ->
                 val tr = perGroup.getOrNull(i)?.text.orEmpty()
-                if (tr.isNotEmpty()) translationLogRecorder.onShownDeliberate(
-                    g.text, tr, g.bounds, recordSrc, recordTgt,
+                if (tr.isNotEmpty()) translationLogRecorder.onCaptureShown(
+                    token, g.text, tr, g.bounds, recordSrc, recordTgt,
                     com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_ONE_SHOT,
                     perGroup.getOrNull(i)?.backendDisplayName,
+                    captureImage = screenshotPath?.let {
+                        com.playtranslate.translationlog.HistoryImageStore.Source.FromPath(it)
+                    },
                 )
             }
             val translated = perGroup.joinToString("\n\n") { it.text }

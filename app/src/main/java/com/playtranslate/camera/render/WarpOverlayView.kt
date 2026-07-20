@@ -111,6 +111,19 @@ class WarpOverlayView(context: Context) : View(context) {
         syncShimmer()
     }
 
+    /** Regions can be installed BEFORE the view's first layout — the same
+     *  tap that shows the boxes may also create this view (the import
+     *  review's first boxes toggle), so [setRegions] and its
+     *  [applyHomography] run at size 0×0, bail, and leave everything
+     *  installed but invisible. Nothing external re-applies, so without
+     *  this hook that state was permanent until the next toggle. Recompute
+     *  once real dimensions exist; the held-frame fingerprint makes any
+     *  redundant call a cheap no-op. */
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (regions.isNotEmpty()) applyHomography(lastHAu, lastPerRegionAu)
+    }
+
     /** Install freshly rastered regions for a keyframe of [auW]×[auH].
      *  Recycles previous bitmaps EXCEPT those carried over by the dirty
      *  diff (identity-shared with the new set). Main thread. */

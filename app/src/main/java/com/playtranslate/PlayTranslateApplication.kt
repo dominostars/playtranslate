@@ -44,6 +44,9 @@ class PlayTranslateApplication : Application() {
         // every pin; this catches the "never sends again" tail. Off-main:
         // cold start shouldn't pay for cache hygiene.
         Thread { com.playtranslate.ui.AnkiScreenshotPin.sweepStale(this) }.start()
+        // History capture images orphaned by FIFO prune / row deletes /
+        // process death mid-copy — reconciled against surviving rows.
+        com.playtranslate.translationlog.HistoryImageStore.sweepAsync(this)
         // Push the persisted grouping-debug flag into the process-wide
         // OcrManager singleton before any OCR can run. The SettingsRenderer
         // toggle also writes this on change, so the in-memory copy stays in

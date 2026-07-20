@@ -56,6 +56,13 @@ object TranslationHistoryStore {
     const val PROVENANCE_AUTO = "auto"
     const val PROVENANCE_ONE_SHOT = "one_shot"
     const val PROVENANCE_LOOKUP = "lookup"
+    const val PROVENANCE_CAMERA = "camera"
+
+    /** Session ids minted per capture episode carry this prefix so the
+     *  History UI can card-group them; legacy one_shot rows (which share
+     *  construction-era session ids across unrelated captures) lack it and
+     *  keep rendering as plain rows. */
+    const val CAPTURE_SESSION_PREFIX = "cap:"
 
     private val dispatcher =
         Executors.newSingleThreadExecutor { r ->
@@ -87,6 +94,12 @@ object TranslationHistoryStore {
                 "backend TEXT)"
         )
         database.execSQL("CREATE INDEX IF NOT EXISTS idx_entries_at ON entries(at_ms)")
+        // Per-session UI state (live-card collapse), not primary data —
+        // created opportunistically (IF NOT EXISTS, no version bump) and
+        // pruned against surviving rows on read.
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS collapsed_sessions (session_id TEXT PRIMARY KEY)"
+        )
         if (version != SCHEMA_VERSION) {
             // v1 is the first schema; future versions add ALTER-based
             // migrations here (primary data — never drop).
@@ -125,12 +138,42 @@ object TranslationHistoryStore {
             }
             put("backend", backendDisplayName)
         })
+        // Sessions with a row about to fall past the FIFO cap — captured
+        // BEFORE the prune so their images can be reclaimed WITH the rows.
+        // Empty until the table exceeds the cap, so the steady-state cost is
+        // one indexed query; the row we just inserted is newest, so its own
+        // session is never in here.
+        val doomed = database.rawQuery(
+            "SELECT DISTINCT session_id FROM entries WHERE id NOT IN " +
+                "(SELECT id FROM entries ORDER BY id DESC LIMIT ?)",
+            arrayOf(MAX_ROWS.toString()),
+        ).use { c -> ArrayList<String>().apply { while (c.moveToNext()) add(c.getString(0)) } }
         database.execSQL(
             "DELETE FROM entries WHERE id NOT IN " +
                 "(SELECT id FROM entries ORDER BY id DESC LIMIT $MAX_ROWS)"
         )
+        reclaimOrphanImages(ctx, database, doomed)
         _revision.value++
         id
+    }
+
+    /** Delete the saved image of every session in [candidates] that no
+     *  longer has any row — the invariant "image exists only while its
+     *  session has rows" is enforced HERE, on every row-removal path, so
+     *  no caller has to remember and [HistoryImageStore.sweep] is only ever
+     *  a crash/race backstop. Runs on the store dispatcher; the actual file
+     *  delete hops to the image store's thread so it can't race a save. */
+    private suspend fun reclaimOrphanImages(
+        ctx: Context,
+        db: SQLiteDatabase,
+        candidates: Collection<String>,
+    ) {
+        for (session in candidates) {
+            val alive = db.rawQuery(
+                "SELECT 1 FROM entries WHERE session_id = ? LIMIT 1", arrayOf(session),
+            ).use { it.moveToFirst() }
+            if (!alive) HistoryImageStore.deleteSession(ctx, session)
+        }
     }
 
     /** Supersession (typewriter growth / punctuation completion): the
@@ -227,19 +270,75 @@ object TranslationHistoryStore {
     }
 
     suspend fun delete(ctx: Context, id: Long): Unit = withContext(dispatcher) {
-        openDb(ctx).delete("entries", "id = ?", arrayOf(id.toString()))
+        val db = openDb(ctx)
+        // Read the row's session before deleting so we can reclaim its image
+        // if this was the session's last row.
+        val session = db.rawQuery(
+            "SELECT session_id FROM entries WHERE id = ?", arrayOf(id.toString()),
+        ).use { if (it.moveToFirst()) it.getString(0) else null }
+        db.delete("entries", "id = ?", arrayOf(id.toString()))
+        if (session != null) reclaimOrphanImages(ctx, db, listOf(session))
         _revision.value++
     }
 
     suspend fun clear(ctx: Context): Unit = withContext(dispatcher) {
         openDb(ctx).delete("entries", null, null)
+        openDb(ctx).delete("collapsed_sessions", null, null)
+        // Rows gone → every capture image is an orphan. Owned here so
+        // "Clear history" wipes images atomically with the rows, not via a
+        // caller that might forget.
+        HistoryImageStore.clearAll(ctx)
         _revision.value++
+    }
+
+    /** Session ids the user collapsed in the History UI. Read-side prunes
+     *  ids whose rows are gone (delete/FIFO/clear) so the set stays
+     *  bounded by live sessions. No revision bump on either side: this is
+     *  presentation state, not content. */
+    suspend fun collapsedSessions(ctx: Context): Set<String> = withContext(dispatcher) {
+        val db = openDb(ctx)
+        db.execSQL(
+            "DELETE FROM collapsed_sessions WHERE session_id NOT IN " +
+                "(SELECT DISTINCT session_id FROM entries)"
+        )
+        val out = HashSet<String>()
+        db.rawQuery("SELECT session_id FROM collapsed_sessions", null).use { c ->
+            while (c.moveToNext()) out.add(c.getString(0))
+        }
+        out
+    }
+
+    suspend fun setSessionCollapsed(
+        ctx: Context,
+        sessionId: String,
+        collapsed: Boolean,
+    ): Unit = withContext(dispatcher) {
+        val db = openDb(ctx)
+        if (collapsed) {
+            db.execSQL(
+                "INSERT OR IGNORE INTO collapsed_sessions (session_id) VALUES (?)",
+                arrayOf(sessionId),
+            )
+        } else {
+            db.delete("collapsed_sessions", "session_id = ?", arrayOf(sessionId))
+        }
     }
 
     suspend fun count(ctx: Context): Long = withContext(dispatcher) {
         openDb(ctx).rawQuery("SELECT COUNT(*) FROM entries", null).use { c ->
             c.moveToFirst(); c.getLong(0)
         }
+    }
+
+    /** Every session id with at least one surviving row — the reference
+     *  set for [HistoryImageStore.sweep]'s orphan reconciliation. Full
+     *  scan, but bounded by [MAX_ROWS]. */
+    suspend fun distinctSessionIds(ctx: Context): Set<String> = withContext(dispatcher) {
+        val out = HashSet<String>()
+        openDb(ctx).rawQuery("SELECT DISTINCT session_id FROM entries", null).use { c ->
+            while (c.moveToNext()) out.add(c.getString(0))
+        }
+        out
     }
 
     /** Tests only: drop the cached handle and delete the DB file so each

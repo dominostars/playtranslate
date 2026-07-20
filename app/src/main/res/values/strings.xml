@@ -2919,6 +2919,27 @@
     <string name="history_delete_confirm_title">Delete this entry?</string>
     <!-- Toast after copying a History entry to the clipboard. -->
     <string name="history_copied_toast">Copied</string>
+    <!-- Sub-toggle under the History master switch: save one image per camera/screen
+         capture session alongside its rows. Default off. -->
+    <string name="history_capture_image_toggle_title">Save capture images</string>
+    <!-- Subtitle under the save-capture-images sub-toggle. -->
+    <string name="history_capture_image_toggle_subtitle">Keep a photo of each camera or screen capture</string>
+    <!-- Header title of a live-mode session's transcript card on the History screen. -->
+    <string name="history_live_session_title">Live session</string>
+    <!-- Line count in a live-session card's header meta on the History screen,
+         rendered next to the session's start time ("14:02 · 42 lines").
+         %d = number of transcript rows recorded in the session. -->
+    <plurals name="history_line_count">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> line</item>
+        <item quantity="other"><xliff:g id="count" example="42">%d</xliff:g> lines</item>
+    </plurals>
+    <!-- Content description of the camera origin badge on a History capture card. -->
+    <string name="history_capture_camera_cd">Camera capture</string>
+    <!-- Content description of the screen origin badge on a History capture card. -->
+    <string name="history_capture_screen_cd">Screen capture</string>
+    <!-- Content description of a capture card's thumbnail; tapping opens the saved
+         image in the import review. -->
+    <string name="history_reopen_cd">Open capture image</string>
     <!-- Summary line under the Dictionary hub cell title in settings. -->
     <string name="settings_cell_dictionary_summary">Look up word definitions</string>
     <!-- Shown in the import tool's result panel when OCR finds no readable text

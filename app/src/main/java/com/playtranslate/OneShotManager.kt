@@ -203,16 +203,22 @@ class OneShotManager(private val service: CaptureService) {
                 service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH, force = true, oneShot = true, displayId = displayId)
             }
 
-            // Deliberate capture → recording backend. Boxes are index-aligned
-            // with ocrResult.groups (buildBoxes zips per-group results); the
+            // Deliberate capture → recording backend, one capture session
+            // per cycle (per display — a multi-display hold is one card per
+            // display, each its own frame). Boxes are index-aligned with
+            // ocrResult.groups (buildBoxes zips per-group results); the
             // processor type gates out furigana one-shots.
             if (processor is TranslationOneShotProcessor) {
+                val token = service.translationLogRecorder.beginCaptureSession()
                 boxes.forEachIndexed { i, box ->
                     val group = ocrResult.groups.getOrNull(i) ?: return@forEachIndexed
                     if (box.translatedText.isNotEmpty()) {
-                        service.translationLogRecorder.onShownDeliberate(
-                            group.text, box.translatedText, group.bounds, recordSrc, recordTgt,
+                        service.translationLogRecorder.onCaptureShown(
+                            token, group.text, box.translatedText, group.bounds, recordSrc, recordTgt,
                             com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_ONE_SHOT,
+                            captureImage = screenshotPath?.let {
+                                com.playtranslate.translationlog.HistoryImageStore.Source.FromPath(it)
+                            },
                         )
                     }
                 }

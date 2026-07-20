@@ -1328,6 +1328,10 @@ class CameraSession(
         // outlived the cooperative cancel must not write snapshot caches
         // into the live/paused display state.
         snapshotGeneration.incrementAndGet()
+        // Episode over: drop the capture token and its frame reference
+        // (which would otherwise pin the dead keyframe bitmap).
+        captureToken = null
+        captureTokenFrame = null
         // The review zoom dies with the snapshot — AUTHORITATIVE reset: the
         // warp view serves the LIVE path next, and a leftover view
         // transform would warp live boxes (the panel's dismiss funnel also
@@ -1347,6 +1351,17 @@ class CameraSession(
     private val snapshotLogRecorder by lazy {
         com.playtranslate.translationlog.TranslationLogRecorder(context.applicationContext)
     }
+
+    /** The current frozen episode's History grouping token, keyed on the
+     *  frozen bitmap's IDENTITY: crop/settings re-runs pass the same
+     *  instance back through [runSnapshot] and stay in the episode (the
+     *  token's within-capture dedupe absorbs their re-OCR duplicates); a
+     *  new shutter's frame mints fresh. Main-thread only, like the
+     *  recorder. Cleared on [unfreeze] — [captureTokenFrame] is a strong
+     *  reference that would otherwise pin the dead keyframe. */
+    private var captureToken:
+        com.playtranslate.translationlog.TranslationLogRecorder.CaptureSessionToken? = null
+    private var captureTokenFrame: Bitmap? = null
 
     /** Saved-to-cache path of the frozen frame the display caches describe —
      *  rides the snapshot cache writes (same stateLock, same generation
@@ -1402,6 +1417,10 @@ class CameraSession(
      * re-flavors read a coherent scene.
      */
     fun runSnapshot(frozen: Bitmap, regionAu: android.graphics.Rect? = null): CaptureSession {
+        if (frozen !== captureTokenFrame) {
+            captureToken = snapshotLogRecorder.beginCaptureSession()
+            captureTokenFrame = frozen
+        }
         val state = MutableStateFlow<CaptureState>(
             CaptureState.InProgress(context.getString(com.playtranslate.R.string.status_ocr))
         )
@@ -1561,16 +1580,23 @@ class CameraSession(
         // but that pairing is call-site convention, and History records
         // "shown" translations, which a superseded run never shows.
         if (snapshotGeneration.get() != gen) return
-        // Deliberate capture → History, exactly like the service one-shot.
-        // The recorder is main-thread-only.
+        // Deliberate capture → History, camera provenance, grouped under
+        // the frozen episode's capture session. The recorder is
+        // main-thread-only; a supersede cancels this job before the Main
+        // hop, so the token read matches the cycle's own episode.
         withContext(Dispatchers.Main) {
-            groups.forEachIndexed { i, g ->
-                val tr = perGroup.getOrNull(i)?.text.orEmpty()
-                if (tr.isNotEmpty()) snapshotLogRecorder.onShownDeliberate(
-                    g.text, tr, g.bounds, recordSrc, recordTgt,
-                    com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_ONE_SHOT,
-                    perGroup.getOrNull(i)?.backendDisplayName,
-                )
+            val token = captureToken
+            if (token != null) {
+                groups.forEachIndexed { i, g ->
+                    val tr = perGroup.getOrNull(i)?.text.orEmpty()
+                    if (tr.isNotEmpty()) snapshotLogRecorder.onCaptureShown(
+                        token, g.text, tr, g.bounds, recordSrc, recordTgt,
+                        com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_CAMERA,
+                        perGroup.getOrNull(i)?.backendDisplayName,
+                        captureImage = com.playtranslate.translationlog
+                            .HistoryImageStore.Source.FromBitmap(frozen),
+                    )
+                }
             }
         }
 

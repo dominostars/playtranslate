@@ -66,6 +66,17 @@
                         android:layout_marginStart="@dimen/pt_row_h_padding"
                         android:background="?attr/ptDivider" />
 
+                    <!-- Save-capture-images sub-toggle: dimmed/disabled while
+                         the master switch above is off. -->
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowCaptureImageToggle" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider" />
+
                     <!-- Destructive clear-all, confirmed via OverlayAlert. -->
                     <TextView
                         android:id="@+id/rowClearHistory"

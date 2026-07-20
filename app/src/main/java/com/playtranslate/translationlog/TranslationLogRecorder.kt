@@ -181,6 +181,76 @@ class TranslationLogRecorder(
         )
     }
 
+    /**
+     * One deliberate capture episode (a shutter press, a screen capture
+     * invocation): the grouping unit for History's capture cards, and the
+     * scope of capture dedupe. A capture is a complete record by contract —
+     * re-capturing the same scene yields a full new session, so dedupe
+     * lives HERE (per token), never in the shared [LogWriteGate.seen].
+     * Main-thread confined like every recorder entry point.
+     */
+    class CaptureSessionToken internal constructor(val sessionId: String) {
+        /** normKeys already recorded this episode — suppresses the re-runs
+         *  a crop/settings change triggers on the same frozen frame. */
+        internal val seen = HashSet<String>()
+
+        /** One image per episode, saved with the first appended row. */
+        internal var imageSaved = false
+    }
+
+    /** Mint a capture episode. The "cap:" prefix marks new-semantics
+     *  sessions so the History UI never card-groups legacy one_shot rows
+     *  (which share construction-era session ids across captures). */
+    fun beginCaptureSession(): CaptureSessionToken =
+        CaptureSessionToken(TranslationHistoryStore.CAPTURE_SESSION_PREFIX + UUID.randomUUID())
+
+    /**
+     * Record one OCR group of a capture episode. Deliberately bypasses the
+     * shared gate: no [rowIds] tracking (captures carry their complete
+     * translation — nothing attaches later), no cross-feature dedupe, no
+     * seeding of the auto stream's seen state. [captureImage] is saved once
+     * per token, on the first appended row, only when the user opted into
+     * [Prefs.captureImageHistoryEnabled] — so a no-text capture never
+     * stores an image. Main only.
+     */
+    fun onCaptureShown(
+        token: CaptureSessionToken,
+        source: String,
+        translation: String?,
+        bounds: Rect?,
+        sourceLang: String,
+        targetLang: String,
+        provenance: String,
+        backendDisplayName: String? = null,
+        captureImage: HistoryImageStore.Source? = null,
+    ) = guarded {
+        if (source.isBlank()) return@guarded
+        val historyOn = prefs.translationHistoryEnabled
+        val contextOn = prefs.llmContextEnabled
+        if (!historyOn && !contextOn) return@guarded
+        val key = LogWriteGate.normalizedKey(source, sourceLang)
+        if (key.isEmpty()) return@guarded
+        if (!token.seen.add(key)) return@guarded
+        val now = System.currentTimeMillis()
+        if (historyOn) {
+            scope.launch {
+                runCatching {
+                    sink.insert(
+                        now, source, translation, sourceLang, targetLang,
+                        provenance, token.sessionId, key, bounds, backendDisplayName,
+                    )
+                }.onFailure { Log.w(TAG, "capture insert failed: ${it.message}") }
+            }
+            if (!token.imageSaved && captureImage != null && prefs.captureImageHistoryEnabled) {
+                token.imageSaved = true
+                HistoryImageStore.save(appContext, token.sessionId, captureImage)
+            }
+        }
+        if (contextOn && !translation.isNullOrBlank()) {
+            ring.push(ContextRing.ContextPair(source, translation, now, key, sourceLang, targetLang))
+        }
+    }
+
     /** The `{context}` block for [LlmPromptTemplates.contextProvider].
      *  Called from translation-backend threads — thread-safe. */
     fun contextBlockFor(sourceLang: String, targetLang: String): String {

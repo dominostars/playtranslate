@@ -70,6 +70,11 @@ class ImageImportActivity : AppCompatActivity() {
      *  the sharing app instead of showing the picker landing. */
     private var fromShare = false
 
+    /** Launched from a History capture card's thumbnail ([EXTRA_REOPEN_PATH]):
+     *  review-only like a share — closing the review returns to History
+     *  instead of stranding the user on the landing. */
+    private var fromReopen = false
+
     /** Read-settings fingerprint (language configuration + the IMPORT-scoped
      *  OCR engine resolution); a diff on resume re-reads the retained image.
      *  The token matters for the pickers' not-yet-downloaded picks: the
@@ -148,7 +153,7 @@ class ImageImportActivity : AppCompatActivity() {
             scope = lifecycleScope,
             onExit = { finish() },
             onReviewClosed = {
-                if (fromShare) finish() else landingGroup.isVisible = true
+                if (fromShare || fromReopen) finish() else landingGroup.isVisible = true
             },
             onPageStateChanged = { updatePageChip() },
         )
@@ -249,10 +254,29 @@ class ImageImportActivity : AppCompatActivity() {
             ) {
                 IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
             } else null
+        // A History re-open is an app-private file in our own storage —
+        // same decode path as the process-death restore (no URI grant to
+        // die). The restore still wins: it is the same review, already in
+        // progress. This activity is exported (share target), so the extra
+        // is honored only inside the history image dir — an outside intent
+        // can't point the review at an arbitrary path.
+        val reopenPath = intent?.getStringExtra(EXTRA_REOPEN_PATH)?.takeIf { p ->
+            runCatching {
+                java.io.File(p).canonicalPath.startsWith(
+                    com.playtranslate.translationlog.HistoryImageStore.imageDir(this)
+                        .canonicalPath + java.io.File.separator
+                )
+            }.getOrDefault(false)
+        }
         fromShare = sharedUri != null
+        // Independent of which branch loads below: a process-death restore
+        // of a re-opened review must still finish back to History on close,
+        // exactly as fromShare persists across its own restore.
+        fromReopen = reopenPath != null && sharedUri == null
         when {
             restorePath != null -> restoreFromFile(java.io.File(restorePath))
             sharedUri != null -> loadFromUri(sharedUri, shareMime)
+            reopenPath != null -> restoreFromFile(java.io.File(reopenPath))
         }
     }
 
@@ -418,6 +442,7 @@ class ImageImportActivity : AppCompatActivity() {
                     // land on; the landing still offers the other sources.
                     landingGroup.isVisible = true
                     fromShare = false
+                    fromReopen = false
                 }
             } finally {
                 pending?.closeAsync()
@@ -586,14 +611,20 @@ class ImageImportActivity : AppCompatActivity() {
         )
     }
 
-    private companion object {
+    companion object {
+        /** Absolute path of an app-private image to open straight into
+         *  review (History capture re-open). Internal explicit launches
+         *  only — never trusted from an external intent, but the paths are
+         *  our own noBackupFilesDir files regardless. */
+        const val EXTRA_REOPEN_PATH = "import_reopen_path"
+
         /** The active review's saved frame path at save time — restored on
          *  recreate. The review pins orientation, so this only fires on
          *  true process death. */
-        const val STATE_FRAME_PATH = "import_frame_path"
+        private const val STATE_FRAME_PATH = "import_frame_path"
 
         /** Crash-orphan cutoff for CBZ working copies (mirrors the frame
          *  sweep's 24h). */
-        const val CBZ_SWEEP_AGE_MS = 24 * 60 * 60 * 1000L
+        private const val CBZ_SWEEP_AGE_MS = 24 * 60 * 60 * 1000L
     }
 }
