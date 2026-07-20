@@ -758,6 +758,10 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         panelRows.addView(panelDivider())
         val openRow = inflater.inflate(R.layout.settings_row_link, panelRows, false)
         compactPanelRow(openRow)
+        // app:tint in the layout is AppCompat-only and ignored under this overlay
+        // context, so tint the icon in code like the menu's other icons.
+        openRow.findViewById<ImageView>(R.id.ivRowIcon).imageTintList =
+            ColorStateList.valueOf(mutedColor)
         openRow.findViewById<TextView>(R.id.tvRowTitle).text = context.getString(
             R.string.floating_menu_panel_open_app, context.getString(R.string.app_name)
         )
