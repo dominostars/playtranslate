@@ -259,6 +259,14 @@ class CaptureResultOverlay(
      *  return to it (the sliver itself parks the height at [sliverHeightPx]). */
     private var preSliverHeightPx = 0
 
+    /** End target of the height animation currently in [heightAnimator];
+     *  meaningful only while it runs, stamped by the two starters
+     *  ([animateSliverHeight] / [animatePanelHeight]). Lets [applyStatusFloor]
+     *  decide whether an in-flight animation already lands at/above a status's
+     *  floor or must be retargeted — the ANIMATOR owns the height per-frame,
+     *  so a plain floor write during flight is overwritten and useless. */
+    private var heightAnimatorTargetPx = 0
+
     /** One-shot: after a bind with the translation section hidden, the next
      *  layouts park the scroll just past its collapsed header (see hiddenTopPx).
      *  Cleared once the scroll lands so later user scrolling is untouched. */
@@ -783,9 +791,10 @@ class CaptureResultOverlay(
                         // A re-run (OCR gear, camera region change) can land
                         // NoText while boxes are up — they'd be a stale scene
                         // over "no text", and a status is unreadable in a
-                        // sliver: take the boxes down and bring the panel back.
+                        // sliver: take the boxes down and bring the panel up
+                        // to status height.
                         hideChips()
-                        if (sliverMode) expandFromSliver()
+                        if (sliverMode) expandFromSliverForStatus()
                         setStatus(state.message, state.ocrProvenance, state.screenshotPath)
                     }
                     is CaptureState.Failed -> {
@@ -793,7 +802,7 @@ class CaptureResultOverlay(
                         // them pulsing forever, and the status is unreadable in
                         // a sliver — same recovery as NoText.
                         hideChips()
-                        if (sliverMode) expandFromSliver()
+                        if (sliverMode) expandFromSliverForStatus()
                         setStatus(state.message)
                     }
                     CaptureState.Cancelled -> dismiss()
@@ -817,7 +826,11 @@ class CaptureResultOverlay(
      *  open-and-closed. */
     fun prepareForSettingsRefresh(preservePosture: Boolean = false) {
         hideChips()
-        if (sliverMode && !preservePosture) expandFromSliver()
+        // Status height, not the reading height: the expansion only exists to
+        // show the loading arc, and the Translating handler re-parks a
+        // collapsed posture — restoring the previous scene's fitted height
+        // here ballooned the sheet open on every collapsed page flip.
+        if (sliverMode && !preservePosture) expandFromSliverForStatus()
     }
 
     /** Persist the LIVE panel posture. Page switches in the paged import
@@ -992,6 +1005,28 @@ class CaptureResultOverlay(
         }
     }
 
+    /** Expansion for a STATUS phase — a loading re-run (collapsed page flip,
+     *  settings refresh) or a Failed/NoText landing while parked. The sheet
+     *  comes up just enough to read a status: NOT the [preSliverHeightPx]
+     *  reading height [expandFromSliver] restores — that's the PREVIOUS
+     *  scene's fitted result (up to the drag ceiling), which drew as a
+     *  mostly-empty sheet ballooning open over a one-line "Recognizing text…"
+     *  on every collapsed page flip.
+     *
+     *  Targets the loading floor without knowing the status (on the loading
+     *  path the message hasn't arrived yet). That's safe because the floor
+     *  invariant doesn't live here: every [setStatus] RETARGETS an in-flight
+     *  animation that would land below its measured need (see
+     *  [applyStatusFloor]) — whichever status lands, first or a fast
+     *  successor, the animation ends at/above it. */
+    private fun expandFromSliverForStatus() {
+        if (dismissed || animatingOut || !sliverMode) return
+        sliverMode = false
+        animateSliverHeight(CaptureResultGeometry.minPanelHeight(screenH)) {
+            updateShowOnScreenAction()
+        }
+    }
+
     /** The sliver drag has passed touch slop: the user is pulling the sheet edge
      *  to a height of their choosing, so the drag owns the height from here
      *  (cancel any in-flight park/expand animation; the crossfade follows the
@@ -1044,6 +1079,7 @@ class CaptureResultOverlay(
      *  fit when it lands. */
     private fun animateSliverHeight(target: Int, onEnd: (() -> Unit)? = null) {
         heightAnimator?.cancel()
+        heightAnimatorTargetPx = target
         heightAnimator = ValueAnimator.ofInt(panelHeightPx, target).apply {
             duration = SLIVER_DURATION_MS
             interpolator = AccelerateDecelerateInterpolator()
@@ -1161,16 +1197,43 @@ class CaptureResultOverlay(
         // at what the status actually measures; bindResult's own fit takes over
         // from there. NOT while slivered: a camera region re-run drives the
         // loading status through a parked sliver (boxes stay the presentation),
-        // and growing the sheet here would yank it half-open — the terminal
-        // states that need reading (Failed/NoText) expand BEFORE their
-        // setStatus, so they still get the floor.
+        // and growing the sheet here would yank it half-open.
+        applyStatusFloor()
+    }
+
+    /** The panel height the CURRENT status text needs to render unclipped. */
+    private fun statusFloorPx(): Int {
         statusText.measure(
             View.MeasureSpec.makeMeasureSpec(screenW, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
         )
-        val needed =
-            statusText.measuredHeight + dp(HANDLE_HEIGHT_DP) + topInsetPx + bottomInsetPx
-        if (!sliverMode && panelHeightPx < needed) setPanelHeight(needed)
+        return statusText.measuredHeight + dp(HANDLE_HEIGHT_DP) + topInsetPx + bottomInsetPx
+    }
+
+    /** Enforce the floor invariant for the visible status: the panel must not
+     *  END UP below what the status measures. Grow-only, and never while
+     *  parked in the sliver (the region-re-run status deliberately rides it).
+     *
+     *  A height animation in flight owns panelHeightPx per-frame, so a plain
+     *  write here would be overwritten — instead, an animation whose END
+     *  target is below the need is RETARGETED from the current frame (the
+     *  status expansion picked its target before this status existed — the
+     *  fast InProgress→NoText succession). An animation already landing
+     *  at/above the need keeps the height: it may be the user's tap-expand to
+     *  a taller reading height, which must not be hijacked downward. Only the
+     *  status expansion (or a status-visible user expand) can be running
+     *  here: content-fit animations imply bindResult hid the status, and the
+     *  sliver park/settle animations are excluded by the sliverMode guard. */
+    private fun applyStatusFloor() {
+        if (statusText.visibility != View.VISIBLE || sliverMode) return
+        val needed = statusFloorPx()
+        if (heightAnimator?.isRunning == true) {
+            if (heightAnimatorTargetPx < needed) {
+                animateSliverHeight(needed) { updateShowOnScreenAction() }
+            }
+        } else if (panelHeightPx < needed) {
+            setPanelHeight(needed)
+        }
     }
 
     private fun bindResult(result: TranslationResult) {
@@ -1396,6 +1459,7 @@ class CaptureResultOverlay(
      *  scales smoothly instead of stepping. */
     private fun animatePanelHeight(target: Int) {
         heightAnimator?.cancel()
+        heightAnimatorTargetPx = target
         val b = binder ?: return
         val startH = panelHeightPx
         val (srcStart, tgtStart) = fitSizes(b, fitBodyHeight(startH))
