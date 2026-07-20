@@ -73,6 +73,16 @@ android {
         buildConfig = true
     }
 
+    sourceSets {
+        getByName("androidTest") {
+            // OCR grouping corpus — a separate private repo checked out at
+            // ocr-grouping/ (gitignored; the docs/ pattern). Mounting its
+            // assets/ bundles the seeds into the test APK; an absent checkout
+            // just yields an empty corpus (OcrGroupingHarnessTest skips loudly).
+            assets.srcDir(rootProject.file("ocr-grouping/assets"))
+        }
+    }
+
     androidResources {
         // Generate res/xml/localeConfig from the values-* folders and wire
         // android:localeConfig into the merged manifest, so the app appears

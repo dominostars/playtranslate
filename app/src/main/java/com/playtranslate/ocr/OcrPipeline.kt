@@ -42,27 +42,37 @@ object OcrPipeline {
         val mangaOcrUsed: Boolean = false,
     )
 
-    suspend fun run(
+    /** Pre-layout recognition result handed to [withRecognition]'s block:
+     *  normalized engine output in the engine's input space (divide box
+     *  coords by [scaleFactor] for original-bitmap space). [processed] is the
+     *  engine-input bitmap and is valid ONLY inside the block —
+     *  [withRecognition] recycles it on exit. */
+    data class Recognition(
+        val regions: List<com.playtranslate.ocr.core.RecognizedRegion>,
+        val scaleFactor: Float,
+        val processed: Bitmap,
+        val backend: OcrBackend?,
+    )
+
+    /** Pre-layout half of [run] as a scoped bracket: engine resolution,
+     *  preprocessing, recognition, shared normalization, then [block] with the
+     *  [Recognition]. Deliberately NOT a value-returning seam: the
+     *  preprocessed bitmap never escapes this frame, so allocation and the
+     *  recycling finally coexist and cancellation at any suspend point —
+     *  including the prompt-cancellation resume boundary, which discards a
+     *  returned value — cannot strand it (2026-07-20 adversarial-review
+     *  finding on the previous returning shape). */
+    internal suspend fun <T> withRecognition(
         engineProvider: () -> ResolvedOcr,
         bitmap: Bitmap,
         sourceLang: String,
         screenshotWidth: Int,
         recipe: OcrPreprocessingRecipe,
         darkBackgroundProvider: () -> Boolean,
-        logGrouping: Boolean,
-        refineWithMangaOcr: Boolean = false,
         regionPreFilter: com.playtranslate.ocr.core.RegionPreFilter? = null,
-        documentLayoutBias: Boolean = false,
-    ): Output? = withContext(Dispatchers.Default) {
-        // Run the whole pass OFF the main thread: preprocessing, the engine's
-        // inference, and layout are all CPU-bound. The capture coroutine is
-        // dispatched on Main, and synchronous MNN engines (Paddle/Meiki/manga-ocr)
-        // would otherwise block it. ML Kit suspends around its async client so it
-        // never blocked Main — which masked this until a heavy engine (manga-ocr
-        // on a large page) blocked Main long enough to ANR. Moving every engine
-        // off Main here fixes the ANR and the (smaller) Paddle/Meiki UI jank.
-        //
-        // The engine + dark-background inputs are resolved HERE, not as eager
+        block: suspend (Recognition) -> T,
+    ): T = withContext(Dispatchers.Default) {
+        // Engine + dark-background inputs are resolved HERE, not as eager
         // call-site arguments: building a first-use Meiki/Paddle engine does a
         // native MNN load + OpenCV init, and the dark-bg sample reads bitmap
         // pixels — both would otherwise run on the Main capture coroutine.
@@ -77,35 +87,62 @@ object OcrPipeline {
             val recognized = engine.recognize(OcrImage(processed, sourceLang, screenshotWidth, regionPreFilter))
             // Shared text normalization (pipe-trim / UI-decoration / noise) for EVERY
             // engine — folds in passes that used to live only in the ML Kit adapter, so
-            // Meiki/Paddle/manga-ocr get them too. LayoutAnalyzer.analyze (this is its
-            // sole production caller) assumes its input is already normalized.
+            // Meiki/Paddle/manga-ocr get them too. LayoutAnalyzer.analyze (whose sole
+            // production caller is [run]) assumes its input is already normalized.
             val regions = RecognizedTextNormalizer.normalize(recognized, sourceLang)
-            if (regions.isEmpty()) return@withContext null
+            block(Recognition(regions, scaleFactor, processed, resolved.backend))
+        } finally {
+            if (processed !== bitmap) processed.recycle()
+        }
+    }
+
+    suspend fun run(
+        engineProvider: () -> ResolvedOcr,
+        bitmap: Bitmap,
+        sourceLang: String,
+        screenshotWidth: Int,
+        recipe: OcrPreprocessingRecipe,
+        darkBackgroundProvider: () -> Boolean,
+        logGrouping: Boolean,
+        refineWithMangaOcr: Boolean = false,
+        regionPreFilter: com.playtranslate.ocr.core.RegionPreFilter? = null,
+        documentLayoutBias: Boolean = false,
+    ): Output? =
+        // The whole pass runs OFF the main thread (withRecognition dispatches
+        // to Default): preprocessing, the engine's inference, and layout are
+        // all CPU-bound. The capture coroutine is dispatched on Main, and
+        // synchronous MNN engines (Paddle/Meiki/manga-ocr) would otherwise
+        // block it. ML Kit suspends around its async client so it never
+        // blocked Main — which masked this until a heavy engine (manga-ocr on
+        // a large page) blocked Main long enough to ANR.
+        withRecognition(
+            engineProvider, bitmap, sourceLang, screenshotWidth, recipe,
+            darkBackgroundProvider, regionPreFilter,
+        ) { rec ->
+            if (rec.regions.isEmpty()) return@withRecognition null
             val groups = LayoutAnalyzer.analyze(
-                regions = regions,
+                regions = rec.regions,
                 sourceLang = sourceLang,
-                screenshotWidthInRegionSpace = screenshotWidth * scaleFactor,
+                screenshotWidthInRegionSpace = screenshotWidth * rec.scaleFactor,
                 logDecisions = logGrouping,
                 documentPitchPrior = documentLayoutBias,
             )
-            if (groups.isEmpty()) return@withContext null
+            if (groups.isEmpty()) return@withRecognition null
             // Optional manga-ocr refinement, post-layout so both entry points share it.
             // Crops come from `processed` (engine-input space, same as the group boxes),
-            // so this runs before the finally recycles it. No-op if the model isn't loaded.
+            // so this runs inside the bracket, before withRecognition recycles it.
+            // No-op if the model isn't loaded.
             val refined =
                 if (refineWithMangaOcr) {
-                    MangaOcrRefiner.refine(groups, processed, sourceLang, logText = logGrouping)
+                    MangaOcrRefiner.refine(groups, rec.processed, sourceLang, logText = logGrouping)
                 } else {
                     null
                 }
             Output(
                 groups = refined?.groups ?: groups,
-                scaleFactor = scaleFactor,
-                backend = resolved.backend,
+                scaleFactor = rec.scaleFactor,
+                backend = rec.backend,
                 mangaOcrUsed = (refined?.decodedBlocks ?: 0) > 0,
             )
-        } finally {
-            if (processed !== bitmap) processed.recycle()
         }
-    }
 }

@@ -2,7 +2,9 @@ package com.playtranslate
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Rect
 import android.util.Log
+import com.playtranslate.language.SourceLanguageProfiles
 import java.io.File
 import java.io.FileOutputStream
 
@@ -38,6 +40,7 @@ object OcrSeedWriter {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
             File(dir, "$ts.txt").writeText(transcript(ocrResult))
+            File(dir, "$ts.groups.txt").writeText(groupsDraft(context, ocrResult))
             Log.d(TAG, "Wrote seed $ts (${ocrResult?.groups?.sumOf { it.lines.size } ?: 0} lines)")
         } catch (t: Throwable) {
             Log.w(TAG, "writeSeed failed", t)
@@ -53,5 +56,45 @@ object OcrSeedWriter {
         if (ocrResult == null) return "(no text detected — recognise returned null)"
         val fromLines = ocrResult.groups.flatMap { it.lines }.joinToString("\n") { it.text }
         return if (fromLines.isNotBlank()) fromLines else ocrResult.fullText
+    }
+
+    /** Stanza-formatted grouping draft for the OCR grouping suite
+     *  (`androidTest/assets/ocr_grouping/`, judged by
+     *  `scripts/build_grouping_report.py`): `# lang:` + `# surface:` directives,
+     *  then one blank-line-separated stanza per group, one `text<TAB>l,t,r,b`
+     *  row per line in original-bitmap coordinates. The stanzas record the
+     *  CURRENT grouping — a starting draft the curator re-stanzas into the
+     *  EXPECTED grouping — so accepting it uncritically pins today's behavior,
+     *  bugs included. */
+    private fun groupsDraft(context: Context, ocrResult: OcrManager.OcrResult?): String {
+        val lang = SourceLanguageProfiles[Prefs(context).sourceLangId].translationCode
+        val sb = StringBuilder()
+        sb.append("# lang: ").append(lang).append('\n')
+        sb.append("# surface: screen\n")
+        val groups = ocrResult?.groups.orEmpty()
+        if (groups.isEmpty()) {
+            sb.append("# (no groups — recognise returned ")
+                .append(if (ocrResult == null) "null" else "no groups")
+                .append(")\n")
+            return sb.toString()
+        }
+        for (group in groups) {
+            sb.append('\n')
+            // A group with no per-line boxes still gets a stanza row so the
+            // draft never silently drops content.
+            val rows = group.lines.ifEmpty { null }
+            if (rows == null) {
+                appendRow(sb, group.text, group.bounds)
+            } else {
+                for (line in rows) appendRow(sb, line.text, line.bounds)
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun appendRow(sb: StringBuilder, text: String, b: Rect) {
+        sb.append(text.replace('\t', ' ')).append('\t')
+            .append(b.left).append(',').append(b.top).append(',')
+            .append(b.right).append(',').append(b.bottom).append('\n')
     }
 }

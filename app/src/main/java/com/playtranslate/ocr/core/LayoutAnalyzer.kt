@@ -136,7 +136,7 @@ object LayoutAnalyzer {
      * per-block line height; the value here is re-derived for glyph-tight ML Kit
      * boxes, not ported (the units differ).
      */
-    private const val BAND_GAP_MULTIPLIER = 1.3f
+    internal const val BAND_GAP_MULTIPLIER = 1.3f
 
     /**
      * Relative tolerance for matching a candidate's line pitch (center-to-center
@@ -165,7 +165,7 @@ object LayoutAnalyzer {
      * height-gate analysis; closes the one cap-free merge path left after
      * the ladder re-grade.)
      */
-    private const val PITCH_TAIL_MAX_EXTENT_RATIO = 0.7f
+    internal const val PITCH_TAIL_MAX_EXTENT_RATIO = 0.7f
 
     /**
      * Document-pitch prior (opt-in per pass — the file-import pipeline only;
@@ -254,7 +254,7 @@ object LayoutAnalyzer {
      * regressions.
      */
     private const val SIZE_RATIO_CAP_BARE = 0.30
-    private const val SIZE_RATIO_CAP_CORROBORATED = 0.50
+    internal const val SIZE_RATIO_CAP_CORROBORATED = 0.50
 
     private fun sizeRatioCap(mode: GroupingMode): Double =
         if (mode == GroupingMode.CROSS_FRAME_SAME_REGION) SIZE_RATIO_CAP_CORROBORATED
@@ -1041,18 +1041,19 @@ object LayoutAnalyzer {
         candidateCue: TextFlowCue? = null,
         spacedScript: Boolean = true,
         docPitch: Int? = null,
+        recipe: GroupingRecipe = GroupingRecipe.Default,
     ): GroupDecision {
         shortAboveLongBlock(groupRect, candidate, orientation)?.let {
             return GroupDecision.NotGrouped("ext: $it")
         }
         return if (orientation == TextOrientation.VERTICAL) {
             samePassBlockExtrasVertical(
-                groupRect, candidate, memberBoxes, bracketBalance, lastCue, docPitch,
+                groupRect, candidate, memberBoxes, bracketBalance, lastCue, docPitch, recipe,
             )
         } else {
             samePassBlockExtrasHorizontal(
                 groupRect, candidate, groupAlignLeft, candidateAlignLeft, rtl,
-                memberBoxes, bracketBalance, lastCue, candidateCue, spacedScript, docPitch,
+                memberBoxes, bracketBalance, lastCue, candidateCue, spacedScript, docPitch, recipe,
             )
         }
     }
@@ -1069,6 +1070,7 @@ object LayoutAnalyzer {
         candidateCue: TextFlowCue?,
         spacedScript: Boolean,
         docPitch: Int?,
+        recipe: GroupingRecipe,
     ): GroupDecision {
         val aH = a.height()
         val bH = b.height()
@@ -1077,7 +1079,7 @@ object LayoutAnalyzer {
         val dy = if (a.bottom <= b.top) b.top - a.bottom
                  else if (b.bottom <= a.top) a.top - b.bottom
                  else 0
-        val bandThreshold = (refH * BAND_GAP_MULTIPLIER).toInt()
+        val bandThreshold = (refH * recipe.bandGapMultiplier).toInt()
         if (dy >= bandThreshold) {
             return GroupDecision.NotGrouped("ext: dy=$dy ≥ band ${bandThreshold}px")
         }
@@ -1128,7 +1130,7 @@ object LayoutAnalyzer {
 
         val lo = minOf(aH, bH)
         val hi = maxOf(aH, bH)
-        val scaleOk = lo <= 0 || (hi - lo).toDouble() / lo <= SIZE_RATIO_CAP_CORROBORATED
+        val scaleOk = lo <= 0 || (hi - lo).toDouble() / lo <= recipe.sizeRatioCapCorroborated
 
         val textContinues = bracketBalance > 0 ||
             lastCue?.endsContinuation == true ||
@@ -1139,10 +1141,10 @@ object LayoutAnalyzer {
         // the group's union width. A full-width candidate at coincidental
         // pitch still merges, but only through the corroborated cap: no
         // cap-free path without tail-shape evidence.
-        val tailShaped = b.width() < a.width() * PITCH_TAIL_MAX_EXTENT_RATIO
+        val tailShaped = b.width() < a.width() * recipe.pitchTailMaxExtentRatio
         val pitchMerge = (pitchOk || docPitchOk) && (tailShaped || scaleOk)
         val pitchDetail =
-            if (tailShaped) "tail w=${b.width()}<${PITCH_TAIL_MAX_EXTENT_RATIO}×${a.width()}, scale waived"
+            if (tailShaped) "tail w=${b.width()}<${recipe.pitchTailMaxExtentRatio}×${a.width()}, scale waived"
             else "scaleOk"
 
         val vgapThreshold = (refH * BLOCK_GAP_MULTIPLIER).toInt()
@@ -1163,12 +1165,12 @@ object LayoutAnalyzer {
                 pitchMerge -> GroupDecision.Grouped(
                     "ext-band-pitch (dy=$dy in [${vgapThreshold},${bandThreshold})px, pitch $pitchStr, $pitchDetail)"
                 )
-                BAND_TEXT_SEEDING_ENABLED && textContinues && scaleOk -> GroupDecision.Grouped(
+                recipe.bandTextSeeding && textContinues && scaleOk -> GroupDecision.Grouped(
                     "ext-band-cont (dy=$dy in [${vgapThreshold},${bandThreshold})px, brackets=$bracketBalance cont=${lastCue?.endsContinuation} lower=${candidateCue?.startsLowercase})"
                 )
                 else -> GroupDecision.NotGrouped(
                     "ext-band: dy=$dy, no corroboration (pitch=$pitchStr, tail=$tailShaped, cont=$textContinues" +
-                        (if (textContinues && !BAND_TEXT_SEEDING_ENABLED) " [seeding disabled]" else "") +
+                        (if (textContinues && !recipe.bandTextSeeding) " [seeding disabled]" else "") +
                         ", scaleOk=$scaleOk)"
                 )
             }
@@ -1182,6 +1184,7 @@ object LayoutAnalyzer {
         bracketBalance: Int,
         lastCue: TextFlowCue?,
         docPitch: Int?,
+        recipe: GroupingRecipe,
     ): GroupDecision {
         val aW = a.width()
         val bW = b.width()
@@ -1191,7 +1194,7 @@ object LayoutAnalyzer {
                  else if (b.left <= a.right && a.right <= b.right) 0
                  else if (a.right <= b.left) b.left - a.right
                  else a.left - b.right
-        val bandThreshold = (refW * BAND_GAP_MULTIPLIER).toInt()
+        val bandThreshold = (refW * recipe.bandGapMultiplier).toInt()
         if (dx >= bandThreshold) {
             return GroupDecision.NotGrouped("ext: dx=$dx ≥ band ${bandThreshold}px")
         }
@@ -1229,7 +1232,7 @@ object LayoutAnalyzer {
 
         val lo = minOf(aW, bW)
         val hi = maxOf(aW, bW)
-        val scaleOk = lo <= 0 || (hi - lo).toDouble() / lo <= SIZE_RATIO_CAP_CORROBORATED
+        val scaleOk = lo <= 0 || (hi - lo).toDouble() / lo <= recipe.sizeRatioCapCorroborated
 
         // No lowercase rule (vertical text is CJK) and no first-line indent
         // (out of scope for vertical — see FIRST_LINE_INDENT_MIN kdoc).
@@ -1238,10 +1241,10 @@ object LayoutAnalyzer {
         // Tail shape, vertical analog: a trailing COLUMN is a SHORTER one
         // (fewer characters down the column length) — see the horizontal
         // path for the rationale.
-        val tailShaped = b.height() < a.height() * PITCH_TAIL_MAX_EXTENT_RATIO
+        val tailShaped = b.height() < a.height() * recipe.pitchTailMaxExtentRatio
         val pitchMerge = (pitchOk || docPitchOk) && (tailShaped || scaleOk)
         val pitchDetail =
-            if (tailShaped) "tail h=${b.height()}<${PITCH_TAIL_MAX_EXTENT_RATIO}×${a.height()}, scale waived"
+            if (tailShaped) "tail h=${b.height()}<${recipe.pitchTailMaxExtentRatio}×${a.height()}, scale waived"
             else "scaleOk"
 
         val hgapThreshold = (refW * BLOCK_GAP_MULTIPLIER).toInt()
@@ -1259,12 +1262,12 @@ object LayoutAnalyzer {
                 pitchMerge -> GroupDecision.Grouped(
                     "ext-band-pitch (dx=$dx in [${hgapThreshold},${bandThreshold})px, pitch $pitchStr, $pitchDetail)"
                 )
-                BAND_TEXT_SEEDING_ENABLED && textContinues && scaleOk -> GroupDecision.Grouped(
+                recipe.bandTextSeeding && textContinues && scaleOk -> GroupDecision.Grouped(
                     "ext-band-cont (dx=$dx in [${hgapThreshold},${bandThreshold})px, brackets=$bracketBalance cont=${lastCue?.endsContinuation})"
                 )
                 else -> GroupDecision.NotGrouped(
                     "ext-band: dx=$dx, no corroboration (pitch=$pitchStr, tail=$tailShaped, cont=$textContinues" +
-                        (if (textContinues && !BAND_TEXT_SEEDING_ENABLED) " [seeding disabled]" else "") +
+                        (if (textContinues && !recipe.bandTextSeeding) " [seeding disabled]" else "") +
                         ", scaleOk=$scaleOk)"
                 )
             }
@@ -1301,6 +1304,8 @@ object LayoutAnalyzer {
      *   corroborated gap band (see [documentPitch]) — the file-import
      *   pipeline's document bias. Off for game/live surfaces: menus are
      *   rhythmic too, and there the band's refusal is the wanted behavior.
+     * - [recipe] : tunable values for the evidence layer (see
+     *   [GroupingRecipe]); the default is byte-identical to production.
      *
      * Returns a list of groups, each group being the indices into
      * [boxes] that ended up together, in encounter order.
@@ -1315,6 +1320,7 @@ object LayoutAnalyzer {
         cues: List<TextFlowCue>? = null,
         spacedScript: Boolean = true,
         documentPitchPrior: Boolean = false,
+        recipe: GroupingRecipe = GroupingRecipe.Default,
     ): List<List<Int>> {
         require(boxes.size == alignLefts.size) {
             "boxes and alignLefts must match length"
@@ -1428,6 +1434,7 @@ object LayoutAnalyzer {
                     candidateCue = cues?.get(idx),
                     spacedScript = spacedScript,
                     docPitch = docPitch,
+                    recipe = recipe,
                 )
                 val groupMerged = baseMerged || extras is GroupDecision.Grouped
                 if (logDecisions) {
@@ -1506,48 +1513,47 @@ object LayoutAnalyzer {
         screenshotWidthInRegionSpace: Float,
         logDecisions: Boolean = false,
         documentPitchPrior: Boolean = false,
+        /** The grouping algorithm to run — the decision middle between the
+         *  shared shell's normalization (upstream) and reading-order join /
+         *  bounds / orientation vote / alignment (downstream). Null = the
+         *  production [DefaultGroupingStrategy] carrying [documentPitchPrior].
+         *  Non-default strategies are research instruments (the grouping
+         *  harness catalog); production call sites never pass one. */
+        strategy: GroupingStrategy? = null,
     ): List<LayoutGroup> {
         if (regions.isEmpty()) return emptyList()
         val profile = SourceLanguageProfiles.forCode(sourceLang)
-        val rtl = profile?.textDirection == TextDirection.RTL
-        val spacedScript = profile?.wordsSeparatedByWhitespace != false
-        val (vertical, horizontal) = regions.partition { it.orientation == TextOrientation.VERTICAL }
-        val hGroups = groupRegions(
-            horizontal.sortedBy { it.box.bounds.top }, TextOrientation.HORIZONTAL, logDecisions, rtl, spacedScript,
-            documentPitchPrior,
+        val ctx = GroupingContext(
+            sourceLang = sourceLang,
+            screenshotWidthInRegionSpace = screenshotWidthInRegionSpace,
+            rtl = profile?.textDirection == TextDirection.RTL,
+            spacedScript = profile?.wordsSeparatedByWhitespace != false,
+            logDecisions = logDecisions,
         )
-        val vGroups = groupRegions(
-            vertical.sortedByDescending { it.box.bounds.right }, TextOrientation.VERTICAL, logDecisions, rtl, spacedScript,
-            documentPitchPrior,
+        val active = strategy ?: DefaultGroupingStrategy(
+            GroupingRecipe.Default.copy(documentPitchPrior = documentPitchPrior)
         )
-        val rawGroups = (hGroups + vGroups).filter { group ->
-            group.any { r -> r.text.any { isSourceLangChar(it, sourceLang) } }
-        }
-        if (rawGroups.isEmpty()) return emptyList()
-        val split = if (screenshotWidthInRegionSpace > 0f) {
-            splitMenuGroups(rawGroups, screenshotWidthInRegionSpace, logDecisions)
-        } else {
-            rawGroups.map { SplitGroup(it) }
-        }
+        val proposed = active.group(regions, ctx)
         // Join a group's lines with a space only for whitespace-delimited
         // languages; CJK/Thai (wordsSeparatedByWhitespace = false) get no
         // separator so the merged paragraph reads naturally AND the translator
         // receives clean source (`今日はいい天気` not `今日は いい天気`). Default to
         // a space when the profile is unknown — only languages we KNOW omit
         // inter-word spaces drop it, so every other language keeps prior behavior.
-        val lineJoin = if (spacedScript) " " else ""
-        return split.mapNotNull { buildLayoutGroup(it, lineJoin) }
+        val lineJoin = if (ctx.spacedScript) " " else ""
+        return proposed.mapNotNull { buildLayoutGroup(it, lineJoin) }
     }
 
     /** Extract boxes + align-left hints + text-flow cues from sorted regions,
      *  run the kernel, and remap index-groups back to region lists. */
-    private fun groupRegions(
+    /** [DefaultGroupingStrategy]'s per-orientation walk: extract boxes,
+     *  align-left hints and text-flow cues from [sorted] regions, run
+     *  [groupBoxesOnePass], and map index-groups back to region lists. */
+    internal fun groupRegions(
         sorted: List<RecognizedRegion>,
         orientation: TextOrientation,
-        logDecisions: Boolean,
-        rtl: Boolean,
-        spacedScript: Boolean,
-        documentPitchPrior: Boolean,
+        ctx: GroupingContext,
+        recipe: GroupingRecipe,
     ): List<List<RecognizedRegion>> {
         if (sorted.isEmpty()) return emptyList()
         val boxes = sorted.map { it.box.bounds }
@@ -1556,20 +1562,14 @@ object LayoutAnalyzer {
         } else {
             List(sorted.size) { null }
         }
-        val texts = if (logDecisions) sorted.map { it.text } else null
+        val texts = if (ctx.logDecisions) sorted.map { it.text } else null
         val cues = sorted.map { textFlowCue(it.text) }
         val idxGroups = groupBoxesOnePass(
-            boxes, alignLefts, orientation, logDecisions, texts, rtl, cues, spacedScript,
-            documentPitchPrior,
+            boxes, alignLefts, orientation, ctx.logDecisions, texts, ctx.rtl, cues, ctx.spacedScript,
+            recipe.documentPitchPrior, recipe,
         )
         return idxGroups.map { idxs -> idxs.map { sorted[it] } }
     }
-
-    private data class SplitGroup(
-        val regions: List<RecognizedRegion>,
-        val parentLeft: Int? = null,
-        val parentRight: Int? = null,
-    )
 
     /**
      * Split menu/list-like groups into individual rows (each its own group),
@@ -1582,11 +1582,11 @@ object LayoutAnalyzer {
      * — collapse into one row ([rowBands]). Otherwise a 3-row card body whose stat
      * line OCR'd as two boxes reads as a 4-item menu and gets shredded.
      */
-    private fun splitMenuGroups(
+    internal fun splitMenuGroups(
         groups: List<List<RecognizedRegion>>,
         screenWidth: Float,
         logDecisions: Boolean = false,
-    ): List<SplitGroup> = groups.flatMap { group ->
+    ): List<ProposedGroup> = groups.flatMap { group ->
         val orientation = group.firstOrNull()?.orientation ?: TextOrientation.HORIZONTAL
         val rows = rowBands(group.map { it.box.bounds }, orientation)
         val rowRects = rows.map { idxs -> unionRect(idxs.map { group[it].box.bounds }) }
@@ -1601,10 +1601,10 @@ object LayoutAnalyzer {
                 )
             }
             rows.map { idxs ->
-                SplitGroup(idxs.map { group[it] }, parentLeft = groupLeft, parentRight = groupRight)
+                ProposedGroup(idxs.map { group[it] }, parentLeft = groupLeft, parentRight = groupRight)
             }
         } else {
-            listOf(SplitGroup(group))
+            listOf(ProposedGroup(group))
         }
     }
 
@@ -1680,7 +1680,7 @@ object LayoutAnalyzer {
         }
     }
 
-    private fun buildLayoutGroup(sg: SplitGroup, lineJoin: String): LayoutGroup? {
+    private fun buildLayoutGroup(sg: ProposedGroup, lineJoin: String): LayoutGroup? {
         val raw = sg.regions
         if (raw.isEmpty()) return null
         val verticalCount = raw.count { it.orientation == TextOrientation.VERTICAL }

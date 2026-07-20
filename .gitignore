@@ -57,6 +57,12 @@ app/src/androidTest/assets/ocr_golden/**/*.notes.md
 /ocr-seeds/
 /ocr-golden-reports/
 
+# OCR grouping corpus + judge — its own private repo (the docs/ pattern):
+# github.com/dominostars/playtranslate-ocr-grouping. Screenshot seeds are
+# copyrighted game frames; app/build.gradle.kts mounts ocr-grouping/assets/
+# into the androidTest assets sourceSet when the checkout is present.
+/ocr-grouping/
+
 # Segmentation-run diagnostic dumps (local analysis output, not source).
 /seg-runs/
 
