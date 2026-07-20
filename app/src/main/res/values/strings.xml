@@ -3172,6 +3172,15 @@
          auto translation. -->
     <string name="hotkey_auto_translation_dialog_title">Auto Translate</string>
 
+    <!-- Hotkey row title — tap the combo to capture the screen once (the same
+         action as the floating icon's Capture button).  Pressing it again
+         while the capture result is still on screen dismisses it instead. -->
+    <string name="hotkey_capture_screen_title">Tap to capture screen</string>
+
+    <!-- Dialog title prompting the user to record a hotkey for the one-shot
+         screen capture. -->
+    <string name="hotkey_capture_screen_dialog_title">Capture Screen</string>
+
     <!-- Hotkey row title — reading-hint variant.  %1$s = the localised
          reading-guide name (e.g. "Furigana" for Japanese, "Pinyin" for
          Mandarin). -->

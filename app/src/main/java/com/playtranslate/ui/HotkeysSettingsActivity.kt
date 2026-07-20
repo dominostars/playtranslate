@@ -48,6 +48,7 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
     private lateinit var headerTranslations: View
     private lateinit var rowHotkeyTranslation: View
     private lateinit var rowHotkeyTranslationTap: View
+    private lateinit var rowHotkeyCaptureTap: View
     private lateinit var sectionFurigana: View
     private lateinit var headerFurigana: View
     private lateinit var rowHotkeyFurigana: View
@@ -59,6 +60,7 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
         headerTranslations = findViewById(R.id.headerTranslations)
         rowHotkeyTranslation = findViewById(R.id.rowHotkeyTranslation)
         rowHotkeyTranslationTap = findViewById(R.id.rowHotkeyTranslationTap)
+        rowHotkeyCaptureTap = findViewById(R.id.rowHotkeyCaptureTap)
         sectionFurigana = findViewById(R.id.sectionFurigana)
         headerFurigana = findViewById(R.id.headerFurigana)
         rowHotkeyFurigana = findViewById(R.id.rowHotkeyFurigana)
@@ -94,6 +96,14 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
             dialogTitle = getString(R.string.hotkey_auto_translation_dialog_title),
             onSet = vm::setTranslationTapHotkey,
             onClear = vm::clearTranslationTapHotkey,
+        )
+        renderHotkeyRow(
+            row = rowHotkeyCaptureTap,
+            title = getString(R.string.hotkey_capture_screen_title),
+            hotkey = state.captureTapHotkey,
+            dialogTitle = getString(R.string.hotkey_capture_screen_dialog_title),
+            onSet = vm::setCaptureTapHotkey,
+            onClear = vm::clearCaptureTapHotkey,
         )
 
         sectionFurigana.isVisible = state.showFuriganaSection

@@ -1266,19 +1266,11 @@ class OverlayUiController(
             }
         }
         // One-shot capture of the *current* region (full screen unless one is
-        // set). handleRegionSelection routes single- vs dual-screen and
-        // configures the override itself. If auto-translate is running, stop it
-        // first so this is a clean one-shot, not a live refresh.
+        // set) — the same action the "Tap to capture screen" hotkey runs
+        // ([captureCurrentRegionForDisplay]).
         menu.onTranslateOnce = {
-            // The capture button becomes the most-recently-used primary.
-            captureIsPreferredPrimary = true
             dismissFloatingMenu()
-            val region = CaptureService.instance?.activeRegionForDisplay(display.displayId)
-                ?: CaptureService.DEFAULT_REGION
-            if (CaptureService.instance?.isLive == true) {
-                stopLiveRouted()
-            }
-            handleRegionSelection(display.displayId, region)
+            captureCurrentRegionForDisplay(display.displayId)
         }
 
         val params = WindowManager.LayoutParams(
@@ -1526,6 +1518,60 @@ class OverlayUiController(
                 startLiveRouted()
             }
         }
+    }
+
+    /**
+     * "Capture screen" hotkey action — a toggle. If a capture-result overlay
+     * from a prior press is still on screen, dismiss it and stop; the *next*
+     * press then runs a fresh capture. Otherwise run the one-shot immediately.
+     * Called on the main thread via the active overlay UI, matching
+     * [toggleAutoMode]'s routing contract.
+     *
+     * The predicate is exactly [captureResultOverlay] because that panel window
+     * is what a one-shot shows on a single-screen device (its on-game boxes are
+     * its own bottom-most child, torn down with it) — precisely the "translation
+     * overlay" a capture leaves up. A running auto session's live overlay is a
+     * different surface with its own tap hotkey, so it is deliberately not
+     * treated as a capture result here; a capture press during live stops live
+     * and captures, same as the floating menu's Capture button.
+     */
+    fun toggleCaptureScreenForDisplay(displayId: Int) {
+        if (captureResultOverlay != null) {
+            animateOutCaptureResultOverlay()
+            return
+        }
+        captureCurrentRegionForDisplay(displayId)
+    }
+
+    /**
+     * Animate the capture-result panel out (slide-up), matching a tap-outside /
+     * swipe dismissal, rather than the instant teardown of
+     * [dismissCaptureResultOverlay] (which the menu-open / supersede / teardown
+     * paths use because they need the window gone synchronously). The overlay's
+     * own onDismiss nulls [captureResultOverlay] at the end of the animation
+     * (exactly as a gesture dismiss does); a re-press mid-animation is a no-op
+     * (the overlay guards its in-flight exit).
+     */
+    private fun animateOutCaptureResultOverlay() {
+        captureResultOverlay?.animateOutAndDismiss()
+    }
+
+    /**
+     * Run a one-shot capture of [displayId]'s current region (full screen unless
+     * one is set) — the action shared by the floating menu's Capture button and
+     * the capture-screen hotkey. [handleRegionSelection] routes single- vs
+     * dual-screen and configures the override itself; a running auto session is
+     * stopped first so this is a clean one-shot, not a live refresh. Marks
+     * capture the most-recently-used primary (styling for the next menu open).
+     */
+    private fun captureCurrentRegionForDisplay(displayId: Int) {
+        captureIsPreferredPrimary = true
+        val region = CaptureService.instance?.activeRegionForDisplay(displayId)
+            ?: CaptureService.DEFAULT_REGION
+        if (CaptureService.instance?.isLive == true) {
+            stopLiveRouted()
+        }
+        handleRegionSelection(displayId, region)
     }
 
     private fun sendMainActivityIntent(action: String, targetDisplayId: Int? = null) {

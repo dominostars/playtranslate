@@ -35,6 +35,7 @@ class HotkeysSettingsViewModel(app: Application) : AndroidViewModel(app) {
             Prefs.KEY_HOTKEY_FURIGANA,
             Prefs.KEY_HOTKEY_TRANSLATION_TAP,
             Prefs.KEY_HOTKEY_FURIGANA_TAP,
+            Prefs.KEY_HOTKEY_CAPTURE_TAP,
             Prefs.KEY_QUICK_TILE_ADDED,
         )
             .map { derive() }
@@ -46,6 +47,7 @@ class HotkeysSettingsViewModel(app: Application) : AndroidViewModel(app) {
         return HotkeysUiState(
             translationHotkey = prefs.hotkeyTranslation,
             translationTapHotkey = prefs.hotkeyTranslationTap,
+            captureTapHotkey = prefs.hotkeyCaptureTap,
             showFuriganaSection = hintKind != HintTextKind.NONE,
             furiganaHotkey = prefs.hotkeyFurigana,
             furiganaTapHotkey = prefs.hotkeyFuriganaTap,
@@ -66,12 +68,15 @@ class HotkeysSettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun clearTranslationTapHotkey() { prefs.hotkeyTranslationTap = "" }
     fun setFuriganaTapHotkey(combo: String) { prefs.hotkeyFuriganaTap = combo }
     fun clearFuriganaTapHotkey() { prefs.hotkeyFuriganaTap = "" }
+    fun setCaptureTapHotkey(combo: String) { prefs.hotkeyCaptureTap = combo }
+    fun clearCaptureTapHotkey() { prefs.hotkeyCaptureTap = "" }
     fun markQuickTileAdded() { prefs.quickTileAdded = true }
 }
 
 data class HotkeysUiState(
     val translationHotkey: String,
     val translationTapHotkey: String,
+    val captureTapHotkey: String,
     val showFuriganaSection: Boolean,
     val furiganaHotkey: String,
     val furiganaTapHotkey: String,

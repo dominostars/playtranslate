@@ -525,6 +525,7 @@ class HotkeyDecisionTest {
             furiganaHold = "2",
             translationTap = "3",
             furiganaTap = "4",
+            captureTap = "",
             hasReadingHint = true,
         )
         assertEquals(
@@ -548,6 +549,7 @@ class HotkeyDecisionTest {
             furiganaHold = "2",
             translationTap = "3",
             furiganaTap = "4",
+            captureTap = "",
             hasReadingHint = false,
         )
         assertEquals(
@@ -563,10 +565,29 @@ class HotkeyDecisionTest {
             furiganaHold = "5+6",
             translationTap = "",
             furiganaTap = "",
+            captureTap = "",
             hasReadingHint = true,
         )
         assertEquals(listOf(HotkeyAssignment.FURIGANA_HOLD), combos.map { it.assignment })
         assertEquals(setOf(5, 6), combos.first().keys)
+    }
+
+    @Test
+    fun `buildHotkeyCombos includes the capture tap regardless of reading hint`() {
+        // The capture-screen hotkey isn't a reading-hint feature, so — unlike
+        // the furigana combos — it survives even when the source language has
+        // no hint layer.
+        val withHint = buildHotkeyCombos(
+            translationHold = "", furiganaHold = "", translationTap = "",
+            furiganaTap = "", captureTap = "8", hasReadingHint = true,
+        )
+        val noHint = buildHotkeyCombos(
+            translationHold = "", furiganaHold = "", translationTap = "",
+            furiganaTap = "", captureTap = "8", hasReadingHint = false,
+        )
+        assertEquals(listOf(HotkeyAssignment.CAPTURE_TAP), withHint.map { it.assignment })
+        assertEquals(listOf(HotkeyAssignment.CAPTURE_TAP), noHint.map { it.assignment })
+        assertEquals(setOf(8), noHint.first().keys)
     }
 
     // ── shouldLatchActive (quick-release tap must not latch) ───────────

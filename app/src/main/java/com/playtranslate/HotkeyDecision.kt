@@ -24,10 +24,17 @@ package com.playtranslate
 enum class HotkeyTrigger { HOLD, TAP }
 
 /**
- * The four configurable hotkeys. Each binds a key combo to an overlay [mode]
+ * The configurable hotkeys. Each binds a key combo to an overlay [mode]
  * and a [trigger] style:
  *  - HOLD combos show the overlay only while held (momentary preview).
  *  - TAP combos toggle the persistent auto/live session in [mode].
+ *  - [CAPTURE_TAP] is the exception: a TAP-triggered one-shot "Capture screen"
+ *    (the same action as the floating-icon Capture button) that respects the
+ *    *current* overlay mode rather than forcing one, so its [mode] is nominal
+ *    and unused — the caller dispatches it by identity, not by mode/trigger
+ *    (see PlayTranslateAccessibilityService.fireTapOnMain). Modelling it as a
+ *    TAP lets it reuse the state machine's tap timing unchanged (fire on press,
+ *    fire on quick-release of a shadowed combo).
  *
  * Used as the combo identity throughout the state machine — [OverlayMode]
  * alone can't tell the hold and tap bindings for the same mode apart.
@@ -37,6 +44,7 @@ enum class HotkeyAssignment(val mode: OverlayMode, val trigger: HotkeyTrigger) {
     FURIGANA_HOLD(OverlayMode.FURIGANA, HotkeyTrigger.HOLD),
     TRANSLATION_TAP(OverlayMode.TRANSLATION, HotkeyTrigger.TAP),
     FURIGANA_TAP(OverlayMode.FURIGANA, HotkeyTrigger.TAP),
+    CAPTURE_TAP(OverlayMode.TRANSLATION, HotkeyTrigger.TAP),
 }
 
 /** A configured hotkey: a set of keycodes bound to an [assignment]. */
@@ -52,19 +60,29 @@ fun parseHotkeyCombo(stored: String): Set<Int> {
 }
 
 /**
- * Assemble the live combo list from the four stored bindings, dropping unset
+ * Assemble the live combo list from the stored bindings, dropping unset
  * (empty) ones. When [hasReadingHint] is false the Furigana/Pinyin combos —
  * both hold and tap — are excluded entirely: a source language with no hint
  * layer hides those rows on the Hotkeys page, so a stale binding left over
  * from a prior language must not fire invisibly (the tap variant is worse than
  * the hold, since it would silently start an auto session). Mirrors the
  * `hintTextKind != NONE` gate used by the Hotkeys page and the settings digest.
+ *
+ * [captureTap] (the "Capture screen" one-shot) is language-agnostic — it isn't
+ * a reading-hint feature — so it is included regardless of [hasReadingHint],
+ * exactly like the translation combos.
+ *
+ * Holds are listed before taps so a combo bound to both a hold and a tap of the
+ * same key-set resolves to the hold in [decideHotkeyAction] (maxByOrNull returns
+ * the first of equal-size matches), preserving instant-hold + tap-on-release;
+ * [CAPTURE_TAP] is listed last so a hold still wins that tie over it.
  */
 fun buildHotkeyCombos(
     translationHold: String,
     furiganaHold: String,
     translationTap: String,
     furiganaTap: String,
+    captureTap: String,
     hasReadingHint: Boolean,
 ): List<HotkeyCombo> = listOfNotNull(
     HotkeyCombo(parseHotkeyCombo(translationHold), HotkeyAssignment.TRANSLATION_HOLD),
@@ -73,6 +91,7 @@ fun buildHotkeyCombos(
     HotkeyCombo(parseHotkeyCombo(translationTap), HotkeyAssignment.TRANSLATION_TAP),
     if (hasReadingHint)
         HotkeyCombo(parseHotkeyCombo(furiganaTap), HotkeyAssignment.FURIGANA_TAP) else null,
+    HotkeyCombo(parseHotkeyCombo(captureTap), HotkeyAssignment.CAPTURE_TAP),
 ).filter { it.keys.isNotEmpty() }
 
 /** Snapshot of mutable hotkey state, used as input to [decideHotkeyAction]. */

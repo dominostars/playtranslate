@@ -87,6 +87,15 @@
                     <include layout="@layout/settings_row_hotkey"
                         android:id="@+id/rowHotkeyTranslationTap" />
 
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider" />
+
+                    <include layout="@layout/settings_row_hotkey"
+                        android:id="@+id/rowHotkeyCaptureTap" />
+
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

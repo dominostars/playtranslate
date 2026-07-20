@@ -886,10 +886,12 @@ class CaptureResultOverlay(
     }
 
     /** Slide the panel up off the top edge, then remove it — so tap-outside and
-     *  swipe/fling-down dismissals animate out instead of vanishing. Other paths
+     *  swipe/fling-down dismissals (and the capture-screen hotkey's toggle-off,
+     *  via [OverlayUiController.animateOutCaptureResultOverlay]) animate out
+     *  instead of vanishing. Idempotent while the exit is in flight. Other paths
      *  (Cancelled, supersede, teardown) call [dismiss] directly for immediate
      *  removal. */
-    private fun animateOutAndDismiss() {
+    fun animateOutAndDismiss() {
         if (dismissed || animatingOut) return
         animatingOut = true
         dismissWordLens()

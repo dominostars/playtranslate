@@ -1188,6 +1188,12 @@ class Prefs internal constructor(
         get() = sp.getString(KEY_HOTKEY_FURIGANA_TAP, "") ?: ""
         set(v) = sp.edit { putString(KEY_HOTKEY_FURIGANA_TAP, v) }
 
+    /** Hotkey combo for the one-shot "Capture screen" (toggles the capture
+     *  result off if it's still showing). Empty = not set. Format: keyCodes joined by "+". */
+    var hotkeyCaptureTap: String
+        get() = sp.getString(KEY_HOTKEY_CAPTURE_TAP, "") ?: ""
+        set(v) = sp.edit { putString(KEY_HOTKEY_CAPTURE_TAP, v) }
+
     /** Capture interval for live mode in seconds. */
     var captureIntervalSec: Float
         get() = sp.getFloat(KEY_CAPTURE_INTERVAL_SEC, DEFAULT_CAPTURE_INTERVAL_SEC).coerceAtLeast(MIN_CAPTURE_INTERVAL_SEC)
@@ -1487,6 +1493,7 @@ class Prefs internal constructor(
         const val KEY_HOTKEY_FURIGANA                      = "hotkey_furigana"
         const val KEY_HOTKEY_TRANSLATION_TAP               = "hotkey_translation_tap"
         const val KEY_HOTKEY_FURIGANA_TAP                  = "hotkey_furigana_tap"
+        const val KEY_HOTKEY_CAPTURE_TAP                   = "hotkey_capture_tap"
         const val KEY_QUICK_TILE_ADDED                     = "quick_tile_added"
         private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"
         private const val KEY_LAST_YOMITAN_UPDATE_CHECK    = "last_yomitan_update_check"

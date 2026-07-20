@@ -135,10 +135,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     /** Wire hotkey callbacks to CaptureService. Safe to call multiple times.
      *
      *  HOLD combos drive the momentary hold-to-preview on [CaptureService];
-     *  TAP combos toggle the persistent auto/live session, routed through the
-     *  active [OverlayUiController] (single- vs dual-screen / InAppOnly) just
-     *  like the floating menu's Auto button. The release leg only matters for
-     *  HOLD (end the preview) — a TAP already did its work on activation. */
+     *  TAP combos are routed by [fireTapOnMain] — the auto/live toggle for the
+     *  translation/furigana taps, a one-shot Capture for [HotkeyAssignment
+     *  .CAPTURE_TAP] — through the active [OverlayUiController] (single- vs
+     *  dual-screen / InAppOnly) just like the floating menu's buttons. The
+     *  release leg only matters for HOLD (end the preview); a TAP already did
+     *  its work on activation, except that a quick release of a hold sharing
+     *  the tap's keys fires that tap too (one key = preview + action). */
     fun registerHotkeyCallbacks() {
         val svc = CaptureService.instance ?: return
         onHotkeyActivated = { assignment ->
@@ -149,15 +152,15 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     hotkeyHoldActivatedAtMs = SystemClock.elapsedRealtime()
                     svc.hotkeyHoldStart(assignment.mode)
                 }
-                HotkeyTrigger.TAP -> toggleAutoModeOnMain(assignment.mode)
+                HotkeyTrigger.TAP -> fireTapOnMain(assignment)
             }
         }
         onHotkeyReleased = { assignment ->
             if (assignment.trigger == HotkeyTrigger.HOLD) {
                 svc.hotkeyHoldEnd()
                 // Instant-hold + tap-on-quick-release: if the same combo also
-                // carries a Tap and the press was brief, fire the toggle now —
-                // so one key can both preview (hold) and toggle auto (tap).
+                // carries a Tap and the press was brief, fire that tap now —
+                // so one key can both preview (hold) and run its tap action.
                 // heldMs is measured here, at release, not at toggle time.
                 val heldMs = SystemClock.elapsedRealtime() - hotkeyHoldActivatedAtMs
                 val tap = tapOnQuickRelease(
@@ -166,9 +169,21 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     thresholdMs = TAP_HOLD_THRESHOLD_MS,
                     combos = currentHotkeyCombos(),
                 )
-                if (tap != null) toggleAutoModeOnMain(tap.mode)
+                if (tap != null) fireTapOnMain(tap)
             }
         }
+    }
+
+    /**
+     * Route a TAP-triggered [assignment] to its action. [HotkeyAssignment
+     * .CAPTURE_TAP] runs a one-shot Capture (toggle-dismissing a showing
+     * capture result); every other tap toggles that mode's auto/live session.
+     * Shared by on-press activation and the hold's quick-release tap so the
+     * capture binding is honored on both paths.
+     */
+    private fun fireTapOnMain(assignment: HotkeyAssignment) {
+        if (assignment == HotkeyAssignment.CAPTURE_TAP) captureScreenOnMain()
+        else toggleAutoModeOnMain(assignment.mode)
     }
 
     /**
@@ -188,6 +203,26 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         if (isUserReachable()) {
             (CaptureBackendResolver.activeOverlayUi ?: overlayUiController).toggleAutoMode(mode)
         }
+    }
+
+    /**
+     * Run the "Capture screen" hotkey on the main thread. Like
+     * [toggleAutoModeOnMain], hotkey callbacks can fire off the main thread but
+     * the capture path shows an overlay and must run on main; and it re-checks
+     * [isUserReachable] so a press landing after the icon is hidden / app
+     * backgrounded doesn't fire a ghost capture. Targets the primary game
+     * display (the user's last-interacted display when several are selected),
+     * matching where the hotkey one-shots and the in-app panel already land.
+     */
+    private fun captureScreenOnMain() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            debugHandler.post { captureScreenOnMain() }
+            return
+        }
+        if (!isUserReachable()) return
+        val displayId = CaptureService.instance?.primaryGameDisplayId() ?: Display.DEFAULT_DISPLAY
+        (CaptureBackendResolver.activeOverlayUi ?: overlayUiController)
+            .toggleCaptureScreenForDisplay(displayId)
     }
 
     /**
@@ -594,6 +629,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             furiganaHold = prefs.hotkeyFurigana,
             translationTap = prefs.hotkeyTranslationTap,
             furiganaTap = prefs.hotkeyFuriganaTap,
+            captureTap = prefs.hotkeyCaptureTap,
             hasReadingHint = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind != HintTextKind.NONE,
         )
     }
