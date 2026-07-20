@@ -10,6 +10,7 @@ import android.text.style.ClickableSpan
 import android.text.style.ImageSpan
 import android.view.View
 import android.widget.TextView
+import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import com.playtranslate.Prefs
 import com.playtranslate.R
@@ -96,6 +97,18 @@ private const val NO_TEXT_LANG_CLOSE = "⁩"  // POP DIRECTIONAL ISOLATE (PDI)
  *  the formatted "No <lang> text detected …" message. Pass the result as the %1$s arg. */
 fun markNoTextLanguage(languageName: String): String =
     "$NO_TEXT_LANG_OPEN$languageName$NO_TEXT_LANG_CLOSE"
+
+/** Build a no-text status message from [template], whose %1$s is [srcId]'s localized name
+ *  wrapped in the [markNoTextLanguage] sentinels (further format args follow it). Every
+ *  no-text producer (capture, camera snapshot, file import) routes through this so a flow
+ *  can't forget the sentinels — without them [setNoTextStatus] silently degrades to plain
+ *  text with no tappable language. */
+fun noTextStatusMessage(
+    ctx: Context,
+    @StringRes template: Int,
+    srcId: SourceLangId,
+    vararg args: Any,
+): String = ctx.getString(template, markNoTextLanguage(srcId.displayName()), *args)
 
 /** Render a "No <lang> text detected …" status in [message] with up to two independent,
  *  precisely-tappable affordances — both [ClickableSpan]s driven by one [LinkMovementMethod],

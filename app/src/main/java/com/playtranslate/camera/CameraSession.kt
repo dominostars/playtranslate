@@ -42,6 +42,7 @@ import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.stackableTargetScript
 import com.playtranslate.language.targetSupportsVerticalText
 import com.playtranslate.ui.TextBox
+import com.playtranslate.ui.noTextStatusMessage
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
@@ -1494,7 +1495,7 @@ class CameraSession(
             }
             SnapshotCore.deleteFrame(if (won) replaced else screenshotPath)
             state.value = CaptureState.NoText(
-                context.getString(com.playtranslate.R.string.camera_snapshot_no_text),
+                noTextStatusMessage(context, com.playtranslate.R.string.camera_snapshot_no_text, srcId),
                 provenance,
                 screenshotPath,
             )

@@ -83,7 +83,7 @@ import com.playtranslate.language.stackableTargetScript
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.ui.DegradedWarningKind
 import com.playtranslate.ui.TextBox
-import com.playtranslate.ui.markNoTextLanguage
+import com.playtranslate.ui.noTextStatusMessage
 
 private const val TAG = "CaptureService"
 private const val NOTIF_ID = 1001
@@ -2297,13 +2297,10 @@ class CaptureService : Service() {
      * appear in the screenshot.
      */
     /** "No source-language text on $displayId in $region" message. */
-    internal fun noTextMessage(displayId: Int): String {
-        // Localized source-language name, wrapped in sentinels so the status renderer can make
-        // exactly that name tappable (see markNoTextLanguage / setNoTextStatus) — robust to a
-        // region label that contains the language name, or to locales that reorder the two.
-        val langName = markNoTextLanguage(Prefs(this).sourceLangId.displayName())
-        return getString(R.string.status_no_text, langName, activeRegionForDisplay(displayId).displayName(this))
-    }
+    internal fun noTextMessage(displayId: Int): String = noTextStatusMessage(
+        this, R.string.status_no_text, Prefs(this).sourceLangId,
+        activeRegionForDisplay(displayId).displayName(this),
+    )
 
     /** The status-bar height to exclude from OCR crops of a [displayId]
      *  frame that came from [frameSource] — 0 when the source's frames

@@ -16,6 +16,7 @@ import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.ui.ActivitySheetHost
 import com.playtranslate.ui.CaptureOverlaySettingsActivity
 import com.playtranslate.ui.CaptureResultOverlay
+import com.playtranslate.ui.LanguageSetupActivity
 import com.playtranslate.ui.OcrPicker
 import com.playtranslate.ui.OverlayAlert
 import com.playtranslate.ui.TtsAlertTarget
@@ -303,6 +304,21 @@ class FrozenReviewPanel(
                     persistToken(prov.sourceLangId, chosen.selectionToken)
                 },
             ).show()
+        }
+        // Keep the review up across the picker round trip — the retained frame
+        // is the flow's whole input, and the default (dismiss + NEW_TASK
+        // relaunch) would lose it. Same target as the host's gear-menu
+        // Language row: return lands in the host activity's onResume, whose
+        // langKey diff re-reads the retained frame under the new selection.
+        // Shared by the panel's language section headers and the tappable
+        // language name in the no-text status.
+        o.chooseLanguage = { isSource ->
+            LanguageSetupActivity.selectionDelegate = null
+            LanguageSetupActivity.launch(
+                activity,
+                if (isSource) LanguageSetupActivity.MODE_SOURCE
+                else LanguageSetupActivity.MODE_TARGET,
+            )
         }
         o.onDismiss = { finishReview() }
         overlay = o

@@ -2922,8 +2922,9 @@
     <!-- Summary line under the Dictionary hub cell title in settings. -->
     <string name="settings_cell_dictionary_summary">Look up word definitions</string>
     <!-- Shown in the import tool's result panel when OCR finds no readable text
-         in the picked image (or inside the user-drawn region of it). -->
-    <string name="image_import_no_text">No text found in this image. Try a clearer image, or check the source language.</string>
+         in the picked image (or inside the user-drawn region of it). The language
+         name renders as a tappable accent-colored span (see setNoTextStatus). -->
+    <string name="image_import_no_text">No <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> text detected in this image</string>
     <!-- Title of the Tools hub cell that opens the file-import translation tool
          (images, PDF documents, comic archives). -->
     <string name="settings_cell_image_import">Import file</string>
@@ -2998,8 +2999,9 @@
     <string name="camera_shutter_cd">Take snapshot</string>
     <!-- Content description of the X button that leaves the frozen snapshot and returns to the live camera. -->
     <string name="camera_close_cd">Close snapshot</string>
-    <!-- No-text status in the snapshot result panel (the frame is frozen, so no focus/move advice). -->
-    <string name="camera_snapshot_no_text">No readable text in this snapshot</string>
+    <!-- No-text status in the snapshot result panel (the frame is frozen, so no focus/move advice).
+         The language name renders as a tappable accent-colored span (see setNoTextStatus). -->
+    <string name="camera_snapshot_no_text">No <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> text detected in this snapshot</string>
     <!-- Content description of the crop button on a frozen snapshot: draw a region and only text inside it is translated. -->
     <string name="camera_region_cd">Select a region</string>
     <!-- Tappable pill on the snapshot's active-region outline; tapping deletes the region and reads the whole frame again. -->

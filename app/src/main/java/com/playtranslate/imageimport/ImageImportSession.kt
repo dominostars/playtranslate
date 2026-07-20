@@ -27,6 +27,7 @@ import com.playtranslate.language.stackableTargetScript
 import com.playtranslate.language.targetSupportsVerticalText
 import com.playtranslate.ui.CaptureResultOverlay
 import com.playtranslate.ui.TextBox
+import com.playtranslate.ui.noTextStatusMessage
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -406,7 +407,7 @@ class ImageImportSession(
             // reclaims it eventually).
             if (won) deleteQuiet(replaced) else deleteQuiet(screenshotPath)
             state.value = CaptureState.NoText(
-                context.getString(com.playtranslate.R.string.image_import_no_text),
+                noTextStatusMessage(context, com.playtranslate.R.string.image_import_no_text, srcId),
                 provenance,
                 screenshotPath,
             )
