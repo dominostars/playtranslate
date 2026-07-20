@@ -58,6 +58,16 @@ object CaptureLifecycle {
         } else {
             // Accessibility — reuse the canonical "PlayTranslate goes inactive" path.
             PlayTranslateAccessibilityService.disable(ctx, "capture_lifecycle_stop")
+            // A borrowed MediaProjection session (startLive's
+            // wantMpStreamConsent grant, which the game-audio recorder may
+            // also be riding) does NOT die with the accessibility session —
+            // without this stop, the system's capture indicator outlives Turn
+            // Off until process death. Burns the single-use consent token, so
+            // the next borrow re-prompts: state honesty over prompt
+            // avoidance, the same call as the status-bar-chip revoke
+            // handling. Gated on realization — accessibility sessions that
+            // never borrowed have no controller to tear down.
+            CaptureService.instance?.mediaProjectionControllerIfInitialized?.destroy()
         }
         // Session off ⇒ the game-audio gate closes. The projection teardown
         // above already stopped the recorder via its teardown listener; this

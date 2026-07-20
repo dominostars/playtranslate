@@ -485,13 +485,21 @@ class CaptureService : Service() {
         if (gameAudioRecorderLazy.isInitialized()) {
             gameAudioRecorder.destroy()
         }
-        // Release the MediaProjection session (projection / VirtualDisplay /
-        // ImageReader) — nothing else releases those native resources. Same
-        // lazy-gate pattern — accessibility-only sessions skip this entirely
-        // instead of force-initializing the MP backend just to tear it down.
+        // Release the MediaProjection capture source (its poll loops; also the
+        // session, via the controller destroy inside source.destroy()). Same
+        // lazy-gate pattern — sessions that never captured skip this instead
+        // of force-initializing the MP backend just to tear it down.
         if (mediaProjectionCaptureSourceLazy.isInitialized()) {
             mediaProjectionCaptureSource.destroy()
         }
+        // The projection session itself is owned by the CONTROLLER, and the
+        // source gate above is not proof it was released: the game-audio
+        // recorder realizes the controller — and promotes held consent into a
+        // live projection — without ever touching the capture source. Whoever
+        // owns the projection dies with the service; nothing else releases
+        // those native resources. Redundant after source.destroy() above —
+        // teardown() no-ops on a dead session.
+        mediaProjectionControllerIfInitialized?.destroy()
         instance = null
         serviceScope.cancel()
         // The TranslationBackendRegistry is owned at app scope (built in
@@ -1045,8 +1053,21 @@ class CaptureService : Service() {
     // active one. MediaProjectionCaptureBackend forwards to these, just as
     // the accessibility backend forwards to the accessibility service.
 
-    /** Owns the MediaProjection session (consent, VirtualDisplay, ImageReader). */
-    internal val mediaProjectionController by lazy { MediaProjectionController(this) }
+    /** Owns the MediaProjection session (consent, VirtualDisplay, ImageReader).
+     *  Stored as an explicit [Lazy] because the capture source's initialization
+     *  state is NOT a proxy for "a projection may exist": the game-audio
+     *  recorder realizes the controller — and promotes held consent into a
+     *  live projection — without ever touching
+     *  [mediaProjectionCaptureSourceLazy]. Teardown paths ([onDestroy], the
+     *  accessibility branch of
+     *  [com.playtranslate.capture.CaptureLifecycle.deactivate]) gate on THIS
+     *  lazy via [mediaProjectionControllerIfInitialized]. */
+    private val mediaProjectionControllerLazy = lazy { MediaProjectionController(this) }
+    internal val mediaProjectionController: MediaProjectionController
+        by mediaProjectionControllerLazy
+
+    internal val mediaProjectionControllerIfInitialized: MediaProjectionController?
+        get() = if (mediaProjectionControllerLazy.isInitialized()) mediaProjectionController else null
 
     /** Sticky MediaProjection-backend activation — the Turn On / Turn Off
      *  state [com.playtranslate.capture.CaptureLifecycle] reads, and (via

@@ -1,0 +1,89 @@
+package com.playtranslate.capture
+
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import androidx.test.core.app.ApplicationProvider
+import com.playtranslate.CaptureService
+import org.junit.After
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Robolectric
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.android.controller.ServiceController
+
+/**
+ * Pins the projection-ownership teardown invariant: a realized
+ * [MediaProjectionController] — not just a realized capture source — must see
+ * its session stopped when the service dies or the user turns capture off.
+ *
+ * The game-audio recorder realizes the controller (and promotes held consent
+ * into a live projection) without ever touching [MediaProjectionCaptureSource].
+ * Before the fix these tests pin, both teardown paths gated the projection
+ * release on the capture source's initialization state, so an audio-only
+ * session's projection — and the system's capture indicator — survived until
+ * process death.
+ *
+ * No real projection exists here (consent is injected via
+ * [MediaProjectionController.onConsentResult]; getMediaProjection is never
+ * called), so the observable is the controller's own teardown contract:
+ * teardown fires the registered listeners and drops consent.
+ */
+@RunWith(RobolectricTestRunner::class)
+class CaptureServiceProjectionTeardownTest {
+
+    private val ctx = ApplicationProvider.getApplicationContext<Context>()
+    private var service: ServiceController<CaptureService>? = null
+
+    /** Build the service and reproduce the audio path's shape: realize the
+     *  controller directly (as the recorder's lazy does) with consent held,
+     *  and never touch the capture source. */
+    private fun audioOnlyController(): MediaProjectionController {
+        val controller = Robolectric.buildService(CaptureService::class.java).create()
+        service = controller
+        val mp = controller.get().mediaProjectionController
+        mp.onConsentResult(Activity.RESULT_OK, Intent())
+        assertTrue(mp.hasConsent)
+        return mp
+    }
+
+    @After
+    fun tearDown() {
+        service?.destroy()
+        service = null
+    }
+
+    @Test
+    fun serviceDestroy_releasesControllerTheCaptureSourceNeverTouched() {
+        val mp = audioOnlyController()
+        var toreDown = false
+        mp.addTeardownListener { toreDown = true }
+        service?.destroy()
+        service = null
+        assertTrue(
+            "onDestroy must release a consent-holding controller even when " +
+                "the capture source was never initialized",
+            toreDown,
+        )
+        assertFalse(mp.hasConsent)
+    }
+
+    @Test
+    fun accessibilityDeactivate_stopsBorrowedProjection() {
+        val mp = audioOnlyController()
+        var toreDown = false
+        mp.addTeardownListener { toreDown = true }
+        // The accessibility backend is active by default under Robolectric
+        // (SDK 34, useMediaProjection never set), so this exercises
+        // deactivate's accessibility branch — the one with no capture-source
+        // teardown in front of it.
+        CaptureLifecycle.deactivate(ctx)
+        assertTrue(
+            "Turn Off under the accessibility backend must stop a borrowed projection",
+            toreDown,
+        )
+        assertFalse(mp.hasConsent)
+    }
+}
