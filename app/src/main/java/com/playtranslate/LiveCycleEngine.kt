@@ -164,17 +164,25 @@ internal class LiveCycleEngine(
     }
 
     /**
-     * Game input as a scoped change hint (audit A4), replacing the previous
-     * dismiss-everything semantics: hide nothing, reset nothing. The burst
-     * window makes the next ~2.5s of cycles pace at the backend floor, the
-     * force opens the delivery gate, and the rate-limited kick wakes a
-     * parked loop immediately — so an input whose response is subtle (or
-     * still rendering) gets looked at right away instead of a full interval
-     * later. Detection then lifts only the regions that actually changed:
-     * static HUD boxes survive a tap, and tapping through dialogue no
-     * longer blanks every overlay on screen. Whether touches reach this at
-     * all is still gated by the touches-refresh pref at the sentinel layer,
-     * exactly as before; gamepad keys (accessibility backend) always do.
+     * Game input as a scoped change hint (audit A4): hide nothing, reset
+     * nothing. The burst window makes the next ~2.5s of cycles pace at the
+     * backend floor, the force opens the delivery gate, and the rate-limited
+     * kick wakes a parked loop immediately — so an input whose response is
+     * subtle (or still rendering) gets looked at right away instead of a full
+     * interval later. Detection then lifts only the regions that actually
+     * changed: static HUD boxes survive a tap, and tapping through dialogue
+     * doesn't blank every overlay on screen.
+     *
+     * This is [ReconcilerLiveMode]'s policy, and it is sound only there: on a
+     * clean task mirror the game text under a displayed box stays directly
+     * readable, so a faster look IS the entire answer to an input. The
+     * occluded tiers cannot read under their own overlays and dismiss-and-
+     * wait instead — [PinholeOverlayMode.start] carries that reasoning, and
+     * [FuriganaMode] never left it. So this is deliberately NOT the shared
+     * default: a live mode picks the policy its occlusion model can support.
+     *
+     * Whether touches reach this at all is gated by the touches-refresh pref
+     * at the sentinel layer; gamepad keys (accessibility backend) always do.
      */
     fun onGameInput() {
         val now = SystemClock.uptimeMillis()

@@ -137,7 +137,18 @@ class PinholeOverlayMode(
 
     override fun start() {
         engine.cancelCurrent()
-        CaptureBackendResolver.active().startInputMonitoring(displayId) { engine.onGameInput() }
+        // Input dismisses and waits out an interval (restored 2026-07-20,
+        // reverting audit A4's input burst for THIS tier only). The
+        // asymmetry with [ReconcilerLiveMode], which keeps the burst, is the
+        // occlusion model rather than taste: on a clean task mirror the game
+        // text under a displayed box stays directly readable, so an input
+        // only ever needs a FASTER look. Here our overlays composite into
+        // the frame, so what sits under a box cannot be read at all — change
+        // is INFERRED from pinhole samples against a predicted blend. An
+        // input is the strongest available evidence that the inference just
+        // went wrong under every box at once, and lifting the overlays is
+        // the only way to actually read what replaced them.
+        CaptureBackendResolver.active().startInputMonitoring(displayId) { dismiss() }
         engine.scheduleNext()
     }
 
@@ -159,6 +170,22 @@ class PinholeOverlayMode(
         return CachedOverlayState(boxes, cropLeft, cropTop, screenshotW, screenshotH)
     }
 
+    /**
+     * Hide, forget everything, and look again no sooner than one capture
+     * interval from now. Also the input path (see [start]): every touch and
+     * every button press restarts the wait, so the screen stays unobstructed
+     * for as long as the user keeps interacting and the overlays return one
+     * interval after they stop.
+     *
+     * That interval is a floor on WHEN we look, never a wait for the screen
+     * to change again. [resetState] arms the force flag, so the cycle passes
+     * straight through the delivery gate instead of parking, and requestRaw
+     * serves the latched frame — the last composition the mirror delivered,
+     * which under MediaProjection may be seconds old, because a screen that
+     * stops changing stops producing frames. The common case is exactly
+     * that: our own overlay-hide is the last thing that composited, and the
+     * frame it produced is the one we want to read.
+     */
     override fun dismiss() {
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
         resetState()
@@ -173,7 +200,6 @@ class PinholeOverlayMode(
         overlayBitmap?.recycle()
         overlayBitmap = null
         outsideGrid.reset()
-        engine.resetInputBurst()
         grayZoneStats.clear()
         grayZoneLastEmitMs = 0L
         // The gate is only meaningful relative to a previous look at the
@@ -482,13 +508,14 @@ class PinholeOverlayMode(
                                 (if (outside.pendingSettle) " settling" else "") + ")"
                         )
                     }
-                    // Skipped cycles pace at the floor whenever the next look
-                    // matters: during an input burst, and while any block is
+                    // Skipped cycles pace at the floor while any block is
                     // mid-settle — K=2 settle discipline at floor pacing
                     // costs ~0.5s; at interval pacing it tripled reaction
-                    // time in the field (2026-07-08 regression).
-                    val fastSkip = outside.pendingSettle || engine.inInputBurst()
-                    return if (fastSkip) mgr.minCaptureIntervalMs else prefs.captureIntervalMs
+                    // time in the field (2026-07-08 regression). Game input
+                    // no longer paces here at all: it dismisses and waits an
+                    // interval instead (see [start]).
+                    return if (outside.pendingSettle) mgr.minCaptureIntervalMs
+                    else prefs.captureIntervalMs
                 }
                 pinholePre = outcomes
                 if (debug) {
@@ -898,11 +925,7 @@ class PinholeOverlayMode(
                         "removed=${allRemovals.size} far=${farOcrGroups.size}"
                 )
             }
-            return if (anyRemoved || engine.inInputBurst()) {
-                mgr.minCaptureIntervalMs
-            } else {
-                prefs.captureIntervalMs
-            }
+            return if (anyRemoved) mgr.minCaptureIntervalMs else prefs.captureIntervalMs
         } finally {
             if (!raw.isRecycled) raw.recycle()
         }

@@ -894,10 +894,13 @@ class Prefs internal constructor(
         sp.edit { remove("import_ocr_backend_${id.code}") }
 
     /** When on (the default), touching the game screen during auto translation
-     *  dismisses the current overlay and re-captures. Off makes screen touches
-     *  a no-op for refresh; the detection loop and gamepad input still refresh.
-     *  Read at touch-time (see the touch-sentinel callbacks), so toggling takes
-     *  effect immediately without restarting live mode. */
+     *  dismisses the current overlay and re-captures one capture interval
+     *  later — or, on the single-app (clean-stream) tier that can read the
+     *  text under its own boxes, briefly speeds the detection loop up instead
+     *  of hiding anything. Off makes screen touches a no-op for refresh; the
+     *  detection loop and gamepad input still refresh. Read at touch-time (see
+     *  the touch-sentinel callbacks), so toggling takes effect immediately
+     *  without restarting live mode. */
     var touchesRefreshTranslation: Boolean
         get() = sp.getBoolean("touches_refresh_translation", true)
         set(v) = sp.edit { putBoolean("touches_refresh_translation", v) }
