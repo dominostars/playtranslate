@@ -491,18 +491,6 @@
 
     <string name="audio_source_game_enable_hint">التسجيل متوقف — فعّله لتسجيل صوت اللعبة للبطاقات المستقبلية</string>
 
-    <string name="game_audio_trim_title">اقتصاص صوت اللعبة</string>
-
-    <string name="game_audio_trim_save">استخدام التحديد</string>
-
-    <string name="game_audio_trim_use_tts">استخدام تحويل النص إلى كلام</string>
-
-    <string name="game_audio_trim_no_audio">بدون صوت</string>
-
-    <string name="game_audio_trim_play">تشغيل التحديد</string>
-
-    <string name="game_audio_trim_stop">إيقاف</string>
-
     <string name="game_audio_trim_duration">تم تحديد <xliff:g id="seconds" example="2.4">%1$s</xliff:g> ث · تم تسجيل <xliff:g id="total_seconds" example="147">%2$s</xliff:g> ث</string>
 
     <string name="anki_game_audio_cell_untrimmed">الاقتصاص عند الحفظ</string>

@@ -510,18 +510,6 @@
 
     <string name="audio_source_game_enable_hint">녹음 중이 아님 — 켜면 이후 카드에 사용할 게임 오디오를 캡처합니다</string>
 
-    <string name="game_audio_trim_title">게임 오디오 자르기</string>
-
-    <string name="game_audio_trim_save">선택 구간 사용</string>
-
-    <string name="game_audio_trim_use_tts">대신 TTS 사용</string>
-
-    <string name="game_audio_trim_no_audio">오디오 없음</string>
-
-    <string name="game_audio_trim_play">선택 구간 재생</string>
-
-    <string name="game_audio_trim_stop">정지</string>
-
     <string name="game_audio_trim_duration"><xliff:g id="seconds" example="2.4">%1$s</xliff:g>초 선택 · <xliff:g id="total_seconds" example="147">%2$s</xliff:g>초 녹음됨</string>
 
     <string name="anki_game_audio_cell_untrimmed">저장할 때 자르기</string>

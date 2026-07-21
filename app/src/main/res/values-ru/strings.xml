@@ -529,18 +529,6 @@
 
     <string name="audio_source_game_enable_hint">Запись не ведётся — включите, чтобы записывать звук игры для будущих карточек</string>
 
-    <string name="game_audio_trim_title">Обрезка звука игры</string>
-
-    <string name="game_audio_trim_save">Использовать фрагмент</string>
-
-    <string name="game_audio_trim_use_tts">Использовать синтез речи</string>
-
-    <string name="game_audio_trim_no_audio">Без аудио</string>
-
-    <string name="game_audio_trim_play">Воспроизвести фрагмент</string>
-
-    <string name="game_audio_trim_stop">Остановить</string>
-
     <string name="game_audio_trim_duration">Выбрано <xliff:g id="seconds" example="2.4">%1$s</xliff:g> с · записано <xliff:g id="total_seconds" example="147">%2$s</xliff:g> с</string>
 
     <string name="anki_game_audio_cell_untrimmed">Обрезка при сохранении</string>

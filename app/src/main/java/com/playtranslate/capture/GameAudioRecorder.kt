@@ -76,7 +76,6 @@ class GameAudioRecorder(
             "AnkiPermissionActivity",
             "SentenceAnkiReviewActivity",
             "WordAnkiReviewActivity",
-            "GameAudioTrimActivity",
         )
     }
 

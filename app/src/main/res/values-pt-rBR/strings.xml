@@ -512,18 +512,6 @@
 
     <string name="audio_source_game_enable_hint">Não está gravando — ative para capturar o áudio do jogo nos próximos cartões</string>
 
-    <string name="game_audio_trim_title">Cortar áudio do jogo</string>
-
-    <string name="game_audio_trim_save">Usar seleção</string>
-
-    <string name="game_audio_trim_use_tts">Usar conversão de texto em voz</string>
-
-    <string name="game_audio_trim_no_audio">Sem áudio</string>
-
-    <string name="game_audio_trim_play">Reproduzir seleção</string>
-
-    <string name="game_audio_trim_stop">Parar</string>
-
     <string name="game_audio_trim_duration">Seleção: <xliff:g id="seconds" example="2.4">%1$s</xliff:g> s · Gravação: <xliff:g id="total_seconds" example="147">%2$s</xliff:g> s</string>
 
     <string name="anki_game_audio_cell_untrimmed">Cortar ao salvar</string>

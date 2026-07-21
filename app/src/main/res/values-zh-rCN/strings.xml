@@ -508,18 +508,6 @@
 
     <string name="audio_source_game_enable_hint">当前未录制——开启后即可录制游戏音频，供以后的卡片使用</string>
 
-    <string name="game_audio_trim_title">裁剪游戏音频</string>
-
-    <string name="game_audio_trim_save">使用所选片段</string>
-
-    <string name="game_audio_trim_use_tts">改用文字转语音</string>
-
-    <string name="game_audio_trim_no_audio">不使用音频</string>
-
-    <string name="game_audio_trim_play">播放所选片段</string>
-
-    <string name="game_audio_trim_stop">停止</string>
-
     <string name="game_audio_trim_duration">已选 <xliff:g id="seconds" example="2.4">%1$s</xliff:g> 秒 · 已录制 <xliff:g id="total_seconds" example="147">%2$s</xliff:g> 秒</string>
 
     <string name="anki_game_audio_cell_untrimmed">保存时裁剪</string>

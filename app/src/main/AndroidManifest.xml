@@ -179,13 +179,6 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
-        <!-- Manual trim editor for recorded game audio (Anki sentence cards). -->
-        <activity
-            android:name=".ui.GameAudioTrimActivity"
-            android:exported="false"
-            android:parentActivityName=".MainActivity"
-            android:theme="@style/Theme.PlayTranslate" />
-
         <!-- Appearance sub-page (theme + accent), launched from Settings → Configure. -->
         <activity
             android:name=".ui.AppearanceSettingsActivity"

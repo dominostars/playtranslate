@@ -467,18 +467,6 @@
 
     <string name="audio_source_game_enable_hint">ยังไม่ได้บันทึก — เปิดเพื่อเก็บเสียงเกมไว้ใช้กับการ์ดในอนาคต</string>
 
-    <string name="game_audio_trim_title">ตัดเสียงเกม</string>
-
-    <string name="game_audio_trim_save">ใช้ช่วงที่เลือก</string>
-
-    <string name="game_audio_trim_use_tts">ใช้ TTS แทน</string>
-
-    <string name="game_audio_trim_no_audio">ไม่ใช้เสียง</string>
-
-    <string name="game_audio_trim_play">เล่นช่วงที่เลือก</string>
-
-    <string name="game_audio_trim_stop">หยุด</string>
-
     <string name="game_audio_trim_duration">เลือกไว้ <xliff:g id="seconds" example="2.4">%1$s</xliff:g> วิ · บันทึกไว้ <xliff:g id="total_seconds" example="147">%2$s</xliff:g> วิ</string>
 
     <string name="anki_game_audio_cell_untrimmed">ตัดเมื่อบันทึกการ์ด</string>

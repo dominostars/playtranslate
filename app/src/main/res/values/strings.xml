@@ -1153,32 +1153,9 @@
          enabling helps future cards, not the one being edited. -->
     <string name="audio_source_game_enable_hint">Not recording. Turn on to capture game audio for future cards</string>
 
-    <!-- Toolbar title of the game-audio trim editor screen. -->
-    <string name="game_audio_trim_title">Trim Game Audio</string>
-
-    <!-- Primary bottom button of the trim editor: commits the selected
-         range as the card's sentence audio. -->
-    <string name="game_audio_trim_save">Use selection</string>
-
-    <!-- Secondary text button in the trim editor: abandon the recording
-         and fall back to synthesized (TTS) sentence audio. -->
-    <string name="game_audio_trim_use_tts">Use TTS instead</string>
-
-    <!-- Secondary text button in the trim editor: send the card with no
-         sentence audio at all. -->
-    <string name="game_audio_trim_no_audio">No audio</string>
-
-    <!-- Play/pause toggle button in the trim editor: plays the currently
-         selected range. -->
-    <string name="game_audio_trim_play">Play selection</string>
-
-    <!-- Same toggle button while playback is running: stops it. -->
-    <string name="game_audio_trim_stop">Stop</string>
-
-    <!-- Selection readout, rendered in TWO places: above the waveform in the
-         trim editor, and as the sentence audio row's title in the card
-         editor while game audio is selected (the source name itself is on
-         the adjacent voice pill).
+    <!-- Selection readout: the sentence audio row's title in the card editor
+         while game audio is selected (the source name itself is on the
+         adjacent voice pill).
          %1$s = selection length in seconds with one decimal (e.g. "2.4");
          %2$s = total recorded seconds available in the buffer, no decimals
          (e.g. "147"). Renders as "2.4 s selected · 147 s recorded". -->

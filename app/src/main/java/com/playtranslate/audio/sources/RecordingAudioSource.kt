@@ -127,16 +127,7 @@ object RecordingAudioSource : AudioSource {
         }
     }
 
-    // ── Selection helpers (used by the sentence fragment + trim editor) ──
-
-    /** The cell's default selection over the card's own snapshot [wav] —
-     *  trim pending. */
-    fun provisionalSelection(wav: File): AudioSelection.Explicit =
-        AudioSelection.Explicit(
-            sourceId = ID,
-            key = KEY_PROVISIONAL,
-            locator = wav.absolutePath,
-        )
+    // ── Selection helpers (used by the sentence fragment) ──
 
     /** Selection for a committed trim range over the card's snapshot [wav].
      *  The locator pins the exact (immutable) file; the mtime in the key

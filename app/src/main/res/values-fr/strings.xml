@@ -520,18 +520,6 @@
 
     <string name="audio_source_game_enable_hint">Enregistrement désactivé — activez-le afin de capturer l\'audio du jeu pour vos prochaines cartes</string>
 
-    <string name="game_audio_trim_title">Rogner l\'audio du jeu</string>
-
-    <string name="game_audio_trim_save">Utiliser la sélection</string>
-
-    <string name="game_audio_trim_use_tts">Utiliser plutôt la synthèse vocale</string>
-
-    <string name="game_audio_trim_no_audio">Aucun audio</string>
-
-    <string name="game_audio_trim_play">Lire la sélection</string>
-
-    <string name="game_audio_trim_stop">Arrêter</string>
-
     <string name="game_audio_trim_duration">Sélection : <xliff:g id="seconds" example="2.4">%1$s</xliff:g> s · Enregistrement : <xliff:g id="total_seconds" example="147">%2$s</xliff:g> s</string>
 
     <string name="anki_game_audio_cell_untrimmed">Rognage à l\'enregistrement de la carte</string>

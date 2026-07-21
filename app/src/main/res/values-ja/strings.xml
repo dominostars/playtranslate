@@ -520,18 +520,6 @@
 
     <string name="audio_source_game_enable_hint">録音していません。オンにすると、今後のカード用にゲーム音声を録音します</string>
 
-    <string name="game_audio_trim_title">ゲーム音声をトリミング</string>
-
-    <string name="game_audio_trim_save">選択範囲を使用</string>
-
-    <string name="game_audio_trim_use_tts">代わりにテキスト読み上げを使用</string>
-
-    <string name="game_audio_trim_no_audio">音声なし</string>
-
-    <string name="game_audio_trim_play">選択範囲を再生</string>
-
-    <string name="game_audio_trim_stop">停止</string>
-
     <string name="game_audio_trim_duration">選択：<xliff:g id="seconds" example="2.4">%1$s</xliff:g>秒 · 録音済み：<xliff:g id="total_seconds" example="147">%2$s</xliff:g>秒</string>
 
     <string name="anki_game_audio_cell_untrimmed">保存時にトリミング</string>

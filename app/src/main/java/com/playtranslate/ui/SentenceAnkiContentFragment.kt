@@ -1,8 +1,12 @@
 package com.playtranslate.ui
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.os.Bundle
 import android.text.Editable
@@ -14,6 +18,8 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewParent
+import android.view.animation.LinearInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
@@ -23,6 +29,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.app.Activity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.doOnLayout
+import androidx.core.widget.NestedScrollView
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.CaptureService
@@ -108,9 +116,10 @@ class SentenceAnkiContentFragment : Fragment() {
     private var inlineCont: CancellableContinuation<Unit>? = null
 
     /** True once the user has interacted with the game-audio selection —
-     *  dragged a handle, played it (listening counts as review), or been
-     *  through the full editor. Reviewed audio sends directly; unreviewed
-     *  audio still gets the save-time editor as the safety net. */
+     *  dragged a handle or played it (listening counts as review). Reviewed
+     *  audio sends directly; never-touched audio gets the save-time nudge
+     *  (scroll the trim cell into view + flash it) once before it's allowed
+     *  through. */
     private var gameAudioReviewed = false
 
     /** Independent per-target-word audio toggle state for THIS card.
@@ -162,12 +171,35 @@ class SentenceAnkiContentFragment : Fragment() {
             ?: SourceLangId.JA
         when (target) {
             is PickTarget.Sentence -> {
-                sentenceSelection = selection
-                sentenceAudioHandle?.refreshPillLabel(this, lang, selection)
-                refreshSentenceAudioTitle()
-                // A pick of "Game audio" arrives rangeless — the panel load
-                // commits the default range; any other source hides the panel.
-                updateGameAudioPanel()
+                val isGamePick = selection is AudioSelection.Explicit &&
+                    selection.sourceId == RecordingAudioSource.ID
+                if (isGamePick) {
+                    // Commit a range BEFORE the pick goes live, so a Save right
+                    // after the picker can't catch it provisional — no
+                    // dependence on when the waveform decode lands. A re-pick
+                    // keeps the on-screen trim; a first pick commits the default
+                    // from a cheap header read. (Same invariant as card-open.)
+                    val wav = gameAudioSnapshotFile
+                    if (wav != null && GameAudioSnapshot.isUsable(wav)) {
+                        viewLifecycleOwner.lifecycleScope.launch {
+                            if (selectGameAudioCommitted(wav)) {
+                                sentenceAudioHandle?.refreshPillLabel(
+                                    this@SentenceAnkiContentFragment, lang, sentenceSelection,
+                                )
+                                refreshSentenceAudioTitle()
+                                updateGameAudioPanel()
+                            }
+                        }
+                    }
+                    // No usable snapshot ⇒ ignore the pick (Game audio shouldn't
+                    // be offered without one); never leave a rangeless selection.
+                } else {
+                    sentenceSelection = selection
+                    sentenceAudioHandle?.refreshPillLabel(this, lang, selection)
+                    refreshSentenceAudioTitle()
+                    // A non-game pick hides the panel.
+                    updateGameAudioPanel()
+                }
             }
             is PickTarget.Word -> {
                 wordSelections[target.word] = selection
@@ -176,100 +208,134 @@ class SentenceAnkiContentFragment : Fragment() {
         }
     }
 
-    /** Non-null while the save-time trim editor is up; resumed by its result. */
-    private var trimContinuation: CancellableContinuation<Boolean>? = null
+    /** True once we've nudged the user toward never-touched game audio at
+     *  save time — scroll the trim cell into view + flash it. One-shot: a
+     *  second Save sends the clip as-is, so the recording never hard-blocks
+     *  the card. A new recording re-creates the fragment, resetting this. */
+    private var gameAudioNudged = false
 
-    /** Shared by the save-time gate and the panel's "Open editor" button —
-     *  the launcher applies the result either way; the continuation exists
-     *  only in gate mode. */
-    private val trimEditorLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val cont = trimContinuation.also { trimContinuation = null }
-        val proceed = applyTrimEditorResult(result.resultCode, result.data)
-        cont?.resume(proceed)
-    }
-
-    /** Returns whether a pending send should proceed. Any RESULT_OK action
-     *  counts as review — the user saw the editor and chose. */
-    private fun applyTrimEditorResult(resultCode: Int, data: android.content.Intent?): Boolean {
-        val action = if (resultCode == Activity.RESULT_OK) {
-            data?.getStringExtra(GameAudioTrimActivity.EXTRA_ACTION)
-        } else {
-            null
-        }
-        val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
-            ?: SourceLangId.JA
-        return when (action) {
-            GameAudioTrimActivity.ACTION_TRIM -> {
-                val s = data?.getLongExtra(GameAudioTrimActivity.EXTRA_START_MS, -1L) ?: -1L
-                val e = data?.getLongExtra(GameAudioTrimActivity.EXTRA_END_MS, -1L) ?: -1L
-                val wav = gameAudioSnapshotFile
-                if (wav != null && s >= 0 && e > s) {
-                    stopInlinePlayback()
-                    sentenceSelection = RecordingAudioSource.committedSelection(wav, s, e)
-                    gameAudioReviewed = true
-                    sentenceAudioHandle?.refreshPillLabel(this, lang, sentenceSelection)
-                    refreshSentenceAudioTitle()
-                    gameAudioWave?.setSelection(s, e)
-                    true
-                } else {
-                    false
-                }
-            }
-            GameAudioTrimActivity.ACTION_TTS -> {
-                sentenceSelection = AudioSelection.Auto
-                gameAudioReviewed = true
-                sentenceAudioHandle?.refreshPillLabel(this, lang, sentenceSelection)
-                refreshSentenceAudioTitle()
-                updateGameAudioPanel()
-                true
-            }
-            GameAudioTrimActivity.ACTION_NONE -> {
-                // Switch off ⇒ sentenceAudioEnabled false ⇒ the gate passes
-                // and the send simply carries no sentence audio.
-                gameAudioReviewed = true
-                sentenceAudioHandle?.switch?.isChecked = false
-                true
-            }
-            else -> false // back/cancel — abort a pending send, change nothing
-        }
-    }
+    /** The save-time attention flash on the game-audio cell. Held so
+     *  [onDestroyView] can cancel it before the view is torn down. */
+    private var gameAudioFlashAnimator: ValueAnimator? = null
 
     /**
-     * Save-time gate: game audio the user never reviewed (no handle drag, no
-     * play, no editor visit) opens the trim editor once, seeded with the
-     * current selection. Reviewed audio — the normal case with the in-card
-     * panel — sends directly. Returns false when the user backed out.
+     * Save-time gate for game audio the user never reviewed (no handle drag,
+     * no play). The live selection normally carries a committed default range
+     * by the time Save can see it (see [commitDefaultGameRange]); a stray
+     * rangeless pick degrades to the TTS floor here rather than dropping, so
+     * the send always carries audio and this gate only decides whether to
+     * *nudge*. Reviewed audio sends straight through. The first Save on
+     * never-touched audio doesn't open the old full-screen editor: it reveals
+     * the trim cell (even mid-decode — the cell is fixed-height), scrolls it to
+     * mid-screen, flashes it, and holds that one Save. A second Save proceeds
+     * with the default range. The nudge does NOT depend on the panel already
+     * being on-screen, so a Save during the waveform decode still gets the
+     * review prompt instead of silently shipping the default clip. Returns
+     * whether the send may run.
      */
-    suspend fun resolveGameAudioForSend(): Boolean {
+    fun resolveGameAudioForSend(): Boolean {
         if (!sentenceAudioEnabled) return true
         val sel = sentenceSelection
         if (sel !is AudioSelection.Explicit || sel.sourceId != RecordingAudioSource.ID) return true
-        val ctx = context ?: return true
         val wav = gameAudioSnapshotFile
         if (wav == null || !GameAudioSnapshot.isUsable(wav)) {
-            // Under immutable per-card ownership the buffer only disappears
-            // to an OS cache purge. Nothing to trim; the send path surfaces
+            // Under immutable per-card ownership the buffer only disappears to
+            // an OS cache purge. Nothing to trim; the send path surfaces
             // "audio missing" honestly.
             return true
         }
-        // The snapshot can't be clobbered by other cards anymore, so this
-        // check reduces to "was a range reviewed" plus the purge backstop.
         val validRange = RecordingAudioSource.parseRangeFor(sel.key, wav)
-        if (gameAudioReviewed && validRange != null) return true
-        gameAudioReviewed = false
-        return suspendCancellableCoroutine { cont ->
-            trimContinuation = cont
-            cont.invokeOnCancellation { trimContinuation = null }
-            trimEditorLauncher.launch(
-                GameAudioTrimActivity.intent(
-                    ctx,
-                    wav.absolutePath,
-                    initialStartMs = validRange?.first ?: -1L,
-                    initialEndMs = validRange?.second ?: -1L,
-                ),
-            )
+        if (validRange == null) {
+            // Fail-safe: a game-audio pick should always carry a committed
+            // range by save time (commitDefaultGameRange). If one ever doesn't
+            // — a sub-[MIN_GAME_AUDIO_MS] clip that never rendered a panel to
+            // trim, or a future refactor that revives a live provisional key —
+            // drop to the TTS floor instead of shipping the provisional key,
+            // which toFile rejects into a silent no-audio card.
+            sentenceSelection = AudioSelection.Auto
+            return true
+        }
+        // Snapshot can't be clobbered by other cards, so "resolved" now
+        // reduces to "was the committed range reviewed".
+        if (gameAudioReviewed) return true
+        // Never-touched game audio: nudge once and hold this Save. This does
+        // NOT gate on panel visibility — the panel is revealed asynchronously
+        // at the end of the waveform decode, so keying off it let a Save land
+        // in the decode window and ship the default clip with no review.
+        // nudgeGameAudioCell reveals the (fixed-height) cell itself.
+        if (!gameAudioNudged) {
+            gameAudioNudged = true
+            nudgeGameAudioCell()
+            return false
+        }
+        return true
+    }
+
+    /** Center the in-card game-audio trim cell in its scroll view, then flash
+     *  it. Container-agnostic: walks up to whichever review sheet's
+     *  [NestedScrollView] hosts this fragment (both use one), falling back to
+     *  a plain reveal if somehow there's no scroll parent.
+     *
+     *  The waveform decode may still be running, leaving the panel GONE. The
+     *  cell is fixed-height regardless of data, so reveal it now (the decode
+     *  re-affirms visibility and fills the wave when it lands) and defer the
+     *  measure/scroll/flash to after layout — [doOnLayout] runs inline when the
+     *  panel is already laid out, or on the next pass after the reveal. */
+    private fun nudgeGameAudioCell() {
+        val panel = gameAudioPanel ?: return
+        panel.visibility = View.VISIBLE
+        panel.doOnLayout {
+            val scroller = panel.scrollParent()
+            if (scroller != null) {
+                // Panel top in the scroll content's own (pre-scroll) coordinates,
+                // then back off by half the leftover viewport so the cell lands
+                // mid-screen rather than flush against the top edge. smoothScrollTo
+                // clamps the far end, so an over-tall target just pins to bottom.
+                val rect = Rect(0, 0, panel.width, panel.height)
+                scroller.offsetDescendantRectToMyCoords(panel, rect)
+                val target = rect.top - (scroller.height - panel.height) / 2
+                scroller.smoothScrollTo(0, target.coerceAtLeast(0))
+            } else {
+                panel.requestRectangleOnScreen(Rect(0, 0, panel.width, panel.height), false)
+            }
+            flashGameAudioCell(panel)
+        }
+    }
+
+    /** Nearest [NestedScrollView] ancestor, or null if this view isn't in one. */
+    private fun View.scrollParent(): NestedScrollView? {
+        var p: ViewParent? = parent
+        while (p != null) {
+            if (p is NestedScrollView) return p
+            p = p.parent
+        }
+        return null
+    }
+
+    /** Three accent pulses over the cell background, each fading up then back
+     *  down; the background is cleared on completion so the cell returns to
+     *  the card surface. */
+    private fun flashGameAudioCell(panel: View) {
+        val ctx = context ?: return
+        gameAudioFlashAnimator?.cancel()
+        val accentRgb = ctx.themeColor(R.attr.ptAccent) and 0x00FFFFFF
+        gameAudioFlashAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 400L          // one fade-up/down; repeatCount 2 ⇒ three flashes
+            repeatCount = 2
+            interpolator = LinearInterpolator()
+            addUpdateListener { anim ->
+                // Triangle 0 → 1 → 0 so each run is a full pulse, not a step.
+                val intensity = 1f - kotlin.math.abs(2f * anim.animatedFraction - 1f)
+                val alpha = (0x4D * intensity).toInt() shl 24  // peak ~30% accent
+                panel.setBackgroundColor(alpha or accentRgb)
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    panel.background = null
+                    gameAudioFlashAnimator = null
+                }
+            })
+            start()
         }
     }
 
@@ -443,6 +509,8 @@ class SentenceAnkiContentFragment : Fragment() {
 
     override fun onDestroyView() {
         stopInlinePlayback()
+        gameAudioFlashAnimator?.cancel()
+        gameAudioFlashAnimator = null
         inlinePlayer = null
         gameAudioPanel = null
         gameAudioWave = null
@@ -528,9 +596,9 @@ class SentenceAnkiContentFragment : Fragment() {
         // Freeze the rolling game-audio buffer for THIS card the moment the
         // flow opens ("snapshot at card-open"). One-shot: never on restore,
         // so a post-process-death recreation can't clobber a good snapshot
-        // with post-death silence. When a snapshot lands, the cell defaults
-        // to provisional Game audio — the trim commits at save via
-        // [resolveGameAudioForSend].
+        // with post-death silence. The cell commits a default trim range up
+        // front (so it's sendable immediately, never provisional) and
+        // [resolveGameAudioForSend] nudges toward it if it's never touched.
         if (savedInstanceState != null) {
             restoreGameAudioState(savedInstanceState)
         } else if (Prefs(requireContext()).recordGameAudio) {
@@ -546,20 +614,64 @@ class SentenceAnkiContentFragment : Fragment() {
                 }
                 gameAudioSnapshotFile = snap
                 GameAudioSnapshot.active = snap
-                sentenceSelection = RecordingAudioSource.provisionalSelection(snap)
-                val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
-                    ?: SourceLangId.JA
-                sentenceAudioHandle?.refreshPillLabel(
-                    this@SentenceAnkiContentFragment, lang, sentenceSelection,
-                )
-                // The panel load commits the default range (last few seconds)
-                // and shows the inline editor, expanded by default.
-                updateGameAudioPanel()
+                // Commit the default range from a cheap header read BEFORE the
+                // heavy waveform decode, so a Save landing in the decode window
+                // ships the default clip instead of an unsendable provisional
+                // key. Until this resolves the cell stays on Auto (the TTS
+                // floor) — a fast Save then gets TTS, never dropped audio. A
+                // too-short snapshot leaves the cell on Auto for good.
+                if (commitDefaultGameRange(snap)) {
+                    val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
+                        ?: SourceLangId.JA
+                    sentenceAudioHandle?.refreshPillLabel(
+                        this@SentenceAnkiContentFragment, lang, sentenceSelection,
+                    )
+                    refreshSentenceAudioTitle()
+                    // Renders the waveform for the already-committed range.
+                    updateGameAudioPanel()
+                }
             }
         }
     }
 
     // ── In-card game-audio panel ─────────────────────────────────────────
+
+    /** Commit a default trim range (the last [DEFAULT_GAME_RANGE_MS]) over
+     *  [wav] from a cheap header read and make it the live [sentenceSelection],
+     *  so the cell is *sendable* the instant it becomes Game audio — never a
+     *  provisional key a fast Save could ship as dropped audio. The heavy
+     *  waveform decode still runs in [updateGameAudioPanel] (render only).
+     *  Returns false, touching nothing, when the clip is too short to be a
+     *  usable line — callers leave the cell on the TTS floor. */
+    private suspend fun commitDefaultGameRange(wav: File): Boolean {
+        val durationMs = withContext(Dispatchers.IO) { GameAudioClip.durationMs(wav) }
+        if (durationMs < MIN_GAME_AUDIO_MS) return false
+        gameAudioDurationMs = durationMs
+        val start = (durationMs - DEFAULT_GAME_RANGE_MS).coerceAtLeast(0)
+        sentenceSelection = RecordingAudioSource.committedSelection(wav, start, durationMs)
+        gameAudioReviewed = false
+        return true
+    }
+
+    /** Make Game audio the live [sentenceSelection] with a COMMITTED range —
+     *  never a provisional one a fast Save could downgrade to TTS, regardless
+     *  of when the waveform decode finishes. A re-pick of an already-loaded
+     *  clip keeps the trim the user can see; a first pick commits the default
+     *  from a cheap header read (via [commitDefaultGameRange]). Returns false,
+     *  touching nothing, when the clip is too short to trim. */
+    private suspend fun selectGameAudioCommitted(wav: File): Boolean {
+        val wave = gameAudioWave
+        if (gameAudioLoadedFile == wav && wave != null && wave.selEndMs > wave.selStartMs) {
+            // Already loaded: preserve the user's on-screen trim rather than
+            // resetting to the default (mirrors updateGameAudioPanel's re-pick
+            // path, but synchronously — no rangeless gap before the panel load).
+            sentenceSelection = RecordingAudioSource.committedSelection(
+                wav, wave.selStartMs, wave.selEndMs,
+            )
+            return true
+        }
+        return commitDefaultGameRange(wav)
+    }
 
     /** Sync the panel with [sentenceSelection]: load + show while the game
      *  recording is the selected source, hide (and silence) otherwise. */
@@ -574,10 +686,12 @@ class SentenceAnkiContentFragment : Fragment() {
             return
         }
         if (gameAudioLoadedFile == wav) {
-            // Already loaded (e.g. the user switched to TTS and back). A
-            // re-pick arrives RANGELESS — re-commit from the wave's current
-            // selection, or Save-after-play would ship a key that toFile
-            // resolves to no audio at all.
+            // Already loaded (e.g. switched to TTS and back). Callers now commit
+            // the range before Game audio goes live (snapshot-open +
+            // selectGameAudioCommitted), so `sel` normally arrives committed and
+            // this just re-shows the panel. The rangeless re-commit stays as a
+            // backstop — pin any stray provisional key to the wave's visible
+            // selection rather than let toFile resolve it to silence.
             val rangeless = (sel as AudioSelection.Explicit)
                 .let { RecordingAudioSource.parseRangeFor(it.key, wav) } == null
             val wave = gameAudioWave
@@ -593,7 +707,7 @@ class SentenceAnkiContentFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             val loaded = withContext(Dispatchers.IO) {
                 val durationMs = GameAudioClip.durationMs(wav)
-                if (durationMs < 500) return@withContext null
+                if (durationMs < MIN_GAME_AUDIO_MS) return@withContext null
                 val rate = GameAudioClip.sampleRate(wav)
                 val pcm = GameAudioClip.readPcmRange(wav, 0, durationMs)
                 Triple(durationMs, rate, rmsBucketsForStrip(pcm, rate))
@@ -618,7 +732,7 @@ class SentenceAnkiContentFragment : Fragment() {
             // the duration is known; a committed range is preserved.
             val existing = (selNow as AudioSelection.Explicit)
                 .let { RecordingAudioSource.parseRangeFor(it.key, wav) }
-            val start = existing?.first ?: (durationMs - 5_000L).coerceAtLeast(0)
+            val start = existing?.first ?: (durationMs - DEFAULT_GAME_RANGE_MS).coerceAtLeast(0)
             val end = existing?.second ?: durationMs
             if (existing == null) {
                 sentenceSelection = RecordingAudioSource.committedSelection(wav, start, end)
@@ -1389,6 +1503,14 @@ class SentenceAnkiContentFragment : Fragment() {
     }
 
     companion object {
+        /** A game-audio snapshot shorter than this isn't a usable voice line;
+         *  the cell stays on the TTS floor rather than offer an untrimmable clip. */
+        private const val MIN_GAME_AUDIO_MS = 500L
+
+        /** Default trim window for a fresh game-audio selection — the last few
+         *  seconds of the snapshot, where the just-heard line sits. */
+        private const val DEFAULT_GAME_RANGE_MS = 5_000L
+
         /** Restore of the game-audio state after process death (onDestroyView
          *  never ran) or a saved-state destroy (onDestroyView ran but kept
          *  the file — see the isStateSaved gate there). */
