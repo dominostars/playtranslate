@@ -13,6 +13,7 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.text.StaticLayout
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -570,31 +571,49 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         )
     }
 
-    /** Sizes [tv]'s text so every authored line fits the button's column.
+    /** Sizes [tv]'s text down from [labelMaxSp] until it renders within the
+     *  button's two-line budget, laid out exactly as the `maxLines = 2` TextView
+     *  will: wrapped at the real break opportunities — spaces and authored `\n` —
+     *  inside [labelColumnPx]. A single [StaticLayout] measurement mirrors the
+     *  view's own wrap, so one pass covers every case the labels hit:
      *
-     *  The labels are written as one or two `\n`-separated lines and the view is
-     *  `maxLines = 2`, so a line wider than the column soft-wraps and pushes the
-     *  overflow past the cap, where it is dropped without a trace. Measuring each
-     *  whole LINE is what forbids that. Measuring the unbreakable runs inside a
-     *  line instead — as this did — only ever proves the pieces fit, never the
-     *  line: vi "Chụp\nmàn hình" breaks line 2 into "màn" and "hình", each of
-     *  which clears the column alone while the line does not, so "hình" silently
-     *  vanished at a large font scale.
-     *
-     *  Stepping the size down also keeps a single long token with no legal break
-     *  to take (ru "Автоперевод", th "อัตโนมัติ") off Android's mid-character
-     *  split, and absorbs a large system font scale, which neither a fixed size
-     *  nor a hard-wrapped string could. */
+     *   - "Auto Translate" (one authored line, no `\n`) soft-wraps at its space
+     *     onto the second rendered line and stays at full size. Measuring the
+     *     whole phrase as one unbreakable run — as this once did — instead shrank
+     *     it to cram onto a single line while the second line sat empty.
+     *   - vi "Chụp\nmàn hình" (two authored lines) shrinks before line 2's
+     *     "màn hình" has to wrap to a third line and drop "hình" past the cap.
+     *   - a single long token with no legal break (ru "Автоперевод",
+     *     th "อัตโนมัติ") overflows its one line and steps down rather than taking
+     *     Android's mid-character split; this also absorbs a large font scale. */
     private fun fitLabel(tv: TextView) {
         if (labelColumnPx <= 0) return
-        val lines = tv.text?.toString().orEmpty().split('\n').filter { it.isNotBlank() }
-        if (lines.isEmpty()) return
+        val text = tv.text?.toString().orEmpty()
+        if (text.isBlank()) return
         var size = labelMaxSp
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
-        while (size > labelMinSp && lines.maxOf { tv.paint.measureText(it) } > labelColumnPx) {
+        while (size > labelMinSp && !labelFitsTwoLines(tv, text)) {
             size -= 0.5f
             tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
         }
+    }
+
+    /** True when [text] wraps to at most two lines within [labelColumnPx] and no
+     *  line overflows it, measured at [tv]'s current text size and mirroring the
+     *  view's break/hyphenation settings so the fit matches what gets drawn. A
+     *  line wider than the column is an unbreakable token (no space, no `\n`) that
+     *  StaticLayout left whole — the signal to step the size down. */
+    private fun labelFitsTwoLines(tv: TextView, text: String): Boolean {
+        val layout = StaticLayout.Builder
+            .obtain(text, 0, text.length, tv.paint, labelColumnPx)
+            .setBreakStrategy(tv.breakStrategy)
+            .setHyphenationFrequency(tv.hyphenationFrequency)
+            .build()
+        if (layout.lineCount > 2) return false
+        for (i in 0 until layout.lineCount) {
+            if (layout.getLineWidth(i) > labelColumnPx) return false
+        }
+        return true
     }
 
     /** Refreshes the capture button's glyph + label from the active region
