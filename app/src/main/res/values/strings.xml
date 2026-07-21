@@ -2196,8 +2196,15 @@
          region (RegionEntry default). -->
     <string name="region_default_full_screen">Full screen</string>
 
-    <!-- Floating-overlay label drawn over the active capture region. -->
-    <string name="region_label_current_capture">Current capture region</string>
+    <!-- Name shown for a region the user never named: one drawn on the fly,
+         or a custom region saved with the name field left empty. Deliberately
+         the bare noun — the same screen carries a "Capture Region" button, so
+         a longer name would read as that command. -->
+    <string name="region_default_capture">Region</string>
+
+    <!-- Accessibility label for the round button on the active capture
+         region's corner: clears it so capture goes back to the whole screen. -->
+    <string name="region_action_remove">Remove</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          MAIN-SCREEN BIG TRANSLATE BUTTON — composed as

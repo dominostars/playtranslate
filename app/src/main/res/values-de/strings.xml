@@ -1069,8 +1069,6 @@
 
     <string name="region_default_full_screen">Vollbild</string>
 
-    <string name="region_label_current_capture">Aktueller Aufnahmebereich</string>
-
     <!-- ═══════════════════════════════════════════════════════════════
          MAIN-SCREEN BIG TRANSLATE BUTTON
          (prefix is joined to the region label by code with a space)

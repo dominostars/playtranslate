@@ -58,12 +58,17 @@ data class RegionEntry(
 ) {
     val isFullScreen: Boolean get() = top <= 0f && bottom >= 1f && left <= 0f && right >= 1f
 
-    /** User-facing name for this region. The full-screen default region
-     *  carries an empty [label] sentinel; resolve it to the localized
-     *  "Full screen" string here so callers that describe a region to the
-     *  user don't each have to remember the fallback. */
-    fun displayName(context: Context): String =
-        label.ifEmpty { context.getString(R.string.region_default_full_screen) }
+    /** User-facing name for this region. An unnamed region carries an empty
+     *  [label] sentinel — the full-screen default, a region drawn on the fly,
+     *  or a custom region saved without a name — and resolves to the localized
+     *  "Full screen" / "Capture region" here, so callers that describe a
+     *  region to the user don't each have to remember the fallback. */
+    fun displayName(context: Context): String = label.ifEmpty {
+        context.getString(
+            if (isFullScreen) R.string.region_default_full_screen
+            else R.string.region_default_capture
+        )
+    }
 }
 
 /** Floating-icon snap position for a single display. [edge] encoding:

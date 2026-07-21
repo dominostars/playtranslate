@@ -14,6 +14,7 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.StaticLayout
+import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -70,6 +71,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val mutedColor: Int = context.themeColor(R.attr.ptTextMuted).takeIf { it != 0 } ?: "#9AA1A8".toColorInt()
     private val bgColor: Int = context.themeColor(R.attr.ptBg).takeIf { it != 0 } ?: "#0B0D0E".toColorInt()
     private val dangerColor: Int = context.themeColor(R.attr.ptDanger).takeIf { it != 0 } ?: "#E05D5D".toColorInt()
+    // Hairline around the region-clear button, over its [cardColor] fill.
+    private val hintColor: Int = context.themeColor(R.attr.ptTextHint).takeIf { it != 0 } ?: "#5F6770".toColorInt()
     // Faint accent wash behind the resting "Translate once" primary.
     private val accentTintColor: Int = context.themeColor(R.attr.ptAccentTint).takeIf { it != 0 }
         ?: Color.argb(0x24, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
@@ -188,18 +191,15 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         color = Color.argb(30, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
         style = Paint.Style.FILL
     }
-    private val regionLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        textSize = 12f * dp
-        textAlign = Paint.Align.CENTER
-        typeface = Typeface.DEFAULT_BOLD
-        setShadowLayer(4f * dp, 0f, 0f, Color.BLACK)
-    }
 
     // Scratch RectF reused in onDraw — allocating per frame is lint DrawAllocation.
     private val regionRect = RectF()
 
-    private var clearRegionButton: View? = null
+    // Chrome over the active custom region, both built by [showRegionChrome]:
+    // the region's name on a pill above (or below) it, and the round clear
+    // button on its top corner, wrapped in a bigger transparent tap target.
+    private var regionNamePill: View? = null
+    private var removeRegionButton: View? = null
     private var degradedWarningView: View? = null
     /** TextView inside [degradedWarningView] holding the pill's label.
      *  Stored so [degradedWarningKind]'s setter can rewrite it on-the-fly
@@ -910,15 +910,10 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 )
                 canvas.drawRect(0f, 0f, w, h, dimPaint)
                 canvas.drawRect(regionRect, regionFillPaint)
-                // Same separated-line boundary as region editing.
+                // Same separated-line boundary as region editing. The region's
+                // name pill and clear button are child views
+                // ([showRegionChrome]) — the button has to be tappable.
                 drawDashedBorder(canvas, regionRect)
-                // Label centered in the region (shadow provides contrast)
-                val label = context.getString(R.string.region_label_current_capture)
-                val labelCx = regionRect.centerX()
-                val labelCy = regionRect.centerY()
-                canvas.drawText(label, labelCx,
-                    labelCy - (regionLabelPaint.descent() + regionLabelPaint.ascent()) / 2,
-                    regionLabelPaint)
             } else {
                 canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
             }
@@ -964,7 +959,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                     isDragging = true
                     menuCard.isGone = true
                     instructionPill.isGone = true
-                    clearRegionButton?.visibility = View.GONE
+                    regionNamePill?.visibility = View.GONE
+                    removeRegionButton?.visibility = View.GONE
                 }
                 if (isDragging) {
                     val left   = minOf(dragStartX, event.x)
@@ -984,7 +980,9 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                         val h = height.toFloat()
                         if (w > 0 && h > 0) {
                             onRegionSelected?.invoke(
-                                RegionEntry("Drawn Region", sel.top / h, sel.bottom / h, sel.left / w, sel.right / w)
+                                // Unnamed: RegionEntry.displayName resolves the
+                                // empty label to the generic "Capture region".
+                                RegionEntry("", sel.top / h, sel.bottom / h, sel.left / w, sel.right / w)
                             )
                         }
                     }
@@ -1140,8 +1138,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                     .start()
             }
 
-            // Show red X button to clear region (if a custom region is active)
-            showClearRegionButton(iconEdge, screenW, screenH)
+            // Name pill + clear button over the active region (custom only).
+            showRegionChrome(iconEdge, screenW, screenH)
 
             // Keep the drag-hint pill clear of the menu card.
             positionInstructionPill(iconCy, iconEdge, screenW, screenH)
@@ -1255,79 +1253,155 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         place((gapStart + gapEnd) / 2, centerY, (gapEnd - gapStart) - 2 * pillBuffer)
     }
 
-    private fun showClearRegionButton(iconEdge: FloatingOverlayIcon.Edge, screenW: Int, screenH: Int) {
-        clearRegionButton?.let { removeView(it) }
-        clearRegionButton = null
+    /** Chrome over the active custom region: a round clear button straddling
+     *  the region's top corner on the side away from the menu card, plus the
+     *  region's name on a pill centered above the region (below it when the
+     *  top edge leaves no room) — the region picker preview's placement rule.
+     *  Rebuilt on every [positionNearIcon]; a full-screen region gets neither.
+     *
+     *  Two size gates keep the chrome off small regions: under 120dp on an
+     *  axis the button steps outside that edge (8dp clear of it) instead of
+     *  covering the region, and the name is dropped entirely below 120dp wide
+     *  or 60dp tall. */
+    private fun showRegionChrome(iconEdge: FloatingOverlayIcon.Edge, screenW: Int, screenH: Int) {
+        removeRegionChrome()
 
         val region = activeRegion ?: return
         if (region.isFullScreen) return
 
-        // Tapping the X clears the active region. Outside live mode, keep the
-        // menu open and flip it to its full-screen state (remove the preview + X,
-        // switch the capture button to "Capture screen"); in live mode, preserve
-        // the prior behavior and close the menu.
-        val onClearTapped: () -> Unit = {
-            onClearRegion?.invoke()
-            if (isLiveMode) {
-                onDismiss?.invoke()
-            } else {
-                clearRegionButton?.let { removeView(it) }
-                clearRegionButton = null
-                activeRegion = null
-                invalidate()
-            }
-        }
-
-        val btnSize = (36 * dp).toInt()
-        val touchSize = (56 * dp).toInt()
-        val touchPad = (touchSize - btnSize) / 2
-        val regionRect = RectF(
+        val margin = (8 * dp).toInt()
+        val btnSize = (32 * dp).toInt()
+        val touchSize = (48 * dp).toInt()
+        val hostsButton = 120 * dp
+        val rect = RectF(
             region.left * screenW, region.top * screenH,
             region.right * screenW, region.bottom * screenH
         )
 
-        // Position on the opposite side from the menu
-        val btnX = if (iconEdge == FloatingOverlayIcon.Edge.LEFT) {
-            (regionRect.right - btnSize - 8 * dp).toInt()
-        } else {
-            (regionRect.left + 8 * dp).toInt()
-        }
-        val btnY = (regionRect.top + 8 * dp).toInt()
+        // Chrome is placed by absolute margins, clamped to stay on screen.
+        fun clampLeft(w: Int, left: Int) =
+            left.coerceIn(margin, (screenW - w - margin).coerceAtLeast(margin))
 
-        val btn = View(context).apply {
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(dangerColor)
+        fun clampTop(h: Int, top: Int) =
+            top.coerceIn(margin, (screenH - h - margin).coerceAtLeast(margin))
+
+        fun place(view: View, w: Int, h: Int, left: Int, top: Int) {
+            addView(view, LayoutParams(w, h).apply {
+                gravity = Gravity.TOP or Gravity.START
+                leftMargin = clampLeft(w, left)
+                topMargin = clampTop(h, top)
+            })
+        }
+
+        // Top corner opposite the menu card, with the button centered on it —
+        // stepped outside the region on any axis too narrow to host it.
+        val atLeftCorner = iconEdge == FloatingOverlayIcon.Edge.RIGHT
+        val outside = margin + btnSize / 2f
+        val btnCx = when {
+            rect.width() >= hostsButton -> if (atLeftCorner) rect.left else rect.right
+            atLeftCorner -> rect.left - outside
+            else -> rect.right + outside
+        }
+        val btnCy = if (rect.height() >= hostsButton) rect.top else rect.top - outside
+
+        val circle = ImageView(context).apply {
+            setImageResource(R.drawable.ic_close)
+            imageTintList = ColorStateList.valueOf(textColor)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            val glyphInset = ((btnSize - 16 * dp) / 2).toInt()
+            setPadding(glyphInset, glyphInset, glyphInset, glyphInset)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(cardColor)
+                setStroke((1 * dp).toInt(), hintColor)
             }
-            setOnClickListener { onClearTapped() }
+            elevation = 3 * dp
         }
-
-        // Draw X using a simple TextView overlay
-        val xLabel = TextView(context).apply {
-            text = "✕"
-            setTextColor(Color.WHITE)
-            textSize = 16f
-            gravity = Gravity.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-        }
-
-        val container = FrameLayout(context).apply {
-            val innerLp = FrameLayout.LayoutParams(btnSize, btnSize).apply {
-                gravity = Gravity.CENTER
-            }
-            addView(btn, innerLp)
-            addView(xLabel, FrameLayout.LayoutParams(touchSize, touchSize).apply {
+        // The visible button is 32dp; it rides a transparent 48dp container so
+        // the tap target clears the accessibility floor.
+        val clearBtn = FrameLayout(context).apply {
+            contentDescription = context.getString(R.string.region_action_remove)
+            addView(circle, FrameLayout.LayoutParams(btnSize, btnSize).apply {
                 gravity = Gravity.CENTER
             })
-            setOnClickListener { onClearTapped() }
+            setOnClickListener { clearActiveRegion() }
         }
+        val btnLeft = clampLeft(touchSize, (btnCx - touchSize / 2).toInt())
+        val btnTop = clampTop(touchSize, (btnCy - touchSize / 2).toInt())
+        place(clearBtn, touchSize, touchSize, btnLeft, btnTop)
+        removeRegionButton = clearBtn
 
-        val lp = LayoutParams(touchSize, touchSize).apply {
-            gravity = Gravity.TOP or Gravity.START
-            leftMargin = btnX - touchPad
-            topMargin = btnY - touchPad
+        // Below either gate the name has nowhere to sit without crowding the
+        // region it labels, so it's dropped rather than shrunk.
+        if (rect.width() < 120 * dp || rect.height() < 60 * dp) return
+
+        val namePill = regionPill(region.displayName(context), screenW - 2 * margin)
+        val unspec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+        namePill.measure(unspec, unspec)
+        val nameW = namePill.measuredWidth
+        val nameH = namePill.measuredHeight
+        val nameLeft = clampLeft(nameW, (rect.centerX() - nameW / 2f).toInt())
+        // The region preview's rule: an 8dp gap above the region, or the same
+        // gap below it when the top edge leaves no room.
+        val aboveY = rect.top.toInt() - margin - nameH
+        val onTopEdge = aboveY >= margin
+        var nameTop = clampTop(nameH, if (onTopEdge) aboveY else rect.bottom.toInt() + margin)
+        // A long name reaches the corner button; step over it rather than
+        // running the two into each other.
+        val hitsButton = nameLeft < btnLeft + touchSize && nameLeft + nameW > btnLeft &&
+            nameTop < btnTop + touchSize && nameTop + nameH > btnTop
+        if (hitsButton) {
+            nameTop = if (onTopEdge) btnTop - margin - nameH else btnTop + touchSize + margin
         }
-        addView(container, lp)
-        clearRegionButton = container
+        place(namePill, nameW, nameH, nameLeft, nameTop)
+        regionNamePill = namePill
+    }
+
+    /** The region's name pill: the region preview's own styling — 12dp
+     *  medium-bold [bgColor] label on an accent fill, 10×4dp padding, 6dp
+     *  radius, raised off the dim. Capped to [maxWidthPx] so a long name
+     *  ellipsizes instead of running off screen. */
+    private fun regionPill(text: String, maxWidthPx: Int): LinearLayout {
+        val padH = (10 * dp).toInt()
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(padH, (4 * dp).toInt(), padH, (4 * dp).toInt())
+            background = GradientDrawable().apply {
+                setColor(accentColor)
+                cornerRadius = 6 * dp
+            }
+            elevation = 3 * dp
+            addView(TextView(context).apply {
+                setText(text)
+                setTextColor(bgColor)
+                setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12f)
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                isSingleLine = true
+                ellipsize = TextUtils.TruncateAt.END
+                maxWidth = (maxWidthPx - 2 * padH).coerceAtLeast((48 * dp).toInt())
+            })
+        }
+    }
+
+    /** The clear button's action. Outside live mode the menu stays open and
+     *  flips to its full-screen state (chrome gone, capture button back to
+     *  "Capture screen"); in live mode it closes, as the old clear button did. */
+    private fun clearActiveRegion() {
+        onClearRegion?.invoke()
+        if (isLiveMode) {
+            onDismiss?.invoke()
+        } else {
+            removeRegionChrome()
+            activeRegion = null
+            invalidate()
+        }
+    }
+
+    private fun removeRegionChrome() {
+        regionNamePill?.let { removeView(it) }
+        regionNamePill = null
+        removeRegionButton?.let { removeView(it) }
+        removeRegionButton = null
     }
 }

@@ -1012,8 +1012,6 @@
 
     <string name="region_default_full_screen">เต็มหน้าจอ</string>
 
-    <string name="region_label_current_capture">พื้นที่จับภาพปัจจุบัน</string>
-
     <!-- ═══ MAIN-SCREEN BIG TRANSLATE BUTTON ═══ -->
 
     <string name="translate_button_prefix_translate">แปล</string>

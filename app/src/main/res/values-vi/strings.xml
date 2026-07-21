@@ -1066,8 +1066,6 @@
 
     <string name="region_default_full_screen">Toàn màn hình</string>
 
-    <string name="region_label_current_capture">Vùng chụp hiện tại</string>
-
     <!-- ═══════════════════════════════════════════════════════════════
          MAIN-SCREEN BIG TRANSLATE BUTTON
          (prefix is joined to the region label by code with a space)

@@ -1011,8 +1011,6 @@
 
     <string name="region_default_full_screen">ملء الشاشة</string>
 
-    <string name="region_label_current_capture">منطقة الالتقاط الحالية</string>
-
     <!-- ═══ MAIN-SCREEN BIG TRANSLATE BUTTON ═══ -->
 
     <string name="translate_button_prefix_translate">ترجمة</string>

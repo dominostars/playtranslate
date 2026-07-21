@@ -1106,8 +1106,6 @@
 
     <string name="region_default_full_screen">Plein écran</string>
 
-    <string name="region_label_current_capture">Zone de capture actuelle</string>
-
     <!-- ═══════════════════════════════════════════════════════════════
          MAIN-SCREEN BIG TRANSLATE BUTTON
          (prefix is joined to the region label by code with a space)

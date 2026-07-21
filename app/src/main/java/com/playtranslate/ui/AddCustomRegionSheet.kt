@@ -46,7 +46,6 @@ class AddCustomRegionSheet : DialogFragment() {
     private var leftFraction   = 0.25f
     private var rightFraction  = 0.75f
     private var translateOnceRequested = false
-    private var translateOnceLabel = "Custom Region"
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
 
@@ -91,7 +90,9 @@ class AddCustomRegionSheet : DialogFragment() {
             leftFraction = init.left
             rightFraction = init.right
             if (isEditMode) {
-                tvTitle.text = getString(R.string.custom_region_edit_title, init.label)
+                tvTitle.text = getString(R.string.custom_region_edit_title, init.displayName(requireContext()))
+                // Raw label, not displayName: an unnamed region shows the empty
+                // field's hint rather than pre-filling the generic default.
                 etName.setText(init.label)
             }
         }
@@ -108,7 +109,9 @@ class AddCustomRegionSheet : DialogFragment() {
         }
 
         btnSave.setOnClickListener {
-            val label = etName.text.toString().trim().ifEmpty { "Custom Region" }
+            // Empty stays empty: RegionEntry.displayName resolves an unnamed
+            // region to the localized "Capture region" at render time.
+            val label = etName.text.toString().trim()
             val prefs = Prefs(requireContext())
             val list  = prefs.getRegionList().toMutableList()
             val existingId = initRegionEntry?.id
@@ -149,7 +152,7 @@ class AddCustomRegionSheet : DialogFragment() {
     override fun onDismiss(dialog: DialogInterface) {
         CaptureBackendResolver.activeOverlayUi?.hideRegionDragOverlay()
         if (translateOnceRequested) {
-            onTranslateOnce?.invoke(RegionEntry(translateOnceLabel, topFraction, bottomFraction, leftFraction, rightFraction))
+            onTranslateOnce?.invoke(RegionEntry("", topFraction, bottomFraction, leftFraction, rightFraction))
         } else {
             onDismissed?.invoke()
         }

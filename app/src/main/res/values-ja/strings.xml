@@ -1118,8 +1118,6 @@
 
     <string name="region_default_full_screen">全画面</string>
 
-    <string name="region_label_current_capture">現在のキャプチャ範囲</string>
-
     <!-- ═══════════════════════════════════════════════════════════════
          MAIN-SCREEN BIG TRANSLATE BUTTON
          (prefix is joined to the region label by code with a space)

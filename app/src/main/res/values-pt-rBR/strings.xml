@@ -1066,8 +1066,6 @@
 
     <string name="region_default_full_screen">Tela cheia</string>
 
-    <string name="region_label_current_capture">Região de captura atual</string>
-
     <!-- ═══════════════════════════════════════════════════════════════
          MAIN-SCREEN BIG TRANSLATE BUTTON
          (prefix is joined to the region label by code with a space)

@@ -600,7 +600,9 @@ class TranslationResultActivity :
         )
         svc.configureOverride(
             targetDisplayId,
-            RegionEntry("Drawn Region", topFrac, bottomFrac, leftFrac, rightFrac),
+            // Unnamed: RegionEntry.displayName resolves the empty label to the
+            // generic "Capture region".
+            RegionEntry("", topFrac, bottomFrac, leftFrac, rightFrac),
         )
 
         // Start the one-shot capture and observe its session state.

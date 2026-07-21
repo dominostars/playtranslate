@@ -513,7 +513,7 @@ class RegionPickerSheet : DialogFragment() {
             val radius = ctx.resources.getDimension(R.dimen.pt_radius)
             val count = workingList.size
 
-            holder.label.text = entry.label
+            holder.label.text = entry.displayName(ctx)
             val isSelected = workingList.getOrNull(position)?.id == selectedId
             holder.radio.isChecked = isSelected
             val accentC = ctx.themeColor(R.attr.ptAccent)

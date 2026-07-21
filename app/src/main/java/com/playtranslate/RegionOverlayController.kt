@@ -103,7 +103,7 @@ class RegionOverlayController(
         val ctx = context.createDisplayContext(display)
         val wm = ctx.getSystemService(WindowManager::class.java) ?: return
         val dp = ctx.resources.displayMetrics.density
-        val displayLabel = region.label
+        val displayLabel = region.displayName(ctx)
 
         val themed = overlayThemedContext(context)
         val accentColor = themed.themeColor(R.attr.ptAccent)
@@ -245,7 +245,7 @@ class RegionOverlayController(
                     hideRegionIndicator(force = true)
                 } else {
                     view.liveRegion = newRegion
-                    view.liveLabel = newRegion.label
+                    view.liveLabel = newRegion.displayName(ctx)
                     view.invalidate()
                 }
             }
@@ -427,7 +427,9 @@ class RegionOverlayController(
             layoutParams = android.widget.LinearLayout.LayoutParams(btnSize, btnSize)
             setOnClickListener {
                 val dv = dragView ?: return@setOnClickListener
-                val drawnRegion = RegionEntry("Drawn Region", dv.topFraction, dv.bottomFraction, dv.leftFraction, dv.rightFraction)
+                // Unnamed: RegionEntry.displayName resolves the empty label to
+                // the generic "Capture region".
+                val drawnRegion = RegionEntry("", dv.topFraction, dv.bottomFraction, dv.leftFraction, dv.rightFraction)
                 hideRegionEditor()
                 CaptureService.instance?.configureOverride(display.displayId, drawnRegion)
                 if (CaptureService.instance?.isLive == true) {

@@ -2329,9 +2329,11 @@ class MainActivity :
     /** Returns the "Searching for X in the Y area" message for live mode. */
     private fun searchingStatusText(): String {
         val lang = langDisplayName(selectedSourceLang())
-        val entry = prefs.primaryDisplayRegion()
-        val serviceLabel = captureService?.activeRegion?.label?.takeIf { it.isNotEmpty() }
-        val label = serviceLabel ?: entry.displayName(this)
+        // The service's active region already folds in the persisted selection,
+        // so prefer it outright — an unnamed override (a drawn region) resolves
+        // through displayName rather than falling back to the saved entry's name.
+        val region = captureService?.activeRegion ?: prefs.primaryDisplayRegion()
+        val label = region.displayName(this)
         return "Searching for $lang in the \"$label\" area"
     }
 
@@ -2534,7 +2536,8 @@ class MainActivity :
         val rows = mutableListOf<View>()
         order.forEachIndexed { rowIdx, regionIdx ->
             val isHighlighted = rowIdx == order.lastIndex
-            val label = if (regionIdx == -1) getString(R.string.label_add_custom_region) else regions[regionIdx].label
+            val label = if (regionIdx == -1) getString(R.string.label_add_custom_region)
+                        else regions[regionIdx].displayName(this)
             val row = buildDropdownRow(label, isHighlighted, regionIdx == -1)
             container.addView(row)
             rows.add(row)
@@ -2798,7 +2801,6 @@ class MainActivity :
         const val EXTRA_BOTTOM_FRAC = "extra_bottom_frac"
         const val EXTRA_LEFT_FRAC = "extra_left_frac"
         const val EXTRA_RIGHT_FRAC = "extra_right_frac"
-        const val DRAGGED_REGION_LABEL = "Drawn Region"
         const val ACTION_START_LIVE = "com.playtranslate.ACTION_START_LIVE"
         const val ACTION_STOP_LIVE = "com.playtranslate.ACTION_STOP_LIVE"
         const val ACTION_ADD_CUSTOM_REGION = "com.playtranslate.ACTION_ADD_CUSTOM_REGION"
