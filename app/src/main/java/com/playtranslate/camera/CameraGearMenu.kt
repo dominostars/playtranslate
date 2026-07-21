@@ -4,6 +4,7 @@ import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -72,6 +73,19 @@ class CameraGearMenu(
     private var animator: ValueAnimator? = null
     private var scrim: View? = null
 
+    /** The pill's scrim, mutated so morphing its opacity here can't bleed
+     *  into the other views sharing @drawable/bg_camera_control_pill (the
+     *  import page chip). Null when a restyle swaps in a non-shape
+     *  background — the opacity morph then just no-ops. */
+    private val pillScrim: GradientDrawable? =
+        (pill.background?.mutate() as? GradientDrawable)?.also { pill.background = it }
+
+    /** Current pill-scrim opacity (0–255 over black), tracked so an
+     *  interrupted grow/shrink resumes from where it actually is rather than
+     *  snapping. Starts at the drawable's own 40% — the icon-only resting
+     *  look — so the first open animates cleanly with no jump. */
+    private var pillAlpha = COLLAPSED_PILL_ALPHA
+
     /** True while the menu is expanded — the activity's back handling closes
      *  an open menu before any crop/frozen/exit behavior (it's modal). */
     val isOpen: Boolean get() = expanded
@@ -110,6 +124,7 @@ class CameraGearMenu(
         animatePill(
             fromW = pill.width, fromH = pill.height,
             toW = expandedWidthPx, toH = iconRow.height + menuHost.measuredHeight,
+            toAlpha = EXPANDED_PILL_ALPHA,
         )
     }
 
@@ -121,6 +136,7 @@ class CameraGearMenu(
         animatePill(
             fromW = pill.width, fromH = pill.height,
             toW = iconRow.width, toH = iconRow.height,
+            toAlpha = COLLAPSED_PILL_ALPHA,
         ) {
             menuHost.visibility = View.GONE
             wrapPill()
@@ -138,6 +154,7 @@ class CameraGearMenu(
         removeScrim()
         menuHost.visibility = View.GONE
         wrapPill()
+        applyPillAlpha(COLLAPSED_PILL_ALPHA)
     }
 
     fun destroy() = closeInstant()
@@ -151,9 +168,14 @@ class CameraGearMenu(
     }
 
     private fun animatePill(
-        fromW: Int, fromH: Int, toW: Int, toH: Int, onEnd: (() -> Unit)? = null,
+        fromW: Int, fromH: Int, toW: Int, toH: Int,
+        toAlpha: Int = pillAlpha, onEnd: (() -> Unit)? = null,
     ) {
         animator?.cancel()
+        // Captured AFTER the cancel so an interrupted morph hands off its
+        // actual current opacity, in lockstep with fromW/fromH reading the
+        // pill's live size.
+        val fromAlpha = pillAlpha
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 180L
             interpolator = DecelerateInterpolator()
@@ -163,6 +185,7 @@ class CameraGearMenu(
                 lp.width = (fromW + (toW - fromW) * f).toInt()
                 lp.height = (fromH + (toH - fromH) * f).toInt()
                 pill.layoutParams = lp
+                applyPillAlpha((fromAlpha + (toAlpha - fromAlpha) * f).toInt())
             }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 private var cancelled = false
@@ -175,6 +198,13 @@ class CameraGearMenu(
             })
             start()
         }
+    }
+
+    /** Recolor the pill scrim to opacity [a] over black. No-ops when the
+     *  background isn't the expected shape drawable. */
+    private fun applyPillAlpha(a: Int) {
+        pillAlpha = a
+        pillScrim?.setColor(Color.argb(a, 0, 0, 0))
     }
 
     /** Rebuilt on every open so the values reflect the CURRENT selections. */
@@ -288,5 +318,13 @@ class CameraGearMenu(
     private fun removeScrim() {
         scrim?.let { controlsHost.removeView(it) }
         scrim = null
+    }
+
+    companion object {
+        /** Icon-only resting opacity — matches bg_camera_control_pill's #66. */
+        private const val COLLAPSED_PILL_ALPHA = 0x66
+        /** Near-solid while the menu is open, so the rows stay legible over a
+         *  busy photo/preview instead of the frame bleeding through. */
+        private const val EXPANDED_PILL_ALPHA = 0xE6
     }
 }
