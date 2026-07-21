@@ -19,6 +19,7 @@ import android.view.Display
 import android.view.Gravity
 import android.hardware.input.InputManager
 import android.view.InputDevice
+import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
@@ -448,12 +449,15 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      *    [fireOnGameInput]).
      */
     private val onGameInputs: MutableMap<Int, () -> Unit> = mutableMapOf()
-    private var lastKeyEventTime = 0L
-    /** Derived from [heldKeyCodes] so a multi-key release pattern
+    /** Derived from [heldGameKeys] so a multi-key release pattern
      *  (press A → press B → release A) reports B as still held instead
      *  of incorrectly flipping to false on A's UP event. Single source
-     *  of truth: only the key event handler mutates heldKeyCodes. */
-    private val buttonHeld: Boolean get() = heldKeyCodes.isNotEmpty()
+     *  of truth: only the key event handler mutates heldGameKeys.
+     *
+     *  Reads [heldGameKeys], NOT the wider [heldKeyCodes]: "is the user
+     *  mid-interaction" must stay a question about the game controls, so
+     *  holding a keyboard key does not suppress overlay presentation. */
+    private val buttonHeld: Boolean get() = heldGameKeys.isNotEmpty()
     private var touchActive = false
     private val TOUCH_HOLD_TIMEOUT_MS = 2000L
     private val touchTimeoutRunnable = Runnable { touchActive = false }
@@ -474,9 +478,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * True while any input source is actively being used (button held,
-     * touch down, or joystick held). CaptureService checks this to avoid
-     * showing the overlay during active interaction.
+     * True while the player is actively working the controls (game button
+     * held or touch down) — meant to keep the overlay from appearing mid-input.
+     *
+     * Currently unread: the CaptureService check this was written for is gone.
+     * Kept wired (and split off [heldGameKeys] rather than the wider
+     * [heldKeyCodes]) so that whoever re-adds it gets the gameplay-only answer
+     * instead of counting keyboard typing as interaction.
      */
     val isInputActive: Boolean
         get() = buttonHeld || touchActive
@@ -489,20 +497,21 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      */
     fun startInputMonitoring(displayId: Int, callback: () -> Unit) {
         onGameInputs[displayId] = callback
-        lastKeyEventTime = 0L
         heldKeyCodes.clear()
+        heldGameKeys.clear()
         touchActive = false
         addTouchSentinel(displayId)
     }
 
     /** Stop monitoring input for a single display. Tears down THIS display's
-     *  touch sentinel; global state (heldKeyCodes, touchActive) only
+     *  touch sentinel; global state (held keys, touchActive) only
      *  resets when the last listener goes away. */
     fun stopInputMonitoring(displayId: Int) {
         onGameInputs.remove(displayId)
         overlayHost.removeTouchSentinel(displayId)
         if (onGameInputs.isEmpty()) {
             heldKeyCodes.clear()
+            heldGameKeys.clear()
             touchActive = false
             debugHandler.removeCallbacks(touchTimeoutRunnable)
         }
@@ -512,6 +521,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     fun stopInputMonitoring() {
         onGameInputs.clear()
         heldKeyCodes.clear()
+        heldGameKeys.clear()
         touchActive = false
         debugHandler.removeCallbacks(touchTimeoutRunnable)
         overlayHost.removeAllTouchSentinels()
@@ -588,7 +598,19 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      */
     private val TAP_HOLD_THRESHOLD_MS = 350L
 
+    /** Every hotkey-eligible key currently down — the input to
+     *  [checkHotkeyCombos]. Includes keyboards (see [isHotkeySource]). */
     private val heldKeyCodes = mutableSetOf<Int>()
+
+    /** The gameplay-sourced subset of [heldKeyCodes] (see [isGameInputSource]),
+     *  feeding [buttonHeld] / [isInputActive]. Tracked separately so widening
+     *  the hotkey gate to keyboards did not also widen "the player is actively
+     *  using the controls" — the two questions share a key-event stream but
+     *  not an answer. The live consumer of that second answer is
+     *  [fireOnGameInput] (live-mode overlay invalidation); [isInputActive] is
+     *  currently unread. */
+    private val heldGameKeys = mutableSetOf<Int>()
+
     private var activeHotkeyAssignment: HotkeyAssignment? = null
     private var pendingActivationAssignment: HotkeyAssignment? = null
 
@@ -704,27 +726,36 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             if (listener(event)) return true
         }
 
-        val src = event.source
-        val isGameInput = src and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD
-            || src and InputDevice.SOURCE_DPAD == InputDevice.SOURCE_DPAD
-            || KeyEvent.isGamepadButton(event.keyCode)
-        if (isGameInput) {
-            when (event.action) {
-                KeyEvent.ACTION_DOWN -> {
-                    lastKeyEventTime = System.currentTimeMillis()
-                    heldKeyCodes.add(event.keyCode)
+        // Two questions, two answers. "Can this drive a hotkey?" admits
+        // keyboards; "is the player working the controls?" does not — see
+        // [isHotkeySource] / [isGameInputSource].
+        val hotkeyInput = isHotkeyEligible(event)
+        val gameInput = isGameInputSource(event.source) || KeyEvent.isGamepadButton(event.keyCode)
+
+        // Gameplay input is a strict subset of hotkey-eligible input (narrower
+        // source mask, same keycode escape hatch), so this early return cannot
+        // drop a gameplay event. Preserve that containment if either widens.
+        if (!hotkeyInput) return false
+
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> {
+                heldKeyCodes.add(event.keyCode)
+                if (gameInput) {
+                    heldGameKeys.add(event.keyCode)
                     if (overlayUiController.isAnyDragLookupPopupShowing) {
                         overlayUiController.dismissAllDragLookupPopups()
                     }
                     fireOnGameInput()
-                    checkHotkeyCombos()
                 }
-                KeyEvent.ACTION_UP -> {
-                    heldKeyCodes.remove(event.keyCode)
-                    lastKeyEventTime = System.currentTimeMillis()
+                checkHotkeyCombos()
+            }
+            KeyEvent.ACTION_UP -> {
+                heldKeyCodes.remove(event.keyCode)
+                if (gameInput) {
+                    heldGameKeys.remove(event.keyCode)
                     fireOnGameInput()
-                    checkHotkeyCombos()
                 }
+                checkHotkeyCombos()
             }
         }
         return false // pass through to the game
@@ -767,6 +798,65 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             val full = component.flattenToString()
             val short = component.flattenToShortString()
             return enabled.split(':').any { it.equals(full, ignoreCase = true) || it.equals(short, ignoreCase = true) }
+        }
+
+        /**
+         * Whether [event] may drive a hotkey — the single composition site for
+         * the source policy in [isHotkeySource] and the gamepad-*keycode*
+         * escape hatch (a controller whose source mask advertises neither
+         * GAMEPAD nor DPAD still reports BUTTON_A and friends).
+         *
+         * Shared by hotkey *dispatch* ([onKeyEvent]) and hotkey *capture*
+         * ([HotkeySetupDialog]) so the two cannot disagree. They used to: the
+         * dialog accepted any key, dispatch accepted only gamepad-sourced
+         * ones, so binding a keyboard key appeared to succeed and then never
+         * fired.
+         *
+         * Deliberately permissive about keys that type. Refusing them was
+         * tried and reverted: every comparable tool (GameSentenceMiner,
+         * LunaTranslator) lets any key be bound, and the cost of refusing is
+         * paid by everyone while the cost of allowing is paid only by someone
+         * who picks a letter and can rebind. [typesText] drives a warning at
+         * setup instead of a veto here.
+         */
+        fun isHotkeyEligible(event: KeyEvent): Boolean =
+            isHotkeySource(event.source) || KeyEvent.isGamepadButton(event.keyCode)
+
+        /**
+         * Keys that type but that [KeyEvent.isPrintingKey] calls non-printing.
+         * It classifies by Unicode category, and space is a SPACE_SEPARATOR
+         * rather than a printing glyph — so the SDK test alone would warn on
+         * "T" and stay quiet on " ", which reads as arbitrary to anyone
+         * binding one.
+         *
+         * Enter, Tab and the deletes are deliberately absent: they edit text
+         * but are command keys in most UIs, and warning on them would nag
+         * controller and TV-remote users about ordinary bindings.
+         */
+        private val TEXT_KEYS_MISSED_BY_PRINTING_TEST = setOf(KeyEvent.KEYCODE_SPACE)
+
+        /**
+         * Whether [event]'s key types a character on the device that sent it.
+         * Feeds the setup warning (see [comboTakesTypingKey]); never blocks a
+         * binding.
+         */
+        fun typesText(event: KeyEvent): Boolean =
+            isKeyboardSource(event.source) &&
+                (event.keyCode in TEXT_KEYS_MISSED_BY_PRINTING_TEST || producesGlyph(event))
+
+        /**
+         * [KeyEvent.isPrintingKey] resolves the sending device's key character
+         * map and throws once that device is gone — a live possibility for a
+         * USB keyboard unplugged mid-keystroke, and an uncaught throw in
+         * [onKeyEvent] would take the service and every overlay down with it.
+         * Unknown counts as printing: a hotkey that declines to fire is a much
+         * better failure than a capture nobody asked for.
+         */
+        private fun producesGlyph(event: KeyEvent): Boolean = try {
+            event.isPrintingKey
+        } catch (e: KeyCharacterMap.UnavailableException) {
+            Log.w(TAG, "isPrintingKey unavailable for keyCode=${event.keyCode}", e)
+            true
         }
 
         /** Single source of truth for "PlayTranslate is going inactive". Writes

@@ -1,5 +1,8 @@
 package com.playtranslate
 
+import android.view.InputDevice
+import android.view.KeyEvent
+
 /**
  * Pure decision logic for hotkey combo detection. Extracted from
  * [PlayTranslateAccessibilityService.checkHotkeyCombos] so the state machine
@@ -18,7 +21,105 @@ package com.playtranslate
  * shows a momentary overlay preview, a TAP toggles the persistent auto
  * session — so the shadowing window must consider all four bindings together
  * (a TAP combo can shadow a HOLD combo and vice-versa).
+ *
+ * The input-source policy below lives here for the same reason. Only
+ * compile-time `InputDevice.SOURCE_*` constants are referenced, so the file
+ * stays unit-testable on a plain JVM.
  */
+
+// ── Input-source policy ────────────────────────────────────────────────
+
+/**
+ * Whether key events from [source] may drive a hotkey combo.
+ *
+ * Deliberately wider than [isGameInputSource]: a hotkey press is something the
+ * user chose to do, so any button-style device qualifies — a controller, a
+ * handheld's built-in pad, or a plain keyboard (USB / Bluetooth, or a PC
+ * driving the phone over a HID bridge). Keyboards were excluded for years
+ * because a single gate served both this role and the gameplay-interaction
+ * signal, and admitting them there would have made ordinary typing read as
+ * "the player is using the controls".
+ *
+ * This is the whole eligibility rule. Binding a key that types is *permitted*
+ * and only warned about at setup (see [comboTakesTypingKey]) — matching how
+ * GameSentenceMiner and LunaTranslator both behave, where any key may be bound
+ * and the tool steers rather than refuses.
+ * [PlayTranslateAccessibilityService.isHotkeyEligible] is the single site that
+ * composes it with the gamepad-*keycode* escape hatch for controllers whose
+ * source mask advertises neither bit, so hotkey *capture* (the setup dialog)
+ * and hotkey *dispatch* cannot drift apart. A binding the user is allowed to
+ * record is exactly a binding that can fire.
+ */
+fun isHotkeySource(source: Int): Boolean =
+    isGameInputSource(source) || isKeyboardSource(source)
+
+/**
+ * Whether [source] can produce text. Exactly the `SOURCE_KEYBOARD` bit, which
+ * is what Android sets for any device with keys — including controllers, which
+ * commonly report `GAMEPAD | DPAD | KEYBOARD` (0x701). Which is why the typing
+ * warning is decided per *keycode* rather than per device: a controller's
+ * buttons produce no glyph, so a 0x701 handheld never trips it.
+ */
+fun isKeyboardSource(source: Int): Boolean =
+    source hasSource InputDevice.SOURCE_KEYBOARD
+
+// ── Typing-collision warning ───────────────────────────────────────────
+
+/**
+ * Modifiers that make a combo a *command* rather than text, identified by
+ * keycode — the same form a binding is stored in, so the warning shown at
+ * setup and the combo that was saved are decided from identical data. (Meta
+ * state would be the other option and is worse: it needs normalizing across
+ * directional bits, and injected input may carry the aggregate bits without
+ * the directional ones.)
+ *
+ * Two deliberate absences:
+ *  - **Shift**, a text modifier. Shift+T still types a letter.
+ *  - **Right Alt**, which is AltGr on most layouts and types too: of the 46
+ *    layouts Android ships in InputDevices.apk, 40 give it text meaning (all
+ *    but US English, Dvorak, Colemak, Workman, Arabic and Persian). German
+ *    AltGr+E is €, AltGr+Q is @. Microsoft's own guidance is to keep shortcuts
+ *    away from AltGr rather than try to detect it; excluding the keycode is
+ *    that advice applied. Costs US-layout users a modifier they rarely reach
+ *    for, and only costs them an unnecessary warning at that.
+ */
+val COMMAND_MODIFIER_KEYCODES: Set<Int> = setOf(
+    KeyEvent.KEYCODE_CTRL_LEFT,
+    KeyEvent.KEYCODE_CTRL_RIGHT,
+    KeyEvent.KEYCODE_META_LEFT,
+    KeyEvent.KEYCODE_META_RIGHT,
+    KeyEvent.KEYCODE_ALT_LEFT,
+)
+
+/**
+ * Whether binding [heldKeys] would take a key away from typing — true when the
+ * combo includes a key that types ([typingKeys], the subset the caller found
+ * to produce a character) and carries no command modifier to distinguish it.
+ *
+ * Advisory only. The user may bind it anyway; this decides whether to say so.
+ */
+fun comboTakesTypingKey(heldKeys: Set<Int>, typingKeys: Set<Int>): Boolean =
+    typingKeys.isNotEmpty() && heldKeys.none { it in COMMAND_MODIFIER_KEYCODES }
+
+/**
+ * Whether key events from [source] count as *gameplay* input — the signal that
+ * the user is actively working the controls, which invalidates live-mode
+ * overlays and suppresses presentation while a button is down.
+ *
+ * Held to controller-style sources on purpose. Typing is not that signal: a
+ * keyboard here would tear down live overlays on every keystroke of a game
+ * chat message or an IME composition.
+ */
+fun isGameInputSource(source: Int): Boolean =
+    source hasSource InputDevice.SOURCE_GAMEPAD || source hasSource InputDevice.SOURCE_DPAD
+
+/**
+ * Bitmask test: [this] carries every bit of [mask]. The source constants are
+ * composites that overlap — SOURCE_KEYBOARD (0x101), SOURCE_DPAD (0x201) and
+ * SOURCE_GAMEPAD (0x401) all include SOURCE_CLASS_BUTTON (0x1) — so a bare
+ * `and mask != 0` would match any of them against any other.
+ */
+private infix fun Int.hasSource(mask: Int): Boolean = this and mask == mask
 
 /** How a hotkey combo is triggered. */
 enum class HotkeyTrigger { HOLD, TAP }

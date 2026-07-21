@@ -2370,6 +2370,11 @@
          seconds.  %1$s = remaining seconds (one decimal, e.g. "1.4"). -->
     <string name="dialog_hotkey_setup_countdown">Hold <xliff:g id="remaining_seconds" example="1.4">%1$s</xliff:g></string>
 
+    <!-- Warning shown under the combo while the user holds a keyboard key
+         that types a character. The binding is still allowed; this only says
+         what it will cost. Ctrl is a key name, not a translatable word. -->
+    <string name="dialog_hotkey_setup_typing_key">This key types. It will fire while typing too. Add Ctrl or use a function key.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          DIALOG CHROME — decorative glyphs that aren't translated.
          ═══════════════════════════════════════════════════════════════ -->

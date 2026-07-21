@@ -17,6 +17,7 @@ import android.widget.TextView
 import androidx.fragment.app.DialogFragment
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.R
+import com.playtranslate.comboTakesTypingKey
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.isVisible
 import androidx.core.view.isGone
@@ -26,9 +27,12 @@ import androidx.core.view.isGone
  * the user holds down key(s) for [HOLD_DURATION_MS] to confirm the combo.
  *
  * Receives key events via [PlayTranslateAccessibilityService.onKeyEventListener]
- * since gamepad input is routed to the game display, not the app's dialog window.
+ * since controller input is routed to the game display, not the app's dialog
+ * window. Accepts exactly what dispatch can fire — see
+ * [PlayTranslateAccessibilityService.isHotkeyEligible].
  *
- * Used for both "hold to show translations" and "hold to show furigana" hotkeys.
+ * Used for every hotkey row on the Hotkeys page (hold/tap translations, hold/tap
+ * reading hints, capture screen).
  */
 class HotkeySetupDialog : DialogFragment() {
 
@@ -54,6 +58,11 @@ class HotkeySetupDialog : DialogFragment() {
     var onCancelled: (() -> Unit)? = null
 
     private val heldKeys = mutableSetOf<Int>()
+
+    /** The subset of [heldKeys] that types a character, tracked as keys arrive
+     *  because only the live [KeyEvent] can answer that (it takes the sending
+     *  device's key character map). Drives the warning, never a refusal. */
+    private val typingKeys = mutableSetOf<Int>()
     private var countdownTimer: CountDownTimer? = null
     private var resultDelivered = false
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -114,19 +123,30 @@ class HotkeySetupDialog : DialogFragment() {
     }
 
     private fun handleKeyEvent(event: KeyEvent): Boolean {
+        // Only record what dispatch can actually fire. Without this the dialog
+        // happily bound keys from sources the hotkey path drops, and the user
+        // got a row that reads as set but never triggers.
+        if (!PlayTranslateAccessibilityService.isHotkeyEligible(event)) return false
         if (event.keyCode in SYSTEM_KEYS) return false
+
+        // Resolved here, on the event, because it takes the sending device's
+        // key character map — by the time the combo is committed we only have
+        // keycodes left.
+        val typesText = PlayTranslateAccessibilityService.typesText(event)
 
         // Post to main thread since onKeyEvent may be called from the a11y service thread
         mainHandler.post {
             when (event.action) {
                 KeyEvent.ACTION_DOWN -> {
                     if (heldKeys.add(event.keyCode)) {
+                        if (typesText) typingKeys.add(event.keyCode)
                         restartTimer()
                         updateKeyDisplay()
                     }
                 }
                 KeyEvent.ACTION_UP -> {
                     heldKeys.remove(event.keyCode)
+                    typingKeys.remove(event.keyCode)
                     if (heldKeys.isEmpty()) {
                         cancelTimer()
                         showInstruction()
@@ -146,10 +166,17 @@ class HotkeySetupDialog : DialogFragment() {
     }
 
     private fun updateKeyDisplay() {
-        tvInstruction.text = heldKeys.sorted()
-            .joinToString(" + ") {
-                KeyEvent.keyCodeToString(it).removePrefix("KEYCODE_")
-            }
+        val combo = heldKeys.sorted().joinToString(" + ") {
+            KeyEvent.keyCodeToString(it).removePrefix("KEYCODE_")
+        }
+        // Warn, do not refuse. Shown while the combo is held, so the whole
+        // hold doubles as the chance to reconsider: release and the binding
+        // never happens, hold through and it is an informed choice.
+        tvInstruction.text = if (comboTakesTypingKey(heldKeys, typingKeys)) {
+            "$combo\n${getString(R.string.dialog_hotkey_setup_typing_key)}"
+        } else {
+            combo
+        }
         tvTimer.isVisible = true
         btnCancel.isGone = true
     }
