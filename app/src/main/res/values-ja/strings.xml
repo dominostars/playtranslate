@@ -1218,6 +1218,8 @@
 
     <string name="cd_toggle_inline_furigana">インラインふりがなの切り替え</string>
 
+    <string name="cd_text_size">文字サイズ</string>
+
     <string name="cd_read_original_aloud">原文を読み上げる</string>
 
     <string name="cd_edit_original">原文を編集</string>

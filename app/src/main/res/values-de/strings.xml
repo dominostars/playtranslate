@@ -1169,6 +1169,8 @@
 
     <string name="cd_toggle_inline_furigana">Inline-Furigana ein-/ausschalten</string>
 
+    <string name="cd_text_size">Textgröße</string>
+
     <string name="cd_read_original_aloud">Originaltext vorlesen</string>
 
     <string name="cd_edit_original">Originaltext bearbeiten</string>

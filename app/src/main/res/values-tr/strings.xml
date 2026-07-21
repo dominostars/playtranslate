@@ -1193,6 +1193,8 @@
 
     <string name="cd_toggle_inline_furigana">Satır içi furiganayı aç/kapat</string>
 
+    <string name="cd_text_size">Metin boyutu</string>
+
     <string name="cd_read_original_aloud">Orijinal metni sesli oku</string>
 
     <string name="cd_edit_original">Orijinal metni düzenle</string>

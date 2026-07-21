@@ -1223,6 +1223,8 @@
 
     <string name="cd_toggle_inline_furigana">Включить или выключить встроенную фуригану</string>
 
+    <string name="cd_text_size">Размер текста</string>
+
     <string name="cd_read_original_aloud">Прочитать оригинал вслух</string>
 
     <string name="cd_edit_original">Изменить исходный текст</string>

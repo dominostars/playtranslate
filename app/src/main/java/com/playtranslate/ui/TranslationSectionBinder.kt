@@ -74,6 +74,7 @@ class TranslationSectionBinder(
     private val btnToggleTranslation: ImageButton = root.findViewById(R.id.btnToggleTranslation)
     private val btnToggleOriginal: ImageButton = root.findViewById(R.id.btnToggleOriginal)
     private val btnToggleFurigana: ImageButton = root.findViewById(R.id.btnToggleFurigana)
+    private val btnFontSize: ImageButton = root.findViewById(R.id.btnFontSize)
     // "Scanned by <engine>" + gear, under the source text (mirror of tvTranslationNote).
     private val sourceNoteRow: View = root.findViewById(R.id.sourceNoteRow)
     private val tvSourceNote: TextView = root.findViewById(R.id.tvSourceNote)
@@ -89,7 +90,7 @@ class TranslationSectionBinder(
         val muted = ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextMuted))
         for (btn in listOf(
             btnCopyOriginal, btnCopyTranslation, btnEditOriginal, btnSpeakOriginal,
-            btnToggleTranslation, btnToggleOriginal, btnToggleFurigana,
+            btnToggleTranslation, btnToggleOriginal, btnToggleFurigana, btnFontSize,
         )) {
             btn.imageTintList = muted
         }
@@ -128,10 +129,25 @@ class TranslationSectionBinder(
      *  opens the language picker for that side. Null → the headers are inert. */
     var onChooseLanguage: ((isSource: Boolean) -> Unit)? = null
 
+    /** Invoked when the user taps the text-size button in the target header. Each
+     *  surface shows [FontSizeRangePopover] in its own host view (the popover must
+     *  be a CHILD of the surface, not a new window — see the class doc there), then
+     *  re-fits on change. Null (the default) → the button stays GONE, so a surface
+     *  that can't host the popover never renders a dead control. */
+    var onChooseFontSize: (() -> Unit)? = null
+        set(value) {
+            field = value
+            btnFontSize.visibility = if (value == null) View.GONE else View.VISIBLE
+        }
+
+    /** The text-size button, for surfaces to anchor their popover on. */
+    val fontSizeAnchor: View get() = btnFontSize
+
     init {
         sourceNoteRow.setOnClickListener { onChooseOcr?.invoke() }
         labelOriginal.setOnClickListener { onChooseLanguage?.invoke(true) }
         labelTranslation.setOnClickListener { onChooseLanguage?.invoke(false) }
+        btnFontSize.setOnClickListener { onChooseFontSize?.invoke() }
         // Tint the gear in CODE, not via XML app:tint: the over-game overlay inflates
         // these views with a plain (non-AppCompat) LayoutInflater, which silently drops
         // app:tint, so the white ic_settings would render white there while the in-app
@@ -295,7 +311,15 @@ class TranslationSectionBinder(
     fun applyTranslationVisibility() {
         val hidden = prefs.hideTranslationSection
         cardTranslation.visibility = if (hidden) View.GONE else View.VISIBLE
-        btnCopyTranslation.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
+        // GONE, not INVISIBLE: the header's weighted Space right-aligns this
+        // button group, so collapsing the add-to-Anki slot slides the text-size
+        // and show-on-screen buttons RIGHT into the freed width instead of
+        // leaving a hole. The eye stays put either way — it's the last child, so
+        // the expanding Space keeps it pinned to the end. Direction-agnostic:
+        // the reflow mirrors itself under RTL.
+        btnCopyTranslation.visibility = if (hidden) View.GONE else View.VISIBLE
+        // btnFontSize deliberately survives the hide: the size range it edits
+        // governs the SOURCE text too, so it stays usable with this card closed.
         btnToggleTranslation.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
     }
 
@@ -489,8 +513,8 @@ class TranslationSectionBinder(
     /** Natural text heights at max size, measured the SAME way as the fit
      *  (StaticLayout), so the auto-height target and the fit agree — otherwise the
      *  taller column's bottom gets clipped. */
-    fun sourceTextHeightAtMax(): Int = textHeightAt(tvOriginal, TEXT_SIZE_MAX_SP)
-    fun targetTextHeightAtMax(): Int = textHeightAt(tvTranslation, TEXT_SIZE_MAX_SP)
+    fun sourceTextHeightAtMax(): Int = textHeightAt(tvOriginal, fitMaxSp)
+    fun targetTextHeightAtMax(): Int = textHeightAt(tvTranslation, fitMaxSp)
 
     fun sourceHeaderHeight(): Int = (labelOriginal.parent as? View)?.height ?: 0
     fun targetHeaderHeight(): Int = (labelTranslation.parent as? View)?.height ?: 0
@@ -580,14 +604,18 @@ class TranslationSectionBinder(
         cardTranslation.setCardBackgroundColor(c)
     }
 
-    /** Largest float size in [[TEXT_SIZE_MIN_SP], [TEXT_SIZE_MAX_SP]] whose text
-     *  fits [targetPx] (binary search → continuous, not 1sp steps). */
+    /** Largest float size in [[fitMinSp], [fitMaxSp]] whose text fits [targetPx]
+     *  (binary search → continuous, not 1sp steps). Text that won't fit even at
+     *  the min renders at the min and grows its card — the min is a floor the
+     *  user chose, not a licence to clip. */
     private fun fitSize(tv: TextView, targetPx: Int, measureText: CharSequence = tv.text): Float {
-        if (tv.width <= 0) return TEXT_SIZE_MAX_SP
-        if (textHeightAt(tv, TEXT_SIZE_MAX_SP, measureText) <= targetPx) return TEXT_SIZE_MAX_SP
-        if (textHeightAt(tv, TEXT_SIZE_MIN_SP, measureText) > targetPx) return TEXT_SIZE_MIN_SP
-        var lo = TEXT_SIZE_MIN_SP
-        var hi = TEXT_SIZE_MAX_SP
+        val minSp = fitMinSp
+        val maxSp = fitMaxSp
+        if (tv.width <= 0) return maxSp
+        if (textHeightAt(tv, maxSp, measureText) <= targetPx) return maxSp
+        if (textHeightAt(tv, minSp, measureText) > targetPx) return minSp
+        var lo = minSp
+        var hi = maxSp
         repeat(BISECT_STEPS) {
             val mid = (lo + hi) / 2f
             if (textHeightAt(tv, mid, measureText) <= targetPx) lo = mid else hi = mid
@@ -640,10 +668,18 @@ class TranslationSectionBinder(
         return ChineseScriptVariant.targetDisplayName(code, variant, Locale.forLanguageTag(code))
     }
 
+    // ── Fit bounds ───────────────────────────────────────────────────────
+    // Read from [prefs] at fit time, not cached: the text-size popover writes
+    // the pair mid-drag and expects the very next fit to use it. Prefs settles
+    // a crossed/out-of-range pair, so lo <= hi always holds for the bisect.
+
+    private val fitMinSp: Float get() = prefs.resultsFontMinSp.toFloat()
+    private val fitMaxSp: Float get() = prefs.resultsFontMaxSp.toFloat()
+
     private companion object {
-        const val TEXT_SIZE_MAX_SP = 24f
-        const val TEXT_SIZE_MIN_SP = 16f
-        /** Binary-search iterations for the continuous text fit. */
+        /** Binary-search iterations for the continuous text fit. Over the widest
+         *  selectable span (16sp) that resolves to ~0.06sp — still continuous
+         *  enough for the panel's height animation to scale text smoothly. */
         const val BISECT_STEPS = 8
     }
 }

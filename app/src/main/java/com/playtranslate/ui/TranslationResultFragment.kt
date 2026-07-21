@@ -11,6 +11,7 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.PopupWindow
@@ -157,6 +158,9 @@ class TranslationResultFragment : Fragment() {
      *  the source speak button. */
     private lateinit var binder: TranslationSectionBinder
 
+    /** Text-size range picker, hosted in this fragment's root FrameLayout. */
+    private var fontPopover: FontSizeRangePopover? = null
+
     /** Session cache of headword → Anki deck names, shared by the words list
      *  and the in-app word lens so re-renders / re-taps don't re-query. */
     private val ankiDecksByWord = HashMap<String, List<String>>()
@@ -201,6 +205,10 @@ class TranslationResultFragment : Fragment() {
         if (scrollY != oldScrollY) {
             dismissFurigana()
             dismissWordPopup()
+            // NOT the font popover: its scrim makes the scroll untouchable
+            // while it's open, so any scroll seen here is our OWN re-fit
+            // reflowing the cards — dismissing on it would close the popover
+            // out from under the drag that caused it.
             host?.onUserScrolled()
         }
     }
@@ -248,6 +256,15 @@ class TranslationResultFragment : Fragment() {
             viewLifecycleOwner.lifecycleScope,
             TtsAlertTarget.InActivity(requireActivity()),
         )
+        // The layout root is a FrameLayout, so the popover floats over the
+        // results scroll without a wrapper. Its scrim covers this fragment
+        // only — a tap on surrounding activity chrome won't dismiss it.
+        fontPopover = FontSizeRangePopover(requireContext(), view as FrameLayout, prefs).apply {
+            // fitTextSizes fits each section to half the (unchanged) scroll
+            // height, so the sections resize in place and the anchor button —
+            // topmost in the scroll — never moves under the user's finger.
+            onRangeChanged = { fitTextSizes() }
+        }
         setupButtons()
         // Observe activity-scoped VM state. Both flows are activity-scoped
         // (survive fragment view recreation), so a rotation re-renders the
@@ -272,6 +289,8 @@ class TranslationResultFragment : Fragment() {
     override fun onDestroyView() {
         dismissFurigana()
         dismissWordPopup()
+        fontPopover?.dismiss()
+        fontPopover = null
         binder.release()
         super.onDestroyView()
     }
@@ -305,6 +324,9 @@ class TranslationResultFragment : Fragment() {
             onAddToAnki = { onAnkiClicked() },
             onAnkiOneTap = { oneTapSentenceFromResult() },
         )
+        binder.onChooseFontSize = {
+            fontPopover?.toggle(binder.fontSizeAnchor)
+        }
         binder.onChooseOcr = {
             currentReady()?.ocrProvenance?.let { showOcrPicker(it.sourceLangId, it.engineToken) }
         }

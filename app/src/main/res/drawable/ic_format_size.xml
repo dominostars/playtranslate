@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Material Symbols Outlined "format_size" (wght 400, opsz 24) — the results
+     text-size range picker's header button. Tinted in CODE by
+     TranslationSectionBinder: the capture overlay inflates the shared section
+     layouts with a plain (non-AppCompat) inflater, which drops app:tint. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M9,4v3h5v12h3V7h5V4H9zM3,12h3v7h3v-7h3V9H3V12z"
+        android:fillColor="@color/text_secondary"/>
+</vector>

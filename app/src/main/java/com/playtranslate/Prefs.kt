@@ -797,6 +797,38 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_SHOW_FURIGANA_INLINE, false)
         set(v) = sp.edit { putBoolean(KEY_SHOW_FURIGANA_INLINE, v) }
 
+    // ── Results text size (both sections, every surface) ───────────────────
+    // The sections don't render at ONE size: each text is auto-fitted to the
+    // space it has, and these are the bounds that fit is allowed to pick from
+    // (TranslationSectionBinder.fitSize). Defaults reproduce the sizes that
+    // were hard-coded before the picker existed, so an untouched install
+    // renders identically. Read defensively: the binder binary-searches
+    // [min, max], which an inverted or out-of-range pair would break.
+
+    /** Smallest size the results fit may shrink to, in sp. A FLOOR, not the
+     *  rendered size — raising it past what fits grows the card and scrolls
+     *  rather than clipping. Equal to [resultsFontMaxSp] = a fixed size. */
+    var resultsFontMinSp: Int
+        get() = sp.getInt(KEY_RESULTS_FONT_MIN_SP, DEFAULT_RESULTS_FONT_MIN_SP)
+            .coerceIn(FONT_SP_FLOOR, FONT_SP_CEIL)
+            .coerceAtMost(rawResultsFontMaxSp)
+        set(v) = sp.edit { putInt(KEY_RESULTS_FONT_MIN_SP, v.coerceIn(FONT_SP_FLOOR, FONT_SP_CEIL)) }
+
+    /** Largest size the results fit may grow to, in sp. */
+    var resultsFontMaxSp: Int
+        get() = rawResultsFontMaxSp.coerceAtLeast(
+            sp.getInt(KEY_RESULTS_FONT_MIN_SP, DEFAULT_RESULTS_FONT_MIN_SP)
+                .coerceIn(FONT_SP_FLOOR, FONT_SP_CEIL),
+        )
+        set(v) = sp.edit { putInt(KEY_RESULTS_FONT_MAX_SP, v.coerceIn(FONT_SP_FLOOR, FONT_SP_CEIL)) }
+
+    /** The stored max clamped to the selectable range but NOT reconciled against
+     *  the min — the raw half of the pair, so the two accessors above can settle
+     *  a crossed pair without recursing into each other. */
+    private val rawResultsFontMaxSp: Int
+        get() = sp.getInt(KEY_RESULTS_FONT_MAX_SP, DEFAULT_RESULTS_FONT_MAX_SP)
+            .coerceIn(FONT_SP_FLOOR, FONT_SP_CEIL)
+
     /** Capture method chosen during onboarding: "" = not set, "accessibility", "media_projection" */
     var captureMethod: String
         get() = sp.getString(KEY_CAPTURE_METHOD, "") ?: ""
@@ -1372,6 +1404,14 @@ class Prefs internal constructor(
         const val MIN_CAPTURE_INTERVAL_SEC = 0.5f
         const val DEFAULT_CAPTURE_INTERVAL_SEC = 1.0f
 
+        /** Selectable bounds for the results text-size range picker, in sp.
+         *  The picker's track spans exactly this; the binder clamps its fit to
+         *  whatever sub-range the user parks the two handles on. */
+        const val FONT_SP_FLOOR = 12
+        const val FONT_SP_CEIL = 28
+        const val DEFAULT_RESULTS_FONT_MIN_SP = 16
+        const val DEFAULT_RESULTS_FONT_MAX_SP = 24
+
         const val KEY_SOURCE_LANG    = "source_lang"
         const val KEY_TARGET_LANG    = "target_lang"
         const val KEY_TARGET_CHINESE_VARIANT = "target_chinese_variant"
@@ -1490,6 +1530,8 @@ class Prefs internal constructor(
         private const val KEY_HIDE_ORIGINAL_SECTION          = "hide_original_section"
         private const val KEY_HIDE_WORDS_SECTION             = "hide_words_section"
         private const val KEY_SHOW_FURIGANA_INLINE          = "show_furigana_inline"
+        private const val KEY_RESULTS_FONT_MIN_SP           = "results_font_min_sp"
+        private const val KEY_RESULTS_FONT_MAX_SP           = "results_font_max_sp"
         private const val KEY_DEBUG_FORCE_SINGLE_SCREEN      = "debug_force_single_screen"
         private const val KEY_DEBUG_SHOW_OCR_BOXES           = "debug_show_ocr_boxes"
         private const val KEY_DEBUG_SHOW_DETECTION_LOG      = "debug_show_detection_log"

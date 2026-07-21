@@ -1099,6 +1099,8 @@
 
     <string name="cd_toggle_inline_furigana">สลับฟุริงานะแบบอินไลน์</string>
 
+    <string name="cd_text_size">ขนาดตัวอักษร</string>
+
     <string name="cd_read_original_aloud">อ่านออกเสียงข้อความต้นฉบับ</string>
 
     <string name="cd_edit_original">แก้ไขข้อความต้นฉบับ</string>

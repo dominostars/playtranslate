@@ -331,6 +331,12 @@ class CaptureResultOverlay(
 
     private var binder: TranslationSectionBinder? = null
 
+    /** Text-size range picker. Hosted in [root] — the sheet's own full-screen
+     *  window — so it can float above the sheet's top edge over the game while
+     *  staying an IN-WINDOW child (a sibling overlay window would dim under
+     *  MediaProjection's QTI clamp and eat the panel's taps). */
+    private var fontPopover: FontSizeRangePopover? = null
+
     // Side-by-side column collapse: hiding a section shrinks it to a button-wide
     // strip (rotated label) and the other section fills the freed width.
     private var isSideBySide = false
@@ -633,6 +639,10 @@ class CaptureResultOverlay(
             if (p != null && sp != null) showOcrPicker(p, sp)
         }
         b.onChooseLanguage = { isSource -> changeLanguage(isSource) }
+        fontPopover = FontSizeRangePopover(ctx, root, prefs).apply {
+            onRangeChanged = { refitForFontRange() }
+        }
+        b.onChooseFontSize = { fontPopover?.toggle(b.fontSizeAnchor) }
         binder = b
         // Reflect any persisted hide prefs (shared with the results page) up front.
         applySideBySideCollapse()
@@ -868,6 +878,8 @@ class CaptureResultOverlay(
         }
         heightAnimator?.cancel()
         dismissWordLens()
+        fontPopover?.dismiss()
+        fontPopover = null
         sessionJob?.cancel()
         // Cancel the service-side one-shot job too (not just our collector), so
         // OCR/translation doesn't keep running headless after the panel is gone.
@@ -895,6 +907,7 @@ class CaptureResultOverlay(
         if (dismissed || animatingOut) return
         animatingOut = true
         dismissWordLens()
+        fontPopover?.dismiss()
         panel.animate()
             .translationY(panelHeightPx.toFloat())
             .setDuration(EXIT_DURATION_MS)
@@ -987,6 +1000,8 @@ class CaptureResultOverlay(
         if (editContainer.visibility == View.VISIBLE) return
         sliverMode = true
         dismissWordLens()
+        // The sections it edits are about to fade out under the collapse.
+        fontPopover?.dismiss()
         preSliverHeightPx = panelHeightPx
         animateSliverHeight(sliverHeightPx())
     }
@@ -1311,21 +1326,7 @@ class CaptureResultOverlay(
         val b = binder ?: return
         if (body.height <= 0 || contentRow.width <= 0) return
         measureCardInset(b)
-        // A section hidden via the eye contributes only its collapsed strip (the
-        // side-by-side column shrinks to a button-wide strip) or nothing (stacked),
-        // NOT its full text height — so hiding it actually shrinks the panel.
-        val naturalContent = if (isSideBySide) {
-            val srcNeed = if (prefs.hideOriginalSection) (sourceColumn?.collapsed?.height ?: 0)
-                else sideChromeSource(b) + b.sourceTextHeightAtMax()
-            val tgtNeed = if (prefs.hideTranslationSection) (targetColumn?.collapsed?.height ?: 0)
-                else sideChromeTarget(b) + b.targetTextHeightAtMax()
-            maxOf(srcNeed, tgtNeed) + dp(SIDE_BY_SIDE_BOTTOM_BUFFER_DP)
-        } else {
-            stackedChrome(b) +
-                (if (prefs.hideOriginalSection) 0 else b.sourceTextHeightAtMax()) +
-                (if (prefs.hideTranslationSection) 0 else b.targetTextHeightAtMax())
-        }
-        val neededHeight = naturalContent + dp(HANDLE_HEIGHT_DP) + topInsetPx + bottomInsetPx - hiddenTopPx()
+        val neededHeight = neededPanelHeight(b)
         maxNeededHeightPx = neededHeight.coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
         // Slivered: measure-only — the height is parked and the sections are
         // faded, so growing the panel here would fight the collapse; the
@@ -1341,6 +1342,43 @@ class CaptureResultOverlay(
         if (sliverMode) return
         val target = CaptureResultGeometry.autoPanelHeight(neededHeight, screenH, autoMaxPx)
         animatePanelHeight(target)
+    }
+
+    /** Panel height that shows all content at max text size. Caller must have
+     *  run [measureCardInset] and confirmed the content is laid out. */
+    private fun neededPanelHeight(b: TranslationSectionBinder): Int {
+        // A section hidden via the eye contributes only its collapsed strip (the
+        // side-by-side column shrinks to a button-wide strip) or nothing (stacked),
+        // NOT its full text height — so hiding it actually shrinks the panel.
+        val naturalContent = if (isSideBySide) {
+            val srcNeed = if (prefs.hideOriginalSection) (sourceColumn?.collapsed?.height ?: 0)
+                else sideChromeSource(b) + b.sourceTextHeightAtMax()
+            val tgtNeed = if (prefs.hideTranslationSection) (targetColumn?.collapsed?.height ?: 0)
+                else sideChromeTarget(b) + b.targetTextHeightAtMax()
+            maxOf(srcNeed, tgtNeed) + dp(SIDE_BY_SIDE_BOTTOM_BUFFER_DP)
+        } else {
+            stackedChrome(b) +
+                (if (prefs.hideOriginalSection) 0 else b.sourceTextHeightAtMax()) +
+                (if (prefs.hideTranslationSection) 0 else b.targetTextHeightAtMax())
+        }
+        return naturalContent + dp(HANDLE_HEIGHT_DP) + topInsetPx + bottomInsetPx - hiddenTopPx()
+    }
+
+    /**
+     * The text-size range changed. The sheet deliberately KEEPS its height and
+     * re-fits the text inside it (the drag-resize path), rather than growing:
+     * the picker is anchored to a header inside this sheet, and animating the
+     * sheet on every step would slide that anchor out from under the finger.
+     * The drag ceiling still tracks the new max, so a user who wants the extra
+     * room can pull the sheet up themselves.
+     */
+    private fun refitForFontRange() {
+        val b = binder ?: return
+        if (body.height <= 0 || contentRow.width <= 0) return
+        measureCardInset(b)
+        maxNeededHeightPx = neededPanelHeight(b)
+            .coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
+        reFitText()
     }
 
     /** The card frame's inset is constant — measure it ONCE while the cards are
@@ -1785,6 +1823,8 @@ class CaptureResultOverlay(
         if (editContainer.visibility == View.VISIBLE) return
         val current = lastResult?.originalText ?: binder?.displayedSourceText() ?: return
         dismissWordLens()
+        // The editor covers the sections the popover sizes.
+        fontPopover?.dismiss()
         editText.setText(current)
         editText.setSelection(editText.text.length)
         editContainer.visibility = View.VISIBLE
@@ -2332,6 +2372,13 @@ class CaptureResultOverlay(
         }
 
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+            // The text-size popover is a child of this root, and it can sit
+            // ABOVE the sheet's top edge — right where the rules below claim
+            // every DOWN for the resize grab or an outside-tap dismiss. Stand
+            // them all down while it's open and let normal child dispatch run:
+            // the popover's own scrim (drawn over everything but its card)
+            // handles outside taps by dismissing itself.
+            if (fontPopover?.isShowing == true) return super.dispatchTouchEvent(ev)
             if (routeOutsideFollowUp(ev)) return true
             if (sliverMode) {
                 when (ev.actionMasked) {

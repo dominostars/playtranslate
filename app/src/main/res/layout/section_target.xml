@@ -59,6 +59,22 @@
             android:text="@string/capture_show_on_screen"
             android:visibility="gone" />
 
+        <!-- Opens the text-size range popover. Lives in the TARGET header (not
+             the source) because this row is the topmost one in both stacked
+             layouts: re-fitting the text never moves it, so the popover stays
+             glued to its anchor while the user drags. GONE until a surface sets
+             TranslationSectionBinder.onChooseFontSize. -->
+        <ImageButton
+            android:id="@+id/btnFontSize"
+            android:layout_width="36dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="16dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/cd_text_size"
+            android:src="@drawable/ic_format_size"
+            android:visibility="gone"
+            app:tint="?attr/ptTextMuted" />
+
         <ImageButton
             android:id="@+id/btnCopyTranslation"
             android:layout_width="36dp"

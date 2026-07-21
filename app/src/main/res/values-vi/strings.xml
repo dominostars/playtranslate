@@ -1166,6 +1166,8 @@
 
     <string name="cd_toggle_inline_furigana">Bật/tắt furigana nội dòng</string>
 
+    <string name="cd_text_size">Cỡ chữ</string>
+
     <string name="cd_read_original_aloud">Đọc to văn bản gốc</string>
 
     <string name="cd_edit_original">Chỉnh sửa văn bản gốc</string>

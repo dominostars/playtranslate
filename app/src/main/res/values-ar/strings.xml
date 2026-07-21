@@ -1098,6 +1098,8 @@
 
     <string name="cd_toggle_inline_furigana">تبديل فوريغانا المضمّنة</string>
 
+    <string name="cd_text_size">حجم النص</string>
+
     <string name="cd_read_original_aloud">قراءة النص الأصلي بصوت عالٍ</string>
 
     <string name="cd_edit_original">تعديل النص الأصلي</string>

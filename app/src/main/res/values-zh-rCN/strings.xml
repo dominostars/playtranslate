@@ -1202,6 +1202,8 @@
 
     <string name="cd_toggle_inline_furigana">切换内嵌假名注音</string>
 
+    <string name="cd_text_size">文字大小</string>
+
     <string name="cd_read_original_aloud">朗读原文</string>
 
     <string name="cd_edit_original">编辑原文</string>

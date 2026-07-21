@@ -1,10 +1,7 @@
 package com.playtranslate.ui
 
 import android.content.Context
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -176,7 +173,7 @@ class WordLookupPopup(
         }
 
         // Arrow view
-        val arrow = ArrowView(ctx, bgColor, arrowSizePx, pointsDown = aboveFinger).apply {
+        val arrow = ArrowView(ctx, bgColor, pointsDown = aboveFinger).apply {
             layoutParams = FrameLayout.LayoutParams(arrowSizePx * 2, arrowSizePx).apply {
                 gravity = if (aboveFinger) Gravity.BOTTOM else Gravity.TOP
                 leftMargin = arrowRelX - arrowSizePx
@@ -421,37 +418,6 @@ class WordLookupPopup(
         root.addView(hLayout)
 
         return root
-    }
-
-    /** Small triangle arrow view pointing toward the word. */
-    private class ArrowView(
-        ctx: Context,
-        private val color: Int,
-        private val arrowSize: Int,
-        private val pointsDown: Boolean
-    ) : View(ctx) {
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            this.color = this@ArrowView.color
-            style = Paint.Style.FILL
-        }
-        private val path = Path()
-
-        override fun onDraw(canvas: Canvas) {
-            path.reset()
-            val w = width.toFloat()
-            val h = height.toFloat()
-            if (pointsDown) {
-                path.moveTo(0f, 0f)
-                path.lineTo(w, 0f)
-                path.lineTo(w / 2f, h)
-            } else {
-                path.moveTo(w / 2f, 0f)
-                path.lineTo(w, h)
-                path.lineTo(0f, h)
-            }
-            path.close()
-            canvas.drawPath(path, paint)
-        }
     }
 
 }
