@@ -3,18 +3,27 @@
      the camera tool's frozen-snapshot stack. The review layers reproduce
      activity_camera.xml's load-bearing z-order — image, overlay host, panel
      host, controls — and only @id/importControls receives inset padding
-     (see ImageImportActivity). -->
+     (see ImageImportActivity).
+
+     Colour split: the root black is the REVIEW's letterbox behind the
+     fitCenter image, and the floating controls are white-on-scrim to match
+     the camera tool. The picker landing is an ordinary app page, so it
+     paints its own ?attr/ptBg over that black and uses pt* text tokens —
+     otherwise it renders as a black screen under the light theme (with the
+     light theme's dark status-bar icons invisible on top of it). -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/black">
 
-    <!-- Picker landing: shown until an image is loaded. -->
+    <!-- Picker landing: shown until an image is loaded. Opaque ?attr/ptBg so
+         it covers the root's review letterbox while it is up. -->
     <LinearLayout
         android:id="@+id/importLandingGroup"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:background="?attr/ptBg"
         android:gravity="center"
         android:orientation="vertical"
         android:padding="32dp">
@@ -25,7 +34,7 @@
             android:layout_height="56dp"
             android:importantForAccessibility="no"
             android:src="@drawable/ic_attach_file"
-            app:tint="@android:color/white" />
+            app:tint="?attr/ptTextMuted" />
 
         <TextView
             android:id="@+id/importLandingTitle"
@@ -34,7 +43,7 @@
             android:layout_marginTop="16dp"
             android:gravity="center"
             android:text="@string/image_import_landing_title"
-            android:textColor="@android:color/white"
+            android:textColor="?attr/ptText"
             android:textSize="16sp" />
 
         <Button
