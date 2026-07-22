@@ -192,6 +192,18 @@ class PinholeOverlayMode(
         engine.scheduleNext(Prefs(service).captureIntervalMs)
     }
 
+    /** Rotation: [dismiss]'s hide-and-forget, paced by
+     *  [LiveMode.ROTATION_SETTLE_MS] instead of the user interval — the
+     *  overlays (and the cleanRef/blend model, now void along with every
+     *  crop-space bound) come down the moment the rotation is reported
+     *  rather than when a post-rotation capture finally trips the reactive
+     *  dims guard, and the rebuild look waits for the screen to settle. */
+    override fun onDisplayRotated() {
+        CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
+        resetState()
+        engine.scheduleNext(LiveMode.ROTATION_SETTLE_MS)
+    }
+
     private fun resetState() {
         engine.cancelCurrent()
         cachedBoxes = null

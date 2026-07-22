@@ -199,6 +199,20 @@ class ReconcilerLiveMode(
         engine.scheduleNext(Prefs(service).captureIntervalMs)
     }
 
+    /** Rotation: same shape as [dismiss] — hide, forget, look again — but
+     *  paced by [LiveMode.ROTATION_SETTLE_MS] instead of the user interval,
+     *  so overlays are gone before the rotation animation lands and the
+     *  rebuild pass reads a settled screen. [resetState] cancels any
+     *  in-flight cycle (one suspended in OCR/MT over a pre-rotation frame
+     *  must not resurrect boxes at void coordinates) and arms the force
+     *  flag, so the settle-delayed cycle passes the delivery gate even if
+     *  the post-rotation screen is already static. */
+    override fun onDisplayRotated() {
+        CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
+        resetState()
+        engine.scheduleNext(LiveMode.ROTATION_SETTLE_MS)
+    }
+
     override fun getCachedState(): CachedOverlayState? {
         val anchors = cachedBoxes ?: return null
         val display = anchors.flatMap { presenter.displayBoxesFor(it) }

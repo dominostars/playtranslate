@@ -152,7 +152,15 @@ class FuriganaMode(
         }
     }
 
-    override fun dismiss() {
+    override fun dismiss() = hideAndRestartAfter(Prefs(service).captureIntervalMs)
+
+    /** Rotation: the [dismiss] hide-and-restart, but waiting out
+     *  [LiveMode.ROTATION_SETTLE_MS] instead of the user interval — the
+     *  annotations (at now-void coordinates) come down immediately and the
+     *  loop restarts once the rotation has settled. */
+    override fun onDisplayRotated() = hideAndRestartAfter(LiveMode.ROTATION_SETTLE_MS)
+
+    private fun hideAndRestartAfter(delayMs: Long) {
         val source = CaptureBackendResolver.activeLiveCaptureSource ?: return
         cleanProcessingJob?.cancel()
         rawOcrJob?.cancel()
@@ -165,7 +173,7 @@ class FuriganaMode(
         clearState()
         restartJob?.cancel()
         restartJob = scope.launch {
-            delay(Prefs(service).captureIntervalMs)
+            delay(delayMs)
             // A hotkey combo routes through onKeyEvent → onGameInput → here
             // BEFORE checkHotkeyCombos sets holdActive, so we can't gate the
             // scheduling itself. Instead, skip the restart if a hold-preview

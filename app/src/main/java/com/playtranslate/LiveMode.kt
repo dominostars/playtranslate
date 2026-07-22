@@ -65,6 +65,29 @@ interface LiveMode {
      *  dismiss; the overlay modes override it. */
     fun dismiss() = refresh()
 
+    /** The captured display rotated. Every piece of cached geometry —
+     *  crop-space bounds, reference frames, displayed overlay positions —
+     *  is void, and the screen itself is mid-animation. Unlike the
+     *  reactive dims-changed guards inside the cycles (which only notice
+     *  once a later capture comes back at the new size, leaving stale
+     *  overlays up until then), this fires the moment the rotation is
+     *  reported: implementations hide their overlay immediately, drop
+     *  cached state, and wait out [ROTATION_SETTLE_MS] before the next
+     *  OCR pass rather than reading a mid-rotation frame. Defaults to
+     *  [dismiss] — hide + re-baseline after the capture interval — the
+     *  minimum correct response for a mode without settle pacing. */
+    fun onDisplayRotated() { dismiss() }
+
     /** Current cached overlay state for hold-to-preview. Null if nothing cached. */
     fun getCachedState(): CachedOverlayState?
+
+    companion object {
+        /** Wait between a rotation report and the rebuild look: outlasts
+         *  the system rotation animation (~400 ms) plus the mirror resize
+         *  and first post-rotation frame delivery. Deliberately NOT the
+         *  user's capture interval — rotation recovery shouldn't be
+         *  dragged out by a long interval, and a short interval mustn't
+         *  re-OCR mid-animation. */
+        const val ROTATION_SETTLE_MS = 800L
+    }
 }

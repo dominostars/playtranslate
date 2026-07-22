@@ -1168,12 +1168,24 @@ class CaptureService : Service() {
     internal val mediaProjectionOverlayUi: OverlayUiController
         by mediaProjectionOverlayUiLazy
 
+    /** Last-seen rotation per capture display — the display listener's
+     *  rotation discriminator ([DisplayManager.DisplayListener.onDisplayChanged]
+     *  fires for state, refresh-rate, and hot-plug reasons too; only a
+     *  change in the reported rotation means the geometry flipped). Seeded
+     *  at mode install in [setLiveDisplays] — a lazy seed inside the
+     *  callback would record the already-rotated value on the first report
+     *  and miss the session's first rotation. Entries leave with their
+     *  modes; main-thread confined like [liveModes]. */
+    private val lastDisplayRotation = mutableMapOf<Int, Int>()
+
     /**
      * Listens for capture displays going away (external monitor unplugged,
      * virtual display destroyed) or transitioning to STATE_OFF (foldable
      * folded with the inactive panel selected). Per-display modes pause +
      * resume rather than tearing down all of live mode unless the entire
-     * selection has gone offline.
+     * selection has gone offline. Also detects rotation (via
+     * [lastDisplayRotation]) and gives the display's live mode its
+     * settle-and-rebuild pass ([LiveMode.onDisplayRotated]).
      */
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) {
@@ -1195,9 +1207,24 @@ class CaptureService : Service() {
         }
         override fun onDisplayChanged(displayId: Int) {
             if (displayId !in gameDisplayIds) return
-            val st = getSystemService(DisplayManager::class.java)
-                ?.getDisplay(displayId)?.state
+            val display = getSystemService(DisplayManager::class.java)
+                ?.getDisplay(displayId)
+            val st = display?.state
             Log.d(TAG, "displayListener.onDisplayChanged($displayId) state=$st")
+            // Rotation: hide the mode's overlays NOW and re-look after the
+            // settle window, instead of waiting for a post-rotation capture
+            // to trip the reactive dims guard (stale boxes float through
+            // the whole animation) or OCR-ing a mid-rotation frame. A
+            // second flip before the settle expired lands here again and
+            // simply restarts the wait.
+            val rotation = display?.rotation
+            if (rotation != null) {
+                val prev = lastDisplayRotation.put(displayId, rotation)
+                if (prev != null && prev != rotation) {
+                    Log.i(TAG, "Display $displayId rotated ($prev → $rotation)")
+                    liveModes[displayId]?.onDisplayRotated()
+                }
+            }
             reconcileLiveModes("displayChanged($displayId state=$st)")
         }
         override fun onDisplayRemoved(displayId: Int) {
@@ -1813,11 +1840,17 @@ class CaptureService : Service() {
         // 1. Stop removed AND rebuilt modes.
         for (id in toStop + toRebuild) {
             liveModes.remove(id)?.stop()
+            lastDisplayRotation.remove(id)
         }
 
         // 2. Populate map with new instances BEFORE the LiveData write.
+        //    Each install also seeds the display listener's rotation
+        //    baseline ([lastDisplayRotation]) so the FIRST rotation after
+        //    install has something to differ from.
+        val dm = getSystemService(DisplayManager::class.java)
         for ((id, mode) in newInstances) {
             liveModes[id] = mode
+            dm?.getDisplay(id)?.rotation?.let { lastDisplayRotation[id] = it }
         }
 
         // 3. LiveData / foreground / icon state — only when the boolean flips.
@@ -1828,7 +1861,6 @@ class CaptureService : Service() {
             updateForegroundState()
             syncIconState()
             // Display listener tracks the empty↔non-empty transition only.
-            val dm = getSystemService(DisplayManager::class.java)
             if (willBeLive) {
                 // Defensive double-unregister: harmless if not registered.
                 dm?.unregisterDisplayListener(displayListener)
@@ -1875,6 +1907,7 @@ class CaptureService : Service() {
         val ids = liveModes.keys.toList()
         val wasLive = _liveModeState.value == true
         for (id in ids) liveModes.remove(id)?.stop()
+        lastDisplayRotation.clear()
         if (wasLive) {
             _liveModeState.value = false
             updateForegroundState()
