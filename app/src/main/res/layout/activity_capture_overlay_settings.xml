@@ -133,6 +133,29 @@
 
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Standalone, deliberately headerless card for the experimental
+                 MangaOCR toggle: populated and un-hidden by maybeAddMangaOcrCell
+                 (JA + arm64 + shippable-or-sideloaded pack only). -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardMangaOcr"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/pt_group_gap"
+                android:visibility="gone"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:id="@+id/containerMangaOcr"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- ══════════════════════════════════════════════════════ -->
             <!-- AUTO-TRANSLATE                                        -->
             <!-- ══════════════════════════════════════════════════════ -->

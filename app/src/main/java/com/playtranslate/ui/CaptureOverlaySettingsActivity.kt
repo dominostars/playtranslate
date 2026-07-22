@@ -556,6 +556,10 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         val card = findViewById<View>(R.id.cardOcr)
         val header = findViewById<View>(R.id.headerOcr)
         container.removeAllViews()
+        // Hidden by default on every rebuild so an early return below (single-engine
+        // language) can't leave a stale MangaOCR card visible; maybeAddMangaOcrCell
+        // re-shows it when the cell applies.
+        findViewById<View>(R.id.cardMangaOcr)?.visibility = View.GONE
 
         val id = prefs.sourceLangId
         val backends = OcrModelManager.availableBackends(this, id)
@@ -596,7 +600,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
                 ),
             )
         }
-        maybeAddMangaOcrCell(container, id)
+        maybeAddMangaOcrCell(id)
     }
 
     private fun buildOcrCell(
@@ -888,7 +892,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
 
     private var mangaOcrDownloading = false
 
-    private fun maybeAddMangaOcrCell(container: LinearLayout, id: SourceLangId) {
+    private fun maybeAddMangaOcrCell(id: SourceLangId) {
         if (id != SourceLangId.JA) return
         if (!OcrModelManager.isMnnAvailable()) return
         // Hidden until the pack is shippable (real catalog SHAs). In DEBUG, a manually
@@ -899,12 +903,15 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         val helper = MangaOcrProvisioning.helper()
         val installed = helper.isInstalled(this)
         if (!helper.isShippable(this) && !(BuildConfig.DEBUG && installed)) return
-        container.addView(
-            LayoutInflater.from(this).inflate(R.layout.settings_row_divider, container, false),
-        )
+        // The cell lives alone in its own headerless card below the engine list
+        // (setupOcrSection resets it GONE on every rebuild).
+        val mangaCard = findViewById<View>(R.id.cardMangaOcr) ?: return
+        val container = findViewById<LinearLayout>(R.id.containerMangaOcr) ?: return
+        container.removeAllViews()
         val row = LayoutInflater.from(this)
             .inflate(R.layout.settings_row_switch_download, container, false)
         container.addView(row)
+        mangaCard.visibility = View.VISIBLE
         DownloadableToggleRow(
             row = row,
             title = getString(R.string.settings_ocr_use_manga_title),
