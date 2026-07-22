@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.playtranslate.OneShotOverlayData
 import com.playtranslate.Prefs
 import com.playtranslate.language.InflectedForm
 import com.playtranslate.language.SourceLanguageEngines
@@ -118,7 +119,11 @@ class TranslationResultViewModel : ViewModel() {
      *  by local code paths that build a result on the activity's own.
      *  No-op if [result] is the same instance already shown — see
      *  "Dedup architecture" above. */
-    fun displayResult(result: TranslationResult, appCtx: Context) {
+    fun displayResult(
+        result: TranslationResult,
+        appCtx: Context,
+        onScreenBoxes: OnScreenBoxes? = null,
+    ) {
         if (result === lastSeenResult) return
         lastSeenResult = result
         // If a Translating placeholder for this same source text is on screen,
@@ -138,7 +143,7 @@ class TranslationResultViewModel : ViewModel() {
         // and the cache unwritten for an otherwise-successful translation.
         val placeholderLookupCoversText =
             lookupJob?.isActive == true || settledLookup?.text == result.originalText
-        _result.value = ResultState.Ready(result)
+        _result.value = ResultState.Ready(result, onScreenBoxes)
         if (!(sameTextPlaceholder && placeholderLookupCoversText)) {
             startWordLookups(result.originalText, appCtx)
         }
@@ -200,8 +205,9 @@ class TranslationResultViewModel : ViewModel() {
         segments: List<TextSegment>,
         appCtx: Context,
         ocrProvenance: com.playtranslate.model.OcrProvenance? = null,
+        onScreenBoxes: OnScreenBoxes? = null,
     ) {
-        _result.value = ResultState.Translating(originalText, segments, ocrProvenance)
+        _result.value = ResultState.Translating(originalText, segments, ocrProvenance, onScreenBoxes)
         startWordLookups(originalText, appCtx)
     }
 
@@ -362,6 +368,20 @@ class TranslationResultViewModel : ViewModel() {
     }
 }
 
+/**
+ * Paintable "show on screen" boxes for the current in-app result (the
+ * dual-screen counterpart of the capture panel's header toggle): the one-shot
+ * pipeline's overlay geometry plus the display the capture came from. Carried
+ * ONLY by the one-shot capture collector's Translating (skeletons) / Ready
+ * (translated) writes — every other write path defaults it to null, which is
+ * what makes "any new content dismisses the on-screen boxes" enforceable in
+ * the fragment's single render funnel instead of at N call sites.
+ */
+data class OnScreenBoxes(
+    val data: OneShotOverlayData,
+    val displayId: Int,
+)
+
 sealed class ResultState {
     object Idle : ResultState()
     /** Waiting / informational message; [showHint] toggles the
@@ -383,8 +403,16 @@ sealed class ResultState {
         /** OCR provenance when this placeholder came from a capture (drives the
          *  source "Scanned by …" row during translation); null for drag/sentence/edit. */
         val ocrProvenance: com.playtranslate.model.OcrProvenance? = null,
+        /** Skeleton boxes for the dual-screen "show on screen" toggle — see
+         *  [OnScreenBoxes]. Null for drag/sentence/edit placeholders. */
+        val onScreenBoxes: OnScreenBoxes? = null,
     ) : ResultState()
-    data class Ready(val result: TranslationResult) : ResultState()
+    data class Ready(
+        val result: TranslationResult,
+        /** Translated boxes for the dual-screen "show on screen" toggle — see
+         *  [OnScreenBoxes]. Null for every non-one-shot-capture source. */
+        val onScreenBoxes: OnScreenBoxes? = null,
+    ) : ResultState()
     /** Translation/capture error; fragment formats with
      *  [com.playtranslate.R.string.status_error]. */
     data class Error(val message: String) : ResultState()

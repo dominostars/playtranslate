@@ -39,11 +39,14 @@
             android:layout_height="wrap_content"
             android:layout_weight="1" />
 
-        <!-- Capture overlay only: collapses the panel to its sliver and paints
-             the translations over the game. GONE by default — the in-app results
-             page never enables it (TranslationSectionBinder.setShowOnScreenAction
-             is called solely by CaptureResultOverlay). A worded button, not an
-             icon: no common glyph reads as "move these onto the screen". -->
+        <!-- "Show on screen" toggle. Over-game capture panel: collapses the
+             panel to its sliver and paints the translations over the game.
+             In-app results page (dual-screen): paints the one-shot boxes over
+             the game display, or — in live mode — flips the hide-overlays-
+             during-auto setting. GONE by default; each host decides
+             availability (TranslationSectionBinder.setShowOnScreenAvailable).
+             A worded button, not an icon: no common glyph reads as "move
+             these onto the screen". -->
         <TextView
             android:id="@+id/btnShowOnScreen"
             style="@style/Text.PT.GroupHeader"

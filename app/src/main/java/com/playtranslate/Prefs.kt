@@ -839,8 +839,8 @@ class Prefs internal constructor(
         set(v) = sp.edit { putString(KEY_OVERLAY_MODE, v.name) }
 
     var hideGameOverlays: Boolean
-        get() = sp.getBoolean("hide_game_overlays", false)
-        set(v) = sp.edit { putBoolean("hide_game_overlays", v) }
+        get() = sp.getBoolean(KEY_HIDE_GAME_OVERLAYS, false)
+        set(v) = sp.edit { putBoolean(KEY_HIDE_GAME_OVERLAYS, v) }
 
     // ── Capture-result presentation (two independent axes per flow) ────────
     // "Boxes" (on-frame overlays) and the panel's collapsed-start are separate
@@ -1559,6 +1559,9 @@ class Prefs internal constructor(
         const val KEY_HOTKEY_FURIGANA_TAP                  = "hotkey_furigana_tap"
         const val KEY_HOTKEY_CAPTURE_TAP                   = "hotkey_capture_tap"
         const val KEY_QUICK_TILE_ADDED                     = "quick_tile_added"
+        /** Public so the in-app result header's "Show on screen" toggle can
+         *  [observe] it and stay in sync with the Settings row. */
+        const val KEY_HIDE_GAME_OVERLAYS                   = "hide_game_overlays"
         private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"
         private const val KEY_LAST_YOMITAN_UPDATE_CHECK    = "last_yomitan_update_check"
         private const val KEY_YOMITAN_UPDATE_BACKFILL_DONE = "yomitan_update_backfill_done"

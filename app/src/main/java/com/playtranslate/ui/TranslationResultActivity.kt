@@ -246,6 +246,18 @@ class TranslationResultActivity :
     // there's no persistent in-app session to clear, so hide the Clear action.
     override fun showsClearAction(): Boolean = false
 
+    // "Show on screen" is the dual-screen MainActivity host's affordance; this
+    // standalone activity covers the screen the game is on, so painting boxes
+    // behind itself is meaningless. This host's VM writes also never carry
+    // [OnScreenBoxes], so the toggle stays GONE by both gates.
+    override fun supportsShowOnScreen(): Boolean = false
+    override fun isResultBoxesShownOnScreen(): Boolean = false
+    override fun showResultBoxesOnScreen(boxes: OnScreenBoxes) {}
+    override fun updateResultBoxesOnScreen(boxes: OnScreenBoxes) {}
+    override fun hideResultBoxesOnScreen() {}
+    override fun liveShowOnScreenState(): Boolean? = null
+    override fun setLiveShowOnScreen(on: Boolean) {}
+
     // ── SentenceContextProvider ───────────────────────────────────────────
 
     /** Embedded [WordDetailBottomSheet] reads this at Anki-button tap

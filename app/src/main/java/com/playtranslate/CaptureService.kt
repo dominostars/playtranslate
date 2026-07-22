@@ -2076,6 +2076,25 @@ class CaptureService : Service() {
         }
     }
 
+    /**
+     * [Prefs.hideGameOverlays] changed under a RUNNING live session — the
+     * in-app result header's "Show on screen" toggle flips it mid-session.
+     * Re-derive the flavor and swap the live-mode instances in place through
+     * [setLiveDisplays]'s flavor-mismatch diff, exactly like the split-screen
+     * transition ([onMultiWindowChanged]) does: IN_APP_ONLY ⇄ overlay modes
+     * rebuild, the session keeps running. No-op when not live — the next
+     * [startLive] reads the pref itself. (The Settings row instead calls
+     * [stopLive] on toggle; it lives on a screen that covers the game, so
+     * there's no session worth preserving through it.)
+     */
+    fun onHideGameOverlaysChanged() {
+        if (!isLive) return
+        val activeIds = gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }
+        val target = activeIds.filterNot { shouldSkipDisplay(it) }.toSet()
+        Log.d(TAG, "onHideGameOverlaysChanged: hideGameOverlays=${Prefs(this).hideGameOverlays} → target=$target")
+        setLiveDisplays(target)
+    }
+
     fun stopLive() {
         // Abort any startLive suspended in its consent dialog — a stop must
         // win against a start that resumes later (see pendingLiveStart).

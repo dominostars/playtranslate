@@ -151,6 +151,11 @@ class MainActivity :
      *  session's terminal value. */
     private val _currentCaptureSession = MutableStateFlow<CaptureSession?>(null)
 
+    /** The display the current [_currentCaptureSession] is capturing — the
+     *  display its [OneShotOverlayData] boxes paint onto for the "show on
+     *  screen" toggle. Stamped wherever a session is created. */
+    private var oneShotCaptureDisplayId: Int = android.view.Display.DEFAULT_DISPLAY
+
     // ── Fragment ───────────────────────────────────────────────────────────
 
     private val resultFragment: TranslationResultFragment?
@@ -172,6 +177,9 @@ class MainActivity :
     // ── TranslationResultHost event handlers ──────────────────────────────
 
     override fun onEditOriginalRequested() {
+        // Edit is a button press — the ephemeral on-screen presentation ends
+        // (the commit re-translates and would drop the boxes anyway).
+        hideResultBoxesOnScreen()
         showEditOverlay()
     }
 
@@ -186,6 +194,7 @@ class MainActivity :
             val bmp = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path) } ?: return@launch
             // Re-run the capture pipeline on the pinned screenshot/region/language so
             // the panel walks the normal loading stages and re-emits no-text-with-gear.
+            oneShotCaptureDisplayId = prov.displayId
             _currentCaptureSession.value =
                 svc.processScreenshot(
                     com.playtranslate.capture.CapturedFrame(
@@ -409,6 +418,9 @@ class MainActivity :
 
     override fun onInteraction() {
         pauseLiveMode()
+        // Word taps / Anki buttons are "pressed a button" — the on-screen
+        // boxes are an ephemeral presentation and any interaction ends it.
+        hideResultBoxesOnScreen()
     }
 
     override fun getAnkiPermissionLauncher() = requestAnkiPermission
@@ -416,6 +428,54 @@ class MainActivity :
     // The in-app host: the result screen is the persistent app session, so
     // the Clear action (reset to idle) applies here.
     override fun showsClearAction(): Boolean = true
+
+    // ── "Show on screen" host implementation (dual-screen) ────────────────
+
+    // Deliberately NOT gated on captureService: the paint path goes through
+    // the process-global activeOverlayUi, not this activity's binding, and a
+    // refused paint already reads back as unselected. A binding term here was
+    // wrong in exactly one window — the VM's replay after a recreation, before
+    // the binder handshake — where it hid the toggle for the current result.
+    override fun supportsShowOnScreen(): Boolean = !Prefs.isSingleScreen(this)
+
+    // The toggle's truth: the controller's window ownership, queried live —
+    // nothing here or in the fragment mirrors it.
+    override fun isResultBoxesShownOnScreen(): Boolean =
+        CaptureBackendResolver.activeOverlayUi?.appBoxesShowing == true
+
+    override fun showResultBoxesOnScreen(boxes: com.playtranslate.ui.OnScreenBoxes) {
+        CaptureBackendResolver.activeOverlayUi?.showAppBoxes(boxes.displayId, boxes.data) {
+            // Freshness poke on every teardown of that window; the fragment
+            // re-derives from isResultBoxesShownOnScreen, so a late or
+            // duplicate poke is harmless.
+            resultFragment?.onScreenBoxesDismissed()
+        }
+    }
+
+    override fun updateResultBoxesOnScreen(boxes: com.playtranslate.ui.OnScreenBoxes) {
+        CaptureBackendResolver.activeOverlayUi?.updateAppBoxes(boxes.data)
+    }
+
+    override fun hideResultBoxesOnScreen() {
+        CaptureBackendResolver.activeOverlayUi?.hideAppBoxes()
+    }
+
+    override fun liveShowOnScreenState(): Boolean? {
+        if (!isLiveMode) return null
+        // Mirror the Settings row's own gating: the hide-overlays toggle only
+        // exists off single-screen, and is ignored (with an inline disclaimer)
+        // when more than one display is selected for capture — a toggle that
+        // changes nothing must not be offered.
+        if (Prefs.isSingleScreen(this)) return null
+        if (prefs.captureDisplayIds.size > 1) return null
+        return !prefs.hideGameOverlays
+    }
+
+    override fun setLiveShowOnScreen(on: Boolean) {
+        // Same-process synchronous write; the swap below re-reads it.
+        prefs.hideGameOverlays = !on
+        captureService?.onHideGameOverlaysChanged()
+    }
 
     /** Theme + accent this instance was created with; compared in [onResume]
      *  to recreate after a change made on [com.playtranslate.ui.AppearanceSettingsActivity]. */
@@ -760,6 +820,11 @@ class MainActivity :
     override fun onStop() {
         super.onStop()
         isInForeground = false
+        // The on-screen boxes are this activity's presentation — leaving the
+        // foreground (app switch, another activity, rotation teardown) ends
+        // it. Also what keeps the boxes window from outliving the toggle
+        // state that describes it.
+        hideResultBoxesOnScreen()
     }
 
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
@@ -776,6 +841,8 @@ class MainActivity :
         // Let a running live session adapt if the viewport predicate flipped.
         // No-op if live mode isn't active.
         CaptureService.instance?.onMultiWindowChanged()
+        // The same predicate gates the "show on screen" toggle's availability.
+        resultFragment?.refreshShowOnScreen()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -1012,6 +1079,11 @@ class MainActivity :
     private fun onLiveModeChanged(isLive: Boolean) {
         updateMenuLiveItem()
         updateRegionButton()
+        // Live start claims the game surface — one-shot boxes can't stay up.
+        if (isLive) hideResultBoxesOnScreen()
+        // The toggle's semantics flip with live mode even when the VM state
+        // doesn't change (a stop that keeps the last Ready result on screen).
+        resultFragment?.refreshShowOnScreen()
         // Dim controller: cancel on any live mode change, recreate only when stopping
         dimController?.cancel()
         dimController = null
@@ -1380,11 +1452,19 @@ class MainActivity :
                                 is CaptureState.Translating ->
                                     resultVm.showTranslatingPlaceholder(
                                         state.originalText, state.segments, applicationContext, state.ocrProvenance,
+                                        onScreenBoxes = state.overlayData?.let {
+                                            com.playtranslate.ui.OnScreenBoxes(it, oneShotCaptureDisplayId)
+                                        },
                                     )
                                 is CaptureState.Done -> {
                                     editTranslationJob?.cancel()
                                     editTranslationJob = null
-                                    resultVm.displayResult(state.result, applicationContext)
+                                    resultVm.displayResult(
+                                        state.result, applicationContext,
+                                        onScreenBoxes = state.overlayData?.let {
+                                            com.playtranslate.ui.OnScreenBoxes(it, oneShotCaptureDisplayId)
+                                        },
+                                    )
                                     _currentCaptureSession.value = null
                                 }
                                 is CaptureState.NoText -> {
@@ -1568,6 +1648,7 @@ class MainActivity :
      *  primaryGameDisplayId. */
     private fun startOneShotCapture(displayId: Int? = null) {
         val svc = captureService ?: return
+        oneShotCaptureDisplayId = displayId ?: svc.primaryGameDisplayId()
         _currentCaptureSession.value =
             if (displayId != null) svc.captureOnce(displayId) else svc.captureOnce()
     }

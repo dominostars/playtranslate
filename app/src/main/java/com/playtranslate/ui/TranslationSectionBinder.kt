@@ -323,9 +323,11 @@ class TranslationSectionBinder(
         btnToggleTranslation.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
     }
 
-    /** Wire the capture overlay's "show on screen" boxes toggle into the target
-     *  header. Only the overlay calls this — the in-app results page keeps the
-     *  button GONE even though the shared layout carries it. */
+    /** Wire the "show on screen" toggle into the target header. The over-game
+     *  capture panel paints its in-window boxes; the in-app results page
+     *  (dual-screen) paints a standalone game-display window, or flips the
+     *  hide-overlays-during-auto setting while live. Each host gates
+     *  visibility via [setShowOnScreenAvailable]. */
     fun setShowOnScreenAction(onClick: () -> Unit) {
         btnShowOnScreen.setOnClickListener { onClick() }
     }

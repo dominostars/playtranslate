@@ -141,6 +141,56 @@ class TranslationResultFragment : Fragment() {
          *  dual-screen) hide it — there's no persistent session to clear, the
          *  user just closes the screen. */
         fun showsClearAction(): Boolean
+
+        // ── "Show on screen" (dual-screen) ────────────────────────────────
+        // The target header's toggle, mirroring the single-screen capture
+        // panel's. Two mutually-exclusive semantics, split by
+        // [liveShowOnScreenState]:
+        //  - one-shot: paint/hide the current result's boxes over the game
+        //    (the three methods below);
+        //  - live mode: the toggle IS the hide-overlays-during-auto setting
+        //    (inverted), switching the running live mode's flavor in place.
+
+        /** Whether this host can paint one-shot boxes over the game at all
+         *  (dual-screen MainActivity). Gates the toggle's visibility alongside
+         *  the state's [OnScreenBoxes]. Must depend only on inputs whose
+         *  changes reach [refreshShowOnScreen] — a term that flips without a
+         *  refresh renders a stale toggle (the service-binding term was
+         *  removed for exactly that). */
+        fun supportsShowOnScreen(): Boolean
+
+        /** Whether the one-shot boxes are painted over the game RIGHT NOW.
+         *  The single source of truth the toggle's selected state renders
+         *  from — the fragment holds no mirror flag, so no teardown path can
+         *  desync the pill from the window (it derives, the host's
+         *  [onScreenBoxesDismissed] pokes are freshness only). */
+        fun isResultBoxesShownOnScreen(): Boolean
+
+        /** Paint [boxes] over the game display. The paint can be refused (no
+         *  overlay UI, live mode owns the surface) — success or refusal is
+         *  read back through [isResultBoxesShownOnScreen], never assumed. */
+        fun showResultBoxesOnScreen(boxes: OnScreenBoxes)
+
+        /** Swap the painted boxes in place (skeleton → translated promotion).
+         *  No-op when nothing is painted. */
+        fun updateResultBoxesOnScreen(boxes: OnScreenBoxes)
+
+        /** Tear the painted boxes down. Idempotent. The host pokes
+         *  [onScreenBoxesDismissed] on every window teardown so the pill
+         *  refreshes promptly, but correctness never rides on the poke. */
+        fun hideResultBoxesOnScreen()
+
+        /** Live-mode semantics for the toggle: non-null exactly when a live
+         *  session is running AND the hide-overlays-during-auto setting is
+         *  consequential (dual-screen, a single capture display) — the value
+         *  is the setting's inverse ("show on screen" = overlays on the
+         *  game). Null routes the toggle to the one-shot semantics. */
+        fun liveShowOnScreenState(): Boolean?
+
+        /** Flip the hide-overlays-during-auto setting to `!on` and swap the
+         *  running live mode's flavor in place. Only called while
+         *  [liveShowOnScreenState] is non-null. */
+        fun setLiveShowOnScreen(on: Boolean)
     }
 
     // ── Views ─────────────────────────────────────────────────────────────
@@ -240,6 +290,16 @@ class TranslationResultFragment : Fragment() {
 
     private val prefs: Prefs by lazy { Prefs(requireContext()) }
 
+    // ── "Show on screen" toggle state (dual-screen) ───────────────────────
+
+    /** The paintable boxes carried by the currently-rendered state, or null.
+     *  Tracks [ResultState.Translating]/[ResultState.Ready.onScreenBoxes]
+     *  through the render funnel — see [syncOnScreenBoxes]. Deliberately the
+     *  ONLY show-on-screen state this fragment holds: whether the boxes are
+     *  painted is derived from [TranslationResultHost.isResultBoxesShownOnScreen]
+     *  at each render, never mirrored. */
+    private var currentOnScreenBoxes: OnScreenBoxes? = null
+
     // ── Fragment lifecycle ─────────────────────────────────────────────────
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -281,6 +341,12 @@ class TranslationResultFragment : Fragment() {
                 // which an onResume hook would miss.
                 launch {
                     AnkiManager.noteAddedTick.drop(1).collect { refreshWordBadges() }
+                }
+                // Keep the live-mode "show on screen" pill in lockstep with
+                // the hide-overlays-during-auto setting, whichever surface
+                // writes it (this toggle, or the Settings row on return).
+                launch {
+                    prefs.observe(Prefs.KEY_HIDE_GAME_OVERLAYS).collect { refreshShowOnScreen() }
                 }
             }
         }
@@ -331,6 +397,7 @@ class TranslationResultFragment : Fragment() {
             currentReady()?.ocrProvenance?.let { showOcrPicker(it.sourceLangId, it.engineToken) }
         }
         binder.onChooseLanguage = { isSource -> host?.onChangeLanguageRequested(isSource) }
+        binder.setShowOnScreenAction { onShowOnScreenTapped() }
         resultsContent.setOnScrollChangeListener(scrollListener)
         btnToggleWords.setOnClickListener {
             prefs.hideWordsSection = !prefs.hideWordsSection
@@ -378,6 +445,17 @@ class TranslationResultFragment : Fragment() {
         // Every render supersedes any pending async reveal from a prior one —
         // see [renderGeneration]. Captured by [revealResultsContentFitted].
         val generation = ++renderGeneration
+        // Reconcile the on-screen boxes BEFORE rendering: any state that
+        // doesn't carry boxes (a new capture's InProgress status, Clear, a
+        // live result, an edit commit) dismisses them and disables the toggle
+        // — the single funnel for "new content ends the presentation".
+        syncOnScreenBoxes(
+            when (state) {
+                is ResultState.Translating -> state.onScreenBoxes
+                is ResultState.Ready -> state.onScreenBoxes
+                else -> null
+            }
+        )
         when (state) {
             is ResultState.Idle -> {
                 showStatusUi(getString(R.string.status_idle), showHint = true)
@@ -505,6 +583,73 @@ class TranslationResultFragment : Fragment() {
      *  (vs status/error/translating). View-state helper for the host. */
     val isShowingResults: Boolean
         get() = view != null && vm.result.value is ResultState.Ready
+
+    // ── "Show on screen" toggle (dual-screen) ─────────────────────────────
+
+    /** Render-funnel reconciliation for the on-screen boxes: every state
+     *  change lands here first. A state without boxes tears a paint down
+     *  (Clear, a fresh capture's status hop, a live/drag/edit result) — the
+     *  hide is unconditional because it's idempotent and the host owns the
+     *  truth; a state WITH boxes while painted is the same session's
+     *  skeleton → translated promotion (a new capture always hops through a
+     *  boxless InProgress status first, so it can't masquerade as a
+     *  promotion), which swaps the paint in place. */
+    private fun syncOnScreenBoxes(boxes: OnScreenBoxes?) {
+        currentOnScreenBoxes = boxes
+        if (boxes == null) {
+            host?.hideResultBoxesOnScreen()
+        } else if (host?.isResultBoxesShownOnScreen() == true) {
+            host?.updateResultBoxesOnScreen(boxes)
+        }
+        refreshShowOnScreen()
+    }
+
+    /** The host's poke that the boxes window state changed underneath us
+     *  (tap on the boxes, live start, display change, onStop). Freshness
+     *  only: the refresh re-reads the host's ownership truth, so a late,
+     *  duplicate, or self-initiated poke can't render a wrong state. */
+    fun onScreenBoxesDismissed() {
+        if (view == null) return
+        refreshShowOnScreen()
+    }
+
+    /** Recompute the toggle's visibility + accent from the current mode.
+     *  Selected state derives from the host's window ownership on every call
+     *  (never a fragment-side mirror). Public so the host can poke it on
+     *  transitions the fragment can't see (live-mode start/stop with an
+     *  unchanged VM state, viewport flips). */
+    fun refreshShowOnScreen() {
+        if (view == null) return
+        val liveState = host?.liveShowOnScreenState()
+        if (liveState != null) {
+            // Live semantics: the pill mirrors the setting, no boxes needed.
+            binder.setShowOnScreenAvailable(true)
+            binder.setShowOnScreenToggled(liveState)
+        } else {
+            binder.setShowOnScreenAvailable(
+                currentOnScreenBoxes != null && host?.supportsShowOnScreen() == true
+            )
+            binder.setShowOnScreenToggled(host?.isResultBoxesShownOnScreen() == true)
+        }
+    }
+
+    private fun onShowOnScreenTapped() {
+        val liveState = host?.liveShowOnScreenState()
+        if (liveState != null) {
+            host?.setLiveShowOnScreen(!liveState)
+            // The pref observer refreshes too; this keeps the pill snappy.
+            refreshShowOnScreen()
+            return
+        }
+        if (host?.isResultBoxesShownOnScreen() == true) {
+            host?.hideResultBoxesOnScreen()
+        } else {
+            currentOnScreenBoxes?.let { host?.showResultBoxesOnScreen(it) }
+        }
+        // Ownership flipped synchronously (or the show was refused); the
+        // refresh reads whichever reality landed.
+        refreshShowOnScreen()
+    }
 
     private companion object {
         const val WORD_DIVIDER_TAG = "pt_word_divider"
