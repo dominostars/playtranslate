@@ -106,9 +106,13 @@ internal fun ttsTapFor(state: RootSettingsViewModel.TtsCell): TtsTap? = when (st
     RootSettingsViewModel.TtsCell.NoEngine -> TtsTap.OPEN_SETUP
 }
 
-/** An [ImageSpan] drawn [dyPx] higher than ALIGN_BOTTOM would place it, so an
- *  inline icon optically centers with the surrounding text rather than sitting
- *  on the baseline. */
+/** An [ImageSpan] anchored to the BASELINE's font metrics, drawn [dyPx]
+ *  higher than the font bottom so an inline icon optically centers with the
+ *  surrounding text. Deliberately not anchored to the framework's line-bottom
+ *  (super.draw's `bottom`): on a WRAPPED line that includes line spacing,
+ *  which drags the icon visibly low — the Yomitan outdated-row subtitle wraps
+ *  to two lines and showed exactly that. Baseline + font metrics render
+ *  identically on one line and many. */
 private class OffsetImageSpan(drawable: Drawable, private val dyPx: Int) :
     ImageSpan(drawable, ALIGN_BOTTOM) {
     override fun draw(
@@ -122,10 +126,47 @@ private class OffsetImageSpan(drawable: Drawable, private val dyPx: Int) :
         bottom: Int,
         paint: Paint,
     ) {
-        canvas.withTranslation(y = -dyPx.toFloat()) {
-            super.draw(canvas, text, start, end, x, top, y, bottom, paint)
+        // Icon bottom at (baseline + font bottom - lift): matches the old
+        // single-line ALIGN_BOTTOM placement, independent of line spacing.
+        val transY = y + paint.fontMetricsInt.bottom - drawable.bounds.bottom - dyPx
+        canvas.withTranslation(x = x, y = transY.toFloat()) {
+            drawable.draw(this)
         }
     }
+}
+
+/** Appends an optically-centered inline icon tinted [tint] to [sb] — shared
+ *  by the renderer's summary digests and warning subtitles elsewhere in
+ *  settings (e.g. the Yomitan outdated rows). */
+internal fun appendInlineIcon(
+    ctx: Context,
+    sb: SpannableStringBuilder,
+    @DrawableRes iconRes: Int,
+    @AttrRes tint: Int = R.attr.ptTextMuted,
+) {
+    val px = (14 * ctx.resources.displayMetrics.density).toInt()
+    val drawable = ContextCompat.getDrawable(ctx, iconRes)?.mutate() ?: return
+    drawable.setTint(ctx.themeColor(tint))
+    drawable.setBounds(0, 0, px, px)
+    val start = sb.length
+    sb.append(" ")
+    // Lift 1.5dp above ALIGN_BOTTOM to optically center; at 2dp the icons
+    // read slightly high, so 1.5dp drops them ~0.5dp.
+    val dy = (1.5f * ctx.resources.displayMetrics.density).toInt()
+    sb.setSpan(OffsetImageSpan(drawable, dy), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+}
+
+/** A warning-triangle icon + [label], the whole run in `ptWarning` — the
+ *  recoverable-state subtitle treatment (hub cell and per-row). */
+internal fun warningSummary(ctx: Context, label: String): CharSequence {
+    val sb = SpannableStringBuilder()
+    appendInlineIcon(ctx, sb, R.drawable.ic_warning_triangle, R.attr.ptWarning)
+    sb.append(" ").append(label)
+    sb.setSpan(
+        ForegroundColorSpan(ctx.themeColor(R.attr.ptWarning)),
+        0, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+    )
+    return sb
 }
 
 /**
@@ -151,7 +192,7 @@ class SettingsRenderer(
         fun openHotkeysSettings()
         /** Tap on the Capture & overlay CONFIGURE cell — open [CaptureOverlaySettingsActivity]. */
         fun openCaptureOverlaySettings()
-        /** Tap on the debug-only Yomitan CONFIGURE cell — open [YomitanSettingsActivity]. */
+        /** Tap on the Yomitan CONFIGURE cell — open [YomitanSettingsActivity]. */
         fun openYomitanSettings()
         /** Tap on the Translation services CONFIGURE cell — open [TranslationServicesActivity]. */
         fun openTranslationServicesSettings()
@@ -774,7 +815,20 @@ class SettingsRenderer(
             HubCell(
                 iconRes = R.drawable.ic_yomitan,
                 title = ctx.getString(R.string.settings_cell_yomitan),
-                summary = state.yomitanSummary,
+                // Outdated dictionaries (post-schema-bump) win the subtitle:
+                // a ptWarning triangle + count, spanned over the summary slot
+                // (the span outranks bindHubCell's ptTextMuted default).
+                summary = if (state.yomitanOutdatedCount > 0) {
+                    warningSummary(
+                        ctx,
+                        ctx.resources.getQuantityString(
+                            R.plurals.settings_yomitan_outdated_summary,
+                            state.yomitanOutdatedCount, state.yomitanOutdatedCount,
+                        ),
+                    )
+                } else {
+                    state.yomitanSummary
+                },
                 onClick = { callbacks.openYomitanSettings() },
             ),
         )
@@ -860,18 +914,8 @@ class SettingsRenderer(
         return sb
     }
 
-    private fun appendSummaryIcon(sb: SpannableStringBuilder, @DrawableRes iconRes: Int) {
-        val px = (14 * ctx.resources.displayMetrics.density).toInt()
-        val drawable = ContextCompat.getDrawable(ctx, iconRes)?.mutate() ?: return
-        drawable.setTint(ctx.themeColor(R.attr.ptTextMuted))
-        drawable.setBounds(0, 0, px, px)
-        val start = sb.length
-        sb.append(" ")
-        // Lift 1.5dp above ALIGN_BOTTOM to optically center; at 2dp the icons
-        // read slightly high, so 1.5dp drops them ~0.5dp.
-        val dy = (1.5f * ctx.resources.displayMetrics.density).toInt()
-        sb.setSpan(OffsetImageSpan(drawable, dy), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-    }
+    private fun appendSummaryIcon(sb: SpannableStringBuilder, @DrawableRes iconRes: Int) =
+        appendInlineIcon(ctx, sb, iconRes)
 
     // ── Tools ────────────────────────────────────────────────────────────
 

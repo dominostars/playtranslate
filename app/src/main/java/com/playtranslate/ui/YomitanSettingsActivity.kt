@@ -30,6 +30,7 @@ import com.playtranslate.yomitan.GroupedNames
 import com.playtranslate.yomitan.RecommendedYomitanDictionaries
 import com.playtranslate.yomitan.RecommendedYomitanDictionary
 import com.playtranslate.yomitan.YomitanCategory
+import com.playtranslate.yomitan.YomitanDataStore
 import com.playtranslate.yomitan.YomitanDictionary
 import com.playtranslate.yomitan.YomitanDictionaryStore
 import com.playtranslate.yomitan.YomitanImportResult
@@ -45,11 +46,14 @@ import java.io.File
 /**
  * Yomitan dictionary manager (Settings → Configure → Yomitan).
  *
- * Imports Yomitan dictionary zips via SAF, validates them through
- * [YomitanDictionaryStore], and lists them grouped by data category — one
- * section per [YomitanCategory] that has at least one dictionary, each with
- * its own drag-reorder priority (a multi-category dictionary appears in every
- * matching section and is ordered independently in each).
+ * Imports Yomitan dictionary zips and "Export Dictionary Collection" dumps
+ * via SAF, validates them through [YomitanDictionaryStore], and lists them
+ * grouped by data category — one section per [YomitanCategory] that has at
+ * least one dictionary, each with its own drag-reorder priority (a
+ * multi-category dictionary appears in every matching section and is ordered
+ * independently in each). OUTDATED dictionaries (registry entries whose rows
+ * were dropped by a schema bump) render as warning rows: tapping one opens
+ * the file picker to re-import, and delete still removes it.
  */
 class YomitanSettingsActivity : SettingsSubPageActivity() {
 
@@ -74,13 +78,7 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
         sectionsContainer = findViewById(R.id.yomitanSections)
 
         findViewById<View>(R.id.btnYomitanImport).setOnClickListener {
-            pickDictionaries.launch(
-                arrayOf(
-                    "application/zip",
-                    "application/octet-stream",
-                    "application/x-zip-compressed",
-                )
-            )
+            pickDictionaries.launch(IMPORT_MIME_TYPES)
         }
 
         refresh()
@@ -134,7 +132,7 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
                         YomitanImportResult.IoError
                     }
                     // No global "storage wall" break: import()'s disk guard is
-                    // per-file (≈3× THIS zip) and its temp copy is deleted as it
+                    // per-file (≈2× THIS zip) and its temp copy is deleted as it
                     // returns, so a later, smaller dictionary can still fit. Each
                     // out-of-space file is just reported individually in the summary.
                     outcomes += uri to result
@@ -225,6 +223,32 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
     private fun handleImportResult(result: YomitanImportResult) {
         when (result) {
             is YomitanImportResult.Success -> refresh()
+            is YomitanImportResult.CollectionImported -> {
+                refresh()
+                val lines = buildList {
+                    add(
+                        resources.getQuantityString(
+                            R.plurals.yomitan_collection_imported_count,
+                            result.imported, result.imported,
+                        ),
+                    )
+                    if (result.skippedExisting > 0) {
+                        add(
+                            resources.getQuantityString(
+                                R.plurals.yomitan_collection_skipped_count,
+                                result.skippedExisting, result.skippedExisting,
+                            ),
+                        )
+                    }
+                }
+                showImportAlert(
+                    getString(
+                        if (result.imported > 0) R.string.yomitan_collection_imported_title
+                        else R.string.yomitan_collection_none_title,
+                    ),
+                    lines.joinToString("\n"),
+                )
+            }
             is YomitanImportResult.Duplicate -> showImportAlert(
                 getString(R.string.yomitan_duplicate_title),
                 getString(R.string.yomitan_duplicate_message, result.title),
@@ -356,11 +380,14 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
     private fun refresh() {
         lifecycleScope.launch {
             val registry = YomitanDictionaryStore.load(this@YomitanSettingsActivity)
-            renderSections(registry)
+            // Registry entries with no ingested rows (post-schema-bump) —
+            // rendered as warning rows below.
+            val outdated = YomitanDataStore.outdatedDictIds(this@YomitanSettingsActivity)
+            renderSections(registry, outdated)
         }
     }
 
-    private fun renderSections(registry: YomitanRegistry) {
+    private fun renderSections(registry: YomitanRegistry, outdatedIds: Set<String>) {
         sectionsContainer.removeAllViews()
         val inflater = LayoutInflater.from(this)
 
@@ -374,7 +401,7 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
 
             val recycler = section.findViewById<RecyclerView>(R.id.rvYomitanSection)
             recycler.layoutManager = LinearLayoutManager(this)
-            val adapter = DictionaryAdapter(dictionaries.toMutableList())
+            val adapter = DictionaryAdapter(dictionaries.toMutableList(), outdatedIds)
             recycler.adapter = adapter
             adapter.touchHelper = attachDragHelper(recycler, category, adapter)
 
@@ -527,6 +554,7 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
 
     private inner class DictionaryAdapter(
         val working: MutableList<YomitanDictionary>,
+        private val outdatedIds: Set<String>,
     ) : RecyclerView.Adapter<DictionaryAdapter.VH>() {
 
         var touchHelper: ItemTouchHelper? = null
@@ -539,6 +567,11 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
             val divider: View = view.findViewById(R.id.yomitanRowDivider)
             val content: View = view.findViewById(R.id.yomitanRowContent)
             val colorDot: View = view.findViewById(R.id.yomitanColorDot)
+
+            /** Style-declared colors, captured before any warning tint — the
+             *  reset for recycled holders. */
+            val defaultTitleColors = title.textColors
+            val defaultSubtitleColors = subtitle.textColors
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH = VH(
@@ -550,6 +583,7 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
 
         override fun onBindViewHolder(holder: VH, position: Int) {
             val entry = working[position]
+            val outdated = entry.id in outdatedIds
             // Show the user's alias (nickname) when set; the detail page keeps
             // the original title.
             holder.title.text = entry.alias ?: entry.title
@@ -558,9 +592,27 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
                 shape = GradientDrawable.OVAL
                 setColor(entry.accentColor ?: this@YomitanSettingsActivity.themeColor(R.attr.ptTextMuted))
             }
-            val description = entry.description.orEmpty()
-            holder.subtitle.isGone = description.isEmpty()
-            holder.subtitle.text = description
+            if (outdated) {
+                // Warning treatment: title + subtitle in ptWarning, subtitle
+                // carrying the triangle + re-import hint.
+                holder.title.setTextColor(
+                    this@YomitanSettingsActivity.themeColor(R.attr.ptWarning),
+                )
+                holder.subtitle.setTextColor(
+                    this@YomitanSettingsActivity.themeColor(R.attr.ptWarning),
+                )
+                holder.subtitle.text = warningSummary(
+                    this@YomitanSettingsActivity,
+                    getString(R.string.yomitan_outdated_label),
+                )
+                holder.subtitle.isGone = false
+            } else {
+                holder.title.setTextColor(holder.defaultTitleColors)
+                holder.subtitle.setTextColor(holder.defaultSubtitleColors)
+                val description = entry.description.orEmpty()
+                holder.subtitle.isGone = description.isEmpty()
+                holder.subtitle.text = description
+            }
             holder.divider.isVisible = position < working.size - 1
 
             holder.dragHandle.setOnTouchListener { v, event ->
@@ -576,16 +628,22 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
                 if (pos != RecyclerView.NO_POSITION) confirmDelete(working[pos])
             }
             // Scoped to the content block (not itemView) so tapping the drag
-            // handle never also opens details.
+            // handle never also opens details. An outdated row's tap is the
+            // heal path: open the import picker instead of the detail page
+            // (a same-title re-import supersedes the outdated entry).
             holder.content.setOnClickListener {
                 val pos = holder.bindingAdapterPosition
                 if (pos != RecyclerView.NO_POSITION) {
                     val dict = working[pos]
-                    startActivity(
-                        YomitanDictionaryDetailActivity.intent(
-                            this@YomitanSettingsActivity, dict.id, dict.title,
-                        ),
-                    )
+                    if (dict.id in outdatedIds) {
+                        pickDictionaries.launch(IMPORT_MIME_TYPES)
+                    } else {
+                        startActivity(
+                            YomitanDictionaryDetailActivity.intent(
+                                this@YomitanSettingsActivity, dict.id, dict.title,
+                            ),
+                        )
+                    }
                 }
             }
         }
@@ -624,6 +682,16 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
 
     private companion object {
         const val TAG = "YomitanSettings"
+
+        /** Zips come with inconsistent MIME types (octet-stream for GitHub
+         *  release assets); json covers bare collection dumps. The importer's
+         *  content sniff decides what the pick actually was. */
+        val IMPORT_MIME_TYPES = arrayOf(
+            "application/zip",
+            "application/octet-stream",
+            "application/x-zip-compressed",
+            "application/json",
+        )
 
         /** Cap on example names shown per failure/duplicate group in the batch
          *  summary; the rest collapse into a "+K more" tail (the alert has no

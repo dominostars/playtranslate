@@ -18,6 +18,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import java.io.File
+import java.io.FilterInputStream
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.util.zip.ZipEntry
@@ -129,12 +130,20 @@ data class YomitanRegistry(
 sealed class YomitanImportResult {
     data class Success(val dictionary: YomitanDictionary) : YomitanImportResult()
 
+    /** A Yomitan collection dump was imported: [imported] dictionaries
+     *  ingested (fresh or superseding an older/outdated entry),
+     *  [skippedExisting] already installed at the identical revision. */
+    data class CollectionImported(
+        val imported: Int,
+        val skippedExisting: Int,
+    ) : YomitanImportResult()
+
     /** A dictionary with the same index.json title is already imported. */
     data class Duplicate(val title: String) : YomitanImportResult()
 
     /** Not a zip / no valid index.json / malformed bank / no dictionary data.
      *  [reason] is a short developer-facing diagnostic (e.g. which bank file
-     *  and entry failed) — shown as a detail line on the debug-only page so
+     *  and entry failed) — shown as a detail line under the import alert so
      *  dictionary authors aren't left with a dead-end "invalid file". */
     data class InvalidFormat(val reason: String?) : YomitanImportResult()
 
@@ -156,23 +165,31 @@ sealed class YomitanImportResult {
 }
 
 /**
- * Storage + registry for user-imported Yomitan dictionary zips.
+ * Storage + registry for user-imported Yomitan dictionaries.
  *
  * Layout mirrors [com.playtranslate.language.LanguagePackStore]:
- * `noBackupFilesDir/yomitan/<id>/dict.zip` per dictionary, with a single
- * `registry.json` alongside. The original zip is kept whole — later stages
- * ingest from it; nothing is extracted at import time.
+ * `noBackupFilesDir/yomitan/<id>/index.json` per dictionary, with a single
+ * `registry.json` alongside. Only the source's index.json metadata persists —
+ * the dictionary data is ingested into [YomitanDataStore]'s SQLite DB during
+ * import (prove-then-commit: rows first, registry entry second) and the source
+ * file is discarded. Older installs' retained `<id>/dict.zip` files are
+ * removed by the one-time [sweepRetainedZips]; until it runs, reconcile can
+ * still re-ingest from them (legacy heal).
  *
- * Import validation is structural, not schema-level: index.json must carry a
- * title and a known format, and every `*_bank_*.json` must be a well-formed
- * JSON array of arrays (streamed — term banks can run 100 MB+). That is what
- * separates "any zip" from "a Yomitan dictionary" without committing to the
- * full term-bank schema before the ingest stage exists.
+ * Two source formats, dispatched by [import]'s content sniff: a Yomitan
+ * dictionary zip, and Yomitan's "Export Dictionary Collection" backup (a
+ * Dexie JSON dump, bare or zipped). Zip validation is structural, not
+ * schema-level: index.json must carry a title and a known format, and every
+ * `*_bank_*.json` must be a well-formed JSON array of arrays (streamed —
+ * term banks can run 100 MB+). That is what separates "any zip" from "a
+ * Yomitan dictionary" without committing to the full term-bank schema at
+ * validation time.
  */
 object YomitanDictionaryStore {
 
     private const val TAG = "YomitanStore"
     private const val ZIP_NAME = "dict.zip"
+    private const val INDEX_NAME = "index.json"
 
     /** index.json is dictionary metadata — realistically a few KB. We read it
      *  whole (bank files are streamed), so cap that one read: an oversized or
@@ -190,31 +207,61 @@ object YomitanDictionaryStore {
 
     private fun dictionaryDir(ctx: Context, id: String): File = File(rootDir(ctx), id)
 
-    /** The stored zip for [id] — later ingest stages read from this. */
+    /** LEGACY (pre-sweep) retained zip for [id]. New installs never write it;
+     *  reconcile's legacy-heal branch and the one-time [sweepRetainedZips] are
+     *  the only readers, and the index.json readers fall back to it until the
+     *  sweep extracts theirs. */
     fun zipFile(ctx: Context, id: String): File = File(dictionaryDir(ctx, id), ZIP_NAME)
 
+    /** The persisted index.json for [id] — the one artifact kept per
+     *  dictionary (detail-page metadata, update-metadata backfill,
+     *  attribution/license text). */
+    private fun indexJsonFile(ctx: Context, id: String): File =
+        File(dictionaryDir(ctx, id), INDEX_NAME)
+
+    /** Raw index.json text for [id]: the persisted file when present, else the
+     *  legacy retained zip's entry (pre-sweep installs). Capped either way;
+     *  null when neither source is readable. */
+    private fun readIndexJsonText(ctx: Context, id: String): String? {
+        val file = indexJsonFile(ctx, id)
+        if (file.exists()) {
+            return try {
+                file.inputStream().use { it.readUtf8Capped(MAX_INDEX_JSON_BYTES) }
+            } catch (e: Exception) {
+                Log.w(TAG, "persisted index.json read failed for $id", e)
+                null
+            }
+        }
+        val zip = zipFile(ctx, id)
+        if (!zip.exists()) return null
+        return try {
+            ZipFile(zip).use { z ->
+                val entry = z.getEntry(INDEX_NAME) ?: return null
+                z.getInputStream(entry).use { it.readUtf8Capped(MAX_INDEX_JSON_BYTES) }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "legacy zip index.json read failed for $id", e)
+            null
+        }
+    }
+
     /**
-     * Every top-level field of the stored dictionary's index.json, in file
-     * order, as (key, displayValue) pairs — for the read-only metadata detail
-     * view. Reads the raw index.json (not the parsed registry entry) so it
-     * surfaces fields we don't model (attribution, url, …). Returns null when
-     * the zip or its index.json can't be read; non-scalar values render as
-     * compact JSON, JSON nulls as an em dash.
+     * Every top-level field of the dictionary's index.json, in file order, as
+     * (key, displayValue) pairs — for the read-only metadata detail view.
+     * Reads the raw index.json (not the parsed registry entry) so it surfaces
+     * fields we don't model (attribution, url, …). Returns null when it can't
+     * be read; non-scalar values render as compact JSON, JSON nulls as an
+     * em dash.
      */
     suspend fun readIndexJson(ctx: Context, id: String): List<Pair<String, String>>? =
         withContext(Dispatchers.IO) {
-            val zip = zipFile(ctx, id)
-            if (!zip.exists()) return@withContext null
             try {
-                ZipFile(zip).use { z ->
-                    val entry = z.getEntry("index.json") ?: return@withContext null
-                    val text = z.getInputStream(entry).bufferedReader().use { it.readText() }
-                    JsonParser.parseString(text).asJsonObject.entrySet().map { (key, value) ->
-                        key to when {
-                            value.isJsonNull -> "—"
-                            value.isJsonPrimitive -> value.asString
-                            else -> value.toString()
-                        }
+                val text = readIndexJsonText(ctx, id) ?: return@withContext null
+                JsonParser.parseString(text).asJsonObject.entrySet().map { (key, value) ->
+                    key to when {
+                        value.isJsonNull -> "—"
+                        value.isJsonPrimitive -> value.asString
+                        else -> value.toString()
                     }
                 }
             } catch (e: Exception) {
@@ -254,12 +301,44 @@ object YomitanDictionaryStore {
         PackIntegrity.atomicReplace(tmp, file)
     }
 
+    /** The zip's root index.json bytes, capped; null when absent/oversized. */
+    private fun extractIndexJson(zip: ZipFile): ByteArray? {
+        val entry = zip.getEntry(INDEX_NAME) ?: return null
+        return zip.getInputStream(entry).use { it.readUtf8Capped(MAX_INDEX_JSON_BYTES) }
+            ?.toByteArray(Charsets.UTF_8)
+    }
+
+    /** Write-temp-then-rename, mirroring [writeRegistry]. */
+    private fun writeIndexJson(dir: File, bytes: ByteArray) {
+        val tmp = File(dir, "$INDEX_NAME.tmp")
+        tmp.writeBytes(bytes)
+        PackIntegrity.atomicReplace(tmp, File(dir, INDEX_NAME))
+    }
+
+    /** Best-effort index.json for a dump-sourced dictionary — the dump carries
+     *  no index.json file, so the detail page gets the roster metadata we
+     *  have. */
+    private fun synthesizeIndexJson(dict: YomitanDictionary): ByteArray =
+        PtJson.pretty.encodeToString(
+            IndexJson(
+                title = dict.title,
+                revision = dict.revision,
+                description = dict.description,
+                author = dict.author,
+                format = dict.format,
+                sourceLanguage = dict.sourceLanguage,
+                targetLanguage = dict.targetLanguage,
+                frequencyMode = dict.frequencyMode,
+            ),
+        ).toByteArray(Charsets.UTF_8)
+
     // ── Import ──────────────────────────────────────────────────────────
 
     /**
-     * Copies [uri] into app storage, validates it as a Yomitan dictionary,
-     * and registers it. Cancellable throughout ([kotlinx.coroutines.CancellationException]
-     * propagates; the temp file is cleaned up either way).
+     * Copies [uri] into app storage, sniffs its format (dictionary zip vs
+     * Yomitan collection dump), validates, and registers it. Cancellable
+     * throughout ([kotlinx.coroutines.CancellationException] propagates; the
+     * temp file is cleaned up either way).
      */
     suspend fun import(ctx: Context, uri: Uri): YomitanImportResult = withContext(Dispatchers.IO) {
         val temp = File.createTempFile("yomitan_import", ".zip", ctx.cacheDir)
@@ -282,10 +361,99 @@ object YomitanDictionaryStore {
                 Log.w(TAG, "copy from SAF failed", e)
                 return@withContext YomitanImportResult.IoError
             }
-            installZip(ctx, temp, replacing = null)
+            when (val format = sniffPickedFormat(temp)) {
+                PickedFormat.SevenZip -> YomitanImportResult.InvalidFormat(
+                    "7z archives are not supported. Use Yomitan's " +
+                        "\"Export Dictionary Collection\" .json (bare or zipped), " +
+                        "or a dictionary .zip.",
+                )
+                is PickedFormat.CollectionDump -> importCollectionDump(ctx, temp, format.zipEntry)
+                PickedFormat.DictionaryZip -> installZip(ctx, temp, replacing = null)
+            }
         } finally {
             temp.delete()
         }
+    }
+
+    /** [import]'s content sniff verdict. */
+    private sealed interface PickedFormat {
+        /** A zip with a root index.json — or anything unrecognized, so
+         *  [installZip]'s own validation produces the right diagnostic. */
+        object DictionaryZip : PickedFormat
+        /** A Yomitan Dexie collection dump; [zipEntry] names the entry holding
+         *  the JSON when the dump arrived zipped, null when the file IS it. */
+        data class CollectionDump(val zipEntry: String?) : PickedFormat
+        object SevenZip : PickedFormat
+    }
+
+    private fun sniffPickedFormat(temp: File): PickedFormat {
+        val head = ByteArray(8)
+        val n = try {
+            temp.inputStream().use { it.read(head) }
+        } catch (e: Exception) {
+            return PickedFormat.DictionaryZip
+        }
+        val sevenZipMagic = byteArrayOf(0x37, 0x7A, 0xBC.toByte(), 0xAF.toByte(), 0x27, 0x1C)
+        if (n >= 6 && (0 until 6).all { head[it] == sevenZipMagic[it] }) {
+            return PickedFormat.SevenZip
+        }
+        if (n >= 2 && head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte()) {
+            return try {
+                ZipFile(temp).use { z ->
+                    if (z.getEntry(INDEX_NAME) != null) return@use PickedFormat.DictionaryZip
+                    val jsonEntry = z.entries().asSequence().firstOrNull {
+                        !it.isDirectory && !it.name.contains('/') &&
+                            it.name.endsWith(".json", ignoreCase = true)
+                    }
+                    if (jsonEntry != null &&
+                        z.getInputStream(jsonEntry).use { looksLikeDexieDump(it) }
+                    ) {
+                        PickedFormat.CollectionDump(jsonEntry.name)
+                    } else {
+                        PickedFormat.DictionaryZip
+                    }
+                }
+            } catch (e: Exception) {
+                PickedFormat.DictionaryZip // unreadable zip → installZip's diagnostic
+            }
+        }
+        // Bare JSON: first non-BOM, non-whitespace byte is '{' AND the head
+        // carries the Dexie marker.
+        val bareJson = try {
+            temp.inputStream().use { ins ->
+                val buf = ByteArray(256)
+                val read = ins.read(buf)
+                var i = 0
+                if (read >= 3 && buf[0] == 0xEF.toByte() && buf[1] == 0xBB.toByte() &&
+                    buf[2] == 0xBF.toByte()
+                ) {
+                    i = 3
+                }
+                while (i < read && buf[i].toInt().toChar().isWhitespace()) i++
+                i < read && buf[i] == '{'.code.toByte()
+            }
+        } catch (e: Exception) {
+            false
+        }
+        return if (bareJson && temp.inputStream().use { looksLikeDexieDump(it) }) {
+            PickedFormat.CollectionDump(zipEntry = null)
+        } else {
+            PickedFormat.DictionaryZip
+        }
+    }
+
+    /** Cheap head probe: the Dexie export writes `formatName` first, so the
+     *  marker sits within the first bytes. */
+    private fun looksLikeDexieDump(input: InputStream): Boolean {
+        val head = ByteArray(512)
+        var off = 0
+        while (off < head.size) {
+            val read = input.read(head, off, head.size - off)
+            if (read <= 0) break
+            off += read
+        }
+        val text = String(head, 0, off, Charsets.UTF_8)
+        return text.contains("\"formatName\"") && text.contains("\"dexie\"")
     }
 
     /**
@@ -322,10 +490,11 @@ object YomitanDictionaryStore {
         replacing: YomitanDictionary?,
         revisionOverride: String? = null,
     ): YomitanImportResult = withContext(Dispatchers.IO) {
-        // Disk guard: the zip is kept whole (1×) and the derived term rows from
-        // a flattened glossary can exceed the compressed source — 3× leaves
-        // headroom. The local copy already landed, so this checks what's left.
-        val required = temp.length() * 3
+        // Disk guard: the zip itself is NOT retained (only index.json is), but
+        // the derived term rows from a flattened glossary can exceed the
+        // compressed source — 2× leaves headroom. The temp copy already
+        // landed, so this checks what's left.
+        val required = temp.length() * 2
         val available = rootDir(ctx).apply { mkdirs() }.usableSpace
         if (available < required) {
             return@withContext YomitanImportResult.InsufficientSpace(
@@ -356,35 +525,221 @@ object YomitanDictionaryStore {
         }
     }
 
-    /** Fresh import: refuse a same-title duplicate, stage the zip, append the new
-     *  id at the end of each of its sections, then ingest. Ingest failure is
-     *  swallowed + retried by reconcile — there is no prior deck to lose here,
-     *  unlike [commitReplacement]. */
+    /** Post-lock outcome of [commitFreshInstall]'s registry decision. */
+    private sealed interface FreshCommit {
+        object Failed : FreshCommit
+        data class Done(
+            val dictionary: YomitanDictionary,
+            /** Superseded outdated entry's id (differs from the new id), to
+             *  purge after the lock; null on a plain fresh install. */
+            val supersededId: String?,
+        ) : FreshCommit
+    }
+
+    /** Fresh import, prove-then-commit: ingest from [temp] FIRST, then write
+     *  index.json + the registry entry. With no retained source, an ingest
+     *  failure after a registry commit would be unretryable — a registry entry
+     *  must never exist without its rows (rows without an entry are cleaned by
+     *  reconcile's orphan purge). Same-title handling: a HEALTHY existing
+     *  entry refuses as [YomitanImportResult.Duplicate]; an OUTDATED one is
+     *  superseded (the tap-to-reimport heal), carrying the user's
+     *  alias/accent/autoUpdate and priority slot. Matching is by EXACT title,
+     *  so date-stamped titles (Jitendex) only heal when re-importing the SAME
+     *  release — a newer release lands as a new entry and the stale warned
+     *  row is deleted by hand (see [importCollectionDump]'s limitation note). */
     private suspend fun commitFreshInstall(
         ctx: Context,
         temp: File,
         id: String,
         parsed: ParsedDictionary,
     ): YomitanImportResult {
-        val dictionary = mutex.withLock {
+        // Decision (short lock): duplicate / supersede / fresh.
+        val existing = mutex.withLock {
             val registry = readRegistry(ctx) ?: return YomitanImportResult.IoError
-            registry.dictionaries.firstOrNull { it.title == parsed.title }?.let {
-                return YomitanImportResult.Duplicate(it.title)
-            }
-            val dictionary = newDictionary(id, parsed, temp.length(), carryFrom = null, revisionOverride = null)
+            registry.dictionaries.firstOrNull { it.title == parsed.title || it.id == id }
+        }
+        if (existing != null && YomitanDataStore.isIngested(ctx, existing.id)) {
+            return YomitanImportResult.Duplicate(existing.title)
+        }
+        val candidate = newDictionary(id, parsed, temp.length(), carryFrom = null, revisionOverride = null)
+        // Prove: rows land (transactionally) before any registry state exists.
+        if (!YomitanDataStore.tryIngest(ctx, candidate, temp)) {
+            return YomitanImportResult.IoError
+        }
+        val commit = mutex.withLock {
+            val registry = readRegistry(ctx) ?: return@withLock FreshCommit.Failed
+            // Re-resolve against the CURRENT registry: the outdated entry may
+            // have been deleted (→ plain fresh install) since the decision.
+            val replacing = registry.dictionaries.firstOrNull { it.title == parsed.title || it.id == id }
+            val committed = candidate.copy(
+                alias = replacing?.alias,
+                accentColor = replacing?.accentColor,
+                autoUpdate = replacing?.autoUpdate ?: true,
+            )
             try {
                 dictionaryDir(ctx, id).mkdirs()
-                PackIntegrity.atomicReplace(temp, zipFile(ctx, id))
-                writeRegistry(ctx, buildRegistryAfterInstall(registry, dictionary, replacing = null))
+                ZipFile(temp).use { z -> extractIndexJson(z) }?.let {
+                    writeIndexJson(dictionaryDir(ctx, id), it)
+                }
+                writeRegistry(ctx, buildRegistryAfterInstall(registry, committed, replacing = replacing))
             } catch (e: Exception) {
                 Log.w(TAG, "install failed", e)
-                dictionaryDir(ctx, id).deleteRecursively()
-                return YomitanImportResult.IoError
+                // Same-id supersede reuses the pre-existing dir — keep it then.
+                if (replacing?.id != id) dictionaryDir(ctx, id).deleteRecursively()
+                return@withLock FreshCommit.Failed
             }
-            dictionary
+            FreshCommit.Done(committed, supersededId = replacing?.id?.takeIf { it != id })
         }
-        YomitanDataStore.onDictImported(ctx, dictionary)
-        return YomitanImportResult.Success(dictionary)
+        return when (commit) {
+            FreshCommit.Failed -> {
+                // Purge the proven rows: no registry entry references them.
+                YomitanDataStore.onDictDeleted(ctx, id)
+                YomitanImportResult.IoError
+            }
+            is FreshCommit.Done -> {
+                commit.supersededId?.let { old ->
+                    dictionaryDir(ctx, old).deleteRecursively()
+                    YomitanDataStore.onDictDeleted(ctx, old)
+                }
+                // tryIngest leaves the capability caches untouched; clear them
+                // so the new rows go live.
+                YomitanDataStore.invalidate()
+                YomitanImportResult.Success(commit.dictionary)
+            }
+        }
+    }
+
+    /**
+     * Imports a Yomitan "Export Dictionary Collection" dump — a bare .json, or
+     * the [zipEntry] of a zipped one. Prove-then-commit like the other paths:
+     * the whole dump streams into [YomitanDataStore.ingestCollectionDump] (one
+     * transaction — cancel/crash rolls everything back), then registry entries
+     * + synthesized index.json files commit under the lock. Same-title policy:
+     * an entry at the identical revision that is still ingested is skipped
+     * (idempotent re-import); anything else (older revision, or outdated) is
+     * superseded, carrying the user's alias/accent/autoUpdate + priority slot.
+     *
+     * KNOWN LIMITATION: supersede matches EXACT titles, and some dictionaries
+     * bake the release date into the title itself ("Jitendex.org
+     * [2026-02-05]"), so a different release imports as a NEW entry and an
+     * outdated old-release row stays warned — the row's delete button is the
+     * designed escape hatch (device-verified 2026-07-21). A fuzzy identity
+     * match was considered and rejected for misfire risk.
+     */
+    private suspend fun importCollectionDump(
+        ctx: Context,
+        temp: File,
+        zipEntry: String?,
+    ): YomitanImportResult = withContext(Dispatchers.IO) {
+        // Disk guard: uncompressed source size ×1 — media (the dump's bulk) is
+        // skipped at ingest and flattened text is a subset of the structured
+        // content, so derived rows land well under the source size.
+        val required = if (zipEntry == null) {
+            temp.length()
+        } else {
+            val entrySize = try {
+                ZipFile(temp).use { z -> z.getEntry(zipEntry)?.size ?: -1L }
+            } catch (e: Exception) {
+                -1L
+            }
+            // Size unknown (streamed zip): assume a high JSON deflate ratio.
+            if (entrySize >= 0) entrySize else temp.length() * 8
+        }
+        val available = rootDir(ctx).apply { mkdirs() }.usableSpace
+        if (available < required) {
+            return@withContext YomitanImportResult.InsufficientSpace(required, available)
+        }
+
+        val existingByTitle = mutex.withLock {
+            (readRegistry(ctx) ?: return@withContext YomitanImportResult.IoError)
+                .dictionaries.associateBy { it.title }
+        }
+        val result = try {
+            YomitanDataStore.ingestCollectionDump(ctx, temp.length(), existingByTitle) {
+                openDumpStream(temp, zipEntry)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: YomitanDataStore.DumpFormatException) {
+            Log.w(TAG, "invalid collection dump: ${e.message}")
+            return@withContext YomitanImportResult.InvalidFormat(e.message)
+        } catch (e: Exception) {
+            // Gson stream errors mean a malformed file; either way the
+            // transaction rolled back. Surface the diagnostic like the zip
+            // validator does.
+            Log.w(TAG, "collection dump import failed", e)
+            return@withContext YomitanImportResult.InvalidFormat(
+                e.message ?: e.javaClass.simpleName,
+            )
+        }
+        if (result.imported.isEmpty() && result.skippedExisting.isEmpty()) {
+            return@withContext YomitanImportResult.InvalidFormat(
+                "No dictionary data found in the export",
+            )
+        }
+
+        // Commit: registry entries + synthesized index.json, superseding
+        // same-title entries. Post-lock, purge superseded ids' rows and dirs.
+        val superseded = mutableListOf<String>()
+        val committed = mutex.withLock {
+            val registry = readRegistry(ctx) ?: return@withLock false
+            var next = registry
+            try {
+                for (dict in result.imported) {
+                    // Re-resolve per dict against the evolving registry.
+                    val replacing = next.dictionaries.firstOrNull {
+                        it.title == dict.title || it.id == dict.id
+                    }
+                    val entry = dict.copy(
+                        alias = replacing?.alias,
+                        accentColor = replacing?.accentColor,
+                        autoUpdate = replacing?.autoUpdate ?: true,
+                    )
+                    dictionaryDir(ctx, dict.id).mkdirs()
+                    writeIndexJson(dictionaryDir(ctx, dict.id), synthesizeIndexJson(entry))
+                    next = buildRegistryAfterInstall(next, entry, replacing = replacing)
+                    replacing?.id?.takeIf { it != dict.id }?.let { superseded += it }
+                }
+                writeRegistry(ctx, next)
+                true
+            } catch (e: Exception) {
+                Log.w(TAG, "collection dump registry commit failed", e)
+                false
+            }
+        }
+        if (!committed) {
+            // Purge the proven rows — no registry entry references them.
+            for (dict in result.imported) YomitanDataStore.onDictDeleted(ctx, dict.id)
+            return@withContext YomitanImportResult.IoError
+        }
+        for (old in superseded) {
+            dictionaryDir(ctx, old).deleteRecursively()
+            YomitanDataStore.onDictDeleted(ctx, old)
+        }
+        // tryIngest-style ingest left the caches untouched; make rows live.
+        YomitanDataStore.invalidate()
+        YomitanImportResult.CollectionImported(
+            imported = result.imported.size,
+            skippedExisting = result.skippedExisting.size,
+        )
+    }
+
+    /** Stream over the dump JSON: the file itself, or a zip entry's stream
+     *  that closes its ZipFile with it. */
+    private fun openDumpStream(temp: File, zipEntry: String?): InputStream {
+        if (zipEntry == null) return temp.inputStream()
+        val zip = ZipFile(temp)
+        val entry = zip.getEntry(zipEntry) ?: run {
+            zip.close()
+            throw YomitanDataStore.DumpFormatException("Zip entry vanished: $zipEntry")
+        }
+        val inner = zip.getInputStream(entry)
+        return object : FilterInputStream(inner) {
+            override fun close() {
+                super.close()
+                zip.close()
+            }
+        }
     }
 
     /** Post-lock outcome of [commitReplacement]'s registry decision, so the
@@ -403,12 +758,15 @@ object YomitanDictionaryStore {
 
     /**
      * Auto-update replacement, structured to NEVER lose the working deck:
-     *  1. stage the new zip beside the old (different content ⇒ different id ⇒
-     *     different dir, so the old deck stays intact);
-     *  2. PROVE the new deck ingests into the shared DB before discarding the old
-     *     — the Yomitan analog of the language-pack validate-before-swap (the
-     *     code differs: packs swap a directory, here the proof is a successful
-     *     [YomitanDataStore.tryIngest]). On failure the old deck is untouched;
+     *  1. stage the new deck's index.json beside the old (different content ⇒
+     *     different id ⇒ different dir, so the old deck stays intact);
+     *  2. PROVE the new deck ingests into the shared DB (from the download
+     *     temp) before discarding the old — the Yomitan analog of the
+     *     language-pack validate-before-swap. On failure the old deck is
+     *     untouched. A same-bytes download normally skips this — EXCEPT when
+     *     the deck is OUTDATED (a schema bump dropped its rows): the heal's
+     *     whole point is restoring rows, so ingest runs even for identical
+     *     bytes;
      *  3. commit atomically against the CURRENT registry — the scan object is
      *     stale (the deck may have been deleted, opted out, or re-edited during
      *     the download + ingest), so re-resolve and abort rather than resurrect
@@ -424,10 +782,10 @@ object YomitanDictionaryStore {
         revisionOverride: String?,
     ): YomitanImportResult {
         val candidate = newDictionary(id, parsed, temp.length(), carryFrom = null, revisionOverride = revisionOverride)
-        // Identical bytes ⇒ same id as the deck being replaced: no new rows to
-        // prove and no swap — handled as a metadata-only refresh in the commit
-        // section below. Otherwise stage + prove the new id first.
+        // Identical bytes ⇒ same id as the deck being replaced: no swap —
+        // handled as a metadata refresh in the commit section below.
         val sameContent = id == replacing.id
+        val needIngest = !sameContent || !YomitanDataStore.isIngested(ctx, id)
         if (!sameContent) {
             // Identity guard (pure, no IO): a new revision must still be the SAME
             // dictionary. If the update URL resolved to a different deck (author
@@ -462,19 +820,22 @@ object YomitanDictionaryStore {
             }
             try {
                 dictionaryDir(ctx, id).mkdirs()
-                PackIntegrity.atomicReplace(temp, zipFile(ctx, id))
+                ZipFile(temp).use { z -> extractIndexJson(z) }?.let {
+                    writeIndexJson(dictionaryDir(ctx, id), it)
+                }
             } catch (e: Exception) {
-                Log.w(TAG, "update: staging new zip failed for ${replacing.id}", e)
+                Log.w(TAG, "update: staging index.json failed for ${replacing.id}", e)
                 dictionaryDir(ctx, id).deleteRecursively()
                 return YomitanImportResult.IoError
             }
-            // Prove-before-swap. tryIngest is transactional, so a failure rolls
-            // back cleanly (no rows, not marked ingested); drop the staged zip
-            // and leave the old deck fully intact and queryable.
-            if (!YomitanDataStore.tryIngest(ctx, candidate)) {
-                dictionaryDir(ctx, id).deleteRecursively()
-                return YomitanImportResult.IoError
-            }
+        }
+        // Prove-before-swap, ingesting from the download temp. tryIngest is
+        // transactional, so a failure rolls back cleanly (no rows, not marked
+        // ingested); drop the staged dir (never the old deck's) and leave the
+        // old deck fully intact and queryable.
+        if (needIngest && !YomitanDataStore.tryIngest(ctx, candidate, temp)) {
+            if (!sameContent) dictionaryDir(ctx, id).deleteRecursively()
+            return YomitanImportResult.IoError
         }
 
         // The locked block makes ONLY the registry decision (pure, non-suspend
@@ -505,7 +866,8 @@ object YomitanDictionaryStore {
                 autoUpdate = current.autoUpdate,
             )
             if (sameContent) {
-                // Metadata-only refresh in place (revision/urls); rows unchanged.
+                // Metadata refresh in place (revision/urls). Rows unchanged for
+                // a healthy deck; a heal (needIngest) already re-proved them.
                 writeRegistry(
                     ctx,
                     registry.copy(
@@ -526,7 +888,25 @@ object YomitanDictionaryStore {
                 }
                 commit.result
             }
-            is ReplaceCommit.Refreshed -> YomitanImportResult.Success(commit.dictionary)
+            is ReplaceCommit.Refreshed -> {
+                if (needIngest) {
+                    // Heal path: the re-ingested rows are invisible until the
+                    // caches clear (tryIngest deliberately leaves them). Also
+                    // persist index.json for a legacy dir that never had one.
+                    try {
+                        if (!indexJsonFile(ctx, id).exists()) {
+                            dictionaryDir(ctx, id).mkdirs()
+                            ZipFile(temp).use { z -> extractIndexJson(z) }?.let {
+                                writeIndexJson(dictionaryDir(ctx, id), it)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "refresh: index.json persist failed for $id", e)
+                    }
+                    YomitanDataStore.invalidate()
+                }
+                YomitanImportResult.Success(commit.dictionary)
+            }
             is ReplaceCommit.Swapped -> {
                 // Old id is out of the registry now; purge its rows + delete its
                 // dir. onDictDeleted clears the caches, making the proven-good
@@ -794,13 +1174,75 @@ object YomitanDictionaryStore {
         }
 
     /**
+     * One-time zip sweep: extract each dictionary's index.json beside its
+     * legacy retained `dict.zip`, delete the zip, and remove orphan per-dict
+     * directories. Returns true when NO retained zip remains, so the caller
+     * can set its one-shot [com.playtranslate.Prefs] flag; a zip whose
+     * dictionary is still un-ingested (a corrupt or pending legacy install) is
+     * kept for reconcile's legacy-heal branch, and the sweep retries next
+     * launch.
+     */
+    suspend fun sweepRetainedZips(ctx: Context): Boolean = withContext(Dispatchers.IO) {
+        // Heal first: [YomitanDataStore.outdatedDictIds] forces a reconcile,
+        // whose legacy branch ingests any un-ingested dict that still has its
+        // zip — so the deletions below never remove data's only source.
+        val outdated = try {
+            YomitanDataStore.outdatedDictIds(ctx)
+        } catch (e: Exception) {
+            Log.w(TAG, "sweep: outdated query failed", e)
+            return@withContext false
+        }
+        mutex.withLock {
+            val registry = readRegistry(ctx) ?: return@withLock false
+            var zipsRemain = false
+            for (dict in registry.dictionaries) {
+                val zip = zipFile(ctx, dict.id)
+                if (!zip.exists()) continue
+                if (dict.id in outdated) {
+                    // Un-ingested: the zip is still the only source. Keep it.
+                    zipsRemain = true
+                    continue
+                }
+                try {
+                    if (!indexJsonFile(ctx, dict.id).exists()) {
+                        ZipFile(zip).use { z -> extractIndexJson(z) }?.let {
+                            writeIndexJson(dictionaryDir(ctx, dict.id), it)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Metadata is best-effort; ingested data trumps keeping a
+                    // corrupt zip around forever.
+                    Log.w(TAG, "sweep: index.json extraction failed for ${dict.id}", e)
+                }
+                if (zip.delete()) {
+                    Log.i(TAG, "sweep: removed retained zip for ${dict.id}")
+                } else {
+                    zipsRemain = true
+                }
+            }
+            // Orphan per-dict DIRECTORIES only — yomitan.sqlite (+ its WAL
+            // sidecars) and registry.json are FILES in the same root and must
+            // never match this filter.
+            val registryIds = registry.dictionaries.mapTo(mutableSetOf()) { it.id }
+            rootDir(ctx).listFiles()?.forEach { child ->
+                if (child.isDirectory && child.name !in registryIds) {
+                    Log.i(TAG, "sweep: removing orphan dir ${child.name}")
+                    child.deleteRecursively()
+                }
+            }
+            !zipsRemain
+        }
+    }
+
+    /**
      * One-time migration: populate [YomitanDictionary.isUpdatable]/[indexUrl]/
      * [downloadUrl] on registry entries imported before those fields existed, by
-     * re-reading each stored zip's index.json (capped, typed). Idempotent and
-     * cheap (a few-KB capped read per deck); the caller gates it behind a
-     * one-time [com.playtranslate.Prefs] flag so it runs once. No cache
-     * invalidation — these fields feed the updater only, never a capability
-     * cache. Other fields (alias/accent/autoUpdate) are preserved.
+     * re-reading each dictionary's index.json (persisted file, or the legacy
+     * zip pre-sweep — capped, typed). Idempotent and cheap (a few-KB capped
+     * read per deck); the caller gates it behind a one-time
+     * [com.playtranslate.Prefs] flag so it runs once. No cache invalidation —
+     * these fields feed the updater only, never a capability cache. Other
+     * fields (alias/accent/autoUpdate) are preserved.
      */
     suspend fun backfillUpdateMetadata(ctx: Context) = withContext(Dispatchers.IO) {
         mutex.withLock {
@@ -832,24 +1274,18 @@ object YomitanDictionaryStore {
         val downloadUrl: String?,
     )
 
-    /** Reads just the update-relevant fields from [id]'s stored zip index.json
-     *  (capped + typed — the same primitive [parseAndValidate] uses, NOT the
-     *  uncapped [readIndexJson] display reader). Null when unreadable. */
+    /** Reads just the update-relevant fields from [id]'s index.json (persisted
+     *  file, or the legacy zip pre-sweep — capped + typed either way). Null
+     *  when unreadable. */
     private fun readUpdateMetadata(ctx: Context, id: String): UpdateMetadata? {
-        val zip = zipFile(ctx, id)
-        if (!zip.exists()) return null
         return try {
-            ZipFile(zip).use { z ->
-                val entry = z.getEntry("index.json") ?: return null
-                val text = z.getInputStream(entry).use { it.readUtf8Capped(MAX_INDEX_JSON_BYTES) }
-                    ?: return null
-                val index = PtJson.lenient.decodeFromString<IndexJson>(text)
-                UpdateMetadata(
-                    isUpdatable = index.isUpdatable,
-                    indexUrl = index.indexUrl?.trim()?.takeIf { it.isNotEmpty() },
-                    downloadUrl = index.downloadUrl?.trim()?.takeIf { it.isNotEmpty() },
-                )
-            }
+            val text = readIndexJsonText(ctx, id) ?: return null
+            val index = PtJson.lenient.decodeFromString<IndexJson>(text)
+            UpdateMetadata(
+                isUpdatable = index.isUpdatable,
+                indexUrl = index.indexUrl?.trim()?.takeIf { it.isNotEmpty() },
+                downloadUrl = index.downloadUrl?.trim()?.takeIf { it.isNotEmpty() },
+            )
         } catch (e: Exception) {
             Log.w(TAG, "backfill: index.json read failed for $id", e)
             null

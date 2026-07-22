@@ -2765,10 +2765,33 @@
         <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> dictionary imported</item>
         <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g> dictionaries imported</item>
     </plurals>
+    <!-- Warning subtitle of the Yomitan hub cell when installed dictionaries lost
+         their data to an app update and need re-importing; %d = how many. -->
+    <plurals name="settings_yomitan_outdated_summary">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> dictionary needs re-importing</item>
+        <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g> dictionaries need re-importing</item>
+    </plurals>
 
     <!-- YOMITAN — dictionary import page (Settings → Configure → Yomitan). -->
     <!-- Explainer paragraph at the top of the Yomitan page; also the empty state. -->
-    <string name="yomitan_page_description">Yomitan dictionaries are community-created dictionary files used by the Yomitan browser extension. Features include additional dictionaries, frequency data, and pitch accent. Import a dictionary (.zip) with the + button, and PlayTranslate will integrate it seamlessly throughout the app.</string>
+    <string name="yomitan_page_description">Yomitan dictionaries are community-created dictionary files used by the Yomitan browser extension. Features include additional dictionaries, frequency data, and pitch accent. Import a dictionary (.zip) or a Yomitan dictionary collection export (.json) with the + button, and PlayTranslate will integrate it seamlessly throughout the app.</string>
+    <!-- Warning subtitle on a dictionary row whose data was lost to an app update. -->
+    <string name="yomitan_outdated_label">Needs re-importing after an app update. Tap to re-import its file.</string>
+    <!-- Alert title after a Yomitan collection export imported at least one dictionary. -->
+    <string name="yomitan_collection_imported_title">Collection imported</string>
+    <!-- Alert title when a collection export contained nothing new to import. -->
+    <string name="yomitan_collection_none_title">Nothing new to import</string>
+    <!-- Alert line: how many dictionaries a collection export added; %d = how many. -->
+    <plurals name="yomitan_collection_imported_count">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> dictionary imported</item>
+        <item quantity="other"><xliff:g id="count" example="4">%d</xliff:g> dictionaries imported</item>
+    </plurals>
+    <!-- Alert line: how many of the export's dictionaries were already installed
+         at the same version; %d = how many. -->
+    <plurals name="yomitan_collection_skipped_count">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> dictionary was already up to date</item>
+        <item quantity="other"><xliff:g id="count" example="2">%d</xliff:g> dictionaries were already up to date</item>
+    </plurals>
     <!-- Toolbar "+" button on the Yomitan page (icon-only; this is its a11y label). -->
     <string name="yomitan_import_action">Import dictionary</string>
     <!-- Group header above imported term dictionaries on the Yomitan page. -->

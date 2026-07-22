@@ -106,13 +106,23 @@ object YomitanUpdater {
      * is discarded and the cycle bails — the next launch re-checks and
      * re-downloads (idempotent), so no in-progress translation session is ever
      * disrupted and no durable staged state is needed.
+     *
+     * [force] (the auto-heal pass) skips ONLY the revision-inequality check —
+     * an outdated deck needs its rows back even at the same revision. The
+     * apply path detects the missing rows itself and re-ingests regardless of
+     * byte identity.
      */
-    suspend fun updateOne(ctx: Context, dict: YomitanDictionary, isBusy: () -> Boolean): Boolean {
+    suspend fun updateOne(
+        ctx: Context,
+        dict: YomitanDictionary,
+        isBusy: () -> Boolean,
+        force: Boolean = false,
+    ): Boolean {
         val indexUrl = dict.indexUrl
         if (!dict.isUpdatable || indexUrl == null) return false
 
         val remote = fetchRemoteIndex(indexUrl) ?: return false
-        if (!shouldUpdate(dict.revision, remote.revision)) return false
+        if (!force && !shouldUpdate(dict.revision, remote.revision)) return false
 
         val downloadUrl = remote.downloadUrl?.trim()?.takeUnless { it.isEmpty() }
             ?: dict.downloadUrl

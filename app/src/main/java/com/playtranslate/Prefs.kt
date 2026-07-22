@@ -1334,6 +1334,20 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_YOMITAN_UPDATE_BACKFILL_DONE, false)
         set(v) = sp.edit { putBoolean(KEY_YOMITAN_UPDATE_BACKFILL_DONE, v) }
 
+    /** Whether the one-time sweep of retained Yomitan dictionary zips
+     *  (extract index.json, delete dict.zip, remove orphan dirs) has fully
+     *  completed. Left false while any zip remains so the sweep retries. */
+    var yomitanZipSweepDone: Boolean
+        get() = sp.getBoolean(KEY_YOMITAN_ZIP_SWEEP_DONE, false)
+        set(v) = sp.edit { putBoolean(KEY_YOMITAN_ZIP_SWEEP_DONE, v) }
+
+    /** Timestamp (ms) of the most recent Yomitan outdated-dictionary heal
+     *  check. Short-debounced (~15 min, unlike the 24h update scan) so a
+     *  schema bump heals on the first online resume, not a day later. */
+    var lastYomitanHealAttemptMs: Long
+        get() = sp.getLong(KEY_LAST_YOMITAN_HEAL_ATTEMPT, 0L)
+        set(v) = sp.edit { putLong(KEY_LAST_YOMITAN_HEAL_ATTEMPT, v) }
+
     /** Tag (e.g. "v1.2.0") the user explicitly skipped; suppresses re-prompting
      *  until a newer tag is published. */
     var updateCheckSkippedTag: String
@@ -1548,6 +1562,8 @@ class Prefs internal constructor(
         private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"
         private const val KEY_LAST_YOMITAN_UPDATE_CHECK    = "last_yomitan_update_check"
         private const val KEY_YOMITAN_UPDATE_BACKFILL_DONE = "yomitan_update_backfill_done"
+        private const val KEY_YOMITAN_ZIP_SWEEP_DONE       = "yomitan_zip_sweep_done"
+        private const val KEY_LAST_YOMITAN_HEAL_ATTEMPT    = "last_yomitan_heal_attempt"
         private const val KEY_UPDATE_SKIP_TAG              = "update_skip_tag"
         private const val KEY_UPDATE_DOWNLOADED_TAG        = "update_downloaded_tag"
         private const val KEY_TARGET_PACK_MIGRATION_DISMISSED = "target_pack_migration_dismissed"

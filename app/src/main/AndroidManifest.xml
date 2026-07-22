@@ -186,7 +186,7 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
-        <!-- Dictionary lookup screen, launched from Settings → Debug (debug builds). -->
+        <!-- Dictionary lookup screen, launched from Settings → Tools. -->
         <activity
             android:name=".ui.DictionaryLookupActivity"
             android:exported="false"
@@ -283,7 +283,7 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Theme.PlayTranslate" />
 
-        <!-- Yomitan dictionary import sub-page (debug builds only), launched from Settings → Configure. -->
+        <!-- Yomitan dictionary import sub-page, launched from Settings → Configure. -->
         <activity
             android:name=".ui.YomitanSettingsActivity"
             android:exported="false"

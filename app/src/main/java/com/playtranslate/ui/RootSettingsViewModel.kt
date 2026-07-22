@@ -23,6 +23,7 @@ import com.playtranslate.translation.TranslationBackend
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.tts.TtsEngine
 import com.playtranslate.tts.TtsVoiceLabels
+import com.playtranslate.yomitan.YomitanDataStore
 import com.playtranslate.yomitan.YomitanDictionaryStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -137,6 +138,9 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
          *  dictionary count otherwise. Null until the first [refresh]
          *  resolves it (subtitle hidden). */
         val yomitanSummary: String? = null,
+        /** Installed Yomitan dictionaries with no ingested rows (post-schema-
+         *  bump). Non-zero swaps the cell digest for the warning treatment. */
+        val yomitanOutdatedCount: Int = 0,
     )
 
     private val prefs = Prefs(app)
@@ -191,8 +195,9 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             val count = YomitanDictionaryStore.load(getApplication()).dictionaries.size
+            val outdated = YomitanDataStore.outdatedDictIds(getApplication()).size
             val summary = yomitanDigest(count)
-            _state.update { it.copy(yomitanSummary = summary) }
+            _state.update { it.copy(yomitanSummary = summary, yomitanOutdatedCount = outdated) }
         }
     }
 

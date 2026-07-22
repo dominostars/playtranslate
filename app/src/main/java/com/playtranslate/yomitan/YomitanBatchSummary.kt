@@ -45,6 +45,13 @@ internal fun summarizeBatch(
     for ((label, result) in labeled) {
         when (result) {
             is YomitanImportResult.Success -> imported++
+            // The tally's unit is FILES ("N of M imported"), so a collection
+            // dump counts as one imported file when it added anything; a dump
+            // whose dictionaries were all already installed groups with the
+            // duplicates (labeled by its file name). The dump's own dictionary
+            // counts surface through the single-file alert instead.
+            is YomitanImportResult.CollectionImported ->
+                if (result.imported > 0) imported++ else duplicates += label
             is YomitanImportResult.Duplicate -> duplicates += label
             is YomitanImportResult.InvalidFormat -> invalid += label
             is YomitanImportResult.InsufficientSpace -> noSpace += label

@@ -2,8 +2,11 @@ package com.playtranslate.yomitan
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteStatement
 import androidx.core.database.sqlite.transaction
 import android.util.Log
+import com.google.gson.JsonElement
+import com.google.gson.JsonParser
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.playtranslate.dictionary.Deinflector
@@ -11,12 +14,18 @@ import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.ImportedKanji
 import com.playtranslate.model.ImportedSenseGroup
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.InputStream
 import java.io.InputStreamReader
+import java.io.StringReader
+import java.security.MessageDigest
 import java.util.zip.ZipFile
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.coroutineContext
 
 /**
  * App-wide read facade over the runtime data derived from imported Yomitan
@@ -32,21 +41,28 @@ import java.util.zip.ZipFile
  * method HERE — never a new store class with its own lifecycle.
  *
  * Storage: one SQLite DB (`noBackupFilesDir/yomitan/yomitan.sqlite`) holding
- * every derived table, ingested from the zips [YomitanDictionaryStore] keeps
- * whole. The DB is disposable — it is rebuilt from the zips whenever the
- * schema version bumps or the registry and `ingested_dicts` disagree
- * ([reconcile]). Conflicts between dictionaries resolve by the per-section
- * priority order the user set on the Yomitan settings page.
+ * every derived table, ingested at import time from the source file the
+ * importer hands over (a temp zip or a collection dump — nothing is retained
+ * afterwards; [YomitanDictionaryStore] keeps only each dictionary's
+ * index.json). The DB is therefore the ONLY copy of a dictionary's data: on a
+ * schema-version bump the tables drop and every registry entry with no
+ * re-ingestable source becomes "outdated" ([outdatedDictIds]) until the user
+ * re-imports it (or the auto-updater re-downloads a URL-bearing deck).
+ * Conflicts between dictionaries resolve by the per-section priority order
+ * the user set on the Yomitan settings page.
  */
 object YomitanDataStore {
 
     private const val TAG = "YomitanData"
 
-    /** Bump to force a drop-and-reingest of all derived tables on next use.
-     *  Flattening-rule changes need a bump too — flattened text is baked
-     *  into the term rows at ingest. v7: term ingest now gates the JA-only
-     *  headword-echo strip on source language, so non-JA dicts re-ingest with
-     *  their leading-headword text preserved. */
+    /** Bump to drop all derived tables on next use. Flattening-rule changes
+     *  need a bump too — flattened text is baked into the term rows at
+     *  ingest. BUMPING IS EXPENSIVE FOR USERS: source zips are not retained,
+     *  so every installed dictionary goes "outdated" (warning rows in
+     *  settings) until the user re-imports it or the auto-updater re-downloads
+     *  a URL-bearing deck. v7: term ingest gates the JA-only headword-echo
+     *  strip on source language, so non-JA dicts keep their leading-headword
+     *  text. */
     private const val SCHEMA_VERSION = 7
 
     private val TERM_BANK = Regex("""term_bank_\d+\.json""")
@@ -467,43 +483,21 @@ object YomitanDataStore {
 
     // ── Lifecycle hooks (called by YomitanDictionaryStore) ──────────────
 
-    /** Eagerly ingests a freshly imported dictionary so its data is queryable
-     *  before the first lookup. Ingest failures are logged, not surfaced —
-     *  [reconcile] retries on next use. */
-    suspend fun onDictImported(ctx: Context, dictionary: YomitanDictionary) =
-        withContext(Dispatchers.IO) {
-            mutex.withLock {
-                try {
-                    ingestLocked(ctx, openDb(ctx), dictionary)
-                } catch (e: Exception) {
-                    Log.w(TAG, "eager ingest failed for ${dictionary.id}", e)
-                } finally {
-                    // The caches are REGISTRY-derived and the registry changed
-                    // the moment the import committed — stale regardless of
-                    // ingest outcome. Unconditional, matching onDictDeleted;
-                    // leaving it inside the try would freeze a pre-import
-                    // "no pitch installed" gate until process restart. Under
-                    // the lock, so ordering vs. the projection is irrelevant.
-                    registrySnapshot = null
-                    caches.clear()
-                }
-            }
-        }
-
-    /** Ingests [dictionary]'s derived rows and REPORTS success, WITHOUT touching
-     *  the capability caches. The auto-update replace path uses this to PROVE the
-     *  new deck is queryable before the registry swap purges the old one (see
+    /** Ingests [dictionary]'s derived rows from [source] and REPORTS success,
+     *  WITHOUT touching the capability caches. The import/update paths use this
+     *  to PROVE the deck is queryable before committing its registry entry (see
      *  [com.playtranslate.yomitan.YomitanDictionaryStore.applyUpdate]).
      *  [ingestLocked] is transactional, so a failure rolls back cleanly (no
      *  partial rows, not marked ingested). Caches are deliberately NOT cleared
      *  here: the not-yet-registered new id would otherwise look like an orphan to
-     *  a [reconcileLocked] triggered between this and the swap; the swap's
-     *  onDictDeleted(oldId) clears them once the registry is consistent. */
-    suspend fun tryIngest(ctx: Context, dictionary: YomitanDictionary): Boolean =
+     *  a [reconcileLocked] triggered between this and the registry commit; the
+     *  committer clears them ([invalidate] / onDictDeleted) once the registry is
+     *  consistent. */
+    suspend fun tryIngest(ctx: Context, dictionary: YomitanDictionary, source: File): Boolean =
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 try {
-                    ingestLocked(ctx, openDb(ctx), dictionary)
+                    ingestLocked(openDb(ctx), dictionary, source)
                     true
                 } catch (e: Exception) {
                     Log.w(TAG, "ingest failed for ${dictionary.id}", e)
@@ -543,7 +537,58 @@ object YomitanDataStore {
         caches.clear()
     }
 
+    /**
+     * Registry dictionaries with NO ingested rows — after a schema bump (or an
+     * interrupted install) these contribute nothing to lookups and need a
+     * re-import (or an auto-updater re-download) to come back. Forces a
+     * reconcile first, so any dictionary that still has a re-ingestable legacy
+     * zip heals before being reported. Feeds the settings warning UI, the
+     * one-time zip sweep, and the auto-heal pass.
+     */
+    suspend fun outdatedDictIds(ctx: Context): Set<String> = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val database = openDb(ctx)
+            val registry = initLocked(ctx, database)
+            val ingested = mutableSetOf<String>()
+            database.rawQuery("SELECT dict_id FROM ingested_dicts", null).use { c ->
+                while (c.moveToNext()) ingested += c.getString(0)
+            }
+            registry.dictionaries.mapTo(mutableSetOf()) { it.id } - ingested
+        }
+    }
+
+    /** Whether dictionary [id] currently has ingested rows (is NOT outdated). */
+    suspend fun isIngested(ctx: Context, id: String): Boolean = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            openDb(ctx).rawQuery(
+                "SELECT 1 FROM ingested_dicts WHERE dict_id = ?", arrayOf(id),
+            ).use { it.moveToFirst() }
+        }
+    }
+
     // ── Init / reconcile ────────────────────────────────────────────────
+
+    /** Language-INDEPENDENT init, under [mutex]: registry load + reconcile +
+     *  the per-dict on/kun split aggregate, run ONCE per init cycle and shared
+     *  by [ready] and [outdatedDictIds]. Returns a local so a concurrent
+     *  invalidate() nulling the field mid-flight can't NPE the caller. */
+    private suspend fun initLocked(ctx: Context, database: SQLiteDatabase): YomitanRegistry =
+        registrySnapshot ?: run {
+            val loaded = YomitanDictionaryStore.load(ctx)
+            reconcileLocked(ctx, database, loaded)
+            // Per-dict on/kun convention check (post-reconcile, so rows
+            // are settled): a dict that never fills onyomi ships a
+            // combined readings list, not the split.
+            splitsByDict = buildMap {
+                database.rawQuery(
+                    "SELECT dict_id, MAX(CASE WHEN onyomi != '' THEN 1 ELSE 0 END) " +
+                        "FROM kanji GROUP BY dict_id",
+                    null,
+                ).use { c -> while (c.moveToNext()) put(c.getString(0), c.getInt(1) == 1) }
+            }
+            registrySnapshot = loaded
+            loaded
+        }
 
     private suspend fun ready(ctx: Context, lang: String): Pair<SQLiteDatabase, CapabilityCache> {
         // Canonicalize so a stray "zh-Hant"/"JA" can't create a redundant
@@ -553,26 +598,7 @@ object YomitanDataStore {
         caches[key]?.let { caps -> db?.let { return it to caps } }
         return mutex.withLock {
             val database = openDb(ctx)
-            // Language-INDEPENDENT init: registry load + reconcile + the
-            // per-dict on/kun split aggregate run ONCE per init cycle, not per
-            // language. Captured into a local so a concurrent invalidate()
-            // nulling the field mid-flight can't NPE the projection below.
-            val registry = registrySnapshot ?: run {
-                val loaded = YomitanDictionaryStore.load(ctx)
-                reconcileLocked(ctx, database, loaded)
-                // Per-dict on/kun convention check (post-reconcile, so rows
-                // are settled): a dict that never fills onyomi ships a
-                // combined readings list, not the split.
-                splitsByDict = buildMap {
-                    database.rawQuery(
-                        "SELECT dict_id, MAX(CASE WHEN onyomi != '' THEN 1 ELSE 0 END) " +
-                            "FROM kanji GROUP BY dict_id",
-                        null,
-                    ).use { c -> while (c.moveToNext()) put(c.getString(0), c.getInt(1) == 1) }
-                }
-                registrySnapshot = loaded
-                loaded
-            }
+            val registry = initLocked(ctx, database)
             val caps = caches.getOrPut(key) {
                 // Queries gate on source-language match HERE, not in the
                 // registry: the settings page manages all imports regardless
@@ -606,8 +632,10 @@ object YomitanDataStore {
         val file = File(YomitanDictionaryStore.rootDir(ctx), "yomitan.sqlite")
         file.parentFile?.mkdirs()
         val database = SQLiteDatabase.openOrCreateDatabase(file, null)
-        // Derived data: on any schema change, nuke and let reconcile re-ingest
-        // from the stored zips rather than migrating.
+        // Derived data: on any schema change, nuke rather than migrate. With no
+        // retained source, the affected dictionaries become "outdated" (warning
+        // rows in settings) until re-imported / re-downloaded — see
+        // [SCHEMA_VERSION] before bumping.
         val version = database.rawQuery("PRAGMA user_version", null).use { c ->
             c.moveToFirst(); c.getInt(0)
         }
@@ -679,8 +707,11 @@ object YomitanDataStore {
         return database
     }
 
-    /** Ingests registry dicts missing from `ingested_dicts`; purges rows of
-     *  dicts no longer in the registry. */
+    /** Purges rows of dicts no longer in the registry, and — LEGACY-ONLY —
+     *  ingests registry dicts missing from `ingested_dicts` when their
+     *  pre-sweep retained zip still exists on disk. Post-sweep there is no
+     *  local source: such dicts stay un-ingested, which IS the "outdated"
+     *  state [outdatedDictIds] reports and the settings UI surfaces. */
     private fun reconcileLocked(ctx: Context, database: SQLiteDatabase, registry: YomitanRegistry) {
         val ingested = mutableSetOf<String>()
         database.rawQuery("SELECT dict_id FROM ingested_dicts", null).use { c ->
@@ -693,8 +724,10 @@ object YomitanDataStore {
         }
         for (dict in registry.dictionaries) {
             if (dict.id in ingested) continue
+            val legacyZip = YomitanDictionaryStore.zipFile(ctx, dict.id)
+            if (!legacyZip.exists()) continue // outdated — no source to heal from
             try {
-                ingestLocked(ctx, database, dict)
+                ingestLocked(database, dict, legacyZip)
             } catch (e: Exception) {
                 // Leave un-marked so the next reconcile retries; the
                 // transaction in ingestLocked keeps the DB consistent.
@@ -716,10 +749,11 @@ object YomitanDataStore {
 
     // ── Ingestors (one per data type) ───────────────────────────────────
 
-    /** Ingests everything this store derives from [dictionary], atomically:
-     *  delete-then-insert inside one transaction, marking `ingested_dicts`
-     *  last, so a mid-ingest crash can't half-apply or double-apply. */
-    private fun ingestLocked(ctx: Context, database: SQLiteDatabase, dictionary: YomitanDictionary) {
+    /** Ingests everything this store derives from [dictionary]'s [source] zip,
+     *  atomically: delete-then-insert inside one transaction, marking
+     *  `ingested_dicts` last, so a mid-ingest crash can't half-apply or
+     *  double-apply. */
+    private fun ingestLocked(database: SQLiteDatabase, dictionary: YomitanDictionary, source: File) {
         database.transaction {
             database.delete("pitch", "dict_id = ?", arrayOf(dictionary.id))
             database.delete("frequency", "dict_id = ?", arrayOf(dictionary.id))
@@ -727,16 +761,16 @@ object YomitanDataStore {
             database.delete("kanji_frequency", "dict_id = ?", arrayOf(dictionary.id))
             database.delete("term", "dict_id = ?", arrayOf(dictionary.id))
             if (YomitanCategory.PITCH_ACCENT in dictionary.categories) {
-                ingestPitch(ctx, database, dictionary.id)
+                ingestPitch(database, dictionary.id, source)
             }
             if (YomitanCategory.FREQUENCY in dictionary.categories) {
-                ingestFreq(ctx, database, dictionary.id)
+                ingestFreq(database, dictionary.id, source)
             }
             if (YomitanCategory.KANJI in dictionary.categories) {
-                ingestKanji(ctx, database, dictionary.id)
+                ingestKanji(database, dictionary.id, source)
             }
             if (YomitanCategory.KANJI_FREQUENCY in dictionary.categories) {
-                ingestKanjiFreq(ctx, database, dictionary.id)
+                ingestKanjiFreq(database, dictionary.id, source)
             }
             if (YomitanCategory.TERMS in dictionary.categories) {
                 // The JA-tuned headword-echo strip runs for dicts that match
@@ -745,7 +779,7 @@ object YomitanDataStore {
                 // the headword, a near-no-op on other scripts, so stripping an
                 // undeclared deck is safe even when it isn't actually Japanese.
                 ingestTerms(
-                    ctx, database, dictionary.id,
+                    database, dictionary.id, source,
                     applyHeadwordEchoStrip = dictionary.matchesSourceLanguage("ja"),
                 )
             }
@@ -756,11 +790,10 @@ object YomitanDataStore {
         }
     }
 
-    /** Streams `term_meta_bank_*.json` mode-`pitch` entries from the stored
-     *  zip into the `pitch` table. Integer downstep positions only — the
+    /** Streams `term_meta_bank_*.json` mode-`pitch` entries from the [zipFile]
+     *  source into the `pitch` table. Integer downstep positions only — the
      *  schema's H/L string patterns are skipped (logged once per file). */
-    private fun ingestPitch(ctx: Context, database: SQLiteDatabase, dictId: String) {
-        val zipFile = YomitanDictionaryStore.zipFile(ctx, dictId)
+    private fun ingestPitch(database: SQLiteDatabase, dictId: String, zipFile: File) {
         val insert = database.compileStatement(
             "INSERT INTO pitch (dict_id, term, reading, variant, downstep) VALUES (?, ?, ?, ?, ?)"
         )
@@ -836,12 +869,11 @@ object YomitanDataStore {
         Log.i(TAG, "ingested $rows pitch rows for $dictId")
     }
 
-    /** Streams `term_meta_bank_*.json` mode-`freq` entries from the stored
-     *  zip into the `frequency` table. The data element's four schema shapes
+    /** Streams `term_meta_bank_*.json` mode-`freq` entries from the [zipFile]
+     *  source into the `frequency` table. The data element's four schema shapes
      *  are handled by [FreqData]; unparseable entries are skipped (logged
      *  once per file). */
-    private fun ingestFreq(ctx: Context, database: SQLiteDatabase, dictId: String) {
-        val zipFile = YomitanDictionaryStore.zipFile(ctx, dictId)
+    private fun ingestFreq(database: SQLiteDatabase, dictId: String, zipFile: File) {
         val insert = database.compileStatement(
             "INSERT INTO frequency (dict_id, term, reading, display, value) VALUES (?, ?, ?, ?, ?)"
         )
@@ -891,13 +923,12 @@ object YomitanDataStore {
         Log.i(TAG, "ingested $rows frequency rows for $dictId")
     }
 
-    /** Streams `kanji_bank_*.json` entries from the stored zip into the
+    /** Streams `kanji_bank_*.json` entries from the [zipFile] source into the
      *  `kanji` table. Entries are fixed-position 6-element arrays
      *  [char, onyomi, kunyomi, tags, meanings[], stats{}] — tags and stats
      *  are discarded (stats keys are dictionary-specific; the built-in
      *  KANJIDIC2 stays the source for numeric stats). */
-    private fun ingestKanji(ctx: Context, database: SQLiteDatabase, dictId: String) {
-        val zipFile = YomitanDictionaryStore.zipFile(ctx, dictId)
+    private fun ingestKanji(database: SQLiteDatabase, dictId: String, zipFile: File) {
         val insert = database.compileStatement(
             "INSERT INTO kanji (dict_id, character, onyomi, kunyomi, meanings) VALUES (?, ?, ?, ?, ?)"
         )
@@ -960,8 +991,7 @@ object YomitanDataStore {
      *  shapes minus the reading wrapper, so [FreqData] handles it (any
      *  stray reading qualifier is ignored — kanji have no reading
      *  dimension). */
-    private fun ingestKanjiFreq(ctx: Context, database: SQLiteDatabase, dictId: String) {
-        val zipFile = YomitanDictionaryStore.zipFile(ctx, dictId)
+    private fun ingestKanjiFreq(database: SQLiteDatabase, dictId: String, zipFile: File) {
         val insert = database.compileStatement(
             "INSERT INTO kanji_frequency (dict_id, character, display, value) VALUES (?, ?, ?, ?)"
         )
@@ -1017,12 +1047,11 @@ object YomitanDataStore {
      *  aborts the dictionary (which would loop reconcile retries forever
      *  on a dict that can't ever succeed). */
     private fun ingestTerms(
-        ctx: Context,
         database: SQLiteDatabase,
         dictId: String,
+        zipFile: File,
         applyHeadwordEchoStrip: Boolean,
     ) {
-        val zipFile = YomitanDictionaryStore.zipFile(ctx, dictId)
         val insert = database.compileStatement(
             "INSERT INTO term (dict_id, term, reading, score, defs, pos) VALUES (?, ?, ?, ?, ?, ?)"
         )
@@ -1129,4 +1158,698 @@ object YomitanDataStore {
         } else {
             rawDefs.filter { it.isNotBlank() }
         }
+
+    // ── Collection-dump ingest (Yomitan "Export Dictionary Collection") ──
+
+    /** Thrown when the stream is not a readable Yomitan collection export; the
+     *  importer maps it to [YomitanImportResult.InvalidFormat] with the message
+     *  as the diagnostic detail line. */
+    class DumpFormatException(message: String) : Exception(message)
+
+    /** Outcome of [ingestCollectionDump]: [imported] entries have their rows
+     *  ingested + marked and await registry commit by the caller;
+     *  [skippedExisting] titles were left untouched because an identical
+     *  revision is already installed and ingested. */
+    class DumpIngestResult(
+        val imported: List<YomitanDictionary>,
+        val skippedExisting: List<String>,
+    )
+
+    /**
+     * Ingests every dictionary in a Yomitan Dexie collection dump ("Export
+     * Dictionary Collection") streamed from [open]. Dexie dump layout:
+     * `{formatName: "dexie", data: {databaseName: "dict", data: [{tableName,
+     * rows: [...]}, ...]}}` with the `dictionaries` roster streaming first,
+     * then kanji/kanjiMeta/media/tagMeta/termMeta/terms. Rows are named-field
+     * objects carrying the same values as the corresponding bank entries (the
+     * `glossary` value is byte-identical structured content), each tagged with
+     * its `dictionary` title for routing; media (dropped at ingest anyway) and
+     * styles stream past untouched.
+     *
+     * All inserts run in ONE transaction: cancel or crash rolls everything
+     * back (no rows, nothing marked ingested, and the caller never wrote
+     * registry entries — reconcile purges any orphans from a post-commit
+     * crash). Like [tryIngest], caches are deliberately NOT cleared here; the
+     * caller invalidates after its registry commit. Throws
+     * [DumpFormatException] on structural problems; Gson parse errors
+     * propagate for the caller to map.
+     *
+     * [existingByTitle] is the current registry keyed by title: a dump dict
+     * whose derived id matches an already-ingested same-title entry is skipped
+     * whole (idempotent re-import); everything else is (re)ingested and
+     * returned for the caller's supersede-or-append registry commit.
+     */
+    suspend fun ingestCollectionDump(
+        ctx: Context,
+        sourceBytes: Long,
+        existingByTitle: Map<String, YomitanDictionary>,
+        open: () -> InputStream,
+    ): DumpIngestResult = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val database = openDb(ctx)
+            val cc = coroutineContext
+            val ingested = mutableSetOf<String>()
+            database.rawQuery("SELECT dict_id FROM ingested_dicts", null).use { c ->
+                while (c.moveToNext()) ingested += c.getString(0)
+            }
+            val dicts: LinkedHashMap<String, DumpDict>
+            open().use { input ->
+                JsonReader(InputStreamReader(input.buffered(), Charsets.UTF_8)).use { reader ->
+                    dicts = streamDump(reader, database, existingByTitle, ingested, cc)
+                }
+            }
+            val now = System.currentTimeMillis()
+            DumpIngestResult(
+                imported = dicts.values
+                    .filter { !it.skip && it.categories.isNotEmpty() }
+                    .map { d ->
+                        YomitanDictionary(
+                            id = d.id,
+                            title = d.title,
+                            revision = d.revision,
+                            description = d.description,
+                            author = d.author,
+                            format = d.format,
+                            categories = YomitanCategory.entries.filter { it in d.categories },
+                            sizeBytes = sourceBytes,
+                            importedAtMs = now,
+                            sourceLanguage = d.sourceLanguage,
+                            targetLanguage = d.targetLanguage,
+                            frequencyMode = d.frequencyMode,
+                            // No source URL travels with a dump — such dicts sit
+                            // outside the auto-updater (and auto-heal).
+                            isUpdatable = false,
+                        )
+                    },
+                skippedExisting = dicts.values.filter { it.skip }.map { it.title },
+            )
+        }
+    }
+
+    /** One dump dictionary being accumulated: roster metadata + the categories
+     *  and POS-tag set its streamed rows establish. [skip] = an identical
+     *  revision is already installed and ingested; its rows stream past. */
+    private class DumpDict(
+        val id: String,
+        val title: String,
+        val revision: String?,
+        val format: Int,
+        val description: String?,
+        val author: String?,
+        val sourceLanguage: String?,
+        val targetLanguage: String?,
+        val frequencyMode: String?,
+        val skip: Boolean,
+    ) {
+        val categories = mutableSetOf<YomitanCategory>()
+        val posTags = mutableSetOf<String>()
+
+        /** Same gate as [ingestLocked]'s term pass: declared-JA plus
+         *  undeclared (wildcard) decks get the headword-echo strip. */
+        val echoStrip: Boolean
+            get() {
+                val declared = sourceLanguage?.split('-', '_')?.first() ?: return true
+                return declared.equals("ja", ignoreCase = true)
+            }
+    }
+
+    private class DumpInserts(database: SQLiteDatabase) {
+        val pitch: SQLiteStatement = database.compileStatement(
+            "INSERT INTO pitch (dict_id, term, reading, variant, downstep) VALUES (?, ?, ?, ?, ?)"
+        )
+        val freq: SQLiteStatement = database.compileStatement(
+            "INSERT INTO frequency (dict_id, term, reading, display, value) VALUES (?, ?, ?, ?, ?)"
+        )
+        val kanji: SQLiteStatement = database.compileStatement(
+            "INSERT INTO kanji (dict_id, character, onyomi, kunyomi, meanings) VALUES (?, ?, ?, ?, ?)"
+        )
+        val kanjiFreq: SQLiteStatement = database.compileStatement(
+            "INSERT INTO kanji_frequency (dict_id, character, display, value) VALUES (?, ?, ?, ?)"
+        )
+        val term: SQLiteStatement = database.compileStatement(
+            "INSERT INTO term (dict_id, term, reading, score, defs, pos) VALUES (?, ?, ?, ?, ?, ?)"
+        )
+    }
+
+    private fun streamDump(
+        reader: JsonReader,
+        database: SQLiteDatabase,
+        existingByTitle: Map<String, YomitanDictionary>,
+        ingested: Set<String>,
+        cc: CoroutineContext,
+    ): LinkedHashMap<String, DumpDict> {
+        var sawDexie = false
+        var dicts: LinkedHashMap<String, DumpDict>? = null
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "formatName" -> sawDexie = stringOrNull(reader) == "dexie"
+                "data" -> {
+                    if (!sawDexie) {
+                        throw DumpFormatException("Not a Dexie database export (formatName is not \"dexie\")")
+                    }
+                    dicts = streamDumpData(reader, database, existingByTitle, ingested, cc)
+                }
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+        return dicts ?: throw DumpFormatException("No data object in the export")
+    }
+
+    private fun streamDumpData(
+        reader: JsonReader,
+        database: SQLiteDatabase,
+        existingByTitle: Map<String, YomitanDictionary>,
+        ingested: Set<String>,
+        cc: CoroutineContext,
+    ): LinkedHashMap<String, DumpDict> {
+        var dicts: LinkedHashMap<String, DumpDict>? = null
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "databaseName" -> {
+                    val name = stringOrNull(reader)
+                    if (name != null && name != "dict") {
+                        throw DumpFormatException(
+                            "Export is of database \"$name\", not Yomitan's dictionary collection"
+                        )
+                    }
+                }
+                "data" -> dicts = streamDumpTables(reader, database, existingByTitle, ingested, cc)
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+        return dicts ?: throw DumpFormatException("No table data in the export")
+    }
+
+    /** The tables array: roster first (establishes ids and skip decisions),
+     *  then ONE transaction over every remaining table's inserts, marking
+     *  `ingested_dicts` last — the dump-wide analog of [ingestLocked]. */
+    private fun streamDumpTables(
+        reader: JsonReader,
+        database: SQLiteDatabase,
+        existingByTitle: Map<String, YomitanDictionary>,
+        ingested: Set<String>,
+        cc: CoroutineContext,
+    ): LinkedHashMap<String, DumpDict> {
+        reader.beginArray()
+        if (!reader.hasNext()) throw DumpFormatException("Export contains no tables")
+        val dicts = readRosterTable(reader, existingByTitle, ingested)
+        if (dicts.isEmpty()) throw DumpFormatException("Export contains no dictionaries")
+        val inserts = DumpInserts(database)
+        database.beginTransaction()
+        try {
+            for (d in dicts.values) {
+                if (d.skip) continue
+                database.delete("pitch", "dict_id = ?", arrayOf(d.id))
+                database.delete("frequency", "dict_id = ?", arrayOf(d.id))
+                database.delete("kanji", "dict_id = ?", arrayOf(d.id))
+                database.delete("kanji_frequency", "dict_id = ?", arrayOf(d.id))
+                database.delete("term", "dict_id = ?", arrayOf(d.id))
+            }
+            while (reader.hasNext()) readDumpTable(reader, dicts, inserts, cc)
+            for (d in dicts.values) {
+                if (d.skip || d.categories.isEmpty()) continue
+                database.execSQL(
+                    "INSERT OR REPLACE INTO ingested_dicts (dict_id) VALUES (?)",
+                    arrayOf(d.id),
+                )
+            }
+            database.setTransactionSuccessful()
+        } finally {
+            database.endTransaction()
+        }
+        reader.endArray()
+        return dicts
+    }
+
+    private fun readRosterTable(
+        reader: JsonReader,
+        existingByTitle: Map<String, YomitanDictionary>,
+        ingested: Set<String>,
+    ): LinkedHashMap<String, DumpDict> {
+        val dicts = LinkedHashMap<String, DumpDict>()
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            throw DumpFormatException("Malformed table list")
+        }
+        reader.beginObject()
+        var tableName: String? = null
+        var sawRows = false
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "tableName" -> tableName = stringOrNull(reader)
+                "rows" -> {
+                    if (tableName != "dictionaries") {
+                        throw DumpFormatException(
+                            "Expected the dictionaries roster first, found table \"$tableName\""
+                        )
+                    }
+                    sawRows = true
+                    if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+                        reader.skipValue()
+                    } else {
+                        reader.beginArray()
+                        while (reader.hasNext()) readRosterRow(reader, dicts, existingByTitle, ingested)
+                        reader.endArray()
+                    }
+                }
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+        if (!sawRows) throw DumpFormatException("Dictionaries roster has no rows")
+        return dicts
+    }
+
+    private fun readRosterRow(
+        reader: JsonReader,
+        dicts: LinkedHashMap<String, DumpDict>,
+        existingByTitle: Map<String, YomitanDictionary>,
+        ingested: Set<String>,
+    ) {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return
+        }
+        val f = RosterFields()
+        readDumpRowObject(reader) { name -> readRosterField(name, reader, f) }
+        val title = f.title?.trim().orEmpty()
+        if (title.isEmpty()) return
+        val revision = f.revision?.trim()?.takeIf { it.isNotEmpty() }
+        val id = dumpDictId(title, revision)
+        val existing = existingByTitle[title]
+        // Same-title duplicates within one dump: last row wins (Yomitan keys
+        // its collection by title, so a dupe means a hand-edited file).
+        dicts[title] = DumpDict(
+            id = id,
+            title = title,
+            revision = revision,
+            format = f.format ?: 3,
+            description = f.description?.trim()?.takeIf { it.isNotEmpty() },
+            author = f.author?.trim()?.takeIf { it.isNotEmpty() },
+            sourceLanguage = f.sourceLanguage?.trim()?.takeIf { it.isNotEmpty() },
+            targetLanguage = f.targetLanguage?.trim()?.takeIf { it.isNotEmpty() },
+            frequencyMode = f.frequencyMode?.trim()?.takeIf { it.isNotEmpty() },
+            skip = existing != null && existing.id == id && id in ingested,
+        )
+    }
+
+    private class RosterFields {
+        var title: String? = null
+        var revision: String? = null
+        var format: Int? = null
+        var description: String? = null
+        var author: String? = null
+        var sourceLanguage: String? = null
+        var targetLanguage: String? = null
+        var frequencyMode: String? = null
+    }
+
+    private fun readRosterField(name: String, reader: JsonReader, f: RosterFields) {
+        when (name) {
+            "title" -> f.title = stringOrNull(reader)
+            "revision" -> f.revision = stringOrNull(reader)
+            "version", "format" -> f.format =
+                if (reader.peek() == JsonToken.NUMBER) reader.nextInt()
+                else { reader.skipValue(); f.format }
+            "description" -> f.description = stringOrNull(reader)
+            "author" -> f.author = stringOrNull(reader)
+            "sourceLanguage" -> f.sourceLanguage = stringOrNull(reader)
+            "targetLanguage" -> f.targetLanguage = stringOrNull(reader)
+            "frequencyMode" -> f.frequencyMode = stringOrNull(reader)
+            else -> reader.skipValue()
+        }
+    }
+
+    /** Content id for a dump-sourced dictionary. There is no zip to hash, so
+     *  the id derives from (title, revision) — stable across re-imports of the
+     *  same export, different across revisions so a newer dump supersedes
+     *  cleanly by title. */
+    private fun dumpDictId(title: String, revision: String?): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest("$title\u0000${revision.orEmpty()}".toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }.take(16)
+    }
+
+    private fun readDumpTable(
+        reader: JsonReader,
+        dicts: LinkedHashMap<String, DumpDict>,
+        inserts: DumpInserts,
+        cc: CoroutineContext,
+    ) {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return
+        }
+        reader.beginObject()
+        var tableName: String? = null
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "tableName" -> tableName = stringOrNull(reader)
+                "rows" -> when (tableName) {
+                    "tagMeta" -> readTagMetaRows(reader, dicts, cc)
+                    "termMeta" -> readTermMetaRows(reader, dicts, inserts, cc)
+                    "terms" -> readTermRows(reader, dicts, inserts, cc)
+                    "kanji" -> readKanjiRows(reader, dicts, inserts, cc)
+                    "kanjiMeta" -> readKanjiMetaRows(reader, dicts, inserts, cc)
+                    // media (base64 blobs — the app drops dictionary media at
+                    // ingest) and unknown tables stream past untouched.
+                    else -> reader.skipValue()
+                }
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+    }
+
+    /** Iterates a table's rows array, invoking [row] with the reader
+     *  positioned at each row object. Cancellation-cooperative — the dump's
+     *  terms table alone can run to a million-plus rows. */
+    private inline fun readDumpRows(reader: JsonReader, cc: CoroutineContext, row: () -> Unit) {
+        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+            reader.skipValue()
+            return
+        }
+        reader.beginArray()
+        var n = 0
+        while (reader.hasNext()) {
+            if (++n % 1024 == 0) cc.ensureActive()
+            if (reader.peek() == JsonToken.BEGIN_OBJECT) row() else reader.skipValue()
+        }
+        reader.endArray()
+    }
+
+    /** Reads one dump row object, dispatching each field name to [field] with
+     *  the reader positioned at its value ([field] MUST consume it). Rows come
+     *  in two shapes: bare objects (tables with a named `++id` primary key —
+     *  terms, media) and Dexie's outbound wrapper
+     *  `{"$": [primaryKey, {fields}], "$types": …}` for tables with hidden
+     *  keys — which in real Yomitan exports is MOST of them (dictionaries,
+     *  tagMeta, termMeta, kanji, kanjiMeta; verified against a real export).
+     *  Both shapes unwrap transparently here; `$types` and other unknown
+     *  outer fields fall through to [field], whose `else` skips them. */
+    private inline fun readDumpRowObject(reader: JsonReader, field: (String) -> Unit) {
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (val name = reader.nextName()) {
+                "$" -> {
+                    if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+                        reader.skipValue()
+                        continue
+                    }
+                    reader.beginArray()
+                    if (reader.hasNext()) reader.skipValue() // primary key
+                    if (reader.hasNext() && reader.peek() == JsonToken.BEGIN_OBJECT) {
+                        reader.beginObject()
+                        while (reader.hasNext()) field(reader.nextName())
+                        reader.endObject()
+                    }
+                    while (reader.hasNext()) reader.skipValue()
+                    reader.endArray()
+                }
+                else -> field(name)
+            }
+        }
+        reader.endObject()
+    }
+
+    private fun readTagMetaRows(
+        reader: JsonReader,
+        dicts: LinkedHashMap<String, DumpDict>,
+        cc: CoroutineContext,
+    ) = readDumpRows(reader, cc) {
+        var name: String? = null
+        var category: String? = null
+        var dictTitle: String? = null
+        readDumpRowObject(reader) { field ->
+            when (field) {
+                "name" -> name = stringOrNull(reader)
+                "category" -> category = stringOrNull(reader)
+                "dictionary" -> dictTitle = stringOrNull(reader)
+                else -> reader.skipValue()
+            }
+        }
+        val tagName = name
+        if (category == "partOfSpeech" && !tagName.isNullOrEmpty()) {
+            dicts[dictTitle]?.takeUnless { it.skip }?.posTags?.add(tagName)
+        }
+    }
+
+    private fun readTermMetaRows(
+        reader: JsonReader,
+        dicts: LinkedHashMap<String, DumpDict>,
+        inserts: DumpInserts,
+        cc: CoroutineContext,
+    ) {
+        var pitchRows = 0
+        var freqRows = 0
+        readDumpRows(reader, cc) {
+            var expression: String? = null
+            var mode: String? = null
+            var data: JsonElement? = null
+            var dictTitle: String? = null
+            readDumpRowObject(reader) { field ->
+                when (field) {
+                    "expression" -> expression = stringOrNull(reader)
+                    "mode" -> mode = stringOrNull(reader)
+                    // Field order in a dump row is not guaranteed and `data`'s
+                    // interpretation depends on `mode`, so buffer the (small)
+                    // element and interpret at row end.
+                    "data" -> data = JsonParser.parseReader(reader)
+                    "dictionary" -> dictTitle = stringOrNull(reader)
+                    else -> reader.skipValue()
+                }
+            }
+            val dict = dicts[dictTitle]
+            val expr = expression
+            if (dict != null && !dict.skip && !expr.isNullOrEmpty()) {
+                when (mode) {
+                    "pitch" -> pitchRows += insertDumpPitch(inserts.pitch, dict, expr, data)
+                    "freq" -> {
+                        val row = data?.let { parseFreqElement(it) }
+                        if (row != null) {
+                            inserts.freq.bindString(1, dict.id)
+                            inserts.freq.bindString(2, expr)
+                            row.reading
+                                ?.let { inserts.freq.bindString(3, Deinflector.katakanaToHiragana(it)) }
+                                ?: inserts.freq.bindNull(3)
+                            inserts.freq.bindString(4, row.display)
+                            row.value?.let { inserts.freq.bindDouble(5, it) } ?: inserts.freq.bindNull(5)
+                            inserts.freq.executeInsert()
+                            dict.categories += YomitanCategory.FREQUENCY
+                            freqRows++
+                        }
+                    }
+                    "ipa" -> dict.categories += YomitanCategory.PRONUNCIATION
+                }
+            }
+        }
+        Log.i(TAG, "dump: ingested $pitchRows pitch + $freqRows frequency rows")
+    }
+
+    /** Pitch data element: `{reading?, pitches: [{position: int|pattern}…]}`.
+     *  Mirrors the zip ingestor — integer downsteps only. Returns the number
+     *  of rows inserted. */
+    private fun insertDumpPitch(
+        stmt: SQLiteStatement,
+        dict: DumpDict,
+        term: String,
+        data: JsonElement?,
+    ): Int {
+        val obj = data?.takeIf { it.isJsonObject }?.asJsonObject ?: return 0
+        val reading = obj.get("reading")
+            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+            ?: term
+        val pitches = obj.get("pitches")?.takeIf { it.isJsonArray }?.asJsonArray ?: return 0
+        val normalized = Deinflector.katakanaToHiragana(reading)
+        var variant = 0
+        for (p in pitches) {
+            val position = p.takeIf { it.isJsonObject }?.asJsonObject?.get("position") ?: continue
+            if (!(position.isJsonPrimitive && position.asJsonPrimitive.isNumber)) continue
+            stmt.bindString(1, dict.id)
+            stmt.bindString(2, term)
+            stmt.bindString(3, normalized)
+            stmt.bindLong(4, variant.toLong())
+            stmt.bindLong(5, position.asInt.toLong())
+            stmt.executeInsert()
+            variant++
+        }
+        if (variant > 0) dict.categories += YomitanCategory.PITCH_ACCENT
+        return variant
+    }
+
+    /** [FreqData.parse] over a buffered element (dump rows are
+     *  field-order-free, so `data` is buffered as a tree; re-reading its
+     *  compact form keeps the four-shape handling in one place). */
+    private fun parseFreqElement(data: JsonElement): FreqData.Row? =
+        JsonReader(StringReader(data.toString())).use { FreqData.parse(it) }
+
+    private fun readTermRows(
+        reader: JsonReader,
+        dicts: LinkedHashMap<String, DumpDict>,
+        inserts: DumpInserts,
+        cc: CoroutineContext,
+    ) {
+        var rows = 0
+        var skipped = 0
+        readDumpRows(reader, cc) {
+            var expression: String? = null
+            var reading = ""
+            var definitionTags = ""
+            var score = 0.0
+            var defs: List<String> = emptyList()
+            var dictTitle: String? = null
+            readDumpRowObject(reader) { field ->
+                when (field) {
+                    "expression" -> expression = stringOrNull(reader)
+                    "reading" -> reading = stringOrNull(reader).orEmpty()
+                    "definitionTags" -> definitionTags = stringOrNull(reader).orEmpty()
+                    "score" -> score =
+                        if (reader.peek() == JsonToken.NUMBER) reader.nextDouble()
+                        else { reader.skipValue(); 0.0 }
+                    // Byte-identical structured content to a term_bank glossary —
+                    // the same flattener applies.
+                    "glossary" -> defs =
+                        if (reader.peek() == JsonToken.BEGIN_ARRAY) TermGlossary.parseGlossary(reader)
+                        else { reader.skipValue(); emptyList() }
+                    "dictionary" -> dictTitle = stringOrNull(reader)
+                    else -> reader.skipValue() // rules, sequence, termTags, id, $types
+                }
+            }
+            val dict = dicts[dictTitle]
+            val expr = expression
+            if (dict == null || dict.skip || expr.isNullOrEmpty()) {
+                skipped++
+                return@readDumpRows
+            }
+            val resolved = resolveTermDefs(
+                defs, expr, reading.ifBlank { expr }, dict.echoStrip,
+            )
+            if (resolved.isEmpty()) {
+                skipped++
+                return@readDumpRows
+            }
+            val normalizedReading = Deinflector.katakanaToHiragana(reading.ifBlank { expr })
+            val pos = definitionTags.split(' ')
+                .filter { it.isNotEmpty() && it in dict.posTags }
+                .joinToString(" ")
+            inserts.term.bindString(1, dict.id)
+            inserts.term.bindString(2, expr)
+            inserts.term.bindString(3, normalizedReading)
+            inserts.term.bindDouble(4, score)
+            inserts.term.bindString(5, KanjiData.encodeMeanings(resolved))
+            inserts.term.bindString(6, pos)
+            inserts.term.executeInsert()
+            dict.categories += YomitanCategory.TERMS
+            rows++
+        }
+        Log.i(TAG, "dump: ingested $rows term rows ($skipped text-less/unroutable skipped)")
+    }
+
+    private fun readKanjiRows(
+        reader: JsonReader,
+        dicts: LinkedHashMap<String, DumpDict>,
+        inserts: DumpInserts,
+        cc: CoroutineContext,
+    ) {
+        var rows = 0
+        var freqRows = 0
+        readDumpRows(reader, cc) {
+            var character: String? = null
+            var onyomi = ""
+            var kunyomi = ""
+            var meanings: List<String> = emptyList()
+            var stats: JsonElement? = null
+            var dictTitle: String? = null
+            readDumpRowObject(reader) { field ->
+                when (field) {
+                    "character" -> character = stringOrNull(reader)
+                    "onyomi" -> onyomi = stringOrNull(reader).orEmpty()
+                    "kunyomi" -> kunyomi = stringOrNull(reader).orEmpty()
+                    "meanings" -> meanings = readStringArray(reader)
+                    "stats" -> stats = JsonParser.parseReader(reader)
+                    "dictionary" -> dictTitle = stringOrNull(reader)
+                    else -> reader.skipValue() // tags, $types
+                }
+            }
+            val dict = dicts[dictTitle]
+            val char = character
+            if (dict == null || dict.skip || char.isNullOrEmpty()) return@readDumpRows
+            inserts.kanji.bindString(1, dict.id)
+            inserts.kanji.bindString(2, char)
+            inserts.kanji.bindString(3, onyomi)
+            inserts.kanji.bindString(4, kunyomi)
+            inserts.kanji.bindString(5, KanjiData.encodeMeanings(meanings))
+            inserts.kanji.executeInsert()
+            dict.categories += YomitanCategory.KANJI
+            rows++
+            // KANJIDIC-lineage freq stat — same harvest as the zip ingestor.
+            val freq = stats?.takeIf { it.isJsonObject }?.asJsonObject?.get("freq")
+                ?.let { parseFreqElement(it) }
+            if (freq != null) {
+                inserts.kanjiFreq.bindString(1, dict.id)
+                inserts.kanjiFreq.bindString(2, char)
+                inserts.kanjiFreq.bindString(3, freq.display)
+                freq.value?.let { inserts.kanjiFreq.bindDouble(4, it) } ?: inserts.kanjiFreq.bindNull(4)
+                inserts.kanjiFreq.executeInsert()
+                dict.categories += YomitanCategory.KANJI_FREQUENCY
+                freqRows++
+            }
+        }
+        Log.i(TAG, "dump: ingested $rows kanji rows ($freqRows with freq)")
+    }
+
+    private fun readKanjiMetaRows(
+        reader: JsonReader,
+        dicts: LinkedHashMap<String, DumpDict>,
+        inserts: DumpInserts,
+        cc: CoroutineContext,
+    ) = readDumpRows(reader, cc) {
+        var character: String? = null
+        var mode: String? = null
+        var data: JsonElement? = null
+        var dictTitle: String? = null
+        readDumpRowObject(reader) { field ->
+            when (field) {
+                "character", "expression" -> character = stringOrNull(reader)
+                "mode" -> mode = stringOrNull(reader)
+                "data" -> data = JsonParser.parseReader(reader)
+                "dictionary" -> dictTitle = stringOrNull(reader)
+                else -> reader.skipValue()
+            }
+        }
+        val dict = dicts[dictTitle]
+        val char = character
+        if (dict != null && !dict.skip && mode == "freq" && !char.isNullOrEmpty()) {
+            val row = data?.let { parseFreqElement(it) }
+            if (row != null) {
+                inserts.kanjiFreq.bindString(1, dict.id)
+                inserts.kanjiFreq.bindString(2, char)
+                inserts.kanjiFreq.bindString(3, row.display)
+                row.value?.let { inserts.kanjiFreq.bindDouble(4, it) } ?: inserts.kanjiFreq.bindNull(4)
+                inserts.kanjiFreq.executeInsert()
+                dict.categories += YomitanCategory.KANJI_FREQUENCY
+            }
+        }
+    }
+
+    private fun readStringArray(reader: JsonReader): List<String> {
+        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+            reader.skipValue()
+            return emptyList()
+        }
+        val out = mutableListOf<String>()
+        reader.beginArray()
+        while (reader.hasNext()) {
+            if (reader.peek() == JsonToken.STRING) out += reader.nextString() else reader.skipValue()
+        }
+        reader.endArray()
+        return out
+    }
+
+    private fun stringOrNull(reader: JsonReader): String? =
+        if (reader.peek() == JsonToken.STRING) reader.nextString()
+        else { reader.skipValue(); null }
 }
