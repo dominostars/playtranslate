@@ -2806,10 +2806,11 @@
     <string name="yomitan_category_pitch_accent">Pitch Accent</string>
     <!-- Group header above imported IPA-pronunciation dictionaries on the Yomitan page. -->
     <string name="yomitan_category_pronunciation">Pronunciation</string>
-    <!-- Title of the progress popup shown while an import is validated. -->
+    <!-- Title of the progress popup shown while an import runs. -->
     <string name="yomitan_importing_title">Importing Dictionary</string>
-    <!-- Status line of the import progress popup. -->
-    <string name="yomitan_importing_message">Validating dictionary files…</string>
+    <!-- Status line of the import progress popup. Covers the whole pipeline
+         (validate + ingest into the DB); the ingest dominates the wait. -->
+    <string name="yomitan_importing_message">Importing dictionary files…</string>
     <!-- Status line of the import progress popup during a MULTI-FILE import; %1$d = current file (1-based), %2$d = total selected. Noun omitted deliberately so it needs no plural agreement. -->
     <string name="yomitan_importing_progress">Importing <xliff:g id="current" example="2">%1$d</xliff:g> of <xliff:g id="total" example="5">%2$d</xliff:g>…</string>
     <!-- Title of the summary alert after a multi-file import when at least one dictionary imported. -->
