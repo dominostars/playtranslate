@@ -88,8 +88,10 @@
                 android:textSize="11sp" />
         </LinearLayout>
 
-        <!-- Title text is set per-state in SettingsRenderer.stylePowerCard()
-             — Off: "Allow screen capture", On: "Screen capture permitted". -->
+        <!-- Title is the app name, stable across states (set once in
+             SettingsRenderer.setupCaptureLifecycleButton). Session state
+             lives in the badge/LED/switch; capture-permission truth lives
+             in the subtitle (see stylePowerCard). -->
         <TextView
             android:id="@+id/powerTitle"
             android:layout_width="wrap_content"

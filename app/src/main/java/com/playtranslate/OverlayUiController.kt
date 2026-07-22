@@ -1273,6 +1273,26 @@ class OverlayUiController(
             captureCurrentRegionForDisplay(display.displayId)
         }
 
+        // "Record audio" — the in-game twin of Settings' audio repair row:
+        // shown only when game-audio recording is enabled but the
+        // MediaProjection consent it rides on is not held (the recorder never
+        // prompts itself). IfInitialized: an unrealized controller holds no
+        // consent; don't force-init it just to render a button. The
+        // RECORD_AUDIO gate is part of the predicate, not the action: an
+        // overlay can't walk the user through a runtime-permission grant, so
+        // when the mic is the missing piece this surface offers nothing and
+        // the Settings row (which CAN run that flow) is the recovery path —
+        // a surface must not offer a verb it can't perform.
+        menu.showRecordAudio = prefs.recordGameAudio &&
+            CaptureService.instance?.mediaProjectionControllerIfInitialized?.hasConsent != true &&
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        menu.onRecordAudio = {
+            dismissFloatingMenu()
+            startAudioCaptureConsent()
+        }
+
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -1375,6 +1395,29 @@ class OverlayUiController(
         floatingMenuDisplayId = null
         if (wasShowing && clearHoldActive) {
             CaptureService.instance?.holdActive = false
+        }
+    }
+
+    /** Request the MediaProjection consent game-audio recording rides on —
+     *  the floating menu's "Record audio" tap. Plain ensureConsent is the
+     *  whole job: the grant push-point
+     *  ([com.playtranslate.capture.MediaProjectionController.onConsentResult])
+     *  reconciles the recorder, and on the accessibility backend it never
+     *  writes MP lifecycle state. Falls back to the tile's ACTION_MP_ACTIVATE
+     *  service route when CaptureService isn't running (accessibility
+     *  backend, service not yet started) — activateMediaProjection degrades
+     *  to exactly ensureConsent + reconcile there, and the intent brings the
+     *  service up first. */
+    private fun startAudioCaptureConsent() {
+        val svc = CaptureService.instance
+        if (svc != null) {
+            svc.serviceScope.launch { svc.mediaProjectionController.ensureConsent() }
+        } else {
+            androidx.core.content.ContextCompat.startForegroundService(
+                context.applicationContext,
+                Intent(context.applicationContext, CaptureService::class.java)
+                    .setAction(CaptureService.ACTION_MP_ACTIVATE),
+            )
         }
     }
 

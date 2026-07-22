@@ -353,13 +353,11 @@
 
     <string name="capture_lifecycle_state_off">Kapalı</string>
 
-    <string name="capture_lifecycle_on_title">Ekran yakalamaya izin verildi</string>
 
-    <string name="capture_lifecycle_off_title">Ekran yakalamaya izin ver</string>
 
-    <string name="capture_lifecycle_on_subtitle">Çevirmeye hazır</string>
+    <string name="capture_lifecycle_on_subtitle">Ekran yakalamaya izin verildi</string>
 
-    <string name="capture_lifecycle_off_subtitle">Oyun metnini okumak için gerekli</string>
+    <string name="capture_lifecycle_off_subtitle">Ekran yakalamaya izin ver</string>
 
     <string name="game_screen_controls_title">Oyun Ekranı Kontrolleri</string>
 

@@ -372,13 +372,11 @@
 
     <string name="capture_lifecycle_state_off">Désactivé</string>
 
-    <string name="capture_lifecycle_on_title">Capture d\'écran autorisée</string>
 
-    <string name="capture_lifecycle_off_title">Autoriser la capture d\'écran</string>
 
-    <string name="capture_lifecycle_on_subtitle">Prêt à traduire</string>
+    <string name="capture_lifecycle_on_subtitle">Capture d\'écran autorisée</string>
 
-    <string name="capture_lifecycle_off_subtitle">Nécessaire pour lire le texte du jeu</string>
+    <string name="capture_lifecycle_off_subtitle">Autoriser la capture d\'écran</string>
 
     <string name="game_screen_controls_title">Commandes de l\'écran de jeu</string>
 

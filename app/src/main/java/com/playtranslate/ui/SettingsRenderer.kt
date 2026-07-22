@@ -218,6 +218,17 @@ class SettingsRenderer(
          *  overlay-icon switch when the flow settles so it mirrors the result. */
         fun requestMediaProjectionControls()
 
+        /** Audio repair ("Start recording audio"): restore whichever gates
+         *  the game-audio recorder is missing, in order — RECORD_AUDIO first
+         *  (revocable under a still-on pref: manual revoke, permission
+         *  auto-reset, backup restore), then the MediaProjection consent it
+         *  rides on. The implementer must cover BOTH gates because the row's
+         *  repair state is keyed on both (audioArmed) — a consent-only
+         *  action would be a dead-end CTA when the mic is the missing piece.
+         *  Refreshes the top section when the flow settles so the row flips
+         *  to its armed state. */
+        fun requestAudioCaptureConsent()
+
         /** Tap on the "Update language packs" row in the Language section.
          *  Implementer instantiates [com.playtranslate.language.PackUpgradeOrchestrator]
          *  and calls `upgradeAll(stalePacks)`. On completion, calls
@@ -287,12 +298,24 @@ class SettingsRenderer(
     private val powerSubtitle: TextView = root.findViewById(R.id.powerSubtitle)
     private val powerSwitch: MaterialSwitch = root.findViewById(R.id.powerSwitch)
 
-    // Game Screen Controls — the floating-icon visibility toggle that takes
+    // Show on-screen controls — the floating-icon visibility toggle that takes
     // the power cell's slot on the accessibility backend in dual-screen.
     // Exactly one of {powerCard, rowGameScreenControls} is visible at a time.
     private val rowGameScreenControls: View = root.findViewById(R.id.rowGameScreenControls)
     private val switchGameScreenControls: MaterialSwitch =
         root.findViewById(R.id.switchGameScreenControls)
+
+    // Audio recording row — visible while game-audio recording is enabled and
+    // the session is on. Title + trailing record glyph track the state
+    // (styleAudioRecordingRow) and the row tap's meaning follows it.
+    private val rowAudioRecording: View = root.findViewById(R.id.rowAudioRecording)
+    private val dividerAudioRecording: View = root.findViewById(R.id.dividerAudioRecording)
+    private val ivAudioRecordingGlyph: ImageView = root.findViewById(R.id.ivAudioRecordingGlyph)
+    private val tvAudioRecordingTitle: TextView = root.findViewById(R.id.tvAudioRecordingTitle)
+
+    // Whole toolbar (title + Turn On/Off button) — rests hidden and fades in
+    // as the user scrolls past the power card; see updateToolbarCrossfade.
+    private val settingsToolbar: View = root.findViewById(R.id.settingsToolbar)
 
     private val rowDiscord: View = root.findViewById(R.id.rowDiscord)
     private val rowDonate: View = root.findViewById(R.id.rowDonate)
@@ -500,12 +523,30 @@ class SettingsRenderer(
         btnCaptureLifecycle.setOnClickListener(onClick)
         powerCard.setOnClickListener(onClick)
 
-        // The nav-bar ShimmerButton fades in as the user scrolls past the
-        // power card. The card itself does not fade — it scrolls out of view
-        // naturally and the toolbar takes over as the sticky reminder.
+        // Title is the app name in every state — session state lives in the
+        // badge/LED/switch, capture-permission truth in the subtitle
+        // (stylePowerCard). A state-dependent title claimed a permission the
+        // sticky activation flag doesn't track.
+        powerTitle.setText(R.string.app_name)
+
+        // Audio recording row — one whole-row tap (the cell IS the button)
+        // whose meaning follows the rendered state (styleAudioRecordingRow):
+        // the repair state requests the MediaProjection consent the recorder
+        // rides on (it never prompts itself); the armed state taps through
+        // to Anki settings, where the feature switch — the real stop lever —
+        // lives. Recording itself starts and stops with the session.
+        rowAudioRecording.setOnClickListener {
+            if (audioArmed()) callbacks.openAnkiSettings()
+            else callbacks.requestAudioCaptureConsent()
+        }
+
+        // The whole toolbar (title + Turn On/Off button together) fades in as
+        // the user scrolls past the power card. The card itself does not fade
+        // — it scrolls out of view naturally and the bar takes over as the
+        // sticky reminder.
         settingsScrollView.setOnScrollChangeListener(
             androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
-                updateCaptureButtonCrossfade(scrollY)
+                updateToolbarCrossfade(scrollY)
             }
         )
         refreshCaptureLifecycleButton()
@@ -563,6 +604,17 @@ class SettingsRenderer(
             if (showPowerCell) View.GONE else View.VISIBLE
         switchGameScreenControls.isChecked = prefs.showOverlayIcon
         val active = CaptureLifecycle.isActive(ctx)
+        // Audio row — both backends (it sits under whichever of the power
+        // cell / controls row occupies the top slot). Visible while the
+        // feature + session are on; the trailing glyph tracks whether audio
+        // is armed (hint = dark, accent = recording) and the tap follows:
+        // consent request while dark (the recorder never prompts itself;
+        // same repair the floating menu's accent bar offers), Anki settings
+        // — the feature switch, i.e. the stop lever — while recording.
+        val showAudioRow = prefs.recordGameAudio && active
+        rowAudioRecording.isVisible = showAudioRow
+        dividerAudioRecording.isVisible = showAudioRow
+        if (showAudioRow) styleAudioRecordingRow(audioArmed())
         // The floating-icon footer is lit when the icon is actually on the
         // game screen, dim otherwise. That tracks `active` everywhere except
         // a11y dual-screen, where capture is always active but the Game
@@ -599,7 +651,34 @@ class SettingsRenderer(
         stylePowerCard(active)
         // A refresh can land while the list is already scrolled — re-apply
         // the toolbar fade-in for the current offset.
-        updateCaptureButtonCrossfade(settingsScrollView.scrollY)
+        updateToolbarCrossfade(settingsScrollView.scrollY)
+    }
+
+    /** Whether the session's audio is armed: the MediaProjection consent it
+     *  rides on is held AND the mic permission still stands. Keyed on gate
+     *  inputs, NOT [com.playtranslate.capture.GameAudioRecorder.running] —
+     *  the recorder legitimately pauses during the Anki card-flow activities
+     *  and the row must not flap there. (IfInitialized: an unrealized
+     *  controller holds no consent — don't force-init one to render a row.) */
+    private fun audioArmed(): Boolean =
+        CaptureService.instance?.mediaProjectionControllerIfInitialized?.hasConsent == true &&
+            ContextCompat.checkSelfPermission(
+                ctx, android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    /** Render the audio row for [armed]: the title tracks state — "Start
+     *  recording audio" (a verb; the tap IS the action) while dark,
+     *  "Recording audio" (a status claim, true only here) while armed — and
+     *  the trailing record glyph is the state light: ptTextHint (the
+     *  recessed "this is currently dark" step) vs ptAccent. */
+    private fun styleAudioRecordingRow(armed: Boolean) {
+        tvAudioRecordingTitle.setText(
+            if (armed) R.string.audio_recording_row_active
+            else R.string.audio_recording_row_start
+        )
+        ivAudioRecordingGlyph.imageTintList = ColorStateList.valueOf(
+            ctx.themeColor(if (armed) R.attr.ptAccent else R.attr.ptTextHint)
+        )
     }
 
     /** Filled-accent ("Turn On") / outlined ("Turn Off") styling for the
@@ -674,32 +753,52 @@ class SettingsRenderer(
             powerStateHalo.visibility = View.INVISIBLE
         }
 
-        // Title + supporting text + switch state. The title swaps with state
-        // to honour the "permission, not action" framing — Off is the CTA
-        // ("Allow screen capture"), On is the calm permission state
-        // ("Screen capture permitted"). Subtitle mirrors: Off describes
-        // what's required; On describes the resulting capability.
-        powerTitle.setText(
-            if (active) R.string.capture_lifecycle_on_title
-            else R.string.capture_lifecycle_off_title
-        )
+        // Subtitle + switch state. The title stays the app name (set once in
+        // setup); the subtitle carries capture-PERMISSION truth, keyed on the
+        // permission rather than the switch — the two are deliberately
+        // decoupled (69a0b20f: a revoke must not read as the user turning
+        // PlayTranslate off):
+        //  - permission held → "Screen capture permitted". True in BOTH
+        //    switch states: an OFF cell over a warm grant honestly advertises
+        //    a prompt-free turn-on (a11y single-screen reaches this whenever
+        //    the service is enabled with the icon hidden).
+        //  - not held, session on → "on standby". The calm resting state on
+        //    API 34+, where the single-use token burns on every lock/revoke;
+        //    the next capture re-prompts, and audio repair has its own row.
+        //  - not held, session off → the "Allow screen capture" CTA.
+        // "Permission" resolves per backend: the accessibility service IS the
+        // capture permission there (so standby is unreachable — on implies
+        // enabled implies held); MediaProjection consent otherwise.
+        val consentHeld = if (CaptureBackendResolver.active().requiresAccessibilityService) {
+            PlayTranslateAccessibilityService.isEnabled(ctx)
+        } else {
+            CaptureService.instance?.mediaProjectionControllerIfInitialized?.hasConsent == true
+        }
         powerSubtitle.setText(
-            if (active) R.string.capture_lifecycle_on_subtitle
-            else R.string.capture_lifecycle_off_subtitle
+            when {
+                consentHeld -> R.string.capture_lifecycle_on_subtitle
+                active -> R.string.capture_lifecycle_standby_subtitle
+                else -> R.string.capture_lifecycle_off_subtitle
+            }
         )
         powerSwitch.isChecked = active
     }
 
-    /** Fade the nav-bar ShimmerButton in as the user scrolls past the power
-     *  card. The card itself is never faded — it just scrolls naturally with
-     *  the content. The startOffset delays the fade-in until the user has
-     *  scrolled past the language picker and most of the power card. */
-    private fun updateCaptureButtonCrossfade(scrollY: Int) {
+    /** Fade the whole toolbar in as the user scrolls past the power card —
+     *  the bar (title + Turn On/Off button, no longer animated individually)
+     *  overlays the content and takes over as the sticky reminder. The card
+     *  itself is never faded — it just scrolls naturally under the bar. The
+     *  startOffset delays the fade-in until the user has scrolled past the
+     *  language picker and most of the power card. Fully hidden must also be
+     *  untouchable: an alpha-0 bar sits over live content and would swallow
+     *  its taps, hence INVISIBLE at t == 0. */
+    private fun updateToolbarCrossfade(scrollY: Int) {
         val density = ctx.resources.displayMetrics.density
         val startOffset = 100f * density
         val distance = 72f * density
         val t = ((scrollY - startOffset) / distance).coerceIn(0f, 1f)
-        btnCaptureLifecycle.alpha = t
+        settingsToolbar.alpha = t
+        settingsToolbar.visibility = if (t == 0f) View.INVISIBLE else View.VISIBLE
     }
 
     // ── Turn On/Off attention shimmer ─────────────────────────────────────

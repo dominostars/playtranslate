@@ -356,13 +356,11 @@
 
     <string name="capture_lifecycle_state_off">关</string>
 
-    <string name="capture_lifecycle_on_title">已允许屏幕截取</string>
 
-    <string name="capture_lifecycle_off_title">允许屏幕截取</string>
 
-    <string name="capture_lifecycle_on_subtitle">已准备好翻译</string>
+    <string name="capture_lifecycle_on_subtitle">已允许屏幕截取</string>
 
-    <string name="capture_lifecycle_off_subtitle">读取游戏文字所必需</string>
+    <string name="capture_lifecycle_off_subtitle">允许屏幕截取</string>
 
     <string name="game_screen_controls_title">游戏画面控件</string>
 

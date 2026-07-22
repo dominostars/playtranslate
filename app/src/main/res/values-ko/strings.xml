@@ -358,13 +358,11 @@
 
     <string name="capture_lifecycle_state_off">꺼짐</string>
 
-    <string name="capture_lifecycle_on_title">화면 캡처 허용됨</string>
 
-    <string name="capture_lifecycle_off_title">화면 캡처 허용</string>
 
-    <string name="capture_lifecycle_on_subtitle">번역 준비 완료</string>
+    <string name="capture_lifecycle_on_subtitle">화면 캡처 허용됨</string>
 
-    <string name="capture_lifecycle_off_subtitle">게임 텍스트를 읽는 데 필요</string>
+    <string name="capture_lifecycle_off_subtitle">화면 캡처 허용</string>
 
     <string name="game_screen_controls_title">게임 화면 컨트롤</string>
 

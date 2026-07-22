@@ -377,13 +377,11 @@
 
     <string name="capture_lifecycle_state_off">Выкл.</string>
 
-    <string name="capture_lifecycle_on_title">Захват экрана разрешён</string>
 
-    <string name="capture_lifecycle_off_title">Разрешить захват экрана</string>
 
-    <string name="capture_lifecycle_on_subtitle">Готово к переводу</string>
+    <string name="capture_lifecycle_on_subtitle">Захват экрана разрешён</string>
 
-    <string name="capture_lifecycle_off_subtitle">Необходимо для чтения текста игры</string>
+    <string name="capture_lifecycle_off_subtitle">Разрешить захват экрана</string>
 
     <string name="game_screen_controls_title">Элементы управления экраном игры</string>
 

@@ -81,6 +81,28 @@ class SettingsBottomSheet : DialogFragment() {
         }
     }
 
+    /** RECORD_AUDIO for the audio row's repair tap (mirrors
+     *  AnkiSettingsActivity's RequestPermission idiom). The mic is the one
+     *  gate the recorder can never prompt for itself, and it can go missing
+     *  under a still-on pref (manual revoke, permission auto-reset, backup
+     *  restore). On grant, continue straight into the consent leg so a
+     *  single tap walks every missing permission in order; on deny, surface
+     *  the same explanation the Anki settings switch shows and leave the
+     *  row in its repair state — nothing pretends to have worked. */
+    private val requestAudioRecordPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            proceedWithAudioConsent()
+        } else {
+            android.widget.Toast.makeText(
+                requireContext(),
+                R.string.anki_game_audio_permission_denied,
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+
     /** Voice picker now returns the choice via setResult rather than
      *  writing the pref directly — Settings persists from its callback
      *  and refreshes the TTS row. The pref key is keyed by source lang;
@@ -192,16 +214,18 @@ class SettingsBottomSheet : DialogFragment() {
      *  system settings, and re-pushed by MainActivity on a screen-mode flip via
      *  [refreshToolbar] (which owns the mode; this reads only a11y).
      *
-     *  Toggles the inner MaterialToolbar, not the AppBarLayout: a GONE
-     *  AppBarLayout keeps its stale measured height, so the CoordinatorLayout
-     *  leaves the scroll child offset by a phantom toolbar until the view is
-     *  rebuilt. The AppBarLayout (wrap_content) collapses to 0 on its own once
-     *  its only child is hidden. */
+     *  Toggles the inner MaterialToolbar (+ its hairline), not the
+     *  AppBarLayout: the outer bar's visibility axis belongs to the scroll
+     *  crossfade (SettingsRenderer.updateToolbarCrossfade) — the two gates
+     *  must not fight over one view. */
     private fun refreshToolbarVisibility(root: View, isSingle: Boolean) {
         val show = isSingle ||
             !PlayTranslateAccessibilityService.isEnabled(requireContext())
-        root.findViewById<View>(R.id.settingsToolbarInner).visibility =
-            if (show) View.VISIBLE else View.GONE
+        val visibility = if (show) View.VISIBLE else View.GONE
+        root.findViewById<View>(R.id.settingsToolbarInner).visibility = visibility
+        // The hairline under the overlaying bar rides the same mode gate —
+        // alone it would draw a stray 1dp line where no bar exists.
+        root.findViewById<View>(R.id.settingsToolbarDivider).visibility = visibility
     }
 
     /** Re-evaluate the toolbar for the current screen mode. MainActivity calls
@@ -309,6 +333,9 @@ class SettingsBottomSheet : DialogFragment() {
                 }
                 override fun requestMediaProjectionControls() {
                     this@SettingsBottomSheet.requestMediaProjectionControls()
+                }
+                override fun requestAudioCaptureConsent() {
+                    this@SettingsBottomSheet.requestAudioCaptureConsent()
                 }
                 override fun openAnkiSettings() {
                     openAnkiSettingsPage()
@@ -452,6 +479,65 @@ class SettingsBottomSheet : DialogFragment() {
             // OverlayUiController.reconcileFloatingIcons), so there's nothing
             // to flip here.
             com.playtranslate.capture.CaptureLifecycle.activateMediaProjection()
+            renderer?.refreshOverlayIconState()
+        }
+    }
+
+    /** Audio repair (the row under the power cell): restore whichever gates
+     *  the game-audio recorder is missing, in order — RECORD_AUDIO first
+     *  (the one gate the recorder can never prompt for; see
+     *  [requestAudioRecordPermission]), then the MediaProjection consent it
+     *  rides on. The action must cover everything the row's repair state
+     *  advertises: the state is keyed on BOTH gates
+     *  ([SettingsRenderer] audioArmed), so a consent-only action would be a
+     *  dead-end CTA whenever the mic is the missing piece.
+     *
+     *  Deliberately NOT [requestMediaProjectionControls]: this is not a
+     *  Turn On (the row only shows while the session is already active),
+     *  and the MP floating controls / overlay-permission preflight don't
+     *  apply — on the accessibility backend audio is MediaProjection's only
+     *  job here. */
+    private fun requestAudioCaptureConsent() {
+        val activity = activity ?: return
+        val micGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+            activity, android.Manifest.permission.RECORD_AUDIO
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!micGranted) {
+            requestAudioRecordPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        proceedWithAudioConsent()
+    }
+
+    /** The consent leg of the audio repair — runs with RECORD_AUDIO already
+     *  granted (checked by [requestAudioCaptureConsent], or freshly granted
+     *  in [requestAudioRecordPermission]'s callback).
+     *
+     *  Cold-service fallback routes through ACTION_MP_ACTIVATE, the tile's
+     *  FGS-safe path — reachable on the accessibility backend in dual-screen,
+     *  where the session is "always on" without CaptureService necessarily
+     *  running. activateMediaProjection degrades to exactly ensureConsent +
+     *  reconcile there (the a11y branch of onConsentResult never writes MP
+     *  lifecycle state); the row then refreshes on resume rather than
+     *  awaiting the flow. */
+    private fun proceedWithAudioConsent() {
+        val activity = activity as? androidx.appcompat.app.AppCompatActivity ?: return
+        val svc = com.playtranslate.CaptureService.instance
+        if (svc == null) {
+            androidx.core.content.ContextCompat.startForegroundService(
+                activity,
+                android.content.Intent(activity, com.playtranslate.CaptureService::class.java)
+                    .setAction(com.playtranslate.CaptureService.ACTION_MP_ACTIVATE),
+            )
+            return
+        }
+        activity.lifecycleScope.launch {
+            svc.mediaProjectionController.ensureConsent()
+            // Consent may have been warm the whole time (the mic was the
+            // missing gate) — the grant push-point only fires on FRESH
+            // grants, so reconcile explicitly; idempotent when the
+            // push-point already ran.
+            svc.reconcileGameAudio()
             renderer?.refreshOverlayIconState()
         }
     }

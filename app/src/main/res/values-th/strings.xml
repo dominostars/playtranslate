@@ -329,13 +329,11 @@
 
     <string name="capture_lifecycle_state_off">ปิด</string>
 
-    <string name="capture_lifecycle_on_title">อนุญาตการจับภาพหน้าจอแล้ว</string>
 
-    <string name="capture_lifecycle_off_title">อนุญาตการจับภาพหน้าจอ</string>
 
-    <string name="capture_lifecycle_on_subtitle">พร้อมแปล</string>
+    <string name="capture_lifecycle_on_subtitle">อนุญาตการจับภาพหน้าจอแล้ว</string>
 
-    <string name="capture_lifecycle_off_subtitle">จำเป็นสำหรับการอ่านข้อความในเกม</string>
+    <string name="capture_lifecycle_off_subtitle">อนุญาตการจับภาพหน้าจอ</string>
 
     <string name="game_screen_controls_title">ปุ่มควบคุมหน้าจอเกม</string>
 

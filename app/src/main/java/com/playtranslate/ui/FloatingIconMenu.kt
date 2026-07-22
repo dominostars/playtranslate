@@ -87,6 +87,15 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     /** Momentary one-shot: capture-and-translate the current region. */
     var onTranslateOnce: (() -> Unit)? = null
     var onCaptureRegion: (() -> Unit)? = null
+    /** "Record audio" — request the MediaProjection consent that game-audio
+     *  recording rides on. Wired only when [showRecordAudio]. */
+    var onRecordAudio: (() -> Unit)? = null
+    /** Show the full-width "Record audio" accent button under the menu card.
+     *  Set by showFloatingMenu when game-audio recording is enabled but the
+     *  MediaProjection consent it needs is not held; the button is the
+     *  in-game twin of Settings' audio repair row. Positioning happens in
+     *  [positionNearIcon]. */
+    var showRecordAudio: Boolean = false
     // Expanded settings-panel row actions.
     var onSelectLanguage: (() -> Unit)? = null
     var onSelectOcr: (() -> Unit)? = null
@@ -207,6 +216,11 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private var degradedWarningLabel: TextView? = null
 
     private val menuCard: LinearLayout
+    // Full-width "Record audio" accent bar, detached below (or above, when
+    // the icon sits near the bottom edge) the menu card. Built hidden;
+    // sized/placed against the card's collapsed footprint by
+    // [positionNearIcon], hidden while the settings panel is expanded.
+    private val recordAudioBtn: LinearLayout
     private val instructionPill: LinearLayout
     // The pill's label, kept as a field so positionInstructionPill can cap its
     // width (forcing a wrap) when the pill can't fit on one line.
@@ -480,6 +494,43 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ))
 
+        // "Record audio" bar — the height of the secondary (48dp) buttons,
+        // the full width of the menu card, accent-filled with the record
+        // glyph leading the label. Hidden until positionNearIcon sizes and
+        // places it (only when [showRecordAudio]).
+        val recordIcon = ImageView(context).apply {
+            setImageResource(R.drawable.ic_record_circle)
+            imageTintList = ColorStateList.valueOf(onAccentColor)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            layoutParams = LinearLayout.LayoutParams((20 * dp).toInt(), (20 * dp).toInt()).apply {
+                marginEnd = (8 * dp).toInt()
+            }
+        }
+        val recordLabel = TextView(context).apply {
+            text = context.getString(R.string.record_audio_action)
+            setTextColor(onAccentColor)
+            textSize = 13f
+            setTypeface(null, Typeface.BOLD)
+        }
+        recordAudioBtn = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            contentDescription = context.getString(R.string.record_audio_action)
+            background = GradientDrawable().apply {
+                setColor(accentColor)
+                cornerRadius = 11 * dp
+            }
+            elevation = 8 * dp
+            visibility = View.GONE
+            addView(recordIcon)
+            addView(recordLabel)
+            setOnClickListener { onRecordAudio?.invoke() }
+        }
+        addView(recordAudioBtn, LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, (48 * dp).toInt()
+        ))
+
         // Drag-hint pill — placed by positionInstructionPill; hidden until then.
         val dividerColor = context.themeColor(R.attr.ptDivider)
         val instructionIcon = ImageView(context).apply {
@@ -681,6 +732,14 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                     if (expanded) { instructionPill.visibility = View.GONE; instructionPill.alpha = 1f }
                 }.start()
             }
+            // The record bar is sized to the collapsed card — hide it while
+            // the card is expanded (its placement stays valid for collapse).
+            if (recordAudioBtn.isVisible) {
+                recordAudioBtn.animate().cancel()
+                recordAudioBtn.animate().alpha(0f).setDuration(160).withEndAction {
+                    if (expanded) { recordAudioBtn.visibility = View.GONE; recordAudioBtn.alpha = 1f }
+                }.start()
+            }
         } else {
             // Fade the panel's table out, then hide it.
             contentArea.animate().cancel()
@@ -696,6 +755,13 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 instructionPill.alpha = 0f
                 instructionPill.visibility = View.VISIBLE
                 instructionPill.animate().alpha(1f).setDuration(200).start()
+            }
+            // And the record bar, where positionRecordAudioButton left it.
+            if (showRecordAudio) {
+                recordAudioBtn.animate().cancel()
+                recordAudioBtn.alpha = 0f
+                recordAudioBtn.visibility = View.VISIBLE
+                recordAudioBtn.animate().alpha(1f).setDuration(200).start()
             }
         }
 
@@ -946,6 +1012,20 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 if (menuRect.contains(event.rawX, event.rawY)) {
                     return super.onTouchEvent(event)
                 }
+                // The detached "Record audio" bar sits outside the card's
+                // rect — without its own carve-out, the dismiss/drag logic
+                // here would eat its clicks.
+                if (recordAudioBtn.isVisible) {
+                    recordAudioBtn.getLocationOnScreen(loc)
+                    val recordRect = RectF(
+                        loc[0].toFloat(), loc[1].toFloat(),
+                        loc[0].toFloat() + recordAudioBtn.width,
+                        loc[1].toFloat() + recordAudioBtn.height
+                    )
+                    if (recordRect.contains(event.rawX, event.rawY)) {
+                        return super.onTouchEvent(event)
+                    }
+                }
                 potentialDrag = true
                 dragStartX = event.x
                 dragStartY = event.y
@@ -958,6 +1038,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 if (!isDragging && (dx * dx + dy * dy > touchSlop * touchSlop)) {
                     isDragging = true
                     menuCard.isGone = true
+                    recordAudioBtn.isGone = true
                     instructionPill.isGone = true
                     regionNamePill?.visibility = View.GONE
                     removeRegionButton?.visibility = View.GONE
@@ -1138,12 +1219,63 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                     .start()
             }
 
+            // The detached "Record audio" bar rides the card's collapsed
+            // footprint; entrance fades it alongside the card.
+            positionRecordAudioButton(iconCy, iconEdge, screenW, screenH)
+            if (animateEntrance && recordAudioBtn.isVisible) {
+                recordAudioBtn.alpha = 0f
+                recordAudioBtn.animate().alpha(1f).setDuration(150).start()
+            }
+
             // Name pill + clear button over the active region (custom only).
             showRegionChrome(iconEdge, screenW, screenH)
 
             // Keep the drag-hint pill clear of the menu card.
             positionInstructionPill(iconCy, iconEdge, screenW, screenH)
         }
+    }
+
+    /** Vertical band (top..bottom) the "Record audio" bar occupies for a
+     *  collapsed card spanning [cardTop]..[cardBottom], or null when the bar
+     *  isn't showing. One placement rule shared by
+     *  [positionRecordAudioButton] and the drag-hint pill's obstacle math:
+     *  11dp below the card, flipped above when the bottom edge has no room. */
+    private fun recordAudioBand(cardTop: Int, cardBottom: Int, screenH: Int): IntRange? {
+        if (!showRecordAudio) return null
+        val gap = (11 * dp).toInt()
+        val h = (48 * dp).toInt()
+        val below = cardBottom + gap
+        return if (below + h <= screenH - screenMargin) below..(below + h)
+        else (cardTop - gap - h)..(cardTop - gap)
+    }
+
+    /** Size + place the "Record audio" bar against the menu card's COLLAPSED
+     *  footprint (same convention as [positionInstructionPill] — the bar only
+     *  shows while the card is collapsed; [toggleExpanded] hides it): the
+     *  card's full width, secondary-button (48dp) height. */
+    private fun positionRecordAudioButton(
+        iconCy: Int,
+        iconEdge: FloatingOverlayIcon.Edge,
+        screenW: Int,
+        screenH: Int,
+    ) {
+        if (!showRecordAudio) {
+            recordAudioBtn.visibility = View.GONE
+            return
+        }
+        val cardLeft = if (iconEdge == FloatingOverlayIcon.Edge.LEFT) screenMargin
+        else screenW - collapsedCardWidthPx - screenMargin
+        val cardTop = (iconCy - collapsedCardHeightPx / 2)
+            .coerceIn(screenMargin, screenH - collapsedCardHeightPx - screenMargin)
+        val band = recordAudioBand(cardTop, cardTop + collapsedCardHeightPx, screenH) ?: return
+        val lp = recordAudioBtn.layoutParams as LayoutParams
+        lp.gravity = Gravity.TOP or Gravity.START
+        lp.width = collapsedCardWidthPx
+        lp.height = band.last - band.first
+        lp.leftMargin = cardLeft
+        lp.topMargin = band.first
+        recordAudioBtn.layoutParams = lp
+        recordAudioBtn.visibility = if (expanded) View.GONE else View.VISIBLE
     }
 
     /** The drag-hint pill shows only for a full-screen region, never while the
@@ -1175,9 +1307,15 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         val cardOnLeft = iconEdge == FloatingOverlayIcon.Edge.LEFT
         val cardLeft = if (cardOnLeft) screenMargin else screenW - collapsedCardWidthPx - screenMargin
         val cardRight = cardLeft + collapsedCardWidthPx
-        val cardTop = (iconCy - collapsedCardHeightPx / 2)
+        var cardTop = (iconCy - collapsedCardHeightPx / 2)
             .coerceIn(screenMargin, screenH - collapsedCardHeightPx - screenMargin)
-        val cardBottom = cardTop + collapsedCardHeightPx
+        var cardBottom = cardTop + collapsedCardHeightPx
+        // The "Record audio" bar extends the card's obstacle band (same width,
+        // detached above/below) so the pill's placement clears both.
+        recordAudioBand(cardTop, cardBottom, screenH)?.let { band ->
+            cardTop = minOf(cardTop, band.first)
+            cardBottom = maxOf(cardBottom, band.last)
+        }
         val centerX = screenW / 2
         val centerY = screenH / 2
 

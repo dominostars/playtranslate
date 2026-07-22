@@ -865,11 +865,11 @@
 
     <!-- ═══════════════════════════════════════════════════════════════
          CAPTURE LIFECYCLE — power button + state strings shown on the
-         "Turn On / Turn Off PlayTranslate" card at the top of Settings.
-         Title and subtitle vary with state.  OFF strings carry the CTA
-         ("Allow…", "Required…"); ON strings describe the resulting
-         permission state WITHOUT claiming any capture is currently
-         happening.
+         PlayTranslate on/off card at the top of Settings. The card
+         title is the app name (stable across states); the ON/OFF badge
+         + switch track the session intent; the SUBTITLE tracks capture
+         permission truth (held / not held / held-then-lost), which is
+         deliberately independent of the switch position.
          ═══════════════════════════════════════════════════════════════ -->
 
     <!-- Button label that activates the capture pipeline. -->
@@ -878,32 +878,57 @@
     <!-- Button label that deactivates the capture pipeline. -->
     <string name="capture_lifecycle_stop">Turn Off</string>
 
-    <!-- ALL-CAPS state badge ("ON") shown next to the title when the
-         capture permission is granted. -->
+    <!-- ALL-CAPS state badge ("ON") shown next to the title while the
+         session is on. -->
     <string name="capture_lifecycle_state_on">On</string>
 
-    <!-- ALL-CAPS state badge ("OFF") shown next to the title when the
-         capture permission is not granted. -->
+    <!-- ALL-CAPS state badge ("OFF") shown next to the title while the
+         session is off. -->
     <string name="capture_lifecycle_state_off">Off</string>
 
-    <!-- Card title shown when capture permission has been granted. -->
-    <string name="capture_lifecycle_on_title">Screen capture permitted</string>
+    <!-- Card subtitle while capture permission is held (MediaProjection
+         consent, or the accessibility service on that backend). -->
+    <string name="capture_lifecycle_on_subtitle">Screen capture permitted</string>
 
-    <!-- Card title shown when capture permission has not been granted —
-         this is the CTA. -->
-    <string name="capture_lifecycle_off_title">Allow screen capture</string>
+    <!-- Card subtitle while capture permission is not held and the
+         session is off — the CTA; turning on will ask for it. -->
+    <string name="capture_lifecycle_off_subtitle">Allow screen capture</string>
 
-    <!-- Card subtitle when capture permission has been granted. -->
-    <string name="capture_lifecycle_on_subtitle">Ready to translate</string>
+    <!-- Card subtitle while the session is on but the consent token has
+         lapsed (status-bar revoke / lock auto-stop / single-use burn on
+         API 34+). Deliberately calm: this is the RESTING state on modern
+         Android, not an error — the next capture re-prompts. -->
+    <string name="capture_lifecycle_standby_subtitle">Screen capture on standby</string>
 
-    <!-- Card subtitle when capture permission has not been granted —
-         explains why this is required. -->
-    <string name="capture_lifecycle_off_subtitle">Required to read game text</string>
+    <!-- Title of the floating-icon visibility toggle row that takes the
+         power cell's slot on the accessibility backend in dual-screen
+         mode, where capture is always on and the icon is the only thing
+         left to control. -->
+    <string name="game_screen_controls_title">Show on-screen controls</string>
 
-    <!-- Card title shown on the accessibility-backed power cell in
-         dual-screen mode, where capture is always on and the floating
-         icon is the only thing left to control. -->
-    <string name="game_screen_controls_title">Game Screen Controls</string>
+    <!-- ═══════════════════════════════════════════════════════════════
+         AUDIO RECORDING row (Settings → top section) + floating menu
+         bar. Recording is a property of the session — it starts and
+         stops with PlayTranslate (the feature switch lives in Anki
+         settings). The ONLY audio-specific verb is the repair: re-arm
+         the capture consent the session's audio rides on. The Settings
+         row keeps one constant title; its trailing record glyph is the
+         state light (hint = not recording, accent = recording), and its
+         tap requests consent when off / opens Anki settings when on.
+         The floating menu shows its accent bar only in the repair state
+         (the OS capture chip is the in-game indicator).
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- The floating menu accent bar's verb. -->
+    <string name="record_audio_action">Record audio</string>
+
+    <!-- Settings row title while audio is dark — a verb, because the tap
+         IS the action (requests the capture consent). -->
+    <string name="audio_recording_row_start">Start recording audio</string>
+
+    <!-- Settings row title while recording — a status claim, true only
+         in this state; the tap is the quiet manage path (Anki settings). -->
+    <string name="audio_recording_row_active">Recording audio</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          MEDIAPROJECTION OVERLAY-PERMISSION DIALOG

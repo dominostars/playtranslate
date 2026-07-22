@@ -361,13 +361,11 @@
 
     <string name="capture_lifecycle_state_off">Aus</string>
 
-    <string name="capture_lifecycle_on_title">Bildschirmaufnahme erlaubt</string>
 
-    <string name="capture_lifecycle_off_title">Bildschirmaufnahme zulassen</string>
 
-    <string name="capture_lifecycle_on_subtitle">Bereit zum Übersetzen</string>
+    <string name="capture_lifecycle_on_subtitle">Bildschirmaufnahme erlaubt</string>
 
-    <string name="capture_lifecycle_off_subtitle">Erforderlich, um Spieltext zu lesen</string>
+    <string name="capture_lifecycle_off_subtitle">Bildschirmaufnahme zulassen</string>
 
     <string name="game_screen_controls_title">Steuerelemente des Spielbildschirms</string>
 

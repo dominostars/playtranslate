@@ -1129,9 +1129,25 @@ class CaptureService : Service() {
     fun reconcileGameAudio() {
         if (!Prefs(this).recordGameAudio) {
             if (gameAudioRecorderLazy.isInitialized()) gameAudioRecorder.stop("pref off")
+            releaseAudioOnlyProjection()
             return
         }
         gameAudioRecorder.reconcile()
+    }
+
+    /** Feature-off hygiene: on the accessibility backend the MediaProjection
+     *  session exists only as audio's ride (screen capture is the service),
+     *  so once the pref flips off a kept-alive session would glow the OS
+     *  capture chip with no client drinking from it. Tear it down — burns
+     *  the single-use consent token, so re-enabling re-prompts: state
+     *  honesty over prompt avoidance, the same trade Turn Off makes.
+     *  Never on the MediaProjection backend (the projection IS the capture
+     *  backend), and not while live mode runs — its borrowed MP stream
+     *  ([startLive]'s wantMpStreamConsent) may be riding the same session. */
+    private fun releaseAudioOnlyProjection() {
+        if (!CaptureBackendResolver.active().requiresAccessibilityService) return
+        if (isLive) return
+        mediaProjectionControllerIfInitialized?.destroy()
     }
 
     /** Shared recording backend for Text History + LLM context (both prefs

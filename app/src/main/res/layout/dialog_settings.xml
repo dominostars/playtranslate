@@ -6,85 +6,14 @@
     android:layout_height="match_parent"
     android:fitsSystemWindows="true">
 
-    <!-- Toolbar. The AppBarLayout stays present; visibility is driven by
-         toggling the inner MaterialToolbar (settingsToolbarInner) — setting
-         the AppBarLayout itself GONE leaves the CoordinatorLayout's scroll
-         child offset by the toolbar's stale measured height. liftOnScroll
-         is OFF and elevation is pinned to 0 so the bar reads as part of the
-         page background; the inner toolbar pins ptBg to override Material's
-         default surface color. -->
-    <com.google.android.material.appbar.AppBarLayout
-        android:id="@+id/settingsToolbar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="?attr/ptBg"
-        android:stateListAnimator="@null"
-        app:elevation="0dp"
-        app:liftOnScroll="false">
-
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/settingsToolbarInner"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:background="?attr/ptBg"
-            android:visibility="gone"
-            app:titleTextColor="?attr/ptText">
-
-            <TextView
-                android:id="@+id/tvSettingsTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/settings_title"
-                android:textColor="?attr/ptText"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-
-            <Button
-                android:id="@+id/btnCloseSettings"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_gravity="end"
-                android:text="@string/dialog_close_glyph"
-                android:textColor="?attr/ptText"
-                android:textSize="18sp"
-                android:minWidth="0dp"
-                android:minHeight="0dp"
-                android:padding="0dp" />
-
-            <com.playtranslate.ui.ShimmerButton
-                android:id="@+id/btnCaptureLifecycle"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:layout_gravity="end|center_vertical"
-                android:layout_marginEnd="8dp"
-                android:textAllCaps="false"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:minWidth="0dp"
-                android:minHeight="0dp"
-                android:paddingStart="12dp"
-                android:paddingEnd="14dp"
-                app:icon="@drawable/ic_mode_off_on"
-                app:iconSize="20dp"
-                app:iconPadding="4dp"
-                app:iconGravity="textStart"
-                app:cornerRadius="@dimen/pt_radius"
-                android:visibility="gone" />
-
-        </com.google.android.material.appbar.MaterialToolbar>
-    </com.google.android.material.appbar.AppBarLayout>
-
-    <!-- Scrollable content -->
+    <!-- Scrollable content. No appbar scrolling behavior: the toolbar below
+         is a fade-in overlay, so the content owns the full height and
+         scrolls under the bar. -->
     <androidx.core.widget.NestedScrollView
         android:id="@+id/settingsScrollView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:clipToPadding="false"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+        android:clipToPadding="false">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -105,8 +34,8 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="4dp"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="8dp"
                 android:layout_marginHorizontal="@dimen/pt_section_h_padding"
                 android:orientation="horizontal"
                 android:gravity="center_vertical">
@@ -209,17 +138,19 @@
 
             <!-- ══════════════════════════════════════════════════════ -->
             <!-- TOP SECTION — one card containing:                    -->
-            <!--   • Power cell (Allow screen capture / status)        -->
-            <!--   • Game screen controls (toggle on dual / info+icon  -->
-            <!--     preview on single)                                -->
-            <!--   • Compact icon toggle                               -->
-            <!--   • Add to quick settings                             -->
+            <!--   • Power cell (PlayTranslate on/off; subtitle =      -->
+            <!--     capture-permission truth)                         -->
+            <!--   • Show on-screen controls (icon toggle that takes   -->
+            <!--     the power cell's slot on a11y dual-screen)        -->
+            <!--   • Audio recording repair row (only when game-audio  -->
+            <!--     needs its MediaProjection consent re-granted)     -->
+            <!--   • "On the floating icon" gesture footer             -->
             <!-- No section header. The power cell answers "is it      -->
             <!-- ready?" and the on-screen controls answer "how do I   -->
             <!-- use it?" — they belong in the same table.             -->
-            <!-- The Game-screen-controls row's text + icon-preview    -->
-            <!-- dim to 50% alpha while the power cell is OFF, and the -->
-            <!-- power cell shimmers in place (see SettingsRenderer.   -->
+            <!-- The footer's text + icon-preview dim to 50% alpha     -->
+            <!-- while the power cell is OFF, and the power cell       -->
+            <!-- shimmers in place (see SettingsRenderer.              -->
             <!-- refreshCaptureLifecycleButton).                       -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardOnScreenControls"
@@ -237,12 +168,12 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
-                    <!-- Power cell (Allow screen capture). Whole row is the
+                    <!-- Power cell (PlayTranslate on/off). Whole row is the
                          tap target; trailing switch follows the row tap.
                          Replaces the old standalone "Turn On / Turn Off"
                          button — see SettingsRenderer.stylePowerCard(). The
-                         nav-bar ShimmerButton still fades in as the user
-                         scrolls past it. -->
+                         whole toolbar (title + Turn On/Off button) fades in
+                         as the user scrolls past this card. -->
                     <include
                         android:id="@+id/powerCard"
                         layout="@layout/settings_row_power" />
@@ -285,6 +216,53 @@
                             android:clickable="false"
                             android:focusable="false"
                             app:materialThemeOverlay="@style/Widget.PlayTranslate.MaterialSwitch" />
+
+                    </LinearLayout>
+
+                    <!-- Audio recording row — shown while game-audio
+                         recording (Prefs.recordGameAudio) is on and the
+                         session is active. Title (regular text color)
+                         tracks state — "Start recording audio" (a verb:
+                         the tap IS the action) vs "Recording audio" (a
+                         status claim) — and the trailing record glyph is
+                         the state light: ptTextHint (recessed, dark) vs
+                         ptAccent (recording). Tap: consent request while
+                         dark (the recorder never prompts by itself), Anki
+                         settings — where the feature switch lives — while
+                         recording. State + visibility owned by
+                         SettingsRenderer.refreshCaptureLifecycleButton,
+                         divider in lock-step. -->
+                    <include layout="@layout/settings_row_divider"
+                        android:id="@+id/dividerAudioRecording" />
+
+                    <LinearLayout
+                        android:id="@+id/rowAudioRecording"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:minHeight="@dimen/pt_row_min_height"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="@dimen/pt_row_v_padding">
+
+                        <TextView
+                            android:id="@+id/tvAudioRecordingTitle"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="12dp"
+                            android:text="@string/audio_recording_row_start"
+                            style="@style/Text.PT.RowTitle" />
+
+                        <ImageView
+                            android:id="@+id/ivAudioRecordingGlyph"
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:src="@drawable/ic_record_circle"
+                            android:importantForAccessibility="no" />
 
                     </LinearLayout>
 
@@ -638,4 +616,96 @@
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
+
+    <!-- Toolbar. Declared AFTER the scroll view so it draws on top of the
+         content (elevation stays pinned to 0 — the hairline divider below
+         the bar separates it from content instead of a shadow). The whole
+         bar rests hidden and is faded in by
+         SettingsRenderer.updateToolbarCrossfade once the user scrolls past
+         the power card — the bar (title + Turn On/Off button together) is
+         the sticky reminder that takes over from the card. Two independent
+         visibility axes:
+           - outer AppBarLayout: scroll crossfade (alpha, INVISIBLE at 0 so
+             a hidden bar never intercepts touches);
+           - inner MaterialToolbar (+ divider): the mode gate
+             (SettingsBottomSheet.refreshToolbarVisibility) — GONE on the
+             accessibility backend in dual-screen, where capture is always
+             on and there is nothing to start/stop. -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/settingsToolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?attr/ptBg"
+        android:stateListAnimator="@null"
+        android:alpha="0"
+        android:visibility="invisible"
+        app:elevation="0dp"
+        app:liftOnScroll="false">
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/settingsToolbarInner"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="?attr/ptBg"
+            android:visibility="gone"
+            app:titleTextColor="?attr/ptText">
+
+            <TextView
+                android:id="@+id/tvSettingsTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_title"
+                android:textColor="?attr/ptText"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnCloseSettings"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end"
+                android:text="@string/dialog_close_glyph"
+                android:textColor="?attr/ptText"
+                android:textSize="18sp"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:padding="0dp" />
+
+            <com.playtranslate.ui.ShimmerButton
+                android:id="@+id/btnCaptureLifecycle"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_gravity="end|center_vertical"
+                android:layout_marginEnd="8dp"
+                android:textAllCaps="false"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="14dp"
+                app:icon="@drawable/ic_mode_off_on"
+                app:iconSize="20dp"
+                app:iconPadding="4dp"
+                app:iconGravity="textStart"
+                app:cornerRadius="@dimen/pt_radius"
+                android:visibility="gone" />
+
+        </com.google.android.material.appbar.MaterialToolbar>
+
+        <!-- Hairline under the overlaying bar — the page-background bar
+             needs an edge against the content scrolling beneath it.
+             Toggled in lock-step with settingsToolbarInner. -->
+        <View
+            android:id="@+id/settingsToolbarDivider"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/ptDivider"
+            android:visibility="gone" />
+
+    </com.google.android.material.appbar.AppBarLayout>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

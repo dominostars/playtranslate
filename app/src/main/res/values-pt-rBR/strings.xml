@@ -360,13 +360,11 @@
 
     <string name="capture_lifecycle_state_off">Desativado</string>
 
-    <string name="capture_lifecycle_on_title">Captura de tela permitida</string>
 
-    <string name="capture_lifecycle_off_title">Permitir captura de tela</string>
 
-    <string name="capture_lifecycle_on_subtitle">Pronto para traduzir</string>
+    <string name="capture_lifecycle_on_subtitle">Captura de tela permitida</string>
 
-    <string name="capture_lifecycle_off_subtitle">Necessário para ler o texto do jogo</string>
+    <string name="capture_lifecycle_off_subtitle">Permitir captura de tela</string>
 
     <string name="game_screen_controls_title">Controles da tela do jogo</string>
 

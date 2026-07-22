@@ -353,13 +353,11 @@
 
     <string name="capture_lifecycle_state_off">معطّل</string>
 
-    <string name="capture_lifecycle_on_title">تم السماح بالتقاط الشاشة</string>
 
-    <string name="capture_lifecycle_off_title">السماح بالتقاط الشاشة</string>
 
-    <string name="capture_lifecycle_on_subtitle">جاهز للترجمة</string>
+    <string name="capture_lifecycle_on_subtitle">تم السماح بالتقاط الشاشة</string>
 
-    <string name="capture_lifecycle_off_subtitle">مطلوب لقراءة نص اللعبة</string>
+    <string name="capture_lifecycle_off_subtitle">السماح بالتقاط الشاشة</string>
 
     <string name="game_screen_controls_title">عناصر تحكم شاشة اللعبة</string>
 

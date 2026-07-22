@@ -368,13 +368,11 @@
 
     <string name="capture_lifecycle_state_off">オフ</string>
 
-    <string name="capture_lifecycle_on_title">画面キャプチャを許可済み</string>
 
-    <string name="capture_lifecycle_off_title">画面キャプチャを許可</string>
 
-    <string name="capture_lifecycle_on_subtitle">翻訳の準備ができました</string>
+    <string name="capture_lifecycle_on_subtitle">画面キャプチャを許可済み</string>
 
-    <string name="capture_lifecycle_off_subtitle">ゲームのテキストを読み取るために必要です</string>
+    <string name="capture_lifecycle_off_subtitle">画面キャプチャを許可</string>
 
     <string name="game_screen_controls_title">ゲーム画面のコントロール</string>
 

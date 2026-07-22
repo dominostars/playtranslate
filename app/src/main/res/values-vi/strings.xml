@@ -357,13 +357,11 @@
 
     <string name="capture_lifecycle_state_off">Tắt</string>
 
-    <string name="capture_lifecycle_on_title">Đã cho phép chụp màn hình</string>
 
-    <string name="capture_lifecycle_off_title">Cho phép chụp màn hình</string>
 
-    <string name="capture_lifecycle_on_subtitle">Sẵn sàng để dịch</string>
+    <string name="capture_lifecycle_on_subtitle">Đã cho phép chụp màn hình</string>
 
-    <string name="capture_lifecycle_off_subtitle">Bắt buộc để đọc văn bản trò chơi</string>
+    <string name="capture_lifecycle_off_subtitle">Cho phép chụp màn hình</string>
 
     <string name="game_screen_controls_title">Điều khiển màn hình trò chơi</string>
 
