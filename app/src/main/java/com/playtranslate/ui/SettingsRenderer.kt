@@ -15,6 +15,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -506,6 +507,15 @@ class SettingsRenderer(
     private fun setupCaptureLifecycleButton() {
         val onClick = View.OnClickListener {
             when {
+                // Before the active check: with a stale showOverlayIcon=true
+                // pref the stuck service still reads as active, and the
+                // deactivate branch would eat the tap AND clear the pref —
+                // forfeiting the auto-recovery where the icon returns by
+                // itself on rebind (onServiceConnected reconciles) once the
+                // user re-toggles the service. Repair first; the pref
+                // survives.
+                CaptureBackendResolver.active().requiresAccessibilityService &&
+                    a11yServiceStuck() -> showA11yStuckAlert()
                 CaptureLifecycle.isActive(ctx) -> {
                     CaptureLifecycle.deactivate(ctx)
                     refreshCaptureLifecycleButton()
@@ -517,7 +527,7 @@ class SettingsRenderer(
                 CaptureLifecycle.activateAccessibility(ctx) -> {
                     refreshCaptureLifecycleButton()
                 }
-                else -> showOverlayIconA11yAlert()
+                else -> showA11yActivationBlockedAlert()
             }
         }
         btnCaptureLifecycle.setOnClickListener(onClick)
@@ -560,7 +570,12 @@ class SettingsRenderer(
      *  visibility and the switch's checked state. */
     private fun setupGameScreenControlsRow() {
         rowGameScreenControls.setOnClickListener {
-            if (prefs.showOverlayIcon) {
+            if (a11yServiceStuck()) {
+                // Same repair-first ordering as the power button: an off-tap
+                // in the stuck state would clear the pref and forfeit the
+                // auto-restore on rebind.
+                showA11yStuckAlert()
+            } else if (prefs.showOverlayIcon) {
                 // Off — the canonical "icon goes away" path (writes the pref,
                 // stops live mode, hides the icon, refreshes the tile), shared
                 // with the QS tile and CaptureLifecycle.deactivate.
@@ -568,10 +583,14 @@ class SettingsRenderer(
                     ctx, "settings_game_screen_controls_off"
                 )
             } else {
-                // On — bring the floating icon back.
-                prefs.showOverlayIcon = true
-                CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
-                PlayTranslateTileService.TileSync.refresh(ctx)
+                // On — bring the floating icon back, through the canonical
+                // activate so the pref write is honest: it only sticks when
+                // the bound service can actually host the icon, and the
+                // stuck / not-enabled states get their repair prompts
+                // instead of a silent no-op.
+                if (!CaptureLifecycle.activateAccessibility(ctx)) {
+                    showA11yActivationBlockedAlert()
+                }
             }
             refreshCaptureLifecycleButton()
         }
@@ -837,6 +856,44 @@ class SettingsRenderer(
         AlertDialog.Builder(ctx)
             .setTitle(R.string.overlay_icon_a11y_required_title)
             .setMessage(R.string.overlay_icon_a11y_required_message)
+            .setPositiveButton(R.string.btn_open_a11y_settings) { _, _ ->
+                ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** Enabled in system Settings but not bound to our process — the
+     *  force-stop zombie state the system's accessibility page reports as
+     *  "malfunctioning". Checked BEFORE the toggle branches (power button,
+     *  Game Screen Controls row) so a tap in that state repairs instead of
+     *  writing prefs against a service that cannot host the icon. */
+    private fun a11yServiceStuck(): Boolean =
+        PlayTranslateAccessibilityService.isEnabled(ctx) &&
+            !PlayTranslateAccessibilityService.isConnected
+
+    /** Repair-prompt dispatch for a failed
+     *  [CaptureLifecycle.activateAccessibility]: enabled-but-unbound is the
+     *  state the system's accessibility page reports as "malfunctioning"
+     *  (Android never rebinds a force-stopped service until the user
+     *  re-toggles it) and gets the stuck alert; not enabled at all gets the
+     *  ordinary enable prompt. */
+    private fun showA11yActivationBlockedAlert() {
+        if (PlayTranslateAccessibilityService.isEnabled(ctx)) showA11yStuckAlert()
+        else showOverlayIconA11yAlert()
+    }
+
+    private fun showA11yStuckAlert() {
+        var message = ctx.getString(R.string.a11y_stuck_message)
+        // Xiaomi's battery manager force-stops apps that lack its Autostart
+        // permission, which is what strands the service in this state — the
+        // generic re-toggle fixes the symptom, these settings stop the loop.
+        if (Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true)) {
+            message += "\n\n" + ctx.getString(R.string.a11y_stuck_message_xiaomi)
+        }
+        AlertDialog.Builder(ctx)
+            .setTitle(R.string.a11y_stuck_title)
+            .setMessage(message)
             .setPositiveButton(R.string.btn_open_a11y_settings) { _, _ ->
                 ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             }

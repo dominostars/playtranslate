@@ -970,6 +970,19 @@
          separator; keep the app name. -->
     <string name="overlay_icon_a11y_required_message">The floating overlay icon requires the Accessibility permission to draw on the game screen.\n\nGo to Settings → Accessibility → Downloaded apps → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Enable.</string>
 
+    <!-- Title of the alert shown when the accessibility service is enabled
+         in system Settings but Android has stopped it and will not rebind
+         it (the state the system's accessibility page reports as
+         "malfunctioning", typically after a force stop). -->
+    <string name="a11y_stuck_title">Accessibility needs a restart</string>
+
+    <!-- Body of the same alert. -->
+    <string name="a11y_stuck_message">Accessibility is enabled for <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, but Android has stopped the service and will not restart it on its own. Your device may report the app as malfunctioning in accessibility settings. This usually happens after the system force-stops the app to save battery.\n\nTo fix it, turn the service off and back on in your accessibility settings.</string>
+
+    <!-- Extra paragraph appended to the same alert on Xiaomi devices, whose
+         battery manager force-stops apps without the Autostart permission. -->
+    <string name="a11y_stuck_message_xiaomi">On Xiaomi devices, also enable Autostart for <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> and set Battery saver to No restrictions in the app\'s system settings. Without these, the system will keep stopping the service.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          ACCESSIBILITY-REQUIRED ALERT (capture-display picker, hotkeys,
          enhanced auto-translate).  One title, three body variants for

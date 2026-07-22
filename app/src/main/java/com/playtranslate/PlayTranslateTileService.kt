@@ -9,6 +9,7 @@ import android.os.Build
 import android.provider.Settings
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
+import android.util.Log
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CaptureLifecycle
 
@@ -95,21 +96,29 @@ class PlayTranslateTileService : TileService() {
         val a11y = PlayTranslateAccessibilityService.instance
         when {
             a11y != null -> {
-                val prefs = Prefs(this)
-                if (prefs.showOverlayIcon) {
+                if (Prefs(this).showOverlayIcon) {
                     PlayTranslateAccessibilityService.disable(this, "tile_turn_off")
                 } else {
-                    prefs.showOverlayIcon = true
-                    com.playtranslate.capture.CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
-                    TileSync.refresh(this)
+                    // Canonical activate — shared with the Settings power
+                    // button, so the tile also opens the game-audio gate
+                    // instead of a hand-rolled pref write that skipped it.
+                    CaptureLifecycle.activateAccessibility(this)
                 }
                 renderState()
             }
-            // Enabled in Settings but Android hasn't bound the service to our
-            // process yet. Drop the tap rather than redirect to accessibility
-            // settings — the user already granted, and the rebind is imminent.
-            PlayTranslateAccessibilityService.isEnabled(this) -> {}
+            // Not bound: either never enabled, or enabled but force-stopped —
+            // the system then reports the service as malfunctioning and never
+            // rebinds it until the user toggles it off and on. Both repairs
+            // live on the accessibility settings screen, so send the user
+            // there rather than dropping the tap. (A tap landing in the tiny
+            // healthy window between process start and bind also ends up
+            // here; the user backs out and the next tap works.)
             else -> {
+                Log.i(
+                    "PlayTranslateTile",
+                    "a11y tile tap while unbound: " +
+                        "enabled=${PlayTranslateAccessibilityService.isEnabled(this)}"
+                )
                 val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 startActivityAndCollapseCompat(intent)

@@ -1,6 +1,7 @@
 package com.playtranslate.capture
 
 import android.content.Context
+import android.util.Log
 import com.playtranslate.CaptureService
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.PlayTranslateTileService
@@ -25,6 +26,8 @@ import com.playtranslate.Prefs
  *  - Accessibility backend, single-screen → the floating icon is shown.
  */
 object CaptureLifecycle {
+
+    private const val TAG = "CaptureLifecycle"
 
     /** Whether PlayTranslate's capture system is currently running. */
     fun isActive(ctx: Context): Boolean {
@@ -75,10 +78,25 @@ object CaptureLifecycle {
         CaptureService.instance?.reconcileGameAudio()
     }
 
-    /** Accessibility-backend activate: show the floating icon. Returns false —
-     *  the caller should prompt for the service — when it isn't enabled. */
+    /** Accessibility-backend activate: show the floating icon. Gates on the
+     *  service being BOUND, not merely enabled in system Settings: the icon
+     *  is hosted by the bound service's OverlayUiController, and after a
+     *  force stop Android leaves the service enabled-but-unbound (the
+     *  accessibility settings page reports it as "malfunctioning") and never
+     *  rebinds it until the user toggles it off and on. Gating on the
+     *  Settings string made Turn On claim success in that state while
+     *  showing nothing. Returns false when the icon cannot be shown; callers
+     *  split the repair prompt on [PlayTranslateAccessibilityService
+     *  .isEnabled] — false means prompt to enable, true means the service is
+     *  stuck and needs a re-toggle. */
     fun activateAccessibility(ctx: Context): Boolean {
-        if (!PlayTranslateAccessibilityService.isEnabled(ctx)) return false
+        val connected = PlayTranslateAccessibilityService.isConnected
+        Log.i(
+            TAG,
+            "activateAccessibility: connected=$connected " +
+                "enabled=${PlayTranslateAccessibilityService.isEnabled(ctx)}"
+        )
+        if (!connected) return false
         Prefs(ctx).showOverlayIcon = true
         CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
         PlayTranslateTileService.TileSync.refresh(ctx)
