@@ -421,6 +421,7 @@ class MediaProjectionController(private val service: CaptureService) {
         val (w, h) = captureSize(projectedDisplayId)
             ?: return noteFailure(clean, "display size unavailable")
         ensureVirtualDisplay(w, h) ?: return noteFailure(clean, "virtual display unavailable")
+        lastPeekRefusal = null
 
         // Deadline-as-decision, not deadline-as-abort: each pass serves the
         // newest qualifying frame the instant one exists; the budget only
@@ -429,6 +430,17 @@ class MediaProjectionController(private val service: CaptureService) {
         // await below runs with no reference held.
         val deadline = android.os.SystemClock.uptimeMillis() + FRESHNESS_BUDGET_MS
         while (true) {
+            // The wake baseline is read BEFORE the latch peek. A delivery
+            // landing between the peek and the await must still satisfy the
+            // await's current-value check (StateFlow.first serves the current
+            // value), so the loop re-peeks and serves it. Reading the baseline
+            // after the peek let that delivery raise the baseline past itself
+            // — permanently invisible — and on a screen that goes quiet right
+            // after (the settled screen every one-shot targets, with the
+            // blank's own repaint as the last delivery) the budget expired
+            // with the qualifying frame sitting in the latch (Thor
+            // 2026-07-20: "no delivery above anchor=N … latest=N+1").
+            val observed = deliverySeq.value
             val f = peekLatest(w, h)
             if (f != null && f.seq > minSeq) {
                 return f.use { lf -> decode(lf, w, h, advanceCursor)?.let { it to lf.seq } }
@@ -439,16 +451,20 @@ class MediaProjectionController(private val service: CaptureService) {
                 return noteFailure(
                     clean,
                     "no delivery above anchor=$minSeq in ${FRESHNESS_BUDGET_MS}ms " +
-                        "(latest=${deliverySeq.value})"
+                        "(latest=${deliverySeq.value} latched=${latch.get()?.seq} " +
+                        "refused=$lastPeekRefusal)"
                 )
             }
-            val observed = deliverySeq.value
+            // A timed-out await falls through to one more peek instead of
+            // failing directly: every 2026-07-21 field failure showed the
+            // awaited delivery landing AT the deadline (latched == latest ==
+            // anchor+1 in the failure line) — on a static screen the panel's
+            // idle-refresh collapse quantizes the blank's repaint to ~100ms
+            // ticks, so the timeout can lose a photo-finish to the very
+            // delivery it was waiting for. The deadline check above is the
+            // sole exit; after a timeout the recomputed remaining is ≤ 0
+            // (timeouts never fire early), so this cannot spin.
             withTimeoutOrNull(remaining) { deliverySeq.first { it > observed } }
-                ?: return noteFailure(
-                    clean,
-                    "no delivery above anchor=$minSeq in ${FRESHNESS_BUDGET_MS}ms " +
-                        "(latest=${deliverySeq.value})"
-                )
         }
     }
 
@@ -566,17 +582,32 @@ class MediaProjectionController(private val service: CaptureService) {
         repeat(4) {
             val f = latch.get() ?: return null
             if (!f.acquire()) return@repeat // displaced under us — re-read
-            val matches = try {
-                f.image.width == w && f.image.height == h
+            // The Image reports the BUFFER's dimensions, which are not
+            // guaranteed to match the reader's configured size: the mirror's
+            // producer (SurfaceFlinger) can emit buffers at the mirrored
+            // display's live geometry, e.g. during Thor's rotation blips,
+            // where WindowMetrics and the SF layer stack disagree about
+            // display 0 (2026-07-21 field failures: every frame refused).
+            // -1×-1 = the size read threw (reader closed under a swap).
+            val (iw, ih) = try {
+                f.image.width to f.image.height
             } catch (e: IllegalStateException) {
-                false
+                -1 to -1
             }
-            if (matches) return f
+            if (iw == w && ih == h) return f
+            lastPeekRefusal = "seq=${f.seq} image=${iw}x$ih want=${w}x$h"
             f.release()
             return null
         }
         return null
     }
+
+    /** The most recent size-refusal [peekLatest] made, surfaced in the
+     *  budget-expiry failure line — the datum that separates "delivery never
+     *  came" from "deliveries came but none were servable at the expected
+     *  geometry". Best-effort forensics; cleared at each gated-capture
+     *  entry so a stale refusal can't masquerade as this capture's. */
+    @Volatile private var lastPeekRefusal: String? = null
 
     /** Game-audio hook ([GameAudioRecorder]): turn the held consent into a
      *  live projection — no VirtualDisplay involved — and return it so an
@@ -992,9 +1023,15 @@ class MediaProjectionController(private val service: CaptureService) {
     private companion object {
         /** Bound on waiting for a delivery when the latch is empty (first
          *  capture after VD creation) or a clean capture awaits its post-blank
-         *  frame. Sized to the legacy delay(64)+delay(48) freshness budget the
-         *  old poll path allowed, so availability semantics don't regress. */
-        const val FRESHNESS_BUDGET_MS = 112L
+         *  frame. Deadline-as-decision: frames serve the instant they land, so
+         *  raising this costs nothing on the common path — it only bounds the
+         *  failure case. 250ms, not the legacy 112ms (inherited from the old
+         *  delay(64)+delay(48) poll dance — a history, not a measurement): the
+         *  2026-07-21 Thor field failures showed the blank's repaint delivery
+         *  arriving right AT 112ms on static screens — idle-refresh panel
+         *  collapse quantizes composition to ~100ms ticks — so the budget must
+         *  clear a worst-case idle tick plus scheduling margin. */
+        const val FRESHNESS_BUDGET_MS = 250L
 
         /** Cadence of the debug delivery-rate summary. */
         const val SUMMARY_INTERVAL_MS = 5_000L
