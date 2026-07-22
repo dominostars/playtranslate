@@ -1298,7 +1298,7 @@ class Prefs internal constructor(
         set(v) = sp.edit { putBoolean(KEY_DEBUG_LOG_GROUPING, v) }
 
     /** Debug-only: append every live-mode committed region set
-     *  (post-StabilityHold `toTranslate`) to a JSONL trace under
+     *  (post-TypewriterGate `toTranslate`) to a JSONL trace under
      *  external-files/log-traces/ — the offline feed for validating the
      *  translation-log write gate on real sessions. See
      *  [com.playtranslate.translationlog.LogTraceRecorder]. */

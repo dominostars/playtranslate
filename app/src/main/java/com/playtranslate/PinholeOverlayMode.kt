@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Rect
+import android.os.SystemClock
 import android.util.Log
 import android.view.Choreographer
 import com.playtranslate.language.SourceLanguageProfiles
@@ -78,6 +79,18 @@ class PinholeOverlayMode(
     private val logTrace =
         com.playtranslate.translationlog.LogTraceRecorder.createIfEnabled(service, displayId)
 
+    /** Sentence-gated typewriter dispatch over the step-12 far groups —
+     *  see [TypewriterGate]. Whole-read dispatch only on this tier: a
+     *  prefix box placed over still-typing text composites into the frame,
+     *  gets detected as changed, and flashes out within a cycle. */
+    private val typewriterGate = TypewriterGate()
+
+    /** Earliest open typewriter-hold cap (uptime ms). Pacing and the
+     *  engine's park are clamped to it, so a held reveal that finishes
+     *  into a static screen still gets its releasing read — the delivery
+     *  gate alone would park forever on the now-static frame. */
+    private var typewriterDeadlineMs: Long? = null
+
     /** Production recording backend (Text History / LLM context): feed the
      *  shown stream — group source + the translation it got — for indices
      *  where [translationFor] returns non-empty. Callers pass the pair
@@ -132,6 +145,7 @@ class PinholeOverlayMode(
     private val engine = LiveCycleEngine(
         scope, service, displayId, "PinholeOverlayMode",
         source = ::liveSource,
+        parkDeadlineMs = { typewriterDeadlineMs },
         firstCycleGate = { service.awaitFirstCycleClear() },
     ) { runCycle() }
 
@@ -155,6 +169,7 @@ class PinholeOverlayMode(
     override fun stop() {
         scope.cancel()
         resetState()
+        typewriterGate.clear()
 
         CaptureBackendResolver.active().stopInputMonitoring(displayId)
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
@@ -201,6 +216,9 @@ class PinholeOverlayMode(
     override fun onDisplayRotated() {
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
         resetState()
+        // Rotation voids the coordinate space the gate's region memory is
+        // keyed in — full clear, not just holds.
+        typewriterGate.clear()
         engine.scheduleNext(LiveMode.ROTATION_SETTLE_MS)
     }
 
@@ -214,6 +232,13 @@ class PinholeOverlayMode(
         outsideGrid.reset()
         grayZoneStats.clear()
         grayZoneLastEmitMs = 0L
+        // Holds only — region memory and ARMING survive. The input path
+        // dismisses per message (tap → dismiss → next message types);
+        // wiping arming here would disarm every region in exactly the
+        // flow arming exists for. Coordinate-voiding resets (rotation,
+        // dim/crop changes, stop) additionally call typewriterGate.clear().
+        typewriterGate.clearHolds()
+        typewriterDeadlineMs = null
         // The gate is only meaningful relative to a previous look at the
         // screen. After a reset the model is empty (overlays hidden, caches
         // dropped), so the next cycle must run even in delivery silence —
@@ -361,6 +386,8 @@ class PinholeOverlayMode(
                 cleanRefBitmap = null
                 overlayBitmap?.recycle()
                 overlayBitmap = null
+                typewriterGate.clear()
+                typewriterDeadlineMs = null
                 CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                 // State cleared + overlay hidden: the rebuild cycle must run
                 // even if the post-rotation screen goes immediately static.
@@ -468,6 +495,11 @@ class PinholeOverlayMode(
             // blind to "text present but no longer covered".
             var pinholePre: Array<PinholeOutcome>? = null
             var reconcileCycle = false
+            // An expired typewriter-hold cap must reach OCR: the releasing
+            // read's whole point is that the screen may have gone static
+            // (zero pixel evidence), which is exactly what the skip keys on.
+            val typewriterDue =
+                typewriterDeadlineMs?.let { SystemClock.uptimeMillis() >= it } == true
             run gate@{
                 val gateBoxes = cachedBoxes ?: return@gate
                 val gateRef = cleanRefBitmap ?: return@gate
@@ -504,8 +536,8 @@ class PinholeOverlayMode(
                 // text inside endless animation must never wait past shipped
                 // cadence — see OutsideBlockGrid). Such screens run the full
                 // cycle every wake, exactly like the shipped app.
-                if (!forcedLook && allKeep && !outside.fired && !reconcileCycle &&
-                    outside.volatileBlocks == 0
+                if (!forcedLook && !typewriterDue && allKeep && !outside.fired &&
+                    !reconcileCycle && outside.volatileBlocks == 0
                 ) {
                     // A moving-but-differing block must get a floor-paced
                     // follow-up look even if the screen has gone silent.
@@ -526,8 +558,11 @@ class PinholeOverlayMode(
                     // time in the field (2026-07-08 regression). Game input
                     // no longer paces here at all: it dismisses and waits an
                     // interval instead (see [start]).
-                    return if (outside.pendingSettle) mgr.minCaptureIntervalMs
-                    else prefs.captureIntervalMs
+                    return clampToTypewriterDeadline(
+                        if (outside.pendingSettle) mgr.minCaptureIntervalMs
+                        else prefs.captureIntervalMs,
+                        mgr.minCaptureIntervalMs,
+                    )
                 }
                 pinholePre = outcomes
                 if (debug) {
@@ -538,6 +573,7 @@ class PinholeOverlayMode(
                         outside.volatileBlocks > 0 ->
                             "volatile ${outside.volatileBlocks} block(s) — full cadence"
                         forcedLook -> "forced look"
+                        typewriterDue -> "typewriter release due"
                         else ->
                             "outside ${outside.changedSamples}/${outside.totalSamples} " +
                                 outside.fitLabel()
@@ -631,6 +667,8 @@ class PinholeOverlayMode(
                     cleanRefBitmap = null
                     overlayBitmap?.recycle()
                     overlayBitmap = null
+                    typewriterGate.clear()
+                    typewriterDeadlineMs = null
                     CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                     engine.forceNext()
                     return prefs.captureIntervalMs
@@ -774,6 +812,34 @@ class PinholeOverlayMode(
             cachedBoxes = nextBoxes.ifEmpty { null }
             val anyChanged = allRemovals.isNotEmpty()
 
+            // 9c. Sentence-gated typewriter dispatch ([TypewriterGate]).
+            //     On this tier a changed box dies (step 8) BEFORE its fuller
+            //     text re-arrives as an unpaired far group, so the gate's
+            //     region memory carries the old-text reference across that
+            //     gap. Held groups place nothing this cycle — the game's own
+            //     reveal stays visible — and release on a boundary-final
+            //     read, two agreeing reads, or the cap (whose deadline wakes
+            //     a parked loop; see [typewriterDeadlineMs]). Runs on every
+            //     full-look cycle, even with zero far groups: a read that no
+            //     longer shows a held region is the evidence that sweeps its
+            //     hold. `paired` groups bypass the gate inside (placement
+            //     promise).
+            val gateNowMs = SystemClock.uptimeMillis()
+            val farOutcome = typewriterGate.filterFarGroups(
+                farOcrGroups,
+                SourceLanguageProfiles[prefs.sourceLangId].translationCode,
+                frame.capturedAtMs, gateNowMs,
+            )
+            typewriterDeadlineMs = farOutcome.nextDeadlineMs
+            typewriterGate.touchRegions(nextBoxes.map { it.bounds }, gateNowMs)
+            val placeGroups = farOutcome.dispatch
+            if (debug && farOutcome.held > 0) {
+                DetectionLog.log(
+                    "D$displayId c$cycleNum typewriter: held=${farOutcome.held} " +
+                        "deadlineIn=${farOutcome.nextDeadlineMs?.let { it - gateNowMs } ?: -1}ms"
+                )
+            }
+
             if (debug && (anyChanged || farOcrGroups.isNotEmpty())) {
                 DetectionLog.log(
                     "D$displayId c$cycleNum transitions: " +
@@ -781,7 +847,7 @@ class PinholeOverlayMode(
                         "contentMatch=${contentMatchRemovals.toSortedSet()}, " +
                         "cascade=${cascadedRemovals.toSortedSet()}, " +
                         "stale=${staleOverlayIndices.toSortedSet()}) " +
-                        "far=${farOcrGroups.size} " +
+                        "far=${placeGroups.size}(+${farOutcome.held} held) " +
                         "boxesIn=${boxes.size} boxesOut=${nextBoxes.size}"
                 )
                 // Why classification picked stale/contentMatch/far: dump
@@ -819,7 +885,7 @@ class PinholeOverlayMode(
                 anyRemoved = allRemovals.isNotEmpty()
                 if (nextBoxes.isNotEmpty()) {
                     showOverlayAndCapture(nextBoxes, cropLeft, cropTop, screenshotW, screenshotH)
-                } else if (farOcrGroups.isEmpty()) {
+                } else if (placeGroups.isEmpty()) {
                     // No surviving boxes AND no replacement coming — empty
                     // the main overlay so stale boxes don't linger.
                     // setBoxes(emptyList()) (not hideTranslationOverlayForDisplay)
@@ -830,7 +896,7 @@ class PinholeOverlayMode(
                     CaptureBackendResolver.activeOverlayUi?.translationOverlayForDisplay(displayId)
                         ?.setBoxes(emptyList(), cropLeft, cropTop, screenshotW, screenshotH)
                 }
-                // else: farOcrGroups is non-empty — the path below will call
+                // else: placeGroups is non-empty — the path below will call
                 // setBoxes(merged) which is the actual swap. Calling
                 // setBoxes(emptyList()) here too would force an extra
                 // rebuildChildren back-to-back; on stable content where
@@ -851,21 +917,22 @@ class PinholeOverlayMode(
             //     game pixels — a valid baseline. The gate avoids one
             //     full-bitmap copy per idle cycle where the view is empty
             //     and there's nothing to place.
-            if (cleanRefBitmap == null && (farOcrGroups.isNotEmpty() || nextBoxes.isNotEmpty())) {
+            if (cleanRefBitmap == null && (placeGroups.isNotEmpty() || nextBoxes.isNotEmpty())) {
                 cleanRefBitmap = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
             }
 
             // 12. Show new text (with skeletons for uncached, instant for cached)
-            if (farOcrGroups.isNotEmpty()) {
-                // Commit-stream trace (translation-log validation): the far
-                // groups are this mode's analog of the reconciler's
-                // toTranslate — the new/changed text entering the overlay.
-                logTrace?.onCommitGroups(cycleNum, System.currentTimeMillis(), farOcrGroups)
-                val farTexts = farOcrGroups.map { it.text }
-                val farBounds = farOcrGroups.map { it.bounds }
-                val farLineCounts = farOcrGroups.map { it.lineCount }
-                val farOrientations = farOcrGroups.map { it.orientation }
-                val farAlignments = farOcrGroups.map { it.alignment }
+            if (placeGroups.isNotEmpty()) {
+                // Commit-stream trace (translation-log validation): the
+                // post-gate groups are this mode's analog of the
+                // reconciler's post-hold toTranslate — the new/changed text
+                // actually entering the overlay.
+                logTrace?.onCommitGroups(cycleNum, System.currentTimeMillis(), placeGroups)
+                val farTexts = placeGroups.map { it.text }
+                val farBounds = placeGroups.map { it.bounds }
+                val farLineCounts = placeGroups.map { it.lineCount }
+                val farOrientations = placeGroups.map { it.orientation }
+                val farAlignments = placeGroups.map { it.alignment }
                 val placeholders = buildPlaceholderBoxes(farTexts, farBounds, farLineCounts, raw, cropLeft, cropTop, farOrientations, farAlignments)
 
                 if (placeholders.isNotEmpty()) {
@@ -883,7 +950,7 @@ class PinholeOverlayMode(
                     // never reach translatePlaceholders — record them now.
                     // Pair captured pre-translate for the fresh tap below.
                     val (recordSrc, recordTgt) = recordPair()
-                    recordShown(farOcrGroups, recordSrc, recordTgt) { i -> partial[i].translatedText }
+                    recordShown(placeGroups, recordSrc, recordTgt) { i -> partial[i].translatedText }
 
                     if (anyUncached) {
                         val translated = translatePlaceholders(placeholders, farTexts)
@@ -894,7 +961,7 @@ class PinholeOverlayMode(
                         // Freshly translated boxes only — the cache-hits above
                         // already recorded (gate dedupe would absorb a double,
                         // but don't lean on it).
-                        recordShown(farOcrGroups, recordSrc, recordTgt) { i ->
+                        recordShown(placeGroups, recordSrc, recordTgt) { i ->
                             if (partial[i].translatedText.isEmpty()) translated[i].translatedText else ""
                         }
                     }
@@ -902,11 +969,14 @@ class PinholeOverlayMode(
                 }
             }
 
-            // 13. Keep the panel in sync with cachedBoxes — fire on far
+            // 13. Keep the panel in sync with cachedBoxes — fire on placed
             //     groups OR removals so removal-only cycles don't go stale.
-            if (farOcrGroups.isNotEmpty() || allRemovals.isNotEmpty()) {
+            if (placeGroups.isNotEmpty() || allRemovals.isNotEmpty()) {
                 if (cachedBoxes.isNullOrEmpty()) {
-                    service.handleNoTextDetected(displayId)
+                    // Held typewriter text is still text-on-screen: a no-text
+                    // signal mid-reveal would blank the panel the imminent
+                    // release is about to fill.
+                    if (farOutcome.held == 0) service.handleNoTextDetected(displayId)
                 } else {
                     // Lazy path: the JPEG save only runs when the panel is
                     // actually visible (inside sendFullStateToPanel's gate).
@@ -919,8 +989,11 @@ class PinholeOverlayMode(
             //     deterministic replacement for relying on our own repaint
             //     echoing back through the mirror as a delivery. On a static
             //     screen the follow-up finds nothing, forces nothing, and the
-            //     loop parks.
-            if (anyChanged || farOcrGroups.isNotEmpty()) {
+            //     loop parks. Held groups deliberately do NOT force: while
+            //     the reveal animates, deliveries wake the loop anyway; once
+            //     it stops, the cap deadline (park bound + pacing clamp)
+            //     provides the releasing read.
+            if (anyChanged || placeGroups.isNotEmpty()) {
                 engine.forceNext()
                 // The overlay layout changed: block membership under the
                 // exclusion rects shifted and the reference re-baselined, so
@@ -929,18 +1002,31 @@ class PinholeOverlayMode(
             }
             if (reconcileCycle && (anyChanged || farOcrGroups.isNotEmpty())) {
                 // The A2 gate's false-negative metric: the safety-net cycle
-                // found work the gate had been skipping past. Loud on
-                // purpose — a nonzero rate here means the grid/thresholds
-                // miss real changes and the net must stay.
+                // found work the gate had been skipping past (pre-typewriter-
+                // gate counts — this is a detection metric, not dispatch).
+                // Loud on purpose — a nonzero rate here means the
+                // grid/thresholds miss real changes and the net must stay.
                 DetectionLog.log(
                     "D$displayId c$cycleNum gate MISS: reconcile found " +
                         "removed=${allRemovals.size} far=${farOcrGroups.size}"
                 )
             }
-            return if (anyRemoved) mgr.minCaptureIntervalMs else prefs.captureIntervalMs
+            return clampToTypewriterDeadline(
+                if (anyRemoved) mgr.minCaptureIntervalMs else prefs.captureIntervalMs,
+                mgr.minCaptureIntervalMs,
+            )
         } finally {
             if (!raw.isRecycled) raw.recycle()
         }
+    }
+
+    /** Next-cycle delay, never past the earliest open typewriter-hold cap,
+     *  never below the source floor — the pinhole analog of
+     *  [ReconcilerLiveMode]'s pacing clamp. */
+    private fun clampToTypewriterDeadline(baseMs: Long, floorMs: Long): Long {
+        val deadline = typewriterDeadlineMs ?: return baseMs
+        val untilCap = deadline - SystemClock.uptimeMillis()
+        return maxOf(floorMs, minOf(baseMs, untilCap))
     }
 
     /** Show overlay in pinhole mode, wait for layout, capture screen rects and

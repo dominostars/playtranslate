@@ -8,7 +8,7 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * JSONL schema for translation-log traces: one header line, then one line
- * per live-mode cycle that committed regions (post-[com.playtranslate.StabilityHold]
+ * per live-mode cycle that committed regions (post-[com.playtranslate.TypewriterGate]
  * `toTranslate` — the exact stream the future log's write gate consumes).
  * Written on-device by [LogTraceRecorder]; read offline by
  * LogTraceReplayTest, which replays it through [LogWriteGate] and renders

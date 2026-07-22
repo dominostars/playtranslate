@@ -15,7 +15,7 @@ import org.robolectric.RobolectricTestRunner
  * Unit tests for [ScanlineReconciler] — the text-space single-cycle verdict
  * machine for [ReconcilerLiveMode] ("Level 0"). Ported from the
  * `scanlines` branch, extended with [ScanlineReconciler.Region.replacesBox]
- * assertions (the field [StabilityHold] keys its CHANGED-only scoping on).
+ * assertions (the field [TypewriterGate] keys its CHANGED-only scoping on).
  *
  * The reconciler holds no cross-cycle state, so every case is a single
  * `reconcile(groups, boxes)` call: fresh OCR groups plus the previously-displayed

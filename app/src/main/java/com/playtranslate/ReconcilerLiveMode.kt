@@ -42,7 +42,7 @@ import kotlinx.coroutines.launch
  *  - The game text under a displayed box stays directly visible to OCR, so
  *    "did it change?" is answered in TEXT space by [ScanlineReconciler]:
  *    read the screen, translate the screen, update the screen (Level 0),
- *    plus one narrowly-scoped typewriter hold ([StabilityHold]).
+ *    plus the sentence-gated typewriter dispatch ([TypewriterGate]).
  *  - Our own repaints never composite into a task mirror, so there is no
  *    self-echo class: no forced follow-up looks, no gate exclusions, no
  *    self-paint epochs.
@@ -109,7 +109,7 @@ class ReconcilerLiveMode(
     private var screenshotH = 0
     private var cycleNum = 0
 
-    private val stabilityHold = StabilityHold()
+    private val typewriterGate = TypewriterGate()
 
     /** Debug-gated trace of the commit stream (post-hold `toTranslate`) —
      *  the offline feed for translation-log write-gate validation. Null
@@ -238,7 +238,7 @@ class ReconcilerLiveMode(
     private fun clearEvidenceState() {
         cachedBoxes?.let { presenter.onAnchorsDropped(it) }
         cachedBoxes = null
-        stabilityHold.clear()
+        typewriterGate.clear()
         holdDeadlineMs = null
         cropLeft = 0
         cropTop = 0
@@ -414,11 +414,20 @@ class ReconcilerLiveMode(
 
             val groups = pipeline?.ocrResult?.groups ?: emptyList()
 
-            // Reconcile in text space; then the typewriter hold.
+            // Reconcile in text space; then the sentence-gated typewriter
+            // dispatch. Prefix substitution (in-place sentence-granularity
+            // upgrades) is sound only for plain translation boxes — furigana
+            // and panel presenters consume group-derived line geometry that
+            // must match the dispatched text, so they dispatch whole reads.
             val verdicts = ScanlineReconciler.reconcile(groups, boxes)
-            val holdOut = stabilityHold.filter(
-                verdicts, captureAtMs, SystemClock.uptimeMillis(),
+            val nowMs = SystemClock.uptimeMillis()
+            val holdOut = typewriterGate.filterVerdicts(
+                verdicts,
+                SourceLanguageProfiles[prefs.sourceLangId].translationCode,
+                captureAtMs, nowMs,
+                allowPartialPrefix = presenter.flavor == OverlayFlavor.TRANSLATION,
             )
+            typewriterGate.touchRegions(verdicts.keptBoxes.map { it.bounds }, nowMs)
             holdDeadlineMs = holdOut.nextDeadlineMs
 
             val kept = verdicts.keptBoxes + holdOut.heldBoxes

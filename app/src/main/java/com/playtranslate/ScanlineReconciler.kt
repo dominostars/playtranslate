@@ -28,7 +28,7 @@ import kotlin.math.abs
  * back in as [boxes]. Every artifact self-heals within one cycle by
  * construction; that is accepted and intended (see the ledger below). (The
  * mode may additionally run a bounded typewriter hold over CHANGED verdicts —
- * see [StabilityHold] — which is deliberately OUTSIDE this class so the
+ * see [TypewriterGate] — which is deliberately OUTSIDE this class so the
  * reconciler stays a pure single-read function.)
  *
  * ## Verdicts (see [reconcile])
@@ -99,7 +99,7 @@ object ScanlineReconciler {
         val alignment: TextAlignment,
         /** The displayed box this region replaces: the paired box for a
          *  RETRANSLATE (changed text, or blank-translation retry), null for a
-         *  NEW sighting. Lets [StabilityHold] scope its typewriter deferral to
+         *  NEW sighting. Lets [TypewriterGate] scope its typewriter policy to
          *  CHANGED verdicts only — NEW text must never wait. */
         val replacesBox: TextBox? = null,
         /** The OCR group this region was reduced from — presenters needing

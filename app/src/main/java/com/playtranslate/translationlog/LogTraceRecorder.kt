@@ -11,7 +11,7 @@ private const val TAG = "LogTraceRecorder"
 
 /**
  * Debug-gated ([Prefs.debugLogTrace]) recorder of the live pipeline's
- * commit stream: every post-StabilityHold `toTranslate` region set, one
+ * commit stream: every post-TypewriterGate `toTranslate` region set, one
  * JSONL line per committing cycle, under
  * `<external-files>/log-traces/trace-<startMs>-D<display>.jsonl`.
  *

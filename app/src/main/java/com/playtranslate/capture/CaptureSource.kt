@@ -37,7 +37,7 @@ class CapturedFrame(
      *  re-OCR). Stamped by the source at serve time. */
     val includesOwnOverlays: Boolean,
     /** Uptime when the source served the frame — the anchor time-based
-     *  consumers (e.g. [com.playtranslate.StabilityHold]'s cap) should use
+     *  consumers (e.g. [com.playtranslate.TypewriterGate]'s caps) should use
      *  instead of reading a clock around their capture call. */
     val capturedAtMs: Long = SystemClock.uptimeMillis(),
 ) {

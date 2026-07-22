@@ -57,7 +57,7 @@ object OverlayToolkit {
      * bag-of-chars difference, retried with up to `min(2, old.length / 4)`
      * trailing chars of [old] trimmed — the newest glyphs of a mid-render
      * line often rasterize/OCR wrong (GSM's tail tolerance). Used by
-     * [StabilityHold] to scope its typewriter deferral: a CHANGED region
+     * [TypewriterGate] to scope its typewriter policy: a CHANGED region
      * whose new text merely EXTENDS the displayed text is still being
      * revealed; anything else is a real content change.
      */
