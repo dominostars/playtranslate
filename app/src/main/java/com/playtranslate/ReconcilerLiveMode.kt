@@ -534,13 +534,19 @@ class ReconcilerLiveMode(
     }
 
     /** Next-cycle delay: the interval (floor-paced during an input burst),
-     *  never past an open hold's cap deadline, never below the source floor. */
+     *  and the FLOOR outright while any typewriter hold is open — every
+     *  held-window read is either growth tracking or the releasing read,
+     *  and the gap between reveal-end and release is pure user-visible
+     *  latency (the field "brutal wait"). Safe by construction: the cycle
+     *  chain is serial, so the delay starts only after OCR returns — slow
+     *  pipelines self-limit at OCR+floor — and holds close the moment the
+     *  region settles, so the faster cadence is scoped to active reveals.
+     *  The engine's park stays bounded by the cap deadline for the
+     *  static-screen case. */
     private fun pacing(prefs: Prefs): Long {
         val floor = liveSource()?.minCaptureIntervalMs ?: 500L
-        val base = if (engine.inInputBurst()) floor else prefs.captureIntervalMs
-        val deadline = holdDeadlineMs ?: return base
-        val untilCap = deadline - SystemClock.uptimeMillis()
-        return maxOf(floor, minOf(base, untilCap))
+        if (holdDeadlineMs != null) return floor
+        return if (engine.inInputBurst()) floor else prefs.captureIntervalMs
     }
 
     /** Render the anchors' DISPLAY boxes (identity for most presenters;

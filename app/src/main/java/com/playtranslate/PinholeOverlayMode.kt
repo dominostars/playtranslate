@@ -498,11 +498,11 @@ class PinholeOverlayMode(
             // blind to "text present but no longer covered".
             var pinholePre: Array<PinholeOutcome>? = null
             var reconcileCycle = false
-            // An expired typewriter-hold cap must reach OCR: the releasing
-            // read's whole point is that the screen may have gone static
-            // (zero pixel evidence), which is exactly what the skip keys on.
-            val typewriterDue =
-                typewriterDeadlineMs?.let { SystemClock.uptimeMillis() >= it } == true
+            // Any open typewriter hold must reach OCR: held-window reads ARE
+            // the product (growth tracking + the releasing read), and the
+            // releasing read's whole point is that the screen may have gone
+            // quiet — exactly what the pixel skip keys on.
+            val typewriterActive = typewriterDeadlineMs != null
             run gate@{
                 val gateBoxes = cachedBoxes ?: return@gate
                 val gateRef = cleanRefBitmap ?: return@gate
@@ -539,7 +539,7 @@ class PinholeOverlayMode(
                 // text inside endless animation must never wait past shipped
                 // cadence — see OutsideBlockGrid). Such screens run the full
                 // cycle every wake, exactly like the shipped app.
-                if (!forcedLook && !typewriterDue && allKeep && !outside.fired &&
+                if (!forcedLook && !typewriterActive && allKeep && !outside.fired &&
                     !reconcileCycle && outside.volatileBlocks == 0
                 ) {
                     // A moving-but-differing block must get a floor-paced
@@ -561,7 +561,7 @@ class PinholeOverlayMode(
                     // time in the field (2026-07-08 regression). Game input
                     // no longer paces here at all: it dismisses and waits an
                     // interval instead (see [start]).
-                    return clampToTypewriterDeadline(
+                    return typewriterPacing(
                         if (outside.pendingSettle) mgr.minCaptureIntervalMs
                         else prefs.captureIntervalMs,
                         mgr.minCaptureIntervalMs,
@@ -576,7 +576,7 @@ class PinholeOverlayMode(
                         outside.volatileBlocks > 0 ->
                             "volatile ${outside.volatileBlocks} block(s) — full cadence"
                         forcedLook -> "forced look"
-                        typewriterDue -> "typewriter release due"
+                        typewriterActive -> "typewriter hold open"
                         else ->
                             "outside ${outside.changedSamples}/${outside.totalSamples} " +
                                 outside.fitLabel()
@@ -1020,7 +1020,7 @@ class PinholeOverlayMode(
                         "removed=${allRemovals.size} far=${farOcrGroups.size}"
                 )
             }
-            return clampToTypewriterDeadline(
+            return typewriterPacing(
                 if (anyRemoved) mgr.minCaptureIntervalMs else prefs.captureIntervalMs,
                 mgr.minCaptureIntervalMs,
             )
@@ -1029,13 +1029,13 @@ class PinholeOverlayMode(
         }
     }
 
-    /** Next-cycle delay, never past the earliest open typewriter-hold cap,
-     *  never below the source floor — the pinhole analog of
-     *  [ReconcilerLiveMode]'s pacing clamp. */
-    private fun clampToTypewriterDeadline(baseMs: Long, floorMs: Long): Long {
-        val deadline = typewriterDeadlineMs ?: return baseMs
-        val untilCap = deadline - SystemClock.uptimeMillis()
-        return maxOf(floorMs, minOf(baseMs, untilCap))
+    /** Next-cycle delay: [baseMs] normally, the FLOOR while any typewriter
+     *  hold is open — the pinhole analog of [ReconcilerLiveMode.pacing];
+     *  see its kdoc for why floor pacing during holds is safe (serial
+     *  cycle chain, hold-scoped, park still deadline-bounded). */
+    private fun typewriterPacing(baseMs: Long, floorMs: Long): Long {
+        if (typewriterDeadlineMs != null) return floorMs
+        return baseMs
     }
 
     /** Show overlay in pinhole mode, wait for layout, capture screen rects and

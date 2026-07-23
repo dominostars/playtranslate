@@ -161,10 +161,16 @@ class TypewriterGate {
             stableReads = 1
         }
 
+        /** Newest partial-VIEW read while a hold is open — consecutive
+         *  views that EXTEND each other are a re-reveal of known text
+         *  (repeat dialogue), not a shrink settling. */
+        var lastViewText = ""
+
         fun closeHold() {
             holdOpen = false
             stableReads = 0
             holdGrowth = false
+            lastViewText = ""
         }
 
         /** A new text lineage begins at [rect]: stamp the chain key and its
@@ -246,6 +252,47 @@ class TypewriterGate {
             if (n > 0) fw[c] = n - 1 else excess++
         }
         return excess <= maxOf(2, (part.length * SUBSET_TOL_FRAC).toInt())
+    }
+
+    /** Ellipsis-family glyphs whose RUNS OCR with unstable inventories —
+     *  the へんじがない・・・ field case read ・・・・ / ・・. / ・・… across
+     *  passes, blowing every relation tolerance from punctuation alone. */
+    private val ELLIPSIS_CLASS = "・‥….．"
+
+    /** Long-dash family OCR substitutes freely (katakana ー vs ― bar vs
+     *  minus/en/em) — one class for comparison. */
+    private val DASH_CLASS = "ー―−–—"
+
+    /**
+     * COMPARISON-TIME folding for the gate's text relations — never for
+     * dispatch, storage, or display, which stay raw. Runs (≥2) of
+     * ellipsis-class glyphs collapse to one token, so their unstable OCR
+     * counts stop eating the tolerances; dash-family glyphs unify. A lone
+     * ・ (name interpunct) and a lone . (decimals) keep their identity.
+     */
+    private fun foldForCompare(s: String): String {
+        val sb = StringBuilder(s.length)
+        var i = 0
+        while (i < s.length) {
+            val c = s[i]
+            when {
+                c in ELLIPSIS_CLASS -> {
+                    var j = i + 1
+                    while (j < s.length && s[j] in ELLIPSIS_CLASS) j++
+                    if (j - i >= 2) sb.append('…') else sb.append(c)
+                    i = j
+                }
+                c in DASH_CLASS -> {
+                    sb.append('ー')
+                    i++
+                }
+                else -> {
+                    sb.append(c)
+                    i++
+                }
+            }
+        }
+        return sb.toString()
     }
 
     private inline fun d(msg: () -> String) {
@@ -456,6 +503,13 @@ class TypewriterGate {
         // the box died before its fuller text re-arrived as a far group).
         val ref = displayed ?: mem.lastDispatched
 
+        // All text relations run on FOLDED strings ([foldForCompare]) —
+        // punctuation-run variance must not read as content change.
+        val fText = foldForCompare(text)
+        fun same(other: String) = !OverlayToolkit.isSignificantChange(fText, foldForCompare(other))
+        fun grows(other: String) = OverlayToolkit.isEvolvingText(foldForCompare(other), fText)
+        fun viewOf(other: String) = bagSubset(fText, foldForCompare(other))
+
         // Decision-line context: sample + this read's start corner.
         fun ctx(): String {
             val (cx, cy) = startCorner(bounds, orientation, rtl)
@@ -532,13 +586,13 @@ class TypewriterGate {
         if (mem.holdOpen) {
             val capExpired = nowMs - mem.holdOpenCaptureMs >= mem.capMs()
             return when {
-                !OverlayToolkit.isSignificantChange(text, mem.lastText) -> {
+                same(mem.lastText) -> {
                     // Agreement read. Δ in the log discriminates true
                     // settles (Δ=0 on deterministic engines) from the
                     // sub-tolerance slow-reveal hole (Δ=1..3 growth read
                     // as agreement).
                     mem.stableReads++
-                    val agreeDelta = if (debugSink != null) bagDiff(text, mem.lastText) else 0
+                    val agreeDelta = if (debugSink != null) bagDiff(fText, foldForCompare(mem.lastText)) else 0
                     if (mem.stableReads >= STABLE_READS || capExpired) {
                         // A growth chain that settled is a real reveal —
                         // the arming evidence (boundary or not; garble
@@ -554,22 +608,39 @@ class TypewriterGate {
                         held { "agree n=${mem.stableReads} Δ=$agreeDelta" }
                     }
                 }
-                bagSubset(text, mem.lastText) -> {
-                    // Partial VIEW of the chain's known text — a split read
-                    // or our own box occluding part of the block. Affirm
-                    // without touching the chain or the agreement counter:
-                    // the fuller reads carry the release. The cap still
-                    // bounds the genuine shrink-advance class.
-                    if (capExpired) {
+                viewOf(mem.lastText) -> {
+                    // Partial VIEW of the chain's known text — a split read,
+                    // our own box occluding part of the block, or a
+                    // RE-REVEAL of a known message (repeat dialogue).
+                    // Affirm without touching the chain or the agreement
+                    // counter: the fuller reads carry the release.
+                    val viewGrew = mem.lastViewText.isNotEmpty() &&
+                        OverlayToolkit.isEvolvingText(foldForCompare(mem.lastViewText), fText)
+                    if (viewGrew) {
+                        // Growing views = known text re-typing itself. Slide
+                        // the cap anchor: the shrink flush must measure how
+                        // long a SHRUNKEN text sat stable, not the progress
+                        // of a reveal — a mid-reveal flush is exactly the
+                        // partial this gate exists to prevent. Bounded by
+                        // construction: a view can only grow up to the
+                        // known text, so this cannot defer forever.
+                        mem.holdOpenCaptureMs = captureAtMs
+                        mem.lastViewText = text
+                        stats.partialViews++
+                        held { "view-grow of=«${snip(mem.lastText)}»" }
+                    } else if (capExpired) {
+                        // The subset sat stable through the cap — a genuine
+                        // shrink-advance. Flush it.
                         stats.shrinkCap++
                         recordBreakClass()
                         dispatch(text) { "shrink-cap" }
                     } else {
+                        mem.lastViewText = text
                         stats.partialViews++
                         held { "partial-view of=«${snip(mem.lastText)}»" }
                     }
                 }
-                OverlayToolkit.isEvolvingText(mem.lastText, text) -> {
+                grows(mem.lastText) -> {
                     // Still growing. Growth promotes an armed-new hold to a
                     // genuine reveal — the cap widens to [HOLD_MAX_MS]
                     // (same anchor), so re-check expiry against the new cap
@@ -585,7 +656,9 @@ class TypewriterGate {
                     }
                     if (allowPartialPrefix) {
                         val p = SentenceBoundary.terminalPrefix(text, translationCode)
-                        if (p != null && (ref == null || OverlayToolkit.isEvolvingText(ref, p))) {
+                        if (p != null && (ref == null ||
+                                OverlayToolkit.isEvolvingText(foldForCompare(ref), foldForCompare(p)))
+                        ) {
                             // Sentence-complete prefix grew: upgrade the box
                             // in place, keep holding the ragged tail.
                             arm()
@@ -647,28 +720,29 @@ class TypewriterGate {
         // Stable vs what's shown: re-place / retry parity (pinhole flap
         // recovery rides the translation cache). Δ=1..3 cycling here is
         // the sub-tolerance churn signature.
-        if (!OverlayToolkit.isSignificantChange(text, ref)) {
+        if (same(ref)) {
             stats.replace++
-            return dispatch(text) { "replace Δ=${bagDiff(text, ref)}" }
+            return dispatch(text) { "replace Δ=${bagDiff(fText, foldForCompare(ref))}" }
         }
 
         // Partial VIEW of the region's known text, with no hold open (the
         // split-head read after a full dispatch — the c102 class). Suppress
         // and open a view-hold: the fuller reads release it by agreement;
         // a genuine shrink-advance flushes at the short cap.
-        if (bagSubset(text, mem.lastText)) {
+        if (viewOf(mem.lastText)) {
             if (nowMs - captureAtMs >= ARMED_NEW_MAX_MS) {
                 stats.shrinkCap++
                 return dispatch(text) { "shrink-self-disable" }
             }
             stats.viewHolds++
             mem.openHold(captureAtMs, growth = false)
+            mem.lastViewText = text
             // lastText deliberately NOT updated: the hold's reference is
             // the fuller known text the view is a piece of.
             return held { "view-hold of=«${snip(mem.lastText)}»" }
         }
 
-        if (OverlayToolkit.isEvolvingText(ref, text)) {
+        if (grows(ref)) {
             // Typewriter growth against the displayed text — the chain
             // continues; its origin was stamped when the lineage began.
             refreshArm()
@@ -679,8 +753,9 @@ class TypewriterGate {
             }
             if (allowPartialPrefix) {
                 val p = SentenceBoundary.terminalPrefix(text, translationCode)
-                if (p != null && OverlayToolkit.isEvolvingText(ref, p) &&
-                    OverlayToolkit.isSignificantChange(p, ref)
+                if (p != null &&
+                    OverlayToolkit.isEvolvingText(foldForCompare(ref), foldForCompare(p)) &&
+                    OverlayToolkit.isSignificantChange(foldForCompare(p), foldForCompare(ref))
                 ) {
                     arm()
                     stats.prefix++
@@ -833,8 +908,24 @@ class TypewriterGate {
         lineCount: Int,
         nowMs: Long,
     ): Match {
+        val fText = foldForCompare(text)
+        // Does this memory's known text RELATE to the read (agreement,
+        // growth, or containment, on folded strings)? A relation-bearing
+        // candidate outranks a bigger raw overlap: a multi-line read
+        // spanning several stale one-line memories must match the chain it
+        // actually continues, not the widest stranger under it (the
+        // その調子 field case — geometry outvoted an exact prefix).
+        fun relatedTo(m: RegionMemory): Boolean {
+            if (m.lastText.isEmpty()) return false
+            val fLast = foldForCompare(m.lastText)
+            return !OverlayToolkit.isSignificantChange(fText, fLast) ||
+                OverlayToolkit.isEvolvingText(fLast, fText) ||
+                bagSubset(fText, fLast)
+        }
         var best: RegionMemory? = null
         var bestOverlap = 0L
+        var bestRelated: RegionMemory? = null
+        var bestRelatedOverlap = 0L
         var bestAffirmed: RegionMemory? = null
         var bestAffirmedOverlap = 0L
         for (m in regions) {
@@ -845,7 +936,7 @@ class TypewriterGate {
             if (m in affirmed) {
                 // One entry per region per batch — but a second piece of
                 // the same split block is a view of it, not a new region.
-                if (ov > bestAffirmedOverlap && bagSubset(text, m.lastText)) {
+                if (ov > bestAffirmedOverlap && bagSubset(fText, foldForCompare(m.lastText))) {
                     bestAffirmedOverlap = ov
                     bestAffirmed = m
                 }
@@ -855,7 +946,12 @@ class TypewriterGate {
                 bestOverlap = ov
                 best = m
             }
+            if (ov > bestRelatedOverlap && relatedTo(m)) {
+                bestRelatedOverlap = ov
+                bestRelated = m
+            }
         }
+        if (bestRelated != null) best = bestRelated
         if (best == null) {
             bestAffirmed?.let {
                 it.lastSeenMs = nowMs

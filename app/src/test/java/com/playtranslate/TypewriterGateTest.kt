@@ -352,6 +352,28 @@ class TypewriterGateTest {
     }
 
     @Test
+    fun repeatDialogue_reReveal_growingViewsNeverFlush() {
+        val gate = TypewriterGate()
+        // The どうにか field fixture (2026-07-22 18:29 log): re-triggering a
+        // KNOWN message re-types it — every mid-reveal read is a growing
+        // subset of the stored text. Floor-paced reads cross the 1s view
+        // cap mid-reveal; the old behavior shrink-cap-flushed the 19-char
+        // partial (log c117/c126). Growing views slide the cap instead.
+        val full = "どうにか、ラクしてハッピーになる手は、ないかな―"
+        gate.fars(listOf(far(full)), 0, 200)
+        var out = gate.fars(listOf(far("どうにか、")), 1000, 1100)
+        assertTrue(out.dispatch.isEmpty())
+        out = gate.fars(listOf(far("どうにか、ラクして、")), 1500, 1600)
+        assertTrue(out.dispatch.isEmpty())
+        // Past the original 1s anchor — a growing view must NOT flush.
+        out = gate.fars(listOf(far("どうにか、ラクしてハッピーになる手")), 2100, 2200)
+        assertTrue("growing view past the cap must not flush", out.dispatch.isEmpty())
+        // Full text lands → agreement with the known text → one dispatch.
+        out = gate.fars(listOf(far(full)), 2600, 2700)
+        assertEquals(listOf(full), out.dispatch.map { it.text })
+    }
+
+    @Test
     fun genuineShrink_viewHoldFlushesAtShortCap() {
         val gate = TypewriterGate()
         gate.fars(listOf(far("はい、そうですよねわかりました")), 0, 200)
@@ -363,6 +385,60 @@ class TypewriterGateTest {
         // ...then the short cap flushes it — bounded staleness, ~1s.
         out = gate.fars(listOf(far("わかりました")), 2200, 2300)
         assertEquals(listOf("わかりました"), out.dispatch.map { it.text })
+    }
+
+    @Test
+    fun punctuationRunVariance_foldedForComparison() {
+        val gate = TypewriterGate()
+        // The へんじがない field fixture (2026-07-22): the ellipsis run OCRs
+        // with a different glyph inventory every read (・・・・ / ・・. / ・・…)
+        // and the dash flips ー/―. Raw comparison saw every read as a real
+        // change — Level 0 churn, no chains, no arming.
+        gate.fars(listOf(far("へんじがない・・・・ただのカカー")), 0, 200)
+        // Folded, the fuller read is growth (tail-trim absorbs the ragged
+        // edge) → hold.
+        var out = gate.fars(listOf(far("へんじがない・・.ただのカカシのようだ―")), 1000, 1200)
+        assertTrue(out.dispatch.isEmpty())
+        assertEquals(1, out.held)
+        // Agreement releases and ARMS.
+        out = gate.fars(listOf(far("へんじがない・・.ただのカカシのようだ―")), 2000, 2200)
+        assertEquals(1, out.dispatch.size)
+        // Re-trigger (the user keeps talking to the scarecrow): the fresh
+        // partial is a folded VIEW of the known text → suppressed.
+        out = gate.fars(listOf(far("へんじがない・・…ただのカー")), 3000, 3200)
+        assertTrue(out.dispatch.isEmpty())
+        assertEquals(1, out.held)
+    }
+
+    @Test
+    fun multiLineRead_matchesItsChain_notTheWidestStaleMemory() {
+        val gate = TypewriterGate()
+        // The その調子 field fixture (2026-07-22): the previous message left
+        // two one-line memories; the new message's multi-line read overlaps
+        // BOTH, and the stale line-2 memory has the bigger intersection.
+        // Pure best-overlap matched the stranger — relation-aware matching
+        // must pick the chain the read actually continues.
+        gate.fars(
+            listOf(
+                far("カカシにまで話しかけるとは、", bounds = Rect(522, 812, 1303, 872)),
+                far("見上げた心がけだ・.", bounds = Rect(553, 879, 1082, 938)),
+            ),
+            0, 200,
+        )
+        // New message's fragment claims the line-1 chain (Level 0, unarmed).
+        var out = gate.fars(listOf(far("その調子で、", bounds = Rect(548, 812, 822, 869))), 1000, 1200)
+        assertEquals(1, out.dispatch.size)
+        // The full 3-line read: bigger overlap with the stale line-2 memory,
+        // but an exact prefix relation with the fragment's chain — growth,
+        // held (the field log dispatched this as `advance`).
+        val full = "その調子で、これからも―いろんな物に、話しかけたり調べたりすると、"
+        out = gate.fars(listOf(far(full, bounds = Rect(546, 813, 1239, 1005))), 2000, 2200)
+        assertTrue("growth recognized despite overlap preferring the stale memory",
+            out.dispatch.isEmpty())
+        assertEquals(1, out.held)
+        // Agreement releases the full text.
+        out = gate.fars(listOf(far(full, bounds = Rect(546, 813, 1239, 1005))), 3000, 3200)
+        assertEquals(listOf(full), out.dispatch.map { it.text })
     }
 
     // ── Thrash breaker: unknown pathologies fail open to Level 0 ──────────
