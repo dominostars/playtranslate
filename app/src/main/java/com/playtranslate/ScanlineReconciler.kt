@@ -72,6 +72,12 @@ import kotlin.math.abs
  *    [OverlayToolkit.isSignificantChange] is false: a bag-of-characters
  *    tolerance that absorbs a swapped or dropped glyph or two, so a single OCR
  *    misread does not force a needless retranslation of otherwise-stable text.
+ *    The fuzz answers IDENTITY only ("same text, modulo noise") — it must not
+ *    also decide WHICH reading is canonical, or a garbled first read within
+ *    tolerance would be locked in forever. When a fuzz-same pair's raw strings
+ *    differ, [ReadingArbiter] ranks the two readings (confidence, junk score)
+ *    and a winning fresh read retranslates as an upgrade
+ *    ([Verdicts.upgraded]); ties keep the incumbent, today's behavior.
  * Pairing is by GEOMETRY only — text is judged AFTER pairing, so a same-region
  * re-OCR whose text genuinely changed still pairs (→ RETRANSLATE) instead of
  * falling through to REMOVE + NEW.
@@ -80,6 +86,11 @@ import kotlin.math.abs
  * (via [LayoutAnalyzer.wouldGroup] geometry). It injects nothing, holds no
  * state, and is fully deterministic — data in, verdicts out — so it unit-tests
  * on the JVM like [Classification]. Stateless since Level 0, hence an `object`.
+ * ONE scoped impurity: an identical-text KEEP ratchets the kept box's stored
+ * read score in place ([TextBox.ratchetSourceConf]) — monotone, idempotent,
+ * verdict-neutral within the call. It exists because the score is cross-cycle
+ * EVIDENCE, and evidence that is stamped once and never refreshed recreates
+ * the first-read-wins trap the arbiter was built to remove, one level up.
  */
 object ScanlineReconciler {
 
@@ -135,6 +146,11 @@ object ScanlineReconciler {
          *  bounds because the region drifted beyond [REPOSITION_HYSTERESIS_PX].
          *  A subset of [unchanged] (not a separate verdict); informational. */
         val repositioned: Int,
+        /** How many RETRANSLATEs were reading UPGRADES: the fresh read was
+         *  within the identity fuzz of the displayed text (so it would have
+         *  been a KEEP) but [ReadingArbiter] judged it a better reading of
+         *  the same content. A subset of [changed]; informational. */
+        val upgraded: Int = 0,
     )
 
     /**
@@ -150,6 +166,8 @@ object ScanlineReconciler {
     fun reconcile(
         groups: List<OcrManager.OcrGroup>,
         boxes: List<TextBox>,
+        sourceLang: String? = null,
+        debugSink: ((String) -> Unit)? = null,
     ): Verdicts {
         val groupClaimed = BooleanArray(groups.size)
         val boxGroup = arrayOfNulls<Int>(boxes.size)
@@ -181,6 +199,7 @@ object ScanlineReconciler {
         val toTranslate = ArrayList<Region>()
         val removals = ArrayList<TextBox>()
         var uCount = 0; var cCount = 0; var mCount = 0; var nCount = 0; var rCount = 0
+        var upCount = 0
 
         fun regionOf(g: OcrManager.OcrGroup, replaces: TextBox? = null) = Region(
             text = g.text,
@@ -208,19 +227,60 @@ object ScanlineReconciler {
                     // retry it. Bucketed with the changed retranslations.
                     toTranslate.add(regionOf(g, replaces = box)); cCount++
                 } else {
-                    // Same text, already translated → keep it. If the region has
-                    // DRIFTED beyond OCR jitter (a scroll/pan) carry the box's
-                    // existing translation onto the group's fresh bounds so the
-                    // overlay tracks the moving text — no re-translate. Below the
-                    // hysteresis it passes through verbatim so static text does
-                    // not shiver. Either way it counts as unchanged; drift is
-                    // tallied separately in [Verdicts.repositioned].
-                    if (boundsDrifted(box.bounds, g.bounds)) {
-                        kept.add(box.copy(bounds = g.bounds)); rCount++
-                    } else {
-                        kept.add(box)
+                    // Same text within the identity fuzz. An IDENTICAL
+                    // re-read is evidence for the displayed reading —
+                    // ratchet the stored score (in place, identity kept)
+                    // so it always reflects the best read observed, not
+                    // the accident of the minting read. Without this, a
+                    // low-confidence clean birth stays permanently
+                    // beatable by a medium-confidence garble no matter
+                    // how many high-confidence identical re-reads follow
+                    // (adversarial-review finding). This is the class's
+                    // ONE impurity: a monotone metadata refresh on input
+                    // boxes that never alters any verdict in this call.
+                    if (g.text == box.sourceText) {
+                        val (fMin, fMean) = ReadingArbiter.scoreOf(g)
+                        box.ratchetSourceConf(fMin, fMean)
                     }
-                    uCount++
+                    // If the raw strings differ instead, the pair is a
+                    // QUALITY contest the fuzz alone cannot settle — one
+                    // swapped glyph is below its tolerance yet materially
+                    // wrongs the translation, and "first read wins
+                    // forever" was a positional accident, not a policy.
+                    // ReadingArbiter ranks the two readings; a winning
+                    // challenger retranslates as an UPGRADE (the gate
+                    // passes fuzz-same retries through, so upgrades never
+                    // wait in a hold). TIE keeps today's behavior.
+                    val upgrade = g.text != box.sourceText && run {
+                        val (chMin, chMean) = ReadingArbiter.scoreOf(g)
+                        val pref = ReadingArbiter.prefer(
+                            ReadingArbiter.Reading(
+                                box.sourceText, box.sourceConfMin, box.sourceConfMean,
+                            ),
+                            ReadingArbiter.Reading(g.text, chMin, chMean),
+                            sourceLang,
+                        )
+                        debugSink?.invoke(
+                            "arb inc=«${ReadingArbiter.snip(box.sourceText)}»" +
+                                "(${box.sourceConfMin}/${box.sourceConfMean}) " +
+                                "ch=«${ReadingArbiter.snip(g.text)}»($chMin/$chMean) → $pref"
+                        )
+                        pref == ReadingArbiter.Preference.CHALLENGER
+                    }
+                    if (upgrade) {
+                        toTranslate.add(regionOf(g, replaces = box)); cCount++; upCount++
+                    } else if (boundsDrifted(box.bounds, g.bounds)) {
+                        // Region DRIFTED beyond OCR jitter (a scroll/pan):
+                        // carry the box's existing translation onto the
+                        // group's fresh bounds so the overlay tracks the
+                        // moving text — no re-translate. Below the
+                        // hysteresis it passes through verbatim so static
+                        // text does not shiver. Either way it counts as
+                        // unchanged; drift is tallied in [Verdicts.repositioned].
+                        kept.add(box.copy(bounds = g.bounds)); rCount++; uCount++
+                    } else {
+                        kept.add(box); uCount++
+                    }
                 }
             }
         }
@@ -240,6 +300,7 @@ object ScanlineReconciler {
             missing = mCount,
             added = nCount,
             repositioned = rCount,
+            upgraded = upCount,
         )
     }
 

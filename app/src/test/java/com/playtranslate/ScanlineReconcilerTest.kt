@@ -35,12 +35,15 @@ class ScanlineReconcilerTest {
         translatedText: String = "T",
         lineCount: Int = 1,
         orientation: TextOrientation = TextOrientation.HORIZONTAL,
+        conf: Float = -1f,
     ) = TextBox(
         translatedText = translatedText,
         bounds = bounds,
         sourceText = sourceText,
         lineCount = lineCount,
         orientation = orientation,
+        sourceConfMin = conf,
+        sourceConfMean = conf,
     )
 
     private fun grp(
@@ -49,12 +52,15 @@ class ScanlineReconcilerTest {
         lineCount: Int = 1,
         orientation: TextOrientation = TextOrientation.HORIZONTAL,
         alignment: TextAlignment = TextAlignment.LEFT,
+        conf: Float = -1f,
     ) = OcrManager.OcrGroup(
         text = text,
         bounds = bounds,
         orientation = orientation,
         alignment = alignment,
-        lines = List(lineCount) { OcrManager.LineBox(text = text, bounds = bounds, groupIndex = 0) },
+        lines = List(lineCount) {
+            OcrManager.LineBox(text = text, bounds = bounds, groupIndex = 0, confidence = conf)
+        },
     )
 
     // ── Region fuzz: BOTH tolerance layers on a stable page ──────────────
@@ -232,4 +238,157 @@ class ScanlineReconcilerTest {
         assertTrue(v.removals.isEmpty())
     }
 
+    // ── Reading arbitration: a fuzz-same pair is a quality contest ────────
+
+    @Test
+    fun fuzzSameHigherConfidenceRead_upgradesInsteadOfKeeping() {
+        // H↔X is a bag diff of 2 — inside the identity fuzz, so historically
+        // a permanent KEEP: the garbled first read stayed canonical forever.
+        // With a decisively better-scored fresh read it must retranslate.
+        val r = Rect(0, 0, 400, 60)
+        val b = box(r, "ABCDEFGH", conf = 0.5f)
+        val v = ScanlineReconciler.reconcile(
+            listOf(grp("ABCDEFGX", r, conf = 0.9f)), listOf(b), sourceLang = "en",
+        )
+        assertEquals(1, v.changed)
+        assertEquals(1, v.upgraded)
+        assertEquals("ABCDEFGX", v.toTranslate.single().text)
+        assertEquals(b, v.toTranslate.single().replacesBox)
+        assertTrue(v.keptBoxes.isEmpty())
+    }
+
+    @Test
+    fun fuzzSameLowerConfidenceRead_keepsIncumbent() {
+        val r = Rect(0, 0, 400, 60)
+        val b = box(r, "ABCDEFGH", conf = 0.9f)
+        val v = ScanlineReconciler.reconcile(
+            listOf(grp("ABCDEFGX", r, conf = 0.5f)), listOf(b), sourceLang = "en",
+        )
+        assertEquals(listOf(b), v.keptBoxes)
+        assertEquals(0, v.upgraded)
+        assertTrue(v.toTranslate.isEmpty())
+    }
+
+    @Test
+    fun fuzzSameNoSignals_statusQuoKeep() {
+        // Unknown confidence on both sides, both texts clean: no evidence,
+        // no behavior change — the deterministic-engine steady state.
+        val r = Rect(0, 0, 400, 60)
+        val b = box(r, "ABCDEFGH")
+        val v = ScanlineReconciler.reconcile(
+            listOf(grp("ABCDEFGX", r)), listOf(b), sourceLang = "en",
+        )
+        assertEquals(listOf(b), v.keptBoxes)
+        assertEquals(0, v.upgraded)
+    }
+
+    @Test
+    fun junkIncumbent_upgradesOnCleanRead_withoutConfidence() {
+        // The junk tier alone: a substitution-garbled canonical (¦ for t)
+        // loses to a clean re-read even with no confidence signal at all.
+        val r = Rect(0, 0, 400, 60)
+        val b = box(r, "Inven¦ory")
+        val v = ScanlineReconciler.reconcile(
+            listOf(grp("Inventory", r)), listOf(b), sourceLang = "en",
+        )
+        assertEquals(1, v.upgraded)
+        assertEquals("Inventory", v.toTranslate.single().text)
+    }
+
+    @Test
+    fun noSourceLang_arbitrationJunkTierInert() {
+        // Legacy call shape (no language): junk cannot be judged, unknown
+        // confidence proves nothing → byte-identical to old behavior.
+        val r = Rect(0, 0, 400, 60)
+        val b = box(r, "Inven¦ory")
+        val v = ScanlineReconciler.reconcile(listOf(grp("Inventory", r)), listOf(b))
+        assertEquals(listOf(b), v.keptBoxes)
+        assertEquals(0, v.upgraded)
+    }
+
+    // ── Evidence ratchet: identical re-reads refresh the stored score ─────
+    // Trace-style (multi-cycle, same instances flowing back in — as the
+    // mode's cachedBoxes does): the stale-confidence class is invisible to
+    // single-call decision tests (adversarial-review finding).
+
+    @Test
+    fun staleConfidenceRegression_identicalRereadsArmTheIncumbent() {
+        // Cycle 1: clean text minted at LOW confidence (fade-in read).
+        val r = Rect(0, 0, 400, 60)
+        val b = box(r, "ABCDEFGH", conf = 0.55f)
+        // Cycle 2: identical re-read at HIGH confidence — a silent KEEP,
+        // but it must ratchet the stored score.
+        var v = ScanlineReconciler.reconcile(
+            listOf(grp("ABCDEFGH", r, conf = 0.9f)), listOf(b), sourceLang = "en",
+        )
+        assertEquals(listOf(b), v.keptBoxes)
+        assertEquals(0.9f, b.sourceConfMin, 1e-6f)
+        // Cycle 3: medium-confidence fuzz-same garble. Against the stale
+        // 0.55 it would have WON (the no-ship bug); against the ratcheted
+        // 0.9 it loses and the correct canonical survives.
+        v = ScanlineReconciler.reconcile(
+            listOf(grp("ABCDEFGX", r, conf = 0.7f)), listOf(b), sourceLang = "en",
+        )
+        assertEquals(listOf(b), v.keptBoxes)
+        assertEquals(0, v.upgraded)
+        assertTrue(v.toTranslate.isEmpty())
+    }
+
+    @Test
+    fun ratchetIsMonotone_lowRereadCannotReopenTheWindow() {
+        val r = Rect(0, 0, 400, 60)
+        val b = box(r, "ABCDEFGH", conf = 0.9f)
+        // A shimmer-degraded identical re-read must not LOWER the score...
+        ScanlineReconciler.reconcile(
+            listOf(grp("ABCDEFGH", r, conf = 0.5f)), listOf(b), sourceLang = "en",
+        )
+        assertEquals(0.9f, b.sourceConfMin, 1e-6f)
+        // ...so the medium garble still loses afterwards.
+        val v = ScanlineReconciler.reconcile(
+            listOf(grp("ABCDEFGX", r, conf = 0.7f)), listOf(b), sourceLang = "en",
+        )
+        assertEquals(0, v.upgraded)
+    }
+
+    @Test
+    fun ratchetUnknownReread_doesNotEraseAKnownScore() {
+        val r = Rect(0, 0, 400, 60)
+        val b = box(r, "ABCDEFGH", conf = 0.9f)
+        ScanlineReconciler.reconcile(
+            listOf(grp("ABCDEFGH", r)), listOf(b), sourceLang = "en",
+        )
+        assertEquals(0.9f, b.sourceConfMin, 1e-6f)
+    }
+
+    @Test
+    fun ratchetIsBestSingleRead_notAChimeraOfComponents() {
+        // Stored (0.8, 0.85). A re-read at (0.8, 0.80) is lexicographically
+        // worse — BOTH components must stay, not just the min.
+        val r = Rect(0, 0, 400, 60)
+        val b = TextBox(
+            translatedText = "T", bounds = r, sourceText = "ABCDEFGH",
+            sourceConfMin = 0.8f, sourceConfMean = 0.85f,
+        )
+        b.ratchetSourceConf(0.8f, 0.80f)
+        assertEquals(0.85f, b.sourceConfMean, 1e-6f)
+        // Min-tie with a better mean upgrades the pair as a pair.
+        b.ratchetSourceConf(0.8f, 0.95f)
+        assertEquals(0.8f, b.sourceConfMin, 1e-6f)
+        assertEquals(0.95f, b.sourceConfMean, 1e-6f)
+    }
+
+    @Test
+    fun ratchetSurvivesRepositionCopy() {
+        // Identical text that also drifted: the reposition copy must carry
+        // the freshly-ratcheted score (mutate-then-copy ordering).
+        val r = Rect(0, 0, 400, 60)
+        val moved = Rect(0, 40, 400, 100)
+        val b = box(r, "ABCDEFGH", conf = 0.55f)
+        val v = ScanlineReconciler.reconcile(
+            listOf(grp("ABCDEFGH", moved, conf = 0.9f)), listOf(b), sourceLang = "en",
+        )
+        assertEquals(1, v.repositioned)
+        assertEquals(moved, v.keptBoxes.single().bounds)
+        assertEquals(0.9f, v.keptBoxes.single().sourceConfMin, 1e-6f)
+    }
 }

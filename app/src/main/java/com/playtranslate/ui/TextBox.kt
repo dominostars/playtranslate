@@ -42,5 +42,39 @@ data class TextBox(
      *  the value carried on stored/placeholder boxes is 0 — it is populated only
      *  on the transient copies handed to the resolver, and injected directly in
      *  unit tests. */
-    val minWidthPx: Int = 0
-)
+    val minWidthPx: Int = 0,
+    /** OCR confidence of the BEST single read observed for [sourceText]:
+     *  min over that read's lines, −1 when unknown. Stamped at placeholder
+     *  build, then RATCHETED upward by every identical re-read
+     *  ([ratchetSourceConf]) — evidence accumulates, it is never the
+     *  accident of whichever read minted the text (a low-confidence birth
+     *  followed by high-confidence identical re-reads must not stay
+     *  beatable by a medium-confidence garble; adversarial-review
+     *  finding). Read by ReadingArbiter when a fuzz-same read differs. A
+     *  prefix-substituted dispatch carries its full read's scores —
+     *  accepted slop. Deliberately `var`: the ratchet mutates in place so
+     *  box IDENTITY survives (FuriganaPresenter's map, cached lists, the
+     *  view's short-circuit all key on it); safe because no structural-
+     *  keyed container of TextBox exists (IdentityHashMaps only) and the
+     *  fields never affect rendering. */
+    var sourceConfMin: Float = -1f,
+    /** Mean over the same best read's lines, −1 when unknown — the min's
+     *  tie-break (one suspect line beats two). */
+    var sourceConfMean: Float = -1f,
+) {
+
+    /** Refresh the stored score with a fresh identical-text read: replace
+     *  the pair iff the fresh read is (min, then mean) lexicographically
+     *  better — the stored score stays "the best single read observed",
+     *  never a chimera of two reads' components. Monotone and idempotent,
+     *  so re-application (the dual-hypothesis double reconcile) is
+     *  harmless; an unknown fresh read (−1) never erases a known score. */
+    fun ratchetSourceConf(freshMin: Float, freshMean: Float) {
+        if (freshMin > sourceConfMin ||
+            (freshMin == sourceConfMin && freshMean > sourceConfMean)
+        ) {
+            sourceConfMin = freshMin
+            sourceConfMean = freshMean
+        }
+    }
+}

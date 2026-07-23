@@ -54,6 +54,7 @@ class FuriganaPresenter(
             } else {
                 emptyList()
             }
+            val (cMin, cMean) = ReadingArbiter.scoreOf(group)
             val anchor = TextBox(
                 translatedText = boxes.joinToString("") { it.translatedText }
                     .ifEmpty { NO_ANNOTATIONS },
@@ -62,6 +63,8 @@ class FuriganaPresenter(
                 sourceText = region.text,
                 orientation = region.orientation,
                 alignment = region.alignment,
+                sourceConfMin = cMin,
+                sourceConfMean = cMean,
             )
             display[anchor] = boxes
             anchor

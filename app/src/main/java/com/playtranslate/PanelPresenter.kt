@@ -36,12 +36,15 @@ class PanelPresenter(
         // No color sampling, no skeleton pass — nothing renders on screen.
         val texts = work.map { it.text }
         val placeholders = work.map { r ->
+            val (cMin, cMean) = ReadingArbiter.scoreOf(r.group)
             TextBox(
                 "", r.bounds,
                 lineCount = r.lineCount,
                 sourceText = r.text,
                 orientation = r.orientation,
                 alignment = r.alignment,
+                sourceConfMin = cMin,
+                sourceConfMean = cMean,
             )
         }
         return OverlayToolkit.translatePlaceholders(service, placeholders, texts)

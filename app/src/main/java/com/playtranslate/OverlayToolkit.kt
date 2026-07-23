@@ -755,6 +755,7 @@ object OverlayToolkit {
         raw: Bitmap, left: Int, top: Int,
         orientations: List<TextOrientation> = emptyList(),
         alignments: List<TextAlignment> = emptyList(),
+        confidences: List<Pair<Float, Float>> = emptyList(),
     ): List<TextBox> {
         val colorScale = 4
         val colorRef = raw.scale(raw.width / colorScale, raw.height / colorScale, false)
@@ -768,8 +769,10 @@ object OverlayToolkit {
             val (bg, tc) = colors.getOrElse(idx) { Pair(Color.argb(224, 0, 0, 0), Color.WHITE) }
             val orient = orientations.getOrElse(idx) { TextOrientation.HORIZONTAL }
             val align = alignments.getOrElse(idx) { TextAlignment.LEFT }
+            val (cMin, cMean) = confidences.getOrElse(idx) { -1f to -1f }
             TextBox("", rect, bg, tc, lineCounts.getOrElse(idx) { 1 },
-                sourceText = texts.getOrElse(idx) { "" }, orientation = orient, alignment = align)
+                sourceText = texts.getOrElse(idx) { "" }, orientation = orient, alignment = align,
+                sourceConfMin = cMin, sourceConfMean = cMean)
         }
     }
 

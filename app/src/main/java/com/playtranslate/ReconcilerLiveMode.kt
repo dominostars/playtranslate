@@ -427,9 +427,13 @@ class ReconcilerLiveMode(
             // upgrades) is sound only for plain translation boxes — furigana
             // and panel presenters consume group-derived line geometry that
             // must match the dispatched text, so they dispatch whole reads.
-            val verdicts = ScanlineReconciler.reconcile(groups, boxes)
-            val nowMs = SystemClock.uptimeMillis()
             val srcProfile = SourceLanguageProfiles[prefs.sourceLangId]
+            val arbSink: ((String) -> Unit)? =
+                if (!debug) null else ({ s -> DetectionLog.log("D$displayId c$cycleNum $s") })
+            val verdicts = ScanlineReconciler.reconcile(
+                groups, boxes, srcProfile.translationCode, arbSink,
+            )
+            val nowMs = SystemClock.uptimeMillis()
             typewriterGate.debugSink =
                 if (!debug) null else ({ s -> DetectionLog.log("D$displayId c$cycleNum tw $s") })
             val holdOut = typewriterGate.filterVerdicts(
@@ -460,7 +464,8 @@ class ReconcilerLiveMode(
                     "D$displayId c$cycleNum clean: ocr=${ocrMs}ms " +
                         "u=${verdicts.unchanged} c=${verdicts.changed} " +
                         "m=${verdicts.missing} n=${verdicts.added} " +
-                        "held=${holdOut.heldBoxes.size} repos=${verdicts.repositioned}"
+                        "held=${holdOut.heldBoxes.size} repos=${verdicts.repositioned} " +
+                        "up=${verdicts.upgraded}"
                 )
             }
 
