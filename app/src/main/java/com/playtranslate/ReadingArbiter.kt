@@ -133,8 +133,14 @@ object ReadingArbiter {
 
     /** Confidence margin a challenger (or incumbent) must clear on either
      *  aggregate before the tier decides. Calibration knob — arbitration
-     *  events log both scores, so field data can tighten or loosen it. */
-    const val CONF_MARGIN = 0.10f
+     *  events log both scores, so field data can tighten or loosen it.
+     *  Field-calibrated 2026-07-23 (Thor, JA game dialogue): meaning-free
+     *  punctuation variants separated by ≤0.048, the one real misread
+     *  (気がす。 vs 気がする) by 0.086, and same-text jitter sat at ±0.01
+     *  above 0.8 stored min (one −0.08 excursion at 0.6–0.77). 0.07 sits
+     *  in that gap; an arb verdict on a punctuation-only pair means too
+     *  loose, a meaningful TIE under 0.07 means too tight. */
+    const val CONF_MARGIN = 0.07f
 
     /** Junk-ratio separation before the junk tier decides. */
     const val JUNK_MARGIN = 0.10f

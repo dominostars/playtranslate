@@ -151,6 +151,28 @@ object ScanlineReconciler {
          *  been a KEEP) but [ReadingArbiter] judged it a better reading of
          *  the same content. A subset of [changed]; informational. */
         val upgraded: Int = 0,
+        /** Same-text confidence jitter observed this cycle, null when no
+         *  identical re-read carried known scores. The calibration feed
+         *  for [ReadingArbiter.CONF_MARGIN]: identical re-reads are pure
+         *  same-text jitter samples, and the extreme deltas WITH the level
+         *  they occurred at chart the jitter band as a function of
+         *  confidence — the empirical curve the margin's size (and shape:
+         *  absolute vs level-dependent) must sit above. Deltas are
+         *  measured against the PRE-ratchet stored min, so after the
+         *  stored score converges to the running max the lows chart the
+         *  band's downward width and the highs mark ratchet moments. */
+        val sameTextJitter: SameTextJitter? = null,
+    )
+
+    /** One cycle's same-text jitter extremes: [count] identical re-reads
+     *  compared, the most negative and most positive (freshMin −
+     *  storedMin) deltas, each with the stored level it was observed at. */
+    data class SameTextJitter(
+        val count: Int,
+        val loDelta: Float,
+        val loAtMin: Float,
+        val hiDelta: Float,
+        val hiAtMin: Float,
     )
 
     /**
@@ -200,6 +222,8 @@ object ScanlineReconciler {
         val removals = ArrayList<TextBox>()
         var uCount = 0; var cCount = 0; var mCount = 0; var nCount = 0; var rCount = 0
         var upCount = 0
+        var jitCount = 0
+        var jitLo = 0f; var jitLoAt = 0f; var jitHi = 0f; var jitHiAt = 0f
 
         fun regionOf(g: OcrManager.OcrGroup, replaces: TextBox? = null) = Region(
             text = g.text,
@@ -240,6 +264,18 @@ object ScanlineReconciler {
                     // boxes that never alters any verdict in this call.
                     if (g.text == box.sourceText) {
                         val (fMin, fMean) = ReadingArbiter.scoreOf(g)
+                        // Jitter sample BEFORE the ratchet: the delta is
+                        // measured against what the margin would have seen.
+                        if (fMin >= 0f && box.sourceConfMin >= 0f) {
+                            val delta = fMin - box.sourceConfMin
+                            if (jitCount == 0 || delta < jitLo) {
+                                jitLo = delta; jitLoAt = box.sourceConfMin
+                            }
+                            if (jitCount == 0 || delta > jitHi) {
+                                jitHi = delta; jitHiAt = box.sourceConfMin
+                            }
+                            jitCount++
+                        }
                         box.ratchetSourceConf(fMin, fMean)
                     }
                     // If the raw strings differ instead, the pair is a
@@ -301,6 +337,8 @@ object ScanlineReconciler {
             added = nCount,
             repositioned = rCount,
             upgraded = upCount,
+            sameTextJitter = if (jitCount == 0) null else
+                SameTextJitter(jitCount, jitLo, jitLoAt, jitHi, jitHiAt),
         )
     }
 

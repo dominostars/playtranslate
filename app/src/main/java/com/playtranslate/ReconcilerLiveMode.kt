@@ -460,12 +460,17 @@ class ReconcilerLiveMode(
             if (dropped.isNotEmpty()) presenter.onAnchorsDropped(dropped)
 
             if (debug) {
+                val jit = verdicts.sameTextJitter?.let {
+                    " jit=${it.count} " +
+                        String.format("%+.2f@%.2f ", it.loDelta, it.loAtMin) +
+                        String.format("%+.2f@%.2f", it.hiDelta, it.hiAtMin)
+                } ?: ""
                 DetectionLog.log(
                     "D$displayId c$cycleNum clean: ocr=${ocrMs}ms " +
                         "u=${verdicts.unchanged} c=${verdicts.changed} " +
                         "m=${verdicts.missing} n=${verdicts.added} " +
                         "held=${holdOut.heldBoxes.size} repos=${verdicts.repositioned} " +
-                        "up=${verdicts.upgraded}"
+                        "up=${verdicts.upgraded}$jit"
                 )
             }
 

@@ -378,6 +378,45 @@ class ScanlineReconcilerTest {
     }
 
     @Test
+    fun sameTextJitter_capturesExtremesWithLevels_preRatchet() {
+        // Two same-text boxes: one re-reads below stored, one above. The
+        // aggregate must carry both extremes with the PRE-ratchet stored
+        // level they occurred at (the margin's-eye view).
+        val rA = Rect(0, 0, 400, 60)
+        val rB = Rect(0, 200, 400, 260)
+        val a = box(rA, "ABCDEFGH", conf = 0.86f)
+        val b = box(rB, "IJKLMNOP", conf = 0.56f)
+        val v = ScanlineReconciler.reconcile(
+            listOf(grp("ABCDEFGH", rA, conf = 0.81f), grp("IJKLMNOP", rB, conf = 0.59f)),
+            listOf(a, b), sourceLang = "en",
+        )
+        val jit = v.sameTextJitter!!
+        assertEquals(2, jit.count)
+        assertEquals(-0.05f, jit.loDelta, 1e-5f)
+        assertEquals(0.86f, jit.loAtMin, 1e-6f)
+        assertEquals(0.03f, jit.hiDelta, 1e-5f)
+        assertEquals(0.56f, jit.hiAtMin, 1e-6f)
+        // The ratchet still ran after sampling: b improved, a held.
+        assertEquals(0.59f, b.sourceConfMin, 1e-6f)
+        assertEquals(0.86f, a.sourceConfMin, 1e-6f)
+    }
+
+    @Test
+    fun sameTextJitter_unknownScoresAndDifferingTextsExcluded() {
+        val rA = Rect(0, 0, 400, 60)
+        val rB = Rect(0, 200, 400, 260)
+        // A: same text but unknown fresh score — first-evidence, not jitter.
+        val a = box(rA, "ABCDEFGH", conf = 0.8f)
+        // B: fuzz-same but DIFFERING text — arbitration's business, not jitter.
+        val b = box(rB, "IJKLMNOP", conf = 0.8f)
+        val v = ScanlineReconciler.reconcile(
+            listOf(grp("ABCDEFGH", rA), grp("IJKLMNOX", rB, conf = 0.7f)),
+            listOf(a, b), sourceLang = "en",
+        )
+        assertEquals(null, v.sameTextJitter)
+    }
+
+    @Test
     fun ratchetSurvivesRepositionCopy() {
         // Identical text that also drifted: the reposition copy must carry
         // the freshly-ratcheted score (mutate-then-copy ordering).
