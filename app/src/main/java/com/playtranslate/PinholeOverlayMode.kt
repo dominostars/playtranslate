@@ -183,6 +183,16 @@ class PinholeOverlayMode(
 
     override fun refresh() {
         resetState()
+        // Full gate clear, not just holds: refresh() is reached by
+        // coordinate- and content-changing callers (afterRegionChange,
+        // language/settings refreshes), and the post-reset cycle is a
+        // FIRST capture that re-seeds cropLeft/cropTop without the drift
+        // comparison — so stale armed origins from the old crop space
+        // would never be detected and could armed-hold unrelated text at
+        // coincident coordinates (Codex adversarial review, 2026-07-23).
+        // Arming preservation is only for dismiss() (the tap-advance
+        // flow), whose coordinate space is unchanged.
+        typewriterGate.clear()
         engine.scheduleNext()
     }
 
@@ -241,8 +251,11 @@ class PinholeOverlayMode(
         // Holds only — region memory and ARMING survive. The input path
         // dismisses per message (tap → dismiss → next message types);
         // wiping arming here would disarm every region in exactly the
-        // flow arming exists for. Coordinate-voiding resets (rotation,
-        // dim/crop changes, stop) additionally call typewriterGate.clear().
+        // flow arming exists for. Every OTHER reset (refresh, rotation,
+        // dim/crop changes, stop) additionally calls typewriterGate
+        // .clear() — dismiss() is the ONLY caller that may keep memory,
+        // because it is the only one whose coordinate space and content
+        // provably haven't changed.
         typewriterGate.clearHolds()
         typewriterDeadlineMs = null
         quietProbe.clear()
