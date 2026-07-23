@@ -67,8 +67,9 @@ class TypewriterGateTest {
         bounds: Rect = r,
         paired: Boolean = false,
         orientation: TextOrientation = TextOrientation.HORIZONTAL,
+        lineCount: Int = 1,
     ) = FarGroup(
-        text = text, bounds = bounds, lineCount = 1,
+        text = text, bounds = bounds, lineCount = lineCount,
         orientation = orientation, paired = paired,
     )
 
@@ -439,6 +440,259 @@ class TypewriterGateTest {
         // Agreement releases the full text.
         out = gate.fars(listOf(far(full, bounds = Rect(546, 813, 1239, 1005))), 3000, 3200)
         assertEquals(listOf(full), out.dispatch.map { it.text })
+    }
+
+    // ── Flow-adjacency: split pieces defer on the active reveal ───────────
+
+    @Test
+    fun freshRegion_flowAfterActiveHold_deferredAndReleasedInOrder() {
+        val gate = TypewriterGate()
+        val top = Rect(500, 800, 1240, 860)
+        val below = Rect(500, 865, 1240, 925)
+        gate.fars(listOf(far("こんにち", bounds = top)), 0, 200)
+        gate.fars(listOf(far("こんにちは、旅の", bounds = top)), 1000, 1200) // grow-hold
+        // The reveal reaches line 2, which grouping split off: fresh text
+        // directly flow-after the active hold must not Level-0 past it.
+        var out = gate.fars(
+            listOf(
+                far("こんにちは、旅の人よ、聞け", bounds = top),
+                far("まったく別の続きの内容", bounds = below),
+            ),
+            1500, 1700,
+        )
+        assertTrue("split bottom deferred with the top", out.dispatch.isEmpty())
+        assertEquals(2, out.held)
+        // Both settle → both release in reading order, one batch.
+        out = gate.fars(
+            listOf(
+                far("こんにちは、旅の人よ、聞け", bounds = top),
+                far("まったく別の続きの内容", bounds = below),
+            ),
+            2000, 2200,
+        )
+        assertEquals(listOf("こんにちは、旅の人よ、聞け", "まったく別の続きの内容"),
+            out.dispatch.map { it.text })
+    }
+
+    @Test
+    fun battleMenu_insideOldMessageArea_noActiveReveal_dispatchesImmediately() {
+        val gate = TypewriterGate()
+        val top = Rect(500, 800, 1240, 860)
+        // Full reveal settles and releases (grace stamps at release).
+        gate.fars(listOf(far("こんにち", bounds = top)), 0, 200)
+        gate.fars(listOf(far("こんにちは、旅の", bounds = top)), 1000, 1200)
+        gate.fars(listOf(far("こんにちは、旅の", bounds = top)), 1500, 1700) // agree-release
+        // Seconds later a battle menu renders inside the old message area
+        // (away from the armed origin corner): no hold, grace expired —
+        // zero deferral. The Stage-A fatal flaw, pinned.
+        val out = gate.fars(
+            listOf(far("たたかう", bounds = Rect(700, 825, 1000, 855))), 4000, 4200,
+        )
+        assertEquals(1, out.dispatch.size)
+        assertEquals(0, out.held)
+    }
+
+    @Test
+    fun nameplate_flowBeforeActiveHold_exempt() {
+        val gate = TypewriterGate()
+        val top = Rect(500, 800, 1240, 860)
+        gate.fars(listOf(far("こんにち", bounds = top)), 0, 200)
+        gate.fars(listOf(far("こんにちは、旅の", bounds = top)), 1000, 1200) // hold open
+        // A nameplate ABOVE the reveal is flow-before — dispatches on sight.
+        val out = gate.fars(
+            listOf(far("むらびと", bounds = Rect(500, 730, 800, 790))), 1500, 1700,
+        )
+        assertEquals(1, out.dispatch.size)
+        assertEquals(0, out.held)
+    }
+
+    @Test
+    fun releaseGrace_coversTheDetectionMissRace() {
+        val gate = TypewriterGate()
+        val top = Rect(500, 800, 1240, 860)
+        gate.fars(listOf(far("こんにち", bounds = top)), 0, 200)
+        gate.fars(listOf(far("こんにちは、旅の", bounds = top)), 1000, 1200)
+        gate.fars(listOf(far("こんにちは、旅の", bounds = top)), 1500, 1700) // top releases
+        // Detection missed the nascent bottom line for a cycle; it appears
+        // just AFTER the top released — the grace still defers it.
+        var out = gate.fars(
+            listOf(far("おくれてきた続きの行", bounds = Rect(500, 865, 1240, 925))), 2100, 2300,
+        )
+        assertEquals("grace defers the late bottom line", 1, out.held)
+        // It settles and releases normally.
+        out = gate.fars(
+            listOf(far("おくれてきた続きの行", bounds = Rect(500, 865, 1240, 925))), 2600, 2800,
+        )
+        assertEquals(1, out.dispatch.size)
+    }
+
+    @Test
+    fun vertical_flowAfterIsLeftward() {
+        val gate = TypewriterGate()
+        val rightCol = Rect(900, 100, 1000, 600)
+        fun col(text: String, bounds: Rect) =
+            far(text, bounds = bounds, orientation = TextOrientation.VERTICAL)
+        gate.fars(listOf(col("こん", rightCol)), 0, 200)
+        gate.fars(listOf(col("こんにちは、旅の", rightCol)), 1000, 1200) // hold open
+        // Next columns split off to the LEFT (flow-after) → deferred. The
+        // held column keeps growing in the same batches so its hold stays
+        // affirmed and open.
+        var out = gate.fars(
+            listOf(
+                col("こんにちは、旅の人よ聞くが", rightCol),
+                col("別のつづきの列", Rect(760, 100, 880, 600)),
+            ),
+            1500, 1700,
+        )
+        assertTrue(out.dispatch.isEmpty())
+        assertEquals(2, out.held)
+        // Text to the RIGHT is flow-before (ruby/label side) → exempt even
+        // with the hold still open.
+        out = gate.fars(
+            listOf(
+                col("こんにちは、旅の人よ聞くがいいだろう", rightCol),
+                col("ラベル", Rect(1010, 100, 1100, 600)),
+            ),
+            1900, 2100,
+        )
+        assertEquals(listOf("ラベル"), out.dispatch.map { it.text })
+    }
+
+    // ── Same-content bands: garble must not break an active chain ────────
+
+    @Test
+    fun garbleBand_wedgedHold_recoversViaAgreement() {
+        val gate = TypewriterGate()
+        // Field c9-c13: the hold opened on a GARBLED full read; the correct
+        // reads could neither agree (too different) nor break (subset-ish)
+        // — wedged until a break dispatched a partial. The garble band
+        // adopts the newer read; its identical repeat releases clean.
+        gate.fars(listOf(far("こんにち")), 0, 200)
+        gate.fars(listOf(far("こんにちは、旅の人よ聞くがいい")), 1000, 1200) // garbled full
+        var out = gate.fars(listOf(far("こんにちは、旅の人に聞くがよさ")), 1500, 1700)
+        assertTrue("band adopts the variant, no dispatch", out.dispatch.isEmpty())
+        assertEquals(1, out.held)
+        out = gate.fars(listOf(far("こんにちは、旅の人に聞くがよさ")), 2000, 2200)
+        assertEquals(listOf("こんにちは、旅の人に聞くがよさ"), out.dispatch.map { it.text })
+        assertEquals("no break was recorded", 0, gate.stats.breaks)
+    }
+
+    @Test
+    fun growBand_garbledPrefixGrowth_staysHeld() {
+        val gate = TypewriterGate()
+        // Field c33: a growth read whose garbled PREFIX fails the strict
+        // evolving check must not dispatch as a break — it is the same
+        // reveal, garbled.
+        gate.fars(listOf(far("ABCDEFGH")), 0, 200, lang = "en")
+        gate.fars(listOf(far("ABCDEFGHIJKL")), 1000, 1200, lang = "en")
+        var out = gate.fars(listOf(far("AXCDEFGHIJKLMNOP")), 1500, 1700, lang = "en")
+        assertTrue("garbled growth held, not broken", out.dispatch.isEmpty())
+        assertEquals(1, out.held)
+        assertEquals(0, gate.stats.breaks)
+        // A clean boundary-final read releases the chain.
+        out = gate.fars(listOf(far("AXCDEFGHIJKLMNOPQRS.")), 2000, 2200, lang = "en")
+        assertEquals(1, out.dispatch.size)
+    }
+
+    @Test
+    fun deepTailGarble_growthStillRecognized() {
+        val gate = TypewriterGate()
+        // Field c101-c102 (22:18): the first catch's rasterizing edge
+        // hallucinated THREE glyphs (、Nッ) — beyond the shared 2-char tail
+        // trim — and the cleaner growth read broke the chain and dispatched
+        // a partial. The deep-garble second chance keeps it held.
+        gate.fars(listOf(far("どうにか")), 0, 200)
+        gate.fars(listOf(far("どうにか、ラクして、Nッ")), 1000, 1200) // garbled edge
+        var out = gate.fars(listOf(far("どうにか、ラクしてハッピーになる手")), 1500, 1700)
+        assertTrue("garbled-edge growth held, not broken", out.dispatch.isEmpty())
+        assertEquals(1, out.held)
+        assertEquals(0, gate.stats.breaks)
+        out = gate.fars(listOf(far("どうにか、ラクしてハッピーになる手")), 2000, 2200)
+        assertEquals(1, out.dispatch.size)
+    }
+
+    // ── Contained split pieces and release ordering ───────────────────────
+
+    @Test
+    fun mergedChainRect_containsSplitPiece_stillDefers() {
+        val gate = TypewriterGate()
+        // Field c267: the held chain's rect had MERGED both lines, so the
+        // split-off line 2 sat INSIDE it — the old gap band read that as
+        // flow-before and let it Level-0 past the hold.
+        val twoLines = Rect(500, 800, 1240, 940)
+        gate.fars(listOf(far("「やれやれ……これが全部", bounds = twoLines, lineCount = 2)), 0, 200)
+        gate.fars(
+            listOf(far("「やれやれ……これが全部わしの", bounds = twoLines, lineCount = 2)),
+            1000, 1200,
+        ) // grow-hold
+        val out = gate.fars(
+            listOf(far("これが全部わしのもの", bounds = Rect(554, 881, 1100, 935))), 1500, 1700,
+        )
+        assertTrue("contained split piece deferred", out.dispatch.isEmpty())
+        assertEquals(1, out.held)
+    }
+
+    @Test
+    fun chainRelease_waitsForFlowBeforeHold() {
+        val gate = TypewriterGate()
+        val top = Rect(500, 800, 1240, 860)
+        val below = Rect(500, 865, 1240, 925)
+        // Line 2's chain reaches its boundary while line 1 still holds —
+        // field c269 released it out of order. Now the release waits.
+        gate.fars(listOf(far("うえのぎょう", bounds = top)), 0, 200)
+        gate.fars(listOf(far("うえのぎょうがもっとつづく", bounds = top)), 1000, 1200) // line-1 hold
+        gate.fars(listOf(far("したのぎょう", bounds = below)), 1400, 1600) // deferred (adjacent)
+        var out = gate.fars(
+            listOf(
+                far("うえのぎょうがもっとつづくながくなる", bounds = top), // still growing
+                far("したのぎょうおわり。", bounds = below), // boundary-final
+            ),
+            1800, 2000,
+        )
+        assertTrue("line 2's boundary release waits for line 1", out.dispatch.isEmpty())
+        assertEquals(2, out.held)
+        // Line 1 settles → both release, reading order preserved.
+        out = gate.fars(
+            listOf(
+                far("うえのぎょうがもっとつづくながくなる", bounds = top),
+                far("したのぎょうおわり。", bounds = below),
+            ),
+            2300, 2500,
+        )
+        assertEquals(listOf("うえのぎょうがもっとつづくながくなる", "したのぎょうおわり。"),
+            out.dispatch.map { it.text })
+    }
+
+    @Test
+    fun replaceReshow_flowAfterActiveHold_deferred() {
+        val gate = TypewriterGate()
+        val top = Rect(500, 800, 1240, 860)
+        val below = Rect(500, 865, 1240, 925)
+        // A repeat viewing: line 2's text is already remembered, so its
+        // re-read is an identical REPLACE — which used to slip past the
+        // deferral while line 1 was still being typed.
+        gate.fars(listOf(far("したのぎょうのないよう", bounds = below)), 0, 200)
+        gate.fars(listOf(far("うえのぎょ", bounds = top)), 6000, 6200)
+        gate.fars(listOf(far("うえのぎょうがもっとつづく", bounds = top)), 7000, 7200) // hold
+        var out = gate.fars(
+            listOf(
+                far("うえのぎょうがもっとつづくながくなる", bounds = top),
+                far("したのぎょうのないよう", bounds = below), // identical re-show
+            ),
+            7500, 7700,
+        )
+        assertTrue("identical re-show deferred behind the reveal", out.dispatch.isEmpty())
+        assertEquals(2, out.held)
+        // Line 1 settles → both release in order.
+        out = gate.fars(
+            listOf(
+                far("うえのぎょうがもっとつづくながくなる", bounds = top),
+                far("したのぎょうのないよう", bounds = below),
+            ),
+            8000, 8200,
+        )
+        assertEquals(listOf("うえのぎょうがもっとつづくながくなる", "したのぎょうのないよう"),
+            out.dispatch.map { it.text })
     }
 
     // ── Thrash breaker: unknown pathologies fail open to Level 0 ──────────

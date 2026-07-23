@@ -123,6 +123,12 @@ class TypewriterGate {
         /** Armed until this uptime (0 = never armed). */
         var armedUntilMs = 0L
 
+        /** Uptime of the last hold RELEASED BY DISPATCH (0 = never) — the
+         *  release-grace anchor for flow-adjacency deferral. Sweep-closes
+         *  (region vanished) deliberately do not stamp: grace covers "a
+         *  reveal just settled here", not "evidence evaporated". */
+        var lastReleaseMs = 0L
+
         /** Thrash breaker: recent break-class dispatch timestamps. A region
          *  whose reads keep flipping between contradictory lineages (the
          *  グラウス split/merge loop, or any un-enumerated pathology of the
@@ -221,7 +227,8 @@ class TypewriterGate {
         var prefix = 0; var agree = 0; var capFlush = 0; var breaks = 0
         var shrinkCap = 0; var pass = 0; var selfDisable = 0; var bypass = 0
         var growHolds = 0; var armedHolds = 0; var viewHolds = 0
-        var partialViews = 0; var siblingViews = 0
+        var partialViews = 0; var siblingViews = 0; var revealAdjacent = 0
+        var sameBand = 0
         var arms = 0; var breakerTrips = 0
 
         fun summary(): String =
@@ -229,7 +236,8 @@ class TypewriterGate {
                 "agr=$agree cap=$capFlush brk=$breaks shr=$shrinkCap pas=$pass " +
                 "sd=$selfDisable byp=$bypass] " +
                 "hold[grow=$growHolds armed=$armedHolds view=$viewHolds " +
-                "pv=$partialViews sib=$siblingViews] arm=$arms trip=$breakerTrips"
+                "pv=$partialViews sib=$siblingViews radj=$revealAdjacent " +
+                "band=$sameBand] arm=$arms trip=$breakerTrips"
     }
 
     val stats = Stats()
@@ -507,7 +515,19 @@ class TypewriterGate {
         // punctuation-run variance must not read as content change.
         val fText = foldForCompare(text)
         fun same(other: String) = !OverlayToolkit.isSignificantChange(fText, foldForCompare(other))
-        fun grows(other: String) = OverlayToolkit.isEvolvingText(foldForCompare(other), fText)
+        fun grows(other: String): Boolean {
+            val fo = foldForCompare(other)
+            if (OverlayToolkit.isEvolvingText(fo, fText)) return true
+            // Deep edge-garble second chance: mid-reveal reads garble the
+            // LAST 3-4 glyphs routinely (field specimens: 、Nッ / カー /
+            // 二枚), and the shared min(2, n/4) tail trim is too shallow —
+            // the retained garbage poisons the prefix compare and the read
+            // breaks the chain. Dropping 2 more chars before delegating
+            // gives ~4 chars of tail tolerance, guarded against short
+            // known-texts where that would over-trim into false growth.
+            return fText.length > fo.length && fo.length >= 6 &&
+                OverlayToolkit.isEvolvingText(fo.dropLast(2), fText)
+        }
         fun viewOf(other: String) = bagSubset(fText, foldForCompare(other))
 
         // Decision-line context: sample + this read's start corner.
@@ -518,6 +538,7 @@ class TypewriterGate {
 
         fun dispatch(t: String, why: () -> String): String {
             d { "DISPATCH ${why()} ${ctx()}" }
+            if (mem.holdOpen) mem.lastReleaseMs = nowMs
             mem.closeHold()
             mem.lastText = text
             mem.lastDispatched = t
@@ -585,110 +606,150 @@ class TypewriterGate {
         // ── An open hold on this region ──────────────────────────────────
         if (mem.holdOpen) {
             val capExpired = nowMs - mem.holdOpenCaptureMs >= mem.capMs()
-            return when {
-                same(mem.lastText) -> {
-                    // Agreement read. Δ in the log discriminates true
-                    // settles (Δ=0 on deterministic engines) from the
-                    // sub-tolerance slow-reveal hole (Δ=1..3 growth read
-                    // as agreement).
-                    mem.stableReads++
-                    val agreeDelta = if (debugSink != null) bagDiff(fText, foldForCompare(mem.lastText)) else 0
-                    if (mem.stableReads >= STABLE_READS || capExpired) {
-                        // A growth chain that settled is a real reveal —
-                        // the arming evidence (boundary or not; garble
-                        // chains end via revert below, never here).
-                        if (mem.holdGrowth) arm()
-                        stats.agree++
-                        dispatch(text) {
-                            "agree-release n=${mem.stableReads} grow=${mem.holdGrowth} " +
-                                "cap=$capExpired Δ=$agreeDelta"
-                        }
-                    } else {
+
+            // Release-ORDER guard: a chain flow-after a still-OPEN earlier
+            // hold must not release ahead of it (field c269: line 2's
+            // boundary fired while line 1 still held). Open holds only, no
+            // grace — a flow-before chain released earlier in this same
+            // batch clears the way immediately, so joint release works.
+            // The own cap always escapes.
+            fun orderBlocked(): Boolean = !capExpired &&
+                revealAdjacentTo(mem, bounds, orientation, nowMs, includeGrace = false)
+
+            if (same(mem.lastText)) {
+                // Agreement read. Δ in the log discriminates true settles
+                // (Δ=0 on deterministic engines) from the sub-tolerance
+                // slow-reveal hole (Δ=1..3 growth read as agreement).
+                mem.stableReads++
+                val agreeDelta = if (debugSink != null) bagDiff(fText, foldForCompare(mem.lastText)) else 0
+                if (mem.stableReads >= STABLE_READS || capExpired) {
+                    if (orderBlocked()) {
                         mem.lastText = text
-                        held { "agree n=${mem.stableReads} Δ=$agreeDelta" }
+                        return held { "order-hold agree" }
+                    }
+                    // A growth chain that settled is a real reveal — the
+                    // arming evidence (boundary or not; garble chains end
+                    // via revert below, never here).
+                    if (mem.holdGrowth) arm()
+                    stats.agree++
+                    return dispatch(text) {
+                        "agree-release n=${mem.stableReads} grow=${mem.holdGrowth} " +
+                            "cap=$capExpired Δ=$agreeDelta"
                     }
                 }
-                viewOf(mem.lastText) -> {
-                    // Partial VIEW of the chain's known text — a split read,
-                    // our own box occluding part of the block, or a
-                    // RE-REVEAL of a known message (repeat dialogue).
-                    // Affirm without touching the chain or the agreement
-                    // counter: the fuller reads carry the release.
-                    val viewGrew = mem.lastViewText.isNotEmpty() &&
-                        OverlayToolkit.isEvolvingText(foldForCompare(mem.lastViewText), fText)
-                    if (viewGrew) {
-                        // Growing views = known text re-typing itself. Slide
-                        // the cap anchor: the shrink flush must measure how
-                        // long a SHRUNKEN text sat stable, not the progress
-                        // of a reveal — a mid-reveal flush is exactly the
-                        // partial this gate exists to prevent. Bounded by
-                        // construction: a view can only grow up to the
-                        // known text, so this cannot defer forever.
-                        mem.holdOpenCaptureMs = captureAtMs
-                        mem.lastViewText = text
-                        stats.partialViews++
-                        held { "view-grow of=«${snip(mem.lastText)}»" }
-                    } else if (capExpired) {
-                        // The subset sat stable through the cap — a genuine
-                        // shrink-advance. Flush it.
-                        stats.shrinkCap++
-                        recordBreakClass()
-                        dispatch(text) { "shrink-cap" }
-                    } else {
-                        mem.lastViewText = text
-                        stats.partialViews++
-                        held { "partial-view of=«${snip(mem.lastText)}»" }
+                mem.lastText = text
+                return held { "agree n=${mem.stableReads} Δ=$agreeDelta" }
+            }
+            if (grows(mem.lastText)) {
+                // Still growing. Growth promotes an armed-new hold to a
+                // genuine reveal — the cap widens to [HOLD_MAX_MS] (same
+                // anchor), so re-check expiry against the new cap rather
+                // than the pre-promotion value.
+                mem.holdGrowth = true
+                mem.stableReads = 1
+                mem.lastText = text
+                refreshArm()
+                if (SentenceBoundary.endsAtBoundary(text, translationCode)) {
+                    if (orderBlocked()) return held { "order-hold boundary" }
+                    arm()
+                    stats.boundary++
+                    return dispatch(text) { "boundary" }
+                }
+                if (allowPartialPrefix) {
+                    val p = SentenceBoundary.terminalPrefix(text, translationCode)
+                    if (p != null && (ref == null ||
+                            OverlayToolkit.isEvolvingText(foldForCompare(ref), foldForCompare(p)))
+                    ) {
+                        if (orderBlocked()) return held { "order-hold prefix" }
+                        // Sentence-complete prefix grew: upgrade the box
+                        // in place, keep holding the ragged tail.
+                        arm()
+                        stats.prefix++
+                        d { "DISPATCH prefix «${snip(p)}» ${ctx()}" }
+                        mem.lastDispatched = p
+                        return p
                     }
                 }
-                grows(mem.lastText) -> {
-                    // Still growing. Growth promotes an armed-new hold to a
-                    // genuine reveal — the cap widens to [HOLD_MAX_MS]
-                    // (same anchor), so re-check expiry against the new cap
-                    // rather than the pre-promotion value.
+                val growthCapExpired = nowMs - mem.holdOpenCaptureMs >= mem.capMs()
+                if (growthCapExpired) {
+                    // Cap flush of a growth chain: a slow reveal (or
+                    // marquee) — still a settled-enough observation.
+                    arm()
+                    stats.capFlush++
+                    return dispatch(text) { "cap-flush" }
+                }
+                return held { "grow-cont" }
+            }
+            // Same-content bands (the LogWriteGate same-region loose tier,
+            // ported): within an ACTIVE chain, a read bag-close to the
+            // known text is OCR jitter of the same content. Field cases:
+            // a garbled-prefix growth read broke the strict relation and
+            // dispatched a partial (c33); a hold opened on a garbled full
+            // read wedged the correct reads in view-limbo (c9-c13).
+            val fLast = foldForCompare(mem.lastText)
+            val bandDiff = bagDiff(fText, fLast)
+            val bandMax = maxOf(fText.length, fLast.length)
+            if (bandMax > 0 && bandDiff <= bandMax * SAME_CONTENT_BAND_FRAC) {
+                if (text.length > mem.lastText.length) {
+                    // Growth whose garbled prefix failed the strict check.
                     mem.holdGrowth = true
                     mem.stableReads = 1
                     mem.lastText = text
                     refreshArm()
-                    if (SentenceBoundary.endsAtBoundary(text, translationCode)) {
-                        arm()
-                        stats.boundary++
-                        return dispatch(text) { "boundary" }
-                    }
-                    if (allowPartialPrefix) {
-                        val p = SentenceBoundary.terminalPrefix(text, translationCode)
-                        if (p != null && (ref == null ||
-                                OverlayToolkit.isEvolvingText(foldForCompare(ref), foldForCompare(p)))
-                        ) {
-                            // Sentence-complete prefix grew: upgrade the box
-                            // in place, keep holding the ragged tail.
-                            arm()
-                            stats.prefix++
-                            d { "DISPATCH prefix «${snip(p)}» ${ctx()}" }
-                            mem.lastDispatched = p
-                            return p
-                        }
-                    }
-                    val growthCapExpired = nowMs - mem.holdOpenCaptureMs >= mem.capMs()
-                    if (growthCapExpired) {
-                        // Cap flush of a growth chain: a slow reveal (or
-                        // marquee) — still a settled-enough observation.
-                        arm()
-                        stats.capFlush++
-                        dispatch(text) { "cap-flush" }
-                    } else held { "grow-cont" }
+                    stats.sameBand++
+                    return held { "grow-band Δ=$bandDiff" }
                 }
-                else -> {
-                    // Real change mid-hold (advance/garble revert) — Level
-                    // 0, new lineage. Deliberately NOT arming evidence.
-                    // The snips are the relation-break evidence: bracket
-                    // flicker or tail garble shows right here (the why
-                    // lambda runs BEFORE dispatch mutates lastText).
-                    stats.breaks++
-                    recordBreakClass()
-                    mem.startChain(bounds, orientation, rtl, lineCount)
-                    dispatch(text) { "break last=«${snip(mem.lastText)}»" }
+                if (kotlin.math.abs(text.length - mem.lastText.length) <= maxOf(2, bandMax / 10)) {
+                    // Same-length jitter: track the newer read; release
+                    // comes from true agreement, boundary, or cap.
+                    mem.stableReads = 1
+                    mem.lastText = text
+                    stats.sameBand++
+                    return held { "garble-band Δ=$bandDiff" }
                 }
+                // Much shorter but bag-close: fall through — likely a
+                // partial view.
             }
+            if (viewOf(mem.lastText)) {
+                // Partial VIEW of the chain's known text — a split read,
+                // our own box occluding part of the block, or a RE-REVEAL
+                // of a known message (repeat dialogue). Affirm without
+                // touching the chain or the agreement counter: the fuller
+                // reads carry the release.
+                val viewGrew = mem.lastViewText.isNotEmpty() &&
+                    OverlayToolkit.isEvolvingText(foldForCompare(mem.lastViewText), fText)
+                if (viewGrew) {
+                    // Growing views = known text re-typing itself. Slide
+                    // the cap anchor: the shrink flush must measure how
+                    // long a SHRUNKEN text sat stable, not the progress
+                    // of a reveal — a mid-reveal flush is exactly the
+                    // partial this gate exists to prevent. Bounded by
+                    // construction: a view can only grow up to the known
+                    // text, so this cannot defer forever.
+                    mem.holdOpenCaptureMs = captureAtMs
+                    mem.lastViewText = text
+                    stats.partialViews++
+                    return held { "view-grow of=«${snip(mem.lastText)}»" }
+                }
+                if (capExpired) {
+                    // The subset sat stable through the cap — a genuine
+                    // shrink-advance. Flush it.
+                    stats.shrinkCap++
+                    recordBreakClass()
+                    return dispatch(text) { "shrink-cap" }
+                }
+                mem.lastViewText = text
+                stats.partialViews++
+                return held { "partial-view of=«${snip(mem.lastText)}»" }
+            }
+            // Real change mid-hold (advance/garble revert) — Level 0, new
+            // lineage. Deliberately NOT arming evidence. The snips are the
+            // relation-break evidence (the why lambda runs BEFORE dispatch
+            // mutates lastText).
+            stats.breaks++
+            recordBreakClass()
+            mem.startChain(bounds, orientation, rtl, lineCount)
+            return dispatch(text) { "break last=«${snip(mem.lastText)}»" }
         }
 
         // ── No open hold ─────────────────────────────────────────────────
@@ -705,10 +766,28 @@ class TypewriterGate {
             return " corner-miss dx=${cx - mem.armedOriginX} dy=${cy - mem.armedOriginY} tol=${mem.armedTolPx}"
         }
 
+        // Fresh text flow-after an ACTIVE reveal (or one released within
+        // the grace) is the continuation of the message being typed — a
+        // split-off bottom line must not Level-0 past the held top line.
+        // Time-scoped by construction: the condition is evaluated against
+        // open holds this cycle plus a sub-second grace, never remembered
+        // geometry — a battle menu inside yesterday's message box owes
+        // nothing.
+        fun deferRevealAdjacent(): String? {
+            if (armed) return null // armed gating owns armed regions
+            if (!revealAdjacentTo(mem, bounds, orientation, nowMs, includeGrace = true)) return null
+            if (nowMs - captureAtMs >= ARMED_NEW_MAX_MS) return null // slow-pipeline self-disable
+            stats.revealAdjacent++
+            mem.openHold(captureAtMs, growth = false)
+            mem.lastText = text
+            return "held"
+        }
+
         // First sighting of this region (nothing displayed, nothing
         // remembered as dispatched).
         if (ref == null) {
             if (!armed) {
+                if (deferRevealAdjacent() != null) return held { "reveal-adjacent" }
                 stats.level0++
                 return dispatch(text) {
                     "level0-new${armedNote()}${nearestArmNote(bounds, orientation, rtl, nowMs)}"
@@ -719,8 +798,19 @@ class TypewriterGate {
 
         // Stable vs what's shown: re-place / retry parity (pinhole flap
         // recovery rides the translation cache). Δ=1..3 cycling here is
-        // the sub-tolerance churn signature.
+        // the sub-tolerance churn signature. An identical re-show flow-
+        // after an ACTIVE reveal is the split piece of a repeat viewing —
+        // the replace path must not slip past the fresh-text deferral
+        // (field: known lines 2/3 re-placing above a held line 1).
         if (same(ref)) {
+            if (revealAdjacentTo(mem, bounds, orientation, nowMs, includeGrace = true) &&
+                nowMs - captureAtMs < ARMED_NEW_MAX_MS
+            ) {
+                stats.revealAdjacent++
+                mem.openHold(captureAtMs, growth = false)
+                mem.lastText = text
+                return held { "reveal-adjacent replace" }
+            }
             stats.replace++
             return dispatch(text) { "replace Δ=${bagDiff(fText, foldForCompare(ref))}" }
         }
@@ -779,14 +869,64 @@ class TypewriterGate {
         }
 
         // Real content change (message advance) — a new lineage starts at
-        // this read's rect. Unarmed: Level 0. Armed: the new message is
-        // sentence-gated from its first read.
+        // this read's rect. Unarmed: Level 0 (unless it sits flow-after an
+        // active reveal). Armed: the new message is sentence-gated from
+        // its first read.
         mem.startChain(bounds, orientation, rtl, lineCount)
         if (!armed) {
+            if (deferRevealAdjacent() != null) return held { "reveal-adjacent" }
             stats.advance++
             return dispatch(text) { "advance${armedNote()}" }
         }
         return gateFreshText(mem, text, translationCode, captureAtMs, nowMs, allowPartialPrefix, ::dispatch, ::held)
+    }
+
+    /** Is [bounds] directly flow-AFTER a region with an active reveal —
+     *  an open hold, or one released by dispatch within
+     *  [RELEASE_GRACE_MS] (detection often misses a nascent bottom line
+     *  for a cycle, letting the top release first)? Flow-after = below
+     *  the held chain for horizontal text, left of it for vertical
+     *  (columns run right-to-left in the shipped matrix); the gap band is
+     *  denominated in the holder's line extent, with reading-axis spans
+     *  required to overlap. Nameplates and ruby sit flow-BEFORE and are
+     *  structurally exempt. */
+    private fun revealAdjacentTo(
+        self: RegionMemory,
+        bounds: Rect,
+        orientation: TextOrientation,
+        nowMs: Long,
+        includeGrace: Boolean,
+    ): Boolean {
+        for (m in regions) {
+            if (m === self) continue
+            val active = m.holdOpen || (includeGrace &&
+                m.lastReleaseMs != 0L && nowMs - m.lastReleaseMs < RELEASE_GRACE_MS)
+            if (!active) continue
+            val ext = m.chainLineExtentPx
+            // Flow-after = starts past the holder's FIRST line and no more
+            // than ~1.5 extents past its last — CONTAINED split pieces
+            // count (a merged chain rect can span the very lines that later
+            // split off; the やれやれ field case), flow-before starts do
+            // not (nameplates, ruby).
+            val inFlow: Boolean
+            val overlap: Int
+            val minSpan: Int
+            if (orientation == TextOrientation.VERTICAL) {
+                inFlow = bounds.right < m.bounds.right - ext / 2 &&
+                    bounds.right >= m.bounds.left - (ext + ext / 2)
+                overlap = minOf(m.bounds.bottom, bounds.bottom) - maxOf(m.bounds.top, bounds.top)
+                minSpan = minOf(m.bounds.height(), bounds.height())
+            } else {
+                inFlow = bounds.top > m.bounds.top + ext / 2 &&
+                    bounds.top <= m.bounds.bottom + (ext + ext / 2)
+                overlap = minOf(m.bounds.right, bounds.right) - maxOf(m.bounds.left, bounds.left)
+                minSpan = minOf(m.bounds.width(), bounds.width())
+            }
+            if (!inFlow) continue
+            if (minSpan <= 0 || overlap < minSpan * SPAN_OVERLAP_FRAC) continue
+            return true
+        }
+        return false
     }
 
     /** For an unmatched fresh-region dispatch while ANY armed region
@@ -920,6 +1060,8 @@ class TypewriterGate {
             val fLast = foldForCompare(m.lastText)
             return !OverlayToolkit.isSignificantChange(fText, fLast) ||
                 OverlayToolkit.isEvolvingText(fLast, fText) ||
+                (fText.length > fLast.length && fLast.length >= 6 &&
+                    OverlayToolkit.isEvolvingText(fLast.dropLast(2), fText)) ||
                 bagSubset(fText, fLast)
         }
         var best: RegionMemory? = null
@@ -1033,6 +1175,24 @@ class TypewriterGate {
          *  against long char bags ("Chapter Two" ⊂ a 26-char English
          *  sentence at 3 chars of slack). */
         const val SUBSET_TOL_FRAC = 0.15f
+
+        /** Same-content band (in-hold only): a read within this bag-diff
+         *  fraction of the chain's known text is OCR jitter or garbled
+         *  growth of the SAME content, never a break — the LogWriteGate
+         *  same-region loose tier, ported. Real advances differ far more;
+         *  marquees sit in the band and cap-flush as before. */
+        const val SAME_CONTENT_BAND_FRAC = 0.40f
+
+        /** Flow-adjacency deferral: how long after a hold's dispatch-
+         *  release its neighborhood still defers fresh flow-after text —
+         *  covers detection missing a nascent bottom line for a cycle
+         *  while the top line's agreement fires. Sub-second on purpose:
+         *  the condition must die with the reveal. */
+        const val RELEASE_GRACE_MS = 800L
+
+        /** Reading-axis span overlap (fraction of the smaller span) for
+         *  flow-adjacency. */
+        const val SPAN_OVERLAP_FRAC = 0.25f
 
         /** Thrash breaker: this many break-class dispatches inside the
          *  window trips the region open to Level 0 for the cooldown.
