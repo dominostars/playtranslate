@@ -751,10 +751,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             }
             KeyEvent.ACTION_UP -> {
                 heldKeyCodes.remove(event.keyCode)
-                if (gameInput) {
-                    heldGameKeys.remove(event.keyCode)
-                    fireOnGameInput()
-                }
+                // Releases keep the held-set bookkeeping and hotkey logic
+                // but do NOT fire game input: a press already fired on
+                // DOWN (and held buttons auto-repeat DOWN), so firing on
+                // UP dismissed the overlays twice per press and restarted
+                // the overlay-return wait at release.
+                if (gameInput) heldGameKeys.remove(event.keyCode)
                 checkHotkeyCombos()
             }
         }
