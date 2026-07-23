@@ -7,6 +7,7 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.LiveCaptureSource
 import com.playtranslate.capture.StreamKind
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.language.TextDirection
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -184,6 +185,9 @@ class ReconcilerLiveMode(
     override fun stop() {
         scope.cancel()
         resetState()
+        // Always-on (non-debug) counters — ride the diagnostics log export
+        // so a field report self-attributes without logcat instructions.
+        Log.i(TAG, "typewriter stats: ${typewriterGate.stats.summary()}")
         CaptureBackendResolver.active().stopInputMonitoring(displayId)
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
     }
@@ -421,13 +425,20 @@ class ReconcilerLiveMode(
             // must match the dispatched text, so they dispatch whole reads.
             val verdicts = ScanlineReconciler.reconcile(groups, boxes)
             val nowMs = SystemClock.uptimeMillis()
+            val srcProfile = SourceLanguageProfiles[prefs.sourceLangId]
+            typewriterGate.debugSink =
+                if (!debug) null else ({ s -> DetectionLog.log("D$displayId c$cycleNum tw $s") })
             val holdOut = typewriterGate.filterVerdicts(
                 verdicts,
-                SourceLanguageProfiles[prefs.sourceLangId].translationCode,
-                captureAtMs, nowMs,
+                srcProfile.translationCode,
+                sourceIsRtl = srcProfile.textDirection == TextDirection.RTL,
+                captureAtMs = captureAtMs, nowMs = nowMs,
                 allowPartialPrefix = presenter.flavor == OverlayFlavor.TRANSLATION,
             )
             typewriterGate.touchRegions(verdicts.keptBoxes.map { it.bounds }, nowMs)
+            if (cycleNum % 120 == 0) {
+                Log.i(TAG, "typewriter stats c$cycleNum: ${typewriterGate.stats.summary()}")
+            }
             holdDeadlineMs = holdOut.nextDeadlineMs
 
             val kept = verdicts.keptBoxes + holdOut.heldBoxes

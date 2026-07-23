@@ -16,9 +16,10 @@ import org.robolectric.RobolectricTestRunner
  * Trace tests for [TypewriterGate] — sentence-gated typewriter dispatch.
  * Each test drives the gate with hand-built cycles and explicit clocks,
  * the way the live modes do per read. Ports the StabilityHold trace suite
- * (scoping, caps, sweep, slow-OCR self-disable) and adds the gate's new
- * behavior: boundary release, prefix dispatch, region arming, the pinhole
- * far-group adapter, and the Thai legacy fallback.
+ * (scoping, caps, sweep, slow-OCR self-disable) and covers the gate's own
+ * behavior: boundary release, prefix dispatch, settle-based region arming
+ * with origin-corner anchoring, the pinhole far-group adapter, and the
+ * Thai legacy fallback.
  *
  * Clock convention: `capture(t)` is the frame's capture uptime; evaluation
  * happens later (`now = capture + ocrMs`). Runs under Robolectric for
@@ -61,16 +62,32 @@ class TypewriterGateTest {
             repositioned = 0,
         )
 
-    private fun far(text: String, bounds: Rect = r, paired: Boolean = false) =
-        FarGroup(text = text, bounds = bounds, lineCount = 1, paired = paired)
+    private fun far(
+        text: String,
+        bounds: Rect = r,
+        paired: Boolean = false,
+        orientation: TextOrientation = TextOrientation.HORIZONTAL,
+    ) = FarGroup(
+        text = text, bounds = bounds, lineCount = 1,
+        orientation = orientation, paired = paired,
+    )
 
     private fun TypewriterGate.reconcile(
         v: ScanlineReconciler.Verdicts,
         captureAtMs: Long,
         nowMs: Long,
         lang: String = "ja",
+        rtl: Boolean = false,
         prefix: Boolean = true,
-    ) = filterVerdicts(v, lang, captureAtMs, nowMs, allowPartialPrefix = prefix)
+    ) = filterVerdicts(v, lang, rtl, captureAtMs, nowMs, allowPartialPrefix = prefix)
+
+    private fun TypewriterGate.fars(
+        groups: List<FarGroup>,
+        captureAtMs: Long,
+        nowMs: Long,
+        lang: String = "ja",
+        rtl: Boolean = false,
+    ) = filterFarGroups(groups, lang, rtl, captureAtMs, nowMs)
 
     // ── Scoping: what the gate must never touch (StabilityHold parity) ────
 
@@ -189,17 +206,15 @@ class TypewriterGateTest {
     fun pinholeMode_neverDispatchesPrefixes() {
         val gate = TypewriterGate()
         // Seed region memory the pinhole way: a dispatched partial.
-        var out = gate.filterFarGroups(listOf(far("こんにちは、")), "ja", 0, 200)
+        var out = gate.fars(listOf(far("こんにちは、")), 0, 200)
         assertEquals(1, out.dispatch.size)
         // Fuller read with an interior boundary: whole-read gating only —
         // a prefix box over still-typing text would flash out.
-        out = gate.filterFarGroups(listOf(far("こんにちは、今日は晴れだ。それから")), "ja", 500, 700)
+        out = gate.fars(listOf(far("こんにちは、今日は晴れだ。それから")), 500, 700)
         assertTrue(out.dispatch.isEmpty())
         assertEquals(1, out.held)
         // Boundary-final read releases whole.
-        out = gate.filterFarGroups(
-            listOf(far("こんにちは、今日は晴れだ。それから帰ろう。")), "ja", 1000, 1200,
-        )
+        out = gate.fars(listOf(far("こんにちは、今日は晴れだ。それから帰ろう。")), 1000, 1200)
         assertEquals(1, out.dispatch.size)
         assertEquals(0, out.held)
         assertNull(out.nextDeadlineMs)
@@ -212,11 +227,11 @@ class TypewriterGateTest {
         val gate = TypewriterGate()
         // Cycle A: partial placed (Level 0 first response, box then dies to
         // pinhole detection — the gate never sees the removal).
-        var out = gate.filterFarGroups(listOf(far("こんにち")), "ja", 0, 200)
+        var out = gate.fars(listOf(far("こんにち")), 0, 200)
         assertEquals(1, out.dispatch.size)
         // Cycle B: fuller text arrives as an UNPAIRED far group. The region
         // memory recognizes the growth and holds it.
-        out = gate.filterFarGroups(listOf(far("こんにちは、旅の")), "ja", 1000, 1200)
+        out = gate.fars(listOf(far("こんにちは、旅の")), 1000, 1200)
         assertTrue(out.dispatch.isEmpty())
         assertEquals(1, out.held)
         assertNotNull(out.nextDeadlineMs)
@@ -225,12 +240,10 @@ class TypewriterGateTest {
     @Test
     fun pairedFarGroup_bypassesTheGate() {
         val gate = TypewriterGate()
-        gate.filterFarGroups(listOf(far("こんにち")), "ja", 0, 200)
+        gate.fars(listOf(far("こんにち")), 0, 200)
         // Evolving text, but paired: the content-match placement promise
         // must never break.
-        val out = gate.filterFarGroups(
-            listOf(far("こんにちは、旅の", paired = true)), "ja", 1000, 1200,
-        )
+        val out = gate.fars(listOf(far("こんにちは、旅の", paired = true)), 1000, 1200)
         assertEquals(1, out.dispatch.size)
         assertEquals(0, out.held)
     }
@@ -238,26 +251,155 @@ class TypewriterGateTest {
     @Test
     fun emptyBatch_sweepsUnaffirmedHolds() {
         val gate = TypewriterGate()
-        gate.filterFarGroups(listOf(far("こんにち")), "ja", 0, 200)
-        var out = gate.filterFarGroups(listOf(far("こんにちは、旅の")), "ja", 500, 700)
+        gate.fars(listOf(far("こんにち")), 0, 200)
+        var out = gate.fars(listOf(far("こんにちは、旅の")), 500, 700)
         assertEquals(1, out.held)
         // Next full look shows nothing at the region (garble evaporated /
         // region gone): the hold is swept, deadline gone.
-        out = gate.filterFarGroups(emptyList(), "ja", 1000, 1200)
+        out = gate.fars(emptyList(), 1000, 1200)
         assertNull(out.nextDeadlineMs)
     }
 
-    // ── Arming ────────────────────────────────────────────────────────────
+    // ── Arming: settled growth chains, origin-anchored ────────────────────
 
     private fun armViaReveal(gate: TypewriterGate, t0: Long): Long {
-        // A reveal observed growing and completing at a boundary arms the
-        // region. Seed (Level 0 dispatch), grow (held), complete (boundary
-        // release + arm).
-        gate.filterFarGroups(listOf(far("こんにち")), "ja", t0, t0 + 200)
-        gate.filterFarGroups(listOf(far("こんにちは、旅の")), "ja", t0 + 1000, t0 + 1200)
-        val out = gate.filterFarGroups(listOf(far("こんにちは、旅の人よ。")), "ja", t0 + 2000, t0 + 2200)
+        // A reveal observed growing and settling arms the region. Seed
+        // (Level 0 dispatch), grow (held), complete at a boundary.
+        gate.fars(listOf(far("こんにち")), t0, t0 + 200)
+        gate.fars(listOf(far("こんにちは、旅の")), t0 + 1000, t0 + 1200)
+        val out = gate.fars(listOf(far("こんにちは、旅の人よ。")), t0 + 2000, t0 + 2200)
         assertEquals("arming reveal completes", 1, out.dispatch.size)
         return t0 + 2200
+    }
+
+    @Test
+    fun punctlessSettledChain_armsRegion_thenGatesNextMessage() {
+        val gate = TypewriterGate()
+        // The field case (2026-07-22): dialogue WITHOUT terminal
+        // punctuation. Message 1: fragment dispatches (the learning cost),
+        // growth held, settles by agreement — and that settle ARMS.
+        gate.fars(listOf(far("こんにち")), 0, 200)
+        gate.fars(listOf(far("こんにちは、旅の人")), 1000, 1200)
+        var out = gate.fars(listOf(far("こんにちは、旅の人")), 2000, 2200)
+        assertEquals("punct-less settle releases", 1, out.dispatch.size)
+        // Message 2: the first fragment is HELD — no punct needed anywhere.
+        out = gate.fars(listOf(far("それでは、始め")), 3000, 3200)
+        assertTrue("message-2 fragment suppressed by settle-based arming",
+            out.dispatch.isEmpty())
+        assertEquals(1, out.held)
+        // Growth continues punct-less, then settles by agreement.
+        out = gate.fars(listOf(far("それでは、始めようではないか")), 4000, 4200)
+        assertEquals(1, out.held)
+        out = gate.fars(listOf(far("それでは、始めようではないか")), 5000, 5200)
+        assertEquals(listOf("それでは、始めようではないか"), out.dispatch.map { it.text })
+    }
+
+    @Test
+    fun garbleRevertChain_doesNotArm() {
+        val gate = TypewriterGate()
+        gate.fars(listOf(far("Inventory")), 0, 200, lang = "en")
+        // Garble reads as prefix-growth → hold opens.
+        var out = gate.fars(listOf(far("Inventory ¦lem→")), 1000, 1200, lang = "en")
+        assertEquals(1, out.held)
+        // Garble evaporates: the revert is a PARTIAL VIEW of the garbled
+        // read — and the correct text is already displayed, so holding
+        // changes nothing on screen. No dispatch, no arm.
+        out = gate.fars(listOf(far("Inventory")), 2000, 2200, lang = "en")
+        assertTrue(out.dispatch.isEmpty())
+        assertEquals(1, out.held)
+        // The cap bounds the hold: the stable revert flushes ≤2s in.
+        out = gate.fars(listOf(far("Inventory")), 3200, 3400, lang = "en")
+        assertEquals(1, out.dispatch.size)
+        // Fresh punct-less text dispatches immediately — nothing armed.
+        out = gate.fars(listOf(far("Equipment list")), 4000, 4200, lang = "en")
+        assertEquals(1, out.dispatch.size)
+        assertEquals(0, out.held)
+    }
+
+    // ── Partial views: split/merge and occlusion reads of known text ──────
+
+    @Test
+    fun splitMergeLoop_partialViewsSuppressed_mergedReadReleases() {
+        val gate = TypewriterGate()
+        // The グラウス fixture (2026-07-22 field log): a 3-line block whose
+        // grouping flips between one merged group and head/tail splits.
+        val block = Rect(500, 800, 1240, 1000)
+        val headRect = Rect(500, 800, 1240, 860)
+        val tailRect = Rect(500, 870, 1240, 930)
+        val full = "北の、グラウス山にモンスターが住みついて"
+        val head = "北の、グラウス山に"
+        val tail = "モンスターが住みついて"
+        // Full read dispatches (Level 0).
+        var out = gate.fars(listOf(far(full, bounds = block)), 0, 200)
+        assertEquals(1, out.dispatch.size)
+        // Split read: the head is a partial view (view-hold), and the tail
+        // must NOT mint a second region — it is a sibling view of the same
+        // block. Nothing dispatches; the old field behavior was a break
+        // dispatch (top-line flash) plus a level0-new (stray tail box).
+        out = gate.fars(
+            listOf(far(head, bounds = headRect), far(tail, bounds = tailRect)),
+            1000, 1200,
+        )
+        assertTrue("split pieces suppressed", out.dispatch.isEmpty())
+        assertEquals(2, out.held)
+        // Merged read agrees with the known text → releases through normal
+        // agreement. The loop is dead.
+        out = gate.fars(listOf(far(full, bounds = block)), 2000, 2200)
+        assertEquals(listOf(full), out.dispatch.map { it.text })
+        assertNull(out.nextDeadlineMs)
+        assertTrue("split head counted as view-hold", gate.stats.viewHolds > 0)
+        assertTrue("split tail counted as sibling view", gate.stats.siblingViews > 0)
+    }
+
+    @Test
+    fun genuineShrink_viewHoldFlushesAtShortCap() {
+        val gate = TypewriterGate()
+        gate.fars(listOf(far("はい、そうですよねわかりました")), 0, 200)
+        // The message really changed to a contained shorter text: view-held
+        // first (indistinguishable from a split read)...
+        var out = gate.fars(listOf(far("わかりました")), 1000, 1100)
+        assertTrue(out.dispatch.isEmpty())
+        assertEquals(1, out.held)
+        // ...then the short cap flushes it — bounded staleness, ~1s.
+        out = gate.fars(listOf(far("わかりました")), 2200, 2300)
+        assertEquals(listOf("わかりました"), out.dispatch.map { it.text })
+    }
+
+    // ── Thrash breaker: unknown pathologies fail open to Level 0 ──────────
+
+    @Test
+    fun thrashBreaker_tripsOnRepeatedBreaks_failsOpenToLevelZero() {
+        val gate = TypewriterGate()
+        gate.fars(listOf(far("ABCDEFGH")), 0, 200, lang = "en")
+        // A pathological stream: growth holds broken by disjoint text,
+        // over and over — the shape of every un-enumerated loop.
+        gate.fars(listOf(far("ABCDEFGHIJKLM")), 1000, 1200, lang = "en")   // hold
+        gate.fars(listOf(far("QWERTY UIOP")), 2000, 2200, lang = "en")    // break 1
+        gate.fars(listOf(far("QWERTY UIOPZXCVB")), 3000, 3200, lang = "en") // hold
+        gate.fars(listOf(far("ABCDEFGH")), 4000, 4200, lang = "en")       // break 2
+        gate.fars(listOf(far("ABCDEFGHIJKLM")), 5000, 5200, lang = "en")  // hold
+        var out = gate.fars(listOf(far("QWERTY UIOP")), 6000, 6200, lang = "en") // break 3 → trip
+        assertEquals(1, out.dispatch.size)
+        assertEquals(1, gate.stats.breakerTrips)
+        // Tripped: evolving text that would normally hold now dispatches on
+        // sight — bounded baseline churn, never a novel failure mode.
+        out = gate.fars(listOf(far("QWERTY UIOPASDFG")), 7000, 7200, lang = "en")
+        assertEquals("breaker fails open to Level 0", 1, out.dispatch.size)
+        assertEquals(0, out.held)
+    }
+
+    @Test
+    fun capFlushedGrowthChain_arms() {
+        val gate = TypewriterGate()
+        gate.fars(listOf(far("ABCDEFGH")), 0, 200, lang = "en")
+        gate.fars(listOf(far("ABCDEFGHIJKLM")), 1000, 1200, lang = "en")
+        // Still growing at the cap → flush — a slow reveal is still a
+        // settled-enough observation.
+        var out = gate.fars(listOf(far("ABCDEFGHIJKLMNOPQRST")), 3200, 3400, lang = "en")
+        assertEquals(1, out.dispatch.size)
+        // The region is armed: a punct-less advance is held.
+        out = gate.fars(listOf(far("XYZ QRS")), 4000, 4100, lang = "en")
+        assertEquals(1, out.held)
     }
 
     @Test
@@ -265,13 +407,12 @@ class TypewriterGateTest {
         val gate = TypewriterGate()
         val t = armViaReveal(gate, 0)
         // Message 2 starts typing: a mid-sentence ADVANCE in an armed
-        // region is sentence-gated from its FIRST read — the fragment
-        // that used to translate is held.
-        var out = gate.filterFarGroups(listOf(far("それでは、始め")), "ja", t + 1000, t + 1200)
+        // region is sentence-gated from its FIRST read.
+        var out = gate.fars(listOf(far("それでは、始め")), t + 1000, t + 1200)
         assertTrue("message-2 first fragment suppressed", out.dispatch.isEmpty())
         assertEquals(1, out.held)
         // Completion read releases itself.
-        out = gate.filterFarGroups(listOf(far("それでは、始めよう。")), "ja", t + 2000, t + 2200)
+        out = gate.fars(listOf(far("それでは、始めよう。")), t + 2000, t + 2200)
         assertEquals(listOf("それでは、始めよう。"), out.dispatch.map { it.text })
     }
 
@@ -281,7 +422,7 @@ class TypewriterGateTest {
         val t = armViaReveal(gate, 0)
         // An instant, complete message in an armed region dispatches on the
         // read that discovered it.
-        val out = gate.filterFarGroups(listOf(far("戦闘開始だ。")), "ja", t + 1000, t + 1200)
+        val out = gate.fars(listOf(far("戦闘開始だ。")), t + 1000, t + 1200)
         assertEquals(1, out.dispatch.size)
         assertEquals(0, out.held)
     }
@@ -292,11 +433,11 @@ class TypewriterGateTest {
         val t = armViaReveal(gate, 0)
         // Punct-less instant text (the priced residual): held with the
         // SHORT armed cap — the shipped-cadence law.
-        var out = gate.filterFarGroups(listOf(far("はい")), "ja", t + 1000, t + 1100)
+        var out = gate.fars(listOf(far("はい")), t + 1000, t + 1100)
         assertTrue(out.dispatch.isEmpty())
         assertEquals(t + 1000 + TypewriterGate.ARMED_NEW_MAX_MS, out.nextDeadlineMs)
         // Next read agrees → released.
-        out = gate.filterFarGroups(listOf(far("はい")), "ja", t + 2000, t + 2100)
+        out = gate.fars(listOf(far("はい")), t + 2000, t + 2100)
         assertEquals(1, out.dispatch.size)
         assertNull(out.nextDeadlineMs)
     }
@@ -306,7 +447,7 @@ class TypewriterGateTest {
         val gate = TypewriterGate()
         // Message 1 of a session: no evidence yet → Level 0 first response,
         // exactly today's behavior.
-        val out = gate.filterFarGroups(listOf(far("私は彼を殺し")), "ja", 0, 200)
+        val out = gate.fars(listOf(far("私は彼を殺し")), 0, 200)
         assertEquals(1, out.dispatch.size)
     }
 
@@ -316,13 +457,93 @@ class TypewriterGateTest {
         val t = armViaReveal(gate, 0)
         // The pinhole input path clears holds per dismiss — arming survives.
         gate.clearHolds()
-        var out = gate.filterFarGroups(listOf(far("それでは、始め")), "ja", t + 1000, t + 1200)
+        var out = gate.fars(listOf(far("それでは、始め")), t + 1000, t + 1200)
         assertEquals("armed gating survives a dismiss", 1, out.held)
         // A coordinate-voiding reset drops everything.
         gate.clear()
-        out = gate.filterFarGroups(listOf(far("それでは、始め")), "ja", t + 2000, t + 2200)
+        out = gate.fars(listOf(far("それでは、始め")), t + 2000, t + 2200)
         assertEquals(0, out.held)
         assertEquals(1, out.dispatch.size)
+    }
+
+    // ── Origin-corner anchoring ───────────────────────────────────────────
+
+    @Test
+    fun armedGating_requiresOriginCorner() {
+        val gate = TypewriterGate()
+        armViaReveal(gate, 0) // armed origin = (0,0), tol = 0.6 × 60px = 36
+        // A name-plate-like element INSIDE the armed area: overlaps the
+        // region, but its start corner is nowhere near the origin — must
+        // NOT be held.
+        var out = gate.fars(listOf(far("リーダー", bounds = Rect(150, 10, 390, 55))), 3000, 3200)
+        assertEquals("overlapping non-origin text dispatches immediately", 1, out.dispatch.size)
+        assertEquals(0, out.held)
+        // The learned anchor survives that pass-through chain: a fragment
+        // AT the origin is still armed-gated.
+        out = gate.fars(listOf(far("それでは、始め", bounds = r)), 4000, 4200)
+        assertEquals(1, out.held)
+    }
+
+    @Test
+    fun rtlOrigin_isTopRight() {
+        val gate = TypewriterGate()
+        // RTL reveal: lines grow leftward from a fixed top-RIGHT origin.
+        gate.fars(listOf(far("مرحبا", bounds = Rect(250, 0, 400, 60))), 0, 200, lang = "ar", rtl = true)
+        gate.fars(listOf(far("مرحبا بك أيها", bounds = Rect(150, 0, 400, 60))), 1000, 1200, lang = "ar", rtl = true)
+        var out = gate.fars(listOf(far("مرحبا بك أيها", bounds = Rect(150, 0, 400, 60))), 2000, 2200, lang = "ar", rtl = true)
+        assertEquals(1, out.dispatch.size) // settle → armed at (400, 0)
+        // Right-aligned short message shares the origin → armed-held.
+        out = gate.fars(listOf(far("نعم", bounds = Rect(320, 0, 400, 60))), 3000, 3200, lang = "ar", rtl = true)
+        assertEquals(1, out.held)
+    }
+
+    @Test
+    fun verticalOrigin_isTopRight() {
+        val gate = TypewriterGate()
+        // Vertical columns run right-to-left: origin = top-right; the box
+        // grows LEFT as columns are added.
+        gate.fars(listOf(far("こん", bounds = Rect(340, 0, 400, 200), orientation = TextOrientation.VERTICAL)), 0, 200)
+        gate.fars(listOf(far("こんにちは、旅", bounds = Rect(280, 0, 400, 200), orientation = TextOrientation.VERTICAL)), 1000, 1200)
+        var out = gate.fars(listOf(far("こんにちは、旅", bounds = Rect(280, 0, 400, 200), orientation = TextOrientation.VERTICAL)), 2000, 2200)
+        assertEquals(1, out.dispatch.size) // settle → armed at (400, 0)
+        // A short vertical message sharing the top-right origin is gated.
+        out = gate.fars(listOf(far("はい", bounds = Rect(360, 0, 400, 120), orientation = TextOrientation.VERTICAL)), 3000, 3200)
+        assertEquals(1, out.held)
+    }
+
+    // ── Armed memory lifetime ─────────────────────────────────────────────
+
+    @Test
+    fun armedEntry_survivesQuietStretch_thenLapsesAndEvicts() {
+        val gate = TypewriterGate()
+        val t = armViaReveal(gate, 0)
+        // A long quiet stretch (cutscene) — far past MEMORY_TTL. An
+        // unarmed entry would evict on this sweep; armed is exempt.
+        gate.fars(emptyList(), t + 60_000, t + 60_000)
+        var out = gate.fars(listOf(far("それでは、始め")), t + 70_000, t + 70_200)
+        assertEquals("arming survived the quiet stretch", 1, out.held)
+        // Let arming lapse un-refreshed; normal eviction then applies.
+        val lapsed = t + TypewriterGate.ARM_TTL_MS + 10_000
+        gate.fars(emptyList(), lapsed, lapsed)
+        out = gate.fars(listOf(far("それでは、始め")), lapsed + 1_000, lapsed + 1_200)
+        assertEquals("lapsed region is back to Level 0", 1, out.dispatch.size)
+    }
+
+    @Test
+    fun observedGrowth_refreshesArming() {
+        val gate = TypewriterGate()
+        val t = armViaReveal(gate, 0) // armed until ~t + ARM_TTL
+        // A later reveal's growth refreshes the TTL...
+        gate.fars(listOf(far("次の話だ")), t + 100_000, t + 100_200)
+        gate.fars(listOf(far("次の話だがもう遅い")), t + 101_000, t + 101_200)
+        gate.fars(listOf(far("次の話だがもう遅い")), t + 102_000, t + 102_200)
+        // ...so past the ORIGINAL expiry the region is still armed.
+        val out = gate.fars(
+            listOf(far("まだ続くのか")),
+            t + TypewriterGate.ARM_TTL_MS + 50_000,
+            t + TypewriterGate.ARM_TTL_MS + 50_200,
+        )
+        assertEquals(1, out.held)
     }
 
     // ── Slow-OCR self-disable (the anchoring rule) ────────────────────────
@@ -360,7 +581,7 @@ class TypewriterGateTest {
         assertEquals(1, out.toTranslate.size)
     }
 
-    // ── Thai: no boundary convention → legacy hold semantics ──────────────
+    // ── Thai: no boundary convention → legacy hold, no arming ─────────────
 
     @Test
     fun thai_boundaryLookingText_stillNeedsAgreement() {
@@ -383,6 +604,8 @@ class TypewriterGateTest {
         val shown = box("สวัสดีค")
         var out = gate.reconcile(verdicts(region("สวัสดีครับท่าน", shown)), 0, 300, lang = "th")
         assertTrue(out.toTranslate.isEmpty())
+        // Settles by agreement — which arms in punct-using scripts, but th
+        // stays legacy.
         out = gate.reconcile(verdicts(region("สวัสดีครับท่าน", shown)), 500, 800, lang = "th")
         assertEquals(1, out.toTranslate.size)
         // A new punct-less sighting at the region translates immediately —
@@ -396,33 +619,29 @@ class TypewriterGateTest {
     @Test
     fun grownRect_matchesItsRegion_disjointRectDoesNot() {
         val gate = TypewriterGate()
-        gate.filterFarGroups(listOf(far("こんにち", bounds = Rect(0, 0, 400, 60))), "ja", 0, 200)
-        // The fuller read's rect grew a line taller — the earlier partial's
-        // rect sits inside it, so it still matches (held as growth).
-        var out = gate.filterFarGroups(
-            listOf(far("こんにちは、旅の", bounds = Rect(0, 0, 400, 130))), "ja", 500, 700,
-        )
+        gate.fars(listOf(far("こんにち", bounds = Rect(0, 0, 400, 60))), 0, 200)
+        // The fuller read's rect grew a line taller — the chain-start rect
+        // sits inside it, so it still matches (held as growth).
+        var out = gate.fars(listOf(far("こんにちは、旅の", bounds = Rect(0, 0, 400, 130))), 500, 700)
         assertEquals(1, out.held)
         // A disjoint region is fresh — Level 0 dispatch.
-        out = gate.filterFarGroups(
-            listOf(far("メニュー項目", bounds = Rect(500, 500, 900, 560))), "ja", 1000, 1200,
-        )
+        out = gate.fars(listOf(far("メニュー項目", bounds = Rect(500, 500, 900, 560))), 1000, 1200)
         assertEquals(1, out.dispatch.size)
     }
 
     @Test
     fun touchRegions_keepsSteadyStateMemoryAlive() {
         val gate = TypewriterGate()
-        val t = armViaReveal(gate, 0)
-        // Long steady display: the box is KEEP every cycle and never enters
-        // the filter batch — touches stand in for those reads.
-        gate.touchRegions(listOf(r), t + 40_000)
-        // A later batch runs the eviction sweep. Untouched, the region's
-        // lastSeen would be ~t and TTL-evicted here; the touch reset it.
-        gate.filterFarGroups(emptyList(), "ja", t + 50_000, t + 50_000)
-        // Arming must have survived via the touch.
-        val out = gate.filterFarGroups(listOf(far("それでは、始め")), "ja", t + 80_000, t + 80_200)
-        assertEquals("touched region memory survived; armed gating engaged", 1, out.held)
+        // Unarmed memory (a single dispatched read — no growth observed).
+        gate.fars(listOf(far("こんにち")), 0, 200)
+        // Long steady display: touches stand in for KEEP cycles.
+        gate.touchRegions(listOf(r), 40_000)
+        // A later batch runs the eviction sweep. Untouched, lastSeen would
+        // be ~0 and the entry TTL-evicted here; the touch reset it.
+        gate.fars(emptyList(), 50_000, 50_000)
+        // The remembered dispatch still anchors growth detection.
+        val out = gate.fars(listOf(far("こんにちは、旅の")), 60_000, 60_200)
+        assertEquals("touched memory survived; growth recognized", 1, out.held)
     }
 
     // ── Lever ─────────────────────────────────────────────────────────────

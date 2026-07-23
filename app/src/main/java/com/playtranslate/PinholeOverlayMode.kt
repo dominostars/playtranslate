@@ -169,6 +169,9 @@ class PinholeOverlayMode(
     override fun stop() {
         scope.cancel()
         resetState()
+        // Always-on (non-debug) counters — ride the diagnostics log export
+        // so a field report self-attributes without logcat instructions.
+        Log.i("PinholeOverlayMode", "typewriter stats: ${typewriterGate.stats.summary()}")
         typewriterGate.clear()
 
         CaptureBackendResolver.active().stopInputMonitoring(displayId)
@@ -825,13 +828,19 @@ class PinholeOverlayMode(
             //     hold. `paired` groups bypass the gate inside (placement
             //     promise).
             val gateNowMs = SystemClock.uptimeMillis()
+            typewriterGate.debugSink =
+                if (!debug) null else ({ s -> DetectionLog.log("D$displayId c$cycleNum tw $s") })
             val farOutcome = typewriterGate.filterFarGroups(
                 farOcrGroups,
                 SourceLanguageProfiles[prefs.sourceLangId].translationCode,
-                frame.capturedAtMs, gateNowMs,
+                sourceIsRtl = sourceIsRtl,
+                captureAtMs = frame.capturedAtMs, nowMs = gateNowMs,
             )
             typewriterDeadlineMs = farOutcome.nextDeadlineMs
             typewriterGate.touchRegions(nextBoxes.map { it.bounds }, gateNowMs)
+            if (cycleNum % 120 == 0) {
+                Log.i("PinholeOverlayMode", "typewriter stats c$cycleNum: ${typewriterGate.stats.summary()}")
+            }
             val placeGroups = farOutcome.dispatch
             if (debug && farOutcome.held > 0) {
                 DetectionLog.log(
