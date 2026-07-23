@@ -611,6 +611,49 @@ class TypewriterGateTest {
         assertEquals(1, out.dispatch.size)
     }
 
+    @Test
+    fun shrunkWithinTolerance_heldAsViewNotReplaced() {
+        val gate = TypewriterGate()
+        // The ウールオル specimen (2026-07-22 23:49): the sign's partial is
+        // exactly Δ=3 (街道。) short of the full text — inside the replace
+        // path's absolute tolerance — and replace-looped partials forever.
+        gate.fars(listOf(far("この先、ウールオル街道。")), 0, 200)
+        var out = gate.fars(listOf(far("この先、ウールオル")), 1000, 1200)
+        assertTrue("shrunk read is a view, not a re-show", out.dispatch.isEmpty())
+        assertEquals(1, out.held)
+        // The full read releases by agreement one read later.
+        out = gate.fars(listOf(far("この先、ウールオル街道。")), 1500, 1700)
+        assertEquals(listOf("この先、ウールオル街道。"), out.dispatch.map { it.text })
+    }
+
+    @Test
+    fun grownWithinTolerance_stillReplacesInstantly() {
+        val gate = TypewriterGate()
+        // The good direction is preserved: the FULL text arriving over a
+        // displayed partial (Δ=3 grown) replaces on sight.
+        gate.fars(listOf(far("この先、ウールオル")), 0, 200)
+        val out = gate.fars(listOf(far("この先、ウールオル街道。")), 1000, 1200)
+        assertEquals(listOf("この先、ウールオル街道。"), out.dispatch.map { it.text })
+        assertEquals(0, out.held)
+    }
+
+    @Test
+    fun releasedHold_appearsOnceInProbeSnapshot() {
+        val gate = TypewriterGate()
+        gate.fars(listOf(far("こんにち")), 0, 200)
+        gate.fars(listOf(far("こんにちは、旅の")), 1000, 1200) // grow-open
+        assertEquals(1, gate.quietProbeSnapshot().count { !it.released })
+        // Agreement release: the snapshot's entry is flagged released so
+        // the probe can run the final endpoint comparison.
+        gate.fars(listOf(far("こんにちは、旅の")), 1500, 1700)
+        val snap = gate.quietProbeSnapshot()
+        assertEquals(1, snap.size)
+        assertTrue(snap[0].released)
+        // Next batch: gone.
+        gate.fars(emptyList(), 2000, 2200)
+        assertTrue(gate.quietProbeSnapshot().isEmpty())
+    }
+
     // ── Contained split pieces and release ordering ───────────────────────
 
     @Test

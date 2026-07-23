@@ -111,6 +111,16 @@ class TypewriterGate {
         /** A hold is open on this region. Explicit flag — the capture-time
          *  anchor is a plain clock value and 0 is a legitimate uptime. */
         var holdOpen = false
+        /** Union of every read rect observed while the current hold is
+         *  open — the quiet-probe region (and the eventual accelerator's):
+         *  the frozen chain-start rect covers only the first fragment. */
+        val readRectUnion = Rect()
+        /** The hold observed growth in the CURRENT batch — pairs with the
+         *  quiet probe's apron-miss detector (growth + quiet apron =
+         *  under-coverage). Cleared each beginBatch. */
+        var grewInBatch = false
+        /** Orientation of the current chain (for apron direction). */
+        var vertical = false
         /** Capture time (uptime) of the read that opened the current hold.
          *  Never re-anchored while the hold lives. */
         var holdOpenCaptureMs = 0L
@@ -160,11 +170,35 @@ class TypewriterGate {
 
         fun capMs(): Long = if (holdGrowth) HOLD_MAX_MS else ARMED_NEW_MAX_MS
 
-        fun openHold(captureAtMs: Long, growth: Boolean) {
+        fun openHold(captureAtMs: Long, growth: Boolean, bounds: Rect) {
             holdOpen = true
             holdOpenCaptureMs = captureAtMs
             holdGrowth = growth
             stableReads = 1
+            readRectUnion.set(bounds)
+        }
+
+        /** The quiet-probe region: the read union padded along the flow
+         *  direction to cover where the next glyph can physically land
+         *  (~2 glyph extents on the reading axis, ~1.5 line extents on the
+         *  cross axis, a small jitter margin elsewhere). */
+        fun paddedUnion(): Rect {
+            val ext = chainLineExtentPx
+            val r = Rect(readRectUnion)
+            val margin = ext / 4
+            if (vertical) {
+                // Columns grow leftward; glyphs advance downward.
+                r.left -= ext * 2
+                r.bottom += ext * 2
+                r.right += margin
+                r.top -= margin
+            } else {
+                r.right += ext * 2
+                r.bottom += ext + ext / 2
+                r.left -= margin
+                r.top -= margin
+            }
+            return r
         }
 
         /** Newest partial-VIEW read while a hold is open — consecutive
@@ -183,6 +217,7 @@ class TypewriterGate {
          *  origin corner. */
         fun startChain(rect: Rect, orientation: TextOrientation, rtl: Boolean, lineCount: Int) {
             bounds = Rect(rect)
+            vertical = orientation == TextOrientation.VERTICAL
             val (x, y) = startCorner(rect, orientation, rtl)
             originX = x
             originY = y
@@ -451,6 +486,37 @@ class TypewriterGate {
         for (m in regions) m.closeHold()
     }
 
+    /** One hold's quiet-probe view: identity, the padded read union to
+     *  sample, whether this batch observed growth, and whether the hold
+     *  RELEASED this batch — released entries let the probe run the final
+     *  endpoint comparison before dropping the track (agreement releases
+     *  fire at the FIRST settled cycle, so post-batch open-holds-only
+     *  snapshots were structurally blind to every streak). */
+    data class QuietHoldProbe(
+        val id: Int,
+        val paddedBounds: Rect,
+        val grew: Boolean,
+        val released: Boolean = false,
+    )
+
+    /** Holds released by dispatch during the current batch (probe views
+     *  captured at release time). Cleared each beginBatch. */
+    private val batchReleased = ArrayList<QuietHoldProbe>()
+
+    /** Debug telemetry for the parked quiet-pixel accelerator
+     *  ([TypewriterQuietProbe]): open holds plus this batch's releases.
+     *  Read after a filter batch; no behavior depends on it. */
+    fun quietProbeSnapshot(): List<QuietHoldProbe> {
+        var out: MutableList<QuietHoldProbe>? = null
+        for (m in regions) {
+            if (!m.holdOpen) continue
+            (out ?: ArrayList<QuietHoldProbe>().also { out = it })
+                .add(QuietHoldProbe(System.identityHashCode(m), m.paddedUnion(), m.grewInBatch))
+        }
+        if (batchReleased.isEmpty()) return out ?: emptyList()
+        return (out ?: ArrayList()).also { it.addAll(batchReleased) }
+    }
+
     /** Keep-alive for regions whose fate this read was KEEP: a stable
      *  displayed box never enters the filter batch, and without a touch
      *  its region memory would evict after [MEMORY_TTL_MS] of the box just
@@ -538,7 +604,15 @@ class TypewriterGate {
 
         fun dispatch(t: String, why: () -> String): String {
             d { "DISPATCH ${why()} ${ctx()}" }
-            if (mem.holdOpen) mem.lastReleaseMs = nowMs
+            if (mem.holdOpen) {
+                mem.lastReleaseMs = nowMs
+                batchReleased.add(
+                    QuietHoldProbe(
+                        System.identityHashCode(mem), mem.paddedUnion(),
+                        mem.grewInBatch, released = true,
+                    )
+                )
+            }
             mem.closeHold()
             mem.lastText = text
             mem.lastDispatched = t
@@ -605,6 +679,7 @@ class TypewriterGate {
 
         // ── An open hold on this region ──────────────────────────────────
         if (mem.holdOpen) {
+            mem.readRectUnion.union(bounds)
             val capExpired = nowMs - mem.holdOpenCaptureMs >= mem.capMs()
 
             // Release-ORDER guard: a chain flow-after a still-OPEN earlier
@@ -646,6 +721,7 @@ class TypewriterGate {
                 // anchor), so re-check expiry against the new cap rather
                 // than the pre-promotion value.
                 mem.holdGrowth = true
+                mem.grewInBatch = true
                 mem.stableReads = 1
                 mem.lastText = text
                 refreshArm()
@@ -693,6 +769,7 @@ class TypewriterGate {
                 if (text.length > mem.lastText.length) {
                     // Growth whose garbled prefix failed the strict check.
                     mem.holdGrowth = true
+                    mem.grewInBatch = true
                     mem.stableReads = 1
                     mem.lastText = text
                     refreshArm()
@@ -728,6 +805,7 @@ class TypewriterGate {
                     // text, so this cannot defer forever.
                     mem.holdOpenCaptureMs = captureAtMs
                     mem.lastViewText = text
+                    mem.grewInBatch = true
                     stats.partialViews++
                     return held { "view-grow of=«${snip(mem.lastText)}»" }
                 }
@@ -778,7 +856,7 @@ class TypewriterGate {
             if (!revealAdjacentTo(mem, bounds, orientation, nowMs, includeGrace = true)) return null
             if (nowMs - captureAtMs >= ARMED_NEW_MAX_MS) return null // slow-pipeline self-disable
             stats.revealAdjacent++
-            mem.openHold(captureAtMs, growth = false)
+            mem.openHold(captureAtMs, growth = false, bounds)
             mem.lastText = text
             return "held"
         }
@@ -793,21 +871,26 @@ class TypewriterGate {
                     "level0-new${armedNote()}${nearestArmNote(bounds, orientation, rtl, nowMs)}"
                 }
             }
-            return gateFreshText(mem, text, translationCode, captureAtMs, nowMs, allowPartialPrefix, ::dispatch, ::held)
+            return gateFreshText(mem, text, bounds, translationCode, captureAtMs, nowMs, allowPartialPrefix, ::dispatch, ::held)
         }
 
         // Stable vs what's shown: re-place / retry parity (pinhole flap
-        // recovery rides the translation cache). Δ=1..3 cycling here is
-        // the sub-tolerance churn signature. An identical re-show flow-
-        // after an ACTIVE reveal is the split piece of a repeat viewing —
-        // the replace path must not slip past the fresh-text deferral
-        // (field: known lines 2/3 re-placing above a held line 1).
-        if (same(ref)) {
+        // recovery rides the translation cache). An identical re-show
+        // flow-after an ACTIVE reveal is the split piece of a repeat
+        // viewing — the replace path must not slip past the fresh-text
+        // deferral (field: known lines 2/3 re-placing above a held line 1).
+        // LENGTH GUARD (ウールオル specimen): a read SHRUNK by ≥2 chars is
+        // never a re-show even inside bag tolerance — a reveal whose
+        // partial sits exactly Δ=3 short of the full text replace-looped
+        // partials forever (3 = the absolute tolerance = 25% of a 12-char
+        // sign). Shrunk reads fall through to the view path, which holds
+        // them and lets the full read release by agreement one read later.
+        if (same(ref) && ref.length - text.length < SHRINK_REPLACE_MIN) {
             if (revealAdjacentTo(mem, bounds, orientation, nowMs, includeGrace = true) &&
                 nowMs - captureAtMs < ARMED_NEW_MAX_MS
             ) {
                 stats.revealAdjacent++
-                mem.openHold(captureAtMs, growth = false)
+                mem.openHold(captureAtMs, growth = false, bounds)
                 mem.lastText = text
                 return held { "reveal-adjacent replace" }
             }
@@ -825,7 +908,7 @@ class TypewriterGate {
                 return dispatch(text) { "shrink-self-disable" }
             }
             stats.viewHolds++
-            mem.openHold(captureAtMs, growth = false)
+            mem.openHold(captureAtMs, growth = false, bounds)
             mem.lastViewText = text
             // lastText deliberately NOT updated: the hold's reference is
             // the fuller known text the view is a piece of.
@@ -835,6 +918,7 @@ class TypewriterGate {
         if (grows(ref)) {
             // Typewriter growth against the displayed text — the chain
             // continues; its origin was stamped when the lineage began.
+            mem.grewInBatch = true
             refreshArm()
             if (SentenceBoundary.endsAtBoundary(text, translationCode)) {
                 arm()
@@ -850,7 +934,7 @@ class TypewriterGate {
                     arm()
                     stats.prefix++
                     d { "DISPATCH prefix «${snip(p)}» ${ctx()}" }
-                    mem.openHold(captureAtMs, growth = true)
+                    mem.openHold(captureAtMs, growth = true, bounds)
                     mem.lastText = text
                     mem.lastDispatched = p
                     return p
@@ -863,7 +947,7 @@ class TypewriterGate {
                 return dispatch(text) { "self-disable" }
             }
             stats.growHolds++
-            mem.openHold(captureAtMs, growth = true)
+            mem.openHold(captureAtMs, growth = true, bounds)
             mem.lastText = text
             return held { "grow-open ref=«${snip(ref)}»" }
         }
@@ -878,7 +962,7 @@ class TypewriterGate {
             stats.advance++
             return dispatch(text) { "advance${armedNote()}" }
         }
-        return gateFreshText(mem, text, translationCode, captureAtMs, nowMs, allowPartialPrefix, ::dispatch, ::held)
+        return gateFreshText(mem, text, bounds, translationCode, captureAtMs, nowMs, allowPartialPrefix, ::dispatch, ::held)
     }
 
     /** Is [bounds] directly flow-AFTER a region with an active reveal —
@@ -964,6 +1048,7 @@ class TypewriterGate {
     private inline fun gateFreshText(
         mem: RegionMemory,
         text: String,
+        bounds: Rect,
         translationCode: String,
         captureAtMs: Long,
         nowMs: Long,
@@ -980,7 +1065,7 @@ class TypewriterGate {
             if (p != null) {
                 stats.prefix++
                 d { "DISPATCH armed-prefix «${snip(p)}»" }
-                mem.openHold(captureAtMs, growth = false)
+                mem.openHold(captureAtMs, growth = false, bounds)
                 mem.lastText = text
                 mem.lastDispatched = p
                 return p
@@ -993,7 +1078,7 @@ class TypewriterGate {
             return dispatch(text) { "armed-self-disable" }
         }
         stats.armedHolds++
-        mem.openHold(captureAtMs, growth = false)
+        mem.openHold(captureAtMs, growth = false, bounds)
         mem.lastText = text
         return held { "armed-hold" }
     }
@@ -1002,6 +1087,8 @@ class TypewriterGate {
 
     private fun beginBatch() {
         affirmed.clear()
+        batchReleased.clear()
+        for (m in regions) m.grewInBatch = false
     }
 
     /** Sweep un-affirmed holds, evict stale memory, return the earliest
@@ -1175,6 +1262,13 @@ class TypewriterGate {
          *  against long char bags ("Chapter Two" ⊂ a 26-char English
          *  sentence at 3 chars of slack). */
         const val SUBSET_TOL_FRAC = 0.15f
+
+        /** A read shorter than the displayed reference by this many chars
+         *  is routed to the view path even inside bag tolerance — the
+         *  replace path's absolute tolerance (≤3) is 25%+ of short sign
+         *  text, and a reveal whose partial lands inside it replace-loops
+         *  partials forever (ウールオル specimen, 2026-07-22). */
+        const val SHRINK_REPLACE_MIN = 2
 
         /** Same-content band (in-hold only): a read within this bag-diff
          *  fraction of the chain's known text is OCR jitter or garbled

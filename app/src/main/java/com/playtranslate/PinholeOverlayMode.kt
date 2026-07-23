@@ -85,6 +85,9 @@ class PinholeOverlayMode(
      *  gets detected as changed, and flashes out within a cycle. */
     private val typewriterGate = TypewriterGate()
 
+    /** Debug-only quiet-pixel telemetry for the parked accelerator. */
+    private val quietProbe = TypewriterQuietProbe()
+
     /** Earliest open typewriter-hold cap (uptime ms). Pacing and the
      *  engine's park are clamped to it, so a held reveal that finishes
      *  into a static screen still gets its releasing read — the delivery
@@ -242,6 +245,7 @@ class PinholeOverlayMode(
         // dim/crop changes, stop) additionally call typewriterGate.clear().
         typewriterGate.clearHolds()
         typewriterDeadlineMs = null
+        quietProbe.clear()
         // The gate is only meaningful relative to a previous look at the
         // screen. After a reset the model is empty (overlays hidden, caches
         // dropped), so the next cycle must run even in delivery silence —
@@ -838,6 +842,18 @@ class PinholeOverlayMode(
             )
             typewriterDeadlineMs = farOutcome.nextDeadlineMs
             typewriterGate.touchRegions(nextBoxes.map { it.bounds }, gateNowMs)
+            // Passive quiet-pixel telemetry for the parked accelerator —
+            // debug only, no behavior. NOTE: far-group/hold rects are
+            // OCR-crop coords; offset into frame space for sampling.
+            if (debug) {
+                quietProbe.sample(
+                    raw,
+                    typewriterGate.quietProbeSnapshot().map {
+                        it.copy(paddedBounds = Rect(it.paddedBounds).apply { offset(cropLeft, cropTop) })
+                    },
+                    gateNowMs,
+                )
+            }
             if (cycleNum % 120 == 0) {
                 Log.i("PinholeOverlayMode", "typewriter stats c$cycleNum: ${typewriterGate.stats.summary()}")
             }
