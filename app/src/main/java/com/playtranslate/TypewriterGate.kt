@@ -426,10 +426,14 @@ class TypewriterGate {
 
     /** [filterFarGroups]' outcome: the far groups to place/translate this
      *  cycle, how many were held (held regions still count as "text
-     *  present" for no-text signaling), and the earliest open cap. */
+     *  present" for no-text signaling), how many holds were SWEPT this
+     *  batch (ended without dispatch — the region's text vanished; a
+     *  suppressed no-text signal must resolve on this event), and the
+     *  earliest open cap. */
     data class FarOutcome(
         val dispatch: List<FarGroup>,
         val held: Int,
+        val swept: Int,
         val nextDeadlineMs: Long?,
     )
 
@@ -451,7 +455,7 @@ class TypewriterGate {
     ): FarOutcome {
         if (!ENABLED) {
             clear()
-            return FarOutcome(groups, 0, null)
+            return FarOutcome(groups, 0, 0, null)
         }
         beginBatch()
         val dispatch = ArrayList<FarGroup>(groups.size)
@@ -473,7 +477,7 @@ class TypewriterGate {
             if (dispatchText == null) held++ else dispatch.add(g)
         }
         val deadline = endBatch(nowMs)
-        return FarOutcome(dispatch, held, deadline)
+        return FarOutcome(dispatch, held, batchSwept, deadline)
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -484,6 +488,20 @@ class TypewriterGate {
      *  the flow arming exists for. */
     fun clearHolds() {
         for (m in regions) m.closeHold()
+    }
+
+    /** An EMPTY full-look batch: the read covered the screen and found no
+     *  text at all. The once-per-full-look contract applies — un-affirmed
+     *  holds sweep, memory TTLs run — and the returned deadline (null
+     *  after the sweep) must replace the owner's stored one. The modes'
+     *  early no-text returns skipped the batch entirely, leaving an
+     *  expired deadline that bypassed the pixel skip and pinned pacing at
+     *  the floor forever on a textless screen (Codex review follow-up,
+     *  2026-07-23). */
+    fun sweepEmptyBatch(nowMs: Long): Long? {
+        if (!ENABLED) return null
+        beginBatch()
+        return endBatch(nowMs)
     }
 
     /** One hold's quiet-probe view: identity, the padded read union to
@@ -502,6 +520,10 @@ class TypewriterGate {
     /** Holds released by dispatch during the current batch (probe views
      *  captured at release time). Cleared each beginBatch. */
     private val batchReleased = ArrayList<QuietHoldProbe>()
+
+    /** Holds SWEPT by the current batch's endBatch (un-affirmed — their
+     *  region's text vanished without a dispatch). Batch-scoped. */
+    private var batchSwept = 0
 
     /** Debug telemetry for the parked quiet-pixel accelerator
      *  ([TypewriterQuietProbe]): open holds plus this batch's releases.
@@ -1088,6 +1110,7 @@ class TypewriterGate {
     private fun beginBatch() {
         affirmed.clear()
         batchReleased.clear()
+        batchSwept = 0
         for (m in regions) m.grewInBatch = false
     }
 
@@ -1100,7 +1123,10 @@ class TypewriterGate {
         val it = regions.iterator()
         while (it.hasNext()) {
             val m = it.next()
-            if (m.holdOpen && m !in affirmed) m.closeHold()
+            if (m.holdOpen && m !in affirmed) {
+                m.closeHold()
+                batchSwept++
+            }
             val armedNow = nowMs < m.armedUntilMs
             if (!armedNow && nowMs - m.lastSeenMs >= MEMORY_TTL_MS) {
                 it.remove()

@@ -657,8 +657,14 @@ class PinholeOverlayMode(
             // translation the blocked showLiveOverlay will never render.
             if (service.livePaused) return 100L
 
-            // No text on screen and no overlays → nothing to do
+            // No text on screen and no overlays → nothing to do. This is
+            // still a FULL LOOK, so the gate's once-per-full-look contract
+            // applies: sweep holds on the evidence of a read that found
+            // nothing — otherwise a stale expired deadline bypasses the A2
+            // skip and pins pacing at the floor forever on a textless
+            // screen.
             if (pipeline == null && !hasOverlays()) {
+                typewriterDeadlineMs = typewriterGate.sweepEmptyBatch(SystemClock.uptimeMillis())
                 service.handleNoTextDetected(displayId)
                 return prefs.captureIntervalMs
             }
@@ -1008,8 +1014,12 @@ class PinholeOverlayMode(
             }
 
             // 13. Keep the panel in sync with cachedBoxes — fire on placed
-            //     groups OR removals so removal-only cycles don't go stale.
-            if (placeGroups.isNotEmpty() || allRemovals.isNotEmpty()) {
+            //     groups OR removals so removal-only cycles don't go
+            //     stale, AND on swept holds: a prior cycle's held text
+            //     suppressed the no-text signal ("release imminent"); a
+            //     sweep means that text vanished without dispatching, and
+            //     the suppression must resolve (Codex review, 2026-07-23).
+            if (placeGroups.isNotEmpty() || allRemovals.isNotEmpty() || farOutcome.swept > 0) {
                 if (cachedBoxes.isNullOrEmpty()) {
                     // Held typewriter text is still text-on-screen: a no-text
                     // signal mid-reveal would blank the panel the imminent

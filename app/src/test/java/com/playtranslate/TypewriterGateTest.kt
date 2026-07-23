@@ -255,10 +255,28 @@ class TypewriterGateTest {
         gate.fars(listOf(far("こんにち")), 0, 200)
         var out = gate.fars(listOf(far("こんにちは、旅の")), 500, 700)
         assertEquals(1, out.held)
+        assertEquals(0, out.swept)
         // Next full look shows nothing at the region (garble evaporated /
-        // region gone): the hold is swept, deadline gone.
+        // region gone): the hold is swept — REPORTED, so the mode can
+        // resolve a suppressed no-text signal — and the deadline clears.
         out = gate.fars(emptyList(), 1000, 1200)
+        assertEquals(1, out.swept)
         assertNull(out.nextDeadlineMs)
+    }
+
+    @Test
+    fun sweepEmptyBatch_closesHoldsAndClearsDeadline() {
+        val gate = TypewriterGate()
+        // The no-text early return is still a full look: holds must sweep
+        // there too, or a stale expired deadline pins pacing at the floor
+        // forever on a textless screen.
+        gate.fars(listOf(far("こんにち")), 0, 200)
+        val held = gate.fars(listOf(far("こんにちは、旅の")), 500, 700)
+        assertEquals(1, held.held)
+        assertNull(gate.sweepEmptyBatch(1200))
+        // The hold is gone: fresh text at the region is Level 0 again.
+        val out = gate.fars(listOf(far("まったく別の文章です")), 2000, 2200)
+        assertEquals(1, out.dispatch.size)
     }
 
     // ── Arming: settled growth chains, origin-anchored ────────────────────

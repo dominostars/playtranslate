@@ -398,6 +398,10 @@ class ReconcilerLiveMode(
 
             val boxes = cachedBoxes ?: emptyList()
             if (pipeline == null && boxes.isEmpty()) {
+                // Still a full look — the gate's once-per-full-look sweep
+                // contract applies, or a stale hold deadline pins pacing()
+                // at the floor forever on a textless screen.
+                holdDeadlineMs = typewriterGate.sweepEmptyBatch(SystemClock.uptimeMillis())
                 presenter.emitNoText()
                 return pacing(prefs)
             }
