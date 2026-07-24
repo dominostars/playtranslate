@@ -110,6 +110,15 @@ class ReadingArbiterTest {
     }
 
     @Test
+    fun iterationMarkAndIdeographicZero_areNotJunk() {
+        // 々 and 〇 sit outside the ja script ranges but are everyday CJK
+        // text ("時々", "二〇二六年") — without the whitelist, short legit
+        // labels read as junk and the junk tier prefers their garbles.
+        assertEquals(0f, ReadingArbiter.junkRatio("時々", "ja"), 1e-6f)
+        assertEquals(0f, ReadingArbiter.junkRatio("二〇二六年", "ja"), 1e-6f)
+    }
+
+    @Test
     fun strayScriptCountsAsJunk() {
         // A stray kana inside French text is garble evidence, not punct.
         val junky = ReadingArbiter.junkRatio("Bonjoうr", "fr")

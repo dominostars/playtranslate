@@ -48,9 +48,14 @@ import kotlin.math.abs
  *     side is unknown (−1 — "no signal, never low").
  *  3. **Junk score** — fraction of non-space characters that are neither
  *     source-language characters, digits, nor common punctuation
- *     ([junkRatio]). The language-generic garble signal ("Inventory
- *     ¦lem→" loses to "Inventory" whatever the confidences say); decides
- *     only past [JUNK_MARGIN]. Skipped without a source language.
+ *     ([junkRatio]). The language-generic garble tiebreak ("Inventory
+ *     ¦lem→" loses to "Inventory") for when confidence is silent —
+ *     unknown on either side, or within [CONF_MARGIN]. Confidence
+ *     deliberately outranks it: the engine saw the pixels, the character
+ *     classifier did not, and legit text can carry non-whitelisted
+ *     symbols (game-UI arrows, notes, stars) that a confident read must
+ *     be allowed to keep. Decides only past [JUNK_MARGIN]. Skipped
+ *     without a source language.
  *
  * Pure Kotlin (no platform types) — JVM-tested in ReadingArbiterTest.
  */
@@ -148,11 +153,14 @@ object ReadingArbiter {
     /** Punctuation and symbols legitimate in any source language's text —
      *  never counted as junk. Includes CJK punctuation universally (stray
      *  CJK punct in Latin garble is rare; garble shows up as stray symbols
-     *  and wrong letters, which stay countable). Script letters are NEVER
-     *  whitelisted here — a stray kana in French text must count. */
+     *  and wrong letters, which stay countable), plus 々 and 〇 — Unicode
+     *  letters, but everyday CJK text furniture outside the script ranges
+     *  [OcrManager.isSourceLangChar] checks; without them 時々 reads as
+     *  half junk. Script letters are NEVER whitelisted here — a stray
+     *  kana in French text must count. */
     private val COMMON_PUNCT =
         (".,!?;:'\"()[]{}<>-–—…·%&/+*=~@#$«»“”‘’" +
-            "。、．，！？：；「」『』（）〈〉《》【】・～‥").toHashSet()
+            "。、．，！？：；「」『』（）〈〉《》【】・～‥々〇").toHashSet()
 
     /** Compact snip for arbitration debug lines. */
     fun snip(s: String): String =
