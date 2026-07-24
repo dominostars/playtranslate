@@ -71,6 +71,45 @@ class CaptureServiceProjectionTeardownTest {
     }
 
     @Test
+    fun audioPrefDisable_releasesSessionEvenWhenRecorderNeverRan() {
+        // The explicit feature-off ([CaptureService.setRecordGameAudio])
+        // owns the audio-only release, and must fire it regardless of
+        // recorder run state — a recorder already stopped by an earlier
+        // gate (mic permission revoked, card-flow pause) must not leave
+        // the session glowing the capture chip (adversarial-review
+        // finding against the transition-gated variant).
+        val mp = audioOnlyController()
+        var toreDown = false
+        mp.addTeardownListener { toreDown = true }
+        CaptureService.setRecordGameAudio(ctx, false)
+        assertTrue(
+            "explicit audio-off must release the audio-only session " +
+                "regardless of recorder run state",
+            toreDown,
+        )
+        assertFalse(mp.hasConsent)
+    }
+
+    @Test
+    fun consentGrant_survivesPrefOffReconcileTicks() {
+        // The reconcile push-point fires on every seam — consent delivery
+        // itself, and then the consent activity's own resume/pause. With
+        // the game-audio pref off (the default) and audio never having
+        // ridden this session, those ticks must not release the
+        // just-granted consent out from under its real consumer: the
+        // live-start stream borrow arrives exactly like this — granted,
+        // not yet live. (The helper's line-48 assert already catches the
+        // delivery-time tick; the explicit calls pin the lifecycle ones.)
+        val mp = audioOnlyController()
+        service?.get()?.reconcileGameAudio()
+        service?.get()?.reconcileGameAudio()
+        assertTrue(
+            "a consent audio never rode must survive pref-off reconciles",
+            mp.hasConsent,
+        )
+    }
+
+    @Test
     fun accessibilityDeactivate_stopsBorrowedProjection() {
         val mp = audioOnlyController()
         var toreDown = false

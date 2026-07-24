@@ -1121,29 +1121,39 @@ class CaptureService : Service() {
     }
     internal val gameAudioRecorder: GameAudioRecorder by gameAudioRecorderLazy
 
-    /** Re-evaluate whether the game-audio recorder should run — the single
+    /** Re-evaluate whether the game-audio recorder should RUN — the single
      *  push-point entry the consent/activate/deactivate/backend-swap/settings
      *  and activity-lifecycle seams all call, mirroring [reconcileLiveModes].
      *  Pref-gated BEFORE the lazy so the recorder is never force-initialized
-     *  just to be told to stop. */
+     *  just to be told to stop.
+     *
+     *  Run-state ONLY — session lifecycle (the audio-only release) belongs
+     *  to [setRecordGameAudio], the explicit transition site. This
+     *  push-point fires from every seam, including consent delivery itself
+     *  ([MediaProjectionController.onConsentResult]) and the consent
+     *  activity's own resume/pause, so a release here would burn a
+     *  just-granted token — the live-start stream borrow arrives exactly
+     *  there: granted, not yet live — in the same breath that granted it. */
     fun reconcileGameAudio() {
         if (!Prefs(this).recordGameAudio) {
             if (gameAudioRecorderLazy.isInitialized()) gameAudioRecorder.stop("pref off")
-            releaseAudioOnlyProjection()
             return
         }
         gameAudioRecorder.reconcile()
     }
 
-    /** Feature-off hygiene: on the accessibility backend the MediaProjection
-     *  session exists only as audio's ride (screen capture is the service),
-     *  so once the pref flips off a kept-alive session would glow the OS
-     *  capture chip with no client drinking from it. Tear it down — burns
-     *  the single-use consent token, so re-enabling re-prompts: state
-     *  honesty over prompt avoidance, the same trade Turn Off makes.
-     *  Never on the MediaProjection backend (the projection IS the capture
-     *  backend), and not while live mode runs — its borrowed MP stream
-     *  ([startLive]'s wantMpStreamConsent) may be riding the same session. */
+    /** Feature-off hygiene, reached only from [setRecordGameAudio] on
+     *  disable: on the accessibility backend the MediaProjection session
+     *  may exist only as audio's ride (screen capture is the service), and
+     *  once the user explicitly turns the feature off a kept-alive session
+     *  would glow the OS capture chip with no client drinking from it.
+     *  Tear it down — burns the single-use consent token, so re-enabling
+     *  re-prompts: state honesty over prompt avoidance, the same trade
+     *  Turn Off makes. Never on the MediaProjection backend (the
+     *  projection IS the capture backend), and not while live mode runs —
+     *  its borrowed MP stream ([startLive]'s wantMpStreamConsent) may be
+     *  riding the same session; that session then lives until Turn Off,
+     *  the standard warm-token policy for every borrow. */
     private fun releaseAudioOnlyProjection() {
         if (!CaptureBackendResolver.active().requiresAccessibilityService) return
         if (isLive) return
@@ -2710,6 +2720,23 @@ class CaptureService : Service() {
         @Volatile
         var instance: CaptureService? = null
             private set
+
+        /** The ONE write path for [Prefs.recordGameAudio]: pref write +
+         *  recorder reconcile + (on disable) the audio-only session release.
+         *  Session lifecycle rides the explicit user transition HERE, never
+         *  the [reconcileGameAudio] push-point — that push-point fires from
+         *  every seam, including consent delivery itself and the consent
+         *  activity's own resume/pause, where a release would burn a
+         *  just-granted token. At this seam no consent can be mid-delivery,
+         *  and an explicit feature-off is the user saying the session's
+         *  audio client is gone for good. No service running ⇒ nothing to
+         *  release (the controller lives on the service instance). */
+        fun setRecordGameAudio(ctx: Context, enabled: Boolean) {
+            Prefs(ctx).recordGameAudio = enabled
+            val svc = instance ?: return
+            svc.reconcileGameAudio()
+            if (!enabled) svc.releaseAudioOnlyProjection()
+        }
 
         /** Action for an [onStartCommand] intent meaning "obtain MediaProjection
          *  consent and bring the controls up" — sent by the Quick Settings tile,

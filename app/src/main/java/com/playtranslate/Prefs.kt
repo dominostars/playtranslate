@@ -772,7 +772,12 @@ class Prefs internal constructor(
      *  on the MediaProjection session) so sentence cards can attach the real
      *  voice line. Settings → Anki Flashcards → Audio. Recording itself also
      *  needs an active capture session + screen-capture consent + RECORD_AUDIO —
-     *  see GameAudioRecorder.reconcile. */
+     *  see GameAudioRecorder.reconcile.
+     *
+     *  WRITE via [com.playtranslate.CaptureService.setRecordGameAudio] —
+     *  audio-only session lifecycle rides that transition; a bare pref
+     *  write on disable leaks an audio-only projection (capture chip lit,
+     *  no client) until Turn Off. */
     var recordGameAudio: Boolean
         get() = sp.getBoolean(KEY_ANKI_GAME_AUDIO, false)
         set(v) = sp.edit { putBoolean(KEY_ANKI_GAME_AUDIO, v) }

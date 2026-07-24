@@ -53,8 +53,7 @@ class AnkiSettingsActivity : SettingsSubPageActivity() {
     private val requestRecordAudio =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
-                Prefs(this).recordGameAudio = true
-                CaptureService.instance?.reconcileGameAudio()
+                CaptureService.setRecordGameAudio(this, true)
             } else {
                 switchGameAudio.isChecked = false
                 Toast.makeText(this, R.string.anki_game_audio_permission_denied, Toast.LENGTH_LONG).show()
@@ -117,13 +116,11 @@ class AnkiSettingsActivity : SettingsSubPageActivity() {
         switchGameAudio.isChecked = Prefs(this).recordGameAudio
         switchGameAudio.setOnCheckedChangeListener { _, checked ->
             if (!checked) {
-                Prefs(this).recordGameAudio = false
-                CaptureService.instance?.reconcileGameAudio()
+                CaptureService.setRecordGameAudio(this, false)
             } else if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
                 == PackageManager.PERMISSION_GRANTED
             ) {
-                Prefs(this).recordGameAudio = true
-                CaptureService.instance?.reconcileGameAudio()
+                CaptureService.setRecordGameAudio(this, true)
             } else {
                 requestRecordAudio.launch(Manifest.permission.RECORD_AUDIO)
             }
