@@ -50,11 +50,16 @@ class PanelPresenter(
         return OverlayToolkit.translatePlaceholders(service, placeholders, texts)
     }
 
-    /** Last emitted (original, translated) — reposition-only cycles re-enter
-     *  with identical text, and the panel must not churn a fresh timestamp
-     *  for pure scroll drift (the deleted mode's whole-text dedup suppressed
-     *  this; review note). */
-    private var lastEmitted: Pair<String, String>? = null
+    /** Last emitted (original, translated, backend label) — reposition-only
+     *  cycles re-enter with identical text, and the panel must not churn a
+     *  fresh timestamp for pure scroll drift (the deleted mode's whole-text
+     *  dedup suppressed this; review note). The backend label rides the key
+     *  so the dedup covers the full emitted payload — an attribution change
+     *  alone must re-emit, whatever future path produces one. ocrProvenance
+     *  stays OUT deliberately: its region rects change on every reposition
+     *  and would defeat the dedup's whole purpose (most-recent staleness
+     *  accepted, same policy as the pinhole tier's panelProvenance). */
+    private var lastEmitted: Triple<String, String, String?>? = null
 
     override suspend fun emitApplied(
         anchors: List<TextBox>,
@@ -66,8 +71,10 @@ class PanelPresenter(
         val texts = OverlayToolkit.panelTexts(
             OverlayToolkit.panelReadingOrder(anchors, ocrResult),
         )
-        if (texts.originalText to texts.translatedText == lastEmitted) return
-        lastEmitted = texts.originalText to texts.translatedText
+        val backendLabel = OverlayToolkit.panelBackendLabel(anchors)
+        val key = Triple(texts.originalText, texts.translatedText, backendLabel)
+        if (key == lastEmitted) return
+        lastEmitted = key
         // Screenshot write only past the dedup — a reposition-only cycle
         // must not pay the JPEG.
         service.emitPanelResult(
@@ -77,6 +84,7 @@ class PanelPresenter(
                     it, displayId, frameIncludesSystemUi, frameIncludesOwnOverlays,
                 )
             },
+            backendDisplayName = backendLabel,
         )
     }
 

@@ -28,6 +28,11 @@ data class TextBox(
     val dirty: Boolean = false,
     /** Original OCR source text this overlay translates. Used for content-based matching. */
     val sourceText: String = "",
+    /** Display name of the translation backend that produced [translatedText]
+     *  (cache hits carry the cached producer). Null for placeholders, furigana,
+     *  and the same-language OCR bypass. Feeds the panel's "Translated by …"
+     *  attribution and the history rows' backend column. */
+    val backendDisplayName: String? = null,
     /** Text orientation — vertical boxes render with 90° CW rotated text. */
     val orientation: TextOrientation = TextOrientation.HORIZONTAL,
     /** Block alignment for horizontal boxes — drives skeleton bar placement

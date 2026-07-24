@@ -529,6 +529,7 @@ class ReconcilerLiveMode(
                     if (box.sourceText.isNotEmpty() && box.translatedText.isNotEmpty()) {
                         service.translationLogRecorder.onShown(
                             box.sourceText, box.translatedText, box.bounds, recordSrc, recordTgt,
+                            box.backendDisplayName,
                         )
                     }
                 }

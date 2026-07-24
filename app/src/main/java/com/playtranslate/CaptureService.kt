@@ -2584,6 +2584,7 @@ class CaptureService : Service() {
         texts: OverlayToolkit.PanelTexts,
         screenshotPath: String?,
         ocrProvenance: OcrProvenance? = null,
+        backendDisplayName: String? = null,
     ) {
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
@@ -2593,6 +2594,7 @@ class CaptureService : Service() {
             translatedText = texts.translatedText,
             timestamp = timestamp,
             screenshotPath = screenshotPath,
+            backendDisplayName = backendDisplayName,
             ocrProvenance = ocrProvenance,
             langContext = Prefs(this).langContext(),
         ))
@@ -2992,10 +2994,13 @@ class CaptureService : Service() {
         TranslationCache.Key(text, target.source, target.target)
 
     /** Synchronous cache lookup for previously translated text. Returns null
-     *  if not cached for the current pair. */
-    fun getCachedTranslation(sourceText: String): String? {
+     *  if not cached for the current pair; hits carry the producing backend's
+     *  display name so cache-filled boxes stay attributable. */
+    internal fun getCachedTranslation(sourceText: String): GroupTranslation? {
         val target = snapshotTranslationTarget()
-        return translationCache[cacheKey(sourceText, target)]?.first?.let { target.localize(it) }
+        return translationCache[cacheKey(sourceText, target)]?.let { (text, backend) ->
+            GroupTranslation(target.localize(text), note = null, backendDisplayName = backend)
+        }
     }
 
     /**

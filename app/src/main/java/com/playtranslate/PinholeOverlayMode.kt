@@ -12,6 +12,7 @@ import android.util.Log
 import android.view.Choreographer
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextDirection
+import com.playtranslate.model.OcrProvenance
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -67,6 +68,13 @@ class PinholeOverlayMode(
     private var cropTop = 0
     private var screenshotW = 0
     private var screenshotH = 0
+    /** Most-recent OCR provenance for panel emissions ([sendFullStateToPanel]):
+     *  refreshed on every full look whose runOcr returned a result. Removal-only
+     *  and sweep emissions (runOcr null — no text found) reuse the last pass's
+     *  identity: cachedBoxes were read by SOME earlier pass, and most-recent is
+     *  the same accepted slop as the reconciler tier stamping the current
+     *  cycle's provenance over kept anchors from earlier cycles/engines. */
+    private var panelProvenance: OcrProvenance? = null
     /** Monotonic cycle counter for [Prefs.debugLiveMode] logs. Lets log
      *  consumers correlate per-box pinhole metrics with the cycle's
      *  transition summary and the surrounding render-offscreen lines. */
@@ -95,8 +103,9 @@ class PinholeOverlayMode(
     private var typewriterDeadlineMs: Long? = null
 
     /** Production recording backend (Text History / LLM context): feed the
-     *  shown stream — group source + the translation it got — for indices
-     *  where [translationFor] returns non-empty. Callers pass the pair
+     *  shown stream — group source + the translation it got (with the
+     *  producing backend riding the box) — for indices where [boxFor]
+     *  returns a box with a non-empty translation. Callers pass the pair
      *  captured BEFORE any translate call, so a mid-flight language change
      *  can't relabel old-pair rows. The recorder no-ops while both
      *  features are off and swallows its own failures. */
@@ -104,12 +113,14 @@ class PinholeOverlayMode(
         groups: List<FarGroup>,
         src: String,
         tgt: String,
-        translationFor: (Int) -> String,
+        boxFor: (Int) -> TextBox?,
     ) {
         groups.forEachIndexed { i, g ->
-            val translation = translationFor(i)
-            if (translation.isNotEmpty()) {
-                service.translationLogRecorder.onShown(g.text, translation, g.bounds, src, tgt)
+            val box = boxFor(i) ?: return@forEachIndexed
+            if (box.translatedText.isNotEmpty()) {
+                service.translationLogRecorder.onShown(
+                    g.text, box.translatedText, g.bounds, src, tgt, box.backendDisplayName,
+                )
             }
         }
     }
@@ -651,6 +662,12 @@ class PinholeOverlayMode(
             } finally {
                 if (ocrImage !== raw && !ocrImage.isRecycled) ocrImage.recycle()
             }
+            if (pipeline != null) {
+                panelProvenance = service.panelOcrProvenance(
+                    pipeline.ocrResult, displayId,
+                    frame.includesSystemUi, frame.includesOwnOverlays,
+                )
+            }
 
             // A hold (or the rescue alert) may have started during the OCR
             // suspension. Bail now to avoid wasting CPU on classification/
@@ -982,7 +999,12 @@ class PinholeOverlayMode(
                 if (placeholders.isNotEmpty()) {
                     val partial = placeholders.mapIndexed { i, ph ->
                         val cached = service.getCachedTranslation(farTexts[i])
-                        if (cached != null) ph.copy(translatedText = cached) else ph
+                        if (cached != null) {
+                            ph.copy(
+                                translatedText = cached.text,
+                                backendDisplayName = cached.backendDisplayName,
+                            )
+                        } else ph
                     }
                     val anyUncached = partial.any { it.translatedText.isEmpty() }
 
@@ -994,7 +1016,7 @@ class PinholeOverlayMode(
                     // never reach translatePlaceholders — record them now.
                     // Pair captured pre-translate for the fresh tap below.
                     val (recordSrc, recordTgt) = recordPair()
-                    recordShown(placeGroups, recordSrc, recordTgt) { i -> partial[i].translatedText }
+                    recordShown(placeGroups, recordSrc, recordTgt) { i -> partial[i] }
 
                     if (anyUncached) {
                         val translated = translatePlaceholders(placeholders, farTexts)
@@ -1006,7 +1028,7 @@ class PinholeOverlayMode(
                         // already recorded (gate dedupe would absorb a double,
                         // but don't lean on it).
                         recordShown(placeGroups, recordSrc, recordTgt) { i ->
-                            if (partial[i].translatedText.isEmpty()) translated[i].translatedText else ""
+                            if (partial[i].translatedText.isEmpty()) translated[i] else null
                         }
                     }
 
@@ -1489,7 +1511,11 @@ class PinholeOverlayMode(
     private fun sendFullStateToPanel(screenshotPath: () -> String?) {
         val boxes = cachedBoxes ?: return
         if (!service.appPanelVisible()) return
-        service.emitPanelResult(OverlayToolkit.panelTexts(boxes), screenshotPath())
+        service.emitPanelResult(
+            OverlayToolkit.panelTexts(boxes), screenshotPath(),
+            ocrProvenance = panelProvenance,
+            backendDisplayName = OverlayToolkit.panelBackendLabel(boxes),
+        )
     }
 
     // ── Translation Helpers ─────────────────────────────────────────────
@@ -1518,13 +1544,14 @@ class PinholeOverlayMode(
         }
     }
 
-    /** Translate texts and return placeholders with filled translatedText. */
+    /** Translate texts and return placeholders with filled translatedText
+     *  (and the producing backend, for attribution downstream). */
     private suspend fun translatePlaceholders(
         placeholders: List<TextBox>, texts: List<String>
     ): List<TextBox> {
         val uncachedIndices = mutableListOf<Int>()
         val uncachedTexts = mutableListOf<String>()
-        val translations = Array(texts.size) { "" }
+        val translations = arrayOfNulls<CaptureService.GroupTranslation>(texts.size)
 
         for ((idx, text) in texts.withIndex()) {
             val cached = service.getCachedTranslation(text)
@@ -1539,12 +1566,16 @@ class PinholeOverlayMode(
         if (uncachedTexts.isNotEmpty()) {
             val results = service.translateGroupsSeparately(uncachedTexts)
             for ((i, idx) in uncachedIndices.withIndex()) {
-                translations[idx] = results.getOrNull(i)?.text ?: ""
+                translations[idx] = results.getOrNull(i)
             }
         }
 
         return placeholders.mapIndexed { idx, ph ->
-            ph.copy(translatedText = translations.getOrElse(idx) { "" })
+            val t = translations.getOrNull(idx)
+            ph.copy(
+                translatedText = t?.text ?: "",
+                backendDisplayName = t?.backendDisplayName,
+            )
         }
     }
 

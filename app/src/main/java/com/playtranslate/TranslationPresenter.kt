@@ -37,7 +37,8 @@ class TranslationPresenter(
         )
         val partial = placeholders.mapIndexed { i, ph ->
             service.getCachedTranslation(texts[i])
-                ?.let { ph.copy(translatedText = it) } ?: ph
+                ?.let { ph.copy(translatedText = it.text, backendDisplayName = it.backendDisplayName) }
+                ?: ph
         }
         if (partial.none { it.translatedText.isEmpty() }) return partial
         // Skeletons/cache fills render immediately; MT fills in place after.
@@ -65,6 +66,7 @@ class TranslationPresenter(
                     it, displayId, frameIncludesSystemUi, frameIncludesOwnOverlays,
                 )
             },
+            backendDisplayName = OverlayToolkit.panelBackendLabel(anchors),
         )
     }
 

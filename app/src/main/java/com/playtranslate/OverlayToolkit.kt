@@ -122,6 +122,18 @@ object OverlayToolkit {
         segments = com.playtranslate.model.TextSegments.ofLines(ordered.map { it.sourceText }),
     )
 
+    /** The single "Translated by …" attribution for a panel emission, or null
+     *  to suppress the label. A live panel result aggregates boxes translated
+     *  across cycles (kept + fresh, cache hits + MT), so one label is only
+     *  honest when every translated box names the same backend — any
+     *  disagreement, or a translated box with unknown provenance (the
+     *  same-language OCR bypass), suppresses it. */
+    fun panelBackendLabel(boxes: List<TextBox>): String? =
+        boxes.filter { it.translatedText.isNotEmpty() }
+            .map { it.backendDisplayName }
+            .distinct()
+            .singleOrNull()
+
     /** Does detected text have significant additions over existing? */
     fun hasSignificantAdditions(existing: String, detected: String): Boolean {
         val bag = existing.groupingBy { it }.eachCount().toMutableMap()
@@ -785,7 +797,7 @@ object OverlayToolkit {
     ): List<TextBox> {
         val uncachedIndices = mutableListOf<Int>()
         val uncachedTexts = mutableListOf<String>()
-        val translations = Array(texts.size) { "" }
+        val translations = arrayOfNulls<CaptureService.GroupTranslation>(texts.size)
 
         for ((idx, text) in texts.withIndex()) {
             val cached = service.getCachedTranslation(text)
@@ -800,12 +812,16 @@ object OverlayToolkit {
         if (uncachedTexts.isNotEmpty()) {
             val results = service.translateGroupsSeparately(uncachedTexts)
             for ((i, idx) in uncachedIndices.withIndex()) {
-                translations[idx] = results.getOrNull(i)?.text ?: ""
+                translations[idx] = results.getOrNull(i)
             }
         }
 
         return placeholders.mapIndexed { idx, ph ->
-            ph.copy(translatedText = translations.getOrElse(idx) { "" })
+            val t = translations.getOrNull(idx)
+            ph.copy(
+                translatedText = t?.text ?: "",
+                backendDisplayName = t?.backendDisplayName,
+            )
         }
     }
 
