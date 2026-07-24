@@ -210,6 +210,9 @@ class TranslationResultActivity :
         }
     }
 
+    /** No live mode here — the pinned frame is the only thing a switch can act on. */
+    override fun canReOcr(): Boolean = reOcrTarget() != null
+
     override fun onChangeLanguageRequested(isSource: Boolean) {
         // Changing a language ends this standalone result (we deliberately don't re-run
         // it). Open the language picker (the same flow as Settings) and finish; on return

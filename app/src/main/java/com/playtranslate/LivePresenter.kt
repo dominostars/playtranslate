@@ -75,6 +75,10 @@ interface LivePresenter {
         screenshotPath: () -> String?,
     )
 
-    /** The no-text outcome (panel/overlay policy). */
+    /** The no-text outcome (panel/overlay policy). Deliberately frameless,
+     *  unlike [emitApplied]: the panel's no-text status offers an OCR-switch
+     *  gear, but while live mode is running the LOOP is what acts on a switch
+     *  (a fresh look at the current screen), so no frame needs pinning here —
+     *  see [CaptureService.emitLiveNoText]. */
     fun emitNoText()
 }

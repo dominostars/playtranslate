@@ -131,7 +131,7 @@ class OneShotManager(private val service: CaptureService) {
             is HoldOutcome.NoText -> {
                 if (displayId == cycle.panelDisplayId) {
                     service.emitHoldLoading(false)
-                    service.emitLiveNoText()
+                    service.emitLiveNoText(displayId)
                 }
                 showNoTextPill(displayId)
             }

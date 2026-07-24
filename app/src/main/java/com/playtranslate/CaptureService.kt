@@ -303,8 +303,29 @@ class CaptureService : Service() {
     internal fun emitError(message: String) {
         _panelState.value = PanelState.Error(message)
     }
-    internal fun emitLiveNoText() {
-        _panelState.value = PanelState.Searching
+    /**
+     * The panel's "a live cycle looked at [displayId] and found nothing"
+     * state — the live-tier twin of the one-shot's [CaptureState.NoText],
+     * built from the same message + provenance so the in-app page renders
+     * one no-text status for both (tappable source language, OCR gear).
+     *
+     * Deliberately pins NO screenshot, unlike every one-shot no-text. The
+     * gear exists so the user can switch OCR engine when "no results" is
+     * really "the engine didn't see it", and while live mode is running the
+     * LOOP is what acts on that switch: the engine resolves per OCR call
+     * ([com.playtranslate.ocr.registry.OcrEngineRegistry.engineFor]), so the
+     * next look already uses the new one, reading the screen as it is NOW.
+     * A pinned frame would only buy a re-read of stale pixels — and on the
+     * pinhole tier those pixels carry our own overlay boxes (its OCR runs on
+     * a filled COPY, never on the honest frame), so re-OCRing them would
+     * read our translations back as source text.
+     */
+    internal fun emitLiveNoText(displayId: Int) {
+        val region = activeRegionForDisplay(displayId)
+        _panelState.value = PanelState.NoText(
+            noTextMessage(displayId, region),
+            noTextProvenanceFor(displayId, region, Prefs(this).sourceLangId),
+        )
     }
     /** Reset the sticky panel stream to [PanelState.Idle] so its replay can't re-show a
      *  stale result after the activity returns (e.g. from the language picker). Idle is a
@@ -980,13 +1001,15 @@ class CaptureService : Service() {
      *  to read the engine from — attribute it to the engine that WAS selected (and
      *  ran, finding nothing) for [srcId]. Pins the engine, language, [region], and
      *  [displayId] so the "switch OCR tool" gear can re-OCR THIS exact capture. Null
-     *  when no OCR backend is available (e.g. a no-floor language on a 32-bit device). */
+     *  when no OCR backend is available (e.g. a no-floor language on a 32-bit device).
+     *  The two frame facts are nullable for the live tiers, which pin no screenshot at
+     *  all ([emitLiveNoText]) — with nothing to re-crop, there is nothing to describe. */
     private fun noTextProvenanceFor(
         displayId: Int,
         region: RegionEntry,
         srcId: SourceLangId,
-        frameIncludesSystemUi: Boolean,
-        frameIncludesOwnOverlays: Boolean,
+        frameIncludesSystemUi: Boolean? = null,
+        frameIncludesOwnOverlays: Boolean? = null,
     ): OcrProvenance? {
         val backend = OcrModelManager.selectedBackend(this, srcId) ?: return null
         return OcrProvenance(
@@ -2419,10 +2442,17 @@ class CaptureService : Service() {
      * Called after a screenshot is captured so the indicator doesn't
      * appear in the screenshot.
      */
-    /** "No source-language text on $displayId in $region" message. */
-    internal fun noTextMessage(displayId: Int): String = noTextStatusMessage(
+    /** "No source-language text on $displayId in $region" message — the ONE
+     *  builder for it, so every producer's status carries the tappable-language
+     *  sentinels [noTextStatusMessage] adds. [region] defaults to [displayId]'s
+     *  active one; callers that already resolved it (the live tiers, per empty
+     *  cycle) pass it in rather than re-parsing the region list. */
+    internal fun noTextMessage(
+        displayId: Int,
+        region: RegionEntry = activeRegionForDisplay(displayId),
+    ): String = noTextStatusMessage(
         this, R.string.status_no_text, Prefs(this).sourceLangId,
-        activeRegionForDisplay(displayId).displayName(this),
+        region.displayName(this),
     )
 
     /** The status-bar height to exclude from OCR crops of a [displayId]
@@ -2608,7 +2638,7 @@ class CaptureService : Service() {
      *  on display B doesn't take display A's still-valid overlay with it. */
     internal fun handleNoTextDetected(displayId: Int) {
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
-        emitLiveNoText()
+        emitLiveNoText(displayId)
     }
 
     /** Remove specific overlay boxes without rebuilding the entire view.

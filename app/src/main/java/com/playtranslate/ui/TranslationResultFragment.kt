@@ -119,10 +119,18 @@ class TranslationResultFragment : Fragment() {
         fun onEditOriginalRequested()
 
         /** User picked a different (already-downloaded) OCR tool from the source
-         *  OCR picker. The new token is already persisted; the host re-OCRs the
-         *  current result's cached screenshot and refreshes the result in place.
+         *  OCR picker. The new token is already persisted; the host re-reads the
+         *  screen with it — from the current result's cached screenshot, or, when
+         *  live mode is running, by forcing a fresh look.
          *  No-op for hosts/results without OCR provenance. */
         fun onReOcrRequested()
+
+        /** Whether an OCR-tool switch would actually be acted on right now —
+         *  the gate for offering the gear at all. True when the host has a
+         *  pinned frame to re-OCR, OR when a live loop is running that will
+         *  read the screen again with the new engine. False = a gear here
+         *  would be a dead control, so no surface shows one. */
+        fun canReOcr(): Boolean
 
         /** User tapped a language section header to change the source ([isSource] =
          *  true) or target language. The host opens the language picker (the same
@@ -461,7 +469,7 @@ class TranslationResultFragment : Fragment() {
                 showStatusUi(getString(R.string.status_idle), showHint = true)
             }
             is ResultState.Status -> {
-                showStatusUi(state.message, state.showHint, state.ocrProvenance, state.screenshotPath)
+                showStatusUi(state.message, state.showHint, state.ocrProvenance)
             }
             is ResultState.Error -> {
                 showStatusUi(getString(R.string.status_error, state.message), showHint = false)
@@ -504,7 +512,7 @@ class TranslationResultFragment : Fragment() {
                 val scrollAnchor = if (preserveScroll) captureScrollAnchor() else null
                 lastRenderedSourceText = result.originalText
                 binder.bindSource(result.segments)
-                binder.bindSourceOcr(result.ocrProvenance, canReOcr = result.screenshotPath != null)
+                binder.bindSourceOcr(result.ocrProvenance, canReOcr = host?.canReOcr() == true)
                 tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
                 // A blank translation on a Ready result means a re-translate is
                 // in flight: the edit-overlay commit clears the old translation
@@ -556,16 +564,16 @@ class TranslationResultFragment : Fragment() {
         message: String,
         showHint: Boolean,
         ocrProvenance: OcrProvenance? = null,
-        screenshotPath: String? = null,
     ) {
         // Leaving the results view drops the scroll anchor: the next translation
         // is unrelated content and should land at the top.
         lastRenderedSourceText = null
         // No-text status affordances, each its own tappable span (so tapping one can't
         // trigger the other): the source-language name is accent-colored → source picker
-        // (same as the source header); the gear → OCR picker, shown only when a pinned
-        // screenshot is on hand to re-OCR AND there's >1 OCR tool for the language.
-        val showGear = ocrProvenance != null && screenshotPath != null &&
+        // (same as the source header); the gear → OCR picker, shown when the switch will
+        // actually be acted on (a pinned frame to re-OCR, or a live loop that will look
+        // again — the host owns that fact) AND there's >1 OCR tool for the language.
+        val showGear = ocrProvenance != null && host?.canReOcr() == true &&
             OcrModelManager.availableBackends(requireContext(), ocrProvenance.sourceLangId).size > 1
         tvStatus.setNoTextStatus(
             message,

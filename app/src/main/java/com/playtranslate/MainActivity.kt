@@ -185,9 +185,17 @@ class MainActivity :
 
     override fun onReOcrRequested() {
         val svc = captureService ?: return
-        // Pause live capture so a fresh cycle can't overwrite the cached screenshot
-        // mid-rescan (the panel result's screenshotPath is the per-display file).
-        if (isLiveMode) pauseLiveMode()
+        // Live mode re-OCRs itself. The picker has already persisted the new token and
+        // the engine is resolved per OCR call (OcrEngineRegistry.engineFor), so forcing
+        // a fresh look reads the CURRENT screen with the new tool — which is what the
+        // gear is for. Deliberately NOT the pinned-frame path: the live pin is written
+        // for the Anki card photo, and on the pinhole tier it is the honest frame, which
+        // carries our own overlay boxes (that tier OCRs a filled COPY, never the frame
+        // itself) — re-OCRing it would read our translations back as source text.
+        if (isLiveMode) {
+            svc.refreshLiveOverlay()
+            return
+        }
         val (prov, path) = reOcrTarget() ?: return
         reOcrJob?.cancel()
         reOcrJob = lifecycleScope.launch {
@@ -205,6 +213,11 @@ class MainActivity :
                 )
         }
     }
+
+    /** A switch lands either way here: the live loop's next look, or a re-OCR of the
+     *  pinned frame. The live arm is what lets the no-text status offer the gear
+     *  without pinning anything (see [CaptureService.emitLiveNoText]). */
+    override fun canReOcr(): Boolean = isLiveMode || reOcrTarget() != null
 
     override fun onChangeLanguageRequested(isSource: Boolean) {
         // Just open the picker and LEAVE the result on screen, so it stays visible while
@@ -1505,6 +1518,20 @@ class MainActivity :
                             PanelState.Idle -> { /* no-op — see KDoc on _panelState */ }
                             PanelState.Searching ->
                                 if (isLiveMode) resultVm.showStatus(searchingStatusText())
+                            // A cycle looked and found nothing. Same status the
+                            // one-shot's CaptureState.NoText renders — tappable
+                            // source language, OCR gear over the pinned frame —
+                            // so the in-app page says one thing about no text
+                            // whether a tap or the live loop did the looking.
+                            // Gated on live mode exactly as Searching is: the
+                            // hold-to-preview emission (not live) stays silent
+                            // in-app, and a sticky replay on STOP→START can't
+                            // blank a newer local result.
+                            is PanelState.NoText ->
+                                if (isLiveMode) resultVm.showStatus(
+                                    state.message,
+                                    ocrProvenance = state.ocrProvenance,
+                                )
                             is PanelState.Result -> {
                                 editTranslationJob?.cancel()
                                 editTranslationJob = null

@@ -90,6 +90,6 @@ class PanelPresenter(
 
     override fun emitNoText() {
         lastEmitted = null
-        service.emitLiveNoText()
+        service.emitLiveNoText(displayId)
     }
 }

@@ -194,14 +194,29 @@ sealed class PanelState {
      *  was just invalidated (e.g. region change). */
     object Idle : PanelState()
 
-    /** Live mode (or hold-to-preview) is running but the most recent
-     *  cycle found no source-language text. */
+    /** Live mode is STARTING — it has been asked to run but no cycle has
+     *  landed yet, so nothing is known about the screen. A cycle that does
+     *  run and finds nothing lands on [NoText] instead: "we haven't looked
+     *  yet" and "we looked and there was nothing" are different facts and
+     *  the panel says different things about them. */
     object Searching : PanelState()
+
+    /** The most recent live (or hold-to-preview) cycle found no
+     *  source-language text. Renders as the same status the one-shot's
+     *  [CaptureState.NoText] does — source-language name tappable to change
+     *  it, OCR-switch gear — but carries no pinned screenshot: while live
+     *  mode runs, a gear tap is acted on by the LOOP (next look, new engine)
+     *  rather than by re-reading a frozen frame. See
+     *  [CaptureService.emitLiveNoText]. */
+    data class NoText(
+        val message: String,
+        val ocrProvenance: OcrProvenance? = null,
+    ) : PanelState()
 
     /** Most recent successful background result. */
     data class Result(val result: TranslationResult) : PanelState()
 
     /** Most recent background cycle failed. Live mode keeps running
-     *  — the next cycle may produce [Result] or [Searching]. */
+     *  — the next cycle may produce [Result] or [NoText]. */
     data class Error(val message: String) : PanelState()
 }
