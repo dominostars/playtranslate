@@ -252,13 +252,37 @@ object LayoutAnalyzer {
      * capture was already carried by pitch/veto/0.50-catches, so the bare
      * relaxation traded unconfirmed benefit against unconfirmed heading-merge
      * regressions.
+     *
+     * The BARE tier additionally accepts on the half-blended char-class
+     * statistic under a raw ceiling — see [scaleOkWithBlend] /
+     * [blendedSizeRatio] (2026-07-25): the raw statistic carries the line's
+     * CONTENT (a descender row measures ~1.3× a same-font row without one),
+     * and the blend discounts half of that predicted noise for mapped
+     * scripts. Permissive only, same-pass walk only: the corroborated tier
+     * and cross-frame keep the raw statistic alone.
      */
-    private const val SIZE_RATIO_CAP_BARE = 0.30
+    /**
+     * The bare cap is split by orientation because it guards two DIFFERENT
+     * statistics (2026-07-24/25 corpus sweeps): horizontal compares line
+     * heights, whose content noise tops out around 0.29 on every engine
+     * (all-kana pixel-font prose reaches 0.286 even on Meiki), so 0.30 is
+     * load-bearing and tightening to 0.15 shredded real paragraphs; vertical
+     * compares column INK WIDTH, which is noisier still on short columns —
+     * same-font 2-character manga columns (さて/よく) measure 0.30–0.37, and
+     * 0.40 fixed all three such corpus wrong blocks at zero observed cost.
+     * Caveat the 0.40 carries: the corpus's vertical should-split population
+     * is thin, so the enemy (adjacent vertical columns at real size
+     * differences, e.g. vertical menu headings) is priced from few samples —
+     * accepted 2026-07-25; vertical-menu/manga seeds remain wanted.
+     */
+    private const val SIZE_RATIO_CAP_BARE_HORIZONTAL = 0.30
+    private const val SIZE_RATIO_CAP_BARE_VERTICAL = 0.40
     internal const val SIZE_RATIO_CAP_CORROBORATED = 0.50
 
-    private fun sizeRatioCap(mode: GroupingMode): Double =
+    private fun sizeRatioCap(mode: GroupingMode, vertical: Boolean): Double =
         if (mode == GroupingMode.CROSS_FRAME_SAME_REGION) SIZE_RATIO_CAP_CORROBORATED
-        else SIZE_RATIO_CAP_BARE
+        else if (vertical) SIZE_RATIO_CAP_BARE_VERTICAL
+        else SIZE_RATIO_CAP_BARE_HORIZONTAL
 
     /** Same-line (inline) gap ceiling, in units of the reference line height.
      *  Shared by [wouldGroup]'s inline branch and [inlineContinuesLastLine]
@@ -325,7 +349,7 @@ object LayoutAnalyzer {
         if (forwardGap >= (lineH * INLINE_GAP_MULTIPLIER).toInt()) return false
         val lo = minOf(lineH, fresh.height())
         val hi = maxOf(lineH, fresh.height())
-        return (hi - lo).toDouble() / lo <= sizeRatioCap(GroupingMode.CROSS_FRAME_SAME_REGION)
+        return (hi - lo).toDouble() / lo <= sizeRatioCap(GroupingMode.CROSS_FRAME_SAME_REGION, vertical = false)
     }
 
     /**
@@ -392,7 +416,7 @@ object LayoutAnalyzer {
         if (!startAligned && !centerAligned) return false
         val lo = minOf(lineH, fresh.height())
         val hi = maxOf(lineH, fresh.height())
-        return (hi - lo).toDouble() / lo <= sizeRatioCap(GroupingMode.CROSS_FRAME_SAME_REGION)
+        return (hi - lo).toDouble() / lo <= sizeRatioCap(GroupingMode.CROSS_FRAME_SAME_REGION, vertical = false)
     }
 
     /**
@@ -497,10 +521,15 @@ object LayoutAnalyzer {
         aLineCount: Int = 1,
         bLineCount: Int = 1,
         rtl: Boolean = false,
+        /** [CharClassCoverage] predictions for the two lines (a = the group's
+         *  last visual row, b = the candidate) — see [scaleOkWithBlend]. Null
+         *  (bare-rect callers, cross-frame) keeps the raw statistic alone. */
+        aCoverage: Double? = null,
+        bCoverage: Double? = null,
     ): Boolean {
         if (shortAboveLongBlock(a, b, orientation) != null) return false
         if (orientation == TextOrientation.VERTICAL) {
-            return wouldGroupVertical(a, b, mode, aLineCount, bLineCount)
+            return wouldGroupVertical(a, b, mode, aLineCount, bLineCount, aCoverage, bCoverage)
         }
         val aLn = aLineCount.coerceAtLeast(1)
         val bLn = bLineCount.coerceAtLeast(1)
@@ -532,9 +561,7 @@ object LayoutAnalyzer {
                 // size-ratio cap the block check below already
                 // applies, so a true same-line continuation (same
                 // font, same height) still matches.
-                val lo = minOf(aH, bH)
-                val hi = maxOf(aH, bH)
-                if (lo <= 0 || (hi - lo).toDouble() / lo <= sizeRatioCap(mode)) return true
+                if (scaleOkWithBlend(aH, bH, aCoverage, bCoverage, sizeRatioCap(mode, vertical = false))) return true
             }
         }
 
@@ -553,9 +580,7 @@ object LayoutAnalyzer {
             val startAligned = kotlin.math.abs(aStart - bStart) <= alignTolerance
             val centerAligned = kotlin.math.abs(a.centerX() - b.centerX()) <= alignTolerance
             if (startAligned || centerAligned) {
-                val lo = minOf(aH, bH)
-                val hi = maxOf(aH, bH)
-                if (lo <= 0 || (hi - lo).toDouble() / lo <= sizeRatioCap(mode)) return true
+                if (scaleOkWithBlend(aH, bH, aCoverage, bCoverage, sizeRatioCap(mode, vertical = false))) return true
             }
         }
         return false
@@ -567,6 +592,8 @@ object LayoutAnalyzer {
         mode: GroupingMode,
         aLineCount: Int = 1,
         bLineCount: Int = 1,
+        aCoverage: Double? = null,
+        bCoverage: Double? = null,
     ): Boolean {
         val aLn = aLineCount.coerceAtLeast(1)
         val bLn = bLineCount.coerceAtLeast(1)
@@ -591,9 +618,7 @@ object LayoutAnalyzer {
                 // narrow fresh column fragment whose centerX falls inside a
                 // wide multi-column cached box's x range inline-matches on
                 // dy alone and stales the cached translation.
-                val lo = minOf(aW, bW)
-                val hi = maxOf(aW, bW)
-                if (lo <= 0 || (hi - lo).toDouble() / lo <= sizeRatioCap(mode)) return true
+                if (scaleOkWithBlend(aW, bW, aCoverage, bCoverage, sizeRatioCap(mode, vertical = true))) return true
             }
         }
 
@@ -606,9 +631,7 @@ object LayoutAnalyzer {
             val topAligned = kotlin.math.abs(a.top - b.top) <= alignTolerance
             val centerAligned = kotlin.math.abs(a.centerY() - b.centerY()) <= alignTolerance
             if (topAligned || centerAligned) {
-                val lo = minOf(aW, bW)
-                val hi = maxOf(aW, bW)
-                if (lo <= 0 || (hi - lo).toDouble() / lo <= sizeRatioCap(mode)) return true
+                if (scaleOkWithBlend(aW, bW, aCoverage, bCoverage, sizeRatioCap(mode, vertical = true))) return true
             }
         }
         return false
@@ -634,13 +657,18 @@ object LayoutAnalyzer {
         aLineCount: Int = 1,
         bLineCount: Int = 1,
         rtl: Boolean = false,
+        aCoverage: Double? = null,
+        bCoverage: Double? = null,
     ): GroupDecision {
         val sizeBlock = shortAboveLongBlock(a, b, orientation)
         if (sizeBlock != null) return GroupDecision.NotGrouped(sizeBlock)
         return if (orientation == TextOrientation.VERTICAL)
-            groupDecisionVertical(a, b, mode, aLineCount, bLineCount)
+            groupDecisionVertical(a, b, mode, aLineCount, bLineCount, aCoverage, bCoverage)
         else
-            groupDecisionHorizontal(a, b, aAlignLeft, bAlignLeft, mode, aLineCount, bLineCount, rtl)
+            groupDecisionHorizontal(
+                a, b, aAlignLeft, bAlignLeft, mode, aLineCount, bLineCount, rtl,
+                aCoverage, bCoverage,
+            )
     }
 
     private fun groupDecisionHorizontal(
@@ -652,6 +680,8 @@ object LayoutAnalyzer {
         aLineCount: Int = 1,
         bLineCount: Int = 1,
         rtl: Boolean = false,
+        aCoverage: Double? = null,
+        bCoverage: Double? = null,
     ): GroupDecision {
         val aLn = aLineCount.coerceAtLeast(1)
         val bLn = bLineCount.coerceAtLeast(1)
@@ -681,7 +711,8 @@ object LayoutAnalyzer {
         val lnStr = if (aLn > 1 || bLn > 1) " ln=$aLn/$bLn" else ""
         val inlineLo = minOf(aH, bH)
         val inlineHi = maxOf(aH, bH)
-        val inlineHeightOk = inlineLo <= 0 || (inlineHi - inlineLo).toDouble() / inlineLo <= sizeRatioCap(mode)
+        val blendRatio = blendedSizeRatio(aH, bH, aCoverage, bCoverage)
+        val inlineHeightOk = scaleOkWithBlend(aH, bH, aCoverage, bCoverage, sizeRatioCap(mode, vertical = false))
         if (sameLine && dx < inlineGapThreshold && inlineHeightOk) {
             return GroupDecision.Grouped("inline (dx=$dx < ${inlineGapThreshold}px, refH=$refH$lnStr)")
         }
@@ -691,7 +722,7 @@ object LayoutAnalyzer {
                  else if (b.bottom <= a.top) a.top - b.bottom
                  else 0
         val vgapThreshold = (refH * BLOCK_GAP_MULTIPLIER).toInt()
-        val heightCap = sizeRatioCap(mode)
+        val heightCap = sizeRatioCap(mode, vertical = false)
         val alignTolerance = (refH * 0.5f).toInt()
         // Start edge: left for LTR, right for RTL (mirror wouldGroup, keep in sync).
         val aStart = if (rtl) a.right else (aAlignLeft ?: a.left)
@@ -714,7 +745,12 @@ object LayoutAnalyzer {
         val startAligned = startDiff <= alignTolerance
         val centerAligned = centerDiff <= alignTolerance
         val alignOk = startAligned || centerAligned
-        val heightOk = lo <= 0 || heightRatio <= heightCap
+        val rawHeightOk = lo <= 0 || heightRatio <= heightCap
+        val heightOk = scaleOkWithBlend(aH, bH, aCoverage, bCoverage, heightCap)
+        // Name the evidence when the blended statistic carried a decision
+        // the raw ratio would have blocked — the trace must show which
+        // statistic decided.
+        val normStr = if (!rawHeightOk && heightOk) " blend=${"%.2f".format(blendRatio)}" else ""
 
         if (vgapOk && alignOk && heightOk) {
             val edgeName = if (rtl) "right" else "left"
@@ -725,14 +761,18 @@ object LayoutAnalyzer {
             }
             val hRatioStr = if (lo > 0) "%.2f".format(heightRatio) else "n/a"
             return GroupDecision.Grouped(
-                "block (dy=$dy<${vgapThreshold}px, align=$which $startStr centerΔ=$centerDiff tol=${alignTolerance}px, hRatio=$hRatioStr, refH=$refH$lnStr)"
+                "block (dy=$dy<${vgapThreshold}px, align=$which $startStr centerΔ=$centerDiff tol=${alignTolerance}px, hRatio=$hRatioStr$normStr, refH=$refH$lnStr)"
             )
         }
 
         val fails = buildList {
             if (!vgapOk) add("vgap dy=$dy ≥ ${vgapThreshold}px")
             if (!alignOk) add("align: $startStr centerΔ=$centerDiff > tol=${alignTolerance}px")
-            if (!heightOk) add("height: lo=$lo hi=$hi ratio=${"%.2f".format(heightRatio)} > ${"%.2f".format(heightCap)}")
+            if (!heightOk) add(
+                "height: lo=$lo hi=$hi ratio=${"%.2f".format(heightRatio)}" +
+                    (blendRatio?.let { " blend=${"%.2f".format(it)}" } ?: "") +
+                    " > ${"%.2f".format(heightCap)}"
+            )
             if (sameLine && dx >= inlineGapThreshold) add("inline gap dx=$dx ≥ ${inlineGapThreshold}px")
         }
         return GroupDecision.NotGrouped(
@@ -753,6 +793,8 @@ object LayoutAnalyzer {
         mode: GroupingMode,
         aLineCount: Int = 1,
         bLineCount: Int = 1,
+        aCoverage: Double? = null,
+        bCoverage: Double? = null,
     ): GroupDecision {
         val aLn = aLineCount.coerceAtLeast(1)
         val bLn = bLineCount.coerceAtLeast(1)
@@ -777,7 +819,8 @@ object LayoutAnalyzer {
         val lnStr = if (aLn > 1 || bLn > 1) " ln=$aLn/$bLn" else ""
         val inlineLo = minOf(aW, bW)
         val inlineHi = maxOf(aW, bW)
-        val inlineWidthOk = inlineLo <= 0 || (inlineHi - inlineLo).toDouble() / inlineLo <= sizeRatioCap(mode)
+        val blendRatio = blendedSizeRatio(aW, bW, aCoverage, bCoverage)
+        val inlineWidthOk = scaleOkWithBlend(aW, bW, aCoverage, bCoverage, sizeRatioCap(mode, vertical = true))
         if (sameColumn && dy < inlineGapThreshold && inlineWidthOk) {
             return GroupDecision.Grouped("inline (dy=$dy < ${inlineGapThreshold}px, refW=$refW$lnStr)")
         }
@@ -787,7 +830,7 @@ object LayoutAnalyzer {
                  else if (a.right <= b.left) b.left - a.right
                  else a.left - b.right
         val hgapThreshold = (refW * BLOCK_GAP_MULTIPLIER).toInt()
-        val widthCap = sizeRatioCap(mode)
+        val widthCap = sizeRatioCap(mode, vertical = true)
         val alignTolerance = (refW * 0.5f).toInt()
         val topDiff = kotlin.math.abs(a.top - b.top)
         val centerDiff = kotlin.math.abs(a.centerY() - b.centerY())
@@ -801,7 +844,10 @@ object LayoutAnalyzer {
         val topAligned = topDiff <= alignTolerance
         val centerAligned = centerDiff <= alignTolerance
         val alignOk = topAligned || centerAligned
-        val widthOk = lo <= 0 || widthRatio <= widthCap
+        val rawWidthOk = lo <= 0 || widthRatio <= widthCap
+        val widthOk = scaleOkWithBlend(aW, bW, aCoverage, bCoverage, widthCap)
+        // See groupDecisionHorizontal: name the statistic that decided.
+        val normStr = if (!rawWidthOk && widthOk) " blend=${"%.2f".format(blendRatio)}" else ""
 
         if (hgapOk && alignOk && widthOk) {
             val which = when {
@@ -811,14 +857,18 @@ object LayoutAnalyzer {
             }
             val wRatioStr = if (lo > 0) "%.2f".format(widthRatio) else "n/a"
             return GroupDecision.Grouped(
-                "block (dx=$dx<${hgapThreshold}px, align=$which topΔ=$topDiff centerΔ=$centerDiff tol=${alignTolerance}px, wRatio=$wRatioStr, refW=$refW$lnStr)"
+                "block (dx=$dx<${hgapThreshold}px, align=$which topΔ=$topDiff centerΔ=$centerDiff tol=${alignTolerance}px, wRatio=$wRatioStr$normStr, refW=$refW$lnStr)"
             )
         }
 
         val fails = buildList {
             if (!hgapOk) add("hgap dx=$dx ≥ ${hgapThreshold}px")
             if (!alignOk) add("align: topΔ=$topDiff centerΔ=$centerDiff > tol=${alignTolerance}px")
-            if (!widthOk) add("width: lo=$lo hi=$hi ratio=${"%.2f".format(widthRatio)} > ${"%.2f".format(widthCap)}")
+            if (!widthOk) add(
+                "width: lo=$lo hi=$hi ratio=${"%.2f".format(widthRatio)}" +
+                    (blendRatio?.let { " blend=${"%.2f".format(it)}" } ?: "") +
+                    " > ${"%.2f".format(widthCap)}"
+            )
             if (sameColumn && dy >= inlineGapThreshold) add("inline gap dy=$dy ≥ ${inlineGapThreshold}px")
         }
         return GroupDecision.NotGrouped(
@@ -1419,6 +1469,59 @@ object LayoutAnalyzer {
     }
 
     /**
+     * HALF-BLENDED size ratio: each extent averaged with its
+     * [CharClassCoverage]-normalized value before the `(hi - lo) / lo`
+     * compare, or null when either line has no prediction. Half strength is
+     * deliberate — "trust the model halfway": full normalization lets the
+     * prediction multiply an apparent ratio by up to 2.0× (an x-height-only
+     * line against a full-span line), enough for its own error sources
+     * (stylized fonts that reassign letter classes, pixel quantization on
+     * short lines) to hide a real ~1.4× size difference under the cap; the
+     * blend caps that leverage at 1.5×. Corpus (2026-07-25, 352 pairs):
+     * legitimate rescues carry 4–10× margin and survive the halving — all
+     * six Latin rescues hold — while the observed bad merges needed nearly
+     * the full correction and die.
+     *
+     * Consumers accept when the RAW ratio clears the cap, OR when raw is
+     * within [SIZE_RATIO_CAP_CORROBORATED] AND this blend clears the cap —
+     * permissive-only (a wrong prediction can rescue a same-font pair, never
+     * split one), and the raw ceiling means a gap beyond anything the
+     * corroborated tier would accept is trusted as a real size difference no
+     * matter what the letters say. The ceiling equals the corroborated cap,
+     * so at 0.50-tier sites the blend is definitionally moot — it lives only
+     * in the bare-tier gates. Deliberately absent from cross-frame paths (no
+     * per-line text) and [interposingLine] (its cap qualifies a BLOCKER,
+     * where "more forgiving" would mean "more blocking").
+     */
+    private fun blendedSizeRatio(aExt: Int, bExt: Int, aCov: Double?, bCov: Double?): Double? {
+        if (aCov == null || bCov == null) return null
+        val ba = (aExt + aExt / aCov) / 2.0
+        val bb = (bExt + bExt / bCov) / 2.0
+        val lo = minOf(ba, bb)
+        if (lo <= 0.0) return null
+        return (maxOf(ba, bb) - lo) / lo
+    }
+
+    /** The bare-tier scale predicate: raw within [cap], or raw within the
+     *  [SIZE_RATIO_CAP_CORROBORATED] ceiling with the blend within [cap].
+     *  Degenerate extents (lo <= 0) stay compatible, mirroring the historic
+     *  gate behavior. */
+    private fun scaleOkWithBlend(
+        aExt: Int,
+        bExt: Int,
+        aCov: Double?,
+        bCov: Double?,
+        cap: Double,
+    ): Boolean {
+        val lo = minOf(aExt, bExt)
+        if (lo <= 0) return true
+        val raw = (maxOf(aExt, bExt) - lo).toDouble() / lo
+        if (raw <= cap) return true
+        if (raw > SIZE_RATIO_CAP_CORROBORATED) return false
+        return (blendedSizeRatio(aExt, bExt, aCov, bCov) ?: Double.MAX_VALUE) <= cap
+    }
+
+    /**
      * Index-level grouping pass. Pure function over rectangles + per-line
      * effective align-lefts, factored out of `groupLinesOnePass` so unit
      * tests can drive the algorithm without fabricating ML Kit objects.
@@ -1467,6 +1570,10 @@ object LayoutAnalyzer {
         spacedScript: Boolean = true,
         documentPitchPrior: Boolean = false,
         recipe: GroupingRecipe = GroupingRecipe.Default,
+        /** Per-line [CharClassCoverage] predictions for the scale gates —
+         *  see [scaleOkWithBlend]. Null (bare-rect callers, tests) runs the raw
+         *  statistic alone, like [texts]/[cues]. */
+        coverages: List<Double?>? = null,
     ): List<List<Int>> {
         require(boxes.size == alignLefts.size) {
             "boxes and alignLefts must match length"
@@ -1476,6 +1583,9 @@ object LayoutAnalyzer {
         }
         require(cues == null || cues.size == boxes.size) {
             "cues must match boxes length when provided"
+        }
+        require(coverages == null || coverages.size == boxes.size) {
+            "coverages must match boxes length when provided"
         }
         if (boxes.isEmpty()) return emptyList()
         val groups = mutableListOf<MutableList<Int>>()
@@ -1569,8 +1679,15 @@ object LayoutAnalyzer {
                 // for the log; if it ever diverges from wouldGroup the log
                 // wording becomes misleading but grouping behavior stays
                 // consistent.
+                // The group side of the scale compare is groupRect, whose
+                // cross extent is the LAST member line's (see the union
+                // construction above) — so its coverage prediction is the
+                // last member's, matching extent to text.
+                val covPrev = coverages?.get(candidateGroup.last())
+                val covCand = coverages?.get(idx)
                 val baseMerged = wouldGroup(
-                    groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft, rtl = rtl
+                    groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft, rtl = rtl,
+                    aCoverage = covPrev, bCoverage = covCand,
                 )
                 val extras = if (baseMerged) null else samePassBlockExtras(
                     groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft, rtl,
@@ -1596,7 +1713,8 @@ object LayoutAnalyzer {
                 val groupMerged = wouldMerge && blocker == null
                 if (logDecisions) {
                     val decision = groupDecision(
-                        groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft, rtl = rtl
+                        groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft, rtl = rtl,
+                        aCoverage = covPrev, bCoverage = covCand,
                     )
                     val prevSnippet =
                         (texts?.get(candidateGroup.last()) ?: "").take(24).replace('\n', ' ')
@@ -1725,9 +1843,10 @@ object LayoutAnalyzer {
         }
         val texts = if (ctx.logDecisions) sorted.map { it.text } else null
         val cues = sorted.map { textFlowCue(it.text) }
+        val coverages = sorted.map { CharClassCoverage.coverage(it.text, orientation) }
         val idxGroups = groupBoxesOnePass(
             boxes, alignLefts, orientation, ctx.logDecisions, texts, ctx.rtl, cues, ctx.spacedScript,
-            recipe.documentPitchPrior, recipe,
+            recipe.documentPitchPrior, recipe, coverages,
         )
         return idxGroups.map { idxs -> idxs.map { sorted[it] } }
     }

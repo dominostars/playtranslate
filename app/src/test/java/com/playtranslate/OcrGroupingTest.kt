@@ -1,6 +1,8 @@
 package com.playtranslate
 
 import android.graphics.Rect
+import com.playtranslate.ocr.core.GroupingContext
+import com.playtranslate.ocr.core.GroupingRecipe
 import com.playtranslate.ocr.core.LayoutAnalyzer
 import com.playtranslate.ocr.core.LayoutAnalyzer.groupBoxesOnePass
 import com.playtranslate.ocr.core.OcrBox
@@ -1355,5 +1357,91 @@ class OcrGroupingTest {
         assertEquals(4, split.size)
         assertEquals(100, split[0].parentLeft)
         assertEquals(400, split[0].parentRight)
+    }
+
+    // ── char-class normalization in the scale gate ───────────────────────
+    //
+    // The text_sample geometry: a descender line (h=157) above a same-font
+    // ascender-only line (h=120) measures raw ratio 0.31 — over the bare cap
+    // purely from CONTENT. CharClassCoverage predicts 1.0 vs 0.75 em, and the
+    // normalized ratio is ~0.02.
+
+    private val descenderLine = box(100, 100, 500, 257)   // "This is a text sample"
+    private val ascenderLine = box(100, 297, 400, 417)    // "for translation"
+
+    @Test
+    fun scaleGate_contentSkewedPair_splitsWithoutCoverage() {
+        // Control: the pair is scale-blocked today (everything else passes).
+        val groups = group(listOf(descenderLine, ascenderLine))
+        assertEquals(2, groups.size)
+    }
+
+    @Test
+    fun scaleGate_contentSkewedPair_mergesWithCoverage() {
+        val groups = groupBoxesOnePass(
+            listOf(descenderLine, ascenderLine),
+            listOf(descenderLine.left, ascenderLine.left),
+            TextOrientation.HORIZONTAL,
+            coverages = listOf(1.0, 0.75),
+        )
+        assertEquals(listOf(listOf(0, 1)), groups)
+    }
+
+    @Test
+    fun scaleGate_realScaleDifference_staysSplitWithCoverage() {
+        // A genuine 1.45× Title-Case heading over its body: content classes
+        // are near-equal (0.72 vs 1.0 doesn't explain 0.45 away), so the
+        // permissive path must not rescue it.
+        val heading = box(100, 100, 500, 245)   // h=145, "Item Name Here"
+        val body = box(100, 285, 500, 385)      // h=100, "item body here"
+        val groups = groupBoxesOnePass(
+            listOf(heading, body),
+            listOf(heading.left, body.left),
+            TextOrientation.HORIZONTAL,
+            coverages = listOf(0.72, 1.0),
+        )
+        assertEquals(2, groups.size)
+    }
+
+    @Test
+    fun groupRegions_computesCoverageFromText_endToEnd() {
+        // Same geometry through the production path: coverage predictions
+        // must be derived from the region TEXTS (nothing passed explicitly),
+        // proving the wiring from analyze() down to the gate.
+        fun textRegion(r: Rect, text: String) = RecognizedRegion(
+            text = text,
+            box = OcrBox.upright(r),
+            orientation = TextOrientation.HORIZONTAL,
+            confidence = 0.9f,
+            lines = listOf(RecognizedLine(text, OcrBox.upright(r), TextOrientation.HORIZONTAL)),
+            origin = RegionOrigin.LINE,
+        )
+        val ctx = GroupingContext(
+            sourceLang = "en",
+            screenshotWidthInRegionSpace = 0f,
+            rtl = false,
+            spacedScript = true,
+            logDecisions = false,
+        )
+        val merged = LayoutAnalyzer.groupRegions(
+            listOf(
+                textRegion(descenderLine, "This is a text sample"),
+                textRegion(ascenderLine, "for translation"),
+            ),
+            TextOrientation.HORIZONTAL, ctx, GroupingRecipe.Default,
+        )
+        assertEquals(1, merged.size)
+        assertEquals(2, merged[0].size)
+
+        // Ineligible text (unmapped symbol) must fall back to the raw
+        // statistic and keep today's split.
+        val fallback = LayoutAnalyzer.groupRegions(
+            listOf(
+                textRegion(descenderLine, "★★★"),
+                textRegion(ascenderLine, "★★★"),
+            ),
+            TextOrientation.HORIZONTAL, ctx, GroupingRecipe.Default,
+        )
+        assertEquals(2, fallback.size)
     }
 }
