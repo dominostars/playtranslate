@@ -11,6 +11,7 @@ import com.playtranslate.OcrManager
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.ocr.OcrPipeline
+import com.playtranslate.ocr.core.GlyphScale
 import com.playtranslate.ocr.core.LayoutAnalyzer
 import com.playtranslate.ocr.registry.OcrEngineRegistry
 import com.playtranslate.ocr.registry.OcrModelManager
@@ -195,6 +196,11 @@ class OcrGroupingHarnessTest {
                                         scaled(line.box.bounds, rec.scaleFactor).run { intArrayOf(left, top, right, bottom) },
                                         vert = g.orientation == TextOrientation.VERTICAL,
                                         text = line.text, conf = line.confidence,
+                                        // Char-tier scale quantiles, for the glyph-scale question
+                                        // (scripts/glyph_scale_report.py). Null on engines whose
+                                        // char cells are sliced from the line box — the report
+                                        // must see the absence, not a restated line height.
+                                        charQuantiles = GlyphScale.quantiles(line),
                                     )
                                 }
                             }
@@ -343,9 +349,17 @@ class OcrGroupingHarnessTest {
             sync()
         }
 
+        /** [charQuantiles] is [com.playtranslate.ocr.core.GlyphScale.quantiles] —
+         *  the line's char-box cross-axis extents at 25/50/75%, ABSENT when the
+         *  engine's char cells are sliced from the line box (Paddle CTC,
+         *  manga-ocr synthesis) rather than measured. Unlike `box`, these stay in
+         *  ENGINE-INPUT space: the report only takes ratios between them, which
+         *  are scale-invariant, and dividing 20–60px values by `scaleFactor`
+         *  (in the case record, if absolute values are ever wanted) would cost
+         *  more truncation than the 0.30/0.50 decision points can spare. */
         fun region(
             caseId: String, cfg: String, rep: Int, idx: Int, group: Int, box: IntArray,
-            vert: Boolean, text: String, conf: Float,
+            vert: Boolean, text: String, conf: Float, charQuantiles: IntArray? = null,
         ) {
             val o = JSONObject()
                 .put("type", "region").put("run", runId).put("case", caseId)
@@ -354,6 +368,7 @@ class OcrGroupingHarnessTest {
                 .put("vert", vert)
                 .put("text", text)
             if (conf.isFinite() && conf >= 0f) o.put("conf", conf.toDouble())
+            charQuantiles?.let { q -> o.put("cq", JSONArray().apply { q.forEach { put(it) } }) }
             emit(o)
         }
 
