@@ -38,5 +38,58 @@ object GroupingVariants {
             "docpitch-on",
             DefaultGroupingStrategy(GroupingRecipe.Default.copy(documentPitchPrior = true)),
         ),
+        // Logic variant: a clean-room grouper (adjacency graph + per-chain
+        // rhythm segmentation) sharing no decision code with the default. See
+        // FlowGraphStrategy's kdoc for the measurements behind every rule.
+        Variant("flowgraph", FlowGraphStrategy()),
+        // Same strategy plus ONE change: the block punctuation census as a
+        // fourth list path. Kept as its own column rather than folded in, so
+        // the shipped `flowgraph` above stays byte-identical and the census
+        // pays for itself in a flip table. Host prediction on
+        // results-1785001951858: 89 -> 94 cells, 779 -> 802 stanzas,
+        // menu-tagged 17/29 -> 19/29, choice 3/6 -> 6/6, at 2
+        // punctuation-free prose blocks shredded.
+        Variant(
+            "flowgraph-census",
+            FlowGraphStrategy(listPunctCensus = true, name = "flowgraph-census"),
+        ),
+        // The census column plus the two fixes for the vertical/comic slice the
+        // first device run exposed as a REGRESSION (production and labelstack
+        // both pass those seeds): a tighter ruby gate, and no chain-rhythm
+        // evidence on vertical partitions. Host prediction on
+        // results-1785001951858: 94 -> 96 cells, 802 -> 805 stanzas,
+        // comic 8/15 -> 10/15, menu 19/29 -> 20/29, at one Cyrillic card seed.
+        Variant(
+            "flowgraph-census2",
+            FlowGraphStrategy(
+                listPunctCensus = true,
+                linkScaleCap = 1.52f,
+                rhythmVertical = false,
+                name = "flowgraph-census2",
+            ),
+        ),
+        // Logic variant: production grouping with the menu split replaced by a
+        // punctuation profile over capture-wide label stacks. Isolates ONE
+        // change — everything upstream of the split is the default's. Host
+        // measurement behind it, and its enemy population, in
+        // LabelStackStrategy's kdoc.
+        Variant("labelstack", LabelStackStrategy()),
+        // Surviving ablation: the evidence floor. Retired columns and their
+        // answers, from results-1784971719353 (107 seeds), recorded so nobody
+        // re-runs them:
+        //  - `labelstack-nostacks` (backstop only, no capture-wide detection):
+        //    +4 seeds vs production where full labelstack was +7, so the
+        //    capture-wide half pays 3 of the 7. Question answered.
+        //  - `nomenusplit` (both halves off = production with NO split at all):
+        //    -4 seeds, i.e. production's menu split is worth +4 net and this
+        //    strategy's replacement is worth +7. Baseline established once.
+        // The floor stays a live column because it is the one knob the corpus
+        // can still falsify: at 3 rows it scored +8 with ZERO regressions,
+        // against the prediction that three punctuation-free RU card
+        // descriptions would shred. That prediction was wrong on 107 seeds;
+        // punctuation-free prose is the enemy population, so every corpus
+        // growth is a fresh chance to be right. Also informs FlowGraph's
+        // `listMinRows`.
+        Variant("labelstack-rows3", LabelStackStrategy(minStackRows = 3)),
     )
 }
