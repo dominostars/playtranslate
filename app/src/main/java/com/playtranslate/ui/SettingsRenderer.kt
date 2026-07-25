@@ -248,6 +248,19 @@ class SettingsRenderer(
          *  Activity's lifecycleScope behind an OverlayProgress, then calls
          *  [SettingsRenderer.refreshLanguageSection] so the cell hides once ready. */
         fun onDownloadOfflineModelsTapped()
+
+        /** Tap on the "Check for updates" row. Implementer runs
+         *  [com.playtranslate.UpdateChecker.checkNow] on the **Activity's**
+         *  lifecycleScope (an update the user accepts downloads well past this
+         *  sheet's lifetime) and shows the outcome: the update prompt, the
+         *  "No update found" alert, or the check-failed alert.
+         *
+         *  [onFinished] must be invoked on the main thread once the network
+         *  phase settles — on every path, including early returns — because it
+         *  is what clears the row's spinner and makes the row tappable again.
+         *  Call it BEFORE presenting the outcome: the alert is the answer, so
+         *  the row should already be back at rest behind it. */
+        fun onCheckForUpdatesTapped(onFinished: () -> Unit)
     }
 
     // ── View references for refresh ─────────────────────────────────────
@@ -320,6 +333,12 @@ class SettingsRenderer(
 
     private val rowDiscord: View = root.findViewById(R.id.rowDiscord)
     private val rowDonate: View = root.findViewById(R.id.rowDonate)
+    private val rowCheckUpdates: View = root.findViewById(R.id.rowCheckUpdates)
+
+    /** True from the "Check for updates" tap until the host reports the check
+     *  settled. Drives the cell's busy rendering AND is the single-flight
+     *  guard — a second tap while a check is in flight must not start another. */
+    private var updateCheckInFlight = false
     private val settingsScrollView: androidx.core.widget.NestedScrollView = root.findViewById(R.id.settingsScrollView)
 
     private val llDebugSection: LinearLayout = root.findViewById(R.id.llDebugSection)
@@ -338,7 +357,6 @@ class SettingsRenderer(
         setupToolsSection()
         setupSupportSection()
         setupDebugSection()
-        setupFooter()
     }
 
     // ── Group headers ────────────────────────────────────────────────────
@@ -1150,6 +1168,7 @@ class SettingsRenderer(
     // ── Support ──────────────────────────────────────────────────────────
 
     private fun setupSupportSection() {
+        bindCheckUpdatesCell()
         val discordUrl = "https://go.playtranslate.com/discord"
         bindHubCell(
             rowDiscord,
@@ -1189,6 +1208,44 @@ class SettingsRenderer(
                 onLongClick = { copyUrl(donateUrl) },
             ),
         )
+    }
+
+    /** The "Check for updates" cell — Support's first row, and the only place
+     *  the installed version is stated (the old settings footer is gone).
+     *
+     *  Two renderings off [updateCheckInFlight]: idle shows the version and
+     *  takes taps; busy swaps the summary for "Checking…", puts a spinner in
+     *  the trailing slot, and drops the click handler so the row can't
+     *  re-enter. Both go through the same bind, so whichever the host reports
+     *  last is what the row ends up wearing. */
+    private fun bindCheckUpdatesCell() {
+        bindHubCell(
+            rowCheckUpdates,
+            HubCell(
+                iconRes = R.drawable.ic_update,
+                title = ctx.getString(R.string.settings_support_check_updates_title),
+                summary = if (updateCheckInFlight) {
+                    ctx.getString(R.string.settings_support_check_updates_checking)
+                } else {
+                    ctx.getString(
+                        R.string.settings_support_check_updates_subtitle,
+                        BuildConfig.VERSION_NAME,
+                    )
+                },
+                trailing = if (updateCheckInFlight) Trailing.PROGRESS else Trailing.CHEVRON,
+                onClick = if (updateCheckInFlight) null else ({ startUpdateCheck() }),
+            ),
+        )
+    }
+
+    private fun startUpdateCheck() {
+        if (updateCheckInFlight) return
+        updateCheckInFlight = true
+        bindCheckUpdatesCell()
+        callbacks.onCheckForUpdatesTapped {
+            updateCheckInFlight = false
+            bindCheckUpdatesCell()
+        }
     }
 
     private fun openUrl(url: String) {
@@ -1263,7 +1320,10 @@ class SettingsRenderer(
 
     // ── Hub cell binder ────────────────────────────────────────────────────
 
-    enum class Trailing { CHEVRON, EXTERNAL, LOCK, NONE }
+    /** The cell's trailing slot. [PROGRESS] is the busy state of a cell whose
+     *  tap starts async work *in place* (no dialog to carry the wait): the
+     *  spinner takes the affordance's slot for as long as the work runs. */
+    enum class Trailing { CHEVRON, EXTERNAL, LOCK, PROGRESS, NONE }
 
     /** A Settings hub cell: icon chip + title + status summary + trailing
      *  affordance. See design_handoff_settings_cell. */
@@ -1316,7 +1376,7 @@ class SettingsRenderer(
             Trailing.CHEVRON -> R.drawable.ic_chevron_right
             Trailing.EXTERNAL -> R.drawable.ic_open_in_new
             Trailing.LOCK -> R.drawable.ic_lock
-            Trailing.NONE -> null
+            Trailing.PROGRESS, Trailing.NONE -> null
         }
         if (trailingRes == null) {
             trailing.isGone = true
@@ -1324,6 +1384,10 @@ class SettingsRenderer(
             trailing.setImageResource(trailingRes)
             trailing.isVisible = true
         }
+        // Spinner and affordance share the slot: never both, and a re-bind out
+        // of the busy state must put the spinner away again.
+        row.findViewById<ProgressBar>(R.id.hubRowProgress).isVisible =
+            !disabled && cell.trailing == Trailing.PROGRESS
         row.findViewById<View>(R.id.hubRowDivider).isVisible = !cell.isLast
         row.contentDescription = if (disabled) "${cell.title}. ${cell.disabledReason}" else null
         val click = cell.onClick.takeUnless { disabled }
@@ -1443,14 +1507,6 @@ class SettingsRenderer(
         }
         btnCrash.setOnClickListener(crashClick)
         rowForceCrash.setOnClickListener(crashClick)
-    }
-
-    // ── Footer ───────────────────────────────────────────────────────────
-
-    private fun setupFooter() {
-        val tvFooter = root.findViewById<TextView>(R.id.tvFooterVersion) ?: return
-        val appName = ctx.getString(R.string.app_name)
-        tvFooter.text = ctx.getString(R.string.settings_footer_version, appName, BuildConfig.VERSION_NAME)
     }
 
     // ── Refresh methods (called externally) ──────────────────────────────

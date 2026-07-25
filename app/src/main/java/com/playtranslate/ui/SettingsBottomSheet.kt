@@ -62,6 +62,12 @@ class SettingsBottomSheet : DialogFragment() {
      *  dismiss doesn't kill the download mid-flight (mirrors startPackUpgrade). */
     private var offlinePrimeJob: kotlinx.coroutines.Job? = null
 
+    /** Built on the first "Check for updates" tap and kept, so repeat taps
+     *  share ONE controller — its single-flight download guard is per-instance,
+     *  and a fresh instance per tap would let a second Download & install start
+     *  alongside a live one, both writing the same partial APK. */
+    private var updateInstaller: UpdateInstallController? = null
+
     /** The live MediaProjection session this sheet holds a teardown listener
      *  on while resumed (kept so onPause unregisters from the same one).
      *  MediaProjection "active" is held consent, not a pref our observers
@@ -340,6 +346,9 @@ class SettingsBottomSheet : DialogFragment() {
                 override fun openAnkiSettings() {
                     openAnkiSettingsPage()
                 }
+                override fun onCheckForUpdatesTapped(onFinished: () -> Unit) {
+                    this@SettingsBottomSheet.startUpdateCheck(onFinished)
+                }
             }
         )
         renderer = r
@@ -444,6 +453,68 @@ class SettingsBottomSheet : DialogFragment() {
                 runCatching { renderer?.refreshLanguageSection() }
             }
         }
+    }
+
+    // ── Manual update check ──────────────────────────────────────────────
+
+    /** The Support section's "Check for updates" tap.
+     *
+     *  Runs on the **Activity's** lifecycleScope for the same reason
+     *  [startPackUpgrade] does: an update the user then accepts downloads
+     *  behind an Activity-attached progress dialog and must not die with this
+     *  fragment's view. [onFinished] clears the row's spinner and fires on
+     *  every path — including the no-activity early return, which would
+     *  otherwise leave the row spinning forever.
+     *
+     *  [UpdateChecker.checkNow] bypasses the 24h debounce and the skipped-tag
+     *  gate (an explicit check outranks both) but still stamps the debounce,
+     *  so the launch-time check can't re-answer this same question on the very
+     *  next onResume. */
+    private fun startUpdateCheck(onFinished: () -> Unit) {
+        val activity = activity as? androidx.appcompat.app.AppCompatActivity
+            ?: run { onFinished(); return }
+        val installer = updateInstaller
+            ?: UpdateInstallController(activity).also { updateInstaller = it }
+        activity.lifecycleScope.launch {
+            val result = com.playtranslate.UpdateChecker.checkNow(activity)
+            onFinished()
+            if (activity.isFinishing || activity.isDestroyed) return@launch
+            when (result) {
+                is com.playtranslate.UpdateChecker.ManualCheck.Available ->
+                    installer.promptUpdate(result.release)
+                com.playtranslate.UpdateChecker.ManualCheck.UpToDate ->
+                    showUpdateOutcomeAlert(
+                        activity,
+                        activity.getString(R.string.update_none_title),
+                        activity.getString(
+                            R.string.update_none_message,
+                            com.playtranslate.BuildConfig.VERSION_NAME,
+                        ),
+                    )
+                com.playtranslate.UpdateChecker.ManualCheck.Failed ->
+                    showUpdateOutcomeAlert(
+                        activity,
+                        activity.getString(R.string.update_check_failed_title),
+                        activity.getString(R.string.update_check_failed_message),
+                    )
+            }
+        }
+    }
+
+    private fun showUpdateOutcomeAlert(
+        activity: androidx.appcompat.app.AppCompatActivity,
+        title: String,
+        message: String,
+    ) {
+        OverlayAlert.Builder(activity)
+            .setTitle(title)
+            .setMessage(message)
+            .addButton(
+                activity.getString(R.string.btn_ok),
+                activity.themeColor(R.attr.ptAccent),
+                activity.themeColor(R.attr.ptAccentOn),
+            ) { }
+            .show()
     }
 
     // ── Accessibility-required alert ─────────────────────────────────────

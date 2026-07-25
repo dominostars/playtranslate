@@ -11,9 +11,15 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * Checks the GitHub releases API for a newer version of the app and exposes a
- * single [maybeCheck] entry point that honors a 24h network debounce plus the
- * user's "Skip this version" preference.
+ * Checks the GitHub releases API for a newer version of the app. Two entry
+ * points, differing only in which gates they honor:
+ *
+ *  - [maybeCheck] — the launch-time nudge. Honors the 24h network debounce and
+ *    the user's "Skip this version" preference, and answers a single question
+ *    ("is there something to prompt about?") with a nullable [Release].
+ *  - [checkNow] — the Settings "Check for updates" row. The user asked for the
+ *    check explicitly, so both gates are bypassed; the caller needs to tell
+ *    "nothing newer" from "couldn't ask", so it answers with a [ManualCheck].
  *
  * A successful/unsuccessful network attempt both consume the debounce window,
  * so we don't hammer the GitHub API on rapid restarts or while offline.
@@ -39,6 +45,18 @@ object UpdateChecker {
          *  is skipped (structural checks still gate). */
         val apkSha256: String? = null,
     )
+
+    /** Outcome of a user-initiated [checkNow]. The launch path can collapse
+     *  "nothing newer" and "the network was down" into one silent `null`;
+     *  a manual check owes the user a distinct answer for each. */
+    sealed interface ManualCheck {
+        /** A newer release exists (skip-tag ignored) — hand to the update prompt. */
+        data class Available(val release: Release) : ManualCheck
+        /** GitHub answered and the installed build is current. */
+        data object UpToDate : ManualCheck
+        /** Couldn't ask: offline, timeout, non-2xx, or an unparseable body. */
+        data object Failed : ManualCheck
+    }
 
     private val client by lazy {
         PtHttp.clientBuilder()
@@ -73,6 +91,37 @@ object UpdateChecker {
         if (!isNewer(release.tag, BuildConfig.VERSION_NAME)) return null
         if (release.tag == prefs.updateCheckSkippedTag) return null
         return release
+    }
+
+    /**
+     * The Settings "Check for updates" row: hit GitHub now, whatever the
+     * debounce says, and report a newer release even if the user once tapped
+     * "Skip this version" — an explicit check outranks both gates.
+     *
+     * It still STAMPS the debounce, because the stamp records "we talked to
+     * GitHub at T", not "we were allowed to". Without it the very next
+     * onResume would fire the launch-time check over the same answer, and
+     * could open a second update prompt (or a second download) on top of the
+     * one this check just produced.
+     *
+     * The skipped tag is deliberately left in place: bypassing it is a
+     * one-shot for this check, not a silent un-skip of the launch nudge.
+     */
+    suspend fun checkNow(context: Context): ManualCheck {
+        Prefs(context).lastUpdateCheckTime = System.currentTimeMillis()
+        val release = withContext(Dispatchers.IO) {
+            try {
+                fetchLatest()
+            } catch (e: Exception) {
+                Log.d(TAG, "manual update check failed: ${e.message}")
+                null
+            }
+        } ?: return ManualCheck.Failed
+        return if (isNewer(release.tag, BuildConfig.VERSION_NAME)) {
+            ManualCheck.Available(release)
+        } else {
+            ManualCheck.UpToDate
+        }
     }
 
     private fun fetchLatest(): Release? {

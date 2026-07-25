@@ -2596,6 +2596,20 @@
     <!-- Toast shown if the system package installer can't be launched. -->
     <string name="update_error_install_launch">Couldn\'t open the system installer.</string>
 
+    <!-- Title of the alert shown when a manual "Check for updates" found
+         nothing newer than the installed build. -->
+    <string name="update_none_title">No update found</string>
+
+    <!-- Body of that alert. %1$s = the installed version (e.g. "2.4.1"). -->
+    <string name="update_none_message"><xliff:g id="version" example="2.4.1">%1$s</xliff:g> is the most up to date!</string>
+
+    <!-- Title of the alert shown when a manual "Check for updates" couldn't
+         reach the release server (offline, timeout, server error). -->
+    <string name="update_check_failed_title">Couldn\'t check for updates</string>
+
+    <!-- Body of that alert. "GitHub" is a brand name; do not translate. -->
+    <string name="update_check_failed_message">Couldn\'t reach <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> to look for a new version. Check your connection and try again.</string>
+
     <!-- Toast shown if no browser is installed to open the release URL. -->
     <string name="toast_no_browser_available">No browser available</string>
 
@@ -3318,6 +3332,17 @@
     <!-- Subtitle on the donation row. -->
     <string name="settings_support_donate_subtitle">A free, open source labor of love. Help keep it going.</string>
 
+    <!-- Row title — manual update check (last row of the Support section). -->
+    <string name="settings_support_check_updates_title">Check for updates</string>
+
+    <!-- Subtitle on the check-for-updates row: the installed version.
+         %1$s = version name (e.g. "2.4.1"). -->
+    <string name="settings_support_check_updates_subtitle">Current version: <xliff:g id="version" example="2.4.1">%1$s</xliff:g></string>
+
+    <!-- Subtitle on the check-for-updates row while the check is in flight
+         (a spinner replaces the row's chevron at the same time). -->
+    <string name="settings_support_check_updates_checking">Checking for updates…</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Debug section (developer-only; visible in debug
          builds and on devices where Debug toggle is enabled).
@@ -3373,10 +3398,6 @@
     <!-- Error toast shown if log export failed. %1$s = exception
          class name (e.g. "FileNotFoundException"). -->
     <string name="settings_debug_export_logs_failed">Failed to export logs: <xliff:g id="exception_class" example="FileNotFoundException">%1$s</xliff:g></string>
-
-    <!-- Settings footer — app name + version.  %1$s = app name;
-         %2$s = build version (e.g. "2.2.0"). -->
-    <string name="settings_footer_version"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> v<xliff:g id="version" example="2.2.0">%2$s</xliff:g></string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          GENERIC TOASTS reused in several places.

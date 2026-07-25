@@ -514,6 +514,9 @@
                     android:orientation="vertical">
 
                     <include layout="@layout/settings_row_hub"
+                        android:id="@+id/rowCheckUpdates" />
+
+                    <include layout="@layout/settings_row_hub"
                         android:id="@+id/rowDiscord" />
 
                     <include layout="@layout/settings_row_hub"
@@ -611,8 +614,11 @@
                 </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
 
-            <!-- Footer -->
-            <include layout="@layout/settings_footer" />
+            <!-- No footer. The version label that used to close the screen moved
+                 into the Support section's "Check for updates" cell, so the
+                 version is stated once, next to the action that acts on it. The
+                 container's own paddingBottom (plus the nav-bar inset the scroll
+                 view applies) is the bottom slack, same as the sub-screens. -->
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>

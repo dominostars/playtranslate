@@ -70,6 +70,19 @@
             android:importantForAccessibility="no"
             android:src="@drawable/ic_chevron_right"
             app:tint="?attr/ptTextMuted" />
+
+        <!-- Trailing spinner — takes the affordance's slot while a cell whose
+             tap starts in-cell async work is busy (Trailing.PROGRESS). Sized to
+             match the affordance so the row width doesn't shift on the swap;
+             exactly one of the two is ever visible. -->
+        <ProgressBar
+            android:id="@+id/hubRowProgress"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:visibility="gone"
+            android:indeterminate="true"
+            android:indeterminateTint="?attr/ptTextMuted" />
     </LinearLayout>
 
     <!-- In-cell divider, inset flush with the text block. GONE on the last

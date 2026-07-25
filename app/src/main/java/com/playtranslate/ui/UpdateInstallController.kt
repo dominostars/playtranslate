@@ -48,13 +48,6 @@ class UpdateInstallController(private val activity: AppCompatActivity) {
     private val prefs = Prefs(activity)
     private var downloadJob: Job? = null
 
-    /** Set when the user detours to the release page from the update dialog.
-     *  OverlayAlert dismisses on host-activity pause (browser in front) and
-     *  the 24h debounce would block a re-offer, so [reshowIfPending] re-shows
-     *  the dialog once they come back — reading the notes then tapping
-     *  Download must not cost a day's wait. */
-    private var pendingReshow: UpdateChecker.Release? = null
-
     /**
      * Entry point from the debounced update check. Resumes the installer
      * hand-off directly when this tag's APK is already downloaded + validated
@@ -394,5 +387,18 @@ class UpdateInstallController(private val activity: AppCompatActivity) {
 
         /** Process-wide so an activity recreation doesn't re-prompt. */
         private var promptedThisProcess = false
+
+        /** Set when the user detours to the release page from the update dialog.
+         *  OverlayAlert dismisses on host-activity pause (browser in front) and
+         *  the 24h debounce would block a re-offer, so [reshowIfPending] re-shows
+         *  the dialog once they come back — reading the notes then tapping
+         *  Download must not cost a day's wait.
+         *
+         *  Process-wide, like [promptedThisProcess], because the dialog that
+         *  set it and the resume that redeems it can belong to different
+         *  controller instances: the Settings "Check for updates" row drives
+         *  its own controller, but only MainActivity's onResume calls
+         *  [reshowIfPending]. Per-instance state would strand that detour. */
+        private var pendingReshow: UpdateChecker.Release? = null
     }
 }
