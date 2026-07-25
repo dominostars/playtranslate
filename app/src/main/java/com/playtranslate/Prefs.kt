@@ -1369,6 +1369,22 @@ class Prefs internal constructor(
         get() = sp.getString(KEY_UPDATE_DOWNLOADED_TAG, "") ?: ""
         set(v) = sp.edit { putString(KEY_UPDATE_DOWNLOADED_TAG, v) }
 
+    /** Newest release tag either check has seen that beats this build, or ""
+     *  when the last completed check found nothing newer. Written by
+     *  [com.playtranslate.UpdateChecker] the moment a tag proves newer —
+     *  BEFORE the skip filter, so a skipped version still shows in Settings
+     *  (skipping silences the launch nudge, it doesn't erase the fact).
+     *
+     *  Persisted rather than held in memory because the launch check runs at
+     *  most once a day: a process started 20h into that window would otherwise
+     *  have no idea an update exists. Readers must still gate on
+     *  [com.playtranslate.UpdateChecker.isNewer] against the running version —
+     *  after a successful self-update, this tag stays stale until the next
+     *  check clears it. */
+    var updateAvailableTag: String
+        get() = sp.getString(KEY_UPDATE_AVAILABLE_TAG, "") ?: ""
+        set(v) = sp.edit { putString(KEY_UPDATE_AVAILABLE_TAG, v) }
+
 
     /** SYSTEM follows the OS uiMode; DARK/LIGHT are explicit overrides. */
     var themeMode: ThemeMode
@@ -1574,6 +1590,9 @@ class Prefs internal constructor(
         private const val KEY_LAST_YOMITAN_HEAL_ATTEMPT    = "last_yomitan_heal_attempt"
         private const val KEY_UPDATE_SKIP_TAG              = "update_skip_tag"
         private const val KEY_UPDATE_DOWNLOADED_TAG        = "update_downloaded_tag"
+        /** Public so the Settings sheet can [observe] it — the row must repaint
+         *  when a check completes, not only when the sheet is next resumed. */
+        const val KEY_UPDATE_AVAILABLE_TAG                 = "update_available_tag"
         private const val KEY_TARGET_PACK_MIGRATION_DISMISSED = "target_pack_migration_dismissed"
 
         /**

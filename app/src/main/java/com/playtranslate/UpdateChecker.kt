@@ -88,7 +88,7 @@ object UpdateChecker {
             }
         } ?: return null
 
-        if (!isNewer(release.tag, BuildConfig.VERSION_NAME)) return null
+        if (!record(prefs, release.tag)) return null
         if (release.tag == prefs.updateCheckSkippedTag) return null
         return release
     }
@@ -108,7 +108,8 @@ object UpdateChecker {
      * one-shot for this check, not a silent un-skip of the launch nudge.
      */
     suspend fun checkNow(context: Context): ManualCheck {
-        Prefs(context).lastUpdateCheckTime = System.currentTimeMillis()
+        val prefs = Prefs(context)
+        prefs.lastUpdateCheckTime = System.currentTimeMillis()
         val release = withContext(Dispatchers.IO) {
             try {
                 fetchLatest()
@@ -117,11 +118,31 @@ object UpdateChecker {
                 null
             }
         } ?: return ManualCheck.Failed
-        return if (isNewer(release.tag, BuildConfig.VERSION_NAME)) {
+        return if (record(prefs, release.tag)) {
             ManualCheck.Available(release)
         } else {
             ManualCheck.UpToDate
         }
+    }
+
+    /**
+     * The single writer of [Prefs.updateAvailableTag]: files what a COMPLETED
+     * check learned about [tag], and answers whether it beats this build.
+     *
+     * Both entry points funnel their verdict through here so the Settings cell
+     * can't disagree with the dialog — and so the record is filed BEFORE the
+     * skip filter, which is the whole point of a separate flag: a skipped
+     * version still exists, and Settings is where the user goes looking for it.
+     *
+     * Only a completed check writes. A failed fetch leaves the last known
+     * answer standing: stale-but-once-true beats blanking the cell every time
+     * the handheld is offline.
+     */
+    private fun record(prefs: Prefs, tag: String): Boolean {
+        val newer = isNewer(tag, BuildConfig.VERSION_NAME)
+        val stored = if (newer) tag else ""
+        if (prefs.updateAvailableTag != stored) prefs.updateAvailableTag = stored
+        return newer
     }
 
     private fun fetchLatest(): Release? {

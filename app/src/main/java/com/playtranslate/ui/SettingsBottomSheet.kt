@@ -152,6 +152,19 @@ class SettingsBottomSheet : DialogFragment() {
                 }
             }
         }
+        // The update row's verdict is written by whichever check completes —
+        // including the launch-time one, which MainActivity fires on its own
+        // onResume and which lands a NETWORK ROUND-TRIP after ours. Observing
+        // the pref instead of re-reading it at resume is what makes that race
+        // a non-event: the row repaints whenever the answer arrives, from
+        // either check. The seed emission covers the ordinary resume case.
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                Prefs(requireContext()).observe(Prefs.KEY_UPDATE_AVAILABLE_TAG).collect {
+                    renderer?.refreshCheckUpdatesCell()
+                }
+            }
+        }
     }
 
     /** Bind the IME + nav-bar bottom-inset listener to the

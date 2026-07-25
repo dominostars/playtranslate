@@ -54,6 +54,7 @@ import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.PlayTranslateTileService
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.UpdateChecker
 import com.playtranslate.diagnostics.LogExporter
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLanguageProfiles
@@ -1145,6 +1146,15 @@ class SettingsRenderer(
         )
     }
 
+    /** Rebind the "Check for updates" cell so it picks up an availability
+     *  verdict reached elsewhere — the sheet drives this from a
+     *  [Prefs.KEY_UPDATE_AVAILABLE_TAG] observer, so a launch-time check that
+     *  lands while Settings is already open repaints the row. Safe mid-check:
+     *  the in-flight flag still owns the busy rendering. */
+    fun refreshCheckUpdatesCell() {
+        bindCheckUpdatesCell()
+    }
+
     /** Rebind the History hub cell — its On/Off summary mirrors the master
      *  switch on the History screen, which the user can flip while the
      *  settings sheet is still open underneath. The sheet calls this from
@@ -1213,17 +1223,30 @@ class SettingsRenderer(
     /** The "Check for updates" cell — Support's first row, and the only place
      *  the installed version is stated (the old settings footer is gone).
      *
-     *  Two renderings off [updateCheckInFlight]: idle shows the version and
-     *  takes taps; busy swaps the summary for "Checking…", puts a spinner in
-     *  the trailing slot, and drops the click handler so the row can't
-     *  re-enter. Both go through the same bind, so whichever the host reports
-     *  last is what the row ends up wearing. */
+     *  Three inputs, one bind. [updateCheckInFlight] gives the busy rendering:
+     *  the summary swaps to "Checking…", a spinner takes the trailing slot,
+     *  and the click handler drops so the row can't re-enter. Availability
+     *  ([Prefs.updateAvailableTag], re-read on every bind so a launch-time
+     *  find lands here too) retitles the row to "Update available" and turns
+     *  the title + icon ptWarning. The version subtitle is constant: the title
+     *  says what's true, the subtitle says where you are.
+     *
+     *  The stored tag is re-tested against the running build rather than
+     *  trusted: after a self-update no check may run for another day, and a
+     *  cell still claiming an update would be a lie the user can't dismiss. */
     private fun bindCheckUpdatesCell() {
+        val updateAvailable = prefs.updateAvailableTag
+            .let { it.isNotEmpty() && UpdateChecker.isNewer(it, BuildConfig.VERSION_NAME) }
         bindHubCell(
             rowCheckUpdates,
             HubCell(
                 iconRes = R.drawable.ic_update,
-                title = ctx.getString(R.string.settings_support_check_updates_title),
+                iconTint = if (updateAvailable) R.attr.ptWarning else R.attr.ptAccent,
+                title = ctx.getString(
+                    if (updateAvailable) R.string.settings_support_check_updates_title_available
+                    else R.string.settings_support_check_updates_title
+                ),
+                titleTint = if (updateAvailable) R.attr.ptWarning else null,
                 summary = if (updateCheckInFlight) {
                     ctx.getString(R.string.settings_support_check_updates_checking)
                 } else {
@@ -1331,6 +1354,11 @@ class SettingsRenderer(
         @DrawableRes val iconRes: Int,
         @AttrRes val iconTint: Int = R.attr.ptAccent,
         val title: String,
+        /** Overrides the title's default ptText — for a cell whose title
+         *  carries a state the user should notice (the update row going
+         *  ptWarning). The summary stays muted either way, so the colour
+         *  marks the finding without repainting the whole cell. */
+        @AttrRes val titleTint: Int? = null,
         val summary: CharSequence?,
         val trailing: Trailing = Trailing.CHEVRON,
         val isLast: Boolean = false,
@@ -1359,7 +1387,11 @@ class SettingsRenderer(
         )
         val title = row.findViewById<TextView>(R.id.hubRowTitle)
         title.text = cell.title
-        title.setTextColor(ctx.themeColor(if (disabled) R.attr.ptTextHint else R.attr.ptText))
+        title.setTextColor(
+            ctx.themeColor(
+                if (disabled) R.attr.ptTextHint else cell.titleTint ?: R.attr.ptText
+            )
+        )
         val summaryView = row.findViewById<TextView>(R.id.hubRowSummary)
         val summary = cell.disabledReason ?: cell.summary
         if (summary.isNullOrEmpty()) {

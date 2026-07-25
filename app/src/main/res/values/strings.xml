@@ -2600,8 +2600,9 @@
          nothing newer than the installed build. -->
     <string name="update_none_title">No update found</string>
 
-    <!-- Body of that alert. %1$s = the installed version (e.g. "2.4.1"). -->
-    <string name="update_none_message"><xliff:g id="version" example="2.4.1">%1$s</xliff:g> is the most up to date!</string>
+    <!-- Body of that alert. %1$s = the installed version (e.g. "2.4.1").
+         "PlayTranslate" is the app name; do not translate. -->
+    <string name="update_none_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version" example="2.4.1">%1$s</xliff:g> is the latest version.</string>
 
     <!-- Title of the alert shown when a manual "Check for updates" couldn't
          reach the release server (offline, timeout, server error). -->
@@ -3332,8 +3333,15 @@
     <!-- Subtitle on the donation row. -->
     <string name="settings_support_donate_subtitle">A free, open source labor of love. Help keep it going.</string>
 
-    <!-- Row title — manual update check (last row of the Support section). -->
+    <!-- Row title — manual update check (first row of the Support section). -->
     <string name="settings_support_check_updates_title">Check for updates</string>
+
+    <!-- The same row's title once a check (launch-time or manual) has found a
+         newer release: the row states the finding instead of offering the
+         action, and turns the warning colour. Deliberately a separate key from
+         the update dialog's title — a row label and a dialog heading are free
+         to word this differently. -->
+    <string name="settings_support_check_updates_title_available">Update available</string>
 
     <!-- Subtitle on the check-for-updates row: the installed version.
          %1$s = version name (e.g. "2.4.1"). -->
