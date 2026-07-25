@@ -60,6 +60,8 @@
 
     <string name="status_translating">Traduction…</string>
 
+    <string name="capture_show_on_screen">Afficher à l\'écran</string>
+
     <string name="status_no_text">Aucun texte en <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> détecté dans « <xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g> »</string>
 
     <string name="status_error">Erreur : <xliff:g id="error_message" example="Network timeout">%1$s</xliff:g></string>
@@ -310,6 +312,18 @@
 
     <string name="probe_initializing">Initialisation…</string>
 
+    <string name="startup_initializing_auto_mode">Initialisation du mode automatique…</string>
+
+    <string name="slow_ocr_prompt_title">La reconnaissance de texte est lente</string>
+
+    <string name="slow_ocr_prompt_message">Cet appareil met du temps à lire l\'écran. Passez au moteur plus rapide pour accélérer le traitement, même si la qualité de lecture peut être légèrement inférieure. Vous pouvez changer à tout moment dans les paramètres :\n\n<xliff:g id="settings" example="Settings">%1$s</xliff:g> → <xliff:g id="section" example="Capture &amp; overlay">%2$s</xliff:g> → <xliff:g id="ocr_header" example="Text recognition (OCR)">%3$s</xliff:g></string>
+
+    <string name="slow_ocr_prompt_message_camera">Cet appareil met du temps à lire le texte de l\'appareil photo. Passez au moteur plus rapide pour accélérer le traitement, même si la qualité de lecture peut être légèrement inférieure. Vous pouvez changer le moteur de l\'appareil photo à tout moment via l\'engrenage des paramètres sur cet écran.</string>
+
+    <string name="slow_ocr_prompt_switch">Utiliser le moteur rapide</string>
+
+    <string name="slow_ocr_prompt_keep">Conserver le moteur actuel</string>
+
     <string name="stream_kind_prompt_title">Quelle option de partage avez-vous choisie ?</string>
 
     <string name="stream_kind_prompt_message">La traduction en direct ne fonctionne pas de la même manière pour une seule appli que pour tout l\'écran, et le système n\'indique pas ce qui a été partagé.</string>
@@ -378,7 +392,15 @@
 
     <string name="capture_lifecycle_off_subtitle">Autoriser la capture d\'écran</string>
 
-    <string name="game_screen_controls_title">Commandes de l\'écran de jeu</string>
+    <string name="capture_lifecycle_standby_subtitle">Capture d\'écran en veille</string>
+
+    <string name="game_screen_controls_title">Afficher les commandes à l\'écran</string>
+
+    <string name="record_audio_action">Enregistrer l\'audio</string>
+
+    <string name="audio_recording_row_start">Démarrer l\'enregistrement audio</string>
+
+    <string name="audio_recording_row_active">Enregistrement audio en cours</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          MEDIAPROJECTION OVERLAY-PERMISSION DIALOG
@@ -403,6 +425,12 @@
     <string name="overlay_icon_a11y_required_title">Accessibilité requise</string>
 
     <string name="overlay_icon_a11y_required_message">L\'icône flottante nécessite l\'autorisation d\'accessibilité pour dessiner sur l\'écran de jeu.\n\nAccédez à Paramètres → Accessibilité → Applications téléchargées → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Activer.</string>
+
+    <string name="a11y_stuck_title">L\'accessibilité doit être redémarrée</string>
+
+    <string name="a11y_stuck_message">L\'accessibilité est activée pour <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, mais Android a arrêté le service et ne le redémarrera pas de lui-même. Votre appareil peut signaler l\'application comme défaillante dans les paramètres d\'accessibilité. Cela arrive généralement après que le système a forcé l\'arrêt de l\'application pour économiser la batterie.\n\nPour corriger cela, désactivez puis réactivez le service dans vos paramètres d\'accessibilité.</string>
+
+    <string name="a11y_stuck_message_xiaomi">Sur les appareils Xiaomi, activez également le démarrage automatique pour <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> et réglez l\'économiseur de batterie sur « Aucune restriction » dans les paramètres système de l\'application. Sans cela, le système continuera d\'arrêter le service.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          ACCESSIBILITY-REQUIRED ALERT
@@ -1104,6 +1132,10 @@
 
     <string name="region_default_full_screen">Plein écran</string>
 
+    <string name="region_default_capture">Zone</string>
+
+    <string name="region_action_remove">Retirer</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          MAIN-SCREEN BIG TRANSLATE BUTTON
          (prefix is joined to the region label by code with a space)
@@ -1190,6 +1222,8 @@
     <string name="dialog_hotkey_setup_instruction">Maintenez la ou les touches enfoncées pendant 2 secondes</string>
 
     <string name="dialog_hotkey_setup_countdown">Maintenez <xliff:g id="remaining_seconds" example="1.4">%1$s</xliff:g></string>
+
+    <string name="dialog_hotkey_setup_typing_key">Cette touche saisit un caractère. Le raccourci se déclenchera aussi pendant la frappe. Ajoutez Ctrl ou utilisez une touche de fonction.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          TRANSLATION-RESULT SCREEN — toolbar + per-row buttons
@@ -1289,6 +1323,14 @@
 
     <string name="update_error_install_launch">Impossible d\'ouvrir le programme d\'installation du système.</string>
 
+    <string name="update_none_title">Aucune mise à jour trouvée</string>
+
+    <string name="update_none_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version" example="2.4.1">%1$s</xliff:g> est la dernière version.</string>
+
+    <string name="update_check_failed_title">Impossible de vérifier les mises à jour</string>
+
+    <string name="update_check_failed_message">Impossible de joindre <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> pour rechercher une nouvelle version. Vérifiez votre connexion et réessayez.</string>
+
     <string name="toast_no_browser_available">Aucun navigateur disponible</string>
 
     <string name="target_pack_migration_title">Définitions en <xliff:g id="target_language" example="Spanish">%1$s</xliff:g> disponibles</string>
@@ -1338,7 +1380,19 @@
 
     <string name="settings_ocr_default_badge">Par défaut</string>
 
-    <string name="settings_ocr_footer">Si PlayTranslate a du mal à lire précisément le texte de l\'écran, essayez différentes sélections. Différents outils OCR peuvent mieux fonctionner selon les types de police ou les orientations de texte.</string>
+    <string name="ocr_label_paddle_accurate">PaddleOCR (Précis)</string>
+
+    <string name="ocr_label_paddle_fast">PaddleOCR (Rapide)</string>
+
+    <string name="settings_ocr_tier_accurate_note">Détecte le petit texte, plus lent</string>
+
+    <string name="settings_ocr_tier_fast_note">Bien plus rapide, peut manquer le petit texte</string>
+
+    <string name="settings_ocr_note_meiki">Idéal pour les jeux, recherche de mots la plus précise</string>
+
+    <string name="settings_ocr_note_mlkit">Réactif, même sur les écrans chargés en texte</string>
+
+    <string name="settings_ocr_footer_guidance">Le moteur marqué « <xliff:g id="default_badge" example="Default">%1$s</xliff:g> » est celui recommandé pour cette langue. Si la lecture est lente, essayez une option plus rapide. Si le texte petit ou stylisé est mal lu, essayez un autre moteur.</string>
 
     <string name="settings_ocr_delete_cd">Supprimer <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
 
@@ -1347,6 +1401,12 @@
     <string name="settings_ocr_delete_msg">Cela supprime le modèle <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> de cet appareil. Vous pourrez le télécharger à nouveau plus tard.</string>
 
     <string name="settings_ocr_delete_shared_msg"><xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> est également utilisé par ces langues. La suppression libère l\'espace maintenant ; il sera téléchargé à nouveau la prochaine fois que vous passerez à l\'une d\'elles :\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_camera_note">L\'outil Appareil photo utilise également ce moteur et reviendra à votre sélection standard.</string>
+
+    <string name="settings_ocr_delete_import_note">L\'outil d\'import de fichiers utilise également ce moteur et reviendra à votre sélection standard.</string>
+
+    <string name="settings_ocr_delete_camera_import_note">Les outils Appareil photo et Import de fichiers utilisent également ce moteur et reviendront à votre sélection standard.</string>
 
     <string name="settings_ocr_delete_confirm">Supprimer</string>
 
@@ -1360,7 +1420,7 @@
 
     <string name="settings_ocr_download_failed">Impossible de télécharger le modèle OCR. Vérifiez votre connexion et réessayez.</string>
     <string name="settings_ocr_use_manga_title">Utiliser MangaOCR</string>
-    <string name="settings_ocr_use_manga_subtitle">AVERTISSEMENT : de haute qualité, mais lent. Déconseillé pour le mode automatique. MangaOCR complète l\'OCR sélectionné et ne peut pas fonctionner seul</string>
+    <string name="settings_ocr_use_manga_subtitle">EXPÉRIMENTAL. À utiliser uniquement pour lire des mangas. C\'est lent et la qualité est mauvaise pour les jeux et les autres contenus.</string>
     <string name="settings_ocr_disable_manga_title">Désactiver MangaOCR ?</string>
     <string name="settings_ocr_disable_manga_msg">Conserver le modèle téléchargé (<xliff:g id="size" example="68 MB">%1$s</xliff:g>) ou le supprimer pour libérer de l\'espace ?</string>
     <string name="settings_ocr_disable_keep">Conserver le modèle</string>
@@ -1380,7 +1440,28 @@
         <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g> dictionnaires importés</item>
     </plurals>
 
-    <string name="yomitan_page_description">Les dictionnaires Yomitan sont des fichiers de dictionnaire créés par la communauté et utilisés par l\'extension de navigateur Yomitan. Les fonctionnalités incluent des dictionnaires supplémentaires, des données de fréquence et l\'accent tonal. Importez un dictionnaire (.zip) à l\'aide du bouton +, et PlayTranslate l\'intégrera de façon transparente dans toute l\'application.</string>
+    <plurals name="settings_yomitan_outdated_summary">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> dictionnaire doit être réimporté</item>
+        <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g> dictionnaires doivent être réimportés</item>
+    </plurals>
+
+    <string name="yomitan_page_description">Les dictionnaires Yomitan sont des fichiers de dictionnaire créés par la communauté et utilisés par l\'extension de navigateur Yomitan. Les fonctionnalités incluent des dictionnaires supplémentaires, des données de fréquence et l\'accent tonal. Importez un dictionnaire (.zip) ou l\'export d\'une collection de dictionnaires Yomitan (.json) à l\'aide du bouton +, et PlayTranslate l\'intégrera de façon transparente dans toute l\'application.</string>
+
+    <string name="yomitan_outdated_label">Doit être réimporté après une mise à jour de l\'application. Appuyez pour réimporter son fichier.</string>
+
+    <string name="yomitan_collection_imported_title">Collection importée</string>
+
+    <string name="yomitan_collection_none_title">Rien de nouveau à importer</string>
+
+    <plurals name="yomitan_collection_imported_count">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> dictionnaire importé</item>
+        <item quantity="other"><xliff:g id="count" example="4">%d</xliff:g> dictionnaires importés</item>
+    </plurals>
+
+    <plurals name="yomitan_collection_skipped_count">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> dictionnaire était déjà à jour</item>
+        <item quantity="other"><xliff:g id="count" example="2">%d</xliff:g> dictionnaires étaient déjà à jour</item>
+    </plurals>
     <string name="yomitan_import_action">Importer un dictionnaire</string>
     <string name="yomitan_category_terms">Termes</string>
     <string name="yomitan_category_kanji">Kanji</string>
@@ -1389,7 +1470,7 @@
     <string name="yomitan_category_pitch_accent">Accent tonal</string>
     <string name="yomitan_category_pronunciation">Prononciation</string>
     <string name="yomitan_importing_title">Importation du dictionnaire</string>
-    <string name="yomitan_importing_message">Validation des fichiers du dictionnaire…</string>
+    <string name="yomitan_importing_message">Importation des fichiers du dictionnaire…</string>
     <string name="yomitan_importing_progress">Importation de <xliff:g id="current" example="2">%1$d</xliff:g> sur <xliff:g id="total" example="5">%2$d</xliff:g>…</string>
     <string name="yomitan_import_summary_title">Importation terminée</string>
     <string name="yomitan_import_summary_title_none">Importation impossible</string>
@@ -1454,7 +1535,100 @@
     <string name="history_clear_confirm_message">Toutes les lignes enregistrées seront supprimées de cet appareil.</string>
     <string name="history_delete_confirm_title">Supprimer cette entrée ?</string>
     <string name="history_copied_toast">Copié</string>
+
+    <string name="history_capture_image_toggle_title">Enregistrer les images de capture</string>
+
+    <string name="history_capture_image_toggle_subtitle">Conserve une photo de chaque capture par appareil photo ou d\'écran</string>
+
+    <string name="history_live_session_title">Session en direct</string>
+
+    <plurals name="history_line_count">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> ligne</item>
+        <item quantity="other"><xliff:g id="count" example="42">%d</xliff:g> lignes</item>
+    </plurals>
+
+    <string name="history_capture_camera_cd">Capture par appareil photo</string>
+
+    <string name="history_capture_screen_cd">Capture d\'écran</string>
+
+    <string name="history_reopen_cd">Ouvrir l\'image de capture</string>
     <string name="settings_cell_dictionary_summary">Rechercher des définitions de mots</string>
+
+    <string name="image_import_no_text">Aucun texte en <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> détecté dans cette image</string>
+
+    <string name="settings_cell_image_import">Importer un fichier</string>
+
+    <string name="settings_cell_image_import_summary">Traduire une image ou un document enregistré</string>
+
+    <string name="image_import_landing_title">Traduire le texte d\'une image ou d\'un document</string>
+
+    <string name="image_import_pick_photos">Choisir une photo</string>
+
+    <string name="image_import_pick_files">Parcourir les fichiers</string>
+
+    <string name="image_import_paste_image">Coller l\'image copiée</string>
+
+    <string name="image_import_decode_failed">Impossible d\'ouvrir ce fichier.</string>
+
+    <string name="image_import_unsupported">Ce type de fichier n\'est pas pris en charge. Choisissez une image, un PDF ou une archive de bande dessinée.</string>
+
+    <string name="image_import_password_protected">Ce PDF est protégé par mot de passe et ne peut pas être ouvert.</string>
+
+    <string name="image_import_empty">Aucune page trouvée dans ce fichier.</string>
+
+    <string name="image_import_mixed_selection">Pour importer plusieurs fichiers à la fois, choisissez uniquement des images. Les PDF et les archives de bande dessinée s\'ouvrent un par un.</string>
+
+    <string name="image_import_close_cd">Fermer le fichier</string>
+
+    <string name="image_import_settings_cd">Paramètres d\'import de fichiers</string>
+
+    <string name="image_import_page_chip"><xliff:g id="page" example="3">%1$d</xliff:g> / <xliff:g id="count" example="14">%2$d</xliff:g></string>
+
+    <string name="image_import_prev_page_cd">Page précédente</string>
+
+    <string name="image_import_next_page_cd">Page suivante</string>
+
+    <string name="image_import_page_grid_cd">Afficher toutes les pages</string>
+
+    <string name="slow_ocr_prompt_message_import">Cet appareil met du temps à lire le texte de ce fichier. Passez au moteur plus rapide pour accélérer le traitement, même si la qualité de lecture peut être légèrement inférieure. Vous pouvez changer le moteur de cet outil à tout moment via l\'engrenage des paramètres sur cet écran.</string>
+
+    <string name="settings_cell_camera">Appareil photo</string>
+
+    <string name="settings_cell_camera_summary">Pointez l\'appareil photo vers du texte pour le traduire</string>
+
+    <string name="settings_cell_camera_unavailable">Aucun appareil photo détecté</string>
+
+    <string name="camera_permission_rationale">PlayTranslate a besoin d\'accéder à l\'appareil photo pour traduire le texte que vous visez. Les images sont traitées sur cet appareil.</string>
+
+    <string name="camera_permission_grant">Autoriser l\'accès à l\'appareil photo</string>
+
+    <string name="camera_permission_denied">L\'accès à l\'appareil photo a été refusé. Autorisez-le dans les paramètres système pour utiliser l\'appareil photo.</string>
+
+    <string name="camera_open_settings">Ouvrir les paramètres</string>
+
+    <string name="camera_unavailable">Aucun appareil photo disponible sur cet appareil</string>
+
+    <string name="camera_back_cd">Retour</string>
+
+    <string name="camera_no_text_hint">Aucun texte lisible – rapprochez-vous ou appuyez pour faire la mise au point</string>
+
+    <string name="camera_pause_cd">Mettre en pause la traduction automatique</string>
+
+    <string name="camera_play_cd">Reprendre la traduction automatique</string>
+
+    <string name="camera_shutter_cd">Prendre un instantané</string>
+
+    <string name="camera_close_cd">Fermer l\'instantané</string>
+
+    <string name="camera_snapshot_no_text">Aucun texte en <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> détecté dans cet instantané</string>
+
+    <string name="camera_region_cd">Sélectionner une zone</string>
+
+    <string name="camera_region_remove">Retirer</string>
+
+    <string name="capture_sliver_expand_hint">Faites glisser vers le haut pour plus d\'options</string>
+
+    <string name="camera_settings_cd">Paramètres de l\'appareil photo</string>
 
     <string name="settings_digest_none">Aucun</string>
     <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> écrans</string>
@@ -1532,6 +1706,10 @@
 
     <string name="hotkey_auto_translation_dialog_title">Traduction auto</string>
 
+    <string name="hotkey_capture_screen_title">Appuyer pour capturer l\'écran</string>
+
+    <string name="hotkey_capture_screen_dialog_title">Capture d\'écran</string>
+
     <string name="hotkey_show_hint_title">Maintenir pour afficher <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
 
     <string name="hotkey_show_hint_dialog_title">Afficher <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
@@ -1579,6 +1757,14 @@
 
     <string name="settings_support_donate_subtitle">Un projet gratuit et open source fait avec passion. Aidez-le à continuer.</string>
 
+    <string name="settings_support_check_updates_title">Rechercher des mises à jour</string>
+
+    <string name="settings_support_check_updates_title_available">Mise à jour disponible</string>
+
+    <string name="settings_support_check_updates_subtitle">Version actuelle : <xliff:g id="version" example="2.4.1">%1$s</xliff:g></string>
+
+    <string name="settings_support_check_updates_checking">Recherche de mises à jour…</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Debug section (developer-only)
          ═══════════════════════════════════════════════════════════════ -->
@@ -1611,8 +1797,6 @@
 
     <string name="settings_debug_export_logs_failed">Échec de l\'exportation des journaux : <xliff:g id="exception_class" example="FileNotFoundException">%1$s</xliff:g></string>
 
-    <string name="settings_footer_version"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> v<xliff:g id="version" example="2.2.0">%2$s</xliff:g></string>
-
     <!-- ═══════════════════════════════════════════════════════════════
          GENERIC TOASTS
          ═══════════════════════════════════════════════════════════════ -->
@@ -1633,6 +1817,8 @@
     <string name="audio_source_picker_title">Audio</string>
     <string name="audio_loading">Chargement…</string>
     <string name="audio_error_loading">Chargement impossible</string>
+
+    <string name="process_text_translation_failed">Impossible de traduire le texte sélectionné. Vérifiez votre connexion ou vos paramètres de langue.</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">Nom</string>

@@ -59,6 +59,8 @@
 
     <string name="status_translating">Çevriliyor…</string>
 
+    <string name="capture_show_on_screen">Ekranda göster</string>
+
     <string name="status_no_text">\"<xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g>\" içinde <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> metni algılanmadı</string>
 
     <string name="status_error">Hata: <xliff:g id="error_message" example="Network timeout">%1$s</xliff:g></string>
@@ -291,6 +293,18 @@
 
     <string name="probe_initializing">Hazırlanıyor…</string>
 
+    <string name="startup_initializing_auto_mode">Otomatik mod hazırlanıyor…</string>
+
+    <string name="slow_ocr_prompt_title">Metin tanıma yavaş</string>
+
+    <string name="slow_ocr_prompt_message">Bu cihazın ekranı okuması uzun sürüyor. Daha hızlı işlem için hızlı motora geçin; okuma kalitesi biraz düşebilir. Dilediğiniz zaman ayarlardan değiştirebilirsiniz:\n\n<xliff:g id="settings" example="Settings">%1$s</xliff:g> → <xliff:g id="section" example="Capture &amp; overlay">%2$s</xliff:g> → <xliff:g id="ocr_header" example="Text recognition (OCR)">%3$s</xliff:g></string>
+
+    <string name="slow_ocr_prompt_message_camera">Bu cihazın kameradaki metni okuması uzun sürüyor. Daha hızlı işlem için hızlı motora geçin; okuma kalitesi biraz düşebilir. Kameranın motorunu bu ekrandaki ayarlar dişlisinden dilediğiniz zaman değiştirebilirsiniz.</string>
+
+    <string name="slow_ocr_prompt_switch">Hızlı motoru kullan</string>
+
+    <string name="slow_ocr_prompt_keep">Mevcut motorda kal</string>
+
     <string name="stream_kind_prompt_title">Hangi paylaşım seçeneğini seçtiniz?</string>
 
     <string name="stream_kind_prompt_message">Canlı çeviri, tek bir uygulama için tüm ekrandan farklı çalışır ve sistem hangisinin paylaşıldığını bildirmez.</string>
@@ -359,7 +373,15 @@
 
     <string name="capture_lifecycle_off_subtitle">Ekran yakalamaya izin ver</string>
 
-    <string name="game_screen_controls_title">Oyun Ekranı Kontrolleri</string>
+    <string name="capture_lifecycle_standby_subtitle">Ekran yakalama beklemede</string>
+
+    <string name="game_screen_controls_title">Ekran kontrollerini göster</string>
+
+    <string name="record_audio_action">Sesi kaydet</string>
+
+    <string name="audio_recording_row_start">Ses kaydını başlat</string>
+
+    <string name="audio_recording_row_active">Ses kaydediliyor</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          MEDIAPROJECTION OVERLAY-PERMISSION DIALOG
@@ -384,6 +406,12 @@
     <string name="overlay_icon_a11y_required_title">Erişilebilirlik gerekli</string>
 
     <string name="overlay_icon_a11y_required_message">Kayan yer paylaşımı simgesi, oyun ekranına çizim yapmak için Erişilebilirlik iznine ihtiyaç duyar.\n\nAyarlar → Erişilebilirlik → İndirilen uygulamalar → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Etkinleştir yolunu izleyin.</string>
+
+    <string name="a11y_stuck_title">Erişilebilirliğin yeniden başlatılması gerekiyor</string>
+
+    <string name="a11y_stuck_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> için Erişilebilirlik açık, ancak Android hizmeti durdurdu ve kendiliğinden yeniden başlatmayacak. Cihazınız, erişilebilirlik ayarlarında uygulamanın düzgün çalışmadığını bildirebilir. Bu genellikle sistem, pil tasarrufu için uygulamayı zorla durdurduktan sonra olur.\n\nDüzeltmek için erişilebilirlik ayarlarından hizmeti kapatıp yeniden açın.</string>
+
+    <string name="a11y_stuck_message_xiaomi">Xiaomi cihazlarda ayrıca <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> için Otomatik başlatma seçeneğini etkinleştirin ve uygulamanın sistem ayarlarında pil tasarrufunu “Kısıtlama yok” olarak ayarlayın. Bunlar yapılmazsa sistem hizmeti durdurmaya devam eder.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          ACCESSIBILITY-REQUIRED ALERT
@@ -1094,6 +1122,10 @@
 
     <string name="region_default_full_screen">Tam ekran</string>
 
+    <string name="region_default_capture">Bölge</string>
+
+    <string name="region_action_remove">Kaldır</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          MAIN-SCREEN BIG TRANSLATE BUTTON
          ═══════════════════════════════════════════════════════════════ -->
@@ -1178,6 +1210,8 @@
     <string name="dialog_hotkey_setup_instruction">Tuş(lar)a 2 saniye basılı tutun</string>
 
     <string name="dialog_hotkey_setup_countdown">Basılı tutun: <xliff:g id="remaining_seconds" example="1.4">%1$s</xliff:g></string>
+
+    <string name="dialog_hotkey_setup_typing_key">Bu tuş karakter yazar. Yazarken de tetiklenir. Ctrl ekleyin veya bir işlev tuşu kullanın.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          TRANSLATION-RESULT SCREEN
@@ -1277,6 +1311,14 @@
 
     <string name="update_error_install_launch">Sistem yükleyicisi açılamadı.</string>
 
+    <string name="update_none_title">Güncelleme bulunamadı</string>
+
+    <string name="update_none_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version" example="2.4.1">%1$s</xliff:g> en son sürümdür.</string>
+
+    <string name="update_check_failed_title">Güncellemeler denetlenemedi</string>
+
+    <string name="update_check_failed_message">Yeni bir sürüm aramak için <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> adresine ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.</string>
+
     <string name="toast_no_browser_available">Kullanılabilir tarayıcı yok</string>
 
     <string name="target_pack_migration_title"><xliff:g id="target_language" example="Spanish">%1$s</xliff:g> tanımları mevcut</string>
@@ -1326,7 +1368,19 @@
 
     <string name="settings_ocr_default_badge">Varsayılan</string>
 
-    <string name="settings_ocr_footer">PlayTranslate ekran metnini doğru okumakta zorlanıyorsa, farklı seçimleri deneyin. Farklı OCR araçları, farklı yazı tipi türleri veya metin yönelimleri için daha iyi çalışabilir.</string>
+    <string name="ocr_label_paddle_accurate">PaddleOCR (Hassas)</string>
+
+    <string name="ocr_label_paddle_fast">PaddleOCR (Hızlı)</string>
+
+    <string name="settings_ocr_tier_accurate_note">Küçük metni bulur, daha yavaş</string>
+
+    <string name="settings_ocr_tier_fast_note">Çok daha hızlı, küçük metni kaçırabilir</string>
+
+    <string name="settings_ocr_note_meiki">Oyunlar için en iyisi, en isabetli sözcük araması</string>
+
+    <string name="settings_ocr_note_mlkit">Metni yoğun ekranlarda bile yavaşlamaz</string>
+
+    <string name="settings_ocr_footer_guidance">“<xliff:g id="default_badge" example="Default">%1$s</xliff:g>” etiketli motor bu dil için önerilen seçimdir. Okuma yavaşsa daha hızlı bir seçeneği deneyin. Küçük veya süslü metin yanlış okunuyorsa farklı bir motor deneyin.</string>
 
     <string name="settings_ocr_delete_cd"><xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> modelini sil</string>
 
@@ -1335,6 +1389,12 @@
     <string name="settings_ocr_delete_msg">Bu, <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> modelini bu cihazdan kaldırır. Daha sonra tekrar indirebilirsiniz.</string>
 
     <string name="settings_ocr_delete_shared_msg"><xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> şu diller tarafından da kullanılıyor. Silmek şimdi yer açar; bunlardan birine geçtiğinizde tekrar indirilir:\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_camera_note">Kamera aracı da bu motoru kullanıyor ve standart seçiminize geri dönecek.</string>
+
+    <string name="settings_ocr_delete_import_note">Dosya içe aktarma aracı da bu motoru kullanıyor ve standart seçiminize geri dönecek.</string>
+
+    <string name="settings_ocr_delete_camera_import_note">Kamera ve dosya içe aktarma araçları da bu motoru kullanıyor ve standart seçiminize geri dönecek.</string>
 
     <string name="settings_ocr_delete_confirm">Sil</string>
 
@@ -1350,7 +1410,7 @@
 
     <string name="settings_ocr_use_manga_title">MangaOCR kullan</string>
 
-    <string name="settings_ocr_use_manga_subtitle">UYARI: Yüksek kalite, ancak yavaş. Otomatik için önerilmez. MangaOCR, seçili OCR aracının tamamlayıcısıdır; tek başına çalışamaz</string>
+    <string name="settings_ocr_use_manga_subtitle">DENEYSEL. Yalnızca manga okumak için kullanın. Yavaştır; oyunlarda ve diğer içeriklerde kalitesi kötüdür.</string>
 
     <string name="settings_ocr_disable_manga_title">MangaOCR kapatılsın mı?</string>
 
@@ -1374,7 +1434,28 @@
         <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> sözlük içe aktarıldı</item>
         <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g> sözlük içe aktarıldı</item>
     </plurals>
-    <string name="yomitan_page_description">Yomitan sözlükleri, Yomitan tarayıcı uzantısı tarafından kullanılan, topluluk tarafından oluşturulmuş sözlük dosyalarıdır. Sundukları arasında ek sözlükler, sıklık verileri ve perde vurgusu bulunur. + düğmesiyle bir sözlük (.zip) içe aktarın; PlayTranslate bunu uygulama genelinde sorunsuzca bütünleştirir.</string>
+
+    <plurals name="settings_yomitan_outdated_summary">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> sözlüğün yeniden içe aktarılması gerekiyor</item>
+        <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g> sözlüğün yeniden içe aktarılması gerekiyor</item>
+    </plurals>
+    <string name="yomitan_page_description">Yomitan sözlükleri, Yomitan tarayıcı uzantısı tarafından kullanılan, topluluk tarafından oluşturulmuş sözlük dosyalarıdır. Sundukları arasında ek sözlükler, sıklık verileri ve perde vurgusu bulunur. + düğmesiyle bir sözlük (.zip) veya bir Yomitan sözlük koleksiyonu dışa aktarımı (.json) içe aktarın; PlayTranslate bunu uygulama genelinde sorunsuzca bütünleştirir.</string>
+
+    <string name="yomitan_outdated_label">Uygulama güncellemesinden sonra yeniden içe aktarılması gerekiyor. Dosyasını yeniden içe aktarmak için dokunun.</string>
+
+    <string name="yomitan_collection_imported_title">Koleksiyon içe aktarıldı</string>
+
+    <string name="yomitan_collection_none_title">İçe aktarılacak yeni bir şey yok</string>
+
+    <plurals name="yomitan_collection_imported_count">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> sözlük içe aktarıldı</item>
+        <item quantity="other"><xliff:g id="count" example="4">%d</xliff:g> sözlük içe aktarıldı</item>
+    </plurals>
+
+    <plurals name="yomitan_collection_skipped_count">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> sözlük zaten günceldi</item>
+        <item quantity="other"><xliff:g id="count" example="2">%d</xliff:g> sözlük zaten günceldi</item>
+    </plurals>
     <string name="yomitan_import_action">Sözlüğü içe aktar</string>
     <string name="yomitan_category_terms">Maddeler</string>
     <string name="yomitan_category_kanji">Kanji</string>
@@ -1383,7 +1464,7 @@
     <string name="yomitan_category_pitch_accent">Perde Vurgusu</string>
     <string name="yomitan_category_pronunciation">Telaffuz</string>
     <string name="yomitan_importing_title">Sözlük içe aktarılıyor</string>
-    <string name="yomitan_importing_message">Sözlük dosyaları doğrulanıyor…</string>
+    <string name="yomitan_importing_message">Sözlük dosyaları içe aktarılıyor…</string>
     <string name="yomitan_importing_progress"><xliff:g id="total" example="5">%2$d</xliff:g> dosyadan <xliff:g id="current" example="2">%1$d</xliff:g>. içe aktarılıyor…</string>
     <string name="yomitan_import_summary_title">İçe aktarma tamamlandı</string>
     <string name="yomitan_import_summary_title_none">İçe aktarılamadı</string>
@@ -1447,7 +1528,100 @@
     <string name="history_clear_confirm_message">Kaydedilen her satır bu cihazdan silinecek.</string>
     <string name="history_delete_confirm_title">Bu kayıt silinsin mi?</string>
     <string name="history_copied_toast">Kopyalandı</string>
+
+    <string name="history_capture_image_toggle_title">Yakalama görüntülerini kaydet</string>
+
+    <string name="history_capture_image_toggle_subtitle">Her kamera veya ekran yakalamasının bir görüntüsünü saklar</string>
+
+    <string name="history_live_session_title">Canlı oturum</string>
+
+    <plurals name="history_line_count">
+        <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> satır</item>
+        <item quantity="other"><xliff:g id="count" example="42">%d</xliff:g> satır</item>
+    </plurals>
+
+    <string name="history_capture_camera_cd">Kamera yakalaması</string>
+
+    <string name="history_capture_screen_cd">Ekran yakalaması</string>
+
+    <string name="history_reopen_cd">Yakalama görüntüsünü aç</string>
     <string name="settings_cell_dictionary_summary">Sözcük tanımlarına bakın</string>
+
+    <string name="image_import_no_text">Bu görselde <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> metni algılanmadı</string>
+
+    <string name="settings_cell_image_import">Dosya içe aktar</string>
+
+    <string name="settings_cell_image_import_summary">Kayıtlı bir görseli veya belgeyi çevirin</string>
+
+    <string name="image_import_landing_title">Bir resimdeki veya belgedeki metni çevirin</string>
+
+    <string name="image_import_pick_photos">Fotoğraf seç</string>
+
+    <string name="image_import_pick_files">Dosyalara göz at</string>
+
+    <string name="image_import_paste_image">Kopyalanan görseli yapıştır</string>
+
+    <string name="image_import_decode_failed">Bu dosya açılamadı.</string>
+
+    <string name="image_import_unsupported">Bu dosya türü desteklenmiyor. Bir görsel, PDF veya çizgi roman arşivi seçin.</string>
+
+    <string name="image_import_password_protected">Bu PDF parola korumalı ve açılamıyor.</string>
+
+    <string name="image_import_empty">Bu dosyada sayfa bulunamadı.</string>
+
+    <string name="image_import_mixed_selection">Birden fazla dosyayı aynı anda içe aktarmak için yalnızca görsel seçin. PDF ve çizgi roman arşivleri teker teker açılır.</string>
+
+    <string name="image_import_close_cd">Dosyayı kapat</string>
+
+    <string name="image_import_settings_cd">Dosya içe aktarma ayarları</string>
+
+    <string name="image_import_page_chip"><xliff:g id="page" example="3">%1$d</xliff:g> / <xliff:g id="count" example="14">%2$d</xliff:g></string>
+
+    <string name="image_import_prev_page_cd">Önceki sayfa</string>
+
+    <string name="image_import_next_page_cd">Sonraki sayfa</string>
+
+    <string name="image_import_page_grid_cd">Tüm sayfaları göster</string>
+
+    <string name="slow_ocr_prompt_message_import">Bu cihazın bu dosyadaki metni okuması uzun sürüyor. Daha hızlı işlem için hızlı motora geçin; okuma kalitesi biraz düşebilir. Bu aracın motorunu bu ekrandaki ayarlar dişlisinden dilediğiniz zaman değiştirebilirsiniz.</string>
+
+    <string name="settings_cell_camera">Kamera</string>
+
+    <string name="settings_cell_camera_summary">Çevirmek için kameranızı metne doğrultun</string>
+
+    <string name="settings_cell_camera_unavailable">Kamera algılanmadı</string>
+
+    <string name="camera_permission_rationale">PlayTranslate, doğrulttuğunuz metni çevirmek için kamera erişimine ihtiyaç duyar. Görüntüler bu cihazda işlenir.</string>
+
+    <string name="camera_permission_grant">Kamera erişimine izin ver</string>
+
+    <string name="camera_permission_denied">Kamera erişimi reddedildi. Kamerayı kullanmak için sistem ayarlarından izin verin.</string>
+
+    <string name="camera_open_settings">Ayarları aç</string>
+
+    <string name="camera_unavailable">Bu cihazda kullanılabilir kamera yok</string>
+
+    <string name="camera_back_cd">Geri</string>
+
+    <string name="camera_no_text_hint">Okunabilir metin yok — yaklaşmayı deneyin veya odaklamak için dokunun</string>
+
+    <string name="camera_pause_cd">Otomatik çeviriyi duraklat</string>
+
+    <string name="camera_play_cd">Otomatik çeviriyi sürdür</string>
+
+    <string name="camera_shutter_cd">Anlık görüntü al</string>
+
+    <string name="camera_close_cd">Anlık görüntüyü kapat</string>
+
+    <string name="camera_snapshot_no_text">Bu anlık görüntüde <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> metni algılanmadı</string>
+
+    <string name="camera_region_cd">Bir bölge seçin</string>
+
+    <string name="camera_region_remove">Kaldır</string>
+
+    <string name="capture_sliver_expand_hint">Daha fazla seçenek için yukarı sürükleyin</string>
+
+    <string name="camera_settings_cd">Kamera ayarları</string>
 
     <string name="settings_digest_none">Yok</string>
     <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> Ekran</string>
@@ -1525,6 +1699,10 @@
 
     <string name="hotkey_auto_translation_dialog_title">Otomatik Çeviri</string>
 
+    <string name="hotkey_capture_screen_title">Ekranı yakalamak için dokunun</string>
+
+    <string name="hotkey_capture_screen_dialog_title">Ekranı Yakala</string>
+
     <string name="hotkey_show_hint_title"><xliff:g id="hint_label" example="Furigana">%1$s</xliff:g> göstermek için basılı tutun</string>
 
     <string name="hotkey_show_hint_dialog_title"><xliff:g id="hint_label" example="Furigana">%1$s</xliff:g> Göster</string>
@@ -1572,6 +1750,14 @@
 
     <string name="settings_support_donate_subtitle">Ücretsiz, açık kaynaklı bir gönül emeği. Devam etmesine yardımcı olun.</string>
 
+    <string name="settings_support_check_updates_title">Güncellemeleri denetle</string>
+
+    <string name="settings_support_check_updates_title_available">Güncelleme mevcut</string>
+
+    <string name="settings_support_check_updates_subtitle">Geçerli sürüm: <xliff:g id="version" example="2.4.1">%1$s</xliff:g></string>
+
+    <string name="settings_support_check_updates_checking">Güncellemeler denetleniyor…</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Debug section
          ═══════════════════════════════════════════════════════════════ -->
@@ -1603,8 +1789,6 @@
 
     <string name="settings_debug_export_logs_failed">Günlükler dışa aktarılamadı: <xliff:g id="exception_class" example="FileNotFoundException">%1$s</xliff:g></string>
 
-    <string name="settings_footer_version"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> v<xliff:g id="version" example="2.2.0">%2$s</xliff:g></string>
-
     <!-- ═══════════════════════════════════════════════════════════════
          GENERIC TOASTS
          ═══════════════════════════════════════════════════════════════ -->
@@ -1628,6 +1812,8 @@
     <string name="audio_source_picker_title">Ses</string>
     <string name="audio_loading">Yükleniyor…</string>
     <string name="audio_error_loading">Yüklenemedi</string>
+
+    <string name="process_text_translation_failed">Seçilen metin çevrilemedi. Bağlantınızı veya dil ayarlarınızı kontrol edin.</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">İsim</string>

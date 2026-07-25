@@ -60,6 +60,8 @@
 
     <string name="status_translating">번역 중…</string>
 
+    <string name="capture_show_on_screen">화면에 표시</string>
+
     <string name="status_no_text">“<xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g>”에서 <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> 텍스트가 감지되지 않았습니다</string>
 
     <string name="status_error">오류: <xliff:g id="error_message" example="Network timeout">%1$s</xliff:g></string>
@@ -299,6 +301,18 @@
     <string name="error_single_app_not_fullscreen">번역이 일시정지되었습니다 — 캡처 대상 앱이 화면을 가득 채우지 않습니다. 앱이 다시 전체 화면이 되면 재개됩니다.</string>
     <string name="error_capture_blocked_secure">아무것도 읽을 수 없습니다 — 보호된 콘텐츠가 화면 캡처를 차단합니다.</string>
     <string name="probe_initializing">초기화 중…</string>
+
+    <string name="startup_initializing_auto_mode">자동 모드 초기화 중…</string>
+
+    <string name="slow_ocr_prompt_title">텍스트 인식이 느립니다</string>
+
+    <string name="slow_ocr_prompt_message">이 기기에서 화면을 읽는 데 시간이 걸리고 있습니다. 더 빠른 엔진으로 바꾸면 처리 속도가 빨라지지만 인식 품질은 조금 낮아질 수 있습니다. 설정에서 언제든지 변경할 수 있습니다:\n\n<xliff:g id="settings" example="Settings">%1$s</xliff:g> → <xliff:g id="section" example="Capture &amp; overlay">%2$s</xliff:g> → <xliff:g id="ocr_header" example="Text recognition (OCR)">%3$s</xliff:g></string>
+
+    <string name="slow_ocr_prompt_message_camera">이 기기에서 카메라로 텍스트를 읽는 데 시간이 걸리고 있습니다. 더 빠른 엔진으로 바꾸면 처리 속도가 빨라지지만 인식 품질은 조금 낮아질 수 있습니다. 카메라 엔진은 이 화면의 설정 톱니바퀴에서 언제든지 변경할 수 있습니다.</string>
+
+    <string name="slow_ocr_prompt_switch">더 빠른 엔진 사용</string>
+
+    <string name="slow_ocr_prompt_keep">현재 엔진 유지</string>
     <string name="stream_kind_prompt_title">어떤 공유 옵션을 선택하셨습니까?</string>
     <string name="stream_kind_prompt_message">실시간 번역은 앱 하나를 공유할 때와 전체 화면을 공유할 때 동작이 다르지만, 시스템은 무엇을 공유했는지 알려주지 않습니다.</string>
     <string name="stream_kind_share_one_app">앱 하나 공유</string>
@@ -364,7 +378,15 @@
 
     <string name="capture_lifecycle_off_subtitle">화면 캡처 허용</string>
 
-    <string name="game_screen_controls_title">게임 화면 컨트롤</string>
+    <string name="capture_lifecycle_standby_subtitle">화면 캡처 대기 중</string>
+
+    <string name="game_screen_controls_title">화면 컨트롤 표시</string>
+
+    <string name="record_audio_action">오디오 녹음</string>
+
+    <string name="audio_recording_row_start">오디오 녹음 시작</string>
+
+    <string name="audio_recording_row_active">오디오 녹음 중</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          MEDIAPROJECTION OVERLAY-PERMISSION DIALOG
@@ -389,6 +411,12 @@
     <string name="overlay_icon_a11y_required_title">접근성 필요</string>
 
     <string name="overlay_icon_a11y_required_message">플로팅 아이콘을 게임 화면 위에 표시하려면 접근성 권한이 필요합니다.\n\n설정 → 접근성 → 다운로드된 앱 → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → 사용 설정으로 이동하세요.</string>
+
+    <string name="a11y_stuck_title">접근성을 다시 시작해야 합니다</string>
+
+    <string name="a11y_stuck_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>의 접근성이 사용 설정되어 있지만, Android가 서비스를 중지했고 스스로 다시 시작하지 않습니다. 기기의 접근성 설정에서 앱이 오작동 중인 것으로 표시될 수 있습니다. 보통 시스템이 배터리를 절약하려고 앱을 강제 중지한 뒤에 발생합니다.\n\n해결하려면 접근성 설정에서 서비스를 껐다가 다시 켜세요.</string>
+
+    <string name="a11y_stuck_message_xiaomi">Xiaomi 기기에서는 앱의 시스템 설정에서 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>의 자동 시작도 사용 설정하고, 배터리 세이버를 제한 없음으로 설정하세요. 그렇게 하지 않으면 시스템이 계속 서비스를 중지합니다.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          ACCESSIBILITY-REQUIRED ALERT
@@ -1064,6 +1092,10 @@
 
     <string name="region_default_full_screen">전체 화면</string>
 
+    <string name="region_default_capture">영역</string>
+
+    <string name="region_action_remove">제거</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          MAIN-SCREEN BIG TRANSLATE BUTTON
          (prefix is joined to the region label by code with a space)
@@ -1151,6 +1183,8 @@
     <string name="dialog_hotkey_setup_instruction">키를 2초 동안 누르고 있으세요</string>
 
     <string name="dialog_hotkey_setup_countdown">계속 누르세요… <xliff:g id="remaining_seconds" example="1.4">%1$s</xliff:g></string>
+
+    <string name="dialog_hotkey_setup_typing_key">이 키는 문자를 입력합니다. 타이핑 중에도 실행됩니다. Ctrl을 추가하거나 기능 키를 사용하세요.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          TRANSLATION-RESULT SCREEN — toolbar + per-row buttons
@@ -1250,6 +1284,14 @@
 
     <string name="update_error_install_launch">패키지 설치 프로그램을 열 수 없습니다.</string>
 
+    <string name="update_none_title">업데이트 없음</string>
+
+    <string name="update_none_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version" example="2.4.1">%1$s</xliff:g>이(가) 최신 버전입니다.</string>
+
+    <string name="update_check_failed_title">업데이트를 확인할 수 없습니다</string>
+
+    <string name="update_check_failed_message">새 버전을 확인하기 위해 <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>에 연결하지 못했습니다. 연결을 확인하고 다시 시도하세요.</string>
+
     <string name="toast_no_browser_available">사용 가능한 브라우저 없음</string>
 
     <string name="target_pack_migration_title"><xliff:g id="target_language" example="Spanish">%1$s</xliff:g> 정의 사용 가능</string>
@@ -1299,7 +1341,19 @@
 
     <string name="settings_ocr_default_badge">기본값</string>
 
-    <string name="settings_ocr_footer">PlayTranslate가 화면 텍스트를 정확하게 읽는 데 어려움을 겪는다면, 다른 선택지를 시도해 보세요. 글꼴 유형이나 텍스트 방향에 따라 다른 OCR 도구가 더 잘 작동할 수 있습니다.</string>
+    <string name="ocr_label_paddle_accurate">PaddleOCR(정밀)</string>
+
+    <string name="ocr_label_paddle_fast">PaddleOCR(고속)</string>
+
+    <string name="settings_ocr_tier_accurate_note">작은 글자도 인식, 속도는 느림</string>
+
+    <string name="settings_ocr_tier_fast_note">훨씬 빠르지만 작은 글자를 놓칠 수 있음</string>
+
+    <string name="settings_ocr_note_meiki">게임에 가장 적합, 단어 검색이 가장 정확</string>
+
+    <string name="settings_ocr_note_mlkit">글자가 많은 화면에서도 빠름</string>
+
+    <string name="settings_ocr_footer_guidance">“<xliff:g id="default_badge" example="Default">%1$s</xliff:g>”(으)로 표시된 엔진이 이 언어에 권장되는 엔진입니다. 읽기가 느리면 더 빠른 옵션을 사용해 보세요. 작은 글자나 장식적인 글자가 잘못 인식되면 다른 엔진을 사용해 보세요.</string>
 
     <string name="settings_ocr_delete_cd"><xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> 삭제</string>
 
@@ -1308,6 +1362,12 @@
     <string name="settings_ocr_delete_msg">이 기기에서 <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> 모델을 제거합니다. 나중에 다시 다운로드할 수 있습니다.</string>
 
     <string name="settings_ocr_delete_shared_msg"><xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g>은(는) 다음 언어에서도 사용됩니다. 삭제하면 지금 공간이 확보되지만, 그중 하나로 전환하면 다시 다운로드됩니다:\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_camera_note">카메라 도구도 이 엔진을 사용하며, 표준 선택으로 다시 전환됩니다.</string>
+
+    <string name="settings_ocr_delete_import_note">파일 가져오기 도구도 이 엔진을 사용하며, 표준 선택으로 다시 전환됩니다.</string>
+
+    <string name="settings_ocr_delete_camera_import_note">카메라와 파일 가져오기 도구도 이 엔진을 사용하며, 표준 선택으로 다시 전환됩니다.</string>
 
     <string name="settings_ocr_delete_confirm">삭제</string>
 
@@ -1322,7 +1382,7 @@
     <string name="settings_ocr_download_failed">OCR 모델을 다운로드할 수 없습니다. 연결을 확인하고 다시 시도하세요.</string>
 
     <string name="settings_ocr_use_manga_title">MangaOCR 사용</string>
-    <string name="settings_ocr_use_manga_subtitle">경고: 품질은 높지만 속도가 느립니다. 자동 번역에는 권장하지 않습니다. MangaOCR 기능은 선택한 OCR 도구를 보완하며, 단독으로는 작동하지 않습니다</string>
+    <string name="settings_ocr_use_manga_subtitle">실험적 기능입니다. 만화를 읽을 때만 사용하세요. 느리고 게임 등 다른 콘텐츠에서는 품질이 좋지 않습니다.</string>
     <string name="settings_ocr_disable_manga_title">MangaOCR 사용을 중지하시겠습니까?</string>
     <string name="settings_ocr_disable_manga_msg">다운로드한 <xliff:g id="size" example="68 MB">%1$s</xliff:g> 모델을 보관하시겠습니까, 아니면 삭제하여 공간을 확보하시겠습니까?</string>
     <string name="settings_ocr_disable_keep">모델 보관</string>
@@ -1343,7 +1403,25 @@
         <item quantity="other">사전 <xliff:g id="count" example="3">%d</xliff:g>개 가져옴</item>
     </plurals>
 
-    <string name="yomitan_page_description">Yomitan 사전은 Yomitan 브라우저 확장 프로그램에서 사용하는, 커뮤니티에서 만든 사전 파일입니다. 추가 사전, 빈도 데이터, 고저 악센트 등의 기능을 제공합니다. + 버튼으로 사전(.zip)을 가져오면 PlayTranslate가 앱 전체에 자연스럽게 통합합니다.</string>
+    <plurals name="settings_yomitan_outdated_summary">
+        <item quantity="other">사전 <xliff:g id="count" example="3">%d</xliff:g>개를 다시 가져와야 합니다</item>
+    </plurals>
+
+    <string name="yomitan_page_description">Yomitan 사전은 Yomitan 브라우저 확장 프로그램에서 사용하는, 커뮤니티에서 만든 사전 파일입니다. 추가 사전, 빈도 데이터, 고저 악센트 등의 기능을 제공합니다. + 버튼으로 사전(.zip) 또는 Yomitan 사전 컬렉션 내보내기 파일(.json)을 가져오면 PlayTranslate가 앱 전체에 자연스럽게 통합합니다.</string>
+
+    <string name="yomitan_outdated_label">앱 업데이트 후 다시 가져와야 합니다. 탭하여 파일을 다시 가져오세요.</string>
+
+    <string name="yomitan_collection_imported_title">컬렉션을 가져왔습니다</string>
+
+    <string name="yomitan_collection_none_title">새로 가져올 항목 없음</string>
+
+    <plurals name="yomitan_collection_imported_count">
+        <item quantity="other">사전 <xliff:g id="count" example="4">%d</xliff:g>개를 가져왔습니다</item>
+    </plurals>
+
+    <plurals name="yomitan_collection_skipped_count">
+        <item quantity="other">사전 <xliff:g id="count" example="2">%d</xliff:g>개는 이미 최신 상태였습니다</item>
+    </plurals>
 
     <string name="yomitan_import_action">사전 가져오기</string>
 
@@ -1361,7 +1439,7 @@
 
     <string name="yomitan_importing_title">사전 가져오는 중</string>
 
-    <string name="yomitan_importing_message">사전 파일 확인 중…</string>
+    <string name="yomitan_importing_message">사전 파일 가져오는 중…</string>
 
     <string name="yomitan_importing_progress"><xliff:g id="total" example="5">%2$d</xliff:g>개 중 <xliff:g id="current" example="2">%1$d</xliff:g>개 가져오는 중…</string>
 
@@ -1466,7 +1544,99 @@
     <string name="history_delete_confirm_title">이 항목을 삭제하시겠습니까?</string>
     <string name="history_copied_toast">복사됨</string>
 
+    <string name="history_capture_image_toggle_title">캡처 이미지 저장</string>
+
+    <string name="history_capture_image_toggle_subtitle">카메라 또는 화면 캡처마다 사진을 보관합니다</string>
+
+    <string name="history_live_session_title">실시간 세션</string>
+
+    <plurals name="history_line_count">
+        <item quantity="other"><xliff:g id="count" example="42">%d</xliff:g>줄</item>
+    </plurals>
+
+    <string name="history_capture_camera_cd">카메라 캡처</string>
+
+    <string name="history_capture_screen_cd">화면 캡처</string>
+
+    <string name="history_reopen_cd">캡처 이미지 열기</string>
+
     <string name="settings_cell_dictionary_summary">단어 정의 검색</string>
+
+    <string name="image_import_no_text">이 이미지에서 <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> 텍스트가 감지되지 않았습니다</string>
+
+    <string name="settings_cell_image_import">파일 가져오기</string>
+
+    <string name="settings_cell_image_import_summary">저장된 이미지나 문서를 번역</string>
+
+    <string name="image_import_landing_title">사진이나 문서 속 텍스트 번역</string>
+
+    <string name="image_import_pick_photos">사진 선택</string>
+
+    <string name="image_import_pick_files">파일 찾아보기</string>
+
+    <string name="image_import_paste_image">복사한 이미지 붙여넣기</string>
+
+    <string name="image_import_decode_failed">해당 파일을 열 수 없습니다.</string>
+
+    <string name="image_import_unsupported">지원되지 않는 파일 형식입니다. 이미지, PDF 또는 만화 아카이브를 선택하세요.</string>
+
+    <string name="image_import_password_protected">이 PDF는 비밀번호로 보호되어 있어 열 수 없습니다.</string>
+
+    <string name="image_import_empty">이 파일에서 페이지를 찾을 수 없습니다.</string>
+
+    <string name="image_import_mixed_selection">여러 파일을 한 번에 가져오려면 이미지만 선택하세요. PDF와 만화 아카이브는 하나씩 열립니다.</string>
+
+    <string name="image_import_close_cd">파일 닫기</string>
+
+    <string name="image_import_settings_cd">파일 가져오기 설정</string>
+
+    <string name="image_import_page_chip"><xliff:g id="page" example="3">%1$d</xliff:g> / <xliff:g id="count" example="14">%2$d</xliff:g></string>
+
+    <string name="image_import_prev_page_cd">이전 페이지</string>
+
+    <string name="image_import_next_page_cd">다음 페이지</string>
+
+    <string name="image_import_page_grid_cd">모든 페이지 표시</string>
+
+    <string name="slow_ocr_prompt_message_import">이 기기에서 이 파일의 텍스트를 읽는 데 시간이 걸리고 있습니다. 더 빠른 엔진으로 바꾸면 처리 속도가 빨라지지만 인식 품질은 조금 낮아질 수 있습니다. 이 도구의 엔진은 이 화면의 설정 톱니바퀴에서 언제든지 변경할 수 있습니다.</string>
+
+    <string name="settings_cell_camera">카메라</string>
+
+    <string name="settings_cell_camera_summary">카메라를 텍스트에 비추면 번역됩니다</string>
+
+    <string name="settings_cell_camera_unavailable">카메라가 감지되지 않음</string>
+
+    <string name="camera_permission_rationale">PlayTranslate가 카메라로 비춘 텍스트를 번역하려면 카메라 접근 권한이 필요합니다. 이미지는 이 기기에서 처리됩니다.</string>
+
+    <string name="camera_permission_grant">카메라 접근 허용</string>
+
+    <string name="camera_permission_denied">카메라 접근이 거부되었습니다. 카메라를 사용하려면 시스템 설정에서 허용하세요.</string>
+
+    <string name="camera_open_settings">설정 열기</string>
+
+    <string name="camera_unavailable">이 기기에는 사용할 수 있는 카메라가 없습니다</string>
+
+    <string name="camera_back_cd">뒤로</string>
+
+    <string name="camera_no_text_hint">읽을 수 있는 텍스트가 없습니다. 더 가까이 가거나 탭하여 초점을 맞춰 보세요</string>
+
+    <string name="camera_pause_cd">자동 번역 일시정지</string>
+
+    <string name="camera_play_cd">자동 번역 재개</string>
+
+    <string name="camera_shutter_cd">스냅샷 촬영</string>
+
+    <string name="camera_close_cd">스냅샷 닫기</string>
+
+    <string name="camera_snapshot_no_text">이 스냅샷에서 <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> 텍스트가 감지되지 않았습니다</string>
+
+    <string name="camera_region_cd">영역 선택</string>
+
+    <string name="camera_region_remove">제거</string>
+
+    <string name="capture_sliver_expand_hint">위로 드래그하면 옵션이 더 표시됩니다</string>
+
+    <string name="camera_settings_cd">카메라 설정</string>
 
     <string name="settings_digest_none">없음</string>
     <string name="settings_capture_displays_count">디스플레이 <xliff:g id="count" example="2">%1$d</xliff:g>개</string>
@@ -1544,6 +1714,10 @@
 
     <string name="hotkey_auto_translation_dialog_title">자동 번역</string>
 
+    <string name="hotkey_capture_screen_title">탭하여 화면 캡처</string>
+
+    <string name="hotkey_capture_screen_dialog_title">화면 캡처</string>
+
     <string name="hotkey_show_hint_title">길게 눌러 <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g> 표시</string>
 
     <string name="hotkey_show_hint_dialog_title"><xliff:g id="hint_label" example="Furigana">%1$s</xliff:g> 표시</string>
@@ -1591,6 +1765,14 @@
 
     <string name="settings_support_donate_subtitle">사랑으로 만든 무료 오픈소스 프로젝트입니다. 계속될 수 있도록 도와주세요.</string>
 
+    <string name="settings_support_check_updates_title">업데이트 확인</string>
+
+    <string name="settings_support_check_updates_title_available">업데이트 사용 가능</string>
+
+    <string name="settings_support_check_updates_subtitle">현재 버전: <xliff:g id="version" example="2.4.1">%1$s</xliff:g></string>
+
+    <string name="settings_support_check_updates_checking">업데이트 확인 중…</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Debug section (developer-only)
          ═══════════════════════════════════════════════════════════════ -->
@@ -1628,8 +1810,6 @@
 
     <string name="settings_debug_export_logs_failed">로그 내보내기 실패: <xliff:g id="exception_class" example="FileNotFoundException">%1$s</xliff:g></string>
 
-    <string name="settings_footer_version"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> v<xliff:g id="version" example="2.2.0">%2$s</xliff:g></string>
-
     <!-- ═══════════════════════════════════════════════════════════════
          GENERIC TOASTS
          ═══════════════════════════════════════════════════════════════ -->
@@ -1657,6 +1837,8 @@
     <string name="audio_loading">불러오는 중…</string>
 
     <string name="audio_error_loading">불러올 수 없음</string>
+
+    <string name="process_text_translation_failed">선택한 텍스트를 번역할 수 없습니다. 연결 상태나 언어 설정을 확인하세요.</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">명사</string>

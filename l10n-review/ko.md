@@ -415,3 +415,50 @@ came back clean on a fully independent pass: **every placeholder site is batchim
 and the phantom-tag collision are both structurally impossible now.
 
 **Verdict: SHIP** (the two ⚠️s are a cheap pre-ship polish, not a blocker).
+
+## Delta review — 2026-07-25 sync (95 keys)
+
+Scope: the 89 keys `scripts/l10n_diff.py` reported MISSING and the 6 it reported
+MODIFIED against the `l10n-sync` baseline (`54809b6c`) — the camera tool, the file-import
+tool, the slow-OCR rescue prompt, the PaddleOCR accurate/fast tier split, the manual
+update check, the History capture + live-session cards, the accessibility-stuck alert,
+the audio-recording row, and the capture standby state. Two orphans
+(`settings_footer_version`, `settings_ocr_footer`) were deleted.
+
+Two of the six MODIFIED keys — `capture_lifecycle_on_subtitle` and
+`capture_lifecycle_off_subtitle` — were already carrying the current English meaning in
+every locale; they flag only because the baseline tag has not advanced since 2026-07-14.
+No change was needed. The other four (`game_screen_controls_title`,
+`settings_ocr_use_manga_subtitle`, `yomitan_page_description`, `yomitan_importing_message`)
+were genuinely stale and were re-translated.
+
+Mechanical layer verified programmatically over the delta: every translatable EN key
+present and no extras; placeholder multisets identical to EN; all `<xliff:g>` spans
+byte-identical to EN; `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped
+quotes; `<plurals>` categories exactly other. `./gradlew :app:processDebugResources`
+is green. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | was | now | why |
+|---|---|---|---|---|
+| — | — | — | — | No findings. The delta re-derives as correct on every axis below. |
+
+### Clean areas (delta) — checked, no findings
+
+합니다체 in bodies, noun / ~하기 / ~하세요 in buttons and row titles. Combined particles after every variable placeholder: `update_none_message` uses `%1$s`이(가), `settings_ocr_footer_guidance` uses “`%1$s`”(으)로 — never a bare particle after a value the runtime supplies. Bare 는/가/를 appears only after the fixed name PlayTranslate (`a11y_stuck_message`, `camera_permission_rationale`). 접근성 / 캡처 / 오버레이 / 덱 reused from the committed file. 엔진 (engine) stays distinct from 도구 (tool) and 모델 (model), which meet in `settings_ocr_delete_camera_import_note`. 스냅샷 for the camera freeze-frame is kept apart from 스크린샷 (`anki_group_screenshot`). `settings_support_check_updates_title_available` byte-matches `update_dialog_title` (업데이트 사용 가능) so the row and the dialog name the same event. 정밀 / 고속 as the PaddleOCR tier words are parallel and neither collides with 빠름 in `settings_ocr_note_mlkit`. Plurals `other` only. 띄어쓰기 observed throughout.
+
+**Render constraints read, not guessed.** `capture_show_on_screen` renders through
+`Text.PT.GroupHeader` (`textAllCaps`, `letterSpacing` 0.12) at 9sp in
+`section_target.xml`, but the view is `wrap_content` in a row whose sibling label carries
+`layout_weight="1"` — the label squeezes, this button never clips, so no accuracy was
+traded for brevity. `capture_sliver_expand_hint` is `isSingleLine` but sits `WRAP` and
+centred in a screen-wide sheet strip. `camera_region_remove` measures itself
+`UNSPECIFIED` before placement (`CameraRegionUi`), so the pill grows to its text.
+`image_import_no_text` / `camera_snapshot_no_text` locate the tappable language span by
+the invisible FSI/PDI sentinels `markNoTextLanguage` injects, not by substring search, so
+word order and a tight prefix are both safe.
+
+### Verdict
+
+**PASS.** No findings; nothing to apply.

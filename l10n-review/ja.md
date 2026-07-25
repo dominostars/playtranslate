@@ -170,3 +170,52 @@ The trim-editor action row is a rigid `LinearLayout` budgeted for EN's **18.0 em
 - **Round-1 fixes:** 20/20 re-derived; **19 confirmed correct**, 1 (`misc_familiar`) fixed the distinctness problem but introduced a form regression against round 1's own stated rule. The three ❌ corrections (オノマトペ, 改まった語/くだけた語, キャプチャ対象のアプリ) are all **verified right against the code**, and two are *better* than the English.
 - **The 38 `misc_*` chips:** distinct, separator-clean, collision-free, all four clusters separable. Native-grade.
 - **Overall: FIX FIRST** — one ❌ (`game_audio_trim_use_tts` clips the Save button off the trim editor on a portrait phone), two ⚠️, two 💬. No 🛑. Everything else in the delta is ship-ready.
+
+## Delta review — 2026-07-25 sync (95 keys)
+
+Scope: the 89 keys `scripts/l10n_diff.py` reported MISSING and the 6 it reported
+MODIFIED against the `l10n-sync` baseline (`54809b6c`) — the camera tool, the file-import
+tool, the slow-OCR rescue prompt, the PaddleOCR accurate/fast tier split, the manual
+update check, the History capture + live-session cards, the accessibility-stuck alert,
+the audio-recording row, and the capture standby state. Two orphans
+(`settings_footer_version`, `settings_ocr_footer`) were deleted.
+
+Two of the six MODIFIED keys — `capture_lifecycle_on_subtitle` and
+`capture_lifecycle_off_subtitle` — were already carrying the current English meaning in
+every locale; they flag only because the baseline tag has not advanced since 2026-07-14.
+No change was needed. The other four (`game_screen_controls_title`,
+`settings_ocr_use_manga_subtitle`, `yomitan_page_description`, `yomitan_importing_message`)
+were genuinely stale and were re-translated.
+
+Mechanical layer verified programmatically over the delta: every translatable EN key
+present and no extras; placeholder multisets identical to EN; all `<xliff:g>` spans
+byte-identical to EN; `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped
+quotes; `<plurals>` categories exactly other. `./gradlew :app:processDebugResources`
+is green. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | was | now | why |
+|---|---|---|---|---|
+| `settings_ocr_note_mlkit` | ⚠️ | "文字が多い画面でも高速" | "文字が多い画面でも軽快" | The English comment forbids reusing the literal Fast tier label; the first pass reused 高速, the same word as `ocr_label_paddle_fast`, so the two rows read as the same tier sitting side by side in one list. |
+| `history_capture_camera_cd` · `history_capture_screen_cd` | ⚠️ | "カメラのキャプチャ" / "画面のキャプチャ" | "カメラキャプチャ" / "画面キャプチャ" | The file's established compound is 画面キャプチャ (`capture_lifecycle_on_subtitle`, `settings_hide_overlays_during_auto_mode` neighbourhood); the の form introduced a second spelling of the same term. The pair now reads parallel as origin badges. |
+| `camera_no_text_hint` | ⚠️ | "…近づけるか、タップして…" | "…カメラを近づけるか、タップして…" | 近づける is transitive; with no object the hint reads as "bring [something] closer" and leaves the reader to guess what moves. Naming カメラ resolves it. |
+
+### Clean areas (delta) — checked, no findings
+
+Full-width punctuation throughout the new strings — （）for the PaddleOCR tier labels (the EN comment's own 高精度 / 高速 examples), ：in `settings_support_check_updates_subtitle` and the slow-OCR settings path, 、。in every body. No あなた anywhere in the delta. 端末 for "device", matching `settings_ocr_delete_msg`. ユーザー補助 for accessibility across all three `a11y_stuck_*` strings. ライブモード / 自動モード / 自動翻訳 reused verbatim from `error_live_mode_unsupported_backend`, `settings_hide_overlays_during_auto_mode` and `settings_header_auto_translate` rather than reinvented. エンジン for the OCR engine stays distinct from ツール (tool) and モデル (the downloadable model) — all three collide in `settings_ocr_delete_camera_import_note` and stay separable. 静止画 for the camera freeze-frame, deliberately not スクリーンショット (which `anki_group_screenshot` already owns). Plurals carry `other` only. Ctrl left untranslated in `dialog_hotkey_setup_typing_key` per its EN comment.
+
+**Render constraints read, not guessed.** `capture_show_on_screen` renders through
+`Text.PT.GroupHeader` (`textAllCaps`, `letterSpacing` 0.12) at 9sp in
+`section_target.xml`, but the view is `wrap_content` in a row whose sibling label carries
+`layout_weight="1"` — the label squeezes, this button never clips, so no accuracy was
+traded for brevity. `capture_sliver_expand_hint` is `isSingleLine` but sits `WRAP` and
+centred in a screen-wide sheet strip. `camera_region_remove` measures itself
+`UNSPECIFIED` before placement (`CameraRegionUi`), so the pill grows to its text.
+`image_import_no_text` / `camera_snapshot_no_text` locate the tappable language span by
+the invisible FSI/PDI sentinels `markNoTextLanguage` injects, not by substring search, so
+word order and a tight prefix are both safe.
+
+### Verdict
+
+**PASS.** Three ⚠️ found and fixed, no ❌. The remaining delta re-derives as correct.

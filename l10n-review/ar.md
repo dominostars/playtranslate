@@ -253,3 +253,50 @@ The committed **`lang_section_offline_models_subtitle`** (line 260) carries the 
 - `misc_*` (38 labels): **pass** — all byte-distinct (so `.distinct()` collapses nothing), all four clusters separable after the edits.
 - Terminology: **fix one** — the source/target language iḍāfa-vs-apposition split (4 keys, 2 edits).
 - Overall: **fix-then-ship** — 1 ❌, 2 ⚠️, 1 💬; no build-breakers.
+
+## Delta review — 2026-07-25 sync (95 keys)
+
+Scope: the 89 keys `scripts/l10n_diff.py` reported MISSING and the 6 it reported
+MODIFIED against the `l10n-sync` baseline (`54809b6c`) — the camera tool, the file-import
+tool, the slow-OCR rescue prompt, the PaddleOCR accurate/fast tier split, the manual
+update check, the History capture + live-session cards, the accessibility-stuck alert,
+the audio-recording row, and the capture standby state. Two orphans
+(`settings_footer_version`, `settings_ocr_footer`) were deleted.
+
+Two of the six MODIFIED keys — `capture_lifecycle_on_subtitle` and
+`capture_lifecycle_off_subtitle` — were already carrying the current English meaning in
+every locale; they flag only because the baseline tag has not advanced since 2026-07-14.
+No change was needed. The other four (`game_screen_controls_title`,
+`settings_ocr_use_manga_subtitle`, `yomitan_page_description`, `yomitan_importing_message`)
+were genuinely stale and were re-translated.
+
+Mechanical layer verified programmatically over the delta: every translatable EN key
+present and no extras; placeholder multisets identical to EN; all `<xliff:g>` spans
+byte-identical to EN; `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped
+quotes; `<plurals>` categories exactly zero/one/two/few/many/other. `./gradlew :app:processDebugResources`
+is green. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | was | now | why |
+|---|---|---|---|---|
+| `settings_ocr_note_mlkit` | ⚠️ | "سريع حتى في الشاشات المزدحمة بالنص" | "لا يتباطأ حتى مع كثرة النص على الشاشة" | The English comment forbids reusing the literal Fast tier label; the first pass reused «سريع», the same word as `ocr_label_paddle_fast`, so the two rows read as the same tier sitting side by side in one list. |
+
+### Clean areas (delta) — checked, no findings
+
+All four new `<plurals>` carry the full six categories, with `one` and `two` digit-less as the file requires — سطر واحد / سطران, قاموس واحد / قاموسان — and few/many agreeing (أسطر / سطرًا; قواميس / قاموسًا). The dual is used where Arabic wants it: أداتا الكاميرا واستيراد الملفات in `settings_ocr_delete_camera_import_note`, قاموسان كانا محدّثين in `yomitan_collection_skipped_count`. ← (not →) separates the settings path in `slow_ocr_prompt_message`, matching `overlay_icon_a11y_required_message`. `update_none_message` reorders its two `<xliff:g>` spans so the sentence opens on الإصدار rather than a Latin token. `camera_no_text_hint` uses a comma where English uses an em dash. محرك (engine) stays distinct from أداة (tool) and نموذج (model) — all three meet in one sentence. مجموعة القواميس for the Yomitan collection is spelled out so it cannot be read as مجموعة, which the file already uses for a deck. `settings_support_check_updates_title_available` byte-matches `update_dialog_title` (تحديث متاح). Mixed Arabic + Latin brand + digits appear in `ocr_label_paddle_*`, `image_import_page_chip` and `update_none_message`; all are bidi-isolated by surrounding Arabic or by the numeric run itself. Formal MSA throughout. **RTL render on device still wants a human eye** — the mechanical layer cannot see mirroring.
+
+**Render constraints read, not guessed.** `capture_show_on_screen` renders through
+`Text.PT.GroupHeader` (`textAllCaps`, `letterSpacing` 0.12) at 9sp in
+`section_target.xml`, but the view is `wrap_content` in a row whose sibling label carries
+`layout_weight="1"` — the label squeezes, this button never clips, so no accuracy was
+traded for brevity. `capture_sliver_expand_hint` is `isSingleLine` but sits `WRAP` and
+centred in a screen-wide sheet strip. `camera_region_remove` measures itself
+`UNSPECIFIED` before placement (`CameraRegionUi`), so the pill grows to its text.
+`image_import_no_text` / `camera_snapshot_no_text` locate the tappable language span by
+the invisible FSI/PDI sentinels `markNoTextLanguage` injects, not by substring search, so
+word order and a tight prefix are both safe.
+
+### Verdict
+
+**PASS.** One ⚠️ found and fixed, no ❌. RTL layout remains the one thing this pass cannot certify from source.

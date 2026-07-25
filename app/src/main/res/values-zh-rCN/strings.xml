@@ -59,6 +59,8 @@
 
     <string name="status_translating">正在翻译…</string>
 
+    <string name="capture_show_on_screen">显示在屏幕上</string>
+
     <string name="status_no_text">未在“<xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g>”中检测到<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>文字</string>
 
     <string name="status_error">错误：<xliff:g id="error_message" example="Network timeout">%1$s</xliff:g></string>
@@ -297,6 +299,18 @@
     <string name="error_capture_blocked_secure">什么都无法读取——受保护的内容会阻止屏幕截取。</string>
     <string name="probe_initializing">正在初始化…</string>
 
+    <string name="startup_initializing_auto_mode">正在初始化自动模式…</string>
+
+    <string name="slow_ocr_prompt_title">文字识别较慢</string>
+
+    <string name="slow_ocr_prompt_message">此设备读取屏幕的速度较慢。切换到更快的引擎可加快处理速度，但识别质量可能略有下降。你随时可以在设置中切换：\n\n<xliff:g id="settings" example="Settings">%1$s</xliff:g> → <xliff:g id="section" example="Capture &amp; overlay">%2$s</xliff:g> → <xliff:g id="ocr_header" example="Text recognition (OCR)">%3$s</xliff:g></string>
+
+    <string name="slow_ocr_prompt_message_camera">此设备从相机读取文字的速度较慢。切换到更快的引擎可加快处理速度，但识别质量可能略有下降。你随时可以用此界面上的设置齿轮切换相机的引擎。</string>
+
+    <string name="slow_ocr_prompt_switch">使用更快的引擎</string>
+
+    <string name="slow_ocr_prompt_keep">保留当前引擎</string>
+
     <string name="stream_kind_prompt_title">你选择了哪个共享选项？</string>
     <string name="stream_kind_prompt_message">共享一个应用与共享整个屏幕时，实时翻译的工作方式并不相同，而系统不会告知共享的是哪一种。</string>
     <string name="stream_kind_share_one_app">共享一个应用</string>
@@ -362,7 +376,15 @@
 
     <string name="capture_lifecycle_off_subtitle">允许屏幕截取</string>
 
-    <string name="game_screen_controls_title">游戏画面控件</string>
+    <string name="capture_lifecycle_standby_subtitle">屏幕截取处于待机状态</string>
+
+    <string name="game_screen_controls_title">显示屏幕上的控件</string>
+
+    <string name="record_audio_action">录制音频</string>
+
+    <string name="audio_recording_row_start">开始录制音频</string>
+
+    <string name="audio_recording_row_active">正在录制音频</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          MEDIAPROJECTION OVERLAY-PERMISSION DIALOG
@@ -387,6 +409,12 @@
     <string name="overlay_icon_a11y_required_title">需要无障碍权限</string>
 
     <string name="overlay_icon_a11y_required_message">悬浮图标需要无障碍权限才能在游戏画面上绘制。\n\n依次前往：设置 → 无障碍 → 已下载的应用 → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → 启用。</string>
+
+    <string name="a11y_stuck_title">无障碍服务需要重启</string>
+
+    <string name="a11y_stuck_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的无障碍权限已启用，但 Android 已停止该服务且不会自行重启。你的设备可能会在无障碍设置中提示该应用运行异常。这通常发生在系统为省电而强行停止应用之后。\n\n要解决此问题，请在无障碍设置中将该服务关闭后重新开启。</string>
+
+    <string name="a11y_stuck_message_xiaomi">在小米设备上，还需在应用的系统设置中为 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 开启“自启动”，并将省电策略设为“无限制”。否则系统会不断停止该服务。</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          ACCESSIBILITY-REQUIRED ALERT
@@ -1100,6 +1128,10 @@
 
     <string name="region_default_full_screen">全屏</string>
 
+    <string name="region_default_capture">区域</string>
+
+    <string name="region_action_remove">移除</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          MAIN-SCREEN BIG TRANSLATE BUTTON
          (prefix is joined to the region label by code with a space)
@@ -1187,6 +1219,8 @@
     <string name="dialog_hotkey_setup_instruction">按住按键 2 秒</string>
 
     <string name="dialog_hotkey_setup_countdown">按住 <xliff:g id="remaining_seconds" example="1.4">%1$s</xliff:g></string>
+
+    <string name="dialog_hotkey_setup_typing_key">此按键会输入字符，打字时也会触发。请加上 Ctrl 或改用功能键。</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          TRANSLATION-RESULT SCREEN — toolbar + per-row buttons
@@ -1286,6 +1320,14 @@
 
     <string name="update_error_install_launch">无法打开系统安装程序。</string>
 
+    <string name="update_none_title">未发现更新</string>
+
+    <string name="update_none_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version" example="2.4.1">%1$s</xliff:g> 已是最新版本。</string>
+
+    <string name="update_check_failed_title">无法检查更新</string>
+
+    <string name="update_check_failed_message">无法连接 <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> 查找新版本。请检查你的网络连接后重试。</string>
+
     <string name="toast_no_browser_available">没有可用的浏览器</string>
 
     <string name="target_pack_migration_title"><xliff:g id="target_language" example="Spanish">%1$s</xliff:g>释义现已可用</string>
@@ -1335,7 +1377,19 @@
 
     <string name="settings_ocr_default_badge">默认</string>
 
-    <string name="settings_ocr_footer">如果 PlayTranslate 难以准确读取屏幕文字，请尝试不同的选项。不同的 OCR 工具可能更适合不同的字体类型或文字方向。</string>
+    <string name="ocr_label_paddle_accurate">PaddleOCR（精准）</string>
+
+    <string name="ocr_label_paddle_fast">PaddleOCR（快速）</string>
+
+    <string name="settings_ocr_tier_accurate_note">能识别小字，速度较慢</string>
+
+    <string name="settings_ocr_tier_fast_note">快得多，可能漏掉小字</string>
+
+    <string name="settings_ocr_note_meiki">最适合游戏，单词查询最精准</string>
+
+    <string name="settings_ocr_note_mlkit">即使画面文字很多也迅速</string>
+
+    <string name="settings_ocr_footer_guidance">标有“<xliff:g id="default_badge" example="Default">%1$s</xliff:g>”的引擎是此语言的推荐选项。如果读取速度慢，可以试试更快的选项。如果小字或艺术字被误认，可以换一个引擎。</string>
 
     <string name="settings_ocr_delete_cd">删除 <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
 
@@ -1344,6 +1398,12 @@
     <string name="settings_ocr_delete_msg">这将从此设备移除 <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> 模型。你之后可以重新下载。</string>
 
     <string name="settings_ocr_delete_shared_msg"><xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> 也被以下语言使用。现在删除可释放空间；下次切换到其中之一时会重新下载：\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_camera_note">相机工具也在使用此引擎，它将切换回你的标准选择。</string>
+
+    <string name="settings_ocr_delete_import_note">文件导入工具也在使用此引擎，它将切换回你的标准选择。</string>
+
+    <string name="settings_ocr_delete_camera_import_note">相机和文件导入工具也在使用此引擎，它们将切换回你的标准选择。</string>
 
     <string name="settings_ocr_delete_confirm">删除</string>
 
@@ -1359,7 +1419,7 @@
 
     <string name="settings_ocr_use_manga_title">使用 MangaOCR</string>
 
-    <string name="settings_ocr_use_manga_subtitle">警告：质量高，但速度慢。不建议用于自动翻译。MangaOCR 是所选 OCR 的补充，无法单独使用</string>
+    <string name="settings_ocr_use_manga_subtitle">实验性功能。仅建议用于阅读漫画。速度慢，且在游戏和其他内容上质量较差。</string>
 
     <string name="settings_ocr_disable_manga_title">关闭 MangaOCR？</string>
 
@@ -1385,7 +1445,25 @@
         <item quantity="other">已导入 <xliff:g id="count" example="3">%d</xliff:g> 部词典</item>
     </plurals>
 
-    <string name="yomitan_page_description">Yomitan 词典是供 Yomitan 浏览器扩展使用的、由社区创建的词典文件。其功能包括额外的词典、词频数据和音高重音。用 + 按钮导入词典（.zip），PlayTranslate 便会将其无缝整合到应用的各处。</string>
+    <plurals name="settings_yomitan_outdated_summary">
+        <item quantity="other">有 <xliff:g id="count" example="3">%d</xliff:g> 部词典需要重新导入</item>
+    </plurals>
+
+    <string name="yomitan_page_description">Yomitan 词典是供 Yomitan 浏览器扩展使用的、由社区创建的词典文件。其功能包括额外的词典、词频数据和音高重音。用 + 按钮导入词典（.zip）或 Yomitan 词典合集导出文件（.json），PlayTranslate 便会将其无缝整合到应用的各处。</string>
+
+    <string name="yomitan_outdated_label">应用更新后需要重新导入。点按以重新导入其文件。</string>
+
+    <string name="yomitan_collection_imported_title">已导入合集</string>
+
+    <string name="yomitan_collection_none_title">没有可导入的新内容</string>
+
+    <plurals name="yomitan_collection_imported_count">
+        <item quantity="other">已导入 <xliff:g id="count" example="4">%d</xliff:g> 部词典</item>
+    </plurals>
+
+    <plurals name="yomitan_collection_skipped_count">
+        <item quantity="other">有 <xliff:g id="count" example="2">%d</xliff:g> 部词典已是最新</item>
+    </plurals>
 
     <string name="yomitan_import_action">导入词典</string>
 
@@ -1403,7 +1481,7 @@
 
     <string name="yomitan_importing_title">正在导入词典</string>
 
-    <string name="yomitan_importing_message">正在验证词典文件…</string>
+    <string name="yomitan_importing_message">正在导入词典文件…</string>
 
     <string name="yomitan_importing_progress">正在导入 <xliff:g id="current" example="2">%1$d</xliff:g> / <xliff:g id="total" example="5">%2$d</xliff:g>…</string>
 
@@ -1523,7 +1601,99 @@
 
     <string name="history_copied_toast">已复制</string>
 
+    <string name="history_capture_image_toggle_title">保存截取图像</string>
+
+    <string name="history_capture_image_toggle_subtitle">为每次相机或屏幕截取保留一张图片</string>
+
+    <string name="history_live_session_title">实时会话</string>
+
+    <plurals name="history_line_count">
+        <item quantity="other"><xliff:g id="count" example="42">%d</xliff:g> 行</item>
+    </plurals>
+
+    <string name="history_capture_camera_cd">相机截取</string>
+
+    <string name="history_capture_screen_cd">屏幕截取</string>
+
+    <string name="history_reopen_cd">打开截取图像</string>
+
     <string name="settings_cell_dictionary_summary">查询单词释义</string>
+
+    <string name="image_import_no_text">未在此图像中检测到<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>文字</string>
+
+    <string name="settings_cell_image_import">导入文件</string>
+
+    <string name="settings_cell_image_import_summary">翻译已保存的图片或文档</string>
+
+    <string name="image_import_landing_title">翻译图片或文档中的文字</string>
+
+    <string name="image_import_pick_photos">选择照片</string>
+
+    <string name="image_import_pick_files">浏览文件</string>
+
+    <string name="image_import_paste_image">粘贴已复制的图片</string>
+
+    <string name="image_import_decode_failed">无法打开该文件。</string>
+
+    <string name="image_import_unsupported">不支持该文件类型。请选择图片、PDF 或漫画压缩包。</string>
+
+    <string name="image_import_password_protected">此 PDF 有密码保护，无法打开。</string>
+
+    <string name="image_import_empty">此文件中未找到页面。</string>
+
+    <string name="image_import_mixed_selection">要一次导入多个文件，请只选择图片。PDF 和漫画压缩包需逐个打开。</string>
+
+    <string name="image_import_close_cd">关闭文件</string>
+
+    <string name="image_import_settings_cd">文件导入设置</string>
+
+    <string name="image_import_page_chip"><xliff:g id="page" example="3">%1$d</xliff:g> / <xliff:g id="count" example="14">%2$d</xliff:g></string>
+
+    <string name="image_import_prev_page_cd">上一页</string>
+
+    <string name="image_import_next_page_cd">下一页</string>
+
+    <string name="image_import_page_grid_cd">显示所有页面</string>
+
+    <string name="slow_ocr_prompt_message_import">此设备从该文件读取文字的速度较慢。切换到更快的引擎可加快处理速度，但识别质量可能略有下降。你随时可以用此界面上的设置齿轮切换此工具的引擎。</string>
+
+    <string name="settings_cell_camera">相机</string>
+
+    <string name="settings_cell_camera_summary">用相机对准文字即可翻译</string>
+
+    <string name="settings_cell_camera_unavailable">未检测到相机</string>
+
+    <string name="camera_permission_rationale">PlayTranslate 需要相机权限才能翻译你对准的文字。图像会在此设备上处理。</string>
+
+    <string name="camera_permission_grant">允许访问相机</string>
+
+    <string name="camera_permission_denied">相机权限已被拒绝。请在系统设置中允许后再使用相机。</string>
+
+    <string name="camera_open_settings">打开设置</string>
+
+    <string name="camera_unavailable">此设备上没有可用的相机</string>
+
+    <string name="camera_back_cd">返回</string>
+
+    <string name="camera_no_text_hint">没有可识别的文字——试着靠近一些或点按对焦</string>
+
+    <string name="camera_pause_cd">暂停自动翻译</string>
+
+    <string name="camera_play_cd">继续自动翻译</string>
+
+    <string name="camera_shutter_cd">拍摄快照</string>
+
+    <string name="camera_close_cd">关闭快照</string>
+
+    <string name="camera_snapshot_no_text">未在此快照中检测到<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>文字</string>
+
+    <string name="camera_region_cd">选择区域</string>
+
+    <string name="camera_region_remove">移除</string>
+
+    <string name="capture_sliver_expand_hint">向上拖动查看更多选项</string>
+
+    <string name="camera_settings_cd">相机设置</string>
 
     <string name="settings_digest_none">无</string>
     <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> 台显示屏</string>
@@ -1601,6 +1771,10 @@
 
     <string name="hotkey_auto_translation_dialog_title">自动翻译</string>
 
+    <string name="hotkey_capture_screen_title">点按以截取屏幕</string>
+
+    <string name="hotkey_capture_screen_dialog_title">截取屏幕</string>
+
     <string name="hotkey_show_hint_title">长按以显示<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
 
     <string name="hotkey_show_hint_dialog_title">显示<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
@@ -1648,6 +1822,14 @@
 
     <string name="settings_support_donate_subtitle">一款免费、开源的用心之作。帮助它持续发展。</string>
 
+    <string name="settings_support_check_updates_title">检查更新</string>
+
+    <string name="settings_support_check_updates_title_available">有可用更新</string>
+
+    <string name="settings_support_check_updates_subtitle">当前版本：<xliff:g id="version" example="2.4.1">%1$s</xliff:g></string>
+
+    <string name="settings_support_check_updates_checking">正在检查更新…</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Debug section (developer-only)
          ═══════════════════════════════════════════════════════════════ -->
@@ -1685,8 +1867,6 @@
 
     <string name="settings_debug_export_logs_failed">导出日志失败：<xliff:g id="exception_class" example="FileNotFoundException">%1$s</xliff:g></string>
 
-    <string name="settings_footer_version"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> v<xliff:g id="version" example="2.2.0">%2$s</xliff:g></string>
-
     <!-- ═══════════════════════════════════════════════════════════════
          GENERIC TOASTS
          ═══════════════════════════════════════════════════════════════ -->
@@ -1714,6 +1894,8 @@
     <string name="audio_loading">正在加载…</string>
 
     <string name="audio_error_loading">无法加载</string>
+
+    <string name="process_text_translation_failed">无法翻译所选文字。请检查你的网络连接或语言设置。</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">名词</string>

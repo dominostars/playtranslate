@@ -56,6 +56,8 @@
 
     <string name="status_translating">กำลังแปล…</string>
 
+    <string name="capture_show_on_screen">แสดงบนหน้าจอ</string>
+
     <string name="status_no_text">ไม่พบข้อความภาษา<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>ใน “<xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g>”</string>
 
     <string name="status_error">ข้อผิดพลาด: <xliff:g id="error_message" example="Network timeout">%1$s</xliff:g></string>
@@ -278,6 +280,18 @@
     <string name="error_single_app_not_fullscreen">การแปลหยุดชั่วคราว — แอปที่ถูกจับภาพไม่ได้แสดงเต็มหน้าจอ ระบบจะกลับมาแปลเมื่อแอปแสดงเต็มหน้าจออีกครั้ง</string>
     <string name="error_capture_blocked_secure">อ่านข้อความไม่ได้ — เนื้อหาที่ได้รับการป้องกันบล็อกการจับภาพหน้าจอ</string>
     <string name="probe_initializing">กำลังเริ่มต้น…</string>
+
+    <string name="startup_initializing_auto_mode">กำลังเริ่มต้นโหมดอัตโนมัติ…</string>
+
+    <string name="slow_ocr_prompt_title">การจดจำข้อความทำงานช้า</string>
+
+    <string name="slow_ocr_prompt_message">อุปกรณ์นี้ใช้เวลานานในการอ่านหน้าจอ เปลี่ยนไปใช้เอนจินที่เร็วกว่าเพื่อให้ประมวลผลเร็วขึ้น แม้คุณภาพการอ่านอาจลดลงเล็กน้อย คุณเปลี่ยนได้ทุกเมื่อในการตั้งค่า:\n\n<xliff:g id="settings" example="Settings">%1$s</xliff:g> → <xliff:g id="section" example="Capture &amp; overlay">%2$s</xliff:g> → <xliff:g id="ocr_header" example="Text recognition (OCR)">%3$s</xliff:g></string>
+
+    <string name="slow_ocr_prompt_message_camera">อุปกรณ์นี้ใช้เวลานานในการอ่านข้อความจากกล้อง เปลี่ยนไปใช้เอนจินที่เร็วกว่าเพื่อให้ประมวลผลเร็วขึ้น แม้คุณภาพการอ่านอาจลดลงเล็กน้อย คุณเปลี่ยนเอนจินของกล้องได้ทุกเมื่อจากไอคอนรูปเฟืองบนหน้าจอนี้</string>
+
+    <string name="slow_ocr_prompt_switch">ใช้เอนจินที่เร็วกว่า</string>
+
+    <string name="slow_ocr_prompt_keep">ใช้เอนจินปัจจุบันต่อไป</string>
     <string name="stream_kind_prompt_title">คุณเลือกการแชร์แบบใด</string>
     <string name="stream_kind_prompt_message">การแปลสดทำงานต่างกันระหว่างการแชร์แอปเดียวกับการแชร์ทั้งหน้าจอ และระบบไม่ได้บอกว่าคุณแชร์แบบใด</string>
     <string name="stream_kind_share_one_app">แชร์แอปเดียว</string>
@@ -335,7 +349,15 @@
 
     <string name="capture_lifecycle_off_subtitle">อนุญาตการจับภาพหน้าจอ</string>
 
-    <string name="game_screen_controls_title">ปุ่มควบคุมหน้าจอเกม</string>
+    <string name="capture_lifecycle_standby_subtitle">การจับภาพหน้าจออยู่ในโหมดสแตนด์บาย</string>
+
+    <string name="game_screen_controls_title">แสดงปุ่มควบคุมบนหน้าจอ</string>
+
+    <string name="record_audio_action">บันทึกเสียง</string>
+
+    <string name="audio_recording_row_start">เริ่มบันทึกเสียง</string>
+
+    <string name="audio_recording_row_active">กำลังบันทึกเสียง</string>
 
     <!-- ═══ MEDIAPROJECTION OVERLAY-PERMISSION DIALOG ═══ -->
 
@@ -356,6 +378,12 @@
     <string name="overlay_icon_a11y_required_title">ต้องมีการช่วยเหลือพิเศษ</string>
 
     <string name="overlay_icon_a11y_required_message">ไอคอนลอยต้องใช้สิทธิ์การช่วยเหลือพิเศษเพื่อวาดบนหน้าจอเกม\n\nไปที่ การตั้งค่า → การช่วยเหลือพิเศษ → แอปที่ดาวน์โหลด → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → เปิดใช้งาน</string>
+
+    <string name="a11y_stuck_title">ต้องรีสตาร์ทการช่วยเหลือพิเศษ</string>
+
+    <string name="a11y_stuck_message">เปิดใช้การช่วยเหลือพิเศษสำหรับ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> แล้ว แต่ Android หยุดบริการนี้และจะไม่เริ่มใหม่เอง อุปกรณ์ของคุณอาจแจ้งว่าแอปทำงานผิดปกติในการตั้งค่าการช่วยเหลือพิเศษ กรณีนี้มักเกิดขึ้นหลังจากระบบบังคับหยุดแอปเพื่อประหยัดแบตเตอรี่\n\nวิธีแก้ไขคือปิดแล้วเปิดบริการอีกครั้งในการตั้งค่าการช่วยเหลือพิเศษ</string>
+
+    <string name="a11y_stuck_message_xiaomi">บนอุปกรณ์ Xiaomi ให้เปิดการเริ่มอัตโนมัติสำหรับ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ด้วย และตั้งค่าตัวประหยัดแบตเตอรี่เป็น “ไม่จำกัด” ในการตั้งค่าระบบของแอป มิฉะนั้นระบบจะหยุดบริการนี้ต่อไป</string>
 
     <!-- ═══ ACCESSIBILITY-REQUIRED ALERT ═══ -->
 
@@ -1010,6 +1038,10 @@
 
     <string name="region_default_full_screen">เต็มหน้าจอ</string>
 
+    <string name="region_default_capture">พื้นที่</string>
+
+    <string name="region_action_remove">ลบ</string>
+
     <!-- ═══ MAIN-SCREEN BIG TRANSLATE BUTTON ═══ -->
 
     <string name="translate_button_prefix_translate">แปล</string>
@@ -1086,6 +1118,8 @@
     <string name="dialog_hotkey_setup_instruction">กดปุ่มค้างไว้ 2 วินาที</string>
 
     <string name="dialog_hotkey_setup_countdown">กดค้าง <xliff:g id="remaining_seconds" example="1.4">%1$s</xliff:g></string>
+
+    <string name="dialog_hotkey_setup_typing_key">ปุ่มนี้ใช้พิมพ์ตัวอักษร จึงจะทำงานขณะพิมพ์ด้วย เพิ่มปุ่ม Ctrl หรือใช้ปุ่มฟังก์ชันแทน</string>
 
     <!-- ═══ TRANSLATION-RESULT SCREEN — toolbar + per-row buttons ═══ -->
 
@@ -1179,6 +1213,14 @@
 
     <string name="update_error_install_launch">ไม่สามารถเปิดตัวติดตั้งของระบบได้</string>
 
+    <string name="update_none_title">ไม่พบการอัปเดต</string>
+
+    <string name="update_none_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version" example="2.4.1">%1$s</xliff:g> เป็นเวอร์ชันล่าสุดแล้ว</string>
+
+    <string name="update_check_failed_title">ตรวจสอบการอัปเดตไม่สำเร็จ</string>
+
+    <string name="update_check_failed_message">เชื่อมต่อ <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> เพื่อค้นหาเวอร์ชันใหม่ไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</string>
+
     <string name="toast_no_browser_available">ไม่มีเบราว์เซอร์ที่ใช้ได้</string>
 
     <string name="target_pack_migration_title">มีคำจำกัดความภาษา <xliff:g id="target_language" example="Spanish">%1$s</xliff:g> พร้อมใช้งาน</string>
@@ -1222,7 +1264,19 @@
 
     <string name="settings_ocr_default_badge">ค่าเริ่มต้น</string>
 
-    <string name="settings_ocr_footer">หาก PlayTranslate อ่านข้อความบนหน้าจอได้ไม่แม่นยำ ลองทดลองเลือกแบบต่างๆ เครื่องมือ OCR ที่ต่างกันอาจทำงานได้ดีกว่ากับแบบอักษรหรือทิศทางข้อความที่ต่างกัน</string>
+    <string name="ocr_label_paddle_accurate">PaddleOCR (แม่นยำ)</string>
+
+    <string name="ocr_label_paddle_fast">PaddleOCR (เร็ว)</string>
+
+    <string name="settings_ocr_tier_accurate_note">อ่านตัวอักษรเล็กได้ แต่ช้ากว่า</string>
+
+    <string name="settings_ocr_tier_fast_note">เร็วกว่ามาก แต่อาจพลาดตัวอักษรเล็ก</string>
+
+    <string name="settings_ocr_note_meiki">เหมาะกับเกมที่สุด ค้นหาคำได้แม่นยำที่สุด</string>
+
+    <string name="settings_ocr_note_mlkit">ฉับไวแม้หน้าจอมีข้อความมาก</string>
+
+    <string name="settings_ocr_footer_guidance">เอนจินที่มีป้าย “<xliff:g id="default_badge" example="Default">%1$s</xliff:g>” คือตัวที่แนะนำสำหรับภาษานี้ หากอ่านช้า ให้ลองตัวเลือกที่เร็วกว่า หากอ่านตัวอักษรเล็กหรือตัวอักษรประดิษฐ์ผิด ให้ลองเอนจินอื่น</string>
 
     <string name="settings_ocr_delete_cd">ลบ <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
 
@@ -1231,6 +1285,12 @@
     <string name="settings_ocr_delete_msg">การดำเนินการนี้จะลบโมเดล <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> ออกจากอุปกรณ์นี้ คุณสามารถดาวน์โหลดอีกครั้งได้ภายหลัง</string>
 
     <string name="settings_ocr_delete_shared_msg"><xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> ยังถูกใช้โดยภาษาเหล่านี้ด้วย การลบจะเพิ่มพื้นที่ว่างทันที และจะดาวน์โหลดอีกครั้งในครั้งถัดไปที่คุณสลับไปใช้ภาษาใดภาษาหนึ่ง:\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_camera_note">เครื่องมือกล้องก็ใช้เอนจินนี้เช่นกัน และจะกลับไปใช้ตัวเลือกมาตรฐานของคุณ</string>
+
+    <string name="settings_ocr_delete_import_note">เครื่องมือนำเข้าไฟล์ก็ใช้เอนจินนี้เช่นกัน และจะกลับไปใช้ตัวเลือกมาตรฐานของคุณ</string>
+
+    <string name="settings_ocr_delete_camera_import_note">เครื่องมือกล้องและเครื่องมือนำเข้าไฟล์ก็ใช้เอนจินนี้เช่นกัน และจะกลับไปใช้ตัวเลือกมาตรฐานของคุณ</string>
 
     <string name="settings_ocr_delete_confirm">ลบ</string>
 
@@ -1246,7 +1306,7 @@
 
     <string name="settings_ocr_use_manga_title">ใช้ MangaOCR</string>
 
-    <string name="settings_ocr_use_manga_subtitle">คำเตือน: คุณภาพสูงแต่ช้า ไม่แนะนำสำหรับโหมดอัตโนมัติ ทั้งนี้ MangaOCR เป็นส่วนเสริมของ OCR ที่เลือกไว้ จึงไม่สามารถทำงานเพียงลำพังได้</string>
+    <string name="settings_ocr_use_manga_subtitle">อยู่ในขั้นทดลอง ใช้สำหรับอ่านมังงะเท่านั้น ทำงานช้าและคุณภาพไม่ดีกับเกมและเนื้อหาอื่น</string>
 
     <string name="settings_ocr_disable_manga_title">ปิด MangaOCR หรือไม่</string>
 
@@ -1272,9 +1332,27 @@
         <item quantity="other">นำเข้าพจนานุกรมแล้ว <xliff:g id="count" example="3">%d</xliff:g> ฉบับ</item>
     </plurals>
 
+    <plurals name="settings_yomitan_outdated_summary">
+        <item quantity="other">ต้องนำเข้าพจนานุกรมใหม่ <xliff:g id="count" example="3">%d</xliff:g> ฉบับ</item>
+    </plurals>
+
     <!-- ═══ YOMITAN — dictionary import page ═══ -->
 
-    <string name="yomitan_page_description">พจนานุกรม Yomitan คือไฟล์พจนานุกรมที่ชุมชนสร้างขึ้น ใช้โดยส่วนขยายเบราว์เซอร์ Yomitan ความสามารถต่างๆ ได้แก่ พจนานุกรมเพิ่มเติม ข้อมูลความถี่ และการเน้นระดับเสียง นำเข้าพจนานุกรม (.zip) ด้วยปุ่ม + แล้ว PlayTranslate จะผสานรวมเข้ากับทุกส่วนของแอปอย่างราบรื่น</string>
+    <string name="yomitan_page_description">พจนานุกรม Yomitan คือไฟล์พจนานุกรมที่ชุมชนสร้างขึ้น ใช้โดยส่วนขยายเบราว์เซอร์ Yomitan ความสามารถต่างๆ ได้แก่ พจนานุกรมเพิ่มเติม ข้อมูลความถี่ และการเน้นระดับเสียง นำเข้าพจนานุกรม (.zip) หรือไฟล์ส่งออกคอลเลกชันพจนานุกรม Yomitan (.json) ด้วยปุ่ม + แล้ว PlayTranslate จะผสานรวมเข้ากับทุกส่วนของแอปอย่างราบรื่น</string>
+
+    <string name="yomitan_outdated_label">ต้องนำเข้าใหม่หลังอัปเดตแอป แตะเพื่อนำเข้าไฟล์อีกครั้ง</string>
+
+    <string name="yomitan_collection_imported_title">นำเข้าคอลเลกชันแล้ว</string>
+
+    <string name="yomitan_collection_none_title">ไม่มีรายการใหม่ให้นำเข้า</string>
+
+    <plurals name="yomitan_collection_imported_count">
+        <item quantity="other">นำเข้าพจนานุกรมแล้ว <xliff:g id="count" example="4">%d</xliff:g> ฉบับ</item>
+    </plurals>
+
+    <plurals name="yomitan_collection_skipped_count">
+        <item quantity="other">พจนานุกรม <xliff:g id="count" example="2">%d</xliff:g> ฉบับเป็นเวอร์ชันล่าสุดอยู่แล้ว</item>
+    </plurals>
 
     <string name="yomitan_import_action">นำเข้าพจนานุกรม</string>
 
@@ -1292,7 +1370,7 @@
 
     <string name="yomitan_importing_title">กำลังนำเข้าพจนานุกรม</string>
 
-    <string name="yomitan_importing_message">กำลังตรวจสอบไฟล์พจนานุกรม…</string>
+    <string name="yomitan_importing_message">กำลังนำเข้าไฟล์พจนานุกรม…</string>
 
     <string name="yomitan_importing_progress">กำลังนำเข้า <xliff:g id="current" example="2">%1$d</xliff:g> จาก <xliff:g id="total" example="5">%2$d</xliff:g>…</string>
 
@@ -1414,7 +1492,99 @@
 
     <string name="history_copied_toast">คัดลอกแล้ว</string>
 
+    <string name="history_capture_image_toggle_title">บันทึกภาพที่จับได้</string>
+
+    <string name="history_capture_image_toggle_subtitle">เก็บรูปภาพของการจับภาพจากกล้องหรือหน้าจอทุกครั้ง</string>
+
+    <string name="history_live_session_title">เซสชันสด</string>
+
+    <plurals name="history_line_count">
+        <item quantity="other"><xliff:g id="count" example="42">%d</xliff:g> บรรทัด</item>
+    </plurals>
+
+    <string name="history_capture_camera_cd">การจับภาพจากกล้อง</string>
+
+    <string name="history_capture_screen_cd">การจับภาพหน้าจอ</string>
+
+    <string name="history_reopen_cd">เปิดภาพที่จับได้</string>
+
     <string name="settings_cell_dictionary_summary">ค้นหาคำจำกัดความของคำ</string>
+
+    <string name="image_import_no_text">ไม่พบข้อความภาษา<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>ในรูปภาพนี้</string>
+
+    <string name="settings_cell_image_import">นำเข้าไฟล์</string>
+
+    <string name="settings_cell_image_import_summary">แปลรูปภาพหรือเอกสารที่บันทึกไว้</string>
+
+    <string name="image_import_landing_title">แปลข้อความในรูปภาพหรือเอกสาร</string>
+
+    <string name="image_import_pick_photos">เลือกรูปภาพ</string>
+
+    <string name="image_import_pick_files">เรียกดูไฟล์</string>
+
+    <string name="image_import_paste_image">วางรูปภาพที่คัดลอกไว้</string>
+
+    <string name="image_import_decode_failed">เปิดไฟล์นั้นไม่ได้</string>
+
+    <string name="image_import_unsupported">ไม่รองรับไฟล์ประเภทนี้ เลือกรูปภาพ ไฟล์ PDF หรือไฟล์เก็บถาวรการ์ตูน</string>
+
+    <string name="image_import_password_protected">ไฟล์ PDF นี้มีการป้องกันด้วยรหัสผ่านจึงเปิดไม่ได้</string>
+
+    <string name="image_import_empty">ไม่พบหน้าใดในไฟล์นี้</string>
+
+    <string name="image_import_mixed_selection">หากต้องการนำเข้าหลายไฟล์พร้อมกัน ให้เลือกเฉพาะรูปภาพ ส่วนไฟล์ PDF และไฟล์เก็บถาวรการ์ตูนจะเปิดได้ครั้งละไฟล์</string>
+
+    <string name="image_import_close_cd">ปิดไฟล์</string>
+
+    <string name="image_import_settings_cd">การตั้งค่าการนำเข้าไฟล์</string>
+
+    <string name="image_import_page_chip"><xliff:g id="page" example="3">%1$d</xliff:g> / <xliff:g id="count" example="14">%2$d</xliff:g></string>
+
+    <string name="image_import_prev_page_cd">หน้าก่อนหน้า</string>
+
+    <string name="image_import_next_page_cd">หน้าถัดไป</string>
+
+    <string name="image_import_page_grid_cd">แสดงทุกหน้า</string>
+
+    <string name="slow_ocr_prompt_message_import">อุปกรณ์นี้ใช้เวลานานในการอ่านข้อความจากไฟล์นี้ เปลี่ยนไปใช้เอนจินที่เร็วกว่าเพื่อให้ประมวลผลเร็วขึ้น แม้คุณภาพการอ่านอาจลดลงเล็กน้อย คุณเปลี่ยนเอนจินของเครื่องมือนี้ได้ทุกเมื่อจากไอคอนรูปเฟืองบนหน้าจอนี้</string>
+
+    <string name="settings_cell_camera">กล้อง</string>
+
+    <string name="settings_cell_camera_summary">เล็งกล้องไปที่ข้อความเพื่อแปล</string>
+
+    <string name="settings_cell_camera_unavailable">ไม่พบกล้อง</string>
+
+    <string name="camera_permission_rationale">PlayTranslate ต้องเข้าถึงกล้องเพื่อแปลข้อความที่คุณเล็งไป รูปภาพจะประมวลผลบนอุปกรณ์นี้</string>
+
+    <string name="camera_permission_grant">อนุญาตให้เข้าถึงกล้อง</string>
+
+    <string name="camera_permission_denied">การเข้าถึงกล้องถูกปฏิเสธ อนุญาตในการตั้งค่าระบบเพื่อใช้กล้อง</string>
+
+    <string name="camera_open_settings">เปิดการตั้งค่า</string>
+
+    <string name="camera_unavailable">ไม่มีกล้องที่ใช้ได้บนอุปกรณ์นี้</string>
+
+    <string name="camera_back_cd">กลับ</string>
+
+    <string name="camera_no_text_hint">ไม่พบข้อความที่อ่านได้ ลองขยับเข้าใกล้ขึ้นหรือแตะเพื่อโฟกัส</string>
+
+    <string name="camera_pause_cd">หยุดการแปลอัตโนมัติชั่วคราว</string>
+
+    <string name="camera_play_cd">ทำการแปลอัตโนมัติต่อ</string>
+
+    <string name="camera_shutter_cd">ถ่ายภาพนิ่ง</string>
+
+    <string name="camera_close_cd">ปิดภาพนิ่ง</string>
+
+    <string name="camera_snapshot_no_text">ไม่พบข้อความภาษา<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>ในภาพนิ่งนี้</string>
+
+    <string name="camera_region_cd">เลือกพื้นที่</string>
+
+    <string name="camera_region_remove">ลบ</string>
+
+    <string name="capture_sliver_expand_hint">ลากขึ้นเพื่อดูตัวเลือกเพิ่มเติม</string>
+
+    <string name="camera_settings_cd">การตั้งค่ากล้อง</string>
 
     <string name="settings_digest_none">ไม่มี</string>
     <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> หน้าจอ</string>
@@ -1486,6 +1656,10 @@
 
     <string name="hotkey_auto_translation_dialog_title">แปลอัตโนมัติ</string>
 
+    <string name="hotkey_capture_screen_title">แตะเพื่อจับภาพหน้าจอ</string>
+
+    <string name="hotkey_capture_screen_dialog_title">จับภาพหน้าจอ</string>
+
     <string name="hotkey_show_hint_title">กดค้างเพื่อแสดง<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
 
     <string name="hotkey_show_hint_dialog_title">แสดง<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
@@ -1525,6 +1699,14 @@
 
     <string name="settings_support_donate_subtitle">โปรเจกต์โอเพนซอร์สที่ใช้ฟรีและสร้างด้วยใจรัก ช่วยให้โปรเจกต์นี้ดำเนินต่อไปได้</string>
 
+    <string name="settings_support_check_updates_title">ตรวจหาการอัปเดต</string>
+
+    <string name="settings_support_check_updates_title_available">มีการอัปเดต</string>
+
+    <string name="settings_support_check_updates_subtitle">เวอร์ชันปัจจุบัน: <xliff:g id="version" example="2.4.1">%1$s</xliff:g></string>
+
+    <string name="settings_support_check_updates_checking">กำลังตรวจหาการอัปเดต…</string>
+
     <!-- ═══ SETTINGS — Debug section (developer-only) ═══ -->
 
     <string name="settings_debug_force_single_screen">บังคับใช้หน้าจอเดียว</string>
@@ -1560,8 +1742,6 @@
 
     <string name="settings_debug_export_logs_failed">ส่งออกบันทึกไม่สำเร็จ: <xliff:g id="exception_class" example="FileNotFoundException">%1$s</xliff:g></string>
 
-    <string name="settings_footer_version"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> v<xliff:g id="version" example="2.2.0">%2$s</xliff:g></string>
-
     <!-- ═══ GENERIC TOASTS ═══ -->
 
     <string name="toast_link_copied">คัดลอกลิงก์แล้ว</string>
@@ -1587,6 +1767,8 @@
     <string name="audio_loading">กำลังโหลด…</string>
 
     <string name="audio_error_loading">ไม่สามารถโหลดได้</string>
+
+    <string name="process_text_translation_failed">แปลข้อความที่เลือกไม่สำเร็จ ตรวจสอบการเชื่อมต่อหรือการตั้งค่าภาษา</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">คำนาม</string>

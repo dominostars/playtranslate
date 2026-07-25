@@ -53,6 +53,8 @@
 
     <string name="status_translating">جارٍ الترجمة…</string>
 
+    <string name="capture_show_on_screen">عرض على الشاشة</string>
+
     <string name="status_no_text">لم يتم اكتشاف نص <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> في «<xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g>»</string>
 
     <string name="status_error">خطأ: <xliff:g id="error_message" example="Network timeout">%1$s</xliff:g></string>
@@ -299,6 +301,18 @@
 
     <string name="probe_initializing">جارٍ التهيئة…</string>
 
+    <string name="startup_initializing_auto_mode">جارٍ تهيئة الوضع التلقائي…</string>
+
+    <string name="slow_ocr_prompt_title">التعرف على النص بطيء</string>
+
+    <string name="slow_ocr_prompt_message">يستغرق هذا الجهاز وقتًا طويلاً لقراءة الشاشة. بدّل إلى المحرك الأسرع لتسريع المعالجة، مع أن جودة القراءة قد تنخفض قليلاً. يمكنك التبديل في أي وقت من الإعدادات:\n\n<xliff:g id="settings" example="Settings">%1$s</xliff:g> ← <xliff:g id="section" example="Capture &amp; overlay">%2$s</xliff:g> ← <xliff:g id="ocr_header" example="Text recognition (OCR)">%3$s</xliff:g></string>
+
+    <string name="slow_ocr_prompt_message_camera">يستغرق هذا الجهاز وقتًا طويلاً لقراءة النص من الكاميرا. بدّل إلى المحرك الأسرع لتسريع المعالجة، مع أن جودة القراءة قد تنخفض قليلاً. يمكنك تغيير محرك الكاميرا في أي وقت من رمز الإعدادات في هذه الشاشة.</string>
+
+    <string name="slow_ocr_prompt_switch">استخدام المحرك الأسرع</string>
+
+    <string name="slow_ocr_prompt_keep">الإبقاء على المحرك الحالي</string>
+
     <string name="stream_kind_prompt_title">ما خيار المشاركة الذي اخترته؟</string>
 
     <string name="stream_kind_prompt_message">تعمل الترجمة المباشرة بطريقة مختلفة عند مشاركة تطبيق واحد مقارنةً بمشاركة الشاشة بأكملها، والنظام لا يوضّح ما الذي تمت مشاركته.</string>
@@ -359,7 +373,15 @@
 
     <string name="capture_lifecycle_off_subtitle">السماح بالتقاط الشاشة</string>
 
-    <string name="game_screen_controls_title">عناصر تحكم شاشة اللعبة</string>
+    <string name="capture_lifecycle_standby_subtitle">التقاط الشاشة في وضع الاستعداد</string>
+
+    <string name="game_screen_controls_title">إظهار عناصر التحكم على الشاشة</string>
+
+    <string name="record_audio_action">تسجيل الصوت</string>
+
+    <string name="audio_recording_row_start">بدء تسجيل الصوت</string>
+
+    <string name="audio_recording_row_active">جارٍ تسجيل الصوت</string>
 
     <!-- ═══ MEDIAPROJECTION OVERLAY-PERMISSION DIALOG ═══ -->
 
@@ -380,6 +402,12 @@
     <string name="overlay_icon_a11y_required_title">إمكانية الوصول مطلوبة</string>
 
     <string name="overlay_icon_a11y_required_message">تحتاج الأيقونة العائمة إلى إذن إمكانية الوصول للرسم فوق شاشة اللعبة.\n\nانتقل إلى الإعدادات ← إمكانية الوصول ← التطبيقات التي تم تنزيلها ← <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ← تفعيل.</string>
+
+    <string name="a11y_stuck_title">إمكانية الوصول تحتاج إلى إعادة تشغيل</string>
+
+    <string name="a11y_stuck_message">إمكانية الوصول مفعّلة لتطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>، لكن Android أوقف الخدمة ولن يعيد تشغيلها من تلقاء نفسه. قد يشير جهازك إلى أن التطبيق لا يعمل بشكل صحيح في إعدادات إمكانية الوصول. يحدث هذا عادةً بعد أن يوقف النظام التطبيق إجباريًا لتوفير البطارية.\n\nلإصلاح ذلك، أوقف الخدمة ثم شغّلها مرة أخرى من إعدادات إمكانية الوصول.</string>
+
+    <string name="a11y_stuck_message_xiaomi">على أجهزة Xiaomi، فعّل أيضًا التشغيل التلقائي لتطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> واضبط موفّر البطارية على «بدون قيود» في إعدادات النظام الخاصة بالتطبيق. بدون ذلك، سيستمر النظام في إيقاف الخدمة.</string>
 
     <!-- ═══ ACCESSIBILITY-REQUIRED ALERT ═══ -->
 
@@ -1009,6 +1037,10 @@
 
     <string name="region_default_full_screen">ملء الشاشة</string>
 
+    <string name="region_default_capture">منطقة</string>
+
+    <string name="region_action_remove">إزالة</string>
+
     <!-- ═══ MAIN-SCREEN BIG TRANSLATE BUTTON ═══ -->
 
     <string name="translate_button_prefix_translate">ترجمة</string>
@@ -1085,6 +1117,8 @@
     <string name="dialog_hotkey_setup_instruction">اضغط مع الاستمرار على المفتاح (المفاتيح) لمدة ثانيتين</string>
 
     <string name="dialog_hotkey_setup_countdown">استمر بالضغط <xliff:g id="remaining_seconds" example="1.4">%1$s</xliff:g></string>
+
+    <string name="dialog_hotkey_setup_typing_key">هذا المفتاح يكتب حرفًا، وسيعمل الاختصار أثناء الكتابة أيضًا. أضف Ctrl أو استخدم أحد مفاتيح الوظائف.</string>
 
     <!-- ═══ TRANSLATION-RESULT SCREEN — toolbar + per-row buttons ═══ -->
 
@@ -1178,6 +1212,14 @@
 
     <string name="update_error_install_launch">تعذّر فتح مثبِّت النظام.</string>
 
+    <string name="update_none_title">لا توجد تحديثات</string>
+
+    <string name="update_none_message">الإصدار <xliff:g id="version" example="2.4.1">%1$s</xliff:g> من <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> هو الأحدث.</string>
+
+    <string name="update_check_failed_title">تعذّر التحقق من التحديثات</string>
+
+    <string name="update_check_failed_message">تعذّر الوصول إلى <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> للبحث عن إصدار جديد. تحقق من اتصالك وحاول مرة أخرى.</string>
+
     <string name="toast_no_browser_available">لا يوجد متصفح متاح</string>
 
     <string name="target_pack_migration_title">تتوفر تعريفات <xliff:g id="target_language" example="Spanish">%1$s</xliff:g></string>
@@ -1221,7 +1263,19 @@
 
     <string name="settings_ocr_default_badge">افتراضي</string>
 
-    <string name="settings_ocr_footer">إذا كان PlayTranslate يواجه صعوبة في قراءة نص الشاشة بدقة، جرّب اختيارات مختلفة. قد تعمل أدوات OCR المختلفة بشكل أفضل مع أنواع الخطوط أو اتجاهات النص المختلفة.</string>
+    <string name="ocr_label_paddle_accurate">PaddleOCR (دقيق)</string>
+
+    <string name="ocr_label_paddle_fast">PaddleOCR (سريع)</string>
+
+    <string name="settings_ocr_tier_accurate_note">يقرأ النص الصغير، لكنه أبطأ</string>
+
+    <string name="settings_ocr_tier_fast_note">أسرع بكثير، وقد يفوته النص الصغير</string>
+
+    <string name="settings_ocr_note_meiki">الأفضل للألعاب، وأدق بحث عن الكلمات</string>
+
+    <string name="settings_ocr_note_mlkit">لا يتباطأ حتى مع كثرة النص على الشاشة</string>
+
+    <string name="settings_ocr_footer_guidance">المحرك الذي يحمل علامة «<xliff:g id="default_badge" example="Default">%1$s</xliff:g>» هو الموصى به لهذه اللغة. إذا كانت القراءة بطيئة، جرّب خيارًا أسرع. وإذا أُسيئت قراءة النص الصغير أو المزخرف، جرّب محركًا آخر.</string>
 
     <string name="settings_ocr_delete_cd">حذف <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
 
@@ -1230,6 +1284,12 @@
     <string name="settings_ocr_delete_msg">يؤدي هذا إلى إزالة نموذج <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> من هذا الجهاز. يمكنك تنزيله مرة أخرى لاحقًا.</string>
 
     <string name="settings_ocr_delete_shared_msg">يُستخدم <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> أيضًا بواسطة هذه اللغات. يؤدي الحذف إلى تحرير المساحة الآن؛ وسيتم تنزيله مرة أخرى في المرة التالية التي تبدّل فيها إلى إحداها:\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_camera_note">تستخدم أداة الكاميرا هذا المحرك أيضًا، وستعود إلى اختيارك القياسي.</string>
+
+    <string name="settings_ocr_delete_import_note">تستخدم أداة استيراد الملفات هذا المحرك أيضًا، وستعود إلى اختيارك القياسي.</string>
+
+    <string name="settings_ocr_delete_camera_import_note">تستخدم أداتا الكاميرا واستيراد الملفات هذا المحرك أيضًا، وستعودان إلى اختيارك القياسي.</string>
 
     <string name="settings_ocr_delete_confirm">حذف</string>
 
@@ -1244,7 +1304,7 @@
     <string name="settings_ocr_download_failed">تعذّر تنزيل نموذج OCR. تحقق من اتصالك وحاول مرة أخرى.</string>
 
     <string name="settings_ocr_use_manga_title">استخدام MangaOCR</string>
-    <string name="settings_ocr_use_manga_subtitle">تحذير: جودة عالية لكنه بطيء. لا يُنصح به للترجمة التلقائية. وهو مكمّل لأداة OCR المحددة ولا يمكنه العمل بمفرده</string>
+    <string name="settings_ocr_use_manga_subtitle">تجريبي. استخدمه لقراءة المانغا فقط. فهو بطيء وجودته ضعيفة مع الألعاب والمحتويات الأخرى.</string>
     <string name="settings_ocr_disable_manga_title">إيقاف MangaOCR؟</string>
     <string name="settings_ocr_disable_manga_msg">هل تريد الاحتفاظ بالنموذج المنزَّل (<xliff:g id="size" example="68 MB">%1$s</xliff:g>) أم حذفه لتحرير مساحة؟</string>
     <string name="settings_ocr_disable_keep">الاحتفاظ بالنموذج</string>
@@ -1271,7 +1331,40 @@
         <item quantity="other">تم استيراد <xliff:g id="count" example="100">%d</xliff:g> قاموس</item>
     </plurals>
 
-    <string name="yomitan_page_description">قواميس Yomitan هي ملفات قواميس أنشأها المجتمع وتُستخدم مع امتداد المتصفح Yomitan. تشمل ميزاتها قواميس إضافية وبيانات التكرار والنبرة الصوتية. استورد قاموسًا (.zip) باستخدام زر +، وسيدمجه PlayTranslate بسلاسة في جميع أنحاء التطبيق.</string>
+    <plurals name="settings_yomitan_outdated_summary">
+        <item quantity="zero">يلزم إعادة استيراد <xliff:g id="count" example="0">%d</xliff:g> قاموس</item>
+        <item quantity="one">يلزم إعادة استيراد قاموس واحد</item>
+        <item quantity="two">يلزم إعادة استيراد قاموسين</item>
+        <item quantity="few">يلزم إعادة استيراد <xliff:g id="count" example="3">%d</xliff:g> قواميس</item>
+        <item quantity="many">يلزم إعادة استيراد <xliff:g id="count" example="11">%d</xliff:g> قاموسًا</item>
+        <item quantity="other">يلزم إعادة استيراد <xliff:g id="count" example="100">%d</xliff:g> قاموس</item>
+    </plurals>
+
+    <string name="yomitan_page_description">قواميس Yomitan هي ملفات قواميس أنشأها المجتمع وتُستخدم مع امتداد المتصفح Yomitan. تشمل ميزاتها قواميس إضافية وبيانات التكرار والنبرة الصوتية. استورد قاموسًا (.zip) أو ملف تصدير مجموعة قواميس Yomitan (.json) باستخدام زر +، وسيدمجه PlayTranslate بسلاسة في جميع أنحاء التطبيق.</string>
+
+    <string name="yomitan_outdated_label">يلزم إعادة الاستيراد بعد تحديث التطبيق. اضغط لإعادة استيراد ملفه.</string>
+
+    <string name="yomitan_collection_imported_title">تم استيراد مجموعة القواميس</string>
+
+    <string name="yomitan_collection_none_title">لا يوجد جديد لاستيراده</string>
+
+    <plurals name="yomitan_collection_imported_count">
+        <item quantity="zero">تم استيراد <xliff:g id="count" example="0">%d</xliff:g> قاموس</item>
+        <item quantity="one">تم استيراد قاموس واحد</item>
+        <item quantity="two">تم استيراد قاموسين</item>
+        <item quantity="few">تم استيراد <xliff:g id="count" example="4">%d</xliff:g> قواميس</item>
+        <item quantity="many">تم استيراد <xliff:g id="count" example="11">%d</xliff:g> قاموسًا</item>
+        <item quantity="other">تم استيراد <xliff:g id="count" example="100">%d</xliff:g> قاموس</item>
+    </plurals>
+
+    <plurals name="yomitan_collection_skipped_count">
+        <item quantity="zero"><xliff:g id="count" example="0">%d</xliff:g> قاموس كان محدّثًا بالفعل</item>
+        <item quantity="one">قاموس واحد كان محدّثًا بالفعل</item>
+        <item quantity="two">قاموسان كانا محدّثين بالفعل</item>
+        <item quantity="few"><xliff:g id="count" example="2">%d</xliff:g> قواميس كانت محدّثة بالفعل</item>
+        <item quantity="many"><xliff:g id="count" example="11">%d</xliff:g> قاموسًا كانت محدّثة بالفعل</item>
+        <item quantity="other"><xliff:g id="count" example="100">%d</xliff:g> قاموس كان محدّثًا بالفعل</item>
+    </plurals>
 
     <string name="yomitan_import_action">استيراد قاموس</string>
 
@@ -1289,7 +1382,7 @@
 
     <string name="yomitan_importing_title">جارٍ استيراد القاموس</string>
 
-    <string name="yomitan_importing_message">جارٍ التحقق من ملفات القاموس…</string>
+    <string name="yomitan_importing_message">جارٍ استيراد ملفات القاموس…</string>
 
     <string name="yomitan_importing_progress">جارٍ استيراد <xliff:g id="current" example="2">%1$d</xliff:g> من <xliff:g id="total" example="5">%2$d</xliff:g>…</string>
 
@@ -1417,7 +1510,104 @@
 
     <string name="history_copied_toast">تم النسخ</string>
 
+    <string name="history_capture_image_toggle_title">حفظ صور الالتقاط</string>
+
+    <string name="history_capture_image_toggle_subtitle">الاحتفاظ بصورة لكل التقاط بالكاميرا أو للشاشة</string>
+
+    <string name="history_live_session_title">جلسة مباشرة</string>
+
+    <plurals name="history_line_count">
+        <item quantity="zero"><xliff:g id="count" example="0">%d</xliff:g> سطر</item>
+        <item quantity="one">سطر واحد</item>
+        <item quantity="two">سطران</item>
+        <item quantity="few"><xliff:g id="count" example="3">%d</xliff:g> أسطر</item>
+        <item quantity="many"><xliff:g id="count" example="42">%d</xliff:g> سطرًا</item>
+        <item quantity="other"><xliff:g id="count" example="100">%d</xliff:g> سطر</item>
+    </plurals>
+
+    <string name="history_capture_camera_cd">التقاط بالكاميرا</string>
+
+    <string name="history_capture_screen_cd">التقاط الشاشة</string>
+
+    <string name="history_reopen_cd">فتح صورة الالتقاط</string>
+
     <string name="settings_cell_dictionary_summary">البحث عن تعريفات الكلمات</string>
+
+    <string name="image_import_no_text">لم يتم اكتشاف نص <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> في هذه الصورة</string>
+
+    <string name="settings_cell_image_import">استيراد ملف</string>
+
+    <string name="settings_cell_image_import_summary">ترجمة صورة أو مستند محفوظ</string>
+
+    <string name="image_import_landing_title">ترجمة النص في صورة أو مستند</string>
+
+    <string name="image_import_pick_photos">اختيار صورة</string>
+
+    <string name="image_import_pick_files">تصفح الملفات</string>
+
+    <string name="image_import_paste_image">لصق الصورة المنسوخة</string>
+
+    <string name="image_import_decode_failed">تعذّر فتح هذا الملف.</string>
+
+    <string name="image_import_unsupported">نوع الملف هذا غير مدعوم. اختر صورة أو ملف PDF أو أرشيف قصص مصورة.</string>
+
+    <string name="image_import_password_protected">ملف PDF هذا محمي بكلمة مرور ولا يمكن فتحه.</string>
+
+    <string name="image_import_empty">لم يتم العثور على صفحات في هذا الملف.</string>
+
+    <string name="image_import_mixed_selection">لاستيراد عدة ملفات دفعة واحدة، اختر الصور فقط. تُفتح ملفات PDF وأرشيفات القصص المصورة واحدًا تلو الآخر.</string>
+
+    <string name="image_import_close_cd">إغلاق الملف</string>
+
+    <string name="image_import_settings_cd">إعدادات استيراد الملفات</string>
+
+    <string name="image_import_page_chip"><xliff:g id="page" example="3">%1$d</xliff:g> / <xliff:g id="count" example="14">%2$d</xliff:g></string>
+
+    <string name="image_import_prev_page_cd">الصفحة السابقة</string>
+
+    <string name="image_import_next_page_cd">الصفحة التالية</string>
+
+    <string name="image_import_page_grid_cd">عرض كل الصفحات</string>
+
+    <string name="slow_ocr_prompt_message_import">يستغرق هذا الجهاز وقتًا طويلاً لقراءة النص من هذا الملف. بدّل إلى المحرك الأسرع لتسريع المعالجة، مع أن جودة القراءة قد تنخفض قليلاً. يمكنك تغيير محرك هذه الأداة في أي وقت من رمز الإعدادات في هذه الشاشة.</string>
+
+    <string name="settings_cell_camera">الكاميرا</string>
+
+    <string name="settings_cell_camera_summary">وجّه الكاميرا نحو النص لترجمته</string>
+
+    <string name="settings_cell_camera_unavailable">لم يتم اكتشاف كاميرا</string>
+
+    <string name="camera_permission_rationale">يحتاج PlayTranslate إلى إذن الوصول إلى الكاميرا لترجمة النص الذي توجّهها إليه. تتم معالجة الصور على هذا الجهاز.</string>
+
+    <string name="camera_permission_grant">السماح بالوصول إلى الكاميرا</string>
+
+    <string name="camera_permission_denied">تم رفض الوصول إلى الكاميرا. اسمح به من إعدادات النظام لاستخدام الكاميرا.</string>
+
+    <string name="camera_open_settings">فتح الإعدادات</string>
+
+    <string name="camera_unavailable">لا توجد كاميرا متاحة على هذا الجهاز</string>
+
+    <string name="camera_back_cd">رجوع</string>
+
+    <string name="camera_no_text_hint">لا يوجد نص قابل للقراءة، اقترب أكثر أو اضغط لضبط التركيز</string>
+
+    <string name="camera_pause_cd">إيقاف الترجمة التلقائية مؤقتًا</string>
+
+    <string name="camera_play_cd">استئناف الترجمة التلقائية</string>
+
+    <string name="camera_shutter_cd">التقاط لقطة</string>
+
+    <string name="camera_close_cd">إغلاق اللقطة</string>
+
+    <string name="camera_snapshot_no_text">لم يتم اكتشاف نص <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> في هذه اللقطة</string>
+
+    <string name="camera_region_cd">تحديد منطقة</string>
+
+    <string name="camera_region_remove">إزالة</string>
+
+    <string name="capture_sliver_expand_hint">اسحب للأعلى لمزيد من الخيارات</string>
+
+    <string name="camera_settings_cd">إعدادات الكاميرا</string>
 
     <string name="settings_digest_none">لا شيء</string>
     <string name="settings_capture_displays_count">عدد الشاشات: <xliff:g id="count" example="2">%1$d</xliff:g></string>
@@ -1489,6 +1679,10 @@
 
     <string name="hotkey_auto_translation_dialog_title">الترجمة التلقائية</string>
 
+    <string name="hotkey_capture_screen_title">اضغط لالتقاط الشاشة</string>
+
+    <string name="hotkey_capture_screen_dialog_title">التقاط الشاشة</string>
+
     <string name="hotkey_show_hint_title">اضغط مطولاً لعرض <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
 
     <string name="hotkey_show_hint_dialog_title">عرض <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
@@ -1527,6 +1721,14 @@
     <string name="settings_support_donate_title">دعم PlayTranslate</string>
 
     <string name="settings_support_donate_subtitle">مشروع مجاني ومفتوح المصدر صُنع بشغف. ساعد في استمراره.</string>
+
+    <string name="settings_support_check_updates_title">التحقق من التحديثات</string>
+
+    <string name="settings_support_check_updates_title_available">تحديث متاح</string>
+
+    <string name="settings_support_check_updates_subtitle">الإصدار الحالي: <xliff:g id="version" example="2.4.1">%1$s</xliff:g></string>
+
+    <string name="settings_support_check_updates_checking">جارٍ التحقق من التحديثات…</string>
 
     <!-- ═══ SETTINGS — Debug section (developer-only) ═══ -->
 
@@ -1568,8 +1770,6 @@
 
     <string name="settings_debug_export_logs_failed">فشل تصدير السجلات: <xliff:g id="exception_class" example="FileNotFoundException">%1$s</xliff:g></string>
 
-    <string name="settings_footer_version"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> v<xliff:g id="version" example="2.2.0">%2$s</xliff:g></string>
-
     <!-- ═══ GENERIC TOASTS ═══ -->
 
     <string name="toast_link_copied">تم نسخ الرابط</string>
@@ -1595,6 +1795,8 @@
     <string name="audio_loading">جارٍ التحميل…</string>
 
     <string name="audio_error_loading">تعذّر التحميل</string>
+
+    <string name="process_text_translation_failed">تعذّرت ترجمة النص المحدد. تحقق من اتصالك أو من إعدادات اللغة.</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">اسم</string>

@@ -257,3 +257,50 @@ Mechanical layer re-verified across all 174 keys: placeholder parity with EN (`%
 **FIX FIRST** — one ❌. The Turkish trim editor's confirm button ("Seçimi kullan") is laid out entirely off-screen; shortening `game_audio_trim_use_tts` → "TTS kullan" and `game_audio_trim_no_audio` → "Ses olmasın" brings the row to 353dp (narrower than English) and restores it. Everything else round 1 touched is correct: the suffix audit passes with zero hits, the `at-`/`kapat-` verbs do not collide, and all 38 `misc_*` labels remain distinct. The two 💬 are polish.
 
 **Cross-locale escalation (not a TR finding).** The same row overflows a 411dp screen in **de (572dp), fr (524dp), ru (521dp), es (469dp)** as well as tr (564dp). Only EN (372dp) and pt-BR (336dp) fit — and pt-BR fits *because* it was measured and cut. The root cause is the layout, not the translations: a fixed horizontal `LinearLayout` of `wrap_content` buttons with no weight, ellipsize, wrap, or scroll will clip its last child in any locale that runs long. Shortening strings is a mitigation; giving the row a wrapping/`FlexboxLayout`/stacked-button treatment is the cure.
+
+## Delta review — 2026-07-25 sync (95 keys)
+
+Scope: the 89 keys `scripts/l10n_diff.py` reported MISSING and the 6 it reported
+MODIFIED against the `l10n-sync` baseline (`54809b6c`) — the camera tool, the file-import
+tool, the slow-OCR rescue prompt, the PaddleOCR accurate/fast tier split, the manual
+update check, the History capture + live-session cards, the accessibility-stuck alert,
+the audio-recording row, and the capture standby state. Two orphans
+(`settings_footer_version`, `settings_ocr_footer`) were deleted.
+
+Two of the six MODIFIED keys — `capture_lifecycle_on_subtitle` and
+`capture_lifecycle_off_subtitle` — were already carrying the current English meaning in
+every locale; they flag only because the baseline tag has not advanced since 2026-07-14.
+No change was needed. The other four (`game_screen_controls_title`,
+`settings_ocr_use_manga_subtitle`, `yomitan_page_description`, `yomitan_importing_message`)
+were genuinely stale and were re-translated.
+
+Mechanical layer verified programmatically over the delta: every translatable EN key
+present and no extras; placeholder multisets identical to EN; all `<xliff:g>` spans
+byte-identical to EN; `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped
+quotes; `<plurals>` categories exactly one/other. `./gradlew :app:processDebugResources`
+is green. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | was | now | why |
+|---|---|---|---|---|
+| `settings_ocr_note_mlkit` | ⚠️ | "Metni yoğun ekranlarda bile hızlı" | "Metni yoğun ekranlarda bile yavaşlamaz" | The English comment forbids reusing the literal Fast tier label; the first pass reused «hızlı», the same word as `ocr_label_paddle_fast`, so the two rows read as the same tier sitting side by side in one list. |
+
+### Clean areas (delta) — checked, no findings
+
+**No suffix is attached to any placeholder** anywhere in the delta — vowel harmony is never guessed. `settings_ocr_footer_guidance` uses a free-standing head word (“`%1$s`” etiketli motor), `image_import_no_text` and `camera_snapshot_no_text` suffix the head noun instead (`%1$s` metni algılanmadı, mirroring the committed `status_no_text`), `settings_support_check_updates_subtitle` uses a colon frame, and `update_none_message` leaves both spans bare. i/ı are spelled for runtime uppercasing (`capture_show_on_screen` → EKRANDA GÖSTER carries no dotted-i hazard). Both plural categories take the singular noun after the numeral, which is correct Turkish, matching `yomitan_import_summary_count`. **motor** for engine matches Android's Turkish for a pluggable engine and stays clear of **araç** (tool) and **model** — all three meet in `settings_ocr_delete_camera_import_note`. anlık görüntü for the camera freeze-frame stays distinct from ekran görüntüsü (`anki_group_screenshot`). `hotkey_capture_screen_dialog_title` (Ekranı Yakala) matches `floating_menu_capture_screen`'s wording. siz-level imperatives throughout.
+
+**Render constraints read, not guessed.** `capture_show_on_screen` renders through
+`Text.PT.GroupHeader` (`textAllCaps`, `letterSpacing` 0.12) at 9sp in
+`section_target.xml`, but the view is `wrap_content` in a row whose sibling label carries
+`layout_weight="1"` — the label squeezes, this button never clips, so no accuracy was
+traded for brevity. `capture_sliver_expand_hint` is `isSingleLine` but sits `WRAP` and
+centred in a screen-wide sheet strip. `camera_region_remove` measures itself
+`UNSPECIFIED` before placement (`CameraRegionUi`), so the pill grows to its text.
+`image_import_no_text` / `camera_snapshot_no_text` locate the tappable language span by
+the invisible FSI/PDI sentinels `markNoTextLanguage` injects, not by substring search, so
+word order and a tight prefix are both safe.
+
+### Verdict
+
+**PASS.** One ⚠️ found and fixed, no ❌.

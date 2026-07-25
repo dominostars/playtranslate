@@ -315,3 +315,50 @@ introduced a collision, a broken agreement, or an orphaned sibling, and one
 remain mutually distinct — the property `.distinct()` depends on — and all four clusters
 stay separable. The three 💬s are optional polish on strings that are already clear.
 **SHIP.**
+
+## Delta review — 2026-07-25 sync (95 keys)
+
+Scope: the 89 keys `scripts/l10n_diff.py` reported MISSING and the 6 it reported
+MODIFIED against the `l10n-sync` baseline (`54809b6c`) — the camera tool, the file-import
+tool, the slow-OCR rescue prompt, the PaddleOCR accurate/fast tier split, the manual
+update check, the History capture + live-session cards, the accessibility-stuck alert,
+the audio-recording row, and the capture standby state. Two orphans
+(`settings_footer_version`, `settings_ocr_footer`) were deleted.
+
+Two of the six MODIFIED keys — `capture_lifecycle_on_subtitle` and
+`capture_lifecycle_off_subtitle` — were already carrying the current English meaning in
+every locale; they flag only because the baseline tag has not advanced since 2026-07-14.
+No change was needed. The other four (`game_screen_controls_title`,
+`settings_ocr_use_manga_subtitle`, `yomitan_page_description`, `yomitan_importing_message`)
+were genuinely stale and were re-translated.
+
+Mechanical layer verified programmatically over the delta: every translatable EN key
+present and no extras; placeholder multisets identical to EN; all `<xliff:g>` spans
+byte-identical to EN; `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped
+quotes; `<plurals>` categories exactly other. `./gradlew :app:processDebugResources`
+is green. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | was | now | why |
+|---|---|---|---|---|
+| `settings_ocr_note_mlkit` | ⚠️ | "即使画面文字很多也很快" | "即使画面文字很多也迅速" | The English comment forbids reusing the literal Fast tier label; the first pass reused 快, the same word as `ocr_label_paddle_fast`, so the two rows read as the same tier sitting side by side in one list. |
+
+### Clean areas (delta) — checked, no findings
+
+Pangu spacing audited on every new string that mixes scripts — 「PlayTranslate 需要相机权限」, 「此 PDF 有密码保护」, 「PDF 和漫画压缩包」, 「已导入 <xliff:g>%d</xliff:g> 部词典」, 「<xliff:g>%d</xliff:g> 行」 — and deliberately suppressed around the language placeholder in `image_import_no_text` and `camera_snapshot_no_text`, which fill with Chinese (未在此图像中检测到%1$s文字), matching the committed `status_no_text`. The em dash in `camera_no_text_hint` is written —— per the locale's rule. 你 throughout, no 您. 自启动 and 无限制 in `a11y_stuck_message_xiaomi` are MIUI's own Chinese labels, so the setting is findable. 截取 kept as the capture verb (matching 截取与叠加层 and 正在截取画面); 快照 for the camera freeze-frame stays distinct from 截图, which `anki_group_screenshot` owns. 引擎 (engine) / 工具 (tool) / 模型 (model) stay three separate nouns — all three meet in `settings_ocr_delete_camera_import_note`. Plurals `other` only, with 部 / 行 measure words.
+
+**Render constraints read, not guessed.** `capture_show_on_screen` renders through
+`Text.PT.GroupHeader` (`textAllCaps`, `letterSpacing` 0.12) at 9sp in
+`section_target.xml`, but the view is `wrap_content` in a row whose sibling label carries
+`layout_weight="1"` — the label squeezes, this button never clips, so no accuracy was
+traded for brevity. `capture_sliver_expand_hint` is `isSingleLine` but sits `WRAP` and
+centred in a screen-wide sheet strip. `camera_region_remove` measures itself
+`UNSPECIFIED` before placement (`CameraRegionUi`), so the pill grows to its text.
+`image_import_no_text` / `camera_snapshot_no_text` locate the tappable language span by
+the invisible FSI/PDI sentinels `markNoTextLanguage` injects, not by substring search, so
+word order and a tight prefix are both safe.
+
+### Verdict
+
+**PASS.** One ⚠️ found and fixed, no ❌.

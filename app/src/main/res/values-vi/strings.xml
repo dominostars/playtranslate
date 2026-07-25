@@ -59,6 +59,8 @@
 
     <string name="status_translating">Đang dịch…</string>
 
+    <string name="capture_show_on_screen">Hiện trên màn hình</string>
+
     <string name="status_no_text">Không phát hiện văn bản <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> trong \"<xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g>\"</string>
 
     <string name="status_error">Lỗi: <xliff:g id="error_message" example="Network timeout">%1$s</xliff:g></string>
@@ -298,6 +300,18 @@
     <string name="error_single_app_not_fullscreen">Đã tạm dừng dịch — ứng dụng đang được chụp không hiển thị toàn màn hình. Việc dịch sẽ tiếp tục khi ứng dụng trở lại toàn màn hình.</string>
     <string name="error_capture_blocked_secure">Không đọc được gì — nội dung được bảo vệ chặn việc chụp màn hình.</string>
     <string name="probe_initializing">Đang khởi tạo…</string>
+
+    <string name="startup_initializing_auto_mode">Đang khởi tạo chế độ tự động…</string>
+
+    <string name="slow_ocr_prompt_title">Nhận dạng văn bản chậm</string>
+
+    <string name="slow_ocr_prompt_message">Thiết bị này mất khá nhiều thời gian để đọc màn hình. Hãy chuyển sang trình nhận dạng nhanh hơn để xử lý nhanh hơn, dù chất lượng đọc có thể giảm đôi chút. Bạn có thể đổi bất cứ lúc nào trong cài đặt:\n\n<xliff:g id="settings" example="Settings">%1$s</xliff:g> → <xliff:g id="section" example="Capture &amp; overlay">%2$s</xliff:g> → <xliff:g id="ocr_header" example="Text recognition (OCR)">%3$s</xliff:g></string>
+
+    <string name="slow_ocr_prompt_message_camera">Thiết bị này mất khá nhiều thời gian để đọc văn bản từ máy ảnh. Hãy chuyển sang trình nhận dạng nhanh hơn để xử lý nhanh hơn, dù chất lượng đọc có thể giảm đôi chút. Bạn có thể đổi trình nhận dạng của máy ảnh bất cứ lúc nào bằng biểu tượng bánh răng cài đặt trên màn hình này.</string>
+
+    <string name="slow_ocr_prompt_switch">Dùng trình nhận dạng nhanh hơn</string>
+
+    <string name="slow_ocr_prompt_keep">Giữ trình nhận dạng hiện tại</string>
     <string name="stream_kind_prompt_title">Bạn đã chọn phương án chia sẻ nào?</string>
     <string name="stream_kind_prompt_message">Dịch trực tiếp hoạt động khác nhau giữa việc chia sẻ một ứng dụng và chia sẻ toàn bộ màn hình, và hệ thống không cho biết bạn đã chia sẻ cái nào.</string>
     <string name="stream_kind_share_one_app">Chia sẻ một ứng dụng</string>
@@ -363,7 +377,15 @@
 
     <string name="capture_lifecycle_off_subtitle">Cho phép chụp màn hình</string>
 
-    <string name="game_screen_controls_title">Điều khiển màn hình trò chơi</string>
+    <string name="capture_lifecycle_standby_subtitle">Chụp màn hình đang ở chế độ chờ</string>
+
+    <string name="game_screen_controls_title">Hiện điều khiển trên màn hình</string>
+
+    <string name="record_audio_action">Ghi âm</string>
+
+    <string name="audio_recording_row_start">Bắt đầu ghi âm</string>
+
+    <string name="audio_recording_row_active">Đang ghi âm</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          MEDIAPROJECTION OVERLAY-PERMISSION DIALOG
@@ -388,6 +410,12 @@
     <string name="overlay_icon_a11y_required_title">Cần quyền Hỗ trợ tiếp cận</string>
 
     <string name="overlay_icon_a11y_required_message">Biểu tượng nổi cần quyền Hỗ trợ tiếp cận để vẽ lên màn hình trò chơi.\n\nVào Cài đặt → Hỗ trợ tiếp cận → Ứng dụng đã tải xuống → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Bật.</string>
+
+    <string name="a11y_stuck_title">Cần khởi động lại Hỗ trợ tiếp cận</string>
+
+    <string name="a11y_stuck_message">Hỗ trợ tiếp cận đã được bật cho <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, nhưng Android đã dừng dịch vụ và sẽ không tự khởi động lại. Thiết bị của bạn có thể báo ứng dụng hoạt động không đúng trong cài đặt hỗ trợ tiếp cận. Điều này thường xảy ra sau khi hệ thống buộc dừng ứng dụng để tiết kiệm pin.\n\nĐể khắc phục, hãy tắt rồi bật lại dịch vụ trong cài đặt hỗ trợ tiếp cận.</string>
+
+    <string name="a11y_stuck_message_xiaomi">Trên thiết bị Xiaomi, hãy bật thêm Tự khởi động cho <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> và đặt trình tiết kiệm pin thành “Không hạn chế” trong cài đặt hệ thống của ứng dụng. Nếu không, hệ thống sẽ tiếp tục dừng dịch vụ.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          ACCESSIBILITY-REQUIRED ALERT
@@ -1064,6 +1092,10 @@
 
     <string name="region_default_full_screen">Toàn màn hình</string>
 
+    <string name="region_default_capture">Vùng</string>
+
+    <string name="region_action_remove">Xóa</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          MAIN-SCREEN BIG TRANSLATE BUTTON
          (prefix is joined to the region label by code with a space)
@@ -1151,6 +1183,8 @@
     <string name="dialog_hotkey_setup_instruction">Giữ phím trong 2 giây</string>
 
     <string name="dialog_hotkey_setup_countdown">Giữ <xliff:g id="remaining_seconds" example="1.4">%1$s</xliff:g></string>
+
+    <string name="dialog_hotkey_setup_typing_key">Phím này dùng để nhập ký tự nên cũng sẽ kích hoạt khi bạn gõ. Hãy thêm Ctrl hoặc dùng phím chức năng.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          TRANSLATION-RESULT SCREEN — toolbar + per-row buttons
@@ -1250,6 +1284,14 @@
 
     <string name="update_error_install_launch">Không thể mở trình cài đặt của hệ thống.</string>
 
+    <string name="update_none_title">Không tìm thấy bản cập nhật</string>
+
+    <string name="update_none_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version" example="2.4.1">%1$s</xliff:g> là phiên bản mới nhất.</string>
+
+    <string name="update_check_failed_title">Không thể kiểm tra bản cập nhật</string>
+
+    <string name="update_check_failed_message">Không kết nối được tới <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> để tìm phiên bản mới. Hãy kiểm tra kết nối và thử lại.</string>
+
     <string name="toast_no_browser_available">Không có trình duyệt nào</string>
 
     <string name="target_pack_migration_title">Đã có định nghĩa <xliff:g id="target_language" example="Spanish">%1$s</xliff:g></string>
@@ -1299,7 +1341,19 @@
 
     <string name="settings_ocr_default_badge">Mặc định</string>
 
-    <string name="settings_ocr_footer">Nếu PlayTranslate gặp khó khăn trong việc đọc chính xác văn bản trên màn hình, hãy thử các lựa chọn khác nhau. Các công cụ OCR khác nhau có thể hoạt động tốt hơn với những kiểu phông chữ hoặc hướng văn bản khác nhau.</string>
+    <string name="ocr_label_paddle_accurate">PaddleOCR (Chính xác)</string>
+
+    <string name="ocr_label_paddle_fast">PaddleOCR (Nhanh)</string>
+
+    <string name="settings_ocr_tier_accurate_note">Đọc được chữ nhỏ, nhưng chậm hơn</string>
+
+    <string name="settings_ocr_tier_fast_note">Nhanh hơn nhiều, có thể bỏ sót chữ nhỏ</string>
+
+    <string name="settings_ocr_note_meiki">Tốt nhất cho trò chơi, tra từ chính xác nhất</string>
+
+    <string name="settings_ocr_note_mlkit">Vẫn mượt dù màn hình nhiều chữ</string>
+
+    <string name="settings_ocr_footer_guidance">Trình nhận dạng có nhãn “<xliff:g id="default_badge" example="Default">%1$s</xliff:g>” là lựa chọn được khuyến nghị cho ngôn ngữ này. Nếu đọc chậm, hãy thử một lựa chọn nhanh hơn. Nếu chữ nhỏ hoặc chữ cách điệu bị đọc sai, hãy thử trình nhận dạng khác.</string>
 
     <string name="settings_ocr_delete_cd">Xóa <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
 
@@ -1308,6 +1362,12 @@
     <string name="settings_ocr_delete_msg">Việc này sẽ gỡ mô hình <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> khỏi thiết bị này. Bạn có thể tải lại sau.</string>
 
     <string name="settings_ocr_delete_shared_msg">Các ngôn ngữ này cũng dùng <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g>. Việc xóa sẽ giải phóng dung lượng ngay bây giờ; mô hình sẽ được tải lại vào lần tới bạn chuyển sang một trong các ngôn ngữ đó:\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_camera_note">Công cụ máy ảnh cũng dùng trình nhận dạng này và sẽ quay lại lựa chọn tiêu chuẩn của bạn.</string>
+
+    <string name="settings_ocr_delete_import_note">Công cụ nhập tệp cũng dùng trình nhận dạng này và sẽ quay lại lựa chọn tiêu chuẩn của bạn.</string>
+
+    <string name="settings_ocr_delete_camera_import_note">Công cụ máy ảnh và công cụ nhập tệp cũng dùng trình nhận dạng này và sẽ quay lại lựa chọn tiêu chuẩn của bạn.</string>
 
     <string name="settings_ocr_delete_confirm">Xóa</string>
 
@@ -1322,7 +1382,7 @@
     <string name="settings_ocr_download_failed">Không thể tải mô hình OCR. Hãy kiểm tra kết nối và thử lại.</string>
 
     <string name="settings_ocr_use_manga_title">Dùng MangaOCR</string>
-    <string name="settings_ocr_use_manga_subtitle">CẢNH BÁO: Chất lượng cao, nhưng chậm. Không khuyến nghị cho chế độ tự động. MangaOCR là phần bổ sung cho OCR đã chọn, nó không thể hoạt động một mình</string>
+    <string name="settings_ocr_use_manga_subtitle">THỬ NGHIỆM. Chỉ dùng để đọc truyện tranh. Chạy chậm và chất lượng kém với trò chơi cũng như nội dung khác.</string>
     <string name="settings_ocr_disable_manga_title">Tắt MangaOCR?</string>
     <string name="settings_ocr_disable_manga_msg">Giữ lại mô hình đã tải (<xliff:g id="size" example="68 MB">%1$s</xliff:g>) hay xóa nó để giải phóng dung lượng?</string>
     <string name="settings_ocr_disable_keep">Giữ mô hình</string>
@@ -1342,7 +1402,25 @@
         <item quantity="other">Đã nhập <xliff:g id="count" example="3">%d</xliff:g> từ điển</item>
     </plurals>
 
-    <string name="yomitan_page_description">Từ điển Yomitan là các tệp từ điển do cộng đồng tạo, được dùng bởi tiện ích mở rộng trình duyệt Yomitan. Tính năng bao gồm các từ điển bổ sung, dữ liệu tần suất và trọng âm cao độ. Hãy nhập một từ điển (.zip) bằng nút +, và PlayTranslate sẽ tích hợp nó liền mạch trong toàn bộ ứng dụng.</string>
+    <plurals name="settings_yomitan_outdated_summary">
+        <item quantity="other">Cần nhập lại <xliff:g id="count" example="3">%d</xliff:g> từ điển</item>
+    </plurals>
+
+    <string name="yomitan_page_description">Từ điển Yomitan là các tệp từ điển do cộng đồng tạo, được dùng bởi tiện ích mở rộng trình duyệt Yomitan. Tính năng bao gồm các từ điển bổ sung, dữ liệu tần suất và trọng âm cao độ. Hãy nhập một từ điển (.zip) hoặc tệp xuất bộ sưu tập từ điển Yomitan (.json) bằng nút +, và PlayTranslate sẽ tích hợp nó liền mạch trong toàn bộ ứng dụng.</string>
+
+    <string name="yomitan_outdated_label">Cần nhập lại sau khi cập nhật ứng dụng. Nhấn để nhập lại tệp của từ điển này.</string>
+
+    <string name="yomitan_collection_imported_title">Đã nhập bộ sưu tập</string>
+
+    <string name="yomitan_collection_none_title">Không có nội dung mới để nhập</string>
+
+    <plurals name="yomitan_collection_imported_count">
+        <item quantity="other">Đã nhập <xliff:g id="count" example="4">%d</xliff:g> từ điển</item>
+    </plurals>
+
+    <plurals name="yomitan_collection_skipped_count">
+        <item quantity="other"><xliff:g id="count" example="2">%d</xliff:g> từ điển đã ở bản mới nhất</item>
+    </plurals>
 
     <string name="yomitan_import_action">Nhập từ điển</string>
 
@@ -1360,7 +1438,7 @@
 
     <string name="yomitan_importing_title">Đang nhập từ điển</string>
 
-    <string name="yomitan_importing_message">Đang kiểm tra các tệp từ điển…</string>
+    <string name="yomitan_importing_message">Đang nhập các tệp từ điển…</string>
 
     <string name="yomitan_importing_progress">Đang nhập <xliff:g id="current" example="2">%1$d</xliff:g> trên <xliff:g id="total" example="5">%2$d</xliff:g>…</string>
 
@@ -1479,7 +1557,99 @@
 
     <string name="history_copied_toast">Đã sao chép</string>
 
+    <string name="history_capture_image_toggle_title">Lưu ảnh chụp</string>
+
+    <string name="history_capture_image_toggle_subtitle">Giữ một ảnh cho mỗi lần chụp bằng máy ảnh hoặc màn hình</string>
+
+    <string name="history_live_session_title">Phiên trực tiếp</string>
+
+    <plurals name="history_line_count">
+        <item quantity="other"><xliff:g id="count" example="42">%d</xliff:g> dòng</item>
+    </plurals>
+
+    <string name="history_capture_camera_cd">Chụp bằng máy ảnh</string>
+
+    <string name="history_capture_screen_cd">Chụp màn hình</string>
+
+    <string name="history_reopen_cd">Mở ảnh chụp</string>
+
     <string name="settings_cell_dictionary_summary">Tra cứu định nghĩa từ</string>
+
+    <string name="image_import_no_text">Không phát hiện văn bản <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> trong ảnh này</string>
+
+    <string name="settings_cell_image_import">Nhập tệp</string>
+
+    <string name="settings_cell_image_import_summary">Dịch ảnh hoặc tài liệu đã lưu</string>
+
+    <string name="image_import_landing_title">Dịch văn bản trong ảnh hoặc tài liệu</string>
+
+    <string name="image_import_pick_photos">Chọn ảnh</string>
+
+    <string name="image_import_pick_files">Duyệt tệp</string>
+
+    <string name="image_import_paste_image">Dán ảnh đã sao chép</string>
+
+    <string name="image_import_decode_failed">Không mở được tệp đó.</string>
+
+    <string name="image_import_unsupported">Không hỗ trợ loại tệp này. Hãy chọn ảnh, PDF hoặc kho lưu trữ truyện tranh.</string>
+
+    <string name="image_import_password_protected">Tệp PDF này được bảo vệ bằng mật khẩu nên không mở được.</string>
+
+    <string name="image_import_empty">Không tìm thấy trang nào trong tệp này.</string>
+
+    <string name="image_import_mixed_selection">Để nhập nhiều tệp cùng lúc, chỉ chọn ảnh. Tệp PDF và kho lưu trữ truyện tranh mở lần lượt từng tệp.</string>
+
+    <string name="image_import_close_cd">Đóng tệp</string>
+
+    <string name="image_import_settings_cd">Cài đặt nhập tệp</string>
+
+    <string name="image_import_page_chip"><xliff:g id="page" example="3">%1$d</xliff:g> / <xliff:g id="count" example="14">%2$d</xliff:g></string>
+
+    <string name="image_import_prev_page_cd">Trang trước</string>
+
+    <string name="image_import_next_page_cd">Trang sau</string>
+
+    <string name="image_import_page_grid_cd">Hiện tất cả trang</string>
+
+    <string name="slow_ocr_prompt_message_import">Thiết bị này mất khá nhiều thời gian để đọc văn bản từ tệp này. Hãy chuyển sang trình nhận dạng nhanh hơn để xử lý nhanh hơn, dù chất lượng đọc có thể giảm đôi chút. Bạn có thể đổi trình nhận dạng của công cụ này bất cứ lúc nào bằng biểu tượng bánh răng cài đặt trên màn hình này.</string>
+
+    <string name="settings_cell_camera">Máy ảnh</string>
+
+    <string name="settings_cell_camera_summary">Hướng máy ảnh vào văn bản để dịch</string>
+
+    <string name="settings_cell_camera_unavailable">Không phát hiện máy ảnh</string>
+
+    <string name="camera_permission_rationale">PlayTranslate cần quyền truy cập máy ảnh để dịch văn bản mà bạn hướng tới. Ảnh được xử lý ngay trên thiết bị này.</string>
+
+    <string name="camera_permission_grant">Cho phép truy cập máy ảnh</string>
+
+    <string name="camera_permission_denied">Quyền truy cập máy ảnh đã bị từ chối. Hãy cho phép trong cài đặt hệ thống để dùng máy ảnh.</string>
+
+    <string name="camera_open_settings">Mở cài đặt</string>
+
+    <string name="camera_unavailable">Thiết bị này không có máy ảnh khả dụng</string>
+
+    <string name="camera_back_cd">Quay lại</string>
+
+    <string name="camera_no_text_hint">Không có văn bản đọc được — hãy lại gần hơn hoặc nhấn để lấy nét</string>
+
+    <string name="camera_pause_cd">Tạm dừng tự động dịch</string>
+
+    <string name="camera_play_cd">Tiếp tục tự động dịch</string>
+
+    <string name="camera_shutter_cd">Chụp ảnh tĩnh</string>
+
+    <string name="camera_close_cd">Đóng ảnh tĩnh</string>
+
+    <string name="camera_snapshot_no_text">Không phát hiện văn bản <xliff:g id="source_language" example="Japanese">%1$s</xliff:g> trong ảnh tĩnh này</string>
+
+    <string name="camera_region_cd">Chọn một vùng</string>
+
+    <string name="camera_region_remove">Xóa</string>
+
+    <string name="capture_sliver_expand_hint">Kéo lên để xem thêm tùy chọn</string>
+
+    <string name="camera_settings_cd">Cài đặt máy ảnh</string>
 
     <string name="settings_digest_none">Không có</string>
     <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> màn hình</string>
@@ -1557,6 +1727,10 @@
 
     <string name="hotkey_auto_translation_dialog_title">Tự động dịch</string>
 
+    <string name="hotkey_capture_screen_title">Nhấn để chụp màn hình</string>
+
+    <string name="hotkey_capture_screen_dialog_title">Chụp màn hình</string>
+
     <string name="hotkey_show_hint_title">Giữ để hiện <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
 
     <string name="hotkey_show_hint_dialog_title">Hiện <xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
@@ -1604,6 +1778,14 @@
 
     <string name="settings_support_donate_subtitle">Một sản phẩm tâm huyết, miễn phí và mã nguồn mở. Hãy giúp duy trì nó.</string>
 
+    <string name="settings_support_check_updates_title">Kiểm tra bản cập nhật</string>
+
+    <string name="settings_support_check_updates_title_available">Có bản cập nhật</string>
+
+    <string name="settings_support_check_updates_subtitle">Phiên bản hiện tại: <xliff:g id="version" example="2.4.1">%1$s</xliff:g></string>
+
+    <string name="settings_support_check_updates_checking">Đang kiểm tra bản cập nhật…</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Debug section (developer-only)
          ═══════════════════════════════════════════════════════════════ -->
@@ -1641,8 +1823,6 @@
 
     <string name="settings_debug_export_logs_failed">Xuất nhật ký thất bại: <xliff:g id="exception_class" example="FileNotFoundException">%1$s</xliff:g></string>
 
-    <string name="settings_footer_version"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> v<xliff:g id="version" example="2.2.0">%2$s</xliff:g></string>
-
     <!-- ═══════════════════════════════════════════════════════════════
          GENERIC TOASTS
          ═══════════════════════════════════════════════════════════════ -->
@@ -1668,6 +1848,8 @@
     <string name="audio_loading">Đang tải…</string>
 
     <string name="audio_error_loading">Không thể tải</string>
+
+    <string name="process_text_translation_failed">Không thể dịch văn bản đã chọn. Hãy kiểm tra kết nối hoặc cài đặt ngôn ngữ.</string>
 
     <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
     <string name="pos_noun">Danh từ</string>

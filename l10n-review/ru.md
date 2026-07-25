@@ -407,3 +407,51 @@ fix) and one ⚠️ (a one-word "fallback" term alignment). Everything round 1 c
 re-derives as correct, including all three of its ❌ calls; **no regression was
 introduced by any of the fixes**, and the discard-dialog ambiguity it targeted is
 genuinely gone.
+
+## Delta review — 2026-07-25 sync (95 keys)
+
+Scope: the 89 keys `scripts/l10n_diff.py` reported MISSING and the 6 it reported
+MODIFIED against the `l10n-sync` baseline (`54809b6c`) — the camera tool, the file-import
+tool, the slow-OCR rescue prompt, the PaddleOCR accurate/fast tier split, the manual
+update check, the History capture + live-session cards, the accessibility-stuck alert,
+the audio-recording row, and the capture standby state. Two orphans
+(`settings_footer_version`, `settings_ocr_footer`) were deleted.
+
+Two of the six MODIFIED keys — `capture_lifecycle_on_subtitle` and
+`capture_lifecycle_off_subtitle` — were already carrying the current English meaning in
+every locale; they flag only because the baseline tag has not advanced since 2026-07-14.
+No change was needed. The other four (`game_screen_controls_title`,
+`settings_ocr_use_manga_subtitle`, `yomitan_page_description`, `yomitan_importing_message`)
+were genuinely stale and were re-translated.
+
+Mechanical layer verified programmatically over the delta: every translatable EN key
+present and no extras; placeholder multisets identical to EN; all `<xliff:g>` spans
+byte-identical to EN; `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped
+quotes; `<plurals>` categories exactly one/few/many/other. `./gradlew :app:processDebugResources`
+is green. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | was | now | why |
+|---|---|---|---|---|
+| `settings_ocr_note_mlkit` | ⚠️ | "Быстрый даже при обилии текста на экране" | "Отзывчивый даже при обилии текста на экране" | The English comment forbids reusing the literal Fast tier label; the first pass reused «быстрый», the same word as `ocr_label_paddle_fast`, so the two rows read as the same tier sitting side by side in one list. |
+| `hotkey_capture_screen_title` | 💬 | "Нажмите, чтобы захватить экран" | "Нажмите для захвата экрана" | Its two siblings in the same list (`hotkey_auto_translation_title`, `hotkey_show_translations_title`) both use «Нажмите/Удерживайте для + genitive»; the subordinate-clause form broke the column's rhythm for no gain. |
+
+### Clean areas (delta) — checked, no findings
+
+All four new `<plurals>` written out at every band and read with a real count: `history_line_count` (строка / строки / строк), `settings_yomitan_outdated_summary`, `yomitan_collection_imported_count`, `yomitan_collection_skipped_count` — none is a copied English one/other pair, and `other` carries the fractional example the file already uses. Every placeholder is left in the nominative: `update_none_message` hangs the version off a dash predicate («PlayTranslate 2.4.1 — последняя версия»), and `image_import_no_text` / `camera_snapshot_no_text` reuse the colon frame `status_no_text` already established («%1$s: текст не найден…») rather than forcing an oblique case. «модуль» was chosen for *engine* to match Android's own Russian for a pluggable engine («Модуль синтеза речи») and because «движок» is below this file's register; it also stays clear of «модель» (the downloaded OCR model, `settings_ocr_delete_msg`) and «инструмент» (tool) — all three meet in `settings_ocr_delete_camera_import_note`. «Камера» inside `settings_ocr_delete_camera_note` byte-matches `settings_cell_camera`. `settings_support_check_updates_title_available` byte-matches `update_dialog_title`. «снимок» for the camera freeze-frame stays distinct from «снимок экрана» (`anki_group_screenshot`). Formal lowercase «вы» throughout; « » quotes; no «ты».
+
+**Render constraints read, not guessed.** `capture_show_on_screen` renders through
+`Text.PT.GroupHeader` (`textAllCaps`, `letterSpacing` 0.12) at 9sp in
+`section_target.xml`, but the view is `wrap_content` in a row whose sibling label carries
+`layout_weight="1"` — the label squeezes, this button never clips, so no accuracy was
+traded for brevity. `capture_sliver_expand_hint` is `isSingleLine` but sits `WRAP` and
+centred in a screen-wide sheet strip. `camera_region_remove` measures itself
+`UNSPECIFIED` before placement (`CameraRegionUi`), so the pill grows to its text.
+`image_import_no_text` / `camera_snapshot_no_text` locate the tappable language span by
+the invisible FSI/PDI sentinels `markNoTextLanguage` injects, not by substring search, so
+word order and a tight prefix are both safe.
+
+### Verdict
+
+**PASS.** One ⚠️ and one 💬 found and fixed, no ❌.

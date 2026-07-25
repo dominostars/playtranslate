@@ -384,3 +384,50 @@ none introduced an agreement, terminology or cross-reference regression. The sin
 forward-looking note, not a defect. The two highest-risk surfaces both came through:
 the 38 `misc_*` chips are all distinct with every cluster intact, and the trim row now
 fits with 23dp to spare on a 360dp phone — 40dp narrower than the English source.
+
+## Delta review — 2026-07-25 sync (95 keys)
+
+Scope: the 89 keys `scripts/l10n_diff.py` reported MISSING and the 6 it reported
+MODIFIED against the `l10n-sync` baseline (`54809b6c`) — the camera tool, the file-import
+tool, the slow-OCR rescue prompt, the PaddleOCR accurate/fast tier split, the manual
+update check, the History capture + live-session cards, the accessibility-stuck alert,
+the audio-recording row, and the capture standby state. Two orphans
+(`settings_footer_version`, `settings_ocr_footer`) were deleted.
+
+Two of the six MODIFIED keys — `capture_lifecycle_on_subtitle` and
+`capture_lifecycle_off_subtitle` — were already carrying the current English meaning in
+every locale; they flag only because the baseline tag has not advanced since 2026-07-14.
+No change was needed. The other four (`game_screen_controls_title`,
+`settings_ocr_use_manga_subtitle`, `yomitan_page_description`, `yomitan_importing_message`)
+were genuinely stale and were re-translated.
+
+Mechanical layer verified programmatically over the delta: every translatable EN key
+present and no extras; placeholder multisets identical to EN; all `<xliff:g>` spans
+byte-identical to EN; `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped
+quotes; `<plurals>` categories exactly one/other. `./gradlew :app:processDebugResources`
+is green. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | was | now | why |
+|---|---|---|---|---|
+| `settings_ocr_note_mlkit` | ⚠️ | "Rápido, mesmo em telas com muito texto" | "Ágil, mesmo em telas com muito texto" | The English comment forbids reusing the literal Fast tier label; the first pass reused «Rápido», the same word as `ocr_label_paddle_fast`, so the two rows read as the same tier sitting side by side in one list. |
+
+### Clean areas (delta) — checked, no findings
+
+**Brazilian vocabulary only** — tela (never ecrã), arquivo, salvo (never guardado), app, buscar, remover — and **você** throughout. The definite article before the brand follows the committed file: «O PlayTranslate … é a versão mais recente» (`update_none_message`), «a acessibilidade está ativada para o PlayTranslate» (`a11y_stuck_message`), matching `update_dialog_message` and `anki_permission_rationale_message`. **mecanismo** was chosen for *engine* because it is Android's own pt-BR word for a pluggable engine, leaving **ferramenta** for *tool* and **modelo** for the downloadable model — all three meet in `settings_ocr_delete_camera_import_note`. **instantâneo** for the camera freeze-frame keeps «captura de tela» free (`anki_group_screenshot`). “ ” quotes in `a11y_stuck_message_xiaomi`. `settings_support_check_updates_title_available` byte-matches `update_dialog_title` (Atualização disponível). Plurals one/other, with agreement read at each band.
+
+**Render constraints read, not guessed.** `capture_show_on_screen` renders through
+`Text.PT.GroupHeader` (`textAllCaps`, `letterSpacing` 0.12) at 9sp in
+`section_target.xml`, but the view is `wrap_content` in a row whose sibling label carries
+`layout_weight="1"` — the label squeezes, this button never clips, so no accuracy was
+traded for brevity. `capture_sliver_expand_hint` is `isSingleLine` but sits `WRAP` and
+centred in a screen-wide sheet strip. `camera_region_remove` measures itself
+`UNSPECIFIED` before placement (`CameraRegionUi`), so the pill grows to its text.
+`image_import_no_text` / `camera_snapshot_no_text` locate the tappable language span by
+the invisible FSI/PDI sentinels `markNoTextLanguage` injects, not by substring search, so
+word order and a tight prefix are both safe.
+
+### Verdict
+
+**PASS.** One ⚠️ found and fixed, no ❌.

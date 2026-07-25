@@ -195,3 +195,50 @@ One cross-family duplicate exists and is **not** a defect: `misc_polite` = `infl
 ## Verdict
 
 **FIX FIRST.** One ❌ — the trim editor's action row overflows every phone width and shears the primary confirm `game_audio_trim_save` off the right edge (33 % visible at 360 dp, 62 % at 411 dp); the layout is the root cause but Vietnamese is the locale that makes it unusable, and the three-string shortening above is needed regardless. Then the two ⚠️ round-1 regressions: `error_capture_blocked_secure` (garden path + "chụp…chụp" stutter) and `llm_prompt_kw_count_desc` ("loạt dịch" coinage, built on a consistency premise that does not hold across parts of speech). Everything else in the delta is right. The NBSP edit is **correct, verified at the compiled-byte level, and introduced no regression** — the `\n` survived, the NBSP is interior where Kotlin's `trim()` cannot reach it, and `fitLabel` now measures "màn hình" as the single unbreakable run it always was.
+
+## Delta review — 2026-07-25 sync (95 keys)
+
+Scope: the 89 keys `scripts/l10n_diff.py` reported MISSING and the 6 it reported
+MODIFIED against the `l10n-sync` baseline (`54809b6c`) — the camera tool, the file-import
+tool, the slow-OCR rescue prompt, the PaddleOCR accurate/fast tier split, the manual
+update check, the History capture + live-session cards, the accessibility-stuck alert,
+the audio-recording row, and the capture standby state. Two orphans
+(`settings_footer_version`, `settings_ocr_footer`) were deleted.
+
+Two of the six MODIFIED keys — `capture_lifecycle_on_subtitle` and
+`capture_lifecycle_off_subtitle` — were already carrying the current English meaning in
+every locale; they flag only because the baseline tag has not advanced since 2026-07-14.
+No change was needed. The other four (`game_screen_controls_title`,
+`settings_ocr_use_manga_subtitle`, `yomitan_page_description`, `yomitan_importing_message`)
+were genuinely stale and were re-translated.
+
+Mechanical layer verified programmatically over the delta: every translatable EN key
+present and no extras; placeholder multisets identical to EN; all `<xliff:g>` spans
+byte-identical to EN; `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped
+quotes; `<plurals>` categories exactly other. `./gradlew :app:processDebugResources`
+is green. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | was | now | why |
+|---|---|---|---|---|
+| `settings_ocr_note_mlkit` | ⚠️ | "Nhanh ngay cả với màn hình nhiều chữ" | "Vẫn mượt dù màn hình nhiều chữ" | The English comment forbids reusing the literal Fast tier label; the first pass reused «Nhanh», the same word as `ocr_label_paddle_fast`, so the two rows read as the same tier sitting side by side in one list. |
+
+### Clean areas (delta) — checked, no findings
+
+Diacritics complete and syllable spacing preserved on every new string. **Hỗ trợ tiếp cận** for accessibility across all three `a11y_stuck_*` strings — never Trợ năng. **Máy ảnh** was adopted for the camera tool and every camera permission string, matching Android's own Vietnamese for the CAMERA permission group, so `camera_permission_denied` points at a label the user can actually find in system settings. **trình nhận dạng** was chosen for *engine* precisely so **công cụ** stays free for *tool*: the two meet in `settings_ocr_delete_camera_import_note`, and reusing công cụ for both would have read as a tautology. It also echoes the file's existing «Nhận dạng bởi %1$s» (`ocr_source_label`). ảnh tĩnh for the camera freeze-frame stays distinct from ảnh chụp màn hình (`anki_group_screenshot`). bạn throughout. Plurals `other` only. `settings_support_check_updates_title_available` byte-matches `update_dialog_title` (Có bản cập nhật).
+
+**Render constraints read, not guessed.** `capture_show_on_screen` renders through
+`Text.PT.GroupHeader` (`textAllCaps`, `letterSpacing` 0.12) at 9sp in
+`section_target.xml`, but the view is `wrap_content` in a row whose sibling label carries
+`layout_weight="1"` — the label squeezes, this button never clips, so no accuracy was
+traded for brevity. `capture_sliver_expand_hint` is `isSingleLine` but sits `WRAP` and
+centred in a screen-wide sheet strip. `camera_region_remove` measures itself
+`UNSPECIFIED` before placement (`CameraRegionUi`), so the pill grows to its text.
+`image_import_no_text` / `camera_snapshot_no_text` locate the tappable language span by
+the invisible FSI/PDI sentinels `markNoTextLanguage` injects, not by substring search, so
+word order and a tight prefix are both safe.
+
+### Verdict
+
+**PASS.** One ⚠️ found and fixed, no ❌.
