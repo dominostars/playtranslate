@@ -3,6 +3,10 @@ package com.playtranslate
 import android.graphics.Rect
 import com.playtranslate.ocr.core.LayoutAnalyzer
 import com.playtranslate.ocr.core.LayoutAnalyzer.groupBoxesOnePass
+import com.playtranslate.ocr.core.OcrBox
+import com.playtranslate.ocr.core.RecognizedLine
+import com.playtranslate.ocr.core.RecognizedRegion
+import com.playtranslate.ocr.core.RegionOrigin
 import com.playtranslate.language.TextOrientation
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
@@ -1077,5 +1081,279 @@ class OcrGroupingTest {
             documentPitchPrior = true,
         )
         assertEquals(listOf(listOf(0, 1, 2, 3)), groups)
+    }
+
+    // ── interposition guard: a merge may not reach across a line ─────────
+    //
+    // The multi-group walk's reach-back exists so a foreign-COLUMN line can't
+    // break a paragraph (the Vietnamese sidebar cases above). These pin the
+    // bound on it: a line standing between the two IN THE SAME COLUMN stops
+    // the merge, because an edge-to-edge ink gap cannot distinguish a one-row
+    // advance from a two-row skip.
+
+    @Test
+    fun interposition_bridgeOverMiddleRow_staysSplit() {
+        // Device-verbatim geometry (text_sample, 2026-07-20 grouping run, all 3
+        // ML Kit reps). The middle row fails the bare scale cap against row 1
+        // (h=120 vs 157, ratio 0.31) and opens its own group; row 3 then failed
+        // against row 2 and reached BACK over it to row 1 — dy=142 inside the
+        // 205px band, centers aligned, lowercase continuation cue — merging
+        // rows 1+3 and stranding row 2. The group's text came out as
+        // "This is a text sample testing,." and its bounds spanned the stranded
+        // row, so the two overlays drew on top of each other. Three groups is
+        // still not the right answer (that needs the scale gate to stop firing
+        // on same-font glyph variance), but it is a recoverable one: no dropped
+        // row, no reordering.
+        val boxes = listOf(
+            box(399, 359, 1783, 516),   // "This is a text sample" (descender, h=157)
+            box(618, 516, 1568, 636),   // "for translation"       (no descender, h=120)
+            box(874, 658, 1366, 816),   // "testing,."             (h=158)
+        )
+        val texts = listOf("This is a text sample", "for translation", "testing,.")
+        val groups = groupBoxesOnePass(
+            boxes, boxes.map { it.left }, TextOrientation.HORIZONTAL,
+            cues = texts.map { LayoutAnalyzer.textFlowCue(it) },
+        )
+        assertEquals(listOf(listOf(0), listOf(1), listOf(2)), groups)
+    }
+
+    @Test
+    fun interposition_foreignColumnLine_doesNotBlock() {
+        // The predicate directly, on the Vietnamese capture's shape: the sidebar
+        // sits between two body rows on the Y axis but overlaps nothing on the
+        // reading axis, so it is not "in the way" and the body stays one
+        // paragraph (pinned end-to-end by the capture test above).
+        val anchor = box(170, 28, 1283, 165)     // body group, last row 110..165
+        val candidate = box(168, 186, 1268, 248) // next body row
+        val sidebar = box(1745, 158, 2151, 204)  // interleaves in Y, disjoint in X
+        assertNull(
+            LayoutAnalyzer.interposingLine(
+                listOf(anchor, sidebar, candidate), anchor, candidate, TextOrientation.HORIZONTAL,
+            ),
+        )
+    }
+
+    @Test
+    fun interposition_furiganaBetweenBodyRows_bodyStillMerges() {
+        // The exemption the guard depends on. Ruby sits exactly where an
+        // interposer sits — between consecutive body rows, overlapping them
+        // inline — so a scale-blind guard would refuse EVERY body-row merge in
+        // Japanese text carrying ruby. Real ruby runs about half the base size,
+        // which measures ≥1.0 against a glyph-tight base box (1.5 here), far
+        // outside the corroborated cap, so it never blocks.
+        val groups = group(listOf(
+            box(100, 0, 900, 40),      // body row 1, h=40
+            box(100, 48, 400, 64),     // ruby, h=16 → ratio 1.5 vs body
+            box(100, 70, 900, 110),    // body row 2, h=40
+        ))
+        assertEquals(listOf(listOf(0, 2), listOf(1)), groups)
+    }
+
+    @Test
+    fun interposition_vertical_bridgeOverMiddleColumn_staysSplit() {
+        // Vertical mirror: columns read right-to-left, so the open span runs
+        // from the candidate's right edge to the anchor's left edge. The middle
+        // column is kana-narrow (w=28 vs 40, ratio 0.43) so it fails the bare
+        // scale cap and opens its own group; the third column then reaches back
+        // over it (dx=34 < 36) and would merge without the guard.
+        val groups = group(
+            listOf(
+                box(310, 100, 350, 400),   // col 1 (rightmost), w=40
+                box(278, 100, 306, 400),   // col 2, w=28 → ratio 0.43, splits off
+                box(236, 100, 276, 400),   // col 3, w=40
+            ),
+            orientation = TextOrientation.VERTICAL,
+        )
+        assertEquals(listOf(listOf(0), listOf(1), listOf(2)), groups)
+    }
+
+    @Test
+    fun interposition_multiRowGroup_blocksSameColumnSkip() {
+        // Adversarial-review case (Codex, 2026-07-24): once a group holds more
+        // than one row, does the guard still see the interposer? It does —
+        // groupRect unions the INLINE axis only (left/right for horizontal), so
+        // its height stays the last row's height (40 here) and never becomes the
+        // group's stacked extent (190). The indented row 2 strands on alignment
+        // and row 3 cannot reach back over it.
+        val groups = group(listOf(
+            box(100, 0, 900, 40),      // row 1
+            box(100, 50, 900, 90),     // row 2 → merges, group is now 2 rows
+            box(500, 100, 760, 140),   // row 3, indented → strands on alignment
+            box(100, 150, 900, 190),   // row 4 → would bridge back to the group
+        ))
+        assertEquals(listOf(listOf(0, 1), listOf(2), listOf(3)), groups)
+    }
+
+    @Test
+    fun interposition_knownMiss_glyphStarvedRow_stillBridges() {
+        // KNOWN MISS — this pins CURRENT behavior, not desired behavior.
+        //
+        // The ruby exemption and the leak are one window: an interposer is
+        // exempted when its size differs from both endpoints by more than the
+        // corroborated cap, i.e. when it is shorter than ~⅔ of its neighbours.
+        // A Latin row with no ascender and no descender measures about half a
+        // full row of the SAME font and lands there — so it strands (the bare
+        // cap rejects it) and is then exempted from blocking, and the rows
+        // around it bridge over it. Middle row h=50 against 95 = ratio 0.90.
+        //
+        // Measured boundary (JVM sweep, outer rows 95px): blocks at interposer
+        // height ≥64 (ratio ≤0.48), leaks at ≤63 (ratio ≥0.51) — the cap
+        // exactly. Moving the cap cannot fix it: widening starts blocking ruby,
+        // narrowing leaks more. The close is a scale measurement that does not
+        // ride glyph-tight box extent (GlyphScale), which also stops the middle
+        // row stranding in the first place. When that lands, this test should
+        // flip to listOf(listOf(0, 1, 2)) and be renamed.
+        val groups = group(listOf(
+            box(100, 0, 900, 95),      // h=95 (ascender + descender)
+            box(100, 105, 700, 155),   // h=50 (x-height only) → strands, exempt
+            box(100, 175, 900, 270),   // h=95
+        ))
+        assertEquals(
+            "known miss: the glyph-starved row is skipped, not blocked",
+            listOf(listOf(0, 2), listOf(1)),
+            groups,
+        )
+    }
+
+    @Test
+    fun interposition_knownMiss_vertical_glyphStarvedColumn_stillBridges() {
+        // The vertical mirror of the miss above, pinned for the same reason:
+        // a kana-narrow column between two wider ones is exempted and skipped.
+        val groups = group(
+            listOf(
+                box(310, 100, 405, 400),   // col 1, w=95
+                box(258, 100, 308, 400),   // col 2, w=50 → ratio 0.90, exempt
+                box(140, 100, 235, 400),   // col 3, w=95
+            ),
+            orientation = TextOrientation.VERTICAL,
+        )
+        assertEquals(
+            "known miss: the narrow column is skipped, not blocked",
+            listOf(listOf(0, 2), listOf(1)),
+            groups,
+        )
+    }
+
+    @Test
+    fun interposition_capRidesTheRecipe_notTheConstant() {
+        // GroupingRecipe's contract is that every field genuinely changes
+        // grouping when varied. The guard's exemption reads the recipe's cap, so
+        // a sweep of sizeRatioCapCorroborated moves the guard too — at a cap of
+        // 1.0 the glyph-starved row above (ratio 0.90) is no longer exempt and
+        // the bridge is blocked.
+        val boxes = listOf(box(100, 0, 900, 95), box(100, 105, 700, 155), box(100, 175, 900, 270))
+        assertNull(
+            LayoutAnalyzer.interposingLine(
+                boxes, box(100, 0, 900, 95), boxes[2], TextOrientation.HORIZONTAL,
+                sizeRatioCap = 0.50,
+            ),
+        )
+        assertEquals(
+            1,
+            LayoutAnalyzer.interposingLine(
+                boxes, box(100, 0, 900, 95), boxes[2], TextOrientation.HORIZONTAL,
+                sizeRatioCap = 1.0,
+            ),
+        )
+    }
+
+    @Test
+    fun interposition_inlineContinuation_isUnaffected() {
+        // An inline (same-row) merge has no open span between the two — the
+        // guard must return null rather than scan for obstructions.
+        val anchor = box(100, 0, 500, 40)
+        val candidate = box(560, 2, 900, 42)
+        assertNull(
+            LayoutAnalyzer.interposingLine(
+                listOf(anchor, candidate), anchor, candidate, TextOrientation.HORIZONTAL,
+            ),
+        )
+    }
+
+    // ── caps-heading veto: cased scripts only ────────────────────────────
+
+    @Test
+    fun textFlowCue_allCaps_requiresNoCaselessLetters() {
+        assertTrue(LayoutAnalyzer.textFlowCue("ARCTIC GALE").isAllCaps)
+        assertTrue("digits and symbols are not letters", LayoutAnalyzer.textFlowCue("HP: 100 ▶").isAllCaps)
+        assertTrue("accented capitals are cased", LayoutAnalyzer.textFlowCue("CAFÉ MOSCOU").isAllCaps)
+        // A CJK line with an embedded Latin acronym is NOT an all-caps heading.
+        assertFalse(LayoutAnalyzer.textFlowCue("楽しいHOLIDAY").isAllCaps)
+        assertFalse(LayoutAnalyzer.textFlowCue("HPを20回復").isAllCaps)
+        assertFalse(LayoutAnalyzer.textFlowCue("한글 ABC").isAllCaps)
+    }
+
+    @Test
+    fun capsHeading_cjkLineWithLatinAcronym_doesNotVeto() {
+        // Real shape from the p3r_wilduck capture: a JA advertising line that
+        // happens to contain Latin caps ("楽しいHOLIDAY") sat one lowercase
+        // character away from having the caps-heading veto shatter the
+        // paragraph it belongs to. Latin caps inside CJK are not a heading.
+        val boxes = listOf(
+            box(100, 0, 500, 36),
+            box(100, 44, 480, 80),
+        )
+        val texts = listOf("楽しいHOLIDAY", "ホームでver.確認")
+        val groups = groupBoxesOnePass(
+            boxes, boxes.map { it.left }, TextOrientation.HORIZONTAL,
+            cues = texts.map { LayoutAnalyzer.textFlowCue(it) },
+            spacedScript = false,
+        )
+        assertEquals(listOf(listOf(0, 1)), groups)
+    }
+
+    // ── menu split: horizontal only ──────────────────────────────────────
+
+    private fun region(r: Rect, orientation: TextOrientation) = RecognizedRegion(
+        text = "x",
+        box = OcrBox.upright(r),
+        orientation = orientation,
+        confidence = 0.9f,
+        lines = listOf(RecognizedLine("x", OcrBox.upright(r), orientation)),
+        origin = RegionOrigin.LINE,
+    )
+
+    @Test
+    fun splitMenuGroups_verticalGroup_neverSplits() {
+        // Four short vertical columns spread wide. isMenuLike, read on its
+        // horizontal axis convention, calls this a menu — its clustering
+        // tolerance is the COLUMN LENGTH (80px) and the block is 220px wide, so
+        // only 2 of 4 columns land "near" the left edge. Splitting here shreds
+        // vertical prose, and the parentLeft/parentRight pin would give all four
+        // columns the block's full x-extent while they share tops and bottoms —
+        // four overlays stacked on each other. The split must abstain instead.
+        val cols = listOf(
+            box(400, 100, 440, 180),
+            box(340, 100, 380, 180),
+            box(280, 100, 320, 180),
+            box(220, 100, 260, 180),
+        )
+        assertTrue(
+            "fixture must be one isMenuLike would have split",
+            LayoutAnalyzer.isMenuLike(cols, screenWidth = 1920f),
+        )
+        val split = LayoutAnalyzer.splitMenuGroups(
+            listOf(cols.map { region(it, TextOrientation.VERTICAL) }), screenWidth = 1920f,
+        )
+        assertEquals(1, split.size)
+        assertEquals(4, split[0].regions.size)
+        assertNull("no parent pin when nothing is split", split[0].parentLeft)
+    }
+
+    @Test
+    fun splitMenuGroups_horizontalMenu_stillSplits() {
+        // Control for the vertical abstention: the horizontal path is untouched.
+        val rows = listOf(
+            box(100, 0, 250, 30),
+            box(100, 40, 400, 70),
+            box(100, 80, 300, 110),
+            box(100, 120, 200, 150),
+        )
+        val split = LayoutAnalyzer.splitMenuGroups(
+            listOf(rows.map { region(it, TextOrientation.HORIZONTAL) }), screenWidth = 1920f,
+        )
+        assertEquals(4, split.size)
+        assertEquals(100, split[0].parentLeft)
+        assertEquals(400, split[0].parentRight)
     }
 }

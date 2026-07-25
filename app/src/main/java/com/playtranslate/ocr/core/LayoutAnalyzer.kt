@@ -852,9 +852,15 @@ object LayoutAnalyzer {
         val startsLowercase: Boolean,
         /** Net count of opened-minus-closed quote/bracket pairs in this line. */
         val bracketDelta: Int,
-        /** Line has at least one uppercase letter and none lowercase — an
-         *  all-caps heading/label case profile (cased scripts only; always
-         *  false for CJK). */
+        /** Line has at least one uppercase letter, no lowercase letter, and no
+         *  letter from a CASELESS script — an all-caps heading/label case
+         *  profile. The caseless-letter clause is what actually scopes this to
+         *  cased scripts: `hasUpper && !hasLower` alone reads a CJK line with an
+         *  embedded Latin acronym (楽しいHOLIDAY, HPを回復, GAME OVER) as
+         *  all-caps, and the caps-heading veto would then split a CJK paragraph
+         *  whenever the line below happened to carry a lowercase Latin fragment
+         *  (ver., iPhone, px, a URL). Digits, symbols and punctuation are not
+         *  letters, so "HP: 100" / "MENU ▶" still read as all-caps. */
         val isAllCaps: Boolean = false,
         /** Line contains at least one lowercase letter (body-text profile). */
         val hasLowercase: Boolean = false,
@@ -892,11 +898,15 @@ object LayoutAnalyzer {
         var delta = 0
         var hasUpper = false
         var hasLower = false
+        var hasCaselessLetter = false
         for (c in trimmed) {
             if (c in OPENING_BRACKET_CHARS) delta++
             else if (c in CLOSING_BRACKET_CHARS) delta--
             if (c.isUpperCase()) hasUpper = true
             else if (c.isLowerCase()) hasLower = true
+            // A letter that is neither upper nor lower belongs to a caseless
+            // script (CJK, Hangul, Arabic, Thai, Devanagari…) — see isAllCaps.
+            else if (c.isLetter()) hasCaselessLetter = true
         }
         val last = trimmed.lastOrNull()
         val first = trimmed.firstOrNull()
@@ -905,7 +915,7 @@ object LayoutAnalyzer {
             endsContinuation = last != null && last in CONTINUATION_END_CHARS,
             startsLowercase = first != null && first.isLowerCase(),
             bracketDelta = delta,
-            isAllCaps = hasUpper && !hasLower,
+            isAllCaps = hasUpper && !hasLower && !hasCaselessLetter,
             hasLowercase = hasLower,
         )
     }
@@ -1275,6 +1285,140 @@ object LayoutAnalyzer {
     }
 
     /**
+     * Index of a line that sits BETWEEN [anchor] (the group's last visual row)
+     * and [candidate] in reading flow, blocking the merge — or null when the
+     * span between them is clear.
+     *
+     * **Why this is needed at all.** The block gap is an edge-to-edge INK
+     * measurement, so it carries no information about how many rows were
+     * skipped. When line boxes nearly touch, a two-row reach measures the same
+     * as a one-row advance: the `text_sample` capture (2026-07-20 grouping run,
+     * all 3 ML Kit reps) has rows at [359,516] / [516,636] / [658,816] — the
+     * middle row fails the bare scale cap (ratio 0.31) and opens its own group,
+     * then row 3 reaches back OVER it to row 1 at dy=142 < band 205 and merges.
+     * The group's text came out as "This is a text sample testing,." with "for
+     * translation" stranded in its own group, and row-1's bounds spanning the
+     * stranded row so the two overlays drew on top of each other. That is a
+     * text-CORRUPTING failure, not a mis-grouping: no downstream stage can
+     * recover the dropped row or the reading order.
+     *
+     * **This closes a BAND of that failure, not the class** — see the known
+     * miss below. Read that before relying on it.
+     *
+     * The multi-group walk's reach-back is deliberate and load-bearing (a
+     * foreign-column line interleaving in sort order must not break a
+     * paragraph — `vietnameseWikipediaCapture_sidebarInterleavesSixLineBody`),
+     * but every pinned case reaches across a line that is x-DISJOINT from the
+     * body. Nothing distinguished that from reaching across a line in the same
+     * column. This does: an interposer only blocks when it is actually in the
+     * way, i.e. all three of
+     *  - its block-axis CENTER lies strictly inside the open span between the
+     *    two (center, not containment, so a pixel of glyph overlap at either
+     *    end doesn't silently disarm the guard);
+     *  - its inline span overlaps the pair's combined inline span by at least
+     *    half the smaller extent (the [rowBands] overlap convention) — a
+     *    sidebar in another column overlaps by nothing and never blocks;
+     *  - its per-line scale is compatible with EITHER endpoint at
+     *    [sizeRatioCap], i.e. it is plausibly a member of the same block.
+     *
+     * That last clause is the **ruby/furigana exemption**. Ruby sits exactly
+     * here — between consecutive body rows (to the right of its base column for
+     * vertical), overlapping them inline — so a scale-blind guard would refuse
+     * every body-row merge in Japanese text that carries ruby. Real ruby runs
+     * about half the base size, which measures ≥1.0 against a glyph-tight base
+     * box (the `scaleCap_furiganaScale_stillSplits` fixture is 1.67) — outside
+     * the cap, so it never blocks.
+     *
+     * ## KNOWN MISS (Codex adversarial review, 2026-07-24)
+     *
+     * The exemption and the leak are the same window. An interposer is exempted
+     * whenever its per-line size differs from BOTH endpoints by more than
+     * [sizeRatioCap] — which at 0.50 means "shorter than ~⅔ of its neighbours".
+     * A glyph-starved same-font row lands there: a Latin row carrying no
+     * ascender or descender measures roughly half an x-height-plus-ascender row
+     * of the SAME font. Such a row strands (the bare cap rejects it) and is then
+     * exempted from blocking, so the rows above and below bridge over it — the
+     * original corruption, unguarded. Measured boundary (JVM sweep, outer rows
+     * 95px): blocks at interposer height ≥64 (ratio ≤0.48), leaks at ≤63 (ratio
+     * ≥0.51); horizontal and vertical leak identically. Pinned by
+     * `interposition_knownMiss_glyphStarvedRow_stillBridges`.
+     *
+     * This is not fixable by moving [sizeRatioCap]: the exemption is measured on
+     * glyph-tight box extent, whose same-font content noise EXCEEDS the cap (the
+     * `text_sample` 0.31 and `manga_cogen_02` 0.32 captures are the same
+     * statistic misfiring one tier up, in the bare scale gate). Widening the cap
+     * to cover glyph-starved rows starts blocking ruby; narrowing it leaks more.
+     * The close is a scale measurement that does not ride box extent — the
+     * char-tier statistic in [GlyphScale] — which also removes the stranding
+     * that creates the bridge in the first place. Until then this guard is a
+     * partial backstop and should be described as one.
+     *
+     * **Untracked effect:** the verdict depends on the interposer being detected
+     * in THIS pass. A faint row that OCR intermittently drops will flip the
+     * bridge between frames, which changes group rects that [Classification]
+     * matches against. Not priced — needs a device run on the live surface.
+     *
+     * Members of the group and the candidate itself are excluded by geometry
+     * alone: earlier members lie above the anchor, an inline neighbour's center
+     * lies inside the anchor's own span, and the candidate's center lies past
+     * the far end of the span. Degenerate (zero-extent) boxes fail the overlap
+     * test. Same-pass walk only — cross-frame callers never see this.
+     *
+     * [sizeRatioCap] comes from the caller's [GroupingRecipe] rather than the
+     * constant, so a harness sweep of `sizeRatioCapCorroborated` moves this
+     * exemption too — the recipe's "every field is WIRED" contract covers the
+     * guard, not just the evidence layer.
+     */
+    internal fun interposingLine(
+        boxes: List<Rect>,
+        anchor: Rect,
+        candidate: Rect,
+        orientation: TextOrientation,
+        sizeRatioCap: Double = SIZE_RATIO_CAP_CORROBORATED,
+    ): Int? {
+        val vertical = orientation == TextOrientation.VERTICAL
+        // The open span between the pair, in reading flow: below the anchor for
+        // horizontal rows, LEFT of it for vertical columns (right-to-left).
+        val lo = if (vertical) candidate.right else anchor.bottom
+        val hi = if (vertical) anchor.left else candidate.top
+        if (hi <= lo) return null            // touching, overlapping, or reversed
+        val refLo = if (vertical) minOf(anchor.top, candidate.top)
+                    else minOf(anchor.left, candidate.left)
+        val refHi = if (vertical) maxOf(anchor.bottom, candidate.bottom)
+                    else maxOf(anchor.right, candidate.right)
+        val refExtent = refHi - refLo
+        if (refExtent <= 0) return null
+        val anchorSize = if (vertical) anchor.width() else anchor.height()
+        val candSize = if (vertical) candidate.width() else candidate.height()
+        for (j in boxes.indices) {
+            val b = boxes[j]
+            val center = if (vertical) (b.left + b.right) / 2 else (b.top + b.bottom) / 2
+            if (center <= lo || center >= hi) continue
+            val bLo = if (vertical) b.top else b.left
+            val bHi = if (vertical) b.bottom else b.right
+            val bExtent = bHi - bLo
+            if (bExtent <= 0) continue
+            val overlap = minOf(refHi, bHi) - maxOf(refLo, bLo)
+            if (overlap < 0.5f * minOf(bExtent, refExtent)) continue
+            val bSize = if (vertical) b.width() else b.height()
+            if (bSize <= 0) continue
+            if (scaleCompatible(bSize, anchorSize, sizeRatioCap) ||
+                scaleCompatible(bSize, candSize, sizeRatioCap)
+            ) return j
+        }
+        return null
+    }
+
+    /** `(hi - lo) / lo` within [cap] — the "could plausibly be the same block"
+     *  test used by [interposingLine]. */
+    private fun scaleCompatible(a: Int, b: Int, cap: Double): Boolean {
+        val lo = minOf(a, b)
+        val hi = maxOf(a, b)
+        if (lo <= 0) return false
+        return (hi - lo).toDouble() / lo <= cap
+    }
+
+    /**
      * Index-level grouping pass. Pure function over rectangles + per-line
      * effective align-lefts, factored out of `groupLinesOnePass` so unit
      * tests can drive the algorithm without fabricating ML Kit objects.
@@ -1284,7 +1428,9 @@ object LayoutAnalyzer {
      * (not just the latest) reconnects body lines when a foreign-column
      * line (e.g. right-column sidebar entry) interleaves between two
      * body lines in top-Y sort order and breaks the simple "last group
-     * is always the right candidate" assumption.
+     * is always the right candidate" assumption. That reach-back is bounded
+     * by [interposingLine]: it may pass a line in another column, never one
+     * standing in the same column between the two.
      *
      * - [boxes] : line bounding boxes, in sort order (top-to-bottom for
      *   horizontal, right-to-left for vertical).
@@ -1436,7 +1582,18 @@ object LayoutAnalyzer {
                     docPitch = docPitch,
                     recipe = recipe,
                 )
-                val groupMerged = baseMerged || extras is GroupDecision.Grouped
+                val wouldMerge = baseMerged || extras is GroupDecision.Grouped
+                // A merge may not reach ACROSS a line that lies between the two
+                // — the gap alone can't tell a one-row advance from a two-row
+                // skip. Checked only on a prospective merge, so the scan costs
+                // nothing on the overwhelmingly common refusal. See
+                // [interposingLine].
+                val blocker = if (wouldMerge) {
+                    interposingLine(
+                        boxes, groupRect, lineBox, orientation, recipe.sizeRatioCapCorroborated,
+                    )
+                } else null
+                val groupMerged = wouldMerge && blocker == null
                 if (logDecisions) {
                     val decision = groupDecision(
                         groupRect, lineBox, orientation, groupAlignLeft, candidateAlignLeft, rtl = rtl
@@ -1447,9 +1604,13 @@ object LayoutAnalyzer {
                         (texts?.get(idx) ?: "").take(24).replace('\n', ' ')
                     val verdict = if (groupMerged) "MERGE" else "SPLIT"
                     val extReason = extras?.let { " | ${it.reason}" } ?: ""
+                    val blockReason = blocker?.let { j ->
+                        val snippet = (texts?.get(j) ?: "").take(24).replace('\n', ' ')
+                        " | INTERPOSED by ${rectStr(boxes[j])} \"$snippet\" (merge would reach across it)"
+                    } ?: ""
                     android.util.Log.d(
                         "DetectionLog",
-                        "[group:$orientChar] $verdict g$gi prev=${rectStr(groupRect)} \"$prevSnippet\" cand=${rectStr(lineBox)} \"$candSnippet\" :: ${decision.reason}$extReason"
+                        "[group:$orientChar] $verdict g$gi prev=${rectStr(groupRect)} \"$prevSnippet\" cand=${rectStr(lineBox)} \"$candSnippet\" :: ${decision.reason}$extReason$blockReason"
                     )
                 }
                 if (groupMerged) {
@@ -1581,6 +1742,28 @@ object LayoutAnalyzer {
      * inline `label: value` pair like "Gust Area Damage:" + "4 (every 0.25 Sec.)"
      * — collapse into one row ([rowBands]). Otherwise a 3-row card body whose stat
      * line OCR'd as two boxes reads as a 4-item menu and gets shredded.
+     *
+     * **Horizontal groups only.** [isMenuLike] carries a horizontal axis
+     * convention throughout (see its kdoc), and a vertical group would be judged
+     * on transposed axes: [rowBands] returns COLUMNS, whose `left`/`right` are the
+     * cross-flow edges and whose `height` is the column LENGTH, not a row
+     * thickness. In the 2026-07-20 corpus run that tolerance came out at 359–447px
+     * against blocks only ~210–250px wide — larger than the thing it measures, so
+     * the clustering test could not fail, and the split fired 0 times across 99
+     * vertical groups. Where the arithmetic does flip (short columns spread wide),
+     * it shreds vertical prose, and the `parentLeft`/`parentRight` pin is wrong for
+     * vertical anyway: sibling columns share tops and bottoms, so every split
+     * column would inherit the block's full x-extent and the overlays would stack.
+     * A faithful transposition is possible (cross-flow tolerance = column
+     * thickness, clustering on top/bottom, narrow gate against screen HEIGHT), but
+     * genuine vertical-text menus — items that are each their own column — are
+     * rare next to vertical prose, and abstaining is a no-op on the whole corpus
+     * while a transposition would need the screenshot height plumbed and would
+     * give up equal-length vertical menus regardless. Cost of abstaining: a
+     * merged vertical menu stays one group (one concatenated translation), which
+     * is what the pre-existing arithmetic produced for most shapes anyway. The
+     * common JP-game menu — a vertical STACK of horizontal items — is a horizontal
+     * group and is unaffected.
      */
     internal fun splitMenuGroups(
         groups: List<List<RecognizedRegion>>,
@@ -1588,6 +1771,10 @@ object LayoutAnalyzer {
         logDecisions: Boolean = false,
     ): List<ProposedGroup> = groups.flatMap { group ->
         val orientation = group.firstOrNull()?.orientation ?: TextOrientation.HORIZONTAL
+        // Groups are orientation-homogeneous by construction (DefaultGroupingStrategy
+        // partitions before grouping and concatenates after), so the first region's
+        // orientation speaks for the group.
+        if (orientation == TextOrientation.VERTICAL) return@flatMap listOf(ProposedGroup(group))
         val rows = rowBands(group.map { it.box.bounds }, orientation)
         val rowRects = rows.map { idxs -> unionRect(idxs.map { group[it].box.bounds }) }
         if (rows.size >= 4 && isMenuLike(rowRects, screenWidth)) {
@@ -1650,7 +1837,14 @@ object LayoutAnalyzer {
     }
 
     /** Whether [rowRects] (one per visual row) look like a menu/list: narrower than
-     *  ⅓ screen and left/right edges don't both cluster (a justified paragraph does). */
+     *  ⅓ screen and left/right edges don't both cluster (a justified paragraph does).
+     *
+     *  **HORIZONTAL text only.** Every term here is horizontal by convention:
+     *  `left`/`right` are where a row starts and ends along the text direction, and
+     *  `height` is the row's cross-flow thickness, used as the edge-clustering
+     *  tolerance. For vertical text those roles transpose, and [splitMenuGroups]
+     *  refuses to call this for vertical groups rather than judge them on the wrong
+     *  axes — see its kdoc. */
     internal fun isMenuLike(rowRects: List<Rect>, screenWidth: Float): Boolean {
         if (rowRects.isEmpty()) return false
         val groupWidth = rowRects.maxOf { it.right } - rowRects.minOf { it.left }
