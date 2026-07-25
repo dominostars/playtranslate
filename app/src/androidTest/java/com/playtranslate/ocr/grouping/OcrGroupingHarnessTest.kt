@@ -40,13 +40,17 @@ import java.io.FileOutputStream
  *
  * ## Seeds
  *
- * `ocr-grouping/assets/ocr_grouping/<name>.png` + `<name>.groups.txt` — the
- * corpus lives in the private ocr-grouping repo, mounted into this sourceSet's
- * assets by app/build.gradle.kts (absent checkout = empty corpus). The
- * harness reads only the `#` directives from the expectations file (`# lang:`
- * required, `# surface: screen|import` optional); the stanzas are consumed
- * host-side only. A directives-only file is a draft request — the seed still
- * runs, and the report's `--emit-drafts` writes a stanza draft to curate.
+ * Two sources, same format (`<name>.png` + `<name>.groups.txt`):
+ *  - CORPUS: `ocr-grouping/assets/ocr_grouping/`, mounted into this
+ *    sourceSet's assets by app/build.gradle.kts (absent checkout = empty).
+ *  - STAGED: `<external-files>/ocr_grouping/staging/`, pushed by run_suite.sh
+ *    from the host's drafts/ triage dir — pre-promotion material that never
+ *    touches the corpus until the user moves it there deliberately.
+ * The harness reads only the `#` directives from the expectations file
+ * (`# lang:` required, `# surface: screen|import` optional); the stanzas are
+ * consumed host-side only. A directives-only file is a draft request — the
+ * seed still runs, and the report's `--emit-drafts` writes a stanza template
+ * to curate.
  *
  * ## Columns
  *
@@ -105,8 +109,8 @@ class OcrGroupingHarnessTest {
         val registry = OcrEngineRegistry()
         val sink = ResultSink(appCtx, runId)
         try {
-            val seeds = loadSeeds()
-            if (seeds.isEmpty()) sink.skip("all", "no seeds in assets/$SEED_DIR")
+            val seeds = loadSeeds(sink)
+            if (seeds.isEmpty()) sink.skip("all", "no seeds in assets/$SEED_DIR or device staging")
             for (seed in seeds) runSeed(sink, registry, seed)
         } finally {
             sink.close()
@@ -246,45 +250,78 @@ class OcrGroupingHarnessTest {
 
     // ── Seeds ────────────────────────────────────────────────────────────────
 
-    private class Seed(val id: String, val lang: String, val surface: String, val assetPath: String)
+    /** One seed: bundled corpus asset ([assetPath]) XOR device-staged file
+     *  ([file]) — staged seeds are pushed by run_suite.sh from the host's
+     *  drafts/ triage dir and run identically; they exist so the corpus only
+     *  ever receives deliberately promoted material. */
+    private class Seed(
+        val id: String, val lang: String, val surface: String,
+        val assetPath: String? = null, val file: File? = null,
+    )
 
-    /** PNGs paired with their `.groups.txt`; unpaired PNGs get a skip record at
-     *  run time via [loadSeeds]' caller (they can't run — no lang directive). */
-    private fun loadSeeds(): List<Seed> {
+    /** Corpus PNGs paired with their `.groups.txt`, then device-staged pairs
+     *  from `<external-files>/ocr_grouping/staging/` (the AB harness's staged-
+     *  corpus pattern). A staged name shadowing a corpus seed is skipped with
+     *  a record — silent shadowing would corrupt attribution. */
+    private fun loadSeeds(sink: ResultSink): List<Seed> {
         val files = (testCtx.assets.list(SEED_DIR) ?: emptyArray()).toSet()
-        return files.filter { it.endsWith(".png", ignoreCase = true) }.sorted().mapNotNull { png ->
+        val corpus = files.filter { it.endsWith(".png", ignoreCase = true) }.sorted().mapNotNull { png ->
             val name = png.substringBeforeLast('.')
             val expectations = "$name.groups.txt"
             if (expectations !in files) {
                 Log.w(TAG, "seed $name has no $expectations — skipping")
                 return@mapNotNull null
             }
-            val directives = parseDirectives("$SEED_DIR/$expectations")
-            val lang = directives["lang"]
-            if (lang == null) {
-                Log.w(TAG, "seed $name lacks a '# lang:' directive — skipping")
-                return@mapNotNull null
-            }
-            Seed(
-                id = name, lang = lang,
-                surface = directives["surface"] ?: "screen",
-                assetPath = "$SEED_DIR/$png",
-            )
+            val directives = parseDirectives(
+                testCtx.assets.open("$SEED_DIR/$expectations").bufferedReader().use { it.readText() })
+            seedFromDirectives(name, directives, assetPath = "$SEED_DIR/$png", file = null)
         }
+        val corpusIds = corpus.map { it.id }.toSet()
+        val stagingDir = File(appCtx.getExternalFilesDir(OUT_DIR), STAGING_DIR)
+        val staged = stagingDir.listFiles { f -> f.isFile && f.name.endsWith(".png", ignoreCase = true) }
+            .orEmpty().sortedBy { it.name }.mapNotNull { png ->
+                val name = png.name.substringBeforeLast('.')
+                val exp = File(stagingDir, "$name.groups.txt")
+                when {
+                    !exp.isFile -> {
+                        Log.w(TAG, "staged $name has no groups.txt — skipping"); null
+                    }
+                    name in corpusIds -> {
+                        sink.skip(name, "staged seed shadows a corpus seed of the same name — rename or remove")
+                        null
+                    }
+                    else -> seedFromDirectives(name, parseDirectives(exp.readText()), assetPath = null, file = png)
+                }
+            }
+        return corpus + staged
+    }
+
+    private fun seedFromDirectives(
+        name: String, directives: Map<String, String>, assetPath: String?, file: File?,
+    ): Seed? {
+        val lang = directives["lang"]
+        if (lang == null) {
+            Log.w(TAG, "seed $name lacks a '# lang:' directive — skipping")
+            return null
+        }
+        return Seed(
+            id = name, lang = lang,
+            surface = directives["surface"] ?: "screen",
+            assetPath = assetPath, file = file,
+        )
     }
 
     /** Leading `# key: value` lines of an expectations file; stanzas ignored. */
-    private fun parseDirectives(assetPath: String): Map<String, String> =
-        testCtx.assets.open(assetPath).bufferedReader().useLines { lines ->
-            lines.filter { it.startsWith("#") }
-                .mapNotNull { line ->
-                    val body = line.removePrefix("#").trim()
-                    val colon = body.indexOf(':')
-                    if (colon <= 0) null
-                    else body.take(colon).trim().lowercase() to body.substring(colon + 1).trim()
-                }
-                .toMap()
-        }
+    private fun parseDirectives(content: String): Map<String, String> =
+        content.lineSequence()
+            .filter { it.startsWith("#") }
+            .mapNotNull { line ->
+                val body = line.removePrefix("#").trim()
+                val colon = body.indexOf(':')
+                if (colon <= 0) null
+                else body.take(colon).trim().lowercase() to body.substring(colon + 1).trim()
+            }
+            .toMap()
 
     /** inScaled=false + ARGB_8888 is load-bearing: default decode would apply
      *  density scaling and change every pixel the engines see (OcrGoldenSetTest). */
@@ -293,8 +330,13 @@ class OcrGroupingHarnessTest {
             inPreferredConfig = Bitmap.Config.ARGB_8888
             inScaled = false
         }
-        return testCtx.assets.open(seed.assetPath).use { BitmapFactory.decodeStream(it, null, opts) }
-            ?: error("failed to decode ${seed.id}")
+        val bmp = when {
+            seed.assetPath != null ->
+                testCtx.assets.open(seed.assetPath).use { BitmapFactory.decodeStream(it, null, opts) }
+            seed.file != null -> BitmapFactory.decodeFile(seed.file.absolutePath, opts)
+            else -> null
+        }
+        return bmp ?: error("failed to decode ${seed.id}")
     }
 
     // ── Result sink ──────────────────────────────────────────────────────────
@@ -390,6 +432,7 @@ class OcrGroupingHarnessTest {
         const val TAG = "OcrGrouping"
         const val SEED_DIR = "ocr_grouping"
         const val OUT_DIR = "ocr_grouping"
+        const val STAGING_DIR = "staging"
         const val MLKIT_REPS = 3
         /** The four engine columns, in stable report order. */
         val CANONICAL_TOKENS = listOf("meiki", "mlkit", "paddle", "paddle-fast")
