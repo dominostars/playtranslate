@@ -42,13 +42,28 @@ object GroupingVariants {
         // rhythm segmentation) sharing no decision code with the default. See
         // FlowGraphStrategy's kdoc for the measurements behind every rule.
         Variant("flowgraph", FlowGraphStrategy()),
+        // The vertical/comic fixes WITHOUT the punctuation census — the cell of
+        // the 2x2 no column had covered, and on host measurement the strongest
+        // configuration: it keeps the base's untagged shredding, takes comic
+        // 53% -> 66% and menu 58% -> 62%, and leaves Arabic at 5/5, where the
+        // census costs 2 of those 5.
+        Variant(
+            "flowgraph-vert",
+            FlowGraphStrategy(
+                linkScaleCap = 1.52f,
+                rhythmVertical = false,
+                name = "flowgraph-vert",
+            ),
+        ),
         // Same strategy plus ONE change: the block punctuation census as a
         // fourth list path. Kept as its own column rather than folded in, so
         // the shipped `flowgraph` above stays byte-identical and the census
         // pays for itself in a flip table. Host prediction on
-        // results-1785001951858: 89 -> 94 cells, 779 -> 802 stanzas,
-        // menu-tagged 17/29 -> 19/29, choice 3/6 -> 6/6, at 2
-        // punctuation-free prose blocks shredded.
+        // results-1785001951858, BY KIND: menu 58% -> 65%, and that is all it
+        // buys — untagged 81% -> 80% with shredding 5 -> 7, and Arabic 5/5 ->
+        // 3/5. Its old headline (choice 3/6 -> 6/6) was an artifact of
+        // endsSentence not peeling quotes; the quoted-rows path now takes
+        // choice to 6/6 in every column, for a stated reason.
         Variant(
             "flowgraph-census",
             FlowGraphStrategy(listPunctCensus = true, name = "flowgraph-census"),
@@ -57,8 +72,8 @@ object GroupingVariants {
         // first device run exposed as a REGRESSION (production and labelstack
         // both pass those seeds): a tighter ruby gate, and no chain-rhythm
         // evidence on vertical partitions. Host prediction on
-        // results-1785001951858: 94 -> 96 cells, 802 -> 805 stanzas,
-        // comic 8/15 -> 10/15, menu 19/29 -> 20/29, at one Cyrillic card seed.
+        // results-1785001951858: comic 53% -> 66% and menu 65% -> 68% over
+        // flowgraph-census, at untagged 80% -> 78% (shredding 7 -> 8).
         Variant(
             "flowgraph-census2",
             FlowGraphStrategy(

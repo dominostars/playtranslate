@@ -100,10 +100,20 @@ import com.playtranslate.ocr.core.RecognizedRegion
  *
  * `results-1785001951858` (126 evaluable cells), production engine column:
  *
- *     production          66  stanzas 707   menu  9/29  comic  8/15  choice 2/6
- *     flowgraph           89  stanzas 779   menu 17/29  comic  8/15  choice 2/6
- *     flowgraph-census    94  stanzas 802   menu 19/29  comic  8/15  choice 6/6
- *     flowgraph-census2   96  stanzas 805   menu 20/29  comic 10/15  choice 6/6
+ *     column             cells   untagged(76)   menu(29)   comic(15)  choice(6)
+ *     production            66     61%  19s/9g    31% 4s/17g  53% 7s/0g  33% 0s/4g
+ *     flowgraph             93     81%   5s/5g    58% 3s/9g   53% 7s/0g 100% 0s/0g
+ *     flowgraph-vert        95     80%   6s/5g    62% 2s/9g   66% 5s/0g 100% 0s/0g
+ *     flowgraph-census      94     80%   7s/4g    65% 3s/7g   53% 7s/0g 100% 0s/0g
+ *     flowgraph-census2     96     78%   8s/4g    68% 2s/7g   66% 5s/0g 100% 0s/0g
+ *
+ * Read the KINDS, not the cell count: the corpus is collected for variety, so
+ * a single total silently makes its shape into the priorities (menus are 29 of
+ * 126 because they are easy to collect, not because they are 23% of what the
+ * app reads). By kind, the census's whole contribution is +6 menu points, paid
+ * for with 2 more shredded blocks on the dominant untagged slice and 2 of the
+ * 5 Arabic seeds. `s` = shredded (a block broken into fragments, which
+ * translate wrong); `g` = glued (two units in one string, still parseable).
  *
  * It also beats production on all four engine columns including the three it
  * was never tuned on, and a 2-fold re-tune of the sensitive parameters on
@@ -338,6 +348,10 @@ class FlowGraphStrategy(
      * constant.
      */
     private val listPunctCensus: Boolean = false,
+    /** Every row a closed quotation ⇒ a stack of choices. See [selfQuoted].
+     *  On by default: it costs nothing measurable and is the only path that
+     *  reaches quoted dialogue options. */
+    private val listQuoted: Boolean = true,
     /** Rows a stack needs before its punctuation profile is trusted. TWO here,
      *  where the same census over production's greedy groups needs four: these
      *  stacks are already rhythm-cut chain segments, so a two-row fragment is
@@ -775,6 +789,17 @@ class FlowGraphStrategy(
         ) {
             return true
         }
+        // Every row is a closed quotation: a set of independent utterances,
+        // which is what a dialogue choice stack is. Positive evidence, and it
+        // cannot fire on a wrapped quoted paragraph because only that block's
+        // first and last rows carry a mark. Measured: takes the choice slice
+        // from 2/6 to 6/6 at ZERO cost — untagged, menu, comic and Arabic are
+        // byte-identical with it on. It fires on 4 segments in the whole
+        // corpus, every one a genuine choice stack no other path caught.
+        if (listQuoted) {
+            val q = seg.count { selfQuoted(it.text) }
+            if (q >= 2 && q == seg.size) return true
+        }
         // Block punctuation census — script-agnostic, so it reaches the CJK and
         // Cyrillic menus the capitalisation path structurally cannot.
         if (listPunctCensus && seg.size >= listPunctRows &&
@@ -848,11 +873,50 @@ class FlowGraphStrategy(
 
         fun endsColon(t: String) = t.trim().let { it.endsWith(":") || it.endsWith("：") }
 
+        /**
+         * Peeled from the END before asking whether a line closes a sentence.
+         * Wider than [CLOSE_BRACKET] on purpose: quotes must come off HERE,
+         * because English game dialogue is quoted and `."` is the common shape
+         * — but they must NOT join CLOSE_BRACKET, where a LEADING member means
+         * "this line continues the previous one" (a leading `"` opens a quote,
+         * it continues nothing) and where the bracket balance in [continues]
+         * would break on straight quotes, which are their own mirror.
+         *
+         * Without this the census read `"A sOuvenir."` as unpunctuated and
+         * split fully-punctuated choice stacks for the wrong reason.
+         */
+        val END_PEEL = CLOSE_BRACKET + setOf('"', '\'', '”', '’')
+
         /** Closes a sentence, with any trailing quote or bracket peeled off. */
         fun endsSentence(text: String): Boolean {
-            var t = text.trim()
-            while (t.isNotEmpty() && t.last() in CLOSE_BRACKET) t = t.dropLast(1)
+            var t = text.trimEnd()
+            while (t.isNotEmpty() && t.last() in END_PEEL) {
+                // re-trim: recognizers leave a space before the closing quote
+                t = t.dropLast(1).trimEnd()
+            }
             return t.isNotEmpty() && t.last() in TERMINAL
+        }
+
+        val QUOTE_OPEN = setOf('"', '“', '‘', '「', '『', '«')
+        val QUOTE_CLOSE = setOf('"', '”', '’', '」', '』', '»')
+
+        /**
+         * The row opens AND closes a quotation by itself — a complete quoted
+         * utterance.
+         *
+         * This is the structural difference between a stack of dialogue CHOICES
+         * and a wrapped quoted paragraph: wrapped text opens its quote on the
+         * first row and closes it on the last, so only the ends carry a mark,
+         * while a stack of options marks every row. Trailing sentence
+         * punctuation is peeled first, so `"…coward."` still reads as closed.
+         */
+        fun selfQuoted(text: String): Boolean {
+            var t = text.trim()
+            if (t.length < 2 || t.first() !in QUOTE_OPEN) return false
+            while (t.isNotEmpty() && (t.last() in TERMINAL || t.last() == ',' || t.last() == '、')) {
+                t = t.dropLast(1).trimEnd()
+            }
+            return t.isNotEmpty() && t.last() in QUOTE_CLOSE
         }
 
         fun opensCapital(text: String): Boolean {
