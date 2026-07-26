@@ -47,33 +47,32 @@
       "script": "",
       "bundled": false,
       "packVersion": 1,
-      "_placeholder": "NOT YET HOSTED — sizes are 0 and sha256 are placeholders, so OcrPackModelHelper.isShippable() returns false and the 'Use MangaOCR' settings cell stays hidden. To go live: convert l0wgear/manga-ocr-2025 to encoder.mnn + decoder.mnn (fp16) + vocab.txt, upload to the URLs below, and replace every size + sha256 with the real values.",
-      "size": 0,
+      "size": 70513212,
       "files": [
         {
           "path": "encoder.mnn",
           "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/manga-ocr-ja/encoder.mnn",
-          "size": 0,
-          "sha256": "TODO_REAL_SHA256_AFTER_HOSTING"
+          "size": 11336800,
+          "sha256": "46d97d406be8af9118317ae2276e76664ce3f0fc9437a9a2c330d9c92592158a"
         },
         {
           "path": "decoder.mnn",
           "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/manga-ocr-ja/decoder.mnn",
-          "size": 0,
-          "sha256": "TODO_REAL_SHA256_AFTER_HOSTING"
+          "size": 59152340,
+          "sha256": "15ad40d9065f9efa10622e5fa164a533c648819be116ec5c1df30df34fd34c0e"
         },
         {
           "path": "vocab.txt",
           "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/manga-ocr-ja/vocab.txt",
-          "size": 0,
-          "sha256": "TODO_REAL_SHA256_AFTER_HOSTING"
+          "size": 24072,
+          "sha256": "344fbb6b8bf18c57839e924e2c9365434697e0227fac00b88bb4899b78aa594d"
         }
       ],
       "licenses": [
         {
-          "component": "manga-ocr (l0wgear/manga-ocr-2025 — DeiT-tiny encoder + Japanese decoder, MNN format)",
+          "component": "MangaOCR (manga-ocr-base-2025 — ViT-tiny encoder + 2-layer Japanese decoder, MNN format)",
           "license": "Apache-2.0",
-          "attribution": "manga-ocr by kha-white (Maciej Budyś) — Apache-2.0; 2025 retrain via jzhang533/l0wgear, converted to MNN for on-device use. LICENSE DILIGENCE PENDING before shipping — confirm the 2025 retrain's terms or re-derive from the Apache-2.0 original."
+          "attribution": "manga-ocr-base-2025 by jzhang533 — Apache-2.0 (huggingface.co/jzhang533/manga-ocr-base-2025); based on manga-ocr by kha-white (Maciej Budyś) — Apache-2.0. Converted to fp16 MNN for on-device use. The manga-ocr model family is trained using the Manga109-s dataset (manga109.org), whose use is acknowledged per its terms."
         },
         {
           "component": "MNN runtime",
