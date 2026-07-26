@@ -183,28 +183,37 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - [Sudachi](https://github.com/WorksApplications/Sudachi): Japanese morphological analysis (Apache 2.0)
 - [HanLP](https://github.com/hankcs/HanLP): Chinese word segmentation
 - [KOMORAN](https://github.com/shineware/KOMORAN): Korean morphological analysis
-- [PyThaiNLP](https://github.com/PyThaiNLP/pythainlp): Thai word segmentation — a Kotlin port of its `newmm` maximal-matcher, over a word list that includes its CC0 list (Apache 2.0)
 - [Snowball stemmers](https://snowballstem.org/) via [Apache Lucene](https://lucene.apache.org/): Latin/European stemming
 - [Lingva](https://github.com/thedaviddelta/lingva-translate): online translation
 - [AnkiDroid](https://github.com/ankidroid/Anki-Android): flashcard integration
 - [MNN](https://github.com/alibaba/MNN): on-device LLM and OCR inference engine (Apache 2.0)
-- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR): on-device OCR — the bundled PP-OCRv6 text detector and unified recognizer, plus optional per-script recognizers (Apache 2.0)
-- [docTR](https://github.com/mindee/doctr) and [EasyOCR](https://github.com/JaidedAI/EasyOCR): line-grouping logic adapted for OCR word-box assembly (Apache 2.0)
-- [OpenCV](https://opencv.org/): image preprocessing for OCR — DBNet contour postprocessing and crop rectification (Apache 2.0)
+- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR): on-device OCR from the bundled PP-OCRv6 text detector and unified recognizer, plus optional per-script recognizers (Apache 2.0)
+- [OpenCV](https://opencv.org/): image processing for OCR (DBNet contour postprocessing, crop rectification) and for the camera tool's planar tracker (ORB features, pyramidal Lucas-Kanade flow, RANSAC homography fitting) (Apache 2.0)
 - [OpenCC4j](https://github.com/houbb/opencc4j): Simplified/Traditional Chinese conversion (Apache 2.0)
 - [slimt](https://github.com/jerinphilip/slimt): tiny [Marian](https://marian-nmt.github.io/)-based NMT engine that runs the Bergamot offline models (GPL-2.0-or-later, with MPL-2.0 Marian components)
 - [OkHttp](https://square.github.io/okhttp/): HTTP client for online translation and downloads (Apache 2.0)
 - [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization): JSON (de)serialization for the translation backends and data models (Apache 2.0)
 - [Gson](https://github.com/google/gson): streaming JSON parsing for Yomitan dictionary banks (Apache 2.0)
+- [CameraX](https://developer.android.com/training/camerax): camera preview and analysis frames for the camera tool (Apache 2.0)
+- [Material Components for Android](https://github.com/material-components/material-components-android) and [Material Symbols](https://fonts.google.com/icons): UI components, and icons traced from the Outlined symbol set (Apache 2.0)
+
+### Adapted from other projects
+
+Work we reimplemented rather than linked. No source was copied verbatim.
+
+- [offline-translator](https://github.com/DavidVentura/offline-translator) (David Ventura): its `translator-rs` planar tracking engine is the design reference for the camera tool's keyframe-OCR tracker. We took the split between optical flow that sustains correspondences and descriptor re-matching that corrects drift, the Idle/Locked/Lost lifecycle with inlier hysteresis, the anchor cache that re-locks a previously seen scene without re-running OCR, and several tuned thresholds. Independently reimplemented in Kotlin over OpenCV, without the reference's IMU prior and with a smoothing filter of our own (offline-translator GPL 3.0; `translator-rs` MIT)
+- [PyThaiNLP](https://github.com/PyThaiNLP/pythainlp): Thai word segmentation, a faithful Kotlin port of its `newmm` maximal-matcher, run over a word list that includes its CC0 list (Apache 2.0)
+- [docTR](https://github.com/mindee/doctr) and [EasyOCR](https://github.com/JaidedAI/EasyOCR): line-grouping logic adapted for OCR word-box assembly, following docTR's recognize-then-group architecture with thresholds modelled on docTR `_resolve_lines` and EasyOCR `group_text_box` (Apache 2.0)
 
 ### (Optional) Downloadable Offline Models
 
 - TranslateGemma 4B (Google): translation-tuned Gemma 3, downloadable as an optional offline pack (Gemma terms of use)
 - Qwen 2.5 1.5B Instruct (Alibaba): downloadable as an optional offline pack (Apache 2.0)
 - Gemma 4 E2B (Google): downloadable as an optional offline pack (Gemma terms of use)
-- Hunyuan-MT 1.5 1.8B (Tencent): translation-specialised model, downloadable as an optional offline pack (Tencent HY Community License — not available in the EU, UK, or South Korea)
+- Hunyuan-MT 1.5 1.8B (Tencent): translation-specialised model, downloadable as an optional offline pack (Tencent HY Community License; not available in the EU, UK, or South Korea)
 - [PaddleOCR PP-OCRv5+v6 recognizers](https://github.com/PaddlePaddle/PaddleOCR): optional per-script OCR recognizer packs for additional scripts (e.g. Korean, Arabic, Cyrillic, Thai), downloadable per source language (Apache 2.0)
 - [Meiki](https://github.com/rtr46/meikiocr): high-accuracy Japanese OCR model (D-FINE), downloadable as an optional offline pack (LGPL 3.0)
+- [MangaOCR](https://huggingface.co/jzhang533/manga-ocr-base-2025): Japanese OCR refinement for stylized and vertical text, downloadable as an optional offline pack. `manga-ocr-base-2025` by jzhang533, based on [manga-ocr](https://github.com/kha-white/manga-ocr) by kha-white (Maciej Budyś), both Apache 2.0, converted to fp16 MNN for on-device use. The manga-ocr model family is trained using the [Manga109-s](https://manga109.github.io/manga109-project-website/en/index.html) dataset, whose use is acknowledged per its terms
 - [Firefox Translations (Bergamot)](https://github.com/mozilla/translations): Mozilla's offline NMT model pairs, downloadable for offline translation (CC BY-SA 4.0)
 
 ### Linguistic data
@@ -221,7 +230,7 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - [Arramooz](https://github.com/linuxscout/arramooz): Arabic morphological dictionary (© Taha Zerrouki; GPL 3.0)
 - [SudachiDict](https://github.com/WorksApplications/SudachiDict): Japanese tokenizer dictionary bundled for Sudachi, including [UniDic](https://clrd.ninjal.ac.jp/unidic/) (© NINJAL) and part of [mecab-ipadic-NEologd](https://github.com/neologd/mecab-ipadic-neologd) (Apache 2.0)
 - [Jiten](https://jiten.moe/): Japanese frequency data, offered as an optional in-app Yomitan dictionary download (CC BY-SA 4.0)
-- [Wikimedia Commons](https://commons.wikimedia.org/): pronunciation audio for word playback and Anki cards, fetched on demand — each clip carries its own author and license (typically CC BY / CC BY-SA / public domain), shown as a credit that travels onto exported cards
+- [Wikimedia Commons](https://commons.wikimedia.org/): pronunciation audio for word playback and Anki cards, fetched on demand. Each clip carries its own author and license (typically CC BY / CC BY-SA / public domain), shown as a credit that travels onto exported cards
 
 ## License
 
