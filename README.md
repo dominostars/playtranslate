@@ -6,7 +6,7 @@ A real-time game translation Android app, built for both language learners and p
 
 To report issues, receive support, or make requests, please join the [Discord server](https://discord.gg/DVCj6p7MUC)
 
-[PlayTranslate with Persona 3 Reload and Breath of Fire 3](https://github.com/user-attachments/assets/135cf573-e438-4aa8-a9fc-8d2a2cd25c43)
+[PlayTranslate with Persona 3 Reload](https://github.com/user-attachments/assets/e89c2c6e-92f3-41d2-8e51-5483beaca612)
 
 ## Features
 
