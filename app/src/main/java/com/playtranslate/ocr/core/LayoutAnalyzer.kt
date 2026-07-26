@@ -1794,10 +1794,10 @@ object LayoutAnalyzer {
         documentPitchPrior: Boolean = false,
         /** The grouping algorithm to run — the decision middle between the
          *  shared shell's normalization (upstream) and reading-order join /
-         *  bounds / orientation vote / alignment (downstream). Null = the
-         *  production [DefaultGroupingStrategy] carrying [documentPitchPrior].
-         *  Non-default strategies are research instruments (the grouping
-         *  harness catalog); production call sites never pass one. */
+         *  bounds / orientation vote / alignment (downstream). Null picks the
+         *  production strategy for the surface (see below). Research
+         *  instruments (the grouping harness catalog) pass their own;
+         *  production call sites never do. */
         strategy: GroupingStrategy? = null,
     ): List<LayoutGroup> {
         if (regions.isEmpty()) return emptyList()
@@ -1809,9 +1809,18 @@ object LayoutAnalyzer {
             spacedScript = profile?.wordsSeparatedByWhitespace != false,
             logDecisions = logDecisions,
         )
-        val active = strategy ?: DefaultGroupingStrategy(
-            GroupingRecipe.Default.copy(documentPitchPrior = documentPitchPrior)
-        )
+        // [FlowGraphStrategy] is production on EVERY surface — screen capture,
+        // live, camera, select-to-translate, and declared documents. On the
+        // Thor pass results-1785050508550 (131 seeds) it halves shredding
+        // against the default, 32 blocks to 16, and wins every image kind.
+        //
+        // Note for the import surface: the corpus has zero `# surface: import`
+        // seeds, so documents are the one surface with no corpus evidence
+        // either way, and [documentPitchPrior] no longer reaches the default
+        // path — FlowGraph's per-chain modal pitch is its own answer to the
+        // bootstrap hole that prior was built for. Import seeds are the way to
+        // check that claim rather than assume it.
+        val active = strategy ?: FlowGraphStrategy()
         val proposed = active.group(regions, ctx)
         // Join a group's lines with a space only for whitespace-delimited
         // languages; CJK/Thai (wordsSeparatedByWhitespace = false) get no

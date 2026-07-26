@@ -1,20 +1,36 @@
-package com.playtranslate.ocr.grouping
+package com.playtranslate.ocr.core
 
 import android.graphics.Rect
 import android.util.Log
 import com.playtranslate.language.TextOrientation
-import com.playtranslate.ocr.core.CharClassCoverage
-import com.playtranslate.ocr.core.GroupingContext
-import com.playtranslate.ocr.core.GroupingStrategy
-import com.playtranslate.ocr.core.LayoutAnalyzer
-import com.playtranslate.ocr.core.ProposedGroup
-import com.playtranslate.ocr.core.RecognizedRegion
 
 /**
- * Research variant: **FLOWGRAPH** — a clean-room line→block grouper that shares
- * no decision code with [com.playtranslate.ocr.core.DefaultGroupingStrategy].
- * Only the shell contract is shared (normalized regions in, proposed groups
- * out), so a column delta against `docpitch-off` is attributable to this file.
+ * **FLOWGRAPH** — a line→block grouper that shares no decision code with
+ * [DefaultGroupingStrategy]. Only the shell contract is shared (normalized
+ * regions in, proposed groups out), so a column delta against `docpitch-off`
+ * is attributable to this file alone.
+ *
+ * Graduated from the androidTest catalog on 2026-07-26 after a Thor pass
+ * (`results-1785050508550`, 131 seeds, JA correctly attributed to Meiki)
+ * reproduced the emulator result on real hardware. The DEFAULT construction is
+ * the configuration that won — what the catalog called `flowgraph-vert`.
+ * Against production on that run, by image kind:
+ *
+ *     column          untagged(78)   menu(30)    comic(15)   shred  glue
+ *     docpitch-off    62% 18s/14g   26% 6s/19g  53% 7s/0g     32     37
+ *     FLOWGRAPH       88%  6s/4g    50% 4s/12g  60% 6s/0g     16     20
+ *
+ * `s` = SHREDDED (a block broken into fragments, which translate wrong);
+ * `g` = GLUED (two units in one string, which a reader can still parse). The
+ * two are reported apart because they do not cost the same, and this strategy
+ * is tuned to prefer gluing: shredding halves, 32 → 16, which is the number
+ * that mattered most in choosing it.
+ *
+ * Read the kinds, not a total. The corpus is collected for variety, so menus
+ * are 30 of 126 because they are easy to collect, not because they are a
+ * quarter of what the app reads; a single aggregate silently turns that
+ * collection artifact into a priority. `build_grouping_report.py` deliberately
+ * prints no aggregate row for the same reason.
  *
  * ## Why a different architecture
  *
@@ -95,29 +111,6 @@ import com.playtranslate.ocr.core.RecognizedRegion
  * stylized fonts whose case OCR is noise (a RU pixel font reads
  * `кОмБиНироВАтЬ`); OCR line fragmentation; and gaps above every ceiling that
  * the corpus still wants merged.
- *
- * ## Scores (host-side prediction, judge unmodified)
- *
- * `results-1785001951858` (126 evaluable cells), production engine column:
- *
- *     column             cells   untagged(76)   menu(29)   comic(15)  choice(6)
- *     production            66     61%  19s/9g    31% 4s/17g  53% 7s/0g  33% 0s/4g
- *     flowgraph             93     81%   5s/5g    58% 3s/9g   53% 7s/0g 100% 0s/0g
- *     flowgraph-vert        95     80%   6s/5g    62% 2s/9g   66% 5s/0g 100% 0s/0g
- *     flowgraph-census      94     80%   7s/4g    65% 3s/7g   53% 7s/0g 100% 0s/0g
- *     flowgraph-census2     96     78%   8s/4g    68% 2s/7g   66% 5s/0g 100% 0s/0g
- *
- * Read the KINDS, not the cell count: the corpus is collected for variety, so
- * a single total silently makes its shape into the priorities (menus are 29 of
- * 126 because they are easy to collect, not because they are 23% of what the
- * app reads). By kind, the census's whole contribution is +6 menu points, paid
- * for with 2 more shredded blocks on the dominant untagged slice and 2 of the
- * 5 Arabic seeds. `s` = shredded (a block broken into fragments, which
- * translate wrong); `g` = glued (two units in one string, still parseable).
- *
- * It also beats production on all four engine columns including the three it
- * was never tuned on, and a 2-fold re-tune of the sensitive parameters on
- * either half of the corpus finds no better values than these.
  *
  * ## Parity with the twin — CHECKED, 2026-07-25, run results-1784997215389
  *
@@ -232,13 +225,27 @@ class FlowGraphStrategy(
      * must also not FENCE that body line off from its real one). Lowering only
      * one of them changes nothing, which is how the pair was found.
      *
-     * 1.80 is the shipped value. 1.52 measures better (+2 cells, comic 8/15 ->
-     * 10/15) and is the thinnest constant in the whole strategy: the corpus's
-     * ruby columns sit at 1.54 and 1.77 while legitimate on-rhythm pairs reach
-     * 1.52, so it lives in a 0.02-wide measured gap. 1.62–1.75 is the safe
-     * plateau and costs exactly one cell (rEHbXlAk, whose ruby is the 1.54).
+     * SHIPPING VALUE 1.65 — the midpoint of the only window the device supports.
+     * Three measured cliffs bound it:
+     *  - ~1.52 — `dkcjkqab5nn11`'s two-line body block. The twin reads its em
+     *    ratio as 1.47 and links it; the DEVICE measured it at or above 1.52
+     *    and refused, shredding the block. A refused link is not logged, which
+     *    is why this took a partition-level diff to find.
+     *  - 1.538 — `rEHbXlAk`'s furigana `いなか`. Excluding it needs a cap below
+     *    the body pair above, so this seed is given up deliberately.
+     *  - 1.77 — `shingekinokyojin`'s furigana `なかーよ`, which must stay refused.
+     * 1.60 through 1.75 all score identically (99/126, 14 shredded), so 1.65 is
+     * chosen for maximum margin from both cliffs rather than for its score.
+     *
+     * The earlier 1.52 was tuned inside the twin's own noise floor and must not
+     * come back: the harness divides boxes by `scaleFactor` and truncates to
+     * ints before writing the JSONL, so on the 43% of cells with a non-unit
+     * factor (this run: 1.11, 0.78, 2.2, 3.0) the twin sees coordinates
+     * quantised by up to ~3% of an em. Any constant finer than that is not
+     * measurable host-side, and the failure it causes is SHREDDING — the error
+     * class that costs a wrong translation rather than an awkward one.
      */
-    private val linkScaleCap: Float = 1.80f,
+    private val linkScaleCap: Float = 1.65f,
     /** em: no link reaches further than this. */
     private val linkMaxPitch: Float = 3.20f,
     /** Corridor-interposition sensitivity. Measures ZERO on the corpus —
@@ -260,14 +267,15 @@ class FlowGraphStrategy(
      * column, modal pitch 32.75 from balloon B, cutting a legitimate 46-pitch
      * pair inside balloon A.
      *
-     * Turning it off makes vertical pairs unconditionally "on rhythm" when the
-     * chain has one, which withdraws BOTH the rhythm cut and the scale cut it
-     * guards, leaving the absolute pitch rules in charge. Anything from a 0.45
-     * tolerance upward scores identically, so the honest form is abstention
-     * rather than another tuned number. Horizontal text is untouched: there the
-     * rhythm cut is worth 6 cells.
+     * OFF by default, which is the shipping choice: vertical pairs become
+     * unconditionally "on rhythm" when the chain has one, withdrawing BOTH the
+     * rhythm cut and the scale cut it guards and leaving the absolute pitch
+     * rules in charge. Anything from a 0.45 tolerance upward scores
+     * identically, so abstention is the honest form rather than another tuned
+     * number. Horizontal text is untouched — there the rhythm cut is worth 6
+     * cells — and on Thor this is what takes comic 53% to 60%.
      */
-    private val rhythmVertical: Boolean = true,
+    private val rhythmVertical: Boolean = false,
     /** em: cut when the chain has no rhythm to appeal to. */
     private val pitchSolo: Float = 2.05f,
     /** em: below this, weak evidence (alignment) may not cut. */

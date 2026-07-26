@@ -1,6 +1,7 @@
 package com.playtranslate.ocr.grouping
 
 import com.playtranslate.ocr.core.DefaultGroupingStrategy
+import com.playtranslate.ocr.core.FlowGraphStrategy
 import com.playtranslate.ocr.core.GroupingRecipe
 import com.playtranslate.ocr.core.GroupingStrategy
 
@@ -38,51 +39,29 @@ object GroupingVariants {
             "docpitch-on",
             DefaultGroupingStrategy(GroupingRecipe.Default.copy(documentPitchPrior = true)),
         ),
-        // Logic variant: a clean-room grouper (adjacency graph + per-chain
-        // rhythm segmentation) sharing no decision code with the default. See
-        // FlowGraphStrategy's kdoc for the measurements behind every rule.
+        // FLOWGRAPH, now main source (com.playtranslate.ocr.core) — graduated
+        // 2026-07-26 on the Thor pass results-1785050508550. Default
+        // construction IS the shipping configuration, so this column tracks
+        // what the app would do rather than a research setting.
         Variant("flowgraph", FlowGraphStrategy()),
-        // The vertical/comic fixes WITHOUT the punctuation census — the cell of
-        // the 2x2 no column had covered, and on host measurement the strongest
-        // configuration: it keeps the base's untagged shredding, takes comic
-        // 53% -> 66% and menu 58% -> 62%, and leaves Arabic at 5/5, where the
-        // census costs 2 of those 5.
-        Variant(
-            "flowgraph-vert",
-            FlowGraphStrategy(
-                linkScaleCap = 1.52f,
-                rhythmVertical = false,
-                name = "flowgraph-vert",
-            ),
-        ),
-        // Same strategy plus ONE change: the block punctuation census as a
-        // fourth list path. Kept as its own column rather than folded in, so
-        // the shipped `flowgraph` above stays byte-identical and the census
-        // pays for itself in a flip table. Host prediction on
-        // results-1785001951858, BY KIND: menu 58% -> 65%, and that is all it
-        // buys — untagged 81% -> 80% with shredding 5 -> 7, and Arabic 5/5 ->
-        // 3/5. Its old headline (choice 3/6 -> 6/6) was an artifact of
-        // endsSentence not peeling quotes; the quoted-rows path now takes
-        // choice to 6/6 in every column, for a stated reason.
+        // The one open question left in it: the block punctuation census as a
+        // fourth list path. Off in production because by kind it buys menu
+        // points only (Thor: 50% -> 56%) and pays on the dominant untagged
+        // slice, taking shredding 16 -> 21 and costing 2 of 5 Arabic seeds. Its
+        // evidence is also the unreliable kind — absent on 39% of must-merge
+        // blocks, and 5.6% unstable across engines, worst in zh/ja/en.
         Variant(
             "flowgraph-census",
             FlowGraphStrategy(listPunctCensus = true, name = "flowgraph-census"),
         ),
-        // The census column plus the two fixes for the vertical/comic slice the
-        // first device run exposed as a REGRESSION (production and labelstack
-        // both pass those seeds): a tighter ruby gate, and no chain-rhythm
-        // evidence on vertical partitions. Host prediction on
-        // results-1785001951858: comic 53% -> 66% and menu 65% -> 68% over
-        // flowgraph-census, at untagged 80% -> 78% (shredding 7 -> 8).
-        Variant(
-            "flowgraph-census2",
-            FlowGraphStrategy(
-                listPunctCensus = true,
-                linkScaleCap = 1.52f,
-                rhythmVertical = false,
-                name = "flowgraph-census2",
-            ),
-        ),
+        // Retired columns and their answers, recorded so nobody re-runs them:
+        //  - `flowgraph-vert` (ruby gate 1.65 + no vertical chain rhythm) WON
+        //    and is now the default above, so the column is redundant.
+        //  - the pre-vert baseline (gate 1.80, vertical rhythm on) read
+        //    88%/46%/53% untagged/menu/comic on Thor against the winner's
+        //    88%/50%/60%, at 17 shredded against 16.
+        //  - `flowgraph-census2` (census + vert) is `flowgraph-census` above
+        //    now that vert is the default.
         // Logic variant: production grouping with the menu split replaced by a
         // punctuation profile over capture-wide label stacks. Isolates ONE
         // change — everything upstream of the split is the default's. Host
