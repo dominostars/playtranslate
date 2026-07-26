@@ -15,12 +15,14 @@ To report issues, receive support, or make requests, please join the [Discord se
 - **Word lookup**: Hover the floating lens over any word for immediate dictionary definitionss
 - **Offline**: OCR and dictionary lookups work without an internet connection, with optional offline translation models
 - **Furigana/Pinyin Mode**: Show reading hints above characters in real time
-- **Hotkey hold-to-preview**: Configure a physical key to hold-to-preview translations or furigana, great for handhelds with dedicated buttons
+- **Hotkeys**: Configure a physical key to hold-to-preview translations or furigana, great for handhelds with dedicated buttons
 - **Dual Screen & Split Screen**: Works across both screens on dual-display devices like the Ayn Thor, or in Android split-screen alongside windowed games
 - **Capture regions**: Crop to just the dialogue box, subtitles, or any custom area
 - **Text-to-speech**: Hear text spoken aloud. Change the default voice in settings
-- **Anki export**: Save sentences to AnkiDroid with the original text, translation, word list, target words, text-to-speech, and a screenshot. Card type selection with presets for popular decks.
+- **Anki export**: Save sentences to AnkiDroid with the original text, translation, word list, target words, text-to-speech, and a screenshot. Even record and include game audio! Card type selection with presets for popular decks.
 - **Yomitan integration**: Yomitan dictionaries seamlessly integrate, including pitch accent, frequency chips, kanji enrichment, and merged term definitions everywhere (incl. Anki). Look for deeper integration in the future
+- **Camera translation**: point your camera at text in the world and read it live, or freeze a frame to tap words and look them up.
+- **Text History**: keep a record of captured sentences. Off by default.
 
 ## How to Use
 
