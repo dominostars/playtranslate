@@ -136,13 +136,14 @@ class CaptureResultOverlay(
     /** The sheet's two persisted presentation axes, independent per host flow.
      *  [boxesEnabled] is the header toggle's state — whether results paint
      *  their boxes over the frame — written the moment the toggle is tapped.
-     *  [startCollapsed] is the panel's parked-in-the-sliver state — read when
-     *  a flow starts (the sheet enters collapsed) and written on dismissal
-     *  ("it opens how you left it"). Default: the over-game capture prefs;
-     *  the camera substitutes its own pair. */
+     *  [startPosture] is where the user left the panel: parked in the sliver,
+     *  or the height they dragged it to (see [CaptureResultGeometry]'s posture
+     *  encoding) — read when a flow starts and written on dismissal ("it opens
+     *  how you left it"). Default: the over-game capture prefs; the camera
+     *  substitutes its own pair. */
     interface PresentationPrefs {
         var boxesEnabled: Boolean
-        var startCollapsed: Boolean
+        var startPosture: Float
     }
 
     var presentationPrefs: PresentationPrefs = object : PresentationPrefs {
@@ -151,10 +152,10 @@ class CaptureResultOverlay(
             set(value) {
                 prefs.captureBoxesEnabled = value
             }
-        override var startCollapsed: Boolean
-            get() = prefs.capturePanelStartCollapsed
+        override var startPosture: Float
+            get() = prefs.capturePanelPosture
             set(value) {
-                prefs.capturePanelStartCollapsed = value
+                prefs.capturePanelPosture = value
             }
     }
 
@@ -393,19 +394,17 @@ class CaptureResultOverlay(
             setTextColor(hintColor)
             textSize = 11f
             isSingleLine = true
-            // arrow_drop_up flanking both sides (direction-neutral, so the
-            // same pair serves RTL), tinted with the text and sized to its
-            // line — the 24dp intrinsic would dwarf 11sp text. Distinct
-            // instances: compound slots each need their own bounds owner.
-            val arrowPx = dp(16)
-            // Nudged 2dp down: the glyph's triangle rides high against the
-            // 11sp baseline when the boxes share the text's top edge.
-            val arrowDropPx = dp(2)
-            fun arrow() = ctx.getDrawable(R.drawable.ic_arrow_drop_up)?.mutate()?.apply {
+            // A touch_app glyph leads the text — the collapsed sheet's gesture
+            // is a TAP, and the up-arrows that used to flank this said the
+            // opposite. RELATIVE (start-side) so it leads in RTL too, tinted
+            // with the text and sized to its line — the 24dp intrinsic would
+            // dwarf 11sp text.
+            val iconPx = dp(16)
+            val icon = ctx.getDrawable(R.drawable.ic_touch_app)?.mutate()?.apply {
                 setTint(hintColor)
-                setBounds(0, arrowDropPx, arrowPx, arrowPx + arrowDropPx)
+                setBounds(0, 0, iconPx, iconPx)
             }
-            setCompoundDrawables(arrow(), null, arrow(), null)
+            setCompoundDrawablesRelative(icon, null, null, null)
             compoundDrawablePadding = dp(4)
             visibility = View.GONE
             alpha = 0f
@@ -560,15 +559,21 @@ class CaptureResultOverlay(
         // so they stay in agreement.
         topInsetPx = dp(1)
         body.setPadding(0, topInsetPx, 0, 0)
-        autoMaxPx = CaptureResultGeometry.autoMaxHeight(screenH)
+        // "It opens how you left it": the remembered posture seeds the auto-size
+        // ceiling, so the grow-to-fit below stops at the height the user last
+        // dragged the sheet to instead of the default 50% — and, since it is
+        // only a CEILING, still stops short of it when the result needs less.
+        val startPosture = effectiveStartPosture()
+        autoMaxPx = CaptureResultGeometry.postureCeiling(startPosture, screenH)
         // Load at the minimum (drag-resize floor) height; grow to fit on Done.
         // A flow last dismissed from the collapsed sliver starts parked THERE
-        // instead: results land as boxes (when enabled) while the panel waits
-        // at the bottom edge until pulled up. setPanelHeight's crossfade sets
-        // the parked visuals (content transparent, hint up) from frame one.
+        // instead — results land as boxes while the panel waits at the bottom
+        // edge until pulled up — but only while there ARE boxes to land in
+        // (see effectiveStartPosture). setPanelHeight's crossfade sets the
+        // parked visuals (content transparent, hint up) from frame one.
         panelHeightPx = CaptureResultGeometry.minPanelHeight(screenH)
         (panel.layoutParams as FrameLayout.LayoutParams).height = panelHeightPx
-        if (presentationPrefs.startCollapsed) {
+        if (CaptureResultGeometry.isCollapsedPosture(startPosture)) {
             sliverMode = true
             setPanelHeight(sliverHeightPx())
         }
@@ -764,7 +769,9 @@ class CaptureResultOverlay(
                         // the two axes.
                         val sliverJustified =
                             boxesShown || !presentationPrefs.boxesEnabled
-                        if (presentationPrefs.startCollapsed && sliverJustified) {
+                        val startsCollapsed = CaptureResultGeometry
+                            .isCollapsedPosture(effectiveStartPosture())
+                        if (startsCollapsed && sliverJustified) {
                             collapseToSliver()
                         } else if (sliverMode && !sliverJustified) {
                             expandFromSliver()
@@ -846,12 +853,41 @@ class CaptureResultOverlay(
     /** Persist the LIVE panel posture. Page switches in the paged import
      *  are posture boundaries exactly like dismissals ("it opens how you
      *  left it") — but the panel survives them, so the dismissal-time
-     *  record never runs. Same presented-result gate as [dismiss]: a
-     *  loading or failed state must not overwrite the user's real choice. */
-    fun persistPosture() {
-        if (lastResult != null && scroll.visibility == View.VISIBLE) {
-            presentationPrefs.startCollapsed = sliverMode
-        }
+     *  record never runs. */
+    fun persistPosture() = recordPosture()
+
+    /** The remembered posture a flow should actually open at. A COLLAPSED one
+     *  is honored only while the boxes toggle has somewhere to put the result:
+     *  with boxes off, starting parked in the sliver lands a capture with
+     *  nothing readable on screen at all — no panel, no boxes — so the sliver
+     *  is dropped and the sheet opens at the plain fit-to-content default, as
+     *  if no posture had ever been recorded. A remembered HEIGHT always stands:
+     *  it still shows the text. (Boxes that were expected but refused at paint
+     *  time are the separate, live sliverJustified check in [observe].) */
+    private fun effectiveStartPosture(): Float {
+        val posture = presentationPrefs.startPosture
+        val blindStart = CaptureResultGeometry.isCollapsedPosture(posture) &&
+            !presentationPrefs.boxesEnabled
+        return if (blindStart) CaptureResultGeometry.NO_POSTURE else posture
+    }
+
+    /** Record where the user is leaving the panel: the sliver, or the auto-size
+     *  ceiling their last drag committed — the DEFAULT ceiling when they never
+     *  dragged, which is the point of recording the ceiling rather than the
+     *  live height: an untouched session would otherwise ratchet the next one
+     *  down to whatever result happened to be on screen.
+     *
+     *  Only while a result is actually being PRESENTED. lastResult alone is not
+     *  enough: a Translating placeholder sets it, and a translation failure then
+     *  swaps to a status via setStatus() without clearing it — recording there
+     *  would let a failed capture silently flip the start posture. Every status
+     *  path hides the scroll; both real states (expanded panel, sliver) keep it
+     *  visible. The boxes toggle is NOT recorded here — it persists itself the
+     *  moment it's tapped. */
+    private fun recordPosture() {
+        if (lastResult == null || scroll.visibility != View.VISIBLE) return
+        presentationPrefs.startPosture =
+            CaptureResultGeometry.postureFor(autoMaxPx, screenH, collapsed = sliverMode)
     }
 
     /** Re-show entry point for the controller's stash-and-rebind path: set up the
@@ -865,17 +901,8 @@ class CaptureResultOverlay(
     fun dismiss() {
         if (dismissed) return
         dismissed = true
-        // "It opens how you left it": remember whether the panel was parked in
-        // its sliver — but only while a result is actually being PRESENTED.
-        // lastResult alone is not enough: a Translating placeholder sets it, and a
-        // translation failure then swaps to a status via setStatus() without
-        // clearing it — recording there would let a failed capture silently flip
-        // the start state. Every status path hides the scroll; both real states
-        // (expanded panel, sliver) keep it visible. The boxes toggle is NOT
-        // recorded here — it persists itself the moment it's tapped.
-        if (lastResult != null && scroll.visibility == View.VISIBLE) {
-            presentationPrefs.startCollapsed = sliverMode
-        }
+        // "It opens how you left it" — see recordPosture for what qualifies.
+        recordPosture()
         heightAnimator?.cancel()
         dismissWordLens()
         fontPopover?.dismiss()
@@ -1054,7 +1081,8 @@ class CaptureResultOverlay(
 
     /** Per-frame sliver drag: the resize math with the floor lowered to the
      *  sliver itself (the standard floor is the commit threshold, not a clamp,
-     *  so the sheet must be able to sit below it mid-drag). */
+     *  so the sheet must be able to sit below it mid-drag). Downward has nowhere
+     *  to go — the sliver IS the bottom of the sheet's travel. */
     private fun updateSliverDrag(dy: Float) {
         val h = CaptureResultGeometry.clampPanelHeight(
             sliverHeightPx() + dy.toInt(), screenH, minFraction = 0f,
@@ -1073,7 +1101,7 @@ class CaptureResultOverlay(
         if (panelHeightPx >= CaptureResultGeometry.minPanelHeight(screenH)) {
             sliverMode = false
             // Adopt the dragged height like endResize does, so re-fits keep it.
-            autoMaxPx = panelHeightPx
+            autoMaxPx = committedCeiling()
             reFitText()
             updateShowOnScreenAction()
         } else {
@@ -1149,6 +1177,14 @@ class CaptureResultOverlay(
         sliverHint.animate().cancel()
         sliverHint.alpha = 1f - f
         sliverHint.visibility = if (f >= 1f) View.GONE else View.VISIBLE
+        // The pill goes with the content. Parked, it would sit inside the
+        // system's bottom-edge home gesture band — a "grab me" invitation to
+        // start a drag Android usually wins, taking the user out of the game
+        // with it. The hint that fades in as it leaves says TAP instead, which
+        // nothing contests. (The drag still works for anyone who reaches for
+        // it, and the band it starts from reaches well above the gesture zone;
+        // it just isn't advertised any more.)
+        handle.alpha = f
     }
 
     /** The target header's boxes toggle is offered whenever there is something
@@ -2110,18 +2146,15 @@ class CaptureResultOverlay(
     private var resizing = false
     private var resizeStartRawY = 0f
     private var resizeStartHeight = 0
-    private var resizeTracker: VelocityTracker? = null
 
     private fun beginResize(rawY: Float) {
         heightAnimator?.cancel() // the user takes over from the auto-grow
         resizing = true
         resizeStartRawY = rawY
         resizeStartHeight = panelHeightPx
-        resizeTracker = VelocityTracker.obtain()
     }
 
     private fun updateResize(e: MotionEvent) {
-        resizeTracker?.addMovement(e)
         // Bottom sheet: dragging the grabber UP grows the panel.
         val dy = (resizeStartRawY - e.rawY).toInt()
         // Clamp to [floor, 90%], then cap at the content's max-needed height so
@@ -2148,17 +2181,14 @@ class CaptureResultOverlay(
         if (panelHeightPx >= CaptureResultGeometry.minPanelHeight(screenH)) reFitText()
     }
 
-    private fun endResize(e: MotionEvent) {
-        val vy = resizeTracker?.let {
-            it.addMovement(e); it.computeCurrentVelocity(1000); it.yVelocity
-        } ?: 0f
-        resizeTracker?.recycle()
-        resizeTracker = null
+    /** Release of a grabber drag. It never dismisses, at any speed: dragging
+     *  the sheet down is how you MINIMIZE it, and the sliver is the bottom of
+     *  its travel — the drag stops there. (A fling-out used to live here and
+     *  read an ordinary quick minimize as a throw-away.) Dismissal is the tap
+     *  outside, or the deliberate long swipe on the body. */
+    private fun endResize() {
         resizing = false
-        // A fast down-fling on the grabber dismisses (slides out the bottom).
-        if (dismissOnGesture && vy > FLING_DISMISS_VEL) {
-            animateOutAndDismiss()
-        } else if (panelHeightPx < CaptureResultGeometry.minPanelHeight(screenH)) {
+        if (panelHeightPx < CaptureResultGeometry.minPanelHeight(screenH)) {
             // Released inside the collapse band: the classic floor is the
             // commit threshold (same as the sliver drag's), so the sheet
             // parks in the sliver; a later tap-expand returns to the
@@ -2167,13 +2197,46 @@ class CaptureResultOverlay(
             dismissWordLens()
             preSliverHeightPx = resizeStartHeight
             animateSliverHeight(sliverHeightPx())
-        } else {
-            // Adopt the user's dragged height as the auto-size ceiling, so a later
-            // re-fit (furigana toggle, translation arriving) keeps this height
-            // instead of snapping back down to the default 50%.
-            autoMaxPx = panelHeightPx
+        } else if (panelHeightPx != resizeStartHeight) {
+            // Only a drag that MOVED the sheet states a posture. A grab that
+            // went nowhere — a tap on the grabber, or a pull against a sheet
+            // already at its content ceiling — leaves the remembered one alone
+            // instead of quietly overwriting it with wherever this result sat.
+            autoMaxPx = committedCeiling()
         }
     }
+
+    // ── Swipe-away (the body drag that slides the sheet off) ─────────────
+    // The ONE gesture that throws the sheet away — the grabber and sliver drags
+    // resize, and bottom out at the sliver. Travel is the gate, not speed: the
+    // sheet follows the finger the whole way, so what dismisses is what the user
+    // can SEE they have done.
+
+    /** Whether a downward gesture may throw the sheet away at all. False for
+     *  the camera/import hosts (dismissal there is the explicit X) and while
+     *  the in-place edit is open, where it would strand the IME. */
+    private fun canSwipeAway(): Boolean =
+        dismissOnGesture && editContainer.visibility != View.VISIBLE
+
+    /** True when a released gesture threw the sheet away: it must be a real UP
+     *  (a CANCEL is not a release), on a host that dismisses, and past
+     *  [dismissDp] of travel — or past [flingDp] with a fling behind it. */
+    private fun swipeAwayReleased(e: MotionEvent, vy: Float, dismissDp: Float, flingDp: Float): Boolean =
+        e.actionMasked == MotionEvent.ACTION_UP && canSwipeAway() &&
+            CaptureResultGeometry.shouldDismissFromDrag(
+                panel.translationY, vy,
+                dismissDp * density, flingDp * density, FLING_DISMISS_VEL,
+            )
+
+    /** The auto-size ceiling a committed drag leaves behind: the height the
+     *  user released at — EXCEPT when they ran into the content clamp, which
+     *  is not a height they chose but the tallest THIS result could go.
+     *  Recording that would pin every later, longer result to this one's
+     *  content height, so "as tall as it goes" is recorded as the full drag
+     *  ceiling instead. */
+    private fun committedCeiling(): Int =
+        if (panelHeightPx >= maxNeededHeightPx) CaptureResultGeometry.maxPanelHeight(screenH)
+        else panelHeightPx
 
     private fun setPanelHeight(px: Int) {
         panelHeightPx = px
@@ -2387,7 +2450,10 @@ class CaptureResultOverlay(
                         // A touch on the sliver (plus the same above-edge band the
                         // resize grab uses) starts a tap-or-drag; anywhere else
                         // goes to the word-lookup router when it claims it,
-                        // else dismisses boxes and sliver together.
+                        // else dismisses boxes and sliver together. The tap is
+                        // the advertised gesture here (see the hint) — this
+                        // whole band is its target, which is why it can afford
+                        // to reach so far past the sheet.
                         if (ev.y >= panelTop - dp(EXTRA_GRAB_PAST_EDGE_DP)) {
                             sliverTouch = true
                             sliverDragging = false
@@ -2422,10 +2488,13 @@ class CaptureResultOverlay(
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     val panelTop = panel.top + panel.translationY
-                    // Resize zone = the grabber strip inside the sheet's top +
-                    // EXTRA_GRAB_PAST_EDGE_DP above it, past the sheet's edge.
+                    // Resize zone = the grabber strip, EXTRA_GRAB_PAST_EDGE_DP
+                    // above it (past the sheet's edge, over the game) and
+                    // EXTRA_GRAB_INTO_SHEET_DP below it (into the sheet's own
+                    // top padding, so the pill is grabbable from either side).
                     val resizeTop = panelTop - dp(EXTRA_GRAB_PAST_EDGE_DP)
-                    val resizeBottom = panelTop + dp(HANDLE_HEIGHT_DP)
+                    val resizeBottom =
+                        panelTop + dp(HANDLE_HEIGHT_DP + EXTRA_GRAB_INTO_SHEET_DP)
                     if (ev.y >= resizeTop && ev.y <= resizeBottom) {
                         beginResize(ev.rawY)
                         return true
@@ -2441,7 +2510,7 @@ class CaptureResultOverlay(
                 }
                 MotionEvent.ACTION_MOVE -> if (resizing) { updateResize(ev); return true }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
-                    if (resizing) { endResize(ev); return true }
+                    if (resizing) { endResize(); return true }
                 MotionEvent.ACTION_OUTSIDE -> {
                     if (dismissOnGesture) animateOutAndDismiss()
                     return true
@@ -2452,11 +2521,11 @@ class CaptureResultOverlay(
     }
 
     /** The visible bottom sheet. When the content fits (no inner scroll), a
-     *  vertical down-drag/fling on the body dismisses (swipe-to-dismiss). When
-     *  the content is scrollable it scrolls instead, and dismissal is via the
-     *  grabber fling or a tap outside — the sheet rule that keeps scroll vs
-     *  dismiss unambiguous. Drags starting on the grabber strip are left to the
-     *  resize listener. */
+     *  long vertical down-drag on the body dismisses (swipe-to-dismiss). When
+     *  the content is scrollable it scrolls instead, and dismissal is a tap
+     *  outside — the sheet rule that keeps scroll vs dismiss unambiguous. Drags
+     *  starting on the grabber strip are left to the resize listener, which
+     *  only ever resizes: the sheet bottoms out at the sliver, never off. */
     private inner class BottomSheetPanel(c: Context) : LinearLayout(c) {
         private var downX = 0f
         private var downY = 0f
@@ -2504,15 +2573,14 @@ class CaptureResultOverlay(
                     } ?: 0f
                     dragTracker?.recycle(); dragTracker = null
                     dragging = false
-                    // The predicate is written for the top sheet (negative = away);
-                    // mirror both inputs rather than fork the geometry helper.
-                    if (dismissOnGesture && CaptureResultGeometry.shouldDismissFromDrag(
-                            -translationY, -vy, DISMISS_DISTANCE_DP * density, FLING_DISMISS_VEL,
-                        )
-                    ) {
+                    // Down IS away for a bottom sheet, so both inputs pass
+                    // straight through. The distance is the long one: this drag
+                    // starts from rest anywhere on the body, and on content that
+                    // doesn't scroll it is also what a scroll attempt looks like.
+                    if (swipeAwayReleased(ev, vy, DISMISS_DISTANCE_DP, DISMISS_FLING_DISTANCE_DP)) {
                         animateOutAndDismiss()
                     } else {
-                        animate().translationY(0f).setDuration(150).start()
+                        animate().translationY(0f).setDuration(SPRING_BACK_MS).start()
                     }
                 }
             }
@@ -2520,7 +2588,10 @@ class CaptureResultOverlay(
         }
     }
 
-    /** A centered grab-pill in the transparent strip above the sheet. */
+    /** A centered grab-pill in the transparent strip above the sheet. Fades out
+     *  with the content as the sheet parks (see [applyCollapseCrossfade]): down
+     *  there it sits in the system's home-gesture band, where inviting a drag
+     *  loses more often than it wins. */
     private inner class HandleView(c: Context) : View(c) {
         // Sheet-colored fill under a 1dp ptTextMuted ring: the pill floats over
         // raw game content, and the fill/ring pair opposes in both themes so
@@ -2556,7 +2627,9 @@ class CaptureResultOverlay(
         /** Sheet-fill strip left visible (below the grabber strip) when the
          *  panel collapses to its sliver state. */
         /** Visible sheet strip while slivered — sized to seat the 11sp
-         *  "drag up for more options" hint with breathing room. */
+         *  "drag up for more options" hint with breathing room. This is
+         *  OPAQUE: every dp covers a dp of game, and bottom-anchored dialogue
+         *  is exactly what it covers. Not a knob for pill clearance. */
         const val SLIVER_SHEET_DP = 24
         /** Duration of the collapse-to-sliver / expand-from-sliver slide. */
         const val SLIVER_DURATION_MS = 220L
@@ -2564,6 +2637,11 @@ class CaptureResultOverlay(
         const val SLIVER_FADE_MS = 150L
         /** How far past the sheet's edge the resize grab zone extends. */
         const val EXTRA_GRAB_PAST_EDGE_DP = 26
+        /** ...and how far INTO the sheet it reaches below the grabber strip.
+         *  Lands in the body's top padding + the section header's own top
+         *  padding (~8dp of dead space), so it costs the header buttons a
+         *  couple of dp and buys a much easier grab. */
+        const val EXTRA_GRAB_INTO_SHEET_DP = 10
         /** Blurry drop shadow above the sheet's rounded top edge (baked once).
          *  The OUTER blur lands the cast edge at ~half this alpha (visible peak
          *  ~100/255). Tune these two for darker/softer. */
@@ -2597,10 +2675,19 @@ class CaptureResultOverlay(
         /** Corner radius as a multiple of pt_radius — between the original 1x and
          *  the 2x briefly tried. */
         const val CORNER_RADIUS_MULT = 1.5f
-        const val DISMISS_DISTANCE_DP = 64f
-        /** px/s; a deliberate up-fling (a notch above FloatingOverlayIcon's 600
-         *  for a small icon, since the panel wants intent). */
-        const val FLING_DISMISS_VEL = 1000f
+        /** Body swipe-down: how far the sheet must travel to be thrown away.
+         *  Long on purpose — the gesture starts from rest anywhere on the body,
+         *  and on content too short to scroll it is indistinguishable from a
+         *  scroll attempt until the distance separates them. */
+        const val DISMISS_DISTANCE_DP = 100f
+        /** ...and the travel a fling must ALSO carry before its speed counts. */
+        const val DISMISS_FLING_DISTANCE_DP = 64f
+        /** px/s; a deliberate throw. Distance is the primary gate — this only
+         *  shortens a swipe already visibly on its way out, so it sits well
+         *  above the speed an ordinary drag-to-minimize releases at. */
+        const val FLING_DISMISS_VEL = 1600f
+        /** Slide back from a swipe-away that didn't reach its threshold. */
+        const val SPRING_BACK_MS = 150L
         const val ENTER_DURATION_MS = 280L
         const val EXIT_DURATION_MS = 200L
         const val HEIGHT_DURATION_MS = 240L

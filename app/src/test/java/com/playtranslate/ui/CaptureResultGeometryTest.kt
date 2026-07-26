@@ -79,21 +79,95 @@ class CaptureResultGeometryTest {
         assertFalse(CaptureResultGeometry.shouldUseSideBySide(0, 4, 300))
     }
 
-    // ─── shouldDismissFromDrag ──────────────────────────────────────────
+    // ─── postureCeiling / postureFor ────────────────────────────────────
 
-    @Test fun `dismiss when dragged up past the distance threshold`() {
-        assertTrue(CaptureResultGeometry.shouldDismissFromDrag(-200f, 0f, 150f, 1000f))
+    @Test fun `no posture yet auto-sizes to the default 50 percent`() {
+        assertEquals(
+            1000,
+            CaptureResultGeometry.postureCeiling(CaptureResultGeometry.NO_POSTURE, 2000),
+        )
     }
 
-    @Test fun `dismiss on a fast up-fling even with little distance`() {
-        assertTrue(CaptureResultGeometry.shouldDismissFromDrag(-10f, -1500f, 150f, 1000f))
+    @Test fun `the collapsed sliver carries no reading height of its own`() {
+        assertTrue(
+            CaptureResultGeometry.isCollapsedPosture(CaptureResultGeometry.COLLAPSED_POSTURE),
+        )
+        assertFalse(CaptureResultGeometry.isCollapsedPosture(0.3f))
+        // Collapsed → the default ceiling once the user pulls it back up.
+        assertEquals(
+            1000,
+            CaptureResultGeometry.postureCeiling(CaptureResultGeometry.COLLAPSED_POSTURE, 2000),
+        )
+    }
+
+    @Test fun `a remembered height becomes the ceiling`() {
+        assertEquals(600, CaptureResultGeometry.postureCeiling(0.3f, 2000))
+        // ...and it CAPS, never forces: content needing less still wins.
+        assertEquals(450, CaptureResultGeometry.autoPanelHeight(450, 2000, 600))
+        // Above it, the sheet stops at the remembered height.
+        assertEquals(600, CaptureResultGeometry.autoPanelHeight(1500, 2000, 600))
+    }
+
+    @Test fun `a remembered height is clamped to the resize range`() {
+        assertEquals(400, CaptureResultGeometry.postureCeiling(0.05f, 2000)) // floor 20%
+        assertEquals(1800, CaptureResultGeometry.postureCeiling(0.99f, 2000)) // ceiling 90%
+    }
+
+    @Test fun `postureFor records the ceiling as a fraction, or the sliver`() {
+        assertEquals(0.35f, CaptureResultGeometry.postureFor(700, 2000, collapsed = false), 1e-4f)
+        assertEquals(
+            CaptureResultGeometry.COLLAPSED_POSTURE,
+            CaptureResultGeometry.postureFor(700, 2000, collapsed = true),
+            0f,
+        )
+    }
+
+    @Test fun `a recorded posture round-trips back to the same ceiling`() {
+        val recorded = CaptureResultGeometry.postureFor(700, 2000, collapsed = false)
+        assertEquals(700, CaptureResultGeometry.postureCeiling(recorded, 2000))
+        // A different display keeps the proportion, not the pixels.
+        assertEquals(350, CaptureResultGeometry.postureCeiling(recorded, 1000))
+    }
+
+    @Test fun `every remembered height survives its own round trip`() {
+        // px → fraction → px runs once per open/dismiss cycle, so the map has to
+        // be a fixed point at EVERY height, not just round ones: a version that
+        // truncated the product lost a pixel per cycle at ~1 height in 8 (1080px
+        // displays lose 224, 313, 350...) and walked the panel down over a
+        // session's worth of captures.
+        for (screenH in listOf(1080, 1920, 2340, 2400, 3120)) {
+            for (ceiling in CaptureResultGeometry.minPanelHeight(screenH)..
+                CaptureResultGeometry.maxPanelHeight(screenH)) {
+                val recorded = CaptureResultGeometry.postureFor(ceiling, screenH, collapsed = false)
+                assertEquals(
+                    "$ceiling px of $screenH did not round-trip",
+                    ceiling,
+                    CaptureResultGeometry.postureCeiling(recorded, screenH),
+                )
+            }
+        }
+    }
+
+    // ─── shouldDismissFromDrag ──────────────────────────────────────────
+    // Inputs are AWAY-positive: how far the sheet was pushed toward the edge it
+    // exits by, and how fast it was moving there.
+
+    @Test fun `dismiss when pushed past the distance threshold`() {
+        assertTrue(CaptureResultGeometry.shouldDismissFromDrag(200f, 0f, 150f, 60f, 1600f))
+    }
+
+    @Test fun `a fling dismisses only once it has carried some travel`() {
+        assertTrue(CaptureResultGeometry.shouldDismissFromDrag(80f, 2000f, 150f, 60f, 1600f))
+        // Speed with nothing behind it is a quick minimize, not a throw-away.
+        assertFalse(CaptureResultGeometry.shouldDismissFromDrag(10f, 4000f, 150f, 60f, 1600f))
     }
 
     @Test fun `no dismiss below both thresholds`() {
-        assertFalse(CaptureResultGeometry.shouldDismissFromDrag(-50f, -200f, 150f, 1000f))
+        assertFalse(CaptureResultGeometry.shouldDismissFromDrag(80f, 900f, 150f, 60f, 1600f))
     }
 
-    @Test fun `downward drag never dismisses`() {
-        assertFalse(CaptureResultGeometry.shouldDismissFromDrag(120f, 800f, 150f, 1000f))
+    @Test fun `a sheet that never left its resting place never dismisses`() {
+        assertFalse(CaptureResultGeometry.shouldDismissFromDrag(0f, 9000f, 150f, 60f, 1600f))
+        assertFalse(CaptureResultGeometry.shouldDismissFromDrag(-120f, -800f, 150f, 60f, 1600f))
     }
 }

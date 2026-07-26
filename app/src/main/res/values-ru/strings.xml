@@ -1733,7 +1733,7 @@
 
     <string name="camera_region_remove">Убрать</string>
 
-    <string name="capture_sliver_expand_hint">Потяните вверх для других действий</string>
+    <string name="capture_sliver_expand_hint">Нажмите для других действий</string>
 
     <string name="camera_settings_cd">Настройки камеры</string>
 

@@ -1,9 +1,12 @@
 package com.playtranslate.ui
 
+import kotlin.math.roundToInt
+
 /**
  * Pure, Android-free geometry for [CaptureResultOverlay] — the over-game capture
- * panel. Isolated here so the height clamp, the side-by-side breakpoint, and the
- * fling-dismiss decision can be unit-tested without a view or a window.
+ * panel. Isolated here so the height clamp, the side-by-side breakpoint, the
+ * remembered posture, and the swipe-away decision can be unit-tested without a
+ * view or a window.
  */
 object CaptureResultGeometry {
 
@@ -46,6 +49,11 @@ object CaptureResultGeometry {
     fun minPanelHeight(screenHeightPx: Int): Int =
         (screenHeightPx * MIN_HEIGHT_FRACTION).toInt()
 
+    /** Tallest panel height (px) — the drag-resize ceiling, and the auto-size
+     *  ceiling for a sheet the user pulled all the way up to its content. */
+    fun maxPanelHeight(screenHeightPx: Int): Int =
+        (screenHeightPx * MAX_HEIGHT_FRACTION).toInt()
+
     /** Default auto-size ceiling — [MAX_AUTO_HEIGHT_FRACTION] of the display. */
     fun autoMaxHeight(screenHeightPx: Int): Int =
         (screenHeightPx * MAX_AUTO_HEIGHT_FRACTION).toInt()
@@ -61,6 +69,52 @@ object CaptureResultGeometry {
         return contentHeightPx.coerceIn(floor, maxPx.coerceAtLeast(floor))
     }
 
+    // ── Remembered posture ("it opens how you left it") ─────────────────
+    // One persisted float per flow: the auto-size CEILING the user's last drag
+    // left behind, as a fraction of the display — deliberately not the height
+    // the sheet happened to settle at, so a session that never touched the
+    // sheet can't ratchet the next one down to whatever result was on screen.
+    // Two sentinels sit outside the fraction range: nothing recorded yet, and
+    // parked in the collapsed sliver.
+
+    /** Nothing recorded (the default): auto-size to [MAX_AUTO_HEIGHT_FRACTION]. */
+    const val NO_POSTURE = 0f
+
+    /** Left parked in the collapsed sliver — the next flow starts there. */
+    const val COLLAPSED_POSTURE = -1f
+
+    /** True when [posture] parks the sheet in its collapsed sliver. */
+    fun isCollapsedPosture(posture: Float): Boolean = posture < 0f
+
+    /**
+     * The auto-size ceiling [posture] implies on a [screenHeightPx] display:
+     * the remembered height, or the default [autoMaxHeight] when nothing was
+     * recorded — the collapsed sliver included, since its reading height was
+     * never chosen. A ceiling only ever caps: the sheet still grows to no more
+     * than the content needs (see [autoPanelHeight]).
+     */
+    fun postureCeiling(posture: Float, screenHeightPx: Int): Int {
+        if (posture <= NO_POSTURE) return autoMaxHeight(screenHeightPx)
+        // ROUND, don't truncate: px → fraction → px runs on every open/dismiss
+        // cycle, and float error lands the product a hair either side of the
+        // original pixel. Truncating would take the low side every time and walk
+        // the remembered height down a pixel per capture.
+        return (screenHeightPx * posture).roundToInt()
+            .coerceIn(minPanelHeight(screenHeightPx), maxPanelHeight(screenHeightPx))
+    }
+
+    /**
+     * The posture to persist for a sheet whose auto-size ceiling is [ceilingPx]
+     * — or [COLLAPSED_POSTURE] when it rests in the sliver, whose own height is
+     * a fixed strip rather than a fraction of any particular display.
+     */
+    fun postureFor(ceilingPx: Int, screenHeightPx: Int, collapsed: Boolean): Float {
+        if (collapsed) return COLLAPSED_POSTURE
+        if (screenHeightPx <= 0) return NO_POSTURE
+        return (ceilingPx.toFloat() / screenHeightPx)
+            .coerceIn(MIN_HEIGHT_FRACTION, MAX_HEIGHT_FRACTION)
+    }
+
     /**
      * True when the panel is wide enough to show source | divider | target
      * side-by-side: each column gets `(panelWidthPx - dividerPx) / 2`, which must
@@ -74,19 +128,27 @@ object CaptureResultGeometry {
     }
 
     /**
-     * On release of an upward panel drag, decide whether to dismiss: true if the
-     * panel was dragged up past [dismissDistancePx], OR flung up faster than
-     * [flingVelThreshold]. [translationY] is negative when dragged up and
-     * [velocityY] is negative when flinging up (Android's y-axis points down).
+     * On release of a panel drag, decide whether to throw the sheet away. Both
+     * inputs are measured in the AWAY direction — how far the sheet has been
+     * pushed toward the edge it exits by, and how fast it was moving there — so
+     * the caller mirrors them for a top sheet and passes them straight through
+     * for a bottom one.
+     *
+     * Dismiss when the sheet was pushed past [dismissDistancePx], or thrown
+     * faster than [flingVelThreshold] AFTER clearing [flingDistancePx]. Speed
+     * alone deliberately does not qualify: a quick drag down to minimize the
+     * sheet is fast at release too, and reading that as a swipe-away dismissed
+     * panels the user meant to keep.
      */
     fun shouldDismissFromDrag(
-        translationY: Float,
-        velocityY: Float,
+        draggedAwayPx: Float,
+        velocityAwayPx: Float,
         dismissDistancePx: Float,
+        flingDistancePx: Float,
         flingVelThreshold: Float,
     ): Boolean {
-        val draggedFarEnough = translationY <= -dismissDistancePx
-        val flungUpFast = velocityY <= -flingVelThreshold
-        return draggedFarEnough || flungUpFast
+        if (draggedAwayPx <= 0f) return false
+        if (draggedAwayPx >= dismissDistancePx) return true
+        return velocityAwayPx >= flingVelThreshold && draggedAwayPx >= flingDistancePx
     }
 }

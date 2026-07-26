@@ -1626,7 +1626,7 @@
 
     <string name="camera_region_remove">Retirer</string>
 
-    <string name="capture_sliver_expand_hint">Faites glisser vers le haut pour plus d\'options</string>
+    <string name="capture_sliver_expand_hint">Appuyez pour plus d\'options</string>
 
     <string name="camera_settings_cd">Paramètres de l\'appareil photo</string>
 

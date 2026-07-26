@@ -3,6 +3,7 @@ package com.playtranslate
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.ui.CaptureResultGeometry
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -61,15 +62,15 @@ class PrefsImportScopeTest {
         assertFalse(prefs.importSlowOcrPromptAnswered(SourceLangId.EN))
     }
 
-    @Test fun presentationPrefsDefaultBoxesOnExpandedStart() {
+    @Test fun presentationPrefsDefaultBoxesOnNoPosture() {
         assertTrue(prefs.importBoxesEnabled)
-        assertFalse(prefs.importPanelStartCollapsed)
+        assertEquals(CaptureResultGeometry.NO_POSTURE, prefs.importPanelPosture, 0f)
         prefs.importBoxesEnabled = false
-        prefs.importPanelStartCollapsed = true
+        prefs.importPanelPosture = CaptureResultGeometry.COLLAPSED_POSTURE
         assertFalse(prefs.importBoxesEnabled)
-        assertTrue(prefs.importPanelStartCollapsed)
+        assertTrue(CaptureResultGeometry.isCollapsedPosture(prefs.importPanelPosture))
         // The camera's pair is untouched.
         assertTrue(prefs.cameraBoxesEnabled)
-        assertFalse(prefs.cameraPanelStartCollapsed)
+        assertEquals(CaptureResultGeometry.NO_POSTURE, prefs.cameraPanelPosture, 0f)
     }
 }

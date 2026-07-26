@@ -11,6 +11,7 @@ import com.playtranslate.model.TranslationLangContext
 import com.playtranslate.security.SecretCipher
 import com.playtranslate.security.SecretCodec
 import com.playtranslate.ui.AccentColor
+import com.playtranslate.ui.CaptureResultGeometry
 import com.playtranslate.ui.ThemeMode
 import org.json.JSONArray
 import org.json.JSONObject
@@ -848,11 +849,14 @@ class Prefs internal constructor(
         set(v) = sp.edit { putBoolean(KEY_HIDE_GAME_OVERLAYS, v) }
 
     // ── Capture-result presentation (two independent axes per flow) ────────
-    // "Boxes" (on-frame overlays) and the panel's collapsed-start are separate
+    // "Boxes" (on-frame overlays) and the panel's start posture are separate
     // switches, both per-flow: the over-game capture and the camera snapshot
     // are different reading postures. Boxes are written by the header toggle
-    // the moment it's tapped; collapsed-start is written on dismissal — "it
-    // opens how you left it" for the panel position only.
+    // the moment it's tapped; the posture is written on dismissal — "it opens
+    // how you left it" for the panel position only. A posture is read through
+    // CaptureResultGeometry: NO_POSTURE (the default) = never set,
+    // COLLAPSED_POSTURE = parked in the sliver, else the height the user
+    // dragged the sheet to as a fraction of the display.
 
     /** Over-game capture: paint the result's boxes over the game (the header
      *  toggle's state). Default ON. */
@@ -860,11 +864,11 @@ class Prefs internal constructor(
         get() = sp.getBoolean("capture_boxes_enabled", true)
         set(v) = sp.edit { putBoolean("capture_boxes_enabled", v) }
 
-    /** Over-game capture: the panel was last dismissed from its collapsed
-     *  sliver, so the next capture starts there. */
-    var capturePanelStartCollapsed: Boolean
-        get() = sp.getBoolean("capture_panel_start_collapsed", false)
-        set(v) = sp.edit { putBoolean("capture_panel_start_collapsed", v) }
+    /** Over-game capture: the panel posture the last dismissal left behind, so
+     *  the next capture opens there. */
+    var capturePanelPosture: Float
+        get() = sp.getFloat("capture_panel_posture", CaptureResultGeometry.NO_POSTURE)
+        set(v) = sp.edit { putFloat("capture_panel_posture", v) }
 
     /** Camera snapshot: paint the result's boxes over the frozen frame.
      *  Default ON. Also decides whether live overlays are kept through the
@@ -873,11 +877,11 @@ class Prefs internal constructor(
         get() = sp.getBoolean("camera_boxes_enabled", true)
         set(v) = sp.edit { putBoolean("camera_boxes_enabled", v) }
 
-    /** Camera snapshot: the panel was last dismissed from its collapsed
-     *  sliver, so the next snapshot starts there. */
-    var cameraPanelStartCollapsed: Boolean
-        get() = sp.getBoolean("camera_panel_start_collapsed", false)
-        set(v) = sp.edit { putBoolean("camera_panel_start_collapsed", v) }
+    /** Camera snapshot: the panel posture the last dismissal left behind, so
+     *  the next snapshot opens there. */
+    var cameraPanelPosture: Float
+        get() = sp.getFloat("camera_panel_posture", CaptureResultGeometry.NO_POSTURE)
+        set(v) = sp.edit { putFloat("camera_panel_posture", v) }
 
     /** The camera tool's own overlay flavor (Translation vs Furigana/Pinyin),
      *  cycled from the camera pill's gear menu. Inherit-until-set: unset reads
@@ -908,11 +912,11 @@ class Prefs internal constructor(
         get() = sp.getBoolean("import_boxes_enabled", true)
         set(v) = sp.edit { putBoolean("import_boxes_enabled", v) }
 
-    /** Import tool: the panel was last dismissed from its collapsed sliver,
-     *  so the next review starts there. */
-    var importPanelStartCollapsed: Boolean
-        get() = sp.getBoolean("import_panel_start_collapsed", false)
-        set(v) = sp.edit { putBoolean("import_panel_start_collapsed", v) }
+    /** Import tool: the panel posture the last dismissal left behind, so the
+     *  next review opens there. */
+    var importPanelPosture: Float
+        get() = sp.getFloat("import_panel_posture", CaptureResultGeometry.NO_POSTURE)
+        set(v) = sp.edit { putFloat("import_panel_posture", v) }
 
     /** The import tool's own overlay flavor — same inherit-until-set
      *  contract and rationale as [cameraOverlayMode], inheriting from the

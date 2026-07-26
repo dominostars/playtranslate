@@ -16,6 +16,7 @@ import com.playtranslate.isEffectivelyDark
 import com.playtranslate.model.TranslationLangContext
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.ui.ActivitySheetHost
+import com.playtranslate.ui.CaptureResultGeometry
 import com.playtranslate.ui.CaptureResultOverlay
 import com.playtranslate.ui.LanguageSetupActivity
 import com.playtranslate.ui.TtsAlertTarget
@@ -92,8 +93,8 @@ class ProcessTextActivity : AppCompatActivity() {
             override var boxesEnabled: Boolean
                 get() = false
                 set(_) {}
-            override var startCollapsed: Boolean
-                get() = false
+            override var startPosture: Float
+                get() = CaptureResultGeometry.NO_POSTURE
                 set(_) {}
         }
         o.ttsAlertTarget = TtsAlertTarget.InActivity(this)

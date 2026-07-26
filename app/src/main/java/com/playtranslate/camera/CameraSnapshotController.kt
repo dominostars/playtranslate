@@ -142,10 +142,10 @@ class CameraSnapshotController(
                 set(value) {
                     prefs.cameraBoxesEnabled = value
                 }
-            override var startCollapsed: Boolean
-                get() = prefs.cameraPanelStartCollapsed
+            override var startPosture: Float
+                get() = prefs.cameraPanelPosture
                 set(value) {
-                    prefs.cameraPanelStartCollapsed = value
+                    prefs.cameraPanelPosture = value
                 }
         },
         tokenScope = OcrTokenScope.CAMERA,

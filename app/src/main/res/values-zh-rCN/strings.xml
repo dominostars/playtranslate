@@ -1691,7 +1691,7 @@
 
     <string name="camera_region_remove">移除</string>
 
-    <string name="capture_sliver_expand_hint">向上拖动查看更多选项</string>
+    <string name="capture_sliver_expand_hint">点按查看更多选项</string>
 
     <string name="camera_settings_cd">相机设置</string>
 

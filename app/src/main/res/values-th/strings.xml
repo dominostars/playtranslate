@@ -1582,7 +1582,7 @@
 
     <string name="camera_region_remove">ลบ</string>
 
-    <string name="capture_sliver_expand_hint">ลากขึ้นเพื่อดูตัวเลือกเพิ่มเติม</string>
+    <string name="capture_sliver_expand_hint">แตะเพื่อดูตัวเลือกเพิ่มเติม</string>
 
     <string name="camera_settings_cd">การตั้งค่ากล้อง</string>
 

@@ -1619,7 +1619,7 @@
 
     <string name="camera_region_remove">Kaldır</string>
 
-    <string name="capture_sliver_expand_hint">Daha fazla seçenek için yukarı sürükleyin</string>
+    <string name="capture_sliver_expand_hint">Daha fazla seçenek için dokunun</string>
 
     <string name="camera_settings_cd">Kamera ayarları</string>
 

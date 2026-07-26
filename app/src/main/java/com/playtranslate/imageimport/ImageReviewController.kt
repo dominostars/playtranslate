@@ -139,10 +139,10 @@ class ImageReviewController(
                 set(value) {
                     prefs.importBoxesEnabled = value
                 }
-            override var startCollapsed: Boolean
-                get() = prefs.importPanelStartCollapsed
+            override var startPosture: Float
+                get() = prefs.importPanelPosture
                 set(value) {
-                    prefs.importPanelStartCollapsed = value
+                    prefs.importPanelPosture = value
                 }
         },
         tokenScope = OcrTokenScope.IMPORT,

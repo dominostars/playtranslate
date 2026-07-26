@@ -1657,7 +1657,7 @@
 
     <string name="camera_region_remove">Quitar</string>
 
-    <string name="capture_sliver_expand_hint">Desliza hacia arriba para ver más opciones</string>
+    <string name="capture_sliver_expand_hint">Toca para ver más opciones</string>
 
     <string name="camera_settings_cd">Ajustes de la cámara</string>
 

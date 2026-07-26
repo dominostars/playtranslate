@@ -1634,7 +1634,7 @@
 
     <string name="camera_region_remove">제거</string>
 
-    <string name="capture_sliver_expand_hint">위로 드래그하면 옵션이 더 표시됩니다</string>
+    <string name="capture_sliver_expand_hint">탭하면 옵션이 더 표시됩니다</string>
 
     <string name="camera_settings_cd">카메라 설정</string>
 

@@ -1707,7 +1707,7 @@
 
     <string name="camera_region_remove">削除</string>
 
-    <string name="capture_sliver_expand_hint">上にドラッグしてその他の操作を表示</string>
+    <string name="capture_sliver_expand_hint">タップしてその他の操作を表示</string>
 
     <string name="camera_settings_cd">カメラの設定</string>
 

@@ -3097,8 +3097,8 @@
     <string name="camera_region_cd">Select a region</string>
     <!-- Tappable pill on the snapshot's active-region outline; tapping deletes the region and reads the whole frame again. -->
     <string name="camera_region_remove">Remove</string>
-    <!-- Hint on the collapsed capture sheet while on-screen boxes are showing; dragging the sheet up reveals the full result panel. Up arrows are added around it in code. -->
-    <string name="capture_sliver_expand_hint">Drag up for more options</string>
+    <!-- Hint on the collapsed capture sheet while on-screen boxes are showing; tapping the sheet reveals the full result panel. A touch icon is added before it in code. Must stay short: one line at 11sp. -->
+    <string name="capture_sliver_expand_hint">Tap for more options</string>
     <!-- Content description of the camera pill's settings gear (opens the language/OCR/overlays menu). -->
     <string name="camera_settings_cd">Camera settings</string>
 
