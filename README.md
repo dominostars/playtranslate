@@ -45,9 +45,7 @@ Install the APK, then re-enable Play Protect afterward to keep scanning your oth
 
 ### Can't enable accessibility?
 
-PlayTranslate's core features run on a screen-recording permission, so most users never need to enable accessibility. A few advanced features (like hotkey hold-to-preview) will prompt you for it when you turn them on.
-
-Some Android OEMs block sideloaded apps from receiving accessibility permissions by default — the toggle in Settings is grayed out or shows a "Restricted setting" message. To unblock it:
+A few advanced features (like hotkey hold-to-preview) will prompt you to enable accessibility permissions. Some Android OEMs block sideloaded apps from receiving accessibility permissions by default, and the toggle in Settings might be grayed out or show a "Restricted setting" message. To unblock it:
 
 1. Open **Settings → Apps → PlayTranslate**
 2. Tap the **⋮** menu (top right)
