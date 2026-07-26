@@ -99,6 +99,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     // Expanded settings-panel row actions.
     var onSelectLanguage: (() -> Unit)? = null
     var onSelectOcr: (() -> Unit)? = null
+    var onToggleMangaOcr: (() -> Unit)? = null
     var onCycleOverlayMode: (() -> Unit)? = null
     var onOpenApp: (() -> Unit)? = null
     var isSingleScreen: Boolean = false
@@ -261,6 +262,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private var panelCellHeightPx = 0
     /** The Overlays row's value view, updated in place when the mode cycles. */
     private var overlayModeValueView: TextView? = null
+    private var mangaOcrValueView: TextView? = null
 
     // ── Expanded settings panel state ─────────────────────────────────────
     private var expanded = false
@@ -815,10 +817,16 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     /** Populate the expanded panel's table. Rows are tappable (ripple) but their
      *  actions aren't wired yet. The reading-hint row appears only when the
      *  source language has one ([hintLabel] non-null). */
-    fun setPanelData(languageName: String, ocrName: String, overlayValue: String?) {
+    fun setPanelData(
+        languageName: String,
+        ocrName: String,
+        overlayValue: String?,
+        mangaOcrValue: String? = null,
+    ) {
         val inflater = LayoutInflater.from(context)
         panelRows.removeAllViews()
         overlayModeValueView = null
+        mangaOcrValueView = null
 
         // Language + OCR: title on the left, right-aligned value (chevron hidden).
         addPanelValueRow(inflater, context.getString(R.string.floating_menu_panel_language), languageName) {
@@ -827,6 +835,17 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         panelRows.addView(panelDivider())
         addPanelValueRow(inflater, context.getString(R.string.floating_menu_panel_ocr), ocrName) {
             onSelectOcr?.invoke()
+        }
+
+        // MangaOCR row: On/Off as the value; tapping flips the opt-in pref in place
+        // (no dialog, pack untouched). Shown only when the pack is installed and the
+        // source language can use it ([mangaOcrValue] non-null).
+        if (mangaOcrValue != null) {
+            panelRows.addView(panelDivider())
+            val mangaRow = addPanelValueRow(
+                inflater, context.getString(R.string.settings_ocr_use_manga_title), mangaOcrValue
+            ) { onToggleMangaOcr?.invoke() }
+            mangaOcrValueView = mangaRow.findViewById(R.id.tvRowValue)
         }
 
         // Overlays row: the current overlay mode as the value; tapping cycles the
@@ -856,6 +875,9 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
     /** Update the Overlays row's value after the mode cycles, without a rebuild. */
     fun setOverlayModeValue(name: String) { overlayModeValueView?.text = name }
+
+    /** Update the MangaOCR row's On/Off value after a toggle, without a rebuild. */
+    fun setMangaOcrValue(name: String) { mangaOcrValueView?.text = name }
 
     /** A value row (title + right-aligned value, no chevron) at the panel's cell
      *  height, with a tap action. Returns the row so the caller can grab its value. */

@@ -1419,7 +1419,6 @@
     <string name="settings_ocr_installing">Installation…</string>
 
     <string name="settings_ocr_download_failed">Impossible de télécharger le modèle OCR. Vérifiez votre connexion et réessayez.</string>
-    <string name="settings_ocr_use_manga_title">Utiliser MangaOCR</string>
     <string name="settings_ocr_use_manga_subtitle">EXPÉRIMENTAL. À utiliser uniquement pour lire des mangas. C\'est lent et la qualité est mauvaise pour les jeux et les autres contenus.</string>
     <string name="settings_ocr_disable_manga_title">Désactiver MangaOCR ?</string>
     <string name="settings_ocr_disable_manga_msg">Conserver le modèle téléchargé (<xliff:g id="size" example="68 MB">%1$s</xliff:g>) ou le supprimer pour libérer de l\'espace ?</string>

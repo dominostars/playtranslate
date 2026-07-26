@@ -1380,7 +1380,6 @@
     <string name="settings_ocr_installing">Instalando…</string>
 
     <string name="settings_ocr_download_failed">Não foi possível baixar o modelo de OCR. Verifique sua conexão e tente novamente.</string>
-    <string name="settings_ocr_use_manga_title">Usar o MangaOCR</string>
     <string name="settings_ocr_use_manga_subtitle">EXPERIMENTAL. Use apenas para ler mangá. É lento e a qualidade é ruim em jogos e outros conteúdos.</string>
     <string name="settings_ocr_disable_manga_title">Desativar o MangaOCR?</string>
     <string name="settings_ocr_disable_manga_msg">Manter o modelo baixado (<xliff:g id="size" example="68 MB">%1$s</xliff:g>) ou excluí-lo para liberar espaço?</string>

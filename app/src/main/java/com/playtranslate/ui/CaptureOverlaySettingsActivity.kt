@@ -34,7 +34,6 @@ import androidx.core.view.isVisible
 import androidx.core.widget.TextViewCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.materialswitch.MaterialSwitch
-import com.playtranslate.BuildConfig
 import com.playtranslate.CaptureService
 import com.playtranslate.OcrTokenScope
 import com.playtranslate.OverlayMode
@@ -895,14 +894,13 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private fun maybeAddMangaOcrCell(id: SourceLangId) {
         if (id != SourceLangId.JA) return
         if (!OcrModelManager.isMnnAvailable()) return
-        // Hidden until the pack is shippable (real catalog SHAs). In DEBUG, a manually
-        // side-loaded pack (files + sentinel pushed into the models dir) also unhides it,
-        // so the feature can be exercised before the model is hosted. Resolve the install
-        // state once (a sentinel disk read); setupOcrSection rebuilds on any state change,
-        // so the captured value is always fresh at build time.
+        // Shown when the pack is shippable (real catalog SHAs) or already installed
+        // (covers a side-loaded dev pack in any build type). Resolve the install
+        // state once (a sentinel disk read); setupOcrSection rebuilds on any state
+        // change, so the captured value is always fresh at build time.
         val helper = MangaOcrProvisioning.helper()
         val installed = helper.isInstalled(this)
-        if (!helper.isShippable(this) && !(BuildConfig.DEBUG && installed)) return
+        if (!helper.isShippable(this) && !installed) return
         // The cell lives alone in its own headerless card below the engine list
         // (setupOcrSection resets it GONE on every rebuild).
         val mangaCard = findViewById<View>(R.id.cardMangaOcr) ?: return
@@ -926,16 +924,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     }
 
     private fun setMangaOcrEnabled(on: Boolean) {
-        prefs.useMangaOcr = on
-        MangaOcrProvisioning.refresh(this)
-        if (!on) {
-            // Reclaim the session's ~71MB native now: TRIM_MEMORY_COMPLETE targets cached
-            // processes, which a process hosting a bound accessibility service rarely
-            // drops to, so "off but kept" would otherwise hold the model until process
-            // death. Locked close — waits out an in-flight refine; the gate (already off)
-            // stops new ones. Re-enable rebuilds lazily (refresh() re-armed init).
-            lifecycleScope.launch { MangaOcrBridge.close() }
-        }
+        MangaOcrProvisioning.setEnabled(this, on, lifecycleScope)
         setupOcrSection()
     }
 

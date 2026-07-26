@@ -1417,7 +1417,6 @@
 
     <string name="settings_ocr_download_failed">无法下载 OCR 模型。请检查你的网络连接后重试。</string>
 
-    <string name="settings_ocr_use_manga_title">使用 MangaOCR</string>
 
     <string name="settings_ocr_use_manga_subtitle">实验性功能。仅建议用于阅读漫画。速度慢，且在游戏和其他内容上质量较差。</string>
 

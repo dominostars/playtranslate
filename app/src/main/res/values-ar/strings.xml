@@ -1303,7 +1303,6 @@
 
     <string name="settings_ocr_download_failed">تعذّر تنزيل نموذج OCR. تحقق من اتصالك وحاول مرة أخرى.</string>
 
-    <string name="settings_ocr_use_manga_title">استخدام MangaOCR</string>
     <string name="settings_ocr_use_manga_subtitle">تجريبي. استخدمه لقراءة المانغا فقط. فهو بطيء وجودته ضعيفة مع الألعاب والمحتويات الأخرى.</string>
     <string name="settings_ocr_disable_manga_title">إيقاف MangaOCR؟</string>
     <string name="settings_ocr_disable_manga_msg">هل تريد الاحتفاظ بالنموذج المنزَّل (<xliff:g id="size" example="68 MB">%1$s</xliff:g>) أم حذفه لتحرير مساحة؟</string>

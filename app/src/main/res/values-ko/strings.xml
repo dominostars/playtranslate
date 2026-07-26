@@ -1381,7 +1381,6 @@
 
     <string name="settings_ocr_download_failed">OCR 모델을 다운로드할 수 없습니다. 연결을 확인하고 다시 시도하세요.</string>
 
-    <string name="settings_ocr_use_manga_title">MangaOCR 사용</string>
     <string name="settings_ocr_use_manga_subtitle">실험적 기능입니다. 만화를 읽을 때만 사용하세요. 느리고 게임 등 다른 콘텐츠에서는 품질이 좋지 않습니다.</string>
     <string name="settings_ocr_disable_manga_title">MangaOCR 사용을 중지하시겠습니까?</string>
     <string name="settings_ocr_disable_manga_msg">다운로드한 <xliff:g id="size" example="68 MB">%1$s</xliff:g> 모델을 보관하시겠습니까, 아니면 삭제하여 공간을 확보하시겠습니까?</string>

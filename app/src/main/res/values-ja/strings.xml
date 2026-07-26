@@ -1433,7 +1433,6 @@
 
     <string name="settings_ocr_download_failed">OCRモデルをダウンロードできませんでした。接続を確認して、もう一度お試しください。</string>
 
-    <string name="settings_ocr_use_manga_title">MangaOCRを使用</string>
 
     <string name="settings_ocr_use_manga_subtitle">試験運用版。漫画を読む用途にのみ使用してください。処理が遅く、ゲームなど他のコンテンツでは品質が低下します。</string>
 

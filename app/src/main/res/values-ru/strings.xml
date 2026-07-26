@@ -1438,7 +1438,6 @@
 
     <string name="settings_ocr_download_failed">Не удалось скачать модель OCR. Проверьте подключение и повторите попытку.</string>
 
-    <string name="settings_ocr_use_manga_title">Использовать MangaOCR</string>
 
     <string name="settings_ocr_use_manga_subtitle">ЭКСПЕРИМЕНТАЛЬНО. Используйте только для чтения манги. Работает медленно, а для игр и другого контента качество низкое.</string>
 

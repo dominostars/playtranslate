@@ -23,6 +23,7 @@ import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.stackableTargetScript
 import com.playtranslate.language.targetSupportsVerticalText
+import com.playtranslate.ocr.mangaocr.MangaOcrProvisioning
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.ocr.registry.selectionToken
@@ -1340,6 +1341,24 @@ class OverlayUiController(
             // is chosen (see showOcrPicker); Cancel/same-engine returns here.
             showOcrPicker(display, prefs.sourceLangId)
         }
+        // MangaOCR quick toggle: only when the pack is installed and the source
+        // language can use it (JA + MNN abi) — mirrors the settings cell's gates.
+        // Flips the pref in place via the one write path (no dialog, pack kept).
+        val mangaOcrStateLabel = { on: Boolean ->
+            context.getString(
+                if (on) R.string.capture_lifecycle_state_on else R.string.capture_lifecycle_state_off
+            )
+        }
+        val mangaOcrValue = if (
+            prefs.sourceLangId == SourceLangId.JA &&
+            OcrModelManager.isMnnAvailable() &&
+            MangaOcrProvisioning.helper().isInstalled(context)
+        ) mangaOcrStateLabel(prefs.useMangaOcr) else null
+        menu.onToggleMangaOcr = {
+            val on = !Prefs(context).useMangaOcr
+            MangaOcrProvisioning.setEnabled(context, on, scope)
+            menu.setMangaOcrValue(mangaOcrStateLabel(on))
+        }
         menu.onCycleOverlayMode = {
             val modes = availableOverlayModes(prefs.sourceLangId)
             val next = modes[(modes.indexOf(prefs.overlayMode) + 1) % modes.size]
@@ -1354,7 +1373,7 @@ class OverlayUiController(
             dismissFloatingMenu()
             sendMainActivityIntent(MainActivity.ACTION_OPEN_SETTINGS)
         }
-        menu.setPanelData(languageName, ocrName, overlayValue)
+        menu.setPanelData(languageName, ocrName, overlayValue, mangaOcrValue)
         menu.degradedWarningKind =
             CaptureService.instance?.degradationState?.value
                 ?: com.playtranslate.ui.DegradedWarningKind.None

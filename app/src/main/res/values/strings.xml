@@ -2782,9 +2782,10 @@
     <!-- Error shown when an OCR model download fails. -->
     <string name="settings_ocr_download_failed">Couldn\'t download the OCR model. Check your connection and try again.</string>
 
-    <!-- Title of the "Use MangaOCR" toggle cell at the bottom of the OCR section in
-         Capture & overlay settings. "MangaOCR" is a proper noun (the model name), NOT translated. -->
-    <string name="settings_ocr_use_manga_title">Use MangaOCR</string>
+    <!-- Title of the MangaOCR toggle cell in Capture & overlay settings and of the
+         floating island quick-settings row. "MangaOCR" is a proper noun (the model
+         name), identical in every locale. -->
+    <string name="settings_ocr_use_manga_title" translatable="false">MangaOCR</string>
     <!-- Subtitle under the "Use MangaOCR" toggle cell in OCR settings — scopes the experimental
          feature to manga reading and warns about speed and game/other-content quality. -->
     <string name="settings_ocr_use_manga_subtitle">EXPERIMENTAL. Only use for reading Manga. It is slow and quality is bad for games and other content.</string>

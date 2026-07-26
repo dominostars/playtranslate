@@ -1408,7 +1408,6 @@
 
     <string name="settings_ocr_download_failed">OCR modeli indirilemedi. Bağlantınızı kontrol edip tekrar deneyin.</string>
 
-    <string name="settings_ocr_use_manga_title">MangaOCR kullan</string>
 
     <string name="settings_ocr_use_manga_subtitle">DENEYSEL. Yalnızca manga okumak için kullanın. Yavaştır; oyunlarda ve diğer içeriklerde kalitesi kötüdür.</string>
 
