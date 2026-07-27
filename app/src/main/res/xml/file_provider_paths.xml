@@ -6,6 +6,9 @@
     <!-- AudioCache clips (game-audio m4a, Commons recordings) attached to
          Anki cards via AnkiManager.addMediaFromFile. -->
     <cache-path name="audioCache" path="audioCache/" />
+    <!-- Send-private screenshot pins (AnkiScreenshotPin) attached to Anki
+         cards via AnkiManager.addMediaFromFile. -->
+    <cache-path name="ankiPins" path="anki-pins/" />
     <!-- Downloaded self-update APKs, read by the system package installer. -->
     <cache-path name="updates" path="updates/" />
     <files-path name="crashes" path="crashes/" />
