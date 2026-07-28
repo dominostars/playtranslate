@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import com.playtranslate.CaptureService
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.Prefs
+import com.playtranslate.audio.GameAudioClip
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -340,7 +341,12 @@ class GameAudioRecorder(
             out = GameAudioSnapshot.newFile(service)
             GameAudioSnapshot.sweepOrphans(service)
             writeWav(pcm, out)
-            Log.i(TAG, "snapshot: ${pcm.size / SAMPLE_RATE}s → ${out.name}")
+            Log.i(
+                TAG,
+                "snapshot: ${pcm.size / SAMPLE_RATE}s → ${out.name} " +
+                    "peak=${GameAudioClip.peakDbfs(pcm)}dB " +
+                    "tail5s=${GameAudioClip.peakDbfs(pcm, pcm.size - 5 * SAMPLE_RATE, pcm.size)}dB",
+            )
             out
         } catch (e: Exception) {
             Log.e(TAG, "snapshot write failed", e)

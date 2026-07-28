@@ -8,6 +8,8 @@ import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.abs
+import kotlin.math.log10
 
 /**
  * Pure PCM plumbing over the game-audio snapshot WAV
@@ -20,6 +22,19 @@ object GameAudioClip {
 
     private const val WAV_HEADER_BYTES = 44L
     private const val BYTES_PER_FRAME = 2 // PCM16 mono
+
+    /** Peak level of [pcm] over `[from, to)` as a dBFS string ("-inf" for
+     *  exact digital silence). Diagnostics only — the trim waveform is
+     *  normalized to its loudest bucket, so it cannot distinguish "captured a
+     *  voice line" from "captured a noise floor"; these log lines can. */
+    fun peakDbfs(pcm: ShortArray, from: Int = 0, to: Int = pcm.size): String {
+        var peak = 0
+        for (i in from.coerceAtLeast(0) until to.coerceAtMost(pcm.size)) {
+            val a = abs(pcm[i].toInt())
+            if (a > peak) peak = a
+        }
+        return if (peak == 0) "-inf" else "%.0f".format(20 * log10(peak / 32768.0))
+    }
 
     /** Sample rate declared in [wav]'s header (offset 24, little-endian). */
     fun sampleRate(wav: File): Int = RandomAccessFile(wav, "r").use { raf ->

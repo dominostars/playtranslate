@@ -466,7 +466,14 @@ class AnkiManager(private val context: Context) {
                 return null
             }
             val assignedName = resultUri.lastPathSegment
+            // AnkiDroid derives the STORED extension from the URI's MIME type,
+            // not from our filename — log both directions of the platform mime
+            // map so a mismatch (e.g. .m4a stored as .mp3) is readable here.
+            val mime = context.contentResolver.getType(fileUri)
             Log.i(TAG, "addMedia ok: preferred='${file.nameWithoutExtension}' " +
+                "ext='${file.extension}' mime='$mime' " +
+                "extFromMime='${android.webkit.MimeTypeMap.getSingleton()
+                    .getExtensionFromMimeType(mime ?: "")}' " +
                 "result='$resultUri' assigned='$assignedName'")
             assignedName
         } catch (e: Exception) {

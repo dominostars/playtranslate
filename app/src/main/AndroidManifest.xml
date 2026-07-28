@@ -320,7 +320,7 @@
 
         <!-- FileProvider to share screenshot cache files with AnkiDroid -->
         <provider
-            android:name="androidx.core.content.FileProvider"
+            android:name=".PtFileProvider"
             android:authorities="com.playtranslate.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
