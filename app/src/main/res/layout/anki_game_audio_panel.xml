@@ -11,12 +11,25 @@
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:paddingHorizontal="24dp"
-    android:paddingBottom="10dp">
+    android:paddingBottom="6dp">
 
     <com.playtranslate.ui.WaveformTrimView
         android:id="@+id/waveInline"
         android:layout_width="match_parent"
         android:layout_height="80dp"
         android:layout_marginTop="4dp" />
+
+    <!-- Pinch is the one gesture with no visual affordance (the handles show
+         themselves, a body drag is discoverable by accident). Not clickable,
+         so touches here fall through to the panel's listener and reach the
+         waveform like any other part of the cell. -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:gravity="center_horizontal"
+        android:text="@string/game_audio_zoom_hint"
+        android:textColor="?attr/ptTextHint"
+        android:textSize="11sp" />
 
 </LinearLayout>

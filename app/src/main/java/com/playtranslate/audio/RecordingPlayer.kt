@@ -63,11 +63,12 @@ object RecordingPlayer {
         file: File,
         awaitCompletion: Boolean,
         onStart: (() -> Unit)?,
+        maxGain: Double = Loudness.MAX_GAIN,
     ): PlayOutcome = withContext(Dispatchers.IO) {
         withContext(Dispatchers.Main) { stop() }
         val myGen = generation
 
-        val pcm = runCatching { decodeToPcm(file) }.getOrNull()
+        val pcm = runCatching { decodeToPcm(file, maxGain) }.getOrNull()
         if (pcm == null || pcm.data.isEmpty() || pcm.sampleRate <= 0) {
             android.util.Log.w(TAG, "RecordingPlayer decode failed/empty file=${file.name}")
             return@withContext PlayOutcome.Failed(recoverable = true)
@@ -145,8 +146,11 @@ object RecordingPlayer {
 
     private class Pcm(val data: ByteArray, val sampleRate: Int, val channelCount: Int)
 
-    /** Decodes [file] to 16-bit PCM. Returns null on any failure. */
-    private fun decodeToPcm(file: File): Pcm? {
+    /** Decodes [file] to 16-bit PCM and applies the SINGLE loudness pass for
+     *  this playback (callers must hand us raw audio — normalizing before this
+     *  stacks gain, since the limiter leaves RMS under target and a second pass
+     *  boosts again). [maxGain] lets the game-audio path raise the ceiling. */
+    private fun decodeToPcm(file: File, maxGain: Double): Pcm? {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         try {
@@ -222,7 +226,7 @@ object RecordingPlayer {
                 }
             }
             val pcmBytes = out.toByteArray()
-            Loudness.normalize(pcmBytes) // human recordings are quiet + inconsistent; even them out
+            Loudness.normalize(pcmBytes, maxGain) // quiet + inconsistent sources; even them out
             return Pcm(pcmBytes, sampleRate, channelCount.coerceAtLeast(1))
         } catch (t: Throwable) {
             android.util.Log.w(TAG, "decodeToPcm failed file=${file.name}", t)

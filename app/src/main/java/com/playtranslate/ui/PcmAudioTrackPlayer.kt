@@ -62,7 +62,7 @@ class PcmAudioTrackPlayer(private val sampleRate: Int) {
             // the Thor the secondary display attenuates media further — an
             // unnormalized clip reads as "didn't play".
             val normalized = pcm.copyOfRange(start, end)
-            Loudness.normalize(normalized)
+            Loudness.normalize(normalized, Loudness.MAX_GAIN_GAME)
             // Fast-track eligibility requires the SINK's native rate on most
             // builds — a 44.1 kHz track on a 48 kHz sink gets the low-latency
             // request silently denied and lands back on the (Thor-muted)

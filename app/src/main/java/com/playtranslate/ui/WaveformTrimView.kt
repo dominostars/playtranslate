@@ -24,8 +24,14 @@ import kotlin.math.max
  * selection edges. Rendering + touch precedents: [RegionPreviewView] (strip
  * onDraw), [RegionDragView] (per-target touch dispatch).
  *
- * Data is per-bucket RMS (computed once off-main by the activity); the view
- * itself never touches PCM.
+ * Data is per-bucket ABSOLUTE RMS in 0..1 (computed once off-main by the
+ * activity); the view itself never touches PCM. Bars are scaled to the loudest
+ * column CURRENTLY ON SCREEN, not to the loudest bucket in the file — a 3 min
+ * ring routinely holds one stinger 20 dB above the dialogue being trimmed, and
+ * file-wide scaling rendered that dialogue as a flat smear while playback (which
+ * normalizes the SELECTION) played it back loud. [SILENT_FLOOR_RMS] bounds the
+ * boost so the inverse lie stays impossible: a window holding only a noise floor
+ * still draws small instead of being stretched into a convincing waveform.
  */
 class WaveformTrimView @JvmOverloads constructor(
     context: Context,
@@ -81,6 +87,18 @@ class WaveformTrimView @JvmOverloads constructor(
          *  animation frame while a handle drag holds the edge zone
          *  (~0.6 windows/second at 60 fps). */
         const val AUTO_PAN_FRACTION = 0.01
+
+        /** Floor for the on-screen bar scale, ~ -50 dBFS RMS. A window whose
+         *  loudest column sits below this is drawn proportionally small rather
+         *  than stretched to fill the height: capture silence is not always
+         *  digital zero (a nonzero noise floor defeats the recorder's
+         *  SilenceGate too), and a full-height fuzz band reads as "a voice line
+         *  was recorded" when nothing audible was. */
+        const val SILENT_FLOOR_RMS = 0.003f
+
+        /** Opening window width. Wide enough that a default 5 s trim lands in
+         *  real context rather than filling the view. */
+        const val INITIAL_WINDOW_MS = 30_000.0
     }
 
     private val barPaint = Paint().apply { color = context.themeColor(R.attr.ptDivider) }
@@ -219,8 +237,10 @@ class WaveformTrimView @JvmOverloads constructor(
         },
     )
 
-    /** Install the waveform. Fits the whole file into the view and, when
-     *  [initialStartMs] ≥ 0, applies + reveals the initial selection. */
+    /** Install the waveform. [rmsBuckets] are ABSOLUTE per-bucket RMS in 0..1
+     *  (see the class kdoc — the view does its own on-screen scaling). Fits the
+     *  whole file into the view and, when [initialStartMs] ≥ 0, applies +
+     *  reveals the initial selection. */
     fun setData(rmsBuckets: FloatArray, bucketMs: Long, durationMs: Long, initialStartMs: Long = -1, initialEndMs: Long = -1) {
         this.rms = rmsBuckets
         this.bucketMs = bucketMs
@@ -279,21 +299,21 @@ class WaveformTrimView @JvmOverloads constructor(
         // max), one per bucket when zoomed in.
         val bucketPx = (bucketMs / msPerPx).toFloat()
         val colW = max(1f * density, bucketPx)
+        // Pass 1: the loudest column on screen sets the scale (floored, so a
+        // near-silent window can't be stretched into a full-height waveform).
+        var visiblePeak = 0f
+        var scanX = cl
+        while (scanX < cr) {
+            if (viewStartMs + (scanX - cl) * msPerPx >= durationMs) break
+            visiblePeak = max(visiblePeak, columnAmp(scanX, colW))
+            scanX += colW
+        }
+        val ampScale = 1f / max(visiblePeak, SILENT_FLOOR_RMS)
         var x = cl
         while (x < cr) {
             val msAtX = viewStartMs + (x - cl) * msPerPx
             if (msAtX >= durationMs) break
-            val firstBucket = (msAtX / bucketMs).toInt()
-            val lastBucket = ((msAtX + colW * msPerPx) / bucketMs).toInt()
-            if (lastBucket < 0) {
-                // Overscroll region before 0 ms — nothing to render.
-                x += colW
-                continue
-            }
-            var amp = 0f
-            for (b in firstBucket..lastBucket) {
-                if (b in rms.indices) amp = max(amp, rms[b])
-            }
+            val amp = (columnAmp(x, colW) * ampScale).coerceAtMost(1f)
             val barH = max(1f * density, amp * (h * 0.88f))
             val paint = if (x + colW / 2 in selL..selR) barSelectedPaint else barPaint
             canvas.drawRect(x, midY - barH / 2, x + colW * 0.8f, midY + barH / 2, paint)
@@ -330,6 +350,22 @@ class WaveformTrimView @JvmOverloads constructor(
         // fully clear of bars and fades so they're unmissable.
         if (hasLeft) drawEdgeArrow(canvas, midY, pointingLeft = true)
         if (hasRight) drawEdgeArrow(canvas, midY, pointingLeft = false)
+    }
+
+    /** Loudest bucket RMS under the column starting at [xLeft], or 0 for a
+     *  column that falls entirely outside the data (the overscroll region
+     *  before 0 ms). Shared by the scale pass and the draw pass so both see
+     *  exactly the same columns. */
+    private fun columnAmp(xLeft: Float, colW: Float): Float {
+        val msAtX = viewStartMs + (xLeft - contentLeft()) * msPerPx
+        val firstBucket = (msAtX / bucketMs).toInt()
+        val lastBucket = ((msAtX + colW * msPerPx) / bucketMs).toInt()
+        if (lastBucket < 0) return 0f
+        var amp = 0f
+        for (b in firstBucket..lastBucket) {
+            if (b in rms.indices) amp = max(amp, rms[b])
+        }
+        return amp
     }
 
     /** The Material arrow_left / arrow_right triangle, centered vertically
@@ -486,8 +522,11 @@ class WaveformTrimView @JvmOverloads constructor(
     private fun revealSelection() {
         if (width == 0 || durationMs == 0L || selEndMs <= selStartMs) return
         val selLen = (selEndMs - selStartMs).toDouble()
-        // Show the selection at ~1/3 of the window, but never zoom past limits.
-        msPerPx = clampScale(selLen * 3 / contentWidth())
+        // Open on a fixed [INITIAL_WINDOW_MS] of context rather than a multiple
+        // of the selection, so the window doesn't shrink to nothing around a
+        // short trim; a selection longer than that widens it to keep its own
+        // margin. Never zooms past the clamp limits.
+        msPerPx = clampScale(max(INITIAL_WINDOW_MS, selLen * 1.5) / contentWidth())
         viewStartMs = selStartMs - (contentWidth() * msPerPx - selLen) / 2
         clampView()
     }

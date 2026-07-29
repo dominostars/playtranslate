@@ -97,14 +97,25 @@ object RecordingAudioSource : AudioSource {
                 ?: ((durationMs - PROVISIONAL_PREVIEW_MS).coerceAtLeast(0) to durationMs)
             val pcm = GameAudioClip.readPcmRange(wav, startMs, endMs)
             if (pcm.isEmpty()) return@withContext null
+            // Written RAW. Normalizing here too would stack gain: RecordingPlayer
+            // normalizes unconditionally on decode, and a pre-pass does NOT leave
+            // the clip at target for it to no-op on — the tanh limiter lands RMS
+            // under target, and a pre-pass that hit MAX_GAIN_GAME lands further
+            // under still, so the second pass would add up to another cap's worth
+            // and the audition would be louder than the card (Codex review).
+            // The single pass happens in RecordingPlayer, at the game ceiling.
             // Single self-clobbering preview file — no temp accumulation.
             File(wav.parentFile, "preview.wav").also {
                 GameAudioClip.writeWav(pcm, GameAudioClip.sampleRate(wav), it)
             }
         } ?: return PlayOutcome.Failed(recoverable = false)
         // RecordingPlayer keeps playback on the shared stop channel
-        // (PronunciationPlayer.stop / chip tap-again reach it).
-        return RecordingPlayer.play(ctx, preview, awaitCompletion, onStart)
+        // (PronunciationPlayer.stop / chip tap-again reach it). The game ceiling
+        // is passed through so this audition matches the chip and the card
+        // instead of getting the quieter human-recording cap.
+        return RecordingPlayer.play(
+            ctx, preview, awaitCompletion, onStart, Loudness.MAX_GAIN_GAME,
+        )
     }
 
     override suspend fun toFile(ctx: Context, candidate: AudioCandidate, req: AudioRequest): File? {
@@ -119,7 +130,7 @@ object RecordingAudioSource : AudioSource {
             // Same boost-only normalization the previews apply — the card
             // must sound like what the chip played, and game mixes sit well
             // below the speech level TTS cards land at.
-            Loudness.normalize(pcm)
+            Loudness.normalize(pcm, Loudness.MAX_GAIN_GAME)
             val bytes = GameAudioClip.encodeM4a(pcm, GameAudioClip.sampleRate(wav), ctx.cacheDir)
             // Through the audio cache: LRU-swept storage the send pipeline's
             // ephemeral-cleanup won't delete (ephemeral=false for non-TTS).

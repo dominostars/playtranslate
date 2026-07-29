@@ -1191,6 +1191,10 @@
          enabling helps future cards, not the one being edited. -->
     <string name="audio_source_game_enable_hint">Not recording. Turn on to capture game audio for future cards</string>
 
+    <!-- Caption under the in-card trim waveform (small grey text, centered).
+         Pinch is the only gesture the cell offers with no visual affordance. -->
+    <string name="game_audio_zoom_hint">Pinch to show more or less audio</string>
+
     <!-- Selection readout: the sentence audio row's title in the card editor
          while game audio is selected (the source name itself is on the
          adjacent voice pill).

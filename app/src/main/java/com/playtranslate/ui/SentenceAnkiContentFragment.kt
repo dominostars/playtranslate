@@ -745,11 +745,13 @@ class SentenceAnkiContentFragment : Fragment() {
         }
     }
 
-    /** Per-bucket RMS normalized to the loudest bucket (50 ms buckets). */
+    /** Per-bucket ABSOLUTE RMS in 0..1 (50 ms buckets). Deliberately NOT
+     *  normalized to the file's loudest bucket: [WaveformTrimView] scales bars
+     *  to what is on screen, and it can only refuse to inflate a near-silent
+     *  window (its SILENT_FLOOR_RMS) if the levels it receives are absolute. */
     private fun rmsBucketsForStrip(pcm: ShortArray, rate: Int): FloatArray {
         val bucketFrames = (rate / 20).coerceAtLeast(1)
         val out = FloatArray((pcm.size + bucketFrames - 1) / bucketFrames)
-        var maxRms = 0f
         for (b in out.indices) {
             val from = b * bucketFrames
             val to = minOf(from + bucketFrames, pcm.size)
@@ -758,11 +760,8 @@ class SentenceAnkiContentFragment : Fragment() {
                 val s = pcm[i].toDouble()
                 sumSq += s * s
             }
-            val rms = (kotlin.math.sqrt(sumSq / (to - from)) / Short.MAX_VALUE).toFloat()
-            out[b] = rms
-            if (rms > maxRms) maxRms = rms
+            out[b] = (kotlin.math.sqrt(sumSq / (to - from)) / Short.MAX_VALUE).toFloat()
         }
-        if (maxRms > 0f) for (b in out.indices) out[b] = (out[b] / maxRms).coerceAtMost(1f)
         return out
     }
 
