@@ -857,6 +857,76 @@ class TypewriterGateTest {
         assertEquals(1, out.dispatch.size)
     }
 
+    // ── Dead-lineage drop: a hold on a NEW message erases the old box ─────
+
+    @Test
+    fun armedAdvance_dropsDeadBoxImmediately_insteadOfHoldingIt() {
+        val gate = TypewriterGate()
+        // Arm via a revealed-and-settled chain on the reconciler path.
+        gate.reconcile(verdicts(region("こんにち")), 0, 200)
+        val frag = box("こんにち")
+        var out = gate.reconcile(verdicts(region("こんにちは、旅の", frag)), 1000, 1200)
+        assertEquals("growth holds keep their fragment box", listOf(frag), out.heldBoxes)
+        assertTrue(out.dropNow.isEmpty())
+        out = gate.reconcile(verdicts(region("こんにちは、旅の人よ。", frag)), 2000, 2200)
+        assertEquals(1, out.toTranslate.size) // boundary release + arm
+        // Message 2 starts typing over the displayed message-1 box: the
+        // armed hold opens AND the dead box is erased now — not rendered
+        // through the hold as "nothing happened".
+        val shown = box("こんにちは、旅の人よ。")
+        out = gate.reconcile(verdicts(region("それでは、始め", shown)), 3000, 3200)
+        assertTrue(out.toTranslate.isEmpty())
+        assertTrue("dead lineage must not render through the hold", out.heldBoxes.isEmpty())
+        assertEquals(listOf(shown), out.dropNow)
+        assertEquals(3000L + TypewriterGate.ARMED_NEW_MAX_MS, out.nextDeadlineMs)
+        // Completion read releases. The dropped box left the display, so
+        // the release arrives with no replacesBox — nothing to double-drop.
+        out = gate.reconcile(verdicts(region("それでは、始めよう。")), 4000, 4200)
+        assertEquals(listOf("それでは、始めよう。"), out.toTranslate.map { it.text })
+        assertTrue(out.dropNow.isEmpty())
+    }
+
+    @Test
+    fun revealAdjacentAdvance_dropsDeadBox() {
+        val gate = TypewriterGate()
+        val top = Rect(500, 800, 1240, 860)
+        val below = Rect(500, 865, 1240, 925)
+        gate.reconcile(verdicts(region("こんにち", bounds = top)), 0, 200)
+        val topFrag = box("こんにち")
+        gate.reconcile(verdicts(region("こんにちは、旅の", topFrag, bounds = top)), 1000, 1200)
+        // The reveal reaches a split-off line 2 whose region still displays
+        // the PREVIOUS message's line 2: deferred with the top — and the
+        // dead line-2 box is erased rather than held.
+        val staleLine2 = box("古い二行目のメッセージ")
+        val out = gate.reconcile(
+            verdicts(
+                region("こんにちは、旅の人よ、聞け", topFrag, bounds = top),
+                region("つづきの新しい二行目", staleLine2, bounds = below),
+            ),
+            1500, 1700,
+        )
+        assertTrue(out.toTranslate.isEmpty())
+        assertEquals(
+            "same-chain fragment stays, dead line-2 does not",
+            listOf(topFrag), out.heldBoxes,
+        )
+        assertEquals(listOf(staleLine2), out.dropNow)
+    }
+
+    @Test
+    fun viewHold_keepsDisplayedBox_noDrop() {
+        val gate = TypewriterGate()
+        gate.reconcile(verdicts(region("Inventory Item List Warp")), 0, 300, lang = "en")
+        // A split/occluded SHORT read of the known text with its box still
+        // displayed: view-hold — the box shows the right translation and
+        // must stay up.
+        val shown = box("Inventory Item List Warp")
+        val out = gate.reconcile(verdicts(region("Inventory Item", shown)), 1000, 1300, lang = "en")
+        assertTrue(out.toTranslate.isEmpty())
+        assertEquals(listOf(shown), out.heldBoxes)
+        assertTrue(out.dropNow.isEmpty())
+    }
+
     // ── Origin-corner anchoring ───────────────────────────────────────────
 
     @Test

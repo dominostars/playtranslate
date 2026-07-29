@@ -245,6 +245,16 @@ class TypewriterGate {
      *  this read was KEEP/REMOVE/absent, exactly StabilityHold's sweep). */
     private val affirmed = HashSet<RegionMemory>()
 
+    /** Out-flag from the last [evaluateEntry] call: the hold it returned
+     *  opened on a NEW text lineage (message advance into a hold — the
+     *  armed-fresh and reveal-adjacent sites), so a displayed box for the
+     *  entry shows the PREVIOUS message and must be erased, not rendered
+     *  through the hold. Meaningful only when that call returned null;
+     *  every call resets it. Same-chain holds (growth, views, agreement,
+     *  re-shows) never set it — their box is a prefix/translation of the
+     *  text still typing, and [filterVerdicts] keeps it displayed. */
+    private var heldNewLineage = false
+
     /** Per-decision debug tap (field diagnosis, 2026-07-22 inconsistency
      *  report): every dispatch/hold logs its reason + evidence so a field
      *  pass can ATTRIBUTE a fragment instead of us inferring mechanisms.
@@ -263,7 +273,7 @@ class TypewriterGate {
         var shrinkCap = 0; var pass = 0; var selfDisable = 0; var bypass = 0
         var growHolds = 0; var armedHolds = 0; var viewHolds = 0
         var partialViews = 0; var siblingViews = 0; var revealAdjacent = 0
-        var sameBand = 0
+        var sameBand = 0; var lineageDrops = 0
         var arms = 0; var breakerTrips = 0
 
         fun summary(): String =
@@ -272,7 +282,7 @@ class TypewriterGate {
                 "sd=$selfDisable byp=$bypass] " +
                 "hold[grow=$growHolds armed=$armedHolds view=$viewHolds " +
                 "pv=$partialViews sib=$siblingViews radj=$revealAdjacent " +
-                "band=$sameBand] arm=$arms trip=$breakerTrips"
+                "band=$sameBand drop=$lineageDrops] arm=$arms trip=$breakerTrips"
     }
 
     val stats = Stats()
@@ -363,11 +373,14 @@ class TypewriterGate {
     /** [filterVerdicts]' outcome — same shape StabilityHold produced: the
      *  entries to translate this cycle (text possibly narrowed to a
      *  sentence-complete prefix), the boxes whose retranslation is deferred
-     *  (render them verbatim alongside the kept boxes), and the earliest
-     *  open hold's cap deadline (uptime ms; null when no holds are open). */
+     *  (render them verbatim alongside the kept boxes), the boxes to erase
+     *  NOW ([dropNow] — dead lineages under an opening hold; see
+     *  [heldNewLineage]), and the earliest open hold's cap deadline
+     *  (uptime ms; null when no holds are open). */
     data class Outcome(
         val toTranslate: List<ScanlineReconciler.Region>,
         val heldBoxes: List<TextBox>,
+        val dropNow: List<TextBox>,
         val nextDeadlineMs: Long?,
     )
 
@@ -388,11 +401,12 @@ class TypewriterGate {
     ): Outcome {
         if (!ENABLED) {
             clear()
-            return Outcome(verdicts.toTranslate, emptyList(), null)
+            return Outcome(verdicts.toTranslate, emptyList(), emptyList(), null)
         }
         beginBatch()
         val translate = ArrayList<ScanlineReconciler.Region>(verdicts.toTranslate.size)
         val heldBoxes = ArrayList<TextBox>()
+        val dropNow = ArrayList<TextBox>()
         for (entry in verdicts.toTranslate) {
             val box = entry.replacesBox
             // Blank-translation retry / sub-tolerance drift: stable text,
@@ -413,13 +427,27 @@ class TypewriterGate {
                 allowPartialPrefix = allowPartialPrefix,
             )
             when {
-                dispatchText == null -> if (box != null) heldBoxes.add(box)
+                dispatchText == null -> if (box != null) {
+                    // A hold on a NEW lineage: the displayed box shows the
+                    // PREVIOUS message — dead content the user would read as
+                    // "nothing happened" for the whole hold. Erase it now;
+                    // the release dispatch rebuilds the region. Same-chain
+                    // holds keep their box: it shows a prefix/translation of
+                    // the very text still typing, and dropping it would
+                    // re-open the flash-out class.
+                    if (heldNewLineage) {
+                        stats.lineageDrops++
+                        dropNow.add(box)
+                    } else {
+                        heldBoxes.add(box)
+                    }
+                }
                 dispatchText == entry.text -> translate.add(entry)
                 else -> translate.add(entry.copy(text = dispatchText))
             }
         }
         val deadline = endBatch(nowMs)
-        return Outcome(translate, heldBoxes, deadline)
+        return Outcome(translate, heldBoxes, dropNow, deadline)
     }
 
     // ── Pinhole adapter ───────────────────────────────────────────────────
@@ -590,6 +618,7 @@ class TypewriterGate {
         nowMs: Long,
         allowPartialPrefix: Boolean,
     ): String? {
+        heldNewLineage = false
         val match = matchOrCreate(text, bounds, orientation, rtl, lineCount, nowMs)
         val mem = match.mem
         affirmed.add(mem)
@@ -977,7 +1006,11 @@ class TypewriterGate {
         // Real content change (message advance) — a new lineage starts at
         // this read's rect. Unarmed: Level 0 (unless it sits flow-after an
         // active reveal). Armed: the new message is sentence-gated from
-        // its first read.
+        // its first read. Should either branch HOLD, the displayed box (if
+        // the caller has one) belongs to the lineage that just died — flag
+        // it for [filterVerdicts]' dropNow. A downstream dispatch makes the
+        // flag unread, so setting it once here covers both held sites.
+        heldNewLineage = true
         mem.startChain(bounds, orientation, rtl, lineCount)
         if (!armed) {
             if (deferRevealAdjacent() != null) return held { "reveal-adjacent" }

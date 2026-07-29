@@ -452,11 +452,16 @@ class ReconcilerLiveMode(
             val kept = verdicts.keptBoxes + holdOut.heldBoxes
             val toTranslate = holdOut.toTranslate
             if (toTranslate.isNotEmpty()) logTrace?.onCommit(cycleNum, captureAtMs, toTranslate)
-            // Every anchor leaving the display is announced: REMOVEs, and the
-            // boxes RETRANSLATE entries replace (post-hold — a held region's
-            // box stays displayed). Presenters with per-anchor state depend
-            // on seeing every exit.
-            val dropped = verdicts.removals + toTranslate.mapNotNull { it.replacesBox }
+            // Every anchor leaving the display is announced: REMOVEs, the
+            // gate's dead-lineage drops (a hold opened on a NEW message —
+            // its box must not linger; same-chain holds keep theirs), and
+            // the boxes RETRANSLATE entries replace (post-hold). Presenters
+            // with per-anchor state depend on seeing every exit. No double
+            // announce on release: the dropped box left [cachedBoxes] this
+            // cycle, so the release read reconciles as ADDED (replacesBox
+            // null), not RETRANSLATE.
+            val dropped = verdicts.removals + holdOut.dropNow +
+                toTranslate.mapNotNull { it.replacesBox }
             if (dropped.isNotEmpty()) presenter.onAnchorsDropped(dropped)
 
             if (debug) {
@@ -469,13 +474,14 @@ class ReconcilerLiveMode(
                     "D$displayId c$cycleNum clean: ocr=${ocrMs}ms " +
                         "u=${verdicts.unchanged} c=${verdicts.changed} " +
                         "m=${verdicts.missing} n=${verdicts.added} " +
-                        "held=${holdOut.heldBoxes.size} repos=${verdicts.repositioned} " +
+                        "held=${holdOut.heldBoxes.size} drop=${holdOut.dropNow.size} " +
+                        "repos=${verdicts.repositioned} " +
                         "up=${verdicts.upgraded}$jit"
                 )
             }
 
             val mutated = verdicts.removals.isNotEmpty() || toTranslate.isNotEmpty() ||
-                verdicts.repositioned > 0
+                holdOut.dropNow.isNotEmpty() || verdicts.repositioned > 0
             if (!mutated) {
                 // Steady state: what's displayed is already exactly right
                 // (kept verbatim + held verbatim) — but if the WINDOW was
@@ -488,7 +494,19 @@ class ReconcilerLiveMode(
             if (toTranslate.isEmpty()) {
                 cachedBoxes = kept.ifEmpty { null }
                 if (kept.isEmpty()) {
-                    presenter.emitNoText()
+                    // Nothing displayed — but an open hold IS text (the
+                    // reveal being gated; pinhole's FarOutcome.held rule).
+                    // Signaling no-text mid-reveal would flash a false
+                    // "no text found" status on every dialogue advance
+                    // whose old box a dead-lineage drop just erased. Erase
+                    // the window silently; the release dispatch (bounded
+                    // by the hold cap) repaints or resolves for real.
+                    if (holdOut.nextDeadlineMs != null) {
+                        CaptureBackendResolver.activeOverlayUi
+                            ?.hideTranslationOverlayForDisplay(displayId)
+                    } else {
+                        presenter.emitNoText()
+                    }
                 } else {
                     showBoxes(kept)
                     presenter.emitApplied(
