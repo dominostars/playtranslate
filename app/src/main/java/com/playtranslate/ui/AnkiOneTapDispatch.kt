@@ -280,7 +280,7 @@ suspend fun Context.oneTapSendSentence(
 /**
  * Word one-tap. No preloading (the caller already has the resolved
  * dictionary fields — that's the precondition for the Anki button
- * being tappable). Uses the flat fallback definition for both legacy
+ * being tappable). Uses the flat fallback definition for both default
  * and structured paths via [WordAnkiHtmlBuilder.wrapFlatDefinitionHtml].
  * If the user wants the richer per-sense definition the sheet renders,
  * they long-press to edit.
@@ -311,7 +311,7 @@ suspend fun Context.oneTapSendWord(
         includeWordAudio = prefs.ankiWordAudioEnabled,
         // wordSelection stays Auto — saved-voice TTS (Commons-first when
         // enabled), matching the sheet's default cell.
-        classDefinitionHtml = flatDefinitionHtml,
+        defaultDefinitionHtml = flatDefinitionHtml,
         inlineDefinitionHtml = flatDefinitionHtml,
         inlineExamplesHtml = "",
     )

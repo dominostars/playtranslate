@@ -1,5 +1,6 @@
 package com.playtranslate
 
+import com.playtranslate.ui.SentenceAnkiHtmlBuilder
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -25,10 +26,22 @@ class AnkiCsumTest {
 
     @Test
     fun stripHtml_removesStyleBlockAndTags() {
-        // Mirrors WordAnkiHtmlBuilder.buildFrontHtml's structure.
+        // Mirrors the retired v005 front blob's structure — legacy
+        // notes in users' collections still carry this shape.
         val front = "<style>body{margin:0;padding:0;}</style>" +
             "<div class=\"gl-front\" style=\"text-align:center;\">食べる</div>"
         assertEquals("食べる", AnkiCsum.stripHtml(front))
+    }
+
+    /** The Sentence model's field 0 carries `<b>` highlight markup;
+     *  stripping must recover the plain sentence so csum detection
+     *  matches a bare-text query. */
+    @Test
+    fun stripHtml_ofSentencePlainWithBold_equalsPlainSentence() {
+        val html = SentenceAnkiHtmlBuilder.buildSentencePlain(
+            "友達に聞いた", words = emptyList(), highlightedWords = setOf("聞いた"),
+        )
+        assertEquals("友達に聞いた", AnkiCsum.stripHtml(html))
     }
 
     @Test
@@ -43,8 +56,12 @@ class AnkiCsumTest {
         assertEquals("\"x\"", AnkiCsum.stripHtml("&quot;x&quot;"))
     }
 
-    /** The property the feature hinges on: an HTML-wrapped first field and the
-     *  bare word produce the same csum, so our own cards match a bare-word query. */
+    /** The property the feature hinges on: a legacy v005 note's
+     *  HTML-wrapped first field and the bare word produce the same
+     *  csum — which is also why a new field-based Word note (field 0 =
+     *  the bare word) hashes identically to the old blob cards. Only
+     *  Anki's mid-scoped dup check keeps the two models from colliding
+     *  on insert; detection intentionally matches both. */
     @Test
     fun checksum_htmlWrappedFirstFieldEqualsBareWord() {
         val wrapped = "<style>body{margin:0;padding:0;}</style>" +

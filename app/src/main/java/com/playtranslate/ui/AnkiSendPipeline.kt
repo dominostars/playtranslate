@@ -71,9 +71,10 @@ data class SentenceSendInput(
 )
 
 /** Inputs needed to send a word card. The sheet pre-renders rich,
- *  curation-aware definition HTML in both [classDefinitionHtml] (for
- *  the legacy v004 back) and [inlineDefinitionHtml] (for the
- *  structured path). One-tap callers pass a flat fallback in both via
+ *  curation-aware definition HTML in both [defaultDefinitionHtml] (for
+ *  the default PlayTranslate model's Definition field) and
+ *  [inlineDefinitionHtml] (for the structured path). One-tap callers
+ *  pass a flat fallback in both via
  *  [WordAnkiHtmlBuilder.wrapFlatDefinitionHtml]. */
 data class WordSendInput(
     val word: String,
@@ -94,18 +95,24 @@ data class WordSendInput(
      *  [AudioSelection.Auto] (the default, and what one-tap sends) resolves
      *  the user's saved voice — see [SentenceSendInput.sentenceSelection]. */
     val wordSelection: AudioSelection = AudioSelection.Auto,
-    /** Definition body for the legacy v004 back. Built with
-     *  [classStyler] in the sheet (the back's CSS block supplies the
-     *  gl-* classes); one-tap passes the inline-styled flat fallback
-     *  (works either way — class refs without matching CSS just don't
-     *  bind, which is fine for the flat case). */
-    val classDefinitionHtml: String,
+    /** Definition body (senses only) for the default PlayTranslate
+     *  model's Definition field. Built with [classStyler] in the sheet
+     *  (the model CSS supplies the gl-* classes); one-tap passes the
+     *  inline-styled flat fallback (works either way — class refs
+     *  without matching CSS just don't bind, which is fine for the
+     *  flat case). */
+    val defaultDefinitionHtml: String,
+    /** Tatoeba "More examples" block — WITH its localized gl-section
+     *  header — for the default model's Examples field. Built with
+     *  [classStyler] in the sheet; empty for one-tap. */
+    val defaultExamplesHtml: String = "",
     /** Definition body for the structured (mapped) path's DEFINITION
      *  content source. Built with [inlineStyler] in the sheet; one-tap
      *  passes the same flat-fallback HTML. */
     val inlineDefinitionHtml: String,
     /** Tatoeba "more examples" block for the structured path's
-     *  EXAMPLE_SENTENCES content source. Empty for one-tap (no
+     *  EXAMPLE_SENTENCES content source — headerless (the receiving
+     *  field's template carries its own label). Empty for one-tap (no
      *  resolved entry → no Tatoeba lookup). */
     val inlineExamplesHtml: String = "",
 )
@@ -172,17 +179,14 @@ suspend fun Context.sendSentenceCard(
             screenshotPath = pinnedScreenshotPath,
             audioPath = audioFile?.absolutePath,
             wordAudioPaths = wordAudioFiles.mapValues { it.value.absolutePath },
-            legacyFront = {
-                SentenceAnkiHtmlBuilder.buildFrontHtml(
-                    input.original, input.words, input.selectedWords, input.sourceLangId,
-                )
-            },
-            legacyBack = { imageFilename, audioFilename, wordAudioFilenames ->
-                SentenceAnkiHtmlBuilder.buildBackHtml(
-                    input.original, input.translation, input.words,
-                    imageFilename, input.selectedWords, input.sourceLangId,
+            ptNote = { imageFilename, audioFilename, wordAudioFilenames ->
+                PtNoteBuilder.forSentence(
+                    cardData = cardData,
+                    imageFilename = imageFilename,
                     audioFilename = audioFilename,
                     wordAudioFilenames = wordAudioFilenames,
+                    // Aggregate credit (sentence + per-word) — the default
+                    // model has one AudioCredit field.
                     audioCredit = audioCredit,
                 )
             },
@@ -250,21 +254,21 @@ suspend fun Context.sendWordCard(
             mode = CardMode.WORD,
             screenshotPath = pinnedScreenshotPath,
             audioPath = audioFile?.absolutePath,
-            legacyFront = { WordAnkiHtmlBuilder.buildFrontHtml(input.word) },
-            legacyBack = { imageFilename, audioFilename, _ ->
+            ptNote = { imageFilename, audioFilename, _ ->
                 // Word cards have no per-target-word audio — drop the
                 // third arg.
-                WordAnkiHtmlBuilder.buildBackHtml(
+                PtNoteBuilder.forWord(
                     word = input.word,
                     reading = input.reading,
                     pos = input.pos,
+                    definitionHtml = input.defaultDefinitionHtml,
+                    examplesHtml = input.defaultExamplesHtml,
                     freqScore = input.freqScore,
                     pitch = input.pitch,
                     frequencies = input.frequencies,
                     imageFilename = imageFilename,
                     audioFilename = audioFilename,
                     audioCredit = audioCredit,
-                    definitionHtml = input.classDefinitionHtml,
                 )
             },
             structured = { imageFilename, audioFilename, _ ->

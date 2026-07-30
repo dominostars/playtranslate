@@ -1,152 +1,19 @@
 package com.playtranslate.ui
 
-import com.playtranslate.dictionary.Deinflector
-import com.playtranslate.model.FrequencyTag
-
 /**
- * Top-level builders for the legacy v004 word-card HTML. Extracted from
- * [WordAnkiReviewSheet] so the one-tap path can reuse the same
- * scaffolding without owning the sheet's curation state.
- *
- * The rich per-sense definitions block (with curation-aware sense /
- * example filtering and Tatoeba "More examples") lives in the sheet
- * because it depends on user state; this builder accepts whatever HTML
- * the caller hands it as [definitionHtml] in [buildBackHtml].
+ * Word-card HTML helpers shared by the review sheet and the one-tap
+ * path. The v005-era front/back blob builders that used to live here
+ * are gone — the default card types are the field-based [PtModels]
+ * note types, assembled by [PtNoteBuilder].
  */
 internal object WordAnkiHtmlBuilder {
 
     /**
-     * Front-face HTML — the headword centred on a clean page. Pure
-     * function of [word]; no curation state involved.
-     */
-    fun buildFrontHtml(word: String): String = buildString {
-        append("<style>")
-        append("body{margin:0;padding:0;}")
-        append("</style>")
-        append("<div class=\"gl-front\" style=\"text-align:center;font-size:2.2em;padding:32px 16px;\">")
-        append(htmlEscape(word))
-        append("</div>")
-    }
-
-    /**
-     * Back-face HTML wrapping [definitionHtml]. The CSS block at the
-     * top supplies the `.gl-*` classes [classStyler] emits — callers
-     * building [definitionHtml] with [classStyler] can lean on the
-     * surrounding `<style>`.
-     *
-     * @param definitionHtml pre-rendered definition body inserted after
-     *   the headword/reading/pos/stars block. The sheet passes its
-     *   curation-aware rich per-sense HTML; one-tap passes the result
-     *   of [wrapFlatDefinitionHtml] over the plain fallback definition.
-     */
-    fun buildBackHtml(
-        word: String,
-        reading: String,
-        pos: String,
-        freqScore: Int,
-        /** Pitch downsteps + per-dictionary frequencies for the word (from
-         *  `entry.headwordDisplay(word)`, carried via WordSendInput). Empty for
-         *  non-JA / no pitch dictionary — the reading then renders plain. */
-        pitch: List<Int>,
-        frequencies: List<FrequencyTag>,
-        imageFilename: String?,
-        audioFilename: String?,
-        /** CC credit for a Commons recording, rendered under the [sound:] tag so
-         *  the attribution travels with the card. Null/blank for plain TTS audio. */
-        audioCredit: String? = null,
-        definitionHtml: String,
-    ): String = buildString {
-        append("<style>")
-        append("body{visibility:hidden!important;white-space:normal!important;}")
-        append(".gl-front{display:none!important;}")
-        append("#answer{display:none!important;}")
-        append(".gl-back{visibility:visible!important;}")
-        append(".gl-sense{margin:14px 4px;}")
-        append(".gl-pos{font-size:0.78em;letter-spacing:0.08em;color:#888;text-transform:uppercase;}")
-        append(".gl-gloss{font-size:1.1em;margin-top:4px;}")
-        append(".gl-misc{font-size:0.85em;color:#888;font-style:italic;margin-top:2px;}")
-        append(".gl-ex{margin:8px 0 0 8px;padding-left:10px;border-left:2px solid #6cd1c2;}")
-        append(".gl-ex-tr{font-size:0.92em;color:#888;margin-top:2px;}")
-        append(".gl-section{font-size:0.78em;letter-spacing:0.08em;color:#888;text-transform:uppercase;margin:18px 4px 6px;}")
-        // Centered, bullet-less frequency list (reused from the structured path).
-        append(".gl-back ul{list-style:none;padding:0;text-align:center;margin:6px 0;}")
-        append(PitchAccentHtml.PITCH_CSS)
-        append("</style>")
-        append("<div class=\"gl-back\">")
-        if (imageFilename != null) {
-            append("<div style=\"text-align:center;margin:12px 0;\">")
-            append("<img src=\"")
-            append(htmlEscape(imageFilename))
-            append("\" style=\"max-width:100%;border-radius:6px;\">")
-            append("</div>")
-        }
-        // [sound:] near the top of the back, under the screenshot. Inside
-        // .gl-back so the replay button inherits the visible-back
-        // visibility (body is hidden!important above).
-        if (audioFilename != null) {
-            append("<div style=\"text-align:center;margin:8px 0;\">")
-            append("[sound:$audioFilename]")
-            append("</div>")
-        }
-        // CC credit under the audio, mirroring the sentence back's styling.
-        if (!audioCredit.isNullOrBlank()) {
-            append("<div style=\"text-align:center;font-size:0.7em;opacity:0.6;margin:0 4px 8px;\">")
-            append(htmlEscape(audioCredit).replace(Regex("[\\n\\r]+"), "<br>"))
-            append("</div>")
-        }
-        append("<div style=\"text-align:center;font-size:1.8em;padding:12px 4px;\">")
-        append(htmlEscape(word))
-        append("</div>")
-        // Kana for the pitch contour: the reading when present, else the word
-        // itself when it's all-kana. Kana-only entries collapse the kana into
-        // the headword and carry no separate reading but still have pitch, so
-        // mirror WordResultCell and repeat the kana here. The all-kana guard is
-        // load-bearing — the contour maps morae onto the string, so it must
-        // never cover kanji.
-        val pitchKana = when {
-            reading.isNotEmpty() -> reading
-            pitch.isNotEmpty() && word.isNotEmpty() && word.all(Deinflector::isKana) -> word
-            else -> ""
-        }
-        val pitchHtml = if (pitchKana.isNotEmpty()) {
-            PitchAccentHtml.pitchAccentHtml(pitchKana, pitch)
-        } else ""
-        if (pitchHtml.isNotEmpty()) {
-            append("<div style=\"text-align:center;font-size:1.1em;color:#888;\">")
-            append(pitchHtml)
-            append("</div>")
-        } else if (reading.isNotEmpty()) {
-            append("<div style=\"text-align:center;font-size:1.1em;color:#888;\">")
-            append(htmlEscape(reading))
-            append("</div>")
-        }
-        if (pos.isNotEmpty()) {
-            append("<div style=\"text-align:center;font-size:0.85em;color:#888;\">")
-            append(htmlEscape(pos))
-            append("</div>")
-        }
-        // ★ rating plus each Yomitan frequency dict's value, as a centered
-        // list. Reuses the structured path's renderer (semantically identical);
-        // the `.gl-back ul` rule above strips bullets and centers it. Empty
-        // when there's neither a star score nor any frequency data.
-        val freqHtml = AnkiFrequencyFormat.frequencyValuesHtml(freqScore, frequencies)
-        if (freqHtml.isNotEmpty()) {
-            append("<div style=\"text-align:center;font-size:0.9em;color:#888;margin-top:4px;\">")
-            append(freqHtml)
-            append("</div>")
-        }
-        append("<div style=\"margin-bottom:12px;\"></div>")
-        append("<hr>")
-        append(definitionHtml)
-        append("</div>")
-    }
-
-    /**
-     * Wraps a plain-text fallback definition in the styled div the
-     * sheet uses on its empty-entry branch. One-tap (no resolved entry)
-     * passes the result through to [buildBackHtml]; the sheet uses it
-     * as its own fallback when [WordAnkiReviewSheet] couldn't resolve a
-     * dictionary entry.
+     * Wraps a plain-text fallback definition in a styled div. One-tap
+     * (no resolved entry) passes the result as the Definition field
+     * value for both the default and structured paths; the sheet uses
+     * it as its own fallback when [WordAnkiReviewSheet] couldn't
+     * resolve a dictionary entry.
      */
     fun wrapFlatDefinitionHtml(fallbackDefinition: String): String {
         val defHtml = fallbackDefinition.lines().filter { it.isNotBlank() }

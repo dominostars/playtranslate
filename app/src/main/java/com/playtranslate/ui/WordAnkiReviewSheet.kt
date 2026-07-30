@@ -71,12 +71,21 @@ class WordAnkiReviewSheet : DialogFragment() {
     private var sendButton: AnkiSendButton? = null
 
     /** Mutable screenshot path. Initialised from [ARG_SCREENSHOT_PATH]
-     *  at view creation, set to null when the user removes the photo
-     *  via the screenshot card's ×. The Send handler reads from this
-     *  field at click time so a deleted screenshot never gets uploaded
-     *  to Anki — the previous code captured the original path in a
-     *  local val and ignored later removals. */
+     *  at view creation — PINNED via [AnkiScreenshotPin], because the
+     *  arg points at a fixed cache filename (`drag.jpg` /
+     *  `capture-d{id}.jpg`) that any capture taken while this sheet is
+     *  open overwrites (field report 2026-07-29: an accidental
+     *  icon-drag replaced a card's screenshot with the Anki screen).
+     *  Set to null when the user removes the photo via the screenshot
+     *  card's ×. The Send handler reads from this field at click time
+     *  so a deleted screenshot never gets uploaded to Anki. */
     private var currentScreenshotPath: String? = null
+
+    /** The open-time pin backing [currentScreenshotPath], retained
+     *  separately so photo-removal (which nulls the field) can't leak
+     *  the file — released on provably-final teardown, same contract
+     *  as the game-audio snapshot. */
+    private var pinnedScreenshotPath: String? = null
     private lateinit var sentenceContainer: FrameLayout
     private lateinit var wordContainer: LinearLayout
     private var definitionsCard: LinearLayout? = null
@@ -244,6 +253,16 @@ class WordAnkiReviewSheet : DialogFragment() {
         deckSubtitleView = null
         sendButton = null
         currentScreenshotPath = null
+        // Release the open-time pin only on provably-final teardown —
+        // the same guard as the game-audio snapshot in
+        // SentenceAnkiContentFragment.onDestroyView: a saved-state
+        // destroy must keep the file for the restored instance (whose
+        // send-time pin copies it again anyway). Orphans from process
+        // death go to AnkiScreenshotPin.sweepStale.
+        if (activity?.isFinishing == true || !isStateSaved) {
+            context?.let { AnkiScreenshotPin.release(it, pinnedScreenshotPath) }
+        }
+        pinnedScreenshotPath = null
         wordAudioHandle?.release()
         wordAudioHandle = null
         super.onDestroyView()
@@ -270,8 +289,24 @@ class WordAnkiReviewSheet : DialogFragment() {
         // Re-seed from args every time the view is created. If the user
         // removed the screenshot in a previous instance we also cleared
         // ARG_SCREENSHOT_PATH, so this returns null on subsequent
-        // restorations and the photo stays gone.
-        currentScreenshotPath = args.getString(ARG_SCREENSHOT_PATH)
+        // restorations and the photo stays gone. Pinned immediately:
+        // the arg is a fixed cache filename a capture during this
+        // sheet's lifetime would overwrite. The pinned path is written
+        // BACK into args (same in-place mutation the removal path uses)
+        // so a saved-state recreation re-reads the immutable pin — not
+        // the mutable cache file, which may hold a different frame by
+        // then — and ADOPTS it rather than pinning a copy, so the
+        // original pin keeps exactly one owner and is released on this
+        // instance's final teardown instead of lingering for the sweep.
+        val argScreenshotPath = args.getString(ARG_SCREENSHOT_PATH)
+        pinnedScreenshotPath = if (AnkiScreenshotPin.isPin(requireContext(), argScreenshotPath)) {
+            argScreenshotPath
+        } else {
+            AnkiScreenshotPin.pin(requireContext(), argScreenshotPath).also {
+                args.putString(ARG_SCREENSHOT_PATH, it)
+            }
+        }
+        currentScreenshotPath = pinnedScreenshotPath
 
         val sentenceOriginal    = args.getString(ARG_SENTENCE_ORIGINAL)
         val sentenceTranslation = args.getString(ARG_SENTENCE_TRANSLATION) ?: ""
@@ -1476,19 +1511,23 @@ class WordAnkiReviewSheet : DialogFragment() {
         freqScore: Int, deckId: Long, screenshotPath: String?,
         sourceLangId: SourceLangId,
     ) {
-        // The legacy back's definition body uses classStyler (its
-        // surrounding <style> block carries the gl-* CSS). The
-        // structured path uses inlineStyler since the structured
-        // outputs ship with no <style>. Build both eagerly so the
-        // pipeline can hand each to the right builder.
-        val classDefinitionHtml = buildString {
+        // The default PlayTranslate model's Definition/Examples fields
+        // use classStyler (the model CSS carries the gl-* classes) and
+        // are SPLIT — senses in Definition, the "More examples" block
+        // (with its section header) in Examples — so each is editable
+        // on its own in Anki. The structured path uses inlineStyler
+        // since the structured outputs ship with no CSS. Build all
+        // eagerly so the pipeline can hand each to the right builder.
+        val defaultDefinitionHtml = buildString {
             val entry = resolvedEntry
             if (entry != null) {
                 appendSensesHtml(entry, fallbackDefinition, classStyler)
-                appendMoreExamplesHtml(classStyler)
             } else {
                 append(WordAnkiHtmlBuilder.wrapFlatDefinitionHtml(fallbackDefinition))
             }
+        }
+        val defaultExamplesHtml = buildString {
+            if (resolvedEntry != null) appendMoreExamplesHtml(classStyler)
         }
         // Pitch + per-dictionary frequencies for the structured path's
         // PITCH_POSITION / FREQUENCY_* sources, from the resolved entry's
@@ -1507,7 +1546,8 @@ class WordAnkiReviewSheet : DialogFragment() {
             // Multi-source selection (Commons-first → TTS) for the headword,
             // mirroring the sentence cell. Auto unless the user pinned a pick.
             wordSelection = wordSelection,
-            classDefinitionHtml = classDefinitionHtml,
+            defaultDefinitionHtml = defaultDefinitionHtml,
+            defaultExamplesHtml = defaultExamplesHtml,
             inlineDefinitionHtml = buildWordDefinitionHtml(inlineStyler),
             inlineExamplesHtml = buildExamplesHtml(inlineStyler),
         )
@@ -1556,11 +1596,12 @@ class WordAnkiReviewSheet : DialogFragment() {
 
     /**
      * Builds the per-sense Definition HTML for the structured-path
-     * word-card send (DEFINITION ContentSource). Mirrors the legacy
-     * `classStyler` branch in [sendWordToAnki]'s `classDefinitionHtml`
-     * builder but emits inline styles (no surrounding `<style>` block
-     * ships in the structured path) via [inlineStyler]. Honors the
-     * same curation state ([removedSenses] / [removedExamples] /
+     * word-card send (DEFINITION ContentSource). Mirrors the
+     * `classStyler` branch in [sendWordToAnki]'s `defaultDefinitionHtml`
+     * builder but emits inline styles (no CSS ships in the structured
+     * path) via [inlineStyler], and keeps the "More examples" block
+     * inline (the default model splits it into its own field). Honors
+     * the same curation state ([removedSenses] / [removedExamples] /
      * [removedTatoebaIdx]) so what the user sees on the sheet is
      * what lands on the card.
      */

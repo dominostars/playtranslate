@@ -8,6 +8,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import com.playtranslate.ui.PtModels
 import java.io.File
 import androidx.core.net.toUri
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,14 +45,6 @@ class AnkiManager(private val context: Context) {
 
         private const val AUTHORITY = "com.ichi2.anki.flashcards"
         private const val FILE_PROVIDER_AUTHORITY = "com.playtranslate.fileprovider"
-        // Bumped v004 → v005 to add the TargetWord field (the dragged/looked-up
-        // headword) so sentence cards persist their target word and the
-        // "already in Anki" detector can match it. Existing v004 cards keep
-        // working under their old model.
-        const val MODEL_NAME = "PlayTranslate v005"
-        /** Shared by every synthetic PlayTranslate model version so the
-         *  card-type picker hides old versions (v004…) too, not just current. */
-        private const val MODEL_NAME_PREFIX = "PlayTranslate v"
 
         /** AnkiDroid field separator (ASCII 31, unit separator) */
         private const val SEP = "\u001f"
@@ -221,152 +214,255 @@ class AnkiManager(private val context: Context) {
     }
 
     /**
-     * Returns the ID of the "PlayTranslate" model, creating it if it doesn't exist yet.
-     * Returns null on failure.
+     * Returns the model backing [spec] — creating it if absent — or
+     * null on failure. Called from the send path when the user's card
+     * type is "Default (PlayTranslate)", once per [spec] per install
+     * in practice (later sends find the existing model).
+     *
+     * Matched by NAME ONLY, deliberately unlike the retired blob-model
+     * lookup's exact-field match: users are encouraged to edit these
+     * note types (that's the point of field-based cards), and an
+     * added/reordered field must not spawn a duplicate model. The
+     * caller assembles values against the returned [ModelInfo]'s
+     * actual field names.
+     *
+     * Creation is TWO provider calls: the models insert carries
+     * name/fields/css, then a separate update on `models/{id}/templates/0`
+     * sets qfmt/afmt. The insert-side `qfmt`/`afmt` keys the old code
+     * passed were silently dropped by AnkiDroid (the models table has
+     * no template columns) — the v005 cards only worked because Anki's
+     * auto-generated template happened to show field 0 / field 1.
+     *
+     * The two steps are NOT atomic and the provider can't delete a
+     * model, so a template-install failure must not be sticky. Repair
+     * eligibility is decided from ANKIDROID-SIDE state only (an
+     * app-local flag wouldn't survive reinstall or a second device,
+     * and would authorize clobbering user-edited templates): on every
+     * name-match reuse the stored question format is read back and
+     * classified via [PtModels.classifyStoredTemplate] — our marker or
+     * a user rewrite is reused untouched; only AnkiDroid's
+     * auto-generated template (the failed-install fingerprint) is
+     * repaired. User edits are theirs; template fixes ship as a
+     * version bump in [spec]'s name.
      */
-    fun getOrCreateModel(): Long? {
-        val expectedFields = listOf("Expression", "Back", "TargetWord").joinToString(SEP)
-
-        // Find any existing PlayTranslate model whose field_names match the
-        // expected 3-field schema. Name-only matching is unreliable because old
-        // models with the same name but different fields may already exist in
-        // AnkiDroid from a previous version.
-        try {
-            context.contentResolver.query(MODEL_URI, null, null, null, null)?.use { cursor ->
-                val idCol     = cursor.getColumnIndex("_id")
-                val nameCol   = cursor.getColumnIndex("name")
-                val fieldsCol = cursor.getColumnIndex("field_names")
-                while (cursor.moveToNext()) {
-                    val name   = if (nameCol   >= 0) cursor.getString(nameCol)   else continue
-                    val fields = if (fieldsCol >= 0) cursor.getString(fieldsCol) else ""
-                    if (name == MODEL_NAME && fields == expectedFields) {
-                        val id = if (idCol >= 0) cursor.getLong(idCol) else null
-                        Log.d(TAG, "Reusing existing model id=$id")
-                        return id
-                    }
-                }
-            }
+    fun getOrCreatePtModel(spec: PtModels.Spec): ModelInfo? {
+        val existing = try {
+            queryAllModels().firstOrNull { it.name == spec.name }
         } catch (e: Exception) {
+            // Bail rather than fall through: a transient query failure
+            // must not create a duplicate model.
             Log.e(TAG, "Model query failed: ${e.message}", e)
             return null
         }
-        Log.d(TAG, "Creating new Anki model '$MODEL_NAME'")
-
-        // 3-field model: Expression (source text front) + Back (full HTML blob)
-        // + TargetWord (the dragged/looked-up headword, plain text). TargetWord
-        // isn't shown by the template — it exists so sentence cards persist
-        // their target word and the "already in Anki" detector can match it.
-        // qfmt centers and enlarges the expression text.
-        // afmt shows only {{Back}} — the Back field already contains the full card back
-        // (image, annotated sentence, translation, definitions), so no FrontSide duplication
-        // and no auto-generated \n\n separator artifacts.
-        val fieldNames = listOf("Expression", "Back", "TargetWord").joinToString(SEP)
-        val qfmt = """<div style="text-align:center;font-size:1.5em;padding:20px;line-height:1.5;">{{Expression}}</div>"""
-        val afmt = """{{Back}}"""
-        val css = """
-            @media(prefers-color-scheme:light){
-              .card{background-color:#F0F0F0;color:#1C1C1C}
-              .gl-secondary{color:#505050}
-              .gl-hint{color:#909090}
-              .gl-hl{color:#B34700}
-              .gl-hl-bg{background:#B3470026}
+        if (existing != null) {
+            val (storedQfmt, storedAfmt) = try {
+                readStoredTemplate(existing.id)
+            } catch (e: Exception) {
+                // Can't inspect ⇒ don't touch. Worst case is a
+                // still-broken auto template rendering ugly cards —
+                // recoverable — versus rewriting templates we never saw.
+                Log.w(TAG, "Template read-back failed for '${spec.name}' id=${existing.id} " +
+                    "— reusing untouched: ${e.message}")
+                return existing
             }
-            @media(prefers-color-scheme:dark){
-              .card{background-color:#1A1A1A;color:#EFEFEF}
-              .gl-secondary{color:#A0A0A0}
-              .gl-hint{color:#606060}
-              .gl-hl{color:#E8C07A}
-              .gl-hl-bg{background:#E8C07A26}
+            return when (PtModels.classifyStoredTemplate(storedQfmt, storedAfmt, spec)) {
+                PtModels.TemplateState.OURS -> {
+                    Log.d(TAG, "Reusing model '${existing.name}' id=${existing.id}")
+                    existing
+                }
+                PtModels.TemplateState.FOREIGN -> {
+                    Log.i(TAG, "Model '${spec.name}' id=${existing.id} has foreign templates " +
+                        "— user-owned, reusing untouched")
+                    existing
+                }
+                PtModels.TemplateState.AUTO_GENERATED -> {
+                    // A previous run's template install failed after the
+                    // insert — the one state repair exists for.
+                    Log.w(TAG, "Model '${spec.name}' id=${existing.id} wears the auto template " +
+                        "— repairing")
+                    if (installTemplates(existing.id, spec)) existing else null
+                }
             }
-        """.trimIndent().replace("\n", " ")
-
-        val cv = ContentValues().apply {
-            put("name", MODEL_NAME)
-            put("field_names", fieldNames)
-            put("num_cards", 1)
-            put("css", css)
-            put("qfmt", qfmt)
-            put("afmt", afmt)
         }
-
-        return try {
+        Log.i(TAG, "Creating Anki model '${spec.name}'")
+        val cv = ContentValues().apply {
+            put("name", spec.name)
+            put("field_names", spec.fields.joinToString(SEP))
+            put("num_cards", 1)
+            // Field 0 is the duplicate key ("already in Anki" csum +
+            // provider dup rejection). 0 is also the provider default;
+            // explicit because it's load-bearing.
+            put("sort_field_index", 0)
+            put("css", spec.css)
+        }
+        val modelId = try {
             val uri = context.contentResolver.insert(MODEL_URI, cv) ?: run {
                 Log.e(TAG, "Model insert returned null URI")
                 return null
             }
-            val id = uri.lastPathSegment?.toLongOrNull()
-            Log.d(TAG, "Created model id=$id")
-            id
+            uri.lastPathSegment?.toLongOrNull() ?: run {
+                Log.e(TAG, "Model insert URI has no id: $uri")
+                return null
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Model create failed: ${e.message}", e)
-            null
+            return null
+        }
+        // The model now exists regardless of what happens next (no
+        // provider delete). Failing here leaves it wearing the auto
+        // template — the repair branch above retries on the next send.
+        if (!installTemplates(modelId, spec)) return null
+        // Read back the stored model so callers assemble against the
+        // field names AnkiDroid actually kept.
+        return try {
+            queryAllModels().firstOrNull { it.id == modelId }
+                ?: ModelInfo(modelId, spec.name, spec.fields, type = 0, sortf = 0)
+        } catch (e: Exception) {
+            Log.e(TAG, "Model read-back failed: ${e.message}", e)
+            ModelInfo(modelId, spec.name, spec.fields, type = 0, sortf = 0)
+        }
+    }
+
+    /** The stored (question format, answer format) of
+     *  `models/{modelId}/templates/0`, either null when the row/column
+     *  is absent. Throws on query failure so the caller can distinguish
+     *  "couldn't look" from "looked, empty". */
+    private fun readStoredTemplate(modelId: Long): Pair<String?, String?> {
+        val templateUri = Uri.withAppendedPath(MODEL_URI, "$modelId/templates/0")
+        var qfmt: String? = null
+        var afmt: String? = null
+        context.contentResolver.query(
+            templateUri, arrayOf("question_format", "answer_format"), null, null, null,
+        )?.use { c ->
+            val qCol = c.getColumnIndex("question_format")
+            val aCol = c.getColumnIndex("answer_format")
+            if (c.moveToFirst()) {
+                if (qCol >= 0) qfmt = c.getString(qCol)
+                if (aCol >= 0) afmt = c.getString(aCol)
+            }
+        } ?: throw IllegalStateException("template query returned null cursor")
+        return qfmt to afmt
+    }
+
+    /**
+     * Writes [spec]'s qfmt/afmt onto `models/{modelId}/templates/0` and
+     * verifies they landed. Only the two format keys go in the update —
+     * the provider throws IllegalArgumentException on template keys it
+     * doesn't know, and the template's name is already "Card 1" from
+     * the insert.
+     *
+     * Verification reads the stored question format back and checks for
+     * the `pt-q` wrapper class (pinned by PtModelsTest as present in
+     * every PlayTranslate qfmt) rather than exact string equality —
+     * proof that OUR template replaced Anki's auto-generated one,
+     * robust to any provider-side whitespace normalization. A read-back
+     * QUERY failure alone doesn't fail the install (older providers may
+     * not support it) — a positive update row count is then trusted,
+     * loudly.
+     */
+    private fun installTemplates(modelId: Long, spec: PtModels.Spec): Boolean {
+        val templateUri = Uri.withAppendedPath(MODEL_URI, "$modelId/templates/0")
+        val tv = ContentValues().apply {
+            put("question_format", spec.qfmt)
+            put("answer_format", spec.afmt)
+        }
+        val rows = try {
+            context.contentResolver.update(templateUri, tv, null, null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Template update FAILED for '${spec.name}' id=$modelId: ${e.message}", e)
+            return false
+        }
+        if (rows <= 0) {
+            Log.e(TAG, "Template update for '${spec.name}' id=$modelId touched 0 rows")
+            return false
+        }
+        return try {
+            val (qfmt, afmt) = readStoredTemplate(modelId)
+            // Both sides must carry their marker — a partial write that
+            // landed only the front would otherwise verify, and the
+            // reuse classifier would then read the model as OURS forever.
+            val ok = qfmt?.contains("pt-q") == true && afmt?.contains("pt-a") == true
+            if (!ok) {
+                Log.e(TAG, "Template read-back mismatch for '${spec.name}' id=$modelId: " +
+                    "qfmt=${qfmt?.take(80)} afmt=${afmt?.take(80)}")
+            }
+            ok
+        } catch (e: Exception) {
+            Log.w(TAG, "Template read-back query failed for '${spec.name}' id=$modelId — " +
+                "trusting the $rows-row update: ${e.message}")
+            true
         }
     }
 
     /**
-     * Returns the standard (non-cloze) note types available in AnkiDroid,
-     * minus the synthetic v004 model (which is reached via the "Default
-     * (PlayTranslate)" sentinel and shouldn't appear in the Card Type
-     * picker). Returns empty list on query failure or when AnkiDroid is
-     * absent — callers treat empty as "transient" and avoid healing
-     * destructively.
+     * All note types as AnkiDroid reports them — including cloze and
+     * the synthetic PlayTranslate models. Throws on provider failure
+     * so callers can distinguish "query broke" from "model absent" —
+     * including a NULL cursor, which ContentResolver uses for
+     * provider-missing/permission/remote failures rather than
+     * throwing. Treating that as an empty list would let
+     * [getOrCreatePtModel] read failure as absence and create a
+     * duplicate model.
      */
-    fun getModels(): List<ModelInfo> {
+    private fun queryAllModels(): List<ModelInfo> {
         val result = mutableListOf<ModelInfo>()
-        try {
-            context.contentResolver.query(MODEL_URI, null, null, null, null)?.use { cursor ->
-                val idCol     = cursor.getColumnIndex("_id")
-                val nameCol   = cursor.getColumnIndex("name")
-                val fieldsCol = cursor.getColumnIndex("field_names")
-                val typeCol   = cursor.getColumnIndex("type")
-                // The documented FlashCardsContract column is
-                // `sort_field_index`; older AnkiDroid revisions exposed
-                // the column as `sortf` matching Anki desktop's
-                // database schema. Probe the documented name first
-                // and fall back to the legacy alias — without this
-                // probe, `getColumnIndex` returns -1 on modern
-                // AnkiDroid and our sort-field guard would always
-                // inspect field index 0 regardless of the model's
-                // real sort field.
-                val sortfCol = cursor.getColumnIndex("sort_field_index")
-                    .takeIf { it >= 0 }
-                    ?: cursor.getColumnIndex("sortf")
-                while (cursor.moveToNext()) {
-                    val id   = if (idCol   >= 0) cursor.getLong(idCol)     else continue
-                    val name = if (nameCol >= 0) cursor.getString(nameCol) ?: continue else continue
-                    val rawFields = if (fieldsCol >= 0) cursor.getString(fieldsCol) ?: "" else ""
-                    val fieldNames = rawFields.split(SEP).filter { it.isNotBlank() }
-                    if (fieldNames.isEmpty()) continue
-                    val type  = if (typeCol  >= 0) cursor.getInt(typeCol)  else 0
-                    val sortf = if (sortfCol >= 0) cursor.getInt(sortfCol) else 0
-                    if (type == 1) continue                  // cloze — out of scope
-                    if (name.startsWith(MODEL_NAME_PREFIX)) continue  // synthetic PlayTranslate model (any version)
-                    result += ModelInfo(id, name, fieldNames, type, sortf)
-                }
+        val cursor = context.contentResolver.query(MODEL_URI, null, null, null, null)
+            ?: throw IllegalStateException("models query returned null cursor")
+        cursor.use { cursor ->
+            val idCol     = cursor.getColumnIndex("_id")
+            val nameCol   = cursor.getColumnIndex("name")
+            val fieldsCol = cursor.getColumnIndex("field_names")
+            val typeCol   = cursor.getColumnIndex("type")
+            // The documented FlashCardsContract column is
+            // `sort_field_index`; older AnkiDroid revisions exposed
+            // the column as `sortf` matching Anki desktop's
+            // database schema. Probe the documented name first
+            // and fall back to the legacy alias — without this
+            // probe, `getColumnIndex` returns -1 on modern
+            // AnkiDroid and our sort-field guard would always
+            // inspect field index 0 regardless of the model's
+            // real sort field.
+            val sortfCol = cursor.getColumnIndex("sort_field_index")
+                .takeIf { it >= 0 }
+                ?: cursor.getColumnIndex("sortf")
+            while (cursor.moveToNext()) {
+                val id   = if (idCol   >= 0) cursor.getLong(idCol)     else continue
+                val name = if (nameCol >= 0) cursor.getString(nameCol) ?: continue else continue
+                val rawFields = if (fieldsCol >= 0) cursor.getString(fieldsCol) ?: "" else ""
+                val fieldNames = rawFields.split(SEP).filter { it.isNotBlank() }
+                val type  = if (typeCol  >= 0) cursor.getInt(typeCol)  else 0
+                val sortf = if (sortfCol >= 0) cursor.getInt(sortfCol) else 0
+                result += ModelInfo(id, name, fieldNames, type, sortf)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "getModels failed: ${e.message}", e)
         }
         return result
     }
 
     /**
-     * Adds a note to AnkiDroid for the legacy v004 path. Resolves v004's
-     * model id (creating it if necessary), then forwards to
-     * [addNote(modelId, deckId, fields, tags)].
+     * Returns the standard (non-cloze) note types available in
+     * AnkiDroid, minus the synthetic PlayTranslate models (blob v003…
+     * v005 and the field-based Word/Sentence types) — those are
+     * reached via the "Default (PlayTranslate)" sentinel and shouldn't
+     * appear in the Card Type picker. Returns empty list on query
+     * failure or when AnkiDroid is absent — callers treat empty as
+     * "transient" and avoid healing destructively.
      */
-    fun addNote(deckId: Long, front: String, back: String): Boolean {
-        val modelId = getOrCreateModel() ?: return false
-        Log.d(TAG, "addNote front(${front.length}) back(${back.length})")
-        return addNote(modelId, deckId, listOf(front, back))
+    fun getModels(): List<ModelInfo> = try {
+        queryAllModels().filter {
+            it.type != 1 &&                       // cloze — out of scope
+                it.fieldNames.isNotEmpty() &&
+                !PtModels.isSyntheticName(it.name)
+        }
+    } catch (e: Exception) {
+        Log.e(TAG, "getModels failed: ${e.message}", e)
+        emptyList()
     }
 
     /**
      * Generalised insert: writes [fields] (joined with the field separator)
      * into a new note of [modelId], then moves the resulting card to
      * [deckId]. The "did" key in the insert ContentValues is ignored by
-     * AnkiDroid 2.23.x, so we patch the deck via an update on notes/{id}/cards/0
-     * — same workaround as the legacy 2-arg overload.
+     * AnkiDroid 2.23.x, so we patch the deck via an update on notes/{id}/cards/0.
      */
     fun addNote(
         modelId: Long,
@@ -396,7 +492,8 @@ class AnkiManager(private val context: Context) {
             // we keep it as an unconditional fallback in case the
             // enumeration step below (newer query path) fails for any
             // reason. For single-template note types (the dominant
-            // case — v004, Basic, Lapis, JPMN, Migaku) this also moves
+            // case — the PlayTranslate models, Basic, Lapis, JPMN,
+            // Migaku) this also moves
             // the only generated card, so enumeration is a pure
             // additive enhancement.
             try {

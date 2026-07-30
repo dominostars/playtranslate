@@ -50,9 +50,17 @@ class AnkiReviewBottomSheet : DialogFragment() {
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View = inflater.inflate(R.layout.bottom_sheet_anki_review, container, false)
 
+    /** Open-time screenshot pin (see onViewCreated) — released on
+     *  provably-final teardown, same contract as the word sheet. */
+    private var pinnedScreenshotPath: String? = null
+
     override fun onDestroyView() {
         deckSubtitleView = null
         sendButton = null
+        if (activity?.isFinishing == true || !isStateSaved) {
+            context?.let { AnkiScreenshotPin.release(it, pinnedScreenshotPath) }
+        }
+        pinnedScreenshotPath = null
         super.onDestroyView()
     }
 
@@ -78,7 +86,25 @@ class AnkiReviewBottomSheet : DialogFragment() {
         val args = arguments ?: return
         val original       = args.getString(ARG_ORIGINAL) ?: ""
         val translation    = args.getString(ARG_TRANSLATION) ?: ""
-        val screenshotPath = args.getString(ARG_SCREENSHOT_PATH)
+        // Pin at open: the arg is a fixed cache filename
+        // (capture-d{id}.jpg) that any capture taken while this sheet
+        // is open overwrites — the card must keep the frame the user
+        // acted on, not whatever a later capture wrote there. The
+        // pinned path is written back into args so a restored instance
+        // can RE-OWN the pin (the child fragment keeps rendering it
+        // from its own args either way) and release it on final
+        // teardown instead of leaving it for the stale sweep.
+        val screenshotPath = if (savedInstanceState == null) {
+            AnkiScreenshotPin.pin(requireContext(), args.getString(ARG_SCREENSHOT_PATH))
+                .also {
+                    pinnedScreenshotPath = it
+                    args.putString(ARG_SCREENSHOT_PATH, it)
+                }
+        } else {
+            pinnedScreenshotPath = args.getString(ARG_SCREENSHOT_PATH)
+                ?.takeIf { AnkiScreenshotPin.isPin(requireContext(), it) }
+            null  // child already exists; no new child gets created
+        }
 
         val words = mutableListOf<SentenceAnkiHtmlBuilder.WordEntry>()
         val wordArr    = args.getStringArray(ARG_WORDS) ?: emptyArray()

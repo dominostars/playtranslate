@@ -13,9 +13,10 @@ internal object AnkiCsum {
     // Mirrors Anki's strip_html_preserving_media_filenames closely enough for
     // first-field equality: whole comment / <style> / <script> blocks are
     // removed (content and all), then any remaining tags, then the handful of
-    // entities Anki decodes. PlayTranslate's own first field is HTML (the word
-    // wrapped in a <style> block + <div>), so this must reduce it to the bare
-    // word to match the csum Anki computed and stored.
+    // entities Anki decodes. PlayTranslate first fields carry markup — <b>
+    // highlights on the Sentence model, and legacy v005 notes' full
+    // <style>+<div> front blobs — so this must reduce each to its bare text
+    // to match the csum Anki computed and stored.
     private val HTML_BLOCK_RE =
         Regex("(?is)<!--.*?-->|<style.*?>.*?</style>|<script.*?>.*?</script>")
     private val HTML_TAG_RE = Regex("<[^>]*>")

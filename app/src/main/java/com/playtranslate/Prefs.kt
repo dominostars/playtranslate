@@ -663,9 +663,10 @@ class Prefs internal constructor(
 
     /**
      * The user-selected AnkiDroid note type id. `-1L` (the default) is a
-     * sentinel meaning "use the legacy PlayTranslate v004 model" — that
-     * path bypasses the per-field mapping system entirely. Any other
-     * value means the structured path looks up
+     * sentinel meaning "use the field-based PlayTranslate models"
+     * ([com.playtranslate.ui.PtModels] — Word or Sentence, chosen by
+     * send mode) — that path bypasses the per-field mapping system
+     * entirely. Any other value means the structured path looks up
      * [getAnkiFieldMapping] and writes per-field content sources.
      */
     var ankiModelId: Long

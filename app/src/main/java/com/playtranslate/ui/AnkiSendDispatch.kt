@@ -20,8 +20,12 @@ private const val TAG = "AnkiSendDispatch"
  * against `Pair<Long, List<String>>` placeholders.
  */
 private sealed interface ModelTarget {
-    /** Default (PlayTranslate) — write to v004 via the legacy path. */
-    data object Legacy : ModelTarget
+    /** Default (PlayTranslate) — the mode's field-based PlayTranslate
+     *  model ([PtModels.WORD] / [PtModels.SENTENCE]), resolved (and
+     *  lazily created) at dispatch time. */
+    data class Default(
+        val model: AnkiManager.ModelInfo,
+    ) : ModelTarget
     /**
      * Anki Basic shape ({Front, Back} or {Front, Back, Picture}).
      * Bypasses the mapping system — fields are assembled at send time
@@ -73,11 +77,11 @@ sealed interface AnkiSendResult {
  * Shared "send a card to AnkiDroid" pipeline used by the review sheets
  * (via the [Fragment.dispatchSendToAnki] wrapper) and the one-tap
  * helpers. Resolves the chosen card type, uploads media, builds the
- * field array (legacy v004 / Basic / structured per-mapping), and
- * writes the note. Surface UX (mapping dialog open, button restore,
- * fragment-result post) is the caller's job — the dispatcher only
- * shows the explanatory Toast on the NeedsMapping and stale-sort-field
- * branches.
+ * field array (default PlayTranslate model / Basic / structured
+ * per-mapping), and writes the note. Surface UX (mapping dialog open,
+ * button restore, fragment-result post) is the caller's job — the
+ * dispatcher only shows the explanatory Toast on the NeedsMapping and
+ * stale-sort-field branches.
  *
  * Returns [AnkiSendResult.NeedsMapping] carrying the resolved model
  * when the user's picked card type has no configured mapping. Callers
@@ -85,7 +89,8 @@ sealed interface AnkiSendResult {
  * dialog for that model; overlay-context callers re-launch the
  * review activity so the user can configure it inside the sheet.
  *
- * @param mode             Which sheet flow this came from — relayed
+ * @param mode             Which sheet flow this came from — picks the
+ *                         default PlayTranslate model, and is relayed
  *                         to the mapping dialog by callers that open
  *                         one (Basic-shape templates rely on `mode`
  *                         for their defaults).
@@ -93,10 +98,9 @@ sealed interface AnkiSendResult {
  *                         Picture field, or null.
  * @param audioPath        Path to the synthesized TTS audio file to
  *                         attach, or null.
- * @param legacyFront      Lazy builder for the legacy v004 front HTML.
- * @param legacyBack       Lazy builder for the legacy v004 back HTML;
- *                         receives the AnkiDroid-side image and audio
- *                         filenames.
+ * @param ptNote           Lazy builder for the default PlayTranslate
+ *                         note payload; receives the AnkiDroid-side
+ *                         image and audio filenames.
  * @param structured       Lazy builder for the structured outputs;
  *                         receives the AnkiDroid-side image and audio
  *                         filenames.
@@ -106,14 +110,13 @@ suspend fun Context.dispatchSendToAnki(
     mode: CardMode,
     screenshotPath: String?,
     audioPath: String?,
-    legacyFront: () -> String,
-    legacyBack: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>) -> String,
+    ptNote: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>) -> PtNote,
     structured: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>) -> CardOutputs,
     /** Per-target-word audio paths keyed by word. Uploaded individually
      *  via [AnkiManager.addMediaFromFile] in the same media pass as the
      *  screenshot and sentence audio. The returned filename map is then
-     *  threaded into [legacyBack] / [structured] so each word's row in
-     *  WORDS_TABLE can carry a `[sound:…]` tag. */
+     *  threaded into [ptNote] / [structured] so each word's row in
+     *  the words table can carry a `[sound:…]` tag. */
     wordAudioPaths: Map<String, String> = emptyMap(),
 ): AnkiSendResult {
     val ctx = this
@@ -121,16 +124,20 @@ suspend fun Context.dispatchSendToAnki(
     val anki = AnkiManager(ctx)
 
     // Resolve the target model + mapping FIRST, before uploading any
-    // media. The two common bail paths below — `Failed(models_unavailable)`
-    // and `NeedsMapping` — would otherwise leave the screenshot, sentence
-    // audio, and (now) every per-target-word audio file orphaned in
-    // AnkiDroid's media folder. Sort-field + Legacy `getOrCreateModel`
-    // failures stay after uploads: they need the assembled fields and
-    // would require a more invasive restructure for marginal additional
-    // safety.
+    // media. Every bail path below — `Failed(models_unavailable)`,
+    // `NeedsMapping`, and a default-model create failure — would
+    // otherwise leave the screenshot, sentence audio, and every
+    // per-target-word audio file orphaned in AnkiDroid's media folder.
+    // Only the rare sort-field bail stays after uploads: it needs the
+    // assembled fields.
     val pickedId = prefs.ankiModelId
     val target: ModelTarget = when {
-        pickedId == -1L -> ModelTarget.Legacy
+        pickedId == -1L -> {
+            val model = withContext(Dispatchers.IO) {
+                anki.getOrCreatePtModel(PtModels.specFor(mode))
+            } ?: return AnkiSendResult.Failed(R.string.anki_send_failed_message)
+            ModelTarget.Default(model)
+        }
         else -> {
             val models = withContext(Dispatchers.IO) { anki.getModels() }
             // Empty list always means transient query/permission
@@ -138,10 +145,10 @@ suspend fun Context.dispatchSendToAnki(
             // Basic + Cloze note types, so a real install never has
             // zero models. Abort rather than treating it as "model
             // deleted" — that would destructively reset prefs and
-            // silently insert into the v004 legacy template, leaving
+            // silently insert into a default PlayTranslate model, leaving
             // the user with a card in the wrong place under a
             // "success" toast. The healing pass at
-            // AnkiUiHelper.applyHealing applies the same guard.
+            // AnkiUiHelper.addAnkiSection's healing applies the same guard.
             if (models.isEmpty()) {
                 return AnkiSendResult.Failed(R.string.anki_models_unavailable)
             }
@@ -150,12 +157,16 @@ suspend fun Context.dispatchSendToAnki(
                 // Card type was deleted/renamed away in AnkiDroid since
                 // the user picked it. Safe to reset prefs because we
                 // already know `models` is non-empty (the genuine
-                // "model is gone" signal).
+                // "model is gone" signal). Fall back to the default
+                // PlayTranslate model for this mode.
                 prefs.ankiModelId = -1L
                 prefs.ankiModelName = ""
                 Toast.makeText(ctx, R.string.anki_card_type_stale_fallback,
                     Toast.LENGTH_SHORT).show()
-                ModelTarget.Legacy
+                val model = withContext(Dispatchers.IO) {
+                    anki.getOrCreatePtModel(PtModels.specFor(mode))
+                } ?: return AnkiSendResult.Failed(R.string.anki_send_failed_message)
+                ModelTarget.Default(model)
             } else if (AnkiCardTypeMapper.isBasicShape(picked.fieldNames)) {
                 // Basic-shape templates don't carry a stored mapping —
                 // assembleBasicNote derives Front/Back from the current
@@ -181,9 +192,8 @@ suspend fun Context.dispatchSendToAnki(
 
     // Target is resolved and the common early-fail paths are past. Now
     // upload media — anything we upload from here has a real shot at
-    // being attached to a successfully-inserted note (rare sort-field
-    // failures and Legacy `getOrCreateModel` failures still leave
-    // orphans, but those are uncommon and the surface is bounded).
+    // being attached to a successfully-inserted note (the rare
+    // sort-field bail still leaves orphans, but the surface is bounded).
     val imageFilename = screenshotPath?.let {
         withContext(Dispatchers.IO) { anki.addMediaFromFile(File(it)) }
     }
@@ -201,19 +211,33 @@ suspend fun Context.dispatchSendToAnki(
     }
 
     val (modelId, fields) = when (target) {
-        ModelTarget.Legacy -> {
-            val legacyModel = withContext(Dispatchers.IO) { anki.getOrCreateModel() }
-                ?: return AnkiSendResult.Failed(R.string.anki_send_failed_message)
-            // 3rd field = TargetWord. Reuse the structured builder's EXPRESSION
-            // output, which is the plain looked-up/highlighted headword for both
-            // word and sentence cards — so sentence cards persist their target
-            // word and the "already in Anki" detector can match it.
-            val targetWord = structured(imageFilename, audioFilename, wordAudioFilenames).expression
-            legacyModel to listOf(
-                legacyFront(),
-                legacyBack(imageFilename, audioFilename, wordAudioFilenames),
-                targetWord,
-            )
+        is ModelTarget.Default -> {
+            val note = ptNote(imageFilename, audioFilename, wordAudioFilenames)
+            // Assemble against the model's ACTUAL field names (read back
+            // from AnkiDroid) so user-added or reordered fields on our
+            // note types keep working.
+            val flds = PtModels.assemble(target.model.fieldNames, note)
+            Log.d(TAG, "default send: model=${target.model.name} " +
+                "fields=${flds.size} non-empty=${flds.count { it.isNotEmpty() }}")
+            // Same sort-field guard as the Structured branch below: a
+            // renamed sort field (assemble maps it to "") or a reorder
+            // that put an empty-able field at the sort slot would hit
+            // the provider's duplicate-csum rejection as a generic
+            // "Failed to add card" on every send after the first. Fail
+            // with the actionable message instead. No NeedsMapping —
+            // the field-mapping dialog doesn't apply to our own models;
+            // the remedy is renaming the field back in AnkiDroid.
+            val sortf = target.model.sortf
+            if (sortf in flds.indices && flds[sortf].isEmpty()) {
+                val sortFieldName = target.model.fieldNames.getOrNull(sortf).orEmpty()
+                Toast.makeText(
+                    ctx,
+                    ctx.getString(R.string.anki_sort_field_empty, sortFieldName),
+                    Toast.LENGTH_LONG,
+                ).show()
+                return AnkiSendResult.Failed(R.string.anki_send_failed_message)
+            }
+            target.model.id to flds
         }
         is ModelTarget.Basic -> {
             val outputs = structured(imageFilename, audioFilename, wordAudioFilenames)
@@ -279,8 +303,7 @@ suspend fun Fragment.dispatchSendToAnki(
     mode: CardMode,
     screenshotPath: String?,
     audioPath: String?,
-    legacyFront: () -> String,
-    legacyBack: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>) -> String,
+    ptNote: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>) -> PtNote,
     structured: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>) -> CardOutputs,
     wordAudioPaths: Map<String, String> = emptyMap(),
 ): AnkiSendResult {
@@ -289,8 +312,7 @@ suspend fun Fragment.dispatchSendToAnki(
         mode = mode,
         screenshotPath = screenshotPath,
         audioPath = audioPath,
-        legacyFront = legacyFront,
-        legacyBack = legacyBack,
+        ptNote = ptNote,
         structured = structured,
         wordAudioPaths = wordAudioPaths,
     )

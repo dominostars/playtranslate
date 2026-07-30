@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -57,6 +58,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
 import kotlin.coroutines.resume
+
+private const val TAG = "SentenceAnkiContent"
 
 /**
  * Sentence-card content for Anki review (Original, Translation, Words,
@@ -188,8 +191,13 @@ class SentenceAnkiContentFragment : Fragment() {
                                 )
                                 refreshSentenceAudioTitle()
                                 updateGameAudioPanel()
+                            } else {
+                                Log.w(TAG, "game-audio pick dropped: clip too short to commit")
                             }
                         }
+                    } else {
+                        Log.w(TAG, "game-audio pick ignored: snapshot " +
+                            (if (wav == null) "not ready" else "unusable"))
                     }
                     // No usable snapshot ⇒ ignore the pick (Game audio shouldn't
                     // be offered without one); never leave a rangeless selection.
@@ -224,7 +232,10 @@ class SentenceAnkiContentFragment : Fragment() {
      * by the time Save can see it (see [commitDefaultGameRange]); a stray
      * rangeless pick degrades to the TTS floor here rather than dropping, so
      * the send always carries audio and this gate only decides whether to
-     * *nudge*. Reviewed audio sends straight through. The first Save on
+     * *nudge*. The degrade logs loudly — no generator for an invalid key is
+     * known (every commit site produces end>start over this fragment's own
+     * immutable snapshot; WaveformTrimView enforces a 200 ms minimum gap), so
+     * if the log ever fires it is news. Reviewed audio sends straight through. The first Save on
      * never-touched audio doesn't open the old full-screen editor: it reveals
      * the trim cell (even mid-decode — the cell is fixed-height), scrolls it to
      * mid-screen, flashes it, and holds that one Save. A second Save proceeds
@@ -248,10 +259,16 @@ class SentenceAnkiContentFragment : Fragment() {
         if (validRange == null) {
             // Fail-safe: a game-audio pick should always carry a committed
             // range by save time (commitDefaultGameRange). If one ever doesn't
-            // — a sub-[MIN_GAME_AUDIO_MS] clip that never rendered a panel to
-            // trim, or a future refactor that revives a live provisional key —
-            // drop to the TTS floor instead of shipping the provisional key,
-            // which toFile rejects into a silent no-audio card.
+            // — no generator is currently known — drop to the TTS floor
+            // instead of shipping the provisional key, which toFile rejects
+            // into a silent no-audio card. The log is the point: the display
+            // paths don't run this validation, so a downgrade here contradicts
+            // a cell that still says "Game audio" — if this ever fires, the
+            // logged state names the divergence.
+            Log.w(TAG, "resolveGameAudioForSend: committed key invalid " +
+                "(key=${sel.key} wavMtime=${wav.lastModified()} " +
+                "waveLoaded=${gameAudioLoadedFile == wav} " +
+                "waveSel=${gameAudioWave?.selStartMs}..${gameAudioWave?.selEndMs}) — TTS floor")
             sentenceSelection = AudioSelection.Auto
             return true
         }
@@ -784,6 +801,9 @@ class SentenceAnkiContentFragment : Fragment() {
     private fun onInlineSelectionChanged(startMs: Long, endMs: Long) {
         val wav = gameAudioSnapshotFile ?: return
         stopInlinePlayback()
+        // end > start is WaveformTrimView's contract (it enforces a 200 ms
+        // minimum gap at every mutation point), so the committed key is
+        // always parseRange-valid.
         sentenceSelection = RecordingAudioSource.committedSelection(wav, startMs, endMs)
         gameAudioReviewed = true
         refreshSentenceAudioTitle()
