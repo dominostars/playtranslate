@@ -1,7 +1,10 @@
 package com.playtranslate.camera
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.graphics.Bitmap
+import android.os.SystemClock
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
@@ -181,15 +184,33 @@ class CameraSnapshotController(
      *  drop its bitmap instead of touching dead views. */
     private var released = false
 
+    /** Uptime of the last ACTION_DOWN on the shutter — the moment the
+     *  finger's impact started shaking the device. [freeze] hands it to the
+     *  session as the pre-tap frame-selection anchor ([FreezeFrameRing]). */
+    private var shutterDownUptimeMs = 0L
+
     val isFrozen: Boolean
         get() = session.mode == CameraSession.Mode.FROZEN
 
     init {
         playPauseButton.setOnClickListener { togglePlayPause() }
+        installShutterImpactRecorder()
         shutterButton.setOnClickListener { freeze() }
         backButton.setOnClickListener { if (isFrozen) unfreeze() else onExit() }
         regionButton.setOnClickListener { panel.enterCropMode() }
         syncControls()
+    }
+
+    /** Observe-only touch listener recording the tap's impact time for
+     *  pre-tap frame selection. Never consumes (returns false), so the
+     *  ordinary click flow — and keyboard/a11y activation, which skip touch
+     *  entirely — is untouched; hence the a11y lint suppression. */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun installShutterImpactRecorder() {
+        shutterButton.setOnTouchListener { _, ev ->
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) shutterDownUptimeMs = ev.downTime
+            false
+        }
     }
 
     // ── Snapshot region (crop) ──────────────────────────────────────────
@@ -212,19 +233,30 @@ class CameraSnapshotController(
     private fun freeze() {
         if (session.mode == CameraSession.Mode.FROZEN) return
         preFreezeMode = session.mode
-        // Boxes-on snapshot taken while live boxes are up: keep them through
-        // the load (they track the very frame being frozen) and swap in the
-        // snapshot's boxes at Done — no skeleton flash.
+        // Boxes-on snapshot taken while live boxes are up: ASK to keep them
+        // through the load and swap in the snapshot's boxes at Done — no
+        // skeleton flash. A request, not a fact: the session downgrades it
+        // when the pre-tap ring freezes an older frame the live boxes never
+        // tracked, so [keptLiveOverlays] is assigned from the callback's
+        // reported outcome, never from this request.
         val keepOverlays = prefs.cameraBoxesEnabled && session.hasLiveOverlays()
-        keptLiveOverlays = keepOverlays
         // One freeze in flight at a time; re-enabled by syncControls on
         // either outcome.
         shutterButton.isEnabled = false
-        session.requestFreeze(keepOverlays) { bitmap ->
+        // Trust the recorded impact time only when this activation clearly
+        // WAS that touch: a keyboard/a11y click must not anchor pre-tap
+        // selection to some earlier, abandoned tap. (A >1 s press-and-hold
+        // also lands here as no-anchor — its impact has already rung down,
+        // so the newest frame is the right pick anyway.)
+        val downMs = shutterDownUptimeMs
+        val tapDown =
+            if (downMs > 0 && SystemClock.uptimeMillis() - downMs <= 1000L) downMs else 0L
+        session.requestFreeze(keepOverlays, tapDown) { bitmap, keptOverlays ->
             if (released) {
                 bitmap.recycle()
                 return@requestFreeze
             }
+            keptLiveOverlays = keptOverlays
             // Dropped for GC, never recycled — see retiredBitmap.
             retiredBitmap = null
             frozenBitmap = bitmap

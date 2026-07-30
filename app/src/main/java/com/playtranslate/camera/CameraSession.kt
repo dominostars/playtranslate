@@ -167,6 +167,11 @@ class CameraSession(
     private val frameTracker = FrameTracker()
     private val engine = TrackerEngine()
 
+    /** Pre-tap frame history for the snapshot shutter: the freeze serves the
+     *  sharpest frame received BEFORE the tap's impact started shaking the
+     *  device — see [FreezeFrameRing]. */
+    private val freezeRing = FreezeFrameRing()
+
     private var frameCount = 0L
     private var lastHeartbeatNs = 0L
 
@@ -380,14 +385,28 @@ class CameraSession(
 
     private fun analyze(proxy: ImageProxy) {
         try {
+            // Pre-tap ring: fed BEFORE the freeze service and the mode gate
+            // (a freeze selects among frames pushed on PREVIOUS passes, and
+            // PAUSED must keep the ring warm — freezes work from PAUSED).
+            // FROZEN skips: the shutter is disabled while frozen, and the
+            // freeze below just cleared the slots for the episode's
+            // lifetime. The ring NEVER throws (containment contract in
+            // FreezeFrameRing): analyze() runs unguarded on the analysis
+            // executor, where an escaping throw kills the process.
+            val onFrozen = freezeCallback
+            if (mode != Mode.FROZEN) {
+                freezeRing.push(
+                    proxy, android.os.SystemClock.uptimeMillis(),
+                    force = onFrozen != null,
+                )
+            }
             // Snapshot freeze: serviced BEFORE the mode gate so a freeze
             // works from PAUSED too. Entering FROZEN here (analysis thread)
             // plus the epoch advance means no live display tail can publish
             // over the snapshot; cancellation-first kills an in-flight
             // acquire's OCR rather than letting it run for nobody.
-            freezeCallback?.let { onFrozen ->
+            if (onFrozen != null) {
                 freezeCallback = null
-                val keepOverlays = freezeKeepsOverlays
                 mode = Mode.FROZEN
                 // The no-usable-text hint narrates AUTO-detection; a snapshot
                 // replaces that mode, and no frame will ever clear the hint
@@ -395,7 +414,28 @@ class CameraSession(
                 // the freeze deliberately skips the wipe to keep overlays).
                 postHint(false)
                 acquireJob?.takeIf { it.isActive }?.cancel()
-                val frozen = toUprightBitmap(proxy)
+                // The tap's IMPACT (ACTION_DOWN) is what shook the camera,
+                // and THIS frame — the first delivered after the click —
+                // sits mid-ring-down: freeze the ring's pick instead. The
+                // frame in hand was force-pushed above, so it is the ring's
+                // own fallback; the proxy path here only covers a failed
+                // NV21 conversion.
+                val pick = freezeRing.selectUpright(
+                    freezeTapDownMs.takeIf { it > 0 },
+                    android.os.SystemClock.uptimeMillis(),
+                )
+                freezeRing.clear()
+                val frozen = pick?.bitmap ?: toUprightBitmap(proxy)
+                // Kept overlays are pinned to the LATEST tracked frame's
+                // transform, so "they sit correctly on the frozen frame"
+                // holds ONLY when the pick is that frame. A pre-tap pick is
+                // an older frame the boxes never tracked: pinning live
+                // geometry on it shows boxes at the wrong coordinates for
+                // the whole OCR+translate load, then pops them to the
+                // corrected positions at Done — downgrade to the standard
+                // cleared/skeleton loading arc instead. The callback reports
+                // the outcome so the controller's skeleton logic agrees.
+                val keepOverlays = freezeKeepsOverlays && (pick == null || pick.isNewestFrame)
                 val retiredFrame: String?
                 synchronized(stateLock) {
                     cachedOcr = null
@@ -424,7 +464,7 @@ class CameraSession(
                         lastShownAuH = 0
                         rasterScale = 1f
                     }
-                    onFrozen(frozen)
+                    onFrozen(frozen, keepOverlays)
                 }
                 return
             }
@@ -1281,20 +1321,33 @@ class CameraSession(
     var mode: Mode = Mode.LIVE
         private set
 
-    /** One-shot frame request serviced by the NEXT analyzed frame. Works
-     *  from LIVE and PAUSED alike — the analysis use case stays bound in
-     *  every mode, so frames keep reaching [analyze]; non-LIVE modes just
-     *  ignore them. The callback receives the upright AU-space keyframe on
-     *  the MAIN thread and owns the bitmap. */
+    /** One-shot frame request serviced on the NEXT analyzed frame — which
+     *  selects the frozen bitmap from the pre-tap ring, not necessarily that
+     *  frame itself ([FreezeFrameRing]). Works from LIVE and PAUSED alike —
+     *  the analysis use case stays bound in every mode, so frames keep
+     *  reaching [analyze]; non-LIVE modes just ignore them. The callback
+     *  receives, on the MAIN thread: the upright AU-space keyframe (which
+     *  it owns) and whether the freeze actually kept the live overlays —
+     *  the [freezeKeepsOverlays] REQUEST is downgraded when the ring picks
+     *  a pre-tap frame the live boxes never tracked. */
     @Volatile
-    private var freezeCallback: ((Bitmap) -> Unit)? = null
+    private var freezeCallback: ((Bitmap, Boolean) -> Unit)? = null
 
-    /** When set, the freeze leaves the CURRENT warp overlays on screen (the
+    /** REQUEST to leave the CURRENT warp overlays on screen (the
      *  overlays-preferred snapshot flow keeps the live boxes as its loading
-     *  state — they were tracking the very frame being frozen, so they sit
-     *  correctly on it). Written before [freezeCallback] on the main thread;
-     *  the volatile callback write publishes it to the analysis thread. */
+     *  state). Honored only when the frozen frame IS the frame those boxes
+     *  were tracking (the ring's newest pick, or the proxy fallback) — the
+     *  premise "they sit correctly on it" is false for an older pre-tap
+     *  pick, so the freeze downgrades and reports the outcome through the
+     *  callback. Written before [freezeCallback] on the main thread; the
+     *  volatile callback write publishes it to the analysis thread. */
     private var freezeKeepsOverlays = false
+
+    /** Uptime of the shutter tap's ACTION_DOWN (0 = activation wasn't a
+     *  touch), the pre-tap selection boundary: the finger's impact starts
+     *  the shake, so only frames received before it are safely pre-impulse.
+     *  Published the same way as [freezeKeepsOverlays]. */
+    private var freezeTapDownMs = 0L
 
     /** Whether warp overlays are currently being drawn. Main thread. */
     fun hasLiveOverlays(): Boolean = warpView?.hasVisibleRegions == true
@@ -1311,12 +1364,24 @@ class CameraSession(
         mode = Mode.LIVE
     }
 
-    /** Freeze the next frame. The pipeline enters FROZEN on the analysis
-     *  thread BEFORE the callback is posted, so no live tail can publish
-     *  over the snapshot. [keepOverlays] leaves the current warp overlays
-     *  up as the snapshot's loading state. */
-    fun requestFreeze(keepOverlays: Boolean = false, onFrozen: (Bitmap) -> Unit) {
+    /** Freeze a frame. The pipeline enters FROZEN on the analysis thread
+     *  BEFORE the callback is posted, so no live tail can publish over the
+     *  snapshot. [keepOverlays] REQUESTS keeping the current warp overlays
+     *  up as the snapshot's loading state; the freeze honors it only when
+     *  the frozen frame is the one those overlays were tracking, and the
+     *  callback's second argument reports the outcome. [tapDownUptimeMs] —
+     *  the shutter tap's ACTION_DOWN uptime, 0 when the activation wasn't a
+     *  touch — anchors pre-tap selection: the freeze serves the sharpest
+     *  ring frame received before the finger's impact started shaking the
+     *  device ([FreezeFrameRing]), falling back to the next analyzed
+     *  frame. */
+    fun requestFreeze(
+        keepOverlays: Boolean = false,
+        tapDownUptimeMs: Long = 0L,
+        onFrozen: (Bitmap, Boolean) -> Unit,
+    ) {
         freezeKeepsOverlays = keepOverlays
+        freezeTapDownMs = tapDownUptimeMs
         freezeCallback = onFrozen
     }
 
@@ -1719,6 +1784,7 @@ class CameraSession(
         analysisExecutor.execute {
             frameTracker.release()
             cnConverter.release()
+            freezeRing.clear()
             while (anchorCache.isNotEmpty()) anchorCache.removeFirst().first.release()
         }
         analysisExecutor.shutdown()
