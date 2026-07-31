@@ -410,6 +410,71 @@ class MainActivity :
 
     override fun getCaptureService(): CaptureService? = captureService
 
+    /** In-flight completion state: [deferredCompletionPending] is the pending
+     *  the running job was launched for. A repeat trigger for the SAME
+     *  pending is dropped (one backend batch per pending); a trigger for a
+     *  DIFFERENT pending means a newer deferred result superseded the one in
+     *  flight — the stale job is cancelled and the new one launches, so the
+     *  new result's completion is never silently dropped. */
+    private var deferredCompletionJob: kotlinx.coroutines.Job? = null
+    private var deferredCompletionPending: com.playtranslate.model.PendingTranslation? = null
+
+    override fun completeDeferredTranslation() {
+        // Pre-bind window: no service yet — keep the pending; the Ready
+        // re-render after binding retries.
+        val svc = captureService ?: return
+        val ready = resultVm.result.value as? com.playtranslate.ui.ResultState.Ready ?: return
+        val pending = ready.result.pendingTranslation ?: return
+        if (deferredCompletionJob?.isActive == true) {
+            if (deferredCompletionPending == pending) return
+            deferredCompletionJob?.cancel()
+        }
+        deferredCompletionPending = pending
+        deferredCompletionJob = lifecycleScope.launch {
+            try {
+                if (pending.isCapture) {
+                    // One-shot capture shape: batch translate + session-scoped
+                    // History attach in the service; refill the skeleton boxes
+                    // so a show-on-screen presentation swaps to translated chips.
+                    val perGroup = svc.completeDeferredTranslation(pending)
+                    val joined = perGroup.joinToString("\n\n") { it.text }
+                    val filledBoxes = ready.onScreenBoxes?.let { boxes ->
+                        fillOneShotOverlayData(boxes.data, perGroup.map { it.text })
+                            ?.let { com.playtranslate.ui.OnScreenBoxes(it, boxes.displayId) }
+                    }
+                    resultVm.applyDeferredTranslation(
+                        pending,
+                        if (joined.isBlank()) "—" else joined,
+                        perGroup.mapNotNull { it.note }.firstOrNull(),
+                        perGroup.mapNotNull { it.backendDisplayName }.firstOrNull(),
+                        filledBoxes,
+                    )
+                } else {
+                    // Drag/sentence shape: single text + deliberate-row attach.
+                    // The recorder gates every write per feature on the
+                    // pending's LOOKUP-time eligibility snapshot AND the
+                    // current pref — an opted-out lookup records/feeds
+                    // nothing even if a pref was enabled before the reveal.
+                    val gt = translateDragSentenceAttachingHistory(
+                        svc, pending.groupTexts.firstOrNull() ?: ready.result.originalText,
+                        historyEligible = pending.historyEligible,
+                        contextEligible = pending.contextEligible,
+                    )
+                    resultVm.applyDeferredTranslation(pending, gt.text.ifBlank { "—" }, gt.note, gt.backendDisplayName)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Superseded (or the activity is going away) — the newer job
+                // owns the state now; never land "—" for a cancelled run.
+                throw e
+            } catch (_: Exception) {
+                // Ran and failed: land terminal — a visible blank + pending
+                // renders a stuck "Translating…". Mirror of the edit path's
+                // "—". Identity-guarded, so this can't damage a newer result.
+                resultVm.applyDeferredTranslation(pending, "—", null, null)
+            }
+        }
+    }
+
     override fun onWordTapped(
         word: String,
         reading: String?,
@@ -1579,6 +1644,41 @@ class MainActivity :
         val segments = TextSegments.ofText(lineText)
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(java.util.Date())
 
+        // DEFERRED: with the translation section hidden there is no consumer
+        // for the backend call — land the Ready carrying a pending; revealing
+        // the section (or an Anki flow) completes it. The lookup row was
+        // already recorded translation-less at the drag release; the
+        // completion attaches to it. The free source==target bypass never
+        // defers.
+        val dragPendingPrefs = Prefs(applicationContext)
+        val pendingSrcId = dragPendingPrefs.sourceLangId
+        if (dragPendingPrefs.hideTranslationSection &&
+            com.playtranslate.language.SourceLanguageProfiles[pendingSrcId].translationCode !=
+                dragPendingPrefs.targetLang
+        ) {
+            resultVm.displayResult(
+                TranslationResult(
+                    originalText       = lineText,
+                    segments           = segments,
+                    translatedText     = "",
+                    timestamp          = timestamp,
+                    screenshotPath     = screenshotPath,
+                    pendingTranslation = com.playtranslate.model.PendingTranslation(
+                        groupTexts = listOf(lineText),
+                        sourceLangId = pendingSrcId,
+                        targetLang = dragPendingPrefs.targetLang,
+                        // Logging eligibility at LOOKUP time — the completion
+                        // honors this snapshot, not reveal-time prefs.
+                        historyEligible = dragPendingPrefs.translationHistoryEnabled,
+                        contextEligible = dragPendingPrefs.llmContextEnabled,
+                    ),
+                    langContext        = dragPendingPrefs.langContext(),
+                ),
+                applicationContext,
+            )
+            return
+        }
+
         resultVm.showTranslatingPlaceholder(lineText, segments, applicationContext)
 
         val svc = captureService
@@ -1588,23 +1688,7 @@ class MainActivity :
             // self-heals language managers on first call.
             lifecycleScope.launch {
                 try {
-                    // Recording pair captured BEFORE translateOnce — a
-                    // mid-flight language change must not relabel.
-                    val dragPrefs = Prefs(applicationContext)
-                    val recordSrc = com.playtranslate.language
-                        .SourceLanguageProfiles[dragPrefs.sourceLangId].translationCode
-                    val recordTgt = dragPrefs.targetLang
-                    val groupTranslation = svc.translateOnce(lineText)
-                    // The lookup itself was recorded translation-less at the
-                    // drag release; this attaches the translation to that
-                    // entry (or records fresh if the row is unknown).
-                    if (groupTranslation.text.isNotEmpty()) {
-                        svc.translationLogRecorder.onDeliberateTranslation(
-                            lineText, groupTranslation.text, recordSrc, recordTgt,
-                            com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_LOOKUP,
-                            groupTranslation.backendDisplayName,
-                        )
-                    }
+                    val groupTranslation = translateDragSentenceAttachingHistory(svc, lineText)
                     val result = TranslationResult(
                         originalText       = lineText,
                         segments           = segments,
@@ -1623,6 +1707,39 @@ class MainActivity :
         } else {
             resultVm.updateTranslation("", appCtx = applicationContext)
         }
+    }
+
+    /** Translate a dragged/looked-up sentence under the current pair and
+     *  attach the outcome to its translation-less History row. Shared by the
+     *  visible drag flow (eligibility defaults: lookup and translation are
+     *  one moment) and the deferred-reveal completion (which passes the
+     *  pending's lookup-time eligibility snapshot). */
+    private suspend fun translateDragSentenceAttachingHistory(
+        svc: CaptureService,
+        lineText: String,
+        historyEligible: Boolean = true,
+        contextEligible: Boolean = true,
+    ): CaptureService.GroupTranslation {
+        // Recording pair captured BEFORE translateOnce — a
+        // mid-flight language change must not relabel.
+        val dragPrefs = Prefs(applicationContext)
+        val recordSrc = com.playtranslate.language
+            .SourceLanguageProfiles[dragPrefs.sourceLangId].translationCode
+        val recordTgt = dragPrefs.targetLang
+        val groupTranslation = svc.translateOnce(lineText)
+        // The lookup itself was recorded translation-less at the
+        // drag release; this attaches the translation to that
+        // entry (or records fresh if the row is unknown).
+        if (groupTranslation.text.isNotEmpty()) {
+            svc.translationLogRecorder.onDeliberateTranslation(
+                lineText, groupTranslation.text, recordSrc, recordTgt,
+                com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_LOOKUP,
+                groupTranslation.backendDisplayName,
+                historyEligible = historyEligible,
+                contextEligible = contextEligible,
+            )
+        }
+        return groupTranslation
     }
 
     /**
@@ -1676,8 +1793,12 @@ class MainActivity :
     private fun startOneShotCapture(displayId: Int? = null) {
         val svc = captureService ?: return
         oneShotCaptureDisplayId = displayId ?: svc.primaryGameDisplayId()
+        // This page paints no boxes on its own (dual-screen show-on-screen is
+        // an explicit tap, routed through the deferred-completion funnel), so
+        // a hidden translation section can always defer the backend call.
         _currentCaptureSession.value =
-            if (displayId != null) svc.captureOnce(displayId) else svc.captureOnce()
+            if (displayId != null) svc.captureOnce(displayId, allowDeferTranslation = true)
+            else svc.captureOnce(allowDeferTranslation = true)
     }
 
     // ── Accessibility service flow ─────────────────────────────────────────

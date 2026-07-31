@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.core.os.bundleOf
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
+import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
@@ -167,6 +168,27 @@ class AnkiReviewBottomSheet : DialogFragment() {
             sendButton?.setLoading(true)
             viewLifecycleOwner.lifecycleScope.launch {
                 sendToAnki(deckId)
+            }
+        }
+
+        // Lazy translation fill (mirror of WordAnkiReviewSheet's): a blank
+        // incoming translation means the sheet was opened from a result whose
+        // translation never ran — the hidden-section deferral — or hasn't
+        // landed yet, and the content fragment's field would otherwise sit on
+        // its placeholder forever. awaitOrStartTranslation joins any in-flight
+        // job for this sentence and contains the lambda's failure (null →
+        // applyTranslation renders the error variant without clobbering user
+        // edits). Safe after restore too: applyTranslation guards on the
+        // visible original and on user-touched state.
+        if (translation.isBlank() && original.isNotBlank()) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                val outcome = LastSentenceCache.awaitOrStartTranslation(original) { text ->
+                    val svc = CaptureService.instance
+                        ?: error("CaptureService unavailable")
+                    val gt = svc.translateOnce(text)
+                    LastSentenceCache.TranslationOutcome(gt.text, gt.backendDisplayName)
+                }
+                getContentFragment()?.applyTranslation(original, outcome?.text)
             }
         }
     }

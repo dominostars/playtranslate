@@ -65,6 +65,66 @@ data class TranslationLangContext(
 )
 
 /**
+ * Everything needed to run a machine translation that was deliberately SKIPPED
+ * because the translation section was hidden ([com.playtranslate.Prefs.hideTranslationSection])
+ * when the result was produced. Carried on [TranslationResult.pendingTranslation];
+ * non-null means [TranslationResult.translatedText] is empty because no backend
+ * ever ran — not because one is in flight or failed.
+ *
+ * Exactly one consumer completes it (translate → attach History rows → rebind
+ * with the field cleared); surfaces trigger that the moment the translation is
+ * needed: the section's eye toggle, a bind while the section is visible, a
+ * "show on screen" tap.
+ */
+data class PendingTranslation(
+    /** Per-OCR-group source texts, index-aligned with the skeleton overlay boxes
+     *  and with the null-translation History rows recorded at capture time. */
+    val groupTexts: List<String>,
+    /** Source language pinned when the result was produced — the completion must
+     *  translate under the language the OCR ran as, not current Prefs. */
+    val sourceLangId: SourceLangId,
+    /** Target language at capture time. The completion translates into the
+     *  CURRENT target (display truth) but attaches to History only while the
+     *  target still matches this value — cross-pair translations are
+     *  display-only, never attached (the deliberate flow's rule). */
+    val targetLang: String,
+    /** Capture-pipeline result (per-group completion + session-scoped History
+     *  attach via CaptureService.completeDeferredTranslation) vs a deliberate
+     *  single-sentence lookup (translateOnce + the deliberate-row attach rules
+     *  owned by the launching activity). The shapes have different History
+     *  contracts — this is the discriminator, independent of eligibility. */
+    val isCapture: Boolean = false,
+    /** History capture-session id the null rows were recorded under — the
+     *  completion's ONLY History write target (attach-only; the completion
+     *  never inserts rows). Null ⇒ the completion must not touch History:
+     *  Text History was disabled when the text was captured, or the producing
+     *  surface records none (Process-Text). */
+    val historySessionId: String? = null,
+    /** Whether Text History was enabled when this result was PRODUCED. The
+     *  sentence shape's completion consults this (its rows are deliberate
+     *  rows, not capture-session rows): enabling History between lookup and
+     *  reveal must not let the completion record text captured while the
+     *  user was opted out. Capture shape encodes the same fact in
+     *  [historySessionId]'s nullness. */
+    val historyEligible: Boolean = false,
+    /** Whether the LLM context ring was enabled when this result was
+     *  PRODUCED. The completion feeds the ring only when this AND the
+     *  current pref both hold — enabling context after an opted-out capture
+     *  must not leak that capture into later prompts. */
+    val contextEligible: Boolean = false,
+    /** Unique per-produced-result token, so data-class equality IS identity.
+     *  Every completion guard (VM apply, host in-flight dedupe, panel
+     *  funnel) compares pendings by equality; without this, two captures of
+     *  the same text under the same pair and eligibility compare equal —
+     *  especially with History off, where [historySessionId] is null — and
+     *  a stale completion could pass a newer result's guard, clear its
+     *  pending, and carry the OLDER capture's on-screen boxes onto it.
+     *  Generated at construction; `copy()` deliberately preserves it (a
+     *  copy of a pending is the same logical request). */
+    val requestToken: String = java.util.UUID.randomUUID().toString(),
+)
+
+/**
  * Full result returned after one capture → OCR → translate cycle.
  */
 data class TranslationResult(
@@ -89,6 +149,12 @@ data class TranslationResult(
      *  pipeline (drag/sentence/edit). Drives the "Scanned by …" source label, the
      *  OCR-switcher gear, and re-OCR. See [OcrProvenance]. */
     val ocrProvenance: OcrProvenance? = null,
+    /** Non-null ⇒ the machine translation was skipped because the translation
+     *  section was hidden; [translatedText] is empty and no backend ran. See
+     *  [PendingTranslation] for the completion contract. Every path that derives
+     *  a NEW translation from this result (edit commit, completion rebind) must
+     *  clear it, or a later reveal would clobber that translation. */
+    val pendingTranslation: PendingTranslation? = null,
     /** The source/target/variant this result was translated under, so a surface can
      *  detect staleness after a language change and clear it. See [TranslationLangContext]. */
     val langContext: TranslationLangContext,

@@ -80,6 +80,24 @@ class TranslationLogRecorderTest {
                 if (backendDisplayName != null) backend = backendDisplayName
             }
         }
+
+        override suspend fun attachCaptureTranslation(
+            sessionId: String, normKey: String, translation: String,
+            sourceLang: String, targetLang: String, backendDisplayName: String?,
+        ): TranslationHistoryStore.CaptureAttachOutcome {
+            // Mirror of the store's session-scoped, ATTACH-ONLY decision.
+            val match = rows.entries.lastOrNull {
+                it.value.sessionId == sessionId && it.value.normKey == normKey &&
+                    it.value.sourceLang == sourceLang && it.value.targetLang == targetLang
+            } ?: return TranslationHistoryStore.CaptureAttachOutcome.NONE
+            return if (match.value.translation.isNullOrEmpty()) {
+                match.value.translation = translation
+                if (backendDisplayName != null) match.value.backend = backendDisplayName
+                TranslationHistoryStore.CaptureAttachOutcome.ATTACHED
+            } else {
+                TranslationHistoryStore.CaptureAttachOutcome.ALREADY
+            }
+        }
     }
 
     private lateinit var sink: FakeSink
@@ -342,5 +360,174 @@ class TranslationLogRecorderTest {
     fun contextBlockRespectsLanguagePair() {
         recorder.onShown("こんにちは、世界のみなさん。", "Hello.", box, "ja", "en")
         assertEquals("", recorder.contextBlockFor("ja", "fr"))
+    }
+
+    // ── Deferred captures: null rows at capture, onCaptureTranslated later ──
+
+    @Test
+    fun deferredCaptureRowRecordsNullThenAttachFillsExactlyThatRow() {
+        val token = recorder.beginCaptureSession()
+        recorder.onCaptureShown(
+            token, "こんにちは、世界のみなさん。", null, box, "ja", "en",
+            TranslationHistoryStore.PROVENANCE_ONE_SHOT,
+        )
+        assertEquals(1, sink.rows.size)
+        assertEquals(null, sink.rows.getValue(1L).translation)
+        // Deferral: nothing reaches the LLM context ring for a null row.
+        assertEquals("", recorder.contextBlockFor("ja", "en"))
+
+        recorder.onCaptureTranslated(
+            token.sessionId, "こんにちは、世界のみなさん。", "Hello, everyone.", "ja", "en",
+            contextEligible = true, "DeepL",
+        )
+        // Attached in place — no fresh row — and the ring gets the pair now.
+        assertEquals(1, sink.rows.size)
+        assertEquals("Hello, everyone.", sink.rows.getValue(1L).translation)
+        assertTrue(recorder.contextBlockFor("ja", "en").contains("Hello, everyone."))
+    }
+
+    @Test
+    fun captureAttachWithRowsGoneWritesNothing() {
+        // History cleared (or FIFO-pruned) between capture and reveal:
+        // ATTACH-ONLY — the reveal must not resurrect pre-clear text.
+        val token = recorder.beginCaptureSession()
+        recorder.onCaptureTranslated(
+            token.sessionId, "こんにちは、世界のみなさん。", "Hello.", "ja", "en",
+            contextEligible = false,
+        )
+        assertEquals(0, sink.rows.size)
+    }
+
+    @Test
+    fun optedOutCaptureStaysUnrecordedAfterPrefsFlipOn() {
+        // Codex round-3 regression: History + context OFF at capture time —
+        // no rows were written, so the pending carries sessionId = null and
+        // contextEligible = false. The user enables BOTH before revealing;
+        // the completion must still write nothing anywhere.
+        recorder.onCaptureTranslated(
+            null, "こんにちは、世界のみなさん。", "Hello.", "ja", "en",
+            contextEligible = false,
+        )
+        assertEquals(0, sink.rows.size)
+        assertEquals("", recorder.contextBlockFor("ja", "en"))
+    }
+
+    @Test
+    fun deliberateAttachHonorsLookupTimeContextOptOut() {
+        // Drag lookup made with context OFF (contextEligible=false in the
+        // pending), context enabled before the reveal: the row still gets
+        // its translation, but the ring must not receive an opted-out lookup.
+        recorder.onShownDeliberate(
+            "こんにちは、世界のみなさん。", null, null, "ja", "en",
+            TranslationHistoryStore.PROVENANCE_LOOKUP,
+        )
+        recorder.onDeliberateTranslation(
+            "こんにちは、世界のみなさん。", "Hello, everyone.", "ja", "en",
+            TranslationHistoryStore.PROVENANCE_LOOKUP,
+            contextEligible = false,
+        )
+        assertEquals("Hello, everyone.", sink.rows.getValue(1L).translation)
+        assertEquals("", recorder.contextBlockFor("ja", "en"))
+    }
+
+    @Test
+    fun deliberateAttachHonorsLookupTimeHistoryOptOut() {
+        // Lookup made with History OFF (no row recorded, historyEligible
+        // false) but context on at both ends: the reveal must not record a
+        // fresh row even with History now enabled — the ring alone is fed.
+        recorder.onDeliberateTranslation(
+            "こんにちは、世界のみなさん。", "Hello, everyone.", "ja", "en",
+            TranslationHistoryStore.PROVENANCE_LOOKUP,
+            historyEligible = false,
+            contextEligible = true,
+        )
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertEquals(0, sink.rows.size)
+        assertTrue(recorder.contextBlockFor("ja", "en").contains("Hello, everyone."))
+    }
+
+    @Test
+    fun historyEntryAttachHonorsLookupTimeContextOptOut() {
+        // History-row tap with context OFF at tap time, enabled before the
+        // reveal: the exact-row attach proceeds (the row's recording consent
+        // predates the tap) but the ring stays clean.
+        recorder.onShownDeliberate(
+            "こんにちは、世界のみなさん。", null, null, "ja", "en",
+            TranslationHistoryStore.PROVENANCE_LOOKUP,
+        )
+        recorder.onHistoryEntryTranslated(
+            1L, "こんにちは、世界のみなさん。", "Hello, everyone.", "ja", "en",
+            contextEligible = false,
+        )
+        assertEquals("Hello, everyone.", sink.rows.getValue(1L).translation)
+        assertEquals("", recorder.contextBlockFor("ja", "en"))
+    }
+
+    @Test
+    fun contextEligibleHistoryOffFeedsOnlyTheRing() {
+        // History off at capture (no rows, sessionId null) but context opted
+        // in at both ends: the reveal feeds the ring, touches no rows.
+        recorder.onCaptureTranslated(
+            null, "こんにちは、世界のみなさん。", "Hello.", "ja", "en",
+            contextEligible = true,
+        )
+        assertEquals(0, sink.rows.size)
+        assertTrue(recorder.contextBlockFor("ja", "en").contains("Hello."))
+    }
+
+    @Test
+    fun captureAttachDoesNotStealATrackedDeliberateRow() {
+        // A drag lookup recorded the same text translation-less and IS
+        // tracked in rowIds. The capture's late attach must fill the CAPTURE
+        // row (attachByKey picks the newest translation-less match), never
+        // attachById the deliberate row — that one belongs to the drag
+        // flow's own onDeliberateTranslation.
+        recorder.onShownDeliberate(
+            "こんにちは、世界のみなさん。", null, null, "ja", "en",
+            TranslationHistoryStore.PROVENANCE_LOOKUP,
+        )
+        val token = recorder.beginCaptureSession()
+        recorder.onCaptureShown(
+            token, "こんにちは、世界のみなさん。", null, box, "ja", "en",
+            TranslationHistoryStore.PROVENANCE_ONE_SHOT,
+        )
+        assertEquals(2, sink.rows.size)
+
+        recorder.onCaptureTranslated(
+            token.sessionId, "こんにちは、世界のみなさん。", "Hello, everyone.", "ja", "en",
+            contextEligible = false,
+        )
+        assertEquals(2, sink.rows.size)
+        // The capture row (session-scoped match) got the text …
+        assertEquals("Hello, everyone.", sink.rows.getValue(2L).translation)
+        // … and the tracked drag row stays null for its own flow to fill.
+        assertEquals(null, sink.rows.getValue(1L).translation)
+    }
+
+    @Test
+    fun repeatCaptureAttachIsIdempotent() {
+        // A second completion for the same capture — stash-reshow rebind,
+        // cross-surface trigger, retry — must be a durable no-op once the
+        // first attach filled the row: no fresh-insert fallback, no
+        // duplicate ring push. Per-surface dedupe cannot see across UI
+        // instances; the store boundary owns this.
+        val token = recorder.beginCaptureSession()
+        recorder.onCaptureShown(
+            token, "こんにちは、世界のみなさん。", null, box, "ja", "en",
+            TranslationHistoryStore.PROVENANCE_ONE_SHOT,
+        )
+        recorder.onCaptureTranslated(
+            token.sessionId, "こんにちは、世界のみなさん。", "Hello, everyone.", "ja", "en",
+            contextEligible = true,
+        )
+        recorder.onCaptureTranslated(
+            token.sessionId, "こんにちは、世界のみなさん。", "Hello, everyone.", "ja", "en",
+            contextEligible = true,
+        )
+        assertEquals(1, sink.rows.size)
+        assertEquals("Hello, everyone.", sink.rows.getValue(1L).translation)
+        // The ring got the pair exactly once (block contains one arrow line).
+        val block = recorder.contextBlockFor("ja", "en")
+        assertEquals(1, block.split("Hello, everyone.").size - 1)
     }
 }

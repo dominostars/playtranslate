@@ -71,6 +71,66 @@ class TranslationHistoryStoreTest {
     }
 
     @Test
+    fun captureAttachIsIdempotentSessionScopedAndAttachOnly(): Unit = runBlocking {
+        // A deferred capture's null row under its own session, plus a twin
+        // key under ANOTHER session that must never receive this capture's
+        // translation.
+        TranslationHistoryStore.insert(
+            ctx, 1, "line", null, "ja", "en",
+            TranslationHistoryStore.PROVENANCE_ONE_SHOT, "cap:one", "k", null, null,
+        )
+        TranslationHistoryStore.insert(
+            ctx, 2, "line", null, "ja", "en",
+            TranslationHistoryStore.PROVENANCE_LOOKUP, "other", "k", null, null,
+        )
+
+        val first = TranslationHistoryStore.attachCaptureTranslation(
+            ctx, "cap:one", "k", "hello", "ja", "en", "DeepL",
+        )
+        assertEquals(TranslationHistoryStore.CaptureAttachOutcome.ATTACHED, first)
+
+        // Repeat completion (stash-reshow rebind, cross-surface trigger,
+        // retry): durable no-op.
+        val second = TranslationHistoryStore.attachCaptureTranslation(
+            ctx, "cap:one", "k", "hello", "ja", "en", "DeepL",
+        )
+        assertEquals(TranslationHistoryStore.CaptureAttachOutcome.ALREADY, second)
+
+        val entries = TranslationHistoryStore.recent(ctx, 10)
+        assertEquals(2, entries.size)
+        val bySession = entries.associateBy { it.sessionId }
+        assertEquals("hello", bySession.getValue("cap:one").translation)
+        assertNull(bySession.getValue("other").translation)
+
+        // Rows gone entirely (History cleared): ATTACH-ONLY — the reveal
+        // must not resurrect pre-clear text, and a capture made while
+        // History was off (which has no rows) stays unrecorded.
+        TranslationHistoryStore.clear(ctx)
+        val third = TranslationHistoryStore.attachCaptureTranslation(
+            ctx, "cap:one", "k", "hello", "ja", "en", null,
+        )
+        assertEquals(TranslationHistoryStore.CaptureAttachOutcome.NONE, third)
+        assertEquals(0, TranslationHistoryStore.recent(ctx, 10).size)
+    }
+
+    @Test
+    fun captureAttachSkipsCrossPairRows(): Unit = runBlocking {
+        // Target changed between capture and reveal: the completion's
+        // translation is a different pair, and cross-pair translations are
+        // display-only — the capture-time row stays translation-less rather
+        // than receiving a translation under a label it doesn't claim.
+        TranslationHistoryStore.insert(
+            ctx, 1, "line", null, "ja", "en",
+            TranslationHistoryStore.PROVENANCE_ONE_SHOT, "cap:one", "k", null, null,
+        )
+        val out = TranslationHistoryStore.attachCaptureTranslation(
+            ctx, "cap:one", "k", "bonjour", "ja", "fr", null,
+        )
+        assertEquals(TranslationHistoryStore.CaptureAttachOutcome.NONE, out)
+        assertNull(TranslationHistoryStore.recent(ctx, 1)[0].translation)
+    }
+
+    @Test
     fun fifoPruneKeepsNewestCap(): Unit = runBlocking {
         val over = TranslationHistoryStore.MAX_ROWS + 25
         for (i in 1..over) {

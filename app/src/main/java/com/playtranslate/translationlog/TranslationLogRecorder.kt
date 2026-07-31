@@ -73,6 +73,11 @@ class TranslationLogRecorder(
         ): Int
 
         suspend fun attachById(rowId: Long, translation: String, backendDisplayName: String?)
+
+        suspend fun attachCaptureTranslation(
+            sessionId: String, normKey: String, translation: String,
+            sourceLang: String, targetLang: String, backendDisplayName: String?,
+        ): TranslationHistoryStore.CaptureAttachOutcome
     }
 
     private class StoreSink(private val ctx: Context) : HistorySink {
@@ -97,6 +102,14 @@ class TranslationLogRecorder(
 
         override suspend fun attachById(rowId: Long, translation: String, backendDisplayName: String?) =
             TranslationHistoryStore.attachTranslationById(ctx, rowId, translation, backendDisplayName)
+
+        override suspend fun attachCaptureTranslation(
+            sessionId: String, normKey: String, translation: String,
+            sourceLang: String, targetLang: String, backendDisplayName: String?,
+        ): TranslationHistoryStore.CaptureAttachOutcome =
+            TranslationHistoryStore.attachCaptureTranslation(
+                ctx, sessionId, normKey, translation, sourceLang, targetLang, backendDisplayName,
+            )
     }
 
     private val prefs = Prefs(appContext)
@@ -206,12 +219,14 @@ class TranslationLogRecorder(
 
     /**
      * Record one OCR group of a capture episode. Deliberately bypasses the
-     * shared gate: no [rowIds] tracking (captures carry their complete
-     * translation — nothing attaches later), no cross-feature dedupe, no
-     * seeding of the auto stream's seen state. [captureImage] is saved once
-     * per token, on the first appended row, only when the user opted into
-     * [Prefs.captureImageHistoryEnabled] — so a no-text capture never
-     * stores an image. Main only.
+     * shared gate: no [rowIds] tracking, no cross-feature dedupe, no seeding
+     * of the auto stream's seen state. A capture normally carries its
+     * complete translation; a DEFERRED capture (translation section hidden)
+     * records `translation = null` and attaches later via
+     * [onCaptureTranslated] — by key at the store, never through [rowIds].
+     * [captureImage] is saved once per token, on the first appended row,
+     * only when the user opted into [Prefs.captureImageHistoryEnabled] — so
+     * a no-text capture never stores an image. Main only.
      */
     fun onCaptureShown(
         token: CaptureSessionToken,
@@ -247,6 +262,64 @@ class TranslationLogRecorder(
             }
         }
         if (contextOn && !translation.isNullOrBlank()) {
+            ring.push(ContextRing.ContextPair(source, translation, now, key, sourceLang, targetLang))
+        }
+    }
+
+    /**
+     * A translation arrived for a capture episode recorded earlier with
+     * null translations (the DEFERRED path: the translation section was
+     * hidden at capture time; the user has now revealed it or another
+     * consumer needed it).
+     *
+     * ELIGIBILITY IS CAPTURE-TIME, not reveal-time: deferral splits the
+     * previously-atomic translate+record into two moments, and the user's
+     * opt-in must be read at the first one. [sessionId] non-null means
+     * History rows were actually written at capture (the pref was on);
+     * [contextEligible] is the context pref at capture. Each write here
+     * additionally requires the corresponding pref to STILL be on — a
+     * feature disabled by reveal time writes nothing, and a feature enabled
+     * after an opted-out capture must not receive that capture.
+     *
+     * History is ATTACH-ONLY via the store's idempotent session-scoped
+     * [TranslationHistoryStore.attachCaptureTranslation]: fills the
+     * episode's own translation-less rows, no-ops on a repeat completion
+     * (second surface, stash-reshow rebind, retry — per-surface dedupe
+     * cannot see across UI instances, so the durable boundary owns this),
+     * and never inserts. Deliberately NEVER consults [rowIds]: a tracked
+     * deliberate row (a drag lookup of the same text) must not have its
+     * slot stolen by a capture's late translation. The ring push skips
+     * ALREADY so a repeat completion can't double-feed the LLM context.
+     * Main only.
+     */
+    fun onCaptureTranslated(
+        sessionId: String?,
+        source: String,
+        translation: String,
+        sourceLang: String,
+        targetLang: String,
+        contextEligible: Boolean,
+        backendDisplayName: String? = null,
+    ) = guarded {
+        if (source.isBlank() || translation.isBlank()) return@guarded
+        val historyOn = prefs.translationHistoryEnabled && sessionId != null
+        val contextOn = prefs.llmContextEnabled && contextEligible
+        if (!historyOn && !contextOn) return@guarded
+        val key = LogWriteGate.normalizedKey(source, sourceLang)
+        if (key.isEmpty()) return@guarded
+        val now = System.currentTimeMillis()
+        if (historyOn && sessionId != null) {
+            scope.launch {
+                runCatching {
+                    val outcome = sink.attachCaptureTranslation(
+                        sessionId, key, translation, sourceLang, targetLang, backendDisplayName,
+                    )
+                    if (contextOn && outcome != TranslationHistoryStore.CaptureAttachOutcome.ALREADY) {
+                        ring.push(ContextRing.ContextPair(source, translation, now, key, sourceLang, targetLang))
+                    }
+                }.onFailure { Log.w(TAG, "capture translation attach failed: ${it.message}") }
+            }
+        } else if (contextOn) {
             ring.push(ContextRing.ContextPair(source, translation, now, key, sourceLang, targetLang))
         }
     }
@@ -304,7 +377,12 @@ class TranslationLogRecorder(
      *  page: attach to EXACTLY that row (twin rows can share a normKey
      *  across sessions — key matching must never pick for the user). The
      *  caller guarantees the language pair matches the row's stored pair;
-     *  cross-pair translations are display-only and never attach. */
+     *  cross-pair translations are display-only and never attach.
+     *
+     *  [contextEligible] — LOOKUP-time context opt-in for DEFERRED
+     *  completions (see [onDeliberateTranslation]); the row attach itself
+     *  needs no such override: the tapped row already exists in History, so
+     *  its recording consent predates the lookup. */
     fun onHistoryEntryTranslated(
         rowId: Long,
         source: String,
@@ -312,10 +390,11 @@ class TranslationLogRecorder(
         sourceLang: String,
         targetLang: String,
         backendDisplayName: String? = null,
+        contextEligible: Boolean = true,
     ) = guarded {
         if (translation.isBlank()) return@guarded
         val historyOn = prefs.translationHistoryEnabled
-        val contextOn = prefs.llmContextEnabled
+        val contextOn = prefs.llmContextEnabled && contextEligible
         if (historyOn) {
             scope.launch {
                 runCatching { sink.attachById(rowId, translation, backendDisplayName) }
@@ -338,7 +417,14 @@ class TranslationLogRecorder(
      *  Attaches in place when the entry's row is still tracked — going
      *  through the gate instead would exact-dedupe the pair against its
      *  own source-only entry. Falls back to a normal deliberate offer when
-     *  the row is unknown (recorder recreated, map evicted). Main only. */
+     *  the row is unknown (recorder recreated, map evicted).
+     *
+     *  [historyEligible] / [contextEligible] are the LOOKUP-time opt-in
+     *  overrides for DEFERRED completions: each feature writes only when its
+     *  pref was on when the text was looked up AND is still on now — a
+     *  hidden-section lookup revealed after enabling a feature must not
+     *  retroactively record into it. Visible flows keep the defaults (their
+     *  lookup and translation are effectively one moment). Main only. */
     fun onDeliberateTranslation(
         source: String,
         translation: String,
@@ -346,10 +432,12 @@ class TranslationLogRecorder(
         targetLang: String,
         provenance: String,
         backendDisplayName: String? = null,
+        historyEligible: Boolean = true,
+        contextEligible: Boolean = true,
     ) = guarded {
         if (source.isBlank() || translation.isBlank()) return@guarded
-        val historyOn = prefs.translationHistoryEnabled
-        val contextOn = prefs.llmContextEnabled
+        val historyOn = prefs.translationHistoryEnabled && historyEligible
+        val contextOn = prefs.llmContextEnabled && contextEligible
         if (!historyOn && !contextOn) return@guarded
         val key = LogWriteGate.normalizedKey(source, sourceLang)
         val now = System.currentTimeMillis()

@@ -1908,9 +1908,17 @@ class OverlayUiController(
             svc.configureOverride(displayId, region)
             // Do NOT recycle the frame — processScreenshot consumes it async on
             // the service scope and recycles it itself.
+            // Defer the translation only while the on-frame boxes are OFF for
+            // this flow: with boxes intended, translated chips must go up with
+            // the result. (The panel's funnel completes a deferred result if
+            // the user flips boxes on later.) Posture needs no term here —
+            // effectiveStartPosture drops a collapsed posture when boxes are
+            // off, so "collapsed sliver waiting on a deferred translation"
+            // can't happen.
+            val allowDefer = !Prefs(context).captureBoxesEnabled
             val session = if (frame != null)
-                svc.processScreenshot(frame, displayId)
-                else svc.captureOnce(displayId)
+                svc.processScreenshot(frame, displayId, allowDeferTranslation = allowDefer)
+                else svc.captureOnce(displayId, allowDeferTranslation = allowDefer)
             overlay.observe(session)
         }
     }

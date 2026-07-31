@@ -12,6 +12,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -38,7 +39,7 @@ class ProcessTextSessionTest {
         text: String = "こんにちは\n世界",
         translate: suspend (String) -> CameraTranslator.Detailed?,
     ): Pair<CaptureState, CaptureState> = runBlocking {
-        val session = ProcessTextSession.build(text, langContext, this, failedMessage, translate)
+        val session = ProcessTextSession.build(text, langContext, this, failedMessage, translate = translate)
         val initial = session.state.value
         val terminal = withTimeout(5_000) { session.state.first { it.isTerminal } }
         initial to terminal
@@ -93,5 +94,32 @@ class ProcessTextSessionTest {
             val terminal = withTimeout(5_000) { session.state.first { it.isTerminal } }
             assertTrue(terminal is CaptureState.Cancelled)
         }
+    }
+
+    @Test
+    fun `deferred lands a pending Done and never calls translate`() {
+        // Hidden-section deferral: the blank translatedText is legal here
+        // BECAUSE pendingTranslation marks it "never ran" — distinct from the
+        // blank Done the empty-translation guard fails.
+        var translateCalled = false
+        val (initial, terminal) = runBlocking {
+            val session = ProcessTextSession.build(
+                "こんにちは", langContext, this, failedMessage,
+                deferTranslation = true,
+            ) { translateCalled = true; CameraTranslator.Detailed("hola", null, "Fake") }
+            val initial = session.state.value
+            val terminal = withTimeout(5_000) { session.state.first { it.isTerminal } }
+            initial to terminal
+        }
+        assertTrue(initial is CaptureState.Translating)
+        val done = terminal as CaptureState.Done
+        assertFalse(translateCalled)
+        assertEquals("", done.result.translatedText)
+        val pending = done.result.pendingTranslation!!
+        assertEquals(listOf("こんにちは"), pending.groupTexts)
+        assertEquals(langContext.sourceLangId, pending.sourceLangId)
+        assertEquals(langContext.targetLang, pending.targetLang)
+        assertNull(pending.historySessionId)
+        assertNull(done.overlayData)
     }
 }

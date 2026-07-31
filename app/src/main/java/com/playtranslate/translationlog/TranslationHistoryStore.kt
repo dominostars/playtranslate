@@ -224,6 +224,62 @@ object TranslationHistoryStore {
         affected
     }
 
+    /** Outcome of [attachCaptureTranslation] — see its contract. */
+    enum class CaptureAttachOutcome { ATTACHED, ALREADY, NONE }
+
+    /**
+     * Idempotent, ATTACH-ONLY late fill for a DEFERRED capture's completion,
+     * scoped to the capture's own [sessionId]. One store hop decides
+     * everything (and the single-thread dispatcher orders it against any
+     * concurrent completion of the same capture):
+     *  1. a translation-less (session, key, pair) row exists → fill the
+     *     newest one → [CaptureAttachOutcome.ATTACHED];
+     *  2. a (session, key, pair) row exists but is already translated →
+     *     [CaptureAttachOutcome.ALREADY] — a repeat completion (second
+     *     surface, stash-reshow rebind, retry) is a no-op;
+     *  3. no row at all → [CaptureAttachOutcome.NONE], and NOTHING is
+     *     written. Deliberately no insert fallback: the rows a completion
+     *     may fill are exactly the ones recorded at capture time — if the
+     *     user cleared History (or the FIFO pruned them) since, the reveal
+     *     must not resurrect pre-clear text, and a capture made while
+     *     History was disabled has no rows and stays unrecorded even if the
+     *     pref was enabled before the reveal.
+     * Session-scoped on purpose, unlike [attachTranslationByKey]: the null
+     * rows were written under this session, and another session's twin rows
+     * must never receive this capture's translation.
+     */
+    suspend fun attachCaptureTranslation(
+        ctx: Context,
+        sessionId: String,
+        normKey: String,
+        translation: String,
+        sourceLang: String,
+        targetLang: String,
+        backendDisplayName: String?,
+    ): CaptureAttachOutcome = withContext(dispatcher) {
+        val database = openDb(ctx)
+        database.execSQL(
+            "UPDATE entries SET translation = ?, backend = COALESCE(?, backend) WHERE id = (" +
+                "SELECT id FROM entries WHERE session_id = ? AND norm_key = ? AND " +
+                "source_lang = ? AND target_lang = ? AND " +
+                "(translation IS NULL OR translation = '') ORDER BY id DESC LIMIT 1)",
+            arrayOf(translation, backendDisplayName, sessionId, normKey, sourceLang, targetLang),
+        )
+        val affected = database.rawQuery("SELECT changes()", null).use { c ->
+            c.moveToFirst(); c.getInt(0)
+        }
+        if (affected > 0) {
+            _revision.value++
+            return@withContext CaptureAttachOutcome.ATTACHED
+        }
+        val exists = database.rawQuery(
+            "SELECT 1 FROM entries WHERE session_id = ? AND norm_key = ? AND " +
+                "source_lang = ? AND target_lang = ? LIMIT 1",
+            arrayOf(sessionId, normKey, sourceLang, targetLang),
+        ).use { it.moveToFirst() }
+        if (exists) CaptureAttachOutcome.ALREADY else CaptureAttachOutcome.NONE
+    }
+
     /** Fill EXACTLY [id] with a translation produced after the fact (History
      *  row tap → results-page translate). Row identity is the caller's — no
      *  key matching, so twin rows sharing a normKey across sessions can

@@ -163,6 +163,67 @@ class TranslationResultActivity :
 
     override fun getCaptureService(): CaptureService? = captureService
 
+    /** In-flight completion state: [deferredCompletionPending] is the pending
+     *  the running job was launched for. A repeat trigger for the SAME
+     *  pending is dropped (one backend batch per pending); a trigger for a
+     *  DIFFERENT pending means a newer deferred result superseded the one in
+     *  flight — the stale job is cancelled and the new one launches, so the
+     *  new result's completion is never silently dropped. */
+    private var deferredCompletionJob: kotlinx.coroutines.Job? = null
+    private var deferredCompletionPending: com.playtranslate.model.PendingTranslation? = null
+
+    override fun completeDeferredTranslation() {
+        // Pre-bind window (this activity fully recreates on rotation): no
+        // service yet — keep the pending; the Ready re-render after
+        // onServiceReady retries.
+        val svc = captureService ?: return
+        val ready = vm.result.value as? ResultState.Ready ?: return
+        val pending = ready.result.pendingTranslation ?: return
+        if (deferredCompletionJob?.isActive == true) {
+            if (deferredCompletionPending == pending) return
+            deferredCompletionJob?.cancel()
+        }
+        deferredCompletionPending = pending
+        deferredCompletionJob = lifecycleScope.launch {
+            try {
+                if (pending.isCapture) {
+                    // One-shot capture shape: batch translate + session-scoped
+                    // History attach, both owned by the service.
+                    val perGroup = svc.completeDeferredTranslation(pending)
+                    val joined = perGroup.joinToString("\n\n") { it.text }
+                    vm.applyDeferredTranslation(
+                        pending,
+                        if (joined.isBlank()) "—" else joined,
+                        perGroup.mapNotNull { it.note }.firstOrNull(),
+                        perGroup.mapNotNull { it.backendDisplayName }.firstOrNull(),
+                    )
+                } else {
+                    // Deliberate sentence shape: single text, and the History
+                    // attach must keep the exact-row rules (EXTRA_HISTORY_ENTRY_ID).
+                    // The recorder gates every write per feature on the
+                    // pending's LOOKUP-time eligibility snapshot AND the
+                    // current pref — an opted-out lookup records/feeds
+                    // nothing even if a pref was enabled before the reveal.
+                    val gt = translateSentenceAttachingHistory(
+                        svc, pending.groupTexts.firstOrNull() ?: ready.result.originalText,
+                        historyEligible = pending.historyEligible,
+                        contextEligible = pending.contextEligible,
+                    )
+                    vm.applyDeferredTranslation(pending, gt.text.ifBlank { "—" }, gt.note, gt.backendDisplayName)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Superseded (or the activity is going away) — the newer job
+                // owns the state now; never land "—" for a cancelled run.
+                throw e
+            } catch (_: Exception) {
+                // Ran and failed: land terminal — a visible blank + pending
+                // renders a stuck "Translating…". Mirror of the edit path's
+                // "—". Identity-guarded, so this can't damage a newer result.
+                vm.applyDeferredTranslation(pending, "—", null, null)
+            }
+        }
+    }
+
     override fun onWordTapped(
         word: String,
         reading: String?,
@@ -643,10 +704,15 @@ class TranslationResultActivity :
                     includesOwnOverlays = false,
                 ),
                 targetDisplayId,
+                // This page paints no boxes on its own (dual-screen
+                // show-on-screen is an explicit tap, routed through the
+                // deferred-completion funnel), so a hidden translation
+                // section can always defer the backend call.
+                allowDeferTranslation = true,
             )
-            else svc.captureOnce(targetDisplayId)
+            else svc.captureOnce(targetDisplayId, allowDeferTranslation = true)
         } else {
-            svc.captureOnce(targetDisplayId)
+            svc.captureOnce(targetDisplayId, allowDeferTranslation = true)
         }
 
         observeSession(session)
@@ -724,6 +790,41 @@ class TranslationResultActivity :
         // default, which any concurrent capture (e.g. live mode still
         // running) would then pick up.
 
+        // DEFERRED: with the translation section hidden there is no consumer
+        // for the backend call — land the Ready carrying a pending; revealing
+        // the section (or an Anki flow needing the sentence) completes it via
+        // completeDeferredTranslation, which keeps the exact-row History
+        // rules. The free source==target bypass never defers.
+        val sentencePrefs = Prefs(applicationContext)
+        val pendingSrcId = sentencePrefs.sourceLangId
+        if (sentencePrefs.hideTranslationSection &&
+            com.playtranslate.language.SourceLanguageProfiles[pendingSrcId].translationCode !=
+                sentencePrefs.targetLang
+        ) {
+            val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            vm.displayResult(
+                TranslationResult(
+                    originalText       = sentenceText,
+                    segments           = segments,
+                    translatedText     = "",
+                    timestamp          = timestamp,
+                    screenshotPath     = screenshotPath,
+                    pendingTranslation = com.playtranslate.model.PendingTranslation(
+                        groupTexts = listOf(sentenceText),
+                        sourceLangId = pendingSrcId,
+                        targetLang = sentencePrefs.targetLang,
+                        // Logging eligibility at LOOKUP time — the completion
+                        // honors this snapshot, not reveal-time prefs.
+                        historyEligible = sentencePrefs.translationHistoryEnabled,
+                        contextEligible = sentencePrefs.llmContextEnabled,
+                    ),
+                    langContext        = Prefs(applicationContext).langContext(),
+                ),
+                applicationContext,
+            )
+            return
+        }
+
         vm.showTranslatingPlaceholder(sentenceText, segments, applicationContext)
 
         // TODO: route through LastSentenceCache.awaitOrStartTranslation so
@@ -733,45 +834,7 @@ class TranslationResultActivity :
         //  cache helper.
         lifecycleScope.launch {
             try {
-                // Pair captured BEFORE translateOnce, so the label matches
-                // the pair the translation is actually produced under even
-                // if prefs change mid-flight.
-                val logPrefs = Prefs(applicationContext)
-                val currentSource = com.playtranslate.language
-                    .SourceLanguageProfiles[logPrefs.sourceLangId].translationCode
-                val currentTarget = logPrefs.targetLang
-                val groupTranslation = svc.translateOnce(sentenceText)
-                // Feed the translation back to the log: fills the entry this
-                // sentence came from (History tap / drag lookup) instead of
-                // leaving it translation-less forever.
-                if (groupTranslation.text.isNotEmpty()) {
-                    val historyRowId = intent.getLongExtra(EXTRA_HISTORY_ENTRY_ID, -1L)
-                    if (historyRowId >= 0) {
-                        // History row tap: attach to EXACTLY that row (twin
-                        // rows can share a key across sessions), and only
-                        // when this translation's pair matches the row's
-                        // stored pair — a cross-pair result stays display-
-                        // only rather than corrupting a row that claims a
-                        // different pair (translateOnce runs under current
-                        // prefs; target-side overrides aren't plumbed).
-                        val storedSource = intent.getStringExtra(EXTRA_HISTORY_SOURCE_LANG)
-                        val storedTarget = intent.getStringExtra(EXTRA_HISTORY_TARGET_LANG)
-                        if (storedSource == currentSource && storedTarget == currentTarget) {
-                            svc.translationLogRecorder.onHistoryEntryTranslated(
-                                historyRowId, sentenceText, groupTranslation.text,
-                                currentSource, currentTarget,
-                                groupTranslation.backendDisplayName,
-                            )
-                        }
-                    } else {
-                        svc.translationLogRecorder.onDeliberateTranslation(
-                            sentenceText, groupTranslation.text,
-                            currentSource, currentTarget,
-                            com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_LOOKUP,
-                            groupTranslation.backendDisplayName,
-                        )
-                    }
-                }
+                val groupTranslation = translateSentenceAttachingHistory(svc, sentenceText)
                 val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                 val result = TranslationResult(
                     originalText       = sentenceText,
@@ -788,6 +851,64 @@ class TranslationResultActivity :
                 vm.showError(e.message ?: "Translation failed")
             }
         }
+    }
+
+    /** Translate [sentenceText] under the current pair and attach the outcome
+     *  to History — the EXACT row for a History tap (pair-matched), by-key
+     *  otherwise. Shared by the visible sentence flow (eligibility defaults:
+     *  lookup and translation are one moment) and the deferred-reveal
+     *  completion (which passes the pending's lookup-time eligibility
+     *  snapshot). The exact-row attach takes no history override — the
+     *  tapped row already exists, so its recording consent predates this. */
+    private suspend fun translateSentenceAttachingHistory(
+        svc: CaptureService,
+        sentenceText: String,
+        historyEligible: Boolean = true,
+        contextEligible: Boolean = true,
+    ): CaptureService.GroupTranslation {
+        // Pair captured BEFORE translateOnce, so the label matches
+        // the pair the translation is actually produced under even
+        // if prefs change mid-flight.
+        val logPrefs = Prefs(applicationContext)
+        val currentSource = com.playtranslate.language
+            .SourceLanguageProfiles[logPrefs.sourceLangId].translationCode
+        val currentTarget = logPrefs.targetLang
+        val groupTranslation = svc.translateOnce(sentenceText)
+        // Feed the translation back to the log: fills the entry this
+        // sentence came from (History tap / drag lookup) instead of
+        // leaving it translation-less forever.
+        if (groupTranslation.text.isNotEmpty()) {
+            val historyRowId = intent.getLongExtra(EXTRA_HISTORY_ENTRY_ID, -1L)
+            if (historyRowId >= 0) {
+                // History row tap: attach to EXACTLY that row (twin
+                // rows can share a key across sessions), and only
+                // when this translation's pair matches the row's
+                // stored pair — a cross-pair result stays display-
+                // only rather than corrupting a row that claims a
+                // different pair (translateOnce runs under current
+                // prefs; target-side overrides aren't plumbed).
+                val storedSource = intent.getStringExtra(EXTRA_HISTORY_SOURCE_LANG)
+                val storedTarget = intent.getStringExtra(EXTRA_HISTORY_TARGET_LANG)
+                if (storedSource == currentSource && storedTarget == currentTarget) {
+                    svc.translationLogRecorder.onHistoryEntryTranslated(
+                        historyRowId, sentenceText, groupTranslation.text,
+                        currentSource, currentTarget,
+                        groupTranslation.backendDisplayName,
+                        contextEligible = contextEligible,
+                    )
+                }
+            } else {
+                svc.translationLogRecorder.onDeliberateTranslation(
+                    sentenceText, groupTranslation.text,
+                    currentSource, currentTarget,
+                    com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_LOOKUP,
+                    groupTranslation.backendDisplayName,
+                    historyEligible = historyEligible,
+                    contextEligible = contextEligible,
+                )
+            }
+        }
+        return groupTranslation
     }
 
     private fun applyTheme() {

@@ -10,6 +10,7 @@ import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TokenSpan
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.OcrProvenance
+import com.playtranslate.model.PendingTranslation
 import com.playtranslate.model.ReadingRow
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TextSegments
@@ -233,6 +234,10 @@ class TranslationResultViewModel : ViewModel() {
                         // so the "Scanned by …" row + gear hide and re-OCR (which would
                         // discard the edit) is disabled.
                         ocrProvenance = null,
+                        // The edit's own re-translate lands via updateTranslation — a
+                        // surviving pending would let a later reveal clobber it with
+                        // the OLD source's translation.
+                        pendingTranslation = null,
                     )
                 )
             }
@@ -258,6 +263,8 @@ class TranslationResultViewModel : ViewModel() {
                     cur.result.copy(
                         translatedText = translated,
                         backendDisplayName = backendDisplayName,
+                        // A caller-supplied translation supersedes a deferred one.
+                        pendingTranslation = null,
                     )
                 )
             }
@@ -283,6 +290,39 @@ class TranslationResultViewModel : ViewModel() {
         writeLastSentenceCache()
     }
 
+    /** Deferred-translation completion landing on the current Ready result:
+     *  patch translation + note + backend, clear the pending, and swap in the
+     *  freshly filled [onScreenBoxes] (null keeps the existing ones). Unlike
+     *  [updateTranslation] it carries the note and preserves the boxes; unlike
+     *  [displayResult] it never restarts word lookups — the source text is
+     *  unchanged, and a restart would flash the settled word list.
+     *
+     *  [expected] is the pending the async completion was LAUNCHED for, and
+     *  the guard is identity against it — not "some pending exists". A newer
+     *  deferred result (recapture, fresh lookup) carries a different pending;
+     *  a stale completion landing on it would show translation A for source B
+     *  and burn B's pending so B never completes. */
+    fun applyDeferredTranslation(
+        expected: PendingTranslation,
+        translated: String,
+        note: String?,
+        backendDisplayName: String?,
+        onScreenBoxes: OnScreenBoxes? = null,
+    ) {
+        val cur = _result.value as? ResultState.Ready ?: return
+        if (cur.result.pendingTranslation != expected) return
+        _result.value = ResultState.Ready(
+            cur.result.copy(
+                translatedText = translated,
+                note = note,
+                backendDisplayName = backendDisplayName,
+                pendingTranslation = null,
+            ),
+            onScreenBoxes ?: cur.onScreenBoxes,
+        )
+        writeLastSentenceCache()
+    }
+
     /**
      * Write [LastSentenceCache] once BOTH halves are known for the SAME source
      * text: a settled word lookup ([settledLookup]) and a Ready translation.
@@ -295,6 +335,12 @@ class TranslationResultViewModel : ViewModel() {
         val ready = _result.value as? ResultState.Ready ?: return
         val settled = settledLookup ?: return
         if (settled.text != ready.result.originalText) return
+        // A blank translation must never reach the cache: LastSentenceCache
+        // treats a cached "" as a HIT (awaitOrStartTranslation), which would
+        // poison every lazy Anki translation fill. Blank here means a deferred
+        // result (pendingTranslation) or an error-path updateTranslation("");
+        // the eventual real translation re-triggers this write.
+        if (ready.result.translatedText.isBlank()) return
         LastSentenceCache.setFromTranslationResult(
             original = ready.result.originalText,
             translation = ready.result.translatedText,

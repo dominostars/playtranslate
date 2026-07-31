@@ -47,6 +47,7 @@ import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
 import com.playtranslate.OneShotOverlayData
 import com.playtranslate.PlayTranslateApplication
+import com.playtranslate.fillOneShotOverlayData
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.OcrBackend
@@ -58,6 +59,7 @@ import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.model.TextSegments
 import com.playtranslate.model.OcrProvenance
+import com.playtranslate.model.PendingTranslation
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
@@ -166,6 +168,29 @@ class CaptureResultOverlay(
     /** In-place-edit re-translation. Default (null): the capture service's
      *  translateOnce. */
     var retranslate: (suspend (String) -> PanelTranslation?)? = null
+
+    /** Deferred-translation completion: the bound result skipped MT because the
+     *  translation section was hidden ([TranslationResult.pendingTranslation])
+     *  and a consumer now needs it. Default (null): the capture service's
+     *  [CaptureService.completeDeferredTranslation], which also attaches the
+     *  capture's History rows. Hosts on the CameraTranslator stack (Process-
+     *  Text) substitute their own translator. Returning null means "no
+     *  translator available" — the pending stays set and the next trigger
+     *  retries; a non-null return is terminal for the pending. */
+    var completeDeferred: (suspend (PendingTranslation) -> List<PanelTranslation>?)? = null
+
+    /** Bumped per deferred-completion launch so a stale run can't rebind over
+     *  a newer trigger's result (mirror of the edit path's editGeneration). */
+    private var deferredGeneration = 0
+
+    /** The pending the in-flight completion launch is working on. A repeat
+     *  trigger for the SAME pending (eye reveal + show-on-screen back to
+     *  back) must not launch a second backend batch — the duplicate's History
+     *  attach would find the rows already filled and fresh-insert spurious
+     *  ones. A DIFFERENT pending (newer result) is not blocked; it supersedes
+     *  the old run via the generation bump. Cleared in the launch's finally
+     *  (generation-checked) so a kept-pending failure can retry later. */
+    private var deferredInFlight: PendingTranslation? = null
 
     /** The OCR-engine affordance (a Ready result's gear + the no-text
      *  status). Default (null): the overlay-window picker + in-place
@@ -633,6 +658,8 @@ class CaptureResultOverlay(
             contentRow.post {
                 contentRow.post { if (!dismissed && lastResult != null) autoSizeAndFit() }
             }
+            // Eye reveal on a deferred result: run the skipped translation now.
+            maybeCompleteDeferred()
         }
         // Furigana changes the source's rendered height (async on / sync off) — re-fit.
         b.onSourceTextHeightChanged = { if (!dismissed) autoSizeAndFit() }
@@ -1011,6 +1038,9 @@ class CaptureResultOverlay(
         } else {
             val data = overlayData ?: return
             presentationPrefs.boxesEnabled = showChips(data)
+            // Boxes on a deferred result went up as skeletons — run the skipped
+            // translation now so they fill instead of pulsing forever.
+            maybeCompleteDeferred()
         }
         updateShowOnScreenAction()
     }
@@ -1326,6 +1356,83 @@ class CaptureResultOverlay(
             scroll.post {
                 if (dismissed) return@post
                 autoSizeAndFit()
+            }
+        }
+        // Bind-while-needed covers the triggers no callback fires for: a Done
+        // that landed with the section already visible (cross-surface pref flip
+        // — the pref is global SharedPreferences and nothing listens for it),
+        // and boxes toggled ON during the Translating window.
+        maybeCompleteDeferred()
+    }
+
+    /** DEFERRED-TRANSLATION funnel. The bound result skipped MT because the
+     *  translation section was hidden; run it the moment a consumer needs it:
+     *  the section is (or just became) visible, or the on-frame boxes are in
+     *  play. Generation-guarded like [commitEdit]'s re-translate; exactly one
+     *  completion rebinds with [TranslationResult.pendingTranslation] cleared.
+     *  No-ops for results without a pending, so it's safe on every bind. */
+    private fun maybeCompleteDeferred() {
+        val bound = lastResult ?: return
+        val pending = bound.pendingTranslation ?: return
+        val needed = !prefs.hideTranslationSection || boxesShown || presentationPrefs.boxesEnabled
+        if (!needed) return
+        // Same pending already completing (double trigger): one batch only.
+        if (deferredInFlight == pending) return
+        val gen = ++deferredGeneration
+        deferredInFlight = pending
+        scope.launch {
+            try {
+                val perGroup: List<PanelTranslation>? = try {
+                    val custom = completeDeferred
+                    if (custom != null) {
+                        custom(pending)
+                    } else {
+                        CaptureService.instance?.completeDeferredTranslation(pending)?.map {
+                            PanelTranslation(it.text, it.note, it.backendDisplayName)
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    emptyList()   // attempted and failed → terminal "—" below
+                }
+                if (dismissed || gen != deferredGeneration) return@launch
+                // The result moved on (edit commit, new session): this run is stale.
+                val current = lastResult
+                if (current?.pendingTranslation != pending) return@launch
+                // Null = no translator available (service dead, no host hook): keep
+                // the pending so the next trigger retries — distinct from a run that
+                // failed, which must land terminal or the visible card would read
+                // "Translating…" forever.
+                if (perGroup == null) return@launch
+                val joined = perGroup.joinToString("\n\n") { it.text }
+                if (joined.isBlank()) {
+                    bindResult(current.copy(translatedText = "—", pendingTranslation = null))
+                    return@launch
+                }
+                // Fill the skeletons BEFORE the rebind so the show-on-screen pill
+                // reads the filled data. Null-tolerant: the stash-reshow overlay
+                // carries no overlayData at all.
+                overlayData = fillOneShotOverlayData(overlayData, perGroup.map { it.text })
+                val filled = overlayData
+                bindResult(
+                    current.copy(
+                        translatedText = joined,
+                        note = perGroup.mapNotNull { it.note }.firstOrNull(),
+                        backendDisplayName = perGroup.mapNotNull { it.backendDisplayName }.firstOrNull(),
+                        pendingTranslation = null,
+                    )
+                )
+                // Promote any skeletons already up; nothing paintable → take them
+                // down rather than leave them pulsing (Done's data == null recovery).
+                if (boxesShown) {
+                    if (filled != null) updateChips(filled) else hideChips()
+                }
+                updateShowOnScreenAction()
+            } finally {
+                // Only the run that still owns the generation releases the
+                // marker — a superseding launch already stamped its own.
+                if (gen == deferredGeneration) deferredInFlight = null
             }
         }
     }
@@ -1912,6 +2019,10 @@ class CaptureResultOverlay(
             // The source is no longer the OCR output — drop provenance so the
             // "Scanned by …" row + gear hide and a re-OCR can't clobber the edit.
             ocrProvenance = null,
+            // The edit re-translates the NEW source itself (below) — a surviving
+            // pending would let a later reveal clobber it with the OLD source's
+            // translation.
+            pendingTranslation = null,
         )
         lastResult = edited
         // The capture's per-group boxes translate the OLD source — the edit

@@ -85,7 +85,10 @@ class CaptureSession internal constructor(
  * maps them with. Built at pipeline time — the raw frame the colors come from is
  * recycled before any state lands. On [CaptureState.Translating] the boxes are
  * SKELETONS (empty [TextBox.translatedText] → the overlay view renders pulsing
- * placeholder lines); on [CaptureState.Done] they carry the translations.
+ * placeholder lines); on [CaptureState.Done] they carry the translations —
+ * EXCEPT a deferred Done ([com.playtranslate.model.TranslationResult.pendingTranslation]
+ * non-null), which keeps the skeletons until the deferred completion fills them
+ * via [fillOneShotOverlayData].
  */
 data class OneShotOverlayData(
     val boxes: List<TextBox>,
@@ -94,6 +97,24 @@ data class OneShotOverlayData(
     val screenshotW: Int,
     val screenshotH: Int,
 )
+
+/** Zip per-group translated [texts] into [skeleton]'s index-aligned boxes and
+ *  drop the ones that came back blank. Null when nothing survives (null/absent
+ *  skeleton, count mismatch, every translation blank) — callers then keep/clear
+ *  their presentation rather than paint empty boxes. Shared by the capture
+ *  pipeline (translations arrive with the cycle) and the deferred-translation
+ *  completion (translations arrive when the user reveals the section). */
+internal fun fillOneShotOverlayData(
+    skeleton: OneShotOverlayData?,
+    texts: List<String>,
+): OneShotOverlayData? {
+    if (skeleton == null || skeleton.boxes.size != texts.size) return null
+    val filled = skeleton.boxes.mapIndexed { idx, box ->
+        box.copy(translatedText = texts[idx])
+    }.filter { it.translatedText.isNotBlank() }
+    if (filled.isEmpty()) return null
+    return skeleton.copy(boxes = filled)
+}
 
 sealed class CaptureState {
     /** Pipeline is in flight. [message] is the user-facing status

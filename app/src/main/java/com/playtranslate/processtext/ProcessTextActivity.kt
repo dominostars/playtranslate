@@ -114,6 +114,13 @@ class ProcessTextActivity : AppCompatActivity() {
                 ?.takeIf { it.text.isNotEmpty() }
                 ?.let { CaptureResultOverlay.PanelTranslation(it.text, it.note, it.backendDisplayName) }
         }
+        // Deferred-translation completion stays on this surface's own
+        // translator stack (no CaptureService, no History — mirrors the
+        // retranslate seam above). The panel's funnel invokes it on reveal.
+        o.completeDeferred = { pending ->
+            translator.translateDetailed(pending.groupTexts)
+                .map { CaptureResultOverlay.PanelTranslation(it.text, it.note, it.backendDisplayName) }
+        }
         // Keep the panel up across the picker round trip — the selected text
         // is this flow's whole input, and the default (dismiss + relaunch)
         // would lose it. onResume re-runs it under the new prefs.
@@ -135,9 +142,16 @@ class ProcessTextActivity : AppCompatActivity() {
      *  cancels the previous session and re-drives the attached panel. */
     private fun observeFreshSession() {
         val langContext = prefs.langContext()
+        // Hidden translation section ⇒ skip the backend call and let the
+        // panel's reveal funnel run it on demand. The free source==target
+        // bypass never defers.
+        val deferTranslation = prefs.hideTranslationSection &&
+            com.playtranslate.language.SourceLanguageProfiles[langContext.sourceLangId]
+                .translationCode != langContext.targetLang
         val session = ProcessTextSession.build(
             text, langContext, lifecycleScope,
             getString(R.string.process_text_translation_failed),
+            deferTranslation = deferTranslation,
         ) { translator.translateDetailed(listOf(it)).firstOrNull() }
         sessionLangContext = langContext
         overlay?.observe(session)

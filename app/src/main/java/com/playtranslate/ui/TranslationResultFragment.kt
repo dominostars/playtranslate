@@ -103,6 +103,17 @@ class TranslationResultFragment : Fragment() {
      */
     interface TranslationResultHost {
         fun getCaptureService(): CaptureService?
+
+        /** The bound Ready result carries a deferred translation
+         *  ([com.playtranslate.model.TranslationResult.pendingTranslation]) and a
+         *  consumer needs it NOW: the section was revealed, a bind landed while
+         *  it was visible, or the user asked for the on-screen boxes. The host
+         *  runs the translate + History attach on its own scope and lands the
+         *  outcome via [TranslationResultViewModel.applyDeferredTranslation].
+         *  With no service available right now the host no-ops — the pending
+         *  stays set and the next trigger retries. Must tolerate repeat calls
+         *  while a completion is already in flight. */
+        fun completeDeferredTranslation()
         fun onWordTapped(
             word: String,
             reading: String?,
@@ -406,6 +417,10 @@ class TranslationResultFragment : Fragment() {
         }
         binder.onChooseLanguage = { isSource -> host?.onChangeLanguageRequested(isSource) }
         binder.setShowOnScreenAction { onShowOnScreenTapped() }
+        // This vertical page just reflows on an eye toggle (no re-layout work),
+        // but REVEALING the translation section on a deferred result must run
+        // the translation that was skipped while it was hidden.
+        binder.onSectionVisibilityChanged = { maybeRequestDeferredCompletion() }
         resultsContent.setOnScrollChangeListener(scrollListener)
         btnToggleWords.setOnClickListener {
             prefs.hideWordsSection = !prefs.hideWordsSection
@@ -530,6 +545,11 @@ class TranslationResultFragment : Fragment() {
                     if (scrollAnchor != null) restoreScrollAnchor(scrollAnchor)
                     else scrollToFreshResultStart()
                 }
+                // A deferred result bound while the section is visible (revealed
+                // on another surface — the pref is global and nothing listens
+                // for flips) must run its skipped translation now. No-op for
+                // results without a pending, so safe on every Ready render.
+                maybeRequestDeferredCompletion()
             }
         }
     }
@@ -644,10 +664,26 @@ class TranslationResultFragment : Fragment() {
             host?.hideResultBoxesOnScreen()
         } else {
             currentOnScreenBoxes?.let { host?.showResultBoxesOnScreen(it) }
+            // Boxes on a deferred result go up as skeletons — run the skipped
+            // translation; its completion swaps the filled boxes in.
+            maybeRequestDeferredCompletion(force = true)
         }
         // Ownership flipped synchronously (or the show was refused); the
         // refresh reads whichever reality landed.
         refreshShowOnScreen()
+    }
+
+    /** Deferred-translation trigger funnel (mirror of the over-game panel's
+     *  maybeCompleteDeferred): ask the host to run the skipped translation
+     *  when the bound Ready result still carries a pending AND either the
+     *  translation section is visible or [force] — a consumer needs the
+     *  translation regardless of the section's visibility (on-screen boxes,
+     *  an Anki flow). The host is the single completion owner and guards
+     *  against duplicate triggers. */
+    private fun maybeRequestDeferredCompletion(force: Boolean = false) {
+        if (currentReady()?.pendingTranslation == null) return
+        if (prefs.hideTranslationSection && !force) return
+        host?.completeDeferredTranslation()
     }
 
     private companion object {
@@ -842,6 +878,13 @@ class TranslationResultFragment : Fragment() {
     private fun oneTapSentenceFromResult() {
         host?.onInteraction()
         val result = currentReady() ?: return
+        // Anki consumes the sentence translation — a deferred result must
+        // complete through the funnel (translation + History attach + ring),
+        // not only through the dispatch's own lazy translateOnce, which
+        // would leave the capture's null rows unfilled and the pending set.
+        // The dispatch's fill still covers the card if it runs first; at
+        // worst this flow costs one duplicate backend call.
+        maybeRequestDeferredCompletion(force = true)
         val activity = activity ?: return
         val ankiManager = AnkiManager(activity)
         if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) {
@@ -1019,6 +1062,14 @@ class TranslationResultFragment : Fragment() {
     private fun onAnkiClicked() {
         host?.onInteraction()
         val result = currentReady() ?: return
+        // Anki consumes the sentence translation — a deferred result must
+        // complete through the funnel (translation + History attach + ring),
+        // not only through the review sheet's own lazy fill, which would
+        // leave the capture's null rows unfilled and the pending set. The
+        // sheet's fill still covers the card if it opens before the
+        // completion lands; at worst this flow costs one duplicate backend
+        // call.
+        maybeRequestDeferredCompletion(force = true)
         val activity = activity ?: return
         val ankiManager = AnkiManager(activity)
         // Snapshot the settled rows ONCE so wordResults + surfaces + enrichment
