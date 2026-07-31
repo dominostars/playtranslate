@@ -835,6 +835,11 @@ class TranslationResultFragment : Fragment() {
             ready?.screenshotPath?.let { putExtra(WordAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, it) }
             ready?.originalText?.let { putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, it) }
             ready?.translatedText?.let { putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_TRANSLATION, it) }
+            // Same result as the sentence extras above, so the pending rides
+            // its own original (resolveAnkiTranslation's caller contract) —
+            // the sheet's fill then COMPLETES a deferred capture instead of
+            // translating around its null History rows.
+            ready?.pendingTranslation?.let { putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_PENDING, it) }
             putExtra(WordAnkiReviewActivity.EXTRA_SOURCE_LANG, prefs.sourceLangId.code)
         }
         activity.startActivity(intent)
@@ -921,6 +926,11 @@ class TranslationResultFragment : Fragment() {
                     wordsPayload = wordsPayload,
                     screenshotPath = screenshotPath,
                     sourceLangId = langId,
+                    // Deferred result: the lazy translate runs the deferred
+                    // completion; overlapping with the host funnel triggered
+                    // above is fine — the attach is idempotent and the second
+                    // per-group batch is cache-served.
+                    pendingTranslation = result.pendingTranslation,
                 )
             },
             resultOf = { it },
@@ -1026,6 +1036,9 @@ class TranslationResultFragment : Fragment() {
                     wordsPayload = wordsPayload,
                     screenshotPath = screenshotPath,
                     sourceLangId = langId,
+                    // Same result as ready_sentence — a deferred pending
+                    // rides so the sentence branch completes, not bypasses.
+                    pendingTranslation = ready?.pendingTranslation,
                 )
             },
             resultOf = { it.first },
@@ -1107,7 +1120,12 @@ class TranslationResultFragment : Fragment() {
                         getDisplayedOriginalText(), result.translatedText, wordResults,
                         settledRows?.toSurfaceMap() ?: emptyMap(),
                         settledRows?.toEnrichmentMap() ?: emptyMap(),
-                        result.screenshotPath, prefs.sourceLangId
+                        result.screenshotPath, prefs.sourceLangId,
+                        // Deferred result: the sheet's lazy fill runs the
+                        // deferred completion; overlapping with the host
+                        // funnel triggered above is fine — the attach is
+                        // idempotent and the second batch is cache-served.
+                        pendingTranslation = result.pendingTranslation,
                     ).show(childFragmentManager, AnkiReviewBottomSheet.TAG)
                 }
             }

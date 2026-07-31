@@ -45,6 +45,9 @@ class WordAnkiReviewActivity : AppCompatActivity() {
         val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
         val sentenceOriginal = intent.getStringExtra(EXTRA_SENTENCE_ORIGINAL)
         val sentenceTranslation = intent.getStringExtra(EXTRA_SENTENCE_TRANSLATION)
+        @Suppress("DEPRECATION")
+        val sentencePending = intent.getSerializableExtra(EXTRA_SENTENCE_PENDING)
+            as? com.playtranslate.model.PendingTranslation
         val sourceLangId = SourceLangId.fromCode(intent.getStringExtra(EXTRA_SOURCE_LANG))
             ?: Prefs(applicationContext).sourceLangId
 
@@ -54,7 +57,8 @@ class WordAnkiReviewActivity : AppCompatActivity() {
         ) LastSentenceCache.wordResults else null
 
         showReviewSheet(word, reading, pos, definition, freqScore, screenshotPath,
-            sentenceOriginal, sentenceTranslation, cachedWordResults, sourceLangId)
+            sentenceOriginal, sentenceTranslation, cachedWordResults, sourceLangId,
+            sentencePending)
     }
 
     private fun showReviewSheet(
@@ -62,7 +66,8 @@ class WordAnkiReviewActivity : AppCompatActivity() {
         definition: String, freqScore: Int, screenshotPath: String?,
         sentenceOriginal: String?, sentenceTranslation: String?,
         sentenceWordResults: Map<String, Triple<String, String, Int>>? = null,
-        sourceLangId: SourceLangId = SourceLangId.JA
+        sourceLangId: SourceLangId = SourceLangId.JA,
+        sentencePending: com.playtranslate.model.PendingTranslation? = null,
     ) {
         val sheet = WordAnkiReviewSheet.newInstance(
             word, reading, pos, definition, screenshotPath,
@@ -70,7 +75,8 @@ class WordAnkiReviewActivity : AppCompatActivity() {
             sentenceOriginal = sentenceOriginal,
             sentenceTranslation = sentenceTranslation,
             sentenceWordResults = sentenceWordResults,
-            sourceLangId = sourceLangId
+            sourceLangId = sourceLangId,
+            sentencePending = sentencePending,
         )
         sheet.onDismissListener = DialogInterface.OnDismissListener { finish() }
         sheet.show(supportFragmentManager, WordAnkiReviewSheet.TAG)
@@ -101,6 +107,7 @@ class WordAnkiReviewActivity : AppCompatActivity() {
         const val EXTRA_FREQ_SCORE = "extra_freq_score"
         const val EXTRA_SENTENCE_ORIGINAL = "extra_sentence_original"
         const val EXTRA_SENTENCE_TRANSLATION = "extra_sentence_translation"
+        const val EXTRA_SENTENCE_PENDING = "extra_sentence_pending"
         const val EXTRA_SOURCE_LANG = "extra_source_lang"
     }
 }

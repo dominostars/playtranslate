@@ -354,6 +354,9 @@ class TranslationResultActivity :
             // atomic per sentence.
             surfaceForms = settledRows?.toSurfaceMap(),
             wordEnrichment = settledRows?.toEnrichmentMap(),
+            // Rides the VM result only — a pending is meaningful solely
+            // alongside its own result's original text (no intent fallback).
+            pending = ready?.result?.pendingTranslation,
         )
     }
 

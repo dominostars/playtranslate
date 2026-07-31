@@ -1887,6 +1887,13 @@ class CaptureResultOverlay(
             putExtra(AnkiPermissionActivity.EXTRA_FORWARD_TARGET, AnkiPermissionActivity.TARGET_SENTENCE)
             putExtra(SentenceAnkiReviewActivity.EXTRA_SENTENCE, sentence)
             putExtra(SentenceAnkiReviewActivity.EXTRA_TRANSLATION, result.translatedText)
+            // A deferred result's translation is blank — carry the pending so
+            // the sheet's lazy fill runs the deferred COMPLETION (History rows
+            // fill too). This panel dismisses on launch (its own funnel dies
+            // with its scope), so the sheet is the completion's only carrier.
+            result.pendingTranslation?.let {
+                putExtra(SentenceAnkiReviewActivity.EXTRA_PENDING_TRANSLATION, it)
+            }
             result.screenshotPath?.let { putExtra(SentenceAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, it) }
             putExtra(SentenceAnkiReviewActivity.EXTRA_SOURCE_LANG, prefs.sourceLangId.code)
             words?.let { wr ->
@@ -1944,6 +1951,10 @@ class CaptureResultOverlay(
             val sendResult = app.oneTapSendSentence(
                 original = sentence, translation = translation, wordsPayload = payload,
                 screenshotPath = result.screenshotPath, sourceLangId = langId,
+                // Deferred result: the lazy translate runs the deferred
+                // COMPLETION (History rows fill too). This scope outlives the
+                // panel, so the attach survives a dismissal mid-send.
+                pendingTranslation = result.pendingTranslation,
             )
             when (sendResult) {
                 // Reopening the review is the mapping recovery — but only

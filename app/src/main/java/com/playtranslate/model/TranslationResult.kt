@@ -80,6 +80,9 @@ data class PendingTranslation(
     /** Per-OCR-group source texts, index-aligned with the skeleton overlay boxes
      *  and with the null-translation History rows recorded at capture time. */
     val groupTexts: List<String>,
+    // (Serializable so the Anki review flow can carry the pending through its
+    // activity trampoline's intent extras — same transport as the enrichment
+    // map. In-process only; nothing persists it.)
     /** Source language pinned when the result was produced — the completion must
      *  translate under the language the OCR ran as, not current Prefs. */
     val sourceLangId: SourceLangId,
@@ -122,7 +125,7 @@ data class PendingTranslation(
      *  Generated at construction; `copy()` deliberately preserves it (a
      *  copy of a pending is the same logical request). */
     val requestToken: String = java.util.UUID.randomUUID().toString(),
-)
+) : java.io.Serializable
 
 /**
  * Full result returned after one capture → OCR → translate cycle.

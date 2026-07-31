@@ -490,7 +490,12 @@ class MainActivity :
             screenshotPath = screenshotPath,
             sentenceOriginal = sentenceOriginal,
             sentenceTranslation = sentenceTranslation,
-            sentenceWordResults = wordResults
+            sentenceWordResults = wordResults,
+            // A deferred result's pending rides ONLY when the sentence being
+            // passed is that result's own original (resolveAnkiTranslation's
+            // caller contract) — the sheet's Anki paths then complete it.
+            sentencePending = (resultVm.result.value as? com.playtranslate.ui.ResultState.Ready)
+                ?.result?.takeIf { it.originalText == sentenceOriginal }?.pendingTranslation,
         ).show(supportFragmentManager, WordDetailBottomSheet.TAG)
     }
 

@@ -391,7 +391,15 @@ class WordAnkiReviewSheet : DialogFragment() {
             // (hasSentenceData == (meaningfulSentence != null), so it
             // smart-casts to non-null here.)
             if (sentenceTranslation.isBlank()) {
-                launchTranslationFill(meaningfulSentence)
+                // The launcher's deferred pending (if any) rides the args —
+                // the fill then COMPLETES the deferred capture (History rows
+                // fill too) instead of translating around it.
+                @Suppress("DEPRECATION")
+                launchTranslationFill(
+                    meaningfulSentence,
+                    arguments?.getSerializable(ARG_SENTENCE_PENDING)
+                        as? com.playtranslate.model.PendingTranslation,
+                )
             }
             if (sentenceWords.isEmpty()) {
                 launchWordsFill(meaningfulSentence, word)
@@ -413,6 +421,8 @@ class WordAnkiReviewSheet : DialogFragment() {
         // manifest's `configChanges`, so rotation never lands here.
         if (hasSentenceData) {
             getContentFragment()?.onOriginalCommitted = { newOriginal ->
+                // Edited text is NOT the deferred capture's text — never pass
+                // the pending here (resolveAnkiTranslation's caller contract).
                 launchTranslationFill(newOriginal)
                 launchWordsFill(newOriginal, "")
             }
@@ -1413,27 +1423,22 @@ class WordAnkiReviewSheet : DialogFragment() {
     private fun getContentFragment(): SentenceAnkiContentFragment? =
         childFragmentManager.findFragmentByTag(TAG_CONTENT) as? SentenceAnkiContentFragment
 
-    /** Fetch a sentence translation via the on-demand backend waterfall and
-     *  push the result into the embedded sentence fragment. Routes through
-     *  [LastSentenceCache.awaitOrStartTranslation] so a second open for the
-     *  same sentence joins the in-flight job instead of re-firing.
-     *
-     *  Uses [CaptureService.instance] directly — the sheet is only ever
-     *  reached from the in-process drag flow (AccessibilityService →
-     *  AnkiPermissionActivity → WordAnkiReviewActivity), so the service is
-     *  guaranteed alive. A null instance is treated as a translation
-     *  failure and surfaces the "Couldn't translate" placeholder. */
-    private fun launchTranslationFill(sentence: String) {
+    /** Fetch a sentence translation and push the result into the embedded
+     *  sentence fragment, via [resolveAnkiTranslation]: a deferred capture's
+     *  [pending] runs the deferred completion (History rows fill,
+     *  idempotently, never gated by the sentence-text cache); everything
+     *  else keeps [LastSentenceCache.awaitOrStartTranslation]'s coalescing.
+     *  A null outcome (no service alive, completion produced nothing)
+     *  surfaces the "Couldn't translate" placeholder. */
+    private fun launchTranslationFill(
+        sentence: String,
+        pending: com.playtranslate.model.PendingTranslation? = null,
+    ) {
         translationFillCount++
         refreshFillingPendingIndicator()
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val outcome = LastSentenceCache.awaitOrStartTranslation(sentence) { text ->
-                    val svc = CaptureService.instance
-                        ?: error("CaptureService unavailable")
-                    val gt = svc.translateOnce(text)
-                    LastSentenceCache.TranslationOutcome(gt.text, gt.backendDisplayName)
-                }
+                val outcome = resolveAnkiTranslation(pending, sentence)
                 getContentFragment()?.applyTranslation(sentence, outcome?.text)
             } finally {
                 translationFillCount--
@@ -1852,6 +1857,7 @@ class WordAnkiReviewSheet : DialogFragment() {
         private const val ARG_IS_COMMON       = "is_common"
         private const val ARG_SENTENCE_ORIGINAL     = "sentence_original"
         private const val ARG_SENTENCE_TRANSLATION  = "sentence_translation"
+        private const val ARG_SENTENCE_PENDING      = "sentence_pending"
         private const val ARG_SENTENCE_WORDS        = "sentence_words"
         private const val ARG_SENTENCE_READINGS     = "sentence_readings"
         private const val ARG_SENTENCE_MEANINGS     = "sentence_meanings"
@@ -1869,7 +1875,8 @@ class WordAnkiReviewSheet : DialogFragment() {
             sentenceOriginal: String? = null,
             sentenceTranslation: String? = null,
             sentenceWordResults: Map<String, Triple<String, String, Int>>? = null,
-            sourceLangId: SourceLangId = SourceLangId.JA
+            sourceLangId: SourceLangId = SourceLangId.JA,
+            sentencePending: com.playtranslate.model.PendingTranslation? = null,
         ) = WordAnkiReviewSheet().apply {
             arguments = Bundle().apply {
                 putString(ARG_WORD, word)
@@ -1882,6 +1889,11 @@ class WordAnkiReviewSheet : DialogFragment() {
                 if (sentenceOriginal != null) {
                     putString(ARG_SENTENCE_ORIGINAL, sentenceOriginal)
                     putString(ARG_SENTENCE_TRANSLATION, sentenceTranslation ?: "")
+                    // Only meaningful alongside its own sentenceOriginal
+                    // (resolveAnkiTranslation's caller contract).
+                    if (sentencePending != null) {
+                        putSerializable(ARG_SENTENCE_PENDING, sentencePending)
+                    }
                     if (sentenceWordResults != null) {
                         putStringArray(ARG_SENTENCE_WORDS, sentenceWordResults.keys.toTypedArray())
                         putStringArray(ARG_SENTENCE_READINGS, sentenceWordResults.values.map { it.first }.toTypedArray())

@@ -11,6 +11,7 @@ import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.FrequencyTag
+import com.playtranslate.model.PendingTranslation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -167,8 +168,15 @@ fun oneTapResultToast(appCtx: Context, result: AnkiSendResult) {
  *    before the user picks targets manually. No per-word audio is
  *    synthesized either.
  *
- * @param translation   pre-resolved sentence translation, or null to
- *   await via [LastSentenceCache.awaitOrStartTranslation]
+ * @param translation   pre-resolved sentence translation; null OR BLANK
+ *   awaits via [resolveAnkiTranslation] — blank is the deferred results'
+ *   "never ran" sentinel, and callers reading `translatedText` straight
+ *   off a result (the word-detail context chain) pass it through
+ *   un-normalized, so the sink must treat both spellings as unresolved
+ * @param pendingTranslation the result's deferred-translation payload, when
+ *   the launching surface had one — routes the lazy translate through the
+ *   deferred completion (see [ankiTranslationFor]) so the capture's History
+ *   rows fill instead of a bare translateOnce leaving them null
  * @param wordsPayload  pre-resolved words + surface forms,
  *   snapshotted atomically (e.g. from a single
  *   [TranslationResultViewModel.WordLookupsState.Settled] read), or
@@ -187,25 +195,22 @@ suspend fun Context.oneTapSendSentence(
     screenshotPath: String?,
     sourceLangId: SourceLangId,
     targetWord: String? = null,
+    pendingTranslation: PendingTranslation? = null,
 ): AnkiSendResult {
     val ctx = this
     val prefs = Prefs(ctx)
 
-    val resolvedTranslation: String = translation ?: run {
-        // Match the sheet's drag-flow translation builder
-        // (WordAnkiReviewSheet.launchTranslationFill): use the
-        // running CaptureService's on-demand translator. If the
-        // service isn't alive we have no way to translate, so fall
+    // Blank-aware, not just null-aware: deferred results carry "" as their
+    // translatedText, and not every caller normalizes it to null before
+    // passing it here. A blank slipping through as "the translation" would
+    // send an empty card AND skip the deferred completion the pending
+    // exists for.
+    val resolvedTranslation: String = translation?.takeIf { it.isNotBlank() } ?: run {
+        // If the service isn't alive we have no way to translate, so fall
         // back to the empty string — the card will land without a
-        // translation field rather than failing the send. The error()
-        // below is how the lambda signals that: awaitOrStartTranslation
-        // catches lambda throws, logs them, and returns a null outcome —
-        // it does NOT propagate out of this function.
-        val outcome = LastSentenceCache.awaitOrStartTranslation(original) { text ->
-            val svc = CaptureService.instance ?: error("CaptureService unavailable")
-            val gt = svc.translateOnce(text)
-            LastSentenceCache.TranslationOutcome(gt.text, gt.backendDisplayName)
-        }
+        // translation field rather than failing the send (the null outcome
+        // is resolveAnkiTranslation's contained-failure signal).
+        val outcome = resolveAnkiTranslation(pendingTranslation, original)
         outcome?.text.orEmpty()
     }
 
@@ -341,6 +346,7 @@ suspend fun Context.oneTapSend(
     wordsPayload: LastSentenceCache.WordsPayload?,
     screenshotPath: String?,
     sourceLangId: SourceLangId,
+    pendingTranslation: PendingTranslation? = null,
 ): Pair<AnkiSendResult, CardMode> =
     if (sentenceIsJustTheWord(sentenceOriginal, word)) {
         oneTapSendWord(
@@ -362,5 +368,76 @@ suspend fun Context.oneTapSend(
             screenshotPath = screenshotPath,
             sourceLangId = sourceLangId,
             targetWord = word,
+            // Word routed to a sentence card: the sentence half is the
+            // deferred result's — its pending must ride, or the sentence
+            // branch would translate without completing (null rows).
+            pendingTranslation = pendingTranslation,
         ) to CardMode.SENTENCE
     }
+
+/**
+ * The Anki flows' lazy sentence translation. A deferred CAPTURE result
+ * routes through [CaptureService.completeDeferredTranslation] — one backend
+ * batch that also fills the capture's null History rows and feeds the
+ * context ring under its capture-time eligibility, idempotently — instead
+ * of a bare translateOnce that would leave those rows null forever (the
+ * launching surface may already be dismissed, so no funnel of its own will
+ * run). Everything else (no pending; a sentence-shape pending, whose
+ * deliberate-row attach rules live in the launching activity's funnel)
+ * keeps the plain on-demand translate.
+ *
+ * Throws when no service is alive or the completion produced nothing —
+ * [resolveAnkiTranslation] contains the throw as a null outcome (the
+ * sheet's "couldn't translate" hint / the one-tap's empty field).
+ */
+internal suspend fun ankiTranslationFor(
+    pending: PendingTranslation?,
+    text: String,
+): LastSentenceCache.TranslationOutcome {
+    val svc = CaptureService.instance ?: error("CaptureService unavailable")
+    if (pending != null && pending.isCapture) {
+        val perGroup = svc.completeDeferredTranslation(pending)
+        val joined = perGroup.joinToString("\n\n") { it.text }
+        if (joined.isBlank()) error("deferred completion produced no translation")
+        return LastSentenceCache.TranslationOutcome(
+            joined, perGroup.mapNotNull { it.backendDisplayName }.firstOrNull(),
+        )
+    }
+    val gt = svc.translateOnce(text)
+    return LastSentenceCache.TranslationOutcome(gt.text, gt.backendDisplayName)
+}
+
+/**
+ * Resolve the Anki flows' lazy sentence translation. A capture pending
+ * NEVER goes through the sentence-text cache gate: [LastSentenceCache] is
+ * keyed by text alone, so a warm entry written by a non-attaching path (the
+ * word sheet's fill, an earlier same-text lookup) would return before the
+ * lambda runs — skipping [CaptureService.completeDeferredTranslation] and
+ * leaving the capture's null History rows exactly as this routing exists to
+ * fill. The completion is idempotent and cache-served at the group layer,
+ * so bypassing the gate costs at most one cache-hit batch. Everything else
+ * keeps the cache's await-or-start coalescing. Null = translation isn't
+ * possible right now (no service, completion produced nothing).
+ *
+ * CALLER CONTRACT: pass [pending] only alongside its own result's full
+ * original text — a capture completion translates the pending's group
+ * texts, so pairing it with any other [text] (an edited sentence, a
+ * different line) would return content that doesn't match.
+ */
+internal suspend fun resolveAnkiTranslation(
+    pending: PendingTranslation?,
+    text: String,
+): LastSentenceCache.TranslationOutcome? {
+    return if (pending != null && pending.isCapture) {
+        try {
+            ankiTranslationFor(pending, text)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("AnkiOneTapDispatch", "deferred Anki translation failed: ${e.message}")
+            null
+        }
+    } else {
+        LastSentenceCache.awaitOrStartTranslation(text) { ankiTranslationFor(pending, it) }
+    }
+}

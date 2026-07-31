@@ -77,9 +77,13 @@ class SentenceAnkiReviewActivity : AppCompatActivity() {
         val wordEnrichment: Map<String, WordEnrichment> =
             (intent.getSerializableExtra(EXTRA_ENRICHMENT) as? HashMap<String, WordEnrichment>)
                 ?: emptyMap()
+        @Suppress("DEPRECATION")
+        val pendingTranslation =
+            intent.getSerializableExtra(EXTRA_PENDING_TRANSLATION)
+                as? com.playtranslate.model.PendingTranslation
 
         showReviewSheet(sentence, translation, wordResults, surfaceForms,
-            wordEnrichment, screenshotPath, sourceLangId)
+            wordEnrichment, screenshotPath, sourceLangId, pendingTranslation)
     }
 
     private fun showReviewSheet(
@@ -90,6 +94,7 @@ class SentenceAnkiReviewActivity : AppCompatActivity() {
         wordEnrichment: Map<String, WordEnrichment>,
         screenshotPath: String?,
         sourceLangId: SourceLangId,
+        pendingTranslation: com.playtranslate.model.PendingTranslation? = null,
     ) {
         val sheet = AnkiReviewBottomSheet.newInstance(
             original = sentence,
@@ -99,6 +104,7 @@ class SentenceAnkiReviewActivity : AppCompatActivity() {
             wordEnrichment = wordEnrichment,
             screenshotPath = screenshotPath,
             sourceLangId = sourceLangId,
+            pendingTranslation = pendingTranslation,
         )
         sheet.onDismissListener = DialogInterface.OnDismissListener { finish() }
         sheet.show(supportFragmentManager, AnkiReviewBottomSheet.TAG)
@@ -131,5 +137,6 @@ class SentenceAnkiReviewActivity : AppCompatActivity() {
         const val EXTRA_FREQ_SCORES = "extra_freq_scores"
         const val EXTRA_SURFACES = "extra_surfaces"
         const val EXTRA_ENRICHMENT = "extra_enrichment"
+        const val EXTRA_PENDING_TRANSLATION = "extra_pending_translation"
     }
 }

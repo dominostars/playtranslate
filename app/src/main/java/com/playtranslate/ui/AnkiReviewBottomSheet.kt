@@ -12,7 +12,6 @@ import android.widget.Toast
 import androidx.core.os.bundleOf
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
-import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
@@ -175,19 +174,20 @@ class AnkiReviewBottomSheet : DialogFragment() {
         // incoming translation means the sheet was opened from a result whose
         // translation never ran — the hidden-section deferral — or hasn't
         // landed yet, and the content fragment's field would otherwise sit on
-        // its placeholder forever. awaitOrStartTranslation joins any in-flight
-        // job for this sentence and contains the lambda's failure (null →
-        // applyTranslation renders the error variant without clobbering user
-        // edits). Safe after restore too: applyTranslation guards on the
-        // visible original and on user-touched state.
+        // its placeholder forever. A deferred capture's pending rides the
+        // args, and resolveAnkiTranslation routes it through the deferred
+        // completion (History rows fill, idempotently, and NEVER gated by
+        // the sentence-text cache — see its KDoc) instead of a bare
+        // translateOnce. Failures are contained (null → applyTranslation
+        // renders the error variant without clobbering user edits). Safe
+        // after restore too: applyTranslation guards on the visible original
+        // and on user-touched state.
         if (translation.isBlank() && original.isNotBlank()) {
+            @Suppress("DEPRECATION")
+            val pending = args.getSerializable(ARG_PENDING_TRANSLATION)
+                as? com.playtranslate.model.PendingTranslation
             viewLifecycleOwner.lifecycleScope.launch {
-                val outcome = LastSentenceCache.awaitOrStartTranslation(original) { text ->
-                    val svc = CaptureService.instance
-                        ?: error("CaptureService unavailable")
-                    val gt = svc.translateOnce(text)
-                    LastSentenceCache.TranslationOutcome(gt.text, gt.backendDisplayName)
-                }
+                val outcome = resolveAnkiTranslation(pending, original)
                 getContentFragment()?.applyTranslation(original, outcome?.text)
             }
         }
@@ -266,6 +266,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
         private const val ARG_ENRICHMENT      = "enrichment"
         private const val ARG_SCREENSHOT_PATH = "screenshot_path"
         private const val ARG_SOURCE_LANG     = "source_lang"
+        private const val ARG_PENDING_TRANSLATION = "pending_translation"
 
         /**
          * [surfaceForms] (display-word → surface in the sentence) and
@@ -285,12 +286,19 @@ class AnkiReviewBottomSheet : DialogFragment() {
             wordEnrichment: Map<String, WordEnrichment>,
             screenshotPath: String?,
             sourceLangId: SourceLangId = SourceLangId.JA,
+            pendingTranslation: com.playtranslate.model.PendingTranslation? = null,
         ): AnkiReviewBottomSheet {
             return AnkiReviewBottomSheet().apply {
                 val wordKeys = wordResults.keys.toTypedArray()
                 arguments = Bundle().apply {
                     putString(ARG_ORIGINAL, original)
                     putString(ARG_TRANSLATION, translation)
+                    // The launching result's deferred payload — the lazy fill
+                    // completes it (rows + card in one batch) instead of
+                    // translating alongside it.
+                    if (pendingTranslation != null) {
+                        putSerializable(ARG_PENDING_TRANSLATION, pendingTranslation)
+                    }
                     putStringArray(ARG_WORDS,    wordKeys)
                     putStringArray(ARG_READINGS, wordResults.values.map { it.first }.toTypedArray())
                     putStringArray(ARG_MEANINGS, wordResults.values.map { it.second }.toTypedArray())

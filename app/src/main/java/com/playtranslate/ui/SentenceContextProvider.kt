@@ -32,4 +32,10 @@ data class SentenceContext(
      *  [wordResults] (same rationale as [surfaceForms]); feeds the
      *  sentence-card pitch/frequency Anki fields. Null when unavailable. */
     val wordEnrichment: Map<String, WordEnrichment>? = null,
+    /** The result's deferred-translation payload, snapshotted with
+     *  [original] (it is only meaningful alongside its own result's text).
+     *  Anki sends route it through the deferred completion so a
+     *  hidden-section capture's History rows fill instead of a bare
+     *  translateOnce leaving them null. Null when the result carries none. */
+    val pending: com.playtranslate.model.PendingTranslation? = null,
 )

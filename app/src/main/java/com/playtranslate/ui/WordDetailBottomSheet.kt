@@ -84,6 +84,7 @@ class WordDetailBottomSheet : DialogFragment() {
         private const val ARG_SCREENSHOT_PATH = "screenshot_path"
         private const val ARG_SENTENCE_ORIGINAL     = "sentence_original"
         private const val ARG_SENTENCE_TRANSLATION  = "sentence_translation"
+        private const val ARG_SENTENCE_PENDING      = "sentence_pending"
         private const val ARG_SENTENCE_WORDS        = "sentence_words"
         private const val ARG_SENTENCE_READINGS     = "sentence_readings"
         private const val ARG_SENTENCE_MEANINGS     = "sentence_meanings"
@@ -101,6 +102,7 @@ class WordDetailBottomSheet : DialogFragment() {
             sentenceTranslation: String? = null,
             sentenceWordResults: Map<String, Triple<String, String, Int>>? = null,
             embedded: Boolean = false,
+            sentencePending: com.playtranslate.model.PendingTranslation? = null,
         ) = WordDetailBottomSheet().apply {
                 arguments = Bundle().apply {
                     putString(ARG_WORD, word)
@@ -109,6 +111,11 @@ class WordDetailBottomSheet : DialogFragment() {
                     if (sentenceOriginal != null) {
                         putString(ARG_SENTENCE_ORIGINAL, sentenceOriginal)
                         putString(ARG_SENTENCE_TRANSLATION, sentenceTranslation ?: "")
+                        // Only meaningful alongside its own sentenceOriginal
+                        // (resolveAnkiTranslation's caller contract).
+                        if (sentencePending != null) {
+                            putSerializable(ARG_SENTENCE_PENDING, sentencePending)
+                        }
                         if (sentenceWordResults != null) {
                             putStringArray(ARG_SENTENCE_WORDS, sentenceWordResults.keys.toTypedArray())
                             putStringArray(ARG_SENTENCE_READINGS, sentenceWordResults.values.map { it.first }.toTypedArray())
@@ -508,6 +515,13 @@ class WordDetailBottomSheet : DialogFragment() {
             ?: args?.getString(ARG_SENTENCE_ORIGINAL)
         val sentenceTranslation = hostContext?.translation
             ?: args?.getString(ARG_SENTENCE_TRANSLATION)
+        // The pending rides whichever source supplied the sentence text —
+        // never crossed between them (it's only meaningful alongside its
+        // own result's original).
+        @Suppress("DEPRECATION")
+        val sentencePending = if (hostContext != null) hostContext.pending
+            else args?.getSerializable(ARG_SENTENCE_PENDING)
+                as? com.playtranslate.model.PendingTranslation
         // Build a WordsPayload only when both halves come from the
         // same atomic source (the host's SentenceContext, populated
         // from a single Settled emission). Args-only fallback has no
@@ -550,6 +564,7 @@ class WordDetailBottomSheet : DialogFragment() {
                     wordsPayload = sentenceWordsPayload,
                     screenshotPath = screenshotPath,
                     sourceLangId = sourceLangId,
+                    pendingTranslation = sentencePending,
                 )
             },
             resultOf = { it.first },
@@ -618,6 +633,11 @@ class WordDetailBottomSheet : DialogFragment() {
             ?: args?.getString(ARG_SENTENCE_ORIGINAL)
         val sentenceTranslation = hostContext?.translation
             ?: args?.getString(ARG_SENTENCE_TRANSLATION)
+        // Pending rides its own text source — see the one-tap path above.
+        @Suppress("DEPRECATION")
+        val sentencePending = if (hostContext != null) hostContext.pending
+            else args?.getSerializable(ARG_SENTENCE_PENDING)
+                as? com.playtranslate.model.PendingTranslation
         val sentenceWordResults: Map<String, Triple<String, String, Int>>? =
             hostContext?.wordResults
                 ?: args?.getStringArray(ARG_SENTENCE_WORDS)?.let { words ->
@@ -641,7 +661,8 @@ class WordDetailBottomSheet : DialogFragment() {
             sentenceOriginal = sentenceOriginal,
             sentenceTranslation = sentenceTranslation,
             sentenceWordResults = sentenceWordResults,
-            sourceLangId = sourceLangId
+            sourceLangId = sourceLangId,
+            sentencePending = sentencePending,
         ).show(childFragmentManager, WordAnkiReviewSheet.TAG)
     }
 
