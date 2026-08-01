@@ -1878,8 +1878,11 @@ class CaptureResultOverlay(
                 ?: showAnkiNotInstalledDialog(ctx, overlayHost, wm, displayId)
             return
         }
-        val cached = LastSentenceCache.takeIf { it.original == sentence }
-        val words = cached?.wordResults?.takeIf { it.isNotEmpty() }
+        // One locked snapshot for every word extra below. NOT gated direct
+        // field reads: the blank-meaning transport requires the meaning
+        // slots and EXTRA_ENRICHMENT to come from the SAME maps, and the
+        // singleton's fields can rotate between separate reads.
+        val words = LastSentenceCache.snapshotFor(sentence)
         SentenceAnkiReviewActivity.finishCurrentIfAny()
         AnkiPermissionActivity.finishCurrentIfAny()
         val intent = Intent(app, AnkiPermissionActivity::class.java).apply {
@@ -1896,21 +1899,26 @@ class CaptureResultOverlay(
             }
             result.screenshotPath?.let { putExtra(SentenceAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, it) }
             putExtra(SentenceAnkiReviewActivity.EXTRA_SOURCE_LANG, prefs.sourceLangId.code)
-            words?.let { wr ->
-                val keys = wr.keys.toTypedArray()
+            words?.let { snap ->
+                val keys = snap.results.keys.toTypedArray()
                 putExtra(SentenceAnkiReviewActivity.EXTRA_WORDS, keys)
-                putExtra(SentenceAnkiReviewActivity.EXTRA_READINGS, wr.values.map { it.first }.toTypedArray())
-                putExtra(SentenceAnkiReviewActivity.EXTRA_MEANINGS, wr.values.map { it.second }.toTypedArray())
-                putExtra(SentenceAnkiReviewActivity.EXTRA_FREQ_SCORES, wr.values.map { it.third }.toIntArray())
-                // Carry surfaces (parallel to keys) + pitch/frequency enrichment
-                // from the SAME `cached` snapshot, atomically — so the review
-                // can't pair these words with another sentence's enrichment that
-                // a later capture wrote to the global cache while the permission
-                // trampoline was up.
+                putExtra(SentenceAnkiReviewActivity.EXTRA_READINGS,
+                    snap.results.values.map { it.first }.toTypedArray())
+                // Sense-bearing words cross with a BLANK meaning slot — the
+                // flat text re-derives from the senses in EXTRA_ENRICHMENT
+                // (meaningFromTransport on the sheet's read side). Shipping
+                // both doubled this intent's definition payload. Safe ONLY
+                // because every extra reads the same [snap]: blank ⇒ the
+                // senses it was blanked against are the senses that cross.
+                putExtra(SentenceAnkiReviewActivity.EXTRA_MEANINGS, keys.map { k ->
+                    meaningForTransport(snap.results.getValue(k).second, snap.enrichment[k])
+                }.toTypedArray())
+                putExtra(SentenceAnkiReviewActivity.EXTRA_FREQ_SCORES,
+                    snap.results.values.map { it.third }.toIntArray())
                 putExtra(SentenceAnkiReviewActivity.EXTRA_SURFACES,
-                    keys.map { cached?.surfaceForms?.get(it) ?: "" }.toTypedArray())
+                    keys.map { snap.surfaces[it] ?: "" }.toTypedArray())
                 putExtra(SentenceAnkiReviewActivity.EXTRA_ENRICHMENT,
-                    HashMap(cached?.wordEnrichment.orEmpty()))
+                    HashMap(snap.enrichment))
             }
         }
         val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: displayId
@@ -1935,11 +1943,10 @@ class CaptureResultOverlay(
             openSentenceAnkiReview()
             return
         }
-        val cached = LastSentenceCache.takeIf { it.original == sentence }
-        val words = cached?.wordResults?.takeIf { it.isNotEmpty() }
-        val payload = words?.let {
-            LastSentenceCache.WordsPayload(it, cached.surfaceForms.orEmpty(), cached.wordEnrichment.orEmpty())
-        }
+        // Locked snapshot — the hand-assembled payload from three separate
+        // field reads could pair one sentence's words with another's
+        // surfaces/enrichment across a mid-read rotation.
+        val payload = LastSentenceCache.snapshotFor(sentence)
         val translation = result.translatedText.takeIf { it.isNotEmpty() }
         val langId = prefs.sourceLangId
         android.widget.Toast.makeText(app, R.string.anki_adding_in_progress, android.widget.Toast.LENGTH_SHORT).show()

@@ -122,7 +122,9 @@ class AnkiReviewBottomSheet : DialogFragment() {
         wordArr.forEachIndexed { i, w ->
             words.add(SentenceAnkiHtmlBuilder.WordEntry(
                 w, readingArr.getOrElse(i) { "" },
-                meaningArr.getOrElse(i) { "" },
+                // Blank slot = sense-bearing word; the flat text re-derives
+                // from the senses that crossed in ARG_ENRICHMENT.
+                meaningFromTransport(meaningArr.getOrElse(i) { "" }, enrich[w]),
                 freqArr.getOrElse(i) { 0 },
                 surfaceForm = surfaceArr.getOrElse(i) { "" },
                 pitch = enrich[w]?.pitch.orEmpty(),
@@ -303,7 +305,14 @@ class AnkiReviewBottomSheet : DialogFragment() {
                     }
                     putStringArray(ARG_WORDS,    wordKeys)
                     putStringArray(ARG_READINGS, wordResults.values.map { it.first }.toTypedArray())
-                    putStringArray(ARG_MEANINGS, wordResults.values.map { it.second }.toTypedArray())
+                    // Sense-bearing words cross with a BLANK meaning slot —
+                    // their flat text is derivable from the senses already
+                    // riding ARG_ENRICHMENT, and shipping both doubled the
+                    // definition payload of this bundle. The read side
+                    // re-derives via meaningFromTransport.
+                    putStringArray(ARG_MEANINGS, wordKeys.map { w ->
+                        meaningForTransport(wordResults.getValue(w).second, wordEnrichment[w])
+                    }.toTypedArray())
                     putIntArray(ARG_FREQ_SCORES, wordResults.values.map { it.third }.toIntArray())
                     // Surfaces ride parallel to ARG_WORDS; enrichment as one
                     // Serializable map keyed by display word.

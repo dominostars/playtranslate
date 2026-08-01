@@ -149,6 +149,48 @@ fun importedFlatLines(groups: List<ImportedSenseGroup>): List<String> =
     }
 
 /**
+ * The flat, newline-joined definition string derived from rendered
+ * [SenseDisplay] rows — THE single derivation of a word's flat meaning
+ * wherever structured senses exist (LastSentenceCache.lookupWords, the
+ * enrichment-carrying transports). Imported rows re-attach their source
+ * name in trailing parens (the [importedFlatLines] convention — the
+ * source rides `pos[0]` as "source" or "source · tags"); numbering
+ * matches [flatCardDefinition]: continuous, only when more than one
+ * line survives. Blank-definition rows are dropped from the flat text
+ * (they stay in the structured list).
+ */
+fun flatMeaningOf(senses: List<SenseDisplay>): String {
+    val lines = senses.map { s ->
+        val text = s.definition.replace('\n', ' ')
+        if (!s.imported) text
+        else {
+            val source = s.pos.firstOrNull()?.substringBefore(" · ")?.trim().orEmpty()
+            if (source.isEmpty() || text.isBlank()) text else "$text ($source)"
+        }
+    }.filter { it.isNotBlank() }
+    return (if (lines.size > 1) lines.mapIndexed { i, l -> "${i + 1}. $l" } else lines)
+        .joinToString("\n")
+}
+
+/**
+ * The meaning-slot value for the two transports that carry
+ * [WordEnrichment] alongside the flat meanings (the review sheet's
+ * args, the review activity's intent): "" when the word's senses cross
+ * in the enrichment — the reader re-derives the flat text via
+ * [meaningFromTransport] — and the real flat string only for
+ * sense-less words. Definition text crosses the binder once, not
+ * twice.
+ */
+fun meaningForTransport(meaning: String, enrichment: WordEnrichment?): String =
+    if (enrichment?.senses?.isNotEmpty() == true) "" else meaning
+
+/** Rebuilds a meaning slot a writer blanked via [meaningForTransport].
+ *  A non-blank slot passes through (sense-less words, and every
+ *  transport that doesn't carry enrichment at all). */
+fun meaningFromTransport(marshaled: String, enrichment: WordEnrichment?): String =
+    marshaled.ifEmpty { enrichment?.senses?.let(::flatMeaningOf).orEmpty() }
+
+/**
  * The word card's flat definition string built from a bare resolved entry:
  * imported term-dictionary lines lead (one per line, source in parens),
  * the pack's non-empty senses follow, numbered continuously when more than

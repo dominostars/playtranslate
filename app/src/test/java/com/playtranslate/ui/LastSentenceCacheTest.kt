@@ -38,4 +38,37 @@ class LastSentenceCacheTest {
         assertNull(LastSentenceCache.surfaceForms)
         assertNull(LastSentenceCache.original)
     }
+
+    // ── snapshotFor: the locked all-or-nothing read ──────────────────────
+
+    @Test fun `snapshotFor returns the word maps only for the matching sentence`() {
+        LastSentenceCache.setFromTranslationResult(
+            original = "猫が好き",
+            translation = "I like cats",
+            translationSource = "test",
+            wordResults = mapOf("猫" to Triple("ねこ", "cat", 3)),
+            surfaceForms = mapOf("猫" to "猫"),
+            wordEnrichment = mapOf("猫" to WordEnrichment(pitch = listOf(1))),
+        )
+        val snap = LastSentenceCache.snapshotFor("猫が好き")
+        assertNotNull(snap)
+        assertEquals("cat", snap!!.results.getValue("猫").second)
+        assertEquals(listOf(1), snap.enrichment.getValue("猫").pitch)
+        assertEquals("猫", snap.surfaces["猫"])
+
+        assertNull("another sentence's words must not leak",
+            LastSentenceCache.snapshotFor("犬が好き"))
+    }
+
+    @Test fun `snapshotFor is null when the sentence has no words yet`() {
+        LastSentenceCache.setFromTranslationResult(
+            original = "猫が好き",
+            translation = "I like cats",
+            translationSource = "test",
+            wordResults = null,
+            surfaceForms = null,
+            wordEnrichment = null,
+        )
+        assertNull(LastSentenceCache.snapshotFor("猫が好き"))
+    }
 }

@@ -8,7 +8,6 @@ import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.headwordFor
 import com.playtranslate.language.DefinitionResolver
-import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import kotlinx.coroutines.CompletableDeferred
@@ -120,12 +119,35 @@ object LastSentenceCache {
     data class TranslationOutcome(val text: String, val backendDisplayName: String?)
 
     /** Bundles the two halves of a word-lookup pass so they can be
-     *  written into the cache atomically. */
+     *  written into the cache atomically — and read back atomically via
+     *  [snapshotFor]. */
     data class WordsPayload(
         val results: Map<String, Triple<String, String, Int>>,
         val surfaces: Map<String, String>,
         val enrichment: Map<String, WordEnrichment>,
     )
+
+    /**
+     * Locked, all-or-nothing snapshot of the word maps for [sentence]:
+     * results + surfaces + enrichment read in one critical section, or
+     * null when the cache belongs to another sentence or has no words
+     * yet. The returned maps are the published references — the cache
+     * swaps whole maps under [lock] and never mutates one after
+     * publication — so the payload stays internally consistent no
+     * matter how the global fields rotate afterwards.
+     *
+     * Use this instead of gated direct field reads whenever several
+     * word maps must AGREE with each other, e.g. building intent extras
+     * whose meaning slots are blanked against the enrichment shipped
+     * beside them ([meaningForTransport]) — a mid-build rotation across
+     * separate field reads could otherwise blank a meaning against
+     * senses that never cross.
+     */
+    fun snapshotFor(sentence: String): WordsPayload? = synchronized(lock) {
+        val results = wordResults ?: return null
+        if (original != sentence || results.isEmpty()) return null
+        WordsPayload(results, surfaceForms.orEmpty(), wordEnrichment.orEmpty())
+    }
 
     fun clear() {
         synchronized(lock) {
@@ -383,11 +405,6 @@ object LastSentenceCache {
                 val response = defResult?.response
                 if (response != null && response.entries.isNotEmpty()) {
                     val entry      = response.entries.first()
-                    // Wiktionary multi-POS lookups split into separate
-                    // entries; flatten so cached meanings include verb /
-                    // intj / etc. instead of dropping every non-primary
-                    // sense.
-                    val flatSenses = response.entries.flatMap { it.senses }
                     // Pick the headword that matches what the user actually
                     // saw — JMdict often groups variant kanji under one
                     // entry (無下/無気, 出会う/出逢う) and the primary form
@@ -401,55 +418,20 @@ object LastSentenceCache {
                         ?: entry.headwords.firstOrNull()
                     val displayWord = primary?.written ?: primary?.reading ?: tok.lookupForm
                     val reading = primary?.reading?.takeIf { it != primary.written } ?: ""
-                    // Mirror the word panel's render cascade: target-driven
-                    // for non-EN Native hits, entry-driven (target→MT→source)
-                    // for everything else. Without this, sentence-mode word
-                    // rows showed raw English to non-EN users whenever the
-                    // drag-lookup cache missed and this path repopulated it.
-                    val nativeTargetSenses = (defResult as? DefinitionResult.Native)
-                        ?.targetSenses?.sortedBy { it.senseOrd }
-                        ?.takeIf { it.isNotEmpty() }
-                    val isTargetDriven = prefs.targetLang != "en" && nativeTargetSenses != null
-                    // Imported term-dictionary lines lead, in the shared
-                    // flat-card format (one per line, source in parens,
-                    // continuous numbering with the pack lines below).
-                    val importedLines = importedFlatLines(entry.importedSenses)
-                    val packLines = if (isTargetDriven) {
-                        nativeTargetSenses.map { it.glosses.joinToString("; ") }
-                    } else {
-                        val targetByOrd = (defResult as? DefinitionResult.Native)
-                            ?.targetSenses?.associateBy { it.senseOrd }
-                        // Native no longer carries per-sense MT fallback —
-                        // it always renders target-driven, so reaching this
-                        // entry-driven branch with Native is unreachable in
-                        // practice (target=en + Native isn't returned by
-                        // DefinitionResolver).
-                        val mtDefs = when (defResult) {
-                            is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
-                            is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
-                            else -> null
-                        }
-                        flatSenses.mapIndexed { i, sense ->
-                            targetByOrd?.get(i)?.glosses?.joinToString("; ")
-                                ?: mtDefs?.getOrNull(i)?.takeIf { it.isNotBlank() }
-                                ?: sense.targetDefinitions.joinToString("; ")
-                        }
-                    }
-                    val rawLines = importedLines + packLines.filter { it.isNotEmpty() }
-                    val meaning = (
-                        if (rawLines.size > 1) rawLines.mapIndexed { i, l -> "${i + 1}. $l" }
-                        else rawLines
-                        ).joinToString("\n")
+                    // ONE construction of the definition content: the shared
+                    // tier cascade (imported rows lead; target-driven for
+                    // non-EN Native hits, entry-driven target→MT→source
+                    // otherwise — the same rows the lens shows). The flat
+                    // meaning string is DERIVED from the senses, so the two
+                    // can't drift; this replaced a parallel hand-built
+                    // cascade. defResult is non-null whenever response is —
+                    // the null-check is for the compiler.
+                    val senses = if (defResult != null) {
+                        buildSenseDisplays(defResult, response.entries, prefs.targetLang)
+                    } else emptyList()
+                    val meaning = flatMeaningOf(senses)
                     if (meaning.isNotEmpty()) {
                         results[displayWord] = Triple(reading, meaning, entry.freqScore)
-                        // Structured senses for the sentence card's word cells —
-                        // the same rows the lens shows, captured here because the
-                        // entries/defResult don't survive past this loop. The
-                        // null-check is for the compiler; defResult is non-null
-                        // whenever response is.
-                        val senses = if (defResult != null) {
-                            buildSenseDisplays(defResult, response.entries, prefs.targetLang)
-                        } else emptyList()
                         // primary is the headword we labelled the row with —
                         // its pitch/frequencies are what the sentence card's
                         // target-word fields want.

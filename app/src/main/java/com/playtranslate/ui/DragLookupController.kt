@@ -1164,182 +1164,52 @@ class DragLookupController(
             ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant))
         val defResult = withContext(Dispatchers.IO) { resolver.lookup(lookupForm, matchedToken?.reading) }
         val response = defResult?.response
-        // Wiktionary source packs split each POS section into its own entry;
-        // [primary] drives the popup's word/reading/freq fields while
-        // [flatSenses] feeds the sense rows so multi-POS headwords (e.g.
-        // English "man" — noun + verb) don't lose senses. JMdict (single
-        // entry per surface) flatSenses == primary.senses, so behavior is
-        // unchanged for JA.
         val entries = response?.entries.orEmpty()
         val entry = entries.firstOrNull()
-        val flatSenses = entries.flatMap { it.senses }
-        // Imported term-dictionary rows lead every entry-backed branch —
-        // final text, outside the MT tiers.
-        val importedRows = importedSenseDisplays(entry?.importedSenses.orEmpty())
 
-        // Build popup data based on DefinitionResult tier.
+        // Build popup data. The sense rows come from the shared tier
+        // cascade every definitions surface uses ([buildSenseDisplays]:
+        // imported rows lead, then Native target-driven / MT /
+        // English-fallback branching, flattened across every entry so
+        // Wiktionary's per-POS entry split doesn't lose senses). This
+        // replaced a hand-rolled copy of that cascade — the last one
+        // outside the shared builder.
         val reading = matchedToken?.reading
-        val popupData: PopupData = when {
-            entry != null && defResult is DefinitionResult.Native -> {
-                val display = entry.headwordDisplay(
-                    entry.selectHeadword(matchedSurface, lookupForm, matchedToken?.reading),
-                    matchedSurface,
-                )
-                // Target-driven for non-English targets: render the pack's
-                // sense list directly, no JMdict-position alignment (which
-                // is unrecoverable — see WordDetailBottomSheet for full
-                // explanation). For English targets, keep the by-ordinal
-                // alignment using English glosses + per-sense MT fallback.
-                val targetSenses = defResult.targetSenses.sortedBy { it.senseOrd }
-                val isTargetDriven = prefs.targetLang != "en" && targetSenses.isNotEmpty()
-                val senses = if (isTargetDriven) {
-                    // Blank-pos target rows (PanLex) inherit the source-
-                    // entry POS only when entries agree; multi-POS source
-                    // (e.g. "surprise" → noun + verb + intj) yields an
-                    // empty fallback so we don't mislabel cells.
-                    val fallbackPos = com.playtranslate.model.unambiguousFallbackPos(entries)
-                    targetSenses.map { target ->
-                        val pos = target.pos.filter { it.isNotBlank() }.ifEmpty { fallbackPos }
-                        SenseDisplay(
-                            pos = pos,
-                            definition = target.glosses.joinToString("; "),
-                            misc = target.misc,
-                        )
-                    }
-                } else {
-                    // English-target or empty-targetSenses defensive path —
-                    // flat-sense ordinals across all entries, no MT bridge
-                    // (Native no longer carries one).
-                    val targetByOrd = targetSenses.associateBy { it.senseOrd }
-                    flatSenses.mapIndexed { i, sense ->
-                        val target = targetByOrd[i]
-                        if (target != null) {
-                            SenseDisplay(
-                                pos = target.pos,
-                                definition = target.glosses.joinToString("; "),
-                                misc = target.misc,
-                            )
-                        } else {
-                            SenseDisplay(
-                                pos = sense.partsOfSpeech,
-                                definition = sense.targetDefinitions.joinToString("; "),
-                                misc = sense.misc,
-                            )
-                        }
-                    }
-                }
-                PopupData(
-                    word = display.written,
-                    reading = display.reading,
-                    senses = importedRows + senses,
-                    freqScore = entry.freqScore,
-                    isCommon = entry.isCommon == true,
-                    entry = entry,
-                    pitch = display.pitch,
-                    frequencies = display.frequencies,
-                )
-            }
-            entry != null && defResult is DefinitionResult.MachineTranslated -> {
-                val display = entry.headwordDisplay(
-                    entry.selectHeadword(matchedSurface, lookupForm, matchedToken?.reading),
-                    matchedSurface,
-                )
-                val defs = defResult.translatedDefinitions
-                PopupData(
-                    word = display.written,
-                    reading = display.reading,
-                    senses = importedRows + if (defs != null) {
-                        // Translated definitions available — show them directly
-                        flatSenses.mapIndexed { i, sense ->
-                            SenseDisplay(
-                                pos = sense.partsOfSpeech,
-                                definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") },
-                                misc = sense.misc,
-                            )
-                        }
-                    } else {
-                        // No translated definitions — headword + English context
-                        buildList {
-                            add(SenseDisplay(pos = emptyList(), definition = defResult.translatedHeadword, misc = emptyList()))
-                            flatSenses.forEach { sense ->
-                                add(SenseDisplay(
-                                    pos = sense.partsOfSpeech,
-                                    definition = sense.targetDefinitions.joinToString("; "),
-                                    misc = sense.misc,
-                                ))
-                            }
-                        }
-                    },
-                    freqScore = entry.freqScore,
-                    isCommon = entry.isCommon == true,
-                    entry = entry,
-                    machineTranslated = true,
-                    pitch = display.pitch,
-                    frequencies = display.frequencies,
-                )
-            }
-            entry != null && defResult is DefinitionResult.EnglishFallback && defResult.translatedDefinitions != null -> {
-                // Translated definitions without headword translation
-                val display = entry.headwordDisplay(
-                    entry.selectHeadword(matchedSurface, lookupForm, matchedToken?.reading),
-                    matchedSurface,
-                )
-                val defs = defResult.translatedDefinitions
-                PopupData(
-                    word = display.written,
-                    reading = display.reading,
-                    senses = importedRows + flatSenses.mapIndexed { i, sense ->
-                        SenseDisplay(
-                            pos = sense.partsOfSpeech,
-                            definition = defs.getOrElse(i) { sense.targetDefinitions.joinToString("; ") },
-                            misc = sense.misc,
-                        )
-                    },
-                    freqScore = entry.freqScore,
-                    isCommon = entry.isCommon == true,
-                    entry = entry,
-                    machineTranslated = true,
-                    pitch = display.pitch,
-                    frequencies = display.frequencies,
-                )
-            }
-            entry != null -> {
-                // EnglishFallback with no translations — show English as-is
-                val display = entry.headwordDisplay(
-                    entry.selectHeadword(matchedSurface, lookupForm, matchedToken?.reading),
-                    matchedSurface,
-                )
-                PopupData(
-                    word = display.written,
-                    reading = display.reading,
-                    senses = importedRows + flatSenses.map { sense ->
-                        SenseDisplay(
-                            pos = sense.partsOfSpeech,
-                            definition = sense.targetDefinitions.joinToString("; "),
-                            misc = sense.misc,
-                        )
-                    },
-                    freqScore = entry.freqScore,
-                    isCommon = entry.isCommon == true,
-                    entry = entry,
-                    pitch = display.pitch,
-                    frequencies = display.frequencies,
-                )
-            }
-            else -> {
-                // No dictionary entry. Keep the lens up with an empty sense
-                // list — the lens's WordDefinitionsView renders its
-                // "No definitions found." placeholder. (The genuine "no token
-                // under the finger" cases already returned null above.)
-                PopupData(
-                    word = lookupForm,
-                    reading = reading,
-                    senses = emptyList(),
-                    freqScore = 0,
-                    isCommon = false,
-                    entry = null,
-                )
-            }
+        val popupData: PopupData = if (entry != null && defResult != null) {
+            val display = entry.headwordDisplay(
+                entry.selectHeadword(matchedSurface, lookupForm, matchedToken?.reading),
+                matchedSurface,
+            )
+            PopupData(
+                word = display.written,
+                reading = display.reading,
+                senses = buildSenseDisplays(defResult, entries, prefs.targetLang),
+                freqScore = entry.freqScore,
+                isCommon = entry.isCommon == true,
+                entry = entry,
+                // The MT badge marks tiers whose TEXT came through a
+                // translator: all of MachineTranslated, and EnglishFallback
+                // only when it carries translated definitions — the same
+                // rule the old per-branch flags encoded.
+                machineTranslated = defResult is DefinitionResult.MachineTranslated ||
+                    (defResult is DefinitionResult.EnglishFallback &&
+                        defResult.translatedDefinitions != null),
+                pitch = display.pitch,
+                frequencies = display.frequencies,
+            )
+        } else {
+            // No dictionary entry. Keep the lens up with an empty sense
+            // list — the lens's WordDefinitionsView renders its
+            // "No definitions found." placeholder. (The genuine "no token
+            // under the finger" cases already returned null above.)
+            PopupData(
+                word = lookupForm,
+                reading = reading,
+                senses = emptyList(),
+                freqScore = 0,
+                isCommon = false,
+                entry = null,
+            )
         }
 
         Log.d(TAG, "Found: $matchedSurface ($lookupForm) → ${entry?.slug ?: "(fallback)"}")
