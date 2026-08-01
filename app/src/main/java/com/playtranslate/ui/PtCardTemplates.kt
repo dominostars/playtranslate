@@ -111,7 +111,7 @@ internal object PtCardTemplates {
             "border-radius:14px;padding:2px 16px;}" +
         ".gl-rows{margin:0 4px;}" +
         ".gl-row{padding:14px 0;border-top:1px solid var(--pt-hairline);" +
-            "font-size:0.75em;line-height:1.6;color:var(--pt-hint);}" +
+            "font-size:0.75em;line-height:1.6;color:var(--pt-secondary);}" +
         ".gl-row:first-child{border-top:0;}"
 
     /**

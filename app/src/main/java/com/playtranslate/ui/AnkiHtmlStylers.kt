@@ -166,7 +166,7 @@ internal val INLINE_STYLES: Map<String, String> = mapOf(
                       "border-radius:14px;padding:2px 16px;",
     // One "More examples" row (the default model styles .gl-row in its CSS)
     "gl-row"       to "padding:14px 0;border-top:1px solid rgba(128,128,128,0.28);" +
-                      "font-size:0.75em;line-height:1.6;color:#9a9a9a;",
+                      "font-size:0.75em;line-height:1.6;color:#8a8a8a;",
     // Sentence-words cells
     "gl-w"         to "padding:14px 14px 12px;border-top:1px solid rgba(128,128,128,0.28);",
     "gl-w-target"  to "background:rgba(128,128,128,0.10);" +
