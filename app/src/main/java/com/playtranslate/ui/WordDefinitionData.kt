@@ -53,4 +53,6 @@ data class SenseDisplay(
     /** Per-dictionary accent override (ARGB) for an imported row's title;
      *  null = the default muted header. */
     val accentColor: Int? = null,
-)
+    // Serializable so senses can ride [WordEnrichment] through the sentence
+    // Anki review's intent/args snapshots (same transport as pitch/frequencies).
+) : java.io.Serializable

@@ -317,6 +317,11 @@
     <!-- Badge label shown beside common dictionary entries. -->
     <string name="word_detail_common">Common</string>
 
+    <!-- Section header above the per-word breakdown on a sentence Anki
+         card's back. Baked into the card at send time (Anki templates
+         can't localize). Sentence case; the card CSS applies ALL CAPS. -->
+    <string name="card_words_in_sentence">Words in sentence</string>
+
     <!-- Part-of-speech labels shown with a word's definitions (the magnifier
          lens, the translation-result word cell, the word-detail sheet, and the
          lookup popup). Universal grammatical categories only; mapped from

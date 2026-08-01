@@ -1471,6 +1471,8 @@ class WordAnkiReviewSheet : DialogFragment() {
                         surfaceForm = payload.surfaces[w].orEmpty(),
                         pitch = payload.enrichment[w]?.pitch.orEmpty(),
                         frequencies = payload.enrichment[w]?.frequencies.orEmpty(),
+                        isCommon = payload.enrichment[w]?.isCommon ?: false,
+                        senses = payload.enrichment[w]?.senses.orEmpty(),
                     )
                 }
                 getContentFragment()?.applyWords(sentence, entries, targetWord)
@@ -1505,6 +1507,8 @@ class WordAnkiReviewSheet : DialogFragment() {
                 surfaceForm = surfaces[w] ?: "",
                 pitch = enrich[w]?.pitch.orEmpty(),
                 frequencies = enrich[w]?.frequencies.orEmpty(),
+                isCommon = enrich[w]?.isCommon ?: false,
+                senses = enrich[w]?.senses.orEmpty(),
             )
         }
     }
@@ -1523,14 +1527,7 @@ class WordAnkiReviewSheet : DialogFragment() {
         // on its own in Anki. The structured path uses inlineStyler
         // since the structured outputs ship with no CSS. Build all
         // eagerly so the pipeline can hand each to the right builder.
-        val defaultDefinitionHtml = buildString {
-            val entry = resolvedEntry
-            if (entry != null) {
-                appendSensesHtml(entry, fallbackDefinition, classStyler)
-            } else {
-                append(WordAnkiHtmlBuilder.wrapFlatDefinitionHtml(fallbackDefinition))
-            }
-        }
+        val defaultDefinitionHtml = buildDefinitionPanel(classStyler)
         val defaultExamplesHtml = buildString {
             if (resolvedEntry != null) appendMoreExamplesHtml(classStyler)
         }
@@ -1611,43 +1608,71 @@ class WordAnkiReviewSheet : DialogFragment() {
      * what lands on the card.
      */
     internal fun buildWordDefinitionHtml(styler: HtmlStyler): String {
-        val entry = resolvedEntry
-        val fallback = arguments?.getString(ARG_DEFINITION) ?: ""
         val sb = StringBuilder()
-        if (entry != null) {
-            sb.appendSensesHtml(entry, fallback, styler)
-            sb.appendMoreExamplesHtml(styler)
-        } else if (fallback.isNotBlank()) {
-            val defHtml = fallback.lines().filter { it.isNotBlank() }
-                .joinToString("<br>") { htmlEscape(it.trimStart()) }
-            sb.append("<div ${styler("gl-gloss", "")}>$defHtml</div>")
-        }
+        sb.append(buildDefinitionPanel(styler))
+        if (resolvedEntry != null) sb.appendMoreExamplesHtml(styler)
         return sb.toString()
+    }
+
+    /**
+     * The Definition field's full v002 chrome — localized "Definitions"
+     * `.gl-section` header plus the `.gl-panel` holding the senses (or
+     * the flat fallback when no entry resolved) — shared by the
+     * default-model and structured sends so both read alike. "" when
+     * there is nothing to show, keeping the field blank.
+     */
+    private fun buildDefinitionPanel(styler: HtmlStyler): String {
+        val fallback = arguments?.getString(ARG_DEFINITION) ?: ""
+        val entry = resolvedEntry
+            ?: return WordAnkiHtmlBuilder.wrapFlatDefinitionHtml(
+                fallback, styler, getString(R.string.anki_group_definitions))
+        val body = buildString { appendSensesHtml(entry, fallback, styler) }
+        if (body.isEmpty()) return ""
+        return "<div ${styler("gl-section", "")}>" +
+            htmlEscape(getString(R.string.anki_group_definitions)) +
+            "</div><div ${styler("gl-panel", "")}>" + body + "</div>"
     }
 
     private fun StringBuilder.appendSensesHtml(
         entry: DictionaryEntry, fallback: String, styler: HtmlStyler,
     ) {
-        // Imported term-dictionary definitions lead the card, one labelled
-        // block per dictionary — final text, source (and the entry's POS
-        // tags when present) as the pos-style label.
+        // Sense rows are flex: a right-aligned number column beside the
+        // sense body (the lens's buildDefinitionRow, in HTML). One counter
+        // across every branch keeps numbering continuous (imported rows
+        // first, like the lens) and gives the structured path its
+        // border-top:0 on row 0 (no :first-child inline equivalent; on the
+        // default path it duplicates the .gl-sense:first-child rule,
+        // harmlessly).
+        var rowIdx = 0
+        fun openSense() {
+            append("<div ${styler("gl-sense", if (rowIdx == 0) "border-top:0;" else "")}>")
+            append("<span ${styler("gl-sense-n gl-hint", "")}>")
+            append(++rowIdx)
+            append("</span><div ${styler("gl-sense-b", "")}>")
+        }
+        fun closeSense() {
+            append("</div></div>")
+        }
+        // Imported term-dictionary definitions lead the card, final text.
+        // The source label (and the entry's POS tags when present) sits
+        // below the gloss like every other POS line in the v002 design.
         val hasImportedRows = entry.importedSenses.any { it.senses.isNotEmpty() }
         entry.importedSenses.forEach { group ->
             group.senses.forEachIndexed { defIdx, sense ->
-                append("<div ${styler("gl-sense", "")}>")
+                openSense()
+                append("<div ${styler("gl-gloss", "")}>")
+                append(htmlEscape(sense.definition).replace("\n", "<br>"))
+                append("</div>")
                 val label = buildList {
                     if (defIdx == 0) add(group.source)
                     if (sense.pos.isNotBlank()) add(sense.pos)
                 }.joinToString(" · ")
                 if (label.isNotEmpty()) {
-                    append("<div ${styler("gl-pos", "")}>")
+                    append("<div ${styler("gl-pos gl-hint", "")}>")
                     append(htmlEscape(label))
                     append("</div>")
                 }
-                append("<div ${styler("gl-gloss", "")}>")
-                append(htmlEscape(sense.definition).replace("\n", "<br>"))
-                append("</div>")
-                append("</div>")
+                closeSense()
             }
         }
 
@@ -1677,36 +1702,32 @@ class WordAnkiReviewSheet : DialogFragment() {
                 if (!hasImportedRows) {
                     val defHtml = fallback.lines().filter { it.isNotBlank() }
                         .joinToString("<br>") { htmlEscape(it.trimStart()) }
-                    append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
+                    append("<div ${styler("gl-gloss", "padding:14px 0;")}>$defHtml</div>")
                 }
                 return
             }
-            val numVisible = visibleTarget.size
-            visibleTarget.forEachIndexed { displayIdx, (idx, target) ->
-                val numberPrefix = if (numVisible > 1) "${displayIdx + 1}. " else ""
+            visibleTarget.forEach { (idx, target) ->
                 val posLabels = target.pos.filter { it.isNotBlank() }
                     .takeIf { it.isNotEmpty() }
                     ?: fallbackPos
-                append("<div ${styler("gl-sense", "")}>")
+                openSense()
+                append("<div ${styler("gl-gloss", "")}>")
+                append(htmlEscape(target.glosses.joinToString("; ")))
+                append("</div>")
                 if (posLabels.isNotEmpty()) {
-                    append("<div ${styler("gl-pos", "")}>")
+                    append("<div ${styler("gl-pos gl-hint", "")}>")
                     append(htmlEscape(posLabels.joinToString(" · ")))
                     append("</div>")
                 }
-                append("<div ${styler("gl-gloss", "")}>")
-                append(numberPrefix)
-                append(htmlEscape(target.glosses.joinToString("; ")))
-                append("</div>")
-                val targetMisc = com.playtranslate.model.MiscVocabulary.englishMisc(target.misc)
-                if (targetMisc.isNotEmpty()) {
-                    append("<div ${styler("gl-misc", "")}>")
-                    append(htmlEscape(targetMisc.joinToString(" · ")))
+                requireContext().renderMiscText(target.misc)?.let { misc ->
+                    append("<div ${styler("gl-misc gl-hint", "")}>")
+                    append(htmlEscape(misc))
                     append("</div>")
                 }
                 target.examples.withIndex()
                     .filter { (eIdx, _) -> (idx to eIdx) !in removedExamples }
                     .forEach { (_, ex) ->
-                        append("<div ${styler("gl-ex", "")}>")
+                        append("<div ${styler("gl-ex gl-hint", "")}>")
                         append(htmlEscape(ex.text))
                         if (ex.translation.isNotBlank()) {
                             append("<div ${styler("gl-ex-tr", "")}>")
@@ -1715,7 +1736,7 @@ class WordAnkiReviewSheet : DialogFragment() {
                         }
                         append("</div>")
                     }
-                append("</div>")
+                closeSense()
             }
             return
         }
@@ -1733,39 +1754,35 @@ class WordAnkiReviewSheet : DialogFragment() {
             if (!hasImportedRows) {
                 val defHtml = fallback.lines().filter { it.isNotBlank() }
                     .joinToString("<br>") { htmlEscape(it.trimStart()) }
-                append("<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>")
+                append("<div ${styler("gl-gloss", "padding:14px 0;")}>$defHtml</div>")
             }
             return
         }
-        val numVisible = visibleSenses.size
-        visibleSenses.forEachIndexed { displayIdx, (flatIdx, sense) ->
+        visibleSenses.forEach { (flatIdx, sense) ->
             val target = targetByOrd?.get(flatIdx)
             val posLabels = (target?.pos ?: sense.partsOfSpeech).filter { it.isNotBlank() }
             val gloss = target?.glosses?.joinToString("; ")
                 ?: translatedDefs?.getOrNull(flatIdx)
                 ?: sense.targetDefinitions.joinToString("; ")
-            val numberPrefix = if (numVisible > 1) "${displayIdx + 1}. " else ""
-            append("<div ${styler("gl-sense", "")}>")
+            openSense()
+            append("<div ${styler("gl-gloss", "")}>")
+            append(htmlEscape(gloss))
+            append("</div>")
             if (posLabels.isNotEmpty()) {
-                append("<div ${styler("gl-pos", "")}>")
+                append("<div ${styler("gl-pos gl-hint", "")}>")
                 append(htmlEscape(posLabels.joinToString(" · ")))
                 append("</div>")
             }
-            append("<div ${styler("gl-gloss", "")}>")
-            append(numberPrefix)
-            append(htmlEscape(gloss))
-            append("</div>")
-            val miscEng = com.playtranslate.model.MiscVocabulary.englishMisc(sense.misc)
-            if (miscEng.isNotEmpty()) {
-                append("<div ${styler("gl-misc", "")}>")
-                append(htmlEscape(miscEng.joinToString(" · ")))
+            requireContext().renderMiscText(sense.misc)?.let { misc ->
+                append("<div ${styler("gl-misc gl-hint", "")}>")
+                append(htmlEscape(misc))
                 append("</div>")
             }
             sense.examples.withIndex()
                 .filter { (eIdx, _) -> (flatIdx to eIdx) !in removedExamples }
                 .forEach { (eIdx, ex) ->
                     val tr = exampleTranslationCache[flatIdx to eIdx] ?: ex.translation
-                    append("<div ${styler("gl-ex", "")}>")
+                    append("<div ${styler("gl-ex gl-hint", "")}>")
                     append(htmlEscape(ex.text))
                     if (tr.isNotBlank()) {
                         append("<div ${styler("gl-ex-tr", "")}>")
@@ -1774,7 +1791,7 @@ class WordAnkiReviewSheet : DialogFragment() {
                     }
                     append("</div>")
                 }
-            append("</div>")
+            closeSense()
         }
     }
 
@@ -1785,8 +1802,16 @@ class WordAnkiReviewSheet : DialogFragment() {
         append("<div ${styler("gl-section", "")}>")
         append(getString(R.string.word_detail_more_examples))
         append("</div>")
-        visible.forEach { (_, p) ->
-            append("<div ${styler("gl-ex", "")}>")
+        // .gl-rows: hairline-separated rows, no panel fill — this section is
+        // reference, not answer. Row chrome rides the gl-row class: the
+        // default model's CSS styles it (theme-adaptive hairline), the
+        // structured path resolves it from INLINE_STYLES. Row 0 suppresses
+        // its hairline inline on both paths (the structured path has no
+        // :first-child equivalent; on the default path it duplicates the
+        // CSS rule harmlessly).
+        append("<div ${styler("gl-rows", "")}>")
+        visible.forEachIndexed { i, (_, p) ->
+            append("<div ${styler("gl-row", if (i == 0) "border-top:0;" else "")}>")
             append(htmlEscape(p.source))
             if (p.target.isNotBlank()) {
                 append("<div ${styler("gl-ex-tr", "")}>")
@@ -1795,6 +1820,7 @@ class WordAnkiReviewSheet : DialogFragment() {
             }
             append("</div>")
         }
+        append("</div>")
     }
 
     // ── Send: sentence mode ──────────────────────────────────────────────────

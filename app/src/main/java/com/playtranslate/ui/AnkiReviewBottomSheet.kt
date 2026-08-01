@@ -127,6 +127,8 @@ class AnkiReviewBottomSheet : DialogFragment() {
                 surfaceForm = surfaceArr.getOrElse(i) { "" },
                 pitch = enrich[w]?.pitch.orEmpty(),
                 frequencies = enrich[w]?.frequencies.orEmpty(),
+                isCommon = enrich[w]?.isCommon ?: false,
+                senses = enrich[w]?.senses.orEmpty(),
             ))
         }
 

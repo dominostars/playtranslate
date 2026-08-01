@@ -9,15 +9,34 @@ package com.playtranslate.ui
 internal object WordAnkiHtmlBuilder {
 
     /**
-     * Wraps a plain-text fallback definition in a styled div. One-tap
-     * (no resolved entry) passes the result as the Definition field
-     * value for both the default and structured paths; the sheet uses
-     * it as its own fallback when [WordAnkiReviewSheet] couldn't
-     * resolve a dictionary entry.
+     * Wraps a plain-text fallback definition in the v002 Definition-field
+     * chrome: optional localized `.gl-section` header, then a `.gl-panel`
+     * holding the lines as one `.gl-gloss` row — the same surfaces real
+     * senses get, so a no-entry card doesn't read as a different design.
+     * One-tap (no resolved entry) passes the result as the Definition
+     * field value for both the default and structured paths; the sheet
+     * uses it as its own fallback when [WordAnkiReviewSheet] couldn't
+     * resolve a dictionary entry. Empty string in → empty string out, so
+     * the template's `{{Definition}}` slot stays blank.
      */
-    fun wrapFlatDefinitionHtml(fallbackDefinition: String): String {
+    fun wrapFlatDefinitionHtml(
+        fallbackDefinition: String,
+        styler: HtmlStyler = classStyler,
+        /** Localized "Definitions" header; "" omits it. Callers with a
+         *  Context pass R.string.anki_group_definitions. */
+        sectionHeader: String = "",
+    ): String {
         val defHtml = fallbackDefinition.lines().filter { it.isNotBlank() }
             .joinToString("<br>") { htmlEscape(it.trimStart()) }
-        return "<div style=\"font-size:1.1em;margin:12px 4px;\">$defHtml</div>"
+        if (defHtml.isEmpty()) return ""
+        val sb = StringBuilder()
+        if (sectionHeader.isNotEmpty()) {
+            sb.append("<div ${styler("gl-section", "")}>")
+                .append(htmlEscape(sectionHeader)).append("</div>")
+        }
+        sb.append("<div ${styler("gl-panel", "")}>")
+            .append("<div ${styler("gl-gloss", "padding:14px 0;")}>")
+            .append(defHtml).append("</div></div>")
+        return sb.toString()
     }
 }

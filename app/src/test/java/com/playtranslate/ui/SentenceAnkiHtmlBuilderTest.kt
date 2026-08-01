@@ -516,6 +516,132 @@ class SentenceAnkiHtmlBuilderTest {
         assertTrue("pitch over kana-only word", html.contains("class=\"pa-m"))
     }
 
+    // ── Words table: v002 sense cells ────────────────────────────────────
+
+    private fun sensedEntry(vararg senses: SenseDisplay) = SentenceAnkiHtmlBuilder.WordEntry(
+        word = "封", reading = "ふう", meaning = "1. seal\n2. closing", freqScore = 3,
+        frequencies = listOf(com.playtranslate.model.FrequencyTag("JPDB", "3,241")),
+        isCommon = true, senses = senses.toList(),
+    )
+
+    @Test fun `words table renders every sense with POS header only on change`() {
+        val html = SentenceAnkiHtmlBuilder.buildWordsHtmlWith(
+            listOf(sensedEntry(
+                SenseDisplay(pos = listOf("noun"), definition = "seal", misc = emptyList()),
+                SenseDisplay(pos = listOf("noun"), definition = "closing", misc = emptyList()),
+                SenseDisplay(pos = listOf("verb"), definition = "to seal", misc = emptyList()),
+            )),
+            highlightedWords = emptySet(), styler = classStyler,
+        )
+        // No sense caps: all three render, numbered continuously.
+        assertTrue(html.contains(">seal<"))
+        assertTrue(html.contains(">closing<"))
+        assertTrue(html.contains(">to seal<"))
+        assertTrue(html.contains(">1.</span>"))
+        assertTrue(html.contains(">3.</span>"))
+        // One header for the noun run, one for verb — not one per sense.
+        assertEquals(2, Regex("gl-pos-h").findAll(html).count())
+        // The flat meaning fallback must NOT also render.
+        assertFalse(html.contains("gl-dtext gl-secondary"))
+    }
+
+    @Test fun `words table meta row carries pill stars and chips`() {
+        val html = SentenceAnkiHtmlBuilder.buildWordsHtmlWith(
+            listOf(sensedEntry(SenseDisplay(listOf("noun"), "seal", emptyList()))),
+            highlightedWords = setOf("封"), styler = classStyler,
+            commonLabel = "Häufig",
+        )
+        assertTrue("target cell surface", html.contains("class=\"gl-w-target\""))
+        assertTrue("localized common pill", html.contains(">Häufig</span>"))
+        assertTrue(html.contains(">★★★</span>"))
+        assertTrue(html.contains(">JPDB: 3,241</span>"))
+    }
+
+    @Test fun `words table imported sense header renders verbatim not localized`() {
+        val html = SentenceAnkiHtmlBuilder.buildWordsHtmlWith(
+            listOf(sensedEntry(
+                SenseDisplay(pos = listOf("Jitendex · n"), definition = "seal",
+                    misc = emptyList(), imported = true),
+                SenseDisplay(pos = listOf("noun"), definition = "closing", misc = emptyList()),
+            )),
+            highlightedWords = emptySet(), styler = classStyler,
+            localizePos = { "LOCALIZED" },
+        )
+        assertTrue("imported header verbatim", html.contains(">Jitendex · n</div>"))
+        assertTrue("pack POS localized", html.contains(">LOCALIZED</div>"))
+        // No Kotlin uppercasing — caps come from the CSS text-transform.
+        assertFalse(html.contains("JITENDEX"))
+    }
+
+    @Test fun `words table renders misc via the injected renderer`() {
+        val html = SentenceAnkiHtmlBuilder.buildWordsHtmlWith(
+            listOf(sensedEntry(
+                SenseDisplay(listOf("noun"), "seal", misc = listOf("uk", "arch")),
+            )),
+            highlightedWords = emptySet(), styler = classStyler,
+            renderMisc = { it.joinToString("+") },
+        )
+        assertTrue(html.contains(">uk+arch</div>"))
+    }
+
+    @Test fun `words table falls back to meaning lines when senses are empty`() {
+        val entry = SentenceAnkiHtmlBuilder.WordEntry(
+            word = "封", reading = "ふう", meaning = "1. seal\n2. closing", freqScore = 0,
+        )
+        val html = SentenceAnkiHtmlBuilder.buildWordsHtmlWith(
+            listOf(entry), highlightedWords = emptySet(), styler = classStyler,
+        )
+        // Lines carry their own baked numbering — no gl-num column.
+        assertTrue(html.contains(">1. seal</div>"))
+        assertTrue(html.contains(">2. closing</div>"))
+        assertFalse(html.contains("gl-num"))
+    }
+
+    // ── SentenceFurigana pitch word-wrappers (v002 tooltip) ──────────────
+
+    @Test fun `furigana wraps pitch words in data attributes when enabled`() {
+        // Kana-only word: no tokenizer tokens needed (kanji-free tokens are
+        // never indexed), the wrapper kana falls back to the all-kana word.
+        val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
+            word = "なるほど", reading = "", meaning = "I see", pitch = listOf(0, 2),
+        ))
+        val html = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            text = "なるほど", words = words, sourceLangId = SourceLangId.JA,
+            wrapWordPitch = true, tokenizer = fakeTokenizer(),
+        )
+        assertEquals(
+            "<span data-pt-kana=\"なるほど\" data-pt-pitch=\"0,2\">なるほど</span>",
+            html,
+        )
+    }
+
+    @Test fun `furigana pitch wrapper nests inside the bold highlight`() {
+        val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
+            word = "なるほど", reading = "", meaning = "I see", pitch = listOf(0),
+        ))
+        val html = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            text = "なるほど", words = words, highlightedWords = setOf("なるほど"),
+            sourceLangId = SourceLangId.JA, wrapWordPitch = true,
+            tokenizer = fakeTokenizer(),
+        )
+        assertEquals(
+            "<b><span data-pt-kana=\"なるほど\" data-pt-pitch=\"0\">なるほど</span></b>",
+            html,
+        )
+    }
+
+    @Test fun `furigana emits no wrappers by default (structured path)`() {
+        val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
+            word = "なるほど", reading = "", meaning = "I see", pitch = listOf(0),
+        ))
+        val html = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            text = "なるほど", words = words, sourceLangId = SourceLangId.JA,
+            tokenizer = fakeTokenizer(),
+        )
+        assertEquals("なるほど", html)
+        assertFalse(html.contains("data-pt-kana"))
+    }
+
     @Test fun `ZH sentence furigana picks longest matching word at each position`() {
         // Defensive: if both 小心地 (3-char adverb) and 小心 (2-char
         // adjective) happen to be in the WordEntry list, longest-first

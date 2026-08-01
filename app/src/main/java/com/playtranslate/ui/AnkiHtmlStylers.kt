@@ -43,17 +43,21 @@ internal val classStyler: HtmlStyler = { cls, extra ->
 /**
  * Structured path: replace known PlayTranslate class refs with inline
  * CSS, merged with any per-callsite inline styles into a single
- * `style=""` attribute. Class refs not in [INLINE_STYLES] pass through
- * as plain `class="cls"` so callers shipping their own classes
+ * `style=""` attribute. The class argument may carry several
+ * space-separated classes (`"gl-w-read gl-hint"`) — each is resolved
+ * against [INLINE_STYLES] independently, in order, so later classes'
+ * declarations win CSS-style. Class refs not in [INLINE_STYLES] pass
+ * through as plain `class="cls"` so callers shipping their own classes
  * (e.g. JPMN's `glossary` class) still emit usable markup.
  */
 internal val inlineStyler: HtmlStyler = { cls, extra ->
-    val inlined = cls?.let { INLINE_STYLES[it] }
-    val combined = (inlined.orEmpty()) + extra
+    val tokens = cls?.split(' ')?.filter { it.isNotEmpty() }.orEmpty()
+    val unknown = tokens.filter { it !in INLINE_STYLES }
+    val combined = tokens.mapNotNull { INLINE_STYLES[it] }.joinToString("") + extra
     buildString {
-        if (cls != null && inlined == null) {
+        if (unknown.isNotEmpty()) {
             append("class=\"")
-            append(cls)
+            append(unknown.joinToString(" "))
             append("\"")
             if (combined.isNotEmpty()) append(' ')
         }
@@ -133,20 +137,55 @@ internal fun soundTag(audioFilename: String?): String =
  * classes. The structured path can't ship
  * `@media(prefers-color-scheme)` adaptive rules without fighting the
  * user's template, so colors are mid-tone values chosen to read on
- * both light and dark AnkiDroid cards. The accent color (#6cd1c2) and
- * highlight (#CC6B1A at 18% alpha) match the model CSS's dark-mode
- * palette closely enough for visual continuity.
+ * both light and dark AnkiDroid cards, and the model CSS's custom
+ * properties resolve to fixed mid-tone equivalents here
+ * (`--pt-hairline` → rgba(128,128,128,0.28), `--pt-panel` →
+ * rgba(128,128,128,0.10), `--pt-chip` → rgba(128,128,128,0.18)). The
+ * highlight (#CC6B1A at 18% alpha) matches the model CSS's palette
+ * closely enough for visual continuity.
+ *
+ * `.gl-sense:first-child` and `.gl-rows > div` have no inline
+ * equivalent — callsites emit `border-top:0;` as the extra inline
+ * style for index 0 instead.
  */
 internal val INLINE_STYLES: Map<String, String> = mapOf(
-    // Per-sense layout
-    "gl-sense"     to "margin:14px 4px;",
-    "gl-pos"       to "font-size:0.78em;letter-spacing:0.08em;color:#8a8a8a;text-transform:uppercase;",
-    "gl-gloss"     to "font-size:1.1em;margin-top:4px;",
-    "gl-misc"      to "font-size:0.85em;color:#8a8a8a;font-style:italic;margin-top:2px;",
-    "gl-ex"        to "margin:8px 0 0 8px;padding-left:10px;border-left:2px solid #6cd1c2;",
-    "gl-ex-tr"     to "font-size:0.92em;color:#8a8a8a;margin-top:2px;",
-    "gl-section"   to "font-size:0.78em;letter-spacing:0.08em;color:#8a8a8a;text-transform:uppercase;margin:18px 4px 6px;",
-    // Sentence-words HTML
+    // Per-sense layout (word-card Definition/Examples fields)
+    "gl-sense"     to "display:flex;align-items:baseline;padding:14px 0;border-top:1px solid rgba(128,128,128,0.28);",
+    "gl-sense-n"   to "min-width:16px;text-align:right;font-size:0.75em;line-height:1.6;color:#9a9a9a;",
+    "gl-sense-b"   to "flex:1;margin-left:12px;",
+    "gl-pos"       to "font-size:0.6em;letter-spacing:0.1em;text-transform:uppercase;margin-top:5px;color:#8a8a8a;",
+    "gl-gloss"     to "font-size:1.1em;line-height:1.45;",
+    "gl-misc"      to "font-size:0.65em;font-style:italic;margin-top:2px;color:#8a8a8a;",
+    "gl-ex"        to "font-size:0.75em;line-height:1.6;margin:10px 0 0;padding-left:12px;" +
+                      "border-left:1px solid rgba(128,128,128,0.28);",
+    // Same colour as its source line — italic alone distinguishes it.
+    "gl-ex-tr"     to "font-size:0.93em;font-style:italic;line-height:1.5;margin-top:2px;",
+    "gl-section"   to "font-size:0.55em;font-weight:500;letter-spacing:0.12em;" +
+                      "text-transform:uppercase;margin:20px 4px 8px;color:#9a9a9a;",
+    "gl-panel"     to "background:rgba(128,128,128,0.10);border:1px solid rgba(128,128,128,0.28);" +
+                      "border-radius:14px;padding:2px 16px;",
+    // One "More examples" row (the default model styles .gl-row in its CSS)
+    "gl-row"       to "padding:14px 0;border-top:1px solid rgba(128,128,128,0.28);" +
+                      "font-size:0.75em;line-height:1.6;color:#9a9a9a;",
+    // Sentence-words cells
+    "gl-w"         to "padding:14px 14px 12px;border-top:1px solid rgba(128,128,128,0.28);",
+    "gl-w-target"  to "background:rgba(128,128,128,0.10);" +
+                      "border-radius:14px;padding:12px 14px;margin-bottom:8px;",
+    "gl-w-head"    to "display:flex;align-items:center;gap:10px;",
+    "gl-w-word"    to "font-size:1em;font-weight:700;line-height:1.2;",
+    "gl-w-read"    to "flex:1;font-size:0.65em;color:#9a9a9a;",
+    "gl-meta"      to "display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;",
+    "gl-pill"      to "font-size:0.6em;font-weight:500;border:1px solid rgba(128,128,128,0.35);" +
+                      "border-radius:999px;padding:1px 9px;color:#8a8a8a;",
+    "gl-chip"      to "font-size:0.6em;font-weight:500;background:rgba(128,128,128,0.18);" +
+                      "border-radius:4px;padding:2px 8px;color:#8a8a8a;",
+    "gl-stars"     to "font-size:0.65em;color:#8a8a8a;",
+    "gl-pos-h"     to "font-size:0.55em;font-weight:500;letter-spacing:0.07em;" +
+                      "text-transform:uppercase;margin:12px 0 3px;color:#8a8a8a;",
+    "gl-def"       to "display:flex;padding:3px 0;",
+    "gl-num"       to "min-width:16px;text-align:right;font-size:0.85em;line-height:1.45;color:#9a9a9a;",
+    "gl-dtext"     to "flex:1;margin-left:9px;font-size:0.85em;line-height:1.45;",
+    // Shared color roles
     "gl-secondary" to "color:#8a8a8a;",
     "gl-hint"      to "color:#9a9a9a;",
     "gl-hl"        to "color:#CC6B1A;",

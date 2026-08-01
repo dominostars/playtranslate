@@ -538,7 +538,9 @@ fun List<RowState>.toSurfaceMap(): Map<String, String> =
  *  process-global cache, to keep word→data aligned). Feeds the sentence-card
  *  pitch/frequency Anki fields via [WordEnrichment]. */
 fun List<RowState>.toEnrichmentMap(): Map<String, WordEnrichment> =
-    associate { it.displayWord to WordEnrichment(it.pitch, it.frequencies) }
+    associate {
+        it.displayWord to WordEnrichment(it.pitch, it.frequencies, it.isCommon, it.senses)
+    }
 
 /** The sole resolved word when [sourceText] is exactly one token
  *  (whitespace-insensitive), else null. Drives the single-word Anki

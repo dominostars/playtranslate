@@ -170,13 +170,22 @@ class PtModelsTest {
 
     // ── CSS coverage ─────────────────────────────────────────────────────
 
-    /** Every gl-* class the field builders can emit (classStyler HTML in
-     *  Definition/Examples/WordsTable). A class missing from the model
-     *  CSS renders unstyled with no error anywhere. */
+    /** Every gl-* class the field builders can emit into BOTH models'
+     *  fields (classStyler HTML in Definition/Examples/Frequency/
+     *  WordsTable). A class missing from the model CSS renders unstyled
+     *  with no error anywhere. */
     private val emittedClasses = listOf(
         "gl-secondary", "gl-hint", "gl-hl", "gl-hl-bg",
-        "gl-sense", "gl-pos", "gl-gloss", "gl-misc",
-        "gl-ex", "gl-ex-tr", "gl-section",
+        "gl-sense", "gl-sense-n", "gl-sense-b", "gl-pos", "gl-gloss", "gl-misc",
+        "gl-ex", "gl-ex-tr", "gl-section", "gl-panel", "gl-rows", "gl-row",
+        "gl-stars", "gl-chip", "gl-pill",
+    )
+
+    /** Classes only the sentence card's words-table cells emit — the
+     *  word model deliberately ships without the cell rules. */
+    private val sentenceOnlyClasses = listOf(
+        "gl-w", "gl-w-target", "gl-w-head", "gl-w-word", "gl-w-read",
+        "gl-meta", "gl-pos-h", "gl-def", "gl-num", "gl-dtext",
     )
 
     @Test fun `model css styles every class the field builders emit`() {
@@ -184,6 +193,10 @@ class PtModelsTest {
             for (cls in emittedClasses) {
                 assertTrue("${spec.name} css missing .$cls", spec.css.contains(".$cls{"))
             }
+        }
+        for (cls in sentenceOnlyClasses) {
+            assertTrue("SENTENCE css missing .$cls",
+                PtModels.SENTENCE.css.contains(".$cls{"))
         }
     }
 

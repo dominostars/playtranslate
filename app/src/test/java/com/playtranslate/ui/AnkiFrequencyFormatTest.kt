@@ -70,6 +70,31 @@ class AnkiFrequencyFormatTest {
         )
     }
 
+    // ─── frequencyChipsHtml (PT default model meta row) ──────────────────
+
+    @Test fun `frequencyChipsHtml is empty with no stars and no freqs`() {
+        assertEquals("", AnkiFrequencyFormat.frequencyChipsHtml(0, emptyList()))
+    }
+
+    @Test fun `frequencyChipsHtml leads with stars then per-dict chips`() {
+        assertEquals(
+            "<span class=\"gl-stars\">★★★</span>" +
+                "<span class=\"gl-chip\">JPDB: 3,241</span>" +
+                "<span class=\"gl-chip\">CC100: 5678</span>",
+            AnkiFrequencyFormat.frequencyChipsHtml(
+                3,
+                listOf(FrequencyTag("JPDB", "3,241"), FrequencyTag("CC100", "5678")),
+            ),
+        )
+    }
+
+    @Test fun `frequencyChipsHtml escapes source and display`() {
+        assertEquals(
+            "<span class=\"gl-chip\">A&lt;b&gt;: 1 &amp; up</span>",
+            AnkiFrequencyFormat.frequencyChipsHtml(0, listOf(FrequencyTag("A<b>", "1 & up"))),
+        )
+    }
+
     @Test fun `frequencyValuesHtml escapes source and display (comma-safe)`() {
         // A display with a comma (thousands separator) must survive — emitting
         // a <ul> rather than comma-text is exactly why.

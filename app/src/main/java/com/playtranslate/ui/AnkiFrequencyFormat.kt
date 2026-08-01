@@ -78,6 +78,30 @@ internal object AnkiFrequencyFormat {
     }
 
     /**
+     * PlayTranslate default-model (v002+) frequency row: the ★ rating in a
+     * `.gl-stars` span, then one `.gl-chip` span per dictionary
+     * (`source: display`, the same text [BadgeChips.freqChip] renders in
+     * the lens). The word template's `.pt-meta` flex row owns layout,
+     * gaps, and the secondary text colour — this emits only the chips.
+     * Class-styled, so ONLY the default PT model (whose CSS defines the
+     * classes) may consume it; the structured path keeps
+     * [frequencyValuesHtml], whose `<ul>` shape is pinned to Lapis.
+     * Empty string when nothing to show, so the field stays blank.
+     */
+    fun frequencyChipsHtml(freqScore: Int, freqs: List<FrequencyTag>): String {
+        val sb = StringBuilder()
+        stars(freqScore).takeIf { it.isNotEmpty() }?.let {
+            sb.append("<span class=\"gl-stars\">").append(it).append("</span>")
+        }
+        freqs.forEach {
+            sb.append("<span class=\"gl-chip\">")
+                .append(htmlEscape("${it.source}: ${it.display}"))
+                .append("</span>")
+        }
+        return sb.toString()
+    }
+
+    /**
      * JPMN-stylized frequency list: the note's own `frequencies__group`
      * structure, which JPMN's CSS targets without JS. A plain list or
      * Yomitan's `{frequencies}` markup displays incorrectly here (per the JPMN

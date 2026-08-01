@@ -64,14 +64,17 @@ class PtNoteBuilderTest {
         assertEquals("辞書", note.expression)
     }
 
-    @Test fun `frequency field is the values list`() {
+    @Test fun `frequency field is the chips row`() {
         val note = word(
             freqScore = 2,
             frequencies = listOf(FrequencyTag("JPDB", "1234", null, 1234.0)),
         )
-        assertTrue(note.frequency.startsWith("<ul>"))
+        // v002: stars + per-dictionary chips for the template's .pt-meta
+        // flex row — NOT the Lapis-pinned <ul> the structured path keeps.
+        assertTrue(note.frequency.startsWith("<span class=\"gl-stars\">"))
         assertTrue(note.frequency.contains("★★"))
-        assertTrue(note.frequency.contains("JPDB: 1234"))
+        assertTrue(note.frequency.contains("<span class=\"gl-chip\">JPDB: 1234</span>"))
+        assertTrue(!note.frequency.contains("<ul>"))
     }
 
     @Test fun `non-JA word leaves pitch and reading empty`() {

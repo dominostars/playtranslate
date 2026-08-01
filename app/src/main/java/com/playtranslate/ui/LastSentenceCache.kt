@@ -30,6 +30,14 @@ import kotlin.coroutines.coroutineContext
 data class WordEnrichment(
     val pitch: List<Int> = emptyList(),
     val frequencies: List<FrequencyTag> = emptyList(),
+    /** JMdict-style common-entry flag for the word's resolved entry; drives the
+     *  Common pill in the sentence card's word cells. */
+    val isCommon: Boolean = false,
+    /** Structured senses for the word, captured where the dictionary entries
+     *  are still in hand (the same [buildSenseDisplays] rows the lens shows).
+     *  Empty when the lookup produced no entry — consumers fall back to the
+     *  flattened meaning string. */
+    val senses: List<SenseDisplay> = emptyList(),
     // Serializable so the sentence Anki review can carry per-word enrichment as
     // an atomic intent/args snapshot instead of re-reading the global cache
     // fields (which can belong to a different sentence by render time).
@@ -434,11 +442,21 @@ object LastSentenceCache {
                         ).joinToString("\n")
                     if (meaning.isNotEmpty()) {
                         results[displayWord] = Triple(reading, meaning, entry.freqScore)
+                        // Structured senses for the sentence card's word cells —
+                        // the same rows the lens shows, captured here because the
+                        // entries/defResult don't survive past this loop. The
+                        // null-check is for the compiler; defResult is non-null
+                        // whenever response is.
+                        val senses = if (defResult != null) {
+                            buildSenseDisplays(defResult, response.entries, prefs.targetLang)
+                        } else emptyList()
                         // primary is the headword we labelled the row with —
                         // its pitch/frequencies are what the sentence card's
                         // target-word fields want.
                         enrichment[displayWord] = WordEnrichment(
                             primary?.pitch.orEmpty(), primary?.frequencies.orEmpty(),
+                            isCommon = entry.isCommon == true,
+                            senses = senses,
                         )
                         if (tok.surface != displayWord) {
                             surfaces[displayWord] = tok.surface

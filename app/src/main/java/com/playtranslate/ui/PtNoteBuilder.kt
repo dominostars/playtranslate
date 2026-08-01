@@ -45,10 +45,16 @@ internal object PtNoteBuilder {
         // Raw downsteps ("0,2") — the template's pitch JS draws the
         // contour from this plus Reading at review time.
         pitchPosition = AnkiFrequencyFormat.pitchPositions(pitch),
+        // Populated but no longer rendered by the v002 template (POS
+        // belongs to each sense now); kept for users who reference it
+        // in their own templates.
         partOfSpeech = htmlEscape(pos),
         definition = definitionHtml,
         examples = examplesHtml,
-        frequency = AnkiFrequencyFormat.frequencyValuesHtml(freqScore, frequencies),
+        // Chips row (stars + source: display chips); the template's
+        // .pt-meta flex row owns layout. NOT frequencyValuesHtml — that
+        // <ul> shape is the structured path's Lapis pin.
+        frequency = AnkiFrequencyFormat.frequencyChipsHtml(freqScore, frequencies),
         picture = pictureHtml(imageFilename),
         wordAudio = soundTag(audioFilename),
         audioCredit = creditHtml(audioCredit),
@@ -65,6 +71,17 @@ internal object PtNoteBuilder {
         wordAudioFilenames: Map<String, String>,
         /** Aggregate credit (sentence + per-word Commons clips). */
         audioCredit: String?,
+        /** Localized `.gl-section` header baked ahead of the words table
+         *  (the template can't localize); "" skips the header. Defaults
+         *  keep JVM/Robolectric tests and pre-l10n callers compiling —
+         *  production passes real localized values. */
+        wordsSectionHeader: String = "",
+        /** Localized Common-pill label for the word cells' meta rows. */
+        commonLabel: String = "Common",
+        /** POS localizer for non-imported senses (Context::localizePos). */
+        localizePos: (List<String>) -> String = { it.joinToString(" · ") },
+        /** Misc register-tag renderer (Context::renderMiscText). */
+        renderMisc: (List<String>) -> String? = { null },
     ): PtNote.Sentence {
         val firstHighlighted = cardData.words.firstOrNull {
             it.word in cardData.selectedWords
@@ -82,6 +99,9 @@ internal object PtNoteBuilder {
                 words = cardData.words,
                 highlightedWords = cardData.selectedWords,
                 sourceLangId = cardData.sourceLangId,
+                // Our own template's tap tooltip reads the data-pt-* word
+                // wrappers to draw pitch; the structured path never sets this.
+                wrapWordPitch = true,
             )
         } else ""
         // Highlighted words sort to the top of the table, matching the
@@ -89,6 +109,13 @@ internal object PtNoteBuilder {
         val sorted = if (cardData.selectedWords.isNotEmpty()) {
             cardData.words.sortedByDescending { it.word in cardData.selectedWords }
         } else cardData.words
+        val wordsHtml = SentenceAnkiHtmlBuilder.buildWordsHtmlWith(
+            sorted, cardData.selectedWords, classStyler,
+            wordAudioFilenames, renderPitch = true,
+            commonLabel = commonLabel,
+            localizePos = localizePos,
+            renderMisc = renderMisc,
+        )
         return PtNote.Sentence(
             sentence = SentenceAnkiHtmlBuilder.buildSentencePlain(
                 text = cardData.source,
@@ -102,10 +129,12 @@ internal object PtNoteBuilder {
             // field-name search; "" when nothing is highlighted (field 0
             // Sentence owns sort/dup duty, so no fallback needed here).
             targetWord = htmlEscape(firstHighlighted?.word.orEmpty()),
-            wordsTable = SentenceAnkiHtmlBuilder.buildWordsHtmlWith(
-                sorted, cardData.selectedWords, classStyler,
-                wordAudioFilenames, renderPitch = true,
-            ),
+            // The localized section header is baked into the field (the
+            // template can't localize), but only above a non-empty table —
+            // the template's {{#WordsTable}} gate must keep an empty field
+            // section-free.
+            wordsTable = if (wordsHtml.isEmpty() || wordsSectionHeader.isEmpty()) wordsHtml
+            else "<div class=\"gl-section\">${htmlEscape(wordsSectionHeader)}</div>$wordsHtml",
             picture = pictureHtml(imageFilename),
             sentenceAudio = soundTag(audioFilename),
             audioCredit = creditHtml(audioCredit),

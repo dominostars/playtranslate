@@ -2,6 +2,7 @@ package com.playtranslate.ui
 
 import android.content.Context
 import androidx.fragment.app.Fragment
+import com.playtranslate.R
 import com.playtranslate.audio.Attribution
 import com.playtranslate.audio.AudioRequest
 import com.playtranslate.audio.AudioSelection
@@ -188,6 +189,10 @@ suspend fun Context.sendSentenceCard(
                     // Aggregate credit (sentence + per-word) — the default
                     // model has one AudioCredit field.
                     audioCredit = audioCredit,
+                    wordsSectionHeader = ctx.getString(R.string.card_words_in_sentence),
+                    commonLabel = ctx.getString(R.string.word_detail_common),
+                    localizePos = ctx::localizePos,
+                    renderMisc = ctx::renderMiscText,
                 )
             },
             structured = { imageFilename, audioFilename, wordAudioFilenames ->
@@ -199,6 +204,9 @@ suspend fun Context.sendSentenceCard(
                     wordAudioFilenames = wordAudioFilenames,
                     sentenceAudioCredit = sentenceCredit,
                     wordAudioCredit = wordCredit,
+                    commonLabel = ctx.getString(R.string.word_detail_common),
+                    localizePos = ctx::localizePos,
+                    renderMisc = ctx::renderMiscText,
                 )
             },
         )

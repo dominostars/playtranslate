@@ -51,6 +51,13 @@ object AnkiCardOutputBuilder {
          *  Anki field via [ContentSource.WORD_AUDIO] and can't carry
          *  per-word tags meaningfully. */
         wordAudioFilenames: Map<String, String> = emptyMap(),
+        /** Localized Common-pill label + POS/misc localizers for the
+         *  words-table cells — same contract as
+         *  [PtNoteBuilder.forSentence]; defaults keep JVM tests
+         *  context-free, production callers inject Context helpers. */
+        commonLabel: String = "Common",
+        localizePos: (List<String>) -> String = { it.joinToString(" · ") },
+        renderMisc: (List<String>) -> String? = { null },
     ): CardOutputs {
         val firstHighlighted = cardData.words.firstOrNull {
             it.word in cardData.selectedWords
@@ -119,6 +126,9 @@ object AnkiCardOutputBuilder {
             cardData.selectedWords,
             styler = inlineStyler,
             wordAudioFilenames = wordAudioFilenames,
+            commonLabel = commonLabel,
+            localizePos = localizePos,
+            renderMisc = renderMisc,
         )
         // Mapped audio fields (`ExpressionAudio`, `WordAudio`, `Word Audio`
         // in Lapis/JPMN/Migaku) bind to `ContentSource.WORD_AUDIO`, which

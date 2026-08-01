@@ -293,7 +293,12 @@ class AnkiManager(private val context: Context) {
             // provider dup rejection). 0 is also the provider default;
             // explicit because it's load-bearing.
             put("sort_field_index", 0)
-            put("css", spec.css)
+            // The user's CURRENT accent rides the model CSS as a trailing
+            // :root override of the template's Aqua default (later rule
+            // wins). Creation-time snapshot only: model CSS is never
+            // rewritten, so an accent change reaches new note types
+            // (version bumps / recreations), not existing ones.
+            put("css", spec.css + accentCssOverride())
         }
         val modelId = try {
             val uri = context.contentResolver.insert(MODEL_URI, cv) ?: run {
@@ -321,6 +326,20 @@ class AnkiManager(private val context: Context) {
             Log.e(TAG, "Model read-back failed: ${e.message}", e)
             ModelInfo(modelId, spec.name, spec.fields, type = 0, sortf = 0)
         }
+    }
+
+    /** `:root{--pt-hl:…;--pt-hl-bg:…;}` carrying the user's current
+     *  accent (theme-invariant, like the app's own accent; tint = the
+     *  0x1F-alpha `pt_accent_*_tint` convention). "" on any resolution
+     *  failure — the template's baked default accent then stands. */
+    private fun accentCssOverride(): String = try {
+        val argb = androidx.core.content.ContextCompat.getColor(
+            context, com.playtranslate.Prefs(context).accent.color)
+        val rgb = String.format("#%06X", argb and 0xFFFFFF)
+        ":root{--pt-hl:$rgb;--pt-hl-bg:${rgb}1F;}"
+    } catch (e: Exception) {
+        Log.w(TAG, "accent CSS resolution failed: ${e.message}")
+        ""
     }
 
     /** The stored (question format, answer format) of

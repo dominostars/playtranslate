@@ -39,6 +39,12 @@ object SentenceAnkiHtmlBuilder {
         /** Per-dictionary frequencies for this word, for the Anki frequency
          *  list/sort fields; empty when unknown. */
         val frequencies: List<FrequencyTag> = emptyList(),
+        /** Common-entry flag; drives the word cell's Common pill. Rides
+         *  [WordEnrichment] like [pitch]/[frequencies]. */
+        val isCommon: Boolean = false,
+        /** Structured senses (the lens's rows). When empty the cell falls back
+         *  to splitting [meaning] on newlines, today's rendering. */
+        val senses: List<SenseDisplay> = emptyList(),
     )
 
     fun starsString(score: Int) = "\u2605".repeat(score)
@@ -143,6 +149,14 @@ object SentenceAnkiHtmlBuilder {
         words: List<WordEntry> = emptyList(),
         highlightedWords: Set<String> = emptySet(),
         sourceLangId: SourceLangId = SourceLangId.JA,
+        /** When true, wrap each pitch-bearing word's span of the sentence in
+         *  `<span data-pt-kana="…" data-pt-pitch="…">` so the PT sentence
+         *  template's tap tooltip can draw the word's pitch contour. Default
+         *  false — the structured path's SentenceFurigana output must stay
+         *  byte-stable for third-party consumers (Migaku's parser, `{{kana:}}`
+         *  users). Tag boundaries are invisible to Anki's furigana regex for
+         *  the same reason `<b>`/`<wbr>` are: `[^ >]` can't span a `>`. */
+        wrapWordPitch: Boolean = false,
         // Injectable for unit tests; production uses the process-scoped Sudachi
         // tokenizer (which needs a pack dict, unavailable in plain JVM tests).
         tokenizer: JapaneseTokenizer = SudachiJapaneseTokenizer.Provider,
@@ -151,6 +165,25 @@ object SentenceAnkiHtmlBuilder {
         val isZh = sourceLangId == SourceLangId.ZH || sourceLangId == SourceLangId.ZH_HANT
         if (!isJa && !isZh) return plainBody(text)
         val targets = resolveHighlightTargets(words, highlightedWords)
+        // Pitch wrappers ride the same surface-anchored start-match mechanism
+        // as the <b> targets: surface (inflected form when known) → the
+        // dictionary reading the contour draws over + the downstep list.
+        // Longest-first so a longer word wins a shared prefix.
+        val pitchWraps: List<Pair<String, Pair<String, List<Int>>>> =
+            if (wrapWordPitch) {
+                words.asSequence()
+                    .mapNotNull { e ->
+                        val kana = when {
+                            e.reading.isNotEmpty() -> e.reading
+                            e.word.isNotEmpty() && e.word.all(Deinflector::isKana) -> e.word
+                            else -> ""
+                        }
+                        if (e.pitch.isEmpty() || kana.isEmpty()) null
+                        else (e.surfaceForm.ifEmpty { e.word }) to (kana to e.pitch)
+                    }
+                    .sortedByDescending { it.first.length }
+                    .toList()
+            } else emptyList()
         // JA: anchor kanji-bearing Kuromoji tokens to their start
         // offsets in the source text. We walk char-by-char below;
         // this index tells us "at position i, expand the next N chars
@@ -199,12 +232,30 @@ object SentenceAnkiHtmlBuilder {
         // end. Surface forms in `words` come from Kuromoji-aligned
         // lookups so off-boundary targets shouldn't happen in practice.
         var boldCloseAt = -1
+        // Same mechanism for the pitch wrapper span. Nesting invariant:
+        // <b> is always the outer element — a pitch span opens after any
+        // same-position <b> and only when it would close at or before the
+        // bold close, and a <b> never opens mid-pitch-span. Word surfaces
+        // tile the sentence so real inputs never hit the guards; they
+        // exist to keep pathological overlaps well-formed.
+        var pitchCloseAt = -1
         while (i < text.length) {
-            if (boldCloseAt < 0) {
+            if (boldCloseAt < 0 && pitchCloseAt < 0) {
                 val hit = targets.firstOrNull { text.startsWith(it, i) }
                 if (hit != null) {
                     sb.append("<b>")
                     boldCloseAt = i + hit.length
+                }
+            }
+            if (pitchCloseAt < 0 && pitchWraps.isNotEmpty()) {
+                val hit = pitchWraps.firstOrNull { text.startsWith(it.first, i) }
+                if (hit != null && (boldCloseAt < 0 || i + hit.first.length <= boldCloseAt)) {
+                    sb.append("<span data-pt-kana=\"")
+                        .append(htmlEscape(hit.second.first))
+                        .append("\" data-pt-pitch=\"")
+                        .append(hit.second.second.joinToString(","))
+                        .append("\">")
+                    pitchCloseAt = i + hit.first.length
                 }
             }
             val advanced = if (isJa) {
@@ -225,11 +276,18 @@ object SentenceAnkiHtmlBuilder {
             if (!advanced) {
                 i = appendOneCharOrBr(sb, text, i)
             }
+            // Inner-first close order: the pitch span closes before a
+            // same-position </b> so nesting stays well-formed.
+            if (pitchCloseAt in 0..i) {
+                sb.append("</span>")
+                pitchCloseAt = -1
+            }
             if (boldCloseAt in 0..i) {
                 sb.append("</b>")
                 boldCloseAt = -1
             }
         }
+        if (pitchCloseAt >= 0) sb.append("</span>")
         if (boldCloseAt >= 0) sb.append("</b>")
         val out = stripBoundarySeparators(sb.toString())
         Log.d(TAG, "buildSentenceFurigana: in='$text' out='$out'")
@@ -496,36 +554,70 @@ object SentenceAnkiHtmlBuilder {
      * gl-* rules) or an inline `style=""` (structured path, no CSS
      * available). `internal` so [AnkiCardOutputBuilder] and
      * [PtNoteBuilder] can pass their stylers.
+     *
+     * Each word renders as a cell that ports [WordDefinitionsView.bind]
+     * to HTML, so the card and the magnifying lens read alike:
+     * head row (word · reading/pitch · audio) → meta row (Common pill ·
+     * ★ run · frequency chips) → senses with a POS header only when the
+     * POS changes from the previous sense. Target words get the
+     * `.gl-w-target` panel surface, context words the bare hairline
+     * `.gl-w` row — no accent fill; the accent underline in the
+     * sentence body is what marks targets. ALL senses render — the
+     * card is archival, and nothing in the app knows which sense is
+     * the right one, so none may be dropped. When [WordEntry.senses]
+     * is empty, falls back to the flattened meaning lines (which carry
+     * their own baked numbering).
      */
     internal fun buildWordsHtmlWith(
         words: List<WordEntry>,
         highlightedWords: Set<String>,
         styler: HtmlStyler,
         /** Map of word → Anki media filename for per-target-word audio.
-         *  When present, a `[sound:…]` tag is appended next to the word's
-         *  surface so Anki renders an inline play button. Words absent
-         *  from this map get no audio tag. */
+         *  When present, a `[sound:…]` tag is emitted in a `.pt-audio`
+         *  span in the head row so Anki renders an inline play button.
+         *  Words absent from this map get no audio tag. */
         wordAudioFilenames: Map<String, String> = emptyMap(),
         /** When true, render each word's reading with its pitch-accent contour
          *  (the legacy PT card back). Default false so the structured
          *  WORDS_TABLE path — which ships no pitch CSS and already gets pitch
          *  via the PitchPosition/PAOverride fields — emits no `pa-*` markup. */
         renderPitch: Boolean = false,
+        /** Localized Common-pill label. Production callers pass
+         *  R.string.word_detail_common; the default keeps plain JVM tests
+         *  context-free. */
+        commonLabel: String = "Common",
+        /** POS localizer for non-imported senses (imported headers render
+         *  verbatim, matching the lens). Production passes
+         *  Context::localizePos (list overload). */
+        localizePos: (List<String>) -> String = { it.joinToString(" · ") },
+        /** Misc register-tag renderer; null = emit nothing. Production
+         *  passes Context::renderMiscText (the render-side authority) —
+         *  the default drops misc, acceptable only in tests. */
+        renderMisc: (List<String>) -> String? = { null },
     ): String {
         if (words.isEmpty()) return ""
         val sb = StringBuilder()
+        var prevWasTarget = false
         words.forEach { entry ->
-            val isHighlighted = entry.word in highlightedWords
-            val safeWord = htmlEscape(entry.word)
-            val audioTag = wordAudioFilenames[entry.word]
-                ?.let { " [sound:$it]" } ?: ""
-            if (isHighlighted) {
-                sb.append("<div ${styler("gl-hl-bg", "margin-bottom:14px;border-radius:6px;padding:8px 10px;")}>")
-                sb.append("<div ${styler("gl-hl", "")}><b>").append(safeWord).append("</b>").append(audioTag).append("</div>")
-            } else {
-                sb.append("<div ${styler(null, "margin-bottom:14px;")}>")
-                sb.append("<div><b>").append(safeWord).append("</b>").append(audioTag).append("</div>")
-            }
+            val isTarget = entry.word in highlightedWords
+            // Target cells run bigger than context cells (title 23px vs
+            // 20px, definitions 18px vs 17px at the 20px deck base). The
+            // bumps ride inline per element because target/context share
+            // classes and the structured path has no descendant selectors.
+            // (An accent-coloured target headword was tried and rejected
+            // on device — keep it text-coloured.)
+            val titleSize = if (isTarget) "font-size:1.15em;" else ""
+            val defSize = if (isTarget) "font-size:0.9em;" else ""
+            // The first context row after the target block drops its
+            // hairline — the cells' surfaces already separate the groups.
+            val cellExtra = if (!isTarget && prevWasTarget) "border-top:0;" else ""
+            sb.append("<div ${styler(if (isTarget) "gl-w-target" else "gl-w", cellExtra)}>")
+            prevWasTarget = isTarget
+
+            // Head row: word, reading (flex remainder), audio circle.
+            sb.append("<div ${styler("gl-w-head", "")}>")
+            sb.append("<span ${styler("gl-w-word", titleSize)}>")
+                .append(htmlEscape(entry.word)).append("</span>")
             // Kana for the pitch contour: the reading, or (kana-only entries)
             // the all-kana word — mirrors the word card / WordResultCell. The
             // kana-only branch is gated on renderPitch so the structured
@@ -537,30 +629,79 @@ object SentenceAnkiHtmlBuilder {
                     entry.word.isNotEmpty() && entry.word.all(Deinflector::isKana) -> entry.word
                 else -> ""
             }
-            if (pitchKana.isNotEmpty() || entry.freqScore > 0) {
-                sb.append("<div ${styler(null, "font-size:0.85em;")}>")
-                if (pitchKana.isNotEmpty()) {
-                    sb.append("<span ${styler("gl-hint", "")}>")
-                    // Pitch contour (legacy back only); the diagram contains the
-                    // kana, so it replaces the plain reading.
-                    val pitchHtml = if (renderPitch) {
-                        PitchAccentHtml.pitchAccentHtml(pitchKana, entry.pitch)
-                    } else ""
-                    if (pitchHtml.isNotEmpty()) sb.append(pitchHtml)
-                    else sb.append(htmlEscape(entry.reading))
-                    sb.append("</span>")
+            // The reading span renders even when empty — it carries the
+            // flex:1 that pushes the audio circle to the cell's right edge.
+            sb.append("<span ${styler("gl-w-read gl-hint", "")}>")
+            if (pitchKana.isNotEmpty()) {
+                // Pitch contour (default-model back only); the diagram
+                // contains the kana, so it replaces the plain reading.
+                val pitchHtml = if (renderPitch) {
+                    PitchAccentHtml.pitchAccentHtml(pitchKana, entry.pitch)
+                } else ""
+                if (pitchHtml.isNotEmpty()) sb.append(pitchHtml)
+                else sb.append(htmlEscape(entry.reading))
+            }
+            sb.append("</span>")
+            wordAudioFilenames[entry.word]?.let {
+                sb.append("<span ${styler("pt-audio", "")}>[sound:$it]</span>")
+            }
+            sb.append("</div>")
+
+            // Meta row: Common pill, ★ run, one chip per frequency dict.
+            if (entry.isCommon || entry.freqScore > 0 || entry.frequencies.isNotEmpty()) {
+                sb.append("<div ${styler("gl-meta", "")}>")
+                if (entry.isCommon) {
+                    sb.append("<span ${styler("gl-pill gl-secondary", "")}>")
+                        .append(htmlEscape(commonLabel)).append("</span>")
                 }
                 if (entry.freqScore > 0) {
                     // starsString emits only the ★ glyph repeated, so it's
                     // HTML-safe by construction.
-                    sb.append(" <span ${styler(null, "color:#606060;")}>${starsString(entry.freqScore)}</span>")
+                    sb.append("<span ${styler("gl-stars gl-secondary", "")}>")
+                        .append(starsString(entry.freqScore)).append("</span>")
+                }
+                entry.frequencies.forEach { tag ->
+                    sb.append("<span ${styler("gl-chip gl-secondary", "")}>")
+                        .append(htmlEscape("${tag.source}: ${tag.display}")).append("</span>")
                 }
                 sb.append("</div>")
             }
-            val extra = if (isHighlighted) "margin-left:10px;font-weight:bold;" else "margin-left:10px;"
-            entry.meaning.split("\n").filter { it.isNotBlank() }.forEach { line ->
-                sb.append("<div ${styler("gl-secondary", extra)}>")
-                    .append(htmlEscape(line)).append("</div>")
+
+            // Senses: numbered rows, POS header only on change (the lens's
+            // rule — WordDefinitionsView keeps the same previousPos state).
+            // Caps were rejected by design review: every sense renders.
+            if (entry.senses.isNotEmpty()) {
+                var previousPos: List<String>? = null
+                entry.senses.forEachIndexed { i, sense ->
+                    if (sense.pos.isNotEmpty() && sense.pos != previousPos) {
+                        // Imported headers are display text (dictionary name ·
+                        // tags), never localized; caps come from the CSS
+                        // text-transform, not Kotlin.
+                        val label =
+                            if (sense.imported) sense.pos.joinToString(" · ")
+                            else localizePos(sense.pos)
+                        sb.append("<div ${styler("gl-pos-h gl-secondary", "")}>")
+                            .append(htmlEscape(label)).append("</div>")
+                        previousPos = sense.pos
+                    }
+                    sb.append("<div ${styler("gl-def", "")}>")
+                        .append("<span ${styler("gl-num gl-hint", defSize)}>")
+                        .append(i + 1).append(".</span>")
+                        .append("<span ${styler("gl-dtext", defSize)}>")
+                        .append(htmlEscape(sense.definition)).append("</span>")
+                        .append("</div>")
+                    renderMisc(sense.misc)?.let { misc ->
+                        sb.append("<div ${styler("gl-misc gl-hint", "margin-left:25px;")}>")
+                            .append(htmlEscape(misc)).append("</div>")
+                    }
+                }
+            } else {
+                // No structured senses (no dictionary entry, or a pre-senses
+                // producer): today's flat meaning lines, already numbered.
+                entry.meaning.split("\n").filter { it.isNotBlank() }.forEach { line ->
+                    sb.append("<div ${styler("gl-dtext gl-secondary", defSize + "margin-top:6px;")}>")
+                        .append(htmlEscape(line)).append("</div>")
+                }
             }
             sb.append("</div>")
         }

@@ -239,6 +239,8 @@ suspend fun Context.oneTapSendSentence(
                 surfaceForm = resolvedSurfaces[w] ?: "",
                 pitch = resolvedEnrichment[w]?.pitch.orEmpty(),
                 frequencies = resolvedEnrichment[w]?.frequencies.orEmpty(),
+                isCommon = resolvedEnrichment[w]?.isCommon ?: false,
+                senses = resolvedEnrichment[w]?.senses.orEmpty(),
             )
         }
 
@@ -303,7 +305,9 @@ suspend fun Context.oneTapSendWord(
 ): AnkiSendResult {
     val ctx = this
     val prefs = Prefs(ctx)
-    val flatDefinitionHtml = WordAnkiHtmlBuilder.wrapFlatDefinitionHtml(fallbackDefinition)
+    // Two stylers, one shape: the default model's CSS defines the gl-*
+    // classes, the structured path inlines them.
+    val definitionsHeader = ctx.getString(R.string.anki_group_definitions)
     val input = WordSendInput(
         word = word,
         reading = reading,
@@ -316,8 +320,10 @@ suspend fun Context.oneTapSendWord(
         includeWordAudio = prefs.ankiWordAudioEnabled,
         // wordSelection stays Auto — saved-voice TTS (Commons-first when
         // enabled), matching the sheet's default cell.
-        defaultDefinitionHtml = flatDefinitionHtml,
-        inlineDefinitionHtml = flatDefinitionHtml,
+        defaultDefinitionHtml = WordAnkiHtmlBuilder.wrapFlatDefinitionHtml(
+            fallbackDefinition, classStyler, definitionsHeader),
+        inlineDefinitionHtml = WordAnkiHtmlBuilder.wrapFlatDefinitionHtml(
+            fallbackDefinition, inlineStyler, definitionsHeader),
         inlineExamplesHtml = "",
     )
     return ctx.sendWordCard(input, deckId = prefs.ankiDeckId)
