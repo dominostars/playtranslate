@@ -219,7 +219,9 @@ internal object PtCardTemplates {
             "display:flex;align-items:center;justify-content:center;}" +
         ".pt-brand img{width:18px;height:18px;border-radius:4px;display:block;" +
             "filter:grayscale(1);opacity:0.6;}" +
-        ".pt-a{padding-top:44px;}"
+        // 30px bar + 8px gap — the same 8px the body margin leaves on the
+        // screenshot's sides, so the picture sits in an even gutter.
+        ".pt-a{padding-top:38px;}"
 
     private const val BRAND_BAR =
         "<div class=\"pt-brand\"><img src=\"data:image/jpeg;base64,$BRAND_ICON_B64\"></div>"
