@@ -2999,6 +2999,13 @@
     <string name="history_capture_image_toggle_title">Save capture images</string>
     <!-- Subtitle under the save-capture-images sub-toggle. -->
     <string name="history_capture_image_toggle_subtitle">Keep a photo of each camera or screen capture</string>
+    <!-- Toggle under the History master switch: leave the translation line off the
+         rows on the History list, for readers who want to test themselves before
+         seeing it. Display only, nothing stops being recorded. Default off. -->
+    <string name="history_hide_translations_toggle_title">Hide translations</string>
+    <!-- Subtitle under the hide-translations toggle. The second sentence is the
+         promise that nothing is lost: the translation is one tap away. -->
+    <string name="history_hide_translations_toggle_subtitle">Show only the captured text. Tap a row to see its translation.</string>
     <!-- Header title of a live-mode session's transcript card on the History screen. -->
     <string name="history_live_session_title">Live session</string>
     <!-- Line count in a live-session card's header meta on the History screen,

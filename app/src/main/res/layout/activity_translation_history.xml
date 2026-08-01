@@ -77,6 +77,18 @@
                         android:layout_marginStart="@dimen/pt_row_h_padding"
                         android:background="?attr/ptDivider" />
 
+                    <!-- Display-only toggle: drops the translation line from the
+                         list rows below. Stays live while the master switch is
+                         off — rows recorded earlier still render. -->
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowHideTranslationsToggle" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider" />
+
                     <!-- Destructive clear-all, confirmed via OverlayAlert. -->
                     <TextView
                         android:id="@+id/rowClearHistory"

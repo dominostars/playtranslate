@@ -585,6 +585,16 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_CAPTURE_IMAGE_HISTORY_ENABLED, false)
         set(v) = sp.edit { putBoolean(KEY_CAPTURE_IMAGE_HISTORY_ENABLED, v) }
 
+    /** Drop the translation line from the History LIST rows so only the
+     *  captured text shows, and copy the source alone when a row is
+     *  long-pressed — tapping through to the entry stays the way to see the
+     *  translation, and nothing about recording changes. Display-only, so
+     *  independent of [translationHistoryEnabled]: rows captured earlier
+     *  still render while recording is off. */
+    var historyHideTranslations: Boolean
+        get() = sp.getBoolean(KEY_HISTORY_HIDE_TRANSLATIONS, false)
+        set(v) = sp.edit { putBoolean(KEY_HISTORY_HIDE_TRANSLATIONS, v) }
+
     /** True when [openaiBaseUrl] points somewhere other than the canonical
      *  OpenAI endpoint (trailing-slash / whitespace insensitive). The single
      *  definition of "is this still real OpenAI?" — drives the model-list
@@ -1513,6 +1523,7 @@ class Prefs internal constructor(
         private const val KEY_LLM_CONTEXT_ENABLED           = "llm_context_enabled"
         private const val KEY_TRANSLATION_HISTORY_ENABLED   = "translation_history_enabled"
         private const val KEY_CAPTURE_IMAGE_HISTORY_ENABLED = "capture_image_history_enabled"
+        private const val KEY_HISTORY_HIDE_TRANSLATIONS     = "history_hide_translations"
 
         /** Default selected model — chosen to match the first entry in
          *  the picker after filtering + sorting (newest alias by

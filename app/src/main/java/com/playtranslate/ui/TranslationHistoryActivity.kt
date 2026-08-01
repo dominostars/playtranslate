@@ -40,7 +40,9 @@ import kotlinx.coroutines.withContext
 /**
  * Tools → History: the reading surface for the translation log. Hosts its
  * OWN master switch (enable/consume/clear all live at one address — the
- * empty state doubles as onboarding when the feature is off) and per-date
+ * empty state doubles as onboarding when the feature is off), a
+ * display-only "hide translations" toggle for reading the source before the
+ * answer (the row tap still reveals it), and per-date
  * sections in the settings-page rhythm: a group header OUTSIDE each day's
  * cards. Within a day, rows group into session cards ([Block]): capture
  * sessions (camera/screen badge, optional saved-image thumbnail that
@@ -92,6 +94,12 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
 
     private var hasEntries = false
 
+    /** [Prefs.historyHideTranslations] snapshot for the render in flight —
+     *  read once per render rather than per row (constructing Prefs runs the
+     *  legacy-key migration check). Every path into [bindRow] goes through
+     *  [render], so it is never stale. */
+    private var hideTranslations = false
+
     override fun onContentCreated(savedInstanceState: Bundle?) {
         emptyView = findViewById(R.id.tvHistoryEmpty)
         sections = findViewById(R.id.historySections)
@@ -99,6 +107,7 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
         toolbar = findViewById(R.id.toolbar)
         bindMasterToggle()
         bindCaptureImageToggle()
+        bindHideTranslationsToggle()
         findViewById<View>(R.id.rowClearHistory).setOnClickListener { confirmClear() }
 
         // The toolbar tracks the section under the top edge as you scroll.
@@ -175,6 +184,29 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
         syncCaptureImageRowEnabled()
     }
 
+    /** Display-only toggle over the list rows below — NOT gated on the master
+     *  switch: it governs how already-recorded rows read, which stays
+     *  meaningful while recording is off. Nothing observes prefs here, so the
+     *  change repaints the rows itself; no top-insert compensation, since the
+     *  rows that resize are the ones on screen (and this row sits at the top
+     *  of the scroll surface, so it is tapped at scroll 0 anyway). */
+    private fun bindHideTranslationsToggle() {
+        val row = findViewById<View>(R.id.rowHideTranslationsToggle)
+        row.findViewById<TextView>(R.id.tvRowTitle)
+            .setText(R.string.history_hide_translations_toggle_title)
+        row.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            setText(R.string.history_hide_translations_toggle_subtitle)
+            isVisible = true
+        }
+        val toggle = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        toggle.isChecked = Prefs(this).historyHideTranslations
+        toggle.setOnCheckedChangeListener { _, checked ->
+            Prefs(this).historyHideTranslations = checked
+            render(lastEntries, compensateTopInsert = false)
+        }
+        row.setOnClickListener { toggle.toggle() }
+    }
+
     /** The sub-toggle is meaningless while the master switch is off:
      *  dimmed and inert, re-synced on every master change. */
     private fun syncCaptureImageRowEnabled() {
@@ -248,6 +280,7 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
      *  toggle — which reads as natural accordion motion. */
     private fun render(fresh: List<HistoryEntry>, compensateTopInsert: Boolean = true) {
         lastEntries = fresh
+        hideTranslations = Prefs(this).historyHideTranslations
         val inflater = LayoutInflater.from(this)
         val grewFrom = sections.height
         val anchored = scroll.scrollY > sections.top
@@ -466,9 +499,12 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
             entry.backendDisplayName,
         ).joinToString(" · ")
         row.findViewById<TextView>(R.id.tvHistorySource).text = entry.sourceText
+        // Hidden is a pure visibility flip on the SAME bound text: rows are
+        // reused by entry id, so both branches must be written every bind or a
+        // recycled row keeps the previous setting's state.
         row.findViewById<TextView>(R.id.tvHistoryTranslation).apply {
             text = entry.translation.orEmpty()
-            isVisible = !entry.translation.isNullOrEmpty()
+            isVisible = !hideTranslations && !entry.translation.isNullOrEmpty()
         }
         row.findViewById<View>(R.id.historyRowDivider).isVisible = showDivider
         row.findViewById<View>(R.id.historyRowContent).apply {
@@ -533,8 +569,16 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
             .show()
     }
 
+    /** The clipboard mirrors the row AS RENDERED: with translations hidden a
+     *  long-press copies the captured text alone, so the one gesture that
+     *  reaches a row without opening it can't leak the answer the toggle is
+     *  deliberately withholding. Tapping through to the entry is still the
+     *  way to get the translation. */
     private fun copyEntry(entry: HistoryEntry) {
-        val text = listOfNotNull(entry.sourceText, entry.translation).joinToString("\n")
+        val text = listOfNotNull(
+            entry.sourceText,
+            if (hideTranslations) null else entry.translation,
+        ).joinToString("\n")
         (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
             .setPrimaryClip(ClipData.newPlainText("PlayTranslate", text))
         Toast.makeText(this, R.string.history_copied_toast, Toast.LENGTH_SHORT).show()
