@@ -200,6 +200,19 @@ class PtModelsTest {
         }
     }
 
+    /** The watermark bar is a constant, not a state: same bar on every
+     *  face (handoff 7a "Identical on every face"), with its CSS in both
+     *  models and the icon riding a self-contained data URI. */
+    @Test fun `every face carries the watermark bar`() {
+        for (spec in specs) {
+            assertTrue("${spec.name} qfmt missing watermark", spec.qfmt.contains("pt-brand"))
+            assertTrue("${spec.name} afmt missing watermark", spec.afmt.contains("pt-brand"))
+            assertTrue("${spec.name} css missing .pt-brand", spec.css.contains(".pt-brand{"))
+            assertTrue("${spec.name} icon must be self-contained",
+                spec.qfmt.contains("data:image/jpeg;base64,"))
+        }
+    }
+
     /** Both models bake or draw pa-* pitch markup (word: template JS;
      *  sentence: WordsTable renderPitch). Splice-by-reference means
      *  this can only fail if the CSS assembly drops the constant. */

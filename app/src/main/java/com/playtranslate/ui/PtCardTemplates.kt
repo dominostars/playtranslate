@@ -158,13 +158,81 @@ internal object PtCardTemplates {
         ".pt-credit{font-size:0.55em;opacity:0.6;margin:16px 4px 8px;}"
 
     /**
+     * The shipped launcher icon (mipmap `ic_launcher_img`, center-cropped
+     * to the adaptive-icon safe zone users actually see, 72px source for
+     * an 18px mark) as a data URI — no collection media, so the watermark
+     * renders on AnkiDroid, desktop, and AnkiWeb alike and can't be swept
+     * by Check Media. The asset ships in full colour; the bar CSS does
+     * the desaturation, so a future partial-tint decision (the handoff's
+     * held-in-reserve step) is a CSS change, not an asset change.
+     */
+    private const val BRAND_ICON_B64 =
+        "/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKAC" +
+        "AAQAAAABAAAASKADAAQAAAABAAAASAAAAAD/wAARCABIAEgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQF" +
+        "BgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRol" +
+        "JicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKz" +
+        "tLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQF" +
+        "BgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcY" +
+        "GRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmq" +
+        "srO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9sAQwACAgICAgIDAgIDBQMDAwUGBQUFBQYI" +
+        "BgYGBgYICggICAgICAoKCgoKCgoKDAwMDAwMDg4ODg4PDw8PDw8PDw8P/9sAQwECAgIEBAQHBAQHEAsJCxAQEBAQEBAQEBAQ" +
+        "EBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ/90ABAAF/9oADAMBAAIRAxEAPwD8dl61ch+9j61RXrVt" +
+        "DyDmv0lHyEloa9t2WuysND1aa3+1xWztCMAuFO0Z9T0qP4d+HZvFvi7SvDtv/rNRuYbdOM4aVwg4+pr+g7wp418JfD/4lWP7" +
+        "HOnfDG+u/B39mMlxdz2QkN3O06xyXzsX2tZHJDS43LJhVAAFY4nFeztZXf6Hlype0k43tb+kfjHoXwyZvhvqPjvVZXgYXcVl" +
+        "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"
+
+    /**
+     * The watermark — approved direction 7a ("Card watermark — the top
+     * bar"): a 30px full-bleed strip pinned to the top of EVERY face,
+     * panel-tone fill closed by the card's hairline, the shipped app
+     * icon at 18px centred, fully desaturated at 60% strength. No text,
+     * no accent, no interaction. The bar is out of flow (absolute), and
+     * each face reserves its own fixed top offset — so adjusting the
+     * bar's height shifts nothing (`.pt-a` covers both backs; the fronts
+     * carry theirs in their own padding).
+     */
+    private const val BRAND_CSS =
+        ".pt-brand{position:absolute;top:0;left:0;right:0;height:30px;" +
+            "background:var(--pt-panel);border-bottom:1px solid var(--pt-hairline);" +
+            "display:flex;align-items:center;justify-content:center;}" +
+        ".pt-brand img{width:18px;height:18px;border-radius:4px;display:block;" +
+            "filter:grayscale(1);opacity:0.6;}" +
+        ".pt-a{padding-top:44px;}"
+
+    private const val BRAND_BAR =
+        "<div class=\"pt-brand\"><img src=\"data:image/jpeg;base64,$BRAND_ICON_B64\"></div>"
+
+    /**
      * Everything both models need. [PitchAccentHtml.PITCH_CSS] is
      * spliced by reference (never copied) so the template CSS can't
      * drift from the Kotlin renderer that bakes `pa-*` markup into the
      * sentence card's WordsTable field.
      */
     private val SHARED_CSS =
-        COLOR_CSS + DEFINITION_CSS + META_CSS + MEDIA_CSS + PitchAccentHtml.PITCH_CSS
+        COLOR_CSS + DEFINITION_CSS + META_CSS + MEDIA_CSS + BRAND_CSS +
+            PitchAccentHtml.PITCH_CSS
 
     /**
      * Word-card layout. `.pt-rule` takes `currentColor`, so the accent
@@ -173,8 +241,10 @@ internal object PtCardTemplates {
      * `.pt-meta` row now.
      */
     private const val WORD_LAYOUT_CSS =
+        // Top padding includes the 30px watermark bar's reserve (the bar
+        // is out of flow): the word sits ~20px below its bar-less spot.
         ".pt-word-front{text-align:center;font-size:3.2em;font-weight:700;" +
-            "letter-spacing:-0.02em;line-height:1.15;padding:64px 16px;}" +
+            "letter-spacing:-0.02em;line-height:1.15;padding:84px 16px 64px;}" +
         ".pt-rule{width:28px;height:2px;border-radius:2px;margin:24px auto 0;" +
             "background:currentColor;}" +
         ".pt-head{display:flex;align-items:center;gap:12px;margin:0 4px;}" +
@@ -198,11 +268,12 @@ internal object PtCardTemplates {
      * tighter-leaded back.
      */
     private const val SENTENCE_LAYOUT_CSS =
-        // Top padding is tooltip headroom: the reading-hint popup renders
-        // above the tapped ruby (fixed-position, ~64px tall with the
-        // contour), so a first-line tap must not clip it at the viewport.
+        // Top padding = the 30px watermark bar's reserve + tooltip
+        // headroom: the reading-hint popup renders above the tapped ruby
+        // (fixed-position, ~64px tall with the contour), so a first-line
+        // tap must not clip at the viewport.
         ".pt-sentence-front{text-align:center;font-size:1.8em;" +
-            "padding:80px 16px 24px;line-height:1.7em;}" +
+            "padding:100px 16px 24px;line-height:1.7em;}" +
         ".pt-back-panel{background:var(--pt-panel);border:1px solid var(--pt-hairline);" +
             "border-radius:14px;padding:4px 16px;margin:0 4px;}" +
         // Sits between the picture and the source/translation panel.
@@ -398,6 +469,7 @@ internal object PtCardTemplates {
     /** Word front: the word alone at display size, an accent rule under
      *  it (`.pt-rule` takes `currentColor` from `gl-hl`). */
     val WORD_QFMT: String =
+        BRAND_BAR +
         "<div class=\"pt-q pt-word-front\">{{Expression}}" +
         "<div class=\"pt-rule gl-hl\"></div></div>"
 
@@ -413,6 +485,7 @@ internal object PtCardTemplates {
      * it in their own templates.
      */
     val WORD_AFMT: String =
+        BRAND_BAR +
         "<div class=\"pt-a\">" +
         "{{#Picture}}<div class=\"pt-pic\">{{Picture}}</div>{{/Picture}}" +
         "<div class=\"pt-head\">" +
@@ -445,6 +518,7 @@ internal object PtCardTemplates {
         "{{^SentenceFurigana}}{{Sentence}}{{/SentenceFurigana}}"
 
     val SENTENCE_QFMT: String =
+        BRAND_BAR +
         "<div class=\"pt-q pt-sentence pt-sentence-front\">$SENTENCE_BODY</div>" +
         "<script>$TOOLTIP_JS</script>"
 
@@ -457,6 +531,7 @@ internal object PtCardTemplates {
      * words table, credit last.
      */
     val SENTENCE_AFMT: String =
+        BRAND_BAR +
         "<div class=\"pt-a\">" +
         "{{#Picture}}<div class=\"pt-pic\">{{Picture}}</div>{{/Picture}}" +
         "{{#SentenceAudio}}<div class=\"pt-sent-audio\">" +
