@@ -149,14 +149,16 @@ object SentenceAnkiHtmlBuilder {
         words: List<WordEntry> = emptyList(),
         highlightedWords: Set<String> = emptySet(),
         sourceLangId: SourceLangId = SourceLangId.JA,
-        /** When true, wrap each pitch-bearing word's span of the sentence in
-         *  `<span data-pt-kana="…" data-pt-pitch="…">` so the PT sentence
-         *  template's tap tooltip can draw the word's pitch contour. Default
+        /** When true, wrap each dictionary word's span of the sentence in
+         *  `<span data-pt-w="…">` (plus `data-pt-kana`/`data-pt-pitch` when
+         *  the word has pitch data) so the PT sentence template's JS can
+         *  find words: the front tooltip draws the pitch contour, the back
+         *  tap scrolls to the word's cell in the words table. Default
          *  false — the structured path's SentenceFurigana output must stay
          *  byte-stable for third-party consumers (Migaku's parser, `{{kana:}}`
          *  users). Tag boundaries are invisible to Anki's furigana regex for
          *  the same reason `<b>`/`<wbr>` are: `[^ >]` can't span a `>`. */
-        wrapWordPitch: Boolean = false,
+        wrapWords: Boolean = false,
         // Injectable for unit tests; production uses the process-scoped Sudachi
         // tokenizer (which needs a pack dict, unavailable in plain JVM tests).
         tokenizer: JapaneseTokenizer = SudachiJapaneseTokenizer.Provider,
@@ -165,23 +167,26 @@ object SentenceAnkiHtmlBuilder {
         val isZh = sourceLangId == SourceLangId.ZH || sourceLangId == SourceLangId.ZH_HANT
         if (!isJa && !isZh) return plainBody(text)
         val targets = resolveHighlightTargets(words, highlightedWords)
-        // Pitch wrappers ride the same surface-anchored start-match mechanism
+        // Word wrappers ride the same surface-anchored start-match mechanism
         // as the <b> targets: surface (inflected form when known) → the
-        // dictionary reading the contour draws over + the downstep list.
-        // Longest-first so a longer word wins a shared prefix.
-        val pitchWraps: List<Pair<String, Pair<String, List<Int>>>> =
-            if (wrapWordPitch) {
+        // dictionary word key (matches the words-table cells' data-pt-w),
+        // plus the reading the contour draws over + the downstep list when
+        // the word has pitch. Longest-first so a longer word wins a shared
+        // prefix.
+        val wordWraps: List<WordWrap> =
+            if (wrapWords) {
                 words.asSequence()
                     .mapNotNull { e ->
-                        val kana = when {
-                            e.reading.isNotEmpty() -> e.reading
-                            e.word.isNotEmpty() && e.word.all(Deinflector::isKana) -> e.word
-                            else -> ""
+                        if (e.word.isEmpty()) null else {
+                            val kana = when {
+                                e.reading.isNotEmpty() -> e.reading
+                                e.word.all(Deinflector::isKana) -> e.word
+                                else -> ""
+                            }
+                            WordWrap(e.surfaceForm.ifEmpty { e.word }, e.word, kana, e.pitch)
                         }
-                        if (e.pitch.isEmpty() || kana.isEmpty()) null
-                        else (e.surfaceForm.ifEmpty { e.word }) to (kana to e.pitch)
                     }
-                    .sortedByDescending { it.first.length }
+                    .sortedByDescending { it.surface.length }
                     .toList()
             } else emptyList()
         // JA: anchor kanji-bearing Kuromoji tokens to their start
@@ -247,15 +252,17 @@ object SentenceAnkiHtmlBuilder {
                     boldCloseAt = i + hit.length
                 }
             }
-            if (pitchCloseAt < 0 && pitchWraps.isNotEmpty()) {
-                val hit = pitchWraps.firstOrNull { text.startsWith(it.first, i) }
-                if (hit != null && (boldCloseAt < 0 || i + hit.first.length <= boldCloseAt)) {
-                    sb.append("<span data-pt-kana=\"")
-                        .append(htmlEscape(hit.second.first))
-                        .append("\" data-pt-pitch=\"")
-                        .append(hit.second.second.joinToString(","))
-                        .append("\">")
-                    pitchCloseAt = i + hit.first.length
+            if (pitchCloseAt < 0 && wordWraps.isNotEmpty()) {
+                val hit = wordWraps.firstOrNull { text.startsWith(it.surface, i) }
+                if (hit != null && (boldCloseAt < 0 || i + hit.surface.length <= boldCloseAt)) {
+                    sb.append("<span data-pt-w=\"").append(htmlEscape(hit.word)).append("\"")
+                    if (hit.pitch.isNotEmpty() && hit.kana.isNotEmpty()) {
+                        sb.append(" data-pt-kana=\"").append(htmlEscape(hit.kana))
+                            .append("\" data-pt-pitch=\"")
+                            .append(hit.pitch.joinToString(",")).append("\"")
+                    }
+                    sb.append(">")
+                    pitchCloseAt = i + hit.surface.length
                 }
             }
             val advanced = if (isJa) {
@@ -289,10 +296,17 @@ object SentenceAnkiHtmlBuilder {
         }
         if (pitchCloseAt >= 0) sb.append("</span>")
         if (boldCloseAt >= 0) sb.append("</b>")
-        val out = stripBoundarySeparators(sb.toString())
+        // Word wrappers enclose the bracket runs, so boundary `<wbr>`s that
+        // the string-edge strip used to catch now sit just inside the span
+        // tags — equally workless, stripped the same way.
+        val out = SPAN_OPEN_WBR.replace(stripBoundarySeparators(sb.toString()), "$1")
+            .replace("$WBR</span>", "</span>")
         Log.d(TAG, "buildSentenceFurigana: in='$text' out='$out'")
         return out
     }
+
+    /** A `<wbr>` immediately inside a word wrapper's opening tag. */
+    private val SPAN_OPEN_WBR = Regex("(<span[^>]*>)<wbr>")
 
     /**
      * Appends one character of [text] starting at [i] to [sb],
@@ -322,6 +336,15 @@ object SentenceAnkiHtmlBuilder {
      */
     /** Minimal kanji-bearing token: surface + hiragana reading, keyed by start offset. */
     private data class KanjiToken(val surface: String, val reading: String?)
+
+    /** One sentence word's wrapper data: the surface to match in the text,
+     *  the dictionary-word key the cells share, and the pitch payload. */
+    private data class WordWrap(
+        val surface: String,
+        val word: String,
+        val kana: String,
+        val pitch: List<Int>,
+    )
 
     private fun indexKanjiTokensByStart(text: String, tokenizer: JapaneseTokenizer): Map<Int, KanjiToken> {
         val out = mutableMapOf<Int, KanjiToken>()
@@ -611,7 +634,10 @@ object SentenceAnkiHtmlBuilder {
             // The first context row after the target block drops its
             // hairline — the cells' surfaces already separate the groups.
             val cellExtra = if (!isTarget && prevWasTarget) "border-top:0;" else ""
-            sb.append("<div ${styler(if (isTarget) "gl-w-target" else "gl-w", cellExtra)}>")
+            // data-pt-w keys the cell to the sentence body's word wrappers
+            // so the back's tap-to-scroll can find it. Inert everywhere else.
+            sb.append("<div data-pt-w=\"").append(htmlEscape(entry.word)).append("\" ")
+                .append(styler(if (isTarget) "gl-w-target" else "gl-w", cellExtra)).append(">")
             prevWasTarget = isTarget
 
             // Head row: word, reading (flex remainder), audio circle.

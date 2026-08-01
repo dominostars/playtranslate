@@ -145,7 +145,13 @@ class PtNoteBuilderTest {
             imageFilename = null, audioFilename = null,
             wordAudioFilenames = emptyMap(), audioCredit = null,
         )
-        assertEquals("今[jīn]<wbr>天[tiān]", note.sentenceFurigana)
+        // The PT path wraps each word for the template's tap-to-scroll
+        // (data-pt-w keys the sentence word to its cell); pitch-less ZH
+        // words carry the key alone. Brackets inside are unchanged.
+        assertEquals(
+            "<span data-pt-w=\"今天\">今[jīn]<wbr>天[tiān]</span>",
+            note.sentenceFurigana,
+        )
     }
 
     @Test fun `target word is the first highlighted word or empty`() {

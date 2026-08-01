@@ -99,9 +99,10 @@ internal object PtNoteBuilder {
                 words = cardData.words,
                 highlightedWords = cardData.selectedWords,
                 sourceLangId = cardData.sourceLangId,
-                // Our own template's tap tooltip reads the data-pt-* word
-                // wrappers to draw pitch; the structured path never sets this.
-                wrapWordPitch = true,
+                // Our own template's JS reads the data-pt-* word wrappers
+                // (front tooltip pitch, back tap-to-cell scroll); the
+                // structured path never sets this.
+                wrapWords = true,
             )
         } else ""
         // Highlighted words sort to the top of the table, matching the

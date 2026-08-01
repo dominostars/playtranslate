@@ -327,7 +327,13 @@ internal object PtCardTemplates {
             "text-transform:uppercase;margin:12px 0 3px;}" +
         ".gl-def{display:flex;padding:3px 0;}" +
         ".gl-num{min-width:16px;text-align:right;font-size:0.85em;line-height:1.45;}" +
-        ".gl-dtext{flex:1;margin-left:9px;font-size:0.85em;line-height:1.45;}"
+        ".gl-dtext{flex:1;margin-left:9px;font-size:0.85em;line-height:1.45;}" +
+        // Back-side tap-to-scroll: wrapped words are tappable, and the
+        // found cell flashes the accent tint (last in source so it wins
+        // over .gl-w-target's own background at equal specificity).
+        ".pt-sentence-back [data-pt-w]{cursor:pointer;" +
+            "-webkit-tap-highlight-color:transparent;}" +
+        ".pt-cell-hi{background:var(--pt-hl-bg);}"
 
     val WORD_CSS: String = SHARED_CSS + WORD_LAYOUT_CSS
     val SENTENCE_CSS: String = SHARED_CSS + SENTENCE_LAYOUT_CSS + WORD_CELL_CSS
@@ -466,6 +472,38 @@ internal object PtCardTemplates {
         "document.addEventListener('click',function(e){if(activeR&&!activeR.contains(e.target))hide();});" +
         "})()"
 
+    /**
+     * Back-side tap-to-scroll: tapping a wrapped word in the sentence
+     * scrolls the words table to that word's cell and flashes it. Words
+     * and cells share the `data-pt-w` key baked in by
+     * [SentenceAnkiHtmlBuilder]; the cell is found by attribute
+     * comparison, never selector interpolation, so a word carrying CSS
+     * metacharacters can't break the lookup. Missing cell (or no JS —
+     * AnkiWeb) degrades to a dead tap, the pre-feature behavior.
+     */
+    val SCROLL_JS: String =
+        "(function(){" +
+        "var cells=document.querySelectorAll('.pt-words [data-pt-w]');" +
+        "if(!cells.length)return;" +
+        "function findCell(key){" +
+        "for(var i=0;i<cells.length;i++){" +
+        "if(cells[i].getAttribute('data-pt-w')===key)return cells[i];}" +
+        "return null;}" +
+        "var hiTimer=null;" +
+        "document.querySelectorAll('.pt-sentence-back [data-pt-w]').forEach(function(w){" +
+        "w.addEventListener('click',function(e){" +
+        "var cell=findCell(w.getAttribute('data-pt-w'));" +
+        "if(!cell)return;" +
+        "e.stopPropagation();" +
+        "cell.scrollIntoView({behavior:'smooth',block:'center'});" +
+        "for(var i=0;i<cells.length;i++)cells[i].classList.remove('pt-cell-hi');" +
+        "cell.classList.add('pt-cell-hi');" +
+        "if(hiTimer)clearTimeout(hiTimer);" +
+        "hiTimer=setTimeout(function(){cell.classList.remove('pt-cell-hi');},900);" +
+        "});" +
+        "});" +
+        "})()"
+
     /** Word front: the word alone at display size, an accent rule under
      *  it (`.pt-rule` takes `currentColor` from `gl-hl`). */
     val WORD_QFMT: String =
@@ -542,5 +580,6 @@ internal object PtCardTemplates {
         "</div>" +
         "{{#WordsTable}}<div class=\"pt-words\">{{WordsTable}}</div>{{/WordsTable}}" +
         "{{#AudioCredit}}<div class=\"pt-credit\">{{AudioCredit}}</div>{{/AudioCredit}}" +
-        "</div>"
+        "</div>" +
+        "<script>$SCROLL_JS</script>"
 }

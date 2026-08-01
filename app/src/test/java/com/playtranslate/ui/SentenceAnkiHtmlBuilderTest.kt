@@ -607,25 +607,38 @@ class SentenceAnkiHtmlBuilderTest {
         ))
         val html = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
             text = "なるほど", words = words, sourceLangId = SourceLangId.JA,
-            wrapWordPitch = true, tokenizer = fakeTokenizer(),
+            wrapWords = true, tokenizer = fakeTokenizer(),
         )
         assertEquals(
-            "<span data-pt-kana=\"なるほど\" data-pt-pitch=\"0,2\">なるほど</span>",
+            "<span data-pt-w=\"なるほど\" data-pt-kana=\"なるほど\"" +
+                " data-pt-pitch=\"0,2\">なるほど</span>",
             html,
         )
     }
 
-    @Test fun `furigana pitch wrapper nests inside the bold highlight`() {
+    @Test fun `furigana wraps pitch-less words with the key only`() {
+        val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
+            word = "なるほど", reading = "", meaning = "I see",
+        ))
+        val html = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            text = "なるほど", words = words, sourceLangId = SourceLangId.JA,
+            wrapWords = true, tokenizer = fakeTokenizer(),
+        )
+        assertEquals("<span data-pt-w=\"なるほど\">なるほど</span>", html)
+    }
+
+    @Test fun `furigana word wrapper nests inside the bold highlight`() {
         val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
             word = "なるほど", reading = "", meaning = "I see", pitch = listOf(0),
         ))
         val html = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
             text = "なるほど", words = words, highlightedWords = setOf("なるほど"),
-            sourceLangId = SourceLangId.JA, wrapWordPitch = true,
+            sourceLangId = SourceLangId.JA, wrapWords = true,
             tokenizer = fakeTokenizer(),
         )
         assertEquals(
-            "<b><span data-pt-kana=\"なるほど\" data-pt-pitch=\"0\">なるほど</span></b>",
+            "<b><span data-pt-w=\"なるほど\" data-pt-kana=\"なるほど\"" +
+                " data-pt-pitch=\"0\">なるほど</span></b>",
             html,
         )
     }
@@ -639,7 +652,15 @@ class SentenceAnkiHtmlBuilderTest {
             tokenizer = fakeTokenizer(),
         )
         assertEquals("なるほど", html)
-        assertFalse(html.contains("data-pt-kana"))
+        assertFalse(html.contains("data-pt-"))
+    }
+
+    @Test fun `words table cells carry the word key for tap-to-scroll`() {
+        val html = SentenceAnkiHtmlBuilder.buildWordsHtmlWith(
+            listOf(sensedEntry(SenseDisplay(listOf("noun"), "seal", emptyList()))),
+            highlightedWords = setOf("封"), styler = classStyler,
+        )
+        assertTrue(html.contains("<div data-pt-w=\"封\" class=\"gl-w-target\">"))
     }
 
     @Test fun `ZH sentence furigana picks longest matching word at each position`() {
