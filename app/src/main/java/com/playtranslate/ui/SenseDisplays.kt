@@ -185,10 +185,99 @@ fun meaningForTransport(meaning: String, enrichment: WordEnrichment?): String =
     if (enrichment?.senses?.isNotEmpty() == true) "" else meaning
 
 /** Rebuilds a meaning slot a writer blanked via [meaningForTransport].
- *  A non-blank slot passes through (sense-less words, and every
- *  transport that doesn't carry enrichment at all). */
+ *  A non-blank slot passes through (sense-less words, degraded oversized
+ *  payloads from [transportPayloadFor], and every transport that doesn't
+ *  carry enrichment at all). */
 fun meaningFromTransport(marshaled: String, enrichment: WordEnrichment?): String =
     marshaled.ifEmpty { enrichment?.senses?.let(::flatMeaningOf).orEmpty() }
+
+/** The (meanings, enrichment) pair [transportPayloadFor] sizes for one
+ *  launch payload — meanings parallel to the keys it was given. */
+internal class TransportPayload(
+    val meanings: Array<String>,
+    val enrichment: HashMap<String, WordEnrichment>,
+)
+
+/** Estimated serialized weight of the structured senses: definition/pos/
+ *  misc text at 3 bytes/char (CJK in modified UTF-8) plus a per-object
+ *  constant for headers and list plumbing. Deliberately pessimistic —
+ *  the gate below trips early rather than late. */
+private fun estimateSensesBytes(enrichment: Map<String, WordEnrichment>): Int {
+    var bytes = 0
+    for (e in enrichment.values) {
+        for (s in e.senses) {
+            bytes += 64
+            bytes += (s.definition.length +
+                s.pos.sumOf { it.length } + s.misc.sumOf { it.length }) * 3
+        }
+    }
+    return bytes
+}
+
+/** Estimated senses payload above which a launch Bundle risks the shared
+ *  1MB Binder buffer (TransactionTooLargeException crashes reliably from
+ *  ~200-500KB depending on concurrent traffic; Intents AND saved-state
+ *  Fragment args share the same budget). */
+private const val TRANSPORT_SENSES_BUDGET_BYTES = 200_000
+
+/** Per-word ceiling on a DEGRADED payload's flat meaning. Only reachable
+ *  when a single word carries several paragraph-length monolingual
+ *  imported senses — inputs on which the pre-gate code (and the pre-v002
+ *  code, whose MEANINGS array shipped the same text) crashed outright. */
+private const val TRANSPORT_MEANING_CHAR_CAP = 8_000
+
+/** Aggregate ceiling on a DEGRADED payload's flat-meaning text (chars;
+ *  ×3 bytes serialized ≈ 192KB). UNCONDITIONAL: the per-word cap is the
+ *  budget divided by the word count, so the sum stays bounded no matter
+ *  how wide the capture was — a fixed per-word cap alone re-creates the
+ *  crash at ~20+ saturated words. Excerpts shrink as captures widen
+ *  (still ~200 chars/word at a fantasy 300-word block). */
+private const val TRANSPORT_MEANINGS_CHAR_BUDGET = 64_000
+
+/**
+ * Sizes one launch payload's word data for transport. Two shapes:
+ *
+ *  - Under [TRANSPORT_SENSES_BUDGET_BYTES] (every realistic sentence —
+ *    typical JMdict payloads run ~10KB serialized): senses cross in the
+ *    enrichment and sense-bearing meaning slots are blanked
+ *    ([meaningForTransport]) — definition text crosses the binder once.
+ *  - Over it (long OCR paragraphs where most words carry paragraph-length
+ *    monolingual imported senses): senses are STRIPPED from the shipped
+ *    enrichment (pitch/frequencies/isCommon stay — they're tiny) and the
+ *    flat meanings ship non-blank, capped per word. The read side
+ *    degrades by construction: [meaningFromTransport] passes non-blank
+ *    meanings through, and empty senses select the flat-lines cell
+ *    rendering. If the receiver's global-cache read still hits the same
+ *    sentence, it recovers full structured senses in-process for free.
+ *
+ * Callers: the ONLY two transports that carry enrichment beside meanings
+ * (AnkiReviewBottomSheet args, CaptureResultOverlay's review intent).
+ */
+internal fun transportPayloadFor(
+    keys: Array<String>,
+    results: Map<String, Triple<String, String, Int>>,
+    enrichment: Map<String, WordEnrichment>,
+): TransportPayload {
+    if (estimateSensesBytes(enrichment) <= TRANSPORT_SENSES_BUDGET_BYTES) {
+        return TransportPayload(
+            meanings = keys.map { k ->
+                meaningForTransport(results.getValue(k).second, enrichment[k])
+            }.toTypedArray(),
+            enrichment = HashMap(enrichment),
+        )
+    }
+    val stripped = HashMap<String, WordEnrichment>(enrichment.size * 2)
+    enrichment.forEach { (w, e) -> stripped[w] = e.copy(senses = emptyList()) }
+    val perWordCap = (TRANSPORT_MEANINGS_CHAR_BUDGET / keys.size.coerceAtLeast(1))
+        .coerceAtMost(TRANSPORT_MEANING_CHAR_CAP)
+    return TransportPayload(
+        meanings = keys.map { k ->
+            val m = results.getValue(k).second
+            if (m.length > perWordCap) m.take(perWordCap) + "…" else m
+        }.toTypedArray(),
+        enrichment = stripped,
+    )
+}
 
 /**
  * The word card's flat definition string built from a bare resolved entry:

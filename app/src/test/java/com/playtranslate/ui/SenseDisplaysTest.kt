@@ -6,6 +6,7 @@ import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.Headword
 import com.playtranslate.model.Sense
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -138,5 +139,95 @@ class SenseDisplaysTest {
         assertEquals("text", meaningForTransport("text", null))
         assertEquals("text", meaningFromTransport("text", null))
         assertEquals("", meaningFromTransport("", null))
+    }
+
+    // ── transportPayloadFor: the launch-payload size gate ────────────────
+
+    private fun payloadOf(vararg words: Pair<String, WordEnrichment>): Pair<
+        Map<String, Triple<String, String, Int>>, Map<String, WordEnrichment>> {
+        val results = words.associate { (w, e) ->
+            w to Triple("", flatMeaningOf(e.senses).ifEmpty { "flat $w" }, 0)
+        }
+        return results to words.toMap()
+    }
+
+    @Test fun `under budget senses cross and meaning slots blank`() {
+        val (results, enrichment) = payloadOf(
+            "猫" to WordEnrichment(pitch = listOf(1), senses = listOf(sense("cat"))),
+            "犬" to WordEnrichment(),  // sense-less: keeps its flat text
+        )
+        val t = transportPayloadFor(arrayOf("猫", "犬"), results, enrichment)
+        assertEquals("", t.meanings[0])
+        assertEquals("flat 犬", t.meanings[1])
+        assertEquals(listOf(sense("cat")), t.enrichment.getValue("猫").senses)
+    }
+
+    @Test fun `over budget strips senses and ships real meanings`() {
+        // ~90K chars of definition text × 3 bytes/char blows the 200KB gate.
+        val monster = sense("あ".repeat(30_000), imported = true, pos = listOf("Dict"))
+        val (results, enrichment) = payloadOf(
+            "一" to WordEnrichment(pitch = listOf(0), senses = listOf(monster)),
+            "二" to WordEnrichment(senses = listOf(monster)),
+            "三" to WordEnrichment(senses = listOf(monster)),
+        )
+        val t = transportPayloadFor(arrayOf("一", "二", "三"), results, enrichment)
+        // Meanings ship non-blank (capped), senses stripped, small fields kept.
+        t.meanings.forEach { m ->
+            assertTrue("meaning must ship in degraded mode", m.isNotEmpty())
+            assertTrue("meaning capped: ${m.length}", m.length <= 8_001)
+        }
+        t.enrichment.values.forEach { e ->
+            assertEquals(emptyList<SenseDisplay>(), e.senses)
+        }
+        assertEquals(listOf(0), t.enrichment.getValue("一").pitch)
+        // Read side passes the degraded meanings straight through.
+        assertEquals(t.meanings[0],
+            meaningFromTransport(t.meanings[0], t.enrichment.getValue("一")))
+    }
+
+    @Test fun `degraded payload stays bounded in aggregate across many words`() {
+        // 32 saturated words: a fixed per-word cap alone would ship
+        // 32 × 8K = 256K chars (~768KB serialized) — over the binder budget.
+        val monster = sense("あ".repeat(10_000))
+        val words = (1..32).map { i ->
+            "word$i" to WordEnrichment(senses = listOf(monster))
+        }.toTypedArray()
+        val (results, enrichment) = payloadOf(*words)
+        val keys = words.map { it.first }.toTypedArray()
+        val t = transportPayloadFor(keys, results, enrichment)
+        val total = t.meanings.sumOf { it.length }
+        assertTrue("aggregate meanings bounded, got $total chars", total <= 65_000)
+        t.meanings.forEach { m ->
+            assertTrue("budget/wordCount excerpt per word: ${m.length}", m.length >= 1_000)
+        }
+    }
+
+    @Test fun `aggregate bound holds unconditionally on absurdly wide captures`() {
+        // 200 saturated words — wider than any screen- or document-OCR
+        // block. The per-word cap has no floor, so the 64K-char aggregate
+        // ceiling holds for ANY word count.
+        val monster = sense("あ".repeat(2_000))
+        val words = (1..200).map { i ->
+            "word$i" to WordEnrichment(senses = listOf(monster))
+        }.toTypedArray()
+        val (results, enrichment) = payloadOf(*words)
+        val keys = words.map { it.first }.toTypedArray()
+        val t = transportPayloadFor(keys, results, enrichment)
+        val total = t.meanings.sumOf { it.length }
+        assertTrue("aggregate bounded for 200 words, got $total chars", total <= 65_000)
+        // Excerpts shrink rather than the bound breaking.
+        assertTrue(t.meanings.all { it.isNotEmpty() })
+    }
+
+    @Test fun `degraded short meanings are not truncated`() {
+        val monster = sense("あ".repeat(80_000))
+        val short = sense("cat")
+        val (results, enrichment) = payloadOf(
+            "一" to WordEnrichment(senses = listOf(monster)),
+            "猫" to WordEnrichment(senses = listOf(short)),
+        )
+        val t = transportPayloadFor(arrayOf("一", "猫"), results, enrichment)
+        assertEquals("cat", t.meanings[1])
+        assertTrue(t.meanings[0].endsWith("…"))
     }
 }

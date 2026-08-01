@@ -294,6 +294,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
         ): AnkiReviewBottomSheet {
             return AnkiReviewBottomSheet().apply {
                 val wordKeys = wordResults.keys.toTypedArray()
+                val transport = transportPayloadFor(wordKeys, wordResults, wordEnrichment)
                 arguments = Bundle().apply {
                     putString(ARG_ORIGINAL, original)
                     putString(ARG_TRANSLATION, translation)
@@ -305,19 +306,17 @@ class AnkiReviewBottomSheet : DialogFragment() {
                     }
                     putStringArray(ARG_WORDS,    wordKeys)
                     putStringArray(ARG_READINGS, wordResults.values.map { it.first }.toTypedArray())
-                    // Sense-bearing words cross with a BLANK meaning slot —
-                    // their flat text is derivable from the senses already
-                    // riding ARG_ENRICHMENT, and shipping both doubled the
-                    // definition payload of this bundle. The read side
-                    // re-derives via meaningFromTransport.
-                    putStringArray(ARG_MEANINGS, wordKeys.map { w ->
-                        meaningForTransport(wordResults.getValue(w).second, wordEnrichment[w])
-                    }.toTypedArray())
+                    // Size-gated pair: normally senses ride ARG_ENRICHMENT and
+                    // sense-bearing meaning slots are blanked (definition text
+                    // crosses once; meaningFromTransport re-derives). An
+                    // oversized senses payload ships stripped enrichment +
+                    // real flat meanings instead — see transportPayloadFor.
+                    putStringArray(ARG_MEANINGS, transport.meanings)
                     putIntArray(ARG_FREQ_SCORES, wordResults.values.map { it.third }.toIntArray())
                     // Surfaces ride parallel to ARG_WORDS; enrichment as one
                     // Serializable map keyed by display word.
                     putStringArray(ARG_SURFACES, wordKeys.map { surfaceForms[it] ?: "" }.toTypedArray())
-                    putSerializable(ARG_ENRICHMENT, HashMap(wordEnrichment))
+                    putSerializable(ARG_ENRICHMENT, transport.enrichment)
                     if (screenshotPath != null) putString(ARG_SCREENSHOT_PATH, screenshotPath)
                     putString(ARG_SOURCE_LANG, sourceLangId.code)
                 }

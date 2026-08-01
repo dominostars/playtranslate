@@ -1901,24 +1901,24 @@ class CaptureResultOverlay(
             putExtra(SentenceAnkiReviewActivity.EXTRA_SOURCE_LANG, prefs.sourceLangId.code)
             words?.let { snap ->
                 val keys = snap.results.keys.toTypedArray()
+                // Size-gated pair: normally senses ride EXTRA_ENRICHMENT and
+                // sense-bearing meaning slots are blanked (definition text
+                // crosses the binder once; meaningFromTransport re-derives on
+                // the sheet's read side). An oversized senses payload ships
+                // stripped enrichment + real flat meanings instead — see
+                // transportPayloadFor. Safe ONLY because every extra reads
+                // the same [snap]: a blank slot's senses are the senses that
+                // cross.
+                val transport = transportPayloadFor(keys, snap.results, snap.enrichment)
                 putExtra(SentenceAnkiReviewActivity.EXTRA_WORDS, keys)
                 putExtra(SentenceAnkiReviewActivity.EXTRA_READINGS,
                     snap.results.values.map { it.first }.toTypedArray())
-                // Sense-bearing words cross with a BLANK meaning slot — the
-                // flat text re-derives from the senses in EXTRA_ENRICHMENT
-                // (meaningFromTransport on the sheet's read side). Shipping
-                // both doubled this intent's definition payload. Safe ONLY
-                // because every extra reads the same [snap]: blank ⇒ the
-                // senses it was blanked against are the senses that cross.
-                putExtra(SentenceAnkiReviewActivity.EXTRA_MEANINGS, keys.map { k ->
-                    meaningForTransport(snap.results.getValue(k).second, snap.enrichment[k])
-                }.toTypedArray())
+                putExtra(SentenceAnkiReviewActivity.EXTRA_MEANINGS, transport.meanings)
                 putExtra(SentenceAnkiReviewActivity.EXTRA_FREQ_SCORES,
                     snap.results.values.map { it.third }.toIntArray())
                 putExtra(SentenceAnkiReviewActivity.EXTRA_SURFACES,
                     keys.map { snap.surfaces[it] ?: "" }.toTypedArray())
-                putExtra(SentenceAnkiReviewActivity.EXTRA_ENRICHMENT,
-                    HashMap(snap.enrichment))
+                putExtra(SentenceAnkiReviewActivity.EXTRA_ENRICHMENT, transport.enrichment)
             }
         }
         val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: displayId
