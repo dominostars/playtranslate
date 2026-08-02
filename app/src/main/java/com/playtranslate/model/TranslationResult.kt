@@ -161,10 +161,14 @@ data class TranslationResult(
     /** The source/target/variant this result was translated under, so a surface can
      *  detect staleness after a language change and clear it. See [TranslationLangContext]. */
     val langContext: TranslationLangContext,
-    /** Epoch ms when this result was produced — stamped at construction, preserved
-     *  by copy() (an edit/rebind is the same capture moment). The Anki flow passes
-     *  it as the game-audio ring anchor, so the trim view opens at the sentence's
-     *  own moment. 0 ⇒ unknown (a deserialized legacy value); consumers gate on
-     *  `> 0`, and [timestamp] stays the display string it always was. */
+    /** Epoch ms of the moment this result REPRESENTS — the Anki flow passes it
+     *  as the game-audio ring anchor, so the trim view opens at the sentence's
+     *  own moment. Capture pipelines pass the frame's shutter time EXPLICITLY
+     *  (construction there happens after MT, and backend latency must not
+     *  drift the anchor — adversarial-review finding); the constructor default
+     *  covers only paths that construct at the moment they represent.
+     *  Preserved by copy() (an edit/rebind is the same capture moment). 0 ⇒
+     *  unknown (a deserialized legacy value); consumers gate on `> 0`, and
+     *  [timestamp] stays the display string it always was. */
     val createdAtMs: Long = System.currentTimeMillis(),
 )

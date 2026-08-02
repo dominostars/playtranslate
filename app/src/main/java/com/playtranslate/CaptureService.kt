@@ -867,6 +867,13 @@ class CaptureService : Service() {
     ) {
         val raw = frame.bitmap
         val frameIncludesSystemUi = frame.includesSystemUi
+        // The frame's capture moment as epoch ms (capturedAtMs is uptime;
+        // one conversion at the same instant). Passed as the result's
+        // createdAtMs so the game-audio anchor names the SHUTTER, not the
+        // post-translation construction — MT latency (seconds to tens on
+        // the slow tier) must not drift the trim seed.
+        val capturedAtWallMs = System.currentTimeMillis() -
+            (android.os.SystemClock.uptimeMillis() - frame.capturedAtMs)
         if (!isConfigured) {
             state.value = CaptureState.Failed("Not configured — tap Translate to set up")
             raw.recycle()
@@ -1023,6 +1030,7 @@ class CaptureService : Service() {
                         contextEligible = contextEligible,
                     ) else null,
                     langContext         = Prefs(this@CaptureService).langContext(srcId),
+                    createdAtMs         = capturedAtWallMs,
                 ),
                 // Deferred: keep the SKELETONS — the deferred completion fills
                 // them when the translation finally runs.
@@ -2619,6 +2627,10 @@ class CaptureService : Service() {
             val appPanelVisible = !Prefs.isSingleScreen(this) && MainActivity.isInForeground
             if (!appPanelVisible) return null
         }
+        // No frame here — entry time (post-OCR, pre-MT) is the closest
+        // capture-boundary stamp available, and it keeps MT latency out of
+        // the result's game-audio anchor.
+        val capturedAtWallMs = System.currentTimeMillis()
         val perGroup = translateGroupsSeparately(ocrResult.groups.map { it.text })
         val translated = perGroup.joinToString("\n\n") { it.text }
         val note = perGroup.mapNotNull { it.note }.firstOrNull()
@@ -2639,6 +2651,7 @@ class CaptureService : Service() {
                     frameIncludesOwnOverlays,
                 ),
                 langContext        = Prefs(this).langContext(),
+                createdAtMs        = capturedAtWallMs,
             )
         )
         return perGroup
@@ -2901,6 +2914,10 @@ class CaptureService : Service() {
             )
         val raw: Bitmap = frame.bitmap
         val frameIncludesUi = frame.includesSystemUi
+        // Shutter moment in epoch ms — see runProcessCycle's twin: the
+        // result's createdAtMs anchors game audio and must predate MT.
+        val capturedAtWallMs = System.currentTimeMillis() -
+            (android.os.SystemClock.uptimeMillis() - frame.capturedAtMs)
         onScreenshotTaken?.invoke()
         var bitmap: Bitmap? = raw
         var colorRef: Bitmap? = null
@@ -3037,6 +3054,7 @@ class CaptureService : Service() {
                             contextEligible = contextEligible,
                         ) else null,
                         langContext        = Prefs(this@CaptureService).langContext(srcId),
+                        createdAtMs        = capturedAtWallMs,
                     ),
                     groupBounds = ocrResult.groups.map { it.bounds },
                     groupTranslations = perGroup?.map { it.text } ?: List(ocrResult.groups.size) { "" },
