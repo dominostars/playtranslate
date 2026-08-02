@@ -128,12 +128,25 @@ class WaveformTrimView @JvmOverloads constructor(
     }
 
     private val barPaint = Paint().apply { color = context.themeColor(R.attr.ptDivider) }
-    private val barSelectedPaint = Paint().apply { color = context.themeColor(R.attr.ptAccent) }
-    /** Bars inside a detected voice line ([setSpeechRegions]) — warning color,
-     *  and it WINS over the selected-accent so the line reads as a line even
-     *  when the selection sits on top of it (the selection keeps its fill +
-     *  handles as identity). */
+    /** In-selection bars outside any voice line: accent at 50% — quiet
+     *  backdrop so the selection's voice bars carry the emphasis. */
+    private val barSelectedPaint = Paint().apply {
+        color = context.themeColor(R.attr.ptAccent)
+        alpha = 128
+    }
+    /** Bars inside a detected voice line ([setSpeechRegions]) outside the
+     *  selection — warning color. */
     private val barSpeechPaint = Paint().apply { color = context.themeColor(R.attr.ptWarning) }
+    /** Voice-line bars INSIDE the selection: 75% warning / 25% accent —
+     *  the line keeps most of its flagged identity, tinted just enough
+     *  toward accent to read as part of the selection. */
+    private val barSpeechSelectedPaint = Paint().apply {
+        color = androidx.core.graphics.ColorUtils.blendARGB(
+            context.themeColor(R.attr.ptWarning),
+            context.themeColor(R.attr.ptAccent),
+            0.25f,
+        )
+    }
     private val selectionFill = Paint().apply {
         color = context.themeColor(R.attr.ptAccent)
         alpha = 36
@@ -346,9 +359,12 @@ class WaveformTrimView @JvmOverloads constructor(
             if (msAtX >= durationMs) break
             val amp = (columnAmp(x, colW) * ampScale).coerceAtMost(1f)
             val barH = max(1f * density, amp * (h * 0.88f))
+            val speech = inSpeechRegion(msAtX + colW / 2 * msPerPx)
+            val selected = x + colW / 2 in selL..selR
             val paint = when {
-                inSpeechRegion(msAtX + colW / 2 * msPerPx) -> barSpeechPaint
-                x + colW / 2 in selL..selR -> barSelectedPaint
+                speech && selected -> barSpeechSelectedPaint
+                speech -> barSpeechPaint
+                selected -> barSelectedPaint
                 else -> barPaint
             }
             canvas.drawRect(x, midY - barH / 2, x + colW * 0.8f, midY + barH / 2, paint)
