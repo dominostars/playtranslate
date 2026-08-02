@@ -8,6 +8,9 @@
 #include <MNN/Interpreter.hpp>
 #include <MNN/Tensor.hpp>
 #include <MNN/MNNForwardType.h>
+#include <MNN/expr/Expr.hpp>
+#include <MNN/expr/ExprCreator.hpp>
+#include <MNN/expr/Module.hpp>
 
 // ----------------------------------------------------------------------------
 // General-purpose MNN inference shim — the non-LLM counterpart to mnn_chat.cpp.
@@ -347,4 +350,192 @@ Java_com_playtranslate_mnn_MnnInterpreter_nativeDestroy(
     }
     delete model;
     LOGi("MnnInterpreter: destroyed handle %p", (void *) model);
+}
+
+// ----------------------------------------------------------------------------
+// Express-Module shim (`MnnModule` in Kotlin) — for converted graphs the
+// Session API above cannot run: models with SUBGRAPHS (control flow — e.g.
+// Silero VAD's LSTMs lower to While subgraphs; the converter prints "please
+// use MNN::Express::Module to run it"). Same deliberately-dumb contract as
+// the Session shim: positional typed tensors in, typed tensors out, all
+// semantics in Kotlin. Inputs/outputs are fixed AT LOAD by name; forward is
+// positional in that declared order (the Module API's own contract).
+// ----------------------------------------------------------------------------
+
+namespace {
+
+struct ExprModule {
+    MNN::Express::Module *mod = nullptr;
+    size_t nInputs = 0;
+    size_t nOutputs = 0;
+};
+
+std::vector<std::string> readStringArray(JNIEnv *env, jobjectArray jarr) {
+    const jsize n = env->GetArrayLength(jarr);
+    std::vector<std::string> out((size_t) n);
+    for (jsize i = 0; i < n; ++i) {
+        auto js = (jstring) env->GetObjectArrayElement(jarr, i);
+        const char *c = env->GetStringUTFChars(js, nullptr);
+        out[i] = c;
+        env->ReleaseStringUTFChars(js, c);
+        env->DeleteLocalRef(js);
+    }
+    return out;
+}
+
+} // namespace
+
+extern "C"
+JNIEXPORT jlong JNICALL
+Java_com_playtranslate_mnn_MnnModule_nativeCreate(
+        JNIEnv *env, jobject /*unused*/, jstring jpath,
+        jobjectArray jInputNames, jobjectArray jOutputNames) {
+    const std::vector<std::string> inputs = readStringArray(env, jInputNames);
+    const std::vector<std::string> outputs = readStringArray(env, jOutputNames);
+    const char *path = env->GetStringUTFChars(jpath, nullptr);
+    MNN::Express::Module *mod = MNN::Express::Module::load(inputs, outputs, path);
+    LOGi("MnnModule: load %s -> %p (%zu in, %zu out)",
+         path, (void *) mod, inputs.size(), outputs.size());
+    env->ReleaseStringUTFChars(jpath, path);
+    if (mod == nullptr) {
+        LOGe("MnnModule: Module::load returned null");
+        return 0;
+    }
+    auto *handle = new ExprModule{mod, inputs.size(), outputs.size()};
+    return reinterpret_cast<jlong>(handle);
+}
+
+// One forward pass. Parallel arrays, positional in the load-time input order:
+//   jShapes int[][] (empty array = scalar), jDtypes int[] (0 float, 1 int32),
+//   jData Object[] (float[] | int[]).
+// Returns Object[]{ int[] outDtypes, Object[] outShapes(int[]), Object[]
+// outData(float[]|int[]) } in the load-time output order, or null on failure.
+extern "C"
+JNIEXPORT jobjectArray JNICALL
+Java_com_playtranslate_mnn_MnnModule_nativeForward(
+        JNIEnv *env, jobject /*unused*/, jlong handle,
+        jobjectArray jShapes, jintArray jDtypes, jobjectArray jData) {
+    auto *m = reinterpret_cast<ExprModule *>(handle);
+    if (m == nullptr || m->mod == nullptr) {
+        LOGe("MnnModule.nativeForward: invalid handle");
+        return nullptr;
+    }
+    const jsize nIn = env->GetArrayLength(jDtypes);
+    if ((size_t) nIn != m->nInputs) {
+        LOGe("MnnModule.nativeForward: %d inputs given, module wants %zu",
+             (int) nIn, m->nInputs);
+        return nullptr;
+    }
+    jint *dtypes = env->GetIntArrayElements(jDtypes, nullptr);
+
+    std::vector<MNN::Express::VARP> vars;
+    vars.reserve((size_t) nIn);
+    for (jsize i = 0; i < nIn; ++i) {
+        auto js = (jintArray) env->GetObjectArrayElement(jShapes, i);
+        const jsize sl = env->GetArrayLength(js);
+        std::vector<int> dims(sl);
+        long expected = 1;
+        {
+            jint *se = env->GetIntArrayElements(js, nullptr);
+            for (jsize d = 0; d < sl; ++d) { dims[(size_t) d] = se[d]; expected *= se[d]; }
+            env->ReleaseIntArrayElements(js, se, JNI_ABORT);
+        }
+        env->DeleteLocalRef(js);
+
+        auto jd = env->GetObjectArrayElement(jData, i);
+        if (dtypes[i] == 1) {
+            auto ja = (jintArray) jd;
+            if (env->GetArrayLength(ja) != expected) {
+                LOGe("MnnModule.nativeForward: int input %d len mismatch", (int) i);
+                env->DeleteLocalRef(jd);
+                env->ReleaseIntArrayElements(jDtypes, dtypes, JNI_ABORT);
+                return nullptr;
+            }
+            jint *p = env->GetIntArrayElements(ja, nullptr);
+            // _Const copies, so the JNI buffer can be released immediately.
+            vars.push_back(MNN::Express::_Const(
+                    p, dims, MNN::Express::NCHW, halide_type_of<int32_t>()));
+            env->ReleaseIntArrayElements(ja, p, JNI_ABORT);
+        } else {
+            auto ja = (jfloatArray) jd;
+            if (env->GetArrayLength(ja) != expected) {
+                LOGe("MnnModule.nativeForward: float input %d len mismatch", (int) i);
+                env->DeleteLocalRef(jd);
+                env->ReleaseIntArrayElements(jDtypes, dtypes, JNI_ABORT);
+                return nullptr;
+            }
+            jfloat *p = env->GetFloatArrayElements(ja, nullptr);
+            vars.push_back(MNN::Express::_Const(
+                    p, dims, MNN::Express::NCHW, halide_type_of<float>()));
+            env->ReleaseFloatArrayElements(ja, p, JNI_ABORT);
+        }
+        env->DeleteLocalRef(jd);
+    }
+    env->ReleaseIntArrayElements(jDtypes, dtypes, JNI_ABORT);
+
+    std::vector<MNN::Express::VARP> outs = m->mod->onForward(vars);
+    if (outs.empty()) {
+        LOGe("MnnModule.nativeForward: onForward returned no outputs");
+        return nullptr;
+    }
+
+    const auto nOut = (jsize) outs.size();
+    jclass objCls = env->FindClass("java/lang/Object");
+    jintArray outDtypes = env->NewIntArray(nOut);
+    jobjectArray outShapes = env->NewObjectArray(nOut, objCls, nullptr);
+    jobjectArray outData = env->NewObjectArray(nOut, objCls, nullptr);
+    std::vector<jint> dtypeBuf((size_t) nOut);
+
+    for (jsize i = 0; i < nOut; ++i) {
+        auto info = outs[(size_t) i]->getInfo();
+        if (info == nullptr) {
+            LOGe("MnnModule.nativeForward: output %d has no info", (int) i);
+            return nullptr;
+        }
+        const int count = info->size;
+        const std::vector<int> &shp = info->dim;
+
+        jintArray jshp = env->NewIntArray((jsize) shp.size());
+        {
+            std::vector<jint> tmp(shp.begin(), shp.end());
+            env->SetIntArrayRegion(jshp, 0, (jsize) tmp.size(), tmp.data());
+        }
+        env->SetObjectArrayElement(outShapes, i, jshp);
+        env->DeleteLocalRef(jshp);
+
+        const bool isFloat = (info->type.code == halide_type_float);
+        dtypeBuf[(size_t) i] = isFloat ? 0 : 1;
+        if (isFloat) {
+            const float *p = outs[(size_t) i]->readMap<float>();
+            if (p == nullptr) { LOGe("MnnModule.nativeForward: null float readMap"); return nullptr; }
+            jfloatArray jd = env->NewFloatArray(count);
+            env->SetFloatArrayRegion(jd, 0, count, p);
+            env->SetObjectArrayElement(outData, i, jd);
+            env->DeleteLocalRef(jd);
+        } else {
+            const auto *p = outs[(size_t) i]->readMap<int32_t>();
+            if (p == nullptr) { LOGe("MnnModule.nativeForward: null int readMap"); return nullptr; }
+            jintArray jd = env->NewIntArray(count);
+            env->SetIntArrayRegion(jd, 0, count, (const jint *) p);
+            env->SetObjectArrayElement(outData, i, jd);
+            env->DeleteLocalRef(jd);
+        }
+    }
+    env->SetIntArrayRegion(outDtypes, 0, nOut, dtypeBuf.data());
+
+    jobjectArray result = env->NewObjectArray(3, objCls, nullptr);
+    env->SetObjectArrayElement(result, 0, outDtypes);
+    env->SetObjectArrayElement(result, 1, outShapes);
+    env->SetObjectArrayElement(result, 2, outData);
+    return result;
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_playtranslate_mnn_MnnModule_nativeDestroy(
+        JNIEnv * /*env*/, jobject /*unused*/, jlong handle) {
+    auto *m = reinterpret_cast<ExprModule *>(handle);
+    if (m == nullptr) return;
+    if (m->mod != nullptr) MNN::Express::Module::destroy(m->mod);
+    delete m;
 }

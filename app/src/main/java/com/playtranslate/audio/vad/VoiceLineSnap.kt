@@ -1,0 +1,97 @@
+package com.playtranslate.audio.vad
+
+import android.content.Context
+import android.util.Log
+import com.playtranslate.audio.GameAudioClip
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+
+private const val TAG = "VoiceLineSnap"
+
+/**
+ * Phase-2 refinement of the anchor-seeded trim default: run [SileroVad] over
+ * the SEEDED WINDOW ONLY — the anchor's neighborhood, never the whole 3 min
+ * snapshot — and return the voice line the anchor names, in snapshot-ms.
+ *
+ * Window: [WINDOW_PRE_MS] back from the anchor (bounds the user's
+ * line-to-shutter reaction time, which no timestamp can see) plus
+ * [WINDOW_POST_MS] forward (a line still playing at the anchor). Best-effort
+ * by contract: every failure path returns null and the caller keeps the
+ * timestamp-seeded default — a card flow must never break on VAD.
+ */
+internal object VoiceLineSnap {
+
+    const val WINDOW_PRE_MS = 30_000L
+    const val WINDOW_POST_MS = 5_000L
+
+    /** What the scan found, all in snapshot-ms: the [line] the anchor names
+     *  (the snap target) plus every speech [segments] region in the scanned
+     *  window — the trim view paints those so the user can see where voice
+     *  is even after they take the handles over. */
+    class Result(
+        val line: SpeechSnap.Segment,
+        val segments: List<SpeechSnap.Segment>,
+    )
+
+    /**
+     * Scan the anchor's window in the snapshot [wav] of [durationMs], or
+     * null when no speech was found there / anything failed. Heavy (PCM
+     * read + ~1k model chunks); call off-main.
+     */
+    suspend fun snap(
+        ctx: Context,
+        wav: File,
+        anchorOffsetMs: Long,
+        durationMs: Long,
+    ): Result? = withContext(Dispatchers.Default) {
+        try {
+            val winStart = (anchorOffsetMs - WINDOW_PRE_MS).coerceAtLeast(0)
+            val winEnd = (anchorOffsetMs + WINDOW_POST_MS).coerceAtMost(durationMs)
+            if (winEnd - winStart < 1_000) return@withContext null
+            val rate = GameAudioClip.sampleRate(wav)
+            val pcm = GameAudioClip.readPcmRange(wav, winStart, winEnd)
+            if (pcm.isEmpty()) return@withContext null
+            val samples16k = resampleTo16k(pcm, rate)
+            val t0 = android.os.SystemClock.elapsedRealtime()
+            val probs = SileroVad.open(ctx).use { it.probabilities(samples16k) }
+            val segments = SpeechSnap.segments(probs, SileroVad.FRAME_MS, winEnd - winStart)
+            val snapped = SpeechSnap.snap(segments, anchorOffsetMs - winStart)
+            Log.i(
+                TAG,
+                "window=${winStart}..${winEnd}ms anchor=${anchorOffsetMs}ms " +
+                    "segments=${segments.size} " +
+                    "snap=${snapped?.let { "${winStart + it.startMs}..${winStart + it.endMs}ms" } ?: "none"} " +
+                    "in ${android.os.SystemClock.elapsedRealtime() - t0}ms",
+            )
+            snapped?.let { s ->
+                Result(
+                    line = SpeechSnap.Segment(winStart + s.startMs, winStart + s.endMs),
+                    segments = segments.map {
+                        SpeechSnap.Segment(winStart + it.startMs, winStart + it.endMs)
+                    },
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "snap failed (keeping seeded default): ${e.message}")
+            null
+        }
+    }
+
+    /** Linear-interpolation resample to 16 kHz mono float in -1..1 — VAD
+     *  input, never played back, so interpolation quality is a non-issue. */
+    private fun resampleTo16k(pcm: ShortArray, srcRate: Int): FloatArray {
+        if (srcRate == SileroVad.SAMPLE_RATE) {
+            return FloatArray(pcm.size) { pcm[it] / 32768f }
+        }
+        val n = (pcm.size.toLong() * SileroVad.SAMPLE_RATE / srcRate).toInt()
+        val ratio = srcRate.toDouble() / SileroVad.SAMPLE_RATE
+        return FloatArray(n) { i ->
+            val src = i * ratio
+            val i0 = src.toInt().coerceAtMost(pcm.size - 1)
+            val i1 = (i0 + 1).coerceAtMost(pcm.size - 1)
+            val frac = (src - i0).toFloat()
+            (pcm[i0] * (1f - frac) + pcm[i1] * frac) / 32768f
+        }
+    }
+}

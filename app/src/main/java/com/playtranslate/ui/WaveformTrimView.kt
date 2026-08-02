@@ -19,10 +19,12 @@ import kotlin.math.max
 
 /**
  * Waveform of the game-audio snapshot with a draggable trim selection — the
- * heart of the trim editor. Manual finder by design (v1 has no auto-placed
- * range): pinch to zoom, drag the body to pan, drag either handle to set the
- * selection edges. Rendering + touch precedents: [RegionPreviewView] (strip
- * onDraw), [RegionDragView] (per-target touch dispatch).
+ * heart of the trim editor. Manual-first by design: pinch to zoom, drag the
+ * body to pan, drag either handle to set the selection edges. The only
+ * auto-placement is the host's VAD snap ([setSelection]), which repositions
+ * the untouched default — it never overrides a user trim. Rendering + touch
+ * precedents: [RegionPreviewView] (strip onDraw), [RegionDragView]
+ * (per-target touch dispatch).
  *
  * Data is per-bucket ABSOLUTE RMS in 0..1 (computed once off-main by the
  * activity); the view itself never touches PCM. Bars are scaled to the loudest
@@ -53,6 +55,30 @@ class WaveformTrimView @JvmOverloads constructor(
     var selEndMs = 0L
         private set
     private var cursorMs: Long? = null
+
+    /** Detected voice-line regions (ms), flattened as [start0, end0, start1,
+     *  end1, …]. Only what the host's VAD pass actually scanned — the seeded
+     *  window around the launch anchor — so absence of highlight outside it
+     *  means "unscanned", not "no voice". */
+    private var speechRegions = LongArray(0)
+
+    /** Paint the detected voice lines' bars in the warning color. [regions]
+     *  are (startMs, endMs) pairs within the loaded file. */
+    fun setSpeechRegions(regions: List<Pair<Long, Long>>) {
+        speechRegions = LongArray(regions.size * 2).also { arr ->
+            regions.forEachIndexed { i, (s, e) -> arr[i * 2] = s; arr[i * 2 + 1] = e }
+        }
+        invalidate()
+    }
+
+    private fun inSpeechRegion(ms: Double): Boolean {
+        var i = 0
+        while (i < speechRegions.size) {
+            if (ms >= speechRegions[i] && ms < speechRegions[i + 1]) return true
+            i += 2
+        }
+        return false
+    }
 
     /** Fired on every user-driven selection change (drag in progress too). */
     var onSelectionChanged: ((startMs: Long, endMs: Long) -> Unit)? = null
@@ -103,6 +129,11 @@ class WaveformTrimView @JvmOverloads constructor(
 
     private val barPaint = Paint().apply { color = context.themeColor(R.attr.ptDivider) }
     private val barSelectedPaint = Paint().apply { color = context.themeColor(R.attr.ptAccent) }
+    /** Bars inside a detected voice line ([setSpeechRegions]) — warning color,
+     *  and it WINS over the selected-accent so the line reads as a line even
+     *  when the selection sits on top of it (the selection keeps its fill +
+     *  handles as identity). */
+    private val barSpeechPaint = Paint().apply { color = context.themeColor(R.attr.ptWarning) }
     private val selectionFill = Paint().apply {
         color = context.themeColor(R.attr.ptAccent)
         alpha = 36
@@ -315,7 +346,11 @@ class WaveformTrimView @JvmOverloads constructor(
             if (msAtX >= durationMs) break
             val amp = (columnAmp(x, colW) * ampScale).coerceAtMost(1f)
             val barH = max(1f * density, amp * (h * 0.88f))
-            val paint = if (x + colW / 2 in selL..selR) barSelectedPaint else barPaint
+            val paint = when {
+                inSpeechRegion(msAtX + colW / 2 * msPerPx) -> barSpeechPaint
+                x + colW / 2 in selL..selR -> barSelectedPaint
+                else -> barPaint
+            }
             canvas.drawRect(x, midY - barH / 2, x + colW * 0.8f, midY + barH / 2, paint)
             x += colW
         }
