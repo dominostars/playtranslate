@@ -65,7 +65,7 @@ class TranslationLogRecorder(
             rect: Rect?, backendDisplayName: String?,
         ): Long
 
-        suspend fun update(rowId: Long, sourceText: String, translation: String?, atMs: Long, normKey: String)
+        suspend fun update(rowId: Long, sourceText: String, translation: String?, normKey: String)
 
         suspend fun attachByKey(
             normKey: String, translation: String,
@@ -90,8 +90,8 @@ class TranslationLogRecorder(
             provenance, sessionId, normKey, rect, backendDisplayName,
         )
 
-        override suspend fun update(rowId: Long, sourceText: String, translation: String?, atMs: Long, normKey: String) =
-            TranslationHistoryStore.update(ctx, rowId, sourceText, translation, atMs, normKey)
+        override suspend fun update(rowId: Long, sourceText: String, translation: String?, normKey: String) =
+            TranslationHistoryStore.update(ctx, rowId, sourceText, translation, normKey)
 
         override suspend fun attachByKey(
             normKey: String, translation: String,
@@ -542,7 +542,9 @@ class TranslationLogRecorder(
                         runCatching {
                             val rowId = prev?.id?.await()
                             if (rowId != null) {
-                                sink.update(rowId, source, translation, now, decision.entry.key)
+                                // Supersession keeps the row's original at_ms
+                                // (same sentence, fuller read — see store kdoc).
+                                sink.update(rowId, source, translation, decision.entry.key)
                             } else {
                                 sink.insert(
                                     now, source, translation, sourceLang, targetLang,

@@ -55,7 +55,7 @@ class TranslationLogRecorderTest {
             return id
         }
 
-        override suspend fun update(rowId: Long, sourceText: String, translation: String?, atMs: Long, normKey: String) {
+        override suspend fun update(rowId: Long, sourceText: String, translation: String?, normKey: String) {
             val row = rows.getValue(rowId)
             row.sourceText = sourceText
             row.translation = translation

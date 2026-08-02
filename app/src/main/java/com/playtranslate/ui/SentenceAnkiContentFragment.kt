@@ -109,6 +109,14 @@ class SentenceAnkiContentFragment : Fragment() {
      *  churn-bug class fix). */
     private var gameAudioSnapshotFile: File? = null
 
+    /** Where the launch anchor ([ARG_AUDIO_ANCHOR_MS] — the sentence's
+     *  capture/display wall time) landed inside this card's snapshot, mapped
+     *  by the recorder's ring clock. Seeds the default trim range at the
+     *  sentence's own moment instead of the buffer tail. Null when no anchor
+     *  was supplied or it missed the ring. Deliberately not saved: restores
+     *  carry a committed range, which always takes precedence. */
+    private var gameAudioAnchorOffsetMs: Long? = null
+
     /** The snapshot file the panel last loaded — reload guard. */
     private var gameAudioLoadedFile: File? = null
     private var inlinePlayer: PcmAudioTrackPlayer? = null
@@ -621,25 +629,37 @@ class SentenceAnkiContentFragment : Fragment() {
         if (savedInstanceState != null) {
             restoreGameAudioState(savedInstanceState)
         } else if (Prefs(requireContext()).recordGameAudio) {
+            val anchorMs = args.takeIf { it.containsKey(ARG_AUDIO_ANCHOR_MS) }
+                ?.getLong(ARG_AUDIO_ANCHOR_MS)
             viewLifecycleOwner.lifecycleScope.launch {
                 val snap = withContext(Dispatchers.IO) {
-                    CaptureService.instance?.gameAudioRecorder?.snapshotToFile()
+                    CaptureService.instance?.gameAudioRecorder?.snapshotToFile(anchorMs)
                 }
                 if (snap == null) return@launch
                 if (!isAdded) {
                     // Flow died while snapshotting — we own the file; reap it.
-                    snap.delete()
+                    snap.file.delete()
                     return@launch
                 }
-                gameAudioSnapshotFile = snap
-                GameAudioSnapshot.active = snap
+                gameAudioSnapshotFile = snap.file
+                GameAudioSnapshot.active = snap.file
+                gameAudioAnchorOffsetMs = snap.anchorOffsetMs
+                if (snap.anchorMissed) {
+                    // The launch anchor predates the ring's oldest audio: the
+                    // line's voice is provably not in this snapshot (e.g. a
+                    // card from an old History row). Leave the cell on Auto
+                    // (TTS) instead of defaulting to the last 5 s of unrelated
+                    // audio; the snapshot stays available to an explicit
+                    // Game-audio pick.
+                    return@launch
+                }
                 // Commit the default range from a cheap header read BEFORE the
                 // heavy waveform decode, so a Save landing in the decode window
                 // ships the default clip instead of an unsendable provisional
                 // key. Until this resolves the cell stays on Auto (the TTS
                 // floor) — a fast Save then gets TTS, never dropped audio. A
                 // too-short snapshot leaves the cell on Auto for good.
-                if (commitDefaultGameRange(snap)) {
+                if (commitDefaultGameRange(snap.file)) {
                     val lang = SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
                         ?: SourceLangId.JA
                     sentenceAudioHandle?.refreshPillLabel(
@@ -666,10 +686,28 @@ class SentenceAnkiContentFragment : Fragment() {
         val durationMs = withContext(Dispatchers.IO) { GameAudioClip.durationMs(wav) }
         if (durationMs < MIN_GAME_AUDIO_MS) return false
         gameAudioDurationMs = durationMs
-        val start = (durationMs - DEFAULT_GAME_RANGE_MS).coerceAtLeast(0)
-        sentenceSelection = RecordingAudioSource.committedSelection(wav, start, durationMs)
+        val (start, end) = defaultGameRange(durationMs)
+        sentenceSelection = RecordingAudioSource.committedSelection(wav, start, end)
         gameAudioReviewed = false
         return true
+    }
+
+    /** The default trim range: brackets the launch anchor when one mapped
+     *  into the snapshot — the anchor is the sentence's capture/display
+     *  moment, which TRAILS its voice line by the OCR+MT latency, so most
+     *  of the bracket sits before it — else the last [DEFAULT_GAME_RANGE_MS]
+     *  (no anchor: the just-heard line sits at the buffer tail). */
+    private fun defaultGameRange(durationMs: Long): Pair<Long, Long> {
+        val anchor = gameAudioAnchorOffsetMs
+            ?: return (durationMs - DEFAULT_GAME_RANGE_MS).coerceAtLeast(0) to durationMs
+        var start = (anchor - ANCHOR_PRE_MS).coerceAtLeast(0)
+        var end = (anchor + ANCHOR_POST_MS).coerceAtMost(durationMs)
+        if (end - start < MIN_GAME_AUDIO_MS) {
+            // Anchor pinned to a file edge: keep a usable minimum selection.
+            end = (start + MIN_GAME_AUDIO_MS).coerceAtMost(durationMs)
+            start = (end - MIN_GAME_AUDIO_MS).coerceAtLeast(0)
+        }
+        return start to end
     }
 
     /** Make Game audio the live [sentenceSelection] with a COMMITTED range —
@@ -751,8 +789,7 @@ class SentenceAnkiContentFragment : Fragment() {
             // the duration is known; a committed range is preserved.
             val existing = (selNow as AudioSelection.Explicit)
                 .let { RecordingAudioSource.parseRangeFor(it.key, wav) }
-            val start = existing?.first ?: (durationMs - DEFAULT_GAME_RANGE_MS).coerceAtLeast(0)
-            val end = existing?.second ?: durationMs
+            val (start, end) = existing ?: defaultGameRange(durationMs)
             if (existing == null) {
                 sentenceSelection = RecordingAudioSource.committedSelection(wav, start, end)
                 // A freshly-defaulted range hasn't been seen by the user.
@@ -1532,6 +1569,15 @@ class SentenceAnkiContentFragment : Fragment() {
          *  seconds of the snapshot, where the just-heard line sits. */
         private const val DEFAULT_GAME_RANGE_MS = 5_000L
 
+        /** Anchor-seeded default range: how far the selection reaches back
+         *  from the mapped anchor and past it. Back-weighted on purpose: the
+         *  anchor is when the sentence was captured/displayed, and the voice
+         *  line PRECEDES that by the pipeline latency (plus however long the
+         *  user took to shutter). The 30 s opening viewport centered on this
+         *  selection covers lines that start earlier still. */
+        private const val ANCHOR_PRE_MS = 4_000L
+        private const val ANCHOR_POST_MS = 1_000L
+
         /** Restore of the game-audio state after process death (onDestroyView
          *  never ran) or a saved-state destroy (onDestroyView ran but kept
          *  the file — see the isStateSaved gate there). */
@@ -1549,6 +1595,7 @@ class SentenceAnkiContentFragment : Fragment() {
         private const val ARG_TARGET_WORD     = "target_word"
         private const val ARG_SOURCE_LANG     = "source_lang"
         private const val ARG_WORDS_LOADING   = "words_loading"
+        private const val ARG_AUDIO_ANCHOR_MS = "audio_anchor_ms"
 
         fun newInstance(
             japanese: String,
@@ -1558,6 +1605,7 @@ class SentenceAnkiContentFragment : Fragment() {
             targetWord: String? = null,
             sourceLangId: SourceLangId = SourceLangId.JA,
             wordsLoading: Boolean = false,
+            audioAnchorMs: Long? = null,
         ) = SentenceAnkiContentFragment().apply {
             arguments = Bundle().apply {
                 putString(ARG_ORIGINAL, japanese)
@@ -1570,6 +1618,7 @@ class SentenceAnkiContentFragment : Fragment() {
                 if (targetWord != null) putString(ARG_TARGET_WORD, targetWord)
                 putString(ARG_SOURCE_LANG, sourceLangId.code)
                 putBoolean(ARG_WORDS_LOADING, wordsLoading)
+                if (audioAnchorMs != null) putLong(ARG_AUDIO_ANCHOR_MS, audioAnchorMs)
             }
         }
     }

@@ -1766,6 +1766,7 @@ class CaptureResultOverlay(
                         resolved.entry,
                         lastResult?.originalText,
                         lastResult?.screenshotPath,
+                        audioAnchorMs = lastResult?.createdAtMs?.takeIf { it > 0 },
                     )
                 }
                 b.setWordHighlight(span.first)
@@ -1899,6 +1900,11 @@ class CaptureResultOverlay(
             }
             result.screenshotPath?.let { putExtra(SentenceAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, it) }
             putExtra(SentenceAnkiReviewActivity.EXTRA_SOURCE_LANG, prefs.sourceLangId.code)
+            // Game-audio ring anchor: when this capture happened, so the trim
+            // view opens at the line's own moment instead of the buffer tail.
+            if (result.createdAtMs > 0) {
+                putExtra(SentenceAnkiReviewActivity.EXTRA_AUDIO_ANCHOR_MS, result.createdAtMs)
+            }
             words?.let { snap ->
                 val keys = snap.results.keys.toTypedArray()
                 // Size-gated pair: normally senses ride EXTRA_ENRICHMENT and

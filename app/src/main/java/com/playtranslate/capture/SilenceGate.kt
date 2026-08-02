@@ -24,10 +24,10 @@ package com.playtranslate.capture
  * voice onset keeps its (≤ one chunk) lead-in and is never clipped.
  *
  * Deliberate consequence: ring/snapshot time is SPLICED, not wall-clock — a
- * collapsed gap plays back as [MAX_SILENCE_SECONDS]. Nothing addresses the
- * ring by wall-clock today (selection keys are file-relative); a future
- * consumer that needs it (e.g. log-entry audio anchoring) needs splice
- * markers recorded at drop points, not a raised floor.
+ * collapsed gap plays back as [MAX_SILENCE_SECONDS]. Consumers that address
+ * the ring by wall-clock (trim-seed anchoring) survive this because the
+ * recorder re-anchors its [RingClock] at every drop point; selection keys
+ * stay file-relative.
  */
 internal class SilenceGate(
     sampleRate: Int,

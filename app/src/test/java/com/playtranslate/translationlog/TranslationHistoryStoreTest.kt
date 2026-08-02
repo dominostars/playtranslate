@@ -46,12 +46,15 @@ class TranslationHistoryStoreTest {
 
     @Test
     fun updateRewritesInPlace(): Unit = runBlocking {
-        val id = insert("partial")
-        TranslationHistoryStore.update(ctx, id, "partial grown.", "full translation", 500, "key2")
+        val id = insert("partial", atMs = 100)
+        TranslationHistoryStore.update(ctx, id, "partial grown.", "full translation", "key2")
         val entries = TranslationHistoryStore.recent(ctx, 10)
         assertEquals(1, entries.size)
         assertEquals("partial grown.", entries[0].sourceText)
         assertEquals("full translation", entries[0].translation)
+        // Supersession keeps the FIRST-appearance stamp: the fuller read is
+        // the same sentence, and the Anki audio anchor keys off at_ms.
+        assertEquals(100L, entries[0].atMs)
     }
 
     @Test

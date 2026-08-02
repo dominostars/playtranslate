@@ -803,6 +803,17 @@ class TranslationResultFragment : Fragment() {
         resultsContent.restoreScrollSilently(target, scrollListener)
     }
 
+    /** Game-audio ring anchor for an Anki launch from this page: a
+     *  history-seeded page anchors at the ROW's capture moment (this page's
+     *  result object is stamped at page-open, which says nothing about when
+     *  the row's line was heard); every other launch anchors at the result's
+     *  own creation. */
+    private fun audioAnchorMsFor(result: com.playtranslate.model.TranslationResult?): Long? =
+        activity?.intent
+            ?.getLongExtra(TranslationResultActivity.EXTRA_HISTORY_AT_MS, 0L)
+            ?.takeIf { it > 0 }
+            ?: result?.createdAtMs?.takeIf { it > 0 }
+
     /** First sense's POS (blank-filtered, " · "-joined) + the flattened card
      *  definition — the shared (POS, definition) extraction the word-Anki paths use. */
     private fun com.playtranslate.model.DictionaryEntry.ankiPosAndDefinition(): Pair<String, String> {
@@ -835,6 +846,7 @@ class TranslationResultFragment : Fragment() {
             ready?.screenshotPath?.let { putExtra(WordAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, it) }
             ready?.originalText?.let { putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_ORIGINAL, it) }
             ready?.translatedText?.let { putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_TRANSLATION, it) }
+            audioAnchorMsFor(ready)?.let { putExtra(WordAnkiReviewActivity.EXTRA_AUDIO_ANCHOR_MS, it) }
             // Same result as the sentence extras above, so the pending rides
             // its own original (resolveAnkiTranslation's caller contract) —
             // the sheet's fill then COMPLETES a deferred capture instead of
@@ -1102,6 +1114,7 @@ class TranslationResultFragment : Fragment() {
                 // sentence/word toggle) — a sentence card would just repeat
                 // the word. WordAnkiReviewSheet renders word-only with no
                 // toggle whenever it's launched without sentence args.
+                val audioAnchorMs = audioAnchorMsFor(result)
                 val singleRow = (vm.wordLookups.value as? WordLookupsState.Settled)
                     ?.singleWordRow(getDisplayedOriginalText())
                 if (singleRow != null) {
@@ -1126,6 +1139,7 @@ class TranslationResultFragment : Fragment() {
                         // funnel triggered above is fine — the attach is
                         // idempotent and the second batch is cache-served.
                         pendingTranslation = result.pendingTranslation,
+                        audioAnchorMs = audioAnchorMs,
                     ).show(childFragmentManager, AnkiReviewBottomSheet.TAG)
                 }
             }

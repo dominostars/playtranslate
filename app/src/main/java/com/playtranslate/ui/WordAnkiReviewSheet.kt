@@ -378,6 +378,8 @@ class WordAnkiReviewSheet : DialogFragment() {
                 meaningfulSentence, sentenceTranslation, sentenceWords,
                 currentScreenshotPath, targetWord = word, sourceLangId = sourceLangId,
                 wordsLoading = sentenceWords.isEmpty(),
+                audioAnchorMs = args.takeIf { it.containsKey(ARG_AUDIO_ANCHOR_MS) }
+                    ?.getLong(ARG_AUDIO_ANCHOR_MS),
             )
             childFragmentManager.beginTransaction()
                 .replace(R.id.wordAnkiSentenceHost, contentFragment, TAG_CONTENT)
@@ -1889,6 +1891,7 @@ class WordAnkiReviewSheet : DialogFragment() {
         private const val ARG_SENTENCE_MEANINGS     = "sentence_meanings"
         private const val ARG_SENTENCE_FREQ_SCORES  = "sentence_freq_scores"
         private const val ARG_SOURCE_LANG     = "source_lang"
+        private const val ARG_AUDIO_ANCHOR_MS = "audio_anchor_ms"
 
         fun newInstance(
             word: String,
@@ -1903,6 +1906,7 @@ class WordAnkiReviewSheet : DialogFragment() {
             sentenceWordResults: Map<String, Triple<String, String, Int>>? = null,
             sourceLangId: SourceLangId = SourceLangId.JA,
             sentencePending: com.playtranslate.model.PendingTranslation? = null,
+            audioAnchorMs: Long? = null,
         ) = WordAnkiReviewSheet().apply {
             arguments = Bundle().apply {
                 putString(ARG_WORD, word)
@@ -1928,6 +1932,10 @@ class WordAnkiReviewSheet : DialogFragment() {
                     }
                 }
                 putString(ARG_SOURCE_LANG, sourceLangId.code)
+                // Meaningful only alongside a sentence (the game-audio cell
+                // lives in the hosted sentence fragment), but stored
+                // unconditionally — the read side gates on the fragment.
+                if (audioAnchorMs != null) putLong(ARG_AUDIO_ANCHOR_MS, audioAnchorMs)
             }
         }
     }

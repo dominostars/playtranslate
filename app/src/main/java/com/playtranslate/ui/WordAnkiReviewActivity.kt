@@ -50,6 +50,7 @@ class WordAnkiReviewActivity : AppCompatActivity() {
             as? com.playtranslate.model.PendingTranslation
         val sourceLangId = SourceLangId.fromCode(intent.getStringExtra(EXTRA_SOURCE_LANG))
             ?: Prefs(applicationContext).sourceLangId
+        val audioAnchorMs = intent.getLongExtra(EXTRA_AUDIO_ANCHOR_MS, 0L).takeIf { it > 0 }
 
         // Read word results from cache if sentence context matches
         val cachedWordResults = if (sentenceOriginal != null
@@ -58,7 +59,7 @@ class WordAnkiReviewActivity : AppCompatActivity() {
 
         showReviewSheet(word, reading, pos, definition, freqScore, screenshotPath,
             sentenceOriginal, sentenceTranslation, cachedWordResults, sourceLangId,
-            sentencePending)
+            sentencePending, audioAnchorMs)
     }
 
     private fun showReviewSheet(
@@ -68,6 +69,7 @@ class WordAnkiReviewActivity : AppCompatActivity() {
         sentenceWordResults: Map<String, Triple<String, String, Int>>? = null,
         sourceLangId: SourceLangId = SourceLangId.JA,
         sentencePending: com.playtranslate.model.PendingTranslation? = null,
+        audioAnchorMs: Long? = null,
     ) {
         val sheet = WordAnkiReviewSheet.newInstance(
             word, reading, pos, definition, screenshotPath,
@@ -77,6 +79,7 @@ class WordAnkiReviewActivity : AppCompatActivity() {
             sentenceWordResults = sentenceWordResults,
             sourceLangId = sourceLangId,
             sentencePending = sentencePending,
+            audioAnchorMs = audioAnchorMs,
         )
         sheet.onDismissListener = DialogInterface.OnDismissListener { finish() }
         sheet.show(supportFragmentManager, WordAnkiReviewSheet.TAG)
@@ -109,5 +112,10 @@ class WordAnkiReviewActivity : AppCompatActivity() {
         const val EXTRA_SENTENCE_TRANSLATION = "extra_sentence_translation"
         const val EXTRA_SENTENCE_PENDING = "extra_sentence_pending"
         const val EXTRA_SOURCE_LANG = "extra_source_lang"
+
+        /** Epoch ms of the sentence's capture moment — the game-audio ring
+         *  anchor the sentence cell's trim view seeds from (see
+         *  [SentenceAnkiReviewActivity.EXTRA_AUDIO_ANCHOR_MS]). */
+        const val EXTRA_AUDIO_ANCHOR_MS = "extra_audio_anchor_ms"
     }
 }

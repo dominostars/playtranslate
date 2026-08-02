@@ -153,7 +153,9 @@ class AnkiReviewBottomSheet : DialogFragment() {
 
         if (savedInstanceState == null) {
             val contentFragment = SentenceAnkiContentFragment.newInstance(
-                original, translation, words, screenshotPath, sourceLangId = sourceLangId
+                original, translation, words, screenshotPath, sourceLangId = sourceLangId,
+                audioAnchorMs = args.takeIf { it.containsKey(ARG_AUDIO_ANCHOR_MS) }
+                    ?.getLong(ARG_AUDIO_ANCHOR_MS),
             )
             childFragmentManager.beginTransaction()
                 .replace(R.id.sentenceAnkiFragmentHost, contentFragment, TAG_CONTENT)
@@ -271,6 +273,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
         private const val ARG_SCREENSHOT_PATH = "screenshot_path"
         private const val ARG_SOURCE_LANG     = "source_lang"
         private const val ARG_PENDING_TRANSLATION = "pending_translation"
+        private const val ARG_AUDIO_ANCHOR_MS = "audio_anchor_ms"
 
         /**
          * [surfaceForms] (display-word → surface in the sentence) and
@@ -291,6 +294,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
             screenshotPath: String?,
             sourceLangId: SourceLangId = SourceLangId.JA,
             pendingTranslation: com.playtranslate.model.PendingTranslation? = null,
+            audioAnchorMs: Long? = null,
         ): AnkiReviewBottomSheet {
             return AnkiReviewBottomSheet().apply {
                 val wordKeys = wordResults.keys.toTypedArray()
@@ -319,6 +323,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
                     putSerializable(ARG_ENRICHMENT, transport.enrichment)
                     if (screenshotPath != null) putString(ARG_SCREENSHOT_PATH, screenshotPath)
                     putString(ARG_SOURCE_LANG, sourceLangId.code)
+                    if (audioAnchorMs != null) putLong(ARG_AUDIO_ANCHOR_MS, audioAnchorMs)
                 }
             }
         }

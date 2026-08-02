@@ -86,6 +86,10 @@ class GameAudioRecorder(
     private var ring = ShortArray(0)
     private var writePos = 0
     private var framesWritten = 0L
+
+    /** Wall-clock ↔ ring-frame mapping ([RingClock]); [lock]-guarded except
+     *  [RingClock.markGap], which only the reader thread touches. */
+    private val clock = RingClock(SAMPLE_RATE, RING_SECONDS * SAMPLE_RATE)
     @Volatile private var record: AudioRecord? = null
     private var readerThread: Thread? = null
     @Volatile private var shouldRun = false
@@ -207,6 +211,7 @@ class GameAudioRecorder(
                 ring = ShortArray(RING_SECONDS * SAMPLE_RATE)
                 writePos = 0
                 framesWritten = 0
+                clock.reset()
             }
         }
         record = rec
@@ -269,6 +274,9 @@ class GameAudioRecorder(
         // without any UI. One line per ~15 s.
         var windowPeak = 0
         var windowFrames = 0
+        // The pause/stop that ended the previous reader run spliced the
+        // timeline; this run's first write re-anchors it.
+        clock.markGap()
         while (shouldRun) {
             val n = rec.read(chunk, 0, chunk.size)
             if (n <= 0) {
@@ -286,6 +294,7 @@ class GameAudioRecorder(
             val keep = gate.admit(chunkPeak, n)
             if (keep > 0) synchronized(lock) {
                 if (!shouldRun) return
+                clock.beforeWrite(framesWritten, keep, System.currentTimeMillis())
                 var p = writePos
                 for (i in 0 until keep) {
                     ring[p] = chunk[i]
@@ -295,6 +304,9 @@ class GameAudioRecorder(
                 writePos = p
                 framesWritten += keep
             }
+            // Dropped frames = wall time the ring never saw (a splice): the
+            // next admitted chunk must re-anchor the clock.
+            if (keep < n) clock.markGap()
             windowFrames += n
             if (windowFrames >= SAMPLE_RATE * 15) {
                 val db =
@@ -313,15 +325,32 @@ class GameAudioRecorder(
     }
 
     /**
+     * A frozen per-card snapshot: the WAV plus, when the card flow supplied
+     * a launch anchor (the sentence's History/result wall time), where that
+     * moment sits inside the file. [anchorOffsetMs] is null either because
+     * no anchor was requested or because it [anchorMissed] — the anchor
+     * predates the ring's oldest retained audio, i.e. the line's audio is
+     * provably NOT in this snapshot.
+     */
+    class RingSnapshot(
+        val file: File,
+        val anchorOffsetMs: Long?,
+        val anchorMissed: Boolean,
+    )
+
+    /**
      * Freeze the ring's current contents into a FRESH per-card snapshot file
      * ([GameAudioSnapshot.newFile]) as a mono PCM16 WAV — immutable once
      * written; the calling card flow owns (and deletes) it. Works while
-     * paused or stopped (the ring survives). Returns the file, or null when
-     * less than half a second has been captured. Blocking; call on
+     * paused or stopped (the ring survives). [anchorWallMs] (epoch ms — the
+     * launching surface's capture/display moment for the sentence) maps
+     * through [RingClock] into an offset within the snapshot. Returns null
+     * when less than half a second has been captured. Blocking; call on
      * Dispatchers.IO.
      */
-    fun snapshotToFile(): File? {
+    fun snapshotToFile(anchorWallMs: Long? = null): RingSnapshot? {
         val pcm: ShortArray
+        var anchorOffsetMs: Long? = null
         synchronized(lock) {
             val available =
                 if (ring.isEmpty()) 0
@@ -332,7 +361,14 @@ class GameAudioRecorder(
             val firstLen = minOf(available, ring.size - start)
             ring.copyInto(pcm, 0, start, start + firstLen)
             if (firstLen < available) ring.copyInto(pcm, firstLen, 0, available - firstLen)
+            if (anchorWallMs != null) {
+                val snapStartFrame = framesWritten - available
+                anchorOffsetMs = clock.frameFor(anchorWallMs)
+                    ?.takeIf { it >= snapStartFrame }
+                    ?.let { (it.coerceAtMost(framesWritten) - snapStartFrame) * 1000 / SAMPLE_RATE }
+            }
         }
+        val anchorMissed = anchorWallMs != null && anchorOffsetMs == null
         var out: File? = null
         return try {
             // Creation sits inside the try: exclusive-create can throw
@@ -345,9 +381,14 @@ class GameAudioRecorder(
                 TAG,
                 "snapshot: ${pcm.size / SAMPLE_RATE}s → ${out.name} " +
                     "peak=${GameAudioClip.peakDbfs(pcm)}dB " +
-                    "tail5s=${GameAudioClip.peakDbfs(pcm, pcm.size - 5 * SAMPLE_RATE, pcm.size)}dB",
+                    "tail5s=${GameAudioClip.peakDbfs(pcm, pcm.size - 5 * SAMPLE_RATE, pcm.size)}dB " +
+                    "anchor=" + when {
+                        anchorWallMs == null -> "none"
+                        anchorMissed -> "missed(pre-ring)"
+                        else -> "${anchorOffsetMs}ms"
+                    },
             )
-            out
+            RingSnapshot(out, anchorOffsetMs, anchorMissed)
         } catch (e: Exception) {
             Log.e(TAG, "snapshot write failed", e)
             out?.delete()

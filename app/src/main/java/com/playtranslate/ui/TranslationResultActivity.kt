@@ -1043,6 +1043,11 @@ class TranslationResultActivity :
         const val EXTRA_HISTORY_ENTRY_ID = "extra_history_entry_id"
         const val EXTRA_HISTORY_SOURCE_LANG = "extra_history_source_lang"
         const val EXTRA_HISTORY_TARGET_LANG = "extra_history_target_lang"
+        /** The tapped row's at_ms (epoch): the sentence's capture moment,
+         *  passed on to the Anki flow as its game-audio ring anchor — the
+         *  result object this page constructs is stamped at page-open, which
+         *  says nothing about when the ROW's line was heard. */
+        const val EXTRA_HISTORY_AT_MS = "extra_history_at_ms"
         /** Sentence's tokenized word lookups, serialized as four parallel
          *  arrays (mirrors [WordDetailBottomSheet]'s args bundle layout).
          *  Captured by the drag controller at lens-dismiss time so the

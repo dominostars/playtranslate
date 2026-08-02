@@ -598,6 +598,10 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
             putExtra(SentenceAnkiReviewActivity.EXTRA_SENTENCE, entry.sourceText)
             putExtra(SentenceAnkiReviewActivity.EXTRA_TRANSLATION, entry.translation ?: "")
             putExtra(SentenceAnkiReviewActivity.EXTRA_SOURCE_LANG, entry.sourceLang)
+            // Game-audio ring anchor: the row's capture moment. A recent row
+            // seeds the trim view there; an old one maps outside the ring and
+            // the card honestly stays on the TTS floor.
+            putExtra(SentenceAnkiReviewActivity.EXTRA_AUDIO_ANCHOR_MS, entry.atMs)
         })
     }
 
@@ -619,6 +623,7 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
             putExtra(TranslationResultActivity.EXTRA_HISTORY_ENTRY_ID, entry.id)
             putExtra(TranslationResultActivity.EXTRA_HISTORY_SOURCE_LANG, entry.sourceLang)
             putExtra(TranslationResultActivity.EXTRA_HISTORY_TARGET_LANG, entry.targetLang)
+            putExtra(TranslationResultActivity.EXTRA_HISTORY_AT_MS, entry.atMs)
             putExtra(
                 TranslationResultActivity.EXTRA_TOOLBAR_TITLE,
                 titleFormat.format(Date(entry.atMs)),

@@ -177,19 +177,22 @@ object TranslationHistoryStore {
     }
 
     /** Supersession (typewriter growth / punctuation completion): the
-     *  fuller read overwrites the prior row in place. */
+     *  fuller read overwrites the prior row in place. Deliberately does NOT
+     *  touch at_ms — every Replace shape is a fuller read of the SAME
+     *  sentence, so the row keeps its first-appearance stamp instead of
+     *  sliding forward with each growth read. The Anki flow anchors the
+     *  game-audio trim seed on at_ms, and first-appearance is the closest
+     *  stamp to the voice line. */
     suspend fun update(
         ctx: Context,
         rowId: Long,
         sourceText: String,
         translation: String?,
-        atMs: Long,
         normKey: String,
     ): Unit = withContext(dispatcher) {
         openDb(ctx).update("entries", ContentValues().apply {
             put("source_text", sourceText)
             put("translation", translation)
-            put("at_ms", atMs)
             put("norm_key", normKey)
         }, "id = ?", arrayOf(rowId.toString()))
         _revision.value++

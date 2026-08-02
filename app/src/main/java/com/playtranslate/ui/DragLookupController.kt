@@ -86,6 +86,13 @@ class DragLookupController(
     private var lastReading: String? = null
     /** Path to the screenshot captured at drag start. */
     private var screenshotPath: String? = null
+    /** When the drag's frame was captured (epoch ms) — the game-audio ring
+     *  anchor for Anki launches from this lens: the text (and its voice
+     *  line's neighborhood) was on screen at this moment, however long the
+     *  user then dwells in the lens/detail before adding a card. Set with
+     *  [screenshotPath] and, like it, deliberately not cleared on lens
+     *  dismissal — each new drag overwrites it. */
+    private var dragCapturedAtMs: Long? = null
     private var currentSentence: String? = null
     private var lastSentSentence: String? = null
     private var wordLookupJob: Job? = null
@@ -95,7 +102,12 @@ class DragLookupController(
     private val lensActions = SourceLensActions(
         context, displayId, overlayHost, magnifier,
         showAnkiNotInstalled = showAnkiNotInstalled,
-    ) { LensActionContext(lastWord, lastReading, currentEntry, currentSentence, screenshotPath) }
+    ) {
+        LensActionContext(
+            lastWord, lastReading, currentEntry, currentSentence, screenshotPath,
+            audioAnchorMs = dragCapturedAtMs,
+        )
+    }
 
     /** Screenshot bitmap captured at drag start, kept alive for the magnifier
      *  through the entire drag. Recycled on drag end (or when superseded by a
@@ -998,6 +1010,7 @@ class DragLookupController(
         handOffDragBitmap()
         dragBitmap = bitmap
         screenshotPath = path
+        dragCapturedAtMs = System.currentTimeMillis()
         magnifier.setBitmap(bitmap)
         if (!dragInProgress) {
             // Drag ended between screenshot capture and this callback (user
