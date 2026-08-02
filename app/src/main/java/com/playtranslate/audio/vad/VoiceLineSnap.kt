@@ -45,6 +45,11 @@ internal object VoiceLineSnap {
         anchorOffsetMs: Long,
         durationMs: Long,
     ): Result? = withContext(Dispatchers.Default) {
+        // arm64-only (the :mnn .so) — the same gate every MNN-backed tier
+        // applies (BergamotBackend / OnDeviceLlmBackend.supportsRequiredAbi).
+        // On the app's 32-bit slice loadLibrary throws UnsatisfiedLinkError,
+        // and best-effort decoration must skip, not crash.
+        if (!android.os.Process.is64Bit()) return@withContext null
         try {
             val winStart = (anchorOffsetMs - WINDOW_PRE_MS).coerceAtLeast(0)
             val winEnd = (anchorOffsetMs + WINDOW_POST_MS).coerceAtMost(durationMs)
@@ -74,6 +79,12 @@ internal object VoiceLineSnap {
             }
         } catch (e: Exception) {
             Log.w(TAG, "snap failed (keeping seeded default): ${e.message}")
+            null
+        } catch (e: LinkageError) {
+            // A native-load failure the ABI gate didn't predict (corrupt or
+            // missing .so, partial install). Same contract as any other
+            // failure here: keep the seeded default, never crash the card.
+            Log.w(TAG, "snap failed (native runtime unavailable): ${e.message}")
             null
         }
     }
