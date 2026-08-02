@@ -104,4 +104,23 @@ internal object SpeechSnap {
         if (s.endMs - s.startMs <= MAX_LINE_MS) return s
         return Segment(s.endMs - MAX_LINE_MS, s.endMs)
     }
+
+    /** Union of two segment lists, sorted, with overlapping AND touching
+     *  runs coalesced. Touching matters: the background scan works in
+     *  independent blocks whose pads clamp at block edges, so one line
+     *  crossing a block boundary arrives as two segments meeting exactly
+     *  there — the merged view must read as one line. */
+    fun merge(a: List<Segment>, b: List<Segment>): List<Segment> {
+        val all = (a + b).sortedBy { it.startMs }
+        val out = ArrayList<Segment>(all.size)
+        for (s in all) {
+            val last = out.lastOrNull()
+            if (last != null && s.startMs <= last.endMs) {
+                if (s.endMs > last.endMs) out[out.size - 1] = Segment(last.startMs, s.endMs)
+            } else {
+                out.add(s)
+            }
+        }
+        return out
+    }
 }

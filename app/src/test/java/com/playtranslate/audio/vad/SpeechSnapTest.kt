@@ -107,4 +107,35 @@ class SpeechSnapTest {
         assertEquals(40_000L, snapped.endMs)
         assertEquals(40_000L - SpeechSnap.MAX_LINE_MS, snapped.startMs)
     }
+
+    // ── merge (background-scan accumulation) ──
+
+    @Test
+    fun mergeCoalescesTouchingBlockBoundarySegments() {
+        // One line split by a block boundary at 30 s: pads clamped, pieces
+        // touch exactly. Merged view = one segment.
+        val a = listOf(seg(28_000, 30_000))
+        val b = listOf(seg(30_000, 31_500))
+        assertEquals(listOf(seg(28_000, 31_500)), SpeechSnap.merge(a, b))
+    }
+
+    @Test
+    fun mergeCoalescesOverlapAndKeepsDisjoint() {
+        val a = listOf(seg(0, 2_000), seg(10_000, 12_000))
+        val b = listOf(seg(1_500, 3_000), seg(20_000, 21_000))
+        assertEquals(
+            listOf(seg(0, 3_000), seg(10_000, 12_000), seg(20_000, 21_000)),
+            SpeechSnap.merge(a, b),
+        )
+    }
+
+    @Test
+    fun mergeAbsorbsContainedSegmentsAndHandlesEmpty() {
+        val a = listOf(seg(5_000, 9_000))
+        val b = listOf(seg(6_000, 7_000))
+        assertEquals(listOf(seg(5_000, 9_000)), SpeechSnap.merge(a, b))
+        assertEquals(a, SpeechSnap.merge(a, emptyList()))
+        assertEquals(a, SpeechSnap.merge(emptyList(), a))
+        assertEquals(emptyList<SpeechSnap.Segment>(), SpeechSnap.merge(emptyList(), emptyList()))
+    }
 }

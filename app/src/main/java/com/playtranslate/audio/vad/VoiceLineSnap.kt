@@ -89,6 +89,83 @@ internal object VoiceLineSnap {
         }
     }
 
+    /** Background-scan block size. Independent fresh-state passes — Silero
+     *  warms within a couple of frames, and per-block independence is what
+     *  lets the scan walk in viewer-priority order and emit as it goes. */
+    private const val BLOCK_MS = 30_000L
+
+    /** Blocks shorter than this aren't worth a pass (sub-line slivers). */
+    private const val MIN_BLOCK_MS = 500L
+
+    /**
+     * Scan everything OUTSIDE `[excludedStartMs, excludedEndMs)` (the window
+     * [snap] already covered — pass `[durationMs, durationMs)` to scan the
+     * whole file, tail-first) in [BLOCK_MS] blocks, nearest-to-the-window
+     * first: backward toward 0, then forward to the end. Emits each block's
+     * speech segments (snapshot-ms) via [onSegments] as it lands — the
+     * caller accumulates with [SpeechSnap.merge]. Highlight-only by
+     * contract: this never picks or moves a selection. Best-effort like
+     * [snap]: failures log and stop, keeping whatever was already emitted.
+     * Cancellation is cooperative between blocks (scope cancel on card
+     * close stops the scan within one block).
+     */
+    suspend fun scanRemainder(
+        ctx: Context,
+        wav: File,
+        durationMs: Long,
+        excludedStartMs: Long,
+        excludedEndMs: Long,
+        onSegments: suspend (List<SpeechSnap.Segment>) -> Unit,
+    ) = withContext(Dispatchers.Default) {
+        // Same gate as [snap] — the unanchored path arrives here directly.
+        if (!android.os.Process.is64Bit()) return@withContext
+        val blocks = ArrayList<Pair<Long, Long>>()
+        var back = excludedStartMs.coerceIn(0, durationMs)
+        while (back > 0) {
+            val start = (back - BLOCK_MS).coerceAtLeast(0)
+            blocks.add(start to back)
+            back = start
+        }
+        var fwd = excludedEndMs.coerceIn(0, durationMs)
+        while (fwd < durationMs) {
+            val end = (fwd + BLOCK_MS).coerceAtMost(durationMs)
+            blocks.add(fwd to end)
+            fwd = end
+        }
+        if (blocks.isEmpty()) return@withContext
+        val t0 = android.os.SystemClock.elapsedRealtime()
+        var scannedBlocks = 0
+        var totalSegments = 0
+        try {
+            val rate = GameAudioClip.sampleRate(wav)
+            SileroVad.open(ctx).use { vad ->
+                for ((blockStart, blockEnd) in blocks) {
+                    kotlinx.coroutines.yield()
+                    if (blockEnd - blockStart < MIN_BLOCK_MS) continue
+                    val pcm = GameAudioClip.readPcmRange(wav, blockStart, blockEnd)
+                    if (pcm.isEmpty()) continue
+                    val probs = vad.probabilities(resampleTo16k(pcm, rate))
+                    val segments = SpeechSnap
+                        .segments(probs, SileroVad.FRAME_MS, blockEnd - blockStart)
+                        .map { SpeechSnap.Segment(blockStart + it.startMs, blockStart + it.endMs) }
+                    scannedBlocks++
+                    totalSegments += segments.size
+                    if (segments.isNotEmpty()) onSegments(segments)
+                }
+            }
+            Log.i(
+                TAG,
+                "remainder scan: blocks=$scannedBlocks segments=$totalSegments " +
+                    "excluded=${excludedStartMs}..${excludedEndMs}ms of ${durationMs}ms " +
+                    "in ${android.os.SystemClock.elapsedRealtime() - t0}ms",
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "remainder scan stopped after $scannedBlocks blocks: ${e.message}")
+        } catch (e: LinkageError) {
+            Log.w(TAG, "remainder scan unavailable (native runtime): ${e.message}")
+        }
+    }
+
     /** Linear-interpolation resample to 16 kHz mono float in -1..1 — VAD
      *  input, never played back, so interpolation quality is a non-issue. */
     private fun resampleTo16k(pcm: ShortArray, srcRate: Int): FloatArray {

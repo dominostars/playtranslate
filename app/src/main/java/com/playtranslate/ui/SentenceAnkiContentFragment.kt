@@ -44,6 +44,7 @@ import com.playtranslate.audio.AudioSelection
 import com.playtranslate.audio.GameAudioClip
 import com.playtranslate.audio.PlayOutcome
 import com.playtranslate.audio.sources.RecordingAudioSource
+import com.playtranslate.audio.vad.SpeechSnap
 import com.playtranslate.audio.vad.VoiceLineSnap
 import com.playtranslate.capture.GameAudioSnapshot
 import com.playtranslate.dictionary.Deinflector
@@ -123,10 +124,12 @@ class SentenceAnkiContentFragment : Fragment() {
      *  — the snap only ever replaces the former. */
     private var gameAudioSeededRange: Pair<Long, Long>? = null
 
-    /** Detected voice-line regions (snapshot ms) from the VAD pass — painted
-     *  on the waveform in the warning color. Kept here because the VAD
-     *  result and the waveform decode land in either order. */
-    private var gameAudioSpeechRegions: List<Pair<Long, Long>> = emptyList()
+    /** Detected voice-line regions (snapshot ms), accumulated across the
+     *  fast window pass and the background remainder blocks via
+     *  [SpeechSnap.merge] — painted on the waveform in the warning color.
+     *  Kept here because VAD emissions and the waveform decode land in any
+     *  order. */
+    private var gameAudioSpeechRegions: List<SpeechSnap.Segment> = emptyList()
 
     /** The snapshot file the panel last loaded — reload guard. */
     private var gameAudioLoadedFile: File? = null
@@ -679,7 +682,7 @@ class SentenceAnkiContentFragment : Fragment() {
                     refreshSentenceAudioTitle()
                     // Renders the waveform for the already-committed range.
                     updateGameAudioPanel()
-                    launchVadSnap(snap.file)
+                    launchVadScan(snap.file)
                 }
             }
         }
@@ -706,44 +709,86 @@ class SentenceAnkiContentFragment : Fragment() {
     }
 
     /**
-     * Best-effort VAD refinement of an anchor-seeded default (Phase 2): find
-     * the voice line inside the anchor's window ([VoiceLineSnap]) and move
-     * the UNTOUCHED default onto it. Strictly loses to the user: a handle
-     * drag, a play (reviewed), a source switch, or any range differing from
-     * the seed leaves the snap on the floor. Does NOT mark the range
-     * reviewed — an auto-placed clip still deserves the save-time nudge.
+     * The VAD pass over this card's snapshot, two phases in one coroutine:
+     *
+     * 1. ANCHORED FAST PASS ([VoiceLineSnap.snap], anchor's window only) —
+     *    finds the voice line the anchor names and moves the UNTOUCHED
+     *    seeded default onto it ([applyVadSelection]).
+     * 2. BACKGROUND REMAINDER ([VoiceLineSnap.scanRemainder]) — walks the
+     *    rest of the snapshot in blocks, nearest-to-window first (tail-first
+     *    when there's no anchor, which is also how unanchored cards get
+     *    highlights at all), extending the warning-color highlight as each
+     *    block lands. Highlight-only: phase 2 never touches the selection.
+     *
+     * Runs on the view lifecycle scope — closing the card cancels the scan
+     * within a block.
      */
-    private fun launchVadSnap(wav: File) {
-        val anchor = gameAudioAnchorOffsetMs ?: return
+    private fun launchVadScan(wav: File) {
         val durationMs = gameAudioDurationMs
         val appCtx = context?.applicationContext ?: return
+        val anchor = gameAudioAnchorOffsetMs
         viewLifecycleOwner.lifecycleScope.launch {
-            val result = VoiceLineSnap.snap(appCtx, wav, anchor, durationMs) ?: return@launch
-            if (!isAdded || gameAudioSnapshotFile != wav) return@launch
-            // The voice-line highlight applies unconditionally — it informs a
-            // user who already took the handles over; it overrides nothing.
-            gameAudioSpeechRegions = result.segments.map { it.startMs to it.endMs }
-            if (gameAudioLoadedFile == wav) {
-                gameAudioWave?.setSpeechRegions(gameAudioSpeechRegions)
+            // Unanchored: nothing is excluded and the backward walk starts
+            // at the end — the tail is where the default selection sits.
+            var scannedStart = durationMs
+            var scannedEnd = durationMs
+            if (anchor != null) {
+                scannedStart = (anchor - VoiceLineSnap.WINDOW_PRE_MS).coerceAtLeast(0)
+                scannedEnd = (anchor + VoiceLineSnap.WINDOW_POST_MS).coerceAtMost(durationMs)
+                val result = VoiceLineSnap.snap(appCtx, wav, anchor, durationMs)
+                if (result != null) {
+                    if (!isAdded || gameAudioSnapshotFile != wav) return@launch
+                    applySpeechRegions(result.segments)
+                    applyVadSelection(wav, result.line)
+                }
             }
-            // The selection snap, by contrast, strictly loses to the user.
-            if (gameAudioReviewed) return@launch
-            val seeded = gameAudioSeededRange ?: return@launch
-            val current = (sentenceSelection as? AudioSelection.Explicit)
-                ?.takeIf { it.sourceId == RecordingAudioSource.ID }
-                ?.let { RecordingAudioSource.parseRangeFor(it.key, wav) }
-            if (current != seeded) return@launch
-            val snapped = result.line
-            sentenceSelection =
-                RecordingAudioSource.committedSelection(wav, snapped.startMs, snapped.endMs)
-            gameAudioSeededRange = snapped.startMs to snapped.endMs
-            refreshSentenceAudioTitle()
-            // Wave already rendered → move its selection silently (the
-            // callback path would set the reviewed flag). Still decoding →
-            // the decode's parseRangeFor picks up the snapped commit.
-            if (gameAudioLoadedFile == wav) {
-                gameAudioWave?.setSelection(snapped.startMs, snapped.endMs)
+            VoiceLineSnap.scanRemainder(
+                appCtx, wav, durationMs, scannedStart, scannedEnd,
+            ) { segments ->
+                withContext(Dispatchers.Main.immediate) {
+                    if (isAdded && gameAudioSnapshotFile == wav) {
+                        applySpeechRegions(segments)
+                    }
+                }
             }
+        }
+    }
+
+    /** Fold newly-scanned [segments] into the highlight set and repaint.
+     *  The highlight applies unconditionally — it informs a user who already
+     *  took the handles over; it overrides nothing. */
+    private fun applySpeechRegions(segments: List<SpeechSnap.Segment>) {
+        gameAudioSpeechRegions = SpeechSnap.merge(gameAudioSpeechRegions, segments)
+        if (gameAudioLoadedFile != null && gameAudioLoadedFile == gameAudioSnapshotFile) {
+            gameAudioWave?.setSpeechRegions(
+                gameAudioSpeechRegions.map { it.startMs to it.endMs },
+            )
+        }
+    }
+
+    /**
+     * The anchored snap's selection move — strictly loses to the user: a
+     * handle drag, a play (reviewed), a source switch, or any range
+     * differing from the seed leaves the snap on the floor. Does NOT mark
+     * the range reviewed — an auto-placed clip still deserves the save-time
+     * nudge.
+     */
+    private fun applyVadSelection(wav: File, snapped: SpeechSnap.Segment) {
+        if (gameAudioReviewed) return
+        val seeded = gameAudioSeededRange ?: return
+        val current = (sentenceSelection as? AudioSelection.Explicit)
+            ?.takeIf { it.sourceId == RecordingAudioSource.ID }
+            ?.let { RecordingAudioSource.parseRangeFor(it.key, wav) }
+        if (current != seeded) return
+        sentenceSelection =
+            RecordingAudioSource.committedSelection(wav, snapped.startMs, snapped.endMs)
+        gameAudioSeededRange = snapped.startMs to snapped.endMs
+        refreshSentenceAudioTitle()
+        // Wave already rendered → move its selection silently (the callback
+        // path would set the reviewed flag). Still decoding → the decode's
+        // parseRangeFor picks up the snapped commit.
+        if (gameAudioLoadedFile == wav) {
+            gameAudioWave?.setSelection(snapped.startMs, snapped.endMs)
         }
     }
 
@@ -851,10 +896,12 @@ class SentenceAnkiContentFragment : Fragment() {
                 gameAudioReviewed = false
             }
             gameAudioWave?.setData(buckets, 50L, durationMs, start, end)
-            // A VAD pass that finished before this decode left its regions
-            // here; the reverse order paints them in launchVadSnap instead.
+            // VAD emissions that landed before this decode are re-painted
+            // here; ones landing after paint via applySpeechRegions.
             if (gameAudioSpeechRegions.isNotEmpty()) {
-                gameAudioWave?.setSpeechRegions(gameAudioSpeechRegions)
+                gameAudioWave?.setSpeechRegions(
+                    gameAudioSpeechRegions.map { it.startMs to it.endMs },
+                )
             }
             refreshSentenceAudioTitle()
             gameAudioPanel?.visibility = View.VISIBLE
