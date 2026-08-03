@@ -58,10 +58,15 @@ sealed interface AnkiSendResult {
         val audioDropped: Boolean = false,
         val wordAudioDropped: Boolean = false,
     ) : AnkiSendResult
-    /** The send failed — the caller shows [messageRes] in an error
-     *  alert and restores the save button. [messageRes] names the cause
-     *  where the dispatcher knows it, and is generic otherwise. */
-    data class Failed(@StringRes val messageRes: Int) : AnkiSendResult
+    /** The send failed — the caller shows the error and restores the
+     *  save button. [messageRes] names the cause where the dispatcher
+     *  knows it, and is generic otherwise. [message], when non-null, is
+     *  pre-formatted text (runtime args like a field name already baked
+     *  in) that callers show INSTEAD of [messageRes]. */
+    data class Failed(
+        @StringRes val messageRes: Int,
+        val message: String? = null,
+    ) : AnkiSendResult
     /** The user's picked card type has no configured mapping. The
      *  dispatcher already showed a Toast pointing this out; callers
      *  with Fragment infrastructure open the mapping dialog for
@@ -80,8 +85,8 @@ sealed interface AnkiSendResult {
  * field array (default PlayTranslate model / Basic / structured
  * per-mapping), and writes the note. Surface UX (mapping dialog open,
  * button restore, fragment-result post) is the caller's job — the
- * dispatcher only shows the explanatory Toast on the NeedsMapping and
- * stale-sort-field branches.
+ * dispatcher only shows the explanatory Toast on the NeedsMapping
+ * branches.
  *
  * Returns [AnkiSendResult.NeedsMapping] carrying the resolved model
  * when the user's picked card type has no configured mapping. Callers
@@ -128,8 +133,8 @@ suspend fun Context.dispatchSendToAnki(
     // `NeedsMapping`, and a default-model create failure — would
     // otherwise leave the screenshot, sentence audio, and every
     // per-target-word audio file orphaned in AnkiDroid's media folder.
-    // Only the rare sort-field bail stays after uploads: it needs the
-    // assembled fields.
+    // Only the mapped-but-empty first-field bail stays after uploads:
+    // it needs the assembled fields.
     val pickedId = prefs.ankiModelId
     val target: ModelTarget = when {
         pickedId == -1L -> {
@@ -185,15 +190,46 @@ suspend fun Context.dispatchSendToAnki(
                         Toast.LENGTH_LONG).show()
                     return AnkiSendResult.NeedsMapping(picked)
                 }
+                // First-field preflight: Anki's duplicate-detection
+                // checksum (`csum`) is computed from the note's FIRST
+                // field — NOT the model's browser sort field, which
+                // plays no role in note identity. Inserting with an
+                // empty first field gives every note the same csum, and
+                // AnkiDroid rejects the second one onwards as a
+                // duplicate (null URI → generic "Failed to add card").
+                // The canonical trigger is JPMN's leading `Key` field,
+                // which PT's defaults intentionally leave unmapped so
+                // the user picks what uniquely identifies their cards.
+                // An unmapped first field always assembles to "", so
+                // bail HERE, before the media pass below — each upload
+                // for a send that can't complete is an orphan in
+                // AnkiDroid's media store (no content dedup; every
+                // attempt mints a fresh uniquely-suffixed file). (An
+                // earlier version keyed this guard on the sort field
+                // after assembly — indistinguishable on JPMN, where
+                // `Key` is both — and hard-blocked Senren-style note
+                // types whose `freqSort` sort field sits mid-list and
+                // is legitimately empty for words with no frequency
+                // data.)
+                val firstFieldName = picked.fieldNames.firstOrNull().orEmpty()
+                if ((mapping[firstFieldName] ?: ContentSource.NONE) == ContentSource.NONE) {
+                    Toast.makeText(
+                        ctx,
+                        ctx.getString(R.string.anki_first_field_unmapped, firstFieldName),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    return AnkiSendResult.NeedsMapping(picked)
+                }
                 ModelTarget.Structured(picked, mapping)
             }
         }
     }
 
-    // Target is resolved and the common early-fail paths are past. Now
+    // Target is resolved and every preflightable bail is past. Now
     // upload media — anything we upload from here has a real shot at
-    // being attached to a successfully-inserted note (the rare
-    // sort-field bail still leaves orphans, but the surface is bounded).
+    // being attached to a successfully-inserted note. The residual
+    // orphan surface is the mapped-but-empty first-field bail and
+    // addNote itself failing, both only knowable post-upload.
     val imageFilename = screenshotPath?.let {
         withContext(Dispatchers.IO) { anki.addMediaFromFile(File(it)) }
     }
@@ -219,23 +255,20 @@ suspend fun Context.dispatchSendToAnki(
             val flds = PtModels.assemble(target.model.fieldNames, note)
             Log.d(TAG, "default send: model=${target.model.name} " +
                 "fields=${flds.size} non-empty=${flds.count { it.isNotEmpty() }}")
-            // Same sort-field guard as the Structured branch below: a
-            // renamed sort field (assemble maps it to "") or a reorder
-            // that put an empty-able field at the sort slot would hit
-            // the provider's duplicate-csum rejection as a generic
+            // Same first-field guard as the Structured branch below: a
+            // renamed first field (assemble maps it to "") or a reorder
+            // that put an empty-able field first would hit the
+            // provider's duplicate-csum rejection as a generic
             // "Failed to add card" on every send after the first. Fail
             // with the actionable message instead. No NeedsMapping —
             // the field-mapping dialog doesn't apply to our own models;
             // the remedy is renaming the field back in AnkiDroid.
-            val sortf = target.model.sortf
-            if (sortf in flds.indices && flds[sortf].isEmpty()) {
-                val sortFieldName = target.model.fieldNames.getOrNull(sortf).orEmpty()
-                Toast.makeText(
-                    ctx,
-                    ctx.getString(R.string.anki_sort_field_empty, sortFieldName),
-                    Toast.LENGTH_LONG,
-                ).show()
-                return AnkiSendResult.Failed(R.string.anki_send_failed_message)
+            if (flds.firstOrNull()?.isEmpty() == true) {
+                val fieldName = target.model.fieldNames.firstOrNull().orEmpty()
+                return AnkiSendResult.Failed(
+                    R.string.anki_send_failed_message,
+                    ctx.getString(R.string.anki_first_field_empty, fieldName),
+                )
             }
             target.model.id to flds
         }
@@ -253,26 +286,22 @@ suspend fun Context.dispatchSendToAnki(
                 target.model.fieldNames, target.mapping, outputs)
             Log.d(TAG, "structured send: model=${target.model.name} " +
                 "fields=${flds.size} non-empty=${flds.count { it.isNotEmpty() }}")
-            // Sort field guard: AnkiDroid (and Anki desktop) compute
-            // a checksum of `fields[sortf]` for duplicate detection.
-            // An empty sort field means every note we insert has the
-            // same csum — AnkiDroid's content provider rejects the
-            // second one onwards as a duplicate (returns null URI,
-            // surfacing as a generic "Failed to add card" toast). The
-            // canonical trigger is JPMN's leading `Key` field, which
-            // PT's defaults intentionally leave unmapped so the user
-            // can pick what uniquely identifies their cards. Catch
-            // that here with a clear actionable error instead of the
-            // mysterious silent failure.
-            val sortf = target.model.sortf
-            if (sortf in flds.indices && flds[sortf].isEmpty()) {
-                val sortFieldName = target.model.fieldNames.getOrNull(sortf).orEmpty()
-                Toast.makeText(
-                    ctx,
-                    ctx.getString(R.string.anki_sort_field_empty, sortFieldName),
-                    Toast.LENGTH_LONG,
-                ).show()
-                return AnkiSendResult.NeedsMapping(target.model)
+            // First-field guard, mapped-but-empty arm — the unmapped
+            // case bailed pre-upload in the target resolution block,
+            // which also carries the full csum rationale. Here the
+            // first field IS mapped, but its source produced no value
+            // for this card (e.g. a picture source with no screenshot).
+            // Only decidable post-assembly: the value can depend on
+            // the uploaded media filenames. The mapping dialog can't
+            // conjure missing data — fail with the full explanation
+            // instead of reopening it and telling the user to map what
+            // they already mapped.
+            if (flds.firstOrNull()?.isEmpty() == true) {
+                val fieldName = target.model.fieldNames.firstOrNull().orEmpty()
+                return AnkiSendResult.Failed(
+                    R.string.anki_send_failed_message,
+                    ctx.getString(R.string.anki_first_field_empty, fieldName),
+                )
             }
             target.model.id to flds
         }

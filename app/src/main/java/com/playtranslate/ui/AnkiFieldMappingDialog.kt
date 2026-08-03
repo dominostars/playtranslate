@@ -95,7 +95,7 @@ class AnkiFieldMappingDialog : DialogFragment() {
             Log.d(TAG, "  using saved mapping ($saved)")
             saved
         } else {
-            val model = AnkiManager.ModelInfo(modelId, modelName, fieldNames, 0, 0)
+            val model = AnkiManager.ModelInfo(modelId, modelName, fieldNames, 0)
             val defaults = AnkiCardTypeMapper.defaultsForModel(model, mode)
             Log.d(TAG, "  no saved mapping; defaults from mapper=$defaults")
             defaults

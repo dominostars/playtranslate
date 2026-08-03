@@ -113,7 +113,6 @@
 
     <string name="onboarding_notif_row_status_sub">Ein dezenter Hinweis, dass <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> läuft</string>
 
-
     <string name="onboarding_a11y_hint">Suche nach <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 
     <string name="onboarding_a11y_title">Über anderen Apps einblenden</string>
@@ -133,7 +132,6 @@
     <string name="onboarding_a11y_row_lookup_title">Wörter nachzuschlagen</string>
 
     <string name="onboarding_a11y_row_lookup_sub">Sofortige Definitionen für Wörter auf dem Bildschirm erhalten</string>
-
 
     <string name="btn_grant_permission">Berechtigung erteilen</string>
 
@@ -165,7 +163,6 @@
 
     <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> Anki-Stapel</string>
     <string name="word_anki_deck_badge_cd">Bereits in Anki: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
-
 
     <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
 
@@ -376,7 +373,6 @@
     <string name="capture_lifecycle_state_off">Aus</string>
 
 
-
     <string name="capture_lifecycle_on_subtitle">Bildschirmaufnahme erlaubt</string>
 
     <string name="capture_lifecycle_off_subtitle">Bildschirmaufnahme zulassen</string>
@@ -461,7 +457,6 @@
     <string name="anki_not_installed_message">Speichere Wörter, die du beim Spielen entdeckst, und wiederhole sie später.\n\n<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> kann übersetzte Sätze, Vokabeln und Screenshots direkt in <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> speichern, einer kostenlosen App für Karteikarten mit verteilter Wiederholung.</string>
 
     <string name="anki_not_installed_get"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> herunterladen</string>
-
 
     <string name="anki_permission_rationale_title"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>-Berechtigung erforderlich</string>
 
@@ -568,8 +563,6 @@
     <string name="anki_field_mapping_save">Speichern</string>
 
     <string name="anki_field_mapping_unconfigured">Konfiguriere die Felder für diesen Kartentyp vor dem Senden</string>
-
-    <string name="anki_sort_field_empty">Ordne dem Feld „<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>“ einen Wert zu: <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> verwendet dieses Feld zur Identifizierung der Notiz, und leere Werte führen dazu, dass die Karte beim Senden als Duplikat abgelehnt wird.</string>
 
     <string name="anki_models_unavailable"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> konnte nicht erreicht werden, um Kartentypen abzurufen. Versuche es gleich noch einmal.</string>
 
@@ -1020,7 +1013,6 @@
     <string name="llm_low_memory_title">Nicht genügend freier Arbeitsspeicher</string>
 
     <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> benötigt etwa <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> freien Arbeitsspeicher, um zu funktionieren. Derzeit sind nur <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> frei.\n\nSchließe andere Apps, um Arbeitsspeicher freizugeben, oder brich ab, wenn dieses Modell nicht zu deinem Gerät passt.</string>
-
 
     <string name="llm_low_memory_start_anyway">Trotzdem starten</string>
 
@@ -1681,7 +1673,6 @@
          SETTINGS — Text-to-Speech section
          ═══════════════════════════════════════════════════════════════ -->
 
-
     <string name="tts_voice_numbered">Stimme <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
 
     <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
@@ -1691,7 +1682,6 @@
     <string name="tts_voice_default_subtitle">Die Standardstimme der Engine</string>
 
     <string name="tts_voice_needs_download">Download erforderlich</string>
-
 
     <string name="tts_no_engine_row_subtitle">Keine Sprachausgabe-Engine verfügbar. Zum Hinzufügen tippen.</string>
 
@@ -1774,7 +1764,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">Nicht ausgewählt</string>
-
 
 
 

@@ -960,7 +960,7 @@ class TranslationResultFragment : Fragment() {
                         val ctx = requireContext()
                         OverlayAlert.Builder(requireActivity())
                             .setTitle(getString(R.string.anki_send_failed_title))
-                            .setMessage(getString(sendResult.messageRes))
+                            .setMessage(sendResult.message ?: getString(sendResult.messageRes))
                             .addButton(
                                 getString(android.R.string.ok),
                                 ctx.themeColor(R.attr.ptAccent),
@@ -1068,7 +1068,8 @@ class TranslationResultFragment : Fragment() {
                         refreshWordBadges()
                     }
                     is AnkiSendResult.Failed -> {
-                        Toast.makeText(appCtx, result.messageRes,
+                        Toast.makeText(appCtx,
+                            result.message ?: appCtx.getString(result.messageRes),
                             Toast.LENGTH_LONG).show()
                     }
                     is AnkiSendResult.NeedsMapping -> {

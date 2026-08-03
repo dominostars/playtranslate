@@ -68,8 +68,9 @@ object AnkiCardOutputBuilder {
         // shows literal `[reading]` markup. Templates that want
         // furigana on the Expression use EXPRESSION_FURIGANA below.
         // Falls back to the whole sentence when nothing is highlighted
-        // so the field is non-empty (matters when a model uses
-        // sortf=0 and EXPRESSION lands at the sort slot).
+        // so the field is non-empty (matters when EXPRESSION lands at
+        // the first field — Anki's note-identity slot — as it does on
+        // Lapis/Senren-style note types).
         val expression = htmlEscape(
             firstHighlighted?.word
                 ?: cardData.source.replace(Regex("[\\n\\r]+"), " ").trim()

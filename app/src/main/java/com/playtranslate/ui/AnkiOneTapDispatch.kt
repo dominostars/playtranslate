@@ -147,8 +147,11 @@ fun oneTapResultToast(appCtx: Context, result: AnkiSendResult) {
             else R.string.anki_added_success,
             Toast.LENGTH_SHORT,
         ).show()
-        is AnkiSendResult.Failed ->
-            Toast.makeText(appCtx, result.messageRes, Toast.LENGTH_LONG).show()
+        is AnkiSendResult.Failed -> Toast.makeText(
+            appCtx,
+            result.message ?: appCtx.getString(result.messageRes),
+            Toast.LENGTH_LONG,
+        ).show()
         is AnkiSendResult.NeedsMapping -> Unit
     }
 }

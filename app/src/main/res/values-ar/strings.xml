@@ -103,7 +103,6 @@
 
     <string name="onboarding_notif_row_status_sub">مؤشر هادئ يدل على أن <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> قيد التشغيل</string>
 
-
     <string name="onboarding_a11y_hint">ابحث عن <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 
     <string name="onboarding_a11y_title">العرض فوق التطبيقات الأخرى</string>
@@ -123,7 +122,6 @@
     <string name="onboarding_a11y_row_lookup_title">البحث عن الكلمات</string>
 
     <string name="onboarding_a11y_row_lookup_sub">احصل على تعريفات فورية للكلمات على الشاشة</string>
-
 
     <string name="btn_grant_permission">منح الإذن</string>
 
@@ -153,7 +151,6 @@
 
     <string name="word_anki_in_decks">مجموعات Anki: <xliff:g id="count" example="3">%1$d</xliff:g></string>
     <string name="word_anki_deck_badge_cd">موجودة بالفعل في Anki: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
-
 
     <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
 
@@ -368,7 +365,6 @@
     <string name="capture_lifecycle_state_off">معطّل</string>
 
 
-
     <string name="capture_lifecycle_on_subtitle">تم السماح بالتقاط الشاشة</string>
 
     <string name="capture_lifecycle_off_subtitle">السماح بالتقاط الشاشة</string>
@@ -443,7 +439,6 @@
     <string name="anki_not_installed_message">احفظ الكلمات التي تكتشفها أثناء اللعب وراجعها لاحقًا.\n\nيمكن لـ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> حفظ الجمل المترجمة والمفردات ولقطات الشاشة مباشرةً في <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>، وهو تطبيق مجاني لبطاقات التكرار المتباعد.</string>
 
     <string name="anki_not_installed_get">الحصول على <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
-
 
     <string name="anki_permission_rationale_title">إذن <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> مطلوب</string>
 
@@ -544,8 +539,6 @@
     <string name="anki_field_mapping_save">حفظ</string>
 
     <string name="anki_field_mapping_unconfigured">كوّن الحقول لنوع البطاقة هذا قبل الإرسال</string>
-
-    <string name="anki_sort_field_empty">عيّن قيمة للحقل «<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>»: يستخدم <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> هذا الحقل لتحديد الملاحظة، والقيم الفارغة تتسبب في أخطاء رفض التكرار عند الإرسال.</string>
 
     <string name="anki_models_unavailable">تعذّر الوصول إلى <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> لجلب أنواع البطاقات. حاول مرة أخرى بعد قليل.</string>
 
@@ -974,7 +967,6 @@
     <string name="llm_low_memory_title">ذاكرة حرة غير كافية</string>
 
     <string name="llm_low_memory_message">يحتاج <xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> إلى حوالي <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> من الذاكرة الحرة للعمل. حاليًا <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> فقط متاحة.\n\nأغلق التطبيقات الأخرى لتحرير الذاكرة، أو ألغِ إذا كان هذا النموذج غير مناسب لجهازك.</string>
-
 
     <string name="llm_low_memory_start_anyway">البدء على أي حال</string>
 
@@ -1624,7 +1616,6 @@
 
     <!-- ═══ SETTINGS — Text-to-Speech section ═══ -->
 
-
     <string name="tts_voice_numbered">الصوت <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
 
     <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
@@ -1634,7 +1625,6 @@
     <string name="tts_voice_default_subtitle">الصوت الافتراضي للمحرك</string>
 
     <string name="tts_voice_needs_download">يتطلب تنزيلاً</string>
-
 
     <string name="tts_no_engine_row_subtitle">لا يوجد محرك صوت متاح. اضغط لإضافة واحد.</string>
 
@@ -1707,7 +1697,6 @@
     <!-- ═══ SETTINGS — Anki rows + deck/card-type fallback labels ═══ -->
 
     <string name="anki_deck_not_selected_subtitle">غير محدد</string>
-
 
 
 

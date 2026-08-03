@@ -106,7 +106,6 @@
 
     <string name="onboarding_notif_row_status_sub">ตัวบ่งชี้แบบเงียบๆ ว่า <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> กำลังทำงานอยู่</string>
 
-
     <string name="onboarding_a11y_hint">มองหา <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 
     <string name="onboarding_a11y_title">แสดงทับแอปอื่น</string>
@@ -126,7 +125,6 @@
     <string name="onboarding_a11y_row_lookup_title">ค้นหาคำ</string>
 
     <string name="onboarding_a11y_row_lookup_sub">รับคำจำกัดความของคำบนหน้าจอได้ทันที</string>
-
 
     <string name="btn_grant_permission">ให้สิทธิ์</string>
 
@@ -156,7 +154,6 @@
 
     <string name="word_anki_in_decks">สำรับ Anki <xliff:g id="count" example="3">%1$d</xliff:g> ชุด</string>
     <string name="word_anki_deck_badge_cd">มีอยู่ใน Anki แล้ว: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
-
 
     <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
 
@@ -344,7 +341,6 @@
     <string name="capture_lifecycle_state_off">ปิด</string>
 
 
-
     <string name="capture_lifecycle_on_subtitle">อนุญาตการจับภาพหน้าจอแล้ว</string>
 
     <string name="capture_lifecycle_off_subtitle">อนุญาตการจับภาพหน้าจอ</string>
@@ -419,7 +415,6 @@
     <string name="anki_not_installed_message">บันทึกคำที่คุณค้นพบขณะเล่นเกมและทบทวนภายหลัง\n\n<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> สามารถบันทึกประโยคที่แปลแล้ว คำศัพท์ และภาพหน้าจอลงใน <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> ได้โดยตรง ซึ่งเป็นแอปการ์ดทบทวนแบบเว้นช่วงที่ใช้ฟรี</string>
 
     <string name="anki_not_installed_get">รับ <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
-
 
     <string name="anki_permission_rationale_title">ต้องมีสิทธิ์ <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
@@ -520,8 +515,6 @@
     <string name="anki_field_mapping_save">บันทึก</string>
 
     <string name="anki_field_mapping_unconfigured">กำหนดค่าฟิลด์สำหรับประเภทการ์ดนี้ก่อนส่ง</string>
-
-    <string name="anki_sort_field_empty">แมปค่าให้กับฟิลด์ “<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>”: <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> ใช้ฟิลด์นี้เพื่อระบุโน้ต และค่าว่างจะทำให้เกิดข้อผิดพลาดการปฏิเสธรายการซ้ำเมื่อส่ง</string>
 
     <string name="anki_models_unavailable">ไม่สามารถเชื่อมต่อกับ <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> เพื่อดึงประเภทการ์ดได้ ลองอีกครั้งในอีกสักครู่</string>
 
@@ -976,7 +969,6 @@
 
     <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> ต้องใช้หน่วยความจำว่างประมาณ <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> เพื่อทำงาน ขณะนี้มีว่างเพียง <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> เท่านั้น\n\nปิดแอปอื่นเพื่อเพิ่มหน่วยความจำว่าง หรือยกเลิกหากโมเดลนี้ไม่เหมาะกับอุปกรณ์ของคุณ</string>
 
-
     <string name="llm_low_memory_start_anyway">เริ่มใช้งานเลย</string>
 
     <string name="llm_low_memory_delete">ลบโมเดล</string>
@@ -1304,7 +1296,6 @@
 
     <string name="settings_ocr_download_failed">ไม่สามารถดาวน์โหลดโมเดล OCR ได้ ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</string>
 
-
     <string name="settings_ocr_use_manga_subtitle">อยู่ในขั้นทดลอง ใช้สำหรับอ่านมังงะเท่านั้น ทำงานช้าและคุณภาพไม่ดีกับเกมและเนื้อหาอื่น</string>
 
     <string name="settings_ocr_disable_manga_title">ปิด MangaOCR หรือไม่</string>
@@ -1601,7 +1592,6 @@
 
     <!-- ═══ SETTINGS — Text-to-Speech section ═══ -->
 
-
     <string name="tts_voice_numbered">เสียง <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
 
     <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
@@ -1611,7 +1601,6 @@
     <string name="tts_voice_default_subtitle">เสียงเริ่มต้นของเอนจิน</string>
 
     <string name="tts_voice_needs_download">ต้องดาวน์โหลด</string>
-
 
     <string name="tts_no_engine_row_subtitle">ไม่มีเอนจินเสียงที่ใช้ได้ แตะเพื่อเพิ่ม</string>
 
@@ -1684,7 +1673,6 @@
     <!-- ═══ SETTINGS — Anki rows + deck/card-type fallback labels ═══ -->
 
     <string name="anki_deck_not_selected_subtitle">ยังไม่ได้เลือก</string>
-
 
 
 

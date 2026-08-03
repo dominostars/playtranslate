@@ -27,7 +27,7 @@ import org.junit.Test
 class AnkiCardTypeMapperTest {
 
     private fun model(name: String, fields: List<String>) =
-        AnkiManager.ModelInfo(id = 1L, name = name, fieldNames = fields, type = 0, sortf = 0)
+        AnkiManager.ModelInfo(id = 1L, name = name, fieldNames = fields, type = 0)
 
     // Field fixtures use the canonical schemas (verified June 2026):
     //  - Lapis from donkuri/lapis (v1.7.0)
@@ -499,6 +499,67 @@ class AnkiCardTypeMapperTest {
         val mapping = mapOf("Example Sentences" to ContentSource.EXAMPLE_SENTENCES)
         val out = AnkiCardTypeMapper.assembleNote(fields, mapping, sampleOutputs())
         assertEquals(listOf("<div>ex</div>"), out)
+    }
+
+    // ─── First-field identity fallback ───────────────────────────────────
+    // Anki identifies a note by its first field (duplicate csum + browser
+    // row), but Migaku's schema puts `Sentence` first and word-mode sends
+    // have no sentence. assembleNote falls back to the expression variants
+    // for the FIRST field only.
+
+    @Test fun `Migaku word send falls back first-field Sentence to expression furigana`() {
+        // Word-send shape: sentence-family outputs are empty.
+        val outputs = sampleOutputs().copy(
+            sentence = "", sentenceFurigana = "", sentenceTranslation = "",
+        )
+        val m = model("Migaku Japanese", MIGAKU_FIELDS)
+        val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.WORD)
+        val out = AnkiCardTypeMapper.assembleNote(MIGAKU_FIELDS, mapping, outputs)
+        assertEquals("expr[fur]", out[0])
+    }
+
+    @Test fun `first-field fallback uses plain expression for SENTENCE source`() {
+        val outputs = sampleOutputs().copy(sentence = "")
+        val fields = listOf("Sentence", "Back")
+        val mapping = mapOf(
+            "Sentence" to ContentSource.SENTENCE,
+            "Back" to ContentSource.DEFINITION,
+        )
+        val out = AnkiCardTypeMapper.assembleNote(fields, mapping, outputs)
+        assertEquals(listOf("expr", "<div>def</div>"), out)
+    }
+
+    @Test fun `first-field fallback does not fire when the sentence value is present`() {
+        val m = model("Migaku Japanese", MIGAKU_FIELDS)
+        val mapping = AnkiCardTypeMapper.defaultsForModel(m, CardMode.SENTENCE)
+        val out = AnkiCardTypeMapper.assembleNote(MIGAKU_FIELDS, mapping, sampleOutputs())
+        assertEquals("sent[fur]", out[0])
+    }
+
+    @Test fun `sentence-mapped fields past index 0 stay empty on word sends`() {
+        // Custom templates hide sentence sections behind {{#Sentence}}
+        // conditionals on word cards — the fallback must not fill them.
+        val outputs = sampleOutputs().copy(sentence = "", sentenceFurigana = "")
+        val fields = listOf("Word", "Sentence")
+        val mapping = mapOf(
+            "Word" to ContentSource.EXPRESSION,
+            "Sentence" to ContentSource.SENTENCE,
+        )
+        val out = AnkiCardTypeMapper.assembleNote(fields, mapping, outputs)
+        assertEquals(listOf("expr", ""), out)
+    }
+
+    @Test fun `first-field fallback leaves non-sentence sources alone`() {
+        // A PICTURE-mapped first field with no screenshot stays empty —
+        // the dispatcher's guard reports it rather than inventing content.
+        val outputs = sampleOutputs().copy(picture = "")
+        val fields = listOf("Image", "Word")
+        val mapping = mapOf(
+            "Image" to ContentSource.PICTURE,
+            "Word" to ContentSource.EXPRESSION,
+        )
+        val out = AnkiCardTypeMapper.assembleNote(fields, mapping, outputs)
+        assertEquals(listOf("", "expr"), out)
     }
 
     @Test fun `assembleNote with empty field list returns empty list`() {
