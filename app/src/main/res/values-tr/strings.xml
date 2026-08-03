@@ -102,7 +102,6 @@
     <string name="onboarding_notif_row_status_title">Yalnızca bir durum çubuğu simgesi</string>
     <string name="onboarding_notif_row_status_sub"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasının çalıştığını belirten sessiz bir gösterge</string>
 
-
     <string name="onboarding_a11y_hint"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> öğesini arayın</string>
 
     <string name="onboarding_a11y_title">Diğer uygulamaların üzerinde göster</string>
@@ -114,7 +113,6 @@
     <string name="onboarding_a11y_row_menu_sub">Uygulamalar arasında geçiş yapmadan <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> özelliklerine erişin</string>
     <string name="onboarding_a11y_row_lookup_title">Sözcükleri ara</string>
     <string name="onboarding_a11y_row_lookup_sub">Ekrandaki sözcükler için anında tanımlar alın</string>
-
 
     <string name="btn_grant_permission">İzin Ver</string>
 
@@ -147,7 +145,6 @@
     <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> Anki destesi</string>
 
     <string name="word_anki_deck_badge_cd">Anki\'de zaten var: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
-
 
     <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
 
@@ -368,7 +365,6 @@
     <string name="capture_lifecycle_state_off">Kapalı</string>
 
 
-
     <string name="capture_lifecycle_on_subtitle">Ekran yakalamaya izin verildi</string>
 
     <string name="capture_lifecycle_off_subtitle">Ekran yakalamaya izin ver</string>
@@ -453,7 +449,6 @@
     <string name="anki_not_installed_message">Oyun oynarken keşfettiğiniz sözcükleri kaydedin ve daha sonra gözden geçirin.\n\n<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, çevrilen cümleleri, sözcükleri ve ekran görüntülerini, ücretsiz bir aralıklı tekrar bilgi kartı uygulaması olan <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>\'e doğrudan kaydedebilir.</string>
 
     <string name="anki_not_installed_get"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>\'i Edin</string>
-
 
     <string name="anki_permission_rationale_title"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> izni gerekli</string>
 
@@ -560,8 +555,6 @@
     <string name="anki_field_mapping_save">Kaydet</string>
 
     <string name="anki_field_mapping_unconfigured">Göndermeden önce bu kart türü için alanları yapılandırın</string>
-
-    <string name="anki_sort_field_empty">“<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>” alanına bir değer eşleyin — <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> bu alanı notu tanımlamak için kullanır ve boş değerler, gönderim sırasında kartın yinelenen (kopya) olarak reddedilmesine neden olur.</string>
 
     <string name="anki_models_unavailable">Kart türlerine bakmak için <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> uygulamasına ulaşılamadı. Birazdan tekrar deneyin.</string>
 
@@ -1048,7 +1041,6 @@
 
     <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> çalışmak için yaklaşık <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> boş bellek gerektirir. Şu anda yalnızca <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> boş.\n\nBellek açmak için diğer uygulamaları kapatın veya bu model cihazınıza uygun değilse iptal edin.</string>
 
-
     <string name="llm_low_memory_start_anyway">Yine de başlat</string>
 
     <string name="llm_low_memory_delete">Modeli sil</string>
@@ -1408,7 +1400,6 @@
 
     <string name="settings_ocr_download_failed">OCR modeli indirilemedi. Bağlantınızı kontrol edip tekrar deneyin.</string>
 
-
     <string name="settings_ocr_use_manga_subtitle">DENEYSEL. Yalnızca manga okumak için kullanın. Yavaştır; oyunlarda ve diğer içeriklerde kalitesi kötüdür.</string>
 
     <string name="settings_ocr_disable_manga_title">MangaOCR kapatılsın mı?</string>
@@ -1640,7 +1631,6 @@
          SETTINGS — Text-to-Speech section
          ═══════════════════════════════════════════════════════════════ -->
 
-
     <string name="tts_voice_numbered">Ses <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
 
     <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
@@ -1650,7 +1640,6 @@
     <string name="tts_voice_default_subtitle">Motorun varsayılan sesi</string>
 
     <string name="tts_voice_needs_download">İndirme gerekli</string>
-
 
     <string name="tts_no_engine_row_subtitle">Kullanılabilir konuşma motoru yok. Eklemek için dokunun.</string>
 
@@ -1733,7 +1722,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">Seçilmedi</string>
-
 
 
 

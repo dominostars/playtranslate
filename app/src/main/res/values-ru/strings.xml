@@ -113,7 +113,6 @@
 
     <string name="onboarding_notif_row_status_sub">Незаметный индикатор того, что <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> работает</string>
 
-
     <string name="onboarding_a11y_hint">Найдите <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 
     <string name="onboarding_a11y_title">Поверх других приложений</string>
@@ -133,7 +132,6 @@
     <string name="onboarding_a11y_row_lookup_title">Искать слова</string>
 
     <string name="onboarding_a11y_row_lookup_sub">Мгновенные определения для слов на экране</string>
-
 
     <string name="btn_grant_permission">Предоставить разрешение</string>
 
@@ -165,7 +163,6 @@
 
     <string name="word_anki_in_decks">Колод Anki: <xliff:g id="count" example="3">%1$d</xliff:g></string>
     <string name="word_anki_deck_badge_cd">Уже в Anki: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
-
 
     <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
 
@@ -392,7 +389,6 @@
     <string name="capture_lifecycle_state_off">Выкл.</string>
 
 
-
     <string name="capture_lifecycle_on_subtitle">Захват экрана разрешён</string>
 
     <string name="capture_lifecycle_off_subtitle">Разрешить захват экрана</string>
@@ -477,7 +473,6 @@
     <string name="anki_not_installed_message">Сохраняйте слова, которые вы находите во время игры, и повторяйте их позже.\n\n<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> может сохранять переведённые предложения, лексику и снимки экрана прямо в <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> — бесплатное приложение для карточек с интервальным повторением.</string>
 
     <string name="anki_not_installed_get">Установить <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
-
 
     <string name="anki_permission_rationale_title">Требуется разрешение <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
@@ -584,8 +579,6 @@
     <string name="anki_field_mapping_save">Сохранить</string>
 
     <string name="anki_field_mapping_unconfigured">Настройте поля для этого типа карточки перед отправкой</string>
-
-    <string name="anki_sort_field_empty">Сопоставьте значение полю «<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>»: <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> использует это поле для идентификации заметки, а из-за пустого значения карточка при отправке будет отклонена как дубликат.</string>
 
     <string name="anki_models_unavailable">Не удалось связаться с <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> для получения типов карточек. Повторите попытку через минуту.</string>
 
@@ -1075,7 +1068,6 @@
 
     <string name="llm_low_memory_message">Для работы <xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> требуется около <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> свободной памяти. Сейчас свободно только <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g>.\n\nЗакройте другие приложения, чтобы освободить память, или отмените, если эта модель не подходит для вашего устройства.</string>
 
-
     <string name="llm_low_memory_start_anyway">Всё равно запустить</string>
 
     <string name="llm_low_memory_delete">Удалить модель</string>
@@ -1438,7 +1430,6 @@
 
     <string name="settings_ocr_download_failed">Не удалось скачать модель OCR. Проверьте подключение и повторите попытку.</string>
 
-
     <string name="settings_ocr_use_manga_subtitle">ЭКСПЕРИМЕНТАЛЬНО. Используйте только для чтения манги. Работает медленно, а для игр и другого контента качество низкое.</string>
 
     <string name="settings_ocr_disable_manga_title">Выключить MangaOCR?</string>
@@ -1754,7 +1745,6 @@
          SETTINGS — Text-to-Speech section
          ═══════════════════════════════════════════════════════════════ -->
 
-
     <string name="tts_voice_numbered">Голос <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
 
     <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
@@ -1764,7 +1754,6 @@
     <string name="tts_voice_default_subtitle">Голос движка по умолчанию</string>
 
     <string name="tts_voice_needs_download">Требуется загрузка</string>
-
 
     <string name="tts_no_engine_row_subtitle">Нет доступного движка речи. Нажмите, чтобы добавить.</string>
 
@@ -1847,7 +1836,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">Не выбрано</string>
-
 
 
 

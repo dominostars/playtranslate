@@ -592,7 +592,7 @@ class WordDetailBottomSheet : DialogFragment() {
                 val ctx = requireContext()
                 OverlayAlert.Builder(requireActivity())
                     .setTitle(getString(R.string.anki_send_failed_title))
-                    .setMessage(getString(result.messageRes))
+                    .setMessage(result.message ?: getString(result.messageRes))
                     .addButton(
                         getString(android.R.string.ok),
                         ctx.themeColor(R.attr.ptAccent),

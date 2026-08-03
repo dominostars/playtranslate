@@ -1259,12 +1259,21 @@
          any fields yet. -->
     <string name="anki_field_mapping_unconfigured">Configure fields for this card type before sending</string>
 
-    <!-- Error line shown when the user left the AnkiDroid "sort field"
-         (used for duplicate detection) empty.
+    <!-- Toast shown when the note type's FIRST field (which Anki
+         checksums for duplicate detection) has no mapping configured.
+         Kept short: Android 12+ clamps toasts to two lines. The
+         field-mapping dialog opens right after this toast.
          %1$s = the AnkiDroid field name (free-form, user-defined; we
          render it as-is including any quotes the user picked).
          The “ ” curly quotes are intentional typography. -->
-    <string name="anki_sort_field_empty">Map a value to “<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>” — <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> uses this field to identify the note, and empty values cause duplicate-rejection errors on send.</string>
+    <string name="anki_first_field_unmapped">Map a value to “<xliff:g id="field_name" example="Key">%1$s</xliff:g>” so <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> can identify the note.</string>
+
+    <!-- Error alert shown when the note type's FIRST field is mapped
+         but its source produced no value for this card, or (for the
+         built-in PlayTranslate note types) the first field was renamed
+         in AnkiDroid. Shown in a full alert, so length is fine.
+         %1$s = the AnkiDroid field name, as above. -->
+    <string name="anki_first_field_empty">“<xliff:g id="field_name" example="Key">%1$s</xliff:g>” is empty on this card. <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> uses the first field to identify the note, so it needs a value on every card.</string>
 
     <!-- Error toast shown when the AnkiDroid AddApi can't be reached
          while loading card types. -->

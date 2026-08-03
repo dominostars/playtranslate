@@ -164,7 +164,6 @@
     <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> 个 Anki 牌组</string>
     <string name="word_anki_deck_badge_cd">已加入 Anki：<xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
 
-
     <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
 
     <string name="word_detail_label_format"><xliff:g id="label" example="READING">%1$s</xliff:g>：</string>
@@ -371,7 +370,6 @@
     <string name="capture_lifecycle_state_off">关</string>
 
 
-
     <string name="capture_lifecycle_on_subtitle">已允许屏幕截取</string>
 
     <string name="capture_lifecycle_off_subtitle">允许屏幕截取</string>
@@ -456,7 +454,6 @@
     <string name="anki_not_installed_message">保存你在游戏中发现的单词，稍后再复习。\n\n<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 可以将翻译后的句子、词汇和截图直接保存到 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>——一款免费的间隔重复抽认卡应用。</string>
 
     <string name="anki_not_installed_get">获取 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
-
 
     <string name="anki_permission_rationale_title">需要 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 权限</string>
 
@@ -563,8 +560,6 @@
     <string name="anki_field_mapping_save">保存</string>
 
     <string name="anki_field_mapping_unconfigured">发送前请为此卡片类型配置字段</string>
-
-    <string name="anki_sort_field_empty">请为“<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>”映射一个值——<xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 使用此字段来识别笔记，空值会在发送时被视为重复而遭拒。</string>
 
     <string name="anki_models_unavailable">无法连接 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 以查询卡片类型。请稍后重试。</string>
 
@@ -1054,7 +1049,6 @@
 
     <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> 运行时大约需要 <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> 的可用内存。目前仅有 <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> 可用。\n\n请关闭其他应用以释放内存，或在此模型不适合你的设备时取消。</string>
 
-
     <string name="llm_low_memory_start_anyway">仍然启动</string>
 
     <string name="llm_low_memory_delete">删除模型</string>
@@ -1417,7 +1411,6 @@
 
     <string name="settings_ocr_download_failed">无法下载 OCR 模型。请检查你的网络连接后重试。</string>
 
-
     <string name="settings_ocr_use_manga_subtitle">实验性功能。仅建议用于阅读漫画。速度慢，且在游戏和其他内容上质量较差。</string>
 
     <string name="settings_ocr_disable_manga_title">关闭 MangaOCR？</string>
@@ -1712,7 +1705,6 @@
          SETTINGS — Text-to-Speech section
          ═══════════════════════════════════════════════════════════════ -->
 
-
     <string name="tts_voice_numbered">语音 <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
 
     <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
@@ -1722,7 +1714,6 @@
     <string name="tts_voice_default_subtitle">引擎的默认语音</string>
 
     <string name="tts_voice_needs_download">需要下载</string>
-
 
     <string name="tts_no_engine_row_subtitle">没有可用的语音引擎。点按以添加一个。</string>
 
@@ -1805,7 +1796,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">未选择</string>
-
 
 
 

@@ -316,24 +316,50 @@ object AnkiCardTypeMapper {
      * Builds the field array for AnkiDroid. Walks [modelFieldNames] in
      * declaration order and writes [outputs].valueFor(mapping[fieldName] ?: NONE)
      * for each. The user's saved mapping is authoritative — no
-     * heuristics, no fallbacks, no collisions.
+     * heuristics, no collisions — with one scoped exception: the
+     * first-field identity fallback.
+     *
+     * First-field fallback: Anki identifies a note by its FIRST field
+     * (duplicate csum + browser row), so it must be non-empty on every
+     * card. Migaku's schema puts `Sentence` first, and word-mode sends
+     * have no sentence — the mapped source legitimately assembles to
+     * "" and the send would die in the dispatcher's first-field guard.
+     * When the first field's sentence-family value is empty, fall back
+     * to the word: SENTENCE → expression (plain, for raw-rendered
+     * fields), SENTENCE_FURIGANA → expressionFurigana (bracketed, for
+     * furigana-filtered fields — Migaku's case). Scoped to index 0
+     * ONLY: sentence-mapped fields elsewhere must stay empty on word
+     * sends because custom templates hide their sentence sections
+     * behind `{{#Sentence}}` conditionals.
      */
     fun assembleNote(
         modelFieldNames: List<String>,
         mapping: Map<String, ContentSource>,
         outputs: CardOutputs,
-    ): List<String> = modelFieldNames.map { fieldName ->
+    ): List<String> = modelFieldNames.mapIndexed { index, fieldName ->
         val source = mapping[fieldName] ?: ContentSource.NONE
-        outputs.valueFor(source).also { value ->
-            // Ground truth of every field handed to AnkiDroid: the field name,
-            // the resolved ContentSource, and the value LENGTH only. Enough to
-            // bisect a card-render bug into "what PT sent" vs "what the note
-            // type's template did with it" — a wrong source mapped, or an empty
-            // field — without writing user mining/study content (expressions,
-            // sentences, definitions) to logcat. Log.d is NOT stripped from
-            // release builds, so the literal value must never be logged here.
-            Log.d(TAG, "assembleNote: '$fieldName' <- $source (${value.length} chars)")
+        var value = outputs.valueFor(source)
+        if (index == 0 && value.isEmpty()) {
+            val fallback = when (source) {
+                ContentSource.SENTENCE          -> outputs.expression
+                ContentSource.SENTENCE_FURIGANA -> outputs.expressionFurigana
+                else                            -> ""
+            }
+            if (fallback.isNotEmpty()) {
+                Log.d(TAG, "assembleNote: first-field fallback " +
+                    "'$fieldName' <- $source was empty, using expression variant")
+                value = fallback
+            }
         }
+        // Ground truth of every field handed to AnkiDroid: the field name,
+        // the resolved ContentSource, and the value LENGTH only. Enough to
+        // bisect a card-render bug into "what PT sent" vs "what the note
+        // type's template did with it" — a wrong source mapped, or an empty
+        // field — without writing user mining/study content (expressions,
+        // sentences, definitions) to logcat. Log.d is NOT stripped from
+        // release builds, so the literal value must never be logged here.
+        Log.d(TAG, "assembleNote: '$fieldName' <- $source (${value.length} chars)")
+        value
     }
 
     /**

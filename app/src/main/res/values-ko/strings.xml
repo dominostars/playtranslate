@@ -114,7 +114,6 @@
 
     <string name="onboarding_notif_row_status_sub"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>가 실행 중임을 알리는 조용한 표시</string>
 
-
     <string name="onboarding_a11y_hint"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b>를 찾으세요</string>
 
     <string name="onboarding_a11y_title">다른 앱 위에 표시</string>
@@ -134,7 +133,6 @@
     <string name="onboarding_a11y_row_lookup_title">단어 검색</string>
 
     <string name="onboarding_a11y_row_lookup_sub">화면의 단어에 대한 정의를 바로 확인하세요</string>
-
 
     <string name="btn_grant_permission">권한 허용</string>
 
@@ -166,7 +164,6 @@
 
     <string name="word_anki_in_decks">Anki 덱 <xliff:g id="count" example="3">%1$d</xliff:g>개</string>
     <string name="word_anki_deck_badge_cd">이미 Anki에 있음: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
-
 
     <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
 
@@ -373,7 +370,6 @@
     <string name="capture_lifecycle_state_off">꺼짐</string>
 
 
-
     <string name="capture_lifecycle_on_subtitle">화면 캡처 허용됨</string>
 
     <string name="capture_lifecycle_off_subtitle">화면 캡처 허용</string>
@@ -458,7 +454,6 @@
     <string name="anki_not_installed_message">플레이하면서 발견한 단어를 저장하고 나중에 복습하세요.\n\n<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>는 번역된 문장, 어휘, 스크린샷을 무료 간격 반복 플래시카드 앱인 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>에 바로 저장할 수 있습니다.</string>
 
     <string name="anki_not_installed_get"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 받기</string>
-
 
     <string name="anki_permission_rationale_title"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 권한 필요</string>
 
@@ -565,8 +560,6 @@
     <string name="anki_field_mapping_save">저장</string>
 
     <string name="anki_field_mapping_unconfigured">보내기 전에 이 카드 유형의 필드를 구성하세요</string>
-
-    <string name="anki_sort_field_empty">“<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>” 필드에 값을 매핑하세요. <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>는 이 필드로 노트를 식별하며, 값이 비어 있으면 보낼 때 중복으로 거부되는 오류가 발생합니다.</string>
 
     <string name="anki_models_unavailable">카드 유형을 가져오기 위해 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>에 연결할 수 없습니다. 잠시 후 다시 시도하세요.</string>
 
@@ -1017,7 +1010,6 @@
     <string name="llm_low_memory_title">사용 가능한 메모리 부족</string>
 
     <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> 실행에는 약 <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g>의 여유 메모리가 필요합니다. 현재 <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g>만 사용 가능합니다.\n\n다른 앱을 닫아 메모리를 확보하거나, 이 모델이 기기에 적합하지 않으면 취소하세요.</string>
-
 
     <string name="llm_low_memory_start_anyway">그래도 시작</string>
 
@@ -1655,7 +1647,6 @@
          SETTINGS — Text-to-Speech section
          ═══════════════════════════════════════════════════════════════ -->
 
-
     <string name="tts_voice_numbered">음성 <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
 
     <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
@@ -1665,7 +1656,6 @@
     <string name="tts_voice_default_subtitle">엔진의 기본 음성</string>
 
     <string name="tts_voice_needs_download">다운로드 필요</string>
-
 
     <string name="tts_no_engine_row_subtitle">사용 가능한 음성 엔진이 없습니다. 탭하여 추가하세요.</string>
 
@@ -1748,7 +1738,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">선택 안 됨</string>
-
 
 
 

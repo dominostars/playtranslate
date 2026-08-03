@@ -113,7 +113,6 @@
 
     <string name="onboarding_notif_row_status_sub"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>が実行中であることを示す控えめな表示です</string>
 
-
     <string name="onboarding_a11y_hint"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b>を探してください</string>
 
     <string name="onboarding_a11y_title">他のアプリの上に重ねて表示</string>
@@ -133,7 +132,6 @@
     <string name="onboarding_a11y_row_lookup_title">単語を調べる</string>
 
     <string name="onboarding_a11y_row_lookup_sub">画面上の単語の定義をすぐに表示します</string>
-
 
     <string name="btn_grant_permission">権限を許可</string>
 
@@ -165,7 +163,6 @@
 
     <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g>個のAnkiデッキ</string>
     <string name="word_anki_deck_badge_cd">Anki登録済み：<xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
-
 
     <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
 
@@ -383,7 +380,6 @@
     <string name="capture_lifecycle_state_off">オフ</string>
 
 
-
     <string name="capture_lifecycle_on_subtitle">画面キャプチャを許可済み</string>
 
     <string name="capture_lifecycle_off_subtitle">画面キャプチャを許可</string>
@@ -468,7 +464,6 @@
     <string name="anki_not_installed_message">プレイ中に見つけた単語を保存して、後で復習できます。\n\n<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>は、翻訳した文・語彙・スクリーンショットを、無料の間隔反復フラッシュカードアプリ<xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>に直接保存できます。</string>
 
     <string name="anki_not_installed_get"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>を入手</string>
-
 
     <string name="anki_permission_rationale_title"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>の権限が必要です</string>
 
@@ -575,8 +570,6 @@
     <string name="anki_field_mapping_save">保存</string>
 
     <string name="anki_field_mapping_unconfigured">送信する前に、このカードタイプのフィールドを設定してください</string>
-
-    <string name="anki_sort_field_empty">「<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>」に値を割り当ててください。<xliff:g id="brand_anki" example="Anki">Anki</xliff:g>はこのフィールドでノートを識別するため、値が空だと送信時に重複エラーで拒否されます。</string>
 
     <string name="anki_models_unavailable"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>に接続できず、カードタイプを取得できませんでした。しばらくしてからもう一度お試しください。</string>
 
@@ -1070,7 +1063,6 @@
 
     <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g>の実行には約<xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g>の空きメモリが必要です。現在の空きは<xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g>のみです。\n\n他のアプリを閉じてメモリを空けるか、このモデルが端末に合わない場合はキャンセルしてください。</string>
 
-
     <string name="llm_low_memory_start_anyway">このまま開始</string>
 
     <string name="llm_low_memory_delete">モデルを削除</string>
@@ -1433,7 +1425,6 @@
 
     <string name="settings_ocr_download_failed">OCRモデルをダウンロードできませんでした。接続を確認して、もう一度お試しください。</string>
 
-
     <string name="settings_ocr_use_manga_subtitle">試験運用版。漫画を読む用途にのみ使用してください。処理が遅く、ゲームなど他のコンテンツでは品質が低下します。</string>
 
     <string name="settings_ocr_disable_manga_title">MangaOCRをオフにしますか？</string>
@@ -1728,7 +1719,6 @@
          SETTINGS — Text-to-Speech section
          ═══════════════════════════════════════════════════════════════ -->
 
-
     <string name="tts_voice_numbered">音声<xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
 
     <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
@@ -1738,7 +1728,6 @@
     <string name="tts_voice_default_subtitle">エンジンのデフォルト音声</string>
 
     <string name="tts_voice_needs_download">ダウンロードが必要</string>
-
 
     <string name="tts_no_engine_row_subtitle">利用できる音声エンジンがありません。タップして追加してください。</string>
 
@@ -1821,7 +1810,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">未選択</string>
-
 
 
 

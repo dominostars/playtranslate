@@ -113,7 +113,6 @@
 
     <string name="onboarding_notif_row_status_sub">Một chỉ báo lặng lẽ cho biết <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> đang chạy</string>
 
-
     <string name="onboarding_a11y_hint">Tìm <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 
     <string name="onboarding_a11y_title">Hiển thị trên các ứng dụng khác</string>
@@ -133,7 +132,6 @@
     <string name="onboarding_a11y_row_lookup_title">Tra cứu từ</string>
 
     <string name="onboarding_a11y_row_lookup_sub">Nhận định nghĩa tức thì cho các từ trên màn hình</string>
-
 
     <string name="btn_grant_permission">Cấp quyền</string>
 
@@ -165,7 +163,6 @@
 
     <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> bộ thẻ Anki</string>
     <string name="word_anki_deck_badge_cd">Đã có trong Anki: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
-
 
     <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
 
@@ -372,7 +369,6 @@
     <string name="capture_lifecycle_state_off">Tắt</string>
 
 
-
     <string name="capture_lifecycle_on_subtitle">Đã cho phép chụp màn hình</string>
 
     <string name="capture_lifecycle_off_subtitle">Cho phép chụp màn hình</string>
@@ -457,7 +453,6 @@
     <string name="anki_not_installed_message">Lưu lại những từ bạn khám phá khi chơi và ôn tập sau.\n\n<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> có thể lưu câu đã dịch, từ vựng và ảnh chụp màn hình trực tiếp vào <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>, một ứng dụng thẻ ghi nhớ lặp lại ngắt quãng miễn phí.</string>
 
     <string name="anki_not_installed_get">Tải <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
-
 
     <string name="anki_permission_rationale_title">Cần quyền <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
@@ -564,8 +559,6 @@
     <string name="anki_field_mapping_save">Lưu</string>
 
     <string name="anki_field_mapping_unconfigured">Hãy cấu hình các trường cho loại thẻ này trước khi gửi</string>
-
-    <string name="anki_sort_field_empty">Hãy ánh xạ một giá trị cho “<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>” — <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> dùng trường này để nhận diện ghi chú, và giá trị rỗng sẽ khiến thẻ bị từ chối do trùng lặp khi gửi.</string>
 
     <string name="anki_models_unavailable">Không thể kết nối <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> để tra loại thẻ. Hãy thử lại sau giây lát.</string>
 
@@ -1017,7 +1010,6 @@
     <string name="llm_low_memory_title">Không đủ bộ nhớ trống</string>
 
     <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> cần khoảng <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> bộ nhớ trống để chạy. Hiện chỉ còn <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> trống.\n\nHãy đóng các ứng dụng khác để giải phóng bộ nhớ, hoặc hủy nếu mô hình này không phù hợp với thiết bị của bạn.</string>
-
 
     <string name="llm_low_memory_start_anyway">Vẫn bắt đầu</string>
 
@@ -1668,7 +1660,6 @@
          SETTINGS — Text-to-Speech section
          ═══════════════════════════════════════════════════════════════ -->
 
-
     <string name="tts_voice_numbered">Giọng <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
 
     <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
@@ -1678,7 +1669,6 @@
     <string name="tts_voice_default_subtitle">Giọng nói mặc định của công cụ</string>
 
     <string name="tts_voice_needs_download">Cần tải xuống</string>
-
 
     <string name="tts_no_engine_row_subtitle">Không có công cụ chuyển văn bản thành giọng nói nào khả dụng. Nhấn để thêm một công cụ.</string>
 
@@ -1761,7 +1751,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">Chưa chọn</string>
-
 
 
 

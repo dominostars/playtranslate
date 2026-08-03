@@ -113,7 +113,6 @@
 
     <string name="onboarding_notif_row_status_sub">Un indicador discreto de que <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> está activo</string>
 
-
     <string name="onboarding_a11y_hint">Busca <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
 
     <string name="onboarding_a11y_title">Mostrar sobre otras apps</string>
@@ -133,7 +132,6 @@
     <string name="onboarding_a11y_row_lookup_title">Buscar palabras</string>
 
     <string name="onboarding_a11y_row_lookup_sub">Obtén definiciones al instante de las palabras en pantalla</string>
-
 
     <string name="btn_grant_permission">Conceder permiso</string>
 
@@ -165,7 +163,6 @@
 
     <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> mazos de Anki</string>
     <string name="word_anki_deck_badge_cd">Ya está en Anki: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
-
 
     <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
 
@@ -375,7 +372,6 @@
     <string name="capture_lifecycle_state_off">Desactivado</string>
 
 
-
     <string name="capture_lifecycle_on_subtitle">Captura de pantalla permitida</string>
 
     <string name="capture_lifecycle_off_subtitle">Permitir la captura de pantalla</string>
@@ -460,7 +456,6 @@
     <string name="anki_not_installed_message">Guarda las palabras que descubras mientras juegas y repásalas después.\n\n<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> puede guardar frases traducidas, vocabulario y capturas de pantalla directamente en <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>, una app gratuita de tarjetas con repetición espaciada.</string>
 
     <string name="anki_not_installed_get">Obtener <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
-
 
     <string name="anki_permission_rationale_title">Se necesita el permiso de <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
@@ -567,8 +562,6 @@
     <string name="anki_field_mapping_save">Guardar</string>
 
     <string name="anki_field_mapping_unconfigured">Configura los campos de este tipo de tarjeta antes de enviar</string>
-
-    <string name="anki_sort_field_empty">Asigna un valor a \"<xliff:g id="sort_field_name" example="Expression">%1$s</xliff:g>\": <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> usa este campo para identificar la nota, y los valores vacíos provocan errores de rechazo por duplicado al enviar.</string>
 
     <string name="anki_models_unavailable">No se pudo conectar con <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> para consultar los tipos de tarjeta. Inténtalo de nuevo en un momento.</string>
 
@@ -1018,7 +1011,6 @@
     <string name="llm_low_memory_title">Memoria libre insuficiente</string>
 
     <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> necesita unos <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> de memoria libre para funcionar. Ahora mismo solo hay <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> libres.\n\nCierra otras apps para liberar memoria, o cancela si este modelo no es adecuado para tu dispositivo.</string>
-
 
     <string name="llm_low_memory_start_anyway">Iniciar de todos modos</string>
 
@@ -1678,7 +1670,6 @@
          SETTINGS — Text-to-Speech section
          ═══════════════════════════════════════════════════════════════ -->
 
-
     <string name="tts_voice_numbered">Voz <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
 
     <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
@@ -1688,7 +1679,6 @@
     <string name="tts_voice_default_subtitle">La voz predeterminada del motor</string>
 
     <string name="tts_voice_needs_download">Requiere descarga</string>
-
 
     <string name="tts_no_engine_row_subtitle">No hay ningún motor de voz disponible. Toca para añadir uno.</string>
 
@@ -1771,7 +1761,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">Sin seleccionar</string>
-
 
 
 
