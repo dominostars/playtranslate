@@ -329,7 +329,11 @@ class WordAnkiReviewSheet : DialogFragment() {
         removedSenses.clear()
         removedExamples.clear()
         removedTatoebaIdx.clear()
-        isSentenceMode = hasSentenceData
+        // Both modes possible → seed from the remembered preference (the
+        // toggle below writes it back); word-only sheets stay word and
+        // never touch the preference.
+        isSentenceMode = hasSentenceData &&
+            Prefs(requireContext()).ankiPreferredCardMode == CardMode.SENTENCE
 
         titleView = view.findViewById(R.id.tvWordAnkiSheetTitle)
         toggleHost = view.findViewById(R.id.wordAnkiToolbarToggle)
@@ -341,8 +345,14 @@ class WordAnkiReviewSheet : DialogFragment() {
                 container = toggleHost,
                 leftLabel = getString(R.string.anki_mode_sentence),
                 rightLabel = getString(R.string.anki_mode_word),
-                leftActive = true,
-            ) { leftSelected -> setMode(sentenceMode = leftSelected) }
+                leftActive = isSentenceMode,
+            ) { leftSelected ->
+                setMode(sentenceMode = leftSelected)
+                // An explicit flip is the user's new default — for this
+                // sheet's next open AND the one-tap long-press route.
+                Prefs(requireContext()).ankiPreferredCardMode =
+                    if (leftSelected) CardMode.SENTENCE else CardMode.WORD
+            }
         }
 
         // Find the three stable hosts from XML. The fragment-host needs
@@ -353,8 +363,8 @@ class WordAnkiReviewSheet : DialogFragment() {
         val deckHost = view.findViewById<LinearLayout>(R.id.wordAnkiDeckHost)
         sentenceContainer = view.findViewById(R.id.wordAnkiSentenceHost)
         wordContainer = view.findViewById(R.id.wordAnkiWordHost)
-        sentenceContainer.visibility = if (hasSentenceData) View.VISIBLE else View.GONE
-        wordContainer.visibility = if (hasSentenceData) View.GONE else View.VISIBLE
+        sentenceContainer.visibility = if (isSentenceMode) View.VISIBLE else View.GONE
+        wordContainer.visibility = if (isSentenceMode) View.GONE else View.VISIBLE
 
         deckSubtitleView = view.findViewById(R.id.tvWordAnkiSendSubtitle)
         addAnkiSection(

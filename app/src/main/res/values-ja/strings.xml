@@ -379,7 +379,6 @@
 
     <string name="capture_lifecycle_state_off">オフ</string>
 
-
     <string name="capture_lifecycle_on_subtitle">画面キャプチャを許可済み</string>
 
     <string name="capture_lifecycle_off_subtitle">画面キャプチャを許可</string>
@@ -476,8 +475,6 @@
     <string name="anki_no_deck_selected"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>にデッキが見つかりません</string>
 
     <string name="anki_added_no_audio"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加しました（音声は利用できません）</string>
-
-    <string name="anki_added_success"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加しました</string>
 
     <string name="anki_adding_in_progress"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加中…</string>
 
@@ -1810,7 +1807,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">未選択</string>
-
 
 
     <!-- ═══════════════════════════════════════════════════════════════

@@ -75,9 +75,10 @@ val ankiOneTapSendScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
  *    on [appCtx] once the send lands. The cancellation cause is the
  *    handoff signal — exactly one path presents, with no shared flag.
  *
- * [resultOf] extracts the [AnkiSendResult] from [send]'s payload for
- * the degraded toast (identity for sentence sends; `first` for the
- * word path's result+mode pair).
+ * [resultOf] and [modeOf] extract the [AnkiSendResult] and the
+ * [CardMode] actually sent from [send]'s payload for the degraded
+ * toast (identity / a static mode for sentence sends; `first` /
+ * `second` for the funnel's result+mode pair).
  *
  * [send] is exception-free by design — the whole pipeline models
  * failures as [AnkiSendResult] values (the cache helpers, audio
@@ -91,6 +92,7 @@ fun <T> Fragment.launchOneTapSend(
     appCtx: Context,
     send: suspend () -> T,
     resultOf: (T) -> AnkiSendResult,
+    modeOf: (T) -> CardMode,
     presentResult: (T) -> Unit,
 ) {
     val sendJob = ankiOneTapSendScope.async {
@@ -115,7 +117,7 @@ fun <T> Fragment.launchOneTapSend(
         if (cause is CancellationException) {
             ankiOneTapSendScope.launch {
                 sendJob.await().fold(
-                    onSuccess = { oneTapResultToast(appCtx, resultOf(it)) },
+                    onSuccess = { oneTapResultToast(appCtx, resultOf(it), modeOf(it)) },
                     onFailure = { oneTapSendFailedToast(appCtx) },
                 )
             }
@@ -130,6 +132,15 @@ private fun oneTapSendFailedToast(appCtx: Context) {
     Toast.makeText(appCtx, R.string.anki_send_failed_message, Toast.LENGTH_LONG).show()
 }
 
+/** Mode-named success message for one-tap sends. One-tap applies the
+ *  remembered card mode with no UI showing it, so the toast names what
+ *  was actually created — a silently-applied WORD default is visible
+ *  immediately instead of discovered later in AnkiDroid. */
+fun ankiAddedSuccessRes(mode: CardMode): Int = when (mode) {
+    CardMode.WORD     -> R.string.anki_added_word_success
+    CardMode.SENTENCE -> R.string.anki_added_sentence_success
+}
+
 private const val ONE_TAP_TAG = "AnkiOneTap"
 
 /**
@@ -139,12 +150,12 @@ private const val ONE_TAP_TAG = "AnkiOneTap"
  * toasted the explanation, and the mapping dialog needs UI that no longer
  * exists.
  */
-fun oneTapResultToast(appCtx: Context, result: AnkiSendResult) {
+fun oneTapResultToast(appCtx: Context, result: AnkiSendResult, mode: CardMode) {
     when (result) {
         is AnkiSendResult.Success -> Toast.makeText(
             appCtx,
             if (result.audioDropped || result.wordAudioDropped) R.string.anki_added_no_audio
-            else R.string.anki_added_success,
+            else ankiAddedSuccessRes(mode),
             Toast.LENGTH_SHORT,
         ).show()
         is AnkiSendResult.Failed -> Toast.makeText(
@@ -333,14 +344,19 @@ suspend fun Context.oneTapSendWord(
 }
 
 /**
- * One-tap funnel: routes to a word or sentence card by the shared single-word
- * rule ([sentenceIsJustTheWord]) so the long-press call sites don't each
- * re-decide. Absent / just-the-word sentence → word card; a real surrounding
- * sentence → sentence card with [word] as the highlighted target.
+ * One-tap funnel: routes to a word or sentence card so the long-press call
+ * sites don't each re-decide. Absent / just-the-word sentence
+ * ([sentenceIsJustTheWord]) forces a word card; when a real surrounding
+ * sentence exists, the remembered default ([Prefs.ankiPreferredCardMode] —
+ * written by the review sheet's Sentence/Word toggle) picks the shape, so
+ * a long-press creates the same card the sheet would open on. A word-routed
+ * send discards the sentence context by design (see the file doc above) —
+ * including any deferred [pendingTranslation], which then completes on its
+ * usual reveal trigger instead of this send.
  *
- * Returns the send result plus the [CardMode] actually used — callers that
- * surface mode-specific recovery (e.g. the review-sheet NeedsMapping dialog)
- * read it; the rest ignore it.
+ * Returns the send result plus the [CardMode] actually used — callers
+ * surface mode-specific recovery (the review-sheet NeedsMapping dialog)
+ * and the mode-named success toast from it.
  */
 suspend fun Context.oneTapSend(
     word: String,
@@ -357,7 +373,8 @@ suspend fun Context.oneTapSend(
     sourceLangId: SourceLangId,
     pendingTranslation: PendingTranslation? = null,
 ): Pair<AnkiSendResult, CardMode> =
-    if (sentenceIsJustTheWord(sentenceOriginal, word)) {
+    if (sentenceIsJustTheWord(sentenceOriginal, word) ||
+        Prefs(this).ankiPreferredCardMode == CardMode.WORD) {
         oneTapSendWord(
             word = word,
             reading = reading,

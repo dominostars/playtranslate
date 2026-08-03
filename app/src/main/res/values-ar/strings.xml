@@ -364,7 +364,6 @@
 
     <string name="capture_lifecycle_state_off">معطّل</string>
 
-
     <string name="capture_lifecycle_on_subtitle">تم السماح بالتقاط الشاشة</string>
 
     <string name="capture_lifecycle_off_subtitle">السماح بالتقاط الشاشة</string>
@@ -451,8 +450,6 @@
     <string name="anki_no_deck_selected">لم يتم العثور على أي مجموعات في <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
     <string name="anki_added_no_audio">تمت الإضافة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (الصوت غير متاح)</string>
-
-    <string name="anki_added_success">تمت الإضافة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
 
     <string name="anki_adding_in_progress">جارٍ الإضافة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
 
@@ -1697,7 +1694,6 @@
     <!-- ═══ SETTINGS — Anki rows + deck/card-type fallback labels ═══ -->
 
     <string name="anki_deck_not_selected_subtitle">غير محدد</string>
-
 
 
     <!-- ═══ SETTINGS — Support section rows ═══ -->

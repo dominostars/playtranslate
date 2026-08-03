@@ -340,7 +340,6 @@
 
     <string name="capture_lifecycle_state_off">ปิด</string>
 
-
     <string name="capture_lifecycle_on_subtitle">อนุญาตการจับภาพหน้าจอแล้ว</string>
 
     <string name="capture_lifecycle_off_subtitle">อนุญาตการจับภาพหน้าจอ</string>
@@ -427,8 +426,6 @@
     <string name="anki_no_deck_selected">ไม่พบสำรับใน <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
     <string name="anki_added_no_audio">เพิ่มไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แล้ว (ไม่มีเสียง)</string>
-
-    <string name="anki_added_success">เพิ่มไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แล้ว</string>
 
     <string name="anki_adding_in_progress">กำลังเพิ่มไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
 
@@ -1673,7 +1670,6 @@
     <!-- ═══ SETTINGS — Anki rows + deck/card-type fallback labels ═══ -->
 
     <string name="anki_deck_not_selected_subtitle">ยังไม่ได้เลือก</string>
-
 
 
     <!-- ═══ SETTINGS — Support section rows ═══ -->

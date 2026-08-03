@@ -388,7 +388,6 @@
 
     <string name="capture_lifecycle_state_off">Выкл.</string>
 
-
     <string name="capture_lifecycle_on_subtitle">Захват экрана разрешён</string>
 
     <string name="capture_lifecycle_off_subtitle">Разрешить захват экрана</string>
@@ -485,8 +484,6 @@
     <string name="anki_no_deck_selected">В <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> не найдено колод</string>
 
     <string name="anki_added_no_audio">Добавлено в <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (аудио недоступно)</string>
-
-    <string name="anki_added_success">Добавлено в <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
 
     <string name="anki_adding_in_progress">Добавление в <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
 
@@ -1836,7 +1833,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">Не выбрано</string>
-
 
 
     <!-- ═══════════════════════════════════════════════════════════════

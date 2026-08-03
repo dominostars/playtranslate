@@ -12,6 +12,7 @@ import com.playtranslate.security.SecretCipher
 import com.playtranslate.security.SecretCodec
 import com.playtranslate.ui.AccentColor
 import com.playtranslate.ui.CaptureResultGeometry
+import com.playtranslate.ui.CardMode
 import com.playtranslate.ui.ThemeMode
 import org.json.JSONArray
 import org.json.JSONObject
@@ -780,6 +781,19 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_ANKI_SENTENCE_AUDIO, true)
         set(v) = sp.edit { putBoolean(KEY_ANKI_SENTENCE_AUDIO, v) }
 
+    /** Which card shape (sentence vs word) new cards default to when both
+     *  are possible — the word review sheet's Sentence/Word toggle seeds
+     *  from this, and one-tap sends route by it when a real sentence
+     *  surrounds the word. Flipping the sheet's toggle writes it back.
+     *  See [ankiWordAudioEnabled] — same last-used-state-is-the-default
+     *  behavior; deliberately no Settings UI. Word-only contexts (no
+     *  meaningful sentence) ignore it and stay word. */
+    var ankiPreferredCardMode: CardMode
+        get() = sp.getString(KEY_ANKI_CARD_MODE, null)
+            ?.let { stored -> CardMode.entries.firstOrNull { it.name == stored } }
+            ?: CardMode.SENTENCE
+        set(v) = sp.edit { putString(KEY_ANKI_CARD_MODE, v.name) }
+
     /** Opt-in: keep a rolling recording of the game's audio (AudioPlaybackCapture
      *  on the MediaProjection session) so sentence cards can attach the real
      *  voice line. Settings → Anki Flashcards → Audio. Recording itself also
@@ -1487,6 +1501,7 @@ class Prefs internal constructor(
         const val KEY_ANKI_MODEL_NAME      = "anki_model_name"
         private const val KEY_ANKI_FIELD_MAPPINGS  = "anki_field_mappings"   // JSON
         private const val KEY_ANKI_WORD_AUDIO      = "anki_word_audio_enabled"
+        private const val KEY_ANKI_CARD_MODE       = "anki_default_card_mode"
         private const val KEY_ANKI_SENTENCE_AUDIO  = "anki_sentence_audio_enabled"
         private const val KEY_ANKI_GAME_AUDIO      = "anki_game_audio_enabled"
         private const val KEY_ANKI_AUDIO_MAPPING_MIGRATED = "anki_audio_mapping_migrated"

@@ -189,7 +189,7 @@ class SourceLensActions(
         ankiOneTapSendScope.launch {
             // Sentence card (dragged word bolded) vs word card routing — incl.
             // the single-word-sentence rule — is shared via oneTapSend.
-            val (result, _) = context.oneTapSend(
+            val (result, mode) = context.oneTapSend(
                 word = snap.word,
                 reading = snap.reading,
                 pos = snap.pos,
@@ -205,7 +205,7 @@ class SourceLensActions(
             )
             when (result) {
                 is AnkiSendResult.NeedsMapping -> launchWordAnkiActivity(snap)
-                else -> oneTapResultToast(context.applicationContext, result)
+                else -> oneTapResultToast(context.applicationContext, result, mode)
             }
         }
     }

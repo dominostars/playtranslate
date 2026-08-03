@@ -568,6 +568,7 @@ class WordDetailBottomSheet : DialogFragment() {
                 )
             },
             resultOf = { it.first },
+            modeOf = { it.second },
             presentResult = { (result, mode) ->
                 handleOneTapWordResult(result, pill, mode)
             },
@@ -584,7 +585,7 @@ class WordDetailBottomSheet : DialogFragment() {
                 val msgRes = if (result.audioDropped || result.wordAudioDropped)
                     R.string.anki_added_no_audio
                 else
-                    R.string.anki_added_success
+                    ankiAddedSuccessRes(mode)
                 Toast.makeText(requireContext(), msgRes, Toast.LENGTH_SHORT).show()
                 pill.setLoading(false)
             }
