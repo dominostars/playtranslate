@@ -1978,7 +1978,7 @@ class CaptureResultOverlay(
                 // paths' degraded contract instead. Both this coroutine and
                 // dismiss() run on Main, so the read doesn't race.
                 is AnkiSendResult.NeedsMapping -> if (!dismissed) openSentenceAnkiReview()
-                else -> oneTapResultToast(app, sendResult)
+                else -> oneTapResultToast(app, sendResult, CardMode.SENTENCE)
             }
         }
     }

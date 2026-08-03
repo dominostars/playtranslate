@@ -372,7 +372,6 @@
 
     <string name="capture_lifecycle_state_off">Aus</string>
 
-
     <string name="capture_lifecycle_on_subtitle">Bildschirmaufnahme erlaubt</string>
 
     <string name="capture_lifecycle_off_subtitle">Bildschirmaufnahme zulassen</string>
@@ -469,8 +468,6 @@
     <string name="anki_no_deck_selected">Keine Stapel in <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> gefunden</string>
 
     <string name="anki_added_no_audio">Zu <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> hinzugefügt (Audio nicht verfügbar)</string>
-
-    <string name="anki_added_success">Zu <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> hinzugefügt</string>
 
     <string name="anki_adding_in_progress">Wird zu <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> hinzugefügt…</string>
 
@@ -1764,7 +1761,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">Nicht ausgewählt</string>
-
 
 
     <!-- ═══════════════════════════════════════════════════════════════

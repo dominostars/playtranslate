@@ -368,7 +368,6 @@
 
     <string name="capture_lifecycle_state_off">Tắt</string>
 
-
     <string name="capture_lifecycle_on_subtitle">Đã cho phép chụp màn hình</string>
 
     <string name="capture_lifecycle_off_subtitle">Cho phép chụp màn hình</string>
@@ -465,8 +464,6 @@
     <string name="anki_no_deck_selected">Không tìm thấy bộ thẻ nào trong <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
     <string name="anki_added_no_audio">Đã thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (không có âm thanh)</string>
-
-    <string name="anki_added_success">Đã thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
 
     <string name="anki_adding_in_progress">Đang thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
 
@@ -1751,7 +1748,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">Chưa chọn</string>
-
 
 
     <!-- ═══════════════════════════════════════════════════════════════

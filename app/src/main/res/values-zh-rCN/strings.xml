@@ -369,7 +369,6 @@
 
     <string name="capture_lifecycle_state_off">关</string>
 
-
     <string name="capture_lifecycle_on_subtitle">已允许屏幕截取</string>
 
     <string name="capture_lifecycle_off_subtitle">允许屏幕截取</string>
@@ -466,8 +465,6 @@
     <string name="anki_no_deck_selected">在 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 中未找到牌组</string>
 
     <string name="anki_added_no_audio">已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>（音频不可用）</string>
-
-    <string name="anki_added_success">已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
 
     <string name="anki_adding_in_progress">正在添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
 
@@ -1796,7 +1793,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">未选择</string>
-
 
 
     <!-- ═══════════════════════════════════════════════════════════════

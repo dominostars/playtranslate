@@ -383,7 +383,6 @@
 
     <string name="capture_lifecycle_state_off">Désactivé</string>
 
-
     <string name="capture_lifecycle_on_subtitle">Capture d\'écran autorisée</string>
 
     <string name="capture_lifecycle_off_subtitle">Autoriser la capture d\'écran</string>
@@ -480,8 +479,6 @@
     <string name="anki_no_deck_selected">Aucun paquet trouvé dans <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
     <string name="anki_added_no_audio">Ajouté à <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (audio indisponible)</string>
-
-    <string name="anki_added_success">Ajouté à <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
 
     <string name="anki_adding_in_progress">Ajout à <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
 
@@ -1730,7 +1727,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">Non sélectionné</string>
-
 
 
     <!-- ═══════════════════════════════════════════════════════════════

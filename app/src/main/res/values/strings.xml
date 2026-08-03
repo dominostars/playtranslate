@@ -1088,9 +1088,15 @@
          be attached. -->
     <string name="anki_added_no_audio">Added to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (audio unavailable)</string>
 
-    <!-- Success toast for one-tap card creation. Shown on the result
-         screen / word-detail sheet immediately after the card lands. -->
-    <string name="anki_added_success">Added to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+    <!-- Success toast for one-tap card creation of a SENTENCE card.
+         One-tap routes by the remembered Sentence/Word default with no
+         UI showing it, so the toast names the card shape created. -->
+    <string name="anki_added_sentence_success">Sentence card added to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <!-- Success toast for one-tap card creation of a WORD card. Same
+         surface as anki_added_sentence_success — the toast is where the
+         silently-applied mode becomes visible. -->
+    <string name="anki_added_word_success">Word card added to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
 
     <!-- Progress toast shown immediately on one-tap from the drag-lens
          flow (the lens dismisses on tap, so the user needs feedback

@@ -946,13 +946,14 @@ class TranslationResultFragment : Fragment() {
                 )
             },
             resultOf = { it },
+            modeOf = { CardMode.SENTENCE },
             presentResult = { sendResult ->
                 when (sendResult) {
                     is AnkiSendResult.Success -> {
                         val msgRes = if (sendResult.audioDropped || sendResult.wordAudioDropped)
                             R.string.anki_added_no_audio
                         else
-                            R.string.anki_added_success
+                            ankiAddedSuccessRes(CardMode.SENTENCE)
                         Toast.makeText(appCtx, msgRes, Toast.LENGTH_SHORT).show()
                         refreshWordBadges()
                     }
@@ -1054,7 +1055,8 @@ class TranslationResultFragment : Fragment() {
                 )
             },
             resultOf = { it.first },
-            presentResult = { (result, _) ->
+            modeOf = { it.second },
+            presentResult = { (result, mode) ->
                 when (result) {
                     is AnkiSendResult.Success -> {
                         // Sentence-mode one-tap can drop per-target-word
@@ -1063,7 +1065,7 @@ class TranslationResultFragment : Fragment() {
                         val msgRes = if (result.audioDropped || result.wordAudioDropped)
                             R.string.anki_added_no_audio
                         else
-                            R.string.anki_added_success
+                            ankiAddedSuccessRes(mode)
                         Toast.makeText(appCtx, msgRes, Toast.LENGTH_SHORT).show()
                         refreshWordBadges()
                     }

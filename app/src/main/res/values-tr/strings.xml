@@ -364,7 +364,6 @@
 
     <string name="capture_lifecycle_state_off">Kapalı</string>
 
-
     <string name="capture_lifecycle_on_subtitle">Ekran yakalamaya izin verildi</string>
 
     <string name="capture_lifecycle_off_subtitle">Ekran yakalamaya izin ver</string>
@@ -461,8 +460,6 @@
     <string name="anki_no_deck_selected"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> içinde deste bulunamadı</string>
 
     <string name="anki_added_no_audio"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye eklendi (ses kullanılamıyor)</string>
-
-    <string name="anki_added_success"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye eklendi</string>
 
     <string name="anki_adding_in_progress"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye ekleniyor…</string>
 
@@ -1722,7 +1719,6 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="anki_deck_not_selected_subtitle">Seçilmedi</string>
-
 
 
     <!-- ═══════════════════════════════════════════════════════════════
