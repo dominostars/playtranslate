@@ -14,8 +14,13 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CaptureLifecycle
 
 /**
- * Quick Settings tile that mirrors [Prefs.showOverlayIcon] — tap to hide the
- * floating icon, tap again to show it. Hide path delegates to
+ * Quick Settings tile that mirrors the accessibility session's lifecycle
+ * truth ([CaptureLifecycle.isActive] + [Prefs.showOverlayIcon]) — tap to hide
+ * the floating icon, tap again to show it. Not the raw pref alone: post-boot
+ * the icon is suppressed until the app is opened ([CaptureLifecycle
+ * .floatingIconSuppressed]) while the pref persists as true, and a tile
+ * reading only the pref would render ACTIVE with no icon on screen — its
+ * first tap then disabling when the user meant summon. Hide path delegates to
  * [PlayTranslateAccessibilityService.disable], which also stops live mode if
  * running (icon off ⇒ PlayTranslate considered disabled).
  *
@@ -96,12 +101,14 @@ class PlayTranslateTileService : TileService() {
         val a11y = PlayTranslateAccessibilityService.instance
         when {
             a11y != null -> {
-                if (Prefs(this).showOverlayIcon) {
+                if (a11yControlsOn()) {
                     PlayTranslateAccessibilityService.disable(this, "tile_turn_off")
                 } else {
                     // Canonical activate — shared with the Settings power
                     // button, so the tile also opens the game-audio gate
                     // instead of a hand-rolled pref write that skipped it.
+                    // Also the post-boot summon path: suppressed icon +
+                    // persisted pref lands here, not in disable.
                     CaptureLifecycle.activateAccessibility(this)
                 }
                 renderState()
@@ -162,6 +169,18 @@ class PlayTranslateTileService : TileService() {
         }
     }
 
+    /** The accessibility-backend truth both tile surfaces share: the user
+     *  wants the floating controls ([Prefs.showOverlayIcon]) AND the session
+     *  is actually on ([CaptureLifecycle.isActive] — post-boot suppression,
+     *  live-mode override). One method so [renderState] and [onClick] cannot
+     *  drift — the tile must always display the direction its next tap will
+     *  move. The pref keeps its own seat beside isActive because isActive's
+     *  dual-screen arm deliberately ignores it (dual-screen in-app surfaces
+     *  treat the session as on regardless of the icon toggle); the tile
+     *  still reads OFF and tap-summons in that state. */
+    private fun a11yControlsOn(): Boolean =
+        Prefs(this).showOverlayIcon && CaptureLifecycle.isActive(this)
+
     private fun renderState() {
         val tile = qsTile ?: return
         if (!CaptureBackendResolver.active().requiresAccessibilityService) {
@@ -173,7 +192,7 @@ class PlayTranslateTileService : TileService() {
             return
         }
         val a11yEnabled = PlayTranslateAccessibilityService.isEnabled(this)
-        val showing = Prefs(this).showOverlayIcon
+        val showing = a11yControlsOn()
         tile.state = if (a11yEnabled && showing) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
         tile.subtitle = if (!a11yEnabled) getString(R.string.tile_subtitle_a11y_required) else null
         tile.updateTile()

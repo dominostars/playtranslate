@@ -21,16 +21,77 @@ import com.playtranslate.Prefs
  *    (the floating controls stay up; the next capture re-prompts — see
  *    [MediaProjectionController.onProjectionLost]). Still runtime state: it
  *    dies with the service, so a process restart comes up inactive.
- *  - Accessibility backend, dual-screen → always true (the service is the
- *    capture path — there is nothing to start).
- *  - Accessibility backend, single-screen → the floating icon is shown.
+ *  - Accessibility backend → the floating controls have been summoned this
+ *    process lifetime ([floatingIconSuppressed] lifted by app-open / Turn
+ *    On), or live mode is actually running; single-screen additionally
+ *    requires the icon preference and the service enabled, because the icon
+ *    is the only control surface there.
  */
 object CaptureLifecycle {
 
     private const val TAG = "CaptureLifecycle"
 
+    /** Process-lifetime suppression of the accessibility-backend floating
+     *  icon. Starts true so a boot — the system rebinding the enabled
+     *  accessibility service — never places the icon on its own; it appears
+     *  once the user opens the app (MainActivity onResume) or explicitly
+     *  turns PlayTranslate on ([activateAccessibility]: Settings power
+     *  button / QS tile). "Hide for Now" re-suppresses, which is what makes
+     *  that dialog's "back next time you open PlayTranslate" promise hold:
+     *  every icon-resurrect trigger (display hot-plug, service reconnect,
+     *  backend reresolve) funnels through [com.playtranslate
+     *  .OverlayUiController.reconcileFloatingIcons], whose gate reads this
+     *  flag. Deliberately in-memory, not a pref: process death resets to
+     *  suppressed, which IS the wanted boot behavior, and after a mid-session
+     *  crash the icon returns on the next app visit rather than resurrecting
+     *  unasked. MediaProjection ignores it — that backend's icon is already
+     *  gated by [CaptureService.mediaProjectionActivated], runtime state that
+     *  dies with the process the same way. */
+    var floatingIconSuppressed: Boolean = true
+        private set
+
+    /** Single write path for [floatingIconSuppressed]. The flag feeds
+     *  [isActive], and the QS tile is ACTIVE_TILE — it re-renders ONLY on a
+     *  [PlayTranslateTileService.TileSync.refresh] push, never on shade open
+     *  — so a bare flag write leaves the tile displaying the old state
+     *  indefinitely (field report 2026-08-03: "Hide for Now" left the tile
+     *  active). Compiler-enforced via `private set` so a future flip site
+     *  can't skip the push. */
+    fun setFloatingIconSuppressed(ctx: Context, suppressed: Boolean) {
+        floatingIconSuppressed = suppressed
+        PlayTranslateTileService.TileSync.refresh(ctx)
+    }
+
     /** Whether PlayTranslate's capture system is currently running. */
     fun isActive(ctx: Context): Boolean {
+        if (!CaptureBackendResolver.active().requiresAccessibilityService) {
+            return CaptureService.instance?.mediaProjectionActivated == true
+        }
+        // Accessibility: active = the user summoned the controls this
+        // process ([floatingIconSuppressed] lifted), OR live mode is actually
+        // running — "Hide for Now" deliberately leaves a running live session
+        // alive, and the tile must render that truth (ON; its tap stops the
+        // session). This is the CONTROL-SURFACE truth: the game-audio gate
+        // reads [isSessionActive] instead, so icon visibility never stops
+        // the recording ring.
+        val summonedOrLive = !floatingIconSuppressed ||
+            CaptureService.instance?.isLive == true
+        if (!Prefs.isSingleScreen(ctx)) return summonedOrLive
+        return summonedOrLive && Prefs(ctx).showOverlayIcon &&
+            PlayTranslateAccessibilityService.isEnabled(ctx)
+    }
+
+    /** The capture session's own truth, WITHOUT the floating-icon visibility
+     *  composition [isActive] adds for control surfaces. Consumed by the
+     *  game-audio gate ([GameAudioRecorder]): recording ends on explicit
+     *  levers — Turn Off, the Anki settings toggle, consent death, the
+     *  status-bar capture chip — never because the icon is merely off
+     *  screen. The deciding story (audit 2026-08-03): Hide for Now + hotkey
+     *  card-making keeps mining audio for those cards. Keeping
+     *  [floatingIconSuppressed] out of this predicate also keeps the gate
+     *  honest about its push-points — it only moves on events that already
+     *  trigger a [CaptureService.reconcileGameAudio]. */
+    fun isSessionActive(ctx: Context): Boolean {
         if (!CaptureBackendResolver.active().requiresAccessibilityService) {
             return CaptureService.instance?.mediaProjectionActivated == true
         }
@@ -98,8 +159,12 @@ object CaptureLifecycle {
         )
         if (!connected) return false
         Prefs(ctx).showOverlayIcon = true
+        // Turn On is an explicit summon — lift the boot / Hide-for-Now
+        // suppression before reconciling, or the gate below would eat it.
+        // The setter's tile push also covers the pref write above (the tile
+        // reads both at bind time), so no standalone refresh here.
+        setFloatingIconSuppressed(ctx, false)
         CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
-        PlayTranslateTileService.TileSync.refresh(ctx)
         // Session on ⇒ recording may start (if a warm consent token exists —
         // the recorder never prompts).
         CaptureService.instance?.reconcileGameAudio()
