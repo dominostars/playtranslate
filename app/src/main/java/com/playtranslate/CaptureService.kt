@@ -1962,6 +1962,9 @@ class CaptureService : Service() {
             _liveModeState.value = willBeLive
             updateForegroundState()
             syncIconState()
+            // isLive feeds CaptureLifecycle.isActive, and the ACTIVE_TILE QS
+            // tile only re-renders on an explicit push.
+            PlayTranslateTileService.TileSync.refresh(this)
             // Display listener tracks the empty↔non-empty transition only.
             if (willBeLive) {
                 // Defensive double-unregister: harmless if not registered.
@@ -2014,6 +2017,10 @@ class CaptureService : Service() {
             _liveModeState.value = false
             updateForegroundState()
             syncIconState()
+            // Mirrors setLiveDisplays' flip block: isLive feeds
+            // CaptureLifecycle.isActive, and the ACTIVE_TILE QS tile only
+            // re-renders on an explicit push.
+            PlayTranslateTileService.TileSync.refresh(this)
             getSystemService(DisplayManager::class.java)?.unregisterDisplayListener(displayListener)
         }
     }

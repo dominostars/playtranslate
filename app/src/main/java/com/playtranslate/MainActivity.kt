@@ -1,6 +1,7 @@
 package com.playtranslate
 
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.capture.CaptureLifecycle
 
 import android.Manifest
 import com.playtranslate.applyEdgeToEdge
@@ -853,6 +854,12 @@ class MainActivity :
         // needed. (The old re-wire was a band-aid for
         // TranslationResultActivity nulling shared callback fields,
         // which it no longer does.)
+        //
+        // Opening the app is what summons the a11y floating icon: lift the
+        // process-lifetime suppression (boot / "Hide for Now" — see
+        // CaptureLifecycle.floatingIconSuppressed) before the reconcile
+        // below, which is the shared install path for every icon.
+        CaptureLifecycle.setFloatingIconSuppressed(this, false)
         CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
         refreshReadiness()
         maybeCheckForUpdates()

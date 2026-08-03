@@ -892,6 +892,16 @@ class OverlayUiController(
             hideFloatingIcon("pref_disabled")
             return
         }
+        if (!isMediaProjection && CaptureLifecycle.floatingIconSuppressed) {
+            // Accessibility backend, but the user hasn't opened the app (or
+            // pressed Turn On) this process lifetime — either the process
+            // just came up from boot, or they chose "Hide for Now". Every
+            // resurrect path (service reconnect, display hot-plug, backend
+            // reresolve) lands here, so the icon genuinely stays away until
+            // MainActivity's onResume lifts the suppression.
+            hideFloatingIcon("suppressed_until_app_open")
+            return
+        }
         if (!canShowControls()) {
             // MediaProjection backend the user hasn't turned on. The gate is
             // deliberately the activation flag, not consent: a revoked
@@ -1265,6 +1275,16 @@ class OverlayUiController(
         for (id in ids) hideFloatingIconForDisplay(id, reason)
     }
 
+    /** "Hide for Now": tear the icons down AND suppress them for the rest of
+     *  the process lifetime, so reconcile triggers (display hot-plug, service
+     *  reconnect) can't resurrect them before the next app open — the
+     *  behavior the confirm dialog promises. Plain [hideFloatingIcon] is the
+     *  transient teardown for every other reason. */
+    private fun hideFloatingIconUntilAppOpen(reason: String) {
+        CaptureLifecycle.setFloatingIconSuppressed(context, true)
+        hideFloatingIcon(reason)
+    }
+
     /** Called by DragLookupController.openSentenceInApp before dismissing the
      *  magnifier so the dismiss-chain's resumeLiveMode is a no-op when the
      *  detail view will cover the live-mode surface. */
@@ -1383,7 +1403,7 @@ class OverlayUiController(
         }
         menu.onHideTemporary = {
             dismissFloatingMenu()
-            hideFloatingIcon("menu_hide_temporary")
+            hideFloatingIconUntilAppOpen("menu_hide_temporary")
         }
         menu.onCloseRequested = {
             dismissFloatingMenu()
@@ -1626,7 +1646,7 @@ class OverlayUiController(
             builder.setTitle(context.getString(R.string.overlay_hide_controls_title, appName))
                 .setMessage(context.getString(R.string.overlay_hide_controls_message, appName))
                 .addButton(context.getString(R.string.overlay_hide_for_now), accentColor) {
-                    hideFloatingIcon("confirm_hide_for_now")
+                    hideFloatingIconUntilAppOpen("confirm_hide_for_now")
                 }
                 .addButton(context.getString(R.string.capture_lifecycle_stop), dividerColor, dangerColor) {
                     PlayTranslateAccessibilityService.disable(context, "confirm_turn_off_multi")

@@ -34,7 +34,11 @@ private const val TAG = "GameAudioRecorder"
  * activate/deactivate, backend swaps, the settings toggle, and activity
  * resume/pause). The recorder runs iff ALL of:
  *  - the opt-in pref is on,
- *  - the capture session is active ([CaptureLifecycle.isActive]),
+ *  - the capture session is active ([CaptureLifecycle.isSessionActive] —
+ *    deliberately NOT [CaptureLifecycle.isActive]: that one composes in
+ *    floating-icon visibility for control surfaces, and a hidden icon
+ *    (post-boot suppression, Hide for Now) must not stop the ring while
+ *    hotkey card-making still mines it),
  *  - screen-record consent is held ([MediaProjectionController.hasConsent] —
  *    the recorder never prompts; it consumes consent acquired by the existing
  *    flows, including the accessibility backend's live-start borrow),
@@ -121,7 +125,7 @@ class GameAudioRecorder(
     private fun reconcileOnMain() {
         val ctx = service.applicationContext
         val pref = Prefs(ctx).recordGameAudio
-        val active = CaptureLifecycle.isActive(ctx)
+        val active = CaptureLifecycle.isSessionActive(ctx)
         val consent = controller.hasConsent
         val perm = hasRecordPermission()
         val pausedBy = PlayTranslateApplication.resumedActivitySimpleName()
