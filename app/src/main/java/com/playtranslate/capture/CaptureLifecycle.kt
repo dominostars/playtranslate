@@ -1,6 +1,7 @@
 package com.playtranslate.capture
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import com.playtranslate.CaptureService
 import com.playtranslate.PlayTranslateAccessibilityService
@@ -158,6 +159,23 @@ object CaptureLifecycle {
                 "enabled=${PlayTranslateAccessibilityService.isEnabled(ctx)}"
         )
         if (!connected) return false
+        // Cold-start CaptureService when this summon is the first thing to
+        // happen this boot (QS tile tap without ever opening the app): the
+        // icon is a11y-hosted, but every feature behind it lives on
+        // CaptureService, whose other starters (MainActivity, the MP tile
+        // branch's ACTION_MP_ACTIVATE) haven't run — leaving the menu's
+        // actions as silent no-ops on a null instance (field report
+        // 2026-08-03). A plain intent is enough: onStartCommand handles the
+        // foreground promotion/demotion, onCreate re-wires the hotkey
+        // callbacks, and the menu actions lazy-configure via configureSaved.
+        // Background-start is covered by the tile-click tempAllowList grant
+        // (the mechanism the MP branch documents), with SYSTEM_ALERT_WINDOW
+        // as the backstop for non-tile callers.
+        if (CaptureService.instance == null) {
+            androidx.core.content.ContextCompat.startForegroundService(
+                ctx, Intent(ctx, CaptureService::class.java)
+            )
+        }
         Prefs(ctx).showOverlayIcon = true
         // Turn On is an explicit summon — lift the boot / Hide-for-Now
         // suppression before reconciling, or the gate below would eat it.
