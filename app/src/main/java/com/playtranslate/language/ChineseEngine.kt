@@ -198,18 +198,89 @@ class ChineseEngine(
         )
     }
 
-    override suspend fun annotateForHintText(text: String): List<HintTextAnnotation> =
+    /**
+     * ZH annotation: HanLP terms anchored to the source text (greedy from a
+     * running cursor, the same alignment [contextualReadings] uses), each
+     * span carrying per-CHARACTER pinyin parts — the in-app display
+     * granularity — plus the context-resolved word reading on
+     * [AnnotatedSpan.reading] for heteronym-corrected surfaces (null
+     * otherwise; hydration's lookup then uses the frequency default,
+     * exactly like the TokenSpan.reading contract). A term whose normalized
+     * surface isn't in the source text degrades to an OFFSETLESS span: it
+     * still feeds the words projection, and the display renderer simply has
+     * nothing to place — today's behavior for those terms. Text between and
+     * around terms becomes per-char spans, so every hanzi keeps its pinyin
+     * (the legacy hint path annotated all characters, not just term
+     * members).
+     */
+    override suspend fun annotate(text: String, depth: AnnotationDepth): SentenceAnnotation =
         withContext(Dispatchers.Default) {
-            val pinyinList = HanLP.convertToPinyinList(text)
-            val annotations = mutableListOf<HintTextAnnotation>()
-            for (i in text.indices) {
-                val pinyin = pinyinList.getOrNull(i) ?: continue
-                if (pinyin == Pinyin.none5) continue
-                val pinyinStr = pinyin.pinyinWithToneMark ?: continue
-                annotations.add(HintTextAnnotation(baseStart = i, baseEnd = i + 1, hintText = pinyinStr))
+            if (text.isEmpty()) {
+                return@withContext SentenceAnnotation(text, profile.id, 0, emptyList())
             }
-            annotations
+            val terms = runCatchingNonCancellable { HanLP.segment(text) }
+                ?: return@withContext SentenceAnnotation.plain(text, profile.id)
+            val charPinyin = runCatchingNonCancellable { HanLP.convertToPinyinList(text) }
+            val corrections =
+                if (depth == AnnotationDepth.FULL) contextualReadings(terms, text) else emptyMap()
+            val spans = mutableListOf<AnnotatedSpan>()
+            var cursor = 0
+            var emitted = 0
+            fun emitGapUpTo(pos: Int) {
+                if (pos > emitted) spans.add(charSpan(text, emitted, pos, charPinyin, null, null))
+            }
+            for (term in terms) {
+                val word = term.word ?: continue
+                if (word.isEmpty()) continue
+                val found = text.indexOf(word, cursor)
+                if (found < 0) {
+                    if (isLookupWorthy(word)) {
+                        spans.add(AnnotatedSpan(
+                            start = -1, end = -1, surface = word,
+                            lookupForm = word, reading = corrections[word],
+                        ))
+                    }
+                    continue
+                }
+                cursor = found + word.length
+                emitGapUpTo(found)
+                spans.add(charSpan(
+                    text, found, found + word.length, charPinyin,
+                    lookupForm = word.takeIf { isLookupWorthy(it) },
+                    reading = corrections[word],
+                ))
+                emitted = found + word.length
+            }
+            emitGapUpTo(text.length)
+            SentenceAnnotation(text, profile.id, 0, spans)
         }
+
+    /** One anchored span with per-character pinyin parts. */
+    private fun charSpan(
+        text: String,
+        start: Int,
+        end: Int,
+        charPinyin: List<Pinyin>?,
+        lookupForm: String?,
+        reading: String?,
+    ): AnnotatedSpan {
+        val surface = text.substring(start, end)
+        val parts = surface.mapIndexed { k, c ->
+            val p = charPinyin?.getOrNull(start + k)
+            val py = if (p != null && p != Pinyin.none5) p.pinyinWithToneMark else null
+            ReadingPart(c.toString(), py)
+        }
+        return AnnotatedSpan(
+            start = start, end = end, surface = surface,
+            lookupForm = lookupForm, reading = reading, furigana = parts,
+        )
+    }
+
+    /** Legacy hint API, now a projection of [annotate] — per-character
+     *  pinyin annotations, byte-parity with the old convertToPinyinList
+     *  walk. TOKENS depth skips the heteronym pass the display never used. */
+    override suspend fun annotateForHintText(text: String): List<HintTextAnnotation> =
+        annotate(text, AnnotationDepth.TOKENS).hintAnnotations()
 
     /**
      * Per-surface, context-resolved pinyin OVERRIDES for the heteronyms in

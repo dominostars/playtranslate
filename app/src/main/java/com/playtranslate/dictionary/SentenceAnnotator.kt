@@ -182,7 +182,9 @@ internal object SentenceAnnotator {
         var covered = 0
         for ((i, m) in members.withIndex()) {
             val r = memberReadings[i]
-            if (r != null && m.surface.any(Deinflector::isKanji)) {
+            // reading == surface guard: byte-parity with the legacy furigana
+            // path, which never floated a reading identical to its base.
+            if (r != null && r != m.surface && m.surface.any(Deinflector::isKanji)) {
                 parts += splitParts(m.surface, r)
             } else {
                 parts += ReadingPart(m.surface, null)

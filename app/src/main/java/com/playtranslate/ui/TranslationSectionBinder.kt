@@ -21,6 +21,7 @@ import com.playtranslate.R
 import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLanguageEngines
+import com.playtranslate.language.hintAnnotations
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TranslationResult
@@ -263,13 +264,17 @@ class TranslationSectionBinder(
             onSourceTextHeightChanged?.invoke()
             return
         }
-        // annotateForHintText tokenizes off the main thread (it's suspend); apply
-        // the furigana spans back on the main thread. Bail if a newer applyFurigana
-        // superseded us (toggle-off / re-render → token), or the displayed text
-        // changed out from under us (new result → text guard).
+        // The FULL-depth annotation resolves dictionary readings off the main
+        // thread (suspend); apply the furigana spans back on the main thread.
+        // FULL is the correctness contract: what renders is the occurrence-
+        // validated reading (一泊 → いっぱく), the same one the words panel,
+        // Anki fields, and sentence TTS quote — never a provisional reading
+        // that gets corrected later. Bail if a newer applyFurigana superseded
+        // us (toggle-off / re-render → token), or the displayed text changed
+        // out from under us (new result → text guard).
         scope.launch {
             val engine = SourceLanguageEngines.get(ctx.applicationContext, prefs.sourceLangId)
-            val annotations = engine.annotateForHintText(plainText)
+            val annotations = engine.annotate(plainText).hintAnnotations()
             if (token != furiganaRenderToken || tvOriginal.text.toString() != plainText) return@launch
             if (annotations.isEmpty()) {
                 tvOriginal.text = plainText

@@ -51,25 +51,6 @@ data class TokenWithReading(
     val inflections: List<InflectionTag> = emptyList(),
 )
 
-/** A furigana annotation: reading text positioned over a kanji span within the original text. */
-data class FuriganaToken(
-    /** The kanji portion of the token (okurigana stripped). e.g. "聞" from "聞い". */
-    val kanjiSurface: String,
-    /** Hiragana reading for the kanji portion. e.g. "き" for "聞". */
-    val reading: String,
-    /** Character offset of [kanjiSurface] within the original input text. */
-    val startOffset: Int,
-    /** Character end offset (exclusive) of [kanjiSurface] within the original input text. */
-    val endOffset: Int,
-    /** The FULL token surface this part came from (e.g. "聞いた" for "聞"). */
-    val surface: String = "",
-    /** Sudachi's dictionary form for the token ("聞く" for "聞いた"). */
-    val dictionaryForm: String = "",
-    /** True when this annotation IS the whole token — single furigana part
-     *  spanning the entire surface. Word-level decorations (pitch accent)
-     *  only make sense then: partial ruby can't carry a word contour. */
-    val coversWholeSurface: Boolean = false,
-)
 
 /**
  * Offline Japanese dictionary backed by a JMdict SQLite database bundled
@@ -265,45 +246,6 @@ class DictionaryManager private constructor(private val context: Context) {
         tokens.filter { it.category.isContent }
             .map { TokenWithReading(it.surface, it.dictionaryForm, it.reading?.let(Deinflector::katakanaToHiragana)) }
             .filter { isLookupWorthy(it.lookupForm) }
-
-    /**
-     * Tokenize text for furigana display.
-     *
-     * Each token is processed independently with its conjugation-aware reading
-     * (e.g. 来た → き for 来, 聞い → き for 聞). Compound words with internal
-     * kana are split at shared boundaries (取り出す → と over 取, だ over 出).
-     *
-     * Offsets come from the analyzer's begin/end (original-text offsets that
-     * tile the input — verified), so they're robust to Sudachi's input-text
-     * normalization. No database queries.
-     */
-    fun tokenizeForFurigana(text: String): List<FuriganaToken> {
-        val result = mutableListOf<FuriganaToken>()
-        for (tok in SudachiJapaneseTokenizer.Provider.analyze(text)) {
-            val reading = tok.reading?.let { Deinflector.katakanaToHiragana(it) }
-            val hasKanji = tok.surface.any(Deinflector::isKanji)
-            if (!hasKanji || reading == null || reading == tok.surface) continue
-
-            val parts = Deinflector.splitFurigana(tok.surface, reading)
-            var partOffset = 0
-            for (part in parts) {
-                if (part.reading != null) {
-                    result += FuriganaToken(
-                        kanjiSurface = part.text,
-                        reading = part.reading,
-                        startOffset = tok.begin + partOffset,
-                        endOffset = tok.begin + partOffset + part.text.length,
-                        surface = tok.surface,
-                        dictionaryForm = tok.dictionaryForm,
-                        coversWholeSurface = parts.size == 1 && part.text == tok.surface,
-                    )
-                }
-                partOffset += part.text.length
-            }
-        }
-        return result
-    }
-
 
     /**
      * Look up [word] in the local JMdict database.
