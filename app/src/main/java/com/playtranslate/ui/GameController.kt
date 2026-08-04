@@ -53,4 +53,15 @@ object ControllerKeys {
         KeyEvent.KEYCODE_DPAD_RIGHT -> SheetNavGeometry.Dir.RIGHT
         else -> null
     }
+
+    /** True for every keycode a focused controller-nav surface consumes
+     *  (back, activate, dpad). While a focusable sticky lens is up, these
+     *  keys are driving it — the a11y key filter's "game input clears the
+     *  drag lookup" rule (and its game-input signal) stands down for them.
+     *  Hotkey COMBO matching is deliberately NOT gated on this: no real
+     *  binding uses gameplay face buttons (they'd fire constantly in-game),
+     *  and if one ever shows up the right lever is blocking nav keys at
+     *  binding time, like KEYCODE_BACK already is. */
+    fun consumesForNav(keyCode: Int): Boolean =
+        isBack(keyCode) || isActivate(keyCode) || direction(keyCode) != null
 }

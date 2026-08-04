@@ -1733,8 +1733,11 @@ class CaptureResultOverlay(
     }
 
     /** Resolve the tapped word and show a display+speak lens over the game,
-     *  anchored on the tapped line (no Anki / open-detail — see [showAnkiChip]). */
-    private fun onSourceTapped(offset: Int) {
+     *  anchored on the tapped line (no Anki / open-detail — see [showAnkiChip]).
+     *  [fromController] (the cursor's A press) pre-selects the lens pill so the
+     *  next A opens the detail screen; a touch tap leaves the lens unselected
+     *  until its first controller input. */
+    private fun onSourceTapped(offset: Int, fromController: Boolean = false) {
         if (!wordLensEnabled) return
         val span = wordSpans.firstOrNull { offset in it.first } ?: return
         val b = binder ?: return
@@ -1809,6 +1812,7 @@ class CaptureResultOverlay(
                 lens.show(screenX, anchorY, screenW, screenH, anchorHeight = lineH)
                 lens.setDefinitions(resolved.data, resolved.label)
                 lens.makeInteractive()
+                if (fromController) lens.focusPillForController()
             } catch (_: Exception) {}
         }
     }
@@ -2260,7 +2264,7 @@ class CaptureResultOverlay(
 
         override fun activateWord(index: Int) {
             val span = wordSpans.getOrNull(index) ?: return
-            onSourceTapped(span.first.first)
+            onSourceTapped(span.first.first, fromController = true)
         }
 
         private val scrollLoc = IntArray(2)

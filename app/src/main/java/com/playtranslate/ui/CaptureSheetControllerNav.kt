@@ -508,16 +508,16 @@ class CaptureSheetControllerNav(
 
     private fun Rect.toNavRect() = SheetNavGeometry.NavRect(left, top, right, bottom)
 
-    private companion object {
+    companion object {
         /** Per-axis stick dead zone (raised to the device's reported flat).
-         *  NOT the lens's 0.25 squared-magnitude nudge threshold — that one is
-         *  deliberately coarse (a dismissal flick); scrolling needs to engage
-         *  at a comfortable deflection. */
+         *  Shared with the lens's stick scroll so both surfaces engage at the
+         *  same deflection. */
         const val STICK_DEAD_ZONE = 0.20f
 
-        /** Full-deflection speed for BOTH sticks — the left stick's scroll
-         *  and the right stick's grabber drag move at the same rate (halved
-         *  from the original 1400 after it read as too fast on device). */
+        /** Full-deflection speed for every stick drive — the sheet's scroll,
+         *  the right stick's grabber drag, and the lens's definitions scroll
+         *  (halved from the original 1400 after it read as too fast on
+         *  device). */
         const val STICK_MAX_DP_PER_SEC = 700f
     }
 }
