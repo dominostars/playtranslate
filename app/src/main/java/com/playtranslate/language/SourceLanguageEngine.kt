@@ -115,6 +115,31 @@ interface SourceLanguageEngine {
      */
     suspend fun lookupCharacter(literal: Char, targetLang: String = "en"): CharacterDetail? = null
 
+    /**
+     * The single authoritative analysis of [text] — the source every
+     * reading-bearing surface projects from (see [SentenceAnnotation] and
+     * docs/sentence-annotation-refactor.md). FULL-tier engines (JA, ZH)
+     * override with dictionary-resolved, text-tiled annotations; this
+     * default is the LEXICAL/PLAIN tier: offsetless spans from [tokenize]
+     * (no consumer of a lexical annotation renders ruby, so tiling is not
+     * required), or one plain span when tokenization yields nothing.
+     */
+    suspend fun annotate(
+        text: String,
+        depth: AnnotationDepth = AnnotationDepth.FULL,
+    ): SentenceAnnotation {
+        if (text.isEmpty()) return SentenceAnnotation(text, profile.id, 0, emptyList())
+        val spans = tokenize(text).map {
+            AnnotatedSpan(
+                start = -1, end = -1, surface = it.surface,
+                lookupForm = it.lookupForm, reading = it.reading,
+                inflections = it.inflections,
+            )
+        }
+        return if (spans.isEmpty()) SentenceAnnotation.plain(text, profile.id)
+        else SentenceAnnotation(text, profile.id, 0, spans)
+    }
+
     /** Hint-text annotations (JA furigana / ZH pinyin). `suspend` like the other
      *  tokenizer-backed calls: implementations tokenize off the main thread, so
      *  callers must invoke it from a coroutine rather than blocking the UI. */

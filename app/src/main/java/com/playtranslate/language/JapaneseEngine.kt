@@ -3,7 +3,9 @@ package com.playtranslate.language
 import android.content.Context
 import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.dictionary.SentenceAnnotator
 import com.playtranslate.dictionary.SudachiJapaneseTokenizer
+import com.playtranslate.model.selectHeadword
 import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.KanjiDetail
@@ -139,6 +141,61 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
             frequencies = yomitan.kanjiFrequencies(literal),
             combinedReadings = combined,
         )
+    }
+
+    override suspend fun annotate(text: String, depth: AnnotationDepth): SentenceAnnotation =
+        withContext(Dispatchers.Default) {
+            val tokens = SudachiJapaneseTokenizer.Provider.analyze(text)
+            if (tokens.isEmpty()) return@withContext SentenceAnnotation.plain(text, profile.id)
+            val reglob =
+                if (depth == AnnotationDepth.FULL) {
+                    dict.reglobSpansForTokens(tokens, yomitan.phraseOracle())
+                } else null
+            val resolutions =
+                if (reglob == null) emptyMap()
+                else SentenceAnnotator.resolutionKeys(reglob).associateWith { resolveWord(it) }
+            applyPitch(SentenceAnnotator.annotate(
+                text, profile.id, tokens, reglob, resolutions, importGeneration = 0,
+            ))
+        }
+
+    /** Two-store resolution for one (lookupForm, occurrence-hint) pair: the
+     *  full lookup (pack + Yomitan merge/synthesis) chooses the entry with
+     *  the hint as soft narrowing, and selectHeadword picks the occurrence-
+     *  validated reading. Readings-only fast resolution is a phase-4 concern
+     *  (refactor doc §6) — this path's cost equals today's words-list pass. */
+    private suspend fun resolveWord(
+        key: SentenceAnnotator.ResolutionKey,
+    ): SentenceAnnotator.WordResolution {
+        val entry = lookup(key.lookupForm, key.hint)?.entries?.firstOrNull()
+            ?: return SentenceAnnotator.WordResolution(null, null)
+        val ref = entry.packId?.let { EntryRef.Pack(it) }
+            ?: EntryRef.Imported(key.lookupForm, entry.headwords.firstOrNull()?.reading)
+        val hw = entry.selectHeadword(key.lookupForm, key.lookupForm, key.hint)
+        return SentenceAnnotator.WordResolution(ref, hw?.reading)
+    }
+
+    /** Pitch on whole-word uninflected spans — the legacy hint path's
+     *  eligibility rule (coversWholeSurface && surface == dictionaryForm) at
+     *  span granularity: a single ruby part covering the whole surface of an
+     *  uninflected span. */
+    private suspend fun applyPitch(annotation: SentenceAnnotation): SentenceAnnotation {
+        val eligible = annotation.spans
+            .filter {
+                it.lookupForm != null && it.surface == it.lookupForm &&
+                    it.reading != null &&
+                    it.furigana.size == 1 && it.furigana[0].text == it.surface &&
+                    it.furigana[0].reading != null
+            }
+            .map { it.surface to it.reading!! }
+            .distinct()
+        if (eligible.isEmpty()) return annotation
+        val pitch = yomitan.pitchFor(eligible)
+        if (pitch.isEmpty()) return annotation
+        return annotation.copy(spans = annotation.spans.map { s ->
+            val p = if (s.reading != null) pitch[s.surface to s.reading] else null
+            if (p.isNullOrEmpty()) s else s.copy(pitch = p)
+        })
     }
 
     override suspend fun annotateForHintText(text: String): List<HintTextAnnotation> =

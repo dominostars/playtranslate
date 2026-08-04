@@ -18,6 +18,11 @@ data class DictionaryResponse(
 
 data class DictionaryEntry(
     val slug: String,
+    /** The pack's `entry.id` row for entries built from the JMdict pack;
+     *  null for entries synthesized from imported Yomitan term dictionaries
+     *  (YomitanEnrichment) — key EntryRef/hydration on this, never on
+     *  [slug], which is display text. */
+    val packId: Long? = null,
     val isCommon: Boolean?,
     val tags: List<String>,
     val jlpt: List<String>,

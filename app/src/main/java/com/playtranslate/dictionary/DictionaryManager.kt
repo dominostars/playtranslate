@@ -202,14 +202,28 @@ class DictionaryManager private constructor(private val context: Context) {
         phraseOracle: (suspend (Set<String>) -> Set<String>)? = null,
     ): List<TokenWithReading> = withContext(Dispatchers.IO) {
         val tokens = SudachiJapaneseTokenizer.Provider.analyze(text)
-        // Fallback when the JMdict DB isn't ready: emit content words on their own
-        // (no n-gram phrase detection, no normalizedForm probing).
-        val contentOnly = {
-            tokens.filter { it.category.isContent }
-                .map { TokenWithReading(it.surface, it.dictionaryForm, it.reading?.let(Deinflector::katakanaToHiragana)) }
-                .filter { isLookupWorthy(it.lookupForm) }
+        val spans = reglobSpansForTokens(tokens, phraseOracle)
+            ?: return@withContext contentOnlyTokens(tokens)
+        val result = spans.map {
+            TokenWithReading(it.surface, it.lookupForm, it.reading, it.inflections)
         }
-        val database = ensureOpen() ?: return@withContext contentOnly()
+        Log.d(TAG, "tokenizeWithSurfaces: ${result.map { "(${it.surface} → ${it.lookupForm} [${it.reading}])" }}")
+        result
+    }
+
+    /**
+     * The n-gram re-glob over pre-analyzed [tokens], span-native: candidate
+     * generation, batched membership (JMdict + optional imported-dict
+     * oracle), then the greedy matcher. Null when the JMdict DB isn't ready
+     * — callers fall back to content-token-only behavior. Exposed for the
+     * JA annotator, which must reuse ONE analyze() pass for the whole
+     * annotation instead of re-tokenizing per consumer.
+     */
+    internal suspend fun reglobSpansForTokens(
+        tokens: List<JaToken>,
+        phraseOracle: (suspend (Set<String>) -> Set<String>)? = null,
+    ): List<ReglobSpan>? = withContext(Dispatchers.IO) {
+        val database = ensureOpen() ?: return@withContext null
 
         // Batch existence query: candidate N-gram phrases PLUS each content
         // token's dictionaryForm/normalizedForm (layer 1 — lets us pick the
@@ -231,7 +245,7 @@ class DictionaryManager private constructor(private val context: Context) {
         val known = database.withRefcount {
             val phraseStrings = candidates.mapTo(mutableSetOf()) { it.lookupForm }
             batchCheckPhrases(database, phraseStrings) to batchCheckEntries(database, formCandidates)
-        } ?: return@withContext contentOnly()
+        } ?: return@withContext null
         var (knownPhrases, knownForms) = known
 
         // Imported-dictionary gate for JMdict misses. Runs OUTSIDE withRefcount
@@ -242,10 +256,15 @@ class DictionaryManager private constructor(private val context: Context) {
             if (forOracle.isNotEmpty()) knownPhrases = knownPhrases + phraseOracle(forOracle)
         }
 
-        val result = reglobTokens(tokens, candidates, knownPhrases, knownForms)
-        Log.d(TAG, "tokenizeWithSurfaces: ${result.map { "(${it.surface} → ${it.lookupForm} [${it.reading}])" }}")
-        result
+        reglobSpans(tokens, candidates, knownPhrases, knownForms)
     }
+
+    /** Fallback when the JMdict DB isn't ready: content words on their own
+     *  (no n-gram phrase detection, no normalizedForm probing). */
+    private fun contentOnlyTokens(tokens: List<JaToken>): List<TokenWithReading> =
+        tokens.filter { it.category.isContent }
+            .map { TokenWithReading(it.surface, it.dictionaryForm, it.reading?.let(Deinflector::katakanaToHiragana)) }
+            .filter { isLookupWorthy(it.lookupForm) }
 
     /**
      * Tokenize text for furigana display.
@@ -727,6 +746,7 @@ class DictionaryManager private constructor(private val context: Context) {
 
         return DictionaryEntry(
             slug = kanjiForms.firstOrNull()?.text ?: readingForms.firstOrNull()?.text ?: idStr,
+            packId = id,
             isCommon = isCommon,
             tags = emptyList(),
             jlpt = emptyList(),   // JMdict doesn't reliably carry JLPT levels
@@ -859,6 +879,44 @@ class DictionaryManager private constructor(private val context: Context) {
         }
 
         /**
+         * One re-glob output span, token-native: [tokenStart]/[tokenCount]
+         * index the RAW analyzer stream, so consumers keep offset provenance
+         * (JaToken.begin/end) instead of re-finding surfaces by string.
+         * [reading] keeps [TokenWithReading]'s semantics — the LOOKUP HINT:
+         * stem reading for single-token spans, member concat for exact
+         * phrases, null for lemma variants — glue readings deliberately
+         * excluded; the annotator derives full-span concats from the raw
+         * tokens itself.
+         *
+         * Spans may OVERLAP: single-token glue folding can consume the
+         * opening particles of a phrase that then matches at its own start
+         * (言われる folds かも, then かもしれない matches at か). The overlap
+         * is load-bearing for the words list; SentenceAnnotator computes a
+         * disjoint display cover from these spans, phrase-priority.
+         */
+        internal data class ReglobSpan(
+            val tokenStart: Int,
+            val tokenCount: Int,
+            val surface: String,
+            val lookupForm: String,
+            val reading: String?,
+            val inflections: List<InflectionTag>,
+            val isPhrase: Boolean,
+        )
+
+        /** Legacy projection of [reglobSpans] — string output, no offsets.
+         *  Kept for the words-pipeline call sites and their tests; behavior
+         *  is byte-identical to the pre-span implementation. */
+        internal fun reglobTokens(
+            tokens: List<JaToken>,
+            candidates: List<PhraseCandidate>,
+            knownPhrases: Set<String>,
+            knownForms: Set<String>,
+        ): List<TokenWithReading> =
+            reglobSpans(tokens, candidates, knownPhrases, knownForms)
+                .map { TokenWithReading(it.surface, it.lookupForm, it.reading, it.inflections) }
+
+        /**
          * Greedy left-to-right re-glob matcher plus single-token fallback.
          * Pure: all dictionary knowledge arrives pre-resolved in [knownPhrases]
          * (phrase candidates that passed their membership gate) and
@@ -870,16 +928,16 @@ class DictionaryManager private constructor(private val context: Context) {
          * auxiliary/particle morphemes folded into a conjugating word's
          * surface span (e.g. ない after 使わ).
          */
-        internal fun reglobTokens(
+        internal fun reglobSpans(
             tokens: List<JaToken>,
             candidates: List<PhraseCandidate>,
             knownPhrases: Set<String>,
             knownForms: Set<String>,
-        ): List<TokenWithReading> {
+        ): List<ReglobSpan> {
             val byStart = candidates.groupBy { it.startIndex }.mapValues { (_, group) ->
                 group.sortedWith(compareByDescending<PhraseCandidate> { it.windowLen }.thenBy { it.isVariant })
             }
-            val result = mutableListOf<TokenWithReading>()
+            val result = mutableListOf<ReglobSpan>()
             var i = 0
             while (i < tokens.size) {
                 val match = byStart[i]?.firstOrNull { it.lookupForm in knownPhrases }
@@ -913,9 +971,11 @@ class DictionaryManager private constructor(private val context: Context) {
                         if (parts.any { it.isNullOrEmpty() }) null
                         else Deinflector.katakanaToHiragana(parts.joinToString(""))
                     }
-                    result.add(TokenWithReading(
-                        match.surface, match.lookupForm, reading = phraseReading,
-                        inflections = inflections,
+                    result.add(ReglobSpan(
+                        tokenStart = i, tokenCount = match.tokensConsumed,
+                        surface = match.surface, lookupForm = match.lookupForm,
+                        reading = phraseReading, inflections = inflections,
+                        isPhrase = true,
                     ))
                     i += match.tokensConsumed
                     continue
@@ -941,12 +1001,21 @@ class DictionaryManager private constructor(private val context: Context) {
                             }
                         }
                         val reading = t.reading?.let { Deinflector.katakanaToHiragana(it) }
-                        result.add(TokenWithReading(
-                            surfaceSpan, lookupForm, reading,
+                        result.add(ReglobSpan(
+                            tokenStart = i, tokenCount = 1 + glue.size,
+                            surface = surfaceSpan, lookupForm = lookupForm,
+                            reading = reading,
                             inflections = JapaneseInflectionAnalyzer.analyze(t, glue),
+                            isPhrase = false,
                         ))
                     }
                 }
+                // NOTE: i advances by ONE even after glue folding — the folded
+                // tokens are revisited (they're non-content, so they emit
+                // nothing themselves) BUT a phrase candidate starting inside
+                // the folded glue still gets its chance to match (言われるかも
+                // then かもしれない). That overlap is intentional; see
+                // [ReglobSpan].
                 i++
             }
             return result
