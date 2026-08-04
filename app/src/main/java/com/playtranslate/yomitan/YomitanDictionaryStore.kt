@@ -299,6 +299,12 @@ object YomitanDictionaryStore {
         val tmp = File(file.parentFile, "registry.json.tmp")
         tmp.writeText(PtJson.pretty.encodeToString(registry))
         PackIntegrity.atomicReplace(tmp, file)
+        // Every content-affecting mutation (install, update, delete, reorder,
+        // enable/alias changes) commits through this write — bump the
+        // annotation generation so cached FULL-depth annotations built
+        // against the OLD imported dictionaries stop validating. Cached
+        // engines have no other eviction signal for mid-session imports.
+        com.playtranslate.language.AnnotationGenerations.bump()
     }
 
     /** The zip's root index.json bytes, capped; null when absent/oversized. */

@@ -133,8 +133,16 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
         )
     }
 
-    override suspend fun annotate(text: String, depth: AnnotationDepth): SentenceAnnotation =
-        withContext(Dispatchers.Default) {
+    /** FULL-depth annotations for the live overlay's per-cycle lines;
+     *  cleared on [close] (pack swap) and generation-checked against
+     *  Yomitan imports. */
+    private val annotationCache = AnnotationCache()
+
+    override suspend fun annotate(text: String, depth: AnnotationDepth): SentenceAnnotation {
+        if (depth == AnnotationDepth.FULL) {
+            annotationCache.get(text)?.let { return it }
+        }
+        val result = withContext(Dispatchers.Default) {
             val tokens = SudachiJapaneseTokenizer.Provider.analyze(text)
             if (tokens.isEmpty()) return@withContext SentenceAnnotation.plain(text, profile.id)
             val reglob =
@@ -145,12 +153,16 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
                 if (reglob == null || depth != AnnotationDepth.FULL) emptyMap()
                 else SentenceAnnotator.resolutionKeys(reglob).associateWith { resolveWord(it) }
             val annotation = SentenceAnnotator.annotate(
-                text, profile.id, tokens, reglob, resolutions, importGeneration = 0,
+                text, profile.id, tokens, reglob, resolutions,
+                AnnotationGenerations.current(),
             )
             // Pitch rides display depths; WORDS is the tokenize projection's
             // depth and never renders ruby.
             if (depth == AnnotationDepth.WORDS) annotation else applyPitch(annotation)
         }
+        if (depth == AnnotationDepth.FULL) annotationCache.put(result)
+        return result
+    }
 
     override suspend fun tokenize(text: String): List<TokenSpan> =
         annotate(text, AnnotationDepth.WORDS).spans
@@ -221,6 +233,7 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
         }
 
     override fun close() {
+        annotationCache.clear()
         // Release JA's process-scoped native handles so pack uninstall doesn't
         // leak them. The engine cache only evicts (SourceLanguageEngines.
         // releaseForPack, via LanguagePackStore.uninstall) when the pack is

@@ -206,7 +206,20 @@ class ChineseEngine(
      * (the legacy hint path annotated all characters, not just term
      * members).
      */
-    override suspend fun annotate(text: String, depth: AnnotationDepth): SentenceAnnotation =
+    /** FULL-depth annotations for live overlay lines; generation-checked
+     *  against Yomitan imports, cleared on [close]. */
+    private val annotationCache = AnnotationCache()
+
+    override suspend fun annotate(text: String, depth: AnnotationDepth): SentenceAnnotation {
+        if (depth == AnnotationDepth.FULL) {
+            annotationCache.get(text)?.let { return it }
+        }
+        val result = annotateUncached(text, depth)
+        if (depth == AnnotationDepth.FULL) annotationCache.put(result)
+        return result
+    }
+
+    private suspend fun annotateUncached(text: String, depth: AnnotationDepth): SentenceAnnotation =
         withContext(Dispatchers.Default) {
             if (text.isEmpty()) {
                 return@withContext SentenceAnnotation(text, profile.id, 0, emptyList())
@@ -250,7 +263,7 @@ class ChineseEngine(
                 emitted = found + word.length
             }
             emitGapUpTo(text.length)
-            SentenceAnnotation(text, profile.id, 0, spans)
+            SentenceAnnotation(text, profile.id, AnnotationGenerations.current(), spans)
         }
 
     /** One anchored span with per-character pinyin parts. */
@@ -364,6 +377,7 @@ class ChineseEngine(
         c.code in 0x4e00..0x9fff || c.code in 0x3400..0x4dbf
 
     override fun close() {
+        annotationCache.clear()
         dict.close()
     }
 
