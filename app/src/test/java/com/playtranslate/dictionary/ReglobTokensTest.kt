@@ -36,6 +36,63 @@ class ReglobTokensTest {
         knownForms: Set<String> = emptySet(),
     ) = reglobTokens(tokens, phraseCandidatesFor(tokens), knownPhrases, knownForms)
 
+    // ── Phrase reading (homograph narrowing hint) ────────────────────────
+    // Exact-join phrases carry the hiragana concat of their members'
+    // readings so lookup() can narrow to the entry the tokenizer sided
+    // with (彼+等 → かれら entry, not rank-first あれら). Sandhi compounds
+    // emit their dictionary-invalid concat (いちはく) on purpose — the
+    // narrowed query misses and the rank fallback picks いっぱく exactly
+    // as before the hint existed.
+
+    @Test
+    fun `exact phrase carries hiragana concat of member readings`() {
+        val tokens = listOf(
+            jaToken("彼", JaCategory.PRONOUN, reading = "カレ"),
+            jaToken("等", JaCategory.NOUN, reading = "ラ"),
+        )
+        val result = glob(tokens, knownPhrases = setOf("彼等"))
+        assertEquals(1, result.size)
+        assertEquals("彼等", result[0].lookupForm)
+        assertEquals("かれら", result[0].reading)
+    }
+
+    @Test
+    fun `sandhi compound carries its raw concat unchanged`() {
+        val tokens = listOf(
+            jaToken("一", JaCategory.NOUN, reading = "イチ"),
+            jaToken("泊", JaCategory.NOUN, reading = "ハク"),
+        )
+        val result = glob(tokens, knownPhrases = setOf("一泊"))
+        assertEquals("いちはく", result[0].reading)
+    }
+
+    @Test
+    fun `lemma variant phrase keeps null reading`() {
+        // 気+に+なっ(+た) matches 気になる via the lemma swap. The final
+        // token's reading is its inflected surface's (ナッ) — concatenating
+        // would produce きになっ, which can never match the entry reading —
+        // so variants emit no hint.
+        val tokens = listOf(
+            jaToken("気", JaCategory.NOUN, reading = "キ"),
+            jaToken("に", JaCategory.PARTICLE, reading = "ニ"),
+            jaToken("なっ", JaCategory.VERB, dict = "なる", reading = "ナッ", infl = "連用形-促音便"),
+            jaToken("た", JaCategory.AUX, reading = "タ"),
+        )
+        val result = glob(tokens, knownPhrases = setOf("気になる"))
+        assertEquals("気になる", result[0].lookupForm)
+        assertNull(result[0].reading)
+    }
+
+    @Test
+    fun `phrase with reading-less member keeps null reading`() {
+        val tokens = listOf(
+            jaToken("彼", JaCategory.PRONOUN, reading = "カレ"),
+            jaToken("等", JaCategory.NOUN),
+        )
+        val result = glob(tokens, knownPhrases = setOf("彼等"))
+        assertNull(result[0].reading)
+    }
+
     // ── Existing-behavior preservation ───────────────────────────────────
 
     @Test

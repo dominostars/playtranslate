@@ -40,7 +40,11 @@ data class TokenWithReading(
     val surface: String,
     /** Dictionary form for lookup (e.g. "使う"). */
     val lookupForm: String,
-    /** Hiragana reading from Kuromoji, or null for multi-token phrases. */
+    /** Hiragana reading. Single tokens: the tokenizer's surface reading.
+     *  Re-globbed phrases (exact joins): the window tokens' readings
+     *  concatenated — the homograph-disambiguation hint `lookup()` narrows
+     *  by, with rank-order fallback when no entry matches it. Null for
+     *  lemma-variant phrases and spans with reading-less members. */
     val reading: String?,
     /** Conjugation tags the [surface] expresses (e.g. 言わせて → [Causative,
      *  Te-form]); empty for uninflected words and phrase-matched spans. */
@@ -893,8 +897,25 @@ class DictionaryManager private constructor(private val context: Context) {
                     } else {
                         emptyList()
                     }
+                    // Phrase reading: hiragana concat of the window tokens'
+                    // readings — the tokenizer's evidence for WHICH homograph
+                    // entry this span is. lookup() narrows by it (彼+等 →
+                    // かれら selects the かれら entry instead of rank-first
+                    // あれら) and falls back to rank order when nothing
+                    // matches — which is exactly the sandhi case (一+泊 →
+                    // いちはく misses every entry; the いっぱく entry wins on
+                    // rank as before). Lemma variants stay null: the final
+                    // token's reading is its inflected surface's (なっ),
+                    // which can never match the dictionary form's entry
+                    // reading, so the hint would always miss.
+                    val phraseReading = if (match.isVariant) null else {
+                        val parts = tokens.subList(i, i + match.windowLen).map { it.reading }
+                        if (parts.any { it.isNullOrEmpty() }) null
+                        else Deinflector.katakanaToHiragana(parts.joinToString(""))
+                    }
                     result.add(TokenWithReading(
-                        match.surface, match.lookupForm, reading = null, inflections = inflections,
+                        match.surface, match.lookupForm, reading = phraseReading,
+                        inflections = inflections,
                     ))
                     i += match.tokensConsumed
                     continue

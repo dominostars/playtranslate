@@ -6,7 +6,7 @@ import com.playtranslate.Prefs
 import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.model.FrequencyTag
-import com.playtranslate.model.headwordFor
+import com.playtranslate.model.selectHeadword
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.TargetGlossDatabaseProvider
@@ -405,17 +405,21 @@ object LastSentenceCache {
                 val response = defResult?.response
                 if (response != null && response.entries.isNotEmpty()) {
                     val entry      = response.entries.first()
-                    // Pick the headword that matches what the user actually
-                    // saw — JMdict often groups variant kanji under one
-                    // entry (無下/無気, 出会う/出逢う) and the primary form
-                    // can differ from the surface in the source text. Try
-                    // surface first (catches the variant case directly),
-                    // then lookupForm (covers inflected surfaces that
-                    // canonicalize to a non-primary headword), then the
-                    // primary as the last-resort label.
-                    val primary    = entry.headwordFor(tok.surface)
-                        ?: entry.headwordFor(tok.lookupForm)
-                        ?: entry.headwords.firstOrNull()
+                    // Occurrence-validated headword pick — the same
+                    // selectHeadword every other display surface uses; this
+                    // call site had kept the pre-refactor written-form chain.
+                    // The tokenizer's reading wins only when the entry lists
+                    // that exact written↔reading pair (研究所 read
+                    // けんきゅうしょ in context stays しょ, not the primary
+                    // variant じょ); a concat that matches no pair — the
+                    // sandhi case, 一泊/いちはく — falls through to the
+                    // written-form chain, the prior behavior. That chain
+                    // matters because JMdict often groups variant kanji
+                    // under one entry (無下/無気, 出会う/出逢う), so the
+                    // primary form can differ from the surface in the
+                    // source text; lookupForm covers inflected surfaces
+                    // that canonicalize to a non-primary headword.
+                    val primary    = entry.selectHeadword(tok.surface, tok.lookupForm, tok.reading)
                     val displayWord = primary?.written ?: primary?.reading ?: tok.lookupForm
                     val reading = primary?.reading?.takeIf { it != primary.written } ?: ""
                     // ONE construction of the definition content: the shared
