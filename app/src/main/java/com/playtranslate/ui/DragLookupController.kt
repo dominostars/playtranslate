@@ -695,33 +695,15 @@ class DragLookupController(
      *  synchronously during onDragMove. Called from the OCR coroutine
      *  after recognition completes.
      *
-     *  Two phases for speed + correctness:
-     *
-     *  **Phase 1** — kuromoji tokenize per line, cache the surface span /
-     *  base form / surface-form reading. Cheap (single-digit ms per line)
-     *  so the label can appear under the finger almost immediately after
-     *  OCR finishes. Surface-form readings are sometimes wrong for
-     *  inflected verbs/adjectives — kuromoji tags 住ん with reading スン
-     *  even though the base form 住む reads すむ — and sometimes absent
-     *  (lemma-variant phrase matches in `tokenizeWithSurfaces` carry null
-     *  readings; exact-join phrases carry their members' concatenated
-     *  readings).
-     *
-     *  **Phase 2** — canonicalize each unique (lookupForm, reading) pair
-     *  against the dictionary. Dedupe keys on the pair, not the form
-     *  alone, so kuromoji's per-token reading can ride along as a
-     *  disambiguation hint: a homograph kanji (人 → ひと "person" vs にん
-     *  "counter for people") then resolves to the entry that matches the
-     *  surface, instead of whichever entry happens to win the reading-
-     *  blind ranking. The pair count barely exceeds the form count — a
-     *  form appearing with two readings on one screen is uncommon — so a
-     *  240-token screen still collapses to ~50-ish SQLite queries, not
-     *  240. Each resolved pair patches every cache entry that uses it —
-     *  fixes both the wrong-reading case (replaces kuromoji's surface
-     *  reading with JMdict's lemma reading) and the missing-reading case
-     *  (fills in what tokenizeWithSurfaces left null). Reader (onDragMove)
-     *  re-reads the cache on every tick so the label updates in place as
-     *  Phase 2 progresses.
+     *  One FULL-depth annotation per line (the same single analysis every
+     *  other reading surface projects from): spans arrive with canonical
+     *  written forms, occurrence-validated readings, and real offsets, so
+     *  labels are correct at first paint — the old two-phase
+     *  tokenize-then-patch pass (and its mid-drag label upgrades) is gone.
+     *  Homograph disambiguation rides the annotator's per-occurrence
+     *  resolution (人 → ひと vs にん by context hint), and the engine's
+     *  annotation LRU makes repeat drags over an unchanged screen
+     *  near-free.
      *
      *  Re-throws [CancellationException] before the generic catch so a
      *  cancelled drag's coroutine actually exits without overwriting
@@ -733,35 +715,36 @@ class DragLookupController(
         val engine = SourceLanguageEngines.get(context, Prefs(context).sourceLangId)
         val cache = mutableMapOf<String, List<LabelToken>>()
 
-        // Phase 1: kuromoji-only pass.
+        // One FULL-depth annotation per line: spans arrive with canonical
+        // written forms and occurrence-validated readings already resolved,
+        // so the label is correct at FIRST paint — no patch-in-place upgrade
+        // pass, no mid-drag label flicker. The engine's annotation LRU makes
+        // repeat drags over the same screen near-free. Offsets come from the
+        // spans themselves — no indexOf re-finding.
         for (line in lines) {
             if (line.text.isEmpty() || cache.containsKey(line.text)) continue
             try {
-                val results = engine.tokenize(line.text)
+                val ann = engine.annotate(line.text)
                 val labels = mutableListOf<LabelToken>()
-                var pos = 0
-                for (r in results) {
-                    val idx = line.text.indexOf(r.surface, pos)
-                    if (idx < 0) continue
-                    // Same "show reading when it adds info" gate the
-                    // popup applies internally: drop blanks, drop reading
-                    // equal to the word, drop readings for words with no
-                    // kanji (kuromoji can return a katakana reading for
-                    // a hiragana word, etc.).
-                    val reading = r.reading?.takeIf { readingAddsInfo(r.lookupForm, it) }
+                for (s in ann.spans) {
+                    if (s.start < 0) continue
+                    val form = s.word ?: s.lookupForm ?: continue
+                    // Same "show reading when it adds info" gate the popup
+                    // applies internally: drop blanks, drop reading equal
+                    // to the word, drop readings for kanji-free words.
+                    val reading = s.reading?.takeIf { readingAddsInfo(form, it) }
                     labels += LabelToken(
-                        surface = r.surface,
-                        lookupForm = r.lookupForm,
+                        surface = s.surface,
+                        lookupForm = form,
                         reading = reading,
-                        charOffset = idx,
+                        charOffset = s.start,
                     )
-                    pos = idx + r.surface.length
                 }
                 cache[line.text] = labels
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.w(TAG, "pretokenize phase 1 failed for line: ${e.message}")
+                Log.w(TAG, "pretokenize failed for line: ${e.message}")
             }
             // Publish progressively so labels for earlier lines become
             // hit-testable without waiting for the rest. Both reader
@@ -771,47 +754,6 @@ class DragLookupController(
             // Re-evaluate at the finger's last position. If the user
             // stopped moving before this line's cache landed, this is
             // what arms the dwell timer that onDragMove couldn't.
-            refreshLabelAndDwell()
-        }
-
-        // Phase 2: per-unique-(lookupForm, reading) canonicalization.
-        // Keying on the pair — not the form alone — lets the lookup pass
-        // kuromoji's reading as a hint so a homograph kanji resolves to
-        // the matching entry instead of the top reading-blind one.
-        val uniqueKeys = LinkedHashSet<Pair<String, String?>>()
-        for (tokens in cache.values) for (t in tokens) uniqueKeys.add(t.lookupForm to t.reading)
-        for ((form, hintReading) in uniqueKeys) {
-            val (canonicalWord, canonicalReading) = try {
-                // selectHeadword honours the occurrence [hintReading] (明日 read
-                // あす wins over the entry's primary あした) but falls back to the
-                // primary headword when the hint matches none, so a wrong/missing
-                // tokenizer reading still canonicalizes exactly as before.
-                val head = engine.lookup(form, hintReading)?.entries?.firstOrNull()
-                    ?.selectHeadword(form, form, hintReading)
-                if (head != null) (head.written ?: head.reading ?: form) to head.reading
-                else continue  // not in dict — leave Phase 1 entry as-is
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "pretokenize phase 2 failed for $form [$hintReading]: ${e.message}")
-                continue
-            }
-            val gatedReading = canonicalReading?.takeIf { readingAddsInfo(canonicalWord, it) }
-            for ((lineText, tokens) in cache.toMap()) {
-                var dirty = false
-                val patched = tokens.map { t ->
-                    if (t.lookupForm == form && t.reading == hintReading &&
-                        (t.lookupForm != canonicalWord || t.reading != gatedReading)
-                    ) {
-                        dirty = true
-                        t.copy(lookupForm = canonicalWord, reading = gatedReading)
-                    } else t
-                }
-                if (dirty) cache[lineText] = patched
-            }
-            lineTokensCache = cache
-            // Phase 2 patches the label's lookupForm/reading; refresh so
-            // the visible label upgrades to the canonical form mid-drag.
             refreshLabelAndDwell()
         }
     }

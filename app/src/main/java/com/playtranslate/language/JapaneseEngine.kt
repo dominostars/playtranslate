@@ -187,7 +187,9 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
         val ref = entry.packId?.let { EntryRef.Pack(it) }
             ?: EntryRef.Imported(key.lookupForm, entry.headwords.firstOrNull()?.reading)
         val hw = entry.selectHeadword(key.lookupForm, key.lookupForm, key.hint)
-        return SentenceAnnotator.WordResolution(ref, hw?.reading)
+        return SentenceAnnotator.WordResolution(
+            ref, hw?.reading, written = hw?.written ?: hw?.reading,
+        )
     }
 
     /** Pitch on whole-word uninflected spans — the legacy hint path's

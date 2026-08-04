@@ -52,10 +52,15 @@ internal object SentenceAnnotator {
      *  concat for exact phrases, null for lemma variants). */
     data class ResolutionKey(val lookupForm: String, val hint: String?)
 
-    /** One resolved word: which store/entry it landed on and the
-     *  occurrence-validated display reading (selectHeadword semantics),
-     *  null on a double miss. */
-    data class WordResolution(val entryRef: EntryRef?, val reading: String?)
+    /** One resolved word: which store/entry it landed on, the
+     *  occurrence-validated display reading, and the canonical written
+     *  form (selectHeadword semantics — the words-table/drag-label
+     *  display key). Null fields on a double miss. */
+    data class WordResolution(
+        val entryRef: EntryRef?,
+        val reading: String?,
+        val written: String? = null,
+    )
 
     /** The unique resolution requests a FULL-depth annotation needs. */
     fun resolutionKeys(
@@ -167,7 +172,7 @@ internal object SentenceAnnotator {
         return AnnotatedSpan(
             start = start, end = end, surface = surface,
             lookupForm = lookupForm,
-            word = if (res?.entryRef != null) src?.lookupForm else null,
+            word = if (res?.entryRef != null) (res.written ?: src?.lookupForm) else null,
             entryRef = res?.entryRef,
             // Re-glob spans carry the hint resolution used (null for lemma
             // variants BY DESIGN — an inflected concat can never match an
