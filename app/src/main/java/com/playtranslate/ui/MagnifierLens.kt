@@ -14,13 +14,13 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.hardware.input.InputManager
 import android.os.SystemClock
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.InputDevice
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -290,7 +290,7 @@ class MagnifierLens(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
-        if (!hasGameController()) {
+        if (!hasGameController(rawCtx)) {
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         }
         // The window is already full-screen (set in show()); this flag change
@@ -299,9 +299,11 @@ class MagnifierLens(
         p.flags = flags
         try { wm.updateViewLayout(root, p) } catch (_: Exception) {}
         // Sticky now: the root catches off-card taps to dismiss (and consumes
-        // them so they don't reach the app/game behind).
+        // them so they don't reach the app/game behind), and — while focusable
+        // for the controller — the B button dismisses the same way.
         root.interactive = true
         root.onOffCardTap = { dismiss() }
+        root.onDismissKey = { dismiss() }
         view.attachInteractiveListeners(onDismissRequest = { dismiss() })
         // Arrow x stays inside the card region (in lens-local coords) — clamped
         // so the triangle's tip lands over the card, not the chip-halo padding.
@@ -393,24 +395,6 @@ class MagnifierLens(
     private fun applyCardFrame(view: LensView, h: Int) {
         val cardTop = if (!lastFlipped) anchoredEdgeScreenY - h else anchoredEdgeScreenY
         view.setCardGeometry(h, cardTop)
-    }
-
-    /** True when a physical game controller (gamepad / joystick) is
-     *  connected — including a handheld's built-in controls, which report
-     *  as a real SOURCE_GAMEPAD / SOURCE_JOYSTICK device. Gates whether the
-     *  interactive card takes window focus; see [makeInteractive]. */
-    private fun hasGameController(): Boolean {
-        val inputManager = rawCtx.getSystemService(InputManager::class.java)
-            ?: return false
-        for (id in inputManager.inputDeviceIds) {
-            val sources = inputManager.getInputDevice(id)?.sources ?: continue
-            if (sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
-                sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
-            ) {
-                return true
-            }
-        }
-        return false
     }
 
     /** Window flags for the lens in its non-interactive (zoom) state. On the
@@ -656,6 +640,35 @@ class MagnifierLens(
          *  (Taps inside the column but off the chrome band are dismissed by
          *  [lens] itself; both are consumed by this full-screen window.) */
         var onOffCardTap: (() -> Unit)? = null
+        /** Controller B / back while the sticky lens holds window focus (it
+         *  goes focusable when a controller is attached — [makeInteractive]).
+         *  A separate hook from [onOffCardTap]: same dismissal, different
+         *  intent. */
+        var onDismissKey: (() -> Unit)? = null
+
+        /** True between a consumed B DOWN and its UP, so dismissal fires only
+         *  for a press that began on this window. */
+        private var backDownSeen = false
+
+        override fun dispatchKeyEvent(ev: KeyEvent): Boolean {
+            if (interactive && ControllerKeys.isBack(ev.keyCode)) {
+                // Fire on UP, not DOWN: dismissing removes this FOCUSED window,
+                // and acting on the DOWN would orphan the UP into whatever sits
+                // beneath — the game itself in the drag-lookup flow. Release-
+                // to-dismiss is also the console idiom. The down-seen gate
+                // keeps a B held from before the lens appeared from dismissing
+                // it on release.
+                when (ev.action) {
+                    KeyEvent.ACTION_DOWN -> if (ev.repeatCount == 0) backDownSeen = true
+                    KeyEvent.ACTION_UP -> if (backDownSeen) {
+                        backDownSeen = false
+                        onDismissKey?.invoke()
+                    }
+                }
+                return true
+            }
+            return super.dispatchKeyEvent(ev)
+        }
 
         init {
             // Transparent: only [lens] paints. The rest of the screen-sized
