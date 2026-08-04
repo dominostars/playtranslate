@@ -5,18 +5,26 @@ import android.hardware.input.InputManager
 import android.view.InputDevice
 import android.view.KeyEvent
 
-/** True when a physical game controller (gamepad / joystick) is connected —
- *  including a handheld's built-in controls, which report as a real
- *  SOURCE_GAMEPAD / SOURCE_JOYSTICK device. Evaluated at the moment of asking;
- *  there is no device listener, so callers re-check per show, not per frame.
- *  Gates whether an overlay window takes input focus for controller
- *  navigation (the capture sheet) or stick-nudge dismissal ([MagnifierLens]). */
-fun hasGameController(ctx: Context): Boolean {
+/** True when a physical input device that can drive overlay navigation is
+ *  connected: a game controller (gamepad / joystick — including a handheld's
+ *  built-in controls), or a real hardware keyboard, whose Escape / arrows /
+ *  Enter mirror B / dpad / A. Alphabetic + non-virtual filters out the
+ *  phantom built-in keyboard devices some firmwares register. Evaluated at
+ *  the moment of asking; there is no device listener, so callers re-check
+ *  per show, not per frame. Gates whether an overlay window (the capture
+ *  sheet, the sticky lens) takes input focus for key navigation. */
+fun hasNavInputDevice(ctx: Context): Boolean {
     val inputManager = ctx.getSystemService(InputManager::class.java) ?: return false
     for (id in inputManager.inputDeviceIds) {
-        val sources = inputManager.getInputDevice(id)?.sources ?: continue
+        val device = inputManager.getInputDevice(id) ?: continue
+        val sources = device.sources
         if (sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
             sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
+        ) {
+            return true
+        }
+        if (!device.isVirtual &&
+            device.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC
         ) {
             return true
         }
@@ -29,11 +37,18 @@ fun hasGameController(ctx: Context): Boolean {
  *  BUTTON_A→DPAD_CENTER) only fire for UNhandled events, and relying on them
  *  would make consumption order-dependent. */
 object ControllerKeys {
-    /** Dismiss/cancel: the gamepad B button or a system back key. */
-    fun isBack(keyCode: Int): Boolean =
-        keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_BUTTON_B
+    /** Dismiss/cancel: the gamepad B button, a system back key, or a hardware
+     *  keyboard's Escape. */
+    fun isBack(keyCode: Int): Boolean = when (keyCode) {
+        KeyEvent.KEYCODE_BACK,
+        KeyEvent.KEYCODE_BUTTON_B,
+        KeyEvent.KEYCODE_ESCAPE,
+        -> true
+        else -> false
+    }
 
-    /** Confirm: the gamepad A button or a keyboard confirm key. */
+    /** Confirm: the gamepad A button or a keyboard confirm key (hardware
+     *  Enter included). */
     fun isActivate(keyCode: Int): Boolean = when (keyCode) {
         KeyEvent.KEYCODE_BUTTON_A,
         KeyEvent.KEYCODE_DPAD_CENTER,
@@ -45,7 +60,9 @@ object ControllerKeys {
 
     /** Dpad direction of [keyCode], or null for non-directional keys. Hat-axis
      *  dpads arrive here too: ViewRootImpl synthesizes these keycodes from
-     *  AXIS_HAT_X/Y motion the view tree leaves unconsumed. */
+     *  AXIS_HAT_X/Y motion the view tree leaves unconsumed. Hardware keyboard
+     *  arrow keys arrive here as well — Android reports them AS these DPAD
+     *  keycodes; there are no separate arrow codes. */
     fun direction(keyCode: Int): SheetNavGeometry.Dir? = when (keyCode) {
         KeyEvent.KEYCODE_DPAD_UP -> SheetNavGeometry.Dir.UP
         KeyEvent.KEYCODE_DPAD_DOWN -> SheetNavGeometry.Dir.DOWN
