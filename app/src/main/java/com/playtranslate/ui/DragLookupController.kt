@@ -225,6 +225,10 @@ class DragLookupController(
      *  the lens is the single source of truth for its own mode. */
     val isPopupShowing: Boolean get() = magnifier.isInteractive
 
+    /** Whether the sticky lens holds window focus for controller navigation —
+     *  see [MagnifierLens.isConsumingController]. */
+    val isPopupConsumingController: Boolean get() = magnifier.isConsumingController
+
     companion object {
         private const val TAG = "DragLookup"
         /** Hold time before dwell triggers definitions. */

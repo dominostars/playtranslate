@@ -17,11 +17,13 @@ import android.graphics.drawable.GradientDrawable
 import android.os.SystemClock
 import android.text.TextUtils
 import android.util.TypedValue
+import android.view.Choreographer
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.ViewTreeObserver
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -44,6 +46,9 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.withClip
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlin.math.sign
 
 /**
  * Floating magnifier lens shown while the user drags on a JP/ZH/Latin token
@@ -231,6 +236,13 @@ class MagnifierLens(
 
     val isInteractive: Boolean get() = lensView?.isInteractive == true
 
+    /** True while the sticky lens HOLDS WINDOW FOCUS for controller input —
+     *  [makeInteractive] found a controller, so A/B/dpad/stick are driving the
+     *  lens, not the game. The a11y key filter's "game input clears the
+     *  lookup" rule must stand down for those keys while this is set. */
+    val isConsumingController: Boolean get() = isInteractive && tookControllerFocus
+    private var tookControllerFocus = false
+
     /** Zoom source, held here as well as on the view: setBitmap can arrive
      *  while the lens is hidden (the camera scene flow attaches the frame
      *  BEFORE its deferred reveal creates the view), and a view-only write
@@ -290,7 +302,8 @@ class MagnifierLens(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
-        if (!hasGameController(rawCtx)) {
+        tookControllerFocus = hasGameController(rawCtx)
+        if (!tookControllerFocus) {
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         }
         // The window is already full-screen (set in show()); this flag change
@@ -315,6 +328,13 @@ class MagnifierLens(
         // Release commit: grow the card to fit the dictionary, animated inside
         // the fixed window (definitions were bound just above).
         fitHeightToContent()
+    }
+
+    /** Controller-opened lens: ring the pill from the start, so the next A
+     *  drills straight into the detail screen. A touch-opened lens selects on
+     *  the first controller input instead (the sheet's first-press rule). */
+    fun focusPillForController() {
+        lensView?.focusPill()
     }
 
     /** Grow the card to fit newly-bound definitions on an ALREADY-interactive
@@ -543,6 +563,13 @@ class MagnifierLens(
      *  user-initiated dismissal). */
     private fun removeOverlayInternal() {
         val root = lensRoot ?: return
+        // Full interactive teardown BEFORE the window goes — this is the one
+        // removal path every dismissal funnels through, and the stick-scroll
+        // Choreographer callback re-posts itself: without this, dismissing
+        // mid-deflection leaves it running per-frame against the detached
+        // view (holding it) forever. resetToZoom() detaches separately; a
+        // second detach here is idempotent.
+        lensView?.detachInteractiveListeners()
         heightAnimator?.cancel()
         heightAnimator = null
         lensCardHeight = lensH
@@ -667,6 +694,7 @@ class MagnifierLens(
                 }
                 return true
             }
+            if (interactive && lens.handleNavKey(ev)) return true
             return super.dispatchKeyEvent(ev)
         }
 
@@ -1145,6 +1173,9 @@ class MagnifierLens(
         private var sourceScreenW = 0
         private var sourceScreenH = 0
 
+        /** Controller cursor's ring — same renderer as the capture sheet's. */
+        private val focusRing = FocusRingView(ctx)
+
         init {
             setWillNotDraw(false)
             isFocusable = true
@@ -1164,6 +1195,9 @@ class MagnifierLens(
             addView(leftChip)
             addView(rightChip)
             addView(pillView)
+            // Topmost; a plain non-clickable View, so lens touches fall
+            // through it to the pill/chips/card beneath.
+            addView(focusRing, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
             rebuildClipPath()
             updateChromeLayout()
         }
@@ -1788,17 +1822,12 @@ class MagnifierLens(
                     false
                 } else false
             }
-            setOnGenericMotionListener { _, event ->
-                if (event.source and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
-                    && event.action == MotionEvent.ACTION_MOVE
-                ) {
-                    val axisX = event.getAxisValue(MotionEvent.AXIS_X)
-                    val axisY = event.getAxisValue(MotionEvent.AXIS_Y)
-                    if (axisX * axisX + axisY * axisY > 0.25f) {
-                        onDismissRequest()
-                        true
-                    } else false
-                } else false
+            // Left stick scrolls the definitions (it used to be a nudge-to-
+            // dismiss; B carries dismissal now, and a dictionary long enough
+            // to scroll is exactly when a stick flick must not close it).
+            setOnGenericMotionListener { _, event -> handleNavMotion(event) }
+            navPreDraw = ViewTreeObserver.OnPreDrawListener { syncNavRing(); true }.also {
+                viewTreeObserver.addOnPreDrawListener(it)
             }
             requestFocus()
             isInteractive = true
@@ -1814,6 +1843,12 @@ class MagnifierLens(
         fun detachInteractiveListeners() {
             setOnTouchListener(null)
             setOnGenericMotionListener(null)
+            navPreDraw?.let { viewTreeObserver.removeOnPreDrawListener(it) }
+            navPreDraw = null
+            stopNavScroll()
+            navCursor = null
+            navConsumedDown.clear()
+            focusRing.setTarget(null, null)
             dismissRequest = null
             clearFocus()
             isInteractive = false
@@ -1823,6 +1858,170 @@ class MagnifierLens(
             rightChip.translationX = 0f
             leftChip.visibility = GONE
             rightChip.visibility = GONE
+        }
+
+        // ── Controller nav: cursor over the pill + chips, stick scroll ────
+
+        private var navCursor: View? = null
+        private var navPreDraw: ViewTreeObserver.OnPreDrawListener? = null
+        /** Keycodes whose DOWN we consumed, so the matching UP is too — and
+         *  so the A that OPENED the lens (pressed on the sheet, released over
+         *  this freshly-focused window) can't instantly activate the pill. */
+        private val navConsumedDown = mutableSetOf<Int>()
+        private val navItemLoc = IntArray(2)
+        private val navSelfLoc = IntArray(2)
+        private val navTmp = Rect()
+
+        /** Auto-select for a controller-opened lens: the pill rings from the
+         *  start, so the very next A drills into the detail screen. */
+        fun focusPill() {
+            navCursor = pillView
+            syncNavRing()
+        }
+
+        private fun navCandidates(): List<View> =
+            listOf(pillView, leftChip, rightChip).filter { it.isShown }
+
+        /** Item rect in THIS view's coordinates. Chips ring their 32dp visible
+         *  disk, not the 48dp hit halo. */
+        private fun navRectInView(v: View, out: Rect): Boolean {
+            if (!v.isShown || v.width <= 0 || v.height <= 0) return false
+            v.getLocationOnScreen(navItemLoc)
+            getLocationOnScreen(navSelfLoc)
+            val l = navItemLoc[0] - navSelfLoc[0]
+            val t = navItemLoc[1] - navSelfLoc[1]
+            out.set(l, t, l + v.width, t + v.height)
+            if (v === leftChip || v === rightChip) {
+                val inset = (chipHitSizePx - chipVisDiameterPx) / 2
+                out.inset(inset, inset)
+            }
+            return true
+        }
+
+        private fun syncNavRing() {
+            val cur = navCursor
+            if (cur == null || !navRectInView(cur, navTmp)) {
+                focusRing.setTarget(null, null)
+                return
+            }
+            focusRing.setTarget(navTmp, null)
+        }
+
+        /** Dpad + A for the sticky lens (B stays in [LensRoot]). A fires on
+         *  UP: the pill and the Anki chip tear this focused window down
+         *  (detail / review launch), so the pair must be consumed first —
+         *  the same invariant as the sheet's activations. */
+        fun handleNavKey(ev: KeyEvent): Boolean {
+            if (!isInteractive) return false
+            if (ev.action == KeyEvent.ACTION_UP) {
+                if (!navConsumedDown.remove(ev.keyCode)) return false
+                if (ControllerKeys.isActivate(ev.keyCode)) {
+                    val cur = navCursor
+                    // First A selects the pill; only a second activates.
+                    if (cur == null || !cur.isShown) focusPill() else activateNav(cur)
+                }
+                return true
+            }
+            if (ev.action != KeyEvent.ACTION_DOWN) return false
+            val dir = ControllerKeys.direction(ev.keyCode)
+            if (dir == null && !ControllerKeys.isActivate(ev.keyCode)) return false
+            if (dir != null) {
+                val cur = navCursor
+                if (cur == null || !cur.isShown) focusPill() else moveNav(cur, dir)
+            }
+            navConsumedDown.add(ev.keyCode)
+            return true
+        }
+
+        private fun moveNav(cur: View, dir: SheetNavGeometry.Dir) {
+            val cands = navCandidates()
+            val fromIdx = cands.indexOf(cur)
+            if (fromIdx < 0) {
+                focusPill()
+                return
+            }
+            val rects = cands.map { v ->
+                val r = Rect()
+                navRectInView(v, r)
+                SheetNavGeometry.NavRect(r.left, r.top, r.right, r.bottom)
+            }
+            val next = SheetNavGeometry.nextInDirection(rects[fromIdx], rects, dir) ?: return
+            navCursor = cands[next]
+            syncNavRing()
+        }
+
+        private fun activateNav(v: View) {
+            when {
+                v === pillView -> fireOpenTap()
+                v === leftChip -> onSpeakTap()
+                v === rightChip -> onAnkiTap()
+            }
+        }
+
+        // Stick scroll of the definitions body — the sheet's repeater pattern
+        // (dt-clamped, shared speed/dead-zone dials), minus the modal checks
+        // the lens doesn't have. Stopped by [detachInteractiveListeners],
+        // which [removeOverlayInternal] runs on every dismissal (the repeater
+        // re-posts itself, so an un-detached removal would leak the view).
+
+        private var navScrollActive = false
+        private var navScrollY = 0f
+        private var navScrollDead = CaptureSheetControllerNav.STICK_DEAD_ZONE
+        private var navScrollRepeating = false
+        private var navScrollLastNs = 0L
+        private val navScrollFrame = object : Choreographer.FrameCallback {
+            override fun doFrame(frameTimeNanos: Long) {
+                if (!navScrollRepeating) return
+                val dt = ((frameTimeNanos - navScrollLastNs) / 1e9f).coerceIn(0f, 0.05f)
+                navScrollLastNs = frameTimeNanos
+                val mag = ((abs(navScrollY) - navScrollDead) / (1f - navScrollDead)).coerceIn(0f, 1f)
+                definitionsScroll.scrollBy(
+                    0,
+                    (sign(navScrollY) * mag *
+                        CaptureSheetControllerNav.STICK_MAX_DP_PER_SEC * density * dt).roundToInt(),
+                )
+                Choreographer.getInstance().postFrameCallback(this)
+            }
+        }
+
+        private fun handleNavMotion(event: MotionEvent): Boolean {
+            if (!isInteractive) return false
+            if (event.actionMasked != MotionEvent.ACTION_MOVE) return false
+            if (event.source and InputDevice.SOURCE_JOYSTICK != InputDevice.SOURCE_JOYSTICK) {
+                return false
+            }
+            // Hat-driven dpads must keep synthesizing DPAD keys — leave their
+            // MOVEs unconsumed (same guard as the sheet).
+            if (event.getAxisValue(MotionEvent.AXIS_HAT_X) != 0f ||
+                event.getAxisValue(MotionEvent.AXIS_HAT_Y) != 0f
+            ) {
+                return false
+            }
+            val flat = event.device?.getMotionRange(MotionEvent.AXIS_Y, event.source)?.flat ?: 0f
+            navScrollDead = maxOf(flat, CaptureSheetControllerNav.STICK_DEAD_ZONE)
+            val y = event.getAxisValue(MotionEvent.AXIS_Y)
+            val x = event.getAxisValue(MotionEvent.AXIS_X)
+            if (abs(y) <= navScrollDead && abs(x) <= navScrollDead) {
+                val was = navScrollActive
+                navScrollActive = false
+                stopNavScroll()
+                // Consume the centering event of a deflection we owned.
+                return was
+            }
+            navScrollActive = true
+            navScrollY = y
+            if (!navScrollRepeating) {
+                navScrollRepeating = true
+                navScrollLastNs = System.nanoTime()
+                Choreographer.getInstance().postFrameCallback(navScrollFrame)
+            }
+            return true
+        }
+
+        private fun stopNavScroll() {
+            if (!navScrollRepeating) return
+            navScrollRepeating = false
+            Choreographer.getInstance().removeFrameCallback(navScrollFrame)
         }
 
         /** Run [revealChips] now if no pill width animation is in flight;

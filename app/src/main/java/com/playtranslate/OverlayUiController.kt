@@ -269,6 +269,14 @@ class OverlayUiController(
     val isAnyDragLookupPopupShowing: Boolean
         get() = iconHandles.values.any { it.dragController.isPopupShowing }
 
+    /** True while any drag-lookup lens HOLDS WINDOW FOCUS for controller
+     *  navigation (interactive + a controller was attached when it went
+     *  sticky). The a11y key filter reads this per key event: its "game input
+     *  clears the lookup" rule predates the lens being drivable, and must
+     *  stand down for the nav keys that now drive it. */
+    val isAnyDragLookupConsumingController: Boolean
+        get() = iconHandles.values.any { it.dragController.isPopupConsumingController }
+
     // ── Translation overlay registry ─────────────────────────────────────
 
     /**

@@ -742,10 +742,22 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 heldKeyCodes.add(event.keyCode)
                 if (gameInput) {
                     heldGameKeys.add(event.keyCode)
-                    if (overlayUiController.isAnyDragLookupPopupShowing) {
-                        overlayUiController.dismissAllDragLookupPopups()
+                    // "The player pressed a button → they're back in the game,
+                    // clear the lookup" predates the lens taking window focus
+                    // for controller navigation. While a focusable sticky lens
+                    // is up, the nav keys (A/B/dpad/confirm) are DRIVING it —
+                    // dismissing on them killed the lens on the very press
+                    // meant to select its pill (field-reproduced: A over a
+                    // drag lookup removed LensRoot in the same millisecond).
+                    // Non-nav buttons keep the resume-play semantics.
+                    val lensOwned = overlayUiController.isAnyDragLookupConsumingController &&
+                        com.playtranslate.ui.ControllerKeys.consumesForNav(event.keyCode)
+                    if (!lensOwned) {
+                        if (overlayUiController.isAnyDragLookupPopupShowing) {
+                            overlayUiController.dismissAllDragLookupPopups()
+                        }
+                        fireOnGameInput()
                     }
-                    fireOnGameInput()
                 }
                 checkHotkeyCombos()
             }
