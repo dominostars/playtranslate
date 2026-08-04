@@ -703,7 +703,8 @@ class DragLookupController(
      *  OCR finishes. Surface-form readings are sometimes wrong for
      *  inflected verbs/adjectives — kuromoji tags 住ん with reading スン
      *  even though the base form 住む reads すむ — and sometimes absent
-     *  (n-gram phrase matches in `tokenizeWithSurfaces` carry null
+     *  (lemma-variant phrase matches in `tokenizeWithSurfaces` carry null
+     *  readings; exact-join phrases carry their members' concatenated
      *  readings).
      *
      *  **Phase 2** — canonicalize each unique (lookupForm, reading) pair
