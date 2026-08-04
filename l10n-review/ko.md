@@ -462,3 +462,89 @@ word order and a tight prefix are both safe.
 ### Verdict
 
 **PASS.** No findings; nothing to apply.
+
+---
+
+## Delta review 2026-08-04 (8 keys: one-tap card toasts, first-field guard, hide-translations toggle, waveform zoom hint)
+
+Mechanical layer verified programmatically over the eight keys: every key present, no
+extras, no duplicates, no `translatable="false"` orphans; placeholder multisets identical
+to EN (`%1$s` in `anki_first_field_unmapped` / `anki_first_field_empty`, none elsewhere);
+all five `<xliff:g>` spans byte-identical to EN including `id` and `example`
+(`brand_anki`, `field_name`); `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no raw
+`'` or `"` (the `“ ”` in both first-field strings are the intended typographic quotes and
+need no escaping); ordering follows EN. `./gradlew :app:processDebugResources` exits 0.
+**No 🛑 build-breaking issues.**
+
+### Findings (delta)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| `game_audio_zoom_hint` | 💬 | 두 손가락을 모으거나 벌려 표시할 오디오 범위를 조절하세요 | 두 손가락을 모으거나 벌려 표시 범위를 조절하세요 | 25 Hangul + 7 spaces ≈ 296dp at the caption's 11sp; the `TextView` in `anki_game_audio_panel.xml` is `match_parent` inside 24dp horizontal padding, so a 360dp-wide sheet leaves ~312dp — one line only at font scale 1.0, two lines at any larger scale or narrower sheet. It is `wrap_content` height so nothing clips, but this is the longest of the twelve locales (ja is 18 chars, zh 15). Dropping 오디오 saves ~47dp and loses nothing: the caption sits directly under the waveform. Keep 표시(할) — it is load-bearing, since the handles on the same view adjust the *selection* and pinch adjusts the *view*, and a bare 오디오 범위를 조절 would collapse the two. |
+| `anki_first_field_unmapped` | 💬 | Anki가 노트를 식별할 수 있도록 “%1$s” 필드에 값을 매핑하세요. | Anki가 노트를 식별하려면 “%1$s” 필드에 값을 매핑하세요. | Toast clamps to two lines on Android 12+. Current text with a 3-char field name is ~400dp at 14sp against roughly 560dp of two-line capacity — it fits, but the field name is user-defined and unbounded, so headroom is the whole budget. 식별할 수 있도록 → 식별하려면 returns 3 Hangul + 2 spaces (~50dp, ~12%) at no cost to meaning, and matches the ~하려면 … ~하세요 pattern the file already uses in `a11y_required_hotkey_message` and `overlay_icon_a11y_required_message`. |
+| `card_words_in_sentence` | 💬 | 문장의 단어 | 문장 속 단어 | Genitive 의 reads as "the sentence's words" — grammatical but bookish for a card-back section header. 속 is the idiomatic "in" for this construction and matches how ja/zh framed it (文中の単語 / 句子中的单词). Optional polish; no render risk either way. |
+| `anki_first_field_unmapped`, `anki_first_field_empty` | 💬 | 노트 (Anki "note") | (keep 노트) | Judged, not a defect. 노트 / 노트 유형 is AnkiDroid's own Korean vocabulary, ja and zh made the same call (ノート / 笔记), and EN deliberately says "note" because the first-field checksum is a *note*-level identity, not a card-level one. Flagging only the inherited asymmetry: the app's picker calls the note type 카드 유형 (`anki_card_type_row_label`, `anki_field_mapping_unconfigured`, `settings_anki_digest`), so a Korean reader of `anki_first_field_empty` meets 카드 and 노트 in adjacent sentences with nothing linking them. That drift is in the English source (Card Type / note), not in this translation — do not "fix" it by flattening 노트 to 카드, which would destroy the note-vs-card distinction the string exists to explain. |
+
+### Clean areas (delta) — checked, no findings
+
+**Particles around the free-form field name.** The translator's head-noun strategy holds
+in both first-field strings and is verified, not assumed: `“%1$s” 필드에` and
+`“%1$s” 필드가` put every particle on 필드, never on the placeholder, so the 이/가 and
+을/를 alternation is decided by 필드 (open syllable 드 → 가 is correct) and is invariant
+under whatever AnkiDroid hands back. Dropped in real values — "Key", "Expression",
+"단어", "번역문", "Front" — both sentences read identically well; a consonant-final field
+name like 번역문 or "Front" never touches a particle. This is the same fix pattern the
+Turkish locale uses for vowel harmony, and it is the right one here.
+
+**Brand-name particles.** Anki가 (`anki_first_field_unmapped`) and Anki는
+(`anki_first_field_empty`) are both correct — 앙키 ends in a vowel — and match the
+file's existing precedent of a bare particle after a fixed brand name
+(`anki_send_failed_message`: AnkiDroid가). Anki에 in both new toasts is invariant.
+
+**The two one-tap toasts.** `anki_added_sentence_success` / `anki_added_word_success`
+name the card shape with 문장 / 단어, byte-matching `anki_mode_sentence` and
+`anki_mode_word` — which is the whole point of these strings, since one-tap applies the
+remembered mode with no other UI showing it. Both pattern-match `anki_added_no_audio`'s
+`Anki에 추가됨` exactly, and 카드가 takes the correct particle (카드 is open-syllable).
+The -됨 ending is the file's established toast style (`history_copied_toast` 복사됨,
+`anki_permission_denied` 권한이 거부됨), so these do not need 합니다체.
+
+**Register.** ~하세요 in the two instructional strings (`game_audio_zoom_hint`,
+`anki_first_field_unmapped`) and in `history_hide_translations_toggle_subtitle`'s second
+sentence; 합니다체 in the declarative bodies (`anki_first_field_empty`,
+`history_hide_translations_toggle_subtitle`'s first sentence). This matches the immediate
+neighbours — `anki_field_mapping_unconfigured` 구성하세요,
+`history_capture_image_toggle_subtitle` 보관합니다 — and the declarative+imperative mix
+inside the subtitle mirrors EN and reads naturally in Korean. Row title
+`history_hide_translations_toggle_title` uses the ~하기 noun form the parameters
+prescribe for row titles.
+
+**Pinch wording.** 두 손가락을 모으거나 벌려 is the standard Korean rendering of a pinch
+gesture in Android UI (Google's own Korean strings use 손가락을 모으거나 벌려 for
+pinch-zoom); it is not a calque and needed no 핀치 loanword. Only its length is flagged
+above.
+
+**History terminology.** 번역 (not 번역문) for the translated output is the file's
+established noun — `cd_copy_translation` 번역 복사, `cd_toggle_translation_visibility`
+번역 표시 전환, `hotkey_show_translations_title` 번역 표시 — so 번역 숨기기 is the exact
+antonym of the shipped 번역 표시 and introducing 번역문 here would have broken the
+one-term rule. 캡처한 텍스트 reuses the app's established capture verb and matches
+`history_toggle_title` 텍스트 기록 유지 (EN likewise says "captured text" here and
+"sentences" in `settings_cell_history_summary_*`, so this is faithful, not drift).
+항목 for EN's "row" matches `history_delete_confirm_title` 이 항목 and is what Korean
+list UIs actually say — 행 would be wrong. The collision with
+`translate_button_subtitle_hold_to_hide_translations` (번역 숨기기 for the in-game
+overlay) is inherited from EN's own reuse of "hide translations" and is unambiguous
+inside the History settings group.
+
+**Render constraints read, not guessed.** `card_words_in_sentence` is baked into the card
+HTML under `gl-section`, which applies `text-transform:uppercase` (a no-op on Hangul) and
+`letter-spacing:0.12em` (normal for a Korean header); there is no clipping path, and the
+string needs no shortening. `game_audio_zoom_hint`'s TextView is `wrap_content` height, so
+the length note above is a two-line aesthetic risk, not truncation.
+`anki_first_field_empty` is a full alert with no length budget, which is why its longer
+합니다체 phrasing is correct there and the toast is the only string tightened.
+
+**Word order.** `anki_first_field_unmapped` front-loads the purpose clause where EN
+front-loads the action. That is the correct Korean order, not an MT artifact, and it is
+what ja and zh also did.

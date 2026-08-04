@@ -162,6 +162,8 @@
 
     <string name="word_detail_common">Courant</string>
 
+    <string name="card_words_in_sentence">Mots de la phrase</string>
+
     <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> paquets Anki</string>
     <string name="word_anki_deck_badge_cd">Déjà dans Anki : <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
 
@@ -480,6 +482,10 @@
 
     <string name="anki_added_no_audio">Ajouté à <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (audio indisponible)</string>
 
+    <string name="anki_added_sentence_success">Carte de phrase ajoutée à <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_added_word_success">Carte de mot ajoutée à <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
     <string name="anki_adding_in_progress">Ajout à <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
 
     <string name="anki_send_failed_title">Impossible d\'ajouter la carte</string>
@@ -538,6 +544,8 @@
 
     <string name="audio_source_game_enable_hint">Enregistrement désactivé — activez-le afin de capturer l\'audio du jeu pour vos prochaines cartes</string>
 
+    <string name="game_audio_zoom_hint">Pincez pour afficher une portion plus ou moins longue de l\'audio</string>
+
     <string name="game_audio_trim_duration">Sélection : <xliff:g id="seconds" example="2.4">%1$s</xliff:g> s · Enregistrement : <xliff:g id="total_seconds" example="147">%2$s</xliff:g> s</string>
 
     <string name="anki_game_audio_cell_untrimmed">Rognage à l\'enregistrement de la carte</string>
@@ -567,6 +575,10 @@
     <string name="anki_field_mapping_save">Enregistrer</string>
 
     <string name="anki_field_mapping_unconfigured">Configurez les champs de ce type de carte avant l\'envoi</string>
+
+    <string name="anki_first_field_unmapped">Mappez « <xliff:g id="field_name" example="Key">%1$s</xliff:g> » pour qu\'<xliff:g id="brand_anki" example="Anki">Anki</xliff:g> identifie la note.</string>
+
+    <string name="anki_first_field_empty">Le champ « <xliff:g id="field_name" example="Key">%1$s</xliff:g> » est vide sur cette carte. <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> utilise le premier champ pour identifier la note : ce champ doit donc contenir une valeur sur chaque carte.</string>
 
     <string name="anki_models_unavailable">Impossible de joindre <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> pour récupérer les types de carte. Réessayez dans un instant.</string>
 
@@ -1527,6 +1539,10 @@
     <string name="history_capture_image_toggle_title">Enregistrer les images de capture</string>
 
     <string name="history_capture_image_toggle_subtitle">Conserve une photo de chaque capture par appareil photo ou d\'écran</string>
+
+    <string name="history_hide_translations_toggle_title">Masquer les traductions</string>
+
+    <string name="history_hide_translations_toggle_subtitle">N\'affiche que le texte capturé. Appuyez sur une ligne pour voir sa traduction.</string>
 
     <string name="history_live_session_title">Session en direct</string>
 

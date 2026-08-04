@@ -161,6 +161,8 @@
 
     <string name="word_detail_common">常用</string>
 
+    <string name="card_words_in_sentence">句子中的单词</string>
+
     <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> 个 Anki 牌组</string>
     <string name="word_anki_deck_badge_cd">已加入 Anki：<xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
 
@@ -466,6 +468,10 @@
 
     <string name="anki_added_no_audio">已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>（音频不可用）</string>
 
+    <string name="anki_added_sentence_success">句子卡片已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_added_word_success">单词卡片已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
     <string name="anki_adding_in_progress">正在添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
 
     <string name="anki_send_failed_title">无法添加卡片</string>
@@ -528,6 +534,8 @@
 
     <string name="audio_source_game_enable_hint">当前未录制——开启后即可录制游戏音频，供以后的卡片使用</string>
 
+    <string name="game_audio_zoom_hint">双指张合可查看更多或更少的音频</string>
+
     <string name="game_audio_trim_duration">已选 <xliff:g id="seconds" example="2.4">%1$s</xliff:g> 秒 · 已录制 <xliff:g id="total_seconds" example="147">%2$s</xliff:g> 秒</string>
 
     <string name="anki_game_audio_cell_untrimmed">保存时裁剪</string>
@@ -557,6 +565,10 @@
     <string name="anki_field_mapping_save">保存</string>
 
     <string name="anki_field_mapping_unconfigured">发送前请为此卡片类型配置字段</string>
+
+    <string name="anki_first_field_unmapped">请为“<xliff:g id="field_name" example="Key">%1$s</xliff:g>”字段映射内容，以便 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 识别笔记。</string>
+
+    <string name="anki_first_field_empty">该卡片的“<xliff:g id="field_name" example="Key">%1$s</xliff:g>”字段为空。<xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 使用第一个字段来识别笔记，因此每张卡片都必须为该字段填入内容。</string>
 
     <string name="anki_models_unavailable">无法连接 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 以查询卡片类型。请稍后重试。</string>
 
@@ -1593,6 +1605,10 @@
     <string name="history_capture_image_toggle_title">保存截取图像</string>
 
     <string name="history_capture_image_toggle_subtitle">为每次相机或屏幕截取保留一张图片</string>
+
+    <string name="history_hide_translations_toggle_title">隐藏译文</string>
+
+    <string name="history_hide_translations_toggle_subtitle">只显示截取到的文字。点按记录即可查看译文。</string>
 
     <string name="history_live_session_title">实时会话</string>
 

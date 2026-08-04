@@ -219,3 +219,112 @@ word order and a tight prefix are both safe.
 ### Verdict
 
 **PASS.** Three ⚠️ found and fixed, no ❌. The remaining delta re-derives as correct.
+
+---
+
+## Delta review 2026-08-04 (8 keys: one-tap card toasts, first-field guard, hide-translations toggle, waveform zoom hint)
+
+Scope: the 8 keys added by `84d28c88` (one-tap success toasts, card-mode memory),
+`51536300` (Anki first-field guard), the History hide-translations sub-toggle, and the
+in-card trim-waveform caption. Reviewed independently against
+`app/src/main/res/values/strings.xml` and its translator comments; **report only — no
+edits were made to `values-ja/strings.xml`.**
+
+Mechanical layer verified programmatically over the 8 keys: all present, no extras; every
+`<xliff:g>` span byte-identical to EN including `id`/`example` attributes and inner
+`%1$s`; placeholder multisets identical (`anki_first_field_unmapped` and
+`anki_first_field_empty` each carry exactly one `%1$s`, both wrapped); `<b>`, `\n`,
+`\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'` or `"`; `name=` untouched; brand
+`Anki` untranslated inside every span. The EN curly quotes `“ ”` around the field-name
+placeholder are rendered as 「 」 in both first-field strings — the ja quote convention
+per `l10n-language-parameters.md`, outside the `<xliff:g>` span, and therefore correct
+rather than a mechanical deviation. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — reported, not applied
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| `game_audio_zoom_hint` | 💬 | 「ピンチ操作で表示する音声の範囲を調整」 | 「ピンチ操作で音声の表示範囲を調整」 | ピンチ操作 is the right Android JA gesture noun (Google's own JA uses ピンチ操作で拡大/縮小) — no issue there. But 表示する音声の範囲 is a relative clause where Japanese has a ready compound: 音声の表示範囲. It also momentarily mis-parses as "the audio to display", and costs 2 characters on a caption that is small, centred and wraps. Meaning is unchanged; this is polish. |
+| `anki_first_field_empty` | 💬 | 「…最初のフィールドでノートを識別するため、すべてのカードに値が必要です。」 | 「…最初のフィールドでノートを識別するため、どのカードでもこのフィールドに値が必要です。」 | EN's "it needs a value on every card" — "it" is the *first field*. The JA drops the referent one clause too far, so the tail reads literally as "every card needs a value" (a value of what?). Recoverable from 最初のフィールド in the preceding clause, so 💬 not ⚠️; naming the field closes it. Length is free here — this string's primary surface is a full alert. |
+| `anki_first_field_empty` | 💬 | (no JA change) | (source-side) | **Not a Japanese defect — flagging for the parent.** The EN comment says "Shown in a full alert, so length is fine", but `AnkiOneTapDispatch.oneTapResultToast` surfaces `AnkiSendResult.Failed.message` as a `Toast.LENGTH_LONG`, so the one-tap path shows this string as a toast under the Android 12+ two-line clamp. At ~53 full-width-equivalents the JA clips there; EN (~118 Latin chars) clips too. Affects all 12 locales equally; the fix belongs in EN/code, not in ja. |
+
+No 🛑, ❌ or ⚠️ in this delta.
+
+### Clean areas (delta) — checked, no findings
+
+**The two one-tap toasts do exactly what their comments demand.**
+`anki_added_sentence_success` (文カードをAnkiに追加しました) and `anki_added_word_success`
+(単語カードをAnkiに追加しました) name the card shape with the *same* words as the mode
+chips — `anki_mode_sentence` 文 / `anki_mode_word` 単語 — so the silently-applied default
+becomes visible in the words the user last saw on the toggle. Both pattern-match
+`anki_added_no_audio`'s 「Ankiに追加しました」 verbatim, and 文カード is not a new coinage:
+the file already carries it in `anki_game_audio_row_subtitle`, `anki_content_words_table`,
+`anki_content_flag_sentence` and `anki_content_flag_targeted_sentence`. 単語カード is first
+use here; it is also the everyday JA word for a ring-bound vocabulary flashcard, but the
+mode-label contrast (and the fact that the file spells generic "flashcards" as
+フラッシュカード in `anki_permission_rationale_message`) keeps the reading unambiguous.
+Considered and accepted — changing it would break the mandated tie to 単語.
+
+**ノート is the right call, and is used consistently.** Anki's own Japanese localization
+distinguishes ノート (note) from カード (card), and the note/card split is exactly what
+these two strings are about — the duplicate checksum lives on the *note*, not the card.
+Both `anki_first_field_unmapped` and `anki_first_field_empty` use ノート for "note" and
+カード for "card", with no leakage in either direction. This mirrors EN's own deliberate
+split, where the user-facing model picker says "card type" (ja カードタイプ, per
+`anki_card_type_row_label`) but the first-field strings say "note". Collapsing ノート into
+カード would have made both strings factually wrong. The only other ノート in the file,
+`update_dialog_view_release`'s リリースノート, is an unrelated compound.
+
+**Mapping terminology matches the dialog that opens next.** `anki_first_field_unmapped`'s
+「値を割り当ててください」 reuses 割り当て — the verb `anki_content_source_pick_title`
+(「%1$s」を割り当て, EN "Map \"%1$s\"") already uses for the same action in the very dialog
+this toast precedes. It stays distinct from `anki_card_type_edit_mapping_row_label`'s
+マッピング and `anki_field_mapping_unconfigured`'s 設定, mirroring EN's own
+Map/mapping/Configure split.
+
+**Toast-length clamp checked, not guessed.** `anki_first_field_unmapped` is
+`Toast.LENGTH_LONG` in `AnkiSendDispatch` (Android 12+ two-line clamp). The JA measures
+~27 full-width + 7 half-width characters ≈ 30 full-width-equivalents; a 14sp toast on a
+360dp-wide screen fits roughly 22 per line, i.e. ~44 over two lines. It fits with room for
+a user-defined field name considerably longer than the `Key` example. No shortening
+needed — and the string keeps the brand span rather than trading it for brevity.
+
+**Sentence-final punctuation follows the file's own surface rule.**
+`anki_first_field_unmapped` (toast) ends with no 。, matching `anki_field_mapping_unconfigured`
+and `anki_permission_denied`; `anki_first_field_empty` (alert body) keeps its 。, matching
+`anki_models_unavailable` and `anki_send_failed_message`. EN's trailing period on the toast
+was correctly dropped rather than transliterated.
+
+**History strings reuse the established capture vocabulary.**
+`history_hide_translations_toggle_subtitle`'s キャプチャした文 is byte-identical to the
+phrase already in `settings_cell_history_summary_on`/`_off`, `history_toggle_subtitle` and
+`history_empty_off` — no second capture verb was introduced, which is the specific trap
+`l10n-language-parameters.md` calls out for this family. 翻訳 for "translation" matches
+`anki_group_translation`. "Row" is rendered 項目, matching `history_delete_confirm_title`'s
+この項目 — and notably *not* 行, which would have collided with the `history_line_count`
+plural's %d行 ("lines") on the same screen. The subtitle's second sentence
+(項目をタップすると翻訳が表示されます) delivers the "one tap away" promise the EN comment
+asks for, without overstating it. `history_hide_translations_toggle_title` (翻訳を非表示)
+is parallel in form to its neighbour `history_capture_image_toggle_title`
+(キャプチャ画像を保存), and its です/ます subtitle matches
+`history_capture_image_toggle_subtitle`'s 保存します.
+
+**`card_words_in_sentence`.** 文中の単語 reads as a natural section header and sits
+parallel with `anki_group_words_count`'s カード内の単語 ("Words on card") — same 〜の単語
+frame, different container, which is exactly the EN pair's relationship. The card CSS's
+ALL CAPS transform is inert on kana/kanji, so unlike Turkish there is no casing hazard,
+and no accuracy was traded for a shorter header.
+
+**Register and mechanics across the delta.** No あなた anywhere. Full-width 、。「」 throughout,
+half-width Latin/placeholders. Loanword katakana (ピンチ操作, キャプチャ, カード, フィールド,
+ノート). Polite です/ます in the two body-text strings, clipped noun/〜する form in the
+headers, labels and captions — the split the ja register calls for. Every brand span
+untranslated. No per-string English comments leaked into the locale file, and the section
+banners and key ordering still match English.
+
+### Verdict
+
+**PASS.** No 🛑/❌/⚠️. Three 💬, one of which is a source-side/all-locale observation rather
+than a Japanese issue. The ノート decision is correct and consistent; the two one-tap
+toasts satisfy the mode-naming contract; the History strings sit inside the file's existing
+capture vocabulary.

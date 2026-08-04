@@ -162,6 +162,8 @@
 
     <string name="word_detail_common">자주 쓰임</string>
 
+    <string name="card_words_in_sentence">문장 속 단어</string>
+
     <string name="word_anki_in_decks">Anki 덱 <xliff:g id="count" example="3">%1$d</xliff:g>개</string>
     <string name="word_anki_deck_badge_cd">이미 Anki에 있음: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
 
@@ -466,6 +468,10 @@
 
     <string name="anki_added_no_audio"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>에 추가됨(오디오 없음)</string>
 
+    <string name="anki_added_sentence_success">문장 카드가 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>에 추가됨</string>
+
+    <string name="anki_added_word_success">단어 카드가 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>에 추가됨</string>
+
     <string name="anki_adding_in_progress"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>에 추가 중…</string>
 
     <string name="anki_send_failed_title">카드를 추가할 수 없음</string>
@@ -528,6 +534,8 @@
 
     <string name="audio_source_game_enable_hint">녹음 중이 아님 — 켜면 이후 카드에 사용할 게임 오디오를 캡처합니다</string>
 
+    <string name="game_audio_zoom_hint">두 손가락을 모으거나 벌려 표시 범위를 조절하세요</string>
+
     <string name="game_audio_trim_duration"><xliff:g id="seconds" example="2.4">%1$s</xliff:g>초 선택 · <xliff:g id="total_seconds" example="147">%2$s</xliff:g>초 녹음됨</string>
 
     <string name="anki_game_audio_cell_untrimmed">저장할 때 자르기</string>
@@ -557,6 +565,10 @@
     <string name="anki_field_mapping_save">저장</string>
 
     <string name="anki_field_mapping_unconfigured">보내기 전에 이 카드 유형의 필드를 구성하세요</string>
+
+    <string name="anki_first_field_unmapped"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>가 노트를 식별하려면 “<xliff:g id="field_name" example="Key">%1$s</xliff:g>” 필드에 값을 매핑하세요.</string>
+
+    <string name="anki_first_field_empty">이 카드에서 “<xliff:g id="field_name" example="Key">%1$s</xliff:g>” 필드가 비어 있습니다. <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>는 첫 번째 필드로 노트를 식별하므로 모든 카드에 값이 있어야 합니다.</string>
 
     <string name="anki_models_unavailable">카드 유형을 가져오기 위해 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>에 연결할 수 없습니다. 잠시 후 다시 시도하세요.</string>
 
@@ -1535,6 +1547,10 @@
     <string name="history_capture_image_toggle_title">캡처 이미지 저장</string>
 
     <string name="history_capture_image_toggle_subtitle">카메라 또는 화면 캡처마다 사진을 보관합니다</string>
+
+    <string name="history_hide_translations_toggle_title">번역 숨기기</string>
+
+    <string name="history_hide_translations_toggle_subtitle">캡처한 텍스트만 표시합니다. 번역을 보려면 항목을 탭하세요.</string>
 
     <string name="history_live_session_title">실시간 세션</string>
 

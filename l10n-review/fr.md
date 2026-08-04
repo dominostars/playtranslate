@@ -239,3 +239,102 @@ word order and a tight prefix are both safe.
 ### Verdict
 
 **PASS.** One ⚠️ found and fixed, no ❌.
+
+---
+
+## Delta review 2026-08-04 (8 keys: one-tap card toasts, first-field guard, hide-translations toggle, waveform zoom hint)
+
+Scope: the 8 keys added since the 2026-07-25 sync — `card_words_in_sentence`,
+`anki_added_sentence_success`, `anki_added_word_success`, `game_audio_zoom_hint`,
+`anki_first_field_unmapped`, `anki_first_field_empty`,
+`history_hide_translations_toggle_title`, `history_hide_translations_toggle_subtitle`.
+Reviewed by a reader who did not write them. **`values-fr/strings.xml` was not edited** —
+this section is the report only.
+
+Mechanical layer verified programmatically over the 8 keys: every `<xliff:g>` span
+byte-identical to EN, `id` and `example` included (`field_name`, `brand_anki`); placeholder
+multisets identical to EN (`%1$s` exactly once in each first-field string, none in the other
+six); `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; **zero unescaped `'`** — checked
+file-wide, not just over the delta; `name=` untouched; Anki left untranslated inside and
+outside the spans. The English `“ ”` typography is correctly re-cast as `« »` per the locale
+parameters, and the new pairs pad with a **plain ASCII space** — the file contains no U+00A0,
+U+202F or U+2009 anywhere, so the 2 new pairs match the 26 already committed. (The
+narrow-no-break-space question is a file-wide convention, not something these strings should
+diverge on.) **No 🛑 build-breaking issues.**
+
+### Findings (delta)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| `game_audio_zoom_hint` | 💬 | Pincez pour afficher plus ou moins d\'audio | Pincez pour afficher une portion plus ou moins longue de l\'audio | **Pincez** is the right Android-French verb (Google's own "Pincez pour zoomer"), and *audio* as a mass noun already exists in the file (`audio_source_game_enable_hint`: « capturer l\'audio du jeu »), so the partitive is defensible. The snag is that **plus ou moins** is first read idiomatically ("approximately"): *afficher plus ou moins d\'audio* invites a half-beat of "display roughly some audio" before `d\'` forces the quantifier reading. Naming what actually changes — the visible **portion** — removes the garden path. Length is free here: the caption is a `wrap_content`, `gravity="center_horizontal"` 11sp `TextView` in `anki_game_audio_panel.xml` with no `maxLines` and no `ellipsize`, so it wraps rather than clips. |
+| `anki_first_field_unmapped` | 💬 | Mappez une valeur sur « %1$s » pour qu\'Anki identifie la note. | Mappez « %1$s » pour qu\'Anki identifie la note. | Two small things, one fix. (1) The dialog this toast is announcing is titled `anki_content_source_pick_title` = « **Mapper** « %1$s » » — verb + quoted field, no preposition. Dropping *une valeur sur* makes the toast and the screen it opens use one construction instead of two (*mapper … sur* is not wrong; it is simply a second shape for the same action). (2) The source comment pins a hard constraint — "Kept short: Android 12+ clamps toasts to two lines" — and this is a `Toast.LENGTH_LONG` (`AnkiSendDispatch.kt:216`) where Android 12+ pins `maxLines=2`. With `example="Key"` FR runs 61 chars vs EN 51; with a realistic field name (`Expression`) 68 vs 58, **+17%**. Two lines hold roughly 90 chars at 14sp on a 360dp-wide toast, so today's string clears it — but `%1$s` is a **free-form user-defined** field name, and FR spends 20 of the ~22 chars of headroom EN keeps. The shorter form buys that back. |
+| `anki_first_field_empty` | 💬 | « %1$s » est vide sur cette carte. Anki se sert du premier champ pour identifier la note : ce champ doit donc contenir une valeur sur chaque carte. | Le champ « %1$s » est vide sur cette carte. Anki utilise le premier champ pour identifier la note : ce champ doit donc contenir une valeur sur chaque carte. | Correct as written — flagged only as polish. **Agreement is a non-issue**: *vide* is epicene, so a feminine field name ( « Expression » ) cannot break it, and a quoted autonym is masculine by default anyway. But the alert opens on a bare guillemet-quoted token the user may not recognise as a field name; the head noun **Le champ** identifies it and reads more naturally at sentence start in French than in English. **se sert de** is standard neutral register, not colloquial — *utilise* is suggested only because it is the verb this file already uses for "uses" (`accessibility_service_description`) and is 4 chars shorter. Length is not a constraint here (full alert, `AnkiSendDispatch.kt:270/303`). |
+
+### Clean areas (delta — checked, no findings)
+
+**The two one-tap toasts are right on every axis I could test.**
+`anki_added_sentence_success` / `anki_added_word_success` carry the feminine participle
+**ajoutée** agreeing with *carte* — the single agreement trap in the delta, and it is
+correctly sprung. The compounds also line up with the mode labels the user set:
+`anki_mode_sentence` = **Phrase**, `anki_mode_word` = **Mot**, and the file already says
+« carte de phrase » in `anki_content_flag_sentence` and « mode mot » in
+`anki_content_flag_vocabulary_desc`. That link is the whole point of these strings — the
+source comment says the toast is *where the silently-applied mode becomes visible* — so
+« Carte de mot » should **not** later be "improved" to « carte de vocabulaire »: it would
+sever the toast from the mode label that produced it. The masculine « Ajouté à Anki » in the
+neighbouring `anki_added_no_audio` is not an inconsistency; that string has no subject in
+either language.
+
+**`card_words_in_sentence` = « Mots de la phrase ».** Sentence case as the comment asks, the
+definite article French requires, and the card CSS `text-transform: uppercase` yields
+**MOTS DE LA PHRASE** — no accented capital in the string, so nothing to lose to a
+capitalisation pass. Worth noting that this header is *baked into the card at send time*, so
+it cannot be retro-fixed on cards already in the user's collection; it is correct now.
+
+**`la note` — a faithful mirror of the source, not a drift.** The word *note* appears in
+**exactly two** English strings in the whole file, both of them in this delta; everywhere
+else the app deliberately calls Anki's note types **card types** (`anki_card_type_row_label`
+→ « Type de carte »), which the locale follows. So the note/carte split in French reproduces
+the split English already has. **« note » is also Anki's own French term** (Anki FR:
+*note*, *type de note*), so an AnkiDroid user reads it correctly, and the distinction from
+« carte » stays visible inside `anki_first_field_empty`, which uses both nouns one clause
+apart. **Do not normalise « la note » to « la carte »** in a later pass: Anki checksums the
+*note's* first field for duplicate detection, and the message would become factually wrong.
+
+**Both History strings reuse the file's own vocabulary rather than inventing.**
+`history_hide_translations_toggle_title` = « Masquer les traductions » is byte-for-byte the
+verb phrase already in `translate_button_subtitle_hold_to_hide_translations`, and **Masquer**
+is this file's single established word for *hide* (7 prior uses, incl. `overlay_hide_for_now`,
+`floating_icon_close_label_hide`) — no second verb introduced. In the subtitle, **texte
+capturé** reuses the established capture verb (`history_toggle_subtitle` « phrases
+capturées », `settings_cell_history_summary_on` « phrases capturées »), and **ligne** for a
+History row matches `history_empty_none` and `history_clear_confirm_message`, which already
+call these rows *lignes* — so « Appuyez sur une ligne » points at an object the user has a
+name for. **sa traduction** agrees with the feminine *ligne*. The person switch inside the
+subtitle is deliberate and correct: the descriptive first clause « N\'affiche que… » matches
+the sibling subtitle style exactly (`history_toggle_subtitle` « Enregistre… »,
+`history_capture_image_toggle_subtitle` « Conserve… »), and the second sentence is an
+instruction, so the **vous** imperative is right — the English makes the same switch.
+
+**Register and punctuation.** **vous** throughout: *Pincez*, *Mappez*, *Appuyez*; no `tu`
+form anywhere in the delta. French spacing before `:` is present in `anki_first_field_empty`
+(« … identifier la note : ce champ… ») with the plain space this file uses everywhere. The
+colon-plus-*donc* construction is idiomatic, and the apparent redundancy of repeating
+« champ » is doing real work — a pronoun there ( « il ») would be ambiguous between *Anki*
+and *la note*.
+
+**Render constraints measured, not assumed.** `history_hide_translations_toggle_subtitle`
+renders through `Text.PT.RowSubtitle` in the `settings_row_switch` include
+(`activity_translation_history.xml:83`), which sets only size/colour/line spacing — no
+`maxLines`, no `ellipsize` — so the 78-char French (vs 62 EN, +26%) wraps and cannot clip.
+Same for the waveform caption. The only clamped surface in the delta is the
+`anki_first_field_unmapped` toast, handled above.
+
+### Verdict (delta)
+
+- **0 🛑** — mechanical layer clean, including the `« »` conversion and the file's
+  plain-space padding convention.
+- **0 ❌, 0 ⚠️, 3 💬.** Nothing here is wrong or unnatural enough to block; all three notes
+  are polish, and the only one with a functional edge is the toast-length headroom on
+  `anki_first_field_unmapped`.
+- **Ship as-is is defensible.** If one fix is taken, take that one.
