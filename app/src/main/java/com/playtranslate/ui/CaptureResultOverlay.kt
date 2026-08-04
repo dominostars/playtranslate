@@ -759,12 +759,14 @@ class CaptureResultOverlay(
             }
             insets
         }
-        // Controller navigation arms only when the over-game flow opted in AND a
-        // controller is actually attached — evaluated once, here: no device
-        // listener, so a controller plugged in later gets nav on the NEXT sheet.
-        // The window is created already-focusable (no async flag flip to race),
-        // which also lands the OverlayHost focusable-overlay paper trail on add.
-        val navActive = controllerNavEnabled && hasGameController(ctx)
+        // Controller navigation arms only when the over-game flow opted in AND
+        // a nav-capable device is actually attached (gamepad, or a hardware
+        // keyboard whose Escape/arrows/Enter mirror B/dpad/A) — evaluated
+        // once, here: no device listener, so a device plugged in later gets
+        // nav on the NEXT sheet. The window is created already-focusable (no
+        // async flag flip to race), which also lands the OverlayHost
+        // focusable-overlay paper trail on add.
+        val navActive = controllerNavEnabled && hasNavInputDevice(ctx)
         sheetHost.attach(root, screenW, screenH, focusable = navActive)
         if (navActive) {
             // The root holds VIEW focus so the framework's restoreDefaultFocus

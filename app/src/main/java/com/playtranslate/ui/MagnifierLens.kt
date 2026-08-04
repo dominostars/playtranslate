@@ -292,9 +292,10 @@ class MagnifierLens(
         val view = lensView ?: return
         val root = lensRoot ?: return
         val p = params ?: return
-        // The interactive card needs window focus only to receive analog-
-        // stick motion for stick-nudge dismissal. With no game controller
-        // attached there is no stick, so stay non-focusable: that keeps the
+        // The interactive card needs window focus only for key/stick
+        // navigation (dpad + A over the pill/chips, stick scroll, B/Escape
+        // dismiss). With no gamepad or hardware keyboard attached there is
+        // nothing to navigate WITH, so stay non-focusable: that keeps the
         // window from becoming the system-bar owner and showing the nav
         // pill over an immersive game. Touch and outside-touch dismissal
         // work either way — neither needs focus.
@@ -302,7 +303,7 @@ class MagnifierLens(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
-        tookControllerFocus = hasGameController(rawCtx)
+        tookControllerFocus = hasNavInputDevice(rawCtx)
         if (!tookControllerFocus) {
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         }
