@@ -36,6 +36,25 @@ interface CaptureSheetNavHost {
     /** The currently-reachable buttons (header actions + collapsed-strip eyes). */
     fun navActions(): List<NavAction>
 
+    /** The grabber pill's drawn bounds while it's up (expanded posture only —
+     *  it fades out in the collapse band). The pill is a nav target: UP from
+     *  the top row reaches it, A on it parks the sheet to its sliver. */
+    fun handleRect(out: Rect): Boolean
+
+    /** A on the pill: park the sheet to its sliver (the window survives, so
+     *  this is safe to fire from a DOWN). */
+    fun collapseToSliver()
+
+    /** Right stick: move the panel's top edge by [dyPx] (positive = grow) —
+     *  the virtual grabber drag, including pulling the sheet out of its
+     *  sliver park. */
+    fun resizeBy(dyPx: Int)
+
+    /** Right stick centered / navigation suspended: commit the virtual drag —
+     *  adopt the height as the new ceiling, or park to the sliver below the
+     *  floor. Must no-op when no drag is in flight. */
+    fun commitResize()
+
     /** Source-word run, in document order. Zero while the source is hidden. */
     fun wordCount(): Int
     fun wordRect(index: Int, out: Rect): Boolean
@@ -53,8 +72,10 @@ interface CaptureSheetNavHost {
 
 /**
  * Gamepad navigation for the over-game capture sheet: B/back dismisses (the
- * host's ladder), dpad moves a VIRTUAL cursor across buttons and source words,
- * A activates, the left stick scrolls. Virtual — no Android view ever gains
+ * host's ladder), dpad moves a VIRTUAL cursor across the grabber pill,
+ * buttons, and source words, A activates (the pill parks to the sliver), the
+ * left stick scrolls, and the right stick drags the sheet's edge like the
+ * grabber. Virtual — no Android view ever gains
  * focus — because words aren't views, the ring is custom anyway, and real
  * focus would paint stock highlights next to it. Created only while the sheet
  * window is focusable (controller attached); all input arrives through the
@@ -67,6 +88,8 @@ class CaptureSheetControllerNav(
     sealed interface Item {
         data class Button(val view: View, val holdActivates: Boolean) : Item
         data class Word(val index: Int) : Item
+        /** The grabber pill above the sheet — A parks the sheet to its sliver. */
+        object Handle : Item
     }
 
     private val density = ctx.resources.displayMetrics.density
@@ -151,6 +174,8 @@ class CaptureSheetControllerNav(
                 }
             }
             is Item.Word -> host.activateWord(cur.index)
+            // Parks, never dismisses — the window survives, so DOWN is safe.
+            Item.Handle -> host.collapseToSliver()
         }
     }
 
@@ -214,6 +239,10 @@ class CaptureSheetControllerNav(
     /** Collected lazily per keypress — no registry to go stale. */
     private fun candidates(): List<Pair<Item, Rect>> {
         val out = ArrayList<Pair<Item, Rect>>()
+        run {
+            val r = Rect()
+            if (host.handleRect(r)) out.add(Item.Handle to r)
+        }
         for (a in host.navActions()) {
             val r = Rect()
             if (viewRectOnScreen(a.view, r)) out.add(Item.Button(a.view, a.holdActivates) to r)
@@ -228,12 +257,16 @@ class CaptureSheetControllerNav(
     private fun setCursor(item: Item, rectOnScreen: Rect) {
         cursor = item
         lastItemRect.set(rectOnScreen)
-        host.ensureVisible(rectOnScreen)
+        // The pill lives above the scroller — scrolling to it is meaningless.
+        if (item != Item.Handle) host.ensureVisible(rectOnScreen)
         syncRing()
     }
 
     private fun selectFirst() {
-        val cands = candidates()
+        // The pill is deliberately NOT the first selection even though it's
+        // topmost: the first press lands where it always has (the content's
+        // top row); the pill is the UP-from-there target.
+        val cands = candidates().filter { it.first != Item.Handle }
         val idx = SheetNavGeometry.firstItem(cands.map { it.second.toNavRect() }) ?: return
         setCursor(cands[idx].first, cands[idx].second)
     }
@@ -268,7 +301,8 @@ class CaptureSheetControllerNav(
     }
 
     /** Per-frame from the sheet's pre-draw hook: re-read the item's live rect
-     *  (scroll, resize, entrance/exit all move it) and re-clip to the viewport. */
+     *  (scroll, resize, entrance/exit all move it) and re-clip to the viewport.
+     *  The pill sits OUTSIDE the scroller and rings unclipped. */
     fun syncRing() {
         val cur = cursor ?: run {
             host.setRing(null, null)
@@ -277,13 +311,22 @@ class CaptureSheetControllerNav(
         val ok = when (cur) {
             is Item.Button -> viewRectOnScreen(cur.view, tmpRect)
             is Item.Word -> host.wordRect(cur.index, tmpRect)
+            Item.Handle -> host.handleRect(tmpRect)
         }
-        if (!ok || !host.scrollViewportOnScreen(clipRect)) {
+        if (!ok) {
+            host.setRing(null, null)
+            return
+        }
+        val clip = if (cur == Item.Handle) {
+            null
+        } else if (host.scrollViewportOnScreen(clipRect)) {
+            clipRect
+        } else {
             host.setRing(null, null)
             return
         }
         lastItemRect.set(tmpRect)
-        host.setRing(tmpRect, clipRect)
+        host.setRing(tmpRect, clip)
     }
 
     private val clipRect = Rect()
@@ -309,6 +352,7 @@ class CaptureSheetControllerNav(
         val stillValid = when (cur) {
             is Item.Button -> cur.view.isShown
             is Item.Word -> cur.index < host.wordCount() && host.wordRect(cur.index, tmpRect)
+            Item.Handle -> host.handleRect(tmpRect)
         }
         if (stillValid) return
         val cands = candidates()
@@ -331,11 +375,14 @@ class CaptureSheetControllerNav(
         setCursor(cands[best].first, cands[best].second)
     }
 
-    // ── Left stick → scroll ──────────────────────────────────────────────
+    // ── Sticks: left scrolls, right is the virtual grabber drag ──────────
 
-    private var stickActive = false
-    private var stickY = 0f
-    private var stickDeadZone = STICK_DEAD_ZONE
+    private var leftActive = false
+    private var leftY = 0f
+    private var leftDeadZone = STICK_DEAD_ZONE
+    private var rightActive = false
+    private var rightY = 0f
+    private var rightDeadZone = STICK_DEAD_ZONE
 
     fun handleGenericMotion(ev: MotionEvent): Boolean {
         if (ev.actionMasked != MotionEvent.ACTION_MOVE) return false
@@ -350,23 +397,46 @@ class CaptureSheetControllerNav(
         ) {
             return false
         }
-        val flat = ev.device?.getMotionRange(MotionEvent.AXIS_Y, ev.source)?.flat ?: 0f
-        val dead = maxOf(flat, STICK_DEAD_ZONE)
-        val x = ev.getAxisValue(MotionEvent.AXIS_X)
-        val y = ev.getAxisValue(MotionEvent.AXIS_Y)
-        if (abs(y) <= dead && abs(x) <= dead) {
-            val wasActive = stickActive
-            stickActive = false
-            stopScrollRepeater()
+        val device = ev.device
+
+        // Left stick (X/Y): scroll.
+        val flatY = device?.getMotionRange(MotionEvent.AXIS_Y, ev.source)?.flat ?: 0f
+        leftDeadZone = maxOf(flatY, STICK_DEAD_ZONE)
+        val lx = ev.getAxisValue(MotionEvent.AXIS_X)
+        val ly = ev.getAxisValue(MotionEvent.AXIS_Y)
+        val leftNow = abs(ly) > leftDeadZone || abs(lx) > leftDeadZone
+
+        // Right stick (vertical only): the virtual grabber drag. The standard
+        // gamepad mapping puts the right stick on Z/RZ; a controller that
+        // declares no RZ range reports it as RX/RY instead.
+        val ryAxis =
+            if (device?.getMotionRange(MotionEvent.AXIS_RZ, ev.source) != null) MotionEvent.AXIS_RZ
+            else MotionEvent.AXIS_RY
+        val flatRy = device?.getMotionRange(ryAxis, ev.source)?.flat ?: 0f
+        rightDeadZone = maxOf(flatRy, STICK_DEAD_ZONE)
+        val ry = ev.getAxisValue(ryAxis)
+        val rightNow = abs(ry) > rightDeadZone
+
+        val ownedBefore = leftActive || rightActive
+        val rightWas = rightActive
+        leftActive = leftNow
+        leftY = ly
+        rightActive = rightNow
+        rightY = ry
+
+        // Right stick released → the virtual drag's commit (adopt height or
+        // park to the sliver), mirroring the touch drag's finger-up.
+        if (rightWas && !rightNow) host.commitResize()
+
+        if (!leftNow && !rightNow) {
+            stopStickRepeater()
             // Consume the centering event of a deflection we owned.
-            return wasActive
+            return ownedBefore
         }
-        stickActive = true
-        stickDeadZone = dead
-        stickY = y
-        // The sliver has nothing to scroll, but still consume: an unconsumed
-        // stick MOVE would synthesize phantom DPAD keys.
-        if (!host.inSliver) startScrollRepeater()
+        // The repeater runs while either stick is deflected; the per-frame
+        // steps gate themselves (scroll is a no-op in the sliver, where the
+        // right stick can still pull the sheet out of the park).
+        startStickRepeater()
         return true
     }
 
@@ -376,44 +446,62 @@ class CaptureSheetControllerNav(
         override fun doFrame(frameTimeNanos: Long) {
             if (!repeaterRunning) return
             // Modal self-check, HERE and not only in the event path: a modal
-            // opening mid-deflection (editor, popover, sliver park) doesn't
-            // stop this loop, and the centering MOVE that normally would is
-            // swallowed by handleGenericMotion's modal bail — after which a
-            // stick at rest emits no further events at all, leaving the stale
-            // deflection scrolling forever. One check at the single point
-            // every frame passes through covers every current + future modal.
-            if (host.isEditing || host.isPopoverOpen || host.inSliver) {
-                stickActive = false
-                stopScrollRepeater()
+            // opening mid-deflection (editor, popover) doesn't stop this loop,
+            // and the centering MOVE that normally would is swallowed by
+            // handleGenericMotion's modal bail — after which a stick at rest
+            // emits no further events at all, leaving the stale deflection
+            // driving forever. One check at the single point every frame
+            // passes through. (The sliver is NOT in this list: the right
+            // stick drags the sheet out of the park; the scroll step gates
+            // on it below.)
+            if (host.isEditing || host.isPopoverOpen) {
+                suspendSticks()
                 return
             }
-            // Clamp a dropped-frame gap so a jank spike can't teleport the scroll.
+            // Clamp a dropped-frame gap so a jank spike can't teleport the drive.
             val dt = ((frameTimeNanos - lastFrameNs) / 1e9f).coerceIn(0f, 0.05f)
             lastFrameNs = frameTimeNanos
-            val mag = ((abs(stickY) - stickDeadZone) / (1f - stickDeadZone)).coerceIn(0f, 1f)
-            val dy = sign(stickY) * mag * MAX_SCROLL_DP_PER_SEC * density * dt
-            host.scrollBy(dy.roundToInt())
+            if (leftActive && !host.inSliver) {
+                val mag = ((abs(leftY) - leftDeadZone) / (1f - leftDeadZone)).coerceIn(0f, 1f)
+                host.scrollBy((sign(leftY) * mag * STICK_MAX_DP_PER_SEC * density * dt).roundToInt())
+            }
+            if (rightActive) {
+                val mag = ((abs(rightY) - rightDeadZone) / (1f - rightDeadZone)).coerceIn(0f, 1f)
+                // Stick up (negative axis) grows the sheet — the grabber
+                // pulled upward.
+                host.resizeBy((-sign(rightY) * mag * STICK_MAX_DP_PER_SEC * density * dt).roundToInt())
+            }
             Choreographer.getInstance().postFrameCallback(this)
         }
     }
 
-    private fun startScrollRepeater() {
+    private fun startStickRepeater() {
         if (repeaterRunning) return
         repeaterRunning = true
         lastFrameNs = System.nanoTime()
         Choreographer.getInstance().postFrameCallback(frameCallback)
     }
 
-    private fun stopScrollRepeater() {
+    private fun stopStickRepeater() {
         if (!repeaterRunning) return
         repeaterRunning = false
         Choreographer.getInstance().removeFrameCallback(frameCallback)
     }
 
+    /** Stick shutdown for modal entry and teardown: stop the loop AND land a
+     *  mid-flight virtual drag on its commit, so the panel never sticks at an
+     *  uncommitted height. */
+    private fun suspendSticks() {
+        leftActive = false
+        rightActive = false
+        stopStickRepeater()
+        host.commitResize()
+    }
+
     /** Teardown (dismissal): stop timers, hide the ring. */
     fun release() {
         cancelHold()
-        stopScrollRepeater()
+        suspendSticks()
         cursor = null
         host.setRing(null, null)
     }
@@ -427,7 +515,9 @@ class CaptureSheetControllerNav(
          *  at a comfortable deflection. */
         const val STICK_DEAD_ZONE = 0.20f
 
-        /** Full-deflection scroll speed. */
-        const val MAX_SCROLL_DP_PER_SEC = 1400f
+        /** Full-deflection speed for BOTH sticks — the left stick's scroll
+         *  and the right stick's grabber drag move at the same rate (halved
+         *  from the original 1400 after it read as too fast on device). */
+        const val STICK_MAX_DP_PER_SEC = 700f
     }
 }
