@@ -100,6 +100,26 @@ class TranslationSectionBinder(
 
     private var speakButton: OriginalSpeakButton? = null
 
+    /** True once [setupSectionButtons] repurposed the copy buttons to Anki with
+     *  a one-tap long-press — the controller then maps hold-A to it. */
+    private var ankiOneTapOnCopy = false
+
+    /** The header action buttons the controller cursor can reach, in render
+     *  order, filtered to what's currently on screen. Deliberately excludes the
+     *  language labels and the OCR row — both open picker windows the
+     *  controller can't drive (and the language path dismisses the sheet). */
+    fun navigableActions(): List<NavAction> = buildList {
+        for (v in listOf(
+            btnToggleFurigana, btnSpeakOriginal, btnEditOriginal, btnCopyOriginal,
+            btnToggleOriginal,
+            btnFontSize, btnCopyTranslation, btnShowOnScreen, btnToggleTranslation,
+        )) {
+            if (!v.isShown || !v.isEnabled) continue
+            val hold = ankiOneTapOnCopy && (v === btnCopyOriginal || v === btnCopyTranslation)
+            add(NavAction(v, holdActivates = hold))
+        }
+    }
+
     /** Char range currently highlighted (a word-lookup popup is active), or null.
      *  Tracked here so [applyFurigana] can re-attach the highlight after
      *  rebuilding the spannable. */
@@ -447,6 +467,7 @@ class TranslationSectionBinder(
                     btn.setOnLongClickListener { onAnkiOneTap(); true }
                 }
             }
+            ankiOneTapOnCopy = onAnkiOneTap != null
             // TODO(device): tvOriginal is a ClickableTextView whose onTouchEvent
             // routes through a GestureDetector and always consumes the event. Long-
             // press copy relies on View.onTouchEvent's own long-press timer firing

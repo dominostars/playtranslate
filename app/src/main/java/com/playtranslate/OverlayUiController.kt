@@ -1915,6 +1915,8 @@ class OverlayUiController(
             val overlay = com.playtranslate.ui.CaptureResultOverlay(displayCtx, wm, displayId, overlayHost)
             overlay.onDismiss = { if (captureResultOverlay === overlay) captureResultOverlay = null }
             overlay.onNavigateToDetail = { result -> stashCaptureOverlayForReshow(displayId, result) }
+            // Over-game sheet: B/dpad/stick drive it while a controller is attached.
+            overlay.controllerNavEnabled = true
             captureResultOverlay = overlay
             // Pass the clean shot for the frosted backdrop — show() downscales it
             // synchronously here, before processScreenshot (below) recycles it.
@@ -2055,6 +2057,9 @@ class OverlayUiController(
         val overlay = com.playtranslate.ui.CaptureResultOverlay(displayCtx, wm, displayId, overlayHost)
         overlay.onDismiss = { if (captureResultOverlay === overlay) captureResultOverlay = null }
         overlay.onNavigateToDetail = { r -> stashCaptureOverlayForReshow(displayId, r) }
+        // Same controller-nav opt-in as the fresh-capture path, or the sheet
+        // would come back keyless after a detail round-trip.
+        overlay.controllerNavEnabled = true
         captureResultOverlay = overlay
         overlay.showWithResult(size.x, size.y, result)
     }

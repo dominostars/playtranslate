@@ -18,8 +18,10 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.Build
 import android.text.InputType
+import android.text.Layout
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.WindowInsets
 import android.view.MotionEvent
 import android.view.VelocityTracker
@@ -247,6 +249,19 @@ class CaptureResultOverlay(
      *  at the resize floor, outside taps are consumed and ignored). */
     var dismissOnGesture: Boolean = true
 
+    /** Controller (dpad / stick / A / B) navigation of this sheet. Requires an
+     *  overlay-window host: the window takes input focus while the sheet is up
+     *  — INCLUDING the sliver — which takes the controller away from the game.
+     *  Off by default (against this block's over-game-default convention,
+     *  deliberately: stealing the game's controller must be an explicit act);
+     *  the over-game flow opts in, and only a connected controller at show()
+     *  time actually arms it. In-activity hosts keep their Activity's own
+     *  back/focus handling. */
+    var controllerNavEnabled: Boolean = false
+
+    /** Live only while [controllerNavEnabled] found a controller at show(). */
+    private var nav: CaptureSheetControllerNav? = null
+
     /** Firms up the sheet + text-card fills for hosts with no screenshot
      *  behind the panel: the translucency is tuned for the frosted backdrop,
      *  and un-blurred live app content bleeding through reads as distracting
@@ -336,6 +351,10 @@ class CaptureResultOverlay(
     // into [shadowBitmap]; the view only blits it and is repositioned via
     // translationY as the sheet grows/slides — never re-blurred (see [bakeEdgeShadow]).
     private val edgeShadow = EdgeShadowView(ctx)
+    // The controller cursor's accent ring, drawn at ROOT level (over the panel,
+    // under the font popover's late-added scrim) so it can outline buttons and
+    // word spans alike without fighting any child clipping.
+    private val focusRing = FocusRingView(ctx)
     private var shadowBitmap: Bitmap? = null
     // The shadow tracks the sheet through a single pre-draw hook (see [syncShadow])
     // rather than per-mover wiring — so no drag/animation path can move the sheet
@@ -541,6 +560,9 @@ class CaptureResultOverlay(
         // soft fade cast above its top edge.
         root.addView(edgeShadow, FrameLayout.LayoutParams(MATCH, shadowHeightPx, Gravity.TOP))
         root.addView(panel, FrameLayout.LayoutParams(MATCH, 0, Gravity.BOTTOM))
+        // After the panel so the ring draws over the sheet; a plain non-clickable
+        // View, so in-panel touches fall through it to the panel below.
+        root.addView(focusRing, FrameLayout.LayoutParams(MATCH, MATCH))
         // One-shot after each bind: park the scroll just past the hidden
         // translation section's collapsed header (see hiddenTopPx). Layout-
         // driven because the needed scroll range only exists once the grow
@@ -655,8 +677,14 @@ class CaptureResultOverlay(
             // A section was hidden/shown — grow/shrink the panel to the new content.
             // Two frames: the collapse AND the other column's re-widen must settle
             // before we measure, else we'd size to the stale pre-collapse layout.
+            // Same settle window before the controller cursor re-targets: its
+            // activated eye may have swapped a whole column for its strip.
             contentRow.post {
-                contentRow.post { if (!dismissed && lastResult != null) autoSizeAndFit() }
+                contentRow.post {
+                    if (dismissed) return@post
+                    if (lastResult != null) autoSizeAndFit()
+                    nav?.revalidateCursor()
+                }
             }
             // Eye reveal on a deferred result: run the skipped translation now.
             maybeCompleteDeferred()
@@ -731,12 +759,30 @@ class CaptureResultOverlay(
             }
             insets
         }
-        sheetHost.attach(root, screenW, screenH)
+        // Controller navigation arms only when the over-game flow opted in AND a
+        // controller is actually attached — evaluated once, here: no device
+        // listener, so a controller plugged in later gets nav on the NEXT sheet.
+        // The window is created already-focusable (no async flag flip to race),
+        // which also lands the OverlayHost focusable-overlay paper trail on add.
+        val navActive = controllerNavEnabled && hasGameController(ctx)
+        sheetHost.attach(root, screenW, screenH, focusable = navActive)
+        if (navActive) {
+            // The root holds VIEW focus so the framework's restoreDefaultFocus
+            // can't wander into an ImageButton on window-focus gain and paint a
+            // stock highlight next to our ring — and suppress the full-root
+            // focus rectangle, same as MagnifierLens's interactive card.
+            root.isFocusable = true
+            root.isFocusableInTouchMode = true
+            root.defaultFocusHighlightEnabled = false
+            root.requestFocus()
+            nav = CaptureSheetControllerNav(ctx, navHost)
+        }
         // ONE place that keeps the drop shadow glued to the sheet: a pre-draw hook
         // re-reads the panel's live position every frame, so the shadow follows
         // through any move (handle drag, body swipe/fling, resize, entrance/exit)
-        // with no per-mover wiring to forget.
-        shadowSync = ViewTreeObserver.OnPreDrawListener { syncShadow(); true }.also {
+        // with no per-mover wiring to forget. The controller focus ring rides the
+        // same hook for the same reason.
+        shadowSync = ViewTreeObserver.OnPreDrawListener { syncShadow(); nav?.syncRing(); true }.also {
             root.viewTreeObserver.addOnPreDrawListener(it)
         }
         // Ease in from the bottom — a plain decelerate, no overshoot/bounce.
@@ -940,6 +986,8 @@ class CaptureResultOverlay(
         captureSession?.cancel()
         captureSession = null
         binder?.release()
+        nav?.release()
+        nav = null
         shadowSync?.let { root.viewTreeObserver.removeOnPreDrawListener(it) }
         shadowSync = null
         sheetHost.detach(root)
@@ -962,6 +1010,7 @@ class CaptureResultOverlay(
         animatingOut = true
         dismissWordLens()
         fontPopover?.dismiss()
+        nav?.clearCursor()   // no ring riding the exit slide
         panel.animate()
             .translationY(panelHeightPx.toFloat())
             .setDuration(EXIT_DURATION_MS)
@@ -1059,6 +1108,7 @@ class CaptureResultOverlay(
         dismissWordLens()
         // The sections it edits are about to fade out under the collapse.
         fontPopover?.dismiss()
+        nav?.clearCursor()   // the cursor's targets are fading out
         preSliverHeightPx = panelHeightPx
         animateSliverHeight(sliverHeightPx())
     }
@@ -1323,6 +1373,7 @@ class CaptureResultOverlay(
         val b = binder ?: return
         lastResult = result
         populateSentenceCache(result)
+        nav?.clearCursor()   // fresh content: word indices + layout are stale
         statusText.visibility = View.GONE
         scroll.visibility = View.VISIBLE
         updateShowOnScreenAction()
@@ -1677,6 +1728,7 @@ class CaptureResultOverlay(
             if (dismissed) return@launch
             val b = binder ?: return@launch
             wordSpans = SourceWordLookup.computeSpans(b.displayedSourceText(), tokens, emptyMap())
+            nav?.onWordSpansChanged()
         }
     }
 
@@ -1686,31 +1738,15 @@ class CaptureResultOverlay(
         if (!wordLensEnabled) return
         val span = wordSpans.firstOrNull { offset in it.first } ?: return
         val b = binder ?: return
-        val tv = b.tvOriginal
         scope.launch {
             try {
                 val resolved = SourceWordLookup.resolve(ctx.applicationContext, span.second, span.third)
                 if (dismissed) return@launch
-                val layout = tv.layout ?: return@launch
-                val lineStart = layout.getLineForOffset(span.first.first)
-                val xStart = layout.getPrimaryHorizontal(span.first.first)
-                // The offset just past the word can land on the NEXT line (the word
-                // ends a wrapped line) — getPrimaryHorizontal then returns that line's
-                // start (~0), collapsing the center to mid-screen and throwing off the
-                // lens/arrow for right-edge words. Fall back to the line's right edge.
-                val endOffset = span.first.last + 1
-                val xEnd = if (layout.getLineForOffset(endOffset) == lineStart) {
-                    layout.getPrimaryHorizontal(endOffset)
-                } else {
-                    layout.getLineRight(lineStart)
-                }
-                val wordCenterX = ((xStart + xEnd) / 2).toInt() + tv.paddingLeft
-                val lineTop = layout.getLineTop(lineStart) - tv.scrollY + tv.paddingTop
-                val lineH = layout.getLineBottom(lineStart) - layout.getLineTop(lineStart)
-                val loc = IntArray(2)
-                tv.getLocationOnScreen(loc)
-                val screenX = loc[0] + wordCenterX
-                val anchorY = loc[1] + lineTop
+                val wordRect = Rect()
+                if (!wordRectOnScreen(span.first, wordRect)) return@launch
+                val screenX = wordRect.centerX()
+                val anchorY = wordRect.top
+                val lineH = wordRect.height()
                 dismissWordLens()
                 // Null host = the lens's activity-window mode (see
                 // [wordLensInActivity]); the camera panel's wm IS its
@@ -1779,6 +1815,44 @@ class CaptureResultOverlay(
 
     private fun dismissWordLens() {
         wordLens?.dismiss()
+    }
+
+    private val wordLocTmp = IntArray(2)
+
+    /** Screen rect of [span]'s FIRST line box inside tvOriginal, or false while
+     *  the text isn't laid out. The ONE word-geometry implementation, shared by
+     *  the lens anchor ([onSourceTapped]) and the controller cursor's ring, so
+     *  the two can never drift. A wrapped word rings/anchors on its first line. */
+    private fun wordRectOnScreen(span: IntRange, out: Rect): Boolean {
+        val tv = binder?.tvOriginal ?: return false
+        if (!tv.isShown) return false
+        val layout = tv.layout ?: return false
+        val endOffset = span.last + 1
+        if (span.first < 0 || endOffset > layout.text.length) return false
+        val lineStart = layout.getLineForOffset(span.first)
+        val xStart = layout.getPrimaryHorizontal(span.first)
+        // The offset just past the word can land on the NEXT line (the word
+        // ends a wrapped line) — getPrimaryHorizontal then returns that line's
+        // start (~0), collapsing the box to mid-screen and throwing off the
+        // lens/arrow for right-edge words. Fall back to the line's right edge.
+        val xEnd = if (layout.getLineForOffset(endOffset) == lineStart) {
+            layout.getPrimaryHorizontal(endOffset)
+        } else {
+            layout.getLineRight(lineStart)
+        }
+        // min/max, not start/end: an RTL run's primary horizontals arrive inverted.
+        var left = minOf(xStart, xEnd).toInt() + tv.paddingLeft
+        var right = maxOf(xStart, xEnd).toInt() + tv.paddingLeft
+        if (right <= left) right = left + 1
+        val top = layout.getLineTop(lineStart) - tv.scrollY + tv.paddingTop
+        val bottom = layout.getLineBottom(lineStart) - tv.scrollY + tv.paddingTop
+        if (bottom <= top) return false
+        tv.getLocationOnScreen(wordLocTmp)
+        out.set(
+            wordLocTmp[0] + left, wordLocTmp[1] + top,
+            wordLocTmp[0] + right, wordLocTmp[1] + bottom,
+        )
+        return true
     }
 
     // ── OCR tool switcher ────────────────────────────────────────────────
@@ -1992,11 +2066,12 @@ class CaptureResultOverlay(
         dismissWordLens()
         // The editor covers the sections the popover sizes.
         fontPopover?.dismiss()
+        nav?.clearCursor()             // the editor covers the cursor's targets
         editText.setText(current)
         editText.setSelection(editText.text.length)
         editContainer.visibility = View.VISIBLE
         editText.requestFocus()        // view-focus first, so the IME targets this field
-        setWindowFocusable(true)
+        applyWindowFocusPolicy()
         // Flipping the window focusable runs through wm.updateViewLayout, which is
         // async — the window is NOT focusable yet in this frame, so an immediate
         // showSoftInput no-ops (that was the bug: the IME only appeared after a tap).
@@ -2019,7 +2094,8 @@ class CaptureResultOverlay(
         ctx.getSystemService(InputMethodManager::class.java)
             ?.hideSoftInputFromWindow(editText.windowToken, 0)
         editContainer.visibility = View.GONE
-        setWindowFocusable(false)
+        root.requestFocus()            // pull view focus off editText
+        applyWindowFocusPolicy()
         val prev = lastResult ?: return
         if (newText.isBlank() || newText == prev.originalText) return
         val b = binder ?: return
@@ -2090,8 +2166,129 @@ class CaptureResultOverlay(
         }
     }
 
-    private fun setWindowFocusable(focusable: Boolean) {
-        sheetHost.setFocusable(root, focusable)
+    /** Back out of the in-place edit without re-translating — the controller's
+     *  B while the editor is open. No text restore is needed: [startInPlaceEdit]
+     *  re-seeds [editText] from [lastResult] on every open. */
+    private fun cancelEdit() {
+        if (editContainer.visibility != View.VISIBLE) return
+        ctx.getSystemService(InputMethodManager::class.java)
+            ?.hideSoftInputFromWindow(editText.windowToken, 0)
+        editContainer.visibility = View.GONE
+        root.requestFocus()            // pull view focus off editText
+        applyWindowFocusPolicy()
+    }
+
+    /** Single owner of the sheet window's focus/IME flags. Focus is wanted
+     *  while the in-place edit is open (for the IME) OR while controller nav
+     *  is live (for keys + stick motion); the IME only ever for the edit —
+     *  this is what keeps [commitEdit] from dropping controller focus. */
+    private fun applyWindowFocusPolicy() {
+        val editing = editContainer.visibility == View.VISIBLE
+        sheetHost.setFocusPolicy(root, focusable = editing || nav != null, wantsIme = editing)
+    }
+
+    /** The controller's B / system back, in sheet-modal precedence order —
+     *  the mirror of [CaptureResultRoot.dispatchTouchEvent]'s ladder. The
+     *  lens branch is normally unreachable (an interactive lens window sits
+     *  above us and holds focus, handling B itself); it covers the lens's
+     *  no-controller non-focusable mode. */
+    private fun onControllerBack() {
+        when {
+            fontPopover?.isShowing == true -> fontPopover?.dismiss()
+            editContainer.visibility == View.VISIBLE -> cancelEdit()
+            wordLens != null -> dismissWordLens()
+            sliverMode -> dismissFromSliver()
+            else -> animateOutAndDismiss()
+        }
+    }
+
+    /** The sheet's side of the controller-navigation seam ([nav] drives it). */
+    private val navHost = object : CaptureSheetNavHost {
+        override val isEditing: Boolean get() = editContainer.visibility == View.VISIBLE
+        override val isPopoverOpen: Boolean get() = fontPopover?.isShowing == true
+        override val inSliver: Boolean get() = sliverMode
+
+        override fun onControllerBack() = this@CaptureResultOverlay.onControllerBack()
+        override fun expandFromSliver() = this@CaptureResultOverlay.expandFromSliver()
+
+        override fun navActions(): List<NavAction> {
+            val out = ArrayList<NavAction>()
+            binder?.navigableActions()?.let(out::addAll)
+            // The side-by-side collapsed strips' restore eyes — the only
+            // controls a hidden column still shows. (Visibility is the nav's
+            // own rect check; a shown column's strip is GONE.)
+            sourceColumn?.let { out.add(NavAction(it.eye)) }
+            targetColumn?.let { out.add(NavAction(it.eye)) }
+            return out
+        }
+
+        override fun wordCount(): Int =
+            if (binder?.tvOriginal?.isShown == true) wordSpans.size else 0
+
+        override fun wordRect(index: Int, out: Rect): Boolean {
+            val span = wordSpans.getOrNull(index) ?: return false
+            return wordRectOnScreen(span.first, out)
+        }
+
+        override fun wordRunIsRtl(): Boolean {
+            val layout = binder?.tvOriginal?.layout ?: return false
+            return layout.getParagraphDirection(0) == Layout.DIR_RIGHT_TO_LEFT
+        }
+
+        override fun activateWord(index: Int) {
+            val span = wordSpans.getOrNull(index) ?: return
+            onSourceTapped(span.first.first)
+        }
+
+        private val scrollLoc = IntArray(2)
+        override fun scrollViewportOnScreen(out: Rect): Boolean {
+            if (!scroll.isShown || scroll.width <= 0 || scroll.height <= 0) return false
+            scroll.getLocationOnScreen(scrollLoc)
+            out.set(
+                scrollLoc[0], scrollLoc[1],
+                scrollLoc[0] + scroll.width, scrollLoc[1] + scroll.height,
+            )
+            return true
+        }
+
+        override fun scrollBy(dy: Int) {
+            // NestedScrollView's scrollTo clamps to the content range.
+            scroll.scrollBy(0, dy)
+        }
+
+        override fun ensureVisible(itemOnScreen: Rect) {
+            val vp = Rect()
+            if (!scrollViewportOnScreen(vp)) return
+            val pad = dp(12)
+            val dy = when {
+                itemOnScreen.top < vp.top + pad -> itemOnScreen.top - (vp.top + pad)
+                itemOnScreen.bottom > vp.bottom - pad -> itemOnScreen.bottom - (vp.bottom - pad)
+                else -> 0
+            }
+            if (dy != 0) scroll.smoothScrollBy(0, dy)
+        }
+
+        private val ringItem = Rect()
+        private val ringClip = Rect()
+        private val rootLoc = IntArray(2)
+        override fun setRing(itemOnScreen: Rect?, clipOnScreen: Rect?) {
+            if (itemOnScreen == null) {
+                focusRing.setTarget(null, null)
+                return
+            }
+            // Screen → ring coords. The ring fills root, which normally sits at
+            // (0,0), but subtract the live location rather than assume it.
+            root.getLocationOnScreen(rootLoc)
+            ringItem.set(itemOnScreen)
+            ringItem.offset(-rootLoc[0], -rootLoc[1])
+            if (clipOnScreen == null) {
+                focusRing.setTarget(ringItem, null)
+                return
+            }
+            ringClip.set(clipOnScreen)
+            ringClip.offset(-rootLoc[0], -rootLoc[1])
+            focusRing.setTarget(ringItem, ringClip)
+        }
     }
 
     // ── Responsive content ───────────────────────────────────────────────
@@ -2143,15 +2340,16 @@ class CaptureResultOverlay(
         // [applyCardFill] (deterministic — a weight/fillViewport chain doesn't
         // reliably shrink the card during a drag).
         val label = VerticalLabel(ctx)
-        val collapsed = buildCollapsedStrip(isSource, label)
+        val (collapsed, eye) = buildCollapsedStrip(isSource, label)
         col.addView(expanded, LinearLayout.LayoutParams(MATCH, WRAP))
         col.addView(collapsed, LinearLayout.LayoutParams(WRAP, WRAP))
-        return SectionColumn(col, expanded, collapsed, label)
+        return SectionColumn(col, expanded, collapsed, label, eye)
     }
 
     /** The strip shown when a side-by-side section is hidden: an eye button to
-     *  restore it, with the section's language name rotated vertically beneath. */
-    private fun buildCollapsedStrip(isSource: Boolean, label: VerticalLabel): View {
+     *  restore it, with the section's language name rotated vertically beneath.
+     *  Returns the strip and its eye (the controller cursor's target there). */
+    private fun buildCollapsedStrip(isSource: Boolean, label: VerticalLabel): Pair<View, View> {
         val eye = ImageButton(ctx).apply {
             setImageResource(R.drawable.ic_visibility_off)
             val tv = TypedValue()
@@ -2166,13 +2364,14 @@ class CaptureResultOverlay(
                 if (isSource) binder?.toggleOriginalHidden() else binder?.toggleTranslationHidden()
             }
         }
-        return LinearLayout(ctx).apply {
+        val strip = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             visibility = View.GONE
             addView(eye, LinearLayout.LayoutParams(dp(36), dp(32)).apply { topMargin = dp(8) })
             addView(label, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(8) })
         }
+        return strip to eye
     }
 
     /** Collapse/expand the side-by-side columns to match the section hide prefs:
@@ -2212,6 +2411,8 @@ class CaptureResultOverlay(
         val expanded: View,
         val collapsed: View,
         val label: VerticalLabel,
+        /** The collapsed strip's restore button — a controller nav target. */
+        val eye: View,
     )
 
     /** Draws [label] rotated 90° (reads bottom-to-top) and measures with swapped
@@ -2568,6 +2769,19 @@ class CaptureResultOverlay(
             }
             return true
         }
+
+        /** Controller keys, live only while the window took focus at show()
+         *  ([nav] non-null). Before super so nav sees keys first — its own
+         *  edit/popover awareness decides what falls through to children. */
+        override fun dispatchKeyEvent(ev: KeyEvent): Boolean =
+            nav?.handleKey(ev) == true || super.dispatchKeyEvent(ev)
+
+        /** Left-stick scroll. Non-pointer generic motion reaches the focused
+         *  window's focused view — this root, which holds view focus while nav
+         *  is live (the in-place edit moves it to the EditText, and nav bails
+         *  there anyway). */
+        override fun onGenericMotionEvent(ev: MotionEvent): Boolean =
+            nav?.handleGenericMotion(ev) == true || super.onGenericMotionEvent(ev)
 
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
             // The text-size popover is a child of this root, and it can sit

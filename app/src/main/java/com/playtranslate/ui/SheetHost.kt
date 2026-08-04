@@ -11,21 +11,26 @@ import com.playtranslate.overlay.OverlayHost
  * Where a [CaptureResultOverlay] sheet lives: an overlay WINDOW over another
  * app (the floating-icon capture flow) or a plain child view inside an
  * activity (the camera tool's snapshot panel). The sheet's view tree and
- * behavior are host-agnostic; only attachment, removal, and the in-place
- * edit's focus/IME plumbing differ.
+ * behavior are host-agnostic; only attachment, removal, and the focus/IME
+ * plumbing (the in-place edit, controller navigation) differ.
  */
 interface SheetHost {
-    /** Attach the sheet's full-screen [root]. Called once, from show(). */
-    fun attach(root: View, screenW: Int, screenH: Int)
+    /** Attach the sheet's full-screen [root]. Called once, from show().
+     *  [focusable] creates the window already holding key focus — controller
+     *  navigation — instead of flipping it on asynchronously afterward. */
+    fun attach(root: View, screenW: Int, screenH: Int, focusable: Boolean = false)
 
     /** Remove [root]; must tolerate a root that never attached. */
     fun detach(root: View)
 
-    /** Focus + IME policy for the in-place edit: window hosting must flip
-     *  window flags (overlay windows are created non-focusable); activity
-     *  hosting is a no-op — the activity window is already focusable and
-     *  owns its own softInputMode. */
-    fun setFocusable(root: View, focusable: Boolean)
+    /** Focus + IME policy. [focusable] = the window takes key/motion input at
+     *  all (the in-place edit OR controller navigation); [wantsIme] = that
+     *  focus is for text entry, so the IME should come up — false holds key
+     *  focus WITHOUT ever becoming the IME target. Window hosting flips window
+     *  flags (overlay windows default non-focusable); activity hosting is a
+     *  no-op — the activity window is already focusable and owns its own
+     *  softInputMode. */
+    fun setFocusPolicy(root: View, focusable: Boolean, wantsIme: Boolean)
 }
 
 /** The over-game host: a full-screen overlay window whose type is stamped by
@@ -38,21 +43,18 @@ class WindowSheetHost(
 
     private var params: WindowManager.LayoutParams? = null
 
-    override fun attach(root: View, screenW: Int, screenH: Int) {
+    override fun attach(root: View, screenW: Int, screenH: Int, focusable: Boolean) {
         val lp = WindowManager.LayoutParams(
             screenW, screenH,
             0, // type stamped by OverlayHost
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            0, // flags applied below
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = 0
             y = 0
         }
+        applyPolicy(lp, focusable = focusable, wantsIme = false)
         params = lp
         overlayHost.addOverlayWindow(root, wm, lp, displayId)
     }
@@ -64,16 +66,33 @@ class WindowSheetHost(
         }
     }
 
-    override fun setFocusable(root: View, focusable: Boolean) {
+    override fun setFocusPolicy(root: View, focusable: Boolean, wantsIme: Boolean) {
         val lp = params ?: return
-        lp.flags = if (focusable) {
-            lp.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-        } else {
-            lp.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        applyPolicy(lp, focusable, wantsIme)
+        try {
+            wm.updateViewLayout(root, lp)
+        } catch (_: Exception) {
         }
-        lp.softInputMode = if (focusable) {
+    }
+
+    private fun applyPolicy(lp: WindowManager.LayoutParams, focusable: Boolean, wantsIme: Boolean) {
+        var flags = WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+        if (!focusable) {
+            flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        } else if (!wantsIme) {
+            // Key focus without the IME: controller navigation holds the
+            // window's input focus for keys + stick motion, but the window
+            // must never become the IME target — else any later focus churn
+            // could raise a keyboard over the game.
+            flags = flags or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+        }
+        lp.flags = flags
+        lp.softInputMode = if (wantsIme) {
             // ALWAYS_VISIBLE, not STATE_VISIBLE: the window only becomes focusable
-            // asynchronously via the updateViewLayout below, and ALWAYS_VISIBLE makes
+            // asynchronously via updateViewLayout, and ALWAYS_VISIBLE makes
             // the system raise the IME the instant the window actually gains focus.
             // STATE_VISIBLE wasn't reliably re-evaluated on that focus transition, so
             // the keyboard only appeared once the user tapped into the field.
@@ -82,10 +101,6 @@ class WindowSheetHost(
         } else {
             WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
         }
-        try {
-            wm.updateViewLayout(root, lp)
-        } catch (_: Exception) {
-        }
     }
 }
 
@@ -93,7 +108,7 @@ class WindowSheetHost(
  *  FrameLayout in the hosting activity). */
 class ActivitySheetHost(private val parent: ViewGroup) : SheetHost {
 
-    override fun attach(root: View, screenW: Int, screenH: Int) {
+    override fun attach(root: View, screenW: Int, screenH: Int, focusable: Boolean) {
         parent.addView(
             root,
             ViewGroup.LayoutParams(
@@ -113,7 +128,7 @@ class ActivitySheetHost(private val parent: ViewGroup) : SheetHost {
         parent.removeView(root)
     }
 
-    override fun setFocusable(root: View, focusable: Boolean) {
+    override fun setFocusPolicy(root: View, focusable: Boolean, wantsIme: Boolean) {
         // Activity windows are always focusable; the IME rides the activity's
         // own softInputMode and the sheet's existing ime-inset lift.
     }
