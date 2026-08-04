@@ -3,10 +3,10 @@ package com.playtranslate.ocr.paddle
 import android.graphics.PointF
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.ocr.core.DetectedRegion
-import com.playtranslate.ocr.core.OcrBox
 import com.playtranslate.ocr.core.OcrCapabilities
 import com.playtranslate.ocr.core.OcrImage
 import com.playtranslate.ocr.core.OcrOrientationSupport
+import com.playtranslate.ocr.core.OrientedBoxGeometry
 import com.playtranslate.ocr.core.TextDetector
 
 /**
@@ -33,11 +33,24 @@ class PaddleDetector(private val session: PaddleOcrSession) : TextDetector {
     override suspend fun detect(image: OcrImage): List<DetectedRegion> =
         session.detect(image.bitmap).map { box ->
             val aabb = box.aabb
+            val quad = box.points.map { PointF(it.x.toFloat(), it.y.toFloat()) }
+            // The AABB label, unchanged from the pre-angle pipeline. Within the
+            // supported ≤45° slant band it provably agrees with warpCrop
+            // already: a quad whose long axis is ≤45° from horizontal has AABB
+            // height ≤ width (h/w > 1 requires axis > 45°), so this aspect test
+            // cannot say VERTICAL there.
+            val orientation = if (aabb.height() > aabb.width() * 1.5) TextOrientation.VERTICAL
+            else TextOrientation.HORIZONTAL
             DetectedRegion(
-                box = OcrBox.upright(aabb),
-                quad = box.points.map { PointF(it.x.toFloat(), it.y.toFloat()) },
-                orientation = if (aabb.height() > aabb.width() * 1.5) TextOrientation.VERTICAL
-                else TextOrientation.HORIZONTAL,
+                // Angle band capped at 45°, NOT the helper's default: past 45°
+                // DbNet's corner ordering rolls and warpCrop routes elongated
+                // quads through its 90° column rotate, so reads there are
+                // sign-dependent — claiming an angle would pin a confident chip
+                // on an unreliable read. With the cap, everything past 45° is
+                // bit-identical to the pre-angle pipeline.
+                box = OrientedBoxGeometry.boxFor(aabb, quad, orientation, maxSlantDeg = 45f),
+                quad = quad,
+                orientation = orientation,
                 confidence = -1f,
             )
         }

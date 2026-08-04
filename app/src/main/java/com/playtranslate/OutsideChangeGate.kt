@@ -53,6 +53,43 @@ object OutsideChangeGate {
         )
     }
 
+    /**
+     * One exclusion region for [check]: [rect] is the rendered box rect,
+     * caller-inflated past its anti-aliased edges. For a rotated chip
+     * ([angleDeg] != 0) the true drawn footprint is [orientedW]×[orientedH]
+     * (also caller-inflated) rotated about the rect center — only THAT
+     * footprint is excluded. The AABB corners outside it stay sampled on
+     * purpose: the pinhole detector's blend model skips pixels the overlay
+     * never drew, so the outside gate is those corners' only watcher.
+     */
+    class Exclusion(
+        val rect: Rect,
+        private val angleDeg: Float = 0f,
+        private val orientedW: Float = 0f,
+        private val orientedH: Float = 0f,
+    ) {
+        private val cos: Float
+        private val sin: Float
+
+        init {
+            val r = Math.toRadians(angleDeg.toDouble())
+            cos = kotlin.math.cos(r).toFloat()
+            sin = kotlin.math.sin(r).toFloat()
+        }
+
+        fun contains(x: Int, y: Int): Boolean {
+            if (angleDeg == 0f || orientedW <= 0f || orientedH <= 0f) return rect.contains(x, y)
+            // Un-rotate the sample about the chip center (== rect center: the
+            // inflate is symmetric and rotation preserves the center) and test
+            // the axis-aligned oriented rect.
+            val dx = x - rect.exactCenterX()
+            val dy = y - rect.exactCenterY()
+            val rx = dx * cos + dy * sin
+            val ry = -dx * sin + dy * cos
+            return kotlin.math.abs(rx) <= orientedW / 2f && kotlin.math.abs(ry) <= orientedH / 2f
+        }
+    }
+
     /** Reused working buffers, owned by the caller (one set per mode). */
     class Buffers {
         internal var rawRow = IntArray(0)
@@ -74,18 +111,18 @@ object OutsideChangeGate {
 
     /**
      * Sample the strided grid over [bounds] (typically the OCR crop),
-     * skipping samples inside [exclude] (the rendered box rects — inflated
-     * by the caller past their anti-aliased edges — plus the floating
-     * icon's window rect, whose burn-in animations are self-chrome motion,
-     * not screen change), and report whether the fit-normalized residuals
-     * say something outside the overlays changed.
+     * skipping samples inside [exclude] (the rendered box footprints — see
+     * [Exclusion]; inflated by the caller past their anti-aliased edges —
+     * plus the floating icon's window rect, whose burn-in animations are
+     * self-chrome motion, not screen change), and report whether the
+     * fit-normalized residuals say something outside the overlays changed.
      * [raw] and [ref] must share dimensions.
      */
     fun check(
         raw: Bitmap,
         ref: Bitmap,
         bounds: Rect,
-        exclude: List<Rect>,
+        exclude: List<Exclusion>,
         buffers: Buffers,
         grid: OutsideBlockGrid? = null,
         stridePx: Int = PinholeCalibration.OUTSIDE_STRIDE_PX,
@@ -187,9 +224,9 @@ object OutsideChangeGate {
         return (r * 77 + g * 150 + b * 29) ushr 8
     }
 
-    private fun excluded(x: Int, y: Int, rects: List<Rect>): Boolean {
-        for (i in rects.indices) {
-            if (rects[i].contains(x, y)) return true
+    private fun excluded(x: Int, y: Int, regions: List<Exclusion>): Boolean {
+        for (i in regions.indices) {
+            if (regions[i].contains(x, y)) return true
         }
         return false
     }

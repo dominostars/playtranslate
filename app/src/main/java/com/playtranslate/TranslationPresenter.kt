@@ -34,6 +34,7 @@ class TranslationPresenter(
             work.map { it.orientation },
             work.map { it.alignment },
             work.map { ReadingArbiter.scoreOf(it.group) },
+            work.map { Triple(it.angleDeg, it.orientedWidth, it.orientedHeight) },
         )
         val partial = placeholders.mapIndexed { i, ph ->
             service.getCachedTranslation(texts[i])

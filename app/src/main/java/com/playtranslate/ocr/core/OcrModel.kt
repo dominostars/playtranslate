@@ -31,8 +31,12 @@ import kotlin.math.abs
  *
  * Tategaki is NOT rotation: a vertical column is an axis-aligned tall rectangle
  * with `angleDeg == 0` and [TextOrientation.VERTICAL]. Only [angleDeg] != 0 is a
- * genuine slant, and [isRotated] regions are treated as standalone by layout
- * (see [LayoutAnalyzer]).
+ * genuine slant, and [isRotated] regions are grouped standalone by layout (the
+ * bypass in [LayoutAnalyzer.analyze]).
+ *
+ * Producers route through [OrientedBoxGeometry.boxFor], which snaps |angle| ≤
+ * [ROTATION_STANDALONE_DEG] to [upright] — so on every produced box
+ * `angleDeg != 0f` ⟺ [isRotated], with no third state.
  */
 data class OcrBox(
     /** Axis-aligned bounding box in ORIGINAL bitmap coords. Read by the kernel. */

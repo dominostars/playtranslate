@@ -43,6 +43,12 @@ data class FarGroup(
      *  dying box (conversation close: the plate→prompt replacement lands
      *  beside the dying message box every time). */
     val paired: Boolean = false,
+    /** Slant carried from the OCR group; oriented dims ride with it, 0 when
+     *  upright. The coalesce step leaves these at 0 deliberately — an AABB
+     *  union of two groups is not a rotated rect. */
+    val angleDeg: Float = 0f,
+    val orientedWidth: Float = 0f,
+    val orientedHeight: Float = 0f,
 )
 
 /**
@@ -233,7 +239,12 @@ fun classifyOcrResults(
                     // content-match target a later fresh OCR fragment may
                     // legitimately stitch onto.
                     pairedFarIndices.add(farOcrGroups.size)
-                    farOcrGroups.add(FarGroup(ocrText, ocrBound, lc, orient, align, paired = true))
+                    farOcrGroups.add(FarGroup(
+                        ocrText, ocrBound, lc, orient, align, paired = true,
+                        angleDeg = group.angleDeg,
+                        orientedWidth = group.orientedWidth,
+                        orientedHeight = group.orientedHeight,
+                    ))
                     contentMatched = true
                     break
                 }
@@ -490,7 +501,12 @@ fun classifyOcrResults(
                     paired = existing.paired,
                 )
             } else {
-                farOcrGroups.add(FarGroup(ocrText, ocrBound, lc, orient, align))
+                farOcrGroups.add(FarGroup(
+                    ocrText, ocrBound, lc, orient, align,
+                    angleDeg = group.angleDeg,
+                    orientedWidth = group.orientedWidth,
+                    orientedHeight = group.orientedHeight,
+                ))
             }
         }
     }

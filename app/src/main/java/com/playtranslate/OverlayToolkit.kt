@@ -273,6 +273,12 @@ object OverlayToolkit {
         for (line in lines) {
             val isVertical = line.orientation == com.playtranslate.language.TextOrientation.VERTICAL
             if (line.text.isEmpty()) continue
+            // No furigana on slanted lines: every placement formula below is
+            // axis-aligned arithmetic on symbol/line AABBs, which lands the
+            // annotations off the glyphs once the baseline is diagonal.
+            // Checked before the annotation pass — a skipped line must not
+            // spend dictionary time either.
+            if (line.angleDeg != 0f) continue
             // FULL-depth: live furigana shows the SAME dictionary-corrected
             // readings the result sheet displays and TTS speaks (一泊 →
             // いっぱく) — never the raw per-token readings. The engine's
@@ -817,6 +823,8 @@ object OverlayToolkit {
         orientations: List<TextOrientation> = emptyList(),
         alignments: List<TextAlignment> = emptyList(),
         confidences: List<Pair<Float, Float>> = emptyList(),
+        /** Per-box (angleDeg, orientedWidth, orientedHeight); zeros when upright. */
+        slants: List<Triple<Float, Float, Float>> = emptyList(),
     ): List<TextBox> {
         val colorScale = 4
         val colorRef = raw.scale(raw.width / colorScale, raw.height / colorScale, false)
@@ -831,8 +839,10 @@ object OverlayToolkit {
             val orient = orientations.getOrElse(idx) { TextOrientation.HORIZONTAL }
             val align = alignments.getOrElse(idx) { TextAlignment.LEFT }
             val (cMin, cMean) = confidences.getOrElse(idx) { -1f to -1f }
+            val (ang, ow, oh) = slants.getOrElse(idx) { Triple(0f, 0f, 0f) }
             TextBox("", rect, bg, tc, lineCounts.getOrElse(idx) { 1 },
                 sourceText = texts.getOrElse(idx) { "" }, orientation = orient, alignment = align,
+                angleDeg = ang, orientedWidth = ow, orientedHeight = oh,
                 sourceConfMin = cMin, sourceConfMean = cMean)
         }
     }

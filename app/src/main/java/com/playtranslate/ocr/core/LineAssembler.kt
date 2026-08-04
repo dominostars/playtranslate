@@ -54,6 +54,17 @@ object LineAssembler {
      */
     fun assembleLines(regions: List<RecognizedRegion>, rtl: Boolean = false): List<RecognizedRegion> {
         if (regions.size <= 1) return regions
+        // Rotated regions never band: their inflated AABBs would merge into an
+        // upright union ([mergeLine] discards the angle and force-tags
+        // HORIZONTAL), so slanted words stay per-word regions and keep their
+        // slant for layout's standalone path. The re-entrant call runs today's
+        // code over the upright partition alone, so the vertical-dominance vote
+        // below can't be tipped by rotated members; a frame with no rotated
+        // region — every frame today — skips this branch entirely.
+        if (regions.any { it.box.isRotated }) {
+            val (rotated, upright) = regions.partition { it.box.isRotated }
+            return assembleLines(upright, rtl) + rotated
+        }
         // Collective-orientation guard: a vertical-dominant capture is genuine
         // vertical text (no horizontal-line fragmentation to repair) — leave it
         // untouched so orientation survives for LayoutAnalyzer's vertical path.

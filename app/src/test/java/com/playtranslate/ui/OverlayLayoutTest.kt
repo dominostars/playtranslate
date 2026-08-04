@@ -510,4 +510,97 @@ class OverlayLayoutTest {
     fun lineBreakRuns_blank_isEmpty() {
         assertTrue(lineBreakRuns("   ").isEmpty())
     }
+
+    // ── SOURCE_ANGLE: slanted source boxes ───────────────────────────────
+
+    /** AABB of a 200×40 rect at 30°, with the oriented trio populated. */
+    private fun slantBox(
+        bounds: Rect = Rect(300, 300, 493, 435),
+        angle: Float = 30f,
+        text: String = "x",
+        isFurigana: Boolean = false,
+    ) = TextBox(
+        translatedText = text,
+        bounds = bounds,
+        isFurigana = isFurigana,
+        orientation = TextOrientation.HORIZONTAL,
+        angleDeg = angle,
+        orientedWidth = 200f,
+        orientedHeight = 40f,
+    )
+
+    private fun resolve(boxes: List<TextBox>, grow: Boolean = false, stackable: Boolean = false) =
+        OverlayLayout.resolveScreenRects(
+            boxes,
+            cropLeft = 0, cropTop = 0,
+            screenshotW = 1000, screenshotH = 1000,
+            displayW = 1000, displayH = 1000,
+            density = 1f,
+            targetIsVerticalScript = false,
+            targetStackable = stackable,
+            growEnabled = grow,
+        )
+
+    @Test
+    fun slantedBox_resolvesSourceAngle_regardlessOfPrefs() {
+        for (grow in listOf(false, true)) for (stackable in listOf(false, true)) {
+            val r = resolve(listOf(slantBox()), grow = grow, stackable = stackable)
+            assertEquals(RenderMode.SOURCE_ANGLE, r[0].mode)
+        }
+    }
+
+    @Test
+    fun slantedFurigana_staysLegacy() {
+        val r = resolve(listOf(slantBox(isFurigana = true)))
+        assertEquals(RenderMode.LEGACY_HORIZONTAL, r[0].mode)
+    }
+
+    @Test
+    fun zeroAngleBox_resolvesExactlyAsBefore() {
+        val r = resolve(listOf(box(Rect(300, 300, 493, 435))))
+        assertEquals(RenderMode.LEGACY_HORIZONTAL, r[0].mode)
+        assertEquals(RectF(294f, 294f, 499f, 441f), r[0].rect)
+    }
+
+    @Test
+    fun slantedBox_sitsOutCarvePasses_bothDirections() {
+        // An upright horizontal box overlapping the slanted one: neither is
+        // carved — the slanted box keeps its padded AABB and the upright box
+        // keeps its own (residual overlap is the accepted trade).
+        val slanted = slantBox()
+        val upright = box(Rect(250, 320, 480, 360))
+        val r = resolve(listOf(slanted, upright))
+        assertEquals(RectF(294f, 294f, 499f, 441f), r[0].rect)
+        assertEquals(RectF(244f, 314f, 486f, 366f), r[1].rect)
+    }
+
+    @Test
+    fun growCandidate_besideSlantedNeighbour_doesNotGrow() {
+        // A narrow vertical GROW box whose row a slanted AABB straddles: the
+        // strict side tests can't see a straddler, so growth is skipped
+        // entirely rather than growing into it.
+        val growBox = box(
+            Rect(400, 100, 450, 400),
+            orientation = TextOrientation.VERTICAL,
+            minWidthPx = 300,
+        )
+        val slanted = slantBox(bounds = Rect(100, 150, 700, 250), angle = 20f)
+        val r = resolve(listOf(growBox, slanted), grow = true)
+        assertEquals(RenderMode.GROW_HORIZONTAL, r[0].mode)
+        assertEquals("blocked by the slanted straddler", RectF(394f, 94f, 456f, 406f), r[0].rect)
+
+        // Control: without the slanted neighbour the same box does grow.
+        val alone = resolve(listOf(growBox), grow = true)
+        assertTrue("control must grow, got ${alone[0].rect}", alone[0].rect.width() > 62f)
+    }
+
+    @Test
+    fun boxesMatchFuzzy_angleChangeDefeatsFastPath() {
+        val flat = box(Rect(300, 300, 493, 435))
+        val slanted = slantBox(text = "x")
+        assertTrue(!OverlayLayout.boxesMatchFuzzy(listOf(flat), listOf(slanted)))
+        // Jitter within a degree still matches (no rebuild churn on a stable banner).
+        val jittered = slanted.copy(angleDeg = 30.6f)
+        assertTrue(OverlayLayout.boxesMatchFuzzy(listOf(slanted), listOf(jittered)))
+    }
 }

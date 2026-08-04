@@ -430,4 +430,56 @@ class ScanlineReconcilerTest {
         assertEquals(moved, v.keptBoxes.single().bounds)
         assertEquals(0.9f, v.keptBoxes.single().sourceConfMin, 1e-6f)
     }
+
+    // ── Slant refresh: angle drift the bounds hysteresis can miss ────────
+
+    @Test
+    fun slantDrift_beyondAngleHysteresis_repositionsWithFreshSlant() {
+        val b = box(Rect(100, 100, 300, 180), "SALE")
+            .copy(angleDeg = 12f, orientedWidth = 200f, orientedHeight = 40f)
+        // Bounds within the 5px reposition hysteresis — bounds alone won't fire.
+        val g = grp("SALE", Rect(101, 100, 301, 181))
+            .copy(angleDeg = 16f, orientedWidth = 198f, orientedHeight = 40f)
+        val v = ScanlineReconciler.reconcile(listOf(g), listOf(b))
+        assertEquals(1, v.keptBoxes.size)
+        assertEquals(1, v.repositioned)
+        assertEquals(16f, v.keptBoxes.single().angleDeg, 0f)
+        assertEquals(198f, v.keptBoxes.single().orientedWidth, 0f)
+        assertEquals("translation preserved through the slant refresh", "T", v.keptBoxes.single().translatedText)
+        assertEquals(g.bounds, v.keptBoxes.single().bounds)
+    }
+
+    @Test
+    fun slantJitter_withinAngleHysteresis_keepsBoxVerbatim() {
+        val b = box(Rect(100, 100, 300, 180), "SALE")
+            .copy(angleDeg = 12f, orientedWidth = 200f, orientedHeight = 40f)
+        val g = grp("SALE", Rect(101, 100, 301, 181))
+            .copy(angleDeg = 13.5f, orientedWidth = 200f, orientedHeight = 40f)
+        val v = ScanlineReconciler.reconcile(listOf(g), listOf(b))
+        assertEquals(1, v.keptBoxes.size)
+        assertEquals("sub-hysteresis angle jitter must not reposition", 0, v.repositioned)
+        assertEquals(12f, v.keptBoxes.single().angleDeg, 0f)
+    }
+
+    @Test
+    fun snapBoundaryHover_zeroNonzeroFlips_staySticky() {
+        // Text at a true ~10° slant hovering across the producer's snap
+        // threshold: reads alternate angle 0 / 10.4 with identical bounds.
+        // Refreshing on the flip would rebuild the overlay every cycle; the
+        // born state stays sticky. (A REAL transition to/from upright moves
+        // the AABB far past the bounds hysteresis and fires there instead.)
+        val bounds = Rect(100, 100, 300, 180)
+        val upright = box(bounds, "SALE")
+        val slantedRead = grp("SALE", bounds)
+            .copy(angleDeg = 10.4f, orientedWidth = 200f, orientedHeight = 40f)
+        val v1 = ScanlineReconciler.reconcile(listOf(slantedRead), listOf(upright))
+        assertEquals(0, v1.repositioned)
+        assertEquals(0f, v1.keptBoxes.single().angleDeg, 0f)
+
+        val rotated = upright.copy(angleDeg = 10.4f, orientedWidth = 200f, orientedHeight = 40f)
+        val uprightRead = grp("SALE", bounds)
+        val v2 = ScanlineReconciler.reconcile(listOf(uprightRead), listOf(rotated))
+        assertEquals(0, v2.repositioned)
+        assertEquals(10.4f, v2.keptBoxes.single().angleDeg, 0f)
+    }
 }

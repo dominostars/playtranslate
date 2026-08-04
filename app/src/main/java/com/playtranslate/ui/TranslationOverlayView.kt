@@ -420,16 +420,31 @@ class TranslationOverlayView(
                 // breaks single words across rows in a tall, narrow column. ROTATE wraps along the
                 // tall side, so its wrap width is rectH.
                 val baseMax = if (mode == RenderMode.GROW_HORIZONTAL) growMaxTextSizeSp else maxTextSizeSp
-                val wrapWidthPx = if (mode == RenderMode.ROTATE) rectH else rectW
+                // SOURCE_ANGLE lays out at the screen-scaled oriented dims (the
+                // pre-rotation frame), so its wrap axis is the oriented width —
+                // the same idea as ROTATE wrapping along its tall side.
+                val scaleX = width.toFloat() / screenshotW
+                val scaleY = height.toFloat() / screenshotH
+                val angledW = (box.orientedWidth * scaleX).toInt().coerceAtLeast(1)
+                val angledH = (box.orientedHeight * scaleY).toInt().coerceAtLeast(1)
+                val wrapWidthPx = when (mode) {
+                    RenderMode.ROTATE -> rectH
+                    RenderMode.SOURCE_ANGLE -> angledW
+                    else -> rectW
+                }
                 val autoMax = unbreakableFitMaxSp(box.translatedText, wrapWidthPx, baseMax)
 
                 val child: View = when {
                     box.translatedText.isEmpty() -> {
                         // Skeleton bars follow the SOURCE orientation: a vertical OCR box shows
                         // vertical column-stripes (matching the text being covered) even when its
-                        // translation will land horizontally once it arrives.
+                        // translation will land horizontally once it arrives. A SOURCE_ANGLE
+                        // skeleton builds at the oriented dims — the placement branch below
+                        // rotates it onto the slanted source like the text child.
                         val verticalSkeleton = box.orientation == TextOrientation.VERTICAL
-                        buildSkeletonView(rectW, rectH, box.lineCount, box.bgColor, box.textColor, box.alignment, verticalSkeleton)
+                        val sw = if (mode == RenderMode.SOURCE_ANGLE) angledW else rectW
+                        val sh = if (mode == RenderMode.SOURCE_ANGLE) angledH else rectH
+                        buildSkeletonView(sw, sh, box.lineCount, box.bgColor, box.textColor, box.alignment, verticalSkeleton)
                     }
                     mode == RenderMode.STACK_UPRIGHT -> VerticalTextView(context).apply {
                         text = box.translatedText
@@ -473,6 +488,27 @@ class TranslationOverlayView(
                     child.rotation = 90f
                     child.translationX = rect.centerX() - rectH / 2f
                     child.translationY = rect.centerY() - rectW / 2f
+                } else if (mode == RenderMode.SOURCE_ANGLE) {
+                    // Slanted source: lay out at the oriented dims, rotate about the
+                    // child's center (the default pivot) by the source angle. The pin
+                    // is the UNPADDED mapped bounds center — the resolved rect's
+                    // padding is edge-clamped, which displaces its center near screen
+                    // edges — and bounds is exactly the slanted rect's AABB, so the
+                    // rotated chip lands on the source footprint. Exact only while
+                    // scaleX == scaleY; unequal scales would need a shear no single
+                    // View rotation can express (both derive from the same display,
+                    // so they agree in every production caller).
+                    val src = OverlayLayout.mapRect(box.bounds, cropOffsetX, cropOffsetY, scaleX, scaleY)
+                    if (scaleX != 0f && kotlin.math.abs(scaleX - scaleY) > 0.01f * scaleX) {
+                        android.util.Log.w(
+                            "DetectionLog",
+                            "[layout] SOURCE_ANGLE under non-uniform scale ($scaleX vs $scaleY) — chip angle is approximate",
+                        )
+                    }
+                    addView(child, LayoutParams(angledW, angledH))
+                    child.rotation = box.angleDeg
+                    child.translationX = src.centerX() - angledW / 2f
+                    child.translationY = src.centerY() - angledH / 2f
                 } else {
                     // STACK_UPRIGHT / HORIZONTAL_IN_PLACE / GROW_HORIZONTAL / LEGACY_HORIZONTAL
                     // and skeletons: fill the (possibly grown) box footprint at its rect.
@@ -532,7 +568,8 @@ class TranslationOverlayView(
             android.util.Log.d(
                 "DetectionLog",
                 "[layout] box[$i] ${resolved[i].mode} ${box.orientation.name[0]} " +
-                    "minW=${box.minWidthPx} \"$src\"->\"$tr\" rect=${rs(resolved[i].rect)}",
+                    "minW=${box.minWidthPx} ang=${box.angleDeg} " +
+                    "\"$src\"->\"$tr\" rect=${rs(resolved[i].rect)}",
             )
         }
         val idx = boxes.indices.filter { !boxes[it].isFurigana }

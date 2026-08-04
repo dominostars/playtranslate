@@ -46,7 +46,11 @@ class PaddleRecognizer(private val session: PaddleOcrSession) : TextRecognizer {
         if (r.text.isBlank()) return null
         // CTC firing positions → per-char boxes. Axis = r.stripVertical (warpCrop's own
         // rotation), geometry = the region AABB. Empty unless decode emitted positions.
-        val chars = synthesizeCharBoxes(r.chars, region.box.bounds, r.stripVertical)
+        // Rotated regions get none: distributing chars across the slant's inflated AABB
+        // scatters them off the glyphs, and an empty list routes drag-lookup/furigana to
+        // the honest proportional fallback instead.
+        val chars = if (region.box.isRotated) emptyList()
+        else synthesizeCharBoxes(r.chars, region.box.bounds, r.stripVertical)
         val line = RecognizedLine(
             text = r.text, box = region.box, orientation = region.orientation, chars = chars,
         )

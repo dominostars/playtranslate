@@ -284,4 +284,48 @@ class LineAssemblyTest {
         assertEquals(30, line.chars[2].box.bounds.left)
         assertEquals(50, line.chars[3].box.bounds.right)
     }
+
+    // ── rotated regions bypass assembly ──────────────────────────────────────
+
+    private fun rotatedRegion(text: String, r: Rect, angle: Float): RecognizedRegion {
+        val b = OcrBox(r, r.width().toFloat(), r.height() / 2f, angle)
+        return RecognizedRegion(
+            text = text, box = b, orientation = TextOrientation.HORIZONTAL, confidence = 0.9f,
+            lines = listOf(RecognizedLine(text, b, TextOrientation.HORIZONTAL)),
+            origin = RegionOrigin.LINE,
+        )
+    }
+
+    @Test
+    fun rotatedRegions_passThroughUnmerged_whileUprightAssemble() {
+        val upright1 = region("Hello", box(0, 0, 60, 20))
+        val upright2 = region("world", box(70, 0, 130, 20))
+        val rotated = rotatedRegion("SALE", box(20, 0, 120, 60), angle = 30f)
+        val out = LineAssembler.assembleLines(listOf(upright1, rotated, upright2))
+        assertEquals(2, out.size)
+        assertEquals("Hello world", out[0].text)
+        // Untouched: the same instance, slant intact.
+        assertEquals(rotated, out[1])
+        assertEquals(30f, out[1].box.angleDeg, 0f)
+    }
+
+    @Test
+    fun verticalDominanceVote_countsUprightPartitionOnly() {
+        // Two side-by-side vertical columns at one y-center would band into a
+        // force-tagged HORIZONTAL merge if the kernel ran; the vertical-dominance
+        // guard must still fire even when rotated regions outnumber them.
+        val col1 = region("あ", box(0, 0, 40, 300), TextOrientation.VERTICAL)
+        val col2 = region("い", box(60, 0, 100, 300), TextOrientation.VERTICAL)
+        val rot = (0 until 4).map { rotatedRegion("r$it", box(200 + it * 10, 0, 300 + it * 10, 60), 25f) }
+        val out = LineAssembler.assembleLines(listOf(col1, col2) + rot)
+        assertEquals(6, out.size)
+        assertEquals(TextOrientation.VERTICAL, out[0].orientation)
+        assertEquals(TextOrientation.VERTICAL, out[1].orientation)
+    }
+
+    @Test
+    fun allRotated_returnedAsIs() {
+        val regions = (0 until 3).map { rotatedRegion("r$it", box(it * 50, 0, it * 50 + 100, 40), 20f) }
+        assertEquals(regions, LineAssembler.assembleLines(regions))
+    }
 }

@@ -79,26 +79,48 @@ class OcrDebugOverlayView(context: Context) : View(context) {
         return RectF(left, top, right, bottom)
     }
 
+    /** Outline for one debug box. A slanted box draws its TRUE oriented
+     *  footprint — the oriented dims rotated about the AABB center, the shape
+     *  the detector found and the chip renders at — so lean, size, and
+     *  placement are all judged against the on-screen text. Rotating the AABB
+     *  instead would outline a shape that exists nowhere in the pipeline.
+     *  Upright boxes draw their plain rect. */
+    private fun drawBox(canvas: Canvas, box: OcrManager.DebugBox, sf: Float, paint: android.graphics.Paint) {
+        val rf = mapRect(box.bounds, sf)
+        if (box.angleDeg == 0f || box.orientedWidth <= 0f || box.orientedHeight <= 0f) {
+            canvas.drawRect(rf, paint)
+            return
+        }
+        val hw = box.orientedWidth / sf * displayScaleX / 2f
+        val hh = box.orientedHeight / sf * displayScaleY / 2f
+        val cx = rf.centerX()
+        val cy = rf.centerY()
+        canvas.save()
+        canvas.rotate(box.angleDeg, cx, cy)
+        canvas.drawRect(cx - hw, cy - hh, cx + hw, cy + hh, paint)
+        canvas.restore()
+    }
+
     override fun onDraw(canvas: Canvas) {
         val boxes = debugBoxes ?: return
         val sf = boxes.scaleFactor
 
         // Individual TextBlock boxes (red)
         for (box in boxes.blockBoxes) {
-            val rf = mapRect(box.bounds, sf)
-            canvas.drawRect(rf, blockPaint)
+            drawBox(canvas, box, sf, blockPaint)
         }
 
-        // Line boxes (thin green)
+        // Line boxes (thin green): true oriented footprints for slanted lines.
         for (box in boxes.lineBoxes) {
-            val rf = mapRect(box.bounds, sf)
-            canvas.drawRect(rf, linePaint)
+            drawBox(canvas, box, sf, linePaint)
         }
 
-        // Combined group boxes (blue)
+        // Combined group boxes (blue): ALWAYS the plain AABB — this tier shows
+        // what the grouping kernel and downstream carriers actually consumed,
+        // so a slanted line renders as green oriented footprint inside its
+        // blue axis-aligned envelope.
         for (box in boxes.groupBoxes) {
-            val rf = mapRect(box.bounds, sf)
-            canvas.drawRect(rf, groupPaint)
+            canvas.drawRect(mapRect(box.bounds, sf), groupPaint)
         }
     }
 }

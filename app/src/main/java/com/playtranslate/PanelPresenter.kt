@@ -43,6 +43,9 @@ class PanelPresenter(
                 sourceText = r.text,
                 orientation = r.orientation,
                 alignment = r.alignment,
+                angleDeg = r.angleDeg,
+                orientedWidth = r.orientedWidth,
+                orientedHeight = r.orientedHeight,
                 sourceConfMin = cMin,
                 sourceConfMean = cMean,
             )

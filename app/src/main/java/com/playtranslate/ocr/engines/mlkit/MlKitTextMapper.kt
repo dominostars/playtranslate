@@ -1,10 +1,12 @@
 package com.playtranslate.ocr.engines.mlkit
 
+import android.graphics.PointF
 import com.google.mlkit.vision.text.Text
 import com.playtranslate.OcrManager
 import com.playtranslate.ocr.core.CharBox
 import com.playtranslate.ocr.core.ElementBox
 import com.playtranslate.ocr.core.OcrBox
+import com.playtranslate.ocr.core.OrientedBoxGeometry
 import com.playtranslate.ocr.core.RecognizedLine
 import com.playtranslate.ocr.core.RecognizedRegion
 import com.playtranslate.ocr.core.RegionOrigin
@@ -23,9 +25,9 @@ import com.playtranslate.ocr.core.RegionOrigin
  * [com.playtranslate.ocr.core.LayoutAnalyzer.effectiveAlignLeft].
  *
  * Coordinates are in the INPUT bitmap's space — i.e. the (possibly preprocessed/
- * upscaled) bitmap ML Kit was given. The `OcrPipeline` owns preprocessing and
- * normalizes the final `OcrResult` boxes back to original-bitmap coordinates, so
- * this mapper does NOT divide by any scaleFactor.
+ * upscaled) bitmap ML Kit was given. `OcrPipeline` owns preprocessing and reports
+ * the factor; `OcrManager.buildOcrResult` divides the final `OcrResult` boxes back
+ * to original-bitmap coordinates, so this mapper does NOT divide by any scaleFactor.
  */
 object MlKitTextMapper {
 
@@ -47,7 +49,16 @@ object MlKitTextMapper {
                 val walked = walkLine(line, addWordSpaces)
                 if (walked.text.isBlank()) continue
                 val orientation = OcrManager.detectOrientation(line)
-                val box = OcrBox.upright(bb)
+                // Slant from the rotated corner quad (angle + true dims in one
+                // self-consistent source; `line.angle` alone can't give dims).
+                // Same defensive shape as detectOrientation's angle read — the
+                // GMS-delivered recognizer behind this API varies by device.
+                val quad = try {
+                    line.cornerPoints?.map { PointF(it.x.toFloat(), it.y.toFloat()) }
+                } catch (_: Throwable) {
+                    null
+                }
+                val box = OrientedBoxGeometry.boxFor(bb, quad, orientation)
                 val recLine = RecognizedLine(
                     text = walked.text,
                     box = box,
