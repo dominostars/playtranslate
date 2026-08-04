@@ -119,3 +119,29 @@ data class SentenceAnnotation(
             )
     }
 }
+
+/**
+ * Hint-text projection: one [HintTextAnnotation] per ruby part, offsets
+ * computed by walking each span's parts from its start. Pitch rides only on
+ * whole-span single parts (the annotator sets [AnnotatedSpan.pitch] under
+ * the same eligibility rule the legacy hint path used). Offsetless
+ * (lexical-tier) spans project nothing — there is no position to annotate.
+ */
+fun SentenceAnnotation.hintAnnotations(): List<HintTextAnnotation> {
+    val out = mutableListOf<HintTextAnnotation>()
+    for (s in spans) {
+        if (s.start < 0) continue
+        var at = s.start
+        val wholeSpan = s.furigana.size == 1 && s.furigana[0].text == s.surface
+        for (p in s.furigana) {
+            if (p.reading != null) {
+                out.add(HintTextAnnotation(
+                    baseStart = at, baseEnd = at + p.text.length, hintText = p.reading,
+                    pitchDownstep = if (wholeSpan) s.pitch.firstOrNull() else null,
+                ))
+            }
+            at += p.text.length
+        }
+    }
+    return out
+}

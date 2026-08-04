@@ -198,51 +198,23 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
         })
     }
 
+    /** Legacy hint API, now a projection of [annotate] at TOKENS depth —
+     *  byte-parity with the old per-token path. The live overlay consumes
+     *  this until its measurement gate flips it to FULL (refactor doc §6);
+     *  the in-app binder calls [annotate] FULL directly. */
     override suspend fun annotateForHintText(text: String): List<HintTextAnnotation> =
-        withContext(Dispatchers.Default) {
-            val tokens = dict.tokenizeForFurigana(text)
-            // Pitch only on whole-word, uninflected ruby: partial ruby can't
-            // carry a word contour, and lemma pitch on inflected forms is
-            // linguistically wrong (verb/adjective accent shifts).
-            val eligible = tokens
-                .filter { it.coversWholeSurface && it.surface == it.dictionaryForm }
-                .map { it.surface to it.reading }
-                .distinct()
-            val pitch =
-                if (eligible.isEmpty()) emptyMap()
-                else yomitan.pitchFor(eligible)
-            tokens.map {
-                HintTextAnnotation(
-                    baseStart = it.startOffset,
-                    baseEnd = it.endOffset,
-                    hintText = it.reading,
-                    pitchDownstep =
-                        if (it.coversWholeSurface && it.surface == it.dictionaryForm) {
-                            pitch[it.surface to it.reading]?.firstOrNull()
-                        } else {
-                            null
-                        },
-                )
-            }
-        }
+        annotate(text, AnnotationDepth.TOKENS).hintAnnotations()
 
     override suspend fun spokenForm(text: String): String =
         withContext(Dispatchers.Default) {
-            // Feed TTS the SAME per-token readings the furigana shows — Sudachi's
-            // readingForm — so the spoken kana matches what's displayed (初夏 →
-            // しょか, not the engine's own guess はつか). Mirrors tokenizeForFurigana's
-            // reading source, so audio == display by construction. Provider.analyze
-            // is fail-soft to empty, so a tokenizer failure speaks the surface
-            // text rather than emitting silence.
-            val tokens = SudachiJapaneseTokenizer.Provider.analyze(text)
-            if (tokens.isEmpty()) {
-                text
-            } else buildString {
-                for (t in tokens) {
-                    val kana = t.reading?.let { Deinflector.katakanaToHiragana(it) }
-                    append(kana ?: t.surface)
-                }
-            }
+            // TTS speaks the SAME readings the display shows — audio ==
+            // display by construction. Both project from ONE FULL-depth
+            // annotation now, so dictionary-corrected compound readings
+            // (一泊 → いっぱく) are spoken, not just displayed. annotate is
+            // fail-soft: no tokenizer → one plain span → surface text.
+            val spans = annotate(text, AnnotationDepth.FULL).spans
+            if (spans.isEmpty()) text
+            else buildString { for (s in spans) append(s.reading ?: s.surface) }
         }
 
     override fun close() {
