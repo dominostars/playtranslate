@@ -174,15 +174,18 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
                 )
             }
 
-    /** Two-store resolution for one (lookupForm, occurrence-hint) pair: the
-     *  full lookup (pack + Yomitan merge/synthesis) chooses the entry with
-     *  the hint as soft narrowing, and selectHeadword picks the occurrence-
-     *  validated reading. Readings-only fast resolution is a phase-4 concern
-     *  (refactor doc §6) — this path's cost equals today's words-list pass. */
+    /** Two-store resolution for one (lookupForm, occurrence-hint) pair.
+     *  Pack-first via the READINGS-ONLY path — identical entry choice to the
+     *  full lookup by shared SQL and shared headword pairing, at 2–3 indexed
+     *  queries — falling back to the full two-store lookup only on a pack
+     *  miss, where imported-dictionary synthesis may still resolve. The one
+     *  senses-bearing lookup per word now lives in the words projection
+     *  alone. */
     private suspend fun resolveWord(
         key: SentenceAnnotator.ResolutionKey,
     ): SentenceAnnotator.WordResolution {
-        val entry = lookup(key.lookupForm, key.hint)?.entries?.firstOrNull()
+        val entry = dict.lookupReadingsOnly(key.lookupForm, key.hint)
+            ?: lookup(key.lookupForm, key.hint)?.entries?.firstOrNull()
             ?: return SentenceAnnotator.WordResolution(null, null)
         val ref = entry.packId?.let { EntryRef.Pack(it) }
             ?: EntryRef.Imported(key.lookupForm, entry.headwords.firstOrNull()?.reading)
