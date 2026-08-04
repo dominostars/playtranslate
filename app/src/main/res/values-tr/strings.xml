@@ -142,6 +142,8 @@
 
     <string name="word_detail_common">Yaygın</string>
 
+    <string name="card_words_in_sentence">Cümlede geçen sözcükler</string>
+
     <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> Anki destesi</string>
 
     <string name="word_anki_deck_badge_cd">Anki\'de zaten var: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
@@ -461,6 +463,10 @@
 
     <string name="anki_added_no_audio"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye eklendi (ses kullanılamıyor)</string>
 
+    <string name="anki_added_sentence_success">Cümle kartı <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye eklendi</string>
+
+    <string name="anki_added_word_success">Sözcük kartı <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye eklendi</string>
+
     <string name="anki_adding_in_progress"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye ekleniyor…</string>
 
     <string name="anki_send_failed_title">Kart eklenemedi</string>
@@ -523,6 +529,8 @@
 
     <string name="audio_source_game_enable_hint">Kayıt yapılmıyor — sonraki kartlarda oyun sesini yakalamak için açın</string>
 
+    <string name="game_audio_zoom_hint">Daha fazla veya daha az ses görmek için parmaklarınızı yaklaştırıp uzaklaştırın</string>
+
     <string name="game_audio_trim_duration"><xliff:g id="seconds" example="2.4">%1$s</xliff:g> sn seçili · <xliff:g id="total_seconds" example="147">%2$s</xliff:g> sn kayıtlı</string>
 
     <string name="anki_game_audio_cell_untrimmed">Kaydederken kırpılacak</string>
@@ -552,6 +560,10 @@
     <string name="anki_field_mapping_save">Kaydet</string>
 
     <string name="anki_field_mapping_unconfigured">Göndermeden önce bu kart türü için alanları yapılandırın</string>
+
+    <string name="anki_first_field_unmapped"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'nin notu tanıması için “<xliff:g id="field_name" example="Key">%1$s</xliff:g>” alanına bir değer eşleyin.</string>
+
+    <string name="anki_first_field_empty">Bu kartta “<xliff:g id="field_name" example="Key">%1$s</xliff:g>” alanı boş. <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>, notu tanımlamak için ilk alanı kullanır; bu nedenle her kartta bir değeri olmalıdır.</string>
 
     <string name="anki_models_unavailable">Kart türlerine bakmak için <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> uygulamasına ulaşılamadı. Birazdan tekrar deneyin.</string>
 
@@ -1519,6 +1531,10 @@
     <string name="history_capture_image_toggle_title">Yakalama görüntülerini kaydet</string>
 
     <string name="history_capture_image_toggle_subtitle">Her kamera veya ekran yakalamasının bir görüntüsünü saklar</string>
+
+    <string name="history_hide_translations_toggle_title">Çevirileri gizle</string>
+
+    <string name="history_hide_translations_toggle_subtitle">Yalnızca yakalanan metni gösterir. Çevirisini görmek için bir satıra dokunun.</string>
 
     <string name="history_live_session_title">Canlı oturum</string>
 

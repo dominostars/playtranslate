@@ -161,6 +161,8 @@
 
     <string name="word_detail_common">Thông dụng</string>
 
+    <string name="card_words_in_sentence">Từ trong câu</string>
+
     <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> bộ thẻ Anki</string>
     <string name="word_anki_deck_badge_cd">Đã có trong Anki: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
 
@@ -465,6 +467,10 @@
 
     <string name="anki_added_no_audio">Đã thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (không có âm thanh)</string>
 
+    <string name="anki_added_sentence_success">Đã thêm thẻ câu vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_added_word_success">Đã thêm thẻ từ vựng vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
     <string name="anki_adding_in_progress">Đang thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
 
     <string name="anki_send_failed_title">Không thể thêm thẻ</string>
@@ -527,6 +533,8 @@
 
     <string name="audio_source_game_enable_hint">Chưa ghi âm — hãy bật để ghi lại âm thanh trò chơi cho các thẻ sau này</string>
 
+    <string name="game_audio_zoom_hint">Chụm hai ngón để xem nhiều hoặc ít âm thanh hơn</string>
+
     <string name="game_audio_trim_duration">Đã chọn <xliff:g id="seconds" example="2.4">%1$s</xliff:g> giây · Đã ghi <xliff:g id="total_seconds" example="147">%2$s</xliff:g> giây</string>
 
     <string name="anki_game_audio_cell_untrimmed">Cắt khi lưu</string>
@@ -556,6 +564,10 @@
     <string name="anki_field_mapping_save">Lưu</string>
 
     <string name="anki_field_mapping_unconfigured">Hãy cấu hình các trường cho loại thẻ này trước khi gửi</string>
+
+    <string name="anki_first_field_unmapped">Hãy ánh xạ giá trị cho “<xliff:g id="field_name" example="Key">%1$s</xliff:g>” để <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> nhận diện ghi chú.</string>
+
+    <string name="anki_first_field_empty">“<xliff:g id="field_name" example="Key">%1$s</xliff:g>” đang trống trên thẻ này. <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> dùng trường đầu tiên để nhận diện ghi chú, nên trường này cần có giá trị trên mọi thẻ.</string>
 
     <string name="anki_models_unavailable">Không thể kết nối <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> để tra loại thẻ. Hãy thử lại sau giây lát.</string>
 
@@ -1548,6 +1560,10 @@
     <string name="history_capture_image_toggle_title">Lưu ảnh chụp</string>
 
     <string name="history_capture_image_toggle_subtitle">Giữ một ảnh cho mỗi lần chụp bằng máy ảnh hoặc màn hình</string>
+
+    <string name="history_hide_translations_toggle_title">Ẩn bản dịch</string>
+
+    <string name="history_hide_translations_toggle_subtitle">Chỉ hiển thị văn bản đã chụp. Nhấn vào một dòng để xem bản dịch.</string>
 
     <string name="history_live_session_title">Phiên trực tiếp</string>
 

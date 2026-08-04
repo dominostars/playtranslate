@@ -362,3 +362,108 @@ word order and a tight prefix are both safe.
 ### Verdict
 
 **PASS.** One ⚠️ found and fixed, no ❌.
+
+---
+
+## Delta review 2026-08-04 (8 keys: one-tap card toasts, first-field guard, hide-translations toggle, waveform zoom hint)
+
+Independent review — the reviewer did not write these translations. Scope is the eight
+keys added by the working diff: `card_words_in_sentence`, `anki_added_sentence_success`,
+`anki_added_word_success`, `game_audio_zoom_hint`, `anki_first_field_unmapped`,
+`anki_first_field_empty`, `history_hide_translations_toggle_title`,
+`history_hide_translations_toggle_subtitle`. The locale's translator agent was killed
+before its own self-verification pass, so the mechanical layer was re-run from scratch
+here rather than trusted.
+
+Mechanical layer verified programmatically over the delta: all eight keys present, no
+duplicates, no extras; every `<xliff:g>` span byte-identical to EN in inner content, `id`
+and `example`, and none re-indexed, split or reordered; placeholder multisets identical
+to EN (`%1$s` ×1 in both first-field strings, none elsewhere); `<b>`, `\n`, `\{ \}`,
+`&lt;/&gt;/&amp;` counts match; no unescaped `'` or `"`; `name="…"` untouched; brand name
+Anki left untranslated and outside the translated run. Anchor positions confirmed against
+English document order — each new key sits between the same two neighbours it has in
+`values/strings.xml` (`word_detail_common` → `card_words_in_sentence`;
+`anki_added_no_audio` → `_sentence_success` → `_word_success` → `anki_adding_in_progress`;
+`audio_source_game_enable_hint` → `game_audio_zoom_hint` → `game_audio_trim_duration`;
+`anki_field_mapping_unconfigured` → `_unmapped` → `_empty` → `anki_models_unavailable`;
+`history_capture_image_toggle_subtitle` → the two `history_hide_translations_*`
+→ `history_live_session_title`). The one apparent order divergence at
+`card_words_in_sentence` is the file's long-standing placement of the whole `pos_*` block
+near the end, not a misplacement of the new key. **No 🛑 build-breaking issues.**
+
+### Findings (delta)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| `game_audio_zoom_hint` | 💬 | 双指张合可显示更多或更少的音频 | 双指张合可查看更多或更少的音频 | The pinch term itself is right — 双指张合 is AOSP/Google's own zh-CN wording, not 捏合 — and the caption fits the cell. Only the verb is a shade off: 显示 makes the app the actor, while Chinese gesture hints put the user there (双指张合可查看更多内容). 显示更多或更少的音频 also tracks the English word-for-word, and "less audio" is looser in Chinese than in English, where the waveform makes it obvious. Optional; the current text is grammatical and clear. |
+
+### Clean areas (delta) — checked, no findings
+
+**The two one-tap toasts pattern-match their family.** `anki_added_sentence_success` /
+`anki_added_word_success` reuse `anki_added_no_audio`'s exact tail 已添加到 Anki rather
+than inventing a second "added to Anki" phrasing, and they name the card shape with the
+same two words the mode switch uses — 句子 from `anki_mode_sentence`, 单词 from
+`anki_mode_word` — which is the whole point of these strings (one-tap applies the
+remembered mode silently, so the toast is where it becomes visible). 卡片 for "card"
+matches `anki_send_failed_title` / `anki_card_type_*`, and stays distinct from 抽认卡,
+which `anki_permission_rationale_message` uses for "flashcard".
+
+**笔记 is the right word and is used consistently.** It is Anki/AnkiDroid's own zh-CN term
+for a note (against 卡片 for card, 牌组 for deck), so the note-vs-card distinction the two
+first-field strings depend on survives: `anki_first_field_empty` keeps 该卡片 / 每张卡片
+for the card and 识别笔记 for the note, exactly mirroring English. Both strings use 笔记 —
+no drift between them. Worth recording that 笔记 appears nowhere else in this locale,
+because the app renders Anki's *note types* as 卡片类型 throughout (mirroring English's own
+"card type" choice), so a user meets 笔记 for the first time here. That is inherited from
+the English source, not a translation defect, and both strings name Anki as the actor
+(Anki 使用第一个字段来识别笔记), which frames 笔记 as Anki's concept rather than the app's.
+No change recommended.
+
+**Toast clamp has margin.** `anki_first_field_unmapped` renders 20 Han characters plus
+`Anki` and the field name — about 48 half-width columns with the `Key` example, against
+English's 52 for the same string. It is *shorter* than the source it was clamped for, so
+the Android 12+ two-line ceiling is no tighter here than in English, and no accuracy was
+traded for brevity. `anki_first_field_empty` is a full alert, where its 51 characters are
+fine.
+
+**Quoting and punctuation follow the file's house style.** The field name is wrapped in
+full-width “ ” in both first-field strings — the locale's registered quote pair, and the
+same convention already used for inline names in `anki_content_source_pick_title`
+(映射“%1$s”), `anki_card_type_basic_no_mapping` (“正面”和“背面”) and
+`anki_permission_rationale_message` (点按“继续”). Full-width ，。 throughout; no half-width
+punctuation leaked in.
+
+**Pangu spacing audited on every mixed-script string.** 已添加到 Anki and 以便 Anki 识别 take
+the single Han↔Latin space; 字段为空。Anki 使用 correctly takes *no* space after the
+full-width 。 before the Latin run; and no space is inserted inside “%1$s”, where the
+quotes are full-width — correct on both counts. The Han-only strings need none.
+
+**History terminology is the established one, not a second coinage.** 译文 for
+"translation" matches `section_translation`, `anki_group_translation`,
+`cd_copy_translation` and `cd_toggle_translation_visibility` — and is the right half of
+the 译文/翻译 pair, since the toggle hides the translated *text*, not the act. 截取到的 is
+the app's committed capture verb in exactly the participle form
+`history_toggle_subtitle` (将截取到的句子保存在此设备上) and
+`settings_cell_history_summary_on` (截取到的句子记录) already use, so no second capture
+verb was introduced. 文字 rather than 文本 is the correct pick of the file's two words for
+"text": 文字 is what the OCR reads (`status_no_text` 检测到%1$s文字), which is what a
+History row holds. 点按 matches the file's tap verb, and 记录 matches
+`history_delete_confirm_title` / `history_clear_confirm_message` for a history entry.
+
+**`card_words_in_sentence` matches the app's own header style.** 句子中的单词 parallels
+`anki_group_words_count`'s 卡片内的单词 — the same 「…的单词」 shape — so the baked-in card
+header and the editor group header read as one system. The compact 句中单词 (the analogue
+of ja 文中の単語) would also work, but breaking the parallel to save two characters is not
+worth it on a header with no width constraint; the card CSS's ALL CAPS is a no-op on Han.
+
+**Register and script.** None of the eight strings addresses the user with a pronoun, so
+the 你 / never-您 rule is not contacted; no 您 was introduced. Simplified characters only
+(单 显 请 为 识 别 笔 记 该 张 须 隐 译 点). Measure word 张 correctly applied to 卡片 in
+`anki_first_field_empty`. Grammar re-read with real values substituted for `%1$s` — both
+`Key` and a longer free-form name like `Expression (Japanese)` — reads correctly in both
+first-field strings, since the placeholder sits inside quotes followed by the classifier
+字段 and never carries a bare grammatical attachment.
+
+### Verdict
+
+**PASS.** One 💬 nit, no 🛑 / ❌ / ⚠️. Nothing blocks shipping these eight keys.

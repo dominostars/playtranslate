@@ -300,3 +300,138 @@ word order and a tight prefix are both safe.
 ### Verdict
 
 **PASS.** One ⚠️ found and fixed, no ❌. RTL layout remains the one thing this pass cannot certify from source.
+
+## Delta review 2026-08-04 (8 keys: one-tap card toasts, first-field guard, hide-translations toggle, waveform zoom hint)
+
+Scope: `card_words_in_sentence`, `anki_added_sentence_success`, `anki_added_word_success`,
+`game_audio_zoom_hint`, `anki_first_field_unmapped`, `anki_first_field_empty`,
+`history_hide_translations_toggle_title`, `history_hide_translations_toggle_subtitle`.
+Reviewed against the EN source and its translator comments; report only, no edits made.
+
+Mechanical layer verified programmatically over the delta: every `<xliff:g>` span
+byte-identical to EN (inner `%1$s`, `id` and `example` all unchanged, none split or
+re-indexed); placeholder multisets identical to EN; `<b>`, `\n`, `\{ \}`,
+`&lt;/&gt;/&amp;` counts match; no unescaped `'` or `"`; no duplicate `name`s and no
+keys absent from EN; the brand `Anki` untranslated in all four strings carrying it.
+`« »` remains the file's only quote pair (31 / 31, zero `“ ”`, zero `\"`), so the two
+first-field strings convert EN's curly quotes correctly. **No 🛑 build-breaking issues.**
+
+### Findings (delta)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| `anki_first_field_unmapped`, `anki_first_field_empty` | ⚠️ | «…من تحديد **الملاحظة**» / «…لتحديد **الملاحظة**» | **الملحوظة** | These two strings are the file's first and only use of Anki's *note* entity, and the entire reason EN introduces it (the file otherwise says بطاقة throughout) is to hand the reader a word to go find inside AnkiDroid. AnkiDroid's own Arabic calls that entity **الملحوظة** — 50 hits on the ملحوظ- lemma across the ten `values-ar` files sampled (إضافة ملحوظة, تحرير الملحوظة, نوع الملحوظات, حذف الملحوظات المحددة, لا يولِّد نوع الملحوظة الحالية أي بطاقات) — and reserves **ملاحظة** for the discourse marker «ملاحظة:» ("Note:") that opens its warning dialogs. So the chosen word is the one AnkiDroid uses for a *remark*, and تحديد الملاحظة reads to an AnkiDroid user as "identify the remark". Counter-consideration to weigh before applying: this file already diverges from AnkiDroid's Arabic on *deck* (مجموعة here, رزمة there) and that passed full review — but deck is a concept PlayTranslate renders in its own UI, whereas note exists in these strings only to be recognized in AnkiDroid's. |
+| `anki_first_field_unmapped`, `anki_first_field_empty` | 💬 | «من **تحديد** الملاحظة» | «من **التعرّف على** الملحوظة» | عيّن and حدّد are thesaurus synonyms, so «عيّن قيمة … ليتمكن Anki من تحديد …» spends both on two different acts inside one eight-word sentence, and تحديد الملاحظة can momentarily parse as *specifying* the note — the act the imperative just asked for — rather than *telling one note from another*, which is what Anki's first-field checksum actually does. التعرّف على carries the recognize sense cleanly. **تمييز is not available**: `anki_words_helper` already spends it on "highlight" (اضغط على كلمة لتمييزها في البطاقة). Stacks with the row above; apply to both strings or neither, so "identify" stays one verb. |
+
+### Clean areas (delta) — checked, no findings
+
+**`card_words_in_sentence`** is not the calque it looks like. الكلمات في الجملة reuses the
+file's own header template: `anki_group_words_count` ("Words on card") is already
+الكلمات في البطاقة, so the card-back header and the review-sheet group header now read
+as a matched pair. The tighter iḍāfa كلمات الجملة would be better isolated Arabic and
+worse here, because it would break that pair — the locale file wins over the general
+preference.
+
+**`anki_added_sentence_success` / `anki_added_word_success`.** تمت agrees with the
+feminine إضافة, and the frame matches the sibling `anki_added_no_audio`
+(تمت الإضافة إلى Anki) and `anki_adding_in_progress` (جارٍ الإضافة إلى Anki), so the
+one-tap toasts read as one family. The genitive heads بطاقة الجملة / بطاقة الكلمة reuse
+`anki_mode_sentence` / `anki_mode_word` verbatim (جملة / كلمة), which is what makes the
+toast do its job — EN's comment says the toast is where the silently-applied mode
+becomes visible, and the contrasting word lands in the same slot in both strings. The
+definite iḍāfa was checked for the competing "the card *of this* sentence" reading; both
+readings leave the user with the right idea of what was created, so it is not a finding.
+
+**`game_audio_zoom_hint`.** قرّب إصبعيك أو باعد بينهما is the standard Arabic
+pinch instruction, not a rendering of the English verb "pinch" — باعَدَ takes بين, so
+باعد بينهما is the more correct MSA government, not a wordier باعدهما. مقدار أكبر أو أقل
+is the idiomatic أكبر/أقل pairing (as in بدرجة أكبر أو أقل), not a mismatched comparative
+needing أصغر. On length: 58 characters sits mid-pack against the peers already shipped
+(de 82, ru 68, tr 67, th 46, en 32), and the caption's `TextView` in
+`app/src/main/res/layout/anki_game_audio_panel.xml` is `match_parent` × `wrap_content` at
+11sp with **no `maxLines` and no `ellipsize`**, so the worst case is a second line inside
+a 24dp-padded panel — never a clip. Length read from the layout, not guessed.
+
+**`anki_first_field_unmapped` against the two-line toast clamp.** 53 Arabic characters
+plus the field name, against EN's 50 plus the same name — no headroom was spent, and the
+Arabic needs the same two lines the English already needs. The added head noun **للحقل**
+before «%1$s» is load-bearing rather than padding: it gives the Latin field name an
+Arabic anchor so the clause never runs preposition-straight-into-Latin, and it tells the
+reader the quoted token is a field name. It also cannot be dropped for brevity without
+reintroducing that bidi seam. «…» matches `anki_content_source_pick_title`, which already
+quotes a field name this way, and عيّن matches that string's تعيين, so EN's "map" stays
+one Arabic verb across the mapping flow (`anki_card_type_edit_mapping_row_label`
+تعديل تعيين الحقول, `anki_card_type_basic_no_mapping` تعيين حقول). كوّن in
+`anki_field_mapping_unconfigured` renders a *different* EN verb ("Configure") and is not
+an inconsistency.
+
+**`anki_first_field_empty`** mirrors EN's own card/note split faithfully
+(بطاقة → الملاحظة → بطاقة), which is the right call: EN deliberately keeps both words,
+and flattening them to بطاقة would delete the distinction the alert exists to explain.
+The implied subject of يجب أن يحتوي is الحقل الأول (masculine) — agreement holds. Full
+alert, so length is not a constraint.
+
+**History block.** The toggle title إخفاء الترجمات is a maṣdar, matching every sibling in
+the block (حفظ صور الالتقاط, الاحتفاظ بسجل النصوص) rather than an imperative; الترجمات is
+the plural the app already uses (`onboarding_a11y_row_translate_sub`,
+`overlay_icon_gesture_hold`). The subtitle reuses the two settled History terms instead
+of inventing: **النص الملتقَط** joins الجمل الملتقَطة / التطبيق الملتقَط / النص الملتقَط
+(`history_toggle_subtitle`, `settings_cell_history_summary_on|off`,
+`error_single_app_not_fullscreen`, `tr_service_order_footer`), honouring the
+"captured is the app's established verb" constraint; and **سطر** is the same row noun as
+`history_delete_confirm_title`, `history_clear_confirm_message`, `history_empty_none` and
+the `history_line_count` plurals. EN's row / line / entry all collapse into one Arabic
+word here, which is correct — on screen they are one thing. ترجمته agrees with masculine
+سطر. The indefinite object in اضغط على سطر follows the reviewed precedent in
+`anki_words_helper` (اضغط على كلمة), and اضغط على is the file's single tap verb
+(`status_idle`, `overlay_icon_gesture_hold`).
+
+**Diacritics.** الملتقَط carries the same disambiguating fatḥa the file already uses
+everywhere (passive ملتقَط, not active ملتقِط); عيّن and قرّب carry only the shadda. No
+new tashkīl habit was introduced by this delta.
+
+### RTL render notes (delta)
+
+1. **No string opens on a Latin token.** Four of the eight embed Latin runs and all four
+   keep them off the sentence head: `anki_first_field_unmapped` opens on عيّن,
+   `anki_first_field_empty` on الحقل (EN opens on the quoted field name — the translator
+   prepended the head noun for exactly this reason), and both `anki_added_*` open on تمت
+   with `Anki` last. `anki_first_field_empty`'s second sentence flips to VSO —
+   يستخدم Anki الحقل الأول — where EN is "Anki uses the first field…"; that flip is what
+   keeps the brand out of the head position. The convention holds across the delta.
+
+2. **Guillemets around an LTR field name.** In «`%1$s`» with a Latin value, both marks are
+   bidi-neutral sitting between an Arabic (R) and a Latin (L) strong run, so UBA rule N2
+   resolves them to the paragraph level (RTL); both are `Bidi_Mirrored`, so U+00AB renders
+   at the **right** edge of the quoted run and U+00BB at the left — marks facing outward,
+   the Arabic convention — with the Latin name laid out LTR inside them. Correct by
+   construction, but this is the one case in the delta that wants a device eyeball with a
+   real AnkiDroid field name, and with an Arabic-named field if the user has one. The
+   trailing periods in both first-field strings are paragraph-final neutrals and will park
+   at the far **left** of the last line; that is right, and looks wrong to an LTR reviewer.
+
+3. **`card_words_in_sentence` is not rendered by Android.** It is baked into the Anki card
+   back as `<div class="gl-section">` (`app/src/main/java/com/playtranslate/ui/PtNoteBuilder.kt:138`,
+   fed from `AnkiSendPipeline.kt:192`). That class carries
+   `letter-spacing:0.12em; text-transform:uppercase`
+   (`app/src/main/java/com/playtranslate/ui/PtCardTemplates.kt:131-132`, mirrored in
+   `app/src/main/java/com/playtranslate/ui/AnkiHtmlStylers.kt:163-164`), and its container
+   `.pt-words` is `text-align:left` with no `dir` or `lang` anywhere on the emitted
+   document. Two consequences on an Arabic UI: `text-transform:uppercase` is a **no-op**
+   on Arabic script, so the header loses the size/weight contrast the Latin version buys
+   from caps; and WebView applies `letter-spacing` **between the glyphs of a cursive
+   script**, so الكلمات في الجملة renders with gaps opened inside each word. Both are
+   code-side, in a template outside this review's scope — flagged, not fixed, and *not*
+   a reason to shorten or change the translation. Note a `:lang(ar)` / `[dir=rtl]`
+   override could not hook it as the template stands: nothing emits a `lang` or `dir`, so
+   any fix has to be decided at build time (or `letter-spacing` dropped from
+   `.gl-section` / `.gl-pos` unconditionally).
+
+### Verdict (delta)
+
+**PASS with one ⚠️.** Report only — `values-ar/strings.xml` was not edited. Mechanical
+layer clean. One ⚠️ (الملاحظة → الملحوظة, spanning `anki_first_field_unmapped` and
+`anki_first_field_empty`) and one 💬 stacking on the same two keys; the other six keys are
+clean, and three of them are clean specifically because they reused an in-file precedent
+rather than translating the English afresh. RTL geometry still wants a device pass — the
+guillemet-around-field-name case in the two first-field strings is the thing to look at.

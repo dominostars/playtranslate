@@ -455,3 +455,140 @@ word order and a tight prefix are both safe.
 ### Verdict
 
 **PASS.** One ⚠️ and one 💬 found and fixed, no ❌.
+
+---
+
+## Delta review 2026-08-04 (8 keys: one-tap card toasts, first-field guard, hide-translations toggle, waveform zoom hint)
+
+Scope: the eight keys added to `values-ru/strings.xml` by the working-tree diff —
+`card_words_in_sentence`, `anki_added_sentence_success`, `anki_added_word_success`,
+`game_audio_zoom_hint`, `anki_first_field_unmapped`, `anki_first_field_empty`,
+`history_hide_translations_toggle_title`, `history_hide_translations_toggle_subtitle`.
+Reviewed by a second pair of eyes; nothing else in the file was touched.
+
+Mechanical layer verified programmatically over the eight: file is well-formed XML; all
+eight names present, no extras anywhere in the locale and no `translatable="false"`
+orphans; placeholder multisets identical to EN (`%1$s` in the two first-field strings,
+none elsewhere); every `<xliff:g>` span byte-identical to EN including `id` and `example`
+(`field_name`/`Key`, `brand_anki`/`Anki`); `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts
+match; no unescaped `'` or `"` in any text node; « » balanced and used in place of EN's
+curly “ ”, per the locale's quote convention. `./gradlew :app:processDebugResources` is
+green. **No 🛑 build-breaking issues.**
+
+### Findings (delta)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| `game_audio_zoom_hint` | 💬 | «Сведите или разведите пальцы, чтобы показать больше или меньше **аудио**» | «…больше или меньше **записи**» | This file already names the thing being zoomed: `audio_source_game_name` is «Звук игры» and `anki_game_audio_row_title` «Записывать звук игры». «аудио» is a second noun for it, borrowed from `anki_added_no_audio` («аудио недоступно»). A straight swap to «звука» would be worse, not better — «больше или меньше звука» reads as *volume*. «записи» names what the waveform actually is (the buffered recording), dodges the volume reading, keeps the game-audio family intact, and is 7 characters shorter. Optional: the current wording is correct and clear as it stands. |
+| `anki_first_field_unmapped`, `anki_first_field_empty` | 💬 | «…<xliff:g>Anki</xliff:g> определяет **заметку**…» (both) | keep — the note is on the neighbour | «заметка» is the right word: it is AnkiDroid's own Russian for *note*, so it byte-matches what the user sees in the app being written to, and the note-vs-card distinction is exactly what these two strings are about (Anki checksums the **note's** first field, not the card). Worth recording that this is its first appearance in a file that says «карточка» ~25 times — including `anki_card_type_row_label` «Тип карточки», which renders AnkiDroid's «Тип заметки». That collision is inherited from the English source (EN likewise says "Card Type" in the row and "the note" here); RU merely makes it visible, because Russian users have the AnkiDroid term in front of them. Not a defect in the delta — flagged so the EN row is on the record if the pair is ever revisited. |
+
+No ❌ and no ⚠️ in these eight.
+
+### Clean areas (delta) — checked, no findings
+
+**The two first-field strings hold under a real field name.** Both front the head noun
+«поле» and leave the free-form AnkiDroid field name inside « » as an undeclined citation,
+which is the technique this locale's parameters prescribe and the only thing that survives
+a user-defined name of unknown gender and declinability. `anki_first_field_unmapped`:
+«Сопоставьте поле «X»» — «поле» carries the accusative, so "Key", "Expression",
+"Слово" or "Выражение" all drop in unchanged. `anki_first_field_empty`: «Поле «X» пусто» —
+«поле» carries the nominative subject. Read with each of those four values, neither
+sentence bends. The anaphor «по нему» in the first string binds to «поле» (neuter,
+dative after «по»), correct; «оно» in the second binds to «первому полю», the nearest
+neuter and the intended referent — «заметку» is feminine and «Anki» is a brand, so there
+is no competing antecedent.
+
+**«пусто», not «пустое», is the right predicative.** The short-form neuter states a
+condition of this card ("is empty on this card"); the long form «пустое» would be
+attributive and read as a property of the field itself — wrong, since the same field is
+non-empty on other cards. The string's own «на этой карточке» confirms the state reading.
+Word order mirrors EN (field first, locative last), which is a deliberate scanability
+choice in a full alert: the user needs the field name before the condition.
+
+**Dropping "a value" from `anki_first_field_unmapped` does not cost the action.** EN maps
+value → field ("Map a value to X"); RU maps field → (source implied) («Сопоставьте поле
+«X»»). The RU direction is the one the app's own UI uses: the picker that opens
+immediately after this toast is titled `anki_content_source_pick_title` «Сопоставить
+«X»» — the same verb, the same object. The toast therefore names the verb the user is
+about to see, and the missing argument is supplied by the screen one tap later. If
+anything RU tracks the app's model more closely than EN does. `anki_field_mapping_unconfigured`
+keeps its distinct verb («Настройте поля…»), matching EN's own "Configure" on that
+different surface.
+
+**The «—» in a toast is fine, and it is sanctioned here.** Russian тире before a fronted
+explanatory clause («…— по нему Anki определяет заметку») is idiomatic and reads more
+naturally than a colon would, because the second clause justifies the imperative rather
+than stating its cause. The project's em-dash hook (`.claude/hooks/check-em-dash.py`) is
+scoped to `values/strings.xml` only and names Russian тире as the reason the locales are
+exempt, so this is not a hook or policy violation.
+
+**Toast line budget.** `anki_first_field_unmapped` renders 57 characters against EN's 51
+with the documented `Key` example — +12%, well under the ~30% Russian expansion this
+locale plans for, so it lands on the same two lines EN does under the Android 12+ clamp.
+A field name past roughly twenty characters would push a third line, but EN carries that
+exposure identically; nothing was gained by shortening the Russian further, and shortening
+it would have meant dropping «поле», the head noun the whole case-safety rests on.
+
+**Card-shape toasts.** «Карточка предложения добавлена» / «Карточка слова добавлена»:
+genitive of the mode labels as they appear in the toggle — `anki_mode_sentence`
+«Предложение» → «предложения», `anki_mode_word` «Слово» → «слова» — with feminine
+«добавлена» agreeing with «Карточка». Subject-first + participle-last is the standard
+Russian notification shape («Сообщение отправлено»), so these read as native toasts, not
+as translated headlines. «карточка предложения» is not invented: `anki_content_flag_sentence`
+(«Маркер карточки предложения»), `anki_content_words_table` («карточки предложений») and
+`anki_game_audio_row_subtitle` («новые карточки предложений») already use it. For the word
+shape the translator correctly chose «Карточка слова» over the file's «карточка лексики»
+(`anki_content_flag_vocabulary`) — these toasts exist precisely to surface which side of
+the Предложение/Слово toggle fired, so echoing the toggle's own label is the point.
+Divergence from `anki_added_no_audio` («Добавлено в Anki», impersonal) mirrors EN's own
+split, and all three end on «в Anki», so the family stays coherent.
+
+**Hide-translations toggle — aspect confirmed.** «Скрывать переводы» is imperfective, and
+this file splits aspect by surface: toggle titles take the imperfective
+(`history_toggle_title` «Хранить историю текста», `history_capture_image_toggle_title`
+«Сохранять изображения захвата», and the direct analogue
+`settings_hide_overlays_during_auto_mode` «Скрывать наложения в авторежиме»), while
+one-shot actions take the perfective («Скрыть» in `floating_icon_close_label_hide`,
+`overlay_hide_for_now`). The new title lands on the correct side of that split. Plural
+«переводы» is right for a list-wide setting and does not conflict with the singular in
+`hotkey_show_translations_title` («…для показа перевода»), where a single on-screen
+overlay is meant — Russian number here follows the referent, as it should.
+
+**Hide-translations subtitle — terminology.** «захваченный текст» reuses the app's
+established capture verb rather than inventing a second one, exactly as the hard
+constraint requires: `history_toggle_subtitle` «Сохранять захваченные предложения»,
+`settings_cell_history_summary_on/off` «Журнал захваченных предложений». It also stays
+clear of «распознанный», which this file reserves for OCR (`status_ocr`, `settings_header_ocr`
+«Распознавание текста»). «строку» matches `history_empty_none` («Строки появляются по мере
+перевода») and `history_clear_confirm_message` («Все сохранённые строки»); «Нажмите на
+строку» matches `anki_words_helper`'s «Нажмите на слово». The infinitive → imperative shift
+between the two sentences mirrors EN's own, and bare «перевод» in the second sentence is
+unambiguous after «Нажмите на строку» — «её перевод» would only add weight. 78 chars vs
+EN 62 (+26%) in a wrapping subtitle.
+
+**Card-back header.** `card_words_in_sentence` «Слова в предложении» is sentence case as
+the EN comment requires; the uppercasing is CSS (`.gl-section`, `text-transform:uppercase`
+with `letter-spacing:0.12em` at `0.55em` in `PtCardTemplates.kt` / `AnkiHtmlStylers.kt`),
+and Cyrillic uppercases cleanly, so «СЛОВА В ПРЕДЛОЖЕНИИ» is what renders. Baked at send
+time, full-width block with 20px/4px margins — 19 chars against EN's 17 clips nothing.
+
+**Zoom-hint length read against the real view, not guessed.** 68 chars vs EN 32 (+112%)
+looked alarming, so the host was checked: the caption in `anki_game_audio_panel.xml` is
+`match_parent` / `wrap_content` at 11sp with no `maxLines` and no `ellipsize`, inside a
+24dp-padded sheet panel, so it wraps to a second line and clips nothing. The expansion is
+not padding either — Russian has no one-word "pinch", and «Сведите или разведите пальцы»
+is Google's own Russian for the gesture, which is the wording a Russian Android user has
+already been taught. Naming both directions is arguably more informative than EN's bare
+"Pinch" for a gesture with no visual affordance. No accuracy was traded for brevity here,
+and none should be.
+
+**Register and punctuation.** Formal lowercase «вы» throughout the delta («Сопоставьте»,
+«Нажмите»); no «ты»; « » quotes in both first-field strings where EN uses “ ”; terminal
+periods present exactly where EN has them (both first-field strings, the history subtitle)
+and absent exactly where EN omits them (both toasts, the zoom hint, both headers/titles).
+
+### Verdict
+
+**PASS.** Two 💬, no ⚠️, no ❌, no 🛑. The delta's hardest spot — a free-form,
+user-supplied AnkiDroid field name dropped into two Russian sentences — is handled with
+the head-noun-plus-citation-quotes construction and holds for any name.

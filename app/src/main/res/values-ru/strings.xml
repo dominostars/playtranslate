@@ -161,6 +161,8 @@
 
     <string name="word_detail_common">Частое</string>
 
+    <string name="card_words_in_sentence">Слова в предложении</string>
+
     <string name="word_anki_in_decks">Колод Anki: <xliff:g id="count" example="3">%1$d</xliff:g></string>
     <string name="word_anki_deck_badge_cd">Уже в Anki: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
 
@@ -485,6 +487,10 @@
 
     <string name="anki_added_no_audio">Добавлено в <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (аудио недоступно)</string>
 
+    <string name="anki_added_sentence_success">Карточка предложения добавлена в <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_added_word_success">Карточка слова добавлена в <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
     <string name="anki_adding_in_progress">Добавление в <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
 
     <string name="anki_send_failed_title">Не удалось добавить карточку</string>
@@ -547,6 +553,8 @@
 
     <string name="audio_source_game_enable_hint">Запись не ведётся — включите, чтобы записывать звук игры для будущих карточек</string>
 
+    <string name="game_audio_zoom_hint">Сведите или разведите пальцы, чтобы показать больше или меньше аудио</string>
+
     <string name="game_audio_trim_duration">Выбрано <xliff:g id="seconds" example="2.4">%1$s</xliff:g> с · записано <xliff:g id="total_seconds" example="147">%2$s</xliff:g> с</string>
 
     <string name="anki_game_audio_cell_untrimmed">Обрезка при сохранении</string>
@@ -576,6 +584,10 @@
     <string name="anki_field_mapping_save">Сохранить</string>
 
     <string name="anki_field_mapping_unconfigured">Настройте поля для этого типа карточки перед отправкой</string>
+
+    <string name="anki_first_field_unmapped">Сопоставьте поле «<xliff:g id="field_name" example="Key">%1$s</xliff:g>» — по нему <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> определяет заметку.</string>
+
+    <string name="anki_first_field_empty">Поле «<xliff:g id="field_name" example="Key">%1$s</xliff:g>» пусто на этой карточке. <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> определяет заметку по первому полю, поэтому оно должно быть заполнено на каждой карточке.</string>
 
     <string name="anki_models_unavailable">Не удалось связаться с <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> для получения типов карточек. Повторите попытку через минуту.</string>
 
@@ -1630,6 +1642,10 @@
     <string name="history_capture_image_toggle_title">Сохранять изображения захвата</string>
 
     <string name="history_capture_image_toggle_subtitle">Хранить снимок каждого захвата с камеры или экрана</string>
+
+    <string name="history_hide_translations_toggle_title">Скрывать переводы</string>
+
+    <string name="history_hide_translations_toggle_subtitle">Показывать только захваченный текст. Нажмите на строку, чтобы увидеть перевод.</string>
 
     <string name="history_live_session_title">Сеанс реального времени</string>
 

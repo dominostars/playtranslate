@@ -161,6 +161,8 @@
 
     <string name="word_detail_common">常用</string>
 
+    <string name="card_words_in_sentence">文中の単語</string>
+
     <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g>個のAnkiデッキ</string>
     <string name="word_anki_deck_badge_cd">Anki登録済み：<xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
 
@@ -476,6 +478,10 @@
 
     <string name="anki_added_no_audio"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加しました（音声は利用できません）</string>
 
+    <string name="anki_added_sentence_success">文カードを<xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加しました</string>
+
+    <string name="anki_added_word_success">単語カードを<xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加しました</string>
+
     <string name="anki_adding_in_progress"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加中…</string>
 
     <string name="anki_send_failed_title">カードを追加できませんでした</string>
@@ -538,6 +544,8 @@
 
     <string name="audio_source_game_enable_hint">録音していません。オンにすると、今後のカード用にゲーム音声を録音します</string>
 
+    <string name="game_audio_zoom_hint">ピンチ操作で音声の表示範囲を調整</string>
+
     <string name="game_audio_trim_duration">選択：<xliff:g id="seconds" example="2.4">%1$s</xliff:g>秒 · 録音済み：<xliff:g id="total_seconds" example="147">%2$s</xliff:g>秒</string>
 
     <string name="anki_game_audio_cell_untrimmed">保存時にトリミング</string>
@@ -567,6 +575,10 @@
     <string name="anki_field_mapping_save">保存</string>
 
     <string name="anki_field_mapping_unconfigured">送信する前に、このカードタイプのフィールドを設定してください</string>
+
+    <string name="anki_first_field_unmapped"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>がノートを識別できるよう、「<xliff:g id="field_name" example="Key">%1$s</xliff:g>」に値を割り当ててください</string>
+
+    <string name="anki_first_field_empty">このカードでは「<xliff:g id="field_name" example="Key">%1$s</xliff:g>」が空です。<xliff:g id="brand_anki" example="Anki">Anki</xliff:g>は最初のフィールドでノートを識別するため、どのカードでもこのフィールドに値が必要です。</string>
 
     <string name="anki_models_unavailable"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>に接続できず、カードタイプを取得できませんでした。しばらくしてからもう一度お試しください。</string>
 
@@ -1607,6 +1619,10 @@
     <string name="history_capture_image_toggle_title">キャプチャ画像を保存</string>
 
     <string name="history_capture_image_toggle_subtitle">カメラや画面のキャプチャごとに画像を保存します</string>
+
+    <string name="history_hide_translations_toggle_title">翻訳を非表示</string>
+
+    <string name="history_hide_translations_toggle_subtitle">キャプチャした文のみを表示します。項目をタップすると翻訳が表示されます。</string>
 
     <string name="history_live_session_title">ライブセッション</string>
 

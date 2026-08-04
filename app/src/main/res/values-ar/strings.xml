@@ -149,6 +149,8 @@
 
     <string name="word_detail_common">شائع</string>
 
+    <string name="card_words_in_sentence">الكلمات في الجملة</string>
+
     <string name="word_anki_in_decks">مجموعات Anki: <xliff:g id="count" example="3">%1$d</xliff:g></string>
     <string name="word_anki_deck_badge_cd">موجودة بالفعل في Anki: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
 
@@ -451,6 +453,10 @@
 
     <string name="anki_added_no_audio">تمت الإضافة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (الصوت غير متاح)</string>
 
+    <string name="anki_added_sentence_success">تمت إضافة بطاقة الجملة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_added_word_success">تمت إضافة بطاقة الكلمة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
     <string name="anki_adding_in_progress">جارٍ الإضافة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
 
     <string name="anki_send_failed_title">تعذّرت إضافة البطاقة</string>
@@ -509,6 +515,8 @@
 
     <string name="audio_source_game_enable_hint">التسجيل متوقف — فعّله لتسجيل صوت اللعبة للبطاقات المستقبلية</string>
 
+    <string name="game_audio_zoom_hint">قرّب إصبعيك أو باعد بينهما لعرض مقدار أكبر أو أقل من الصوت</string>
+
     <string name="game_audio_trim_duration">تم تحديد <xliff:g id="seconds" example="2.4">%1$s</xliff:g> ث · تم تسجيل <xliff:g id="total_seconds" example="147">%2$s</xliff:g> ث</string>
 
     <string name="anki_game_audio_cell_untrimmed">الاقتصاص عند الحفظ</string>
@@ -536,6 +544,10 @@
     <string name="anki_field_mapping_save">حفظ</string>
 
     <string name="anki_field_mapping_unconfigured">كوّن الحقول لنوع البطاقة هذا قبل الإرسال</string>
+
+    <string name="anki_first_field_unmapped">عيّن قيمة للحقل «<xliff:g id="field_name" example="Key">%1$s</xliff:g>» ليتمكن <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> من التعرّف على الملحوظة.</string>
+
+    <string name="anki_first_field_empty">الحقل «<xliff:g id="field_name" example="Key">%1$s</xliff:g>» فارغ في هذه البطاقة. يستخدم <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> الحقل الأول للتعرّف على الملحوظة، لذا يجب أن يحتوي على قيمة في كل بطاقة.</string>
 
     <string name="anki_models_unavailable">تعذّر الوصول إلى <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> لجلب أنواع البطاقات. حاول مرة أخرى بعد قليل.</string>
 
@@ -1501,6 +1513,10 @@
     <string name="history_capture_image_toggle_title">حفظ صور الالتقاط</string>
 
     <string name="history_capture_image_toggle_subtitle">الاحتفاظ بصورة لكل التقاط بالكاميرا أو للشاشة</string>
+
+    <string name="history_hide_translations_toggle_title">إخفاء الترجمات</string>
+
+    <string name="history_hide_translations_toggle_subtitle">عرض النص الملتقَط فقط. اضغط على سطر لرؤية ترجمته.</string>
 
     <string name="history_live_session_title">جلسة مباشرة</string>
 

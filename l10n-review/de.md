@@ -265,3 +265,94 @@ word order and a tight prefix are both safe.
 ### Verdict
 
 **PASS.** One ⚠️ found and fixed, no ❌.
+
+---
+
+## Delta review 2026-08-04 (8 keys: one-tap card toasts, first-field guard, hide-translations toggle, waveform zoom hint)
+
+Scope: `card_words_in_sentence`, `anki_added_sentence_success`, `anki_added_word_success`,
+`game_audio_zoom_hint`, `anki_first_field_unmapped`, `anki_first_field_empty`,
+`history_hide_translations_toggle_title`, `history_hide_translations_toggle_subtitle`.
+
+Mechanical layer verified programmatically over the eight keys: all present, none extra;
+every `<xliff:g>` span byte-identical to EN in inner content, `id` and `example`
+(`field_name`/`Key`, `brand_anki`/`Anki`); `%1$s` parity in both first-field strings; no
+`<b>`, `\n`, `\{ \}` or entity counts to preserve in this set; no raw `'` or `"` outside
+the xliff attributes; German „ “ used in the correct low-open/high-close order in
+`anki_first_field_unmapped` and `anki_first_field_empty`; `name="…"` untouched; **Anki**
+left untranslated everywhere it appears. **No 🛑 build-breaking issues.**
+
+### Findings (delta)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| `anki_first_field_unmapped` | 💬 | „%1$s“ … damit Anki die Notiz **erkennen kann**. | „%1$s“ … damit Anki die Notiz **erkennt**. | Length safety only. The source comment pins this string to a two-line Android 12+ toast clamp, which *clips* rather than wraps, and `%1$s` is a free-form user-defined field name that can be long. DE is 63 chars to EN's 52 before the name is substituted. Dropping the modal recovers 6 chars with no meaning lost — «damit Anki die Notiz erkennt» is fully idiomatic. Grammar itself is correct: `zuordnen` is the file's committed verb for *map* (`anki_content_source_pick_title` = „%1$s“ zuordnen), the separable prefix lands correctly in final position, and the dative/accusative pair reads right — the overtly marked accusative «einen Wert» forces „%1$s“ into the dative, so the bare unarticled name cannot be misparsed for more than a word. Inserting «dem Feld» would remove even that momentary garden path and cost only +3 chars net alongside this trim, but against a clipping toast the trim alone is the safer half. |
+| `anki_first_field_empty` | 💬 | „%1$s“ ist auf dieser Karte leer. Anki erkennt Notizen anhand des ersten Feldes, **deshalb braucht es** auf jeder Karte einen Wert. | **Das Feld** „%1$s“ ist auf dieser Karte leer. Anki erkennt Notizen anhand des ersten Feldes, **deshalb muss dort** auf jeder Karte **ein Wert stehen**. | Two small polish items in a string the comment explicitly frees from any length limit ("Shown in a full alert, so length is fine"), so both are free. (a) The bare quoted name as grammatical subject *does* work for every possible user-defined field name — there is no article to inflect and the copula is invariant `ist` regardless of what the name looks like — but German prefers a head noun before a quoted identifier; «Das Feld „Key“ ist … leer» anchors the token as a referent rather than a mention. (b) `es` in the final clause is meant to be *das erste Feld* (neuter, correct antecedent), but it competes with two other readings — Anki as the subject carried over from the preceding clause, and the impersonal «es braucht + Akk.» — and all three happen to converge on the intended meaning, which is why it survives. «deshalb muss dort … ein Wert stehen» names the slot with `dort` and removes the pronoun entirely. Neither item is an error; the current text is grammatical and faithful. |
+| `game_audio_zoom_hint` | 💬 | Ziehe zwei Finger zusammen oder auseinander, um mehr oder weniger Audio anzuzeigen | Ziehe zwei Finger zusammen oder auseinander für mehr oder weniger Audio | Purely optional compression. **No truncation risk** — the caption is a `match_parent` / `wrap_content` `TextView` at 11sp in `anki_game_audio_panel.xml` with no `maxLines` and no `ellipsize`, so it wraps rather than clips. But at 82 chars against EN's 32 it takes two lines under the waveform where EN takes one, doubling the height of what is meant to be a whisper-weight hint. The `für`-tail drops 11 chars and the slightly abstract «Audio anzuzeigen» while keeping the du imperative. **Explicit verdict on the proposed alternative «Zum Anpassen des Ausschnitts zwei Finger zusammen- oder auseinanderziehen»: worse, do not adopt.** It saves only ~10 chars (still two lines, so it buys nothing), abandons the du imperative for a nominalized infinitive that breaks with the file's own gesture-hint precedent `floating_menu_drag_instruction` («Ziehe mit dem Finger, um …»), and swaps the concrete «Audio» for the abstract «Ausschnitt», which is exactly the information the caption exists to convey. |
+
+### Clean areas (delta) — checked, no findings
+
+**Register.** All three imperatives in this batch are du and match the file: «Ordne … zu»,
+«Tippe auf …», «Ziehe …». A naive grep for `Sie|Ihre` still turns up five hits file-wide,
+and all five are re-verified as the *feminine/neuter third-person pronoun* in
+sentence-initial position, not formal address — `onboarding_notif_row_silent_sub` (die
+Benachrichtigung), `error_single_app_not_fullscreen` (die Übersetzung),
+`a11y_required_displays_message` and `a11y_required_hotkey_message` (die Berechtigung),
+`dialog_hotkey_setup_typing_key` (die Taste). No Sie leak.
+
+**Compounds and the toast pattern.** `anki_added_sentence_success` / `anki_added_word_success`
+sit on the committed frame from `anki_added_no_audio` («Zu Anki hinzugefügt»), just with
+the card noun fronted — the elliptical verb-final toast fragment is consistent across all
+three. **Satzkarte** is not a new coinage: it is already committed four times
+(`anki_game_audio_row_subtitle`, `anki_content_words_table`, `anki_content_flag_sentence`,
+`anki_content_flag_targeted_sentence`), and **Wortkarte** is its obvious and standard
+parallel. Correctly *not* collapsed to the bare `anki_mode_sentence` / `anki_mode_word`
+values (Satz / Wort): those two are mode chips, whereas these toasts exist precisely to
+name the *card shape* that one-tap silently produced, so the `-karte` compound is
+load-bearing, exactly as in EN.
+
+**Notiz — first use, and it is the right call.** The translator introduces *Notiz* for
+Anki's *note*, a word this file had never used (it says Karte / Kartentyp, 11 occurrences).
+Checked and accepted on three grounds. (1) It is AnkiDroid's own German term — a German
+AnkiDroid user has already seen Notiz / Notiztyp in that app, so the toast points at
+something nameable rather than inventing vocabulary. (2) It is faithful to a deliberate
+split in the source: EN uses "card type" in 12 user-facing strings and "note" only in these
+two, so DE's Kartentyp/Notiz pairing mirrors EN's Karte-vs-Notiz distinction rather than
+drifting from it. (3) The distinction is carried, not blurred, in `anki_first_field_empty`:
+«Anki erkennt Notizen anhand des ersten Feldes» attributes identification to the *note*
+while «ist auf dieser Karte leer» / «auf jeder Karte» keep the user's object the *card* —
+the same two-level structure EN uses, and the reader does not need to understand Anki's
+note→card model to act on the message. `erkennen` is also the right verb for *identify*
+here, matching the duplicate-detection sense.
+
+**`card_words_in_sentence`.** «Wörter im Satz» is baked into the card at send time and
+rendered through `gl-section`, which applies `text-transform:uppercase` (`PtCardTemplates.kt`,
+`AnkiHtmlStylers.kt`). Verified safe under uppercasing: `ö` → `Ö` is lossless, and the
+string contains **no ß**, which is the one German character that would have turned a
+CSS-uppercased header into SS or ẞ depending on engine. Sentence case in the source, as the
+comment requires.
+
+**History strings.** `history_hide_translations_toggle_title` = «Übersetzungen ausblenden»
+uses Android's standard *ausblenden* for hide. In the subtitle, **aufgenommen** is the
+correct participle and is not ambiguous with audio recording here: it is the file's
+committed screen-capture verb (`history_toggle_subtitle` «Aufgenommene Sätze auf diesem
+Gerät speichern», `settings_cell_history_summary_on/_off` «Liste der aufgenommenen Sätze»),
+the language-parameters doc names this an explicit hard constraint (reuse the locale's
+existing capture verb, never introduce a second), and the noun **Text** in «den
+aufgenommenen Text» rules out the audio reading outright — the audio sense of the same
+participle lives on a duration, `game_audio_trim_duration` («147 s aufgenommen»), where no
+confusion is reachable. **Zeile** for EN's "row" is likewise consistent rather than new: the
+DE History family already renders EN's *line* as Zeile in `history_line_count`,
+`history_empty_none` and `history_clear_confirm_message`, while *Eintrag* stays reserved for
+EN's *entry* (`history_delete_confirm_title`) — so DE keeps one noun per object where EN
+itself is looser. The infinitive-then-imperative shift across the two sentences («Nur den
+aufgenommenen Text anzeigen. Tippe auf eine Zeile …») is deliberate and correct: sentence
+one is a setting description and matches the infinitive style of its sibling subtitles
+(`history_toggle_subtitle`, `history_capture_image_toggle_subtitle`), sentence two is an
+actual instruction to the user and takes the du imperative. Dropping EN's possessive "its"
+in favour of «die Übersetzung» is the more natural German.
+
+### Verdict (delta)
+
+**PASS.** No 🛑, no ❌, no ⚠️ — three 💬 polish items, two of them free (an unconstrained
+alert, a wrapping caption) and one a length-safety trim on the clipping toast.

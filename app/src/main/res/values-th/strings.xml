@@ -152,6 +152,8 @@
 
     <string name="word_detail_common">ทั่วไป</string>
 
+    <string name="card_words_in_sentence">คำในประโยค</string>
+
     <string name="word_anki_in_decks">สำรับ Anki <xliff:g id="count" example="3">%1$d</xliff:g> ชุด</string>
     <string name="word_anki_deck_badge_cd">มีอยู่ใน Anki แล้ว: <xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
 
@@ -427,6 +429,10 @@
 
     <string name="anki_added_no_audio">เพิ่มไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แล้ว (ไม่มีเสียง)</string>
 
+    <string name="anki_added_sentence_success">เพิ่มการ์ดประโยคไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แล้ว</string>
+
+    <string name="anki_added_word_success">เพิ่มการ์ดคำไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แล้ว</string>
+
     <string name="anki_adding_in_progress">กำลังเพิ่มไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
 
     <string name="anki_send_failed_title">ไม่สามารถเพิ่มการ์ดได้</string>
@@ -485,6 +491,8 @@
 
     <string name="audio_source_game_enable_hint">ยังไม่ได้บันทึก — เปิดเพื่อเก็บเสียงเกมไว้ใช้กับการ์ดในอนาคต</string>
 
+    <string name="game_audio_zoom_hint">บีบนิ้วเพื่อแสดงเสียงช่วงยาวขึ้นหรือสั้นลง</string>
+
     <string name="game_audio_trim_duration">เลือกไว้ <xliff:g id="seconds" example="2.4">%1$s</xliff:g> วิ · บันทึกไว้ <xliff:g id="total_seconds" example="147">%2$s</xliff:g> วิ</string>
 
     <string name="anki_game_audio_cell_untrimmed">ตัดเมื่อบันทึกการ์ด</string>
@@ -512,6 +520,10 @@
     <string name="anki_field_mapping_save">บันทึก</string>
 
     <string name="anki_field_mapping_unconfigured">กำหนดค่าฟิลด์สำหรับประเภทการ์ดนี้ก่อนส่ง</string>
+
+    <string name="anki_first_field_unmapped">แมปค่าให้กับฟิลด์ “<xliff:g id="field_name" example="Key">%1$s</xliff:g>” เพื่อให้ <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> ระบุโน้ตได้</string>
+
+    <string name="anki_first_field_empty">ฟิลด์ “<xliff:g id="field_name" example="Key">%1$s</xliff:g>” ในการ์ดนี้ว่างอยู่ โดย <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> ใช้ฟิลด์แรกเพื่อระบุโน้ต จึงต้องมีค่าในทุกการ์ด</string>
 
     <string name="anki_models_unavailable">ไม่สามารถเชื่อมต่อกับ <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> เพื่อดึงประเภทการ์ดได้ ลองอีกครั้งในอีกสักครู่</string>
 
@@ -1482,6 +1494,10 @@
     <string name="history_capture_image_toggle_title">บันทึกภาพที่จับได้</string>
 
     <string name="history_capture_image_toggle_subtitle">เก็บรูปภาพของการจับภาพจากกล้องหรือหน้าจอทุกครั้ง</string>
+
+    <string name="history_hide_translations_toggle_title">ซ่อนคำแปล</string>
+
+    <string name="history_hide_translations_toggle_subtitle">แสดงเฉพาะข้อความที่จับภาพไว้ แตะรายการเพื่อดูคำแปล</string>
 
     <string name="history_live_session_title">เซสชันสด</string>
 

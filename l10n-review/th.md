@@ -270,3 +270,103 @@ word order and a tight prefix are both safe.
 ### Verdict
 
 **PASS.** One ⚠️ found and fixed, no ❌.
+
+## Delta review 2026-08-04 (8 keys: one-tap card toasts, first-field guard, hide-translations toggle, waveform zoom hint)
+
+Mechanical layer verified programmatically over the eight delta keys: all eight present in
+`values-th`, none extra, none duplicated, and each sits in the same EN-relative position as its
+source (no ordering drift). Every `<xliff:g>` span is byte-identical to English including `id`
+and `example` (`brand_anki`/`Anki` x4, `field_name`/`%1$s`/`Key` x2); placeholder multisets are
+identical (`%1$s` once in each first-field string, none elsewhere); `“ ”` counts match EN exactly
+(1/1 in `anki_first_field_unmapped` and `anki_first_field_empty`, zero in the other six); no
+`<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` deltas; no unescaped `'` or `"` in any text run (the
+only quote characters in the file's text are the typographic pair, which needs no escaping);
+`name=` untouched; the Anki brand left untranslated inside its span. **No 🛑 build-breaking issues.**
+
+### Findings (delta)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| `game_audio_zoom_hint` | ⚠️ | `บีบนิ้วเพื่อแสดงช่วงเสียงให้กว้างขึ้นหรือแคบลง` | `บีบนิ้วเพื่อแสดงเสียงช่วงยาวขึ้นหรือสั้นลง` | The decision to render "more or less audio" as an extent rather than a quantity is **right** — a bare เสียงมากขึ้น/น้อยลง would have read as volume. The execution picks the wrong compound. **ช่วงเสียง** is an established Thai collocation for *vocal / pitch range* (ช่วงเสียงของนักร้อง), so "แสดงช่วงเสียงให้กว้างขึ้น" lands in the frequency domain — near the very audio-property misreading the translator was dodging. Two further wobbles: `แสดง X ให้กว้างขึ้น` predicates on how X is *rendered* (cf. แสดงกราฟให้ใหญ่ขึ้น), which reads as stretching the waveform rather than choosing how much of it is on screen; and กว้าง/แคบ is a spatial axis, while the thing being sized is a **time** window — the readout directly above it is denominated in วิ (`game_audio_trim_duration`: เลือกไว้ 2.4 วิ), so a reader arriving from that line takes ให้กว้างขึ้นหรือแคบลง as *resize my 2.4-second selection*, which is what the drag handles do, not what pinch does. The suggested form flips the noun order to the file's own attested pattern — `anki_game_audio_row_subtitle` already writes เก็บ**เสียง**เกม**ช่วง**ไม่กี่นาทีล่าสุด, i.e. [เสียง] + [ช่วง + duration] — which dissolves the ช่วงเสียง compound, moves to the ยาว/สั้น axis that matches วิ, keeps แสดง as the head verb, and introduces no new noun (the file has no waveform term; คลื่น appears nowhere in `values-th`). |
+| `anki_first_field_empty` | 💬 | `…ในการ์ดนี้ว่างอยู่ <xliff…>Anki</xliff…> ใช้ฟิลด์แรก…` | `…ในการ์ดนี้ว่างอยู่ โดย <xliff…>Anki</xliff…> ใช้ฟิลด์แรก…` | Dropping the English full stops is correct for this file, but here the sentence break falls immediately **before** a Latin token, so the boundary space is indistinguishable from the space Thai must put beside Latin anyway — the two sentences fuse into one run at a glance. The file's precedent (`anki_words_helper`: …ในการ์ด Anki แตะที่คำ…) has the Latin token *ending* the first clause, where the following space still reads as a break; this is the inverted, riskier shape. A one-syllable connective restores the seam at no cost, and this string is a full alert with room to spare (84 chars vs 112 in EN). Optional — nothing is mistranslated. |
+
+### Clean areas (delta — checked, no findings)
+
+**The two one-tap toasts are exactly right.** `anki_added_sentence_success` / `anki_added_word_success`
+reuse the sibling's frame verbatim — `anki_added_no_audio` is เพิ่มไปยัง Anki แล้ว, and these are
+เพิ่ม**การ์ดประโยค**ไปยัง Anki แล้ว / เพิ่ม**การ์ดคำ**ไปยัง Anki แล้ว, same เพิ่ม…ไปยัง…แล้ว shape,
+same ไปยัง as the action label `history_action_anki` (เพิ่มไปยัง Anki), with แล้ว carrying the
+completed sense that distinguishes the toast from the button. The card shapes derive cleanly from the
+mode chips: `anki_mode_sentence` ประโยค → การ์ดประโยค, `anki_mode_word` คำ → การ์ดคำ, head-initial and
+unambiguous. Notably การ์ดคำ was **not** collapsed into การ์ดคำศัพท์, which `anki_content_flag_vocabulary`
+already owns for Migaku's "Vocabulary card" flag — English keeps "Word card" and "Vocabulary card"
+apart and so does Thai. Since the whole point of these strings is to surface a silently-applied mode,
+naming the shape in the first two words (การ์ดประโยค / การ์ดคำ) puts the payload where a two-second
+toast can deliver it.
+
+**โน้ต for Anki's *note* is the correct call, and applied consistently.** บันทึก is genuinely
+unavailable — it carries save/record 38 times across this file, including in the immediately adjacent
+`anki_card_type_basic_no_mapping` (คุณกำลัง**บันทึก**คำหรือประโยค) and `anki_game_audio_row_title`
+(**บันทึก**เสียงเกม); reusing it here would have produced "so Anki can identify the save". โน้ต's
+competing everyday reading is the musical one, but in both strings the word sits immediately after the
+Latin brand (`Anki ระบุโน้ตได้`, `Anki ใช้ฟิลด์แรกเพื่อระบุโน้ต`), which forecloses it. The two
+strings agree on both the noun and the verb (ระบุโน้ต in each), so the term is introduced once and
+never drifts. That the app's Thai UI otherwise says ประเภทการ์ด rather than ประเภทโน้ต is inherited
+from English, which likewise says "card type" everywhere and "note" only in this pair — Thai mirrors
+the source rather than inventing a distinction.
+
+**แมป / ฟิลด์ register matches the established siblings.** แมป is already the file's verb for field
+mapping (`anki_card_type_edit_mapping_row_label` แก้ไขการแมปฟิลด์, `anki_content_source_pick_title`
+แมป “%1$s”, `anki_card_type_basic_no_mapping` ไม่จำเป็นต้องแมปฟิลด์), and ฟิลด์ is the noun throughout
+the `anki_content_*_desc` family. `anki_first_field_unmapped` reverses the argument structure to
+แมป[ค่า]ให้กับ[ฟิลด์] to track the English "Map a value to X" — correct Thai, and adding the ฟิลด์ head
+noun before the quoted name is an improvement over a bare quote, applied identically in both new
+strings. Quote spacing follows the file exactly: a space before “ and after ”, matching
+`anki_content_frequency_stylized_desc` (สำหรับฟิลด์ “FrequenciesStylized” ใช้กับ…) and `status_idle`
+(แตะ “แปล” เพื่อ…) — correct, since the enclosed field name is a user-supplied Latin token and Thai
+spaces border Latin and symbols.
+
+**Toast clamp measured, not assumed.** `anki_first_field_unmapped` fires through
+`Toast.makeText(..., LENGTH_LONG)` in `AnkiSendDispatch.kt:218`, so Android 12+ clamps it to two lines.
+The Thai body is 50 characters against English's 52 (the dropped full stop nets out against Thai's
+longer verb phrase), so it fits wherever English fits; the free variable is the user-defined field name,
+which is identical in both locales. No shortening warranted. `game_audio_zoom_hint`'s own surface was
+read rather than guessed: in `anki_game_audio_panel.xml` it is a `match_parent` / `wrap_content`
+TextView at 11sp with `gravity="center_horizontal"` and **no** `maxLines` or `ellipsize`, so the Thai
+line wraps harmlessly and length is not a constraint there — the finding above is about sense, not width.
+
+**History terminology reuses what is already committed.** `history_hide_translations_toggle_title`
+ซ่อนคำแปล matches the app's existing hide-translations vocabulary letter for letter
+(`translate_button_subtitle_hold_to_hide_translations` กดค้างเพื่อ**ซ่อนคำแปล**บนหน้าจอเกม,
+`cd_toggle_translation_visibility` สลับการแสดง**คำแปล**), and คำแปล is the file-wide noun for
+*translation* across `section_translation`, `anki_group_translation`, `overlay_mode_option_translation`
+and eleven more. The subtitle's ข้อความที่**จับภาพ**ไว้ satisfies the hard constraint that "captured"
+reuse the locale's screen-capture verb — `history_toggle_subtitle` is บันทึกประโยคที่จับภาพไว้ and
+`settings_cell_history_summary_on` is รายการประโยคที่จับภาพไว้, same จับภาพ…ไว้ frame — while correctly
+tracking English's own ข้อความ/ประโยค split ("captured text" here, "captured sentences" there).
+แตะ**รายการ** for "Tap a row" is the right unit noun: it matches `history_delete_confirm_title`
+(ลบรายการนี้หรือไม่), the one other string that names the History entry as a tappable object, and
+correctly avoids บรรทัด, which this feature reserves for the *content* lines
+(`history_line_count` %d บรรทัด, `history_empty_none`, `history_clear_confirm_message`) exactly as
+English reserves "lines". The two-clause subtitle uses a single space as the sentence break with no
+full stop, consistent with the file.
+
+**`card_words_in_sentence` คำในประโยค** is a bare noun phrase in the same register as the file's other
+section headers (`section_translation` คำแปล, `anki_group_translation` คำแปล), number-neutral as Thai
+requires, and unaffected by the `.gl-section` CSS that wraps it (`text-transform:uppercase` is a no-op
+for Thai; `letter-spacing:0.12em` applies between grapheme clusters, so combining vowels and tone marks
+stay welded to their base consonants). It is baked into the card at send time via
+`AnkiSendPipeline.kt:192`, so no runtime relocalization concern.
+
+**Register and spacing across all eight.** Neutral-polite throughout, no ครับ/ค่ะ, no あなた-equivalent
+second person forced in where Thai would elide it. No sentence-final periods anywhere, matching the
+file. Spaces appear only at Latin borders (Anki, the quoted field name) and at clause boundaries; no
+space was introduced inside a Thai run. None of the eight strings contains a language-name placeholder,
+so the ภาษา prefix rule is not in play here.
+
+### Verdict
+
+**PASS with one ⚠️.** `game_audio_zoom_hint` should be reworded (the ช่วงเสียง compound reads as pitch
+range); `anki_first_field_empty` has an optional 💬. The other six are clean, and the two judgement
+calls the translator flagged — โน้ต over บันทึก, and rendering "more or less audio" as an extent rather
+than a quantity — are both correct in principle; only the second one's wording needs work.

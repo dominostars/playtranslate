@@ -431,3 +431,116 @@ word order and a tight prefix are both safe.
 ### Verdict
 
 **PASS.** One ⚠️ found and fixed, no ❌.
+
+---
+
+## Delta review 2026-08-04 (8 keys: one-tap card toasts, first-field guard, hide-translations toggle, waveform zoom hint)
+
+Keys under review: `card_words_in_sentence`, `anki_added_sentence_success`,
+`anki_added_word_success`, `game_audio_zoom_hint`, `anki_first_field_unmapped`,
+`anki_first_field_empty`, `history_hide_translations_toggle_title`,
+`history_hide_translations_toggle_subtitle`.
+
+Mechanical layer verified programmatically over these 8 keys: all present, no extras;
+placeholder multisets identical to EN (`%1$s` in the two first-field strings, none
+elsewhere); every `<xliff:g>` span byte-identical to EN including `id` and `example`
+(`field_name`/`Key`, `brand_anki`/`Anki`); `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;`
+counts match; no raw `'` or `"` in visible text; `name="…"` untouched; Anki left
+untranslated. **No 🛑 build-breaking issues.**
+
+### Findings (delta)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| `game_audio_zoom_hint` | ⚠️ | "Pince para mostrar mais ou menos áudio" | "Aproxime ou afaste os dedos para mostrar mais ou menos áudio" | *Pinçar* is a Microsoft-terminology rendering of "pinch", not the wording Brazilian users meet on Android — Google's pt-BR (Maps, Fotos, Acessibilidade) says **"Aproxime ou afaste os dedos" / "Junte ou afaste os dedos"**. Bare imperative "Pince" gives no clue that two fingers are involved, and the comment says this caption exists precisely because pinch is *the one gesture with no visual affordance* — so it has to teach the gesture, not name it. Every sibling locale that isn't calquing a Latin cognate spells the gesture out (ru «Сведите или разведите пальцы», de "Ziehe zwei Finger zusammen oder auseinander", ko 두 손가락을 모으거나 벌려, vi "Chụm hai ngón", ar قرّب إصبعيك أو باعد بينهما, tr "iki parmağınızla sıkıştırın"); fr *Pincez* / es *Pellizca* work only because those verbs are the established gesture words in their locales, and *pinçar* is not in pt-BR. **Brevity is not a defence here:** the caption is a `match_parent` / `wrap_content` `TextView` at 11sp in `anki_game_audio_panel.xml` with no `maxLines` and no `ellipsize`, so it wraps freely — de already ships 82 chars in that exact view against pt-BR's 38. The long form (57 chars) costs one wrapped line and buys a gesture the user can actually perform. |
+
+### Clean areas (delta) — checked, no findings
+
+**Quoting convention is defensible.** Both first-field strings use curly “ ” — the
+locale's documented quote pair, and a per-string mirror of EN, whose own comment
+declares "The “ ” curly quotes are intentional typography". That is the rule the whole
+pt-BR file already follows: curly where EN is curly or where EN has no quotes and pt-BR
+adds them for an inline name (`anki_content_pitch_position_desc` “PitchPosition”,
+`anki_content_frequency_values_desc` “Frequency”, `settings_ocr_footer_guidance`,
+`a11y_stuck_message_xiaomi` “Sem restrições”), escaped `\"` where EN is escaped
+(`anki_content_source_pick_title`, `status_no_text`, `onboarding_a11y_enable_title`,
+the `anki_content_flag_*_desc` "x" markers). Note for **upstream, not for this locale**:
+`anki_first_field_unmapped` (curly) and `anki_content_source_pick_title` (straight) quote
+the *same* user field name on surfaces that appear seconds apart — the toast fires and
+the mapping dialog opens right behind it — so the user sees “Key” then "Key". pt-BR
+reproduces EN's own split byte-for-byte; the inconsistency lives in
+`values/strings.xml`.
+
+**One-tap toasts — agreement and compound both hold.** *Cartão* is masculine, so
+"Cartão de frase **adicionado**" / "Cartão de palavra **adicionado**" agree correctly
+(the trap here is a translator reaching for *carta*/*tarjeta*-style feminine agreement;
+es and fr legitimately have "añadida"/"ajoutée" because their noun is feminine). The
+compounds match the mode chips the toast is making visible — `anki_mode_sentence`
+= "Frase", `anki_mode_word` = "Palavra" — and "cartão de frase" is the file's existing
+term (`anki_game_audio_row_subtitle`, `anki_content_words_table`,
+`anki_content_flag_sentence`), so the toast reads as the same object the rest of the UI
+names. Naming the subject where `anki_added_no_audio` leaves it bare ("Adicionado ao
+Anki (áudio indisponível)") is right, not a divergence: these two strings exist *because*
+the applied mode is otherwise invisible.
+
+**"nota" is the correct term, and it is AnkiDroid's own.** Anki/AnkiDroid ship
+pt-BR with the Note/Card distinction intact — *nota* vs *cartão* — so a user who reads
+"o Anki usa o primeiro campo para identificar a nota" maps it straight onto what
+AnkiDroid shows them. Introducing it here rather than collapsing it into *cartão* is the
+better call, because the sentence is specifically about note-level duplicate identity.
+Residual friction is upstream: the app says *card type* (pt-BR "tipo de cartão",
+`anki_field_mapping_unconfigured`, `anki_card_type_no_models`) where AnkiDroid pt-BR says
+*tipo de nota*. That mismatch is inherited from the EN source and must not be "fixed"
+in the locale file alone.
+
+**`anki_first_field_unmapped` — verb, preposition, article, length all check out.**
+*Mapear* is the file's mapping verb (`anki_content_source_pick_title` = "Mapear",
+`anki_card_type_basic_no_mapping` = "mapeamento de campos"), and "Mapeie" is the você
+imperative the file uses throughout ("Configure", "Salve", "Toque em"). "no campo “X”"
+earns its extra words: it supplies a masculine head noun in front of a *user-defined*
+field name, so *nenhum* value of `%1$s` can drag the sentence into a gender error — the
+same protection the fronted "O campo" gives `anki_first_field_empty`. "para que o Anki
+identifique" follows the file's brand-article convention (`anki_send_failed_message`
+"O AnkiDroid não aceitou o cartão", `anki_not_installed_message`, `anki_models_unavailable`
+"conectar ao AnkiDroid"). On the two-line toast clamp: 66 chars with a 3-char field name
+is mid-pack, not a pt-BR outlier (es 66, tr 69, de 62, fr 62, ru 57, EN 51) — the clamp
+risk is shared and comes from long user field names, not from this translation. If
+headroom is ever wanted, "para o Anki identificar a nota" (personal infinitive, equally
+idiomatic in BR) trims it without touching the gender anchor.
+
+**`anki_first_field_empty` reads as a native alert.** Fronting "O campo" before the
+quoted name is the load-bearing choice — "“Expressão” está vazio/vazia" would be
+unresolvable, "O campo “Expressão” está vazio" is always right. "então" as the
+consequence connector matches EN's own conversational "so" and sits correctly in a
+você-register app (*portanto* would over-formalize). *neste cartão* (the card at hand)
+vs anaphoric *esse campo* (the field just named) is the standard BR este/esse split, not
+a slip. Making "it needs a value" explicit as "esse campo precisa ter um valor" resolves
+an ambiguity the EN leaves open (field or note?), and the alert has no length budget to
+protect.
+
+**History strings sit inside their family.** *Ocultar* is the file's established hide
+verb (`overlay_hide_for_now`, `settings_hide_overlays_during_auto_mode`,
+`cd_toggle_translation_visibility`, `floating_icon_close_label_hide`) — no second verb
+introduced. *texto capturado* reuses the app's captured-verb (`history_toggle_subtitle`
+"frases capturadas", `settings_cell_history_summary_*`, `tr_service_order_footer` "o
+texto capturado"), and the sentence/text split mirrors EN's own. *linha* for a History
+row matches `history_empty_none` ("As linhas aparecem…") and
+`history_clear_confirm_message` ("Todas as linhas salvas"). The 3rd-person + imperative
+mix is EN's structure and the siblings' style: "Mostra apenas…" has the same implicit
+subject as "Salva as frases capturadas" (`history_toggle_subtitle`) and "Guarda uma
+foto…" (`history_capture_image_toggle_subtitle`), while "Toque em uma linha" matches
+`anki_words_helper` ("Toque em uma palavra para destacá-la"). **Dropping EN's possessive
+("its translation" → "a tradução") is the right call, not an omission** — in a você-register
+pt-BR app "sua tradução" reads first as *your* translation, and "a tradução dela" is
+clunky; the referent is pinned by "uma linha" three words earlier in the same sentence.
+
+**`card_words_in_sentence`.** "Palavras na frase" is sentence case, so the card CSS
+`text-transform` yields PALAVRAS NA FRASE cleanly (no accents to mangle); *frase* matches
+`anki_mode_sentence`; 17 chars, same as EN. The na/da choice is genuinely split across
+the locale set (es "Palabras **en** la frase", fr "Mots **de** la phrase") — pt-BR's
+reading is fine either way and not worth a churn on a string that is baked into every
+sentence card already sent.
+
+### Verdict (delta)
+
+One ⚠️ (`game_audio_zoom_hint`), no ❌, no 🛑. The other seven are clean.
