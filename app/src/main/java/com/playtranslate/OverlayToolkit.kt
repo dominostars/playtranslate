@@ -8,6 +8,7 @@ import android.graphics.Rect
 import android.text.TextPaint
 import com.playtranslate.language.HintTextAnnotation
 import com.playtranslate.language.SourceLanguageEngine
+import com.playtranslate.language.hintAnnotations
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.model.TextSegments
@@ -255,7 +256,16 @@ object OverlayToolkit {
         for (line in lines) {
             val isVertical = line.orientation == com.playtranslate.language.TextOrientation.VERTICAL
             if (line.text.isEmpty()) continue
-            val annotations = engine.annotateForHintText(line.text)
+            // FULL-depth: live furigana shows the SAME dictionary-corrected
+            // readings the result sheet displays and TTS speaks (一泊 →
+            // いっぱく) — never the raw per-token readings. The engine's
+            // annotation LRU makes repeated lines (live re-OCRs the same
+            // text every cycle) near-free; Thor measurement of the cold-line
+            // cost over the replay corpus (typewriter sequences included) is
+            // the outstanding gate item — if a budget problem appears, cap
+            // the re-glob candidate WINDOWS, never skip the pass (refactor
+            // doc §6: the fallback must stay reading-neutral).
+            val annotations = engine.annotate(line.text).hintAnnotations()
             val lineBoxes = mutableListOf<TextBox>()
 
             if (line.symbols.isNotEmpty()) {
