@@ -142,6 +142,12 @@ class PtNoteBuilderTest {
                 selected = emptySet(),
                 lang = SourceLangId.ZH,
             ),
+            annotation = com.playtranslate.language.SentenceAnnotation(
+                text = "今天", lang = SourceLangId.ZH, importGeneration = 0,
+                spans = listOf(com.playtranslate.language.AnnotatedSpan(
+                    start = 0, end = 2, surface = "今天", lookupForm = "今天",
+                )),
+            ),
             imageFilename = null, audioFilename = null,
             wordAudioFilenames = emptyMap(), audioCredit = null,
         )

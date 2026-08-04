@@ -724,7 +724,7 @@ class DictionaryManager private constructor(private val context: Context) {
          */
         private const val REGLOB_WINDOW = 8
 
-        private fun isLookupWorthy(token: String): Boolean {
+        internal fun isLookupWorthy(token: String): Boolean {
             if (token.isBlank()) return false
             if (token.all { it.code <= 0x007F }) return false
             if (token.length == 1 && token[0] in 'ぁ'..'ゖ') return false

@@ -144,8 +144,15 @@ internal object SentenceAnnotator {
         val tokenReading =
             if (memberReadings.any { it.isNullOrEmpty() }) null
             else memberReadings.joinToString("")
+        // Per-token spans keep contentOnly semantics: a content, lookup-
+        // worthy token exposes its lemma (this is what the DB-not-ready
+        // fallback and TOKENS depth surface to the tokenize projection);
+        // when the re-glob ran, every such token is already a re-glob span,
+        // so this branch only fires for tokens the re-glob dropped.
         val lookupForm = src?.lookupForm
-            ?: members.singleOrNull()?.takeIf { it.category.isContent }?.dictionaryForm
+            ?: members.singleOrNull()
+                ?.takeIf { it.category.isContent && DictionaryManager.isLookupWorthy(it.dictionaryForm) }
+                ?.dictionaryForm
         val res = src?.let { resolutions[ResolutionKey(it.lookupForm, it.reading)] }
         val resReading = res?.reading
         val overrideApplied = resReading != null &&
@@ -162,6 +169,12 @@ internal object SentenceAnnotator {
             lookupForm = lookupForm,
             word = if (res?.entryRef != null) src?.lookupForm else null,
             entryRef = res?.entryRef,
+            // Re-glob spans carry the hint resolution used (null for lemma
+            // variants BY DESIGN — an inflected concat can never match an
+            // entry reading); per-token fallback spans hint their own token
+            // reading, the contentOnly-era behavior hydration expects.
+            lookupHint = if (src != null) src.reading
+                else tokenReading?.takeIf { lookupForm != null },
             reading = reading,
             furigana = parts,
             tokenReading = tokenReading,

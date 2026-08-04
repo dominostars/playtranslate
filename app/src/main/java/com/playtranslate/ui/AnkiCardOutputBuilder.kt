@@ -36,6 +36,9 @@ object AnkiCardOutputBuilder {
      */
     fun forSentence(
         cardData: SentenceAnkiContentFragment.CardData,
+        /** The sentence's single analysis — the furigana renderer draws it.
+         *  Null degrades SENTENCE_FURIGANA to the plain+<b> form. */
+        annotation: com.playtranslate.language.SentenceAnnotation? = null,
         imageFilename: String?,
         examplesHtml: String = "",
         audioFilename: String? = null,
@@ -117,6 +120,7 @@ object AnkiCardOutputBuilder {
             words = cardData.words,
             highlightedWords = cardData.selectedWords,
             sourceLangId = cardData.sourceLangId,
+            annotation = annotation,
         )
         val translationHtml = htmlEscape(cardData.target).replace(Regex("[\\n\\r]+"), "<br>")
         val sortedWords = if (cardData.selectedWords.isNotEmpty()) {

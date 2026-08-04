@@ -70,19 +70,9 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
         return PreloadResult.Success
     }
 
-    override suspend fun tokenize(text: String): List<TokenSpan> {
-        // Imported Yomitan term dicts list expressions JMdict lacks — offer
-        // them as a second phrase gate for the n-gram re-glob. Null (not a
-        // no-op lambda) when no term dict is installed, so the tokenizer
-        // skips the whole oracle pass.
-        val phraseOracle = yomitan.phraseOracle()
-        return dict.tokenizeWithSurfaces(text, phraseOracle).map {
-            TokenSpan(
-                surface = it.surface, lookupForm = it.lookupForm,
-                reading = it.reading, inflections = it.inflections,
-            )
-        }
-    }
+    // tokenize() is a projection of annotate(WORDS) — see the override below
+    // next to annotate(). The imported-dict phrase oracle rides inside
+    // annotate's re-glob call.
 
     override suspend fun searchPrefix(query: String, limit: Int): List<TokenSpan> =
         dict.searchPrefix(query, limit).map {
@@ -148,16 +138,29 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
             val tokens = SudachiJapaneseTokenizer.Provider.analyze(text)
             if (tokens.isEmpty()) return@withContext SentenceAnnotation.plain(text, profile.id)
             val reglob =
-                if (depth == AnnotationDepth.FULL) {
+                if (depth != AnnotationDepth.TOKENS) {
                     dict.reglobSpansForTokens(tokens, yomitan.phraseOracle())
                 } else null
             val resolutions =
-                if (reglob == null) emptyMap()
+                if (reglob == null || depth != AnnotationDepth.FULL) emptyMap()
                 else SentenceAnnotator.resolutionKeys(reglob).associateWith { resolveWord(it) }
-            applyPitch(SentenceAnnotator.annotate(
+            val annotation = SentenceAnnotator.annotate(
                 text, profile.id, tokens, reglob, resolutions, importGeneration = 0,
-            ))
+            )
+            // Pitch rides display depths; WORDS is the tokenize projection's
+            // depth and never renders ruby.
+            if (depth == AnnotationDepth.WORDS) annotation else applyPitch(annotation)
         }
+
+    override suspend fun tokenize(text: String): List<TokenSpan> =
+        annotate(text, AnnotationDepth.WORDS).spans
+            .filter { it.lookupForm != null }
+            .map {
+                TokenSpan(
+                    surface = it.surface, lookupForm = it.lookupForm!!,
+                    reading = it.lookupHint, inflections = it.inflections,
+                )
+            }
 
     /** Two-store resolution for one (lookupForm, occurrence-hint) pair: the
      *  full lookup (pack + Yomitan merge/synthesis) chooses the entry with

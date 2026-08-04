@@ -1,39 +1,88 @@
 package com.playtranslate.ui
 
+import com.playtranslate.dictionary.DictionaryManager.Companion.phraseCandidatesFor
+import com.playtranslate.dictionary.DictionaryManager.Companion.reglobSpans
 import com.playtranslate.dictionary.JaCategory
 import com.playtranslate.dictionary.JaToken
-import com.playtranslate.dictionary.JapaneseTokenizer
+import com.playtranslate.dictionary.SentenceAnnotator
+import com.playtranslate.language.AnnotatedSpan
+import com.playtranslate.language.EntryRef
+import com.playtranslate.language.SentenceAnnotation
 import com.playtranslate.language.SourceLangId
 import org.junit.Assert.*
 import org.junit.Test
 
 /**
- * Unit tests for [SentenceAnkiHtmlBuilder]'s field-value builders
- * (plain sentence, furigana brackets, words table) and their
- * HTML-escaping contract. Pure JVM — no Android classes needed.
+ * Tests for [SentenceAnkiHtmlBuilder]'s field-value RENDERERS (plain
+ * sentence, furigana brackets, words table) and their HTML-escaping
+ * contract. Pure JVM — no Android classes needed.
+ *
+ * Furigana tests drive the REAL annotator (reglobSpans + SentenceAnnotator
+ * over canned tokens) and render its annotation — pipeline tests, not
+ * fixture theater. Reading-POLICY semantics (override guards, per-occurrence
+ * resolution) are pinned in SentenceAnnotatorTest; here we pin the rendered
+ * bytes: <wbr> conventions, <b> nesting, data-pt-* wrappers.
  */
 class SentenceAnkiHtmlBuilderTest {
 
-    // Sudachi can't tokenize in a plain JVM test (it needs a pack .dic file),
-    // so the furigana-assembly tests inject canned tokens. This validates the
-    // builder's <wbr>/bold/offset logic; real tokenization is covered on-device.
-    private fun fakeTokenizer(vararg entries: Pair<String, List<JaToken>>): JapaneseTokenizer {
-        val map = entries.toMap()
-        return object : JapaneseTokenizer {
-            override fun analyze(text: String): List<JaToken> = map[text] ?: emptyList()
-        }
+    private var pos = 0
+    private fun tok(
+        surface: String,
+        cat: JaCategory,
+        readingKatakana: String? = null,
+        dict: String = surface,
+    ): JaToken {
+        val begin = pos; pos += surface.length
+        return JaToken(
+            surface = surface, begin = begin, end = begin + surface.length,
+            category = cat, dictionaryForm = dict, normalizedForm = dict,
+            reading = readingKatakana, isOov = false,
+        )
     }
 
-    private fun jaTok(surface: String, begin: Int, readingKatakana: String) = JaToken(
-        surface = surface, begin = begin, end = begin + surface.length,
-        category = JaCategory.VERB, dictionaryForm = surface, normalizedForm = surface,
-        reading = readingKatakana, isOov = false,
+    private fun jaAnn(
+        text: String,
+        tokens: List<JaToken>,
+        knownPhrases: Set<String> = emptySet(),
+        knownForms: Set<String> = emptySet(),
+        resolutions: Map<SentenceAnnotator.ResolutionKey, SentenceAnnotator.WordResolution> = emptyMap(),
+    ): SentenceAnnotation = SentenceAnnotator.annotate(
+        text, SourceLangId.JA, tokens,
+        reglobSpans(tokens, phraseCandidatesFor(tokens), knownPhrases, knownForms),
+        resolutions, importGeneration = 0,
     )
 
+    private fun pack(id: Long, reading: String) =
+        SentenceAnnotator.WordResolution(EntryRef.Pack(id), reading)
+
+    /** Hand-tiled ZH annotation: [terms] anchored in order, gaps plain —
+     *  the shape ChineseEngine.annotate produces (renderer readings come
+     *  from the words list, so parts stay empty here). */
+    private fun zhAnn(text: String, terms: List<String>): SentenceAnnotation {
+        val spans = mutableListOf<AnnotatedSpan>()
+        var emitted = 0
+        for (t in terms) {
+            val at = text.indexOf(t, emitted)
+            require(at >= 0) { "term $t not found" }
+            if (at > emitted) spans.add(AnnotatedSpan(emitted, at, text.substring(emitted, at)))
+            spans.add(AnnotatedSpan(at, at + t.length, t, lookupForm = t))
+            emitted = at + t.length
+        }
+        if (emitted < text.length) spans.add(AnnotatedSpan(emitted, text.length, text.substring(emitted)))
+        return SentenceAnnotation(text, SourceLangId.ZH, 0, spans)
+    }
+
+    /** Kana-only single-word JA annotation (the pitch-wrapper tests). */
+    private fun kanaAnn(): SentenceAnnotation {
+        pos = 0
+        return jaAnn(
+            "なるほど",
+            listOf(tok("なるほど", JaCategory.INTERJECTION, "ナルホド")),
+            knownForms = setOf("なるほど"),
+        )
+    }
+
     // ── SENTENCE (plain) ─────────────────────────────────────────────────
-    // Plain Japanese text with `<b>` around each highlighted-word
-    // surface form. Mirrors JPMN's `Sentence` authoring convention:
-    // raw kanji + `<b>` highlights, no bracket markup.
 
     @Test fun `Plain sentence wraps highlighted dict-form in bold`() {
         val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
@@ -67,279 +116,219 @@ class SentenceAnkiHtmlBuilderTest {
         assertEquals("line1<br>line2", result)
     }
 
-    // ── SENTENCE_FURIGANA brackets ───────────────────────────────────────
-    // `kanji[reading]` per kanji block; kana stays bare. Anki's
-    // `{{furigana:Field}}` filter strips brackets and renders ruby.
+    // ── SENTENCE_FURIGANA (JA) — renderer over the real annotator ────────
 
     @Test fun `Sentence furigana isolates kanji from its okurigana`() {
-        // Tap on 聞 should show just き (the kanji's reading), not きい.
-        // Each kanji bracket is wrapped in `<wbr>` separators —
-        // invisible word-break opportunities that (a) Anki's furigana
-        // regex (` ?([^ >]+?)\[(.+?)\]`) can't span across because of
-        // the `>` in the tag, and (b) Migaku's DOM-walking parser
-        // should treat as word boundaries. Net effect: each kanji is
-        // its own ruby base AND its own Migaku word, with no visible
-        // whitespace in the rendered card.
+        pos = 0
+        val ann = jaAnn(
+            "聞いた",
+            listOf(tok("聞い", JaCategory.VERB, "キイ", dict = "聞く"), tok("た", JaCategory.AUX, "タ")),
+            knownForms = setOf("聞く"),
+        )
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "聞いた", sourceLangId = SourceLangId.JA,
-            tokenizer = fakeTokenizer("聞いた" to listOf(jaTok("聞いた", 0, "キイタ"))),
+            "聞いた", sourceLangId = SourceLangId.JA, annotation = ann,
         )
         assertEquals("聞[き]<wbr>いた", result)
     }
 
     @Test fun `Sentence furigana isolates each kanji in compound verbs`() {
-        // 取り出す: per-kanji split with both kanji blocks bordered by
-        // `<wbr>` so each tap-popup surfaces just one kanji's reading.
+        pos = 0
+        val ann = jaAnn(
+            "取り出す",
+            listOf(tok("取り出す", JaCategory.VERB, "トリダス")),
+            knownForms = setOf("取り出す"),
+        )
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "取り出す", sourceLangId = SourceLangId.JA,
-            tokenizer = fakeTokenizer("取り出す" to listOf(jaTok("取り出す", 0, "トリダス"))),
+            "取り出す", sourceLangId = SourceLangId.JA, annotation = ann,
         )
         assertEquals("取[と]<wbr>り<wbr>出[だ]<wbr>す", result)
     }
 
     @Test fun `Sentence furigana isolates kanji word from following particle`() {
-        // Regression: tapping 友達 in 友達に聞いた used to show ともだちに.
-        // The `<wbr>` after each kanji bracket gives Migaku's parser
-        // a word boundary so に doesn't get pulled into 友達's popup.
-        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "友達に聞いた", sourceLangId = SourceLangId.JA,
-            tokenizer = fakeTokenizer(
-                "友達に聞いた" to listOf(jaTok("友達", 0, "トモダチ"), jaTok("聞いた", 3, "キイタ")),
+        pos = 0
+        val ann = jaAnn(
+            "友達に聞いた",
+            listOf(
+                tok("友達", JaCategory.NOUN, "トモダチ"), tok("に", JaCategory.PARTICLE, "ニ"),
+                tok("聞い", JaCategory.VERB, "キイ", dict = "聞く"), tok("た", JaCategory.AUX, "タ"),
             ),
+            knownForms = setOf("友達", "聞く"),
+        )
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            "友達に聞いた", sourceLangId = SourceLangId.JA, annotation = ann,
         )
         assertEquals("友達[ともだち]<wbr>に<wbr>聞[き]<wbr>いた", result)
     }
 
     @Test fun `Sentence furigana isolates kanji from trailing kana plus non-CJK suffix`() {
-        // Regression: 今度はC was popping up こんどはC because Migaku
-        // merged everything from `今度[こんど]` to the next whitespace
-        // into one word. The `<wbr>` after the bracket isolates 今度.
+        pos = 0
+        val ann = jaAnn(
+            "今度はC",
+            listOf(tok("今度", JaCategory.NOUN, "コンド")),
+            knownForms = setOf("今度"),
+        )
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "今度はC", sourceLangId = SourceLangId.JA,
-            tokenizer = fakeTokenizer("今度はC" to listOf(jaTok("今度", 0, "コンド"))),
+            "今度はC", sourceLangId = SourceLangId.JA, annotation = ann,
         )
         assertEquals("今度[こんど]<wbr>はC", result)
     }
 
-    @Test fun `Sentence furigana preserves newlines as br tags`() {
-        // Regression / robustness: the builder must not depend on
-        // Kuromoji emitting whitespace as its own token. Multi-line
-        // OCR captures need their line breaks preserved as `<br>` on
-        // the rendered card — the plain-sentence builder already does
-        // this character-by-character; the furigana builder used to
-        // rely on Kuromoji's whitespace token behaviour.
+    @Test fun `Sentence furigana without an annotation degrades to plain with highlights`() {
+        // Never-wrong beats sometimes-ruby: no analysis → the plain+<b>
+        // form, which {{furigana:}} renders ruby-less but correct.
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "友達に\n聞いた", sourceLangId = SourceLangId.JA
+            "友達に\n聞いた", sourceLangId = SourceLangId.JA,
         )
-        assertTrue(
-            "Expected newline preserved as <br>; was: $result",
-            result.contains("<br>"),
-        )
-    }
-
-    @Test fun `Sentence furigana preserves literal spaces from source`() {
-        // Spaces inside OCR'd Japanese (e.g. line-wrap artefacts) get
-        // copied through unchanged — same as the plain builder.
-        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "今日 は", sourceLangId = SourceLangId.JA
-        )
-        assertTrue(
-            "Expected literal space preserved; was: $result",
-            result.contains(" は"),
-        )
+        assertTrue(result.contains("<br>"))
+        assertFalse(result.contains("["))
     }
 
     @Test fun `Sentence furigana wraps highlighted dict-form in bold`() {
-        // Matches JPMN's `<b> 偽者[にせもの]</b>` SentenceReading shape:
-        // `<b>` wraps the entire highlighted surface (which may span
-        // multiple Kuromoji tokens), including the bracket form and
-        // any okurigana. The bracket's leading `<wbr>` lands inside
-        // the `<b>` because emit happens after opening the bold — the
-        // wbr is invisible and `<b>` itself already serves as a
-        // boundary for Anki's regex (its `>` is excluded from the
-        // base-text class), so the extra wbr inside is harmless.
+        pos = 0
         val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
             word = "聞く", reading = "きく", meaning = "to hear",
             surfaceForm = "聞いた",
         ))
-        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+        val ann = jaAnn(
             "友達に聞いた",
-            words = words,
-            highlightedWords = setOf("聞く"),
-            sourceLangId = SourceLangId.JA,
-            tokenizer = fakeTokenizer(
-                "友達に聞いた" to listOf(jaTok("友達", 0, "トモダチ"), jaTok("聞いた", 3, "キイタ")),
+            listOf(
+                tok("友達", JaCategory.NOUN, "トモダチ"), tok("に", JaCategory.PARTICLE, "ニ"),
+                tok("聞い", JaCategory.VERB, "キイ", dict = "聞く"), tok("た", JaCategory.AUX, "タ"),
             ),
+            knownForms = setOf("友達", "聞く"),
+        )
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            "友達に聞いた", words = words, highlightedWords = setOf("聞く"),
+            sourceLangId = SourceLangId.JA, annotation = ann,
         )
         assertEquals("友達[ともだち]<wbr>に<b><wbr>聞[き]<wbr>いた</b>", result)
     }
 
-    // ── Words-table reading override (number+counter euphony) ────────────
-    // Sudachi SplitMode A splits number+counter compounds and per-morpheme
-    // readingForm carries no cross-morpheme sandhi (一泊 → 一[いち]泊[はく]).
-    // When a words-table word covers a multi-token span uninflected, the
-    // bracket takes the word's reading — the same string the words table
-    // shows — so the card can't contradict itself.
+    // ── Annotator policy through the renderer (sandhi override et al.) ───
+    // Policy guards are pinned in SentenceAnnotatorTest; these pin bytes.
 
-    @Test fun `Furigana takes words-table reading over multi-token span`() {
-        val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
-            word = "一泊", reading = "いっぱく", meaning = "one night's stay",
-        ))
+    @Test fun `Furigana takes the annotator's resolved reading over multi-token spans`() {
+        pos = 0
+        val ann = jaAnn(
+            "一泊した",
+            listOf(
+                tok("一", JaCategory.NOUN, "イチ"), tok("泊", JaCategory.NOUN, "ハク"),
+                tok("し", JaCategory.VERB, "シ", dict = "する"), tok("た", JaCategory.AUX, "タ"),
+            ),
+            knownPhrases = setOf("一泊"),
+            resolutions = mapOf(
+                SentenceAnnotator.ResolutionKey("一泊", "いちはく") to pack(1165700, "いっぱく"),
+            ),
+        )
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "一泊した", words, sourceLangId = SourceLangId.JA,
-            tokenizer = fakeTokenizer("一泊した" to listOf(
-                jaTok("一", 0, "イチ"), jaTok("泊", 1, "ハク"),
-                jaTok("し", 2, "シ"), jaTok("た", 3, "タ"),
-            )),
+            "一泊した", sourceLangId = SourceLangId.JA, annotation = ann,
         )
         assertEquals("一泊[いっぱく]<wbr>した", result)
     }
 
-    @Test fun `Furigana override skips span ending mid-token`() {
-        // 一泊 the word must not fire inside 一泊まり (tokens 一|泊まり) —
-        // the boundary guard fails open to per-token brackets.
-        val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
-            word = "一泊", reading = "いっぱく", meaning = "one night's stay",
-        ))
-        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "一泊まり", words, sourceLangId = SourceLangId.JA,
-            tokenizer = fakeTokenizer("一泊まり" to listOf(
-                jaTok("一", 0, "イチ"), jaTok("泊まり", 1, "トマリ"),
-            )),
+    @Test fun `Furigana renders each occurrence with its own resolved reading`() {
+        // Per-occurrence resolution replaced the old all-or-nothing veto:
+        // a homograph the tokenizer read two ways gets BOTH readings right.
+        pos = 0
+        val ann = jaAnn(
+            "大人気と大人気",
+            listOf(
+                tok("大", JaCategory.NOUN, "ダイ"), tok("人気", JaCategory.NOUN, "ニンキ"),
+                tok("と", JaCategory.PARTICLE, "ト"),
+                tok("大人", JaCategory.NOUN, "オトナ"), tok("気", JaCategory.NOUN, "ゲ"),
+            ),
+            knownPhrases = setOf("大人気"),
+            resolutions = mapOf(
+                SentenceAnnotator.ResolutionKey("大人気", "だいにんき") to pack(10, "だいにんき"),
+                SentenceAnnotator.ResolutionKey("大人気", "おとなげ") to pack(11, "おとなげ"),
+            ),
         )
-        // Adjacent brackets each carry their own <wbr> separators — the
-        // doubled <wbr><wbr> between them is pre-existing and zero-width.
-        assertEquals("一[いち]<wbr><wbr>泊[と]<wbr>まり", result)
+        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            "大人気と大人気", sourceLangId = SourceLangId.JA, annotation = ann,
+        )
+        assertEquals("大人気[だいにんき]<wbr>と<wbr>大人気[おとなげ]", result)
     }
 
-    @Test fun `Furigana override leaves single-token words to the tokenizer`() {
-        // Sudachi context-picks single-token readings (明日 as あした); a
-        // context-free dictionary row (あす) must not displace them.
+    @Test fun `Furigana renders inflected spans per token`() {
+        pos = 0
         val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
-            word = "明日", reading = "あす", meaning = "tomorrow",
+            word = "聞く", reading = "きく", meaning = "to hear", surfaceForm = "聞いた",
         ))
-        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "明日行く", words, sourceLangId = SourceLangId.JA,
-            tokenizer = fakeTokenizer("明日行く" to listOf(
-                jaTok("明日", 0, "アシタ"), jaTok("行く", 2, "イク"),
-            )),
+        val ann = jaAnn(
+            "聞いた",
+            listOf(tok("聞い", JaCategory.VERB, "キイ", dict = "聞く"), tok("た", JaCategory.AUX, "タ")),
+            knownForms = setOf("聞く"),
+            resolutions = mapOf(
+                SentenceAnnotator.ResolutionKey("聞く", "きい") to pack(2, "きく"),
+            ),
         )
-        assertEquals("明日[あした]<wbr><wbr>行[い]<wbr>く", result)
-    }
-
-    @Test fun `Furigana override skips inflected surfaces`() {
-        // A citation reading pasted over an inflected surface would be
-        // garbage; surfaceForm != word excludes the entry entirely.
-        val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
-            word = "聞く", reading = "きく", meaning = "to hear",
-            surfaceForm = "聞いた",
-        ))
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "聞いた", words, sourceLangId = SourceLangId.JA,
-            tokenizer = fakeTokenizer("聞いた" to listOf(jaTok("聞いた", 0, "キイタ"))),
+            "聞いた", words = words, sourceLangId = SourceLangId.JA, annotation = ann,
         )
         assertEquals("聞[き]<wbr>いた", result)
     }
 
-    @Test fun `Furigana override skips mixed kanji-kana words`() {
-        // 泊まり込み as one bracket would smear ruby over its kana; the
-        // all-kanji guard keeps the anchored per-kanji split.
-        val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
-            word = "泊まり込み", reading = "とまりこみ", meaning = "staying over",
-        ))
+    @Test fun `Furigana renders mixed kanji-kana spans per token`() {
+        pos = 0
+        val ann = jaAnn(
+            "泊まり込み",
+            listOf(
+                tok("泊まり", JaCategory.VERB, "トマリ", dict = "泊まる"),
+                tok("込み", JaCategory.NOUN, "コミ", dict = "込む"),
+            ),
+            knownPhrases = setOf("泊まり込み"),
+            resolutions = mapOf(
+                SentenceAnnotator.ResolutionKey("泊まり込み", "とまりこみ") to pack(20, "とまりこみ"),
+            ),
+        )
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "泊まり込み", words, sourceLangId = SourceLangId.JA,
-            tokenizer = fakeTokenizer("泊まり込み" to listOf(
-                jaTok("泊まり", 0, "トマリ"), jaTok("込み", 3, "コミ"),
-            )),
+            "泊まり込み", sourceLangId = SourceLangId.JA, annotation = ann,
         )
         assertEquals("泊[と]<wbr>まり<wbr>込[こ]<wbr>み", result)
     }
 
-    @Test fun `Furigana override applies at every occurrence of a repeated surface`() {
-        // The words list carries one reading per written form; stamping it
-        // on a repeat is safe exactly when the tokenizer read both
-        // occurrences identically.
-        val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
-            word = "一泊", reading = "いっぱく", meaning = "one night's stay",
-        ))
-        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "一泊か一泊", words, sourceLangId = SourceLangId.JA,
-            tokenizer = fakeTokenizer("一泊か一泊" to listOf(
-                jaTok("一", 0, "イチ"), jaTok("泊", 1, "ハク"),
-                jaTok("か", 2, "カ"),
-                jaTok("一", 3, "イチ"), jaTok("泊", 4, "ハク"),
-            )),
-        )
-        assertEquals("一泊[いっぱく]<wbr>か<wbr>一泊[いっぱく]", result)
-    }
-
-    @Test fun `Furigana override is vetoed when the tokenizer discriminates occurrences`() {
-        // The same written form read two ways in one sentence: the single
-        // cached words-table reading must not erase that distinction, so
-        // BOTH occurrences keep their per-token brackets.
-        val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
-            word = "大人気", reading = "だいにんき", meaning = "very popular",
-        ))
-        val text = "大人気と大人気"
-        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            text, words, sourceLangId = SourceLangId.JA,
-            tokenizer = fakeTokenizer(text to listOf(
-                jaTok("大", 0, "ダイ"), jaTok("人気", 1, "ニンキ"),
-                jaTok("と", 3, "ト"),
-                jaTok("大人", 4, "オトナ"), jaTok("気", 6, "ゲ"),
-            )),
-        )
-        assertEquals(
-            "大[だい]<wbr><wbr>人気[にんき]<wbr>と<wbr>大人[おとな]<wbr><wbr>気[げ]",
-            result,
-        )
-    }
-
-    @Test fun `Embedded occurrence does not veto the aligned one`() {
-        // 一泊 aligned once and embedded in 一泊まり (tokens 一|泊まり):
-        // the embedded occurrence can never be overridden, so it must not
-        // veto the aligned occurrence's sandhi fix.
-        val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
-            word = "一泊", reading = "いっぱく", meaning = "one night's stay",
-        ))
-        val text = "一泊と一泊まり"
-        val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            text, words, sourceLangId = SourceLangId.JA,
-            tokenizer = fakeTokenizer(text to listOf(
-                jaTok("一", 0, "イチ"), jaTok("泊", 1, "ハク"),
-                jaTok("と", 2, "ト"),
-                jaTok("一", 3, "イチ"), jaTok("泊まり", 4, "トマリ"),
-            )),
-        )
-        assertEquals("一泊[いっぱく]<wbr>と<wbr>一[いち]<wbr><wbr>泊[と]<wbr>まり", result)
-    }
-
     @Test fun `Furigana override nests inside highlight bold`() {
+        pos = 0
         val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
             word = "一泊", reading = "いっぱく", meaning = "one night's stay",
         ))
+        val ann = jaAnn(
+            "一泊した",
+            listOf(
+                tok("一", JaCategory.NOUN, "イチ"), tok("泊", JaCategory.NOUN, "ハク"),
+                tok("し", JaCategory.VERB, "シ", dict = "する"), tok("た", JaCategory.AUX, "タ"),
+            ),
+            knownPhrases = setOf("一泊"),
+            resolutions = mapOf(
+                SentenceAnnotator.ResolutionKey("一泊", "いちはく") to pack(1165700, "いっぱく"),
+            ),
+        )
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "一泊した", words, highlightedWords = setOf("一泊"),
-            sourceLangId = SourceLangId.JA,
-            tokenizer = fakeTokenizer("一泊した" to listOf(
-                jaTok("一", 0, "イチ"), jaTok("泊", 1, "ハク"),
-                jaTok("し", 2, "シ"), jaTok("た", 3, "タ"),
-            )),
+            "一泊した", words = words, highlightedWords = setOf("一泊"),
+            sourceLangId = SourceLangId.JA, annotation = ann,
         )
         assertEquals("<b><wbr>一泊[いっぱく]<wbr></b>した", result)
     }
 
     @Test fun `Furigana override rides inside word wrapper span`() {
+        pos = 0
         val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
             word = "一泊", reading = "いっぱく", meaning = "one night's stay",
         ))
+        val ann = jaAnn(
+            "一泊した",
+            listOf(
+                tok("一", JaCategory.NOUN, "イチ"), tok("泊", JaCategory.NOUN, "ハク"),
+                tok("し", JaCategory.VERB, "シ", dict = "する"), tok("た", JaCategory.AUX, "タ"),
+            ),
+            knownPhrases = setOf("一泊"),
+            resolutions = mapOf(
+                SentenceAnnotator.ResolutionKey("一泊", "いちはく") to pack(1165700, "いっぱく"),
+            ),
+        )
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
-            "一泊した", words, sourceLangId = SourceLangId.JA, wrapWords = true,
-            tokenizer = fakeTokenizer("一泊した" to listOf(
-                jaTok("一", 0, "イチ"), jaTok("泊", 1, "ハク"),
-                jaTok("し", 2, "シ"), jaTok("た", 3, "タ"),
-            )),
+            "一泊した", words = words, sourceLangId = SourceLangId.JA,
+            wrapWords = true, annotation = ann,
         )
         assertEquals("<span data-pt-w=\"一泊\">一泊[いっぱく]</span>した", result)
     }
@@ -510,6 +499,7 @@ class SentenceAnkiHtmlBuilderTest {
         )
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
             text = "今天天气", words = words, sourceLangId = SourceLangId.ZH,
+            annotation = zhAnn("今天天气", listOf("今天", "天气")),
         )
         assertEquals(
             "今[jīn]<wbr>天[tiān]<wbr><wbr>天[tiān]<wbr>气[qì]",
@@ -527,6 +517,7 @@ class SentenceAnkiHtmlBuilderTest {
             words = words,
             highlightedWords = setOf("天气"),
             sourceLangId = SourceLangId.ZH,
+            annotation = zhAnn("今天天气", listOf("今天", "天气")),
         )
         // `<b>` opens at the start of 天气, closes after 气. The
         // bracket emit's leading `<wbr>` lands inside `<b>` — same
@@ -544,6 +535,7 @@ class SentenceAnkiHtmlBuilderTest {
         )
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
             text = "今天，你好。", words = words, sourceLangId = SourceLangId.ZH,
+            annotation = zhAnn("今天，你好。", listOf("今天", "你好")),
         )
         // Full-width punctuation (，。) emits character-by-character;
         // it never matches a WordEntry so it stays bare.
@@ -563,6 +555,7 @@ class SentenceAnkiHtmlBuilderTest {
         )
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
             text = "今天", words = words, sourceLangId = SourceLangId.ZH,
+            annotation = zhAnn("今天", listOf("今天")),
         )
         assertEquals("今天", result)
     }
@@ -583,6 +576,7 @@ class SentenceAnkiHtmlBuilderTest {
         )
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
             text = "今天今天", words = words, sourceLangId = SourceLangId.ZH,
+            annotation = zhAnn("今天今天", listOf("今天", "今天")),
         )
         assertEquals(
             "今[jīn]<wbr>天[tiān]<wbr><wbr>今[jīn]<wbr>天[tiān]",
@@ -777,7 +771,7 @@ class SentenceAnkiHtmlBuilderTest {
         ))
         val html = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
             text = "なるほど", words = words, sourceLangId = SourceLangId.JA,
-            wrapWords = true, tokenizer = fakeTokenizer(),
+            wrapWords = true, annotation = kanaAnn(),
         )
         assertEquals(
             "<span data-pt-w=\"なるほど\" data-pt-kana=\"なるほど\"" +
@@ -792,7 +786,7 @@ class SentenceAnkiHtmlBuilderTest {
         ))
         val html = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
             text = "なるほど", words = words, sourceLangId = SourceLangId.JA,
-            wrapWords = true, tokenizer = fakeTokenizer(),
+            wrapWords = true, annotation = kanaAnn(),
         )
         assertEquals("<span data-pt-w=\"なるほど\">なるほど</span>", html)
     }
@@ -804,7 +798,7 @@ class SentenceAnkiHtmlBuilderTest {
         val html = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
             text = "なるほど", words = words, highlightedWords = setOf("なるほど"),
             sourceLangId = SourceLangId.JA, wrapWords = true,
-            tokenizer = fakeTokenizer(),
+            annotation = kanaAnn(),
         )
         assertEquals(
             "<b><span data-pt-w=\"なるほど\" data-pt-kana=\"なるほど\"" +
@@ -819,7 +813,7 @@ class SentenceAnkiHtmlBuilderTest {
         ))
         val html = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
             text = "なるほど", words = words, sourceLangId = SourceLangId.JA,
-            tokenizer = fakeTokenizer(),
+            annotation = kanaAnn(),
         )
         assertEquals("なるほど", html)
         assertFalse(html.contains("data-pt-"))
@@ -833,16 +827,17 @@ class SentenceAnkiHtmlBuilderTest {
         assertTrue(html.contains("<div data-pt-w=\"封\" class=\"gl-w-target\">"))
     }
 
-    @Test fun `ZH sentence furigana picks longest matching word at each position`() {
-        // Defensive: if both 小心地 (3-char adverb) and 小心 (2-char
-        // adjective) happen to be in the WordEntry list, longest-first
-        // sort must win so 小心地 isn't truncated to 小心 + bare 地.
+    @Test fun `ZH sentence furigana renders the annotation's segmentation`() {
+        // Segmentation is the ANNOTATOR's decision now: the span for
+        // 小心地 matches its own entry exactly by lookup form — there is
+        // no longest-prefix text scan left to truncate it to 小心 + 地.
         val words = listOf(
             SentenceAnkiHtmlBuilder.WordEntry(word = "小心", reading = "xiǎo xīn", meaning = "careful"),
             SentenceAnkiHtmlBuilder.WordEntry(word = "小心地", reading = "xiǎo xīn de", meaning = "carefully"),
         )
         val result = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
             text = "小心地", words = words, sourceLangId = SourceLangId.ZH,
+            annotation = zhAnn("小心地", listOf("小心地")),
         )
         assertEquals("小[xiǎo]<wbr>心[xīn]<wbr>地[de]", result)
     }
