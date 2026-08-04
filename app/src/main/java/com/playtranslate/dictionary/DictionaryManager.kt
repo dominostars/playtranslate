@@ -558,33 +558,21 @@ class DictionaryManager private constructor(private val context: Context) {
         return ids
     }
 
-    private fun buildResponse(
-        db: SQLiteDatabase,
-        entryIds: List<Long>,
-        inflectionNote: String? = null
-    ): DictionaryResponse {
-        val entries = entryIds.mapNotNull { buildEntry(db, it, inflectionNote) }
-        return DictionaryResponse(entries = entries)
-    }
-
-    private fun buildEntry(db: SQLiteDatabase, id: Long, inflectionNote: String?): DictionaryEntry? {
-        val idStr = id.toString()
-
-        var isCommon = false
-        var freqScore = 0
-        db.rawQuery("SELECT is_common, freq_score FROM entry WHERE id=?", arrayOf(idStr)).use { c ->
-            if (c.moveToFirst()) {
-                isCommon  = c.getInt(0) == 1
-                freqScore = c.getInt(1)
-            }
-        }
-
-        // Kanji headwords. v2 packs carry `ke_pri` per form so we can mark
-        // common kanji forms as priority — the signal that lets `isKanaOnly`
-        // distinguish 決まる (priority kanji + minor uk sense → display kanji)
-        // from 何故 (no priority + uk sense → display kana). v1 packs lack the
-        // column; we degrade to "no priority known", which leaves `isKanaOnly`
-        // running its pre-v2 uk-only behaviour.
+    /**
+     * The entry's headword list — kanji forms + reading forms paired by
+     * [buildHeadwords]. Shared VERBATIM by [buildEntry] and
+     * [lookupReadingsOnly], so the readings-only path can never drift from
+     * the full path's pairing.
+     *
+     * Kanji headwords: v2 packs carry `ke_pri` per form so we can mark
+     * common kanji forms as priority (lets `isKanaOnly` distinguish 決まる
+     * from 何故); v1 packs degrade to "no priority known". `no_kanji`
+     * (JMdict re_nokanji) lets [buildHeadwords] drop readings never written
+     * with the kanji; `rank_score` rides along for the word-detail reading
+     * rows. ORDER BY position keeps `headwords` position-ordered —
+     * firstOrNull() == primary, unchanged app-wide.
+     */
+    private fun loadHeadwords(db: SQLiteDatabase, idStr: String): List<Headword> {
         val kanjiForms = mutableListOf<JmKanjiForm>()
         val v2HeadwordSchema = hasKePri(db)
         val kanjiSql = if (v2HeadwordSchema)
@@ -598,16 +586,8 @@ class DictionaryManager private constructor(private val context: Context) {
                 kanjiForms.add(JmKanjiForm(text, hasPriority))
             }
         }
-
-        // `no_kanji` (JMdict re_nokanji) lets [buildHeadwords] drop readings
-        // never written with the kanji during single-kanji expansion. Probed
-        // via the cached [hasNoKanji]; absent on pre-column packs →
-        // buildHeadwords falls back to the old positional pairing.
         val noKanjiColumn = hasNoKanji(db)
         val rankScoreColumn = hasRankScore(db)
-        // `rank_score` (common-use rank, higher = more common) rides along for the
-        // word-detail reading rows. ORDER BY position is kept so `headwords` stays
-        // position-ordered — firstOrNull() == primary, unchanged app-wide.
         val readingCols = buildList {
             add("text")
             if (noKanjiColumn) add("no_kanji")
@@ -630,8 +610,75 @@ class DictionaryManager private constructor(private val context: Context) {
                 )
             }
         }
+        return buildHeadwords(kanjiForms, readingForms, noKanjiColumn)
+    }
 
-        val headwords = buildHeadwords(kanjiForms, readingForms, noKanjiColumn)
+    /**
+     * Readings-only resolution for the annotator: the SAME entry choice as
+     * [lookup] (narrowed → direct → deinflection, identical ranked SQL) and
+     * the SAME headword pairing ([loadHeadwords]) — but no senses, examples,
+     * or imported enrichment. Returns a senses-free [DictionaryEntry]
+     * skeleton (packId + headwords) or null when the pack has nothing —
+     * callers fall back to the full two-store lookup, where imported-
+     * dictionary synthesis may still resolve. Parity with the full path's
+     * entry choice holds BY CONSTRUCTION (shared SQL, shared pairing, and
+     * YomitanEnrichment.mergeImportedTerms anchors on the first pack entry
+     * without reordering); cost is 2–3 indexed queries, which is what keeps
+     * FULL-depth annotation affordable on the live cycle.
+     */
+    suspend fun lookupReadingsOnly(word: String, reading: String? = null): DictionaryEntry? =
+        withContext(Dispatchers.IO) {
+            val database = ensureOpen() ?: return@withContext null
+            database.withRefcount {
+                var id: Long? = null
+                if (reading != null) {
+                    id = queryEntryIdsWithReading(database, word, reading).firstOrNull()
+                }
+                if (id == null) id = queryEntryIds(database, word).firstOrNull()
+                if (id == null) {
+                    for (candidate in Deinflector.candidates(word)) {
+                        id = queryEntryIds(database, candidate.text).firstOrNull()
+                        if (id != null) break
+                    }
+                }
+                val entryId = id ?: return@withRefcount null
+                val headwords = loadHeadwords(database, entryId.toString())
+                if (headwords.isEmpty()) return@withRefcount null
+                DictionaryEntry(
+                    slug = headwords.firstOrNull()?.written
+                        ?: headwords.firstOrNull()?.reading ?: entryId.toString(),
+                    packId = entryId,
+                    isCommon = null,
+                    tags = emptyList(),
+                    jlpt = emptyList(),
+                    headwords = headwords,
+                    senses = emptyList(),
+                )
+            }
+        }
+
+    private fun buildResponse(
+        db: SQLiteDatabase,
+        entryIds: List<Long>,
+        inflectionNote: String? = null
+    ): DictionaryResponse {
+        val entries = entryIds.mapNotNull { buildEntry(db, it, inflectionNote) }
+        return DictionaryResponse(entries = entries)
+    }
+
+    private fun buildEntry(db: SQLiteDatabase, id: Long, inflectionNote: String?): DictionaryEntry? {
+        val idStr = id.toString()
+
+        var isCommon = false
+        var freqScore = 0
+        db.rawQuery("SELECT is_common, freq_score FROM entry WHERE id=?", arrayOf(idStr)).use { c ->
+            if (c.moveToFirst()) {
+                isCommon  = c.getInt(0) == 1
+                freqScore = c.getInt(1)
+            }
+        }
+
+        val headwords = loadHeadwords(db, idStr)
         if (headwords.isEmpty()) return null
 
         // Tatoeba example sentences keyed by sense_position. The `example`
@@ -687,7 +734,8 @@ class DictionaryManager private constructor(private val context: Context) {
         if (senses.isEmpty()) return null
 
         return DictionaryEntry(
-            slug = kanjiForms.firstOrNull()?.text ?: readingForms.firstOrNull()?.text ?: idStr,
+            slug = headwords.firstOrNull()?.written
+                ?: headwords.firstOrNull()?.reading ?: idStr,
             packId = id,
             isCommon = isCommon,
             tags = emptyList(),

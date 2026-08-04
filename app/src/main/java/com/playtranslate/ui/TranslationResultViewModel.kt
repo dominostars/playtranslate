@@ -56,7 +56,14 @@ class TranslationResultViewModel : ViewModel() {
      *  write — see [writeLastSentenceCache]. Null while a lookup is in flight. */
     private var settledLookup: SettledLookup? = null
 
-    private data class SettledLookup(val text: String, val data: LookupData)
+    private data class SettledLookup(
+        val text: String,
+        val data: LookupData,
+        /** The analysis the tokens were projected from — forwarded into the
+         *  cache write so an Anki send finds a matching annotation without
+         *  re-annotating. */
+        val annotation: com.playtranslate.language.SentenceAnnotation? = null,
+    )
 
     // ── Dedup architecture (read this before changing displayResult) ────
     //
@@ -348,6 +355,7 @@ class TranslationResultViewModel : ViewModel() {
             wordResults = settled.data.rows.toLegacyMap(),
             surfaceForms = settled.data.surfaces,
             wordEnrichment = settled.data.rows.toEnrichmentMap(),
+            annotation = settled.annotation,
         )
     }
 
@@ -369,7 +377,7 @@ class TranslationResultViewModel : ViewModel() {
         _wordLookups.value = WordLookupsState.Loading
         lookupJob = viewModelScope.launch {
             try {
-                val data = performLookups(appCtx, text)
+                val (data, annotation) = performLookups(appCtx, text)
                 _wordLookups.value = WordLookupsState.Settled(
                     rows = data.rows,
                     tokenSpans = data.tokenSpans,
@@ -380,7 +388,7 @@ class TranslationResultViewModel : ViewModel() {
                 // this completes the snapshot now; if not, the Ready transition
                 // will. writeLastSentenceCache no-ops until both agree, so a lookup
                 // that outran the translation never caches a null sentence.
-                settledLookup = SettledLookup(text, data)
+                settledLookup = SettledLookup(text, data, annotation)
                 writeLastSentenceCache()
             } catch (e: CancellationException) {
                 // Caller cancelled (e.g. new text arrived) — let the next
@@ -398,19 +406,30 @@ class TranslationResultViewModel : ViewModel() {
         }
     }
 
-    private suspend fun performLookups(appCtx: Context, text: String): LookupData {
-        // Snapshot source/target prefs ONCE, before tokenizing, so the whole
-        // lookup (tokenize + resolve) runs against one consistent language pair
-        // even if the user changes settings mid-flight (see [WordLookupContext]).
+    private suspend fun performLookups(
+        appCtx: Context,
+        text: String,
+    ): Pair<LookupData, com.playtranslate.language.SentenceAnnotation> {
+        // Snapshot source/target prefs ONCE, before analyzing, so the whole
+        // lookup runs against one consistent language pair even if the user
+        // changes settings mid-flight (see [WordLookupContext]).
         val prefs = Prefs(appCtx)
         val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
         val context = WordLookupContext(engine, prefs.targetLang, prefs.targetChineseVariant)
-        val allTokens = withContext(Dispatchers.IO) { engine.tokenize(text) }
-        // Hand the per-occurrence tokens to the shared resolver; it owns the
-        // dedup → parallel-lookup → RowState pipeline (see [resolveWordRows]).
-        // tokenSpans round-trips back so the fragment can derive word spans
-        // against the displayed text.
-        return resolveWordRows(appCtx, context, allTokens)
+        // ONE analysis: the same FULL-depth annotation the furigana display
+        // renders — its spans project the per-occurrence tokens the shared
+        // resolver hydrates (dedup → parallel-lookup → RowState, see
+        // [resolveWordRows]); tokenSpans round-trips so the fragment can
+        // derive word spans against the displayed text.
+        val annotation = withContext(Dispatchers.IO) { engine.annotate(text) }
+        val allTokens = annotation.spans
+            .filter { it.lookupForm != null }
+            .map {
+                com.playtranslate.language.TokenSpan(
+                    it.surface, it.lookupForm!!, it.lookupHint, it.inflections,
+                )
+            }
+        return resolveWordRows(appCtx, context, allTokens) to annotation
     }
 }
 

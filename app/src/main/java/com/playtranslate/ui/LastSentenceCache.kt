@@ -3,13 +3,7 @@ package com.playtranslate.ui
 import android.content.Context
 import android.util.Log
 import com.playtranslate.Prefs
-import com.playtranslate.translation.ChineseScriptConverter
-import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.model.FrequencyTag
-import com.playtranslate.model.selectHeadword
-import com.playtranslate.language.DefinitionResolver
-import com.playtranslate.language.OfflineFallbackTranslators
-import com.playtranslate.language.TargetGlossDatabaseProvider
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -186,6 +180,7 @@ object LastSentenceCache {
         wordResults: Map<String, Triple<String, String, Int>>?,
         surfaceForms: Map<String, String>?,
         wordEnrichment: Map<String, WordEnrichment>?,
+        annotation: com.playtranslate.language.SentenceAnnotation? = null,
     ) {
         synchronized(lock) {
             if (this.original != original) {
@@ -197,6 +192,7 @@ object LastSentenceCache {
             this.wordResults = wordResults
             this.surfaceForms = surfaceForms
             this.wordEnrichment = wordEnrichment
+            this.sentenceAnnotation = annotation?.takeIf { it.text == original }
         }
     }
 
@@ -401,76 +397,29 @@ object LastSentenceCache {
         val appCtx = context.applicationContext
         val prefs = Prefs(appCtx)
         val engine = com.playtranslate.language.SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
-        val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
-        val resolver = DefinitionResolver(engine, targetGlossDb,
-            OfflineFallbackTranslators.forPair(engine.profile.translationCode, prefs.targetLang), prefs.targetLang,
-            OfflineFallbackTranslators.forTarget(prefs.targetLang),
-            ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant))
-        // ONE analysis for everything: the FULL-depth annotation resolves
-        // display readings; the word rows below are its projection, and the
-        // annotation itself rides the payload for the Anki renderers. Row
-        // hydration re-uses each span's OWN lookup hint, so a row can never
-        // land on a different entry than the annotation resolved (the
-        // readings-only fast path that removes this second lookup per word
-        // is the phase-4 live-cell optimization — refactor doc §6).
+        // ONE analysis (readings-only resolution) + ONE senses-bearing lookup
+        // per word, through the SAME row core the result screen uses
+        // (resolveWordRows) — the legacy maps are projections of those rows,
+        // so the Anki words table and the on-screen words panel can never
+        // disagree on content OR policy again. Row hydration reuses each
+        // span's own lookup hint, so a row can never land on a different
+        // entry than the annotation resolved.
         val annotation = engine.annotate(sentence)
-        val results = linkedMapOf<String, Triple<String, String, Int>>()
-        val surfaces = linkedMapOf<String, String>()
-        val enrichment = linkedMapOf<String, WordEnrichment>()
-        for (tok in annotation.spans) {
-            val lookupForm = tok.lookupForm ?: continue
-            try {
-                val defResult = resolver.lookup(lookupForm, tok.lookupHint)
-                val response = defResult?.response
-                if (response != null && response.entries.isNotEmpty()) {
-                    val entry      = response.entries.first()
-                    // Occurrence-validated headword pick — the same
-                    // selectHeadword every other display surface uses; this
-                    // call site had kept the pre-refactor written-form chain.
-                    // The tokenizer's reading wins only when the entry lists
-                    // that exact written↔reading pair (研究所 read
-                    // けんきゅうしょ in context stays しょ, not the primary
-                    // variant じょ); a concat that matches no pair — the
-                    // sandhi case, 一泊/いちはく — falls through to the
-                    // written-form chain, the prior behavior. That chain
-                    // matters because JMdict often groups variant kanji
-                    // under one entry (無下/無気, 出会う/出逢う), so the
-                    // primary form can differ from the surface in the
-                    // source text; lookupForm covers inflected surfaces
-                    // that canonicalize to a non-primary headword.
-                    val primary    = entry.selectHeadword(tok.surface, lookupForm, tok.lookupHint)
-                    val displayWord = primary?.written ?: primary?.reading ?: lookupForm
-                    val reading = primary?.reading?.takeIf { it != primary.written } ?: ""
-                    // ONE construction of the definition content: the shared
-                    // tier cascade (imported rows lead; target-driven for
-                    // non-EN Native hits, entry-driven target→MT→source
-                    // otherwise — the same rows the lens shows). The flat
-                    // meaning string is DERIVED from the senses, so the two
-                    // can't drift; this replaced a parallel hand-built
-                    // cascade. defResult is non-null whenever response is —
-                    // the null-check is for the compiler.
-                    val senses = if (defResult != null) {
-                        buildSenseDisplays(defResult, response.entries, prefs.targetLang)
-                    } else emptyList()
-                    val meaning = flatMeaningOf(senses)
-                    if (meaning.isNotEmpty()) {
-                        results[displayWord] = Triple(reading, meaning, entry.freqScore)
-                        // primary is the headword we labelled the row with —
-                        // its pitch/frequencies are what the sentence card's
-                        // target-word fields want.
-                        enrichment[displayWord] = WordEnrichment(
-                            primary?.pitch.orEmpty(), primary?.frequencies.orEmpty(),
-                            isCommon = entry.isCommon == true,
-                            senses = senses,
-                        )
-                        if (tok.surface != displayWord) {
-                            surfaces[displayWord] = tok.surface
-                        }
-                    }
-                }
-            } catch (_: Exception) {}
-        }
-        WordsPayload(results, surfaces, enrichment, annotation)
+        val tokens = annotation.spans
+            .filter { it.lookupForm != null }
+            .map {
+                com.playtranslate.language.TokenSpan(
+                    it.surface, it.lookupForm!!, it.lookupHint, it.inflections,
+                )
+            }
+        val lookupCtx = WordLookupContext(engine, prefs.targetLang, prefs.targetChineseVariant)
+        val data = resolveWordRows(appCtx, lookupCtx, tokens)
+        WordsPayload(
+            results = data.rows.toLegacyMap(),
+            surfaces = data.surfaces,
+            enrichment = data.rows.toEnrichmentMap(),
+            annotation = annotation,
+        )
     }
 
     private fun String.preview(): String =
