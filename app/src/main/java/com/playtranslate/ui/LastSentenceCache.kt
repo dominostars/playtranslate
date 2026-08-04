@@ -105,6 +105,10 @@ object LastSentenceCache {
      *  sentence-mode Anki sends. Rides atomically with [wordResults] /
      *  [surfaceForms]. */
     var wordEnrichment: Map<String, WordEnrichment>? = null
+
+    /** The FULL-depth annotation the current sentence's words were projected
+     *  from. Rotates with the sentence like the word maps. */
+    var sentenceAnnotation: com.playtranslate.language.SentenceAnnotation? = null
         private set
 
     // ── In-flight tracking ───────────────────────────────────────────
@@ -125,6 +129,10 @@ object LastSentenceCache {
         val results: Map<String, Triple<String, String, Int>>,
         val surfaces: Map<String, String>,
         val enrichment: Map<String, WordEnrichment>,
+        /** The annotation the words were projected FROM — the single
+         *  analysis the Anki renderers consume so card furigana, highlights,
+         *  and word rows can never disagree. Null on legacy/empty payloads. */
+        val annotation: com.playtranslate.language.SentenceAnnotation? = null,
     )
 
     /**
@@ -146,7 +154,7 @@ object LastSentenceCache {
     fun snapshotFor(sentence: String): WordsPayload? = synchronized(lock) {
         val results = wordResults ?: return null
         if (original != sentence || results.isEmpty()) return null
-        WordsPayload(results, surfaceForms.orEmpty(), wordEnrichment.orEmpty())
+        WordsPayload(results, surfaceForms.orEmpty(), wordEnrichment.orEmpty(), sentenceAnnotation)
     }
 
     fun clear() {
@@ -157,6 +165,7 @@ object LastSentenceCache {
             wordResults = null
             surfaceForms = null
             wordEnrichment = null
+            sentenceAnnotation = null
             translationPending?.job?.cancel()
             wordsPending?.job?.cancel()
             translationPending = null
@@ -286,7 +295,7 @@ object LastSentenceCache {
             wordResults?.let { cached ->
                 Log.d(TAG, "cache hit words for '${sentence.preview()}'")
                 return@synchronized CompletableDeferred(
-                    WordsPayload(cached, surfaceForms.orEmpty(), wordEnrichment.orEmpty())
+                    WordsPayload(cached, surfaceForms.orEmpty(), wordEnrichment.orEmpty(), sentenceAnnotation)
                 )
             }
             Log.d(TAG, "starting words for '${sentence.preview()}'")
@@ -304,6 +313,7 @@ object LastSentenceCache {
                         wordResults = payload.results
                         surfaceForms = payload.surfaces
                         wordEnrichment = payload.enrichment
+                        sentenceAnnotation = payload.annotation
                         Log.d(TAG, "cache write words for '${sentence.preview()}'")
                     } else {
                         Log.d(TAG, "stale-discard words for '${sentence.preview()}'")
@@ -347,6 +357,7 @@ object LastSentenceCache {
         wordResults = null
         surfaceForms = null
         wordEnrichment = null
+        sentenceAnnotation = null
         original = sentence
         Log.d(TAG, "cache cleared: '${prev?.preview()}' → '${sentence.preview()}'")
     }
@@ -395,13 +406,21 @@ object LastSentenceCache {
             OfflineFallbackTranslators.forPair(engine.profile.translationCode, prefs.targetLang), prefs.targetLang,
             OfflineFallbackTranslators.forTarget(prefs.targetLang),
             ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant))
-        val tokenResults = engine.tokenize(sentence)
+        // ONE analysis for everything: the FULL-depth annotation resolves
+        // display readings; the word rows below are its projection, and the
+        // annotation itself rides the payload for the Anki renderers. Row
+        // hydration re-uses each span's OWN lookup hint, so a row can never
+        // land on a different entry than the annotation resolved (the
+        // readings-only fast path that removes this second lookup per word
+        // is the phase-4 live-cell optimization — refactor doc §6).
+        val annotation = engine.annotate(sentence)
         val results = linkedMapOf<String, Triple<String, String, Int>>()
         val surfaces = linkedMapOf<String, String>()
         val enrichment = linkedMapOf<String, WordEnrichment>()
-        for (tok in tokenResults) {
+        for (tok in annotation.spans) {
+            val lookupForm = tok.lookupForm ?: continue
             try {
-                val defResult = resolver.lookup(tok.lookupForm, tok.reading)
+                val defResult = resolver.lookup(lookupForm, tok.lookupHint)
                 val response = defResult?.response
                 if (response != null && response.entries.isNotEmpty()) {
                     val entry      = response.entries.first()
@@ -419,8 +438,8 @@ object LastSentenceCache {
                     // primary form can differ from the surface in the
                     // source text; lookupForm covers inflected surfaces
                     // that canonicalize to a non-primary headword.
-                    val primary    = entry.selectHeadword(tok.surface, tok.lookupForm, tok.reading)
-                    val displayWord = primary?.written ?: primary?.reading ?: tok.lookupForm
+                    val primary    = entry.selectHeadword(tok.surface, lookupForm, tok.lookupHint)
+                    val displayWord = primary?.written ?: primary?.reading ?: lookupForm
                     val reading = primary?.reading?.takeIf { it != primary.written } ?: ""
                     // ONE construction of the definition content: the shared
                     // tier cascade (imported rows lead; target-driven for
@@ -451,7 +470,7 @@ object LastSentenceCache {
                 }
             } catch (_: Exception) {}
         }
-        WordsPayload(results, surfaces, enrichment)
+        WordsPayload(results, surfaces, enrichment, annotation)
     }
 
     private fun String.preview(): String =

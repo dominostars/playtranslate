@@ -62,6 +62,11 @@ internal object PtNoteBuilder {
 
     fun forSentence(
         cardData: SentenceAnkiContentFragment.CardData,
+        /** The sentence's [com.playtranslate.language.SentenceAnnotation] —
+         *  the single analysis the furigana renderer draws. Null (tests,
+         *  legacy callers) degrades the furigana field to the plain+<b>
+         *  form; never a re-derived reading. */
+        annotation: com.playtranslate.language.SentenceAnnotation? = null,
         imageFilename: String?,
         audioFilename: String?,
         /** Per-target-word audio filenames keyed by word; rendered as
@@ -103,6 +108,7 @@ internal object PtNoteBuilder {
                 // (front tooltip pitch, back tap-to-cell scroll); the
                 // structured path never sets this.
                 wrapWords = true,
+                annotation = annotation,
             )
         } else ""
         // Highlighted words sort to the top of the table, matching the

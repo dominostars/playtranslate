@@ -172,8 +172,18 @@ suspend fun Context.sendSentenceCard(
             wordResolved.values.mapNotNull { it.attribution }
         if (all.isEmpty()) null else Attribution.creditBlock(all)
     }
+    val cardData = input.toCardData()
+    // ONE analysis for the card: reuse the cached annotation when it still
+    // matches the (possibly edited) sentence text, else re-annotate the
+    // final text. The renderers draw this annotation — card furigana,
+    // highlights, and wrappers must describe the text actually being sent,
+    // and must match what the result screen displayed and TTS spoke.
+    val annotation = LastSentenceCache.snapshotFor(cardData.source)?.annotation
+        ?.takeIf { it.text == cardData.source }
+        ?: com.playtranslate.language.SourceLanguageEngines
+            .get(ctx.applicationContext, cardData.sourceLangId)
+            .annotate(cardData.source)
     val result = try {
-        val cardData = input.toCardData()
         ctx.dispatchSendToAnki(
             deckId = deckId,
             mode = CardMode.SENTENCE,
@@ -183,6 +193,7 @@ suspend fun Context.sendSentenceCard(
             ptNote = { imageFilename, audioFilename, wordAudioFilenames ->
                 PtNoteBuilder.forSentence(
                     cardData = cardData,
+                    annotation = annotation,
                     imageFilename = imageFilename,
                     audioFilename = audioFilename,
                     wordAudioFilenames = wordAudioFilenames,
@@ -198,6 +209,7 @@ suspend fun Context.sendSentenceCard(
             structured = { imageFilename, audioFilename, wordAudioFilenames ->
                 AnkiCardOutputBuilder.forSentence(
                     cardData = cardData,
+                    annotation = annotation,
                     imageFilename = imageFilename,
                     examplesHtml = input.examplesHtml,
                     audioFilename = audioFilename,

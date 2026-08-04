@@ -41,6 +41,13 @@ enum class AnnotationDepth {
     TOKENS,
 
     /**
+     * Re-glob without per-word resolution: spans carry lookup forms and
+     * hints but no entry refs or display-reading overrides. Cost parity
+     * with the legacy tokenize() — which is now a projection of this depth.
+     */
+    WORDS,
+
+    /**
      * Dictionary-resolved: re-glob, two-store entry resolution with the
      * tokenizer reading as the narrowing hint, occurrence-validated display
      * readings, and the word-span override policy.
@@ -76,6 +83,11 @@ data class AnnotatedSpan(
      *  else null. */
     val word: String? = null,
     val entryRef: EntryRef? = null,
+    /** The narrowing hint this span's resolution used (and hydration must
+     *  reuse, or the words row could land on a DIFFERENT entry than the
+     *  annotation — the exact seam this model exists to kill). JA: the
+     *  re-glob lookup hint; ZH: the heteronym correction, when any. */
+    val lookupHint: String? = null,
     /**
      * The display reading for this span — what furigana shows and what JA
      * sentence TTS speaks. Kana for JA (occurrence-validated dictionary

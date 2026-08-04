@@ -131,20 +131,13 @@ class ChineseEngine(
         return PreloadResult.Success
     }
 
-    override suspend fun tokenize(text: String): List<TokenSpan> = withContext(Dispatchers.Default) {
-        val terms = HanLP.segment(text)
-        // Context-resolved per-surface reading corrections for heteronyms
-        // (东西 dōngxī/dōngxi, standalone 还 hái/huán), carried on
-        // TokenSpan.reading as a hint that lookup() honors. Setting it HERE is
-        // the single source of truth: every reading writer funnels through
-        // tokenize → resolver.lookup → lookup (the result-screen ViewModel, the
-        // Anki word cache, drag/one-tap), so all of them get the corrected
-        // reading without per-call-site patching. Absent for unambiguous or
-        // conflicting surfaces → freq-default, exactly as before.
-        val corrections = contextualReadings(terms, text)
-        terms.filter { isLookupWorthy(it.word) }
-            .map { TokenSpan(surface = it.word, lookupForm = it.word, reading = corrections[it.word]) }
-    }
+    /** tokenize() is a projection of annotate(WORDS): term spans with the
+     *  heteronym-corrected reading as the lookup hint (the TokenSpan.reading
+     *  contract every reading writer already funnels through). */
+    override suspend fun tokenize(text: String): List<TokenSpan> =
+        annotate(text, AnnotationDepth.WORDS).spans
+            .filter { it.lookupForm != null }
+            .map { TokenSpan(surface = it.surface, lookupForm = it.lookupForm!!, reading = it.lookupHint) }
 
     override suspend fun searchPrefix(query: String, limit: Int): List<TokenSpan> =
         dict.searchPrefix(query, limit, profile.preferTraditional)
@@ -221,8 +214,11 @@ class ChineseEngine(
             val terms = runCatchingNonCancellable { HanLP.segment(text) }
                 ?: return@withContext SentenceAnnotation.plain(text, profile.id)
             val charPinyin = runCatchingNonCancellable { HanLP.convertToPinyinList(text) }
+            // Corrections at WORDS and FULL — tokenize() has always carried
+            // them (its callers' lookups honor the hint); only the TOKENS
+            // display path, which never consulted them, skips the pass.
             val corrections =
-                if (depth == AnnotationDepth.FULL) contextualReadings(terms, text) else emptyMap()
+                if (depth != AnnotationDepth.TOKENS) contextualReadings(terms, text) else emptyMap()
             val spans = mutableListOf<AnnotatedSpan>()
             var cursor = 0
             var emitted = 0
@@ -238,6 +234,7 @@ class ChineseEngine(
                         spans.add(AnnotatedSpan(
                             start = -1, end = -1, surface = word,
                             lookupForm = word, reading = corrections[word],
+                            lookupHint = corrections[word],
                         ))
                     }
                     continue
@@ -248,6 +245,7 @@ class ChineseEngine(
                     text, found, found + word.length, charPinyin,
                     lookupForm = word.takeIf { isLookupWorthy(it) },
                     reading = corrections[word],
+                    lookupHint = corrections[word],
                 ))
                 emitted = found + word.length
             }
@@ -263,6 +261,7 @@ class ChineseEngine(
         charPinyin: List<Pinyin>?,
         lookupForm: String?,
         reading: String?,
+        lookupHint: String? = null,
     ): AnnotatedSpan {
         val surface = text.substring(start, end)
         val parts = surface.mapIndexed { k, c ->
@@ -272,7 +271,8 @@ class ChineseEngine(
         }
         return AnnotatedSpan(
             start = start, end = end, surface = surface,
-            lookupForm = lookupForm, reading = reading, furigana = parts,
+            lookupForm = lookupForm, reading = reading, lookupHint = lookupHint,
+            furigana = parts,
         )
     }
 

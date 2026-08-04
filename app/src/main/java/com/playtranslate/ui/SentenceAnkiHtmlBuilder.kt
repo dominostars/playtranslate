@@ -2,8 +2,8 @@ package com.playtranslate.ui
 
 import android.util.Log
 import com.playtranslate.dictionary.Deinflector
-import com.playtranslate.dictionary.JapaneseTokenizer
-import com.playtranslate.dictionary.SudachiJapaneseTokenizer
+import com.playtranslate.language.AnnotatedSpan
+import com.playtranslate.language.SentenceAnnotation
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.FrequencyTag
 
@@ -99,53 +99,42 @@ object SentenceAnkiHtmlBuilder {
      * each bracket **isolated by `<wbr>` separators**. Plain text
      * passthrough for languages without a reading-annotation path.
      *
-     * The goal is to match the semantics of PT's existing furigana
-     * display (DictionaryManager.tokenizeForFurigana / FuriganaSpan
-     * in TranslationResultFragment): furigana floats above ONLY the
-     * kanji surface, never the okurigana. Tap \u805e in \u805e\u3044\u305f \u2192 see \u304d
-     * (not \u304d\u3044, not \u304d\u3044\u305f). The ZH path is analogous: pinyin
-     * floats above each hanzi, never above adjacent punctuation/Latin.
+     * RENDERER, not analyzer: every reading decision was made once, in the
+     * [annotation] (docs/sentence-annotation-refactor.md) — this function
+     * draws the annotation's spans and never re-derives readings or re-joins
+     * words to text by string matching. The furigana here is therefore the
+     * SAME furigana the result screens display and the same readings
+     * sentence TTS speaks.
      *
      * **Why `<wbr>` is the right separator.** Two downstream
      * consumers each need a boundary signal between bracket-words
-     * and the kana that follows, and they need it in formats that
-     * don't show up as visible whitespace in the rendered card:
+     * and the kana that follows, in formats that don't show up as
+     * visible whitespace:
      *
      *  1. **Anki's `{{furigana:}}` filter** regex
      *     ` ?([^ >]+?)\[(.+?)\]` reads everything before `[` (except
      *     space and `>`) as the ruby base. `<wbr>` works as an
      *     anchor because the trailing `>` in the tag is excluded
-     *     from the `[^ >]` character class \u2014 the regex can't span
-     *     across a `<wbr>` into the next bracket's base. So inserting
-     *     `<wbr>` between bracket-words gives each kanji/hanzi its
-     *     own correct ruby base without inserting a visible space.
-     *
+     *     from the `[^ >]` character class.
      *  2. **Migaku's `support.html` parser** treats everything from
-     *     a kanji bracket until the next whitespace as the "word",
-     *     and surfaces `reading + word_post` in its tap-popup.
-     *     `<wbr>` is a standard HTML word-break-opportunity element;
-     *     if Migaku's parser is DOM-aware it treats `<wbr>` as a
-     *     word boundary. (If Migaku uses a `\s` raw-text regex
-     *     instead, `<wbr>` is literal text and this won't fix
-     *     Migaku's popup \u2014 to be verified on the user's device.)
-     *
-     * `<wbr>` renders as zero-width in HTML, so the rendered card
-     * has natural CJK text with no visible inter-word spaces \u2014
-     * works cleanly on Lapis, JPMN, custom templates, and Migaku
-     * alike (assuming Migaku's DOM-awareness pans out).
+     *     a kanji bracket until the next whitespace as the "word";
+     *     a DOM-aware parser treats `<wbr>` as a word boundary.
      *
      * Examples:
-     *  - JA \u805e\u3044\u305f         \u2192 `\u805e[\u304d]<wbr>\u3044\u305f`
-     *  - JA \u53cb\u9054\u306b\u805e\u3044\u305f   \u2192 `\u53cb\u9054[\u3068\u3082\u3060\u3061]<wbr>\u306b<wbr>\u805e[\u304d]<wbr>\u3044\u305f`
-     *  - JA \u53d6\u308a\u51fa\u3059       \u2192 `\u53d6[\u3068]<wbr>\u308a<wbr>\u51fa[\u3060]<wbr>\u3059`
-     *  - JA \u4e00\u6cca\u3057\u305f       \u2192 `\u4e00\u6cca[\u3044\u3063\u3071\u304f]<wbr>\u3057\u305f` when \u4e00\u6cca is in
-     *    `words` \u2014 the words-table span override; the per-token readings
-     *    would give \u3044\u3061+\u306f\u304f (see the readingWords block below)
-     *  - ZH \u4eca\u5929\u5929\u6c14\u5f88\u597d \u2192 `\u4eca[j\u012bn]<wbr>\u5929[ti\u0101n]<wbr>\u5929[ti\u0101n]<wbr>\u6c14[q\u00ec]<wbr>\u5f88[h\u011bn]<wbr>\u597d[h\u01ceo]`
-     *  - ZH \u4f60\u597d\uff0c\u4e16\u754c\uff01 \u2192 `\u4f60[n\u01d0]<wbr>\u597d[h\u01ceo]<wbr>\uff0c<wbr>\u4e16[sh\u00ec]<wbr>\u754c[ji\u00e8]<wbr>\uff01`
+     *  - JA 聞いた         → `聞[き]<wbr>いた`
+     *  - JA 友達に聞いた   → `友達[ともだち]<wbr>に<wbr>聞[き]<wbr>いた`
+     *  - JA 一泊した       → `一泊[いっぱく]<wbr>した` (the annotator's
+     *    word-span override; per-token readings would give いち+はく)
+     *  - ZH 今天天气很好 → `今[jīn]<wbr>天[tiān]<wbr>天[tiān]<wbr>气[qì]<wbr>很[hěn]<wbr>好[hǎo]`
      *
-     * Languages without a reading-annotation path: plain text
-     * passthrough (newlines \u2192 `<br>`).
+     * Highlight (`<b>`) and word wrappers (`data-pt-w`) are span-keyed:
+     * a highlighted word is matched by its words-table key against each
+     * span's resolved word/lookup form (with a surface fallback for
+     * unresolved words), never by scanning the text — the interior-offset
+     * highlight class dies with the walk. A null/mismatched [annotation]
+     * (no analysis available, or the text was edited after annotation and
+     * the caller didn't re-annotate) degrades to the PLAIN sentence with
+     * `<b>` highlights — never-wrong beats sometimes-ruby.
      */
     fun buildSentenceFurigana(
         text: String,
@@ -158,209 +147,49 @@ object SentenceAnkiHtmlBuilder {
          *  find words: the front tooltip draws the pitch contour, the back
          *  tap scrolls to the word's cell in the words table. Default
          *  false — the structured path's SentenceFurigana output must stay
-         *  byte-stable for third-party consumers (Migaku's parser, `{{kana:}}`
-         *  users). Tag boundaries are invisible to Anki's furigana regex for
-         *  the same reason `<b>`/`<wbr>` are: `[^ >]` can't span a `>`. */
+         *  byte-stable for third-party consumers. */
         wrapWords: Boolean = false,
-        // Injectable for unit tests; production uses the process-scoped Sudachi
-        // tokenizer (which needs a pack dict, unavailable in plain JVM tests).
-        tokenizer: JapaneseTokenizer = SudachiJapaneseTokenizer.Provider,
+        annotation: SentenceAnnotation? = null,
     ): String {
         val isJa = sourceLangId == SourceLangId.JA
         val isZh = sourceLangId == SourceLangId.ZH || sourceLangId == SourceLangId.ZH_HANT
         if (!isJa && !isZh) return plainBody(text)
+        val ann = annotation?.takeIf { it.text == text }
+            ?: return buildSentencePlain(text, words, highlightedWords)
         val targets = resolveHighlightTargets(words, highlightedWords)
-        // Word wrappers ride the same surface-anchored start-match mechanism
-        // as the <b> targets: surface (inflected form when known) → the
-        // dictionary word key (matches the words-table cells' data-pt-w),
-        // plus the reading the contour draws over + the downstep list when
-        // the word has pitch. Longest-first so a longer word wins a shared
-        // prefix.
-        val wordWraps: List<WordWrap> =
-            if (wrapWords) {
-                words.asSequence()
-                    .mapNotNull { e ->
-                        if (e.word.isEmpty()) null else {
-                            val kana = when {
-                                e.reading.isNotEmpty() -> e.reading
-                                e.word.all(Deinflector::isKana) -> e.word
-                                else -> ""
-                            }
-                            WordWrap(e.surfaceForm.ifEmpty { e.word }, e.word, kana, e.pitch)
-                        }
-                    }
-                    .sortedByDescending { it.surface.length }
-                    .toList()
-            } else emptyList()
-        // Words-table reading override candidates. Sudachi SplitMode A splits
-        // number+counter compounds (一泊 → 一+泊) and per-morpheme readingForm
-        // carries no cross-morpheme sandhi, so the tokens read いち+はく where
-        // the words table shows いっぱく — the card contradicting itself. When
-        // a words-table word covers a multi-token span of the sentence, the
-        // span's bracket takes the word's reading instead. Candidate filters
-        // (the span-shape guards live in the walk):
-        //  - uninflected only (surface == dictionary form): a citation
-        //    reading over an inflected surface (聞いた[きく]) would be wrong —
-        //    and inflected forms are where per-token readings are already
-        //    right;
-        //  - all-kanji only: a whole-span bracket over 申し込み would smear
-        //    ruby across kana that today renders as anchored per-kanji
-        //    splits;
-        //  - pure-kana reading: blocks irregular dictionary rows from ever
-        //    reaching a bracket.
-        // Longest-first, like every other surface matcher here.
-        val readingCandidates: List<ReadingWord> = if (isJa) {
-            words.asSequence()
-                .filter { e ->
-                    e.word.length >= 2 && e.reading.isNotEmpty() &&
-                        (e.surfaceForm.isEmpty() || e.surfaceForm == e.word) &&
-                        e.word.all(Deinflector::isKanji) &&
-                        e.reading.all(Deinflector::isKana)
-                }
-                .map { ReadingWord(it.word, it.reading) }
-                .sortedByDescending { it.surface.length }
-                .toList()
-        } else emptyList()
-        // JA: anchor kanji-bearing Sudachi tokens to their start
-        // offsets in the source text. We walk char-by-char below;
-        // this index tells us "at position i, expand the next N chars
-        // into a furigana bracket using the cached reading."
-        // Pure-kana tokens, whitespace, and punctuation are NOT
-        // indexed and just get copied through from the source. That
-        // keeps the builder source-text-canonical (matching
-        // buildSentencePlain) and removes the dependency on Kuromoji
-        // emitting whitespace as tokens — newlines turn into `<br>`
-        // because we see them directly in `text`, not because
-        // Kuromoji happened to surface them.
-        val tokens = if (isJa) indexTokens(text, tokenizer) else TokenIndex.EMPTY
-        // The words list is display-word-keyed, so a repeated written form
-        // carries ONE cached reading — which must never erase a context
-        // distinction the tokenizer drew between occurrences. A candidate
-        // survives only when every span-aligned occurrence of its surface
-        // reads the same locally: 一泊 twice stays overridable (both read
-        // いちはく locally), while a homograph the tokenizer read two ways
-        // in one sentence falls open to per-token brackets at EVERY
-        // occurrence.
-        val readingWords = readingCandidates.filter { localReadingsAgree(text, it.surface, tokens) }
-        // ZH: no Kuromoji equivalent, and `words` carries no
-        // positional metadata. Greedy-longest-prefix match against
-        // the WordEntry list (whatever HanLP-segmented lookups
-        // happened to hit during display) gives us the same effect
-        // as the JA token index without needing sentence-time
-        // segmentation here. Hanzi that didn't get a dictionary hit
-        // pass through plain.
-        //
-        // Pipeline invariant we rely on: `words` for ZH is
-        // surface-unique with surface-deterministic readings. The
-        // Map-keyed cache in LastSentenceCache.lookupWords (Map keyed
-        // by displayWord) dedupes by surface, and
-        // ChineseDictionaryManager.lookup is surface-keyed and
-        // returns the primary CC-CEDICT reading without context. So
-        // every occurrence of a given surface in `text` necessarily
-        // resolves to the same reading — `firstOrNull` against a
-        // longest-first list is safe even though it has no offset
-        // knowledge. The day we add context-aware per-position
-        // reading resolution (heteronyms like 中 zhōng/zhòng) this
-        // walk needs to switch to an offset-indexed token list
-        // mirroring the JA path.
-        val zhWords = if (isZh) {
-            words.asSequence()
-                .filter { it.word.isNotEmpty() && it.reading.isNotEmpty() }
-                .sortedByDescending { it.word.length }
-                .toList()
-        } else emptyList()
         val sb = StringBuilder()
-        var i = 0
-        // Inclusive char offset where the active <b> span should close;
-        // -1 when we're not inside a bold span. Targets are matched at
-        // their start positions only; we leave the closing tag on the
-        // step whose post-emit cursor reaches or passes the target's
-        // end. Surface forms in `words` come from Kuromoji-aligned
-        // lookups so off-boundary targets shouldn't happen in practice.
-        var boldCloseAt = -1
-        // Same mechanism for the pitch wrapper span. Nesting invariant:
-        // <b> is always the outer element — a pitch span opens after any
-        // same-position <b> and only when it would close at or before the
-        // bold close, and a <b> never opens mid-pitch-span. Word surfaces
-        // tile the sentence so real inputs never hit the guards; they
-        // exist to keep pathological overlaps well-formed.
-        var pitchCloseAt = -1
-        while (i < text.length) {
-            if (boldCloseAt < 0 && pitchCloseAt < 0) {
-                val hit = targets.firstOrNull { text.startsWith(it, i) }
-                if (hit != null) {
-                    sb.append("<b>")
-                    boldCloseAt = i + hit.length
+        for (span in ann.spans) {
+            if (span.start < 0) continue // offsetless (ZH unanchored) — words-only span
+            val entry = wordEntryFor(span, words)
+            val highlighted =
+                (entry != null && entry.word in highlightedWords) || span.surface in targets
+            if (highlighted) sb.append("<b>")
+            val kana = entry?.let { e ->
+                when {
+                    e.reading.isNotEmpty() -> e.reading
+                    e.word.all(Deinflector::isKana) -> e.word
+                    else -> ""
                 }
-            }
-            if (pitchCloseAt < 0 && wordWraps.isNotEmpty()) {
-                val hit = wordWraps.firstOrNull { text.startsWith(it.surface, i) }
-                if (hit != null && (boldCloseAt < 0 || i + hit.surface.length <= boldCloseAt)) {
-                    sb.append("<span data-pt-w=\"").append(htmlEscape(hit.word)).append("\"")
-                    if (hit.pitch.isNotEmpty() && hit.kana.isNotEmpty()) {
-                        sb.append(" data-pt-kana=\"").append(htmlEscape(hit.kana))
-                            .append("\" data-pt-pitch=\"")
-                            .append(hit.pitch.joinToString(",")).append("\"")
-                    }
-                    sb.append(">")
-                    pitchCloseAt = i + hit.surface.length
+            }.orEmpty()
+            val wrap = wrapWords && entry != null
+            if (wrap) {
+                sb.append("<span data-pt-w=\"").append(htmlEscape(entry!!.word)).append("\"")
+                if (entry.pitch.isNotEmpty() && kana.isNotEmpty()) {
+                    sb.append(" data-pt-kana=\"").append(htmlEscape(kana))
+                        .append("\" data-pt-pitch=\"")
+                        .append(entry.pitch.joinToString(",")).append("\"")
                 }
+                sb.append(">")
             }
-            val advanced = if (isJa) {
-                // Words-table span override first, per-token bracket second.
-                // Both-ends token alignment is checked HERE, against this
-                // send-time tokenization — never lookup-time state, because
-                // the sentence is user-editable between the two: the span
-                // must start on a token begin, end on a token boundary
-                // (一泊 must not fire inside 一泊まり = 一|泊まり), and
-                // contain a second token begin (sandhi needs two morphemes;
-                // single tokens keep Sudachi's context-picked reading, e.g.
-                // 行った stays いった). An open <b>/wrapper span is never
-                // crossed. Any failed guard falls open to the per-token path.
-                val merge = if (i !in tokens.begins) null else readingWords.firstOrNull { rw ->
-                    val end = i + rw.surface.length
-                    text.startsWith(rw.surface, i) &&
-                        end in tokens.boundaries &&
-                        tokens.begins.any { it in (i + 1) until end } &&
-                        (boldCloseAt < 0 || end <= boldCloseAt) &&
-                        (pitchCloseAt < 0 || end <= pitchCloseAt)
-                }
-                if (merge != null) {
-                    emitFuriganaParts(sb, merge.surface, merge.reading)
-                    i += merge.surface.length
-                    true
-                } else {
-                    val token = tokens.kanjiAt[i]
-                    if (token != null) {
-                        emitFuriganaParts(sb, token.surface, token.reading!!)
-                        i += token.surface.length
-                        true
-                    } else false
-                }
-            } else {
-                val match = zhWords.firstOrNull { text.startsWith(it.word, i) }
-                if (match != null) {
-                    emitPinyinParts(sb, match.word, match.reading)
-                    i += match.word.length
-                    true
-                } else false
+            when {
+                isZh && entry != null && entry.reading.isNotEmpty() ->
+                    emitPinyinParts(sb, span.surface, entry.reading)
+                isZh -> appendPlain(sb, span.surface)
+                else -> emitReadingParts(sb, span.furigana)
             }
-            if (!advanced) {
-                i = appendOneCharOrBr(sb, text, i)
-            }
-            // Inner-first close order: the pitch span closes before a
-            // same-position </b> so nesting stays well-formed.
-            if (pitchCloseAt in 0..i) {
-                sb.append("</span>")
-                pitchCloseAt = -1
-            }
-            if (boldCloseAt in 0..i) {
-                sb.append("</b>")
-                boldCloseAt = -1
-            }
+            if (wrap) sb.append("</span>")
+            if (highlighted) sb.append("</b>")
         }
-        if (pitchCloseAt >= 0) sb.append("</span>")
-        if (boldCloseAt >= 0) sb.append("</b>")
         // Word wrappers enclose the bracket runs, so boundary `<wbr>`s that
         // the string-edge strip used to catch now sit just inside the span
         // tags — equally workless, stripped the same way.
@@ -368,6 +197,36 @@ object SentenceAnkiHtmlBuilder {
             .replace("$WBR</span>", "</span>")
         Log.d(TAG, "buildSentenceFurigana: in='$text' out='$out'")
         return out
+    }
+
+    /** The words-table entry a span renders with: matched by the span's
+     *  resolved word / lookup form first, surface as the fallback for
+     *  entries whose lemma differs (inflected surfaceForm rows). This is a
+     *  join WITHIN one annotation payload — word-keyed, per the refactor's
+     *  edit-path rule — not a text scan. */
+    private fun wordEntryFor(span: AnnotatedSpan, words: List<WordEntry>): WordEntry? {
+        if (words.isEmpty()) return null
+        return words.firstOrNull { e ->
+            (span.word != null && e.word == span.word) ||
+                (span.lookupForm != null && e.word == span.lookupForm)
+        } ?: words.firstOrNull { e ->
+            e.surfaceForm.ifEmpty { e.word } == span.surface
+        }
+    }
+
+    /** JA bracket emission from the annotation's ruby parts: reading parts
+     *  become `<wbr>base[reading]<wbr>` brackets, write-through parts stay
+     *  plain (newlines → `<br>`). */
+    private fun emitReadingParts(sb: StringBuilder, parts: List<com.playtranslate.language.ReadingPart>) {
+        for (p in parts) {
+            val r = p.reading
+            if (r != null) {
+                sb.append(WBR).append(htmlEscape(p.text))
+                    .append('[').append(htmlEscape(r)).append(']').append(WBR)
+            } else {
+                appendPlain(sb, p.text)
+            }
+        }
     }
 
     /** A `<wbr>` immediately inside a word wrapper's opening tag. */
@@ -390,117 +249,9 @@ object SentenceAnkiHtmlBuilder {
         return i + 1
     }
 
-    /** Minimal kanji-bearing token: surface + hiragana reading, keyed by start offset. */
-    private data class KanjiToken(val surface: String, val reading: String?)
 
     /**
-     * Token geometry from one `analyze()` pass: kanji-bearing tokens keyed
-     * by start offset (the bracket sources), plus every token's start and
-     * edge offsets. The word-span reading override tests its candidates
-     * against [begins]/[boundaries] so a span can never open or close
-     * mid-token.
-     */
-    private class TokenIndex(
-        val kanjiAt: Map<Int, KanjiToken>,
-        val begins: Set<Int>,
-        val boundaries: Set<Int>,
-    ) {
-        companion object { val EMPTY = TokenIndex(emptyMap(), emptySet(), emptySet()) }
-    }
-
-    /** One word-span override candidate: an uninflected all-kanji words-table
-     *  surface with its pure-kana dictionary reading. */
-    private data class ReadingWord(val surface: String, val reading: String)
-
-    /** One sentence word's wrapper data: the surface to match in the text,
-     *  the dictionary-word key the cells share, and the pitch payload. */
-    private data class WordWrap(
-        val surface: String,
-        val word: String,
-        val kana: String,
-        val pitch: List<Int>,
-    )
-
-    /**
-     * True when every span-aligned occurrence of [surface] in [text] carries
-     * the same local tokenizer reading (the covering tokens' readings
-     * concatenated). The word-span override stamps ONE cached reading per
-     * written form, so a surface the tokenizer read differently at two
-     * positions must not be overridden at either — and a span whose tokens
-     * can't be tiled with readings vetoes too, failing open to per-token
-     * brackets. Occurrences that aren't span-aligned (embedded in a larger
-     * token run, e.g. 一泊 inside 一泊まり) don't count: the override can
-     * never fire there, so nothing can be erased.
-     */
-    private fun localReadingsAgree(text: String, surface: String, tokens: TokenIndex): Boolean {
-        var seen: String? = null
-        var at = text.indexOf(surface)
-        while (at >= 0) {
-            val end = at + surface.length
-            val aligned = at in tokens.begins && end in tokens.boundaries &&
-                tokens.begins.any { it in (at + 1) until end }
-            if (aligned) {
-                val local = localReading(at, end, tokens) ?: return false
-                if (seen == null) seen = local else if (seen != local) return false
-            }
-            at = text.indexOf(surface, at + 1)
-        }
-        return true
-    }
-
-    /** The covering tokens' readings concatenated over [start, end), or null
-     *  when the kanji-token index can't tile the span. */
-    private fun localReading(start: Int, end: Int, tokens: TokenIndex): String? {
-        val sb = StringBuilder()
-        var p = start
-        while (p < end) {
-            val t = tokens.kanjiAt[p] ?: return null
-            sb.append(t.reading ?: return null)
-            p += t.surface.length
-        }
-        return if (p == end) sb.toString() else null
-    }
-
-    private fun indexTokens(text: String, tokenizer: JapaneseTokenizer): TokenIndex {
-        val kanjiAt = mutableMapOf<Int, KanjiToken>()
-        val begins = mutableSetOf<Int>()
-        val boundaries = mutableSetOf<Int>()
-        for (m in tokenizer.analyze(text)) {
-            begins.add(m.begin)
-            boundaries.add(m.begin)
-            boundaries.add(m.end)
-            val reading = m.reading?.let { Deinflector.katakanaToHiragana(it) }
-            val hasKanji = m.surface.any(Deinflector::isKanji)
-            if (hasKanji && !reading.isNullOrEmpty()) {
-                // begin is the original-text offset (tokens tile the input), so it
-                // aligns with the consumer's character scan position.
-                kanjiAt[m.begin] = KanjiToken(m.surface, reading)
-            }
-        }
-        return TokenIndex(kanjiAt, begins, boundaries)
-    }
-
-    /**
-     * Emits one `<wbr>kanji[reading]<wbr>` bracket per per-kanji
-     * splitFurigana part, with okurigana / internal kana written
-     * through as plain text. Used by the sentence builder; the expression
-     * builder forks [buildJaExpressionFurigana] (native leading-space
-     * separator) so `{{kana:…}}` stays `<wbr>`-free for Lapis's pitch.
-     */
-    private fun emitFuriganaParts(sb: StringBuilder, surface: String, reading: String) {
-        for (part in Deinflector.splitFurigana(surface, reading)) {
-            val r = part.reading
-            if (r != null) {
-                sb.append(WBR).append(htmlEscape(part.text))
-                    .append('[').append(htmlEscape(r)).append(']').append(WBR)
-            } else {
-                appendPlain(sb, part.text)
-            }
-        }
-    }
-
-    /**
-     * Chinese counterpart of [emitFuriganaParts]: emits per-hanzi
+     * Chinese counterpart of [emitReadingParts]: emits per-hanzi
      * `<wbr>{c}[{syllable}]<wbr>` brackets when the reading's
      * whitespace-separated syllable count matches the word's hanzi
      * count. Non-hanzi chars (punctuation, embedded Latin) pass through
