@@ -254,6 +254,9 @@ object SnapshotCore {
             sourceText = group.text,
             orientation = group.orientation,
             alignment = group.alignment,
+            angleDeg = group.angleDeg,
+            orientedWidth = group.orientedWidth,
+            orientedHeight = group.orientedHeight,
         )
     }
 

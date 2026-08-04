@@ -99,6 +99,22 @@ object ScanlineReconciler {
      *  static text — repositioning that would make boxes shiver every cycle. */
     private const val REPOSITION_HYSTERESIS_PX = 5
 
+    /** A slanted box whose fresh read is also slanted, at an angle this many
+     *  degrees away, is refreshed like a bounds drift. Bounds alone can miss
+     *  pure angle drift — the AABB moves only ~w·cosθ px per degree, under
+     *  [REPOSITION_HYSTERESIS_PX] for short lines. 0↔non-zero flips are
+     *  deliberately EXCLUDED ([slantDrifted]): a real transition to/from
+     *  upright moves the AABB far past the bounds hysteresis and is caught
+     *  there, while an equal-bounds flip is the producer's 10° snap threshold
+     *  hovering under detector jitter — refreshing on that would rebuild the
+     *  overlay every flip (the flap failure), so the born state stays sticky. */
+    private const val SLANT_REFRESH_HYSTERESIS_DEG = 3f
+
+    /** See [SLANT_REFRESH_HYSTERESIS_DEG]. */
+    private fun slantDrifted(box: TextBox, g: OcrManager.OcrGroup): Boolean =
+        box.angleDeg != 0f && g.angleDeg != 0f &&
+            kotlin.math.abs(box.angleDeg - g.angleDeg) > SLANT_REFRESH_HYSTERESIS_DEG
+
     /** The data the mode needs to (re)build one box: an OCR group reduced to
      *  the fields [OverlayToolkit.buildPlaceholderBoxes] and
      *  [OverlayToolkit.translatePlaceholders] consume. */
@@ -116,6 +132,11 @@ object ScanlineReconciler {
         /** The OCR group this region was reduced from — presenters needing
          *  line-level data read it. Null only in hand-built test fixtures. */
         val group: OcrManager.OcrGroup? = null,
+        /** Slant carried from the group (see [OcrManager.OcrGroup.angleDeg]);
+         *  oriented dims ride with it, 0 when upright. */
+        val angleDeg: Float = 0f,
+        val orientedWidth: Float = 0f,
+        val orientedHeight: Float = 0f,
     )
 
     /**
@@ -232,6 +253,9 @@ object ScanlineReconciler {
             alignment = g.alignment,
             replacesBox = replaces,
             group = g,
+            angleDeg = g.angleDeg,
+            orientedWidth = g.orientedWidth,
+            orientedHeight = g.orientedHeight,
         )
 
         // Displayed boxes → KEEP / RETRANSLATE / REMOVE.
@@ -304,15 +328,24 @@ object ScanlineReconciler {
                     }
                     if (upgrade) {
                         toTranslate.add(regionOf(g, replaces = box)); cCount++; upCount++
-                    } else if (boundsDrifted(box.bounds, g.bounds)) {
-                        // Region DRIFTED beyond OCR jitter (a scroll/pan):
-                        // carry the box's existing translation onto the
-                        // group's fresh bounds so the overlay tracks the
-                        // moving text — no re-translate. Below the
-                        // hysteresis it passes through verbatim so static
-                        // text does not shiver. Either way it counts as
-                        // unchanged; drift is tallied in [Verdicts.repositioned].
-                        kept.add(box.copy(bounds = g.bounds)); rCount++; uCount++
+                    } else if (boundsDrifted(box.bounds, g.bounds) || slantDrifted(box, g)) {
+                        // Region DRIFTED beyond OCR jitter (a scroll/pan), or a
+                        // slanted box's angle drifted past its own hysteresis
+                        // (a rotation bounds can miss on short lines): carry
+                        // the box's existing translation onto the group's
+                        // fresh bounds so the overlay tracks the moving text
+                        // — no re-translate. Below both hystereses it passes
+                        // through verbatim so static text does not shiver.
+                        // Either way it counts as unchanged; drift is tallied
+                        // in [Verdicts.repositioned].
+                        // The slant moves with the bounds — it belongs to the
+                        // fresh read's geometry, not the stale box's.
+                        kept.add(box.copy(
+                            bounds = g.bounds,
+                            angleDeg = g.angleDeg,
+                            orientedWidth = g.orientedWidth,
+                            orientedHeight = g.orientedHeight,
+                        )); rCount++; uCount++
                     } else {
                         kept.add(box); uCount++
                     }

@@ -1821,7 +1821,23 @@ object LayoutAnalyzer {
         // bootstrap hole that prior was built for. Import seeds are the way to
         // check that claim rather than assume it.
         val active = strategy ?: FlowGraphStrategy()
-        val proposed = active.group(regions, ctx)
+        // Rotated regions group standalone (the [OcrBox] contract): the AABB
+        // kernel can't reason about a slanted box — its inflated bounds band
+        // with every row it crosses (the failure [FlowGraphStrategy]'s
+        // rowThicknessCap exists to blunt) — and a mixed-angle union would
+        // have no coherent angle for the renderer. Each rotated region becomes
+        // its own single-region group, appended after the strategy's output.
+        // The source-script filter is replicated here because both strategies
+        // apply it inside group() and the bypass skips them.
+        val proposed = if (regions.none { it.box.isRotated }) {
+            active.group(regions, ctx)
+        } else {
+            val (rotated, upright) = regions.partition { it.box.isRotated }
+            val grouped = if (upright.isEmpty()) emptyList() else active.group(upright, ctx)
+            grouped + rotated
+                .filter { r -> r.text.any { isSourceLangChar(it, sourceLang) } }
+                .map { ProposedGroup(listOf(it)) }
+        }
         // Join a group's lines with a space only for whitespace-delimited
         // languages; CJK/Thai (wordsSeparatedByWhitespace = false) get no
         // separator so the merged paragraph reads naturally AND the translator
@@ -2022,7 +2038,20 @@ object LayoutAnalyzer {
         val bounds = Rect(left, rects.minOf { it.top }, right, rects.maxOf { it.bottom })
         val alignment =
             if (orientation == TextOrientation.VERTICAL) TextAlignment.LEFT else classifyGroupAlignment(lines)
-        return LayoutGroup(text, lines, bounds, orientation, alignment)
+        // A standalone rotated singleton carries its slant onto the group — the
+        // only rotated shape layout emits (see the bypass in [analyze]). Guarded
+        // on no parent pins: pinned bounds are wider than the region's own AABB,
+        // which would break the renderer's center-pin premise (group bounds ==
+        // the oriented rect's exact AABB).
+        val rot = if (sg.parentLeft == null && sg.parentRight == null) {
+            raw.singleOrNull()?.box?.takeIf { it.isRotated }
+        } else null
+        return LayoutGroup(
+            text, lines, bounds, orientation, alignment,
+            angleDeg = rot?.angleDeg ?: 0f,
+            orientedWidth = rot?.orientedWidth ?: 0f,
+            orientedHeight = rot?.orientedHeight ?: 0f,
+        )
     }
 
     /**
@@ -2093,6 +2122,12 @@ object LayoutAnalyzer {
  * [lines] it contains, an axis-aligned [bounds] in the analyze input coordinate
  * space, and the voted [orientation] + classified [alignment]. The pipeline
  * flattens these into the final OcrResult, normalizing coords to original.
+ *
+ * [angleDeg] + [orientedWidth]/[orientedHeight] are non-zero only for a
+ * standalone rotated singleton (the one rotated shape layout emits — see the
+ * bypass in [LayoutAnalyzer.analyze]), copied from the region's [OcrBox] in the
+ * same coordinate space as [bounds]. All three ride together: the oriented dims
+ * cannot be re-derived from bounds+angle downstream (singular at 45°).
  */
 data class LayoutGroup(
     val text: String,
@@ -2100,4 +2135,7 @@ data class LayoutGroup(
     val bounds: Rect,
     val orientation: TextOrientation,
     val alignment: TextAlignment,
+    val angleDeg: Float = 0f,
+    val orientedWidth: Float = 0f,
+    val orientedHeight: Float = 0f,
 )

@@ -3391,6 +3391,7 @@ class CaptureService : Service() {
             com.playtranslate.ui.TextBox(
                 "", g.bounds, bgColor, textColor, g.lines.size,
                 orientation = g.orientation, alignment = g.alignment,
+                angleDeg = g.angleDeg, orientedWidth = g.orientedWidth, orientedHeight = g.orientedHeight,
             )
         }
         return OneShotOverlayData(boxes, cropLeft, cropTop, screenshotW, screenshotH)

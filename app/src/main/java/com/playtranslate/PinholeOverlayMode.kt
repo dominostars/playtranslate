@@ -551,14 +551,21 @@ class PinholeOverlayMode(
                     // streams (routing), so its frames always have the bar.
                     service.getStatusBarHeightForDisplay(displayId),
                 )
-                val exclude = bitmapRects.map { r ->
-                    Rect(r).apply {
-                        inset(
-                            -PinholeCalibration.GATE_EXCLUDE_INFLATE_PX,
-                            -PinholeCalibration.GATE_EXCLUDE_INFLATE_PX,
-                        )
-                    }
-                } + listOfNotNull(iconRect)
+                val inflate = PinholeCalibration.GATE_EXCLUDE_INFLATE_PX
+                val exclude = bitmapRects.mapIndexed { i, r ->
+                    // Footprint-shaped exclusion: a rotated chip excludes only
+                    // its oriented footprint, leaving the AABB corners sampled
+                    // — checkPinholes skips them (no overlay drawn there), so
+                    // the gate is their only change watcher. Sizes are equal
+                    // (guard above), so the zip with gateBoxes is index-safe.
+                    val b = gateBoxes[i]
+                    OutsideChangeGate.Exclusion(
+                        Rect(r).apply { inset(-inflate, -inflate) },
+                        angleDeg = b.angleDeg,
+                        orientedW = b.orientedWidth + 2 * inflate,
+                        orientedH = b.orientedHeight + 2 * inflate,
+                    )
+                } + listOfNotNull(iconRect?.let { OutsideChangeGate.Exclusion(it) })
                 val outside =
                     OutsideChangeGate.check(raw, gateRef, crop, exclude, gateBuffers, outsideGrid)
                 reconcileCycle =
@@ -994,7 +1001,11 @@ class PinholeOverlayMode(
                 val farLineCounts = placeGroups.map { it.lineCount }
                 val farOrientations = placeGroups.map { it.orientation }
                 val farAlignments = placeGroups.map { it.alignment }
-                val placeholders = buildPlaceholderBoxes(farTexts, farBounds, farLineCounts, raw, cropLeft, cropTop, farOrientations, farAlignments)
+                val farSlants = placeGroups.map { Triple(it.angleDeg, it.orientedWidth, it.orientedHeight) }
+                val placeholders = buildPlaceholderBoxes(
+                    farTexts, farBounds, farLineCounts, raw, cropLeft, cropTop,
+                    farOrientations, farAlignments, farSlants,
+                )
 
                 if (placeholders.isNotEmpty()) {
                     val partial = placeholders.mapIndexed { i, ph ->
@@ -1246,12 +1257,28 @@ class PinholeOverlayMode(
             if (box.dirty) continue
             val rect = bitmapRects.getOrNull(rectIdx) ?: break
             rectIdx++
-            val l = (rect.left - aaBuffer).coerceAtLeast(0)
-            val t = (rect.top - aaBuffer).coerceAtLeast(0)
-            val r = (rect.right + aaBuffer).coerceAtMost(bitmap.width)
-            val b = (rect.bottom + aaBuffer).coerceAtMost(bitmap.height)
             paint.color = box.bgColor or 0xFF000000.toInt()
-            canvas.drawRect(l.toFloat(), t.toFloat(), r.toFloat(), b.toFloat(), paint)
+            if (box.angleDeg != 0f && box.orientedWidth > 0f && box.orientedHeight > 0f) {
+                // Rotated chip: fill its true footprint — the oriented rect
+                // about the rendered AABB's center — never the AABB, whose
+                // corner triangles are live game pixels the user still sees;
+                // painting those would blind OCR to real on-screen text
+                // (adversarial-review finding). The canvas clips to the bitmap.
+                val cx = (rect.left + rect.right) / 2f
+                val cy = (rect.top + rect.bottom) / 2f
+                val hw = box.orientedWidth / 2f + aaBuffer
+                val hh = box.orientedHeight / 2f + aaBuffer
+                canvas.save()
+                canvas.rotate(box.angleDeg, cx, cy)
+                canvas.drawRect(cx - hw, cy - hh, cx + hw, cy + hh, paint)
+                canvas.restore()
+            } else {
+                val l = (rect.left - aaBuffer).coerceAtLeast(0)
+                val t = (rect.top - aaBuffer).coerceAtLeast(0)
+                val r = (rect.right + aaBuffer).coerceAtMost(bitmap.width)
+                val b = (rect.bottom + aaBuffer).coerceAtMost(bitmap.height)
+                canvas.drawRect(l.toFloat(), t.toFloat(), r.toFloat(), b.toFloat(), paint)
+            }
         }
     }
 
@@ -1396,10 +1423,19 @@ class PinholeOverlayMode(
         for (py in 0 until regionH) {
             for (px in 0 until regionW) {
                 if (!isPinholePosition(left + px, top + py, spacing)) continue
-                totalPinholes++
                 val i = py * regionW + px
-                val refPx = refPixels[i]
                 val ovPx = ovPixels[i]
+                // A pixel the overlay never drew — a rotated chip's AABB
+                // corner, or its AA edge — has no 50/50 blend to predict:
+                // raw there is pure game content, and predicted would be
+                // cleanRef/2, flagging static screens as changed every cycle.
+                // Skip it; those samples belong to the outside gate, whose
+                // exclusion is footprint-shaped for rotated boxes. Upright
+                // chips fill their whole rect opaque, so this never skips
+                // for them.
+                if (Color.alpha(ovPx) != 255) continue
+                totalPinholes++
+                val refPx = refPixels[i]
                 val rawPx = rawPixels[i]
                 // predicted = clean_ref * 0.5 + overlay_rendered * 0.5
                 val predR = (Color.red(refPx) + Color.red(ovPx)) / 2
@@ -1439,9 +1475,10 @@ class PinholeOverlayMode(
 
     /**
      * Update clean ref in-place: copy non-overlay pixels from raw into the
-     * existing cleanRef. Cached box positions stay frozen at their initial
-     * pre-overlay game content (pinhole detection relies on that
-     * invariant), while everything else is refreshed from raw.
+     * existing cleanRef. Overlay-COVERED pixels stay frozen at their initial
+     * pre-overlay game content (pinhole detection relies on that invariant),
+     * while everything else — including a rotated chip's undrawn AABB
+     * corners — is refreshed from raw.
      *
      * Takes pre-converted bitmap-space [bitmapRects] from the caller (built
      * via [FrameCoordinates.viewListToBitmap]). The caller is responsible for
@@ -1476,7 +1513,16 @@ class PinholeOverlayMode(
         raw.getPixels(allPixels, 0, w, 0, 0, w, h)
         ref.setPixels(allPixels, 0, w, 0, 0, w, h)
 
-        // Restore overlay regions from saved pixels
+        // Restore overlay regions from saved pixels. A rotated chip freezes
+        // only the pixels it actually draws (overlay alpha 255 — the same
+        // criterion checkPinholes samples by): its AABB corners are live game
+        // content the outside gate now watches, and a frozen-stale corner
+        // would make that gate false-fire forever. Upright boxes keep the
+        // whole-rect restore, byte-identical to before.
+        val boxes = cachedBoxes
+        val overlay = overlayBitmap
+        val boxesAligned = boxes != null && boxes.size == bitmapRects.size &&
+            overlay != null && overlay.width == w && overlay.height == h
         for ((i, rect) in bitmapRects.withIndex()) {
             val pixels = savedRegions[i] ?: continue
             val left = rect.left.coerceIn(0, w)
@@ -1486,7 +1532,18 @@ class PinholeOverlayMode(
             val regionW = right - left
             val regionH = bottom - top
             if (regionW <= 0 || regionH <= 0) continue
-            ref.setPixels(pixels, 0, regionW, left, top, regionW, regionH)
+            if (boxesAligned && boxes!![i].angleDeg != 0f) {
+                val ov = IntArray(regionW * regionH)
+                overlay!!.getPixels(ov, 0, regionW, left, top, regionW, regionH)
+                val merged = IntArray(regionW * regionH)
+                ref.getPixels(merged, 0, regionW, left, top, regionW, regionH)  // == fresh raw here
+                for (p in merged.indices) {
+                    if (Color.alpha(ov[p]) == 255) merged[p] = pixels[p]
+                }
+                ref.setPixels(merged, 0, regionW, left, top, regionW, regionH)
+            } else {
+                ref.setPixels(pixels, 0, regionW, left, top, regionW, regionH)
+            }
         }
     }
 
@@ -1525,7 +1582,9 @@ class PinholeOverlayMode(
         texts: List<String>, bounds: List<Rect>, lineCounts: List<Int>,
         raw: Bitmap, left: Int, top: Int,
         orientations: List<com.playtranslate.language.TextOrientation> = emptyList(),
-        alignments: List<com.playtranslate.language.TextAlignment> = emptyList()
+        alignments: List<com.playtranslate.language.TextAlignment> = emptyList(),
+        /** Per-box (angleDeg, orientedWidth, orientedHeight); zeros when upright. */
+        slants: List<Triple<Float, Float, Float>> = emptyList(),
     ): List<TextBox> {
         val colorScale = 4
         val colorRef = raw.scale(raw.width / colorScale, raw.height / colorScale, false)
@@ -1539,8 +1598,10 @@ class PinholeOverlayMode(
             val (bg, tc) = colors.getOrElse(idx) { Pair(Color.argb(224, 0, 0, 0), Color.WHITE) }
             val orient = orientations.getOrElse(idx) { com.playtranslate.language.TextOrientation.HORIZONTAL }
             val align = alignments.getOrElse(idx) { com.playtranslate.language.TextAlignment.LEFT }
+            val (ang, ow, oh) = slants.getOrElse(idx) { Triple(0f, 0f, 0f) }
             TextBox("", rect, bg, tc, lineCounts.getOrElse(idx) { 1 },
-                sourceText = texts.getOrElse(idx) { "" }, orientation = orient, alignment = align)
+                sourceText = texts.getOrElse(idx) { "" }, orientation = orient, alignment = align,
+                angleDeg = ang, orientedWidth = ow, orientedHeight = oh)
         }
     }
 

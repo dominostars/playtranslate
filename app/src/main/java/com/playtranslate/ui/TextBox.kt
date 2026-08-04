@@ -38,6 +38,17 @@ data class TextBox(
     /** Block alignment for horizontal boxes — drives skeleton bar placement
      *  and translated-text gravity. Ignored for vertical boxes. */
     val alignment: TextAlignment = TextAlignment.LEFT,
+    /** Source slant in degrees, clockwise-positive (`View.rotation` semantics);
+     *  0 = axis-aligned. Non-zero routes the box to [RenderMode.SOURCE_ANGLE]:
+     *  the chip lays out at the oriented dims and rotates about the [bounds]
+     *  center — [bounds] is exactly the slanted rect's AABB, so the rotated
+     *  chip lands on the source footprint. */
+    val angleDeg: Float = 0f,
+    /** True (unrotated) dims of the slanted rect in the same space as [bounds];
+     *  0 when [angleDeg] == 0. Ride with the angle — not re-derivable from
+     *  bounds+angle (singular at 45°). */
+    val orientedWidth: Float = 0f,
+    val orientedHeight: Float = 0f,
     /** Minimum on-screen width (px) for a legible horizontal line of
      *  [translatedText] — the longest whitespace token measured at the
      *  legibility floor. Drives the vertical-box render routing in

@@ -21,6 +21,11 @@ import com.playtranslate.language.TextOrientation
  * - [ROTATE] — the 90°-rotated fallback in the box's original narrow footprint. Reached when grow
  *   is off (or the script can't stack) and the box is too narrow for a horizontal line, and also
  *   when grow is on but the box is too wedged between neighbours to grow to a legible width.
+ * - [SOURCE_ANGLE] — a genuinely slanted source box ([TextBox.angleDeg] != 0): the chip lays out
+ *   at the oriented dims and rotates by the source angle about the bounds center. Unlike [ROTATE]
+ *   (a *render* decision for narrow upright columns), this reflects the *source* geometry.
+ *   Slanted boxes skip the carve passes — a carve would move the registered AABB but not the
+ *   drawn chip — so residual overlap with neighbours is accepted (standalone diagonals are rare).
  */
 enum class RenderMode {
     LEGACY_HORIZONTAL,
@@ -28,6 +33,7 @@ enum class RenderMode {
     STACK_UPRIGHT,
     GROW_HORIZONTAL,
     ROTATE,
+    SOURCE_ANGLE,
 }
 
 /** A box's resolved on-screen rect paired with its chosen [RenderMode]. Index-aligned with
@@ -145,8 +151,13 @@ internal object OverlayLayout {
         //    clean split exists; clamp the y-split to the source edges and
         //    accept the residual rendered overlap (z-order resolves it) —
         //    covering source text outranks disjoint rendering.
+        // Slanted boxes sit out both carve passes (mirroring the furigana
+        // exclusion): a carve moves the registered AABB but the drawn chip —
+        // oriented dims rotated about the bounds center — would not follow,
+        // so the carve would be both wrong (uncovered source) and invisible.
         val hBoxIndices = boxes.indices.filter {
-            !boxes[it].isFurigana && boxes[it].orientation != TextOrientation.VERTICAL
+            !boxes[it].isFurigana && boxes[it].angleDeg == 0f &&
+                boxes[it].orientation != TextOrientation.VERTICAL
         }.sortedBy { finalRects[it].top }
         for (a in hBoxIndices.indices) {
             for (b in a + 1 until hBoxIndices.size) {
@@ -184,7 +195,8 @@ internal object OverlayLayout {
         // adjacent columns in right-to-left reading order, so a narrow column and a wide one
         // still separate even though they render differently.
         val vBoxIndices = boxes.indices.filter {
-            !boxes[it].isFurigana && boxes[it].orientation == TextOrientation.VERTICAL
+            !boxes[it].isFurigana && boxes[it].angleDeg == 0f &&
+                boxes[it].orientation == TextOrientation.VERTICAL
         }.sortedByDescending { finalRects[it].right }
         for (a in vBoxIndices.indices) {
             for (b in a + 1 until vBoxIndices.size) {
@@ -224,7 +236,12 @@ internal object OverlayLayout {
         targetStackable: Boolean,
         growEnabled: Boolean,
     ): RenderMode {
-        if (box.isFurigana || box.orientation != TextOrientation.VERTICAL) {
+        if (box.isFurigana) return RenderMode.LEGACY_HORIZONTAL
+        // Slanted source box. Checked before the horizontal guard below —
+        // producers label every slanted box HORIZONTAL (tategaki is never
+        // slanted by the OcrBox contract), so a check after it is unreachable.
+        if (box.angleDeg != 0f) return RenderMode.SOURCE_ANGLE
+        if (box.orientation != TextOrientation.VERTICAL) {
             return RenderMode.LEGACY_HORIZONTAL
         }
         // Vertical OCR box.
@@ -292,13 +309,20 @@ internal object OverlayLayout {
             // Nearest blocking edges among other non-furigana boxes that vertically overlap r.
             var leftLimit = 0f
             var rightLimit = displayW
+            var blockedBySlant = false
             for (j in boxes.indices) {
                 if (j == gi || boxes[j].isFurigana) continue
                 val o = rects[j]
                 if (o.bottom <= r.top || o.top >= r.bottom) continue  // no vertical overlap
+                // A slanted box skipped the carve passes, so its AABB may
+                // straddle r — the strict side tests below would then count it
+                // in NEITHER limit and grow straight into it. Don't grow at all
+                // beside a slanted neighbour.
+                if (boxes[j].angleDeg != 0f) { blockedBySlant = true; break }
                 if (o.right <= r.left) leftLimit = maxOf(leftLimit, o.right)
                 else if (o.left >= r.right) rightLimit = minOf(rightLimit, o.left)
             }
+            if (blockedBySlant) continue
             val leftRoom = (r.left - leftLimit).coerceAtLeast(0f)
             val rightRoom = (rightLimit - r.right).coerceAtLeast(0f)
 
@@ -333,6 +357,13 @@ internal object OverlayLayout {
             if (ba.sourceText != bb.sourceText) return false
             if (ba.orientation != bb.orientation) return false
             if (ba.alignment != bb.alignment) return false
+            // A slant change re-routes the render mode, so it must defeat the
+            // fuzzy fast path (a 0°→25° flip inside the bounds tolerance would
+            // otherwise never rebuild). ~1° absorbs quad jitter on a stable
+            // banner; oriented dims share the bounds tolerance.
+            if (Math.abs(ba.angleDeg - bb.angleDeg) > 1f) return false
+            if (Math.abs(ba.orientedWidth - bb.orientedWidth) > tolerance ||
+                Math.abs(ba.orientedHeight - bb.orientedHeight) > tolerance) return false
             val ra = ba.bounds; val rb = bb.bounds
             if (Math.abs(ra.left - rb.left) > tolerance ||
                 Math.abs(ra.top - rb.top) > tolerance ||

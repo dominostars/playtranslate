@@ -65,7 +65,11 @@ internal class TranslationOneShotProcessor(
             val (bgColor, textColor) = colors.getOrElse(idx) {
                 Pair(android.graphics.Color.argb(200, 0, 0, 0), android.graphics.Color.WHITE)
             }
-            TextBox("", g.bounds, bgColor, textColor, g.lines.size, orientation = g.orientation, alignment = g.alignment)
+            TextBox(
+                "", g.bounds, bgColor, textColor, g.lines.size,
+                orientation = g.orientation, alignment = g.alignment,
+                angleDeg = g.angleDeg, orientedWidth = g.orientedWidth, orientedHeight = g.orientedHeight,
+            )
         }
         showOverlay(placeholders)
 
