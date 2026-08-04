@@ -2222,6 +2222,29 @@ class CaptureResultOverlay(
             return out
         }
 
+        private val handleLoc = IntArray(2)
+        override fun handleRect(out: Rect): Boolean {
+            // Expanded posture only: the pill fades out through the collapse
+            // band (applyCollapseCrossfade), and a faded pill is not a target.
+            if (sliverMode || !handle.isShown || handle.alpha < 1f) return false
+            if (handle.width <= 0 || handle.height <= 0) return false
+            handle.getLocationOnScreen(handleLoc)
+            // Ring the DRAWN pill — 40×5dp centered in the strip plus its 1dp
+            // ring (HandleView.onDraw) — not the full-width transparent strip.
+            val pw = dp(42)
+            val ph = dp(7)
+            val cx = handleLoc[0] + handle.width / 2
+            val cy = handleLoc[1] + handle.height / 2
+            out.set(cx - pw / 2, cy - ph / 2, cx + pw / 2, cy + ph / 2)
+            return true
+        }
+
+        override fun collapseToSliver() = this@CaptureResultOverlay.collapseToSliver()
+
+        override fun resizeBy(dyPx: Int) = stickResizeBy(dyPx)
+
+        override fun commitResize() = commitStickResize()
+
         override fun wordCount(): Int =
             if (binder?.tvOriginal?.isShown == true) wordSpans.size else 0
 
@@ -2531,6 +2554,7 @@ class CaptureResultOverlay(
             // pre-drag height.
             sliverMode = true
             dismissWordLens()
+            nav?.clearCursor()   // every sliver entry drops the cursor
             preSliverHeightPx = resizeStartHeight
             animateSliverHeight(sliverHeightPx())
         } else if (panelHeightPx != resizeStartHeight) {
@@ -2538,6 +2562,75 @@ class CaptureResultOverlay(
             // went nowhere — a tap on the grabber, or a pull against a sheet
             // already at its content ceiling — leaves the remembered one alone
             // instead of quietly overwriting it with wherever this result sat.
+            autoMaxPx = committedCeiling()
+        }
+    }
+
+    // ── Stick resize (the right stick's virtual grabber drag) ────────────
+    // Delta-driven mirror of the touch resize: [stickResizeBy] is updateResize
+    // per frame, [commitStickResize] is the finger-up (endResize / the
+    // sliver drag's endSliverDrag, by origin). Driven by the nav controller's
+    // frame loop while the right stick is deflected.
+
+    private var stickResizing = false
+    private var stickResizeFromSliver = false
+    private var stickResizeStartHeight = 0
+
+    private fun stickResizeBy(dyPx: Int) {
+        if (dismissed || animatingOut) return
+        if (!stickResizing) {
+            heightAnimator?.cancel() // the user takes over from the auto-grow
+            stickResizing = true
+            stickResizeFromSliver = sliverMode
+            stickResizeStartHeight = panelHeightPx
+        }
+        // Same clamps as updateResize: [floor, 90%], capped at the content's
+        // max-needed height; the in-place edit keeps the classic floor (the
+        // nav loop is suspended while editing anyway — belt and braces).
+        val floor = if (editContainer.visibility == View.VISIBLE) {
+            CaptureResultGeometry.minPanelHeight(screenH)
+        } else {
+            sliverHeightPx()
+        }
+        setPanelHeight(
+            CaptureResultGeometry.clampPanelHeight(
+                panelHeightPx + dyPx, screenH, minFraction = 0f,
+            )
+                .coerceAtMost(maxNeededHeightPx)
+                .coerceAtLeast(floor),
+        )
+        if (panelHeightPx >= CaptureResultGeometry.minPanelHeight(screenH)) reFitText()
+    }
+
+    private fun commitStickResize() {
+        if (!stickResizing) return
+        stickResizing = false
+        if (dismissed || animatingOut) return
+        val min = CaptureResultGeometry.minPanelHeight(screenH)
+        if (stickResizeFromSliver) {
+            // Mirror endSliverDrag: past the classic floor the drag pulled the
+            // sheet out of its park; under it, settle back into the sliver.
+            if (panelHeightPx >= min) {
+                sliverMode = false
+                autoMaxPx = committedCeiling()
+                reFitText()
+                updateShowOnScreenAction()
+            } else {
+                animateSliverHeight(sliverHeightPx())
+            }
+        } else if (panelHeightPx < min && editContainer.visibility != View.VISIBLE) {
+            // Mirror endResize's park (never while editing — the IME would
+            // strand over a sliver, the same guard the touch floor encodes).
+            // Unlike the touch path, this commit can fire with the popover up
+            // (the frame loop's modal suspend lands here) — close it like
+            // collapseToSliver does rather than leave it floating over a park.
+            sliverMode = true
+            dismissWordLens()
+            fontPopover?.dismiss()
+            nav?.clearCursor()   // every sliver entry drops the cursor
+            preSliverHeightPx = stickResizeStartHeight
+            animateSliverHeight(sliverHeightPx())
+        } else if (panelHeightPx != stickResizeStartHeight) {
             autoMaxPx = committedCeiling()
         }
     }
