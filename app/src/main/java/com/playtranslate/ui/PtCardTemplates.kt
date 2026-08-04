@@ -71,6 +71,29 @@ internal object PtCardTemplates {
      *  convention). One value for both themes, like the app. */
     private const val ACCENT_TOKENS = "--pt-hl:#00BCD4;--pt-hl-bg:#00BCD41F;"
 
+    /**
+     * Client-chrome reset. AnkiMobile styles the body with
+     * `text-align:center`, `margin:15px` (sides under
+     * `max(15px, safe-area-inset)`), and a translate3d transform. The
+     * transform makes body the containing block for absolute AND fixed
+     * descendants, so those margins inset the `.pt-brand` bar and shift
+     * the fixed `.gl-tip` tooltips down-right on iOS — AnkiDroid's
+     * WebView leaves the viewport as the anchor, which is why Android
+     * never showed either. Zero the top/side margins (`!important`, in
+     * case theirs land inline) but LEAVE THE BOTTOM ALONE — it is each
+     * client's own reserve (100px on AnkiMobile, keeping long content
+     * clear of the overlaid answer controls) — and own the 8px content
+     * gutter as `.card` padding instead: padding never offsets an
+     * absolutely-positioned child, so the bar stays full-bleed
+     * everywhere. The centering is countered at `.pt-a`, not here; the
+     * fronts set their own alignment.
+     */
+    private const val RESET_CSS =
+        "html,body{margin-top:0!important;margin-left:0!important;" +
+            "margin-right:0!important;padding:0}" +
+        "#content{margin-top:0;margin-left:0;margin-right:0}" +
+        ".card{padding:8px}"
+
     private const val COLOR_CSS =
         ":root{$LIGHT_TOKENS$ACCENT_TOKENS}" +
         "@media(prefers-color-scheme:dark){:root{$DARK_TOKENS}}" +
@@ -150,9 +173,13 @@ internal object PtCardTemplates {
             "align-items:center;justify-content:center;width:36px;height:36px;" +
             "border-radius:999px;background:var(--pt-chip);text-decoration:none;" +
             "color:var(--pt-secondary);line-height:1;}" +
-        // top:2px is an optical-centering nudge: the triangle's visual
-        // weight sits high in the disc when geometrically centered.
-        ".pt-audio svg{width:15px;height:15px;display:block;position:relative;top:2px;}" +
+        // The 2px optical-centering nudge corrects AnkiDroid's triangle
+        // path, whose visual weight sits high in the disc when
+        // geometrically centered. Other clients ship their own replay
+        // SVG with different geometry (the same nudge rode visibly low
+        // on AnkiMobile), so the nudge is Android-scoped.
+        ".pt-audio svg{width:15px;height:15px;display:block;position:relative;}" +
+        ".android .pt-audio svg{top:2px;}" +
         ".pt-audio svg circle{display:none;}" +
         ".pt-audio svg path{fill:currentColor;}" +
         ".pt-credit{font-size:0.55em;opacity:0.6;margin:16px 4px 8px;}"
@@ -219,9 +246,14 @@ internal object PtCardTemplates {
             "display:flex;align-items:center;justify-content:center;}" +
         ".pt-brand img{width:18px;height:18px;border-radius:4px;display:block;" +
             "filter:grayscale(1);opacity:0.6;}" +
-        // 30px bar + 8px gap — the same 8px the body margin leaves on the
-        // screenshot's sides, so the picture sits in an even gutter.
-        ".pt-a{padding-top:38px;}"
+        // 30px bar + 8px gap — the same 8px the .card padding leaves on
+        // the screenshot's sides, so the picture sits in an even gutter.
+        // Explicit left alignment: the backs rely on left being the
+        // ambient default, but AnkiMobile centers the body — everything
+        // from the word back's Definitions header down rendered centered
+        // there. The fronts and the sentence back's centered blocks all
+        // set their own alignment, so this changes nothing elsewhere.
+        ".pt-a{padding-top:38px;text-align:left;}"
 
     private const val BRAND_BAR =
         "<div class=\"pt-brand\"><img src=\"data:image/jpeg;base64,$BRAND_ICON_B64\"></div>"
@@ -233,7 +265,7 @@ internal object PtCardTemplates {
      * sentence card's WordsTable field.
      */
     private val SHARED_CSS =
-        COLOR_CSS + DEFINITION_CSS + META_CSS + MEDIA_CSS + BRAND_CSS +
+        RESET_CSS + COLOR_CSS + DEFINITION_CSS + META_CSS + MEDIA_CSS + BRAND_CSS +
             PitchAccentHtml.PITCH_CSS
 
     /**
@@ -278,8 +310,10 @@ internal object PtCardTemplates {
             "padding:100px 16px 24px;line-height:1.7em;}" +
         ".pt-back-panel{background:var(--pt-panel);border:1px solid var(--pt-hairline);" +
             "border-radius:14px;padding:4px 16px;margin:0 4px;}" +
-        // Sits between the picture and the source/translation panel.
-        ".pt-sent-audio{text-align:center;margin:0 0 14px;}" +
+        // Sits between the picture and the source/translation panel. The
+        // negative top trims the gap under .pt-pic (18px, shared with the
+        // word card, which keeps it) to 14px on this card only.
+        ".pt-sent-audio{text-align:center;margin:-4px 0 10px;}" +
         // Normal leading by default; the tall ruby headroom applies only
         // when the furigana branch (.pt-ruby) actually rendered.
         ".pt-sentence-back{text-align:center;font-size:1.4em;margin:0;" +
@@ -306,7 +340,11 @@ internal object PtCardTemplates {
         // The contour's own overline reserve (.pa is 0.45em) plus the tip
         // padding left too much air above the accent marks — trim ~8px.
         ".gl-tip .pa{padding-top:0.16em;}" +
-        ".gl-tip::after{content:'';position:absolute;top:100%;left:50%;" +
+        // The caret rides --pt-tip-ax (set by TOOLTIP_JS after clamping
+        // the tip to the viewport) so it stays aimed at the tapped ruby
+        // when the tip itself can't center on it at a screen edge.
+        ".gl-tip::after{content:'';position:absolute;top:100%;" +
+            "left:var(--pt-tip-ax,50%);" +
             "transform:translateX(-50%);border:6px solid transparent;" +
             "border-top-color:#282828;}"
 
@@ -434,6 +472,14 @@ internal object PtCardTemplates {
      * text, the v001 behavior — which is also what non-pitch words and
      * pre-v002 wrapper-less fields get. Tap again, or tap outside, to
      * dismiss; hover works on pointer-capable devices.
+     *
+     * The tip is measured after insertion and clamped to the viewport's
+     * sides (6px inset) instead of centered blindly — an edge word's
+     * popup otherwise renders partly off-screen — and `--pt-tip-ax`
+     * re-aims the caret at the tapped ruby's center so the clamp
+     * doesn't visually detach the popup from its word. Ruby touchend
+     * taps carry the same 10px drag slop as [SCROLL_JS]: WKWebView
+     * delivers touchend for scroll releases too.
      */
     val TOOLTIP_JS: String =
         "(function(){" +
@@ -455,15 +501,29 @@ internal object PtCardTemplates {
         "}" +
         "if(pa){tip.appendChild(pa);tip.appendChild(ptPitchSuffix(pitch));}" +
         "else{tip.textContent=rt.textContent;}" +
-        "tip.style.left=(rect.left+rect.width/2)+'px';" +
         "tip.style.top=rect.top+'px';" +
-        "tip.style.transform='translate(-50%,calc(-100% - 8px))';" +
+        "tip.style.transform='translateY(calc(-100% - 8px))';" +
         "document.body.appendChild(tip);" +
+        "var cx=rect.left+rect.width/2,tw=tip.offsetWidth," +
+        "vw=document.documentElement.clientWidth," +
+        "left=cx-tw/2;" +
+        "if(left+tw>vw-6)left=vw-6-tw;" +
+        "if(left<6)left=6;" +
+        "tip.style.left=left+'px';" +
+        "var ax=cx-left;" +
+        "if(ax<12)ax=12;if(ax>tw-12)ax=tw-12;" +
+        "tip.style.setProperty('--pt-tip-ax',ax+'px');" +
         "activeR=r;" +
         "}" +
         "var hasHover=window.matchMedia('(hover:hover)').matches;" +
         "document.querySelectorAll('.pt-q ruby').forEach(function(r){" +
-        "r.addEventListener('touchend',function(e){showTip(r,e);});" +
+        "var sx=0,sy=0;" +
+        "r.addEventListener('touchstart',function(e){" +
+        "var t=e.touches[0];sx=t.clientX;sy=t.clientY;},{passive:true});" +
+        "r.addEventListener('touchend',function(e){" +
+        "var t=e.changedTouches[0];" +
+        "if(Math.abs(t.clientX-sx)>10||Math.abs(t.clientY-sy)>10)return;" +
+        "showTip(r,e);});" +
         "r.addEventListener('click',function(e){showTip(r,e);});" +
         "if(hasHover){" +
         "r.addEventListener('mouseenter',function(e){activeR=null;showTip(r,e);});" +
@@ -482,6 +542,21 @@ internal object PtCardTemplates {
      * comparison, never selector interpolation, so a word carrying CSS
      * metacharacters can't break the lookup. Missing cell (or no JS —
      * AnkiWeb) degrades to a dead tap, the pre-feature behavior.
+     *
+     * Bound on BOTH touchend and click, the [TOOLTIP_JS] pattern:
+     * AnkiMobile's tap-gesture layer swallows the synthesized click, so
+     * a click-only binding is dead there (device-observed while the
+     * dual-bound tooltip worked). preventDefault on the handled tap
+     * keeps the click from double-firing where both are delivered; a
+     * dead tap (no cell) prevents nothing, so the host app's own tap
+     * gestures still work on unmapped words.
+     *
+     * The touchend path discriminates tap from drag by a 10px slop
+     * against the touchstart point: WKWebView delivers touchend even
+     * when the gesture scrolled the page (a scroll released over a word
+     * navigated, device-observed on iOS), while Android's WebView turns
+     * a scroll takeover into touchcancel — which is why AnkiDroid never
+     * showed it.
      */
     val SCROLL_JS: String =
         "(function(){" +
@@ -492,17 +567,25 @@ internal object PtCardTemplates {
         "if(cells[i].getAttribute('data-pt-w')===key)return cells[i];}" +
         "return null;}" +
         "var hiTimer=null;" +
-        "document.querySelectorAll('.pt-sentence-back [data-pt-w]').forEach(function(w){" +
-        "w.addEventListener('click',function(e){" +
+        "function go(w,e){" +
         "var cell=findCell(w.getAttribute('data-pt-w'));" +
         "if(!cell)return;" +
-        "e.stopPropagation();" +
+        "e.stopPropagation();e.preventDefault();" +
         "cell.scrollIntoView({behavior:'smooth',block:'center'});" +
         "for(var i=0;i<cells.length;i++)cells[i].classList.remove('pt-cell-hi');" +
         "cell.classList.add('pt-cell-hi');" +
         "if(hiTimer)clearTimeout(hiTimer);" +
         "hiTimer=setTimeout(function(){cell.classList.remove('pt-cell-hi');},900);" +
-        "});" +
+        "}" +
+        "document.querySelectorAll('.pt-sentence-back [data-pt-w]').forEach(function(w){" +
+        "var sx=0,sy=0;" +
+        "w.addEventListener('touchstart',function(e){" +
+        "var t=e.touches[0];sx=t.clientX;sy=t.clientY;},{passive:true});" +
+        "w.addEventListener('touchend',function(e){" +
+        "var t=e.changedTouches[0];" +
+        "if(Math.abs(t.clientX-sx)>10||Math.abs(t.clientY-sy)>10)return;" +
+        "go(w,e);});" +
+        "w.addEventListener('click',function(e){go(w,e);});" +
         "});" +
         "})()"
 
