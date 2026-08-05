@@ -50,7 +50,10 @@ class FuriganaPresenter(
         return work.map { region ->
             val group = region.group
             val boxes = if (group != null) {
-                OverlayToolkit.buildFuriganaBoxesForGroup(group, engine, service.furiganaPaint)
+                OverlayToolkit.buildFuriganaBoxesForGroup(
+                    group, engine, service.furiganaPaint,
+                    debugTiming = Prefs(service).debugLiveMode,
+                )
             } else {
                 emptyList()
             }

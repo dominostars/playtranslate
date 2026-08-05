@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.text.TextPaint
+import android.util.Log
 import com.playtranslate.language.HintTextAnnotation
 import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.language.hintAnnotations
@@ -50,6 +51,9 @@ object OverlayToolkit {
      *  [isEvolvingText]'s prefix match — ≈ the 85%-similarity gate GSM's
      *  evolving-text detector converged on. */
     private const val EVOLVING_PREFIX_MAX_DIFF = 0.15f
+
+    /** Tag for [Prefs.debugLiveMode]-gated live furigana annotation timing. */
+    private const val FURIGANA_TIMING_TAG = "LiveFurigana"
 
     /**
      * Is [new] a growing-prefix extension of [old] — the typewriter
@@ -225,11 +229,12 @@ object OverlayToolkit {
     suspend fun buildFuriganaBoxesByGroup(
         ocrResult: OcrManager.OcrResult,
         engine: SourceLanguageEngine,
-        furiganaPaint: TextPaint
+        furiganaPaint: TextPaint,
+        debugTiming: Boolean = false,
     ): List<FuriganaGroup> {
         val groups = mutableListOf<FuriganaGroup>()
         for (group in ocrResult.groups) {
-            val groupBoxes = buildFuriganaBoxesForGroup(group, engine, furiganaPaint)
+            val groupBoxes = buildFuriganaBoxesForGroup(group, engine, furiganaPaint, debugTiming)
             if (groupBoxes.isNotEmpty()) {
                 groups += FuriganaGroup(
                     groupText = group.text,
@@ -243,15 +248,21 @@ object OverlayToolkit {
 
     /** Per-group variant of [buildFuriganaBoxesByGroup] — the annotation
      *  machinery for exactly one OCR group. [ReconcilerLiveMode]'s furigana
-     *  presenter re-annotates only regions the reconciler says changed. */
+     *  presenter re-annotates only regions the reconciler says changed.
+     *  [debugTiming] ([Prefs.debugLiveMode] at the live call sites) logs
+     *  per-line annotation wall time — the live-cell measurement the
+     *  refactor's §6 gate needs, produced by a normal debug-flagged run. */
     suspend fun buildFuriganaBoxesForGroup(
         group: OcrManager.OcrGroup,
         engine: SourceLanguageEngine,
-        furiganaPaint: TextPaint
+        furiganaPaint: TextPaint,
+        debugTiming: Boolean = false,
     ): List<TextBox> {
         val lines = group.lines
         if (lines.isEmpty()) return emptyList()
 
+        var timedLines = 0
+        var timedTotalMs = 0.0
         val groupBoxes = mutableListOf<TextBox>()
         for (line in lines) {
             val isVertical = line.orientation == com.playtranslate.language.TextOrientation.VERTICAL
@@ -261,11 +272,27 @@ object OverlayToolkit {
             // いっぱく) — never the raw per-token readings. The engine's
             // annotation LRU makes repeated lines (live re-OCRs the same
             // text every cycle) near-free; Thor measurement of the cold-line
-            // cost over the replay corpus (typewriter sequences included) is
-            // the outstanding gate item — if a budget problem appears, cap
-            // the re-glob candidate WINDOWS, never skip the pass (refactor
-            // doc §6: the fallback must stay reading-neutral).
+            // cost (typewriter sequences included) rides [debugTiming] — if
+            // a budget problem appears, cap the re-glob candidate WINDOWS,
+            // never skip the pass (refactor doc §6: the fallback must stay
+            // reading-neutral).
+            val annotateStartNs = if (debugTiming) System.nanoTime() else 0L
             val annotations = engine.annotate(line.text).hintAnnotations()
+            if (debugTiming) {
+                val ms = (System.nanoTime() - annotateStartNs) / 1e6
+                timedLines++
+                timedTotalMs += ms
+                // Warm LRU hits log ~0ms; cold lines carry the real cost —
+                // the duration distribution separates them without engine
+                // plumbing.
+                Log.i(
+                    FURIGANA_TIMING_TAG,
+                    "annotate %.1fms len=%d ann=%d '%s'".format(
+                        ms, line.text.length, annotations.size,
+                        line.text.take(12),
+                    ),
+                )
+            }
             val lineBoxes = mutableListOf<TextBox>()
 
             if (line.symbols.isNotEmpty()) {
@@ -373,6 +400,9 @@ object OverlayToolkit {
             groupBoxes += mergeOverlappingFurigana(lineBoxes, furiganaPaint, isVertical)
         }
 
+        if (debugTiming && timedLines > 0) {
+            Log.i(FURIGANA_TIMING_TAG, "group done: %d lines %.1fms total".format(timedLines, timedTotalMs))
+        }
         return groupBoxes
     }
 
