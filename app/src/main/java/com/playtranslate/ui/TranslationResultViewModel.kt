@@ -382,6 +382,7 @@ class TranslationResultViewModel : ViewModel() {
                     rows = data.rows,
                     tokenSpans = data.tokenSpans,
                     lookupToReading = data.lookupToReading,
+                    annotation = annotation,
                 )
                 // Pair the settled lookup with its source text and (re)write the
                 // cache. If the translation has already landed (Ready, same text),
@@ -498,6 +499,9 @@ sealed class WordLookupsState {
         val rows: List<RowState>,
         val tokenSpans: List<TokenSpan>,
         val lookupToReading: Map<String, String>,
+        /** The analysis the rows were projected from; rides into hand-built
+         *  one-tap WordsPayloads so isTrustedFor can prove freshness. */
+        val annotation: com.playtranslate.language.SentenceAnnotation? = null,
     ) : WordLookupsState()
 }
 

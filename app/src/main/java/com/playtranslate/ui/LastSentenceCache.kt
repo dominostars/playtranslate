@@ -128,7 +128,19 @@ object LastSentenceCache {
          *  analysis the Anki renderers consume so card furigana, highlights,
          *  and word rows can never disagree. Null on legacy/empty payloads. */
         val annotation: com.playtranslate.language.SentenceAnnotation? = null,
-    )
+    ) {
+        /** True when this payload may be used WITHOUT re-derivation: its
+         *  annotation proves it describes [sentence] under the CURRENT
+         *  import generation. A supplier that can't prove freshness (no
+         *  annotation, wrong text, stale generation) sends the consumer
+         *  back through [awaitOrStartWordLookups], whose own gate refreshes
+         *  post-import — otherwise a pre-import snapshot pairs old-dict
+         *  rows with the send pipeline's freshly-annotated furigana on one
+         *  card. */
+        fun isTrustedFor(sentence: String): Boolean =
+            results.isNotEmpty() &&
+                annotation?.takeIf { it.text == sentence }?.isImportCurrent() == true
+    }
 
     /**
      * Locked, all-or-nothing snapshot of the word maps for [sentence]:

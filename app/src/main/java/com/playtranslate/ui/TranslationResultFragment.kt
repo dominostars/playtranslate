@@ -298,6 +298,9 @@ class TranslationResultFragment : Fragment() {
     private fun currentSettledRows(): List<RowState>? =
         (vm.wordLookups.value as? WordLookupsState.Settled)?.rows
 
+    private fun currentSettledAnnotation(): com.playtranslate.language.SentenceAnnotation? =
+        (vm.wordLookups.value as? WordLookupsState.Settled)?.annotation
+
     private val host: TranslationResultHost?
         get() = activity as? TranslationResultHost
 
@@ -919,7 +922,10 @@ class TranslationResultFragment : Fragment() {
         // (see LastSentenceCache.awaitOrStartWordLookups docs).
         val settledRows = currentSettledRows()
         val wordsPayload = settledRows?.let {
-            LastSentenceCache.WordsPayload(it.toLegacyMap(), it.toSurfaceMap(), it.toEnrichmentMap())
+            LastSentenceCache.WordsPayload(
+                it.toLegacyMap(), it.toSurfaceMap(), it.toEnrichmentMap(),
+                annotation = currentSettledAnnotation(),
+            )
         }
         val screenshotPath = result.screenshotPath
         val appCtx = requireContext().applicationContext
@@ -1023,7 +1029,10 @@ class TranslationResultFragment : Fragment() {
         // surface-forms-race rationale.
         val settledRows = currentSettledRows()
         val wordsPayload = settledRows?.let {
-            LastSentenceCache.WordsPayload(it.toLegacyMap(), it.toSurfaceMap(), it.toEnrichmentMap())
+            LastSentenceCache.WordsPayload(
+                it.toLegacyMap(), it.toSurfaceMap(), it.toEnrichmentMap(),
+                annotation = currentSettledAnnotation(),
+            )
         }
         dismissWordPopup()
         val appCtx = activity.applicationContext

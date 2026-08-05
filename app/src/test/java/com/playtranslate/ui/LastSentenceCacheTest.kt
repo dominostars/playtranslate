@@ -104,4 +104,40 @@ class LastSentenceCacheTest {
         assertNotNull("maps must still serve after a bump", snapshot)
         assertNull("stale annotation must be withheld", snapshot?.annotation)
     }
+
+    // ── One-tap supplied-payload freshness gate ──────────────────────────
+    // A supplier's snapshot is trusted only while its annotation proves it
+    // describes THIS sentence under the CURRENT import generation — the
+    // adversarial-review bypass shape: settled rows captured pre-import,
+    // one-tap sent post-import.
+
+    private fun payload(annotation: SentenceAnnotation?) = LastSentenceCache.WordsPayload(
+        results = mapOf("一泊" to Triple("いっぱく", "stay", 0)),
+        surfaces = emptyMap(), enrichment = emptyMap(), annotation = annotation,
+    )
+
+    private fun annotationFor(text: String) = SentenceAnnotation(
+        text = text, lang = SourceLangId.JA,
+        importGeneration = AnnotationGenerations.current(),
+        spans = listOf(AnnotatedSpan(0, text.length, text)),
+    )
+
+    @Test fun `supplied payload with current matching annotation is trusted`() {
+        assertEquals(true, payload(annotationFor("一泊")).isTrustedFor("一泊"))
+    }
+
+    @Test fun `supplied payload without annotation is never trusted`() {
+        assertEquals(false, payload(null).isTrustedFor("一泊"))
+    }
+
+    @Test fun `supplied payload for a different sentence is never trusted`() {
+        assertEquals(false, payload(annotationFor("二泊")).isTrustedFor("一泊"))
+    }
+
+    @Test fun `a generation bump untrusts previously settled payloads`() {
+        val p = payload(annotationFor("一泊"))
+        assertEquals(true, p.isTrustedFor("一泊"))
+        AnnotationGenerations.bump()
+        assertEquals(false, p.isTrustedFor("一泊"))
+    }
 }

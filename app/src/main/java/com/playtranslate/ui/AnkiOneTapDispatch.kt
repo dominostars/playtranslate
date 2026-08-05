@@ -231,13 +231,20 @@ suspend fun Context.oneTapSendSentence(
     val resolvedWords: Map<String, Triple<String, String, Int>>
     val resolvedSurfaces: Map<String, String>
     val resolvedEnrichment: Map<String, WordEnrichment>
-    if (wordsPayload != null && wordsPayload.results.isNotEmpty()) {
+    if (wordsPayload != null && wordsPayload.isTrustedFor(original)) {
         // Use the caller's atomic snapshot — words, surfaces, and
-        // enrichment are guaranteed to be from the same lookup pass.
+        // enrichment are guaranteed to be from the same lookup pass, and
+        // isTrustedFor proved (via the carried annotation) that the pass
+        // ran against the CURRENT import generation for THIS sentence.
         resolvedWords = wordsPayload.results
         resolvedSurfaces = wordsPayload.surfaces
         resolvedEnrichment = wordsPayload.enrichment
     } else {
+        // No supplied snapshot, or one that can't prove freshness (a
+        // Yomitan mutation after the rows settled, a hand-built payload
+        // with no annotation): re-derive through the cache, whose own
+        // generation gate refreshes stale words — an instant hit when the
+        // cache is fresh.
         val payload = LastSentenceCache.awaitOrStartWordLookups(ctx, original)
         resolvedWords = payload.results
         resolvedSurfaces = payload.surfaces
