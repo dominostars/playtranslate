@@ -292,18 +292,38 @@ object YomitanDictionaryStore {
         null
     }
 
-    /** Write-temp-then-rename so a crash mid-write can't corrupt the registry. */
-    private fun writeRegistry(ctx: Context, registry: YomitanRegistry) {
+    /**
+     * Write-temp-then-rename so a crash mid-write can't corrupt the
+     * registry — and the ONE epoch step every registry mutation commits
+     * through, in load-bearing order:
+     *
+     *  1. the new registry hits disk;
+     *  2. the registry-derived [YomitanDataStore] caches are cleared;
+     *  3. the annotation generation bumps.
+     *
+     * The bump comes LAST because it is the announcement that a reader
+     * capturing the new generation sees post-mutation content: bumping
+     * before the cache clear let a concurrent annotate() stamp the NEW
+     * generation onto readings resolved through the OLD caches
+     * (adversarial-review race), blessing stale content as current at every
+     * isImportCurrent() gate. With invalidate-before-bump, capturing the
+     * new generation implies the caches were already cleared (reads rebuild
+     * from the new registry); an annotate that raced the mutation carries
+     * the OLD stamp and self-invalidates. Callers' own invalidate() calls
+     * after post-registry steps (row ingest going live, superseded-dir
+     * deletion) remain and are idempotent.
+     *
+     * Lock note: callers hold this store's mutex; [YomitanDataStore]'s
+     * rebuild path calls back only through the lock-free [load], so the
+     * mutex order here (store → data-store) is one-directional.
+     */
+    private suspend fun writeRegistry(ctx: Context, registry: YomitanRegistry) {
         val file = registryFile(ctx)
         file.parentFile?.mkdirs()
         val tmp = File(file.parentFile, "registry.json.tmp")
         tmp.writeText(PtJson.pretty.encodeToString(registry))
         PackIntegrity.atomicReplace(tmp, file)
-        // Every content-affecting mutation (install, update, delete, reorder,
-        // enable/alias changes) commits through this write — bump the
-        // annotation generation so cached FULL-depth annotations built
-        // against the OLD imported dictionaries stop validating. Cached
-        // engines have no other eviction signal for mid-session imports.
+        YomitanDataStore.invalidate()
         com.playtranslate.language.AnnotationGenerations.bump()
     }
 
