@@ -172,18 +172,27 @@ suspend fun Context.sendSentenceCard(
             wordResolved.values.mapNotNull { it.attribution }
         if (all.isEmpty()) null else Attribution.creditBlock(all)
     }
-    val cardData = input.toCardData()
-    // ONE analysis for the card: reuse the cached annotation when it still
-    // matches the (possibly edited) sentence text, else re-annotate the
-    // final text. The renderers draw this annotation — card furigana,
-    // highlights, and wrappers must describe the text actually being sent,
-    // and must match what the result screen displayed and TTS spoke.
-    val annotation = LastSentenceCache.snapshotFor(cardData.source)?.annotation
-        ?.takeIf { it.text == cardData.source }
-        ?: com.playtranslate.language.SourceLanguageEngines
-            .get(ctx.applicationContext, cardData.sourceLangId)
-            .annotate(cardData.source)
     val result = try {
+        // Everything from here sits INSIDE the pin/audio cleanup scope: the
+        // annotation fetch is a suspend point that can throw or be
+        // cancelled, and the finally below must release the screenshot pin
+        // and delete ephemeral audio on EVERY post-pin failure path
+        // (adversarial-review finding — the fetch briefly lived above this
+        // try and could leak both).
+        val cardData = input.toCardData()
+        // ONE analysis for the card: reuse the cached annotation when it
+        // still matches the (possibly edited) sentence text, else
+        // re-annotate the final text. snapshotFor only returns
+        // import-generation-CURRENT annotations, so a Yomitan install
+        // mid-session can never leak pre-import readings onto a card. The
+        // renderers draw this annotation — card furigana, highlights, and
+        // wrappers must describe the text actually being sent, and must
+        // match what the result screen displayed and TTS spoke.
+        val annotation = LastSentenceCache.snapshotFor(cardData.source)?.annotation
+            ?.takeIf { it.text == cardData.source }
+            ?: com.playtranslate.language.SourceLanguageEngines
+                .get(ctx.applicationContext, cardData.sourceLangId)
+                .annotate(cardData.source)
         ctx.dispatchSendToAnki(
             deckId = deckId,
             mode = CardMode.SENTENCE,
