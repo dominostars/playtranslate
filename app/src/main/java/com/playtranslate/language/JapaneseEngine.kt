@@ -143,6 +143,15 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
             annotationCache.get(text)?.let { return it }
         }
         val result = withContext(Dispatchers.Default) {
+            // Generation captured BEFORE any Yomitan-dependent work (the
+            // phrase oracle, resolution fallbacks): the stamp must describe
+            // when the CONTENT was read. A mutation committing mid-annotation
+            // bumps past this captured value, so the result self-invalidates
+            // at every isImportCurrent() gate — over-invalidation at worst
+            // (one wasted re-annotate), never a stale annotation blessed as
+            // current (adversarial-review race: stamping current() AFTER the
+            // work did exactly that).
+            val generation = AnnotationGenerations.current()
             val tokens = SudachiJapaneseTokenizer.Provider.analyze(text)
             if (tokens.isEmpty()) return@withContext SentenceAnnotation.plain(text, profile.id)
             val reglob =
@@ -154,7 +163,7 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
                 else SentenceAnnotator.resolutionKeys(reglob).associateWith { resolveWord(it) }
             val annotation = SentenceAnnotator.annotate(
                 text, profile.id, tokens, reglob, resolutions,
-                AnnotationGenerations.current(),
+                importGeneration = generation,
             )
             // Pitch rides display depths; WORDS is the tokenize projection's
             // depth and never renders ruby.
