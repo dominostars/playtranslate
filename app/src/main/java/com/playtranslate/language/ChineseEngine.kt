@@ -221,6 +221,11 @@ class ChineseEngine(
 
     private suspend fun annotateUncached(text: String, depth: AnnotationDepth): SentenceAnnotation =
         withContext(Dispatchers.Default) {
+            // Captured before the analysis for stamp-at-capture semantics
+            // (see JapaneseEngine.annotate): a mid-annotation import bump
+            // leaves this stamp behind current(), so the result
+            // self-invalidates instead of being cached as current.
+            val generation = AnnotationGenerations.current()
             if (text.isEmpty()) {
                 return@withContext SentenceAnnotation(text, profile.id, 0, emptyList())
             }
@@ -263,7 +268,7 @@ class ChineseEngine(
                 emitted = found + word.length
             }
             emitGapUpTo(text.length)
-            SentenceAnnotation(text, profile.id, AnnotationGenerations.current(), spans)
+            SentenceAnnotation(text, profile.id, generation, spans)
         }
 
     /** One anchored span with per-character pinyin parts. */
