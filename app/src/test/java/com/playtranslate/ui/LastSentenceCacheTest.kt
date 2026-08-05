@@ -1,5 +1,9 @@
 package com.playtranslate.ui
 
+import com.playtranslate.language.AnnotatedSpan
+import com.playtranslate.language.AnnotationGenerations
+import com.playtranslate.language.SentenceAnnotation
+import com.playtranslate.language.SourceLangId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -70,5 +74,34 @@ class LastSentenceCacheTest {
             wordEnrichment = null,
         )
         assertNull(LastSentenceCache.snapshotFor("猫が好き"))
+    }
+
+    @Test fun `stale-generation annotation is withheld, maps still serve`() {
+        // Yomitan mutations bump the generation with no cache eviction; a
+        // stored annotation from before the bump must fail toward
+        // re-annotation (null → callers annotate fresh), never toward
+        // rendering pre-import readings. The word maps keep serving — their
+        // staleness is bounded by the words-lookup cache-miss refresh.
+        val ann = SentenceAnnotation(
+            text = "一泊", lang = SourceLangId.JA,
+            importGeneration = AnnotationGenerations.current(),
+            spans = listOf(AnnotatedSpan(0, 2, "一泊")),
+        )
+        LastSentenceCache.setFromTranslationResult(
+            original = "一泊",
+            translation = "one night",
+            translationSource = null,
+            wordResults = mapOf("一泊" to Triple("いっぱく", "stay", 0)),
+            surfaceForms = emptyMap(),
+            wordEnrichment = emptyMap(),
+            annotation = ann,
+        )
+        assertEquals(ann, LastSentenceCache.snapshotFor("一泊")?.annotation)
+
+        AnnotationGenerations.bump()
+
+        val snapshot = LastSentenceCache.snapshotFor("一泊")
+        assertNotNull("maps must still serve after a bump", snapshot)
+        assertNull("stale annotation must be withheld", snapshot?.annotation)
     }
 }

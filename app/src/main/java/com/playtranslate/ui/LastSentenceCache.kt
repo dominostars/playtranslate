@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.content.Context
 import android.util.Log
 import com.playtranslate.Prefs
+import com.playtranslate.language.isImportCurrent
 import com.playtranslate.model.FrequencyTag
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -148,7 +149,15 @@ object LastSentenceCache {
     fun snapshotFor(sentence: String): WordsPayload? = synchronized(lock) {
         val results = wordResults ?: return null
         if (original != sentence || results.isEmpty()) return null
-        WordsPayload(results, surfaceForms.orEmpty(), wordEnrichment.orEmpty(), sentenceAnnotation)
+        // A stale-generation annotation is withheld (null), never served:
+        // consumers fall back to fresh annotation, so a Yomitan import
+        // mid-session can't leak pre-import readings onto a card. The maps
+        // still serve — their import staleness is bounded by the words
+        // cache-miss refresh in awaitOrStartWordLookups.
+        WordsPayload(
+            results, surfaceForms.orEmpty(), wordEnrichment.orEmpty(),
+            sentenceAnnotation?.takeIf { it.isImportCurrent() },
+        )
     }
 
     fun clear() {
@@ -288,11 +297,21 @@ object LastSentenceCache {
                 Log.d(TAG, "joining in-flight words for '${sentence.preview()}'")
                 return@synchronized it.job
             }
-            wordResults?.let { cached ->
-                Log.d(TAG, "cache hit words for '${sentence.preview()}'")
-                return@synchronized CompletableDeferred(
-                    WordsPayload(cached, surfaceForms.orEmpty(), wordEnrichment.orEmpty(), sentenceAnnotation)
-                )
+            // A stale-generation annotation makes the whole cached words
+            // pass a MISS, not a hit with old data: Yomitan imports change
+            // row content (imported senses, synthesized entries) as well as
+            // readings, and the pre-refactor behavior — every render
+            // re-looked-up, so imports applied instantly — must survive the
+            // cache. Null annotation (legacy write) stays a hit; only a
+            // present-but-outdated one forces the refresh.
+            val cachedAnnotation = sentenceAnnotation
+            if (cachedAnnotation == null || cachedAnnotation.isImportCurrent()) {
+                wordResults?.let { cached ->
+                    Log.d(TAG, "cache hit words for '${sentence.preview()}'")
+                    return@synchronized CompletableDeferred(
+                        WordsPayload(cached, surfaceForms.orEmpty(), wordEnrichment.orEmpty(), cachedAnnotation)
+                    )
+                }
             }
             Log.d(TAG, "starting words for '${sentence.preview()}'")
             val job = cacheScope.async {

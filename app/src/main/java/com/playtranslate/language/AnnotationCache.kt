@@ -18,6 +18,14 @@ object AnnotationGenerations {
     fun bump() { gen.incrementAndGet() }
 }
 
+/** True while this annotation's imported-dictionary snapshot is still the
+ *  live one. EVERY holder of a stored annotation must gate on this before
+ *  serving it (the engine LRU does; LastSentenceCache does) — a stale
+ *  annotation must fail toward re-annotation, never toward rendering
+ *  pre-import readings. */
+fun SentenceAnnotation.isImportCurrent(): Boolean =
+    importGeneration == AnnotationGenerations.current()
+
 /**
  * Engine-scoped annotation LRU for the live overlay's FULL-depth flips: live
  * capture re-OCRs the same lines cycle after cycle, and the reconciler
@@ -36,7 +44,7 @@ internal class AnnotationCache(private val maxEntries: Int = 128) {
     @Synchronized
     fun get(text: String): SentenceAnnotation? {
         val hit = lru[text] ?: return null
-        if (hit.importGeneration != AnnotationGenerations.current()) {
+        if (!hit.isImportCurrent()) {
             lru.remove(text)
             return null
         }
