@@ -279,7 +279,10 @@ class FuriganaMode(
 
             // Build and show furigana (grouped for selective invalidation)
             val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
-            furiganaGroups = OverlayToolkit.buildFuriganaBoxesByGroup(ocrResult, engine, service.furiganaPaint)
+            furiganaGroups = OverlayToolkit.buildFuriganaBoxesByGroup(
+                ocrResult, engine, service.furiganaPaint,
+                debugTiming = Prefs(service).debugLiveMode,
+            )
             val furigana = furiganaGroups.flatMap { it.boxes }
             cachedFuriganaBoxes = furigana
             this@FuriganaMode.cropLeft = left
