@@ -58,7 +58,7 @@ data class TextBox(
      *  finding). Read by ReadingArbiter when a fuzz-same read differs. A
      *  prefix-substituted dispatch carries its full read's scores —
      *  accepted slop. Deliberately `var`: the ratchet mutates in place so
-     *  box IDENTITY survives (FuriganaPresenter's map, cached lists, the
+     *  box IDENTITY survives (presenter maps, cached lists, the
      *  view's short-circuit all key on it); safe because no structural-
      *  keyed container of TextBox exists (IdentityHashMaps only) and the
      *  fields never affect rendering. */

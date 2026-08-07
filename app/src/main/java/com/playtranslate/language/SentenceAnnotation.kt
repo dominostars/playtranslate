@@ -133,6 +133,27 @@ data class SentenceAnnotation(
 }
 
 /**
+ * The annotation with the FRONTIER span's ruby withheld — the span touching
+ * the text's end: the one word still being typed during a typewriter reveal.
+ * Its reading may legitimately revise as glyphs arrive (大人 alone reads
+ * おとな; 気 lands and the span becomes 大人気/だいにんき), so eager live
+ * furigana renders every COMPLETED word's reading immediately and holds only
+ * this one — early readings with zero visible revisions. No-op when the
+ * final span carries no ruby (punctuation/kana end: the words before it are
+ * boundary-confirmed and correctly show). Render-time only — cached
+ * annotations stay whole.
+ */
+fun SentenceAnnotation.withFrontierHeld(): SentenceAnnotation {
+    val last = spans.lastOrNull { it.start >= 0 } ?: return this
+    if (last.end != text.length) return this
+    if (last.furigana.none { it.reading != null }) return this
+    return copy(spans = spans.map { s ->
+        if (s === last) s.copy(furigana = listOf(ReadingPart(s.surface, null)))
+        else s
+    })
+}
+
+/**
  * Hint-text projection: one [HintTextAnnotation] per ruby part, offsets
  * computed by walking each span's parts from its start. Pitch rides only on
  * whole-span single parts (the annotator sets [AnnotatedSpan.pitch] under

@@ -156,6 +156,14 @@ interface LiveCaptureSource : CaptureSource {
     )
     fun requestCleanCapture(displayId: Int)
     fun requestCleanCaptureAll()
+
+    /** Open a self-expiring fast-poll window: for the next [windowMs] the
+     *  loop on [displayId] polls at [minCaptureIntervalMs] instead of the
+     *  user interval ([PacingWindow]). Modes poke this while a typewriter
+     *  reveal is active or a settle confirmation is pending, so the
+     *  confirming read arrives at floor pacing. Default no-op for sources
+     *  without a paced loop. */
+    fun pokeFastPoll(displayId: Int, windowMs: Long) {}
     fun stopLoop(displayId: Int)
     fun stopAllLoops()
     fun isLoopRunning(displayId: Int): Boolean

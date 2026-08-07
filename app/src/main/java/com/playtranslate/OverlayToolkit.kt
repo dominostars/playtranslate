@@ -10,6 +10,7 @@ import android.util.Log
 import com.playtranslate.language.HintTextAnnotation
 import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.language.hintAnnotations
+import com.playtranslate.language.withFrontierHeld
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.model.TextSegments
@@ -247,8 +248,8 @@ object OverlayToolkit {
     }
 
     /** Per-group variant of [buildFuriganaBoxesByGroup] — the annotation
-     *  machinery for exactly one OCR group. [ReconcilerLiveMode]'s furigana
-     *  presenter re-annotates only regions the reconciler says changed.
+     *  machinery for exactly one OCR group. [FuriganaMode]'s reuse-or-rebuild
+     *  loop re-annotates only the groups whose text or bounds changed.
      *  [debugTiming] ([Prefs.debugLiveMode] at the live call sites) logs
      *  per-line annotation wall time — the live-cell measurement the
      *  refactor's §6 gate needs, produced by a normal debug-flagged run. */
@@ -257,6 +258,11 @@ object OverlayToolkit {
         engine: SourceLanguageEngine,
         furiganaPaint: TextPaint,
         debugTiming: Boolean = false,
+        /** Typewriter frontier-hold: this group's text is still being
+         *  revealed, so the LAST line's final span withholds its ruby
+         *  ([withFrontierHeld]) — the one word whose reading could revise
+         *  as glyphs arrive. */
+        holdFrontier: Boolean = false,
     ): List<TextBox> {
         val lines = group.lines
         if (lines.isEmpty()) return emptyList()
@@ -277,7 +283,10 @@ object OverlayToolkit {
             // never skip the pass (refactor doc §6: the fallback must stay
             // reading-neutral).
             val annotateStartNs = if (debugTiming) System.nanoTime() else 0L
-            val annotations = engine.annotate(line.text).hintAnnotations()
+            val isLastLine = line === lines.last()
+            val annotations = engine.annotate(line.text)
+                .let { if (holdFrontier && isLastLine) it.withFrontierHeld() else it }
+                .hintAnnotations()
             if (debugTiming) {
                 val ms = (System.nanoTime() - annotateStartNs) / 1e6
                 timedLines++

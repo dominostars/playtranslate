@@ -300,9 +300,16 @@ class CaptureService : Service() {
 
     internal fun emitResult(result: TranslationResult) {
         _panelState.value = PanelState.Result(result)
+        // Deliberately NO livePanelRecord.committed here: only screen-derived
+        // deliveries ([translateAndSendToPanel]) commit. A deliberate flow
+        // (re-translate, deferred history) emitting through this writer shows
+        // text that is NOT the live screen — recording it would make the
+        // screen's unchanged text look new and let the live loop stomp the
+        // user's requested result one settled cycle later ([LivePanelRecord]).
     }
     internal fun emitError(message: String) {
         _panelState.value = PanelState.Error(message)
+        livePanelRecord.clear()
     }
     /**
      * The panel's "a live cycle looked at [displayId] and found nothing"
@@ -327,6 +334,9 @@ class CaptureService : Service() {
             noTextMessage(displayId, region),
             noTextProvenanceFor(displayId, region, Prefs(this).sourceLangId),
         )
+        // The recorded text is no longer what the panel shows — identical
+        // text REAPPEARING after a no-text gap must deliver again.
+        livePanelRecord.clear()
     }
     /** Reset the sticky panel stream to [PanelState.Idle] so its replay can't re-show a
      *  stale result after the activity returns (e.g. from the language picker). Idle is a
@@ -334,6 +344,7 @@ class CaptureService : Service() {
      *  the caller clears the VM separately (and can keep the result visible until then). */
     internal fun clearPanel() {
         _panelState.value = PanelState.Idle
+        livePanelRecord.clear()
     }
     internal fun emitHoldLoading(loading: Boolean) { _holdLoading.value = loading }
 
@@ -1744,6 +1755,7 @@ class CaptureService : Service() {
         // immediate transition into live mode (rather than a stale
         // result lingering until the first cycle lands).
         _panelState.value = PanelState.Searching
+        livePanelRecord.clear()
 
         val prefs = Prefs(this)
         val activeIds = gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }
@@ -1799,9 +1811,18 @@ class CaptureService : Service() {
             // Panel-only: the unified loop on ANY stream kind and backend — it
             // paints nothing, so contamination is irrelevant (design record §7).
             OverlayFlavor.IN_APP_ONLY -> ReconcilerLiveMode::class.java
-            OverlayFlavor.FURIGANA ->
-                if (clean) ReconcilerLiveMode::class.java
-                else FuriganaMode::class.java
+            // Furigana consolidated onto the legacy tier (2026-08-06): the
+            // reconciler's furigana path was a half-copy — frontier release,
+            // reveal pacing, and the settle hook each existed only on one
+            // side — and every mechanism had to be built twice. FuriganaMode
+            // carries the one full implementation on every stream kind, and
+            // keys its behavior off the frame's stamped facts: raw frames a
+            // CLEAN task mirror stamps overlay-free route straight to the
+            // clean path — the patch/compare machinery runs only on frames
+            // that actually contain rendered furigana (adversarial-review
+            // hole in the original flip: unconditional patching would have
+            // overwritten real clean-stream pixels with stale ref strips).
+            OverlayFlavor.FURIGANA -> FuriganaMode::class.java
             OverlayFlavor.TRANSLATION ->
                 if (clean) ReconcilerLiveMode::class.java
                 else PinholeOverlayMode::class.java
@@ -1928,10 +1949,7 @@ class CaptureService : Service() {
             when (flavor) {
                 OverlayFlavor.IN_APP_ONLY ->
                     ReconcilerLiveMode(this, id, PanelPresenter(this, id))
-                OverlayFlavor.FURIGANA ->
-                    if (desiredClass == ReconcilerLiveMode::class.java)
-                        ReconcilerLiveMode(this, id, FuriganaPresenter(this, id))
-                    else FuriganaMode(this, id)
+                OverlayFlavor.FURIGANA -> FuriganaMode(this, id)
                 OverlayFlavor.TRANSLATION ->
                     if (desiredClass == ReconcilerLiveMode::class.java)
                         ReconcilerLiveMode(this, id, TranslationPresenter(this, id))
@@ -2628,11 +2646,19 @@ class CaptureService : Service() {
         displayId: Int,
         frameIncludesSystemUi: Boolean,
         frameIncludesOwnOverlays: Boolean,
-        forceShow: Boolean = false
+        forceShow: Boolean = false,
+        /** Live steady-state dedup against [livePanelRecord]: the furigana
+         *  loop OFFERS every settled frame and this makes the offers
+         *  idempotent. Deliberate captures (one-shot) never dedup — the
+         *  user asked, the panel refreshes. */
+        liveDedup: Boolean = false,
     ): List<GroupTranslation>? {
         if (!forceShow) {
             val appPanelVisible = !Prefs.isSingleScreen(this) && MainActivity.isInForeground
             if (!appPanelVisible) return null
+        }
+        if (liveDedup && !livePanelRecord.isNew(displayId, ocrResult.fullText, livePanelStamp())) {
+            return null
         }
         // No frame here — entry time (post-OCR, pre-MT) is the closest
         // capture-boundary stamp available, and it keeps MT latency out of
@@ -2661,6 +2687,10 @@ class CaptureService : Service() {
                 createdAtMs        = capturedAtWallMs,
             )
         )
+        // COMMIT ON DELIVERY: every caller of THIS function delivers what
+        // the capture display currently shows (live furigana offers,
+        // one-shot holds), so the record keeps mirroring the screen.
+        livePanelRecord.committed(displayId, ocrResult.fullText, livePanelStamp())
         return perGroup
     }
 
@@ -2668,6 +2698,25 @@ class CaptureService : Service() {
      *  the shared gate for every live tier's panel sync. */
     internal fun appPanelVisible(): Boolean =
         !Prefs.isSingleScreen(this) && MainActivity.isInForeground
+
+    /** What the panel currently shows, owned HERE at the delivery layer —
+     *  see [LivePanelRecord] for the rules and the bug history. */
+    private val livePanelRecord = LivePanelRecord()
+
+    /** Language key for [livePanelRecord]: same text under a new
+     *  source/target pair is new content. */
+    private fun livePanelStamp(): String {
+        val prefs = Prefs(this)
+        return "${prefs.sourceLangId}>${prefs.targetLang}"
+    }
+
+    /** Cheap pre-flight for the live furigana loop: would offering [text]
+     *  from [displayId] reach the panel as new content? Lets the mode skip
+     *  the screenshot JPEG on quiet cycles where the offer would be dropped
+     *  anyway. The authoritative checks run again inside
+     *  [translateAndSendToPanel]. */
+    internal fun livePanelWouldAccept(displayId: Int, text: String): Boolean =
+        appPanelVisible() && livePanelRecord.isNew(displayId, text, livePanelStamp())
 
     /** Emit a live tier's displayed state to the in-app panel — the ONE
      *  emission shape shared by the pinhole tier and the reconciler

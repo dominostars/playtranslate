@@ -63,4 +63,57 @@ class HintAnnotationProjectionTest {
         )
         assertEquals(emptyList<HintTextAnnotation>(), ann.hintAnnotations())
     }
+
+    // ── Frontier-hold (eager typewriter furigana) ────────────────────────
+
+    private fun span(start: Int, end: Int, surface: String, ruby: List<ReadingPart>) =
+        AnnotatedSpan(start = start, end = end, surface = surface, furigana = ruby)
+
+    @Test fun `frontier hold strips ruby from the span touching the text end`() {
+        // 友達に大人 mid-reveal: 友達 keeps its reading (completed, boundary-
+        // confirmed by に); the frontier 大人 — which may become 大人気 —
+        // shows no ruby yet.
+        val ann = SentenceAnnotation(
+            text = "友達に大人", lang = SourceLangId.JA, importGeneration = 0,
+            spans = listOf(
+                span(0, 2, "友達", listOf(ReadingPart("友達", "ともだち"))),
+                span(2, 3, "に", listOf(ReadingPart("に", null))),
+                span(3, 5, "大人", listOf(ReadingPart("大人", "おとな"))),
+            ),
+        ).withFrontierHeld()
+        assertEquals(
+            listOf(HintTextAnnotation(0, 2, "ともだち")),
+            ann.hintAnnotations(),
+        )
+    }
+
+    @Test fun `frontier hold is a no-op when the text ends in a ruby-less span`() {
+        // Terminal punctuation boundary-confirms the word before it: its
+        // reading must show.
+        val ann = SentenceAnnotation(
+            text = "大人。", lang = SourceLangId.JA, importGeneration = 0,
+            spans = listOf(
+                span(0, 2, "大人", listOf(ReadingPart("大人", "おとな"))),
+                span(2, 3, "。", listOf(ReadingPart("。", null))),
+            ),
+        ).withFrontierHeld()
+        assertEquals(
+            listOf(HintTextAnnotation(0, 2, "おとな")),
+            ann.hintAnnotations(),
+        )
+    }
+
+    @Test fun `frontier hold leaves the cached annotation untouched`() {
+        val original = SentenceAnnotation(
+            text = "大人", lang = SourceLangId.JA, importGeneration = 0,
+            spans = listOf(span(0, 2, "大人", listOf(ReadingPart("大人", "おとな")))),
+        )
+        val held = original.withFrontierHeld()
+        assertEquals(emptyList<HintTextAnnotation>(), held.hintAnnotations())
+        // Pure copy: the original (the LRU's object) still carries its ruby.
+        assertEquals(
+            listOf(HintTextAnnotation(0, 2, "おとな")),
+            original.hintAnnotations(),
+        )
+    }
 }
