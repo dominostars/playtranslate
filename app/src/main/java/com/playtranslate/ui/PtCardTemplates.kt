@@ -82,8 +82,9 @@ internal object PtCardTemplates {
      * never showed either. Zero the top/side margins (`!important`, in
      * case theirs land inline) but LEAVE THE BOTTOM ALONE — it is each
      * client's own reserve (100px on AnkiMobile, keeping long content
-     * clear of the overlaid answer controls) — and own the 8px content
-     * gutter as `.card` padding instead: padding never offsets an
+     * clear of the overlaid answer controls) — and own the content
+     * gutter (8px top/bottom, 10px sides) as `.card` padding instead:
+     * padding never offsets an
      * absolutely-positioned child, so the bar stays full-bleed
      * everywhere. The centering is countered at `.pt-a`, not here; the
      * fronts set their own alignment.
@@ -92,7 +93,7 @@ internal object PtCardTemplates {
         "html,body{margin-top:0!important;margin-left:0!important;" +
             "margin-right:0!important;padding:0}" +
         "#content{margin-top:0;margin-left:0;margin-right:0}" +
-        ".card{padding:8px}"
+        ".card{padding:8px 10px}"
 
     private const val COLOR_CSS =
         ":root{$LIGHT_TOKENS$ACCENT_TOKENS}" +
@@ -160,7 +161,11 @@ internal object PtCardTemplates {
      * the fallback is Anki's default button in the same position.
      */
     private const val MEDIA_CSS =
-        ".pt-pic{margin:0 0 18px;}" +
+        // The negative top pulls the picture into .pt-a's watermark-bar
+        // reserve: .card top padding (8) + .pt-a reserve (38) − bar (30)
+        // − 4 leaves a 12px bar gap — device-tuned 2px looser than the
+        // 10px side gutter. Backs without a picture keep the full reserve.
+        ".pt-pic{margin:-4px 0 18px;}" +
         ".pt-pic img{display:block;width:100%;max-width:100%;border-radius:8px;}" +
         ".pt-audio{display:inline-flex;align-items:center;justify-content:center;" +
             "vertical-align:middle;}" +
@@ -233,7 +238,7 @@ internal object PtCardTemplates {
     /**
      * The watermark — approved direction 7a ("Card watermark — the top
      * bar"): a 30px full-bleed strip pinned to the top of EVERY face,
-     * panel-tone fill closed by the card's hairline, the shipped app
+     * panel-tone fill (no closing hairline), the shipped app
      * icon at 18px centred, fully desaturated at 60% strength. No text,
      * no accent, no interaction. The bar is out of flow (absolute), and
      * each face reserves its own fixed top offset — so adjusting the
@@ -242,12 +247,13 @@ internal object PtCardTemplates {
      */
     private const val BRAND_CSS =
         ".pt-brand{position:absolute;top:0;left:0;right:0;height:30px;" +
-            "background:var(--pt-panel);border-bottom:1px solid var(--pt-hairline);" +
+            "background:var(--pt-panel);" +
             "display:flex;align-items:center;justify-content:center;}" +
         ".pt-brand img{width:18px;height:18px;border-radius:4px;display:block;" +
             "filter:grayscale(1);opacity:0.6;}" +
-        // 30px bar + 8px gap — the same 8px the .card padding leaves on
-        // the screenshot's sides, so the picture sits in an even gutter.
+        // 30px bar + 8px, atop .card's own 8px top padding (the picture
+        // pulls itself up to a tuned 12px bar gap via its negative top
+        // margin).
         // Explicit left alignment: the backs rely on left being the
         // ambient default, but AnkiMobile centers the body — everything
         // from the word back's Definitions header down rendered centered
@@ -308,12 +314,16 @@ internal object PtCardTemplates {
         // tap must not clip at the viewport.
         ".pt-sentence-front{text-align:center;font-size:1.8em;" +
             "padding:100px 16px 24px;line-height:1.7em;}" +
+        // Every section below the screenshot sits flush at the same 8px
+        // .card gutter the picture gets — no extra side margin (the word
+        // card keeps its own 4px text indents).
         ".pt-back-panel{background:var(--pt-panel);border:1px solid var(--pt-hairline);" +
-            "border-radius:14px;padding:4px 16px;margin:0 4px;}" +
+            "border-radius:14px;padding:4px 16px;margin:0;}" +
         // Sits between the picture and the source/translation panel. The
         // negative top trims the gap under .pt-pic (18px, shared with the
-        // word card, which keeps it) to 14px on this card only.
-        ".pt-sent-audio{text-align:center;margin:-4px 0 10px;}" +
+        // word card, which keeps it) to match the button's own 10px
+        // bottom gap.
+        ".pt-sent-audio{text-align:center;margin:-8px 0 10px;}" +
         // Normal leading by default; the tall ruby headroom applies only
         // when the furigana branch (.pt-ruby) actually rendered.
         ".pt-sentence-back{text-align:center;font-size:1.4em;margin:0;" +
@@ -328,7 +338,10 @@ internal object PtCardTemplates {
         ".pt-translation{text-align:center;font-size:1.3em;font-weight:500;" +
             "line-height:1.4;border-top:1px solid var(--pt-hairline);" +
             "padding:14px 0 10px;margin:0;}" +
-        ".pt-words{text-align:left;margin:0 4px;}" +
+        ".pt-words{text-align:left;margin:0;}" +
+        // Overrides the shared 4px credit indent (same-specificity, later
+        // in SENTENCE_CSS) so the credit lines up with the panels above.
+        ".pt-credit{margin-left:0;margin-right:0}" +
         ".pt-sentence b{font-weight:700;text-decoration-line:underline;" +
             "text-decoration-color:var(--pt-hl);" +
             "text-decoration-thickness:2px;text-underline-offset:6px;}" +
