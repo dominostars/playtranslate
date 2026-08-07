@@ -36,7 +36,7 @@ object PtModels {
     )
 
     val WORD = Spec(
-        name = "PlayTranslate Word v003",
+        name = "PlayTranslate Word v004",
         fields = listOf(
             "Expression", "Reading", "PitchPosition", "PartOfSpeech",
             "Definition", "Examples", "Frequency", "Picture",
@@ -48,7 +48,7 @@ object PtModels {
     )
 
     val SENTENCE = Spec(
-        name = "PlayTranslate Sentence v003",
+        name = "PlayTranslate Sentence v004",
         fields = listOf(
             "Sentence", "SentenceFurigana", "Translation", "TargetWord",
             "WordsTable", "Picture", "SentenceAudio", "AudioCredit",
