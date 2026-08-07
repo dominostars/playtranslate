@@ -201,7 +201,7 @@ class MediaProjectionCaptureSource(
             while (isActive) {
                 // Pace by elapsed-since-last-capture so the poll interval is
                 // the capture period, not interval + capture duration.
-                val waitMs = pollIntervalMs() - (System.currentTimeMillis() - lastCaptureMs)
+                val waitMs = pollIntervalMs(displayId) - (System.currentTimeMillis() - lastCaptureMs)
                 if (waitMs > 0) delay(waitMs)
                 lastCaptureMs = System.currentTimeMillis()
 
@@ -299,11 +299,23 @@ class MediaProjectionCaptureSource(
         }
     }
 
-    /** Loop poll interval — the user's pref, floored at [MIN_LOOP_INTERVAL_MS].
-     *  No platform rate limit applies (unlike AccessibilityService). */
-    private fun pollIntervalMs(): Long {
+    /** Loop poll interval — the user's pref, floored at [MIN_LOOP_INTERVAL_MS]
+     *  (no platform rate limit applies, unlike AccessibilityService), and
+     *  floored while a [pokeFastPoll] window is open. Read once per
+     *  iteration BEFORE the park — the mode's receipt-time poke exists so
+     *  the floor is visible at that read (see ScreenshotManager's note). */
+    private fun pollIntervalMs(displayId: Int): Long {
+        if (pacing.floorActive(displayId, System.currentTimeMillis())) {
+            return MIN_LOOP_INTERVAL_MS
+        }
         val ctx = CaptureService.instance ?: return MIN_LOOP_INTERVAL_MS
         return maxOf(Prefs(ctx).captureIntervalMs, MIN_LOOP_INTERVAL_MS)
+    }
+
+    private val pacing = PacingWindow()
+
+    override fun pokeFastPoll(displayId: Int, windowMs: Long) {
+        pacing.poke(displayId, System.currentTimeMillis(), windowMs)
     }
 
     /** If [captureResult] is a failed capture (null) because MediaProjection

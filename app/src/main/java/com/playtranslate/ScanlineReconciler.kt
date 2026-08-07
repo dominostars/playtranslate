@@ -114,8 +114,7 @@ object ScanlineReconciler {
          *  CHANGED verdicts only — NEW text must never wait. */
         val replacesBox: TextBox? = null,
         /** The OCR group this region was reduced from — presenters needing
-         *  line-level data (furigana annotation placement) read it. Null only
-         *  in hand-built test fixtures. */
+         *  line-level data read it. Null only in hand-built test fixtures. */
         val group: OcrManager.OcrGroup? = null,
     )
 

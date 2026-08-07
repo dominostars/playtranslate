@@ -68,10 +68,25 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
     /** [LiveCaptureSource] view of the platform `takeScreenshot` rate limit. */
     override val minCaptureIntervalMs: Long get() = MIN_SCREENSHOT_INTERVAL_MS
 
-    /** User-configurable poll interval for the loop. Read from Prefs on each cycle. */
-    private fun pollIntervalMs(): Long {
+    /** User-configurable poll interval for the loop, floored while a
+     *  [pokeFastPoll] window is open. Read once per iteration, BEFORE the
+     *  inter-frame park — which is why the mode pokes synchronously at
+     *  frame RECEIPT (from state its previous cycle computed), not only
+     *  from its async OCR work: a receipt-time poke always lands before
+     *  this read; an async-only poke lands mid-park and wouldn't be seen
+     *  until the following iteration. */
+    private fun pollIntervalMs(displayId: Int): Long {
+        if (pacing.floorActive(displayId, System.currentTimeMillis())) {
+            return MIN_SCREENSHOT_INTERVAL_MS
+        }
         val userMs = Prefs(a11y).captureIntervalMs
         return maxOf(userMs, MIN_SCREENSHOT_INTERVAL_MS)
+    }
+
+    private val pacing = com.playtranslate.capture.PacingWindow()
+
+    override fun pokeFastPoll(displayId: Int, windowMs: Long) {
+        pacing.poke(displayId, System.currentTimeMillis(), windowMs)
     }
 
     // ── Capture diagnostics ──────────────────────────────────────────────
@@ -299,7 +314,7 @@ class ScreenshotManager(private val a11y: PlayTranslateAccessibilityService) : L
                 // outer pacing already passed (e.g. another loop just took a
                 // frame and bumped lastCaptureTimeMs).
                 val elapsed = System.currentTimeMillis() - lastCaptureTimeMs
-                val waitMs = pollIntervalMs() - elapsed
+                val waitMs = pollIntervalMs(displayId) - elapsed
                 if (waitMs > 0) delay(waitMs)
                 val isClean = loop.cleanRequested
                 if (isClean) {
