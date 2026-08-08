@@ -36,7 +36,12 @@ object MlKitTextMapper {
      * between elements for whitespace-separated source languages (mirrors the
      * `wordsSeparatedByWhitespace` profile flag handled in the former walk).
      */
-    fun map(visionText: Text, sourceLang: String, addWordSpaces: Boolean): List<RecognizedRegion> {
+    fun map(
+        visionText: Text,
+        sourceLang: String,
+        addWordSpaces: Boolean,
+        angleNoiseGateDeg: Float = OcrBox.ANGLE_NOISE_GATE_DEG,
+    ): List<RecognizedRegion> {
         val out = mutableListOf<RecognizedRegion>()
         for (block in visionText.textBlocks) {
             // ML Kit's one cleaning input the shared normalizer can't re-derive: a block
@@ -58,7 +63,7 @@ object MlKitTextMapper {
                 } catch (_: Throwable) {
                     null
                 }
-                val box = OrientedBoxGeometry.boxFor(bb, quad, orientation)
+                val box = OrientedBoxGeometry.boxFor(bb, quad, orientation, minSlantDeg = angleNoiseGateDeg)
                 val recLine = RecognizedLine(
                     text = walked.text,
                     box = box,

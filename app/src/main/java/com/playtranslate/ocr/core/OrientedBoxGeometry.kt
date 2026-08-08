@@ -19,12 +19,15 @@ import kotlin.math.hypot
  * renderer applies `child.rotation = box.angleDeg` with no negation.
  *
  * ## Producer invariant
- * [boxFor] snaps |angle| ≤ [OcrBox.ROTATION_STANDALONE_DEG] to a bit-identical
- * [OcrBox.upright], so on every box it produces `angleDeg != 0f` ⟺
- * [OcrBox.isRotated] — engine code testing `isRotated` and UI code testing
- * `angleDeg != 0f` are interchangeable predicates with no third state, and
- * near-axis quads (all real-world upright text) leave today's geometry
- * byte-identical.
+ * [boxFor] snaps |angle| at or below the noise gate to a bit-identical
+ * [OcrBox.upright]; [OcrBox.isRotated] is definitionally `angleDeg != 0f`.
+ * Near-axis quads (all real-world upright text) therefore leave today's
+ * geometry byte-identical, at any gate value.
+ *
+ * ## Probe
+ * When [probeSink] is non-null, every quad-bearing [boxFor] call reports its
+ * measured pre-policy angle and deciding rung — the population instrument for
+ * gate/tolerance tuning. Null (the default) skips even the string build.
  */
 internal object OrientedBoxGeometry {
 
@@ -109,7 +112,7 @@ internal object OrientedBoxGeometry {
      *    every tategaki line rotated, silently disabling MangaOcrRefiner;
      * 3. degenerate quad;
      * 4. near-square quad (no reading axis to trust);
-     * 5. |angle| within [OcrBox.ROTATION_STANDALONE_DEG] — the snap that keeps
+     * 5. |angle| within [minSlantDeg] — the producer noise-gate snap that keeps
      *    the producer invariant (see class doc);
      * 6. |angle| past [maxSlantDeg] — the producer's supported band ceiling
      *    (defaults to the ML Kit band; see [MAX_SLANT_DEG]).
@@ -119,13 +122,39 @@ internal object OrientedBoxGeometry {
         quad: List<PointF>?,
         orientation: TextOrientation,
         maxSlantDeg: Float = MAX_SLANT_DEG,
+        minSlantDeg: Float = OcrBox.ANGLE_NOISE_GATE_DEG,
     ): OcrBox {
         if (quad == null || quad.size != 4) return OcrBox.upright(aabb)
-        if (orientation == TextOrientation.VERTICAL) return OcrBox.upright(aabb)
-        val o = fromQuad(quad) ?: return OcrBox.upright(aabb)
-        if (o.longSide < o.shortSide * MIN_AXIS_ASPECT) return OcrBox.upright(aabb)
-        if (abs(o.angleDeg) <= OcrBox.ROTATION_STANDALONE_DEG) return OcrBox.upright(aabb)
-        if (abs(o.angleDeg) > maxSlantDeg) return OcrBox.upright(aabb)
-        return OcrBox(aabb, o.longSide, o.shortSide, o.angleDeg)
+        val o = fromQuad(quad)
+        val rung: String
+        val result: OcrBox
+        when {
+            orientation == TextOrientation.VERTICAL -> { rung = "vertical"; result = OcrBox.upright(aabb) }
+            o == null -> { rung = "degenerate"; result = OcrBox.upright(aabb) }
+            o.longSide < o.shortSide * MIN_AXIS_ASPECT -> { rung = "near-square"; result = OcrBox.upright(aabb) }
+            abs(o.angleDeg) <= minSlantDeg -> { rung = "snap"; result = OcrBox.upright(aabb) }
+            abs(o.angleDeg) > maxSlantDeg -> { rung = "band"; result = OcrBox.upright(aabb) }
+            else -> { rung = "rotated"; result = OcrBox(aabb, o.longSide, o.shortSide, o.angleDeg) }
+        }
+        // Population probe: measured pre-policy angle + deciding rung, every
+        // detection with a quad — the instrument that answers gate/tolerance
+        // questions from play-session distributions instead of single screens.
+        // The AABB origin is the cross-cycle join key for per-element jitter.
+        probeSink?.let { sink ->
+            sink(
+                "meas=" + (o?.angleDeg ?: Float.NaN) +
+                    " rung=" + rung +
+                    " aspect=" + (if (o != null) o.longSide / o.shortSide else Float.NaN) +
+                    " min=" + minSlantDeg + " max=" + maxSlantDeg +
+                    " aabb=(" + aabb.left + "," + aabb.top + " " + aabb.width() + "x" + aabb.height() + ")",
+            )
+        }
+        return result
     }
+
+    /** Probe output, injected by the app layer (`ocr.core` has no Context/Prefs
+     *  access by design — same injection pattern as `OcrModelManager.appContext`).
+     *  Null = off = zero per-detection cost beyond this read. */
+    @Volatile
+    var probeSink: ((String) -> Unit)? = null
 }

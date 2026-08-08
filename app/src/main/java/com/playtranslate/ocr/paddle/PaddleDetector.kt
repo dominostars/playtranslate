@@ -48,7 +48,10 @@ class PaddleDetector(private val session: PaddleOcrSession) : TextDetector {
                 // sign-dependent — claiming an angle would pin a confident chip
                 // on an unreliable read. With the cap, everything past 45° is
                 // bit-identical to the pre-angle pipeline.
-                box = OrientedBoxGeometry.boxFor(aabb, quad, orientation, maxSlantDeg = 45f),
+                box = OrientedBoxGeometry.boxFor(
+                    aabb, quad, orientation,
+                    maxSlantDeg = 45f, minSlantDeg = image.angleNoiseGateDeg,
+                ),
                 quad = quad,
                 orientation = orientation,
                 confidence = -1f,

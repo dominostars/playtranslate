@@ -35,6 +35,24 @@ class OcrManager private constructor() {
      *  [PlayTranslateApplication] on start and from the SettingsRenderer toggle. */
     @Volatile var debugLogGroupingEnabled: Boolean = false
 
+    /** Debug override for the producer angle noise gate (degrees); null = the
+     *  compiled [com.playtranslate.ocr.core.OcrBox.ANGLE_NOISE_GATE_DEG].
+     *  The threshold-drop program's per-stage device validation forces the
+     *  target gate here, so the final drop only changes a default over
+     *  already-exercised code. */
+    @Volatile var debugAngleGateDeg: Float? = null
+
+    /** Mirrors [debugLogGroupingEnabled]'s wiring (boot + settings toggle).
+     *  The setter injects/clears the AngleProbe sink — `ocr.core` cannot read
+     *  Prefs itself, so the app layer owns the gate (same injection pattern as
+     *  `OcrModelManager.appContext`). */
+    var debugAngleProbeEnabled: Boolean = false
+        set(value) {
+            field = value
+            com.playtranslate.ocr.core.OrientedBoxGeometry.probeSink =
+                if (value) { msg -> android.util.Log.d("AngleProbe", msg) } else null
+        }
+
     /** Pushed from [com.playtranslate.PlayTranslateApplication] on start and from the
      *  "Use MangaOCR" settings toggle. Gates the optional manga-ocr refinement
      *  ([shouldRefineMangaOcr] adds the Japanese / arm64 / model-installed checks). */
@@ -240,6 +258,8 @@ class OcrManager private constructor() {
             refineWithMangaOcr = shouldRefineMangaOcr(sourceLang),
             regionPreFilter = regionPreFilter,
             documentLayoutBias = documentLayoutBias,
+            angleNoiseGateDeg = debugAngleGateDeg
+                ?: com.playtranslate.ocr.core.OcrBox.ANGLE_NOISE_GATE_DEG,
         ) ?: return null
 
         val result = buildOcrResult(
@@ -280,6 +300,8 @@ class OcrManager private constructor() {
             darkBackgroundProvider = { sampleIsDarkBackground(bitmap) },
             logGrouping = debugLogGroupingEnabled,
             refineWithMangaOcr = shouldRefineMangaOcr(sourceLang),
+            angleNoiseGateDeg = debugAngleGateDeg
+                ?: com.playtranslate.ocr.core.OcrBox.ANGLE_NOISE_GATE_DEG,
         ) ?: return null
 
         return buildOcrLines(output.groups, output.scaleFactor).ifEmpty { null }

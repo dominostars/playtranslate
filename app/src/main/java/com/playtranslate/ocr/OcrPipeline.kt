@@ -70,6 +70,7 @@ object OcrPipeline {
         recipe: OcrPreprocessingRecipe,
         darkBackgroundProvider: () -> Boolean,
         regionPreFilter: com.playtranslate.ocr.core.RegionPreFilter? = null,
+        angleNoiseGateDeg: Float = com.playtranslate.ocr.core.OcrBox.ANGLE_NOISE_GATE_DEG,
         block: suspend (Recognition) -> T,
     ): T = withContext(Dispatchers.Default) {
         // Engine + dark-background inputs are resolved HERE, not as eager
@@ -84,7 +85,9 @@ object OcrPipeline {
         val scaleFactor =
             if (processed === bitmap) 1f else processed.width.toFloat() / bitmap.width
         try {
-            val recognized = engine.recognize(OcrImage(processed, sourceLang, screenshotWidth, regionPreFilter))
+            val recognized = engine.recognize(
+                OcrImage(processed, sourceLang, screenshotWidth, regionPreFilter, angleNoiseGateDeg),
+            )
             // Shared text normalization (pipe-trim / UI-decoration / noise) for EVERY
             // engine — folds in passes that used to live only in the ML Kit adapter, so
             // Meiki/Paddle/manga-ocr get them too. LayoutAnalyzer.analyze (whose sole
@@ -107,6 +110,7 @@ object OcrPipeline {
         refineWithMangaOcr: Boolean = false,
         regionPreFilter: com.playtranslate.ocr.core.RegionPreFilter? = null,
         documentLayoutBias: Boolean = false,
+        angleNoiseGateDeg: Float = com.playtranslate.ocr.core.OcrBox.ANGLE_NOISE_GATE_DEG,
     ): Output? =
         // The whole pass runs OFF the main thread (withRecognition dispatches
         // to Default): preprocessing, the engine's inference, and layout are
@@ -117,7 +121,7 @@ object OcrPipeline {
         // a large page) blocked Main long enough to ANR.
         withRecognition(
             engineProvider, bitmap, sourceLang, screenshotWidth, recipe,
-            darkBackgroundProvider, regionPreFilter,
+            darkBackgroundProvider, regionPreFilter, angleNoiseGateDeg,
         ) { rec ->
             if (rec.regions.isEmpty()) return@withRecognition null
             val groups = LayoutAnalyzer.analyze(

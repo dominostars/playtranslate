@@ -1507,6 +1507,7 @@ class SettingsRenderer(
         switchLogGrouping.setOnCheckedChangeListener { _, checked ->
             prefs.debugLogGrouping = checked
             OcrManager.instance.debugLogGroupingEnabled = checked
+            OcrManager.instance.debugAngleProbeEnabled = checked
         }
         rowLogGrouping.setOnClickListener { switchLogGrouping.toggle() }
 
