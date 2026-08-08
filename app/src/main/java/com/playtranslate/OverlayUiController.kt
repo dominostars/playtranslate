@@ -305,6 +305,12 @@ class OverlayUiController(
     fun boxScreenRects(displayId: Int): List<Rect> =
         translationOverlayHandles[displayId]?.getChildScreenRects() ?: emptyList()
 
+    /** Drawn footprints of the overlay's text-box children on [displayId]
+     *  (rect + rotation + laid-out dims) — the outside gate's exclusion
+     *  channel. Same child order as [boxScreenRects]. */
+    fun boxFootprints(displayId: Int): List<com.playtranslate.ui.TranslationOverlayView.ChildFootprint> =
+        translationOverlayHandles[displayId]?.getChildFootprints() ?: emptyList()
+
     /** Display size cached on the overlay window (the view's dimensions
      *  match the display because the window is MATCH_PARENT). Returns null
      *  when no overlay is registered. */

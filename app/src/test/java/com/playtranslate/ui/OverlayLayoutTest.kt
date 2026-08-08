@@ -563,15 +563,62 @@ class OverlayLayoutTest {
     }
 
     @Test
-    fun slantedBox_sitsOutCarvePasses_bothDirections() {
+    fun slantedBox_sitsOutUprightCarvePasses_bothDirections() {
         // An upright horizontal box overlapping the slanted one: neither is
-        // carved — the slanted box keeps its padded AABB and the upright box
-        // keeps its own (residual overlap is the accepted trade).
+        // carved against the other (cross-mode carving is the documented
+        // limitation) — the slanted box resolves its chip's EXACT oriented
+        // AABB (padded 212×52 at 30°, centered on the unpadded mapped
+        // center) and the upright box keeps its own padded rect.
         val slanted = slantBox()
         val upright = box(Rect(250, 320, 480, 360))
         val r = resolve(listOf(slanted, upright))
-        assertEquals(RectF(294f, 294f, 499f, 441f), r[0].rect)
+        val rr = r[0].rect
+        assertEquals(291.7f, rr.left, 0.1f)
+        assertEquals(292.0f, rr.top, 0.1f)
+        assertEquals(501.3f, rr.right, 0.1f)
+        assertEquals(443.0f, rr.bottom, 0.1f)
+        // The chip payload carries the drawn geometry.
+        val chip = r[0].chip!!
+        assertEquals(396.5f, chip.centerX, 0.1f)
+        assertEquals(367.5f, chip.centerY, 0.1f)
+        assertEquals(212f, chip.width, 0.1f)
+        assertEquals(52f, chip.height, 0.1f)
+        assertEquals(30f, chip.angleDeg, 0f)
         assertEquals(RectF(244f, 314f, 486f, 366f), r[1].rect)
+    }
+
+    @Test
+    fun sameAngleChips_carveInsteadOfOverlapping() {
+        // Two stacked banners at the same angle whose padded chips overlap
+        // across the baseline-normal axis: they carve at the in-frame midline
+        // (pass 1's stacked-rows geometry in the shared deskewed frame), so
+        // the chips end disjoint while both keep covering their sources.
+        val a = slantBox(bounds = Rect(300, 300, 493, 435), angle = 30f)
+        val b = slantBox(bounds = Rect(320, 340, 513, 475), angle = 30f)
+        val r = resolve(listOf(a, b))
+        val ca = r[0].chip!!
+        val cb = r[1].chip!!
+        // Both carved chips keep the cluster angle and shrink from the 52px
+        // padded height — the carve took the overlap out of the facing edges.
+        assertEquals(30f, ca.angleDeg, 0f)
+        assertEquals(30f, cb.angleDeg, 0f)
+        assertTrue("carve must shrink at least one chip: ${ca.height} / ${cb.height}",
+            ca.height < 52f || cb.height < 52f)
+        // Sources stay covered: each chip still spans at least its unpadded dims' area center.
+        assertTrue(ca.height >= 40f)
+        assertTrue(cb.height >= 40f)
+    }
+
+    @Test
+    fun farAngleChips_doNotCarve() {
+        // Same overlap, angles 30° vs 10°: different clusters — no carve,
+        // both chips keep their full padded dims (the documented cross-angle
+        // limitation).
+        val a = slantBox(bounds = Rect(300, 300, 493, 435), angle = 30f)
+        val b = slantBox(bounds = Rect(320, 340, 513, 475), angle = 10f)
+        val r = resolve(listOf(a, b))
+        assertEquals(52f, r[0].chip!!.height, 0.1f)
+        assertEquals(52f, r[1].chip!!.height, 0.1f)
     }
 
     @Test

@@ -58,11 +58,14 @@ class TranslationOverlaySourceAngleTest {
         val child = v.getChildAt(0)
         assertTrue("expected OutlinedTextView, got ${child.javaClass.simpleName}", child is OutlinedTextView)
         assertEquals(30f, child.rotation)
-        assertEquals(200, child.layoutParams.width)
-        assertEquals(40, child.layoutParams.height)
+        // The chip carries the PADDED drawn dims (200 + 2·6, 40 + 2·6 at
+        // density 1) — padding lives in the deskewed frame since the carve
+        // stage, mirroring how upright boxes render into padded rects.
+        assertEquals(212, child.layoutParams.width)
+        assertEquals(52, child.layoutParams.height)
         // Pin: child center on the mapped bounds center (396.5, 367.5).
-        assertEquals(396.5f - 100f, child.translationX, 0.01f)
-        assertEquals(367.5f - 20f, child.translationY, 0.01f)
+        assertEquals(396.5f - 106f, child.translationX, 0.01f)
+        assertEquals(367.5f - 26f, child.translationY, 0.01f)
         // The fill is load-bearing for pinhole detection.
         assertNotNull("slanted child must have a background fill", child.background)
     }
@@ -75,10 +78,10 @@ class TranslationOverlaySourceAngleTest {
         assertEquals(1, v.childCount)
         val child = v.getChildAt(0)
         assertEquals("skeletons rotate with their source", 30f, child.rotation)
-        assertEquals(200, child.layoutParams.width)
-        assertEquals(40, child.layoutParams.height)
-        assertEquals(396.5f - 100f, child.translationX, 0.01f)
-        assertEquals(367.5f - 20f, child.translationY, 0.01f)
+        assertEquals(212, child.layoutParams.width)
+        assertEquals(52, child.layoutParams.height)
+        assertEquals(396.5f - 106f, child.translationX, 0.01f)
+        assertEquals(367.5f - 26f, child.translationY, 0.01f)
     }
 
     @Test
