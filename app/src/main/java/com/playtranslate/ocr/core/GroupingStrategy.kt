@@ -42,7 +42,11 @@ data class GroupingRecipe(
 data class GroupingContext(
     val sourceLang: String,
     /** Full screenshot width in the regions' coordinate space; 0 = unknown
-     *  (the default strategy then skips its menu split). */
+     *  (the default strategy then skips its menu split). Angle-cluster frames
+     *  ([LayoutAnalyzer.analyze]'s deskew path) receive the SAME value: deskew
+     *  is an isometry, so in-frame extents are genuine pixel lengths and the
+     *  width tests stay sound — slightly conservative at steep angles, where
+     *  the true room along the baseline is the diagonal. */
     val screenshotWidthInRegionSpace: Float,
     val rtl: Boolean,
     val spacedScript: Boolean,
@@ -58,6 +62,14 @@ data class ProposedGroup(
     val regions: List<RecognizedRegion>,
     val parentLeft: Int? = null,
     val parentRight: Int? = null,
+    /** Non-null for an angle-cluster group ([LayoutAnalyzer.analyze]'s deskew
+     *  path): the shared frame its members were grouped in, driving deskewed
+     *  reading order / alignment / oriented bounds in `buildLayoutGroup`.
+     *  When [frame] is non-null, [parentLeft]/[parentRight] are FRAME-SPACE
+     *  u-values (the strategy that produced them saw deskewed rects); the
+     *  framed assembly consumes them in the same frame, clamping the in-frame
+     *  union before the back-rotation. */
+    val frame: AngleFrame? = null,
 )
 
 /**
