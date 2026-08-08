@@ -32,7 +32,9 @@ import kotlin.math.abs
  *    so a large title can't widen the band and swallow a smaller row);
  *  - admits a box to a line only if its height is within [HEIGHT_THS]× the line's
  *    mean height (EasyOCR `height_ths` — the mixed-font-size guard);
- *  - splits a band on horizontal gaps > [GAP_THS]× the line height (column breaks).
+ *  - splits a band on horizontal gaps > [GAP_THS]× the line height (column breaks);
+ *  - bands slanted regions per same-angle cluster in that cluster's deskewed
+ *    frame ([assembleSlanted]) — the same kernel, slant rotated away first.
  *
  * Pure geometry in [assembleLineIndices]; [assembleLines] adds the text + char-box
  * stitch (carrying per-word [CharBox]es into the line with offsets rebased).
@@ -54,16 +56,16 @@ object LineAssembler {
      */
     fun assembleLines(regions: List<RecognizedRegion>, rtl: Boolean = false): List<RecognizedRegion> {
         if (regions.size <= 1) return regions
-        // Rotated regions never band: their inflated AABBs would merge into an
-        // upright union ([mergeLine] discards the angle and force-tags
-        // HORIZONTAL), so slanted words stay per-word regions and keep their
-        // slant for layout's standalone path. The re-entrant call runs today's
-        // code over the upright partition alone, so the vertical-dominance vote
-        // below can't be tipped by rotated members; a frame with no rotated
-        // region — every frame today — skips this branch entirely.
+        // Rotated regions band in their own deskewed frames ([assembleSlanted]):
+        // same-angle clusters run the same banding kernel on rects whose slant
+        // has been rotated away, so a slanted word row stitches exactly like an
+        // upright one. The re-entrant call runs the upright partition alone, so
+        // the vertical-dominance vote below can't be tipped by rotated members
+        // (all HORIZONTAL by the producer invariant); a frame with no rotated
+        // region skips this branch entirely.
         if (regions.any { it.box.isRotated }) {
             val (rotated, upright) = regions.partition { it.box.isRotated }
-            return assembleLines(upright, rtl) + rotated
+            return assembleLines(upright, rtl) + assembleSlanted(rotated, rtl)
         }
         // Collective-orientation guard: a vertical-dominant capture is genuine
         // vertical text (no horizontal-line fragmentation to repair) — leave it
@@ -83,6 +85,44 @@ object LineAssembler {
             if (idxs.size == 1) regions[idxs[0]]
             else mergeLine(idxs.map { regions[it] }, rtl)
         }
+    }
+
+    /**
+     * Band slanted regions per same-angle cluster, in that cluster's deskewed
+     * frame — the same [assembleLineIndices] kernel the upright path runs, on
+     * rects whose slant has been rotated away (heights there are the true
+     * oriented heights, so the banding thresholds keep their meaning). A
+     * singleton line stays the ORIGINAL region, slant and all; a multi-member
+     * line merges via [mergeLine] with the frame, emitting the in-frame union
+     * rotated back (bounds = exact screen AABB, oriented dims = union dims,
+     * angle = θ̄ verbatim). Regions far apart in angle never band, whatever
+     * their AABB overlap. Cluster anchor = the members' AABB-union center,
+     * matching the grouping shell's convention.
+     */
+    private fun assembleSlanted(rotated: List<RecognizedRegion>, rtl: Boolean): List<RecognizedRegion> {
+        val clusters = DeskewGeometry.clusterByAngle(
+            rotated.map { it.box.angleDeg },
+            rotated.map { it.box.orientedWidth },
+            rotated.map { it.box.orientedHeight },
+            DeskewGeometry.DEFAULT_CLUSTER_CAP_DEG,
+        )
+        val out = ArrayList<RecognizedRegion>(rotated.size)
+        for (cluster in clusters) {
+            val members = cluster.memberIndices.map { rotated[it] }
+            if (members.size == 1) {
+                out += members[0]
+                continue
+            }
+            val union = Rect(members[0].box.bounds)
+            for (m in members.drop(1)) union.union(m.box.bounds)
+            val frame = AngleFrame(cluster.angleDeg, union.centerX(), union.centerY())
+            val deskewed = members.map { DeskewGeometry.deskew(it.box, frame) }
+            out += assembleLineIndices(deskewed).map { idxs ->
+                if (idxs.size == 1) members[idxs[0]]
+                else mergeLine(idxs.map { members[it] }, rtl, frame)
+            }
+        }
+        return out
     }
 
     /**
@@ -143,19 +183,36 @@ object LineAssembler {
      *  for alphabetic scripts — so drag-lookup/furigana would fall back to proportional
      *  on exactly that path. Each member carries its chars on its single recognized
      *  line (line.text == member text); the inserted join spaces get no symbol, matching
-     *  the rest of the symbol pipeline (and what consumers expect — they index by offset). */
-    private fun mergeLine(members: List<RecognizedRegion>, rtl: Boolean): RecognizedRegion {
+     *  the rest of the symbol pipeline (and what consumers expect — they index by offset).
+     *  With a non-null [frame] (a slanted cluster's), ordering and the union run on the
+     *  members' DESKEWED rects, and the merged box is that in-frame union rotated back:
+     *  bounds = exact screen AABB, oriented dims = union dims, angle = the frame's θ̄. */
+    private fun mergeLine(
+        members: List<RecognizedRegion>,
+        rtl: Boolean,
+        frame: AngleFrame? = null,
+    ): RecognizedRegion {
+        val withRects = members.map {
+            it to if (frame == null) it.box.bounds else DeskewGeometry.deskew(it.box, frame)
+        }
         // RTL sources (Arabic) read right-to-left: the rightmost word comes first in
         // logical order. LTR sources join left-to-right as before.
-        val ordered = if (rtl) members.sortedByDescending { it.box.bounds.left }
-        else members.sortedBy { it.box.bounds.left }
+        val orderedPairs = if (rtl) withRects.sortedByDescending { it.second.left }
+        else withRects.sortedBy { it.second.left }
+        val ordered = orderedPairs.map { it.first }
         val text = ordered.joinToString(" ") { it.text }
-        val rects = ordered.map { it.box.bounds }
+        val rects = orderedPairs.map { it.second }
         val union = Rect(
             rects.minOf { it.left }, rects.minOf { it.top },
             rects.maxOf { it.right }, rects.maxOf { it.bottom },
         )
-        val box = OcrBox.upright(union)
+        val box = if (frame == null) OcrBox.upright(union)
+        else OcrBox(
+            DeskewGeometry.screenAabbOf(union, frame),
+            union.width().toFloat(),
+            union.height().toFloat(),
+            frame.angleDeg,
+        )
         val confs = ordered.map { it.confidence }.filter { it >= 0f }
         val confidence = if (confs.isEmpty()) -1f else confs.average().toFloat()
         // Shift each member's word-local char offsets by where that member's text starts
