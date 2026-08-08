@@ -49,6 +49,7 @@ import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.BuildConfig
 import com.playtranslate.CaptureService
 import com.playtranslate.OcrManager
+import com.playtranslate.ocr.core.OcrBox
 import com.playtranslate.OverlayMode
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.PlayTranslateTileService
@@ -1510,6 +1511,19 @@ class SettingsRenderer(
             OcrManager.instance.debugAngleProbeEnabled = checked
         }
         rowLogGrouping.setOnClickListener { switchLogGrouping.toggle() }
+
+        // Force the slant noise gate to the threshold-drop target (next OCR
+        // cycle onward) so angle consumers can be exercised at the future
+        // default before it ships.
+        val rowAngleGate = root.findViewById<View>(R.id.rowAngleGate)
+        val switchAngleGate = rowAngleGate.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        rowAngleGate.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_angle_gate)
+        switchAngleGate.isChecked = prefs.debugAngleGateAtTarget
+        switchAngleGate.setOnCheckedChangeListener { _, checked ->
+            prefs.debugAngleGateAtTarget = checked
+            OcrManager.instance.debugAngleGateDeg = if (checked) OcrBox.ANGLE_TARGET_GATE_DEG else null
+        }
+        rowAngleGate.setOnClickListener { switchAngleGate.toggle() }
 
         // Record live-mode commit trace (translation-log validation feed)
         val rowLogTrace = root.findViewById<View>(R.id.rowLogTrace)

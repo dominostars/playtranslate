@@ -588,6 +588,11 @@
                         <include layout="@layout/settings_row_divider" />
 
                         <include layout="@layout/settings_row_switch"
+                            android:id="@+id/rowAngleGate" />
+
+                        <include layout="@layout/settings_row_divider" />
+
+                        <include layout="@layout/settings_row_switch"
                             android:id="@+id/rowLogTrace" />
 
                         <include layout="@layout/settings_row_divider" />

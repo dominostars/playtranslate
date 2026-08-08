@@ -462,24 +462,47 @@ class ScanlineReconcilerTest {
     }
 
     @Test
-    fun snapBoundaryHover_zeroNonzeroFlips_staySticky() {
-        // Text at a true ~10° slant hovering across the producer's snap
-        // threshold: reads alternate angle 0 / 10.4 with identical bounds.
-        // Refreshing on the flip would rebuild the overlay every cycle; the
-        // born state stays sticky. (A REAL transition to/from upright moves
-        // the AABB far past the bounds hysteresis and fires there instead.)
-        val bounds = Rect(100, 100, 300, 180)
-        val upright = box(bounds, "SALE")
-        val slantedRead = grp("SALE", bounds)
-            .copy(angleDeg = 10.4f, orientedWidth = 200f, orientedHeight = 40f)
+    fun snapBoundaryHover_shortLineFlips_staySticky() {
+        // A SHORT line hovering across the producer's snap threshold: reads
+        // alternate angle 0 / 10.4 with identical bounds. The drawn chip's
+        // corners move ~2·r·sin(δ/2) ≈ 4.5px at this size — inside the px
+        // hysteresis — so the born state stays sticky and the overlay never
+        // flaps. Stickiness is now a LENGTH property, not a mode special-case.
+        val bounds = Rect(100, 100, 140, 130)
+        val upright = box(bounds, "GO")
+        val slantedRead = grp("GO", bounds)
+            .copy(angleDeg = 10.4f, orientedWidth = 40f, orientedHeight = 30f)
         val v1 = ScanlineReconciler.reconcile(listOf(slantedRead), listOf(upright))
         assertEquals(0, v1.repositioned)
         assertEquals(0f, v1.keptBoxes.single().angleDeg, 0f)
 
-        val rotated = upright.copy(angleDeg = 10.4f, orientedWidth = 200f, orientedHeight = 40f)
-        val uprightRead = grp("SALE", bounds)
+        val rotated = upright.copy(angleDeg = 10.4f, orientedWidth = 40f, orientedHeight = 30f)
+        val uprightRead = grp("GO", bounds)
         val v2 = ScanlineReconciler.reconcile(listOf(uprightRead), listOf(rotated))
         assertEquals(0, v2.repositioned)
         assertEquals(10.4f, v2.keptBoxes.single().angleDeg, 0f)
+    }
+
+    @Test
+    fun snapBoundaryHover_longLineFlips_refresh() {
+        // The same flip on a LONG banner is a real visual event: corners sweep
+        // ~37px at this length, far past the px hysteresis, so the kept box
+        // refreshes onto the fresh read's geometry (the deliberate change from
+        // the old always-sticky flip rule — a long chip drawn 10° off its text
+        // is a misrender, not jitter).
+        val bounds = Rect(100, 100, 500, 180)
+        val upright = box(bounds, "GRAND OPENING SALE")
+        val slantedRead = grp("GRAND OPENING SALE", bounds)
+            .copy(angleDeg = 10.4f, orientedWidth = 400f, orientedHeight = 80f)
+        val v1 = ScanlineReconciler.reconcile(listOf(slantedRead), listOf(upright))
+        assertEquals(1, v1.repositioned)
+        assertEquals(10.4f, v1.keptBoxes.single().angleDeg, 0f)
+        assertEquals("translation preserved through the refresh", "T", v1.keptBoxes.single().translatedText)
+
+        val rotated = upright.copy(angleDeg = 10.4f, orientedWidth = 400f, orientedHeight = 80f)
+        val uprightRead = grp("GRAND OPENING SALE", bounds)
+        val v2 = ScanlineReconciler.reconcile(listOf(uprightRead), listOf(rotated))
+        assertEquals(1, v2.repositioned)
+        assertEquals(0f, v2.keptBoxes.single().angleDeg, 0f)
     }
 }
