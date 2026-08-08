@@ -596,11 +596,17 @@ class OverlayLayoutTest {
 
     @Test
     fun boxesMatchFuzzy_angleChangeDefeatsFastPath() {
+        // An upright↔slanted mode flip always defeats the fast path.
         val flat = box(Rect(300, 300, 493, 435))
         val slanted = slantBox(text = "x")
         assertTrue(!OverlayLayout.boxesMatchFuzzy(listOf(flat), listOf(slanted)))
-        // Jitter within a degree still matches (no rebuild churn on a stable banner).
+        // Between two slanted reads, motion is corner displacement of the
+        // drawn chip: angle jitter moves this 200×40 chip's corners ~1px —
+        // matches (no rebuild churn on a stable banner)...
         val jittered = slanted.copy(angleDeg = 30.6f)
         assertTrue(OverlayLayout.boxesMatchFuzzy(listOf(slanted), listOf(jittered)))
+        // ...while a real rotation sweeps them past the tolerance — rebuilds.
+        val rotated = slanted.copy(angleDeg = 42f)
+        assertTrue(!OverlayLayout.boxesMatchFuzzy(listOf(slanted), listOf(rotated)))
     }
 }

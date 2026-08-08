@@ -357,13 +357,20 @@ internal object OverlayLayout {
             if (ba.sourceText != bb.sourceText) return false
             if (ba.orientation != bb.orientation) return false
             if (ba.alignment != bb.alignment) return false
-            // A slant change re-routes the render mode, so it must defeat the
-            // fuzzy fast path (a 0°→25° flip inside the bounds tolerance would
-            // otherwise never rebuild). ~1° absorbs quad jitter on a stable
-            // banner; oriented dims share the bounds tolerance.
-            if (Math.abs(ba.angleDeg - bb.angleDeg) > 1f) return false
-            if (Math.abs(ba.orientedWidth - bb.orientedWidth) > tolerance ||
-                Math.abs(ba.orientedHeight - bb.orientedHeight) > tolerance) return false
+            // An upright↔slanted mode flip re-routes the render path, so it
+            // always defeats the fuzzy fast path. Between two slanted reads,
+            // motion is judged on the DRAWN footprint: corner displacement
+            // within the bounds tolerance is the same jitter the AABB check
+            // absorbs (angle jitter on a stable banner barely moves corners),
+            // while a real rotation or dims change moves a long chip's
+            // corners past it and rebuilds. Subsumes any separate angle or
+            // oriented-dims comparison.
+            if ((ba.angleDeg != 0f) != (bb.angleDeg != 0f)) return false
+            if (ba.angleDeg != 0f && com.playtranslate.ocr.core.DeskewGeometry.footprintCornerDelta(
+                    ba.bounds, ba.angleDeg, ba.orientedWidth, ba.orientedHeight,
+                    bb.bounds, bb.angleDeg, bb.orientedWidth, bb.orientedHeight,
+                ) > tolerance
+            ) return false
             val ra = ba.bounds; val rb = bb.bounds
             if (Math.abs(ra.left - rb.left) > tolerance ||
                 Math.abs(ra.top - rb.top) > tolerance ||

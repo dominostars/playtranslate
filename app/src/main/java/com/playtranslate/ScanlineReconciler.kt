@@ -3,6 +3,7 @@ package com.playtranslate
 import android.graphics.Rect
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
+import com.playtranslate.ocr.core.DeskewGeometry
 import com.playtranslate.ocr.core.LayoutAnalyzer
 import com.playtranslate.ui.TextBox
 import kotlin.math.abs
@@ -99,21 +100,21 @@ object ScanlineReconciler {
      *  static text — repositioning that would make boxes shiver every cycle. */
     private const val REPOSITION_HYSTERESIS_PX = 5
 
-    /** A slanted box whose fresh read is also slanted, at an angle this many
-     *  degrees away, is refreshed like a bounds drift. Bounds alone can miss
-     *  pure angle drift — the AABB moves only ~w·cosθ px per degree, under
-     *  [REPOSITION_HYSTERESIS_PX] for short lines. 0↔non-zero flips are
-     *  deliberately EXCLUDED ([slantDrifted]): a real transition to/from
-     *  upright moves the AABB far past the bounds hysteresis and is caught
-     *  there, while an equal-bounds flip is the producer's 10° snap threshold
-     *  hovering under detector jitter — refreshing on that would rebuild the
-     *  overlay every flip (the flap failure), so the born state stays sticky. */
-    private const val SLANT_REFRESH_HYSTERESIS_DEG = 3f
-
-    /** See [SLANT_REFRESH_HYSTERESIS_DEG]. */
+    /** Drift seen on the DRAWN chip, not just the AABB: when either side is
+     *  slanted, the kept box refreshes iff some corner of the oriented
+     *  footprint moved beyond [REPOSITION_HYSTERESIS_PX]. Length-dependent by
+     *  construction — a pure rotation moves corners `2·r·sin(δ/2)` at the
+     *  corner radius — so a short line's snap-boundary flip (tiny corner
+     *  motion) stays sticky under detector jitter while a long banner's
+     *  rotation or 0↔non-zero transition moves real pixels and refreshes;
+     *  no per-case special-casing. Upright pairs never reach it
+     *  ([boundsDrifted] owns that path, unchanged). */
     private fun slantDrifted(box: TextBox, g: OcrManager.OcrGroup): Boolean =
-        box.angleDeg != 0f && g.angleDeg != 0f &&
-            kotlin.math.abs(box.angleDeg - g.angleDeg) > SLANT_REFRESH_HYSTERESIS_DEG
+        (box.angleDeg != 0f || g.angleDeg != 0f) &&
+            DeskewGeometry.footprintCornerDelta(
+                box.bounds, box.angleDeg, box.orientedWidth, box.orientedHeight,
+                g.bounds, g.angleDeg, g.orientedWidth, g.orientedHeight,
+            ) > REPOSITION_HYSTERESIS_PX
 
     /** The data the mode needs to (re)build one box: an OCR group reduced to
      *  the fields [OverlayToolkit.buildPlaceholderBoxes] and

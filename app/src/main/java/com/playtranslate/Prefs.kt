@@ -1331,6 +1331,14 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_DEBUG_LOG_GROUPING, false)
         set(v) = sp.edit { putBoolean(KEY_DEBUG_LOG_GROUPING, v) }
 
+    /** Debug-only: run OCR with the slant noise gate forced to
+     *  [com.playtranslate.ocr.core.OcrBox.ANGLE_TARGET_GATE_DEG] instead of the
+     *  10° default, so device passes exercise angle consumers at the
+     *  threshold-drop program's future default. */
+    var debugAngleGateAtTarget: Boolean
+        get() = sp.getBoolean(KEY_DEBUG_ANGLE_GATE_TARGET, false)
+        set(v) = sp.edit { putBoolean(KEY_DEBUG_ANGLE_GATE_TARGET, v) }
+
     /** Debug-only: append every live-mode committed region set
      *  (post-TypewriterGate `toTranslate`) to a JSONL trace under
      *  external-files/log-traces/ — the offline feed for validating the
@@ -1604,6 +1612,7 @@ class Prefs internal constructor(
         private const val KEY_DEBUG_LIVE_MODE                = "debug_live_mode"
         private const val KEY_DEBUG_SAVE_OCR_SEED            = "debug_save_ocr_seed"
         private const val KEY_DEBUG_LOG_GROUPING             = "debug_log_grouping"
+        private const val KEY_DEBUG_ANGLE_GATE_TARGET        = "debug_angle_gate_target"
         private const val KEY_DEBUG_LOG_TRACE                = "debug_log_trace"
         const val KEY_HOTKEY_TRANSLATION                   = "hotkey_translation"
         const val KEY_HOTKEY_FURIGANA                      = "hotkey_furigana"

@@ -62,6 +62,13 @@ data class OcrBox(
          *  staged threshold-drop program). */
         const val ANGLE_NOISE_GATE_DEG = 10f
 
+        /** The threshold-drop program's TARGET gate (degrees): what
+         *  [ANGLE_NOISE_GATE_DEG] becomes once every consumer is
+         *  angle-capable. Until then it powers the debug settings override so
+         *  device passes exercise consumers at the future default. Provisional
+         *  value — finalized from the upright-noise census before the drop. */
+        const val ANGLE_TARGET_GATE_DEG = 3f
+
         /** Axis-aligned box (the common case): oriented dims == AABB dims, angle 0. */
         fun upright(bounds: Rect): OcrBox =
             OcrBox(bounds, bounds.width().toFloat(), bounds.height().toFloat(), 0f)
