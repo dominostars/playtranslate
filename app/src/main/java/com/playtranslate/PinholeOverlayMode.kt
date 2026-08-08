@@ -661,7 +661,7 @@ class PinholeOverlayMode(
             val ocrImage: Bitmap
             if (hasOverlays()) {
                 ocrImage = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
-                fillOverlayRegions(ocrImage, bitmapRects)
+                fillOverlayRegions(ocrImage, bitmapRects, footprints)
             } else {
                 ocrImage = raw
             }
@@ -1252,43 +1252,13 @@ class PinholeOverlayMode(
         grayZoneLastEmitMs = now
     }
 
-    private fun fillOverlayRegions(bitmap: Bitmap, bitmapRects: List<Rect>) {
+    private fun fillOverlayRegions(
+        bitmap: Bitmap,
+        bitmapRects: List<Rect>,
+        footprints: List<com.playtranslate.ui.TranslationOverlayView.ChildFootprint>,
+    ) {
         val boxes = cachedBoxes ?: return
-        // Small anti-aliasing buffer beyond the rendered overlay's edge, so
-        // ML Kit doesn't read AA fringe pixels as glyph fragments. Kept tiny
-        // (3 px) so adjacent text lines outside the rendered overlay aren't
-        // accidentally obscured — see PinholeOverlayMode fillOverlayRegions kdoc.
-        val aaBuffer = 3
-        val paint = android.graphics.Paint()
-        val canvas = Canvas(bitmap)
-        var rectIdx = 0
-        for (box in boxes) {
-            if (box.dirty) continue
-            val rect = bitmapRects.getOrNull(rectIdx) ?: break
-            rectIdx++
-            paint.color = box.bgColor or 0xFF000000.toInt()
-            if (box.angleDeg != 0f && box.orientedWidth > 0f && box.orientedHeight > 0f) {
-                // Rotated chip: fill its true footprint — the oriented rect
-                // about the rendered AABB's center — never the AABB, whose
-                // corner triangles are live game pixels the user still sees;
-                // painting those would blind OCR to real on-screen text
-                // (adversarial-review finding). The canvas clips to the bitmap.
-                val cx = (rect.left + rect.right) / 2f
-                val cy = (rect.top + rect.bottom) / 2f
-                val hw = box.orientedWidth / 2f + aaBuffer
-                val hh = box.orientedHeight / 2f + aaBuffer
-                canvas.save()
-                canvas.rotate(box.angleDeg, cx, cy)
-                canvas.drawRect(cx - hw, cy - hh, cx + hw, cy + hh, paint)
-                canvas.restore()
-            } else {
-                val l = (rect.left - aaBuffer).coerceAtLeast(0)
-                val t = (rect.top - aaBuffer).coerceAtLeast(0)
-                val r = (rect.right + aaBuffer).coerceAtMost(bitmap.width)
-                val b = (rect.bottom + aaBuffer).coerceAtMost(bitmap.height)
-                canvas.drawRect(l.toFloat(), t.toFloat(), r.toFloat(), b.toFloat(), paint)
-            }
-        }
+        PinholeFill.fillOverlayRegions(bitmap, boxes, bitmapRects, footprints)
     }
 
     /**
