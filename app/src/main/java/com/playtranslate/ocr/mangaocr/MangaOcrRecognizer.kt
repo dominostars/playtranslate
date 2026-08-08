@@ -11,11 +11,17 @@ import com.playtranslate.ocr.core.RecognizedRegion
 import com.playtranslate.ocr.core.RegionOrigin
 import com.playtranslate.ocr.core.TextRecognizer
 import com.playtranslate.ocr.core.synthesizeEvenCharBoxes
+import com.playtranslate.ocr.core.OcrBox
 import kotlinx.coroutines.Job
 import org.opencv.android.Utils
+import org.opencv.core.Core
+import org.opencv.core.CvType
 import org.opencv.core.Mat
+import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import kotlin.coroutines.coroutineContext
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * [TextRecognizer] over [MangaOcrSession]. Crops the detected region from the
@@ -68,7 +74,34 @@ class MangaOcrRecognizer(private val session: MangaOcrSession) : TextRecognizer 
         val y2 = r.bottom.coerceIn(y1 + 1, bh)
         if (x2 - x1 < 2 || y2 - y1 < 2) return null
 
-        val sub = bgrFor(image.bitmap).submat(y1, y2, x1, x2)
+        // Rotated region: warp the oriented rect upright into an ow×oh strip
+        // ([deskewAffine]) instead of submat-ing the inflated AABB — the AABB
+        // crop drags in off-axis content that poisons the whole-block read.
+        // Scale-1 rotation, so INTER_LINEAR is right here (DbNet's anti-LINEAR
+        // note concerns downscaling; the encoder's 224² squash does the scaling
+        // later); BORDER_REPLICATE extends edge pixels where the rect pokes
+        // past the bitmap. Never for tategaki: rotated regions are HORIZONTAL
+        // by the producer invariant, and keyed on the box, not a quad.
+        val sub: Mat
+        if (region.box.isRotated) {
+            val ow = Math.round(region.box.orientedWidth)
+            val oh = Math.round(region.box.orientedHeight)
+            if (ow < 2 || oh < 2) return null
+            val m = deskewAffine(region.box)
+            val mat = Mat(2, 3, CvType.CV_32F)
+            mat.put(0, 0, floatArrayOf(m[0], m[1], m[2], m[3], m[4], m[5]))
+            sub = Mat()
+            try {
+                Imgproc.warpAffine(
+                    bgrFor(image.bitmap), sub, mat, Size(ow.toDouble(), oh.toDouble()),
+                    Imgproc.INTER_LINEAR, Core.BORDER_REPLICATE,
+                )
+            } finally {
+                mat.release()
+            }
+        } else {
+            sub = bgrFor(image.bitmap).submat(y1, y2, x1, x2)
+        }
         val job = coroutineContext[Job]
         val reading = try {
             session.recognize(sub, maxTokens) { job?.isActive != false }
@@ -118,4 +151,27 @@ class MangaOcrRecognizer(private val session: MangaOcrSession) : TextRecognizer 
     override fun close() {
         cachedBgr?.release(); cachedBgr = null; cachedBitmap = null
     }
+}
+
+/**
+ * The 2×3 affine (row-major `[a, b, tx, c, d, ty]`) that warps [box]'s oriented
+ * rect upright into an `ow×oh` destination: rotation by −angleDeg about the AABB
+ * center (clockwise-positive y-down convention — the rotation part equals
+ * OpenCV's `getRotationMatrix2D(center, +angleDeg, 1.0)`; a negated angle
+ * DOUBLES the skew instead of removing it), then a translation putting the
+ * rect's center at the destination center. Pure math — unit-tested for the sign
+ * without OpenCV.
+ */
+internal fun deskewAffine(box: OcrBox): FloatArray {
+    val rad = Math.toRadians(box.angleDeg.toDouble())
+    val c = cos(rad).toFloat()
+    val s = sin(rad).toFloat()
+    val cx = box.bounds.exactCenterX()
+    val cy = box.bounds.exactCenterY()
+    val ow = box.orientedWidth
+    val oh = box.orientedHeight
+    return floatArrayOf(
+        c, s, ow / 2f - c * cx - s * cy,
+        -s, c, oh / 2f + s * cx - c * cy,
+    )
 }
