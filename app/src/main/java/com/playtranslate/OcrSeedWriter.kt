@@ -62,7 +62,9 @@ object OcrSeedWriter {
      *  (`androidTest/assets/ocr_grouping/`, judged by
      *  `scripts/build_grouping_report.py`): `# lang:` + `# surface:` directives,
      *  then one blank-line-separated stanza per group, one `text<TAB>l,t,r,b`
-     *  row per line in original-bitmap coordinates. The stanzas record the
+     *  row per line in original-bitmap coordinates. Slanted rows extend to
+     *  `l,t,r,b,ang,ow,oh` (angle as a 2-decimal float, oriented dims as ints;
+     *  never appended when upright) — all suite parsers accept both widths. The stanzas record the
      *  CURRENT grouping — a starting draft the curator re-stanzas into the
      *  EXPECTED grouping — so accepting it uncritically pins today's behavior,
      *  bugs included. */
