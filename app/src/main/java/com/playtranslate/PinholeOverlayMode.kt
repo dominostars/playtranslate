@@ -433,7 +433,11 @@ class PinholeOverlayMode(
             // rects. See FrameCoordinates KDoc for details on the coordinate
             // spaces and why non-identity is fail-closed below.
             val ui = CaptureBackendResolver.activeOverlayUi
-            val rects = ui?.boxScreenRects(displayId) ?: emptyList()
+            // One capture for both channels: screen rects for pinhole sampling
+            // AND drawn footprints for the gate exclusion — a single walk, so
+            // the two can't race a rebuild between separate calls.
+            val footprints = ui?.boxFootprints(displayId) ?: emptyList()
+            val rects = footprints.map { it.rect }
             val overlayDisplaySize = ui?.translationOverlayDisplaySize(displayId)
             val coords = FrameCoordinates(
                 bitmapWidth = raw.width,
@@ -553,17 +557,22 @@ class PinholeOverlayMode(
                 )
                 val inflate = PinholeCalibration.GATE_EXCLUDE_INFLATE_PX
                 val exclude = bitmapRects.mapIndexed { i, r ->
-                    // Footprint-shaped exclusion: a rotated chip excludes only
-                    // its oriented footprint, leaving the AABB corners sampled
-                    // — checkPinholes skips them (no overlay drawn there), so
-                    // the gate is their only change watcher. Sizes are equal
-                    // (guard above), so the zip with gateBoxes is index-safe.
-                    val b = gateBoxes[i]
+                    // Footprint-shaped exclusion from the DRAWN channel: a
+                    // rotated chip excludes only its rendered footprint (rect
+                    // + rotation + laid-out dims from the view itself), so
+                    // the exclusion can never diverge from what was composited
+                    // the way stored box geometry could (padding, carving).
+                    // AABB corners stay sampled — checkPinholes skips them (no
+                    // overlay drawn there), so the gate is their only watcher.
+                    // Dims ride the same view→bitmap scale as the rect.
+                    val f = footprints[i]
+                    val sx = if (f.rect.width() > 0) r.width().toFloat() / f.rect.width() else 1f
+                    val sy = if (f.rect.height() > 0) r.height().toFloat() / f.rect.height() else 1f
                     OutsideChangeGate.Exclusion(
                         Rect(r).apply { inset(-inflate, -inflate) },
-                        angleDeg = b.angleDeg,
-                        orientedW = b.orientedWidth + 2 * inflate,
-                        orientedH = b.orientedHeight + 2 * inflate,
+                        angleDeg = f.angleDeg,
+                        orientedW = f.drawnW * sx + 2 * inflate,
+                        orientedH = f.drawnH * sy + 2 * inflate,
                     )
                 } + listOfNotNull(iconRect?.let { OutsideChangeGate.Exclusion(it) })
                 val outside =
