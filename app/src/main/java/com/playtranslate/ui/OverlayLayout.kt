@@ -309,20 +309,28 @@ internal object OverlayLayout {
             // Nearest blocking edges among other non-furigana boxes that vertically overlap r.
             var leftLimit = 0f
             var rightLimit = displayW
-            var blockedBySlant = false
             for (j in boxes.indices) {
                 if (j == gi || boxes[j].isFurigana) continue
                 val o = rects[j]
                 if (o.bottom <= r.top || o.top >= r.bottom) continue  // no vertical overlap
-                // A slanted box skipped the carve passes, so its AABB may
-                // straddle r — the strict side tests below would then count it
-                // in NEITHER limit and grow straight into it. Don't grow at all
-                // beside a slanted neighbour.
-                if (boxes[j].angleDeg != 0f) { blockedBySlant = true; break }
-                if (o.right <= r.left) leftLimit = maxOf(leftLimit, o.right)
-                else if (o.left >= r.right) rightLimit = minOf(rightLimit, o.left)
+                if (o.right <= r.left) {
+                    leftLimit = maxOf(leftLimit, o.right)
+                } else if (o.left >= r.right) {
+                    rightLimit = minOf(rightLimit, o.left)
+                } else {
+                    // STRADDLER: the neighbour already overlaps r horizontally
+                    // (a slanted AABB that sat out the carves, or an upright
+                    // box the carve passes left overlapping). It bounds growth
+                    // on BOTH sides — clamp both limits to r's own edges, so r
+                    // grows nowhere and the wedge fallback below decides
+                    // whether it renders rotated. Conservative for slanted
+                    // neighbours (the AABB contains the drawn footprint), and
+                    // closes the old hole where an upright straddler was
+                    // counted in NEITHER limit and grown straight through.
+                    leftLimit = maxOf(leftLimit, r.left)
+                    rightLimit = minOf(rightLimit, r.right)
+                }
             }
-            if (blockedBySlant) continue
             val leftRoom = (r.left - leftLimit).coerceAtLeast(0f)
             val rightRoom = (rightLimit - r.right).coerceAtLeast(0f)
 
