@@ -288,7 +288,11 @@ def parse_seed(path):
             continue
         _, box = s.split("\t", 1)
         try:
-            cur.append(tuple(int(x) for x in box.split(",")))
+            # Rows are l,t,r,b or l,t,r,b,ang,ow,oh (slanted rows carry a float
+            # angle + oriented dims); only the AABB matters here, so slice — a
+            # full-tuple int() parse would ValueError on the angle and silently
+            # drop the row's label coverage.
+            cur.append(tuple(int(x) for x in box.split(",")[:4]))
         except ValueError:
             continue
     if cur:

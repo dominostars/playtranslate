@@ -525,6 +525,7 @@ class OcrAbHarnessTest {
         fun region(
             exp: String, caseId: String, cfg: String, idx: Int, box: IntArray,
             vert: Boolean, text: String? = null, conf: Float? = null, quad: List<IntArray>? = null,
+            angleDeg: Float = 0f, orientedW: Float = 0f, orientedH: Float = 0f,
         ) {
             val o = JSONObject()
                 .put("type", "region").put("run", runId).put("exp", exp).put("case", caseId)
@@ -534,6 +535,13 @@ class OcrAbHarnessTest {
             text?.let { o.put("text", it) }
             conf?.takeIf { it.isFinite() }?.let { o.put("conf", it.toDouble()) }
             quad?.let { q -> o.put("quad", JSONArray().apply { q.forEach { p -> put(JSONArray().apply { p.forEach(::put) }) } }) }
+            // Slanted regions carry the angle trio (0-when-upright convention:
+            // absent keys mean upright, mirroring the grouping harness records).
+            if (angleDeg != 0f) {
+                o.put("ang", angleDeg.toDouble())
+                o.put("ow", orientedW.toDouble())
+                o.put("oh", orientedH.toDouble())
+            }
             emit(o)
         }
 
