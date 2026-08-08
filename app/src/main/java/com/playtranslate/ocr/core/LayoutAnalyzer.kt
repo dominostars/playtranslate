@@ -1799,6 +1799,9 @@ object LayoutAnalyzer {
          *  instruments (the grouping harness catalog) pass their own;
          *  production call sites never do. */
         strategy: GroupingStrategy? = null,
+        /** Same-angle admission cap for the shell's slant clustering — the
+         *  harness sweeps it; production always runs the default. */
+        angleToleranceDeg: Float = DeskewGeometry.DEFAULT_CLUSTER_CAP_DEG,
     ): List<LayoutGroup> {
         if (regions.isEmpty()) return emptyList()
         val profile = SourceLanguageProfiles.forCode(sourceLang)
@@ -1841,7 +1844,7 @@ object LayoutAnalyzer {
                 kept.map { it.box.angleDeg },
                 kept.map { it.box.orientedWidth },
                 kept.map { it.box.orientedHeight },
-                DeskewGeometry.DEFAULT_CLUSTER_CAP_DEG,
+                angleToleranceDeg,
             )
             grouped + clusters.flatMap { cluster -> groupCluster(cluster, kept, active, ctx) }
         }

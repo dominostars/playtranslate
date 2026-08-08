@@ -31,7 +31,13 @@ import com.playtranslate.ocr.core.GroupingStrategy
  */
 object GroupingVariants {
 
-    class Variant(val name: String, val strategy: GroupingStrategy)
+    class Variant(
+        val name: String,
+        val strategy: GroupingStrategy,
+        /** Shell slant-cluster admission cap, swept by the angle columns;
+         *  every other column runs the production default. */
+        val angleToleranceDeg: Float = com.playtranslate.ocr.core.DeskewGeometry.DEFAULT_CLUSTER_CAP_DEG,
+    )
 
     val catalog: List<Variant> = listOf(
         Variant("docpitch-off", DefaultGroupingStrategy(GroupingRecipe.Default)),
@@ -85,5 +91,13 @@ object GroupingVariants {
         // growth is a fresh chance to be right. Also informs FlowGraph's
         // `listMinRows`.
         Variant("labelstack-rows3", LabelStackStrategy(minStackRows = 3)),
+        // Angle-tolerance sweep: production strategy at each slant-cluster
+        // admission cap (default 4° rides the flowgraph column). Only frames
+        // with ≥2 rotated regions can differ — upright frames take the
+        // byte-identical fast path in every column.
+        Variant("flowgraph-ang2", FlowGraphStrategy(), angleToleranceDeg = 2f),
+        Variant("flowgraph-ang3", FlowGraphStrategy(), angleToleranceDeg = 3f),
+        Variant("flowgraph-ang6", FlowGraphStrategy(), angleToleranceDeg = 6f),
+        Variant("flowgraph-ang8", FlowGraphStrategy(), angleToleranceDeg = 8f),
     )
 }
