@@ -81,12 +81,13 @@ object OutsideChangeGate {
             if (angleDeg == 0f || orientedW <= 0f || orientedH <= 0f) return rect.contains(x, y)
             // Un-rotate the sample about the chip center (== rect center: the
             // inflate is symmetric and rotation preserves the center) and test
-            // the axis-aligned oriented rect.
-            val dx = x - rect.exactCenterX()
-            val dy = y - rect.exactCenterY()
-            val rx = dx * cos + dy * sin
-            val ry = -dx * sin + dy * cos
-            return kotlin.math.abs(rx) <= orientedW / 2f && kotlin.math.abs(ry) <= orientedH / 2f
+            // the axis-aligned oriented rect. Shared frame math — see
+            // [com.playtranslate.ocr.core.DeskewGeometry].
+            val cx = rect.exactCenterX()
+            val cy = rect.exactCenterY()
+            val u = com.playtranslate.ocr.core.DeskewGeometry.toFrameU(x.toFloat(), y.toFloat(), cx, cy, cos, sin)
+            val v = com.playtranslate.ocr.core.DeskewGeometry.toFrameV(x.toFloat(), y.toFloat(), cx, cy, cos, sin)
+            return kotlin.math.abs(u) <= orientedW / 2f && kotlin.math.abs(v) <= orientedH / 2f
         }
     }
 
