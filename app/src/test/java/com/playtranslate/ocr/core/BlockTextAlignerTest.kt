@@ -28,7 +28,7 @@ class BlockTextAlignerTest {
             text = text,
             box = OcrBox.upright(box),
             orientation = TextOrientation.VERTICAL,
-            chars = if (withChars) synthesizeEvenCharBoxes(text, box, vertical = true) else emptyList(),
+            chars = if (withChars) synthesizeEvenCharBoxes(text, OcrBox.upright(box), vertical = true) else emptyList(),
         )
     }
 
@@ -44,7 +44,7 @@ class BlockTextAlignerTest {
             box = OcrBox.upright(box),
             orientation = TextOrientation.HORIZONTAL,
             elements = elements,
-            chars = synthesizeEvenCharBoxes(text, box, vertical = false),
+            chars = synthesizeEvenCharBoxes(text, OcrBox.upright(box), vertical = false),
         )
     }
 
@@ -211,5 +211,41 @@ class BlockTextAlignerTest {
     fun `oversized input is rejected not aligned`() {
         val res = rejected(BlockTextAligner.align("あ".repeat(401), listOf(column("あ".repeat(10)))))
         assertTrue(res.reason, "too long" in res.reason)
+    }
+
+    @Test
+    fun `rotated base interpolates the gap along the baseline`() {
+        // A −20° base line (300×48 strip, AABB centered 200,150) with anchors at
+        // u = −100 and +100 riding the baseline. The inserted middle char must
+        // land BETWEEN them ON the baseline — its cell centered near the AABB
+        // center and oh-tall — not tiled across the inflated AABB's x-span and
+        // full height, which is what upright interpolation would do.
+        val cos = 0.93969
+        val sin = -0.34202
+        fun baselineCell(u: Double): Rect {
+            val cx = 200 + u * cos
+            val cy = 150 + u * sin
+            return Rect((cx - 20).toInt(), (cy - 24).toInt(), (cx + 20).toInt(), (cy + 24).toInt())
+        }
+        val base = RecognizedLine(
+            text = "あい",
+            box = OcrBox(Rect(51, 76, 349, 224), 300f, 48f, -20f),
+            orientation = TextOrientation.HORIZONTAL,
+            chars = listOf(
+                CharBox("あ", OcrBox.upright(baselineCell(-100.0)), 0),
+                CharBox("い", OcrBox.upright(baselineCell(100.0)), 1),
+            ),
+        )
+        val adopted = aligned(BlockTextAligner.align("あるい", listOf(base))).lines[0]
+        assertEquals("あるい", adopted.text)
+        // Anchored cells keep their engine boxes verbatim.
+        assertEquals(baselineCell(-100.0), adopted.chars[0].box.bounds)
+        assertEquals(baselineCell(100.0), adopted.chars[2].box.bounds)
+        // The filled cell rides the baseline midpoint, at baseline height.
+        val mid = adopted.chars[1].box.bounds
+        assertTrue("center x near 200, got ${mid.centerX()}", Math.abs(mid.centerX() - 200) <= 3)
+        assertTrue("center y near 150, got ${mid.centerY()}", Math.abs(mid.centerY() - 150) <= 3)
+        assertTrue("cell height ≈ oh (48), got ${mid.height()}", mid.height() in 40..56)
+        assertTrue("never the AABB's 148px span", mid.height() < 100)
     }
 }

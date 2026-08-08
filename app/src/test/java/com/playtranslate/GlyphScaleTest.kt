@@ -109,7 +109,7 @@ class GlyphScaleTest {
         val synthetic = RecognizedLine(
             text = "abcdefgh", box = OcrBox.upright(bounds),
             orientation = TextOrientation.HORIZONTAL,
-            chars = synthesizeEvenCharBoxes("abcdefgh", bounds, vertical = false),
+            chars = synthesizeEvenCharBoxes("abcdefgh", OcrBox.upright(bounds), vertical = false),
         )
         assertFalse(GlyphScale.hasMeasuredCharTier(synthetic))
         assertNull(GlyphScale.quantiles(synthetic))

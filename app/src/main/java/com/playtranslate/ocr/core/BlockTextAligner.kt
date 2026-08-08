@@ -205,6 +205,14 @@ internal object BlockTextAligner {
      * be sparse — a missing symbol is allowed); the rest are interpolated between
      * anchors by [fillGaps]. No anchor boxes at all → even-spread synthesis, the
      * behavior a text-only recognizer gets anyway.
+     *
+     * A rotated base line interpolates along its BASELINE: anchors project into
+     * the deskewed frame, [fillGaps] runs there (staying `Array<Rect?>`-pure),
+     * and filled cells rotate their centers back out as upright screen rects.
+     * The adopted line keeps the ROTATED [RecognizedLine.box] with UPRIGHT char
+     * cells riding the baseline — deliberately: that is the one slanted-char
+     * representation every consumer shares (ML Kit measures it, Paddle and the
+     * even-spread synthesizers emit it), not an inconsistency.
      */
     private fun adoptLine(
         base: RecognizedLine,
@@ -231,11 +239,38 @@ internal object BlockTextAligner {
             }
         }
         val chars = if (!anchored) {
-            synthesizeEvenCharBoxes(slice, bounds, vertical)
-        } else {
+            synthesizeEvenCharBoxes(slice, base.box, vertical)
+        } else if (!base.box.isRotated) {
             fillGaps(rects, bounds, vertical)
             slice.indices.map { k ->
                 CharBox(text = slice[k].toString(), box = OcrBox.upright(rects[k]!!), charOffset = k)
+            }
+        } else {
+            val frame = AngleFrame(base.box.angleDeg, bounds.centerX(), bounds.centerY())
+            val inFrameLine = DeskewGeometry.deskew(base.box, frame)
+            val ax = frame.anchorX.toFloat()
+            val ay = frame.anchorY.toFloat()
+            val uRects = arrayOfNulls<Rect>(slice.length)
+            for (k in slice.indices) {
+                val r = rects[k] ?: continue
+                val ucx = ax + DeskewGeometry.toFrameU(r.exactCenterX(), r.exactCenterY(), ax, ay, frame.cosT, frame.sinT)
+                val ucy = ay + DeskewGeometry.toFrameV(r.exactCenterX(), r.exactCenterY(), ax, ay, frame.cosT, frame.sinT)
+                val l = DeskewGeometry.roundHalfUp(ucx - r.width() / 2f)
+                val t = DeskewGeometry.roundHalfUp(ucy - r.height() / 2f)
+                uRects[k] = Rect(l, t, l + r.width(), t + r.height())
+            }
+            // Rotated ⟹ horizontal reading axis in-frame (producer invariant).
+            fillGaps(uRects, inFrameLine, vertical = false)
+            slice.indices.map { k ->
+                val cell = rects[k] ?: run {
+                    val u = uRects[k]!!
+                    val bx = DeskewGeometry.rotateX(u.exactCenterX(), u.exactCenterY(), ax, ay, frame.cosT, frame.sinT)
+                    val by = DeskewGeometry.rotateY(u.exactCenterX(), u.exactCenterY(), ax, ay, frame.cosT, frame.sinT)
+                    val l = DeskewGeometry.roundHalfUp(bx - u.width() / 2f)
+                    val t = DeskewGeometry.roundHalfUp(by - u.height() / 2f)
+                    Rect(l, t, l + u.width(), t + u.height())
+                }
+                CharBox(text = slice[k].toString(), box = OcrBox.upright(cell), charOffset = k)
             }
         }
         return RecognizedLine(
