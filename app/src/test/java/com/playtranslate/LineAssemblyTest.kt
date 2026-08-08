@@ -2,7 +2,9 @@ package com.playtranslate
 
 import android.graphics.Rect
 import com.playtranslate.language.TextOrientation
+import com.playtranslate.ocr.core.AngleFrame
 import com.playtranslate.ocr.core.CharBox
+import com.playtranslate.ocr.core.DeskewGeometry
 import com.playtranslate.ocr.core.LineAssembler
 import com.playtranslate.ocr.core.OcrBox
 import com.playtranslate.ocr.core.RecognizedLine
@@ -285,7 +287,7 @@ class LineAssemblyTest {
         assertEquals(50, line.chars[3].box.bounds.right)
     }
 
-    // ── rotated regions bypass assembly ──────────────────────────────────────
+    // ── slanted regions band in their cluster's deskewed frame ───────────────
 
     private fun rotatedRegion(text: String, r: Rect, angle: Float): RecognizedRegion {
         val b = OcrBox(r, r.width().toFloat(), r.height() / 2f, angle)
@@ -296,36 +298,102 @@ class LineAssemblyTest {
         )
     }
 
+    /** A slanted word built the way producers do: an in-frame rect rotated out —
+     *  bounds = exact screen AABB, oriented dims = the rect's, angle = the frame's. */
+    private fun slantedWord(text: String, inFrame: Rect, frame: AngleFrame): RecognizedRegion {
+        val b = OcrBox(
+            DeskewGeometry.screenAabbOf(inFrame, frame),
+            inFrame.width().toFloat(), inFrame.height().toFloat(), frame.angleDeg,
+        )
+        return RecognizedRegion(
+            text = text, box = b, orientation = TextOrientation.HORIZONTAL, confidence = 0.9f,
+            lines = listOf(RecognizedLine(text, b, TextOrientation.HORIZONTAL)),
+            origin = RegionOrigin.LINE,
+        )
+    }
+
     @Test
-    fun rotatedRegions_passThroughUnmerged_whileUprightAssemble() {
-        val upright1 = region("Hello", box(0, 0, 60, 20))
-        val upright2 = region("world", box(70, 0, 130, 20))
-        val rotated = rotatedRegion("SALE", box(20, 0, 120, 60), angle = 30f)
-        val out = LineAssembler.assembleLines(listOf(upright1, rotated, upright2))
+    fun slantedWordRow_bandsIntoOneLine_textInBaselineOrder() {
+        val frame = AngleFrame(-12f, 500, 500)
+        val words = listOf(
+            slantedWord("one", Rect(400, 480, 480, 520), frame),
+            slantedWord("two", Rect(500, 480, 570, 520), frame),
+            slantedWord("three", Rect(590, 480, 690, 520), frame),
+        )
+        val out = LineAssembler.assembleLines(words.shuffled(java.util.Random(7)))
+        assertEquals(1, out.size)
+        val line = out.single()
+        assertEquals("one two three", line.text)
+        assertEquals(-12f, line.box.angleDeg, 0f)
+        assertEquals(TextOrientation.HORIZONTAL, line.orientation)
+        // Oriented dims = the in-frame union's (±1px of double rounding).
+        assertEquals(290f, line.box.orientedWidth, 2f)
+        assertEquals(40f, line.box.orientedHeight, 2f)
+    }
+
+    @Test
+    fun twoStackedSlantedLines_bandSeparately_sharingTheAngle() {
+        val frame = AngleFrame(-12f, 500, 500)
+        val out = LineAssembler.assembleLines(listOf(
+            slantedWord("RESIGNATION", Rect(400, 440, 700, 490), frame),
+            slantedWord("MAKES", Rect(710, 440, 850, 490), frame),
+            slantedWord("DRAMATIC", Rect(430, 510, 650, 560), frame),
+            slantedWord("SLICE", Rect(660, 510, 790, 560), frame),
+        ))
         assertEquals(2, out.size)
-        assertEquals("Hello world", out[0].text)
-        // Untouched: the same instance, slant intact.
-        assertEquals(rotated, out[1])
-        assertEquals(30f, out[1].box.angleDeg, 0f)
+        assertEquals(listOf("RESIGNATION MAKES", "DRAMATIC SLICE"), out.map { it.text })
+        for (line in out) assertEquals(-12f, line.box.angleDeg, 0f)
+    }
+
+    @Test
+    fun farAngles_neverBand_whateverTheOverlap() {
+        val a = rotatedRegion("lean", box(100, 100, 300, 160), -12f)
+        val b = rotatedRegion("steep", box(120, 100, 320, 160), 30f)
+        val out = LineAssembler.assembleLines(listOf(a, b))
+        assertEquals(2, out.size)
+        // Untouched originals, slants intact.
+        assertEquals(setOf(-12f, 30f), out.map { it.box.angleDeg }.toSet())
+    }
+
+    @Test
+    fun rtlSlantedRow_joinsRightToLeft_inFrameOrder() {
+        val frame = AngleFrame(15f, 500, 500)
+        val out = LineAssembler.assembleLines(
+            listOf(
+                slantedWord("second", Rect(400, 480, 520, 520), frame),
+                slantedWord("first", Rect(540, 480, 640, 520), frame),
+            ),
+            rtl = true,
+        )
+        assertEquals("first second", out.single().text)
+        assertEquals(15f, out.single().box.angleDeg, 0f)
     }
 
     @Test
     fun verticalDominanceVote_countsUprightPartitionOnly() {
         // Two side-by-side vertical columns at one y-center would band into a
         // force-tagged HORIZONTAL merge if the kernel ran; the vertical-dominance
-        // guard must still fire even when rotated regions outnumber them.
+        // guard must still fire even when rotated regions outnumber them. The
+        // rotated four share an angle and overlap in-frame, so they band into
+        // one slanted line — the guard question is only about the two columns.
         val col1 = region("あ", box(0, 0, 40, 300), TextOrientation.VERTICAL)
         val col2 = region("い", box(60, 0, 100, 300), TextOrientation.VERTICAL)
         val rot = (0 until 4).map { rotatedRegion("r$it", box(200 + it * 10, 0, 300 + it * 10, 60), 25f) }
         val out = LineAssembler.assembleLines(listOf(col1, col2) + rot)
-        assertEquals(6, out.size)
         assertEquals(TextOrientation.VERTICAL, out[0].orientation)
         assertEquals(TextOrientation.VERTICAL, out[1].orientation)
+        assertEquals(300, out[0].box.bounds.height())
+        assertEquals(300, out[1].box.bounds.height())
     }
 
     @Test
-    fun allRotated_returnedAsIs() {
+    fun slantedSingletons_onSeparateBands_stayOriginalInstances() {
+        // Same angle, but each lands on its own in-frame band (screen-horizontal
+        // row tilts into a v-stack at 20°) — no merge, original instances out,
+        // ordered by in-frame reading order.
         val regions = (0 until 3).map { rotatedRegion("r$it", box(it * 50, 0, it * 50 + 100, 40), 20f) }
-        assertEquals(regions, LineAssembler.assembleLines(regions))
+        val out = LineAssembler.assembleLines(regions)
+        assertEquals(3, out.size)
+        for (r in regions) assertEquals(true, out.any { it === r })
     }
 }
