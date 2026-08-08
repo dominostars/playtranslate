@@ -1,7 +1,9 @@
 package com.playtranslate.ocr.paddle
 
 import android.graphics.Rect
+import com.playtranslate.ocr.core.AngleFrame
 import com.playtranslate.ocr.core.CharBox
+import com.playtranslate.ocr.core.DeskewGeometry
 import com.playtranslate.ocr.core.OcrBox
 
 /**
@@ -10,20 +12,21 @@ import com.playtranslate.ocr.core.OcrBox
  * (`line.symbols`) instead of the proportional fallback — the same payoff
  * [com.playtranslate.ocr.meiki.MeikiRecognizer] gets from a dedicated char model.
  *
- * **Tier-1 geometry:** distribute the fractions across the region's upright AABB
- * ([bounds]). Exact for upright text (≈ all game text); for genuinely slanted text the
- * spacing compresses (the AABB is wider than the deskewed strip), no worse than the
- * fallback it replaces. The cells tile [0,1] contiguously and monotonically so a
- * furigana span (first cell's left … last cell's right) covers exactly its base.
+ * **Geometry:** upright regions distribute the fractions across the AABB —
+ * bit-identical to the pre-angle tier. A rotated region walks them along its
+ * BASELINE (`u ∈ [−ow/2, +ow/2]` rotated about the AABB center) and emits
+ * upright cells centered on the baseline points — ML Kit's existing shape for
+ * slanted text, so every char-tier consumer sees one representation.
  *
  * **Axis:** keyed off [stripVertical] — warpCrop's actual rotation decision, carried on
  * the [PaddleOcrSession.CropResult] — NOT the region's orientation label. The firing
  * fractions run along the strip's reading axis, which is what rotation determines, so
- * this can't transpose the boxes against the strip the recognizer read.
+ * this can't transpose the boxes against the strip the recognizer read. A rotated
+ * region is HORIZONTAL by the producer invariant, so its strip is never vertical.
  */
 internal fun synthesizeCharBoxes(
     decoded: List<PaddleOcrSession.DecodedChar>,
-    bounds: Rect,
+    box: OcrBox,
     stripVertical: Boolean,
 ): List<CharBox> {
     if (decoded.isEmpty()) return emptyList()
@@ -43,6 +46,25 @@ internal fun synthesizeCharBoxes(
         bound[n] = (2f * c[n - 1] - bound[n - 1]).coerceIn(bound[n - 1], 1f)
     }
 
+    if (box.isRotated) {
+        val frame = AngleFrame(box.angleDeg, box.bounds.centerX(), box.bounds.centerY())
+        val cx = box.bounds.exactCenterX()
+        val cy = box.bounds.exactCenterY()
+        val h = DeskewGeometry.roundHalfUp(box.orientedHeight).coerceAtLeast(1)
+        return decoded.mapIndexed { i, d ->
+            val uLo = (bound[i] - 0.5f) * box.orientedWidth
+            val uHi = (bound[i + 1] - 0.5f) * box.orientedWidth
+            val uc = (uLo + uHi) / 2f
+            val bx = DeskewGeometry.rotateX(cx + uc, cy, cx, cy, frame.cosT, frame.sinT)
+            val by = DeskewGeometry.rotateY(cx + uc, cy, cx, cy, frame.cosT, frame.sinT)
+            val w = DeskewGeometry.roundHalfUp(uHi - uLo).coerceAtLeast(1)
+            val l = DeskewGeometry.roundHalfUp(bx - w / 2f)
+            val t = DeskewGeometry.roundHalfUp(by - h / 2f)
+            CharBox(text = d.text, box = OcrBox.upright(Rect(l, t, l + w, t + h)), charOffset = d.charOffset)
+        }
+    }
+
+    val bounds = box.bounds
     val span = if (stripVertical) bounds.height() else bounds.width()
     val origin = if (stripVertical) bounds.top else bounds.left
     return decoded.mapIndexed { i, d ->

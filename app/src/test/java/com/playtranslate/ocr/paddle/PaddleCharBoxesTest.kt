@@ -1,6 +1,7 @@
 package com.playtranslate.ocr.paddle
 
 import android.graphics.Rect
+import com.playtranslate.ocr.core.OcrBox
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -34,7 +35,7 @@ class PaddleCharBoxesTest {
         val bounds = Rect(0, 0, 300, 48)
         val chars = synthesizeCharBoxes(
             listOf(dc("あ", 0, 1f / 6f), dc("い", 1, 3f / 6f), dc("う", 2, 5f / 6f)),
-            bounds, stripVertical = false,
+            OcrBox.upright(bounds), stripVertical = false,
         )
         assertEquals(3, chars.size)
         assertEquals(listOf("あ", "い", "う"), chars.map { it.text })
@@ -58,7 +59,7 @@ class PaddleCharBoxesTest {
         val bounds = Rect(0, 0, 48, 300)
         val chars = synthesizeCharBoxes(
             listOf(dc("ア", 0, 1f / 6f), dc("イ", 1, 3f / 6f), dc("ウ", 2, 5f / 6f)),
-            bounds, stripVertical = true,
+            OcrBox.upright(bounds), stripVertical = true,
         )
         val rects = chars.map { it.box.bounds }
         // Cross-axis spans the full column width; reading axis runs down ≈ [0, height].
@@ -74,7 +75,7 @@ class PaddleCharBoxesTest {
     @Test
     fun `single character spans the whole box`() {
         val bounds = Rect(10, 20, 310, 68)
-        val chars = synthesizeCharBoxes(listOf(dc("X", 5, 0.5f)), bounds, stripVertical = false)
+        val chars = synthesizeCharBoxes(listOf(dc("X", 5, 0.5f)), OcrBox.upright(bounds), stripVertical = false)
         assertEquals(1, chars.size)
         assertEquals(5, chars[0].charOffset)
         assertEquals(bounds, chars[0].box.bounds)
@@ -86,7 +87,7 @@ class PaddleCharBoxesTest {
         // First two glyphs fire close together, the third far away.
         val chars = synthesizeCharBoxes(
             listOf(dc("a", 0, 0.10f), dc("b", 1, 0.15f), dc("c", 2, 0.80f)),
-            bounds, stripVertical = false,
+            OcrBox.upright(bounds), stripVertical = false,
         )
         val rects = chars.map { it.box.bounds }
         // Contiguous regardless of spacing.
@@ -100,6 +101,30 @@ class PaddleCharBoxesTest {
 
     @Test
     fun `empty input yields no boxes`() {
-        assertTrue(synthesizeCharBoxes(emptyList(), Rect(0, 0, 100, 20), false).isEmpty())
+        assertTrue(synthesizeCharBoxes(emptyList(), OcrBox.upright(Rect(0, 0, 100, 20)), false).isEmpty())
+    }
+
+    @Test
+    fun `rotated region rides the baseline with upright cells`() {
+        // A 300×48 strip at −20°, AABB centered on (200, 150). Evenly-spaced
+        // firing fractions put the three cell centers at u = −100, 0, +100
+        // along the baseline; each screen cell must be an UPRIGHT rect, oh
+        // tall, centered on its baseline point rotated about the AABB center —
+        // the shared slanted-char representation (ML Kit's shape).
+        val box = OcrBox(Rect(51, 76, 349, 224), 300f, 48f, -20f)
+        val chars = synthesizeCharBoxes(
+            listOf(dc("あ", 0, 1f / 6f), dc("い", 1, 3f / 6f), dc("う", 2, 5f / 6f)),
+            box, stripVertical = false,
+        )
+        assertEquals(3, chars.size)
+        val cos = 0.93969
+        val sin = -0.34202
+        for ((i, u) in listOf(-100.0, 0.0, 100.0).withIndex()) {
+            val c = chars[i].box.bounds
+            assertNear((200 + u * cos).toInt(), c.centerX())
+            assertNear((150 + u * sin).toInt(), c.centerY())
+            assertNear(48, c.height())
+            assertEquals(0f, chars[i].box.angleDeg, 0f)
+        }
     }
 }

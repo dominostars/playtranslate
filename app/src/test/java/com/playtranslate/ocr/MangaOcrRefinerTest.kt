@@ -111,7 +111,7 @@ class MangaOcrRefinerTest {
 
     @Test
     fun `an identical reading keeps the group instance and its real boxes`() = runBlocking {
-        val baseChars = synthesizeEvenCharBoxes("い", Rect(0, 0, 40, 40), vertical = true)
+        val baseChars = synthesizeEvenCharBoxes("い", OcrBox.upright(Rect(0, 0, 40, 40)), vertical = true)
         val base = line("い", 0, true).copy(chars = baseChars)
         val g = group(listOf(base), vertical = true)
         val fake = FakeReader(mapOf(0 to "い"))

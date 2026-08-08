@@ -85,7 +85,7 @@ class MangaOcrRecognizer(private val session: MangaOcrSession) : TextRecognizer 
         // aligns 1:1 with text (session strips spaces).
         val chars = synthesizeEvenCharBoxes(
             text = text,
-            bounds = region.box.bounds,
+            box = region.box,
             vertical = region.orientation == TextOrientation.VERTICAL,
         )
         val line = RecognizedLine(
