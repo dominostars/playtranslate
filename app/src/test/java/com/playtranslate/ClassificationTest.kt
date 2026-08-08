@@ -552,6 +552,69 @@ class ClassificationTest {
     }
 
     @Test
+    fun classify_slantedPairedFar_refusesCoalesce_fragmentStandsAlone() {
+        // The angle gate on the coalesce predicate: a merged FarGroup carries
+        // one angle field and an AABB union is not a rotated rect, so a
+        // slanted paired FAR must never absorb a fragment — the merge would
+        // erase the slant and render an upright chip over slanted source.
+        // The fragment stays a standalone fresh FAR (one-cycle convergence,
+        // same cost the non-coalesce path documents).
+        val cachedBox = box(Rect(0, 0, 100, 50), sourceText = "A")
+        val slanted = OcrManager.OcrGroup(
+            text = "A",
+            bounds = Rect(0, 0, 100, 50),
+            orientation = TextOrientation.HORIZONTAL,
+            lines = listOf(OcrManager.LineBox(text = "A", bounds = Rect(0, 0, 100, 50), groupIndex = 0)),
+            angleDeg = -12f,
+            orientedWidth = 90f,
+            orientedHeight = 30f,
+        )
+        val fragment = grp("B", Rect(110, 0, 200, 50))
+        val result = classifyOcrResults(
+            ocrResult = OcrManager.OcrResult(
+                fullText = "", segments = emptyList(), groups = listOf(slanted, fragment),
+            ),
+            boxes = listOf(cachedBox),
+            ocrBitmapRects = listOf(cachedBox.bounds),
+            coords = identityCoords,
+        )
+        assertEquals(setOf(0), result.contentMatchRemovals)
+        assertEquals("no coalesce across the angle gate", 2, result.farOcrGroups.size)
+        assertEquals("the paired FAR keeps its slant", -12f, result.farOcrGroups[0].angleDeg, 0f)
+        assertEquals("A", result.farOcrGroups[0].text)
+        assertEquals("the fragment stands alone", "B", result.farOcrGroups[1].text)
+        assertEquals(0f, result.farOcrGroups[1].angleDeg, 0f)
+    }
+
+    @Test
+    fun classify_slantedFragment_refusesCoalesceOntoUprightPairedFar() {
+        // The mirror direction: an upright paired FAR must not absorb a
+        // SLANTED fragment either — the merge would flatten the fragment's
+        // angle the same way.
+        val cachedBox = box(Rect(0, 0, 100, 50), sourceText = "A")
+        val slantedFragment = OcrManager.OcrGroup(
+            text = "B",
+            bounds = Rect(110, 0, 210, 60),
+            orientation = TextOrientation.HORIZONTAL,
+            lines = listOf(OcrManager.LineBox(text = "B", bounds = Rect(110, 0, 210, 60), groupIndex = 0)),
+            angleDeg = -12f,
+            orientedWidth = 95f,
+            orientedHeight = 30f,
+        )
+        val result = classifyOcrResults(
+            ocrResult = OcrManager.OcrResult(
+                fullText = "", segments = emptyList(),
+                groups = listOf(grp("A", Rect(0, 0, 100, 50)), slantedFragment),
+            ),
+            boxes = listOf(cachedBox),
+            ocrBitmapRects = listOf(cachedBox.bounds),
+            coords = identityCoords,
+        )
+        assertEquals("no coalesce across the angle gate", 2, result.farOcrGroups.size)
+        assertEquals("the slanted fragment keeps its angle", -12f, result.farOcrGroups[1].angleDeg, 0f)
+    }
+
+    @Test
     fun classify_pairedFlag_setOnContentMatchReplacement_notOnFreshFar() {
         // The paired flag is what exempts a content-match replacement from
         // dying-box fragment deferral (see deferDyingBoxFragments): the

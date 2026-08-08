@@ -44,8 +44,10 @@ data class FarGroup(
      *  beside the dying message box every time). */
     val paired: Boolean = false,
     /** Slant carried from the OCR group; oriented dims ride with it, 0 when
-     *  upright. The coalesce step leaves these at 0 deliberately — an AABB
-     *  union of two groups is not a rotated rect. */
+     *  upright. A coalesced merge is upright BY CONSTRUCTION: the coalesce
+     *  gate refuses candidates when either side carries an angle (an AABB
+     *  union of two groups is not a rotated rect), so these fields are only
+     *  ever verbatim single-group values. */
     val angleDeg: Float = 0f,
     val orientedWidth: Float = 0f,
     val orientedHeight: Float = 0f,
@@ -428,6 +430,16 @@ fun classifyOcrResults(
                 // the orientation choice has rendering side-effects, so
                 // the more conservative gate is appropriate here.
                 if (existing.orientation != orient) return@firstOrNull false
+                // Hard-skip when either side is SLANTED: the merged FarGroup
+                // carries one angle field and an AABB union of two rects is
+                // not a rotated rect, so a coalesce would erase the slant and
+                // render an upright chip over slanted source (Codex
+                // adversarial finding — the last angle-blind seam once the
+                // threshold drop made light slants common). The fragment
+                // stays a standalone fresh FAR at its true angle instead; the
+                // cost is the same one-cycle convergence the non-coalesce
+                // path above already accepts.
+                if (existing.angleDeg != 0f || group.angleDeg != 0f) return@firstOrNull false
                 val existingBitmapRect = coords.ocrToBitmap(existing.bounds)
                 LayoutAnalyzer.wouldGroup(
                     existingBitmapRect, ocrFullRect, existing.orientation,
