@@ -1855,7 +1855,45 @@ object LayoutAnalyzer {
         // a space when the profile is unknown — only languages we KNOW omit
         // inter-word spaces drop it, so every other language keeps prior behavior.
         val lineJoin = if (ctx.spacedScript) " " else ""
-        return proposed.mapNotNull { buildLayoutGroup(it, lineJoin) }
+        return orderByReading(proposed.mapNotNull { buildLayoutGroup(it, lineJoin) }, ctx.rtl)
+    }
+
+    /**
+     * Global reading order over the final groups — the ONE emission-order
+     * policy, applied to every frame on every surface. Replaces the old
+     * emission order (strategy output, then vertical groups, then slant
+     * clusters), which segregated the list by KIND: an upright group low on
+     * the page emitted before an angled or tategaki group above it.
+     *
+     * Policy: horizontal bands built by top-proximity — a group joins the
+     * current band when its top sits within half the shorter height of the
+     * band's first member (local, so a tall sidebar can't swallow the page
+     * into one band); bands read top-to-bottom; within a band, left-to-right
+     * — right-to-left when the source is RTL or the band contains tategaki
+     * columns (columns read right-to-left; an enumerated fact of the
+     * language matrix). Slanted groups participate by their screen AABB.
+     */
+    private fun orderByReading(groups: List<LayoutGroup>, rtl: Boolean): List<LayoutGroup> {
+        if (groups.size <= 1) return groups
+        val byTop = groups.sortedBy { it.bounds.top }
+        val bands = mutableListOf<MutableList<LayoutGroup>>()
+        for (g in byTop) {
+            val band = bands.lastOrNull()
+            val ref = band?.first()
+            if (ref != null &&
+                g.bounds.top <= ref.bounds.top +
+                minOf(g.bounds.height(), ref.bounds.height()) / 2
+            ) {
+                band.add(g)
+            } else {
+                bands.add(mutableListOf(g))
+            }
+        }
+        return bands.flatMap { band ->
+            val columnar = rtl || band.any { it.orientation == TextOrientation.VERTICAL }
+            if (columnar) band.sortedByDescending { it.bounds.right }
+            else band.sortedBy { it.bounds.left }
+        }
     }
 
     /** Extract boxes + align-left hints + text-flow cues from sorted regions,
