@@ -133,6 +133,21 @@ internal object OrientedBoxGeometry {
             o == null -> { rung = "degenerate"; result = OcrBox.upright(aabb) }
             o.longSide < o.shortSide * MIN_AXIS_ASPECT -> { rung = "near-square"; result = OcrBox.upright(aabb) }
             abs(o.angleDeg) <= minSlantDeg -> { rung = "snap"; result = OcrBox.upright(aabb) }
+            // The second gate term, from the corpus census (2026-08-07, 5891
+            // known-upright measurements): angle noise scales INVERSELY with
+            // line length — short lines read up to ~10° on straight text while
+            // long lines sit under ~1.5° — so no flat angle separates noise
+            // from slant. The physical quantity that does is the drawn
+            // corner's displacement, (ow/2)·sin|θ|: a chip whose rotation
+            // moves its corners less than this many px renders visually
+            // straight anyway, and every observed short-line noise excursion
+            // sits under it while real slants (consistent per-seed 3–5° on
+            // 300px+ lines) clear it by 2× or more.
+            o.longSide / 2f * kotlin.math.sin(
+                Math.toRadians(abs(o.angleDeg).toDouble()),
+            ).toFloat() <= OcrBox.ANGLE_MIN_EXCURSION_PX -> {
+                rung = "excursion"; result = OcrBox.upright(aabb)
+            }
             abs(o.angleDeg) > maxSlantDeg -> { rung = "band"; result = OcrBox.upright(aabb) }
             else -> { rung = "rotated"; result = OcrBox(aabb, o.longSide, o.shortSide, o.angleDeg) }
         }

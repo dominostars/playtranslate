@@ -1331,10 +1331,10 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_DEBUG_LOG_GROUPING, false)
         set(v) = sp.edit { putBoolean(KEY_DEBUG_LOG_GROUPING, v) }
 
-    /** Debug-only: run OCR with the slant noise gate forced to
-     *  [com.playtranslate.ocr.core.OcrBox.ANGLE_TARGET_GATE_DEG] instead of the
-     *  10° default, so device passes exercise angle consumers at the
-     *  threshold-drop program's future default. */
+    /** Debug-only rollback: run OCR with the slant noise gate forced back to
+     *  [com.playtranslate.ocr.core.OcrBox.ANGLE_LEGACY_GATE_DEG] (the pre-drop
+     *  10°) instead of the current default — one toggle undoes the
+     *  threshold drop on-device. */
     var debugAngleGateAtTarget: Boolean
         get() = sp.getBoolean(KEY_DEBUG_ANGLE_GATE_TARGET, false)
         set(v) = sp.edit { putBoolean(KEY_DEBUG_ANGLE_GATE_TARGET, v) }
