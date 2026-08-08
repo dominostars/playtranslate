@@ -1123,4 +1123,34 @@ class TypewriterGateTest {
             assertNotNull(out.nextDeadlineMs)
         }
     }
+
+    // ── Slanted reads: the origin corner is the ORIENTED corner ─────────
+
+    @Test
+    fun startCorner_slantedRead_resolvesTheOrientedCorner() {
+        // 300×48 strip at −20°, AABB centered (200, 150). Char #1 renders at
+        // the oriented top-left rotated about the center — cos(−20)=0.9397,
+        // sin(−20)=−0.342: (200 − 150·0.9397 − 24·0.342, 150 + 150·0.342 −
+        // 24·0.9397) ≈ (51, 179) — nowhere near the AABB's (51, 76).
+        val bounds = Rect(51, 76, 349, 224)
+        val (x, y) = TypewriterGate.startCorner(
+            bounds, TextOrientation.HORIZONTAL, rtl = false,
+            angleDeg = -20f, orientedW = 300f, orientedH = 48f,
+        )
+        assertEquals(51.0, x.toDouble(), 2.0)
+        assertEquals(179.0, y.toDouble(), 2.0)
+        // RTL starts at the oriented top-RIGHT — inside the AABB (333, 76),
+        // not the AABB corner (349, 76).
+        val (rx, ry) = TypewriterGate.startCorner(
+            bounds, TextOrientation.HORIZONTAL, rtl = true,
+            angleDeg = -20f, orientedW = 300f, orientedH = 48f,
+        )
+        assertEquals(333.0, rx.toDouble(), 2.0)
+        assertEquals(76.0, ry.toDouble(), 3.0)
+        // Upright reads keep the plain AABB corner bit-for-bit.
+        assertEquals(
+            bounds.left to bounds.top,
+            TypewriterGate.startCorner(bounds, TextOrientation.HORIZONTAL, rtl = false),
+        )
+    }
 }

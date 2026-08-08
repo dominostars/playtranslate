@@ -2,6 +2,7 @@ package com.playtranslate
 
 import android.graphics.Rect
 import com.playtranslate.language.TextOrientation
+import com.playtranslate.ocr.core.DeskewGeometry
 import com.playtranslate.ui.TextBox
 
 /**
@@ -94,6 +95,11 @@ class TypewriterGate {
          *  null before the first dispatch. */
         var lastDispatched: String?,
         var lastSeenMs: Long,
+        /** Founding read's slant trio (0 when upright) — resolves the exact
+         *  origin corner + true line extent for slanted dialogue. */
+        angleDeg: Float = 0f,
+        orientedW: Float = 0f,
+        orientedH: Float = 0f,
     ) {
         /** The current chain's START rect — stamped when a new text
          *  lineage begins, never rebased mid-growth (its start corner is
@@ -165,7 +171,7 @@ class TypewriterGate {
         var armedTolPx = 0
 
         init {
-            startChain(bounds, orientation, rtl, lineCount)
+            startChain(bounds, orientation, rtl, lineCount, angleDeg, orientedW, orientedH)
         }
 
         fun capMs(): Long = if (holdGrowth) HOLD_MAX_MS else ARMED_NEW_MAX_MS
@@ -215,14 +221,22 @@ class TypewriterGate {
 
         /** A new text lineage begins at [rect]: stamp the chain key and its
          *  origin corner. */
-        fun startChain(rect: Rect, orientation: TextOrientation, rtl: Boolean, lineCount: Int) {
+        fun startChain(
+            rect: Rect, orientation: TextOrientation, rtl: Boolean, lineCount: Int,
+            angleDeg: Float = 0f, orientedW: Float = 0f, orientedH: Float = 0f,
+        ) {
             bounds = Rect(rect)
             vertical = orientation == TextOrientation.VERTICAL
-            val (x, y) = startCorner(rect, orientation, rtl)
+            val (x, y) = startCorner(rect, orientation, rtl, angleDeg, orientedW, orientedH)
             originX = x
             originY = y
-            chainLineExtentPx = when (orientation) {
-                TextOrientation.VERTICAL -> rect.width() / lineCount.coerceAtLeast(1)
+            chainLineExtentPx = when {
+                // Slanted (always horizontal): the AABB height runs 3–5× the
+                // true line extent at typical dialogue aspects — the oriented
+                // height is the real one.
+                angleDeg != 0f && orientedH > 0f ->
+                    (orientedH / lineCount.coerceAtLeast(1)).toInt()
+                orientation == TextOrientation.VERTICAL -> rect.width() / lineCount.coerceAtLeast(1)
                 else -> rect.height() / lineCount.coerceAtLeast(1)
             }.coerceAtLeast(1)
         }
@@ -231,8 +245,11 @@ class TypewriterGate {
          *  armed tolerance)? The discrimination that keeps overlapping
          *  non-dialogue elements (name plates, choice prompts) out of the
          *  armed gate. */
-        fun armedCornerMatches(rect: Rect, orientation: TextOrientation, rtl: Boolean): Boolean {
-            val (x, y) = startCorner(rect, orientation, rtl)
+        fun armedCornerMatches(
+            rect: Rect, orientation: TextOrientation, rtl: Boolean,
+            angleDeg: Float = 0f, orientedW: Float = 0f, orientedH: Float = 0f,
+        ): Boolean {
+            val (x, y) = startCorner(rect, orientation, rtl, angleDeg, orientedW, orientedH)
             return kotlin.math.abs(x - armedOriginX) <= armedTolPx &&
                 kotlin.math.abs(y - armedOriginY) <= armedTolPx
         }
@@ -425,6 +442,9 @@ class TypewriterGate {
                 captureAtMs = captureAtMs,
                 nowMs = nowMs,
                 allowPartialPrefix = allowPartialPrefix,
+                angleDeg = entry.angleDeg,
+                orientedW = entry.orientedWidth,
+                orientedH = entry.orientedHeight,
             )
             when {
                 dispatchText == null -> if (box != null) {
@@ -501,6 +521,9 @@ class TypewriterGate {
                 captureAtMs = captureAtMs,
                 nowMs = nowMs,
                 allowPartialPrefix = false,
+                angleDeg = g.angleDeg,
+                orientedW = g.orientedWidth,
+                orientedH = g.orientedHeight,
             )
             if (dispatchText == null) held++ else dispatch.add(g)
         }
@@ -617,9 +640,12 @@ class TypewriterGate {
         captureAtMs: Long,
         nowMs: Long,
         allowPartialPrefix: Boolean,
+        angleDeg: Float = 0f,
+        orientedW: Float = 0f,
+        orientedH: Float = 0f,
     ): String? {
         heldNewLineage = false
-        val match = matchOrCreate(text, bounds, orientation, rtl, lineCount, nowMs)
+        val match = matchOrCreate(text, bounds, orientation, rtl, lineCount, nowMs, angleDeg, orientedW, orientedH)
         val mem = match.mem
         affirmed.add(mem)
         val boundaries = SentenceBoundary.supports(translationCode)
@@ -649,7 +675,7 @@ class TypewriterGate {
 
         // Decision-line context: sample + this read's start corner.
         fun ctx(): String {
-            val (cx, cy) = startCorner(bounds, orientation, rtl)
+            val (cx, cy) = startCorner(bounds, orientation, rtl, angleDeg, orientedW, orientedH)
             return "«${snip(text)}» @($cx,$cy)"
         }
 
@@ -718,13 +744,13 @@ class TypewriterGate {
         // cooldown. Memory stays coherent for afterwards.
         if (nowMs < mem.bypassUntilMs) {
             stats.bypass++
-            mem.startChain(bounds, orientation, rtl, lineCount)
+            mem.startChain(bounds, orientation, rtl, lineCount, angleDeg, orientedW, orientedH)
             return dispatch(text) { "breaker-bypass" }
         }
 
         if (passThrough) {
             stats.pass++
-            mem.startChain(bounds, orientation, rtl, lineCount)
+            mem.startChain(bounds, orientation, rtl, lineCount, angleDeg, orientedW, orientedH)
             return dispatch(text) { if (displayed != null) "pass-retry" else "pass-paired" }
         }
 
@@ -877,7 +903,7 @@ class TypewriterGate {
             // mutates lastText).
             stats.breaks++
             recordBreakClass()
-            mem.startChain(bounds, orientation, rtl, lineCount)
+            mem.startChain(bounds, orientation, rtl, lineCount, angleDeg, orientedW, orientedH)
             return dispatch(text) { "break last=«${snip(mem.lastText)}»" }
         }
 
@@ -885,13 +911,13 @@ class TypewriterGate {
         // Armed gating requires the learned origin corner, not mere region
         // overlap: a name plate inside the dialogue area must not be held.
         val armedTtl = boundaries && nowMs < mem.armedUntilMs
-        val armed = armedTtl && mem.armedCornerMatches(bounds, orientation, rtl)
+        val armed = armedTtl && mem.armedCornerMatches(bounds, orientation, rtl, angleDeg, orientedW, orientedH)
 
         // Corner-miss evidence for dispatch reasons (lazy — built only
         // when a sink is installed).
         fun armedNote(): String {
             if (!armedTtl || armed) return ""
-            val (cx, cy) = startCorner(bounds, orientation, rtl)
+            val (cx, cy) = startCorner(bounds, orientation, rtl, angleDeg, orientedW, orientedH)
             return " corner-miss dx=${cx - mem.armedOriginX} dy=${cy - mem.armedOriginY} tol=${mem.armedTolPx}"
         }
 
@@ -919,7 +945,7 @@ class TypewriterGate {
                 if (deferRevealAdjacent() != null) return held { "reveal-adjacent" }
                 stats.level0++
                 return dispatch(text) {
-                    "level0-new${armedNote()}${nearestArmNote(bounds, orientation, rtl, nowMs)}"
+                    "level0-new${armedNote()}${nearestArmNote(bounds, orientation, rtl, nowMs, angleDeg, orientedW, orientedH)}"
                 }
             }
             return gateFreshText(mem, text, bounds, translationCode, captureAtMs, nowMs, allowPartialPrefix, ::dispatch, ::held)
@@ -1011,7 +1037,7 @@ class TypewriterGate {
         // it for [filterVerdicts]' dropNow. A downstream dispatch makes the
         // flag unread, so setting it once here covers both held sites.
         heldNewLineage = true
-        mem.startChain(bounds, orientation, rtl, lineCount)
+        mem.startChain(bounds, orientation, rtl, lineCount, angleDeg, orientedW, orientedH)
         if (!armed) {
             if (deferRevealAdjacent() != null) return held { "reveal-adjacent" }
             stats.advance++
@@ -1077,9 +1103,12 @@ class TypewriterGate {
         orientation: TextOrientation,
         rtl: Boolean,
         nowMs: Long,
+        angleDeg: Float = 0f,
+        orientedW: Float = 0f,
+        orientedH: Float = 0f,
     ): String {
         if (debugSink == null) return ""
-        val (cx, cy) = startCorner(bounds, orientation, rtl)
+        val (cx, cy) = startCorner(bounds, orientation, rtl, angleDeg, orientedW, orientedH)
         var best: RegionMemory? = null
         var bestD = Long.MAX_VALUE
         for (m in regions) {
@@ -1193,6 +1222,9 @@ class TypewriterGate {
         rtl: Boolean,
         lineCount: Int,
         nowMs: Long,
+        angleDeg: Float = 0f,
+        orientedW: Float = 0f,
+        orientedH: Float = 0f,
     ): Match {
         val fText = foldForCompare(text)
         // Does this memory's known text RELATE to the read (agreement,
@@ -1248,7 +1280,7 @@ class TypewriterGate {
             for (m in regions) {
                 if (m in affirmed) continue
                 if (nowMs >= m.armedUntilMs) continue
-                if (m.armedCornerMatches(bounds, orientation, rtl)) {
+                if (m.armedCornerMatches(bounds, orientation, rtl, angleDeg, orientedW, orientedH)) {
                     best = m
                     break
                 }
@@ -1267,6 +1299,7 @@ class TypewriterGate {
         val fresh = RegionMemory(
             bounds, orientation, rtl, lineCount,
             lastText = "", lastDispatched = null, lastSeenMs = nowMs,
+            angleDeg = angleDeg, orientedW = orientedW, orientedH = orientedH,
         )
         regions.add(fresh)
         return Match(fresh, siblingView = false)
@@ -1361,12 +1394,33 @@ class TypewriterGate {
          *  message renders. Horizontal LTR → top-left; horizontal RTL →
          *  top-right; vertical → top-right (shipped vertical sources are
          *  ja/zh tategaki, whose columns run right-to-left — an enumerated
-         *  fact of the language matrix, not an assumption). */
-        fun startCorner(rect: Rect, orientation: TextOrientation, rtl: Boolean): Pair<Int, Int> =
-            when {
+         *  fact of the language matrix, not an assumption). A slanted read
+         *  (angleDeg != 0, always horizontal by the producer invariant)
+         *  resolves the EXACT oriented corner — the oriented rect's start
+         *  corner rotated about the AABB center; the plain AABB corner sits
+         *  well off where char #1 renders, defeating the armed-origin
+         *  discrimination. Coalesced far groups present angle 0 over union
+         *  bounds and stay AABB-resolved (documented acceptance — a union
+         *  carries no angle to resolve). */
+        fun startCorner(
+            rect: Rect, orientation: TextOrientation, rtl: Boolean,
+            angleDeg: Float = 0f, orientedW: Float = 0f, orientedH: Float = 0f,
+        ): Pair<Int, Int> {
+            if (angleDeg != 0f && orientedW > 0f && orientedH > 0f) {
+                val ux = if (rtl) orientedW / 2f else -orientedW / 2f
+                val uy = -orientedH / 2f
+                val rad = Math.toRadians(angleDeg.toDouble())
+                val c = kotlin.math.cos(rad).toFloat()
+                val s = kotlin.math.sin(rad).toFloat()
+                val x = rect.exactCenterX() + ux * c - uy * s
+                val y = rect.exactCenterY() + ux * s + uy * c
+                return DeskewGeometry.roundHalfUp(x) to DeskewGeometry.roundHalfUp(y)
+            }
+            return when {
                 orientation == TextOrientation.VERTICAL -> rect.right to rect.top
                 rtl -> rect.right to rect.top
                 else -> rect.left to rect.top
             }
+        }
     }
 }
