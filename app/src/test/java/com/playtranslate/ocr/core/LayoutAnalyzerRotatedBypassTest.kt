@@ -9,11 +9,14 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Pins the rotated-region standalone bypass in [LayoutAnalyzer.analyze]: a
- * rotated region never enters the grouping strategy — it becomes its own
- * single-region [LayoutGroup] carrying the slant — and its presence must not
- * change how the upright regions group. Also pins the replicated source-script
- * filter (the strategies apply it internally; the bypass must too).
+ * Pins the SINGLETON half of the rotated-region path in
+ * [LayoutAnalyzer.analyze]: a rotated region with no same-angle neighbors is a
+ * single-member angle cluster, emitted frameless through the v1 standalone
+ * path byte-for-byte — its own [LayoutGroup] carrying the slant, never
+ * touching the grouping strategy, never perturbing how upright regions group.
+ * Also pins the replicated source-script filter (the strategies apply it
+ * internally; the cluster path must too). Multi-member clusters are covered by
+ * [LayoutAnalyzerAngleClusterTest].
  */
 @RunWith(RobolectricTestRunner::class)
 class LayoutAnalyzerRotatedBypassTest {

@@ -1821,22 +1821,29 @@ object LayoutAnalyzer {
         // bootstrap hole that prior was built for. Import seeds are the way to
         // check that claim rather than assume it.
         val active = strategy ?: FlowGraphStrategy()
-        // Rotated regions group standalone (the [OcrBox] contract): the AABB
-        // kernel can't reason about a slanted box — its inflated bounds band
-        // with every row it crosses (the failure [FlowGraphStrategy]'s
-        // rowThicknessCap exists to blunt) — and a mixed-angle union would
-        // have no coherent angle for the renderer. Each rotated region becomes
-        // its own single-region group, appended after the strategy's output.
-        // The source-script filter is replicated here because both strategies
-        // apply it inside group() and the bypass skips them.
+        // Rotated regions group in DESKEWED FRAMES: cluster by angle, transform
+        // each member's geometry into the cluster's frame, run the SAME
+        // strategy on synthetic upright copies there, and swap the originals
+        // back before assembly. The AABB kernel never sees a slanted envelope
+        // (the failure [FlowGraphStrategy]'s rowThicknessCap exists to blunt),
+        // and multi-line slanted blocks group like any other paragraph. The
+        // source-script filter is replicated here because both strategies
+        // apply it inside group() and this path skips them for rotated regions.
         val proposed = if (regions.none { it.box.isRotated }) {
+            // Byte-identical fast path: every upright-only frame — which is
+            // every frame in the corpus — never enters the cluster code.
             active.group(regions, ctx)
         } else {
             val (rotated, upright) = regions.partition { it.box.isRotated }
             val grouped = if (upright.isEmpty()) emptyList() else active.group(upright, ctx)
-            grouped + rotated
-                .filter { r -> r.text.any { isSourceLangChar(it, sourceLang) } }
-                .map { ProposedGroup(listOf(it)) }
+            val kept = rotated.filter { r -> r.text.any { isSourceLangChar(it, sourceLang) } }
+            val clusters = DeskewGeometry.clusterByAngle(
+                kept.map { it.box.angleDeg },
+                kept.map { it.box.orientedWidth },
+                kept.map { it.box.orientedHeight },
+                DeskewGeometry.DEFAULT_CLUSTER_CAP_DEG,
+            )
+            grouped + clusters.flatMap { cluster -> groupCluster(cluster, kept, active, ctx) }
         }
         // Join a group's lines with a space only for whitespace-delimited
         // languages; CJK/Thai (wordsSeparatedByWhitespace = false) get no
@@ -2018,6 +2025,62 @@ object LayoutAnalyzer {
         }
     }
 
+    /**
+     * Group one angle cluster in its deskewed frame. Singleton clusters skip
+     * the strategy entirely — v1's standalone emission, byte-identical.
+     * Multi-member clusters run the strategy on synthetic upright copies
+     * (`copy(box = upright(deskew(...)))` — the ONLY field the strategies
+     * read geometrically) and swap the ORIGINAL instances back before
+     * assembly: deskewed geometry must never escape, because the group's
+     * lines pass verbatim to every downstream consumer. Identity map, never
+     * data-class equality — byte-identical duplicate regions collide under
+     * equality (see the note in the harness's LabelStackStrategy).
+     */
+    private fun groupCluster(
+        cluster: AngleCluster,
+        kept: List<RecognizedRegion>,
+        active: GroupingStrategy,
+        ctx: GroupingContext,
+    ): List<ProposedGroup> {
+        val members = cluster.memberIndices.map { kept[it] }
+        if (members.size == 1) return listOf(ProposedGroup(members))
+        // Frame anchor: the members' AABB-union center — a pure function of
+        // the cluster (deterministic), keeping frame coordinates in the same
+        // magnitude range as the originals. Translation-invariance of every
+        // grouping decision makes the anchor a free parameter, not a tunable.
+        val union = Rect(members[0].box.bounds)
+        for (m in members.drop(1)) union.union(m.box.bounds)
+        val frame = AngleFrame(cluster.angleDeg, union.centerX(), union.centerY())
+        val synth = members.map { it.copy(box = OcrBox.upright(DeskewGeometry.deskew(it.box, frame))) }
+        val backMap = java.util.IdentityHashMap<RecognizedRegion, RecognizedRegion>()
+        for (i in synth.indices) backMap[synth[i]] = members[i]
+        // The real screen width passes through: deskew is an isometry, so an
+        // in-frame row extent is a genuine pixel length and the width-keyed
+        // logic (menu split, FlowGraph's list rows) stays dimensionally sound
+        // — slightly conservative at steep angles, where the true room along
+        // the baseline is the screen diagonal. An angled-row menu therefore
+        // splits per row exactly like an upright one.
+        val framedGroups = active.group(synth, ctx)
+        // Defensive: a strategy that returns instances it wasn't given (a
+        // copy() somewhere) can't be swapped back, and deskewed coordinates
+        // must not escape. Degrade to v1 singletons for this cluster, loudly.
+        if (framedGroups.any { g -> g.regions.any { it !in backMap } }) {
+            android.util.Log.w(
+                "LayoutAnalyzer",
+                "angle-cluster fallback: ${active.javaClass.simpleName} returned unknown region instances",
+            )
+            return members.map { ProposedGroup(listOf(it)) }
+        }
+        // Pins from a framed run are FRAME-SPACE u-values (the strategy saw
+        // deskewed rects); they ride the ProposedGroup and are consumed in the
+        // same frame by buildLayoutGroup — applied to the in-frame union
+        // before the back-rotation, so an angled list's rows align to their
+        // column exactly like upright rows do.
+        return framedGroups.map { g ->
+            ProposedGroup(g.regions.map { backMap.getValue(it) }, g.parentLeft, g.parentRight, frame = frame)
+        }
+    }
+
     private fun buildLayoutGroup(sg: ProposedGroup, lineJoin: String): LayoutGroup? {
         val raw = sg.regions
         if (raw.isEmpty()) return null
@@ -2028,21 +2091,55 @@ object LayoutAnalyzer {
         // row left-to-right for horizontal), so a same-line inline pair like
         // "Gust Area Damage:" + "4 (every…)" joins by position — robust to OCR
         // top-edge jitter that could otherwise put the value ahead of its label.
-        val regions = readingOrderIndices(raw.map { it.box.bounds }, orientation).map { raw[it] }
+        // Every geometric decision reads ONE rect list: the DESKEWED rects for
+        // a framed group — screen-space banding scrambles slanted stacks
+        // (their AABBs overlap in screen-Y, so rowBands merges distinct lines
+        // and left-sorts them) and screen-space alignment drifts by pitch·sinθ
+        // per row — and the plain screen bounds otherwise.
+        val frame = sg.frame
+        val geomRects =
+            if (frame != null) raw.map { DeskewGeometry.deskew(it.box, frame) }
+            else raw.map { it.box.bounds }
+        val regions = readingOrderIndices(geomRects, orientation).map { raw[it] }
         val text = regions.joinToString(lineJoin) { it.text }.trim()
         if (text.isBlank()) return null
         val lines = regions.flatMap { it.lines }
-        val rects = regions.map { it.box.bounds }
-        val left = sg.parentLeft ?: rects.minOf { it.left }
-        val right = sg.parentRight ?: rects.maxOf { it.right }
-        val bounds = Rect(left, rects.minOf { it.top }, right, rects.maxOf { it.bottom })
+        if (frame != null) {
+            // Framed group: oriented union in-frame, exact AABB back in screen
+            // space — bounds.center == the oriented rect's center (±0.5px) and
+            // bounds ⊇ the drawn footprint: the two properties the renderer,
+            // pinhole fill, gate exclusion, and debug overlay all pin on.
+            // Framed members are HORIZONTAL by the producer invariant. Pins
+            // are frame-space u-values (see groupCluster) and clamp the
+            // in-frame union's reading-axis extent BEFORE the back-rotation —
+            // the pinned union is still an oriented rect, so the premise holds.
+            val union = Rect(geomRects[0])
+            for (r in geomRects.drop(1)) union.union(r)
+            val pinned = Rect(
+                sg.parentLeft ?: union.left, union.top,
+                sg.parentRight ?: union.right, union.bottom,
+            )
+            val alignment = classifyGroupAlignment(
+                lines.map { DeskewGeometry.deskew(it.box, frame) },
+                lines.map { effectiveAlignLeftFramed(it, frame) },
+            )
+            return LayoutGroup(
+                text, lines, DeskewGeometry.screenAabbOf(pinned, frame), orientation, alignment,
+                angleDeg = frame.angleDeg,
+                orientedWidth = pinned.width().toFloat(),
+                orientedHeight = pinned.height().toFloat(),
+            )
+        }
+        val left = sg.parentLeft ?: geomRects.minOf { it.left }
+        val right = sg.parentRight ?: geomRects.maxOf { it.right }
+        val bounds = Rect(left, geomRects.minOf { it.top }, right, geomRects.maxOf { it.bottom })
         val alignment =
             if (orientation == TextOrientation.VERTICAL) TextAlignment.LEFT else classifyGroupAlignment(lines)
-        // A standalone rotated singleton carries its slant onto the group — the
-        // only rotated shape layout emits (see the bypass in [analyze]). Guarded
-        // on no parent pins: pinned bounds are wider than the region's own AABB,
-        // which would break the renderer's center-pin premise (group bounds ==
-        // the oriented rect's exact AABB).
+        // A standalone rotated singleton carries its slant onto the group (a
+        // single-member cluster — emitted frameless so this path stays
+        // byte-identical to v1). Guarded on no parent pins: pinned bounds are
+        // wider than the region's own AABB, which would break the renderer's
+        // center-pin premise (group bounds == the oriented rect's exact AABB).
         val rot = if (sg.parentLeft == null && sg.parentRight == null) {
             raw.singleOrNull()?.box?.takeIf { it.isRotated }
         } else null
@@ -2052,6 +2149,18 @@ object LayoutAnalyzer {
             orientedWidth = rot?.orientedWidth ?: 0f,
             orientedHeight = rot?.orientedHeight ?: 0f,
         )
+    }
+
+    /** [effectiveAlignLeft] for a deskewed frame: the same hanging-punct text
+     *  test, geometry from the frame rect, and the char-precise branch skipped
+     *  — chars are empty on rotated Paddle lines (PaddleRecognizer suppresses
+     *  them until the oriented char-synthesis stage) and ML Kit char AABBs are
+     *  screen-space; the height fallback matches the punct-width intent. */
+    private fun effectiveAlignLeftFramed(line: RecognizedLine, frame: AngleFrame): Int {
+        val rect = DeskewGeometry.deskew(line.box, frame)
+        val firstIdx = line.text.indexOfFirst { !it.isWhitespace() }
+        if (firstIdx < 0) return rect.left
+        return if (line.text[firstIdx] in HANGING_PUNCT_LEFT) rect.left + rect.height() else rect.left
     }
 
     /**
@@ -2101,13 +2210,17 @@ object LayoutAnalyzer {
      * ties — same-width left-aligned lines satisfy both checks and we never falsely
      * center actually-left text.
      */
-    internal fun classifyGroupAlignment(lines: List<RecognizedLine>): TextAlignment {
-        if (lines.size < 2) return TextAlignment.LEFT
-        val boxes = lines.map { it.box.bounds }
+    internal fun classifyGroupAlignment(lines: List<RecognizedLine>): TextAlignment =
+        classifyGroupAlignment(lines.map { it.box.bounds }, lines.map { effectiveAlignLeft(it) })
+
+    /** Rects-taking core, shared by the screen-space wrapper above and the
+     *  deskewed-frame path in [buildLayoutGroup] (which supplies frame rects +
+     *  frame-computed align-lefts). */
+    internal fun classifyGroupAlignment(boxes: List<Rect>, lefts: List<Int>): TextAlignment {
+        if (boxes.size < 2) return TextAlignment.LEFT
         val refH = boxes.maxOf { it.height() }
         if (refH <= 0) return TextAlignment.LEFT
         val tol = (refH * 0.5f).toInt()
-        val lefts = lines.map { effectiveAlignLeft(it) }
         val leftSpread = lefts.max() - lefts.min()
         val centerXs = boxes.map { it.centerX() }
         val centerSpread = centerXs.max() - centerXs.min()
@@ -2123,11 +2236,13 @@ object LayoutAnalyzer {
  * space, and the voted [orientation] + classified [alignment]. The pipeline
  * flattens these into the final OcrResult, normalizing coords to original.
  *
- * [angleDeg] + [orientedWidth]/[orientedHeight] are non-zero only for a
- * standalone rotated singleton (the one rotated shape layout emits — see the
- * bypass in [LayoutAnalyzer.analyze]), copied from the region's [OcrBox] in the
- * same coordinate space as [bounds]. All three ride together: the oriented dims
- * cannot be re-derived from bounds+angle downstream (singular at 45°).
+ * [angleDeg] + [orientedWidth]/[orientedHeight] are non-zero for the two
+ * angle-carrying shapes layout emits: a rotated singleton (angle + dims from
+ * the region's own [OcrBox], verbatim) and an angle-cluster group (angle = the
+ * cluster frame's θ̄ — itself a verbatim member angle — with dims from the
+ * deskewed union and [bounds] its exact back-rotated AABB). Same coordinate
+ * space as [bounds]. All three ride together: the oriented dims cannot be
+ * re-derived from bounds+angle downstream (singular at 45°).
  */
 data class LayoutGroup(
     val text: String,
