@@ -394,6 +394,11 @@ class OcrManager private constructor() {
                     groupText = group.text,
                     symbols = line.chars.map { SymbolBox(it.text, scaleRect(it.box.bounds, scaleFactor), it.charOffset) },
                     orientation = line.orientation,
+                    // Angle survives scaling; the dims are lengths and divide
+                    // like the box.
+                    angleDeg = line.box.angleDeg,
+                    orientedWidth = if (line.box.angleDeg != 0f) line.box.orientedWidth / scaleFactor else 0f,
+                    orientedHeight = if (line.box.angleDeg != 0f) line.box.orientedHeight / scaleFactor else 0f,
                 )
             }
         }
@@ -477,7 +482,14 @@ class OcrManager private constructor() {
          */
         val symbols: List<SymbolBox> = emptyList(),
         /** Text orientation detected from ML Kit angle / bounding box geometry. */
-        val orientation: TextOrientation = TextOrientation.HORIZONTAL
+        val orientation: TextOrientation = TextOrientation.HORIZONTAL,
+        /** Slant in degrees (clockwise-positive, `View.rotation` semantics);
+         *  0 = upright. Oriented dims ride with it (0-when-upright) — drag
+         *  hit-testing un-rotates the finger into this frame. Any projection
+         *  of [bounds] to another space must project these dims too. */
+        val angleDeg: Float = 0f,
+        val orientedWidth: Float = 0f,
+        val orientedHeight: Float = 0f,
     )
 
     companion object {

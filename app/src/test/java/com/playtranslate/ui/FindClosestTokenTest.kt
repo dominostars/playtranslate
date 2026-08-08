@@ -186,4 +186,66 @@ class FindClosestTokenTest {
         )
         assertEquals("ab" to 0, match)
     }
+
+    // ── Slanted lines: baseline (u-space) projection ─────────────────────
+
+    /** A −20° line (300×48, AABB centered 200,150) with three chars riding
+     *  the baseline at u = −100, 0, +100 — the S8 cell shape. */
+    private fun slantedLine(): OcrManager.OcrLine {
+        val cos = 0.93969
+        val sin = -0.34202
+        fun cell(u: Double, offset: Int, ch: String): OcrManager.SymbolBox {
+            val cx = 200 + u * cos
+            val cy = 150 + u * sin
+            return OcrManager.SymbolBox(
+                ch, Rect((cx - 20).toInt(), (cy - 24).toInt(), (cx + 20).toInt(), (cy + 24).toInt()), offset,
+            )
+        }
+        return OcrManager.OcrLine(
+            text = "あいう",
+            bounds = Rect(51, 76, 349, 224),
+            symbols = listOf(cell(-100.0, 0, "あ"), cell(0.0, 1, "い"), cell(100.0, 2, "う")),
+            angleDeg = -20f,
+            orientedWidth = 300f,
+            orientedHeight = 48f,
+        )
+    }
+
+    @Test
+    fun flowU_projectsAlongTheBaseline() {
+        val line = slantedLine()
+        // The finger on the first cell's baseline point: u ≈ −100.
+        val u = DragLookupController.flowU(line, (200 - 100 * 0.93969).toInt(), (150 + 100 * 0.34202).toInt())
+        assertEquals(-100f, u, 2f)
+        // The AABB center is u = 0 by construction.
+        assertEquals(0f, DragLookupController.flowU(line, 200, 150), 1f)
+    }
+
+    @Test
+    fun slantedLine_resolvesTheTokenUnderTheFinger_inUSpace() {
+        val line = slantedLine()
+        // Finger over the LAST glyph (screen-space lower-right along the
+        // baseline); a raw-x hit-test against these cells would still pass,
+        // but the u-projection is what keeps extents and finger on one axis.
+        val fx = (200 + 100 * 0.93969).toInt()
+        val fy = (150 - 100 * 0.34202).toInt()
+        val match = DragLookupController.findClosestToken(
+            lineText = line.text,
+            tokens = listOf("あ", "い", "う"),
+            fingerPos = Math.round(DragLookupController.flowU(line, fx, fy)),
+            symbols = DragLookupController.uSpaceSymbols(line),
+            fallbackLineStart = -150,
+            fallbackCharExtent = 100f,
+        )
+        assertEquals("う" to 2, match)
+    }
+
+    @Test
+    fun uSpaceSymbols_areContiguousAlongTheBaseline() {
+        val cells = DragLookupController.uSpaceSymbols(slantedLine())
+        // Centers land at u ≈ −100, 0, +100 with 40px widths.
+        assertEquals(-100f, cells[0].bounds.exactCenterX(), 3f)
+        assertEquals(0f, cells[1].bounds.exactCenterX(), 3f)
+        assertEquals(100f, cells[2].bounds.exactCenterX(), 3f)
+    }
 }

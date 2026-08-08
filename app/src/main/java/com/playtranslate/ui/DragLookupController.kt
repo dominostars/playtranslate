@@ -295,6 +295,29 @@ class DragLookupController(
          * @param vertical When true, token extents come from symbol top/bottom
          *   and fallback uses character height instead of width.
          */
+        /** Finger position along a SLANTED line's baseline (u, measured from
+         *  the AABB center; clockwise-positive y-down rotation). Pairs with
+         *  [uSpaceSymbols] so extents and finger share one axis. */
+        internal fun flowU(line: OcrManager.OcrLine, x: Int, y: Int): Float {
+            val rad = Math.toRadians(line.angleDeg.toDouble())
+            val c = kotlin.math.cos(rad).toFloat()
+            val s = kotlin.math.sin(rad).toFloat()
+            val dx = x - line.bounds.exactCenterX()
+            val dy = y - line.bounds.exactCenterY()
+            return dx * c + dy * s
+        }
+
+        /** A slanted line's symbols mapped onto its baseline axis: each cell
+         *  (an upright rect riding the baseline) becomes a u-extent about its
+         *  center's projection, so [findClosestToken] runs its horizontal math
+         *  unchanged with u-space inputs. */
+        internal fun uSpaceSymbols(line: OcrManager.OcrLine): List<OcrManager.SymbolBox> =
+            line.symbols.map { s ->
+                val u = flowU(line, s.bounds.centerX(), s.bounds.centerY())
+                val half = s.bounds.width() / 2f
+                s.copy(bounds = Rect((u - half).toInt(), 0, (u + half).toInt(), s.bounds.height()))
+            }
+
         internal fun findClosestToken(
             lineText: String,
             tokens: List<String>,
@@ -668,15 +691,29 @@ class DragLookupController(
         val tokens = cache[lineText] ?: return null
         if (tokens.isEmpty()) return null
         val isVertical = hitLine.orientation == com.playtranslate.language.TextOrientation.VERTICAL
-        val lineExtent = if (isVertical) hitLine.bounds.height().toFloat()
-            else hitLine.bounds.width().toFloat()
+        val rotated = hitLine.angleDeg != 0f
+        val lineExtent = when {
+            rotated -> hitLine.orientedWidth
+            isVertical -> hitLine.bounds.height().toFloat()
+            else -> hitLine.bounds.width().toFloat()
+        }
         val charExtent = lineExtent / lineText.length
         val match = findClosestToken(
             lineText = lineText,
             tokens = tokens.map { it.surface },
-            fingerPos = if (isVertical) rawY else rawX,
-            symbols = hitLine.symbols,
-            fallbackLineStart = if (isVertical) hitLine.bounds.top else hitLine.bounds.left,
+            // Slanted lines run the same horizontal math on the baseline axis:
+            // finger and symbol extents both projected to u (center-anchored).
+            fingerPos = when {
+                rotated -> Math.round(flowU(hitLine, rawX, rawY))
+                isVertical -> rawY
+                else -> rawX
+            },
+            symbols = if (rotated) uSpaceSymbols(hitLine) else hitLine.symbols,
+            fallbackLineStart = when {
+                rotated -> Math.round(-hitLine.orientedWidth / 2f)
+                isVertical -> hitLine.bounds.top
+                else -> hitLine.bounds.left
+            },
             fallbackCharExtent = charExtent,
             vertical = isVertical,
         ) ?: return null
@@ -1073,8 +1110,14 @@ class DragLookupController(
 
         val lineText = hitLine.text
         val isVertical = hitLine.orientation == com.playtranslate.language.TextOrientation.VERTICAL
-        // For vertical text, characters stack along the height; for horizontal, along the width.
-        val lineExtent = if (isVertical) hitLine.bounds.height().toFloat() else hitLine.bounds.width().toFloat()
+        val rotated = hitLine.angleDeg != 0f
+        // For vertical text, characters stack along the height; for horizontal,
+        // along the width; for slanted lines, along the oriented width.
+        val lineExtent = when {
+            rotated -> hitLine.orientedWidth
+            isVertical -> hitLine.bounds.height().toFloat()
+            else -> hitLine.bounds.width().toFloat()
+        }
         val charExtent = lineExtent / lineText.length
 
         // Tokenize the line (surface spans for position mapping, lookup forms for dictionary)
@@ -1089,9 +1132,17 @@ class DragLookupController(
         val tokenMatch = findClosestToken(
             lineText = lineText,
             tokens = surfaceTokens,
-            fingerPos = if (isVertical) fingerY else fingerX,
-            symbols = hitLine.symbols,
-            fallbackLineStart = if (isVertical) hitLine.bounds.top else hitLine.bounds.left,
+            fingerPos = when {
+                rotated -> Math.round(flowU(hitLine, fingerX, fingerY))
+                isVertical -> fingerY
+                else -> fingerX
+            },
+            symbols = if (rotated) uSpaceSymbols(hitLine) else hitLine.symbols,
+            fallbackLineStart = when {
+                rotated -> Math.round(-hitLine.orientedWidth / 2f)
+                isVertical -> hitLine.bounds.top
+                else -> hitLine.bounds.left
+            },
             fallbackCharExtent = charExtent,
             vertical = isVertical,
         )
@@ -1235,6 +1286,29 @@ class DragLookupController(
             var bestLine: OcrManager.OcrLine? = null
             var bestDist = Long.MAX_VALUE
             for (line in lines) {
+                if (line.angleDeg != 0f) {
+                    // Slanted line (always horizontal flow): un-rotate the
+                    // finger into the line's frame and test the ORIENTED rect
+                    // with the same expansion — the inflated AABB would claim
+                    // touches on the empty corners. Cross-baseline distance
+                    // weighted 3× like the upright horizontal path.
+                    val rad = Math.toRadians(line.angleDeg.toDouble())
+                    val c = kotlin.math.cos(rad).toFloat()
+                    val s = kotlin.math.sin(rad).toFloat()
+                    val dx = x - line.bounds.exactCenterX()
+                    val dy = y - line.bounds.exactCenterY()
+                    val u = dx * c + dy * s
+                    val v = -dx * s + dy * c
+                    if (kotlin.math.abs(u) > line.orientedWidth / 2f + expandX ||
+                        kotlin.math.abs(v) > line.orientedHeight / 2f + expandY
+                    ) continue
+                    val dist = (u * u + v * v * 9).toLong()
+                    if (dist < bestDist) {
+                        bestDist = dist
+                        bestLine = line
+                    }
+                    continue
+                }
                 val expanded = Rect(line.bounds).apply {
                     top -= expandY
                     bottom += expandY
