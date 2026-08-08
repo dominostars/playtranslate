@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.util.Log
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ocr.core.BlockTextAligner
+import com.playtranslate.ocr.core.DeskewGeometry
 import com.playtranslate.ocr.core.DetectedRegion
 import com.playtranslate.ocr.core.LayoutGroup
 import com.playtranslate.ocr.core.OcrBox
@@ -11,6 +12,7 @@ import com.playtranslate.ocr.core.OcrImage
 import com.playtranslate.ocr.core.RecognizedRegion
 import com.playtranslate.ocr.core.RecognizedTextNormalizer
 import com.playtranslate.ocr.mangaocr.MangaOcrBridge
+import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.coroutineContext
@@ -29,9 +31,11 @@ import kotlin.coroutines.coroutineContext
  * line-by-line, and one decode covers the group. What bounds eligibility is squash
  * resolution, not orientation — every crop is aspect-distorted into the encoder's
  * 224² input, so a group whose longest line packs too many glyphs per patch
- * ([MAX_LINE_CHARS]), stacks too many lines ([MAX_LINES]), carries slanted text, or
- * is too long to decode within budget ([MAX_BLOCK_CHARS]) is skipped and the base
- * result stands (the base engines are fine on exactly those shapes).
+ * ([MAX_LINE_CHARS]), stacks too many lines ([MAX_LINES]), mixes inconsistent
+ * slants (see [isEligible]), or is too long to decode within budget
+ * ([MAX_BLOCK_CHARS]) is skipped and the base result stands (the base engines are
+ * fine on exactly those shapes). Consistently-slanted groups read through the
+ * deskew rotate-crop ([com.playtranslate.ocr.mangaocr.deskewAffine]).
  *
  * **Positions come from the base pass, not the model.** manga-ocr emits a bare
  * string; [BlockTextAligner] aligns it against the base lines so matched/substituted
@@ -116,13 +120,20 @@ object MangaOcrRefiner {
     internal fun budgetFor(baseLen: Int): Int = baseLen + baseLen / 2 + 4
 
     /** True when the specialist can plausibly beat the base engine on [group] —
-     *  see the gate constants for why each bound exists. Slanted text is excluded:
-     *  the AABB crop of a rotated line drags in off-axis content and the square
-     *  squash compounds the distortion. */
+     *  see the gate constants for why each bound exists. A slanted group is
+     *  eligible when its lines' angles are CONSISTENT with the group's (within
+     *  the cluster cap — exactly what the grouping shell built, so this admits
+     *  every cluster and reduces to a no-op for upright groups, whose lines are
+     *  all angle-0 post-clustering); the rotate-crop then reads the deskewed
+     *  strip. Residual per-line slant ≤ the cap rides inside the crop —
+     *  manga-ocr's home turf is hand-drawn text (accepted). A line whose angle
+     *  disagrees with its group past the cap means the crop would misframe it. */
     internal fun isEligible(group: LayoutGroup): Boolean {
         val lines = group.lines
         if (lines.isEmpty() || lines.size > MAX_LINES) return false
-        if (lines.any { it.box.isRotated }) return false
+        if (lines.any { abs(it.box.angleDeg - group.angleDeg) > DeskewGeometry.DEFAULT_CLUSTER_CAP_DEG }) {
+            return false
+        }
         val longest = lines.maxOf { it.text.length }
         if (longest == 0 || longest > MAX_LINE_CHARS) return false
         return lines.sumOf { it.text.length } <= MAX_BLOCK_CHARS
@@ -224,7 +235,16 @@ object MangaOcrRefiner {
     ): GroupOutcome {
         coroutineContext.ensureActive() // stop a superseded frame promptly
         val baseLen = group.lines.sumOf { it.text.length }
-        val region = DetectedRegion(box = OcrBox.upright(group.bounds), orientation = group.orientation)
+        // A slanted group hands the recognizer its true oriented box — the
+        // rotate-crop keys on it; upright groups keep the plain AABB.
+        val region = DetectedRegion(
+            box = if (group.angleDeg != 0f) {
+                OcrBox(group.bounds, group.orientedWidth, group.orientedHeight, group.angleDeg)
+            } else {
+                OcrBox.upright(group.bounds)
+            },
+            orientation = group.orientation,
+        )
         // Run the candidate through the SAME normalizer the base lines already passed
         // (edge pipe/cursor strip, decoration-only drop) so this opt-in path can't
         // reinject junk after the pipeline's one cleanup stage. Drops → keep base.
