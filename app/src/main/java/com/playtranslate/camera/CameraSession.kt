@@ -1449,6 +1449,9 @@ class CameraSession(
                         groupText = g.text,
                         symbols = line.symbols,
                         orientation = line.orientation,
+                        angleDeg = line.angleDeg,
+                        orientedWidth = line.orientedWidth,
+                        orientedHeight = line.orientedHeight,
                     )
                 }
             }

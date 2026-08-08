@@ -137,9 +137,24 @@ class CameraWordLookup(
                     )
                 }
                 val viewLines = scene.lines.map { line ->
+                    val pb = project(line.bounds)
+                    // The oriented dims must ride the SAME transform as the
+                    // bounds — a bare copy would pair view-space bounds with
+                    // AU-space dims. The chain here is fit-scale + pinch
+                    // (scale+translate), so the effective scales fall out of
+                    // the projected AABB; should they ever disagree (a
+                    // non-similarity transform), fail soft to an upright
+                    // line — AABB hit-testing, never wrong geometry.
+                    val sx = if (line.bounds.width() > 0) pb.width().toFloat() / line.bounds.width() else 1f
+                    val sy = if (line.bounds.height() > 0) pb.height().toFloat() / line.bounds.height() else 1f
+                    val similar = kotlin.math.abs(sx - sy) <= 0.04f * maxOf(sx, sy)
+                    val ang = if (similar) line.angleDeg else 0f
                     line.copy(
-                        bounds = project(line.bounds),
+                        bounds = pb,
                         symbols = line.symbols.map { s -> s.copy(bounds = project(s.bounds)) },
+                        angleDeg = ang,
+                        orientedWidth = if (ang != 0f) line.orientedWidth * sx else 0f,
+                        orientedHeight = if (ang != 0f) line.orientedHeight * sy else 0f,
                     )
                 }
                 // No near-text gate on the DOWN: a hold or drag ANYWHERE on
@@ -216,7 +231,10 @@ class CameraWordLookup(
     /** Claim gate: only begin a lookup gesture when the finger lands near a
      *  recognised line — a bare-background tap stays with the sheet's own
      *  outside handling. Slack sized past the controller's loosest hit tier
-     *  so a claimable gesture can't resolve to nothing purely on the gate. */
+     *  so a claimable gesture can't resolve to nothing purely on the gate.
+     *  Slanted lines keep the AABB test deliberately: the AABB contains the
+     *  oriented footprint, so the gate stays strictly looser than the
+     *  controller's oriented hit-test — the ordering the gate exists for. */
     private fun nearText(lines: List<OcrManager.OcrLine>, x: Float, y: Float): Boolean {
         val slack = (CLAIM_SLACK_DP * density).toInt()
         val px = x.toInt()
