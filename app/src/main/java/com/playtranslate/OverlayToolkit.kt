@@ -273,12 +273,6 @@ object OverlayToolkit {
         for (line in lines) {
             val isVertical = line.orientation == com.playtranslate.language.TextOrientation.VERTICAL
             if (line.text.isEmpty()) continue
-            // No furigana on slanted lines: every placement formula below is
-            // axis-aligned arithmetic on symbol/line AABBs, which lands the
-            // annotations off the glyphs once the baseline is diagonal.
-            // Checked before the annotation pass — a skipped line must not
-            // spend dictionary time either.
-            if (line.angleDeg != 0f) continue
             // FULL-depth: live furigana shows the SAME dictionary-corrected
             // readings the result sheet displays and TTS speaks (一泊 →
             // いっぱく) — never the raw per-token readings. The engine's
@@ -308,6 +302,14 @@ object OverlayToolkit {
                     ),
                 )
             }
+            // Slanted line: the rotated sibling ([FuriganaSlantPlacement]) does
+            // its placement + merge in the deskewed frame; the upright
+            // arithmetic below stays byte-identical.
+            if (line.angleDeg != 0f) {
+                groupBoxes += FuriganaSlantPlacement.build(line, annotations, furiganaPaint)
+                continue
+            }
+
             val lineBoxes = mutableListOf<TextBox>()
 
             if (line.symbols.isNotEmpty()) {

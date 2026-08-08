@@ -340,10 +340,47 @@ class TranslationOverlayView(
 
         if (OcrManager.instance.debugLogGroupingEnabled) logLayoutDecisions(measured, resolved)
 
+        // THE one rotated-pin mechanism (SOURCE_ANGLE chips + slanted ruby):
+        // lay out at the oriented dims, rotate about the child's center (the
+        // default pivot), center-pin on the given screen point. Shared so the
+        // two rotation consumers can't drift apart.
+        fun applyRotatedPin(child: View, cx: Float, cy: Float, w: Int, h: Int, angleDeg: Float) {
+            child.rotation = angleDeg
+            child.translationX = cx - w / 2f
+            child.translationY = cy - h / 2f
+        }
+
         measured.zip(resolved).forEach { (box, resolvedBox) ->
             val rect = resolvedBox.rect
             val mode = resolvedBox.mode
             if (box.isFurigana) {
+                if (box.angleDeg != 0f) {
+                    // Slanted ruby: fixed screen-scaled oriented dims, text
+                    // bottom-pinned INSIDE the band via gravity (the in-frame
+                    // analogue of the upright path's bottom pin), rotated
+                    // about the center like SOURCE_ANGLE — bounds are the
+                    // band's exact AABB, so the center pin lands the band on
+                    // its baseline offset.
+                    val fw = (box.orientedWidth * scaleX).toInt().coerceAtLeast(1)
+                    val fh = (box.orientedHeight * scaleY).toInt().coerceAtLeast(1)
+                    val textSizePx = (fh * 0.7f).coerceAtLeast(4f)
+                    val strokeW = 3f * dp
+                    val child = OutlinedTextView(context).apply {
+                        text = box.translatedText
+                        setTextColor(Color.WHITE)
+                        outlineColor = Color.BLACK
+                        outlineWidth = strokeW
+                        typeface = Typeface.DEFAULT_BOLD
+                        includeFontPadding = false
+                        setShadowLayer(strokeW, 0f, 0f, Color.TRANSPARENT)
+                        setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
+                        gravity = Gravity.BOTTOM or Gravity.START
+                    }
+                    child.setTag(R.id.tag_bg_color, Color.BLACK)
+                    addView(child, LayoutParams(fw, fh))
+                    applyRotatedPin(child, rect.centerX(), rect.centerY(), fw, fh, box.angleDeg)
+                    return@forEach
+                }
                 val isVerticalFurigana = box.orientation == TextOrientation.VERTICAL
                 // Vertical furigana: size from box width; horizontal: from box height
                 val textSizePx = if (isVerticalFurigana) {
@@ -506,9 +543,7 @@ class TranslationOverlayView(
                         )
                     }
                     addView(child, LayoutParams(angledW, angledH))
-                    child.rotation = box.angleDeg
-                    child.translationX = src.centerX() - angledW / 2f
-                    child.translationY = src.centerY() - angledH / 2f
+                    applyRotatedPin(child, src.centerX(), src.centerY(), angledW, angledH, box.angleDeg)
                 } else {
                     // STACK_UPRIGHT / HORIZONTAL_IN_PLACE / GROW_HORIZONTAL / LEGACY_HORIZONTAL
                     // and skeletons: fill the (possibly grown) box footprint at its rect.
