@@ -48,7 +48,7 @@ class MlKitOcr(options: TextRecognizerOptionsInterface) : OcrEngine {
         }
         val addWordSpaces =
             SourceLanguageProfiles.forCode(image.sourceLang)?.wordsSeparatedByWhitespace ?: false
-        return MlKitTextMapper.map(visionText, image.sourceLang, addWordSpaces)
+        return MlKitTextMapper.map(visionText, image.sourceLang, addWordSpaces, image.angleNoiseGateDeg)
     }
 
     override fun close() {

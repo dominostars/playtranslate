@@ -62,6 +62,9 @@ class PlayTranslateApplication : Application() {
         com.playtranslate.ocr.registry.OcrModelManager.appContext = applicationContext
         if (BuildConfig.DEBUG) {
             OcrManager.instance.debugLogGroupingEnabled = Prefs(this).debugLogGrouping
+            // The AngleProbe rides the same toggle — one switch turns on all
+            // angle instrumentation (probe + ang= layout lines).
+            OcrManager.instance.debugAngleProbeEnabled = Prefs(this).debugLogGrouping
         }
         // Push the "Use MangaOCR" toggle + installed-pack state into the OCR gate
         // (same Context-free reason as above — the refiner can't resolve the pack itself).
