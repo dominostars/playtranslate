@@ -3397,10 +3397,11 @@
     <string name="settings_debug_log_pinhole">Log live-mode pinhole metrics</string>
     <string name="settings_debug_save_ocr_seed">Save OCR captures as seeds</string>
     <string name="settings_debug_log_grouping">Log OCR grouping decisions</string>
-    <!-- Settings dialog, debug section: switch-row title. Forces the slanted-text
-         detection threshold from its 10-degree default down to the 3-degree
-         target while ON, so light diagonals render at their true angle. -->
-    <string name="settings_debug_angle_gate">Low angle threshold (3°)</string>
+    <!-- Settings dialog, debug section: switch-row title. Rollback switch:
+         while ON, slanted-text detection uses the old 10-degree threshold
+         instead of the current 3-degree default, so light diagonals render
+         as straight text again. -->
+    <string name="settings_debug_angle_gate">Classic angle threshold (10°)</string>
     <!-- Toggle row title in Settings → Debug (debug builds only): records live-mode commits to a trace file for offline validation. -->
     <string name="settings_debug_log_trace">Record translation-log trace</string>
     <string name="settings_debug_force_crash_title">Force crash</string>

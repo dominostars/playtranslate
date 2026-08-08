@@ -58,16 +58,22 @@ data class OcrBox(
         /** PRODUCER-side noise gate (degrees): [OrientedBoxGeometry.boxFor]
          *  snaps measured |angle| at or below this to [upright]. Not a consumer
          *  threshold — consumers key on [isRotated]. Overridable per
-         *  recognition via [OcrImage.angleNoiseGateDeg] (debug A/B and the
-         *  staged threshold-drop program). */
-        const val ANGLE_NOISE_GATE_DEG = 10f
+         *  recognition via [OcrImage.angleNoiseGateDeg] (the settings rollback
+         *  toggle forces the pre-drop [ANGLE_LEGACY_GATE_DEG]). Dropped from
+         *  10° on 2026-08-07 (the threshold-drop program's final stage) —
+         *  paired with [ANGLE_MIN_EXCURSION_PX], which is what actually
+         *  separates noise from slant; see the census note in boxFor. */
+        const val ANGLE_NOISE_GATE_DEG = 3f
 
-        /** The threshold-drop program's TARGET gate (degrees): what
-         *  [ANGLE_NOISE_GATE_DEG] becomes once every consumer is
-         *  angle-capable. Until then it powers the debug settings override so
-         *  device passes exercise consumers at the future default. Provisional
-         *  value — finalized from the upright-noise census before the drop. */
-        const val ANGLE_TARGET_GATE_DEG = 3f
+        /** The pre-drop gate (degrees) — the one-toggle rollback the debug
+         *  settings row forces when ON. */
+        const val ANGLE_LEGACY_GATE_DEG = 10f
+
+        /** The gate's second term (px): minimum drawn-corner displacement
+         *  `(ow/2)·sin|θ|` for a measured slant to be carried. From the corpus
+         *  census (5891 known-upright lines): short-line angle noise reaches
+         *  ~10° but its excursions stay under this; real slants clear it 2×. */
+        const val ANGLE_MIN_EXCURSION_PX = 6f
 
         /** Axis-aligned box (the common case): oriented dims == AABB dims, angle 0. */
         fun upright(bounds: Rect): OcrBox =

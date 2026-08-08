@@ -120,12 +120,23 @@ class OrientedBoxGeometryTest {
 
     @Test
     fun `snap zone and band ceiling fall back to upright`() {
-        for (deg in floatArrayOf(0f, 5f, 9.5f, -9.5f, 61f, -61f, 75f, 90f)) {
+        // The two-term gate (post threshold-drop): |θ| ≤ 3° snaps at any
+        // length; the band ceiling still snaps; between them the corner
+        // excursion (ow/2)·sin|θ| decides — a 200px line at 5° sweeps ~8.7px
+        // (real slant, carried) while the same angle on a 60px line sweeps
+        // ~2.6px (short-line noise, snapped).
+        for (deg in floatArrayOf(0f, 2.9f, -2.9f, 61f, -61f, 75f, 90f)) {
             val box = boxAt(deg)
             assertEquals("angle $deg should be upright", 0f, box.angleDeg, 0f)
         }
-        for (deg in floatArrayOf(10.6f, -10.6f, 59f, -59f)) {
-            assertTrue("angle $deg should be rotated", boxAt(deg).isRotated)
+        for (deg in floatArrayOf(5f, -5f, 10.6f, -10.6f, 59f, -59f)) {
+            assertTrue("angle $deg should be rotated at 200px", boxAt(deg).isRotated)
+        }
+        for (deg in floatArrayOf(5f, -5f, 10.6f, -10.6f)) {
+            assertEquals(
+                "angle $deg on a 60px line is sub-excursion noise",
+                0f, boxAt(deg, w = 60f, h = 20f).angleDeg, 0f,
+            )
         }
     }
 

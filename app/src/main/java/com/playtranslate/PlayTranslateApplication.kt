@@ -65,10 +65,11 @@ class PlayTranslateApplication : Application() {
             // The AngleProbe rides the same toggle — one switch turns on all
             // angle instrumentation (probe + ang= layout lines).
             OcrManager.instance.debugAngleProbeEnabled = Prefs(this).debugLogGrouping
-            // Slant gate override survives restarts like the toggles above.
+            // Slant-gate rollback override survives restarts like the
+            // toggles above (ON = the pre-drop 10° gate).
             if (Prefs(this).debugAngleGateAtTarget) {
                 OcrManager.instance.debugAngleGateDeg =
-                    com.playtranslate.ocr.core.OcrBox.ANGLE_TARGET_GATE_DEG
+                    com.playtranslate.ocr.core.OcrBox.ANGLE_LEGACY_GATE_DEG
             }
         }
         // Push the "Use MangaOCR" toggle + installed-pack state into the OCR gate
