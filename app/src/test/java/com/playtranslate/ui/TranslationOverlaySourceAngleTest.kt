@@ -93,4 +93,29 @@ class TranslationOverlaySourceAngleTest {
         assertEquals(0f, child.rotation)
         assertEquals(0f, child.translationX)
     }
+
+    @Test
+    fun slantedFurigana_scalesItsDimsWithTheScreen_notTheViewProperty() {
+        // Codex review finding: a bare `scaleX` in the furigana branch used to
+        // resolve to the VIEW's scaleX property (1f), sizing slanted ruby in
+        // bitmap pixels. At 2× screen scale (screenshot 500 on the 1000 view)
+        // the band's 100×30 oriented dims must render as a 200×60 child.
+        val ruby = TextBox(
+            translatedText = "よみ",
+            bounds = Rect(100, 100, 200, 150),
+            isFurigana = true,
+            orientation = TextOrientation.HORIZONTAL,
+            angleDeg = -20f,
+            orientedWidth = 100f,
+            orientedHeight = 30f,
+        )
+        val v = laidOutOverlay()
+        v.setBoxes(listOf(ruby), 0, 0, 500, 500)
+
+        assertEquals(1, v.childCount)
+        val child = v.getChildAt(0)
+        assertEquals(-20f, child.rotation)
+        assertEquals(200, child.layoutParams.width)
+        assertEquals(60, child.layoutParams.height)
+    }
 }

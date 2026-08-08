@@ -350,6 +350,13 @@ class TranslationOverlayView(
             child.translationY = cy - h / 2f
         }
 
+        // OCR-bitmap → screen scale, hoisted ABOVE the furigana branch: a
+        // bare `scaleX` there would silently resolve to the View's own
+        // scaleX property (1f) and size slanted ruby in bitmap pixels on
+        // scaled displays (Codex review finding).
+        val scaleX = width.toFloat() / screenshotW
+        val scaleY = height.toFloat() / screenshotH
+
         measured.zip(resolved).forEach { (box, resolvedBox) ->
             val rect = resolvedBox.rect
             val mode = resolvedBox.mode
@@ -463,8 +470,6 @@ class TranslationOverlayView(
                 // wrapping along its tall side. Defensive fallback: a missing
                 // chip payload derives the dims from the box, the pre-carve
                 // behavior.
-                val scaleX = width.toFloat() / screenshotW
-                val scaleY = height.toFloat() / screenshotH
                 val chip = resolvedBox.chip
                 val angledW = (chip?.width?.toInt() ?: (box.orientedWidth * scaleX).toInt()).coerceAtLeast(1)
                 val angledH = (chip?.height?.toInt() ?: (box.orientedHeight * scaleY).toInt()).coerceAtLeast(1)
