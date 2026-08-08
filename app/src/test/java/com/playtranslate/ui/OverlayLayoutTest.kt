@@ -575,10 +575,11 @@ class OverlayLayoutTest {
     }
 
     @Test
-    fun growCandidate_besideSlantedNeighbour_doesNotGrow() {
+    fun growCandidate_besideSlantedStraddler_clampsAndRotates() {
         // A narrow vertical GROW box whose row a slanted AABB straddles: the
-        // strict side tests can't see a straddler, so growth is skipped
-        // entirely rather than growing into it.
+        // straddler clamps both growth limits, so the box gains nothing and —
+        // wedged far below its target width — falls back to ROTATE instead of
+        // rendering a sliver-thin horizontal line.
         val growBox = box(
             Rect(400, 100, 450, 400),
             orientation = TextOrientation.VERTICAL,
@@ -586,12 +587,28 @@ class OverlayLayoutTest {
         )
         val slanted = slantBox(bounds = Rect(100, 150, 700, 250), angle = 20f)
         val r = resolve(listOf(growBox, slanted), grow = true)
-        assertEquals(RenderMode.GROW_HORIZONTAL, r[0].mode)
-        assertEquals("blocked by the slanted straddler", RectF(394f, 94f, 456f, 406f), r[0].rect)
+        assertEquals(RenderMode.ROTATE, r[0].mode)
+        assertEquals("no growth into the straddler", RectF(394f, 94f, 456f, 406f), r[0].rect)
 
         // Control: without the slanted neighbour the same box does grow.
         val alone = resolve(listOf(growBox), grow = true)
         assertTrue("control must grow, got ${alone[0].rect}", alone[0].rect.width() > 62f)
+    }
+
+    @Test
+    fun growCandidate_besideUprightStraddler_noLongerGrowsThroughIt() {
+        // The pre-existing hole the straddler clamp closes: an UPRIGHT box
+        // overlapping the grow box's row landed in neither side limit and was
+        // grown straight through. Now it clamps both limits the same way.
+        val growBox = box(
+            Rect(400, 100, 450, 400),
+            orientation = TextOrientation.VERTICAL,
+            minWidthPx = 300,
+        )
+        val straddler = box(Rect(100, 150, 700, 250))
+        val r = resolve(listOf(growBox, straddler), grow = true)
+        assertEquals(RenderMode.ROTATE, r[0].mode)
+        assertEquals("no growth through the upright straddler", RectF(394f, 94f, 456f, 406f), r[0].rect)
     }
 
     @Test
