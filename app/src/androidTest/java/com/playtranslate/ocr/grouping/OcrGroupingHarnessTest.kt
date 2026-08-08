@@ -106,6 +106,12 @@ class OcrGroupingHarnessTest {
         if (OcrModelManager.appContext == null) {
             OcrModelManager.appContext = appCtx.applicationContext
         }
+        // Angle census instrument: every measured angle lands in the run's
+        // logcat (dumped by run_suite.sh), so the corpus's known-upright seeds
+        // give a ground-truth upright-noise distribution — the input that
+        // prices the threshold-drop gate. Costs a string per detected line,
+        // fine at harness scale.
+        com.playtranslate.ocr.core.OrientedBoxGeometry.probeSink = { Log.d("AngleProbe", it) }
         val registry = OcrEngineRegistry()
         val sink = ResultSink(appCtx, runId)
         try {
@@ -191,6 +197,7 @@ class OcrGroupingHarnessTest {
                                 screenshotWidthInRegionSpace = bitmap.width * rec.scaleFactor,
                                 logDecisions = true,
                                 strategy = variant.strategy,
+                                angleToleranceDeg = variant.angleToleranceDeg,
                             )
                             var n = 0
                             groups.forEachIndexed { gi, g ->
