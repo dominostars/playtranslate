@@ -4,12 +4,14 @@ import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.BitmapFactory
 import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Outline
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.Paint
@@ -40,6 +42,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.widget.NestedScrollView
@@ -293,12 +296,58 @@ class CaptureResultOverlay(
      *  in place ([updateChips]) vs present fresh, and hide paths can no-op. */
     private var boxesShown = false
 
-    /** Sliver-only "drag up for more options" hint (see the body's addView). */
+    /** Sliver-only hint text (see the body's addView). Two modes, switched by
+     *  [updateSliverHint]: the idle "tap for more options" advertisement, and
+     *  the live loading status ("Recognizing text…") while a capture is still
+     *  working — a parked sheet is otherwise the ONLY thing on screen during
+     *  OCR (the boxes don't exist until Translating), so without this the
+     *  collapsed flow reads as finished before it has started. */
     private val sliverHint = TextView(ctx)
+
+    /** Loading spinner beside [sliverHint]. Sized to the hint's own leading
+     *  glyph so the two modes occupy the same strip — [SLIVER_SHEET_DP] is
+     *  fixed (a taller sliver covers bottom-anchored game dialogue) and this
+     *  must not push against it. GONE outside the loading mode, which also
+     *  stops its animation: nothing spins over the game once a result lands. */
+    private val sliverSpinner = ProgressBar(ctx, null, android.R.attr.progressBarStyleSmall)
+
+    /** [sliverSpinner] + [sliverHint] as one centered row — the unit the
+     *  collapse crossfade drives (see [applyCollapseCrossfade]). */
+    private val sliverRow = LinearLayout(ctx)
+
+    /** The idle hint's leading glyph, held so [updateSliverHint] can take it
+     *  away for the loading mode (where the spinner leads instead). */
+    private var touchAppHintIcon: Drawable? = null
+
+    /** The message of the status currently in [statusText], or null when a
+     *  result (not a status) is bound. Drives the sliver's loading mode:
+     *  [statusText] itself is faded to nothing by the collapse crossfade, so
+     *  its text can't be read off the screen while parked. */
+    private var statusMessage: String? = null
 
     /** The panel height when the sliver collapse started, so a tap-expand can
      *  return to it (the sliver itself parks the height at [sliverHeightPx]). */
     private var preSliverHeightPx = 0
+
+    /** Set once the USER has stated a posture for this sheet — a tap-expand, a
+     *  drag out of the park, a stick resize. It stands down the automatic
+     *  re-park at [CaptureState.Translating], which otherwise re-reads the
+     *  PREF and would slam the sheet shut the moment OCR lands, undoing the
+     *  tap that was made to watch that very work. Cleared by a deliberate
+     *  re-park, so parking the sheet again hands control back to the pref.
+     *
+     *  Deliberately NOT set inside [expandFromSliver]: that path is also the
+     *  automatic recovery for "boxes were expected but refused", which is the
+     *  sheet rescuing itself, not the user choosing anything. */
+    private var userStatedPosture = false
+
+    /** True while the only reason the sheet is out of its park is a tap during
+     *  a LOADING phase — a peek at progress, not a posture. [recordPosture]
+     *  keeps writing the collapsed posture through it, so watching one capture
+     *  work doesn't silently retire a collapsed default. Any real posture
+     *  gesture afterwards (drag, resize, re-park) clears it and records
+     *  normally. */
+    private var loadingPeekExpand = false
 
     /** End target of the height animation currently in [heightAnimator];
      *  meaningful only while it runs, stamped by the two starters
@@ -432,27 +481,47 @@ class CaptureResultOverlay(
             val pad = dp(24)
             setPadding(pad, pad, pad, pad)
         }
+        val hintColor = ctx.themeColor(R.attr.ptTextHint)
+        // A touch_app glyph leads the idle text — the collapsed sheet's gesture
+        // is a TAP, and the up-arrows that used to flank this said the
+        // opposite. RELATIVE (start-side) so it leads in RTL too, tinted
+        // with the text and sized to its line — the 24dp intrinsic would
+        // dwarf 11sp text. The loading mode drops it: the spinner is that
+        // mode's leading glyph, and two icons would not fit the strip.
+        touchAppHintIcon = ctx.getDrawable(R.drawable.ic_touch_app)?.mutate()?.apply {
+            setTint(hintColor)
+            setBounds(0, 0, dp(HINT_GLYPH_DP), dp(HINT_GLYPH_DP))
+        }
         sliverHint.apply {
-            setText(R.string.capture_sliver_expand_hint)
-            val hintColor = ctx.themeColor(R.attr.ptTextHint)
             setTextColor(hintColor)
             textSize = 11f
             isSingleLine = true
-            // A touch_app glyph leads the text — the collapsed sheet's gesture
-            // is a TAP, and the up-arrows that used to flank this said the
-            // opposite. RELATIVE (start-side) so it leads in RTL too, tinted
-            // with the text and sized to its line — the 24dp intrinsic would
-            // dwarf 11sp text.
-            val iconPx = dp(16)
-            val icon = ctx.getDrawable(R.drawable.ic_touch_app)?.mutate()?.apply {
-                setTint(hintColor)
-                setBounds(0, 0, iconPx, iconPx)
-            }
-            setCompoundDrawablesRelative(icon, null, null, null)
+            // Status messages are written for the 18sp status block, not this
+            // strip; a long locale must trail off rather than run out of the
+            // sheet. (The idle hint is authored to fit — this only ever bites
+            // the borrowed loading text.)
+            ellipsize = android.text.TextUtils.TruncateAt.END
             compoundDrawablePadding = dp(4)
+        }
+        sliverSpinner.apply {
+            isIndeterminate = true
+            indeterminateTintList = ColorStateList.valueOf(hintColor)
+            visibility = View.GONE
+        }
+        sliverRow.apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(
+                sliverSpinner,
+                LinearLayout.LayoutParams(dp(HINT_GLYPH_DP), dp(HINT_GLYPH_DP)).apply {
+                    marginEnd = dp(6)
+                },
+            )
+            addView(sliverHint, LinearLayout.LayoutParams(WRAP, WRAP))
             visibility = View.GONE
             alpha = 0f
         }
+        updateSliverHint()
         scroll.apply {
             isFillViewport = true
             visibility = View.GONE
@@ -539,12 +608,14 @@ class CaptureResultOverlay(
                 FrameLayout.LayoutParams(MATCH, WRAP, Gravity.CENTER),
             )
             addView(editContainer, FrameLayout.LayoutParams(MATCH, MATCH))
-            // Sliver-only "drag up" hint: lives in the sheet strip the
-            // collapse leaves visible ([SLIVER_SHEET_DP] is sized to fit it),
-            // fading in as the sections fade out. Non-clickable — taps fall
-            // through to the root's sliver rules (tap = expand).
+            // Sliver-only hint row: lives in the sheet strip the collapse
+            // leaves visible ([SLIVER_SHEET_DP] is sized to fit it), fading in
+            // as the sections fade out. Non-clickable — taps fall through to
+            // the root's sliver rules (tap = expand). The spinner and the idle
+            // glyph are the same [HINT_GLYPH_DP] box, so the loading mode
+            // occupies exactly the strip the hint always did.
             addView(
-                sliverHint,
+                sliverRow,
                 FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
                     .apply { topMargin = dp(3) },
             )
@@ -596,6 +667,11 @@ class CaptureResultOverlay(
         if (dismissed) return
         this.screenW = screenW
         this.screenH = screenH
+        // Bound the sliver hint now that the display width is known: its row is
+        // WRAP and centered, so nothing else would stop the borrowed status
+        // text of a long locale from running out past the sheet's edges.
+        sliverHint.maxWidth =
+            (screenW - dp(HINT_GLYPH_DP + SLIVER_HINT_SIDE_PAD_DP * 2)).coerceAtLeast(dp(48))
         // Inset the body's content below the status bar (the sheet fill, drawn on
         // the full body bounds, still reaches the screen top). Explicit side-zeros
         // keep overriding the InsetDrawable's reported negative top padding.
@@ -804,7 +880,7 @@ class CaptureResultOverlay(
         sessionJob = scope.launch {
             session.state.collect { state ->
                 when (state) {
-                    is CaptureState.InProgress -> setStatus(state.message)
+                    is CaptureState.InProgress -> setStatus(state.message, loading = true)
                     // OCR done: show the source now with a "Translating…" placeholder
                     // (blank translatedText renders it); Done fills it in + re-fits.
                     is CaptureState.Translating -> {
@@ -842,11 +918,17 @@ class CaptureResultOverlay(
                         // NOTHING readable, so the panel comes (or stays) up
                         // instead: the old success-gated collapse, split across
                         // the two axes.
+                        //
+                        // ...and only while the user hasn't overruled it. This
+                        // test re-reads the PREF, so without that term a tap
+                        // during the loading arc would be undone by the very
+                        // work it was made to watch: OCR lands, and the sheet
+                        // the user just opened slams shut in the same frame.
                         val sliverJustified =
                             boxesShown || !presentationPrefs.boxesEnabled
                         val startsCollapsed = CaptureResultGeometry
                             .isCollapsedPosture(effectiveStartPosture())
-                        if (startsCollapsed && sliverJustified) {
+                        if (startsCollapsed && sliverJustified && !userStatedPosture) {
                             collapseToSliver()
                         } else if (sliverMode && !sliverJustified) {
                             expandFromSliver()
@@ -961,8 +1043,17 @@ class CaptureResultOverlay(
      *  moment it's tapped. */
     private fun recordPosture() {
         if (lastResult == null || scroll.visibility != View.VISIBLE) return
-        presentationPrefs.startPosture =
-            CaptureResultGeometry.postureFor(autoMaxPx, screenH, collapsed = sliverMode)
+        presentationPrefs.startPosture = CaptureResultGeometry.postureFor(
+            autoMaxPx,
+            screenH,
+            // A sheet that is only open because the user looked in on the
+            // loading arc still records as PARKED: watching one capture work
+            // is not a change of mind about where the sheet lives, and letting
+            // it write an expanded posture would retire a collapsed default
+            // behind a single tap. Any real height gesture afterwards clears
+            // the peek and records normally (see [loadingPeekExpand]).
+            collapsed = sliverMode || loadingPeekExpand,
+        )
     }
 
     /** Re-show entry point for the controller's stash-and-rebind path: set up the
@@ -1107,6 +1198,11 @@ class CaptureResultOverlay(
         if (dismissed || animatingOut || sliverMode) return
         if (editContainer.visibility == View.VISIBLE) return
         sliverMode = true
+        // Parking hands the wheel back to the pref: whatever the user stated
+        // before, they are stating the sliver now. (No-op on the automatic
+        // park — that one only runs while nothing was stated.)
+        userStatedPosture = false
+        loadingPeekExpand = false
         dismissWordLens()
         // The sections it edits are about to fade out under the collapse.
         fontPopover?.dismiss()
@@ -1151,6 +1247,42 @@ class CaptureResultOverlay(
         animateSliverHeight(CaptureResultGeometry.minPanelHeight(screenH)) {
             updateShowOnScreenAction()
         }
+        // Apply the floor to the animation we just started. The KDoc's "every
+        // setStatus retargets" covers the paths that expand BEFORE their status
+        // arrives (Failed/NoText); a tap-expand has the opposite order — the
+        // loading status landed long ago and no further setStatus is coming —
+        // so nothing would rescue a landscape sheet whose 20% floor is shorter
+        // than the status block. Grow-only and no-op when it already fits.
+        applyStatusFloor()
+    }
+
+    /** The USER pulling the sheet out of its park: the sliver tap and the
+     *  controller's mirror of it. Distinct from [expandFromSliver], which is
+     *  ALSO the sheet's automatic rescue when boxes were expected but refused
+     *  — that is the sheet saving itself, not the user choosing anything, and
+     *  only a real gesture may stand down the re-park at Translating.
+     *
+     *  A tap during a LOADING phase expands to status height rather than the
+     *  remembered reading height: on a re-run while parked (the camera's
+     *  region change drives its loading status straight through the sliver)
+     *  [preSliverHeightPx] holds the PREVIOUS scene's fitted height, and
+     *  restoring it balloons a mostly-empty sheet open over a one-line
+     *  "Recognizing text…" — the fault [expandFromSliverForStatus] exists for. */
+    private fun userExpandFromSliver() {
+        if (dismissed || animatingOut || !sliverMode) return
+        userStatedPosture = true
+        // Two different questions, deliberately keyed to two different facts.
+        // HEIGHT: any status at all takes the status-sized expansion — the
+        // ballooning fault is about the sheet's size against a one-line block,
+        // whatever that block says. PEEK: only a status still in flight is a
+        // look at progress; anything else is the user opening the sheet to
+        // read it, which is a posture like any other.
+        loadingPeekExpand = statusMessage != null
+        if (statusText.visibility == View.VISIBLE) {
+            expandFromSliverForStatus()
+        } else {
+            expandFromSliver()
+        }
     }
 
     /** The sliver drag has passed touch slop: the user is pulling the sheet edge
@@ -1182,11 +1314,19 @@ class CaptureResultOverlay(
         if (dismissed) return
         if (panelHeightPx >= CaptureResultGeometry.minPanelHeight(screenH)) {
             sliverMode = false
+            // A dragged-to height IS a posture: it stands down the auto-park,
+            // and it supersedes any loading peek that opened the sheet first.
+            userStatedPosture = true
+            loadingPeekExpand = false
             // Adopt the dragged height like endResize does, so re-fits keep it.
             autoMaxPx = committedCeiling()
             reFitText()
             updateShowOnScreenAction()
         } else {
+            // Pulled and let fall back: the user kept it parked, so the pref
+            // takes the wheel again.
+            userStatedPosture = false
+            loadingPeekExpand = false
             animateSliverHeight(sliverHeightPx())
         }
     }
@@ -1256,9 +1396,12 @@ class CaptureResultOverlay(
         }
         scroll.alpha = f
         statusText.alpha = f
-        sliverHint.animate().cancel()
-        sliverHint.alpha = 1f - f
-        sliverHint.visibility = if (f >= 1f) View.GONE else View.VISIBLE
+        sliverRow.animate().cancel()
+        sliverRow.alpha = 1f - f
+        // GONE above the band also stops the loading spinner: a parent that
+        // isn't laid out doesn't animate its children, so an expanded sheet
+        // never pays for a spinner nobody can see.
+        sliverRow.visibility = if (f >= 1f) View.GONE else View.VISIBLE
         // The pill goes with the content. Parked, it would sit inside the
         // system's bottom-edge home gesture band — a "grab me" invitation to
         // start a drag Android usually wins, taking the user out of the game
@@ -1267,6 +1410,33 @@ class CaptureResultOverlay(
         // it, and the band it starts from reaches well above the gesture zone;
         // it just isn't advertised any more.)
         handle.alpha = f
+    }
+
+    /** The sliver strip's two modes, switched by [statusMessage].
+     *
+     *  LOADING — a capture phase still in flight — shows a spinner and the
+     *  live status text. That text is BORROWED from the expanded block rather
+     *  than restated: `status_ocr` and its siblings are already authored and
+     *  translated for exactly this moment, and a sliver that said something
+     *  different from what a tap reveals would be two vocabularies for one
+     *  phase. (It is also why this needs no new string in any of the twelve
+     *  locales.)
+     *
+     *  IDLE restores the tap advertisement. Only one glyph is ever up: the
+     *  spinner leads while loading, the touch_app icon otherwise — the strip
+     *  has room for one, and the tap hint is redundant under a spinner
+     *  anyway (tapping is what the whole band does, loading or not). */
+    private fun updateSliverHint() {
+        val loading = statusMessage
+        if (loading != null) {
+            sliverHint.text = loading
+            sliverHint.setCompoundDrawablesRelative(null, null, null, null)
+            sliverSpinner.visibility = View.VISIBLE
+        } else {
+            sliverHint.setText(R.string.capture_sliver_expand_hint)
+            sliverHint.setCompoundDrawablesRelative(touchAppHintIcon, null, null, null)
+            sliverSpinner.visibility = View.GONE
+        }
     }
 
     /** The target header's boxes toggle is offered whenever there is something
@@ -1307,7 +1477,14 @@ class CaptureResultOverlay(
 
     // ── State rendering ──────────────────────────────────────────────────
 
-    private fun setStatus(message: String, ocrProvenance: OcrProvenance? = null, screenshotPath: String? = null) {
+    private fun setStatus(
+        message: String,
+        ocrProvenance: OcrProvenance? = null,
+        screenshotPath: String? = null,
+        /** This status is a phase still in flight, not a terminal outcome —
+         *  the only kind the collapsed sliver echoes (see [updateSliverHint]). */
+        loading: Boolean = false,
+    ) {
         // No-text status affordances, each its own tappable span (so tapping one can't
         // trigger the other): the source-language name is accent-colored → source picker
         // (same as the source header); the gear → OCR picker, shown only when a pinned
@@ -1325,6 +1502,13 @@ class CaptureResultOverlay(
         // A status means no shown result — whatever boxes the session produced
         // earlier (e.g. skeletons before a translation failure) are off the table.
         overlayData = null
+        // Echo it in the sliver too — the crossfade fades statusText to nothing
+        // while parked, and during OCR there are no boxes yet either, so a
+        // collapsed flow would otherwise show no sign of the work at all.
+        // Terminal statuses are excluded: they expand out of the park anyway,
+        // and a spinner beside "no text found" claims work that has stopped.
+        statusMessage = message.takeIf { loading }
+        updateSliverHint()
         updateShowOnScreenAction()
         // The proportional loading floor (20% of screen height) is SHORTER than
         // the status block itself on a landscape screen — "Recognizing text"
@@ -1378,6 +1562,11 @@ class CaptureResultOverlay(
         nav?.clearCursor()   // fresh content: word indices + layout are stale
         statusText.visibility = View.GONE
         scroll.visibility = View.VISIBLE
+        // The loading arc ends here — at Translating, where the skeleton boxes
+        // take over as the on-screen sign of work in flight. The sliver goes
+        // back to advertising its tap.
+        statusMessage = null
+        updateSliverHint()
         updateShowOnScreenAction()
         // Fresh result with the translation section hidden: park its collapsed
         // header above the scroll fold once the fit lays out (see hiddenTopPx).
@@ -2215,7 +2404,10 @@ class CaptureResultOverlay(
         override val inSliver: Boolean get() = sliverMode
 
         override fun onControllerBack() = this@CaptureResultOverlay.onControllerBack()
-        override fun expandFromSliver() = this@CaptureResultOverlay.expandFromSliver()
+        // The controller's mirror of the sliver TAP — a user gesture, so it
+        // takes the same posture-stating path (not the bare expand, which is
+        // also the automatic boxes-refused rescue).
+        override fun expandFromSliver() = userExpandFromSliver()
 
         override fun navActions(): List<NavAction> {
             val out = ArrayList<NavAction>()
@@ -2559,6 +2751,8 @@ class CaptureResultOverlay(
             // parks in the sliver; a later tap-expand returns to the
             // pre-drag height.
             sliverMode = true
+            userStatedPosture = false   // parking hands the wheel to the pref
+            loadingPeekExpand = false
             dismissWordLens()
             nav?.clearCursor()   // every sliver entry drops the cursor
             preSliverHeightPx = resizeStartHeight
@@ -2568,6 +2762,8 @@ class CaptureResultOverlay(
             // went nowhere — a tap on the grabber, or a pull against a sheet
             // already at its content ceiling — leaves the remembered one alone
             // instead of quietly overwriting it with wherever this result sat.
+            userStatedPosture = true
+            loadingPeekExpand = false
             autoMaxPx = committedCeiling()
         }
     }
@@ -2618,10 +2814,14 @@ class CaptureResultOverlay(
             // sheet out of its park; under it, settle back into the sliver.
             if (panelHeightPx >= min) {
                 sliverMode = false
+                userStatedPosture = true
+                loadingPeekExpand = false
                 autoMaxPx = committedCeiling()
                 reFitText()
                 updateShowOnScreenAction()
             } else {
+                userStatedPosture = false
+                loadingPeekExpand = false
                 animateSliverHeight(sliverHeightPx())
             }
         } else if (panelHeightPx < min && editContainer.visibility != View.VISIBLE) {
@@ -2631,12 +2831,16 @@ class CaptureResultOverlay(
             // (the frame loop's modal suspend lands here) — close it like
             // collapseToSliver does rather than leave it floating over a park.
             sliverMode = true
+            userStatedPosture = false   // parking hands the wheel to the pref
+            loadingPeekExpand = false
             dismissWordLens()
             fontPopover?.dismiss()
             nav?.clearCursor()   // every sliver entry drops the cursor
             preSliverHeightPx = stickResizeStartHeight
             animateSliverHeight(sliverHeightPx())
         } else if (panelHeightPx != stickResizeStartHeight) {
+            userStatedPosture = true
+            loadingPeekExpand = false
             autoMaxPx = committedCeiling()
         }
     }
@@ -2923,7 +3127,7 @@ class CaptureResultOverlay(
                         sliverTouch = false
                         when {
                             sliverDragging -> endSliverDrag()
-                            ev.actionMasked == MotionEvent.ACTION_UP -> expandFromSliver()
+                            ev.actionMasked == MotionEvent.ACTION_UP -> userExpandFromSliver()
                         }
                         sliverDragging = false
                     }
@@ -3079,6 +3283,14 @@ class CaptureResultOverlay(
          *  OPAQUE: every dp covers a dp of game, and bottom-anchored dialogue
          *  is exactly what it covers. Not a knob for pill clearance. */
         const val SLIVER_SHEET_DP = 24
+        /** The sliver hint's leading glyph box — the touch_app icon and the
+         *  loading spinner alike. Sized to the 11sp line rather than the 24dp
+         *  intrinsic, and shared by both modes so neither can outgrow
+         *  [SLIVER_SHEET_DP]. */
+        const val HINT_GLYPH_DP = 16
+        /** Breathing room kept either side of the sliver hint row when its
+         *  text is bounded (see show()'s maxWidth). */
+        const val SLIVER_HINT_SIDE_PAD_DP = 20
         /** Duration of the collapse-to-sliver / expand-from-sliver slide. */
         const val SLIVER_DURATION_MS = 220L
         /** Duration of the section fade that rides the sliver transitions. */
