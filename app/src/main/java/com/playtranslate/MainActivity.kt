@@ -1626,11 +1626,11 @@ class MainActivity :
                     // a stale Idle on top of a now-valid panel result.
                     svc.statusUpdates.collect { msg -> resultVm.showStatus(msg) }
                 }
-                launch {
-                    svc.holdLoading.collect { loading ->
-                        CaptureBackendResolver.activeOverlayUi?.setIconsLoading(loading)
-                    }
-                }
+                // No hold-spinner collector here. The floating icons' loading
+                // state is pushed from the service (CaptureService.setHoldLoading)
+                // because the gesture that arms it fires while this activity is
+                // STOPPED — a lifecycle-scoped collector is dead in exactly the
+                // moment the spinner is for.
             }
         }
         svc.degradationState.observe(this) { kind ->

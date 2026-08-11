@@ -554,8 +554,13 @@ class OverlayUiController(
         verticalGrowEnabled: Boolean = false,
         authoritativeBounds: Boolean = false,
     ) {
-        // Overlay is appearing — dismiss loading spinner across all icons.
-        setIconsLoading(false)
+        // Overlay is appearing — dismiss the loading spinner across all icons.
+        // Through the service rather than straight at the icons: the service
+        // holds the state of record, and [syncIconState] re-pushes it whenever
+        // an icon is installed. Clearing only the views here would leave that
+        // record armed, so the next sync would resurrect a spinner for a hold
+        // that already delivered.
+        CaptureService.instance?.setHoldLoading(false)
 
         val displayId = display.displayId
         // Reuse the existing view only if its pinhole mode, oneShot flag, AND
