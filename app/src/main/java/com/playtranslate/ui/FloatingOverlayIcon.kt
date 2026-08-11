@@ -61,8 +61,9 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         color = defaultCircleColor
         style = Paint.Style.FILL
     }
+    private val borderColor = "#66888888".toColorInt()
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = "#66888888".toColorInt()
+        color = borderColor
         style = Paint.Style.STROKE
         strokeWidth = 1.5f * resources.displayMetrics.density
     }
@@ -90,13 +91,11 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     // drives burn-in. Three mitigations stack and are all draw-time only (no
     // window moves, so the touch target / gestures / persistence stay
     // untouched): the silver *stroked* chevron above lowers luminance and
-    // lit-pixel count; [dimLevel] fades the whole glyph after inactivity; and
-    // [orbitDy] slowly slides it a few px so no subpixel stays lit forever.
+    // lit-pixel count; [dimLevel] darkens the glyph's colours after inactivity
+    // — opacity is deliberately left alone, see [applyDim]; and [orbitDy]
+    // slowly slides it a few px so no subpixel stays lit forever.
     private var dimLevel = 1f
     private var dimAnimator: ValueAnimator? = null
-    private val circleBaseAlpha = 0xCC
-    private val borderBaseAlpha = 0x66
-    private val arrowBaseAlpha = 0xFF
     private var orbitDy = 0f
     private var orbitStep = 0
 
@@ -316,9 +315,10 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         private const val FLING_THRESHOLD = 600f // px/s
         private const val TAP_THRESHOLD_DP = 18f
         private const val SNAP_DURATION_MS = 250L
-        /** Idle delay before the icon fades, and the dimmed level (fraction of
-         *  full). 0.6 cuts emitted light ~40% — meaningful burn-in relief while
-         *  staying comfortably visible, including the live-mode status colour. */
+        /** Idle delay before the icon darkens, and the dimmed level (fraction
+         *  of full colour value). 0.6 cuts emitted light ~40% — meaningful
+         *  burn-in relief while staying comfortably visible, including the
+         *  live-mode status colour. */
         private const val IDLE_DIM_DELAY_MS = 60_000L
         private const val IDLE_DIM_LEVEL = 0.6f
         private const val DIM_FADE_MS = 600L
@@ -339,7 +339,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         val center = viewSizePx / 2f
         val r = circleSizePx / 2f
-        circlePaint.color = when {
+        val circleColor = when {
             liveMode && degraded -> liveDegradedCircleColor
             liveMode -> liveCircleColor
             else -> defaultCircleColor
@@ -356,19 +356,20 @@ class FloatingOverlayIcon(context: Context) : View(context) {
             return
         }
         // Compact (always): circle pushed off-screen so only ~1/4 is visible.
-        // Burn-in: paints are alpha-scaled by dimLevel (idle fade) and the whole
-        // glyph rides the slow vertical micro-orbit via a canvas translate.
+        // Burn-in: paint colours are value-scaled by dimLevel (idle darkening)
+        // and the whole glyph rides the slow vertical micro-orbit via a canvas
+        // translate.
         val compactOffset = r * 0.5f
         val cx = if (currentEdge == Edge.LEFT) center - compactOffset else center + compactOffset
         canvas.withTranslation(y = orbitDy) {
-            applyDim(circlePaint, circleBaseAlpha)
+            applyDim(circlePaint, circleColor)
             canvas.drawCircle(cx, center, r, circlePaint)
-            applyDim(borderPaint, borderBaseAlpha)
+            applyDim(borderPaint, borderColor)
             canvas.drawCircle(cx, center, r, borderPaint)
             // Arrow in the visible slice, nudged toward the screen edge.
             val arrowNudge = r * 0.65f
             val arrowCx = if (currentEdge == Edge.LEFT) cx + arrowNudge else cx - arrowNudge
-            applyDim(arrowPaint, arrowBaseAlpha)
+            applyDim(arrowPaint, arrowColor)
             drawEdgeArrow(canvas, arrowCx, center, r * 0.22f)
         }
     }
@@ -677,8 +678,21 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     }
 
     // ── OLED burn-in mitigation: idle-dim + micro-orbit drivers ─────────
-    private fun applyDim(paint: Paint, baseAlpha: Int) {
-        paint.alpha = (baseAlpha * dimLevel).toInt().coerceIn(0, 255)
+    /** Applies the idle dim to [baseColor] by scaling its RGB, leaving its
+     *  alpha exactly as authored. Fading the icon out instead would make it
+     *  harder to find at a glance and wouldn't even buy the burn-in relief
+     *  reliably — a translucent dark disc over a bright game frame gets
+     *  *brighter* as it fades, since more of the frame shows through. Scaling
+     *  the colour value cuts emitted light directly. The disc's near-black
+     *  fill has nowhere to go, so the visible effect is the silver chevron,
+     *  the grey border, and the live-mode status colour going darker. */
+    private fun applyDim(paint: Paint, baseColor: Int) {
+        paint.color = if (dimLevel >= 1f) baseColor else Color.argb(
+            Color.alpha(baseColor),
+            (Color.red(baseColor) * dimLevel).toInt().coerceIn(0, 255),
+            (Color.green(baseColor) * dimLevel).toInt().coerceIn(0, 255),
+            (Color.blue(baseColor) * dimLevel).toInt().coerceIn(0, 255),
+        )
     }
 
     private val idleDimRunnable = object : Runnable {
@@ -696,7 +710,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     private fun animateDim(target: Float) {
         if (dimLevel == target && dimAnimator?.isRunning != true) return
         dimAnimator?.cancel()
-        // Gentle fade out, quick restore.
+        // Gentle darkening, quick restore.
         val dur = if (target < dimLevel) DIM_FADE_MS else UNDIM_FADE_MS
         dimAnimator = ValueAnimator.ofFloat(dimLevel, target).apply {
             duration = dur
