@@ -156,6 +156,26 @@ class TranslationOverlayView(
     init {
         clipChildren = false
         clipToPadding = false
+        // Every child of this view is placed in CAPTURE-BITMAP pixels mapped to
+        // the display — a physical coordinate space that must never mirror. Left
+        // to inherit, it would: ViewRootImpl stamps the window configuration's
+        // layout direction onto any root whose own direction is INHERIT
+        // (performTraversals), so an Arabic system locale silently turns this
+        // FrameLayout RTL. FrameLayout's DEFAULT_CHILD_GRAVITY is TOP|START,
+        // which resolves to RIGHT there and computes childLeft as
+        // `parentRight - width` — DISCARDING leftMargin, while topMargin (no
+        // relative bit) still applies. Result: every chip collapses onto the
+        // right screen edge at its correct height, and the translationX-placed
+        // children (furigana, ROTATE, and the slanted SOURCE_ANGLE chips) are
+        // pushed off-screen past it.
+        //
+        // Pinning the container is deliberate over per-site absolute gravity:
+        // this is a pure geometry surface with no localized chrome, so one pin
+        // covers every render mode, including ones added later. Text direction
+        // is NOT affected — it resolves independently from content
+        // (TEXT_DIRECTION_FIRST_STRONG), so an Arabic translation still lays out
+        // as an RTL paragraph and stays right-aligned inside its chip.
+        layoutDirection = LAYOUT_DIRECTION_LTR
     }
 
     private val dp = context.resources.displayMetrics.density
