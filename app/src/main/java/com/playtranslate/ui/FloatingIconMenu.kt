@@ -58,6 +58,23 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private val dp = resources.displayMetrics.density
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
+    /** Placement anchor for the chrome this menu positions in absolute screen
+     *  pixels — menu card, record button, instruction pill, placed buttons.
+     *
+     *  Deliberately absolute LEFT, not relative START. This view is a root
+     *  WindowManager window, so ViewRootImpl stamps the window configuration's
+     *  layout direction onto it (performTraversals, since our own direction is
+     *  INHERIT). Under an Arabic system locale it turns RTL, START resolves to
+     *  RIGHT, and FrameLayout then computes childLeft as
+     *  `parentRight - width - rightMargin` — DISCARDING the leftMargin every
+     *  placement below sets, while topMargin still applies. LEFT carries no
+     *  relative bit, so the screen-pixel arithmetic means what it says in
+     *  either locale.
+     *
+     *  This anchors PLACEMENT only. Each child's own layoutDirection still
+     *  inherits the locale, so the card's labels and rows stay RTL in Arabic. */
+    private val absoluteTopLeft = Gravity.TOP or Gravity.LEFT
+
     // Screen margin the menu card is anchored by, and the clearance the
     // drag-hint pill keeps from the card / screen edges. See positionInstructionPill.
     private val screenMargin = (16 * dp).toInt()
@@ -1211,7 +1228,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
             val menuY = (iconCy - mh / 2).coerceIn(margin, screenH - mh - margin)
 
-            lp.gravity = Gravity.TOP or Gravity.START
+            lp.gravity = absoluteTopLeft
             lp.leftMargin = menuX
             lp.topMargin = menuY
             menuCard.layoutParams = lp
@@ -1291,7 +1308,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             .coerceIn(screenMargin, screenH - collapsedCardHeightPx - screenMargin)
         val band = recordAudioBand(cardTop, cardTop + collapsedCardHeightPx, screenH) ?: return
         val lp = recordAudioBtn.layoutParams as LayoutParams
-        lp.gravity = Gravity.TOP or Gravity.START
+        lp.gravity = absoluteTopLeft
         lp.width = collapsedCardWidthPx
         lp.height = band.last - band.first
         lp.leftMargin = cardLeft
@@ -1374,7 +1391,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 ph = instructionPill.measuredHeight
             }
             val lp = instructionPill.layoutParams as LayoutParams
-            lp.gravity = Gravity.TOP or Gravity.START
+            lp.gravity = absoluteTopLeft
             lp.leftMargin = (cx - pw / 2).coerceIn(0, (screenW - pw).coerceAtLeast(0))
             lp.topMargin = (cy - ph / 2).coerceIn(0, (screenH - ph).coerceAtLeast(0))
             instructionPill.layoutParams = lp
@@ -1447,7 +1464,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
         fun place(view: View, w: Int, h: Int, left: Int, top: Int) {
             addView(view, LayoutParams(w, h).apply {
-                gravity = Gravity.TOP or Gravity.START
+                gravity = absoluteTopLeft
                 leftMargin = clampLeft(w, left)
                 topMargin = clampTop(h, top)
             })

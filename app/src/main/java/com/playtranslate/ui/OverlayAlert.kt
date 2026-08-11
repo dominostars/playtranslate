@@ -227,7 +227,6 @@ class OverlayAlert private constructor(
         if (showAppIcon) {
             val circleSize = (56 * dp).toInt()
             val imgSize = (circleSize * 1.5f).toInt()
-            val imgOffset = (circleSize - imgSize) / 2
             val iconFrame = FrameLayout(context).apply {
                 layoutParams = LinearLayout.LayoutParams(circleSize, circleSize).apply {
                     gravity = Gravity.CENTER_HORIZONTAL
@@ -243,10 +242,13 @@ class OverlayAlert private constructor(
             val icon = ImageView(context).apply {
                 setImageResource(R.mipmap.ic_launcher_img)
                 scaleType = ImageView.ScaleType.FIT_CENTER
-                layoutParams = FrameLayout.LayoutParams(imgSize, imgSize).apply {
-                    leftMargin = imgOffset
-                    topMargin = imgOffset
-                }
+                // The mark is deliberately larger than its circular frame and
+                // bleeds past every edge; Gravity.CENTER states that directly.
+                // The equivalent negative left/top margins it replaces relied on
+                // the default TOP|START gravity, which resolves to RIGHT under
+                // an RTL system locale — there FrameLayout drops leftMargin and
+                // the mark drifts off-centre horizontally.
+                layoutParams = FrameLayout.LayoutParams(imgSize, imgSize, Gravity.CENTER)
             }
             iconFrame.addView(icon)
             dialog.addView(iconFrame)

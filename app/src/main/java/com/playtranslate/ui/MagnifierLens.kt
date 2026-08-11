@@ -703,9 +703,17 @@ class MagnifierLens(
             // Transparent: only [lens] paints. The rest of the screen-sized
             // root is an invisible touch catcher.
             background = null
+            // Absolute LEFT, not relative START: this is a root WindowManager
+            // window, so ViewRootImpl stamps the configuration's layout
+            // direction on it and an Arabic system locale turns it RTL — where
+            // START resolves to RIGHT and lays the column out at
+            // `viewW - lensW` before [setLensX]'s translationX is even added.
+            // That also desynchronises [dispatchTouchEvent], which hit-tests
+            // the column as `lens.translationX ..+ lensW` on the assumption
+            // that lens.left is 0.
             addView(
                 lens,
-                LayoutParams(lensW, LayoutParams.MATCH_PARENT, Gravity.TOP or Gravity.START),
+                LayoutParams(lensW, LayoutParams.MATCH_PARENT, Gravity.TOP or Gravity.LEFT),
             )
         }
 
@@ -1230,11 +1238,17 @@ class MagnifierLens(
             val scrollTopPad = if (lensFlipped) bodyOuterSidePadPx else bodyPillSidePadPx
             val scrollBottomPad = if (lensFlipped) bodyPillSidePadPx else bodyOuterSidePadPx
             definitionsScroll.setPadding(0, scrollTopPad, 0, scrollBottomPad)
+            // Absolute LEFT + leftMargin throughout this method (never
+            // START/marginStart): every offset here is a view-pixel coordinate
+            // shared with the Canvas geometry — [cardLeftInView], the clip
+            // path, the crosshair — and canvas coordinates do not mirror. Under
+            // an RTL system locale the relative spelling would slide the placed
+            // chrome off the card the clip path still paints in place.
             definitionsScroll.layoutParams = LayoutParams(
                 cardW - 2 * bodyEdgeBufferPx, cardHeightPx - 2 * bodyEdgeBufferPx,
-                Gravity.START or Gravity.TOP,
+                Gravity.LEFT or Gravity.TOP,
             ).apply {
-                marginStart = chipHaloXPx + bodyEdgeBufferPx
+                leftMargin = chipHaloXPx + bodyEdgeBufferPx
                 topMargin = bodyTopOffset + bodyEdgeBufferPx
             }
 
@@ -1251,11 +1265,11 @@ class MagnifierLens(
             val chipTopMargin = pillAnchorY - chipHitSizePx / 2
             leftChip.layoutParams = LayoutParams(
                 chipHitSizePx, chipHitSizePx,
-                Gravity.START or Gravity.TOP,
+                Gravity.LEFT or Gravity.TOP,
             ).apply { topMargin = chipTopMargin }
             rightChip.layoutParams = LayoutParams(
                 chipHitSizePx, chipHitSizePx,
-                Gravity.END or Gravity.TOP,
+                Gravity.RIGHT or Gravity.TOP,
             ).apply { topMargin = chipTopMargin }
         }
 
@@ -2069,18 +2083,22 @@ class MagnifierLens(
             val chipTopMargin = (leftChip.layoutParams as? LayoutParams)?.topMargin
                 ?: (pillAnchorY - chipHitSizePx / 2)
 
+            // Absolute LEFT/RIGHT + left/rightMargin: pillLeft and pillRight are
+            // view-pixel coordinates measured off [viewW], so pairing them with
+            // relative START/END margins would mirror the pair under an RTL
+            // locale and swap the two chips — prev/next would read backwards.
             leftChip.layoutParams = LayoutParams(
                 chipHitSizePx, chipHitSizePx,
-                Gravity.START or Gravity.TOP,
+                Gravity.LEFT or Gravity.TOP,
             ).apply {
-                marginStart = pillLeft - chipVisDiameterPx - chipHaloPadPx - chipPillGapPx
+                leftMargin = pillLeft - chipVisDiameterPx - chipHaloPadPx - chipPillGapPx
                 topMargin = chipTopMargin
             }
             rightChip.layoutParams = LayoutParams(
                 chipHitSizePx, chipHitSizePx,
-                Gravity.END or Gravity.TOP,
+                Gravity.RIGHT or Gravity.TOP,
             ).apply {
-                marginEnd = (viewW - pillRight) - chipVisDiameterPx - chipHaloPadPx - chipPillGapPx
+                rightMargin = (viewW - pillRight) - chipVisDiameterPx - chipHaloPadPx - chipPillGapPx
                 topMargin = chipTopMargin
             }
 
