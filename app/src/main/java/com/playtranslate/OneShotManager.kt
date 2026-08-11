@@ -130,14 +130,14 @@ class OneShotManager(private val service: CaptureService) {
             is HoldOutcome.Superseded -> Unit
             is HoldOutcome.NoText -> {
                 if (displayId == cycle.panelDisplayId) {
-                    service.emitHoldLoading(false)
+                    service.setHoldLoading(false)
                     service.emitLiveNoText(displayId)
                 }
                 showNoTextPill(displayId)
             }
             is HoldOutcome.Failed -> {
                 DetectionLog.log("hold cycle FAILED on D$displayId: ${outcome.why}")
-                if (displayId == cycle.panelDisplayId) service.emitHoldLoading(false)
+                if (displayId == cycle.panelDisplayId) service.setHoldLoading(false)
                 showFailurePill(displayId)
             }
         }

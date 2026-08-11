@@ -290,12 +290,6 @@ class CaptureService : Service() {
     private val _statusUpdates = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val statusUpdates: SharedFlow<String> = _statusUpdates.asSharedFlow()
 
-    /** Hold-to-preview loading state. StateFlow because consumers (the
-     *  floating icon's loading indicator) need the current value, not a
-     *  stream of transitions. */
-    private val _holdLoading = MutableStateFlow(false)
-    val holdLoading: StateFlow<Boolean> = _holdLoading.asStateFlow()
-
     // ── Internal emit helpers (callable from sibling capture modes) ──────
 
     internal fun emitResult(result: TranslationResult) {
@@ -346,7 +340,6 @@ class CaptureService : Service() {
         _panelState.value = PanelState.Idle
         livePanelRecord.clear()
     }
-    internal fun emitHoldLoading(loading: Boolean) { _holdLoading.value = loading }
 
     /** Observable translation-degradation state — one [DegradedWarningKind]
      *  drives every consumer:
@@ -391,6 +384,36 @@ class CaptureService : Service() {
         )
     }
 
+    /** Whether a one-shot hold gesture is currently in flight, i.e. whether
+     *  the floating icons should be wearing their loading spinner. State of
+     *  record for that spinner — see [setHoldLoading]. */
+    private var holdLoading = false
+
+    /**
+     * Arm / disarm the floating icons' hold spinner.
+     *
+     * Pushed straight at the icons rather than published on a flow the
+     * activity collects. The spinner is a sub-window of an overlay icon the
+     * service owns, and the gesture that arms it happens precisely when
+     * MainActivity is STOPPED — the user is holding the icon over a
+     * fullscreen game. A `repeatOnLifecycle(STARTED)` collector is cancelled
+     * in exactly that state, so routing this through the activity meant the
+     * spinner could only appear when the app itself was already on screen
+     * (dual-screen), and never in the single-screen case it exists for. The
+     * icons' live-mode and degraded colours have always been pushed from here
+     * ([syncIconState]) for the same reason; only this one had drifted onto
+     * the activity, when the service's outbound callbacks became flows.
+     *
+     * Main thread only — it ends in View mutation. Every caller already is:
+     * the icon's touch handlers, MainActivity, and [serviceScope] (which is
+     * Dispatchers.Main).
+     */
+    internal fun setHoldLoading(loading: Boolean) {
+        if (holdLoading == loading) return
+        holdLoading = loading
+        CaptureBackendResolver.activeOverlayUi?.setIconsLoading(loading)
+    }
+
     /** Push current service state to every floating icon. Called automatically
      *  by [setLiveDisplays] (on the empty↔non-empty transition), [setDegraded],
      *  and when icons are installed or torn down (from
@@ -400,6 +423,7 @@ class CaptureService : Service() {
         val ui = CaptureBackendResolver.activeOverlayUi ?: return
         ui.setIconsLiveMode(isLive)
         ui.setIconsDegraded(translationDegraded)
+        ui.setIconsLoading(holdLoading)
     }
 
     // ── Debug: MediaProjection mirror probe (Step-0 "D1" verification) ────
@@ -2381,13 +2405,21 @@ class CaptureService : Service() {
 
     /**
      * Common hold-to-preview end sequence. Cancels the one-shot (which hides
-     * its overlay), clears [holdActive], and refreshes the live mode so it
-     * resumes from a clean state. Safe to call in the pinhole-peek case
-     * where no one-shot was launched — cancel on a null job is a no-op.
+     * its overlay), clears [holdActive] and the icons' spinner, and refreshes
+     * the live mode so it resumes from a clean state. Safe to call in the
+     * pinhole-peek case where no one-shot was launched — cancel on a null job
+     * is a no-op, and the spinner was never armed there.
+     *
+     * The spinner clear lives here rather than in each caller so that every
+     * way a hold can end — lift, cancel, hotkey release — disarms it through
+     * one line. The one-shot's own terminals ([OneShotManager]) clear it too,
+     * so a gesture whose lift never arrives (window destroyed mid-hold) still
+     * ends up disarmed.
      */
     private fun endHoldPreview() {
         oneShotManager.cancel()
         holdActive = false
+        setHoldLoading(false)
         if (isLive) {
             // Refresh every per-display mode — hold paused them all globally.
             liveModes.values.forEach { it.refresh() }
@@ -2421,7 +2453,7 @@ class CaptureService : Service() {
             CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlay()
             return
         }
-        _holdLoading.value = true
+        setHoldLoading(true)
         val forced = if (isLive && isFurigana) {
             OverlayMode.TRANSLATION
         } else {
@@ -2457,7 +2489,7 @@ class CaptureService : Service() {
         if (targets.isEmpty()) return
         val panelTarget = oneShotPanelDisplayId(targets)
         lastInteractedDisplayId = panelTarget
-        _holdLoading.value = true
+        setHoldLoading(true)
         val forced = if (isLive && isFurigana) {
             OverlayMode.TRANSLATION
         } else {
@@ -2468,7 +2500,6 @@ class CaptureService : Service() {
 
     /** End a hold-to-preview gesture (in-app translate button). */
     fun holdEnd() {
-        _holdLoading.value = false
         endHoldPreview()
     }
 
@@ -2480,7 +2511,6 @@ class CaptureService : Service() {
      * back to its normal render cycle.
      */
     fun holdCancel() {
-        _holdLoading.value = false
         endHoldPreview()
     }
 
