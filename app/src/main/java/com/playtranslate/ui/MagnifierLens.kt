@@ -124,6 +124,54 @@ internal fun computeGrownCardHeight(
     return desiredCardH.coerceIn(baseCardH, maxCardH.coerceAtLeast(baseCardH))
 }
 
+/**
+ * Widest the pill capsule may render inside a [viewW]-wide lens host.
+ *
+ * The chips are seated off the pill's own edges ([computeChipLaneMargins]), so
+ * every pixel the pill takes past this cap pushes them a pixel further past the
+ * host's frame — where the FrameLayout clips them away, visible disk and touch
+ * target together. At exactly this width the two chips land flush with the
+ * host's left and right edges: the resting placement they are laid out at
+ * before the reveal slides them out from under the pill.
+ *
+ * @param chipLane horizontal space one chip needs beside the pill — its
+ *   hit-halo pad, its visible disk, and the resting gap to the pill's edge.
+ */
+internal fun computeMaxPillWidth(viewW: Int, chipLane: Int): Int =
+    (viewW - 2 * chipLane).coerceAtLeast(0)
+
+/**
+ * Left and right margins that seat the chips one [chipLane] outside a
+ * [pillWidth]-wide pill centered in a [viewW]-wide host. Both come out ≥ 0
+ * exactly when [pillWidth] is within [computeMaxPillWidth].
+ */
+internal fun computeChipLaneMargins(viewW: Int, pillWidth: Int, chipLane: Int): Pair<Int, Int> {
+    val pillLeft = (viewW - pillWidth) / 2
+    val pillRight = pillLeft + pillWidth
+    return (pillLeft - chipLane) to (viewW - pillRight - chipLane)
+}
+
+/**
+ * Split what [maxPillWidth] leaves after [fixedChromeWidth] — paddings,
+ * divider, gaps, chevron — between the pill's headline and its reading, given
+ * the [readingWidth] the reading wants at its settled text size.
+ *
+ * The reading takes only what it needs, but never more than half the budget:
+ * the headline is the word being looked up, and a long reading must not starve
+ * it. Both numbers are handed to their views as maxWidths, so their sum plus
+ * the chrome is what bounds the capsule's WRAP_CONTENT width — and that bound
+ * is what keeps the chip lanes intact.
+ */
+internal fun computePillTextAllotment(
+    maxPillWidth: Int,
+    fixedChromeWidth: Int,
+    readingWidth: Int,
+): Pair<Int, Int> {
+    val budget = (maxPillWidth - fixedChromeWidth).coerceAtLeast(0)
+    val word = (budget - readingWidth.coerceAtLeast(0)).coerceAtLeast(budget - budget / 2)
+    return word to (budget - word)
+}
+
 class MagnifierLens(
     internal val rawCtx: Context,
     internal val wm: WindowManager,
@@ -767,6 +815,12 @@ class MagnifierLens(
         private val showAnkiChip: Boolean,
     ) : FrameLayout(ctx) {
         private fun dp(v: Float): Int = (density * v).toInt()
+        /** sp → px through the display metrics, so the pill's fit measures text
+         *  the way [TextView.setTextSize] will render it. [density] alone
+         *  ignores the user's font scale and under-measures every string on a
+         *  large-text device — which lets the fitted pill overrun its cap. */
+        private fun spPx(v: Float): Float =
+            TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, resources.displayMetrics)
         /** Replace the alpha byte of [color] with [alpha] (0..255). Used to
          *  layer the spec's design alphas onto themed RGB tokens — e.g.
          *  the card border is the theme's primary-text color at 16%. */
@@ -1043,6 +1097,18 @@ class MagnifierLens(
         // Chips: Speak (left) and Anki (right) route through the lens's
         // [onSpeakTap] / [onAnkiTap] callbacks — wired in [DragLookupController].
         // -----------------------------------------------------------------
+        /** Gap between the chip's visible disk and the pill's outer edge
+         *  in the resting (post-reveal) layout. */
+        private val chipPillGapPx = dp(14f)
+        /** Horizontal space one chip claims beside the pill: the outer half of
+         *  its hit halo, its visible disk, and the gap to the pill. */
+        private val chipLanePx = chipHaloPadPx + chipVisDiameterPx + chipPillGapPx
+        /** Hard cap on the pill's width — what's left of the host view once
+         *  both chip lanes are reserved. [fitPillText] sizes and bounds the
+         *  pill's text against it, which is what keeps [revealChips] able to
+         *  seat both chips inside the frame however long the word is. */
+        private val pillMaxWidthPx = computeMaxPillWidth(viewW, chipLanePx)
+
         // Speak chip's loading spinner — swapped in for the icon while a TTS
         // request is in flight (see [setSpeakChipLoading]).
         private val leftChipSpinner = ProgressBar(
@@ -1598,7 +1664,10 @@ class MagnifierLens(
                 } else {
                     pillWordView.text = newWord
                 }
-                fitPillWordSize(newWord, suffix)
+                fitPillText(
+                    word = if (suffix.isEmpty()) newWord else "$newWord $suffix",
+                    reading = "",
+                )
                 val pad = if (newPitch.isNotEmpty())
                     (pillWordView.textSize * 0.22f).toInt() else 0
                 pillWordView.setPadding(0, pad, 0, 0)
@@ -1610,13 +1679,11 @@ class MagnifierLens(
                 pillWordView.text = newWord
                 if (newPitch.isEmpty()) {
                     pillReadingView.text = newReading
-                    fitPillReadingSize(newWord, newReading)
+                    fitPillText(newWord, newReading)
                     pillReadingView.setPadding(0, 0, 0, 0)
                 } else {
                     pillReadingView.text = buildPitchAnnotatedReading(newReading, newPitch)
-                    // Fit against reading + suffix; the suffix is measured at
-                    // full size though it renders at 0.75× — erring roomy.
-                    fitPillReadingSize(
+                    fitPillText(
                         newWord,
                         newReading + " " + newPitch.joinToString("·") { "[$it]" },
                     )
@@ -1704,61 +1771,65 @@ class MagnifierLens(
             return pillView.measuredWidth
         }
 
-        /** Shrink the reading text 1sp at a time down to 11sp until the
-         *  whole pill fits inside the card width. Stateless across calls.
-         *  Returning to max sp on short readings is automatic — every call
-         *  starts the search from [pillReadingMaxSp]. */
-        private fun fitPillReadingSize(word: String, reading: String) {
-            pillReadingView.setTextSize(TypedValue.COMPLEX_UNIT_SP, pillReadingMaxSp)
-            if (reading.isEmpty() || word.isEmpty()) return
-            // The pill can grow to (at most) the inside-the-card-padding
-            // width minus a safety margin. We don't have an authoritative
-            // visual budget, so cap at cardW - 2 × bodyHPaddingPx to leave
-            // breathing room on each side; the chip's visible disks sit
-            // ~36dp inside the card edge on each side anyway, so the pill
-            // comfortably owns the middle.
-            val available = (cardW - 2 * bodyHPaddingPx).toFloat()
-            pillWordSizingPaint.textSize = pillWordSp * density
-            val wordWidth = pillWordSizingPaint.measureText(word)
-            val fixed = wordWidth +
-                pillDividerWidth.toFloat() +
-                pillChevronSize.toFloat() +
-                (pillGap * 2).toFloat() +
-                pillChevronMarginStart.toFloat() +
-                pillPaddingLead.toFloat() +
-                pillPaddingTrail.toFloat()
-            val readingAvailable = (available - fixed).coerceAtLeast(0f)
-            var sp = pillReadingMaxSp
-            while (sp > pillReadingMinSp) {
-                pillReadingSizingPaint.textSize = sp * density
-                if (pillReadingSizingPaint.measureText(reading) <= readingAvailable) break
-                sp -= 1f
-            }
-            pillReadingView.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
-        }
+        /**
+         * Size and bound the pill's headline and reading so the capsule can
+         * never outgrow [pillMaxWidthPx] — the width past which [revealChips]
+         * has nowhere left to seat the chips but off the frame.
+         *
+         * [word] and [reading] are the strings the two slots will draw, pitch
+         * `[n]` suffix included (measured at full size though it renders at
+         * 0.75×, which errs roomy). Pass an empty [reading] for the states with
+         * no reading slot: the kana-only pill, where the headline carries the
+         * accent itself, and words that have no reading at all.
+         *
+         * The reading yields first, shrinking 14→11sp against a full-size
+         * headline — the long-standing rule, so a pill that fits today is
+         * untouched. The headline then yields against what the reading settled
+         * at, shrinking 24sp down to the same 11sp floor rather than
+         * ellipsizing away the identity of the word. Whatever neither step can
+         * save is ellipsized by the maxWidths, which is also what makes the
+         * capsule's natural width bounded by construction rather than by
+         * measurement luck.
+         *
+         * Stateless across calls: every call starts its search from the max
+         * sizes, so a short label returns to full size on its own.
+         */
+        private fun fitPillText(word: String, reading: String) {
+            val showReading = reading.isNotEmpty()
+            val fixedChrome = pillPaddingLead + pillPaddingTrail +
+                pillChevronSize + pillChevronMarginStart +
+                if (showReading) pillDividerWidth + 2 * pillGap else 0
+            val textBudget = (pillMaxWidthPx - fixedChrome).coerceAtLeast(0).toFloat()
 
-        /** Shrink the kana-only headline (plus its [n] suffix) down to the card
-         *  budget, mirroring [fitPillReadingSize] — here the headline carries the
-         *  accent and there's no reading slot to absorb the width. Stateless:
-         *  starts each call from [pillWordSp]. */
-        private fun fitPillWordSize(word: String, suffix: String) {
-            pillWordView.setTextSize(TypedValue.COMPLEX_UNIT_SP, pillWordSp)
-            if (word.isEmpty()) return
-            val available = (cardW - 2 * bodyHPaddingPx).toFloat()
-            // No divider/reading/gap in the kana-only pill — just word + chevron.
-            val fixed = pillChevronSize.toFloat() +
-                pillChevronMarginStart.toFloat() +
-                pillPaddingLead.toFloat() +
-                pillPaddingTrail.toFloat()
-            val wordAvailable = (available - fixed).coerceAtLeast(0f)
-            val measured = if (suffix.isEmpty()) word else "$word $suffix"
-            var sp = pillWordSp
-            while (sp > pillReadingMinSp) {
-                pillWordSizingPaint.textSize = sp * density
-                if (pillWordSizingPaint.measureText(measured) <= wordAvailable) break
-                sp -= 1f
+            pillWordSizingPaint.textSize = spPx(pillWordSp)
+            val readingRoom = textBudget - pillWordSizingPaint.measureText(word)
+            var readingSp = pillReadingMaxSp
+            if (showReading) {
+                while (readingSp > pillReadingMinSp) {
+                    pillReadingSizingPaint.textSize = spPx(readingSp)
+                    if (pillReadingSizingPaint.measureText(reading) <= readingRoom) break
+                    readingSp -= 1f
+                }
+                pillReadingSizingPaint.textSize = spPx(readingSp)
             }
-            pillWordView.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+            val readingWidth =
+                if (showReading) pillReadingSizingPaint.measureText(reading) else 0f
+            val (wordAllot, readingAllot) = computePillTextAllotment(
+                maxPillWidth = pillMaxWidthPx,
+                fixedChromeWidth = fixedChrome,
+                readingWidth = readingWidth.roundToInt(),
+            )
+
+            var wordSp = pillWordSp
+            while (wordSp > pillReadingMinSp) {
+                pillWordSizingPaint.textSize = spPx(wordSp)
+                if (pillWordSizingPaint.measureText(word) <= wordAllot) break
+                wordSp -= 1f
+            }
+            pillWordView.setTextSize(TypedValue.COMPLEX_UNIT_SP, wordSp)
+            pillWordView.maxWidth = wordAllot
+            pillReadingView.setTextSize(TypedValue.COMPLEX_UNIT_SP, readingSp)
+            pillReadingView.maxWidth = readingAllot
         }
 
         fun setDefinitions(data: WordDefinitionData?, label: String?) {
@@ -2058,19 +2129,21 @@ class MagnifierLens(
             })
         }
 
-        /** Gap between the chip's visible disk and the pill's outer edge
-         *  in the resting (post-reveal) layout. */
-        private val chipPillGapPx = dp(14f)
-
         /** Lay the chips at their final positions — visible disks
          *  [chipPillGapPx] away from the pill's left and right edges —
          *  then translate them back inward so they sit under the pill,
          *  set visibility, and animate translationX back to 0 so they
          *  slide out from under the pill to their resting places. */
         private fun revealChips() {
-            val pillNaturalWidth = measurePillNaturalWidth()
-            val pillLeft = (viewW - pillNaturalWidth) / 2
-            val pillRight = pillLeft + pillNaturalWidth
+            // [fitPillText] bounds the capsule at [pillMaxWidthPx], so both
+            // lanes come out ≥ 0 however long the word is — a wide pill walks
+            // the chips out to the host's edges and stops there, instead of
+            // walking them past the frame that clips them.
+            val (leftLaneMargin, rightLaneMargin) = computeChipLaneMargins(
+                viewW = viewW,
+                pillWidth = measurePillNaturalWidth(),
+                chipLane = chipLanePx,
+            )
             // The vertical anchor is OWNED by applyCardHeightGeometry — keep
             // whatever it last wrote. Recomputing from the live pillAnchorY
             // here reads the ANIMATED card top when the reveal was deferred
@@ -2083,7 +2156,7 @@ class MagnifierLens(
             val chipTopMargin = (leftChip.layoutParams as? LayoutParams)?.topMargin
                 ?: (pillAnchorY - chipHitSizePx / 2)
 
-            // Absolute LEFT/RIGHT + left/rightMargin: pillLeft and pillRight are
+            // Absolute LEFT/RIGHT + left/rightMargin: the lane margins are
             // view-pixel coordinates measured off [viewW], so pairing them with
             // relative START/END margins would mirror the pair under an RTL
             // locale and swap the two chips — prev/next would read backwards.
@@ -2091,14 +2164,14 @@ class MagnifierLens(
                 chipHitSizePx, chipHitSizePx,
                 Gravity.LEFT or Gravity.TOP,
             ).apply {
-                leftMargin = pillLeft - chipVisDiameterPx - chipHaloPadPx - chipPillGapPx
+                leftMargin = leftLaneMargin
                 topMargin = chipTopMargin
             }
             rightChip.layoutParams = LayoutParams(
                 chipHitSizePx, chipHitSizePx,
                 Gravity.RIGHT or Gravity.TOP,
             ).apply {
-                rightMargin = (viewW - pillRight) - chipVisDiameterPx - chipHaloPadPx - chipPillGapPx
+                rightMargin = rightLaneMargin
                 topMargin = chipTopMargin
             }
 
