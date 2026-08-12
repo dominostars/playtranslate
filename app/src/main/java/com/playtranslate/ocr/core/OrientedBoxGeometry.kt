@@ -130,8 +130,19 @@ internal object OrientedBoxGeometry {
         val result: OcrBox
         when {
             orientation == TextOrientation.VERTICAL -> { rung = "vertical"; result = OcrBox.upright(aabb) }
-            o == null -> { rung = "degenerate"; result = OcrBox.upright(aabb) }
-            o.longSide < o.shortSide * MIN_AXIS_ASPECT -> { rung = "near-square"; result = OcrBox.upright(aabb) }
+            // Degenerate quad / near-square box: there WAS angle evidence but
+            // it can't be resolved (no axis, or the axis direction is
+            // unreliable) — an UNMEASURED upright, not a measured one, so
+            // grouping may place the region by position instead of holding it
+            // apart from slanted neighbors by a meaningless angle distance.
+            o == null -> {
+                rung = "degenerate"
+                result = OcrBox.upright(aabb).copy(angleUnmeasured = true)
+            }
+            o.longSide < o.shortSide * MIN_AXIS_ASPECT -> {
+                rung = "near-square"
+                result = OcrBox.upright(aabb).copy(angleUnmeasured = true)
+            }
             abs(o.angleDeg) <= minSlantDeg -> { rung = "snap"; result = OcrBox.upright(aabb) }
             // The second gate term, from the corpus census (2026-08-07, 5891
             // known-upright measurements): angle noise scales INVERSELY with
@@ -146,7 +157,16 @@ internal object OrientedBoxGeometry {
             o.longSide / 2f * kotlin.math.sin(
                 Math.toRadians(abs(o.angleDeg).toDouble()),
             ).toFloat() <= OcrBox.ANGLE_MIN_EXCURSION_PX -> {
-                rung = "excursion"; result = OcrBox.upright(aabb)
+                // Sub-excursion: the measured tilt sweeps too few pixels at
+                // this length to distinguish from noise — a "couldn't
+                // measure", not a "measured straight". The unmeasured bit is
+                // what lets a short word of a genuinely slanted sentence
+                // rejoin its line by position (the two-term gate makes mixed
+                // measured/unmeasured output the NORM for mixed-length
+                // slanted text, so silently stamping 0 here would split such
+                // sentences permanently).
+                rung = "excursion"
+                result = OcrBox.upright(aabb).copy(angleUnmeasured = true)
             }
             abs(o.angleDeg) > maxSlantDeg -> { rung = "band"; result = OcrBox.upright(aabb) }
             else -> { rung = "rotated"; result = OcrBox(aabb, o.longSide, o.shortSide, o.angleDeg) }

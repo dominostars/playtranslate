@@ -176,6 +176,33 @@ class MangaOcrRefinerTest {
     }
 
     @Test
+    fun `an unmeasured line does not disqualify its slanted group`() = runBlocking {
+        // The shell admits producer-withheld angles into slanted groups by
+        // position; the eligibility gate must not read their placeholder 0 as
+        // a disagreement (the excursion gate bounds their true residual under
+        // the crop's tolerance).
+        val slanted = RecognizedLine(
+            text = "いたい",
+            box = OcrBox(Rect(10, 10, 120, 80), 100f, 40f, angleDeg = -20f),
+            orientation = TextOrientation.HORIZONTAL,
+        )
+        val short = RecognizedLine(
+            text = "よ",
+            box = OcrBox.upright(Rect(120, 70, 150, 100)).copy(angleUnmeasured = true),
+            orientation = TextOrientation.HORIZONTAL,
+        )
+        val g = LayoutGroup(
+            "いたいよ", listOf(slanted, short), Rect(10, 10, 150, 100),
+            TextOrientation.HORIZONTAL, TextAlignment.LEFT,
+            angleDeg = -20f, orientedWidth = 130f, orientedHeight = 50f,
+        )
+        var calls = 0
+        val fake = MangaOcrRefiner.BlockReader { _, _, _ -> calls++; null }
+        MangaOcrRefiner.refineWith(fake, listOf(g), bitmap, "ja")
+        assertEquals("group with an unmeasured line must stay eligible", 1, calls)
+    }
+
+    @Test
     fun `a consistently slanted group is eligible and hands the reader its oriented box`() = runBlocking {
         val slanted = RecognizedLine(
             text = "いたい",

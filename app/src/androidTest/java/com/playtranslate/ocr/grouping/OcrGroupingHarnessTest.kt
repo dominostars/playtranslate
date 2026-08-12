@@ -217,6 +217,7 @@ class OcrGroupingHarnessTest {
                                         angleDeg = line.box.angleDeg,
                                         orientedW = scaledDim(line.box.orientedWidth, rec.scaleFactor),
                                         orientedH = scaledDim(line.box.orientedHeight, rec.scaleFactor),
+                                        angleUnmeasured = line.box.angleUnmeasured,
                                     )
                                 }
                             }
@@ -418,6 +419,7 @@ class OcrGroupingHarnessTest {
             caseId: String, cfg: String, rep: Int, idx: Int, group: Int, box: IntArray,
             vert: Boolean, text: String, conf: Float, charQuantiles: IntArray? = null,
             angleDeg: Float = 0f, orientedW: Int = 0, orientedH: Int = 0,
+            angleUnmeasured: Boolean = false,
         ) {
             val o = JSONObject()
                 .put("type", "region").put("run", runId).put("case", caseId)
@@ -428,10 +430,13 @@ class OcrGroupingHarnessTest {
             if (conf.isFinite() && conf >= 0f) o.put("conf", conf.toDouble())
             charQuantiles?.let { q -> o.put("cq", JSONArray().apply { q.forEach { put(it) } }) }
             // Slanted lines carry the angle trio; absent keys mean upright
-            // (0-when-upright, mirroring the seed-row grammar).
+            // (0-when-upright, mirroring the seed-row grammar). "unm" marks a
+            // producer-withheld angle (OcrBox.angleUnmeasured) — the twin's
+            // shell mirror needs it to replay positional admission.
             if (angleDeg != 0f) {
                 o.put("ang", angleDeg.toDouble()).put("ow", orientedW).put("oh", orientedH)
             }
+            if (angleUnmeasured) o.put("unm", 1)
             emit(o)
         }
 

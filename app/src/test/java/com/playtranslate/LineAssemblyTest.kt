@@ -11,6 +11,7 @@ import com.playtranslate.ocr.core.RecognizedLine
 import com.playtranslate.ocr.core.RecognizedRegion
 import com.playtranslate.ocr.core.RegionOrigin
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -384,6 +385,108 @@ class LineAssemblyTest {
         assertEquals(TextOrientation.VERTICAL, out[1].orientation)
         assertEquals(300, out[0].box.bounds.height())
         assertEquals(300, out[1].box.bounds.height())
+    }
+
+    @Test
+    fun mixedMeasuredAndUnmeasuredWords_stitchIntoOneSlantedLine() {
+        // The Codex split-sentence finding: the excursion gate withholds the
+        // SHORT word's angle while its neighbors carry theirs; positional
+        // admission + banding confirmation must reunite the sentence.
+        val frame = AngleFrame(-12f, 500, 500)
+        val r = Math.toRadians(-12.0)
+        val c = Math.cos(r).toFloat()
+        val s = Math.sin(r).toFloat()
+        // The short word's upright AABB at the baseline position between the
+        // two measured words (in-frame center 590,500).
+        val x = 500 + 90 * c
+        val y = 500 + 90 * s
+        val shortBox = OcrBox.upright(
+            Rect((x - 20).toInt(), (y - 16).toInt(), (x + 20).toInt(), (y + 16).toInt()),
+        ).copy(angleUnmeasured = true)
+        val shortWord = RecognizedRegion(
+            text = "at", box = shortBox, orientation = TextOrientation.HORIZONTAL, confidence = 0.9f,
+            lines = listOf(RecognizedLine("at", shortBox, TextOrientation.HORIZONTAL)),
+            origin = RegionOrigin.LINE,
+        )
+        val out = LineAssembler.assembleLines(listOf(
+            slantedWord("DRAMATIC", Rect(380, 480, 560, 520), frame),
+            shortWord,
+            slantedWord("dawn", Rect(620, 480, 720, 520), frame),
+        ))
+        assertEquals(1, out.size)
+        assertEquals("DRAMATIC at dawn", out.single().text)
+        assertEquals(-12f, out.single().box.angleDeg, 0f)
+    }
+
+    @Test
+    fun unmeasuredWord_offTheBaseline_staysInTheUprightPool() {
+        val frame = AngleFrame(-12f, 500, 500)
+        val farBox = OcrBox.upright(Rect(480, 900, 520, 932)).copy(angleUnmeasured = true)
+        val far = RecognizedRegion(
+            text = "far", box = farBox, orientation = TextOrientation.HORIZONTAL, confidence = 0.9f,
+            lines = listOf(RecognizedLine("far", farBox, TextOrientation.HORIZONTAL)),
+            origin = RegionOrigin.LINE,
+        )
+        val out = LineAssembler.assembleLines(listOf(
+            slantedWord("DRAMATIC", Rect(380, 480, 560, 520), frame),
+            slantedWord("dawn", Rect(570, 480, 670, 520), frame),
+            far,
+        ))
+        assertEquals(2, out.size)
+        assertEquals("DRAMATIC dawn", out.first { it.box.angleDeg != 0f }.text)
+        // The stray keeps its original instance — upright, unmerged.
+        assertEquals(true, out.any { it === far })
+    }
+
+    @Test
+    fun absorbedMeasuredZeroBand_isNeverLost() {
+        // Word-level twin of the grouping shell's region-loss regression: two
+        // measured-0 words within the cluster cap of a LONGER 3.5° word band
+        // together WITHOUT a slanted sibling — an all-absorbed band. Absorbed
+        // members are measured, so the band must merge and emit (at θ̄, the
+        // absorption tolerance), never be discarded as a provisional admit.
+        val frame = AngleFrame(3.5f, 500, 500)
+        val leaning = slantedWord("LEANING", Rect(300, 480, 700, 520), frame)
+        val zeroA = region("left", Rect(400, 700, 480, 732))
+        val zeroB = region("right", Rect(490, 700, 570, 732))
+        val out = LineAssembler.assembleLines(listOf(leaning, zeroA, zeroB))
+        val texts = out.map { it.text }
+        assertTrue("LEANING must survive: $texts", texts.any { it.contains("LEANING") })
+        assertTrue("the absorbed band must survive: $texts", texts.any { it.contains("left") && it.contains("right") })
+    }
+
+    @Test
+    fun unmeasuredWord_pooledByOneCluster_claimedByAnother_emitsExactlyOnce() {
+        // Word-level twin of the grouping shell's exactly-once invariant
+        // (outside-review finding): the unmeasured word is admitted to the 5°
+        // cluster but bands on its own there (v-offset 30 — inside admission's
+        // reach, outside the banding tolerance) → pooled; the 13° cluster then
+        // bands it WITH its member → claimed. It must appear exactly once, in
+        // the 13° merged line, and never again via the pool.
+        val frameA = AngleFrame(5f, 300, 300)
+        val frameB = AngleFrame(13f, 700, 390)
+        val w1 = slantedWord("Wone", Rect(170, 280, 430, 320), frameA)
+        val w2 = slantedWord("Wtwo", Rect(570, 370, 830, 410), frameB)
+        // Upright box whose deskewed position is (u=200, v=30) in frame A.
+        val rA = Math.toRadians(5.0)
+        val ux = (300 + 200 * Math.cos(rA) - 30 * Math.sin(rA)).toFloat()
+        val uy = (300 + 200 * Math.sin(rA) + 30 * Math.cos(rA)).toFloat()
+        val uBox = OcrBox.upright(
+            Rect((ux - 40).toInt(), (uy - 16).toInt(), (ux + 40).toInt(), (uy + 16).toInt()),
+        ).copy(angleUnmeasured = true)
+        val u = RecognizedRegion(
+            text = "U", box = uBox, orientation = TextOrientation.HORIZONTAL, confidence = 0.9f,
+            lines = listOf(RecognizedLine("U", uBox, TextOrientation.HORIZONTAL)),
+            origin = RegionOrigin.LINE,
+        )
+        // Preconditions: admissible to both frames.
+        assertTrue(DeskewGeometry.admitUnmeasured(uBox, frameA, listOf(w1.box)))
+        assertTrue(DeskewGeometry.admitUnmeasured(uBox, frameB, listOf(w2.box)))
+
+        val out = LineAssembler.assembleLines(listOf(w1, w2, u))
+        val uCount = out.sumOf { r -> Regex("\\bU\\b").findAll(r.text).count() }
+        assertEquals("U must appear exactly once across all lines: ${out.map { it.text }}", 1, uCount)
+        assertTrue(out.any { it.text.contains("Wtwo") && it.text.contains("U") })
     }
 
     @Test

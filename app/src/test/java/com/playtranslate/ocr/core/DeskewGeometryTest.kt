@@ -6,6 +6,7 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -212,5 +213,52 @@ class DeskewGeometryTest {
         assertEquals(1, a.size)
         assertEquals("tie on length → lowest input index wins theta-bar", 20f, a[0].angleDeg, 0f)
         assertEquals(listOf(0, 1, 2), a[0].memberIndices)
+    }
+
+    @Test
+    fun clusterer_reformsTheMass_whenALongerBannerCapturesThetaBar() {
+        // The θ̄-capture hazard the recursive split exists for: a LONGER 3.5°
+        // banner wins θ̄ over a 0° mass; the mass exceeds its excursion
+        // tolerance against 3.5° and leaves the run — and must reform as ONE
+        // 0° cluster, never shred to singletons (with 0° in the population,
+        // singleton exile would dismantle every upright paragraph on screen).
+        val clusters = DeskewGeometry.clusterByAngle(
+            listOf(0f, 0f, 0f, 3.5f),
+            listOf(1000f, 1100f, 1050f, 1300f),
+            listOf(40f, 40f, 40f, 40f),
+            4f,
+        )
+        assertEquals(2, clusters.size)
+        val mass = clusters.first { it.angleDeg == 0f }
+        assertEquals(listOf(0, 1, 2), mass.memberIndices)
+        assertEquals(listOf(3), clusters.first { it.angleDeg == 3.5f }.memberIndices)
+    }
+
+    @Test
+    fun admitUnmeasured_onTheBaselinePath_notOffIt() {
+        val frame = AngleFrame(-12f, 500, 500)
+        // A measured member: in-frame [400,480]-[600,520] rotated out.
+        val member = OcrBox(
+            DeskewGeometry.screenAabbOf(Rect(400, 480, 600, 520), frame), 200f, 40f, -12f,
+        )
+        val r = Math.toRadians(-12.0)
+        val c = Math.cos(r).toFloat()
+        val s = Math.sin(r).toFloat()
+        fun uprightAt(du: Float, dv: Float, w: Int, h: Int): OcrBox {
+            val x = 500 + du * c - dv * s
+            val y = 500 + du * s + dv * c
+            return OcrBox.upright(
+                Rect((x - w / 2).toInt(), (y - h / 2).toInt(), (x + w / 2).toInt(), (y + h / 2).toInt()),
+            ).copy(angleUnmeasured = true)
+        }
+        // Just past the member's reading-axis end (in-frame u ≈ 130): gap
+        // ~10px ≤ 1.5×height — admitted.
+        assertTrue(DeskewGeometry.admitUnmeasured(uprightAt(130f, 0f, 40, 32), frame, listOf(member)))
+        // The next line of the member's block (below it, u-overlapping) —
+        // admitted.
+        assertTrue(DeskewGeometry.admitUnmeasured(uprightAt(0f, 55f, 40, 32), frame, listOf(member)))
+        // Far off the baseline path — rejected.
+        assertFalse(DeskewGeometry.admitUnmeasured(uprightAt(0f, 300f, 40, 32), frame, listOf(member)))
+        assertFalse(DeskewGeometry.admitUnmeasured(uprightAt(400f, 0f, 40, 32), frame, listOf(member)))
     }
 }

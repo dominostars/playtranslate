@@ -181,18 +181,25 @@ internal object DeskewGeometry {
 
     /**
      * THE angle clusterer (grouping shell, LineAssembler, carving — one
-     * implementation, different tolerances). Deterministic spec:
+     * implementation, different tolerances). Angle 0 is NOT special: measured
+     * uprights cluster like any other angle. Deterministic spec:
      * 1. Sort candidate indices by (angle, input index).
      * 2. Greedy contiguous runs with SEED-anchored admission:
      *    `|θᵢ − θ_seed| ≤ capDeg` (the seed is the run's first member).
-     * 3. Per cluster, θ̄ = the LONGEST member's angle (tie → lowest input
+     * 3. Per run, θ̄ = the LONGEST member's angle (tie → lowest input
      *    index), fixed post-selection — a verbatim member angle (invariant:
      *    angles are copied, never computed), giving zero residual to the
      *    member with the largest excursion lever arm.
-     * 4. Length-aware split check: any member with
-     *    `(ow/2)·sin|θᵢ−θ̄| > 0.35·oh` splits into its own singleton cluster
-     *    (its θ̄ = its own angle). The longest member can never fail (δ = 0),
-     *    so one pass suffices and θ̄ never needs recomputing.
+     * 4. Length-aware split: members with `(ow/2)·sin|θᵢ−θ̄| > 0.35·oh`
+     *    leave the run — and RE-CLUSTER among themselves with this same
+     *    algorithm (recursive; terminates because θ̄'s member never leaves,
+     *    so every level strictly shrinks). Re-clustering, not singleton
+     *    exile, is load-bearing: with 0° in the population, one long light
+     *    banner can win θ̄ over a large upright mass, and exiling that mass
+     *    to singletons would shred every upright paragraph on screen — the
+     *    mass must reform as its own coherent cluster instead. The same
+     *    capture hazard exists between any two angles (10° mass vs a longer
+     *    13.5° banner); 0° merely makes it common.
      * 5. Clusters ordered by their first member's input index.
      * Band assertion: every candidate must satisfy |θ| < 90 (the producer band
      * never reaches the ±90 wrap; wrap handling would be dead code).
@@ -206,8 +213,18 @@ internal object DeskewGeometry {
         require(angles.size == lengths.size && angles.size == heights.size)
         if (angles.isEmpty()) return emptyList()
         for (a in angles) require(abs(a) < 90f) { "angle $a outside the producer band" }
+        return clusterRun(angles.indices.toList(), angles, lengths, heights, capDeg)
+            .sortedBy { it.memberIndices.first() }
+    }
 
-        val sorted = angles.indices.sortedWith(compareBy({ angles[it] }, { it }))
+    private fun clusterRun(
+        candidates: List<Int>,
+        angles: List<Float>,
+        lengths: List<Float>,
+        heights: List<Float>,
+        capDeg: Float,
+    ): List<AngleCluster> {
+        val sorted = candidates.sortedWith(compareBy({ angles[it] }, { it }))
         val runs = mutableListOf<MutableList<Int>>()
         var seed = Float.NaN
         for (idx in sorted) {
@@ -226,18 +243,46 @@ internal object DeskewGeometry {
             )!!
             val thetaBar = angles[longest]
             val keep = mutableListOf<Int>()
+            val split = mutableListOf<Int>()
             for (idx in run) {
                 val residual = abs(angles[idx] - thetaBar)
                 val excursion = lengths[idx] / 2f *
                     sin(Math.toRadians(residual.toDouble())).toFloat()
                 if (idx != longest && excursion > RESIDUAL_EXCURSION_FRAC * heights[idx]) {
-                    out.add(AngleCluster(listOf(idx), angles[idx]))
+                    split.add(idx)
                 } else {
                     keep.add(idx)
                 }
             }
             if (keep.isNotEmpty()) out.add(AngleCluster(keep.sorted(), thetaBar))
+            if (split.isNotEmpty()) out.addAll(clusterRun(split, angles, lengths, heights, capDeg))
         }
-        return out.sortedBy { it.memberIndices.first() }
+        return out
+    }
+
+    /**
+     * Positional admission for an UNMEASURED-angle box into a slanted
+     * cluster's frame ([OcrBox.angleUnmeasured] — the producer withheld the
+     * angle, so angle distance to it is meaningless and position must decide).
+     * True when the candidate's deskewed rect is ADJACENT to some member's:
+     * sharing the member's band with a reading-axis gap ≤ 1.5× the member's
+     * height (a word of the member's line), or overlapping on the reading
+     * axis with a cross-axis gap ≤ the same bound (the next line of the
+     * member's block). Deliberately generous — admission is PROVISIONAL: the
+     * caller runs its real grouping inside the frame and keeps the candidate
+     * only if it actually groups with a measured member, so over-admission
+     * costs nothing and under-admission re-creates the split-sentence bug.
+     */
+    fun admitUnmeasured(candidate: OcrBox, frame: AngleFrame, members: List<OcrBox>): Boolean {
+        val c = deskew(candidate, frame)
+        return members.any { m ->
+            val r = deskew(m, frame)
+            val uOverlap = minOf(c.right, r.right) - maxOf(c.left, r.left)
+            val vOverlap = minOf(c.bottom, r.bottom) - maxOf(c.top, r.top)
+            val uGap = maxOf(r.left - c.right, c.left - r.right)
+            val vGap = maxOf(r.top - c.bottom, c.top - r.bottom)
+            val reach = 1.5f * r.height()
+            (vOverlap > 0 && uGap <= reach) || (uOverlap > 0 && vGap <= reach)
+        }
     }
 }
