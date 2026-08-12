@@ -1112,6 +1112,11 @@ class SentenceAnkiContentFragment : Fragment() {
             embedded = true
             // The panel sits on the group card, not the page background.
             fadeColor = ctx.themeColor(R.attr.ptCard)
+            // A tap on empty waveform lays down the same clip length the card
+            // seeds itself with (the anchored default brackets exactly this
+            // much around the anchor), so "somewhere else" means the same
+            // amount of audio, not a second idea of how long a line is.
+            tapSelectionMs = DEFAULT_GAME_RANGE_MS
             onSelectionChanged = { s, e -> onInlineSelectionChanged(s, e) }
         }
         // Pinch anywhere in the panel (its padding included) zooms the

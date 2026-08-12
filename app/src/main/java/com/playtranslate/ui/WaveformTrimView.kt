@@ -20,11 +20,15 @@ import kotlin.math.max
 /**
  * Waveform of the game-audio snapshot with a draggable trim selection — the
  * heart of the trim editor. Manual-first by design: pinch to zoom, drag the
- * body to pan, drag either handle to set the selection edges. The only
+ * body to pan, drag either handle to set the selection edges, tap unselected
+ * waveform to re-place the whole selection there ([applyTapAt] — onto a
+ * detected voice line when the tap lands on one), hold a more-audio arrow to
+ * scroll toward what it points at ([arrowScrollTick]). The only
  * auto-placement is the host's VAD snap ([setSelection]), which repositions
  * the untouched default — it never overrides a user trim. Rendering + touch
- * precedents: [RegionPreviewView] (strip onDraw), [RegionDragView]
- * (per-target touch dispatch).
+ * precedents:
+ * [RegionPreviewView] (strip onDraw), [RegionDragView] (per-target touch
+ * dispatch).
  *
  * Data is per-bucket ABSOLUTE RMS in 0..1 (computed once off-main by the
  * activity); the view itself never touches PCM. Bars are scaled to the loudest
@@ -71,17 +75,56 @@ class WaveformTrimView @JvmOverloads constructor(
         invalidate()
     }
 
-    private fun inSpeechRegion(ms: Double): Boolean {
+    /** Index into [speechRegions] of the voice line containing [ms], or -1.
+     *  Returns the index rather than the pair because onDraw runs this per
+     *  drawn column — it must not allocate. */
+    private fun speechRegionAt(ms: Double): Int {
         var i = 0
         while (i < speechRegions.size) {
-            if (ms >= speechRegions[i] && ms < speechRegions[i + 1]) return true
+            if (ms >= speechRegions[i] && ms < speechRegions[i + 1]) return i
             i += 2
         }
-        return false
+        return -1
+    }
+
+    private fun inSpeechRegion(ms: Double): Boolean = speechRegionAt(ms) >= 0
+
+    /** The tap's lookup: the line under [ms], else the nearest one within
+     *  [slopMs] — a finger's worth of tolerance, which the caller sizes in
+     *  PIXELS. A 700 ms line is a few px wide on a zoomed-out 3 min ring, so
+     *  an exact hit test would make the snap unreachable exactly where it
+     *  earns its keep. */
+    private fun speechRegionNear(ms: Double, slopMs: Double): Int {
+        val hit = speechRegionAt(ms)
+        if (hit >= 0) return hit
+        var best = -1
+        var bestDist = slopMs
+        var i = 0
+        while (i < speechRegions.size) {
+            // Containment already missed, so ms is strictly outside every
+            // region: one of these two differences is the distance to it.
+            val dist = if (ms < speechRegions[i]) {
+                speechRegions[i] - ms
+            } else {
+                ms - speechRegions[i + 1]
+            }
+            if (dist <= bestDist) {
+                best = i
+                bestDist = dist
+            }
+            i += 2
+        }
+        return best
     }
 
     /** Fired on every user-driven selection change (drag in progress too). */
     var onSelectionChanged: ((startMs: Long, endMs: Long) -> Unit)? = null
+
+    /** Length a tap lays down when it lands on plain waveform (see
+     *  [applyTapAt]). The host sets this to the trim length it seeds cards
+     *  with, so a tap re-states the card's own default clip somewhere else
+     *  rather than inventing a second notion of "a clip". */
+    var tapSelectionMs = 5_000L
 
     /** Embedded mode (the in-card panel inside a scrolling bottom sheet):
      *  the parent keeps vertical gestures — a body drag becomes a pan only
@@ -111,8 +154,17 @@ class WaveformTrimView @JvmOverloads constructor(
 
         /** Auto-pan speed: fraction of the visible window scrolled per
          *  animation frame while a handle drag holds the edge zone
-         *  (~0.6 windows/second at 60 fps). */
+         *  (~0.6 windows/second at 60 fps). Also the speed a held
+         *  more-audio arrow glides at, so the two ways the view scrolls
+         *  itself travel alike. */
         const val AUTO_PAN_FRACTION = 0.01
+
+        /** What one press of a more-audio arrow is worth before the hold's
+         *  glide takes over: a fraction of the visible window, paid out on
+         *  touch-down. It is the press's own feedback — at the glide rate
+         *  alone a quick tap would move the view by a single frame, i.e.
+         *  visibly nothing, and the arrow would read as broken. */
+        const val ARROW_STEP_FRACTION = 0.15
 
         /** Floor for the on-screen bar scale, ~ -50 dBFS RMS. A window whose
          *  loudest column sits below this is drawn proportionally small rather
@@ -125,6 +177,13 @@ class WaveformTrimView @JvmOverloads constructor(
         /** Opening window width. Wide enough that a default 5 s trim lands in
          *  real context rather than filling the view. */
         const val INITIAL_WINDOW_MS = 30_000.0
+
+        /** How far off a voice line a tap may land and still snap to it,
+         *  in dp of SCREEN distance rather than ms — the tap aims at what is
+         *  drawn, and what is drawn shrinks with the zoom. Half a touch
+         *  target: enough to hit a thin line at full zoom-out, small enough
+         *  that a tap in visibly empty audio still gets a plain window. */
+        const val TAP_SNAP_DP = 12f
     }
 
     private val barPaint = Paint().apply { color = context.themeColor(R.attr.ptDivider) }
@@ -171,7 +230,9 @@ class WaveformTrimView @JvmOverloads constructor(
     // ── More-audio-off-screen affordances: edge fades + arrows ───────────
     /** Empty gutters OUTSIDE the rendered playback range where the
      *  more-audio arrows live — clear of the bars/fades so they read at a
-     *  glance. All content mapping is inset by this. */
+     *  glance. All content mapping is inset by this. Also the arrows' touch
+     *  target ([arrowDirAt]): the triangle itself is 7 dp wide, so the lane
+     *  it sits alone in is what a finger can actually aim at. */
     private val edgeGutterPx = 14 * density
     private fun contentLeft(): Float = edgeGutterPx
     private fun contentRight(): Float = width - edgeGutterPx
@@ -190,6 +251,23 @@ class WaveformTrimView @JvmOverloads constructor(
     }
     private val arrowPath = Path()
 
+    /** Audio hidden past the window's left / right edge — the condition for
+     *  the fade and the arrow, and therefore for the arrow's hit test too:
+     *  the gutter is only a scroll control while it visibly holds one. */
+    private fun hasHiddenLeft(): Boolean = viewStartMs > EDGE_EPSILON_MS
+    private fun hasHiddenRight(): Boolean =
+        viewStartMs + contentWidth() * msPerPx < durationMs - EDGE_EPSILON_MS
+
+    /** -1 / +1 when [x] is in the gutter of a SHOWN more-audio arrow, else 0.
+     *  A gutter with no arrow in it is not a control: nothing lies that way,
+     *  so it stays plain waveform margin and a tap there still places (the
+     *  file edge is under the finger by then anyway). */
+    private fun arrowDirAt(x: Float): Int = when {
+        x < contentLeft() && hasHiddenLeft() -> -1
+        x > contentRight() && hasHiddenRight() -> 1
+        else -> 0
+    }
+
     private fun ensureFadeShaders() {
         if (!fadeShadersDirty || width == 0) return
         fadeShadersDirty = false
@@ -204,13 +282,22 @@ class WaveformTrimView @JvmOverloads constructor(
         )
     }
 
-    private enum class DragTarget { LEFT_HANDLE, RIGHT_HANDLE, PAN, NONE }
+    private enum class DragTarget { LEFT_HANDLE, RIGHT_HANDLE, PAN, ARROW, NONE }
     private var drag = DragTarget.NONE
+    /** Which more-audio arrow the finger is holding: -1 left, +1 right, 0
+     *  none. Fixed at the press — the hold scrolls the way the arrow it
+     *  landed on points, wherever the finger wanders afterwards. */
+    private var arrowDir = 0
     private var lastTouchX = 0f
     private var scaling = false
     private var downX = 0f
     private var downY = 0f
     private var panCommitted = false
+    /** This gesture can still end as a tap: one pointer, pressed on the
+     *  waveform body, never traveled past the slop. Latched (not re-derived
+     *  at UP) so a drag that wanders out and returns to its origin stays a
+     *  drag. */
+    private var tapCandidate = false
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     // ── Auto-pan while a handle drag reaches the view's edge ─────────────
@@ -254,6 +341,31 @@ class WaveformTrimView @JvmOverloads constructor(
     private fun stopAutoPan() {
         autoPanDir = 0
         removeCallbacks(autoPanTick)
+    }
+
+    // ── Held more-audio arrow: scroll toward the hidden audio ────────────
+    // The arrows advertise audio off the edge; holding one travels there.
+    // Selection-free by construction — this moves the window and nothing
+    // else, so reaching for context can't cost the trim.
+    private val arrowScrollTick = object : Runnable {
+        override fun run() {
+            if (drag != DragTarget.ARROW || arrowDir == 0) return
+            // Stop at the end rather than burn a frame callback per vsync
+            // against a clamp — the arrow has vanished by then anyway.
+            if (!scrollWindowBy(arrowDir * contentWidth() * msPerPx * AUTO_PAN_FRACTION)) return
+            postOnAnimation(this)
+        }
+    }
+
+    /** Shift the visible window by [deltaMs], clamped to the file. Returns
+     *  false when it could not move at all — already at that end. */
+    private fun scrollWindowBy(deltaMs: Double): Boolean {
+        val before = viewStartMs
+        viewStartMs += deltaMs
+        clampView()
+        if (viewStartMs == before) return false
+        invalidate()
+        return true
     }
 
     private val scaleDetector = ScaleGestureDetector(
@@ -373,9 +485,8 @@ class WaveformTrimView @JvmOverloads constructor(
 
         // Edge fades into the host surface, shown only when content actually
         // continues past that edge.
-        val viewEndMs = viewStartMs + contentWidth() * msPerPx
-        val hasLeft = viewStartMs > EDGE_EPSILON_MS
-        val hasRight = viewEndMs < durationMs - EDGE_EPSILON_MS
+        val hasLeft = hasHiddenLeft()
+        val hasRight = hasHiddenRight()
         ensureFadeShaders()
         if (hasLeft) canvas.drawRect(cl, 0f, cl + fadeWidthPx, h, leftFadePaint)
         if (hasRight) canvas.drawRect(cr - fadeWidthPx, 0f, cr, h, rightFadePaint)
@@ -445,32 +556,72 @@ class WaveformTrimView @JvmOverloads constructor(
                 parent?.requestDisallowInterceptTouchEvent(true)
                 drag = DragTarget.NONE
                 panCommitted = false
+                tapCandidate = false
             }
             MotionEvent.ACTION_DOWN -> {
                 lastTouchX = event.x
                 downX = event.x
                 downY = event.y
                 panCommitted = false
-                drag = hitTest(event.x)
-                // Embedded body-drags stay interceptable (the sheet may claim
-                // a vertical scroll); handle grabs are ours unconditionally.
-                if (!embedded || drag != DragTarget.PAN) {
+                // The host forwards touches from the panel's padding into our
+                // coordinates ([forwardPanelTouchesToWave]), so they land off
+                // the strip. They exist to carry pinch and pan; neither
+                // control the strip owns — the arrows, tap-to-place — answers
+                // to a press that isn't on it, or the card's own margins
+                // would scroll and re-trim the audio.
+                val onStrip = event.x in 0f..width.toFloat() &&
+                    event.y in 0f..height.toFloat()
+                // A shown arrow owns its gutter, ahead of the handle test: a
+                // handle parked at that edge is still grabbable from inside
+                // the strip, while the arrow has nowhere else to live.
+                arrowDir = if (onStrip) arrowDirAt(event.x) else 0
+                drag = if (arrowDir != 0) DragTarget.ARROW else hitTest(event.x)
+                if (drag == DragTarget.ARROW) {
+                    scrollWindowBy(arrowDir * contentWidth() * msPerPx * ARROW_STEP_FRACTION)
+                    postOnAnimation(arrowScrollTick)
+                }
+                // Only a body press can become a tap: a press on a handle is
+                // a grab, a press on an arrow is a scroll.
+                tapCandidate = drag == DragTarget.PAN && onStrip
+                // Embedded body-drags AND arrow presses stay interceptable:
+                // the sheet may claim a vertical scroll that merely started
+                // there, and swallowing the user's scroll is worse than the
+                // stray step a cancelled press leaves behind. (A real hold
+                // holds still, so nothing intercepts it.) Handle grabs are
+                // ours unconditionally.
+                val yieldsToSheet = embedded &&
+                    (drag == DragTarget.PAN || drag == DragTarget.ARROW)
+                if (!yieldsToSheet) {
                     parent?.requestDisallowInterceptTouchEvent(true)
                 }
             }
             MotionEvent.ACTION_MOVE -> {
+                // Before the early returns below: a gesture that travels stops
+                // being a tap even while the embedded pan is still undecided,
+                // and a vertical drag over the strip (a sheet scroll the
+                // parent didn't take) must not land as one either.
+                if (tapCandidate &&
+                    (abs(event.x - downX) > touchSlop || abs(event.y - downY) > touchSlop)
+                ) {
+                    tapCandidate = false
+                }
                 if (scaling || event.pointerCount > 1) return true
-                if (embedded && drag == DragTarget.PAN && !panCommitted) {
+                if (drag == DragTarget.PAN && !panCommitted) {
+                    // The window does not move until the gesture is PROVEN a
+                    // pan. Panning a still-pending tap would drag the audio
+                    // out from under the finger between press and release,
+                    // and at full zoom-out a few pixels of ordinary jitter is
+                    // hundreds of ms of waveform. Embedded adds one clause:
+                    // vertical must lose to horizontal, because a sheet is
+                    // waiting for the vertical (its win arrives as an
+                    // ACTION_CANCEL from the parent's intercept).
                     val adx = abs(event.x - downX)
-                    val ady = abs(event.y - downY)
-                    if (adx > touchSlop && adx > ady) {
-                        // Horizontal won: this is a pan — claim the gesture.
+                    if (adx > touchSlop && (!embedded || adx > abs(event.y - downY))) {
                         panCommitted = true
                         parent?.requestDisallowInterceptTouchEvent(true)
+                        // Resume from here, so committing costs no jump.
                         lastTouchX = event.x
                     }
-                    // Else keep waiting; a vertical win means the parent
-                    // intercepts and we receive ACTION_CANCEL.
                     return true
                 }
                 val dx = event.x - lastTouchX
@@ -485,16 +636,71 @@ class WaveformTrimView @JvmOverloads constructor(
                         clampView()
                         invalidate()
                     }
+                    // The held arrow scrolls on its own clock, not the
+                    // finger's — where the finger drifts to is irrelevant.
+                    DragTarget.ARROW -> {}
                     DragTarget.NONE -> {}
                 }
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                drag = DragTarget.NONE
-                panCommitted = false
-                stopAutoPan()
+            MotionEvent.ACTION_UP -> {
+                // The RELEASE point, not the press point: a body press that
+                // stays under the slop still pans the view frame by frame
+                // (non-embedded mode), which drags the audio along with the
+                // finger. The moment the finger has been holding since it
+                // landed is the one under it now — at full zoom-out the
+                // difference is seconds, not pixels.
+                if (tapCandidate) applyTapAt(event.x)
+                endGesture()
             }
+            MotionEvent.ACTION_CANCEL -> endGesture()
         }
         return true
+    }
+
+    private fun endGesture() {
+        drag = DragTarget.NONE
+        arrowDir = 0
+        panCommitted = false
+        tapCandidate = false
+        removeCallbacks(arrowScrollTick)
+        stopAutoPan()
+    }
+
+    /**
+     * A tap on unselected waveform re-places the whole selection at the
+     * tapped moment: onto the voice line under the finger when there is one
+     * (the warning-color bars — that tap means "that line, all of it"), else
+     * a [tapSelectionMs] window centered there.
+     *
+     * A tap INSIDE the selection does nothing. The selection body is where a
+     * pan starts and where the eye rests while auditioning a trim; re-placing
+     * it under the finger there would move the edges the user just set, and
+     * the gesture that means "not this — that" has somewhere else to land.
+     */
+    private fun applyTapAt(x: Float) {
+        val ms = msFor(x).coerceIn(0L, durationMs)
+        if (ms in selStartMs..selEndMs) return
+        val line = speechRegionNear(ms.toDouble(), TAP_SNAP_DP * density * msPerPx)
+        if (line >= 0) {
+            commitTapSelection(speechRegions[line], speechRegions[line + 1])
+        } else {
+            commitTapSelection(ms - tapSelectionMs / 2, ms + tapSelectionMs / 2)
+        }
+    }
+
+    /** Place a tapped range, then SHIFT it back inside the file rather than
+     *  shrink it — a tap near either end still yields a full-length clip.
+     *  Fires [onSelectionChanged]: a tap is a deliberate placement, exactly
+     *  like a handle drag. */
+    private fun commitTapSelection(startMs: Long, endMs: Long) {
+        val len = (endMs - startMs).coerceIn(minSelectionMs, max(minSelectionMs, durationMs))
+        val start = startMs.coerceIn(0L, max(0L, durationMs - len))
+        val end = start + len
+        if (start == selStartMs && end == selEndMs) return
+        selStartMs = start
+        selEndMs = end
+        onSelectionChanged?.invoke(start, end)
+        invalidate()
     }
 
     /** Move the dragged handle to the audio position under finger-x [x],
@@ -525,6 +731,7 @@ class WaveformTrimView @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         stopAutoPan()
+        removeCallbacks(arrowScrollTick)
         super.onDetachedFromWindow()
     }
 
