@@ -9,6 +9,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -138,6 +139,23 @@ class OrientedBoxGeometryTest {
                 0f, boxAt(deg, w = 60f, h = 20f).angleDeg, 0f,
             )
         }
+    }
+
+    @Test
+    fun `unmeasured bit marks withheld angles never measurements`() {
+        // Sub-excursion snap: there WAS a reading, but too short to trust —
+        // the angle is WITHHELD, and grouping may re-place the box by
+        // position.
+        assertTrue(boxAt(5f, w = 60f, h = 20f).angleUnmeasured)
+        // Near-square: the axis direction itself is unreliable — withheld.
+        assertTrue(boxAt(20f, w = 44f, h = 40f).angleUnmeasured)
+        // Measurements and engine assertions are NOT withheld: a carried
+        // slant, a sub-3° snap (measured straight), and the upright factory.
+        assertFalse(boxAt(5f).angleUnmeasured)
+        assertFalse(boxAt(2f).angleUnmeasured)
+        assertFalse(OcrBox.upright(Rect(0, 0, 100, 20)).angleUnmeasured)
+        // Invariant: an unmeasured box is always angle-0.
+        assertEquals(0f, boxAt(5f, w = 60f, h = 20f).angleDeg, 0f)
     }
 
     @Test

@@ -46,6 +46,19 @@ data class OcrBox(
     val orientedHeight: Float,
     /** Rotation in degrees; 0 = axis-aligned (the common case). */
     val angleDeg: Float = 0f,
+    /**
+     * True when the producer HAD angle evidence but could not resolve it into
+     * a trustworthy measurement (sub-excursion reads, near-square boxes,
+     * degenerate quads — see [OrientedBoxGeometry.boxFor]). [angleDeg] is then
+     * 0 as a *placeholder, not a measurement*: the region renders upright on
+     * its own, but grouping may let it join a slanted cluster on POSITIONAL
+     * evidence (it sits on the cluster's baseline path) where a measured 0
+     * would be held apart by angle distance. The gate guarantees any
+     * unmeasured region's true-vs-0 discrepancy stays under the noise
+     * excursion, so consumers that treat it as upright are correct within
+     * tolerance. Invariant: `angleUnmeasured ⟹ angleDeg == 0`.
+     */
+    val angleUnmeasured: Boolean = false,
 ) {
     /** True iff this box carries a slant. Definitionally `angleDeg != 0f`: the
      *  producer ([OrientedBoxGeometry.boxFor]) snaps sub-gate measurements to

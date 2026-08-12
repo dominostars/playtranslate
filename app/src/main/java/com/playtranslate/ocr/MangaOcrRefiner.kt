@@ -127,11 +127,19 @@ object MangaOcrRefiner {
      *  all angle-0 post-clustering); the rotate-crop then reads the deskewed
      *  strip. Residual per-line slant ≤ the cap rides inside the crop —
      *  manga-ocr's home turf is hand-drawn text (accepted). A line whose angle
-     *  disagrees with its group past the cap means the crop would misframe it. */
+     *  disagrees with its group past the cap means the crop would misframe it.
+     *  UNMEASURED lines ([OcrBox.angleUnmeasured]) are exempt from the check:
+     *  their 0 is a withheld measurement, not a disagreement, the shell admits
+     *  them into slanted groups by position, and the producer's excursion gate
+     *  bounds their true-vs-0 discrepancy under the crop's accepted residual. */
     internal fun isEligible(group: LayoutGroup): Boolean {
         val lines = group.lines
         if (lines.isEmpty() || lines.size > MAX_LINES) return false
-        if (lines.any { abs(it.box.angleDeg - group.angleDeg) > DeskewGeometry.DEFAULT_CLUSTER_CAP_DEG }) {
+        if (lines.any {
+                !it.box.angleUnmeasured &&
+                    abs(it.box.angleDeg - group.angleDeg) > DeskewGeometry.DEFAULT_CLUSTER_CAP_DEG
+            }
+        ) {
             return false
         }
         val longest = lines.maxOf { it.text.length }

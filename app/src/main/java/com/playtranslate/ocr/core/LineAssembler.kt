@@ -56,17 +56,21 @@ object LineAssembler {
      */
     fun assembleLines(regions: List<RecognizedRegion>, rtl: Boolean = false): List<RecognizedRegion> {
         if (regions.size <= 1) return regions
-        // Rotated regions band in their own deskewed frames ([assembleSlanted]):
-        // same-angle clusters run the same banding kernel on rects whose slant
-        // has been rotated away, so a slanted word row stitches exactly like an
-        // upright one. The re-entrant call runs the upright partition alone, so
-        // the vertical-dominance vote below can't be tipped by rotated members
-        // (all HORIZONTAL by the producer invariant); a frame with no rotated
-        // region skips this branch entirely.
-        if (regions.any { it.box.isRotated }) {
-            val (rotated, upright) = regions.partition { it.box.isRotated }
-            return assembleLines(upright, rtl) + assembleSlanted(rotated, rtl)
-        }
+        // One banding path for every angle ([assembleWithAngles]): measured
+        // angles cluster uniformly, each slanted cluster bands in its deskewed
+        // frame, and UNMEASURED words rejoin a slanted line by position. The
+        // no-measured-slant guard is an OPTIMIZATION, not a semantic fork —
+        // with no slanted clusters the general path reduces to exactly the
+        // plain upright body (byte-identical on every upright-only frame).
+        if (regions.any { it.box.isRotated }) return assembleWithAngles(regions, rtl)
+        return assembleUpright(regions, rtl)
+    }
+
+    /** The plain upright body — the collective-orientation guard plus the
+     *  banding kernel over screen rects. Also the sink for [assembleWithAngles]'
+     *  upright pool. */
+    private fun assembleUpright(regions: List<RecognizedRegion>, rtl: Boolean): List<RecognizedRegion> {
+        if (regions.size <= 1) return regions
         // Collective-orientation guard: a vertical-dominant capture is genuine
         // vertical text (no horizontal-line fragmentation to repair) — leave it
         // untouched so orientation survives for LayoutAnalyzer's vertical path.
@@ -88,41 +92,87 @@ object LineAssembler {
     }
 
     /**
-     * Band slanted regions per same-angle cluster, in that cluster's deskewed
-     * frame — the same [assembleLineIndices] kernel the upright path runs, on
-     * rects whose slant has been rotated away (heights there are the true
-     * oriented heights, so the banding thresholds keep their meaning). A
-     * singleton line stays the ORIGINAL region, slant and all; a multi-member
-     * line merges via [mergeLine] with the frame, emitting the in-frame union
-     * rotated back (bounds = exact screen AABB, oriented dims = union dims,
-     * angle = θ̄ verbatim). Regions far apart in angle never band, whatever
-     * their AABB overlap. Cluster anchor = the members' AABB-union center,
-     * matching the grouping shell's convention.
+     * The unified angle path, mirroring the grouping shell
+     * ([LayoutAnalyzer]'s `groupWithAngles`) at the word level: MEASURED
+     * words — 0° included — cluster uniformly; each slanted cluster bands in
+     * its deskewed frame (heights there are true oriented heights, so the
+     * banding thresholds keep their meaning); UNMEASURED words
+     * ([OcrBox.angleUnmeasured]) are admitted to a cluster by position and
+     * kept only when banding actually merges them with a measured member —
+     * that is what lets the short word of a mixed-length slanted sentence
+     * rejoin its line instead of splitting at a bucket boundary. Everything
+     * unconfirmed (plus the measured-upright mass) runs the plain upright
+     * body, in original input order. A multi-member band merges via
+     * [mergeLine] with the frame (bounds = exact screen AABB of the in-frame
+     * union, oriented dims = union dims, angle = θ̄ verbatim); a lone
+     * measured word stays the ORIGINAL instance, slant and all.
      */
-    private fun assembleSlanted(rotated: List<RecognizedRegion>, rtl: Boolean): List<RecognizedRegion> {
+    private fun assembleWithAngles(regions: List<RecognizedRegion>, rtl: Boolean): List<RecognizedRegion> {
+        val unmeasured = regions.filter { it.box.angleUnmeasured }
+        val measured = regions.filter { !it.box.angleUnmeasured }
         val clusters = DeskewGeometry.clusterByAngle(
-            rotated.map { it.box.angleDeg },
-            rotated.map { it.box.orientedWidth },
-            rotated.map { it.box.orientedHeight },
+            measured.map { it.box.angleDeg },
+            measured.map { it.box.orientedWidth },
+            measured.map { it.box.orientedHeight },
             DeskewGeometry.DEFAULT_CLUSTER_CAP_DEG,
         )
-        val out = ArrayList<RecognizedRegion>(rotated.size)
+        val claimed = java.util.Collections.newSetFromMap(
+            java.util.IdentityHashMap<RecognizedRegion, Boolean>(),
+        )
+        val pooled = java.util.Collections.newSetFromMap(
+            java.util.IdentityHashMap<RecognizedRegion, Boolean>(),
+        )
+        val slanted = ArrayList<RecognizedRegion>(regions.size)
         for (cluster in clusters) {
-            val members = cluster.memberIndices.map { rotated[it] }
-            if (members.size == 1) {
-                out += members[0]
-                continue
-            }
+            if (cluster.angleDeg == 0f) continue // the upright mass bands in the pool
+            val members = cluster.memberIndices.map { measured[it] }
             val union = Rect(members[0].box.bounds)
             for (m in members.drop(1)) union.union(m.box.bounds)
             val frame = AngleFrame(cluster.angleDeg, union.centerX(), union.centerY())
-            val deskewed = members.map { DeskewGeometry.deskew(it.box, frame) }
-            out += assembleLineIndices(deskewed).map { idxs ->
-                if (idxs.size == 1) members[idxs[0]]
-                else mergeLine(idxs.map { members[it] }, rtl, frame)
+            val memberBoxes = members.map { it.box }
+            val admitted = unmeasured.filter {
+                it !in claimed && DeskewGeometry.admitUnmeasured(it.box, frame, memberBoxes)
+            }
+            if (members.size == 1 && admitted.isEmpty()) {
+                slanted += members[0]
+                continue
+            }
+            val all = members + admitted
+            val deskewed = all.map { DeskewGeometry.deskew(it.box, frame) }
+            for (idxs in assembleLineIndices(deskewed)) {
+                val band = idxs.map { all[it] }
+                // Confirmation = CARRIED-SLANT evidence, mirroring the
+                // grouping shell: a band with no isRotated member has no
+                // slant evidence — ALL its words fall back to the pool,
+                // where their true line-mates are (an absorbed measured-0
+                // banding away from its unmeasured siblings fragmented lines
+                // whose stitched whole survived downstream filters that its
+                // pieces individually cannot — the FF-VI garble regression).
+                val hasCarried = band.any { it.box.isRotated }
+                when {
+                    !hasCarried -> pooled.addAll(band)
+                    band.size == 1 -> slanted += band[0]
+                    else -> {
+                        slanted += mergeLine(band, rtl, frame)
+                        for (b in band) if (b.box.angleUnmeasured) claimed.add(b)
+                    }
+                }
             }
         }
-        return out
+        val poolable = java.util.Collections.newSetFromMap(
+            java.util.IdentityHashMap<RecognizedRegion, Boolean>(),
+        )
+        // Same exactly-once rule as the grouping shell: a word pooled by an
+        // early cluster's unconfirmed band but CLAIMED by a later cluster's
+        // confirmed one must not band again in the pool.
+        for (r in pooled) if (r !in claimed) poolable.add(r)
+        for (cluster in clusters) {
+            if (cluster.angleDeg != 0f) continue
+            for (i in cluster.memberIndices) poolable.add(measured[i])
+        }
+        for (u in unmeasured) if (u !in claimed) poolable.add(u)
+        val pool = regions.filter { it in poolable }
+        return assembleUpright(pool, rtl) + slanted
     }
 
     /**
