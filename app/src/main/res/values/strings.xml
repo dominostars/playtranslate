@@ -2940,6 +2940,10 @@
     <string name="yomitan_single_dict_title">Only show definitions from one dictionary</string>
     <!-- Subtitle of the single-dictionary toggle, explaining which dictionary wins. -->
     <string name="yomitan_single_dict_subtitle">Definitions come from the highest-priority dictionary with results; the built-in dictionary is the final fallback</string>
+    <!-- Title of the dictionary-styling toggle at the bottom of the Terms section. -->
+    <string name="yomitan_styling_title">Dictionary styling</string>
+    <!-- Subtitle of the dictionary-styling toggle; only affects dictionaries imported with structured content. -->
+    <string name="yomitan_styling_subtitle">Show definitions with each dictionary\'s own layout and styling. Applies to dictionaries imported from now on; turn off to always use plain text</string>
     <!-- Title of the per-dictionary auto-update toggle on the dictionary detail page (shown only for dictionaries that support updates). -->
     <string name="yomitan_auto_update_label">Auto-update</string>
     <!-- Subtitle of the auto-update toggle. -->
