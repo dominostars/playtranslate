@@ -4,7 +4,9 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonParser
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
+import com.google.gson.stream.JsonWriter
 import java.io.StringReader
+import java.io.StringWriter
 
 /**
  * Parser for one term_bank entry — the 8-element positional array
@@ -54,17 +56,22 @@ internal object TermEntry {
         var defs: List<String> = emptyList()
         var scJson: String? = null
         if (reader.peek() == JsonToken.BEGIN_ARRAY) {
-            // Tee the glossary: buffer the subtree (bounded — one entry, not
-            // the bank), keep its serialized form when it carries structure
-            // the flattener degrades, and run the UNCHANGED streaming
-            // flattener over that serialized form so flat output stays
-            // byte-identical to the pre-tee pipeline. parseReader consumes
-            // exactly one element, preserving this parser's stream-position
-            // invariant.
-            val glossary = JsonParser.parseReader(reader)
-            val serialized = glossary.toString()
-            defs = JsonReader(StringReader(serialized)).use { TermGlossary.parseGlossary(it) }
-            if (hasStructuredItems(glossary)) scJson = serialized
+            // Tee the glossary through the BUDGETED capture — never an
+            // unbounded JsonParser buffer, which would hand a hostile bank
+            // a one-entry OOM (pre-v8 glossaries streamed with bounded
+            // memory; the tee must not regress that). Within budget, the
+            // UNCHANGED streaming flattener runs over the captured form so
+            // flat output stays byte-identical to the pre-tee pipeline;
+            // over budget the element is consumed and the entry falls out
+            // through the caller's empty-defs skip — the same defensive
+            // fate as a malformed entry (no legitimate dictionary carries
+            // a half-megabyte single glossary; Jitendex tops out around
+            // 100KB).
+            val serialized = captureGlossary(reader)
+            if (serialized != null) {
+                defs = JsonReader(StringReader(serialized)).use { TermGlossary.parseGlossary(it) }
+                if (hasStructuredItems(serialized)) scJson = serialized
+            }
         } else {
             if (reader.hasNext()) reader.skipValue()
         }
@@ -73,11 +80,80 @@ internal object TermEntry {
         return Parsed(term, reading, defTags, score, defs, scJson)
     }
 
+    /** Retention budget for one glossary's serialized JSON, in chars.
+     *  Doubles as the transient-memory bound during capture and (×4, the
+     *  UTF-8 worst case) the inflation ceiling on the read side
+     *  ([YomitanDataStore.structuredGlossaries]). Sized ~5x over the
+     *  largest real-world entries (Jitendex ~100KB-class). */
+    internal const val MAX_RETAINED_GLOSSARY_CHARS = 512 * 1024
+
+    /**
+     * Serializes the JSON element the [reader] is positioned at, bounded by
+     * [budget] chars. Returns null when the element exceeds the budget — in
+     * which case the REMAINDER is consumed in skip mode (structure walked,
+     * string/number tokens skipped without materialization, accumulation
+     * stopped), so the caller's consume-exactly-one-element invariant holds
+     * either way and a hostile many-token glossary can't accumulate memory.
+     * Residual: one single oversized string TOKEN still transits the heap
+     * once (Gson offers no length-capped nextString); what's bounded is
+     * everything after it.
+     *
+     * Token-level rewrite rather than JsonElement round-trip: numbers are
+     * emitted verbatim ([JsonWriter.jsonValue]), so the capture is
+     * source-faithful.
+     */
+    internal fun captureGlossary(
+        reader: JsonReader,
+        budget: Int = MAX_RETAINED_GLOSSARY_CHARS,
+    ): String? {
+        val out = StringWriter()
+        val writer = JsonWriter(out)
+        var over = false
+        var depth = 0
+        do {
+            if (over) {
+                when (reader.peek()) {
+                    JsonToken.BEGIN_ARRAY -> { reader.beginArray(); depth++ }
+                    JsonToken.END_ARRAY -> { reader.endArray(); depth-- }
+                    JsonToken.BEGIN_OBJECT -> { reader.beginObject(); depth++ }
+                    JsonToken.END_OBJECT -> { reader.endObject(); depth-- }
+                    JsonToken.NAME -> reader.nextName()
+                    // skipValue never materializes the token's text.
+                    else -> reader.skipValue()
+                }
+            } else {
+                when (reader.peek()) {
+                    JsonToken.BEGIN_ARRAY -> { reader.beginArray(); writer.beginArray(); depth++ }
+                    JsonToken.END_ARRAY -> { reader.endArray(); writer.endArray(); depth-- }
+                    JsonToken.BEGIN_OBJECT -> { reader.beginObject(); writer.beginObject(); depth++ }
+                    JsonToken.END_OBJECT -> { reader.endObject(); writer.endObject(); depth-- }
+                    JsonToken.NAME -> writer.name(reader.nextName())
+                    JsonToken.STRING -> writer.value(reader.nextString())
+                    // Raw literal, not a double round-trip.
+                    JsonToken.NUMBER -> writer.jsonValue(reader.nextString())
+                    JsonToken.BOOLEAN -> writer.value(reader.nextBoolean())
+                    JsonToken.NULL -> { reader.nextNull(); writer.nullValue() }
+                    else -> reader.skipValue()
+                }
+                if (out.buffer.length > budget) over = true
+            }
+        } while (depth > 0)
+        if (over) return null // abandoned mid-document; never close the writer
+        writer.close()
+        return out.toString()
+    }
+
     /** Whether any glossary item is one the flat pipeline degrades: a
      *  `structured-content` tree (styling/layout/data attributes lost) or an
      *  `image` (dropped outright). Bare strings and `{type:"text"}` items
-     *  flatten losslessly and don't warrant retention. */
-    private fun hasStructuredItems(glossary: JsonElement): Boolean {
+     *  flatten losslessly and don't warrant retention. Takes the captured
+     *  (budget-bounded) serialized form. */
+    internal fun hasStructuredItems(serialized: String): Boolean {
+        val glossary: JsonElement = try {
+            JsonParser.parseString(serialized)
+        } catch (_: RuntimeException) {
+            return false
+        }
         if (!glossary.isJsonArray) return false
         return glossary.asJsonArray.any { item ->
             item.isJsonObject &&
