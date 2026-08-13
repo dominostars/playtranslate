@@ -197,6 +197,33 @@ object PinholeCalibration {
      *  reaching across a full menu row (~72px pitch at 1080p). */
     const val FRAGMENT_DEFER_ABUT_PX = 32
 
+    // ── Content-match relocation tombstones (classifyOcrResults) ─────────
+
+    /** Positional slop for tombstone matching AND for the same-position
+     *  test that decides whether a content match is a relocation at all:
+     *  two rects are "the same region" when every edge differs by at most
+     *  this many px. Deliberately TIGHT — it must sit above static re-read
+     *  jitter (a few px of anti-aliasing noise on identical text;
+     *  ScanlineReconciler's reposition hysteresis uses 5) but well below
+     *  the smallest per-cycle displacement a genuinely moving text can
+     *  show while still producing a readable distinct OCR group: the
+     *  vacated region's old occupant was blacked out to OCR under the
+     *  rendered rect plus ~14px of box padding, so text that has moved
+     *  less than the padding cannot have been read whole at its old spot.
+     *  A generous overlap test here would make slow scrollers hit their
+     *  own previous-cycle tombstones and leave a trail of spawned boxes —
+     *  the exact accumulation bug content match exists to prevent. */
+    const val TOMBSTONE_MATCH_SLOP_PX = 12
+
+    /** How many full looks (cycles that reached classification) a
+     *  tombstone survives. The oscillation it kills has a period of
+     *  exactly two looks — relocate away on look N, re-read the vacated
+     *  rect on N+1 — so 1 suffices for the crisp case; 2 covers a
+     *  one-look delay (step-9b deferral of the spawn, a brief occlusion).
+     *  Longer would start converting slow revisit-movers (a drifting
+     *  text returning to an old position) into spurious duplicates. */
+    const val TOMBSTONE_LIFESPAN_LOOKS = 2
+
     /** Game-input burst window (audit A4): after a tap/gamepad press, cycles
      *  pace at the backend floor for this long instead of the user interval.
      *  Input is the strongest change predictor available; the burst buys

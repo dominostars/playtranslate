@@ -257,6 +257,7 @@ class PinholeOverlayMode(
         overlayBitmap?.recycle()
         overlayBitmap = null
         outsideGrid.reset()
+        tombstones.clear()
         grayZoneStats.clear()
         grayZoneLastEmitMs = 0L
         // Holds only — region memory and ARMING survive. The input path
@@ -309,6 +310,20 @@ class PinholeOverlayMode(
      *  exclusion + the settle gate. Reset whenever the overlay layout
      *  changes or the mode's state resets. */
     private val outsideGrid = OutsideBlockGrid()
+
+    /** A live [Tombstone] plus its remaining lifespan in full looks. */
+    private class AgedTombstone(val stone: Tombstone, var looksLeft: Int)
+
+    /** Vacancy memory for content-match relocations (see [Tombstone]):
+     *  minted by classification when a content match moves a box to a new
+     *  position, aged by full looks (cycles that actually classified — a
+     *  gate-skipped or no-pipeline cycle read nothing, so it proves
+     *  nothing about the vacated rect), pruned after
+     *  [PinholeCalibration.TOMBSTONE_LIFESPAN_LOOKS]. OCR-crop space, so
+     *  every reset that voids that space must clear it alongside
+     *  cachedBoxes. Naturally bounded: mints per look ≤ content matches
+     *  per look, lifespan 2 looks. */
+    private val tombstones = ArrayList<AgedTombstone>()
 
     // Removal hysteresis and the pinhole-side photometric fit were removed
     // 2026-07-08 (speed-first product rule): a false REMOVE costs one brief
@@ -419,6 +434,7 @@ class PinholeOverlayMode(
                 overlayBitmap = null
                 typewriterGate.clear()
                 typewriterDeadlineMs = null
+                tombstones.clear()
                 CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                 // State cleared + overlay hidden: the rebuild cycle must run
                 // even if the post-rotation screen goes immediately static.
@@ -728,6 +744,7 @@ class PinholeOverlayMode(
                     overlayBitmap = null
                     typewriterGate.clear()
                     typewriterDeadlineMs = null
+                    tombstones.clear()
                     CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                     engine.forceNext()
                     return prefs.captureIntervalMs
@@ -768,7 +785,18 @@ class PinholeOverlayMode(
                     cropTop = pipeCropTop,
                 )
                 ocrBitmapRects = boxes.map { classifyCoords.ocrToBitmap(it.bounds) }
-                classification = classifyOcrResults(ocrResult, boxes, ocrBitmapRects, classifyCoords, sourceIsRtl)
+                classification = classifyOcrResults(
+                    ocrResult, boxes, ocrBitmapRects, classifyCoords, sourceIsRtl,
+                    tombstones = tombstones.map { it.stone },
+                )
+                // Age BEFORE minting so a stone minted by THIS look doesn't
+                // lose a look to its own minting cycle — it must still be
+                // live when the vacated rect's re-read arrives next look.
+                tombstones.forEach { it.looksLeft-- }
+                tombstones.removeAll { it.looksLeft <= 0 }
+                classification.vacated.mapTo(tombstones) {
+                    AgedTombstone(it, PinholeCalibration.TOMBSTONE_LIFESPAN_LOOKS)
+                }
             } else {
                 classifyCoords = null
                 ocrBitmapRects = emptyList()
@@ -925,6 +953,8 @@ class PinholeOverlayMode(
                         "cascade=${cascadedRemovals.toSortedSet()}, " +
                         "stale=${staleOverlayIndices.toSortedSet()}) " +
                         "far=${placeGroups.size}(+${farOutcome.held} held) " +
+                        "tomb=${classification.tombstoneBlocks}blk/" +
+                        "${classification.vacated.size}mint/${tombstones.size}live " +
                         "boxesIn=${boxes.size} boxesOut=${nextBoxes.size}"
                 )
                 // Why classification picked stale/contentMatch/far: dump
