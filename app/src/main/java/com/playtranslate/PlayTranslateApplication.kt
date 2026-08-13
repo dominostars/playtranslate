@@ -186,6 +186,9 @@ class PlayTranslateApplication : Application() {
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
             override fun onActivityDestroyed(activity: Activity) {}
         })
+        // Right-stick scrolling on every in-app page — one Window.Callback
+        // wrap per activity, so no page implements it.
+        com.playtranslate.ui.ActivityStickScroll.install(this)
     }
 
     companion object {

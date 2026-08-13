@@ -518,14 +518,15 @@ class CaptureSheetControllerNav(
 
     companion object {
         /** Per-axis stick dead zone (raised to the device's reported flat).
-         *  Shared with the lens's stick scroll so both surfaces engage at the
-         *  same deflection. */
+         *  Shared with the lens's stick scroll and the in-app pages'
+         *  [ActivityStickScroll] so every surface engages at the same
+         *  deflection. */
         const val STICK_DEAD_ZONE = 0.20f
 
         /** Full-deflection speed for every stick drive — the sheet's scroll,
-         *  the left stick's grabber drag, and the lens's definitions scroll
-         *  (halved from the original 1400 after it read as too fast on
-         *  device). */
+         *  the left stick's grabber drag, the lens's definitions scroll, and
+         *  the in-app pages' [ActivityStickScroll] (halved from the original
+         *  1400 after it read as too fast on device). */
         const val STICK_MAX_DP_PER_SEC = 700f
     }
 }
