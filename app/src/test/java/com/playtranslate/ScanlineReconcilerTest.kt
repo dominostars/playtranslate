@@ -484,12 +484,11 @@ class ScanlineReconcilerTest {
     }
 
     @Test
-    fun snapBoundaryHover_longLineFlips_refresh() {
-        // The same flip on a LONG banner is a real visual event: corners sweep
-        // ~37px at this length, far past the px hysteresis, so the kept box
-        // refreshes onto the fresh read's geometry (the deliberate change from
-        // the old always-sticky flip rule — a long chip drawn 10° off its text
-        // is a misrender, not jitter).
+    fun snapBoundaryHover_longLineGainsAngle_refresh() {
+        // Gaining an angle on a LONG banner is a real visual event: corners
+        // sweep ~37px at this length, far past the px hysteresis, so the kept
+        // box refreshes onto the fresh read's geometry — a long chip drawn 10°
+        // off its text is a misrender, not jitter.
         val bounds = Rect(100, 100, 500, 180)
         val upright = box(bounds, "GRAND OPENING SALE")
         val slantedRead = grp("GRAND OPENING SALE", bounds)
@@ -498,11 +497,108 @@ class ScanlineReconcilerTest {
         assertEquals(1, v1.repositioned)
         assertEquals(10.4f, v1.keptBoxes.single().angleDeg, 0f)
         assertEquals("translation preserved through the refresh", "T", v1.keptBoxes.single().translatedText)
+    }
 
-        val rotated = upright.copy(angleDeg = 10.4f, orientedWidth = 400f, orientedHeight = 80f)
+    @Test
+    fun slantHysteresis_uprightReadOnAngledBox_holdsTheAngle() {
+        // The REVERSE flip — an upright read of the same text on a box that
+        // carries a measured angle — is NOT symmetric evidence: gaining an
+        // angle took a measurement, the producer gates, and a confidence win;
+        // "upright" only means the producer's retry didn't fire this cycle.
+        // On animating pages acceptance flips cycle to cycle and the chip
+        // flickered angled↔upright (Thor, P3R activity screen), so the angle
+        // is HELD while the text lives. (Supersedes the earlier rule that
+        // refreshed long-line flips in both directions.)
+        val bounds = Rect(100, 100, 500, 180)
+        val rotated = box(bounds, "GRAND OPENING SALE")
+            .copy(angleDeg = 10.4f, orientedWidth = 400f, orientedHeight = 80f)
         val uprightRead = grp("GRAND OPENING SALE", bounds)
-        val v2 = ScanlineReconciler.reconcile(listOf(uprightRead), listOf(rotated))
-        assertEquals(1, v2.repositioned)
-        assertEquals(0f, v2.keptBoxes.single().angleDeg, 0f)
+        val v = ScanlineReconciler.reconcile(listOf(uprightRead), listOf(rotated))
+        assertEquals("no reposition on an angle-only flicker", 0, v.repositioned)
+        assertEquals(10.4f, v.keptBoxes.single().angleDeg, 0f)
+    }
+
+    @Test
+    fun slantHysteresis_heldAngleRidesFreshBoundsOnDrift() {
+        // Bounds drift past hysteresis WITH an upright read: the box tracks
+        // the moving text (fresh bounds) but keeps its measured angle and
+        // oriented dims — the drift is evidence of motion, not of uprightness.
+        val rotated = box(Rect(100, 100, 500, 180), "GRAND OPENING SALE")
+            .copy(angleDeg = 10.4f, orientedWidth = 400f, orientedHeight = 80f)
+        val moved = grp("GRAND OPENING SALE", Rect(120, 112, 520, 192))
+        val v = ScanlineReconciler.reconcile(listOf(moved), listOf(rotated))
+        assertEquals(1, v.repositioned)
+        val kept = v.keptBoxes.single()
+        assertEquals(Rect(120, 112, 520, 192), kept.bounds)
+        assertEquals(10.4f, kept.angleDeg, 0f)
+        assertEquals(400f, kept.orientedWidth, 0f)
+        assertEquals(80f, kept.orientedHeight, 0f)
+    }
+
+    @Test
+    fun slantHysteresis_sizeChangeReleasesTheHold() {
+        // Release valve 1: the upright read arrives with materially different
+        // SIZE — a re-layout, not jitter. Holding the old angle would also
+        // keep stale oriented dims on fresh bounds (adversarial-review
+        // finding), so the hold yields to the fresh upright geometry.
+        val rotated = box(Rect(100, 100, 500, 180), "GRAND OPENING SALE")
+            .copy(angleDeg = 10.4f, orientedWidth = 400f, orientedHeight = 80f)
+        val relaidOut = grp("GRAND OPENING SALE", Rect(100, 100, 560, 180))
+        val v = ScanlineReconciler.reconcile(listOf(relaidOut), listOf(rotated))
+        val kept = v.keptBoxes.single()
+        assertEquals(0f, kept.angleDeg, 0f)
+        assertEquals(Rect(100, 100, 560, 180), kept.bounds)
+    }
+
+    @Test
+    fun slantHysteresis_persistentUprightStreakReleasesTheHold() {
+        // Release valve 2: five CONSECUTIVE upright reads = a genuine upright
+        // transition; the hold releases instead of sticking for the box's
+        // lifetime. (The flicker the hold exists for alternates angled and
+        // upright, so it never builds the streak — next test.)
+        val bounds = Rect(100, 100, 500, 180)
+        var boxNow = box(bounds, "GRAND OPENING SALE")
+            .copy(angleDeg = 10.4f, orientedWidth = 400f, orientedHeight = 80f)
+        val uprightRead = grp("GRAND OPENING SALE", bounds)
+        repeat(4) { i ->
+            val v = ScanlineReconciler.reconcile(listOf(uprightRead), listOf(boxNow))
+            boxNow = v.keptBoxes.single()
+            assertEquals("read ${i + 1} still holds", 10.4f, boxNow.angleDeg, 0f)
+        }
+        val v5 = ScanlineReconciler.reconcile(listOf(uprightRead), listOf(boxNow))
+        assertEquals("fifth consecutive upright read releases", 0f, v5.keptBoxes.single().angleDeg, 0f)
+    }
+
+    @Test
+    fun slantHysteresis_alternatingReadsNeverBuildTheStreak() {
+        // The actual flicker pattern: angled and upright reads alternate.
+        // The streak resets on every measured angle, so the hold survives
+        // indefinitely — which is the point.
+        val bounds = Rect(100, 100, 500, 180)
+        var boxNow = box(bounds, "GRAND OPENING SALE")
+            .copy(angleDeg = 10.4f, orientedWidth = 400f, orientedHeight = 80f)
+        val uprightRead = grp("GRAND OPENING SALE", bounds)
+        val angledRead = grp("GRAND OPENING SALE", bounds)
+            .copy(angleDeg = 10.4f, orientedWidth = 400f, orientedHeight = 80f)
+        repeat(8) { i ->
+            val read = if (i % 2 == 0) uprightRead else angledRead
+            val v = ScanlineReconciler.reconcile(listOf(read), listOf(boxNow))
+            boxNow = v.keptBoxes.single()
+            assertEquals("cycle ${i + 1} keeps the angle", 10.4f, boxNow.angleDeg, 0f)
+        }
+    }
+
+    @Test
+    fun slantHysteresis_freshMeasuredAngle_stillUpdates() {
+        // θ→θ′ with a MEASURED fresh angle is positive evidence and must keep
+        // refreshing (the hold applies only to θ→0): 12° → 20° on a long chip
+        // sweeps corners far past hysteresis.
+        val rotated = box(Rect(100, 100, 500, 180), "GRAND OPENING SALE")
+            .copy(angleDeg = 12f, orientedWidth = 400f, orientedHeight = 80f)
+        val steeper = grp("GRAND OPENING SALE", Rect(100, 100, 500, 180))
+            .copy(angleDeg = 20f, orientedWidth = 400f, orientedHeight = 80f)
+        val v = ScanlineReconciler.reconcile(listOf(steeper), listOf(rotated))
+        assertEquals(1, v.repositioned)
+        assertEquals(20f, v.keptBoxes.single().angleDeg, 0f)
     }
 }
