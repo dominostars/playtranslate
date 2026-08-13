@@ -41,6 +41,29 @@ private sealed interface ModelTarget {
     ) : ModelTarget
 }
 
+/** The one field name every assembler routes the screenshot to:
+ *  [PtModels.assemble] (via `PtNote.toValues`) and
+ *  [AnkiCardTypeMapper.assembleBasicNote] both key on it literally, so a
+ *  model that lacks it drops the image no matter what we upload. */
+private const val PICTURE_FIELD = "Picture"
+
+/** True when a note assembled for this target has somewhere to put the
+ *  screenshot. False means the image was never going to appear on the
+ *  card — a plain Basic {Front, Back}, a mapping with no PICTURE source,
+ *  or one of our own models whose Picture field was renamed in AnkiDroid
+ *  — so a failed upload costs the user nothing and must not be reported
+ *  as a loss. */
+private val ModelTarget.holdsPicture: Boolean
+    get() = when (this) {
+        is ModelTarget.Default -> PICTURE_FIELD in model.fieldNames
+        is ModelTarget.Basic   -> PICTURE_FIELD in model.fieldNames
+        // Read the mapping the way [AnkiCardTypeMapper.assembleNote] does —
+        // per LIVE field name, so a stale entry left behind by a renamed
+        // field doesn't count as a destination.
+        is ModelTarget.Structured ->
+            model.fieldNames.any { mapping[it] == ContentSource.PICTURE }
+    }
+
 /**
  * Result of an attempted Anki send. Callers map this to user-visible
  * Toast / dismiss behavior.
@@ -53,10 +76,14 @@ sealed interface AnkiSendResult {
      *  [wordAudioDropped] is true when at least one per-target-word audio
      *  upload failed (requested count > uploaded count), so the
      *  corresponding word(s) in the card carry no `[sound:]` tag.
-     *  Callers surface either flag to the user. */
+     *  [imageDropped] is true when a screenshot was requested (a non-null
+     *  screenshotPath) and the target note had a field to hold it, but its
+     *  media upload failed — the card landed with an empty Picture field.
+     *  Callers surface these flags via [Success.mediaShortfallRes]. */
     data class Success(
         val audioDropped: Boolean = false,
         val wordAudioDropped: Boolean = false,
+        val imageDropped: Boolean = false,
     ) : AnkiSendResult
     /** The send failed — the caller shows the error and restores the
      *  save button. [messageRes] names the cause where the dispatcher
@@ -76,6 +103,30 @@ sealed interface AnkiSendResult {
      *  threading it through avoids a prefs-race if the user changes
      *  the card type between dispatch and follow-up. */
     data class NeedsMapping(val model: AnkiManager.ModelInfo) : AnkiSendResult
+}
+
+/**
+ * The message naming what this otherwise-successful send could not
+ * attach, or null when the card landed complete. One resolver for every
+ * send surface so a partial send reads the same everywhere: the review
+ * sheets (silent on a clean send) toast only when this is non-null,
+ * while the one-tap surfaces fall back to their mode-named success
+ * message.
+ *
+ * Screenshot and audio each get their own message, plus a combined one:
+ * whatever breaks AnkiDroid's media store tends to break it for every
+ * upload in the pass, and naming only half of what's missing leaves the
+ * user to find the rest in their deck later.
+ */
+@StringRes
+fun AnkiSendResult.Success.mediaShortfallRes(): Int? {
+    val audioMissing = audioDropped || wordAudioDropped
+    return when {
+        imageDropped && audioMissing -> R.string.anki_added_no_screenshot_or_audio
+        imageDropped -> R.string.anki_added_no_screenshot
+        audioMissing -> R.string.anki_added_no_audio
+        else -> null
+    }
 }
 
 /**
@@ -309,11 +360,16 @@ suspend fun Context.dispatchSendToAnki(
 
     val ok = withContext(Dispatchers.IO) { anki.addNote(modelId, deckId, fields) }
     if (!ok) return AnkiSendResult.Failed(R.string.anki_send_failed_message)
-    // The note was added. Flag any audio that was requested but didn't
-    // make it onto the card so callers can warn the user.
+    // The note was added. Flag any media that was requested but didn't
+    // make it onto the card so callers can warn the user. The screenshot
+    // is only a loss when the note had a field to hold it — see
+    // [holdsPicture]; the audio flags carry no such gate because their
+    // upload is already conditioned on the user's audio toggle.
     return AnkiSendResult.Success(
         audioDropped = audioPath != null && audioFilename.isNullOrEmpty(),
         wordAudioDropped = wordAudioPaths.size > wordAudioFilenames.size,
+        imageDropped = screenshotPath != null && imageFilename.isNullOrEmpty() &&
+            target.holdsPicture,
     )
 }
 

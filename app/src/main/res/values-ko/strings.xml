@@ -468,6 +468,10 @@
 
     <string name="anki_added_no_audio"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>에 추가됨(오디오 없음)</string>
 
+    <string name="anki_added_no_screenshot"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>에 추가됨(스크린샷 없음)</string>
+
+    <string name="anki_added_no_screenshot_or_audio"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>에 추가됨(스크린샷과 오디오 없음)</string>
+
     <string name="anki_added_sentence_success">문장 카드가 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>에 추가됨</string>
 
     <string name="anki_added_word_success">단어 카드가 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>에 추가됨</string>

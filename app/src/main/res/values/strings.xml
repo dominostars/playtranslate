@@ -1088,6 +1088,19 @@
          be attached. -->
     <string name="anki_added_no_audio">Added to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (audio unavailable)</string>
 
+    <!-- Success toast for a card whose screenshot could not be handed to
+         AnkiDroid's media store, so the card's Picture field landed
+         empty. Shown only when the note type actually had a field to
+         hold the image. -->
+    <string name="anki_added_no_screenshot">Added to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (screenshot unavailable)</string>
+
+    <!-- Success toast for a card that lost BOTH its screenshot and its
+         audio. One message, because whatever breaks AnkiDroid's media
+         store usually breaks every upload in the same send, and naming
+         half the loss leaves the other half to be discovered in the
+         deck. -->
+    <string name="anki_added_no_screenshot_or_audio">Added to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (screenshot and audio unavailable)</string>
+
     <!-- Success toast for one-tap card creation of a SENTENCE card.
          One-tap routes by the remembered Sentence/Word default with no
          UI showing it, so the toast names the card shape created. -->

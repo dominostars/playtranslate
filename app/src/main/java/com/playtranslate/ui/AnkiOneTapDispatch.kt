@@ -154,8 +154,7 @@ fun oneTapResultToast(appCtx: Context, result: AnkiSendResult, mode: CardMode) {
     when (result) {
         is AnkiSendResult.Success -> Toast.makeText(
             appCtx,
-            if (result.audioDropped || result.wordAudioDropped) R.string.anki_added_no_audio
-            else ankiAddedSuccessRes(mode),
+            result.mediaShortfallRes() ?: ankiAddedSuccessRes(mode),
             Toast.LENGTH_SHORT,
         ).show()
         is AnkiSendResult.Failed -> Toast.makeText(

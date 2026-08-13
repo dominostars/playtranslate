@@ -478,6 +478,10 @@
 
     <string name="anki_added_no_audio"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加しました（音声は利用できません）</string>
 
+    <string name="anki_added_no_screenshot"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加しました（スクリーンショットは利用できません）</string>
+
+    <string name="anki_added_no_screenshot_or_audio"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加しました（スクリーンショットと音声は利用できません）</string>
+
     <string name="anki_added_sentence_success">文カードを<xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加しました</string>
 
     <string name="anki_added_word_success">単語カードを<xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加しました</string>

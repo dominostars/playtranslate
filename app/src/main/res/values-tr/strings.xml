@@ -463,6 +463,10 @@
 
     <string name="anki_added_no_audio"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye eklendi (ses kullanılamıyor)</string>
 
+    <string name="anki_added_no_screenshot"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye eklendi (ekran görüntüsü kullanılamıyor)</string>
+
+    <string name="anki_added_no_screenshot_or_audio"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye eklendi (ekran görüntüsü ve ses kullanılamıyor)</string>
+
     <string name="anki_added_sentence_success">Cümle kartı <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye eklendi</string>
 
     <string name="anki_added_word_success">Sözcük kartı <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye eklendi</string>

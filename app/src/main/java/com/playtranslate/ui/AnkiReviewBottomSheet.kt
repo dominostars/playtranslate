@@ -238,17 +238,15 @@ class AnkiReviewBottomSheet : DialogFragment() {
         // (Context.sendSentenceCard would skip it).
         val result = sendSentenceCard(input, deckId)
         // The pipeline folds local synth failures into Success.audioDropped
-        // / wordAudioDropped — a single flag here covers both synth-fail and
-        // upload-fail.
-        val success = result as? AnkiSendResult.Success
-        val audioMissing = success?.audioDropped == true
-        val wordAudioMissing = success?.wordAudioDropped == true
+        // / wordAudioDropped, so one resolver covers synth-fail, audio
+        // upload-fail, and a screenshot AnkiDroid wouldn't take. Null =
+        // the card landed whole, and the sheet stays silent.
+        val shortfallRes = (result as? AnkiSendResult.Success)?.mediaShortfallRes()
         applyAnkiSendResult(
             result,
             onSuccess = {
-                if (audioMissing || wordAudioMissing) {
-                    Toast.makeText(requireContext(), R.string.anki_added_no_audio,
-                        Toast.LENGTH_SHORT).show()
+                shortfallRes?.let {
+                    Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
                 }
                 parentFragmentManager.setFragmentResult(RESULT_ANKI_ADDED, bundleOf())
                 dismiss()

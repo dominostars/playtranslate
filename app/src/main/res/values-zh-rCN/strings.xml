@@ -468,6 +468,10 @@
 
     <string name="anki_added_no_audio">已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>（音频不可用）</string>
 
+    <string name="anki_added_no_screenshot">已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>（截图不可用）</string>
+
+    <string name="anki_added_no_screenshot_or_audio">已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>（截图和音频不可用）</string>
+
     <string name="anki_added_sentence_success">句子卡片已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
 
     <string name="anki_added_word_success">单词卡片已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
