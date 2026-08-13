@@ -2768,11 +2768,11 @@ class CaptureResultOverlay(
         }
     }
 
-    // ── Stick resize (the right stick's virtual grabber drag) ────────────
+    // ── Stick resize (the left stick's virtual grabber drag) ─────────────
     // Delta-driven mirror of the touch resize: [stickResizeBy] is updateResize
     // per frame, [commitStickResize] is the finger-up (endResize / the
     // sliver drag's endSliverDrag, by origin). Driven by the nav controller's
-    // frame loop while the right stick is deflected.
+    // frame loop while the left stick is deflected.
 
     private var stickResizing = false
     private var stickResizeFromSliver = false
