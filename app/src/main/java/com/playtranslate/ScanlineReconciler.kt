@@ -100,6 +100,18 @@ object ScanlineReconciler {
      *  static text — repositioning that would make boxes shiver every cycle. */
     private const val REPOSITION_HYSTERESIS_PX = 5
 
+    /** Slant-hold release valve 1: max per-axis SIZE drift (px) between the held
+     *  box and the fresh upright read. Size jitter on static text stays inside
+     *  the same few-px envelope as position jitter (2× the reposition
+     *  hysteresis); a real re-layout jumps by a text-size step. */
+    private const val SLANT_HOLD_MAX_SIZE_DRIFT_PX = 10
+
+    /** Slant-hold release valve 2: consecutive upright re-reads before a held
+     *  angle yields. The acceptance flap the hold exists for alternates
+     *  angled/upright and never builds this streak; a genuine upright
+     *  transition releases in a few cycles instead of the box's lifetime. */
+    private const val SLANT_HOLD_RELEASE_READS = 5
+
     /** Drift seen on the DRAWN chip, not just the AABB: when either side is
      *  slanted, the kept box refreshes iff some corner of the oriented
      *  footprint moved beyond [REPOSITION_HYSTERESIS_PX]. Length-dependent by
@@ -327,9 +339,36 @@ object ScanlineReconciler {
                         )
                         pref == ReadingArbiter.Preference.CHALLENGER
                     }
+                    // Slant hysteresis: a kept box's measured angle is HELD when
+                    // the fresh read of the SAME text comes back upright. Angle
+                    // evidence is asymmetric — gaining one took an estimator
+                    // measurement, three producer gates, and a confidence win,
+                    // while losing one only takes the retry not firing this
+                    // cycle — so on animating pages acceptance flips cycle to
+                    // cycle and the chip flickered angled↔upright (Thor, P3R
+                    // activity screen). A fresh MEASURED angle (θ→θ') still
+                    // updates through slantDrifted as before, and two valves
+                    // release a hold that outlives its evidence:
+                    //  - the fresh geometry changed SIZE (a re-layout is real
+                    //    evidence the scene changed; stale oriented dims on
+                    //    fresh bounds would draw the chip at the wrong scale);
+                    //  - the upright verdict persisted [SLANT_HOLD_RELEASE_READS]
+                    //    consecutive reads (the acceptance flap alternates and
+                    //    never builds a streak; a genuine upright transition
+                    //    clears in seconds instead of sticking for the box's
+                    //    life). Otherwise the hold dies with the box (text
+                    //    change, removal).
+                    val uprightFlip = box.angleDeg != 0f && g.angleDeg == 0f
+                    val holdSlant = uprightFlip &&
+                        abs(box.bounds.width() - g.bounds.width()) <= SLANT_HOLD_MAX_SIZE_DRIFT_PX &&
+                        abs(box.bounds.height() - g.bounds.height()) <= SLANT_HOLD_MAX_SIZE_DRIFT_PX &&
+                        box.slantUprightStreak + 1 < SLANT_HOLD_RELEASE_READS
+                    val streak = if (holdSlant) box.slantUprightStreak + 1 else 0
                     if (upgrade) {
                         toTranslate.add(regionOf(g, replaces = box)); cCount++; upCount++
-                    } else if (boundsDrifted(box.bounds, g.bounds) || slantDrifted(box, g)) {
+                    } else if (boundsDrifted(box.bounds, g.bounds) ||
+                        (slantDrifted(box, g) && !holdSlant)
+                    ) {
                         // Region DRIFTED beyond OCR jitter (a scroll/pan), or a
                         // slanted box's angle drifted past its own hysteresis
                         // (a rotation bounds can miss on short lines): carry
@@ -340,15 +379,23 @@ object ScanlineReconciler {
                         // Either way it counts as unchanged; drift is tallied
                         // in [Verdicts.repositioned].
                         // The slant moves with the bounds — it belongs to the
-                        // fresh read's geometry, not the stale box's.
+                        // fresh read's geometry, not the stale box's — EXCEPT
+                        // a held slant (above), which rides the fresh bounds.
                         kept.add(box.copy(
                             bounds = g.bounds,
-                            angleDeg = g.angleDeg,
-                            orientedWidth = g.orientedWidth,
-                            orientedHeight = g.orientedHeight,
+                            angleDeg = if (holdSlant) box.angleDeg else g.angleDeg,
+                            orientedWidth = if (holdSlant) box.orientedWidth else g.orientedWidth,
+                            orientedHeight = if (holdSlant) box.orientedHeight else g.orientedHeight,
+                            slantUprightStreak = streak,
                         )); rCount++; uCount++
                     } else {
-                        kept.add(box); uCount++
+                        // Verbatim keep still tracks the streak (a sub-hysteresis
+                        // upright flip is invisible on screen but is evidence).
+                        kept.add(
+                            if (box.slantUprightStreak == streak) box
+                            else box.copy(slantUprightStreak = streak),
+                        )
+                        uCount++
                     }
                 }
             }

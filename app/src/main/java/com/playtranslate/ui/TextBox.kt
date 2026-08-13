@@ -49,6 +49,13 @@ data class TextBox(
      *  bounds+angle (singular at 45°). */
     val orientedWidth: Float = 0f,
     val orientedHeight: Float = 0f,
+    /** Consecutive upright re-reads survived by a held [angleDeg] (the
+     *  reconciler's slant hysteresis). Meaningful only while [angleDeg] != 0;
+     *  reset whenever a fresh measured angle arrives. Bounds the hold: the
+     *  acceptance flap the hold exists for alternates angled/upright and
+     *  never builds a streak, while a genuine upright transition releases
+     *  after a few reads instead of sticking for the box's lifetime. */
+    val slantUprightStreak: Int = 0,
     /** Minimum on-screen width (px) for a legible horizontal line of
      *  [translatedText] — the longest whitespace token measured at the
      *  legibility floor. Drives the vertical-box render routing in
