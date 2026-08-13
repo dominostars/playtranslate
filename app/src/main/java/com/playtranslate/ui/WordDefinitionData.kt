@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import com.playtranslate.model.FrequencyTag
+import com.playtranslate.model.ImportedSenseGroup
 import com.playtranslate.model.ReadingRow
 
 /**
@@ -32,6 +33,12 @@ data class WordDefinitionData(
      *  page), occurrence flagged. [WordResultCell] lists these below the title
      *  when there's more than one or the inline reading won't fit. */
     val readingRows: List<ReadingRow> = emptyList(),
+    /** The imported groups BEHIND the flattened imported rows in [senses] —
+     *  same data, structured form, for the styled WebView surfaces
+     *  ([YomitanDefinitionsView]); senses whose [ImportedSense.scRowid] is
+     *  set have a fetchable structured glossary. Flat surfaces ignore this.
+     *  In-process only: [WordDefinitionData] never rides an intent. */
+    val importedGroups: List<ImportedSenseGroup> = emptyList(),
 )
 
 /** A single rendered sense: its part(s) of speech (whole English tokens) and
