@@ -162,11 +162,15 @@ class DefinitionsDocumentTest {
         // wrapper is deleted post-parse.
         assertTrue(shell.contains("selectorText !== scope"))
         assertTrue(shell.contains("ptApplyDictCss"))
-        // Dual-path scoping: nesting is feature-detected, and legacy
-        // engines (AOSP WebView, Chromium <120) get per-selector
-        // prefixing with @media recursion instead of silently losing all
-        // dictionary CSS.
-        assertTrue(shell.contains("CSS.supports('selector(&)')"))
+        // Dual-path scoping with a BEHAVIOR probe: CSS.supports lies about
+        // nesting on Chromium ~105-119 (Thor field trace: 109 says true,
+        // parses nothing), so the shell must (a) probe by parsing a real
+        // nested rule and counting children, (b) verify the nested
+        // product's inner rule count and fall through to the legacy path
+        // when it's an empty husk, and (c) never consult the feature flag.
+        assertFalse(shell.contains("CSS.supports"))
+        assertTrue(shell.contains("#pt-nest-probe"))
+        assertTrue(shell.contains("falling to legacy"))
         assertTrue(shell.contains("conditionText"))
         // The application mechanism must be <style> elements, NEVER
         // constructable stylesheets — Android WebView gained those far

@@ -148,8 +148,25 @@ ruby > rt { font-size: .5em; }
   // such engines the nested wrapper parses to an EMPTY scope rule — every
   // dictionary rule silently vanishes. Those engines take the per-selector
   // prefix path instead.
-  var supportsNesting = typeof CSS !== 'undefined' && CSS.supports &&
-    CSS.supports('selector(&)');
+  // BEHAVIOR probe, not a feature flag: the supports-query for the '&'
+  // selector LIES on Chromium ~105-119 (the Thor's 109 says yes) — the
+  // selector parser accepts '&' several versions before nested rules
+  // actually parse, so the wrapper path would keep its scope rule and
+  // silently drop every rule inside it. Parse a real nested rule and
+  // count its children instead.
+  function probeNesting() {
+    try {
+      var el = document.createElement('style');
+      el.media = 'not all';
+      el.textContent = '#pt-nest-probe { & span { color: red } }';
+      document.head.appendChild(el);
+      var r = el.sheet && el.sheet.cssRules;
+      var ok = !!(r && r.length === 1 && r[0].cssRules && r[0].cssRules.length === 1);
+      document.head.removeChild(el);
+      return ok;
+    } catch (e) { return false; }
+  }
+  var supportsNesting = probeNesting();
   // Field-trace seam 3/3 boots with the shell: console lines land in
   // logcat as chromium INFO:CONSOLE, so a single tap traces end to end.
   console.log('pt-shell: up, nesting=' + supportsNesting);
@@ -160,6 +177,51 @@ ruby > rt { font-size: .5em; }
   // swallow-catch made every dictionary silently unstyled. Element sheets
   // parse synchronously on appendChild and are CSSOM Level 1 — the oldest
   // thing in the room supports them.
+  // Legacy scoping: parse the RAW sheet through a detached-media temp
+  // element (flat rules parse fine on old engines), then emit
+  // per-selector-prefixed text — escape-proof by construction, since each
+  // emitted selector carries the scope. The dictionary's own '&'-nested
+  // rules are lost on this path; flat rules and @media survive.
+  function applyLegacy(dictId, scope, cssText) {
+    var tmp = document.createElement('style');
+    tmp.media = 'not all'; // parsed but never applied while we read it
+    tmp.textContent = cssText;
+    document.head.appendChild(tmp);
+    var out = '';
+    var prefixed = function (rule) {
+      return rule.selectorText.split(',').map(function (s) {
+        return scope + ' ' + s.trim();
+      }).join(', ') + ' { ' + rule.style.cssText + ' }\n';
+    };
+    try {
+      var rules = (tmp.sheet && tmp.sheet.cssRules) || [];
+      for (var j = 0; j < rules.length; j++) {
+        var r = rules[j];
+        if (r.type === CSSRule.STYLE_RULE) {
+          out += prefixed(r);
+        } else if (r.type === CSSRule.MEDIA_RULE) {
+          var inner = '';
+          for (var k = 0; k < r.cssRules.length; k++) {
+            if (r.cssRules[k].type === CSSRule.STYLE_RULE) {
+              inner += prefixed(r.cssRules[k]);
+            }
+          }
+          if (inner) out += '@media ' + r.conditionText + ' {\n' + inner + '}\n';
+        }
+        // Other at-rules (@import, @font-face, @keyframes) drop — same
+        // policy as Yomitan's legacy path.
+      }
+    } finally {
+      document.head.removeChild(tmp);
+    }
+    var applied = document.createElement('style');
+    applied.textContent = out;
+    document.head.appendChild(applied);
+    console.log('ptCss[' + dictId + ']: legacy, in=' + cssText.length +
+      'ch rules=' + ((applied.sheet && applied.sheet.cssRules) || []).length +
+      ' outChars=' + out.length);
+  }
+
   window.ptApplyDictCss = function (dictId, cssText) {
     if (appliedDicts[dictId]) { console.log('ptCss[' + dictId + ']: dedup'); return; }
     appliedDicts[dictId] = true;
@@ -176,52 +238,27 @@ ruby > rt { font-size: .5em; }
         for (var i = sheet.cssRules.length - 1; i >= 0; i--) {
           if (sheet.cssRules[i].selectorText !== scope) sheet.deleteRule(i);
         }
-        console.log('ptCss[' + dictId + ']: nested, in=' + cssText.length +
-          'ch kept=' + sheet.cssRules.length);
-      } else {
-        // Legacy scoping: parse the RAW sheet through a detached-media
-        // temp element (flat rules parse fine on old engines), then emit
-        // per-selector-prefixed text — escape-proof by construction,
-        // since each emitted selector carries the scope. The dictionary's
-        // own '&'-nested rules are lost on these engines; flat rules and
-        // @media survive.
-        var tmp = document.createElement('style');
-        tmp.media = 'not all'; // parsed but never applied while we read it
-        tmp.textContent = cssText;
-        document.head.appendChild(tmp);
-        var out = '';
-        var prefixed = function (rule) {
-          return rule.selectorText.split(',').map(function (s) {
-            return scope + ' ' + s.trim();
-          }).join(', ') + ' { ' + rule.style.cssText + ' }\n';
-        };
-        try {
-          var rules = (tmp.sheet && tmp.sheet.cssRules) || [];
-          for (var j = 0; j < rules.length; j++) {
-            var r = rules[j];
-            if (r.type === CSSRule.STYLE_RULE) {
-              out += prefixed(r);
-            } else if (r.type === CSSRule.MEDIA_RULE) {
-              var inner = '';
-              for (var k = 0; k < r.cssRules.length; k++) {
-                if (r.cssRules[k].type === CSSRule.STYLE_RULE) {
-                  inner += prefixed(r.cssRules[k]);
-                }
-              }
-              if (inner) out += '@media ' + r.conditionText + ' {\n' + inner + '}\n';
-            }
-            // Other at-rules (@import, @font-face, @keyframes) drop —
-            // same policy as Yomitan's legacy path.
-          }
-        } finally {
-          document.head.removeChild(tmp);
+        // Outcome verification, independent of any probe: if the engine
+        // kept the wrapper but parsed NOTHING inside it (the exact shape
+        // of the selector(&)-lies engines), the nested product is an
+        // empty husk — tear it down and go legacy. No engine lie may
+        // silently unstyle a dictionary again.
+        var innerCount = 0;
+        for (var n = 0; n < sheet.cssRules.length; n++) {
+          var cr = sheet.cssRules[n].cssRules;
+          if (cr) innerCount += cr.length;
         }
-        var applied = document.createElement('style');
-        applied.textContent = out;
-        document.head.appendChild(applied);
-        console.log('ptCss[' + dictId + ']: legacy, in=' + cssText.length +
-          'ch rules=' + ((applied.sheet && applied.sheet.cssRules) || []).length +
-          ' outChars=' + out.length);
+        if (innerCount === 0) {
+          document.head.removeChild(el);
+          console.log('ptCss[' + dictId + ']: nested kept ' +
+            sheet.cssRules.length + ' but 0 inner rules; falling to legacy');
+          applyLegacy(dictId, scope, cssText);
+          return;
+        }
+        console.log('ptCss[' + dictId + ']: nested, in=' + cssText.length +
+          'ch kept=' + sheet.cssRules.length + ' inner=' + innerCount);
+      } else {
+        applyLegacy(dictId, scope, cssText);
       }
     } catch (e) {
       // NEVER silent again: three device-refuted fixes in a row hid here.
