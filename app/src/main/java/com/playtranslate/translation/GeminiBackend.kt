@@ -504,7 +504,37 @@ class GeminiBackend(
          *  Matches "2.5" in "gemini-2.5-flash". */
         private val VERSION_PATTERN = Regex("""\d+\.\d+""")
 
+        /**
+         * Ceiling on a WHOLE call — DNS, connect, TLS, request body, server
+         * processing, response body — as opposed to the per-timeout budgets
+         * below, which each bound one phase and so can't bound the sum.
+         *
+         * The failure this closes: a press-and-hold one-shot paints skeleton
+         * placeholders, then awaits the translation before it can paint the
+         * result. Gemini answered a 32-char request in 22,976 ms of pure TTFB
+         * (field trace 2026-08-12) — a 200 with a perfectly good body, just far
+         * too late. The request body had gone out in 1 ms and the read timeout
+         * bounds each individual read, so nothing capped the wait; the user
+         * watched the shimmer for ~20 s, released the hold, and the answer
+         * landed 2.4 s later into a cancelled cycle and was discarded.
+         *
+         * 8 s is ~6.5x the measured p95 (same trace: n=84, p50 799 ms, p90
+         * 1,097 ms, p95 1,246 ms, slowest healthy call 1,540 ms), so it can't
+         * fire on a merely-sluggish call. Blowing it throws InterruptedIOException
+         * — an IOException, so the waterfall falls through to the next backend
+         * and the on-device tier answers instead of the user getting nothing.
+         * [CooldownState.recordNetworkFailure] forgives an isolated one, so a
+         * single stall costs one fallback translation rather than a cooldown.
+         *
+         * Applies to [validateKey] / [listModels] too (same client); both are
+         * small GETs that finish far inside it. Deliberately NOT mirrored onto
+         * [OpenAiBackend], whose long-passage and self-hosted-LAN calls
+         * legitimately run 15-20 s.
+         */
+        private const val CALL_TIMEOUT_S = 8L
+
         private fun defaultClient(): OkHttpClient = PtHttp.clientBuilder()
+            .callTimeout(CALL_TIMEOUT_S, TimeUnit.SECONDS)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
