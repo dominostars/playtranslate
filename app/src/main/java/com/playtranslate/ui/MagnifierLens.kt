@@ -626,6 +626,12 @@ class MagnifierLens(
         // view (holding it) forever. resetToZoom() detaches separately; a
         // second detach here is idempotent.
         lensView?.detachInteractiveListeners()
+        // The styled renderer's native WebView must be destroy()ed, not
+        // just dropped with the window: a removed-but-undestroyed WebView
+        // holds renderer resources and its context graph until GC, so
+        // repeated lens open/dismiss churn accumulates the most expensive
+        // object in the app (Codex adversarial catch).
+        lensView?.releaseStyledView()
         heightAnimator?.cancel()
         heightAnimator = null
         lensCardHeight = lensH
@@ -1324,6 +1330,19 @@ class MagnifierLens(
                 definitionsContent.visibility = GONE
             }
             if (styledActive) onStyledHeightChanged()
+        }
+
+        /** Full teardown of the styled renderer, for the window-removal
+         *  funnel ([removeOverlayInternal]). Safe to call with no styled
+         *  view; idempotent. */
+        fun releaseStyledView() {
+            styledView?.let {
+                it.destroy()
+                bodyContainer.removeView(it)
+            }
+            styledView = null
+            styledActive = false
+            pendingStyledSwap = false
         }
 
         /** Render process death: drop the instance and stay flat — the

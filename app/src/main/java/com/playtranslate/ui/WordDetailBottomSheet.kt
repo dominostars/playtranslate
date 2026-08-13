@@ -146,6 +146,10 @@ class WordDetailBottomSheet : DialogFragment() {
         moreExamplesGroup = null
         moreExamplesBody = null
         bigHeadwordView = null
+        // Native WebView teardown — a dropped-but-undestroyed WebView keeps
+        // renderer resources and the context graph alive until GC.
+        styledImportedView?.destroy()
+        styledImportedView = null
         super.onDestroyView()
     }
 
@@ -1656,6 +1660,11 @@ class WordDetailBottomSheet : DialogFragment() {
      * the container empties and the same native rows take the block's
      * place.
      */
+    /** The sheet's styled renderer instance, held so [onDestroyView] can
+     *  destroy() the native WebView (a rebuild via [addStyledImportedBlock]
+     *  destroys any predecessor the same way). */
+    private var styledImportedView: YomitanDefinitionsView? = null
+
     private fun addStyledImportedBlock(
         container: LinearLayout,
         importedGroups: List<com.playtranslate.model.ImportedSenseGroup>,
@@ -1663,6 +1672,8 @@ class WordDetailBottomSheet : DialogFragment() {
         rebuildNative: () -> Unit,
     ): Boolean {
         if (styledData == null || styledData.structured.isEmpty()) return false
+        styledImportedView?.destroy()
+        styledImportedView = null
         val ctx = requireContext()
         val v = YomitanDefinitionsView(
             ctx,
@@ -1686,9 +1697,11 @@ class WordDetailBottomSheet : DialogFragment() {
             v.layoutParams = lp
         }
         v.onRendererGone = {
+            styledImportedView = null // destroy() already ran internally
             container.removeAllViews()
             rebuildNative()
         }
+        styledImportedView = v
         // 1px until the page reports: the sheet's content tree is built
         // before its first layout pass, so the swap can run against a
         // zero-width viewport — the page skips that report and the resize

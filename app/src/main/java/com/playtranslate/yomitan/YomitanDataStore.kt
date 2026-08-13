@@ -1000,12 +1000,20 @@ object YomitanDataStore {
             for (entry in zip.entries()) {
                 if (entry.isDirectory) continue
                 if (entry.name == "styles.css") {
+                    // ZipEntry.size is the central directory's CLAIM (fast
+                    // pre-skip only); readCapped enforces the cap on the
+                    // actual inflated stream — a crafted zip can lie in
+                    // the header and expand past it.
                     if (entry.size > MAX_STYLES_BYTES) {
                         Log.w(TAG, "$dictId: styles.css over cap (${entry.size}B), skipped")
                         continue
                     }
-                    val css = zip.getInputStream(entry).use {
-                        it.readBytes().toString(Charsets.UTF_8)
+                    val css = zip.getInputStream(entry)
+                        .use { readCapped(it, MAX_STYLES_BYTES) }
+                        ?.toString(Charsets.UTF_8)
+                    if (css == null) {
+                        Log.w(TAG, "$dictId: styles.css stream exceeded cap, skipped")
+                        continue
                     }
                     if (css.isNotBlank()) {
                         database.execSQL(
@@ -1021,7 +1029,12 @@ object YomitanDataStore {
                     Log.w(TAG, "$dictId: media ${entry.name} over cap (${entry.size}B), skipped")
                     continue
                 }
-                val bytes = zip.getInputStream(entry).use { it.readBytes() }
+                val bytes = zip.getInputStream(entry)
+                    .use { readCapped(it, MAX_MEDIA_FILE_BYTES.toInt()) }
+                if (bytes == null) {
+                    Log.w(TAG, "$dictId: media ${entry.name} stream exceeded cap, skipped")
+                    continue
+                }
                 mediaInsert.bindString(1, dictId)
                 mediaInsert.bindString(2, entry.name)
                 mediaInsert.bindBlob(3, bytes)
@@ -2166,6 +2179,21 @@ object YomitanDataStore {
                 dict.categories += YomitanCategory.KANJI_FREQUENCY
             }
         }
+    }
+
+    /** Reads at most [cap] bytes from [input]; null the moment the stream
+     *  runs past it — the enforcement point that doesn't trust zip
+     *  headers. Internal for the size-limit tests. */
+    internal fun readCapped(input: java.io.InputStream, cap: Int): ByteArray? {
+        val out = java.io.ByteArrayOutputStream(minOf(cap, 64 * 1024))
+        val buf = ByteArray(8192)
+        while (true) {
+            val n = input.read(buf)
+            if (n < 0) break
+            if (out.size() + n > cap) return null
+            out.write(buf, 0, n)
+        }
+        return out.toByteArray()
     }
 
     /** Bounded decode of one dump media row's base64 [content]: the LENGTH
