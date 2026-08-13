@@ -1908,9 +1908,11 @@ class MagnifierLens(
                     false
                 } else false
             }
-            // Left stick scrolls the definitions (it used to be a nudge-to-
-            // dismiss; B carries dismissal now, and a dictionary long enough
-            // to scroll is exactly when a stick flick must not close it).
+            // Right stick scrolls the definitions — the sheet's scroll hand
+            // (the left stick was the original driver, and before that a
+            // nudge-to-dismiss; B carries dismissal now, and a dictionary
+            // long enough to scroll is exactly when a stick flick must not
+            // close it).
             setOnGenericMotionListener { _, event -> handleNavMotion(event) }
             navPreDraw = ViewTreeObserver.OnPreDrawListener { syncNavRing(); true }.also {
                 viewTreeObserver.addOnPreDrawListener(it)
@@ -2083,19 +2085,37 @@ class MagnifierLens(
             ) {
                 return false
             }
-            val flat = event.device?.getMotionRange(MotionEvent.AXIS_Y, event.source)?.flat ?: 0f
+            // The scroll rides the RIGHT stick's vertical axis, as the
+            // sheet's does: Z/RZ under the standard mapping, RX/RY on a
+            // controller that declares no RZ range.
+            val device = event.device
+            val ryAxis =
+                if (device?.getMotionRange(MotionEvent.AXIS_RZ, event.source) != null) {
+                    MotionEvent.AXIS_RZ
+                } else {
+                    MotionEvent.AXIS_RY
+                }
+            val flat = device?.getMotionRange(ryAxis, event.source)?.flat ?: 0f
             navScrollDead = maxOf(flat, CaptureSheetControllerNav.STICK_DEAD_ZONE)
-            val y = event.getAxisValue(MotionEvent.AXIS_Y)
-            val x = event.getAxisValue(MotionEvent.AXIS_X)
-            if (abs(y) <= navScrollDead && abs(x) <= navScrollDead) {
+            val ry = event.getAxisValue(ryAxis)
+            if (abs(ry) <= navScrollDead) {
                 val was = navScrollActive
                 navScrollActive = false
                 stopNavScroll()
-                // Consume the centering event of a deflection we owned.
-                return was
+                // Consume the centering event of a deflection we owned — and
+                // any left-stick push, which drives nothing here now but is
+                // still claimed: X/Y are the axes ViewRootImpl synthesizes
+                // DPAD keys from, and the cursor walks by hat/dpad alone.
+                val leftDead = maxOf(
+                    device?.getMotionRange(MotionEvent.AXIS_Y, event.source)?.flat ?: 0f,
+                    CaptureSheetControllerNav.STICK_DEAD_ZONE,
+                )
+                return was ||
+                    abs(event.getAxisValue(MotionEvent.AXIS_Y)) > leftDead ||
+                    abs(event.getAxisValue(MotionEvent.AXIS_X)) > leftDead
             }
             navScrollActive = true
-            navScrollY = y
+            navScrollY = ry
             if (!navScrollRepeating) {
                 navScrollRepeating = true
                 navScrollLastNs = System.nanoTime()
