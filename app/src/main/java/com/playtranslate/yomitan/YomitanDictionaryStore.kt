@@ -113,6 +113,13 @@ data class YomitanRegistry(
      *  dictionary that has results, instead of every dictionary. Absent in
      *  older registries → Gson leaves the primitive false, the default. */
     val termsSingleDictionary: Boolean = false,
+    /** Styled-rendering toggle: imported definitions with retained
+     *  structured content render through the WebView surfaces with each
+     *  dictionary's own styling; OFF falls back to flat text everywhere.
+     *  Default ON. NOTE the absent-field default: kotlinx/Gson leave a
+     *  missing Boolean at its declared default, so pre-v8 registries read
+     *  as true — the intended out-of-box behavior. */
+    val dictionaryStyling: Boolean = true,
 ) {
     /** Dictionaries belonging to [category], in that section's stored order. */
     fun orderedFor(category: YomitanCategory): List<YomitanDictionary> {
@@ -1120,6 +1127,20 @@ object YomitanDictionaryStore {
                 val registry = readRegistry(ctx) ?: return@withLock
                 if (registry.termsSingleDictionary == enabled) return@withLock
                 writeRegistry(ctx, registry.copy(termsSingleDictionary = enabled))
+            }
+            // The flag is part of the data store's registry-derived cache.
+            YomitanDataStore.invalidate()
+        }
+
+    /** Sets the styled-rendering toggle (see
+     *  [YomitanRegistry.dictionaryStyling]). No-op when the registry is
+     *  unreadable. */
+    suspend fun setDictionaryStyling(ctx: Context, enabled: Boolean) =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                val registry = readRegistry(ctx) ?: return@withLock
+                if (registry.dictionaryStyling == enabled) return@withLock
+                writeRegistry(ctx, registry.copy(dictionaryStyling = enabled))
             }
             // The flag is part of the data store's registry-derived cache.
             YomitanDataStore.invalidate()

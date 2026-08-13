@@ -13,13 +13,17 @@ internal object TermMerge {
     /** One `term` table row. [reading] is normalized hiragana; [defs] are
      *  the entry's flattened definition strings; [pos] is the stored
      *  space-joined part-of-speech tag names ('' when untagged). Rows
-     *  arrive in rowid (bank) order. */
+     *  arrive in rowid (bank) order. [scRowid] is the row's own rowid when
+     *  a `term_sc` structured-glossary row exists for it (null otherwise) —
+     *  carried through to [ImportedSense.scRowid] so render surfaces know
+     *  styled content is fetchable without a second probe. */
     data class Row(
         val dictId: String,
         val reading: String,
         val score: Double,
         val defs: List<String>,
         val pos: String = "",
+        val scRowid: Long? = null,
     )
 
     /**
@@ -69,10 +73,11 @@ internal object TermMerge {
                     ImportedSense(
                         definition = row.defs.joinToString("; "),
                         pos = row.pos.split(' ').filter { it.isNotEmpty() }.joinToString(", "),
+                        scRowid = row.scRowid,
                     )
                 }
                 .takeIf { it.isNotEmpty() }
-                ?.let { ImportedSenseGroup(label, it, dictColors[dictId]) }
+                ?.let { ImportedSenseGroup(label, it, dictColors[dictId], dictId = dictId) }
         }.let { if (singleDictionary) it.take(1) else it }
         val resolvedReading = normalizedReading
             ?: dictOrder.firstNotNullOfOrNull { (dictId, _) ->
