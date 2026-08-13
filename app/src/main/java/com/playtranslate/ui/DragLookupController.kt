@@ -27,6 +27,7 @@ import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.FrequencyTag
+import com.playtranslate.yomitan.YomitanDataStore
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.selectHeadword
 import kotlinx.coroutines.*
@@ -382,6 +383,18 @@ class DragLookupController(
      * popup is committed at release ([onDragEnd]).
      */
     fun onDragStart(existingScreenshotPath: String? = null) {
+        // Pre-pay the first-WebView-in-process provider init while the user
+        // is still dragging toward a word, so the first styled panel doesn't
+        // stall on it. Gated on styling actually being live; warmUp itself
+        // is once-per-process.
+        scope.launch {
+            if (YomitanDataStore.stylingFor(
+                    context, Prefs(context).sourceLangId.yomitanConsumingLang(),
+                ).stylingActive
+            ) {
+                YomitanDefinitionsView.warmUp(context)
+            }
+        }
         // Tear down everything left over from the previous drag. Previous
         // drag's lift-time lookupJob may still be in flight; cancel it so it
         // doesn't transition the lens after this drag has started. Hand the
@@ -1207,6 +1220,10 @@ class DragLookupController(
                         defResult.translatedDefinitions != null),
                 pitch = display.pitch,
                 frequencies = display.frequencies,
+                importedGroups = entry.importedSenses,
+                styled = fetchYomitanStyledData(
+                    context, prefs.sourceLangId.yomitanConsumingLang(), entry.importedSenses,
+                ),
             )
         } else {
             // No dictionary entry. Keep the lens up with an empty sense
@@ -1254,6 +1271,8 @@ class DragLookupController(
             isCommon = isCommon,
             pitch = pitch,
             frequencies = frequencies,
+            importedGroups = importedGroups,
+            styled = styled,
         )
 
     private fun PopupData.machineTranslatedLabel(): String? =
@@ -1273,6 +1292,10 @@ class DragLookupController(
         val pitch: List<Int> = emptyList(),
         /** Per-dictionary frequency chips from the displayed headword. */
         val frequencies: List<FrequencyTag> = emptyList(),
+        /** Structured imported groups + prefetched styled payload — see
+         *  [WordDefinitionData.importedGroups]/[WordDefinitionData.styled]. */
+        val importedGroups: List<com.playtranslate.model.ImportedSenseGroup> = emptyList(),
+        val styled: YomitanStyledData? = null,
     )
 
     private fun findLineAt(x: Int, y: Int, lines: List<OcrManager.OcrLine>): OcrManager.OcrLine? {

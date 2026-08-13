@@ -904,6 +904,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         ): Boolean {
             instance?.let { return it.overlayHost.addOverlayWindow(view, wm, params, displayId) }
             OverlayHost.applyFullScreenOverlayDefaults(params)
+            // No host to stamp it: same hardware-acceleration rule as
+            // OverlayHost.addOverlayWindow.
+            params.flags = params.flags or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
             return try { wm.addView(view, params); true } catch (_: Exception) { false }
         }
 

@@ -150,6 +150,12 @@ object SourceWordLookup {
         } else {
             emptyList()
         }
+        // Styled-path payload rides the same suspend resolution, so the lens
+        // bind stays synchronous. Null = flat tier (the common case).
+        val importedGroups = entry?.importedSenses.orEmpty()
+        val styled = fetchYomitanStyledData(
+            appCtx, prefs.sourceLangId.yomitanConsumingLang(), importedGroups,
+        )
 
         return Resolved(
             word = word,
@@ -163,6 +169,8 @@ object SourceWordLookup {
                 isCommon = isCommon,
                 pitch = popupPitch,
                 frequencies = popupFrequencies,
+                importedGroups = importedGroups,
+                styled = styled,
             ),
             entry = entry,
         )
