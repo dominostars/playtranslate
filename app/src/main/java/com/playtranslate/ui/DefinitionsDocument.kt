@@ -83,6 +83,9 @@ internal object DefinitionsDocument {
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: transparent; }
+/* flow-root: children's margins stay inside #root's rect, so the height
+   report can't crop the last block's bottom margin. */
+#root { display: flow-root; }
 body {
   color: var(--pt-fg);
   font-family: sans-serif;
@@ -161,22 +164,39 @@ ruby > rt { font-size: .5em; }
   var gen = 0;
 
   function reportHeight() {
+    // Content-intrinsic metric: the root DIV's rect. NEVER the document
+    // element's scroll height — that is max(content, VIEWPORT), so once
+    // the host sizes the view from one oversized report, every later
+    // report echoes at least that viewport back: a ratchet that can't
+    // shrink (the shipped huge-blank-space bug). The root rect tracks the
+    // content both ways.
+    var rootEl = document.getElementById('root');
+    if (!rootEl) return;
+    // Not laid out yet (zero-width viewport): content would wrap at every
+    // character and report an enormous bogus height. Skip — the resize
+    // listener re-reports the moment the real width arrives.
+    if (document.documentElement.clientWidth < 1) return;
     if (window.PTBridge && window.PTBridge.onHeight) {
-      window.PTBridge.onHeight(document.documentElement.scrollHeight, gen);
+      window.PTBridge.onHeight(Math.ceil(rootEl.getBoundingClientRect().height), gen);
     }
   }
 
   window.ptSwap = function (html, g) {
     gen = g || 0;
     document.getElementById('root').innerHTML = html;
-    // Two frames: one for style/layout, one so images with declared
-    // aspect-ratios have taken their space.
+    // Synchronous first report: getBoundingClientRect forces layout, and
+    // this path works even while the view isn't composited — rAF doesn't
+    // tick for a non-drawn WebView, which is exactly the state the hosts
+    // keep this view in until the first height arrives.
+    reportHeight();
+    // Two-frame refinement: images with declared aspect-ratios have taken
+    // their boxes by then.
     requestAnimationFrame(function () { requestAnimationFrame(reportHeight); });
   };
 
-  window.addEventListener('resize', function () {
-    requestAnimationFrame(reportHeight);
-  });
+  // Direct, not via rAF: this is the recovery path that fires when the
+  // hidden view first gets its real width.
+  window.addEventListener('resize', reportHeight);
 })();
 </script>
 </head><body><div id="root"></div></body></html>"""

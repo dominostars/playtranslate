@@ -1680,7 +1680,7 @@ class WordDetailBottomSheet : DialogFragment() {
         v.setPadding(hPad, dp(10), hPad, dp(10))
         v.onContentHeight = { h ->
             val lp = v.layoutParams ?: LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0,
+                LinearLayout.LayoutParams.MATCH_PARENT, 1,
             )
             lp.height = h + v.paddingTop + v.paddingBottom
             v.layoutParams = lp
@@ -1689,9 +1689,13 @@ class WordDetailBottomSheet : DialogFragment() {
             container.removeAllViews()
             rebuildNative()
         }
+        // 1px until the page reports: the sheet's content tree is built
+        // before its first layout pass, so the swap can run against a
+        // zero-width viewport — the page skips that report and the resize
+        // listener re-reports when the real width lands.
         container.addView(
             v,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0),
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1),
         )
         // Groups only — the sheet's pack senses, breakdown, and examples
         // stay native. senses = empty keeps contentHtml's pack section out.
