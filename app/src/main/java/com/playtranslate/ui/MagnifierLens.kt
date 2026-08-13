@@ -1289,13 +1289,17 @@ class MagnifierLens(
             }
             // Same optical inset as the flat renderer.
             v.setPadding(bodyHPaddingPx - dp(6f), 0, bodyHPaddingPx + dp(2f), 0)
-            v.visibility = GONE
+            // INVISIBLE at 1px, never GONE: a GONE view is never laid out,
+            // so the page's viewport would stay zero-width and the first
+            // swap would measure content wrapped at every character — the
+            // enormous bogus height that then sticks. INVISIBLE keeps the
+            // WebView laid out at the container's real width (JS still
+            // runs; only drawing is skipped) while contributing 1px to the
+            // container until the first real height arrives.
+            v.visibility = INVISIBLE
             v.onContentHeight = { h -> onStyledContentHeight(h) }
             v.onRendererGone = { onStyledRendererGone() }
-            bodyContainer.addView(
-                v,
-                LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT),
-            )
+            bodyContainer.addView(v, LayoutParams(LayoutParams.MATCH_PARENT, 1))
             styledView = v
             return v
         }
@@ -1334,11 +1338,24 @@ class MagnifierLens(
         }
 
         /** Back to the flat renderer as the visible body (loading, ZOOM,
-         *  or a bind with no styled payload). */
+         *  or a bind with no styled payload). The styled view drops to
+         *  INVISIBLE at 1px — not GONE (it must stay laid out at real
+         *  width for the next swap's measurement), and not its old height
+         *  (an INVISIBLE view still counts toward the container's
+         *  wrap-content measure; a stale tall view would leave the scroll
+         *  full of blank space under the flat content). */
         private fun showFlatBody() {
             styledActive = false
             pendingStyledSwap = false
-            styledView?.visibility = GONE
+            styledView?.let { sv ->
+                sv.visibility = INVISIBLE
+                (sv.layoutParams as? LayoutParams)?.let { lp ->
+                    if (lp.height != 1) {
+                        lp.height = 1
+                        sv.layoutParams = lp
+                    }
+                }
+            }
             definitionsContent.visibility = VISIBLE
         }
 

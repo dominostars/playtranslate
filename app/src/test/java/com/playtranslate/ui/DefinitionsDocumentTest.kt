@@ -168,7 +168,15 @@ class DefinitionsDocumentTest {
         // the Kotlin gate is pinned in YomitanDefinitionsViewRenderSeqTest.
         assertTrue(shell.contains("ptSwap = function (html, g)"))
         assertTrue(shell.contains("gen = g || 0"))
-        assertTrue(shell.contains("onHeight(document.documentElement.scrollHeight, gen)"))
+        // Height-metric contract (viewport-ratchet bug): the report must be
+        // content-intrinsic (root rect), NEVER documentElement.scrollHeight
+        // (= max(content, viewport), which can only ratchet up once the
+        // host sizes the view from one oversized report), and must skip
+        // zero-width layouts (content wrapped at every character).
+        assertFalse(shell.contains("documentElement.scrollHeight"))
+        assertTrue(shell.contains("getBoundingClientRect().height"))
+        assertTrue(shell.contains("clientWidth < 1"))
+        assertTrue(shell.contains("#root { display: flow-root; }"))
     }
 
     @Test
