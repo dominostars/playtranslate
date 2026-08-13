@@ -114,6 +114,14 @@ internal class YomitanDefinitionsView(
      */
     fun setContent(contentHtml: String, dictCss: Map<String, String>, sourceLanguage: String) {
         mediaLanguage = sourceLanguage
+        // Field-trace seam 2/3: what reached the component. Page-side
+        // console (seam 3/3) reports what the engine did with it.
+        Log.i(
+            TAG,
+            "setContent: html=${contentHtml.length}ch " +
+                "css=[${dictCss.entries.joinToString { "${it.key}:${it.value.length}ch" }}] " +
+                "ready=$pageReady",
+        )
         for ((dictId, css) in dictCss) {
             exec("ptApplyDictCss(${quote(dictId)},${quote(css)})")
         }

@@ -150,6 +150,9 @@ ruby > rt { font-size: .5em; }
   // prefix path instead.
   var supportsNesting = typeof CSS !== 'undefined' && CSS.supports &&
     CSS.supports('selector(&)');
+  // Field-trace seam 3/3 boots with the shell: console lines land in
+  // logcat as chromium INFO:CONSOLE, so a single tap traces end to end.
+  console.log('pt-shell: up, nesting=' + supportsNesting);
 
   // Everything below runs on <style> ELEMENTS and their .sheet CSSOM —
   // never the constructable-stylesheet APIs, which Android WebView gained
@@ -158,7 +161,7 @@ ruby > rt { font-size: .5em; }
   // parse synchronously on appendChild and are CSSOM Level 1 — the oldest
   // thing in the room supports them.
   window.ptApplyDictCss = function (dictId, cssText) {
-    if (appliedDicts[dictId]) return;
+    if (appliedDicts[dictId]) { console.log('ptCss[' + dictId + ']: dedup'); return; }
     appliedDicts[dictId] = true;
     try {
       var scope = '[data-dictionary="' + dictId + '"]';
@@ -173,6 +176,8 @@ ruby > rt { font-size: .5em; }
         for (var i = sheet.cssRules.length - 1; i >= 0; i--) {
           if (sheet.cssRules[i].selectorText !== scope) sheet.deleteRule(i);
         }
+        console.log('ptCss[' + dictId + ']: nested, in=' + cssText.length +
+          'ch kept=' + sheet.cssRules.length);
       } else {
         // Legacy scoping: parse the RAW sheet through a detached-media
         // temp element (flat rules parse fine on old engines), then emit
@@ -214,8 +219,14 @@ ruby > rt { font-size: .5em; }
         var applied = document.createElement('style');
         applied.textContent = out;
         document.head.appendChild(applied);
+        console.log('ptCss[' + dictId + ']: legacy, in=' + cssText.length +
+          'ch rules=' + ((applied.sheet && applied.sheet.cssRules) || []).length +
+          ' outChars=' + out.length);
       }
-    } catch (e) { /* engine without element CSSOM: unstyled */ }
+    } catch (e) {
+      // NEVER silent again: three device-refuted fixes in a row hid here.
+      console.log('ptCss[' + dictId + '] FAILED: ' + e);
+    }
   };
 
   // Render generation: stamped by each ptSwap and echoed with every
