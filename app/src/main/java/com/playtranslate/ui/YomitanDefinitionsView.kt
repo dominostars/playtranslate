@@ -60,6 +60,11 @@ internal class YomitanDefinitionsView(
     private val pendingJs = mutableListOf<String>()
     private var mediaLanguage: String = "ja"
 
+    /** Render generation, bumped by every [setContent] and echoed back by
+     *  the page with each height report. Written and compared on the main
+     *  thread only. */
+    private var renderSeq = 0
+
     init {
         @SuppressLint("SetJavaScriptEnabled")
         try {
@@ -112,8 +117,20 @@ internal class YomitanDefinitionsView(
         for ((dictId, css) in dictCss) {
             exec("ptApplyDictCss(${quote(dictId)},${quote(css)})")
         }
-        exec("ptSwap(${quote(contentHtml)})")
+        // The generation rides into ptSwap and back with every height
+        // report, so a report from a superseded swap can never surface as
+        // this one's — see [acceptsHeightReport].
+        renderSeq++
+        exec("ptSwap(${quote(contentHtml)},$renderSeq)")
     }
+
+    /** Whether a page height report stamped [gen] belongs to the LATEST
+     *  [setContent]. Stale reports (an earlier swap's two-frame callback
+     *  arriving after a rapid rebind, or a resize report racing an
+     *  in-flight swap) must be dropped: a host that treats any report as
+     *  "the current bind painted" would reveal the PREVIOUS lookup's
+     *  content under the new word. Extracted for the regression test. */
+    internal fun acceptsHeightReport(gen: Int): Boolean = gen == renderSeq
 
     fun destroy() {
         (webView?.parent as? ViewGroup)?.removeView(webView)
@@ -134,10 +151,15 @@ internal class YomitanDefinitionsView(
 
     private inner class Bridge {
         @JavascriptInterface
-        fun onHeight(cssPx: Int) {
+        fun onHeight(cssPx: Int, gen: Int) {
             // CSS px → view px: initial-scale=1 makes 1 CSS px = 1 dp.
             val px = (cssPx * resources.displayMetrics.density).roundToInt()
-            post { onContentHeight?.invoke(px) }
+            // The generation check runs in the post{} — on the main thread,
+            // where renderSeq is written — not here on the JS bridge thread.
+            post {
+                if (!acceptsHeightReport(gen)) return@post
+                onContentHeight?.invoke(px)
+            }
         }
     }
 

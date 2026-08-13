@@ -161,8 +161,14 @@ class DefinitionsDocumentTest {
         // The scope-escape sweep: every top-level rule other than the
         // wrapper is deleted post-parse.
         assertTrue(shell.contains("selectorText !== scope"))
-        assertTrue(shell.contains("ptSwap"))
         assertTrue(shell.contains("ptApplyDictCss"))
+        // Render-generation contract (stale-height race): ptSwap stamps the
+        // generation and every height report echoes it, so the Kotlin side
+        // can drop reports from superseded swaps. Both halves pinned here;
+        // the Kotlin gate is pinned in YomitanDefinitionsViewRenderSeqTest.
+        assertTrue(shell.contains("ptSwap = function (html, g)"))
+        assertTrue(shell.contains("gen = g || 0"))
+        assertTrue(shell.contains("onHeight(document.documentElement.scrollHeight, gen)"))
     }
 
     @Test

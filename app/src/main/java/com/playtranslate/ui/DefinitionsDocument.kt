@@ -153,13 +153,21 @@ ruby > rt { font-size: .5em; }
     } catch (e) { /* engine without constructable sheets/nesting: unstyled */ }
   };
 
+  // Render generation: stamped by each ptSwap and echoed with every
+  // height report, so the Kotlin side can drop reports from a swap that
+  // has since been superseded. Without it, a report scheduled two frames
+  // after swap N can arrive after swap N+1 was issued and be mistaken
+  // for proof that N+1 painted — revealing N's content under N+1's word.
+  var gen = 0;
+
   function reportHeight() {
     if (window.PTBridge && window.PTBridge.onHeight) {
-      window.PTBridge.onHeight(document.documentElement.scrollHeight);
+      window.PTBridge.onHeight(document.documentElement.scrollHeight, gen);
     }
   }
 
-  window.ptSwap = function (html) {
+  window.ptSwap = function (html, g) {
+    gen = g || 0;
     document.getElementById('root').innerHTML = html;
     // Two frames: one for style/layout, one so images with declared
     // aspect-ratios have taken their space.
