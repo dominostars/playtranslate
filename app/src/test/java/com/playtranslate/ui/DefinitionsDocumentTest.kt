@@ -162,6 +162,12 @@ class DefinitionsDocumentTest {
         // wrapper is deleted post-parse.
         assertTrue(shell.contains("selectorText !== scope"))
         assertTrue(shell.contains("ptApplyDictCss"))
+        // Dual-path scoping: nesting is feature-detected, and legacy
+        // engines (AOSP WebView, Chromium <120) get per-selector
+        // prefixing with @media recursion instead of silently losing all
+        // dictionary CSS.
+        assertTrue(shell.contains("CSS.supports('selector(&)')"))
+        assertTrue(shell.contains("conditionText"))
         // Render-generation contract (stale-height race): ptSwap stamps the
         // generation and every height report echoes it, so the Kotlin side
         // can drop reports from superseded swaps. Both halves pinned here;

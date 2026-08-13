@@ -107,11 +107,15 @@ body {
 }
 .meta-chip {
   font-size: .7em; color: var(--pt-secondary);
+  /* rgba fallback first: engines without color-mix (Chromium <111) drop
+     the second declaration and keep this one. */
+  background: rgba(128,128,128,0.16);
   background: color-mix(in srgb, var(--pt-fg) 10%, transparent);
   border-radius: 4px; padding: .18em .55em;
 }
 .meta-chip.common {
   color: var(--pt-accent);
+  background: rgba(0,150,170,0.18);
   background: color-mix(in srgb, var(--pt-accent) 16%, transparent);
   border-radius: 1em;
 }
@@ -139,21 +143,63 @@ ruby > rt { font-size: .5em; }
   'use strict';
   var appliedDicts = {};
 
+  // CSS nesting = Chromium 120+. NOT theoretical: AOSP-bundled WebViews in
+  // the field sit far below that (AYN Thor ships Chromium 109), and on
+  // such engines the nested wrapper parses to an EMPTY scope rule — every
+  // dictionary rule silently vanishes. Those engines take the per-selector
+  // prefix path instead.
+  var supportsNesting = typeof CSS !== 'undefined' && CSS.supports &&
+    CSS.supports('selector(&)');
+
   window.ptApplyDictCss = function (dictId, cssText) {
     if (appliedDicts[dictId]) return;
     appliedDicts[dictId] = true;
     try {
       var scope = '[data-dictionary="' + dictId + '"]';
       var sheet = new CSSStyleSheet();
-      sheet.replaceSync(scope + ' {\n' + cssText + '\n}');
-      // Post-parse scope enforcement: legitimate CSS nests entirely inside
-      // the one wrapper rule; anything else at the top level is an escape
-      // attempt (stray '}') and is deleted.
-      for (var i = sheet.cssRules.length - 1; i >= 0; i--) {
-        if (sheet.cssRules[i].selectorText !== scope) sheet.deleteRule(i);
+      if (supportsNesting) {
+        sheet.replaceSync(scope + ' {\n' + cssText + '\n}');
+        // Post-parse scope enforcement: legitimate CSS nests entirely
+        // inside the one wrapper rule; anything else at the top level is
+        // an escape attempt (stray '}') and is deleted.
+        for (var i = sheet.cssRules.length - 1; i >= 0; i--) {
+          if (sheet.cssRules[i].selectorText !== scope) sheet.deleteRule(i);
+        }
+      } else {
+        // Legacy scoping: parse the RAW sheet (flat rules parse fine on
+        // old engines) and prefix every selector individually — escape-
+        // proof by construction, since each emitted selector carries the
+        // scope. The dictionary's own '&'-nested rules are lost on these
+        // engines; flat rules and @media survive.
+        var raw = new CSSStyleSheet();
+        raw.replaceSync(cssText);
+        var prefixed = function (rule) {
+          return rule.selectorText.split(',').map(function (s) {
+            return scope + ' ' + s.trim();
+          }).join(', ') + ' { ' + rule.style.cssText + ' }';
+        };
+        var insert = function (css) {
+          try { sheet.insertRule(css, sheet.cssRules.length); } catch (e) {}
+        };
+        for (var j = 0; j < raw.cssRules.length; j++) {
+          var r = raw.cssRules[j];
+          if (r.type === CSSRule.STYLE_RULE) {
+            insert(prefixed(r));
+          } else if (r.type === CSSRule.MEDIA_RULE) {
+            var inner = '';
+            for (var k = 0; k < r.cssRules.length; k++) {
+              if (r.cssRules[k].type === CSSRule.STYLE_RULE) {
+                inner += prefixed(r.cssRules[k]) + '\n';
+              }
+            }
+            if (inner) insert('@media ' + r.conditionText + ' {\n' + inner + '}');
+          }
+          // Other at-rules (@import, @font-face, @keyframes) drop — same
+          // policy as Yomitan's legacy path.
+        }
       }
       document.adoptedStyleSheets = document.adoptedStyleSheets.concat([sheet]);
-    } catch (e) { /* engine without constructable sheets/nesting: unstyled */ }
+    } catch (e) { /* no constructable sheets at all: unstyled */ }
   };
 
   // Render generation: stamped by each ptSwap and echoed with every
