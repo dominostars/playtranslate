@@ -582,10 +582,7 @@ class WordDetailBottomSheet : DialogFragment() {
     ) {
         when (result) {
             is AnkiSendResult.Success -> {
-                val msgRes = if (result.audioDropped || result.wordAudioDropped)
-                    R.string.anki_added_no_audio
-                else
-                    ankiAddedSuccessRes(mode)
+                val msgRes = result.mediaShortfallRes() ?: ankiAddedSuccessRes(mode)
                 Toast.makeText(requireContext(), msgRes, Toast.LENGTH_SHORT).show()
                 pill.setLoading(false)
             }

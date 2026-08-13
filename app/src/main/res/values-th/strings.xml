@@ -429,6 +429,10 @@
 
     <string name="anki_added_no_audio">เพิ่มไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แล้ว (ไม่มีเสียง)</string>
 
+    <string name="anki_added_no_screenshot">เพิ่มไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แล้ว (ไม่มีภาพหน้าจอ)</string>
+
+    <string name="anki_added_no_screenshot_or_audio">เพิ่มไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แล้ว (ไม่มีภาพหน้าจอและเสียง)</string>
+
     <string name="anki_added_sentence_success">เพิ่มการ์ดประโยคไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แล้ว</string>
 
     <string name="anki_added_word_success">เพิ่มการ์ดคำไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แล้ว</string>

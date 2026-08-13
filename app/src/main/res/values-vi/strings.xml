@@ -467,6 +467,10 @@
 
     <string name="anki_added_no_audio">Đã thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (không có âm thanh)</string>
 
+    <string name="anki_added_no_screenshot">Đã thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (không có ảnh chụp màn hình)</string>
+
+    <string name="anki_added_no_screenshot_or_audio">Đã thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (không có ảnh chụp màn hình và âm thanh)</string>
+
     <string name="anki_added_sentence_success">Đã thêm thẻ câu vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
 
     <string name="anki_added_word_success">Đã thêm thẻ từ vựng vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>

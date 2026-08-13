@@ -1568,13 +1568,12 @@ class WordAnkiReviewSheet : DialogFragment() {
         // Fragment receiver so NeedsMapping opens the mapping dialog
         // (Context.sendWordCard would skip it).
         val result = sendWordCard(input, deckId)
-        val audioMissing = (result as? AnkiSendResult.Success)?.audioDropped == true
+        val shortfallRes = (result as? AnkiSendResult.Success)?.mediaShortfallRes()
         applyAnkiSendResult(
             result,
             onSuccess = {
-                if (audioMissing) {
-                    Toast.makeText(requireContext(), R.string.anki_added_no_audio,
-                        Toast.LENGTH_SHORT).show()
+                shortfallRes?.let {
+                    Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
                 }
                 dismiss()
             },
@@ -1865,15 +1864,12 @@ class WordAnkiReviewSheet : DialogFragment() {
         // Fragment receiver so NeedsMapping opens the mapping dialog
         // (Context.sendSentenceCard would skip it).
         val result = sendSentenceCard(input, deckId)
-        val success = result as? AnkiSendResult.Success
-        val audioMissing = success?.audioDropped == true
-        val wordAudioMissing = success?.wordAudioDropped == true
+        val shortfallRes = (result as? AnkiSendResult.Success)?.mediaShortfallRes()
         applyAnkiSendResult(
             result,
             onSuccess = {
-                if (audioMissing || wordAudioMissing) {
-                    Toast.makeText(requireContext(), R.string.anki_added_no_audio,
-                        Toast.LENGTH_SHORT).show()
+                shortfallRes?.let {
+                    Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
                 }
                 parentFragmentManager.setFragmentResult(
                     AnkiReviewBottomSheet.RESULT_ANKI_ADDED, bundleOf())

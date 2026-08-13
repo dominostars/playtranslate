@@ -471,6 +471,10 @@
 
     <string name="anki_added_no_audio">Zu <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> hinzugefügt (Audio nicht verfügbar)</string>
 
+    <string name="anki_added_no_screenshot">Zu <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> hinzugefügt (Screenshot nicht verfügbar)</string>
+
+    <string name="anki_added_no_screenshot_or_audio">Zu <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> hinzugefügt (Screenshot und Audio nicht verfügbar)</string>
+
     <string name="anki_added_sentence_success">Satzkarte zu <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> hinzugefügt</string>
 
     <string name="anki_added_word_success">Wortkarte zu <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> hinzugefügt</string>

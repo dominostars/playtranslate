@@ -487,6 +487,10 @@
 
     <string name="anki_added_no_audio">Добавлено в <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (аудио недоступно)</string>
 
+    <string name="anki_added_no_screenshot">Добавлено в <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (снимок экрана недоступен)</string>
+
+    <string name="anki_added_no_screenshot_or_audio">Добавлено в <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (снимок экрана и аудио недоступны)</string>
+
     <string name="anki_added_sentence_success">Карточка предложения добавлена в <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
 
     <string name="anki_added_word_success">Карточка слова добавлена в <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
