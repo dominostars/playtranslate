@@ -76,10 +76,14 @@ class WindowSheetHost(
     }
 
     private fun applyPolicy(lp: WindowManager.LayoutParams, focusable: Boolean, wantsIme: Boolean) {
+        // HARDWARE_ACCELERATED is only read at addView (OverlayHost stamps
+        // it there); kept in the base set so this wholesale rewrite doesn't
+        // leave params lying about the window's actual pipeline.
         var flags = WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
         if (!focusable) {
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         } else if (!wantsIme) {

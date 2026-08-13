@@ -350,7 +350,8 @@ class MagnifierLens(
         var flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
         tookControllerFocus = hasNavInputDevice(rawCtx)
         if (!tookControllerFocus) {
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
@@ -472,9 +473,15 @@ class MagnifierLens(
      *  and renders washed out. The drag gesture is owned by the floating
      *  icon's window, so a touchable lens window does not steal it. */
     private fun zoomWindowFlags(): Int {
+        // HARDWARE_ACCELERATED: only read at addView time (OverlayHost also
+        // stamps it centrally), carried here so the wholesale flag rewrites
+        // in resetToZoom/makeInteractive keep params honest — and so the
+        // non-host (in-app activity window) path gets it too. The styled
+        // definitions panel hosts a WebView, which needs the HW pipeline.
         var flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
         if (overlayHost?.windowType != WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY) {
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         }
@@ -660,6 +667,7 @@ class MagnifierLens(
             onAnkiLongPress = { onAnkiLongPress?.invoke() },
             onSpeakTap = { onSpeakTap?.invoke() },
             showAnkiChip = showAnkiChip,
+            onStyledHeightChanged = { fitHeightToContent() },
         )
         val root = LensRoot(themedCtx, view, viewW)
         val windowType = if (useActivityWindow)
@@ -813,6 +821,9 @@ class MagnifierLens(
         private val onAnkiLongPress: () -> Unit,
         private val onSpeakTap: () -> Unit,
         private val showAnkiChip: Boolean,
+        /** Styled body reported a (new) painted height — the owner re-runs
+         *  its card-height fit (LensView is not an inner class). */
+        private val onStyledHeightChanged: () -> Unit,
     ) : FrameLayout(ctx) {
         private fun dp(v: Float): Int = (density * v).toInt()
         /** sp → px through the display metrics, so the pill's fit measures text
@@ -1219,6 +1230,15 @@ class MagnifierLens(
             // both the drag lens and the in-app tap-word lens.
             emptyPlaceholder = ctx.getString(R.string.word_detail_no_definitions)
         }
+        /** The scroll's single child: the flat renderer plus (lazily) the
+         *  styled WebView renderer, visibility-swapped per bind. Keeping
+         *  the ScrollView as the ONE scroller preserves the stick-scroll
+         *  repeater and the clip/translation grow animation unchanged —
+         *  the styled view is always sized to its full content height and
+         *  never scrolls itself ([YomitanDefinitionsView]'s contract). */
+        private val bodyContainer = FrameLayout(ctx).apply {
+            addView(definitionsContent)
+        }
         private val definitionsScroll = ScrollView(ctx).apply {
             isVerticalScrollBarEnabled = true
             isFillViewport = false
@@ -1232,8 +1252,94 @@ class MagnifierLens(
             clipToPadding = false
             // Default pad: pill is at the top, so the bigger pad is on top.
             setPadding(0, bodyPillSidePadPx, 0, bodyOuterSidePadPx)
-            addView(definitionsContent)
+            addView(bodyContainer)
             visibility = GONE
+        }
+
+        // ── Styled (WebView) definitions state ────────────────────────
+        private var styledView: YomitanDefinitionsView? = null
+        /** Construction failed once (no WebView provider) — don't retry
+         *  per bind. */
+        private var styledUnavailable = false
+        /** A styled bind is in flight: flat content is showing and the
+         *  page hasn't reported its painted height yet. */
+        private var pendingStyledSwap = false
+        /** The styled view is the visible body (drives height fitting). */
+        var styledActive = false
+            private set
+        private var styledContentHeight = 0
+
+        private fun ensureStyledView(): YomitanDefinitionsView? {
+            styledView?.let { return it }
+            if (styledUnavailable) return null
+            val v = YomitanDefinitionsView(
+                context,
+                DefinitionsDocument.Tokens(
+                    text = context.themeColor(R.attr.ptText),
+                    textMuted = context.themeColor(R.attr.ptTextMuted),
+                    textHint = context.themeColor(R.attr.ptTextHint),
+                    accent = accentColor,
+                    panel = context.themeColor(R.attr.ptSurface),
+                    baseFontSizePx = 16.5f * LENS_DEFINITIONS_SCALE,
+                ),
+            )
+            if (!v.isUsable()) {
+                styledUnavailable = true
+                return null
+            }
+            // Same optical inset as the flat renderer.
+            v.setPadding(bodyHPaddingPx - dp(6f), 0, bodyHPaddingPx + dp(2f), 0)
+            v.visibility = GONE
+            v.onContentHeight = { h -> onStyledContentHeight(h) }
+            v.onRendererGone = { onStyledRendererGone() }
+            bodyContainer.addView(
+                v,
+                LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT),
+            )
+            styledView = v
+            return v
+        }
+
+        /** Painted-height report from the page: size the styled view, and
+         *  if this bind was waiting to swap, reveal it now — the flat
+         *  content showed instantly and the styled render replaces it only
+         *  once it actually has pixels (no blank-panel gap). */
+        private fun onStyledContentHeight(h: Int) {
+            val sv = styledView ?: return
+            if (h <= 0) {
+                pendingStyledSwap = false
+                return
+            }
+            styledContentHeight = h
+            sv.layoutParams = (sv.layoutParams as? LayoutParams
+                ?: LayoutParams(LayoutParams.MATCH_PARENT, h)).apply { height = h }
+            if (pendingStyledSwap) {
+                pendingStyledSwap = false
+                styledActive = true
+                sv.visibility = VISIBLE
+                definitionsContent.visibility = GONE
+            }
+            if (styledActive) onStyledHeightChanged()
+        }
+
+        /** Render process death: drop the instance and stay flat — the
+         *  flat content of the current bind is already in the tree. */
+        private fun onStyledRendererGone() {
+            styledView?.let { bodyContainer.removeView(it) }
+            styledView = null
+            styledUnavailable = true
+            styledActive = false
+            pendingStyledSwap = false
+            definitionsContent.visibility = VISIBLE
+        }
+
+        /** Back to the flat renderer as the visible body (loading, ZOOM,
+         *  or a bind with no styled payload). */
+        private fun showFlatBody() {
+            styledActive = false
+            pendingStyledSwap = false
+            styledView?.visibility = GONE
+            definitionsContent.visibility = VISIBLE
         }
 
         private val clipPath = Path()
@@ -1474,11 +1580,18 @@ class MagnifierLens(
          *  bottom. Measured against the currently bound [definitionsContent];
          *  call only after [setDefinitions] has bound a word. */
         fun desiredCardHeightForContent(): Int {
+            val chrome = bodyPillSidePadPx + bodyOuterSidePadPx + 2 * bodyEdgeBufferPx
+            // Styled body: a WebView can't report a synchronous measured
+            // height — use the page's own painted-height report (which
+            // re-runs [MagnifierLens.fitHeightToContent] whenever it lands,
+            // so the card converges even though the number arrives late).
+            if (styledActive && styledContentHeight > 0) {
+                return styledContentHeight + chrome
+            }
             definitionsContent.measure(
                 MeasureSpec.makeMeasureSpec(cardW - 2 * bodyEdgeBufferPx, MeasureSpec.EXACTLY),
                 MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
             )
-            val chrome = bodyPillSidePadPx + bodyOuterSidePadPx + 2 * bodyEdgeBufferPx
             return definitionsContent.measuredHeight + chrome
         }
 
@@ -1836,6 +1949,7 @@ class MagnifierLens(
             if (data == null) {
                 if (mode == Mode.ZOOM) return
                 mode = Mode.ZOOM
+                showFlatBody()
                 definitionsScroll.visibility = GONE
                 leftChip.visibility = GONE
                 rightChip.visibility = GONE
@@ -1846,7 +1960,34 @@ class MagnifierLens(
             setLabel(data.word, data.reading, data.pitch)
             // Drag lens keeps its compact layout — no misc line. The detail
             // sheet reached on tap-through still shows misc (it re-resolves).
+            // The flat renderer binds UNCONDITIONALLY: it is the instant
+            // content of every lookup and the standing fallback the styled
+            // path degrades to (renderer death, empty render).
             definitionsContent.bind(data, label, LENS_DEFINITIONS_SCALE, showMisc = false)
+            showFlatBody()
+            val styledData = data.styled
+            val sv = if (styledData != null && styledData.structured.isNotEmpty()) {
+                ensureStyledView()
+            } else {
+                null
+            }
+            if (sv != null) {
+                // Styled upgrade: swap over the flat content when the page
+                // reports painted height (see [onStyledContentHeight]).
+                pendingStyledSwap = true
+                sv.setContent(
+                    DefinitionsDocument.contentHtml(
+                        data,
+                        styledData!!.structured,
+                        localizePos = { context.localizePos(it) },
+                        showMisc = false,
+                        metaChips = styledMetaChips(context, data),
+                        label = label,
+                    ),
+                    styledData.dictStyles,
+                    styledData.sourceLanguage,
+                )
+            }
             definitionsScroll.scrollTo(0, 0)
             definitionsScroll.visibility = VISIBLE
             // Chip visibility is owned by [attachInteractiveListeners] —
@@ -1857,6 +1998,7 @@ class MagnifierLens(
         fun setLoading(word: String?, reading: String?) {
             mode = Mode.LOADING
             setLabel(word, reading)
+            showFlatBody()
             populateLoading()
             definitionsScroll.scrollTo(0, 0)
             definitionsScroll.visibility = VISIBLE

@@ -97,6 +97,22 @@ body {
   margin: .65em 0 .2em;
 }
 .pos-h:first-child { margin-top: .1em; }
+.label-warn { font-size: .8em; color: var(--pt-secondary); margin: .1em 0 .3em; }
+.meta-row {
+  display: flex; flex-wrap: wrap; gap: .3em; align-items: center;
+  margin: .1em 0 .45em;
+}
+.meta-chip {
+  font-size: .7em; color: var(--pt-secondary);
+  background: color-mix(in srgb, var(--pt-fg) 10%, transparent);
+  border-radius: 4px; padding: .18em .55em;
+}
+.meta-chip.common {
+  color: var(--pt-accent);
+  background: color-mix(in srgb, var(--pt-accent) 16%, transparent);
+  border-radius: 1em;
+}
+.meta-chip.stars { background: none; padding-left: 0; padding-right: 0; }
 .def-row { display: flex; gap: .4em; margin: .18em 0; }
 .def-num { color: var(--pt-hint); font-size: .85em; padding-top: .12em; }
 .def-text { flex: 1; min-width: 0; }
@@ -173,14 +189,46 @@ ruby > rt { font-size: .5em; }
      * [localizePos] is the pack-sense POS localizer (imported headers stay
      * verbatim, same rule as [WordDefinitionsView]).
      */
+    /** One chip in the styled document's meta row — the HTML counterpart
+     *  of [WordDefinitionsView]'s Common pill / ★ run / frequency chips /
+     *  deck badge (built Android-side, where strings and theme live). */
+    class MetaChip(
+        val text: String,
+        val kind: Kind = Kind.NEUTRAL,
+        /** Per-dictionary accent override (ARGB) for a frequency chip. */
+        val accentColor: Int? = null,
+    ) {
+        enum class Kind { NEUTRAL, COMMON, STARS }
+    }
+
     fun contentHtml(
         data: WordDefinitionData,
         structured: Map<Long, String>,
         localizePos: (List<String>) -> String,
         showMisc: Boolean = false,
         renderMisc: (List<String>) -> String? = { null },
+        metaChips: List<MetaChip> = emptyList(),
+        label: String? = null,
     ): String {
         val sb = StringBuilder()
+        label?.takeIf { it.isNotBlank() }?.let {
+            sb.append("<div class=\"label-warn\">").append(htmlEscape(it)).append("</div>")
+        }
+        if (metaChips.isNotEmpty()) {
+            sb.append("<div class=\"meta-row\">")
+            for (chip in metaChips) {
+                val cls = when (chip.kind) {
+                    MetaChip.Kind.COMMON -> "meta-chip common"
+                    MetaChip.Kind.STARS -> "meta-chip stars"
+                    MetaChip.Kind.NEUTRAL -> "meta-chip"
+                }
+                val tint = chip.accentColor
+                    ?.let { " style=\"background:${cssHex(it)}\"" }.orEmpty()
+                sb.append("<span class=\"$cls\"$tint>")
+                    .append(htmlEscape(chip.text)).append("</span>")
+            }
+            sb.append("</div>")
+        }
         for (group in data.importedGroups) {
             sb.append("<section class=\"dict-group\" data-dictionary=\"")
                 .append(htmlEscape(group.dictId)).append("\">")

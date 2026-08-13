@@ -775,30 +775,54 @@ class WordDetailBottomSheet : DialogFragment() {
 
         // Imported term-dictionary definitions lead, unnumbered and
         // unclamped, one labelled block per dictionary in the user's
-        // section order. Final text — never machine-translated.
+        // section order. Final text — never machine-translated. When the
+        // styled path is live (retained structured glossaries + toggle on),
+        // the whole block renders through the WebView component with each
+        // dictionary's own CSS; the native rows are the fallback the
+        // renderer degrades back to if its process dies.
         val importedGroups = primary.importedSenses
-        importedGroups.forEachIndexed { groupIdx, group ->
-            group.senses.forEachIndexed { defIdx, sense ->
-                if (groupIdx > 0 || defIdx > 0) {
-                    addInsetDivider(definitionsCard, indentPx = dpRes(R.dimen.pt_row_h_padding))
+        val styledData = fetchYomitanStyledData(
+            requireContext().applicationContext,
+            Prefs(requireContext()).sourceLangId.yomitanConsumingLang(),
+            importedGroups,
+        )
+        val importedContainer = android.widget.LinearLayout(requireContext()).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+        }
+        definitionsCard.addView(
+            importedContainer,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        fun buildNativeImportedRows() {
+            importedGroups.forEachIndexed { groupIdx, group ->
+                group.senses.forEachIndexed { defIdx, sense ->
+                    if (groupIdx > 0 || defIdx > 0) {
+                        addInsetDivider(importedContainer, indentPx = dpRes(R.dimen.pt_row_h_padding))
+                    }
+                    addSenseRow(
+                        parent = importedContainer,
+                        posLabels = buildList {
+                            if (defIdx == 0) add(group.source)
+                            if (sense.pos.isNotBlank()) add(sense.pos)
+                        },
+                        imported = true,
+                        accentColor = group.accentColor,
+                        glossList = listOf(sense.definition),
+                        senseNumber = null,
+                        miscText = null,
+                        examples = emptyList(),
+                        exampleTranslations = null,
+                        senseIndex = -1,
+                        translationRegistry = null,
+                    )
                 }
-                addSenseRow(
-                    parent = definitionsCard,
-                    posLabels = buildList {
-                        if (defIdx == 0) add(group.source)
-                        if (sense.pos.isNotBlank()) add(sense.pos)
-                    },
-                    imported = true,
-                    accentColor = group.accentColor,
-                    glossList = listOf(sense.definition),
-                    senseNumber = null,
-                    miscText = null,
-                    examples = emptyList(),
-                    exampleTranslations = null,
-                    senseIndex = -1,
-                    translationRegistry = null,
-                )
             }
+        }
+        if (!addStyledImportedBlock(importedContainer, importedGroups, styledData, ::buildNativeImportedRows)) {
+            buildNativeImportedRows()
         }
         val hasImportedRows = importedGroups.any { it.senses.isNotEmpty() }
 
@@ -1623,6 +1647,70 @@ class WordDetailBottomSheet : DialogFragment() {
      * cleanly under its own column instead of inheriting the number's
      * hanging indent.
      */
+    /**
+     * Styled imported-definitions block: one [YomitanDefinitionsView]
+     * rendering every group with its dictionary's scoped CSS, sized by the
+     * page's height report. Returns false when the styled path shouldn't /
+     * can't run (no payload, no WebView) — the caller builds the native
+     * rows instead. [rebuildNative] is the render-process-death fallback:
+     * the container empties and the same native rows take the block's
+     * place.
+     */
+    private fun addStyledImportedBlock(
+        container: LinearLayout,
+        importedGroups: List<com.playtranslate.model.ImportedSenseGroup>,
+        styledData: YomitanStyledData?,
+        rebuildNative: () -> Unit,
+    ): Boolean {
+        if (styledData == null || styledData.structured.isEmpty()) return false
+        val ctx = requireContext()
+        val v = YomitanDefinitionsView(
+            ctx,
+            DefinitionsDocument.Tokens(
+                text = ctx.themeColor(R.attr.ptText),
+                textMuted = ctx.themeColor(R.attr.ptTextMuted),
+                textHint = ctx.themeColor(R.attr.ptTextHint),
+                accent = ctx.themeColor(R.attr.ptAccent),
+                panel = ctx.themeColor(R.attr.ptCard),
+                baseFontSizePx = 16.5f,
+            ),
+        )
+        if (!v.isUsable()) return false
+        val hPad = dpRes(R.dimen.pt_row_h_padding)
+        v.setPadding(hPad, dp(10), hPad, dp(10))
+        v.onContentHeight = { h ->
+            val lp = v.layoutParams ?: LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0,
+            )
+            lp.height = h + v.paddingTop + v.paddingBottom
+            v.layoutParams = lp
+        }
+        v.onRendererGone = {
+            container.removeAllViews()
+            rebuildNative()
+        }
+        container.addView(
+            v,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0),
+        )
+        // Groups only — the sheet's pack senses, breakdown, and examples
+        // stay native. senses = empty keeps contentHtml's pack section out.
+        val doc = DefinitionsDocument.contentHtml(
+            WordDefinitionData(
+                word = "",
+                reading = null,
+                senses = emptyList(),
+                freqScore = 0,
+                isCommon = false,
+                importedGroups = importedGroups,
+            ),
+            styledData.structured,
+            localizePos = { it.joinToString(" · ") },
+        )
+        v.setContent(doc, styledData.dictStyles, styledData.sourceLanguage)
+        return true
+    }
+
     private fun addSenseRow(
         parent: LinearLayout,
         posLabels: List<String>,

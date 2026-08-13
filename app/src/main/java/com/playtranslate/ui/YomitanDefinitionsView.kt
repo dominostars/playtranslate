@@ -86,7 +86,10 @@ internal class YomitanDefinitionsView(
                 "utf-8",
                 null,
             )
-            addView(wv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            // MATCH_PARENT both ways: a WebView's own wrap-content measure is
+            // unreliable pre-render — the HOST sizes this wrapper from the
+            // page's height report, and the WebView fills it.
+            addView(wv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             webView = wv
         } catch (e: Exception) {
             // No WebView provider / provider update in flight — stay a

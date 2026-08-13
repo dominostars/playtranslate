@@ -204,7 +204,10 @@ class WordLookupPopup(
             // orthogonal mechanism from touch modality.
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+                // Styled definitions host a WebView; service-added windows
+                // don't inherit the manifest's hardware acceleration.
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START

@@ -91,6 +91,16 @@ class OverlayHost(
         displayId: Int,
     ): Boolean {
         params.type = windowType
+        // Service-added windows are software-rendered by default (the
+        // manifest's hardwareAccelerated only covers activity windows).
+        // Hardware acceleration is required for a WebView child
+        // ([com.playtranslate.ui.YomitanDefinitionsView] in the lens/popup)
+        // and harmless for canvas surfaces — the lens already pre-bakes its
+        // one BlurMaskFilter into a bitmap for exactly this pipeline. The
+        // flag is read at addView time only, so later wholesale
+        // params.flags rewrites (resetToZoom, SheetHost.applyPolicy) can't
+        // revoke it.
+        params.flags = params.flags or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
         val fullScreen = params.width == WindowManager.LayoutParams.MATCH_PARENT &&
             params.height == WindowManager.LayoutParams.MATCH_PARENT
         applyFullScreenOverlayDefaults(params)
