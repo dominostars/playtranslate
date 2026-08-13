@@ -178,6 +178,16 @@ class TermEntryTest {
     }
 
     @Test
+    fun `a single token past the budget flips to skip mode before the copy`() {
+        // One oversized token as the FIRST value: the pre-copy check must
+        // reject it (never duplicating it into the buffer) and the walk
+        // must still consume the element exactly.
+        val (captured, sentinel) = capture("""["${"z".repeat(64)}","tail"]""", 16)
+        assertEquals(null, captured)
+        assertEquals("sentinel", sentinel)
+    }
+
+    @Test
     fun `budget boundary keeps a glossary that just fits`() {
         val glossary = """["abc"]"""
         val (captured, _) = capture(glossary, glossary.length)
