@@ -94,9 +94,13 @@ internal object TermEntry {
      * string/number tokens skipped without materialization, accumulation
      * stopped), so the caller's consume-exactly-one-element invariant holds
      * either way and a hostile many-token glossary can't accumulate memory.
-     * Residual: one single oversized string TOKEN still transits the heap
-     * once (Gson offers no length-capped nextString); what's bounded is
-     * everything after it.
+     * ACCEPTED residual (Gilad, 2026-08-13): one oversized string token
+     * still transits Gson's internal buffer ONCE — nextString has no length
+     * cap, and a pre-materialization bound would need a stream wrapper that
+     * throws mid-token, losing the reader's position and forcing a whole-
+     * bank abort instead of the entry skip. It is checked BEFORE the writer
+     * copy, so it is never duplicated or retained; worst case is a crash
+     * during an import the user chose, with the transaction rolling back.
      *
      * Token-level rewrite rather than JsonElement round-trip: numbers are
      * emitted verbatim ([JsonWriter.jsonValue]), so the capture is
@@ -128,9 +132,22 @@ internal object TermEntry {
                     JsonToken.BEGIN_OBJECT -> { reader.beginObject(); writer.beginObject(); depth++ }
                     JsonToken.END_OBJECT -> { reader.endObject(); writer.endObject(); depth-- }
                     JsonToken.NAME -> writer.name(reader.nextName())
-                    JsonToken.STRING -> writer.value(reader.nextString())
+                    JsonToken.STRING -> {
+                        // Budget check BEFORE the writer copy: a hostile
+                        // oversized token must not be duplicated into the
+                        // buffer, and must become collectible immediately
+                        // (peak = one transit of the token, not two plus
+                        // retention for the rest of the entry).
+                        val s = reader.nextString()
+                        if (out.buffer.length + s.length > budget) over = true
+                        else writer.value(s)
+                    }
                     // Raw literal, not a double round-trip.
-                    JsonToken.NUMBER -> writer.jsonValue(reader.nextString())
+                    JsonToken.NUMBER -> {
+                        val s = reader.nextString()
+                        if (out.buffer.length + s.length > budget) over = true
+                        else writer.jsonValue(s)
+                    }
                     JsonToken.BOOLEAN -> writer.value(reader.nextBoolean())
                     JsonToken.NULL -> { reader.nextNull(); writer.nullValue() }
                     else -> reader.skipValue()
