@@ -29,17 +29,22 @@ internal object Zlib {
         }
     }
 
-    /** Inflates a [deflate] blob; null on corrupt input (the caller treats
-     *  the row as flat-only rather than failing the lookup). */
-    fun inflate(data: ByteArray): ByteArray? {
+    /** Inflates a [deflate] blob; null on corrupt input OR when the output
+     *  would exceed [maxOutputBytes] (the caller treats the row as
+     *  flat-only rather than failing the lookup). The cap is mandatory:
+     *  deflate ratios reach ~1000:1, so an uncapped inflate hands a
+     *  hostile ~100KB stored blob ~100MB of heap on the LOOKUP path —
+     *  a repeatable OOM (Codex adversarial catch). */
+    fun inflate(data: ByteArray, maxOutputBytes: Int): ByteArray? {
         val inflater = Inflater()
         return try {
             inflater.setInput(data)
-            val out = ByteArrayOutputStream(data.size * 3 + 64)
+            val out = ByteArrayOutputStream(minOf(data.size * 3 + 64, maxOutputBytes + 64))
             val buf = ByteArray(8192)
             while (!inflater.finished()) {
                 val n = inflater.inflate(buf)
                 if (n > 0) {
+                    if (out.size() + n > maxOutputBytes) return null // bomb — stop expanding
                     out.write(buf, 0, n)
                 } else if (!inflater.finished()) {
                     // No output and not done: truncated input (needsInput),

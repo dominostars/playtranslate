@@ -130,4 +130,59 @@ class TermEntryTest {
         )!!
         assertEquals(listOf("x"), parsed.defs)
     }
+
+    // ── The capture budget (OOM hardening, Codex adversarial catch) ────
+
+    private fun capture(json: String, budget: Int): Pair<String?, String> {
+        val reader = JsonReader(StringReader("[$json, \"sentinel\"]"))
+        reader.beginArray()
+        val captured = TermEntry.captureGlossary(reader, budget)
+        val sentinel = reader.nextString()
+        reader.endArray()
+        return captured to sentinel
+    }
+
+    @Test
+    fun `capture is source-faithful within budget`() {
+        val glossary =
+            """[{"type":"structured-content","content":{"tag":"img","width":253.12,"path":"a b"}},"猫",null,true,42]"""
+        val (captured, sentinel) = capture(glossary, 4096)
+        assertEquals("sentinel", sentinel)
+        assertEquals(
+            com.google.gson.JsonParser.parseString(glossary),
+            com.google.gson.JsonParser.parseString(captured!!),
+        )
+        // Raw-token rewrite keeps the number's literal form.
+        assertEquals(true, captured.contains("253.12"))
+    }
+
+    @Test
+    fun `over-budget capture returns null and still consumes exactly the element`() {
+        val big = "x".repeat(2048)
+        val glossary = """[{"type":"structured-content","content":["$big","$big","$big"]}]"""
+        val (captured, sentinel) = capture(glossary, 1024)
+        assertEquals(null, captured)
+        // The consume-exactly-one invariant survives the skip-mode tail.
+        assertEquals("sentinel", sentinel)
+    }
+
+    @Test
+    fun `over-budget glossary makes the whole entry skippable`() {
+        // The caller's empty-defs check is what skips the entry — same
+        // defensive fate as a malformed one. No half-megabyte glossary is
+        // legitimate (Jitendex tops out around 100KB).
+        val big = "y".repeat(TermEntry.MAX_RETAINED_GLOSSARY_CHARS + 64)
+        val parsed = parse("""["猫","ねこ","n","",1,["$big"],1,""]""")!!
+        assertEquals(emptyList<String>(), parsed.defs)
+        assertNull(parsed.scJson)
+    }
+
+    @Test
+    fun `budget boundary keeps a glossary that just fits`() {
+        val glossary = """["abc"]"""
+        val (captured, _) = capture(glossary, glossary.length)
+        assertEquals(listOf("abc"), listOf(
+            com.google.gson.JsonParser.parseString(captured!!).asJsonArray.first().asString,
+        ))
+    }
 }

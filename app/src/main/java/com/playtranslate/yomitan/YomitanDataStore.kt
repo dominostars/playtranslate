@@ -93,6 +93,15 @@ object YomitanDataStore {
      *  intent — a stylesheet is config, not payload. */
     private const val MAX_STYLES_BYTES = 512 * 1024
 
+    /** Inflation ceiling for one term_sc blob: the ingest retention budget
+     *  at the UTF-8 worst case (4 bytes/char). See [Zlib.inflate]. */
+    private const val MAX_INFLATED_GLOSSARY_BYTES = TermEntry.MAX_RETAINED_GLOSSARY_CHARS * 4
+
+    /** Pre-decode cap on a dump media row's base64 text: 10MB decoded is
+     *  ~13.99M base64 chars; slack covers MIME line wrapping. Checked on
+     *  the String's LENGTH before any decode allocation happens. */
+    private const val MAX_MEDIA_BASE64_CHARS = 15 * 1024 * 1024
+
     /** Guards DB open/ingest/purge and [cache] (re)builds. Reads go through
      *  [ready] which only takes the lock until initialized. */
     private val mutex = Mutex()
@@ -567,7 +576,10 @@ object YomitanDataStore {
                     chunk.map { it.toString() }.toTypedArray(),
                 ).use { c ->
                     while (c.moveToNext()) {
-                        Zlib.inflate(c.getBlob(1))?.let {
+                        // Cap = the ingest retention budget at the UTF-8
+                        // worst case: any legit row fits; a zlib bomb
+                        // (or a row from a tampered DB) drops to flat.
+                        Zlib.inflate(c.getBlob(1), MAX_INFLATED_GLOSSARY_BYTES)?.let {
                             put(c.getLong(0), it.toString(Charsets.UTF_8))
                         }
                     }
@@ -1974,16 +1986,18 @@ object YomitanDataStore {
                         if (reader.peek() == JsonToken.NUMBER) reader.nextDouble()
                         else { reader.skipValue(); 0.0 }
                     // Byte-identical structured content to a term_bank glossary —
-                    // the same tee as [TermEntry.parse]: buffer the subtree,
-                    // retain its serialized form when structured, flatten via
+                    // the same BUDGETED tee as [TermEntry.parse]: bounded
+                    // capture (an over-budget glossary is consumed in skip
+                    // mode and the row falls out as text-less), flatten via
                     // the unchanged streaming flattener.
                     "glossary" ->
                         if (reader.peek() == JsonToken.BEGIN_ARRAY) {
-                            val glossary = JsonParser.parseReader(reader)
-                            val serialized = glossary.toString()
-                            defs = JsonReader(StringReader(serialized))
-                                .use { TermGlossary.parseGlossary(it) }
-                            if (glossaryHasStructuredItems(glossary)) scJson = serialized
+                            val serialized = TermEntry.captureGlossary(reader)
+                            if (serialized != null) {
+                                defs = JsonReader(StringReader(serialized))
+                                    .use { TermGlossary.parseGlossary(it) }
+                                if (TermEntry.hasStructuredItems(serialized)) scJson = serialized
+                            }
                         } else {
                             reader.skipValue()
                         }
@@ -2028,19 +2042,6 @@ object YomitanDataStore {
         Log.i(TAG, "dump: ingested $rows term rows ($scRows structured, $skipped text-less/unroutable skipped)")
     }
 
-    /** Dump-side twin of [TermEntry]'s structured-item check (that one is
-     *  private to the entry parser's flow; this one takes the already
-     *  buffered element). */
-    private fun glossaryHasStructuredItems(glossary: JsonElement): Boolean {
-        if (!glossary.isJsonArray) return false
-        return glossary.asJsonArray.any { item ->
-            item.isJsonObject &&
-                item.asJsonObject.get("type")
-                    ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
-                    ?.asString.let { it == "structured-content" || it == "image" }
-        }
-    }
-
     /** Dump media rows: `{dictionary, path, mediaType, width, height,
      *  content(base64)}` (bare rows — media has a named `++id` key). Only
      *  image-extension paths land (same whitelist as the zip pass); decode
@@ -2070,14 +2071,7 @@ object YomitanDataStore {
             if (dict == null || dict.skip || p.isNullOrEmpty() || c.isNullOrEmpty()) return@readDumpRows
             val ext = p.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT)
             if (ext !in IMAGE_EXTENSIONS) return@readDumpRows
-            val bytes = try {
-                // Mime decoder: tolerant of the line-wrapping some exporters
-                // emit, still rejects non-base64 garbage. Pure JVM.
-                java.util.Base64.getMimeDecoder().decode(c)
-            } catch (_: IllegalArgumentException) {
-                return@readDumpRows
-            }
-            if (bytes.size > MAX_MEDIA_FILE_BYTES) return@readDumpRows
+            val bytes = decodeDumpMediaContent(c) ?: return@readDumpRows
             inserts.media.bindString(1, dict.id)
             inserts.media.bindString(2, p)
             inserts.media.bindBlob(3, bytes)
@@ -2172,6 +2166,26 @@ object YomitanDataStore {
                 dict.categories += YomitanCategory.KANJI_FREQUENCY
             }
         }
+    }
+
+    /** Bounded decode of one dump media row's base64 [content]: the LENGTH
+     *  gate runs before any decode allocation (a hostile row can no longer
+     *  force a decoded-bytes allocation just to be rejected by the size
+     *  check — Codex adversarial catch); the decoded-size check stays as
+     *  the exact belt behind the approximate length gate. Null = reject.
+     *  The base64 String itself is already materialized by Gson's
+     *  nextString — unavoidable under streaming reads, and bounded only by
+     *  the user's own chosen export file. */
+    internal fun decodeDumpMediaContent(content: String): ByteArray? {
+        if (content.length > MAX_MEDIA_BASE64_CHARS) return null
+        val bytes = try {
+            // Mime decoder: tolerant of the line-wrapping some exporters
+            // emit, still rejects non-base64 garbage. Pure JVM.
+            java.util.Base64.getMimeDecoder().decode(content)
+        } catch (_: IllegalArgumentException) {
+            return null
+        }
+        return bytes.takeIf { it.size <= MAX_MEDIA_FILE_BYTES }
     }
 
     private fun readStringArray(reader: JsonReader): List<String> {
