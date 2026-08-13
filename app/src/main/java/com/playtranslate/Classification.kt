@@ -54,6 +54,46 @@ data class FarGroup(
 )
 
 /**
+ * Vacancy memory for a content-match relocation: [bounds] (OCR-crop space,
+ * same space as [TextBox.bounds] and OCR group bounds) held [text] until a
+ * content match moved its box away, within the last
+ * [PinholeCalibration.TOMBSTONE_LIFESPAN_LOOKS] full looks.
+ *
+ * Content match's "same text elsewhere = the text moved" inference silently
+ * assumes text is unique on screen, and the OCR blackout makes the box's own
+ * region unreadable, so the inference can never be checked pixel-side (the
+ * pinholes false-KEEP on exactly the low-contrast background movers content
+ * match was built for). The two worlds — one moving text vs two static
+ * duplicates — are observationally identical within a single cycle; the
+ * distinguishing evidence only exists ACROSS cycles: after relocating A→B,
+ * the same text read AT A again is proof it never left. Without this memory
+ * the relocation is symmetric and memoryless, so two duplicates ping-pong
+ * one box between them forever (duplicate-text oscillation, 2026-07-30).
+ *
+ * So every distant relocation leaves a tombstone at the vacated rect, and a
+ * fresh group matching a live tombstone (fuzzy-same text, tight-same rect —
+ * see [PinholeCalibration.TOMBSTONE_MATCH_SLOP_PX] for why tight) is barred
+ * from content-matching: it falls through to the far path and spawns its own
+ * box. A true mover reads at some NEW position that matches no tombstone, so
+ * the single-box-follows behavior is untouched. Aging/expiry lives with the
+ * caller ([PinholeOverlayMode]); classification stays pure.
+ */
+data class Tombstone(
+    val text: String,
+    val bounds: Rect,
+)
+
+/** Same on-screen region within OCR re-read jitter: every edge within
+ *  [PinholeCalibration.TOMBSTONE_MATCH_SLOP_PX]. Used both to match a fresh
+ *  group against a tombstone and to decide whether a content match is a
+ *  relocation (mints a tombstone) or an in-place update (mints nothing). */
+private fun tombstoneSameRegion(a: Rect, b: Rect): Boolean =
+    kotlin.math.abs(a.left - b.left) <= PinholeCalibration.TOMBSTONE_MATCH_SLOP_PX &&
+        kotlin.math.abs(a.top - b.top) <= PinholeCalibration.TOMBSTONE_MATCH_SLOP_PX &&
+        kotlin.math.abs(a.right - b.right) <= PinholeCalibration.TOMBSTONE_MATCH_SLOP_PX &&
+        kotlin.math.abs(a.bottom - b.bottom) <= PinholeCalibration.TOMBSTONE_MATCH_SLOP_PX
+
+/**
  * Dying-box fragment-deferral predicate: does [rect] abut (intersect after
  * inflating each dying rect by [inflatePx]) any box being pinhole-removed
  * this cycle?
@@ -150,11 +190,21 @@ fun deferDyingBoxFragments(
  * - [farOcrGroups] — OCR groups that need a new placeholder: either a
  *   content-match replacement (step 7a) or brand-new text with no nearby
  *   existing overlay (step 7c).
+ * - [vacated] — tombstones minted this pass: one per content match whose new
+ *   position is NOT a tight same-region match of the vacated box (a true
+ *   relocation, not an in-place update). The caller ages these across looks
+ *   and feeds the live set back in as `tombstones`.
+ * - [tombstoneBlocks] — how many OCR groups a live tombstone barred from
+ *   content-matching this pass (each fell through to proximity/far and
+ *   spawned or staled normally). Telemetry for the transitions log — a
+ *   nonzero count is the duplicate-spawn signature in a field trace.
  */
 data class ClassificationResult(
     val contentMatchRemovals: Set<Int>,
     val staleOverlayIndices: Set<Int>,
     val farOcrGroups: List<FarGroup>,
+    val vacated: List<Tombstone> = emptyList(),
+    val tombstoneBlocks: Int = 0,
 )
 
 /**
@@ -168,7 +218,11 @@ data class ClassificationResult(
  *      is within 50% of the OCR group's height. First match wins; the box
  *      is added to [ClassificationResult.contentMatchRemovals] and a fresh
  *      placeholder is queued into [ClassificationResult.farOcrGroups] at
- *      the OCR position.
+ *      the OCR position. Barred entirely when the group matches a live
+ *      [Tombstone] (see its kdoc — the group is a duplicate re-read at a
+ *      just-vacated rect, not a move); a match at a genuinely new position
+ *      mints a tombstone at the vacated rect into
+ *      [ClassificationResult.vacated].
  *   2. **Proximity check** — if no content match, check every non-dirty,
  *      non-content-matched box: if its bitmap-space rect `wouldGroup` with
  *      the OCR group's bitmap-space rect, mark the box stale. A single OCR
@@ -206,10 +260,13 @@ fun classifyOcrResults(
     ocrBitmapRects: List<Rect>,
     coords: FrameCoordinates,
     rtl: Boolean = false,
+    tombstones: List<Tombstone> = emptyList(),
 ): ClassificationResult {
     val staleOverlayIndices = mutableSetOf<Int>()
     val contentMatchRemovals = mutableSetOf<Int>()
     val farOcrGroups = mutableListOf<FarGroup>()
+    val vacated = mutableListOf<Tombstone>()
+    var tombstoneBlocks = 0
     // Indices in [farOcrGroups] that originated from a content-match
     // (i.e. paired FARs queued at step 1 below). The Far branch's
     // coalesce step at step 3 only considers these as eligible merge
@@ -223,8 +280,18 @@ fun classifyOcrResults(
         val ocrH = ocrBound.height()
 
         // 1. Content match: same source text + similar size → position update.
+        //    Tombstone gate first: a group at a rect a same-text box was
+        //    relocated AWAY from within the last couple of looks is proof
+        //    the text never left that rect — a duplicate, not a move (see
+        //    [Tombstone]). Barred from content-matching entirely; it falls
+        //    through to proximity/far and spawns its own box.
+        val tombstoned = tombstones.any { t ->
+            !OverlayToolkit.isSignificantChange(ocrText, t.text) &&
+                tombstoneSameRegion(t.bounds, ocrBound)
+        }
+        if (tombstoned) tombstoneBlocks++
         var contentMatched = false
-        for ((boxIdx, box) in boxes.withIndex()) {
+        if (!tombstoned) for ((boxIdx, box) in boxes.withIndex()) {
             if (box.dirty) continue
             if (boxIdx in contentMatchRemovals) continue
             if (box.sourceText.isNotEmpty() &&
@@ -236,6 +303,13 @@ fun classifyOcrResults(
                     val lc = group.lines.size
                     val orient = group.orientation
                     val align = group.alignment
+                    // A relocation (new position, not an in-place update
+                    // within re-read jitter) mints a tombstone at the
+                    // vacated rect. Copied: Rect is mutable and the box
+                    // is about to be removed.
+                    if (!tombstoneSameRegion(box.bounds, ocrBound)) {
+                        vacated.add(Tombstone(box.sourceText, Rect(box.bounds)))
+                    }
                     // Record the about-to-be index so step 3's coalesce
                     // step can identify this FAR as the paired-from-
                     // content-match target a later fresh OCR fragment may
@@ -527,6 +601,8 @@ fun classifyOcrResults(
         contentMatchRemovals = contentMatchRemovals,
         staleOverlayIndices = staleOverlayIndices,
         farOcrGroups = farOcrGroups,
+        vacated = vacated,
+        tombstoneBlocks = tombstoneBlocks,
     )
 }
 

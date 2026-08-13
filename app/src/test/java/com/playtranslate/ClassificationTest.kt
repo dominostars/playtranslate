@@ -17,6 +17,8 @@ import org.robolectric.RobolectricTestRunner
  * Tests cover:
  *  - [classifyOcrResults]: content match, proximity, far; dirty-box
  *    exclusion; first-match-wins; index guards for mid-cycle size drift.
+ *  - Relocation tombstones: minting (distant vs in-place), duplicate
+ *    blocking, mover pass-through, one-bounce oscillation convergence.
  *  - [cascadeStaleRemovals]: empty seed, isolated seed, adjacent chain,
  *    disconnected multi-seed, dirty skip, ocrBitmapRects overflow.
  *
@@ -238,6 +240,141 @@ class ClassificationTest {
         assertEquals(2, result.farOcrGroups.size)
         assertEquals(ocr0, result.farOcrGroups[0].bounds)
         assertEquals(ocr1, result.farOcrGroups[1].bounds)
+    }
+
+    // ── classifyOcrResults: relocation tombstones ────────────────────────
+
+    @Test
+    fun classify_distantContentMatch_mintsTombstoneAtVacatedBounds() {
+        val boxBounds = Rect(0, 0, 100, 100)
+        val ocrBounds = Rect(500, 500, 600, 600)
+        val result = classifyOcrResults(
+            ocrResult = ocrResult("hello" to ocrBounds),
+            boxes = listOf(box(boxBounds, sourceText = "hello")),
+            ocrBitmapRects = listOf(boxBounds),
+            coords = identityCoords,
+        )
+        assertEquals(setOf(0), result.contentMatchRemovals)
+        assertEquals(listOf(Tombstone("hello", boxBounds)), result.vacated)
+        assertEquals(0, result.tombstoneBlocks)
+    }
+
+    @Test
+    fun classify_samePositionContentMatch_doesNotMintTombstone() {
+        // In-place update (bounds within re-read jitter of the box): the
+        // content match fires but no tombstone is minted — nothing was
+        // vacated. Otherwise every stable in-place re-match would seed
+        // vacancy memory for a region that is still occupied.
+        val boxBounds = Rect(0, 0, 100, 100)
+        val ocrBounds = Rect(3, 2, 103, 102)   // 3px jitter, same region
+        val result = classifyOcrResults(
+            ocrResult = ocrResult("hello" to ocrBounds),
+            boxes = listOf(box(boxBounds, sourceText = "hello")),
+            ocrBitmapRects = listOf(boxBounds),
+            coords = identityCoords,
+        )
+        assertEquals(setOf(0), result.contentMatchRemovals)
+        assertTrue(result.vacated.isEmpty())
+    }
+
+    @Test
+    fun classify_tombstone_blocksContentMatchAtVacatedRect_groupGoesFar() {
+        // The duplicate-text oscillation, cycle 2: box relocated A→B last
+        // look, the duplicate at A reads again (within jitter). The
+        // tombstone bars the steal-back; the group spawns its own far box.
+        val vacatedA = Rect(0, 0, 100, 100)
+        val boxAtB = Rect(500, 500, 600, 600)
+        val reReadAtA = Rect(4, 3, 103, 101)   // A, jittered a few px
+        val result = classifyOcrResults(
+            ocrResult = ocrResult("hello" to reReadAtA),
+            boxes = listOf(box(boxAtB, sourceText = "hello")),
+            ocrBitmapRects = listOf(boxAtB),
+            coords = identityCoords,
+            tombstones = listOf(Tombstone("hello", vacatedA)),
+        )
+        assertTrue(
+            "tombstoned group must not steal the relocated box back",
+            result.contentMatchRemovals.isEmpty(),
+        )
+        assertEquals(1, result.tombstoneBlocks)
+        assertEquals(1, result.farOcrGroups.size)
+        assertEquals(reReadAtA, result.farOcrGroups[0].bounds)
+        assertFalse(
+            "spawned duplicate is fresh text, not a paired replacement",
+            result.farOcrGroups[0].paired,
+        )
+    }
+
+    @Test
+    fun classify_tombstone_groupAtNewPosition_stillRelocates() {
+        // A genuine mover: tombstone at A, but the next read is at C — a
+        // marquee step well past the match slop. Relocation must keep
+        // working (the accumulation bug content match exists to prevent).
+        val vacatedA = Rect(0, 0, 100, 100)
+        val boxAtB = Rect(500, 500, 600, 600)
+        val readAtC = Rect(0, 40, 100, 140)    // 40px on from A
+        val result = classifyOcrResults(
+            ocrResult = ocrResult("hello" to readAtC),
+            boxes = listOf(box(boxAtB, sourceText = "hello")),
+            ocrBitmapRects = listOf(boxAtB),
+            coords = identityCoords,
+            tombstones = listOf(Tombstone("hello", vacatedA)),
+        )
+        assertEquals(setOf(0), result.contentMatchRemovals)
+        assertEquals(0, result.tombstoneBlocks)
+    }
+
+    @Test
+    fun classify_tombstone_differentTextAtVacatedRect_doesNotBlock() {
+        // The vacated rect now shows unrelated text of the same size —
+        // that text's own content match elsewhere must not be barred.
+        val vacatedA = Rect(0, 0, 100, 100)
+        val boxAtB = Rect(500, 500, 600, 600)
+        val reReadAtA = Rect(0, 0, 100, 100)
+        val result = classifyOcrResults(
+            ocrResult = ocrResult("goodbye" to reReadAtA),
+            boxes = listOf(box(boxAtB, sourceText = "goodbye")),
+            ocrBitmapRects = listOf(boxAtB),
+            coords = identityCoords,
+            tombstones = listOf(Tombstone("hello", vacatedA)),
+        )
+        assertEquals(setOf(0), result.contentMatchRemovals)
+        assertEquals(0, result.tombstoneBlocks)
+    }
+
+    @Test
+    fun classify_tombstone_oscillationConvergesInOneBounce() {
+        // End-to-end loop closure: look 1 relocates A→B and mints the
+        // tombstone; look 2 feeds it back and the re-read at A spawns
+        // instead of stealing — both duplicates end up covered.
+        val duplicateA = Rect(0, 0, 100, 100)
+        val duplicateB = Rect(500, 500, 600, 600)
+
+        // Look 1: box over A; B's copy becomes readable (A blacked out).
+        val look1 = classifyOcrResults(
+            ocrResult = ocrResult("hello" to duplicateB),
+            boxes = listOf(box(duplicateA, sourceText = "hello")),
+            ocrBitmapRects = listOf(duplicateA),
+            coords = identityCoords,
+        )
+        assertEquals(setOf(0), look1.contentMatchRemovals)
+        assertEquals(1, look1.vacated.size)
+
+        // Look 2: box now over B (blacked out); A's copy reads again.
+        val look2 = classifyOcrResults(
+            ocrResult = ocrResult("hello" to duplicateA),
+            boxes = listOf(box(duplicateB, sourceText = "hello")),
+            ocrBitmapRects = listOf(duplicateB),
+            coords = identityCoords,
+            tombstones = look1.vacated,
+        )
+        assertTrue(look2.contentMatchRemovals.isEmpty())
+        assertEquals(1, look2.farOcrGroups.size)
+        assertEquals(duplicateA, look2.farOcrGroups[0].bounds)
+        assertTrue(
+            "the spawn is not a relocation — it must not mint a tombstone",
+            look2.vacated.isEmpty(),
+        )
     }
 
     // ── classifyOcrResults: proximity ────────────────────────────────────
