@@ -32,6 +32,19 @@ class YomitanDefinitionsViewSmokeTest {
         val latch = CountDownLatch(1)
         val height = AtomicInteger(0)
         var usable = true
+        var attached: YomitanDefinitionsView? = null
+
+        // A REAL window, not a detached manual layout: the page (correctly)
+        // refuses to report height while its viewport width is zero, and a
+        // never-attached WebView never composites, never resizes, and never
+        // gets a real width — so the detached harness would hang on its own
+        // conservatism. Production hosts are always window-attached; the
+        // overlay window here mirrors the lens's hosting and exercises the
+        // width-arrival recovery path for real.
+        instrumentation.uiAutomation
+            .executeShellCommand("appops set com.playtranslate SYSTEM_ALERT_WINDOW allow")
+            .close()
+        Thread.sleep(500)
 
         instrumentation.runOnMainSync {
             val view = YomitanDefinitionsView(
@@ -56,12 +69,18 @@ class YomitanDefinitionsViewSmokeTest {
                     latch.countDown()
                 }
             }
-            // Layout pass so the WebView has a width to lay against.
-            view.measure(
-                android.view.View.MeasureSpec.makeMeasureSpec(800, android.view.View.MeasureSpec.EXACTLY),
-                android.view.View.MeasureSpec.makeMeasureSpec(600, android.view.View.MeasureSpec.AT_MOST),
+            val wm = ctx.getSystemService(android.view.WindowManager::class.java)
+            wm.addView(
+                view,
+                android.view.WindowManager.LayoutParams(
+                    800, 600,
+                    android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                    android.graphics.PixelFormat.TRANSLUCENT,
+                ),
             )
-            view.layout(0, 0, 800, 600)
+            attached = view
 
             val glossary =
                 """[{"type":"structured-content","content":{"tag":"ul","data":{"content":"glossary"},""" +
@@ -93,10 +112,20 @@ class YomitanDefinitionsViewSmokeTest {
             )
         }
 
-        assumeTrue("Skipped: no WebView provider on this image.", usable)
-        assertTrue(
-            "page never reported a painted height",
-            latch.await(15, TimeUnit.SECONDS) && height.get() > 0,
-        )
+        try {
+            assumeTrue("Skipped: no WebView provider on this image.", usable)
+            assertTrue(
+                "page never reported a painted height",
+                latch.await(15, TimeUnit.SECONDS) && height.get() > 0,
+            )
+        } finally {
+            instrumentation.runOnMainSync {
+                attached?.let {
+                    ctx.getSystemService(android.view.WindowManager::class.java)
+                        .removeViewImmediate(it)
+                    it.destroy()
+                }
+            }
+        }
     }
 }

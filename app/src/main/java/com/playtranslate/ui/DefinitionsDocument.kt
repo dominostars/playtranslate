@@ -151,55 +151,71 @@ ruby > rt { font-size: .5em; }
   var supportsNesting = typeof CSS !== 'undefined' && CSS.supports &&
     CSS.supports('selector(&)');
 
+  // Everything below runs on <style> ELEMENTS and their .sheet CSSOM —
+  // never the constructable-stylesheet APIs, which Android WebView gained
+  // far later than desktop Chrome; on an AOSP WebView those throw and the
+  // swallow-catch made every dictionary silently unstyled. Element sheets
+  // parse synchronously on appendChild and are CSSOM Level 1 — the oldest
+  // thing in the room supports them.
   window.ptApplyDictCss = function (dictId, cssText) {
     if (appliedDicts[dictId]) return;
     appliedDicts[dictId] = true;
     try {
       var scope = '[data-dictionary="' + dictId + '"]';
-      var sheet = new CSSStyleSheet();
       if (supportsNesting) {
-        sheet.replaceSync(scope + ' {\n' + cssText + '\n}');
+        var el = document.createElement('style');
+        el.textContent = scope + ' {\n' + cssText + '\n}';
+        document.head.appendChild(el);
         // Post-parse scope enforcement: legitimate CSS nests entirely
         // inside the one wrapper rule; anything else at the top level is
         // an escape attempt (stray '}') and is deleted.
+        var sheet = el.sheet;
         for (var i = sheet.cssRules.length - 1; i >= 0; i--) {
           if (sheet.cssRules[i].selectorText !== scope) sheet.deleteRule(i);
         }
       } else {
-        // Legacy scoping: parse the RAW sheet (flat rules parse fine on
-        // old engines) and prefix every selector individually — escape-
-        // proof by construction, since each emitted selector carries the
-        // scope. The dictionary's own '&'-nested rules are lost on these
-        // engines; flat rules and @media survive.
-        var raw = new CSSStyleSheet();
-        raw.replaceSync(cssText);
+        // Legacy scoping: parse the RAW sheet through a detached-media
+        // temp element (flat rules parse fine on old engines), then emit
+        // per-selector-prefixed text — escape-proof by construction,
+        // since each emitted selector carries the scope. The dictionary's
+        // own '&'-nested rules are lost on these engines; flat rules and
+        // @media survive.
+        var tmp = document.createElement('style');
+        tmp.media = 'not all'; // parsed but never applied while we read it
+        tmp.textContent = cssText;
+        document.head.appendChild(tmp);
+        var out = '';
         var prefixed = function (rule) {
           return rule.selectorText.split(',').map(function (s) {
             return scope + ' ' + s.trim();
-          }).join(', ') + ' { ' + rule.style.cssText + ' }';
+          }).join(', ') + ' { ' + rule.style.cssText + ' }\n';
         };
-        var insert = function (css) {
-          try { sheet.insertRule(css, sheet.cssRules.length); } catch (e) {}
-        };
-        for (var j = 0; j < raw.cssRules.length; j++) {
-          var r = raw.cssRules[j];
-          if (r.type === CSSRule.STYLE_RULE) {
-            insert(prefixed(r));
-          } else if (r.type === CSSRule.MEDIA_RULE) {
-            var inner = '';
-            for (var k = 0; k < r.cssRules.length; k++) {
-              if (r.cssRules[k].type === CSSRule.STYLE_RULE) {
-                inner += prefixed(r.cssRules[k]) + '\n';
+        try {
+          var rules = (tmp.sheet && tmp.sheet.cssRules) || [];
+          for (var j = 0; j < rules.length; j++) {
+            var r = rules[j];
+            if (r.type === CSSRule.STYLE_RULE) {
+              out += prefixed(r);
+            } else if (r.type === CSSRule.MEDIA_RULE) {
+              var inner = '';
+              for (var k = 0; k < r.cssRules.length; k++) {
+                if (r.cssRules[k].type === CSSRule.STYLE_RULE) {
+                  inner += prefixed(r.cssRules[k]);
+                }
               }
+              if (inner) out += '@media ' + r.conditionText + ' {\n' + inner + '}\n';
             }
-            if (inner) insert('@media ' + r.conditionText + ' {\n' + inner + '}');
+            // Other at-rules (@import, @font-face, @keyframes) drop —
+            // same policy as Yomitan's legacy path.
           }
-          // Other at-rules (@import, @font-face, @keyframes) drop — same
-          // policy as Yomitan's legacy path.
+        } finally {
+          document.head.removeChild(tmp);
         }
+        var applied = document.createElement('style');
+        applied.textContent = out;
+        document.head.appendChild(applied);
       }
-      document.adoptedStyleSheets = document.adoptedStyleSheets.concat([sheet]);
-    } catch (e) { /* no constructable sheets at all: unstyled */ }
+    } catch (e) { /* engine without element CSSOM: unstyled */ }
   };
 
   // Render generation: stamped by each ptSwap and echoed with every

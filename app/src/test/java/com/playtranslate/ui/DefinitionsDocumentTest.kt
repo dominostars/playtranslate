@@ -168,6 +168,13 @@ class DefinitionsDocumentTest {
         // dictionary CSS.
         assertTrue(shell.contains("CSS.supports('selector(&)')"))
         assertTrue(shell.contains("conditionText"))
+        // The application mechanism must be <style> elements, NEVER
+        // constructable stylesheets — Android WebView gained those far
+        // later than desktop Chrome, and on AOSP WebViews they throw into
+        // the swallow-catch, silently unstyling every dictionary.
+        assertFalse(shell.contains("adoptedStyleSheets"))
+        assertFalse(shell.contains("new CSSStyleSheet"))
+        assertTrue(shell.contains("createElement('style')"))
         // Render-generation contract (stale-height race): ptSwap stamps the
         // generation and every height report echoes it, so the Kotlin side
         // can drop reports from superseded swaps. Both halves pinned here;
