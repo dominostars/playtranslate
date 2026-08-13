@@ -49,6 +49,22 @@
                 android:layout_height="wrap_content"
                 android:visibility="gone" />
 
+            <!-- Second fixed footer slot (TERMS only): dictionary styling. -->
+            <View
+                android:id="@+id/yomitanSectionFooterDivider2"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginStart="@dimen/pt_row_h_padding"
+                android:background="?attr/ptDivider"
+                android:visibility="gone" />
+
+            <include
+                android:id="@+id/yomitanSectionFooterToggle2"
+                layout="@layout/settings_row_switch"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone" />
+
         </LinearLayout>
 
     </com.google.android.material.card.MaterialCardView>

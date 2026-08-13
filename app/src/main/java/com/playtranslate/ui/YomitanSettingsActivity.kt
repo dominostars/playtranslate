@@ -407,6 +407,7 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
 
             if (category == YomitanCategory.TERMS) {
                 bindSingleDictionaryToggle(section, registry.termsSingleDictionary)
+                bindDictionaryStylingToggle(section, registry.dictionaryStyling)
             }
 
             sectionsContainer.addView(section)
@@ -464,6 +465,34 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
             toggleWriteJob = lifecycleScope.launch {
                 previous?.join()
                 YomitanDictionaryStore.setTermsSingleDictionary(
+                    this@YomitanSettingsActivity, enabled,
+                )
+            }
+        }
+    }
+
+    /** Second TERMS footer row: the styled-rendering toggle. Same
+     *  outside-the-adapter placement and write-chaining discipline as
+     *  [bindSingleDictionaryToggle]. */
+    private fun bindDictionaryStylingToggle(section: View, checked: Boolean) {
+        section.findViewById<View>(R.id.yomitanSectionFooterDivider2).isVisible = true
+        val row = section.findViewById<View>(R.id.yomitanSectionFooterToggle2)
+        row.isVisible = true
+        row.findViewById<TextView>(R.id.tvRowTitle)
+            .setText(R.string.yomitan_styling_title)
+        row.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            setText(R.string.yomitan_styling_subtitle)
+            isVisible = true
+        }
+        val toggle = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        toggle.isChecked = checked
+        row.setOnClickListener {
+            val enabled = !toggle.isChecked
+            toggle.isChecked = enabled
+            val previous = toggleWriteJob
+            toggleWriteJob = lifecycleScope.launch {
+                previous?.join()
+                YomitanDictionaryStore.setDictionaryStyling(
                     this@YomitanSettingsActivity, enabled,
                 )
             }
