@@ -62,14 +62,36 @@ object YomitanDataStore {
      *  settings) until the user re-imports it or the auto-updater re-downloads
      *  a URL-bearing deck. v7: term ingest gates the JA-only headword-echo
      *  strip on source language, so non-JA dicts keep their leading-headword
-     *  text. */
-    private const val SCHEMA_VERSION = 7
+     *  text. v8: structured-content retention — `term_sc` keeps each
+     *  structured glossary's raw JSON (deflated) beside the flat row, plus
+     *  `media` and `dict_styles` for the styled renderer. NOTE the raw JSON
+     *  is stored source-verbatim precisely so RENDERER changes never need a
+     *  bump — only changes to what ingest stores do. */
+    private const val SCHEMA_VERSION = 8
 
     private val TERM_BANK = Regex("""term_bank_\d+\.json""")
     private val TAG_BANK = Regex("""tag_bank_\d+\.json""")
     private val TERM_META_BANK = Regex("""term_meta_bank_\d+\.json""")
     private val KANJI_BANK = Regex("""kanji_bank_\d+\.json""")
     private val KANJI_META_BANK = Regex("""kanji_meta_bank_\d+\.json""")
+
+    /** Media extensions ingested from a dictionary zip — Yomitan's importer
+     *  whitelist (media type is derived from the extension, there as here)
+     *  plus webp. Anything else in the zip is not renderable dictionary
+     *  media and is skipped. */
+    private val IMAGE_EXTENSIONS = setOf(
+        "apng", "avif", "bmp", "gif", "ico", "cur", "jpg", "jpeg", "jfif",
+        "pjpeg", "pjp", "png", "svg", "tif", "tiff", "webp",
+    )
+
+    /** Per-file cap for ingested media — a hostile zip can't balloon the DB
+     *  through one entry (the importer's 3x-source disk guard bounds the
+     *  total). Real dictionary graphics run tens of KB. */
+    private const val MAX_MEDIA_FILE_BYTES = 10L * 1024 * 1024
+
+    /** Cap for a dictionary's styles.css, mirroring the index.json cap's
+     *  intent — a stylesheet is config, not payload. */
+    private const val MAX_STYLES_BYTES = 512 * 1024
 
     /** Guards DB open/ingest/purge and [cache] (re)builds. Reads go through
      *  [ready] which only takes the lock until initialized. */
@@ -118,6 +140,24 @@ object YomitanDataStore {
         /** User toggle: only the highest-priority TERMS dict with results
          *  contributes its group (see [TermMerge.merge]). */
         val termsSingleDictionary: Boolean,
+        /** Whether any enabled TERMS dict retained structured glossaries
+         *  (`term_sc` rows) — the styled renderer's warm-up gate. */
+        val hasStructuredTerms: Boolean,
+        /** Enabled TERMS dicts' styles.css text keyed by dict id — parsed
+         *  and scoped by the renderer, cached here so a lookup never
+         *  re-reads it. */
+        val dictStyles: Map<String, String>,
+        /** User toggle (registry-wide): render retained structured content
+         *  with dictionary styling on the WebView surfaces. OFF = flat
+         *  tier everywhere, structured rows stay dormant. */
+        val stylingEnabled: Boolean,
+    )
+
+    /** Renderer-facing slice of the capability cache — what a surface needs
+     *  to decide styled-vs-flat and to style what it fetched. */
+    class StylingCaps(
+        val stylingActive: Boolean,
+        val stylesByDict: Map<String, String>,
     )
 
     /** Result of [termSensesFor]: the per-dictionary definition groups in
@@ -408,8 +448,15 @@ object YomitanDataStore {
         if (caps.termDicts.isEmpty()) return@withContext empty
 
         val rows = mutableListOf<TermMerge.Row>()
+        // The LEFT JOIN's only contribution is whether a structured-glossary
+        // sidecar row exists (rowid-keyed, so it's a primary-key probe per
+        // row) — the blob itself is fetched later, and only by surfaces that
+        // actually render styled content ([structuredGlossaries]).
         database.rawQuery(
-            "SELECT dict_id, reading, score, defs, pos FROM term WHERE term = ? ORDER BY rowid",
+            "SELECT t.dict_id, t.reading, t.score, t.defs, t.pos, t.rowid, " +
+                "(sc.term_rowid IS NOT NULL) " +
+                "FROM term t LEFT JOIN term_sc sc ON sc.term_rowid = t.rowid " +
+                "WHERE t.term = ? ORDER BY t.rowid",
             arrayOf(term),
         ).use { c ->
             while (c.moveToNext()) {
@@ -420,6 +467,7 @@ object YomitanDataStore {
                         score = c.getDouble(2),
                         defs = KanjiData.decodeMeanings(c.getString(3)),
                         pos = c.getString(4),
+                        scRowid = c.getLong(5).takeIf { c.getInt(6) == 1 },
                     )
                 )
             }
@@ -479,6 +527,69 @@ object YomitanDataStore {
             }
         }
         return found
+    }
+
+    /**
+     * Styled-rendering capability for [sourceLanguage]'s surfaces:
+     * [StylingCaps.stylingActive] is the one gate render code checks (user
+     * toggle AND at least one enabled TERMS dict retained structured rows);
+     * [StylingCaps.stylesByDict] is each enabled dict's raw styles.css for
+     * the renderer to scope. Cheap after first call (capability cache).
+     */
+    suspend fun stylingFor(ctx: Context, sourceLanguage: String): StylingCaps =
+        withContext(Dispatchers.IO) {
+            val (_, caps) = ready(ctx, sourceLanguage)
+            StylingCaps(
+                stylingActive = caps.stylingEnabled && caps.hasStructuredTerms,
+                stylesByDict = if (caps.stylingEnabled) caps.dictStyles else emptyMap(),
+            )
+        }
+
+    /**
+     * Batch fetch of retained structured glossaries by `term` rowid (the
+     * [ImportedSense.scRowid] values a lookup carried out). Values are the
+     * glossary array's raw JSON. Rows that are missing or fail inflation
+     * are simply absent — the caller renders those senses flat.
+     */
+    suspend fun structuredGlossaries(
+        ctx: Context,
+        sourceLanguage: String,
+        rowids: Collection<Long>,
+    ): Map<Long, String> = withContext(Dispatchers.IO) {
+        if (rowids.isEmpty()) return@withContext emptyMap()
+        val (database, _) = ready(ctx, sourceLanguage)
+        buildMap {
+            rowids.distinct().chunked(500).forEach { chunk ->
+                val placeholders = chunk.joinToString(",") { "?" }
+                database.rawQuery(
+                    "SELECT term_rowid, content FROM term_sc " +
+                        "WHERE term_rowid IN ($placeholders)",
+                    chunk.map { it.toString() }.toTypedArray(),
+                ).use { c ->
+                    while (c.moveToNext()) {
+                        Zlib.inflate(c.getBlob(1))?.let {
+                            put(c.getLong(0), it.toString(Charsets.UTF_8))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** One dictionary media blob by its zip-relative [path] — the styled
+     *  renderer's request-interception source. Null when absent (the image
+     *  simply doesn't render). */
+    suspend fun mediaBlob(
+        ctx: Context,
+        sourceLanguage: String,
+        dictId: String,
+        path: String,
+    ): ByteArray? = withContext(Dispatchers.IO) {
+        val (database, _) = ready(ctx, sourceLanguage)
+        database.rawQuery(
+            "SELECT content FROM media WHERE dict_id = ? AND path = ?",
+            arrayOf(dictId, path),
+        ).use { if (it.moveToFirst()) it.getBlob(0) else null }
     }
 
     // ── Lifecycle hooks (called by YomitanDictionaryStore) ──────────────
@@ -621,9 +732,39 @@ object YomitanDataStore {
                     termDicts = ordered(YomitanCategory.TERMS)
                         .map { it.id to (it.alias ?: it.title) },
                     termsSingleDictionary = registry.termsSingleDictionary,
+                    hasStructuredTerms = ordered(YomitanCategory.TERMS)
+                        .map { it.id }
+                        .let { ids -> ids.isNotEmpty() && hasStructuredRows(database, ids) },
+                    dictStyles = loadDictStyles(
+                        database,
+                        ordered(YomitanCategory.TERMS).map { it.id },
+                    ),
+                    stylingEnabled = registry.dictionaryStyling,
                 )
             }
             database to caps
+        }
+    }
+
+    private fun hasStructuredRows(database: SQLiteDatabase, dictIds: List<String>): Boolean {
+        val placeholders = dictIds.joinToString(",") { "?" }
+        return database.rawQuery(
+            "SELECT 1 FROM term_sc WHERE dict_id IN ($placeholders) LIMIT 1",
+            dictIds.toTypedArray(),
+        ).use { it.moveToFirst() }
+    }
+
+    private fun loadDictStyles(
+        database: SQLiteDatabase,
+        dictIds: List<String>,
+    ): Map<String, String> {
+        if (dictIds.isEmpty()) return emptyMap()
+        val placeholders = dictIds.joinToString(",") { "?" }
+        return buildMap {
+            database.rawQuery(
+                "SELECT dict_id, css FROM dict_styles WHERE dict_id IN ($placeholders)",
+                dictIds.toTypedArray(),
+            ).use { c -> while (c.moveToNext()) put(c.getString(0), c.getString(1)) }
         }
     }
 
@@ -645,6 +786,9 @@ object YomitanDataStore {
             database.execSQL("DROP TABLE IF EXISTS kanji")
             database.execSQL("DROP TABLE IF EXISTS kanji_frequency")
             database.execSQL("DROP TABLE IF EXISTS term")
+            database.execSQL("DROP TABLE IF EXISTS term_sc")
+            database.execSQL("DROP TABLE IF EXISTS media")
+            database.execSQL("DROP TABLE IF EXISTS dict_styles")
             database.execSQL("DROP TABLE IF EXISTS ingested_dicts")
             database.execSQL("PRAGMA user_version = $SCHEMA_VERSION")
         }
@@ -700,6 +844,36 @@ object YomitanDataStore {
         database.execSQL(
             "CREATE INDEX IF NOT EXISTS idx_term_term ON term(term)"
         )
+        // Structured-glossary sidecar, one row per `term` row whose glossary
+        // carried structured-content/image items: the glossary array's raw
+        // JSON, zlib-deflated. INTEGER PRIMARY KEY aliases the term row's
+        // rowid — O(1) fetch, zero footprint for plain-text rows, and a
+        // SEPARATE table so the hot `term` pages stay compact for the
+        // lookup/phrase-oracle queries.
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS term_sc (" +
+                "term_rowid INTEGER PRIMARY KEY, dict_id TEXT NOT NULL, " +
+                "content BLOB NOT NULL)"
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_term_sc_dict ON term_sc(dict_id)"
+        )
+        // Dictionary media (structured-content images), keyed exactly as
+        // Yomitan keys its media store: (dictionary, zip-relative path).
+        // Blobs are stored as shipped — image formats are already compressed.
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS media (" +
+                "dict_id TEXT NOT NULL, path TEXT NOT NULL, content BLOB NOT NULL, " +
+                "PRIMARY KEY (dict_id, path))"
+        )
+        // Per-dictionary styles.css text. A table rather than a file beside
+        // index.json so the CSS shares the exact lifecycle of the term_sc
+        // rows it styles: same ingest transaction, same purge, dropped
+        // together on a schema bump.
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS dict_styles (" +
+                "dict_id TEXT PRIMARY KEY, css TEXT NOT NULL)"
+        )
         database.execSQL(
             "CREATE TABLE IF NOT EXISTS ingested_dicts (dict_id TEXT PRIMARY KEY)"
         )
@@ -743,6 +917,9 @@ object YomitanDataStore {
             database.delete("kanji", "dict_id = ?", arrayOf(dictId))
             database.delete("kanji_frequency", "dict_id = ?", arrayOf(dictId))
             database.delete("term", "dict_id = ?", arrayOf(dictId))
+            database.delete("term_sc", "dict_id = ?", arrayOf(dictId))
+            database.delete("media", "dict_id = ?", arrayOf(dictId))
+            database.delete("dict_styles", "dict_id = ?", arrayOf(dictId))
             database.delete("ingested_dicts", "dict_id = ?", arrayOf(dictId))
         }
     }
@@ -760,6 +937,9 @@ object YomitanDataStore {
             database.delete("kanji", "dict_id = ?", arrayOf(dictionary.id))
             database.delete("kanji_frequency", "dict_id = ?", arrayOf(dictionary.id))
             database.delete("term", "dict_id = ?", arrayOf(dictionary.id))
+            database.delete("term_sc", "dict_id = ?", arrayOf(dictionary.id))
+            database.delete("media", "dict_id = ?", arrayOf(dictionary.id))
+            database.delete("dict_styles", "dict_id = ?", arrayOf(dictionary.id))
             if (YomitanCategory.PITCH_ACCENT in dictionary.categories) {
                 ingestPitch(database, dictionary.id, source)
             }
@@ -783,11 +963,61 @@ object YomitanDataStore {
                     applyHeadwordEchoStrip = dictionary.matchesSourceLanguage("ja"),
                 )
             }
+            // Category-independent: styles.css + media serve whatever
+            // structured content the term pass retained.
+            ingestMediaAndStyles(database, dictionary.id, source)
             database.execSQL(
                 "INSERT OR REPLACE INTO ingested_dicts (dict_id) VALUES (?)",
                 arrayOf(dictionary.id),
             )
         }
+    }
+
+    /** Retains the zip's renderable sidecars for the styled renderer: the
+     *  root styles.css (whole-text, size-capped) and every image-extension
+     *  entry keyed by its zip-relative path — exactly the path structured
+     *  content references ([media] table mirrors Yomitan's
+     *  (dictionary, path) store). Oversized entries skip with a log; a
+     *  dictionary with none of either simply inserts nothing. */
+    private fun ingestMediaAndStyles(database: SQLiteDatabase, dictId: String, zipFile: File) {
+        val mediaInsert = database.compileStatement(
+            "INSERT OR REPLACE INTO media (dict_id, path, content) VALUES (?, ?, ?)"
+        )
+        var mediaRows = 0
+        ZipFile(zipFile).use { zip ->
+            for (entry in zip.entries()) {
+                if (entry.isDirectory) continue
+                if (entry.name == "styles.css") {
+                    if (entry.size > MAX_STYLES_BYTES) {
+                        Log.w(TAG, "$dictId: styles.css over cap (${entry.size}B), skipped")
+                        continue
+                    }
+                    val css = zip.getInputStream(entry).use {
+                        it.readBytes().toString(Charsets.UTF_8)
+                    }
+                    if (css.isNotBlank()) {
+                        database.execSQL(
+                            "INSERT OR REPLACE INTO dict_styles (dict_id, css) VALUES (?, ?)",
+                            arrayOf(dictId, css),
+                        )
+                    }
+                    continue
+                }
+                val ext = entry.name.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT)
+                if (ext !in IMAGE_EXTENSIONS) continue
+                if (entry.size > MAX_MEDIA_FILE_BYTES) {
+                    Log.w(TAG, "$dictId: media ${entry.name} over cap (${entry.size}B), skipped")
+                    continue
+                }
+                val bytes = zip.getInputStream(entry).use { it.readBytes() }
+                mediaInsert.bindString(1, dictId)
+                mediaInsert.bindString(2, entry.name)
+                mediaInsert.bindBlob(3, bytes)
+                mediaInsert.executeInsert()
+                mediaRows++
+            }
+        }
+        if (mediaRows > 0) Log.i(TAG, "ingested $mediaRows media files for $dictId")
     }
 
     /** Streams `term_meta_bank_*.json` mode-`pitch` entries from the [zipFile]
@@ -1055,7 +1285,11 @@ object YomitanDataStore {
         val insert = database.compileStatement(
             "INSERT INTO term (dict_id, term, reading, score, defs, pos) VALUES (?, ?, ?, ?, ?, ?)"
         )
+        val scInsert = database.compileStatement(
+            "INSERT INTO term_sc (term_rowid, dict_id, content) VALUES (?, ?, ?)"
+        )
         var rows = 0
+        var scRows = 0
         ZipFile(zipFile).use { zip ->
             // tag_bank pass first: which tag names mean part-of-speech.
             // (Zip entry order is arbitrary, so this can't ride the term
@@ -1095,7 +1329,14 @@ object YomitanDataStore {
                             insert.bindDouble(4, parsed.score)
                             insert.bindString(5, KanjiData.encodeMeanings(defs))
                             insert.bindString(6, pos)
-                            insert.executeInsert()
+                            val rowid = insert.executeInsert()
+                            parsed.scJson?.let { sc ->
+                                scInsert.bindLong(1, rowid)
+                                scInsert.bindString(2, dictId)
+                                scInsert.bindBlob(3, Zlib.deflate(sc.toByteArray(Charsets.UTF_8)))
+                                scInsert.executeInsert()
+                                scRows++
+                            }
                             rows++
                         }
                         reader.endArray()
@@ -1106,7 +1347,7 @@ object YomitanDataStore {
                 }
             }
         }
-        Log.i(TAG, "ingested $rows term rows for $dictId")
+        Log.i(TAG, "ingested $rows term rows for $dictId ($scRows structured)")
     }
 
     /** Tag names the dictionary's tag banks declare with category
@@ -1259,6 +1500,9 @@ object YomitanDataStore {
         val sourceLanguage: String?,
         val targetLanguage: String?,
         val frequencyMode: String?,
+        /** Roster-carried styles.css text (the dump has no zip to read one
+         *  from) — lands in `dict_styles` with the dict's other rows. */
+        val styles: String?,
         val skip: Boolean,
     ) {
         val categories = mutableSetOf<YomitanCategory>()
@@ -1288,6 +1532,12 @@ object YomitanDataStore {
         )
         val term: SQLiteStatement = database.compileStatement(
             "INSERT INTO term (dict_id, term, reading, score, defs, pos) VALUES (?, ?, ?, ?, ?, ?)"
+        )
+        val termSc: SQLiteStatement = database.compileStatement(
+            "INSERT INTO term_sc (term_rowid, dict_id, content) VALUES (?, ?, ?)"
+        )
+        val media: SQLiteStatement = database.compileStatement(
+            "INSERT OR REPLACE INTO media (dict_id, path, content) VALUES (?, ?, ?)"
         )
     }
 
@@ -1368,6 +1618,15 @@ object YomitanDataStore {
                 database.delete("kanji", "dict_id = ?", arrayOf(d.id))
                 database.delete("kanji_frequency", "dict_id = ?", arrayOf(d.id))
                 database.delete("term", "dict_id = ?", arrayOf(d.id))
+                database.delete("term_sc", "dict_id = ?", arrayOf(d.id))
+                database.delete("media", "dict_id = ?", arrayOf(d.id))
+                database.delete("dict_styles", "dict_id = ?", arrayOf(d.id))
+                d.styles?.takeIf { it.isNotBlank() }?.let { css ->
+                    database.execSQL(
+                        "INSERT OR REPLACE INTO dict_styles (dict_id, css) VALUES (?, ?)",
+                        arrayOf(d.id, css),
+                    )
+                }
             }
             while (reader.hasNext()) readDumpTable(reader, dicts, inserts, cc)
             for (d in dicts.values) {
@@ -1452,6 +1711,7 @@ object YomitanDataStore {
             sourceLanguage = f.sourceLanguage?.trim()?.takeIf { it.isNotEmpty() },
             targetLanguage = f.targetLanguage?.trim()?.takeIf { it.isNotEmpty() },
             frequencyMode = f.frequencyMode?.trim()?.takeIf { it.isNotEmpty() },
+            styles = f.styles?.takeIf { it.isNotBlank() && it.length <= MAX_STYLES_BYTES },
             skip = existing != null && existing.id == id && id in ingested,
         )
     }
@@ -1465,6 +1725,7 @@ object YomitanDataStore {
         var sourceLanguage: String? = null
         var targetLanguage: String? = null
         var frequencyMode: String? = null
+        var styles: String? = null
     }
 
     private fun readRosterField(name: String, reader: JsonReader, f: RosterFields) {
@@ -1479,6 +1740,7 @@ object YomitanDataStore {
             "sourceLanguage" -> f.sourceLanguage = stringOrNull(reader)
             "targetLanguage" -> f.targetLanguage = stringOrNull(reader)
             "frequencyMode" -> f.frequencyMode = stringOrNull(reader)
+            "styles" -> f.styles = stringOrNull(reader)
             else -> reader.skipValue()
         }
     }
@@ -1514,8 +1776,8 @@ object YomitanDataStore {
                     "terms" -> readTermRows(reader, dicts, inserts, cc)
                     "kanji" -> readKanjiRows(reader, dicts, inserts, cc)
                     "kanjiMeta" -> readKanjiMetaRows(reader, dicts, inserts, cc)
-                    // media (base64 blobs — the app drops dictionary media at
-                    // ingest) and unknown tables stream past untouched.
+                    "media" -> readMediaRows(reader, dicts, inserts, cc)
+                    // Unknown tables stream past untouched.
                     else -> reader.skipValue()
                 }
                 else -> reader.skipValue()
@@ -1693,6 +1955,7 @@ object YomitanDataStore {
         cc: CoroutineContext,
     ) {
         var rows = 0
+        var scRows = 0
         var skipped = 0
         readDumpRows(reader, cc) {
             var expression: String? = null
@@ -1700,6 +1963,7 @@ object YomitanDataStore {
             var definitionTags = ""
             var score = 0.0
             var defs: List<String> = emptyList()
+            var scJson: String? = null
             var dictTitle: String? = null
             readDumpRowObject(reader) { field ->
                 when (field) {
@@ -1710,10 +1974,19 @@ object YomitanDataStore {
                         if (reader.peek() == JsonToken.NUMBER) reader.nextDouble()
                         else { reader.skipValue(); 0.0 }
                     // Byte-identical structured content to a term_bank glossary —
-                    // the same flattener applies.
-                    "glossary" -> defs =
-                        if (reader.peek() == JsonToken.BEGIN_ARRAY) TermGlossary.parseGlossary(reader)
-                        else { reader.skipValue(); emptyList() }
+                    // the same tee as [TermEntry.parse]: buffer the subtree,
+                    // retain its serialized form when structured, flatten via
+                    // the unchanged streaming flattener.
+                    "glossary" ->
+                        if (reader.peek() == JsonToken.BEGIN_ARRAY) {
+                            val glossary = JsonParser.parseReader(reader)
+                            val serialized = glossary.toString()
+                            defs = JsonReader(StringReader(serialized))
+                                .use { TermGlossary.parseGlossary(it) }
+                            if (glossaryHasStructuredItems(glossary)) scJson = serialized
+                        } else {
+                            reader.skipValue()
+                        }
                     "dictionary" -> dictTitle = stringOrNull(reader)
                     else -> reader.skipValue() // rules, sequence, termTags, id, $types
                 }
@@ -1741,11 +2014,77 @@ object YomitanDataStore {
             inserts.term.bindDouble(4, score)
             inserts.term.bindString(5, KanjiData.encodeMeanings(resolved))
             inserts.term.bindString(6, pos)
-            inserts.term.executeInsert()
+            val rowid = inserts.term.executeInsert()
+            scJson?.let { sc ->
+                inserts.termSc.bindLong(1, rowid)
+                inserts.termSc.bindString(2, dict.id)
+                inserts.termSc.bindBlob(3, Zlib.deflate(sc.toByteArray(Charsets.UTF_8)))
+                inserts.termSc.executeInsert()
+                scRows++
+            }
             dict.categories += YomitanCategory.TERMS
             rows++
         }
-        Log.i(TAG, "dump: ingested $rows term rows ($skipped text-less/unroutable skipped)")
+        Log.i(TAG, "dump: ingested $rows term rows ($scRows structured, $skipped text-less/unroutable skipped)")
+    }
+
+    /** Dump-side twin of [TermEntry]'s structured-item check (that one is
+     *  private to the entry parser's flow; this one takes the already
+     *  buffered element). */
+    private fun glossaryHasStructuredItems(glossary: JsonElement): Boolean {
+        if (!glossary.isJsonArray) return false
+        return glossary.asJsonArray.any { item ->
+            item.isJsonObject &&
+                item.asJsonObject.get("type")
+                    ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                    ?.asString.let { it == "structured-content" || it == "image" }
+        }
+    }
+
+    /** Dump media rows: `{dictionary, path, mediaType, width, height,
+     *  content(base64)}` (bare rows — media has a named `++id` key). Only
+     *  image-extension paths land (same whitelist as the zip pass); decode
+     *  failures skip the row. */
+    private fun readMediaRows(
+        reader: JsonReader,
+        dicts: LinkedHashMap<String, DumpDict>,
+        inserts: DumpInserts,
+        cc: CoroutineContext,
+    ) {
+        var rows = 0
+        readDumpRows(reader, cc) {
+            var path: String? = null
+            var content: String? = null
+            var dictTitle: String? = null
+            readDumpRowObject(reader) { field ->
+                when (field) {
+                    "path" -> path = stringOrNull(reader)
+                    "content" -> content = stringOrNull(reader)
+                    "dictionary" -> dictTitle = stringOrNull(reader)
+                    else -> reader.skipValue() // mediaType, width, height, id, $types
+                }
+            }
+            val dict = dicts[dictTitle]
+            val p = path
+            val c = content
+            if (dict == null || dict.skip || p.isNullOrEmpty() || c.isNullOrEmpty()) return@readDumpRows
+            val ext = p.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT)
+            if (ext !in IMAGE_EXTENSIONS) return@readDumpRows
+            val bytes = try {
+                // Mime decoder: tolerant of the line-wrapping some exporters
+                // emit, still rejects non-base64 garbage. Pure JVM.
+                java.util.Base64.getMimeDecoder().decode(c)
+            } catch (_: IllegalArgumentException) {
+                return@readDumpRows
+            }
+            if (bytes.size > MAX_MEDIA_FILE_BYTES) return@readDumpRows
+            inserts.media.bindString(1, dict.id)
+            inserts.media.bindString(2, p)
+            inserts.media.bindBlob(3, bytes)
+            inserts.media.executeInsert()
+            rows++
+        }
+        if (rows > 0) Log.i(TAG, "dump: ingested $rows media files")
     }
 
     private fun readKanjiRows(

@@ -31,8 +31,8 @@ class TermMergeTest {
         )
         assertEquals(
             listOf(
-                ImportedSenseGroup("Dict A", listOf(ImportedSense("a-def"))),
-                ImportedSenseGroup("Dict B", listOf(ImportedSense("b-def"))),
+                ImportedSenseGroup("Dict A", listOf(ImportedSense("a-def")), dictId = "dictA"),
+                ImportedSenseGroup("Dict B", listOf(ImportedSense("b-def")), dictId = "dictB"),
             ),
             result.groups,
         )
@@ -118,7 +118,7 @@ class TermMergeTest {
             singleDictionary = true,
         )
         assertEquals(
-            listOf(ImportedSenseGroup("Dict A", listOf(ImportedSense("a-def")))),
+            listOf(ImportedSenseGroup("Dict A", listOf(ImportedSense("a-def")), dictId = "dictA")),
             result.groups,
         )
     }
@@ -133,7 +133,7 @@ class TermMergeTest {
             singleDictionary = true,
         )
         assertEquals(
-            listOf(ImportedSenseGroup("Dict B", listOf(ImportedSense("edge")))),
+            listOf(ImportedSenseGroup("Dict B", listOf(ImportedSense("edge")), dictId = "dictB")),
             result.groups,
         )
     }
@@ -167,6 +167,21 @@ class TermMergeTest {
             normalizedReading = null,
         )
         assertEquals(false, result.suppressesPackSenses)
+    }
+
+    @Test
+    fun `scRowid rides each sense through the merge`() {
+        val result = merge(
+            rows = listOf(
+                TermMerge.Row("dictA", "ねこ", 5.0, listOf("styled"), scRowid = 42L),
+                TermMerge.Row("dictA", "ねこ", 1.0, listOf("flat")),
+            ),
+            normalizedReading = null,
+        )
+        assertEquals(
+            listOf(42L, null),
+            result.groups.single().senses.map { it.scRowid },
+        )
     }
 
     @Test

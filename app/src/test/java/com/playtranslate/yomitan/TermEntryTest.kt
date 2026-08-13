@@ -75,4 +75,59 @@ class TermEntryTest {
         val parsed = parse("""["猫","ねこ","n","",1,["cat"],1,"",{"future": true},99]""")!!
         assertEquals(listOf("cat"), parsed.defs)
     }
+
+    // ── Structured-glossary retention (the v8 tee) ──────────────────────
+
+    @Test
+    fun `plain-text glossaries retain nothing`() {
+        val parsed = parse("""["猫","ねこ","n","",1,["cat","feline"],1,""]""")!!
+        assertEquals(listOf("cat", "feline"), parsed.defs)
+        assertNull(parsed.scJson)
+    }
+
+    @Test
+    fun `text-item glossaries retain nothing`() {
+        // {type:"text"} flattens losslessly — no reason to store it twice.
+        val parsed = parse("""["猫","ねこ","n","",1,[{"type":"text","text":"cat"}],1,""]""")!!
+        assertEquals(listOf("cat"), parsed.defs)
+        assertNull(parsed.scJson)
+    }
+
+    @Test
+    fun `structured-content glossaries retain their serialized JSON`() {
+        val glossary =
+            """[{"type":"structured-content","content":{"tag":"ul","content":[""" +
+                """{"tag":"li","content":"cat"},{"tag":"li","content":"feline"}]}}]"""
+        val parsed = parse("""["猫","ねこ","n","",1,$glossary,1,""]""")!!
+        // Flat output is unchanged by the tee (ul items join with "; ").
+        assertEquals(listOf("cat; feline"), parsed.defs)
+        val sc = parsed.scJson!!
+        // Serialized-tree equivalence, not byte equality (Gson normalizes
+        // whitespace) — the structure survives verbatim.
+        assertEquals(
+            com.google.gson.JsonParser.parseString(glossary),
+            com.google.gson.JsonParser.parseString(sc),
+        )
+    }
+
+    @Test
+    fun `image items force retention even though flat text drops them`() {
+        val glossary = """["a gloss",{"type":"image","path":"img/cat.png"}]"""
+        val parsed = parse("""["猫","ねこ","n","",1,$glossary,1,""]""")!!
+        assertEquals(listOf("a gloss"), parsed.defs)
+        assertEquals(
+            com.google.gson.JsonParser.parseString(glossary),
+            com.google.gson.JsonParser.parseString(parsed.scJson!!),
+        )
+    }
+
+    @Test
+    fun `tee preserves the stream-position invariant`() {
+        // The sentinel assertion inside [parse] is the real check; this
+        // makes it explicit for a structured entry followed by more data.
+        val parsed = parse(
+            """["猫","ねこ","n","",1,[{"type":"structured-content","content":"x"}],1,""]"""
+        )!!
+        assertEquals(listOf("x"), parsed.defs)
+    }
 }
