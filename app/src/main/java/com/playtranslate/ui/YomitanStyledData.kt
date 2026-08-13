@@ -64,15 +64,37 @@ internal suspend fun fetchYomitanStyledData(
     groups: List<ImportedSenseGroup>,
 ): YomitanStyledData? {
     val rowids = groups.flatMap { g -> g.senses.mapNotNull { it.scRowid } }
-    if (rowids.isEmpty()) return null
+    if (rowids.isEmpty()) {
+        if (groups.isNotEmpty()) android.util.Log.i(TAG, "fetch($sourceLanguage): ${groups.size} groups, no scRowids")
+        return null
+    }
     val caps = YomitanDataStore.stylingFor(ctx, sourceLanguage)
-    if (!caps.stylingActive) return null
+    if (!caps.stylingActive) {
+        android.util.Log.i(TAG, "fetch($sourceLanguage): styling inactive")
+        return null
+    }
     val structured = YomitanDataStore.structuredGlossaries(ctx, sourceLanguage, rowids)
-    if (structured.isEmpty()) return null
+    if (structured.isEmpty()) {
+        android.util.Log.i(TAG, "fetch($sourceLanguage): ${rowids.size} rowids, 0 structured")
+        return null
+    }
     val dictIds = groups.mapTo(mutableSetOf()) { it.dictId }
+    val dictStyles = caps.stylesByDict.filterKeys { it in dictIds }
+    // Field-trace seam 1/3: what the DATA layer produced. If css=[] here
+    // while the dictionary has a stylesheet, the loss is in the
+    // capability/registry plumbing, not the page.
+    android.util.Log.i(
+        TAG,
+        "fetch($sourceLanguage): structured=${structured.size}/${rowids.size} " +
+            "groups=[${dictIds.joinToString()}] " +
+            "capsCss=[${caps.stylesByDict.keys.joinToString()}] " +
+            "css=[${dictStyles.entries.joinToString { "${it.key}:${it.value.length}ch" }}]",
+    )
     return YomitanStyledData(
         structured = structured,
-        dictStyles = caps.stylesByDict.filterKeys { it in dictIds },
+        dictStyles = dictStyles,
         sourceLanguage = sourceLanguage,
     )
 }
+
+private const val TAG = "YomitanStyled"
