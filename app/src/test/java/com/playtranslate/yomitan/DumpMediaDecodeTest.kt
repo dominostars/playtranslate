@@ -50,4 +50,30 @@ class DumpMediaDecodeTest {
     fun `garbage base64 is rejected`() {
         assertNull(YomitanDataStore.decodeDumpMediaContent("!!not base64!!"))
     }
+
+    // ── readCapped: the zip-stream bound that doesn't trust headers ────
+
+    @Test
+    fun `capped read passes content within the cap`() {
+        val bytes = ByteArray(4096) { (it % 251).toByte() }
+        assertArrayEquals(
+            bytes,
+            YomitanDataStore.readCapped(bytes.inputStream(), 4096),
+        )
+    }
+
+    @Test
+    fun `capped read rejects a stream running past the cap`() {
+        // Simulates a zip entry whose header claimed a small size while the
+        // actual inflated stream keeps going.
+        assertNull(YomitanDataStore.readCapped(ByteArray(64 * 1024).inputStream(), 4096))
+    }
+
+    @Test
+    fun `capped read handles empty streams`() {
+        assertArrayEquals(
+            ByteArray(0),
+            YomitanDataStore.readCapped(ByteArray(0).inputStream(), 16),
+        )
+    }
 }
