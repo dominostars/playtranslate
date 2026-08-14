@@ -36,9 +36,10 @@ import java.io.File
  *  3. Stem-form fallback supplied by [LatinEngine] (Snowball Porter).
  *  4. Silent pass-through on miss (per decision 7 in the architecture doc).
  *
- * No de-inflection table. No N-gram phrase batching. No `kanjidic` table —
- * the Wiktionary pack's `kanjidic` is empty by design, and this manager
- * does not probe or query it.
+ * No de-inflection table. No `kanjidic` table — the Wiktionary pack's
+ * `kanjidic` is empty by design, and this manager does not probe or query it.
+ * [phrasesExist] is the batched membership gate for tap-time multi-word
+ * expression matching ([LatinEngine.longestPhraseAt]).
  *
  * Process-scoped singleton keyed on [SourceLangId]. One instance per source
  * language (EN, ES, FR, …, KO), each opening its own SQLite pack.
@@ -153,6 +154,25 @@ class WiktionaryDictionaryManager private constructor(
             arrayOf(q, q, upper, limit.toString()),
         ).use { c -> while (c.moveToNext()) words.add(c.getString(0)) }
         words
+    }
+
+    /**
+     * Batch existence gate for multi-word expression matching
+     * ([LatinEngine.longestPhraseAt]): the subset of [candidates] with at
+     * least one canonical headword row. Positions 0-2 — lemma, stem, or
+     * `form_of` alias — mirroring [lookup]'s surface tier, so inflected
+     * phrase surfaces ("gave up") gate through their alias rows exactly like
+     * the follow-up [lookup] will resolve them. Each candidate is lowercased
+     * with the pack's locale for the query; the returned set contains the
+     * candidates AS PASSED. Empty when the pack isn't openable, degrading
+     * callers to single-word behavior.
+     */
+    suspend fun phrasesExist(candidates: Set<String>): Set<String> = withContext(Dispatchers.IO) {
+        if (candidates.isEmpty()) return@withContext emptySet()
+        val database = ensureOpen() ?: return@withContext emptySet()
+        val byLower = candidates.groupBy { it.lowercase(locale) }
+        phrasesExistQuery(database, byLower.keys)
+            .flatMapTo(mutableSetOf()) { byLower[it].orEmpty() }
     }
 
     fun close() {
@@ -391,6 +411,26 @@ class WiktionaryDictionaryManager private constructor(
 
     companion object {
         private const val TAG = "WiktionaryDictMgr"
+
+        /** SQL core of [phrasesExist], separated so tests drive it against a
+         *  fixture DB. Returns the subset of (already locale-lowercased)
+         *  [keys] with at least one position ≤ 2 headword row — the canonical
+         *  tier [queryEntryIds] serves; position-3 fold rows stay
+         *  fallback-only. Chunked so an oversized caller can't blow SQLite's
+         *  bind-argument limit (phrase windows pass a handful). */
+        internal fun phrasesExistQuery(db: SQLiteDatabase, keys: Collection<String>): Set<String> {
+            val found = mutableSetOf<String>()
+            for (chunk in keys.chunked(500)) {
+                val placeholders = chunk.joinToString(",") { "?" }
+                db.rawQuery(
+                    "SELECT DISTINCT text FROM headword WHERE position <= 2 AND text IN ($placeholders)",
+                    chunk.toTypedArray(),
+                ).use { c ->
+                    while (c.moveToNext()) found.add(c.getString(0))
+                }
+            }
+            return found
+        }
 
         @SuppressLint("StaticFieldLeak")
         private val instances = java.util.concurrent.ConcurrentHashMap<SourceLangId, WiktionaryDictionaryManager>()

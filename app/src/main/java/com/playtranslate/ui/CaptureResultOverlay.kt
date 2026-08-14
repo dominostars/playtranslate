@@ -1934,7 +1934,9 @@ class CaptureResultOverlay(
         val b = binder ?: return
         scope.launch {
             try {
-                val resolved = SourceWordLookup.resolve(ctx.applicationContext, span.second, span.third)
+                val resolved = SourceWordLookup.resolveAt(
+                    ctx.applicationContext, b.displayedSourceText(), span.first.first, span.second, span.third,
+                )
                 if (dismissed) return@launch
                 val wordRect = Rect()
                 if (!wordRectOnScreen(span.first, wordRect)) return@launch
