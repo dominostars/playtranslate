@@ -192,10 +192,8 @@ internal object PtCardTemplates {
      * the fallback is Anki's default button in the same position.
      */
     private const val MEDIA_CSS =
-        // The negative top pulls the picture into .pt-a's watermark-bar
-        // reserve: .card top padding (8) + .pt-a reserve (38) − bar (30)
-        // − 4 leaves a 12px bar gap — device-tuned 2px looser than the
-        // 10px side gutter. Backs without a picture keep the full reserve.
+        // Bar-less top: .card padding (8) + .pt-a padding (8) − 4 leaves
+        // the same device-tuned 12px top gap the watermark-bar era had.
         ".pt-pic{margin:-4px 0 18px;}" +
         ".pt-pic img{display:block;width:100%;max-width:100%;border-radius:8px;}" +
         ".pt-audio{display:inline-flex;align-items:center;justify-content:center;" +
@@ -277,23 +275,30 @@ internal object PtCardTemplates {
      * carry theirs in their own padding).
      */
     private const val BRAND_CSS =
-        ".pt-brand{position:absolute;top:0;left:0;right:0;height:30px;" +
-            "background:var(--pt-panel);" +
-            "display:flex;align-items:center;justify-content:center;}" +
-        ".pt-brand img{width:18px;height:18px;border-radius:4px;display:block;" +
-            "filter:grayscale(1);opacity:0.6;}" +
-        // 30px bar + 8px, atop .card's own 8px top padding (the picture
-        // pulls itself up to a tuned 12px bar gap via its negative top
-        // margin).
+        // The maker's mark (Gilad, 2026-08-13, replacing the top
+        // watermark bar): a small muted icon + name credit at the BOTTOM
+        // of the BACK faces only — the JPMN/Lapis-style footer, present
+        // in the artifacts that travel (shared decks, answer-side
+        // screenshots), absent from the recall path.
+        ".pt-madewith{display:flex;align-items:center;justify-content:center;" +
+            "gap:6px;margin:28px 0 4px;opacity:0.55;}" +
+        ".pt-madewith img{width:14px;height:14px;border-radius:3px;" +
+            "filter:grayscale(1);display:block;}" +
+        ".pt-madewith span{font-size:10px;color:var(--pt-hint);" +
+            "letter-spacing:0.04em;}" +
         // Explicit left alignment: the backs rely on left being the
         // ambient default, but AnkiMobile centers the body — everything
         // from the word back's Definitions header down rendered centered
         // there. The fronts and the sentence back's centered blocks all
         // set their own alignment, so this changes nothing elsewhere.
-        ".pt-a{padding-top:38px;text-align:left;}"
+        // Padding is bar-less now: just breathing room atop .card's own
+        // 8px (the picture's -4px margin nets a 12px top gap, matching
+        // the old bar gap).
+        ".pt-a{padding-top:8px;text-align:left;}"
 
-    private const val BRAND_BAR =
-        "<div class=\"pt-brand\"><img src=\"data:image/jpeg;base64,$BRAND_ICON_B64\"></div>"
+    private const val FOOTER_CREDIT =
+        "<div class=\"pt-madewith\"><img src=\"data:image/jpeg;base64,$BRAND_ICON_B64\">" +
+        "<span>Made with PlayTranslate</span></div>"
 
     /**
      * Everything both models need. [PitchAccentHtml.PITCH_CSS] is
@@ -312,10 +317,9 @@ internal object PtCardTemplates {
      * `.pt-meta` row now.
      */
     private const val WORD_LAYOUT_CSS =
-        // Top padding includes the 30px watermark bar's reserve (the bar
-        // is out of flow): the word sits ~20px below its bar-less spot.
+        // Bar-less: the old 84px carried a 30px watermark reserve.
         ".pt-word-front{text-align:center;font-size:3.2em;font-weight:700;" +
-            "letter-spacing:-0.02em;line-height:1.15;padding:84px 16px 64px;}" +
+            "letter-spacing:-0.02em;line-height:1.15;padding:54px 16px 64px;}" +
         ".pt-rule{width:28px;height:2px;border-radius:2px;margin:24px auto 0;" +
             "background:currentColor;}" +
         ".pt-head{display:flex;align-items:center;gap:12px;margin:0 4px;}" +
@@ -339,12 +343,12 @@ internal object PtCardTemplates {
      * tighter-leaded back.
      */
     private const val SENTENCE_LAYOUT_CSS =
-        // Top padding = the 30px watermark bar's reserve + tooltip
-        // headroom: the reading-hint popup renders above the tapped ruby
-        // (fixed-position, ~64px tall with the contour), so a first-line
-        // tap must not clip at the viewport.
+        // Top padding = tooltip headroom only now (the reading-hint popup
+        // renders above the tapped ruby, fixed-position, ~64px tall with
+        // the contour — a first-line tap must not clip at the viewport);
+        // the old 100px also carried the 30px watermark reserve.
         ".pt-sentence-front{text-align:center;font-size:1.8em;" +
-            "padding:100px 16px 24px;line-height:1.7em;}" +
+            "padding:70px 16px 24px;line-height:1.7em;}" +
         // Every section below the screenshot sits flush at the same 8px
         // .card gutter the picture gets — no extra side margin (the word
         // card keeps its own 4px text indents).
@@ -636,7 +640,6 @@ internal object PtCardTemplates {
     /** Word front: the word alone at display size, an accent rule under
      *  it (`.pt-rule` takes `currentColor` from `gl-hl`). */
     val WORD_QFMT: String =
-        BRAND_BAR +
         "<div class=\"pt-q pt-word-front\">{{Expression}}" +
         "<div class=\"pt-rule gl-hl\"></div></div>"
 
@@ -652,7 +655,6 @@ internal object PtCardTemplates {
      * it in their own templates.
      */
     val WORD_AFMT: String =
-        BRAND_BAR +
         "<div class=\"pt-a\">" +
         "{{#Picture}}<div class=\"pt-pic\">{{Picture}}</div>{{/Picture}}" +
         "<div class=\"pt-head\">" +
@@ -668,6 +670,7 @@ internal object PtCardTemplates {
         "{{Examples}}" +
         "{{#AudioCredit}}<div class=\"pt-credit\">{{AudioCredit}}</div>{{/AudioCredit}}" +
         "</div>" +
+        FOOTER_CREDIT +
         "<script>$PITCH_JS</script>"
 
     /**
@@ -685,7 +688,6 @@ internal object PtCardTemplates {
         "{{^SentenceFurigana}}{{Sentence}}{{/SentenceFurigana}}"
 
     val SENTENCE_QFMT: String =
-        BRAND_BAR +
         "<div class=\"pt-q pt-sentence pt-sentence-front\">$SENTENCE_BODY</div>" +
         "<script>$TOOLTIP_JS</script>"
 
@@ -698,7 +700,6 @@ internal object PtCardTemplates {
      * words table, credit last.
      */
     val SENTENCE_AFMT: String =
-        BRAND_BAR +
         "<div class=\"pt-a\">" +
         "{{#Picture}}<div class=\"pt-pic\">{{Picture}}</div>{{/Picture}}" +
         "{{#SentenceAudio}}<div class=\"pt-sent-audio\">" +
@@ -710,5 +711,6 @@ internal object PtCardTemplates {
         "{{#WordsTable}}<div class=\"pt-words\">{{WordsTable}}</div>{{/WordsTable}}" +
         "{{#AudioCredit}}<div class=\"pt-credit\">{{AudioCredit}}</div>{{/AudioCredit}}" +
         "</div>" +
+        FOOTER_CREDIT +
         "<script>$SCROLL_JS</script>"
 }

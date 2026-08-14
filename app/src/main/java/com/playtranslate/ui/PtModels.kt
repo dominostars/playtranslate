@@ -36,9 +36,12 @@ object PtModels {
     )
 
     val WORD = Spec(
-        // v005: structured Yomitan glossaries in the Definition field
-        // (GLOSSARY_CSS). The version-bump contract lives in the class doc.
-        name = "PlayTranslate Word v005",
+        // Unversioned by decision (Gilad, 2026-08-13, pre-release: no one
+        // but the dev has these models): the clean name IS the brand. A
+        // future template fix, post-release, re-enters the rename contract
+        // (e.g. "PlayTranslate Word 2") — the never-rewrite-in-place rule
+        // itself still stands.
+        name = "PlayTranslate Word",
         fields = listOf(
             "Expression", "Reading", "PitchPosition", "PartOfSpeech",
             "Definition", "Examples", "Frequency", "Picture",
@@ -50,9 +53,7 @@ object PtModels {
     )
 
     val SENTENCE = Spec(
-        // v005 in lockstep with WORD (shared CSS chain carries the
-        // glossary styles into both).
-        name = "PlayTranslate Sentence v005",
+        name = "PlayTranslate Sentence",
         fields = listOf(
             "Sentence", "SentenceFurigana", "Translation", "TargetWord",
             "WordsTable", "Picture", "SentenceAudio", "AudioCredit",
@@ -77,12 +78,18 @@ object PtModels {
      */
     private val SYNTHETIC_NAME_PREFIXES = listOf(
         "PlayTranslate v",          // v003/v004/v005 blob models
-        "PlayTranslate Word v",
+        "PlayTranslate Word v",     // versioned field-based generations
         "PlayTranslate Sentence v",
     )
 
+    /** The current unversioned names match EXACTLY, not by prefix — the
+     *  prefix list would otherwise stop hiding them from the picker the
+     *  moment the " v" suffix went away. */
+    private val SYNTHETIC_EXACT_NAMES = setOf(WORD.name, SENTENCE.name)
+
     fun isSyntheticName(name: String): Boolean =
-        SYNTHETIC_NAME_PREFIXES.any { name.startsWith(it) }
+        name in SYNTHETIC_EXACT_NAMES ||
+            SYNTHETIC_NAME_PREFIXES.any { name.startsWith(it) }
 
     /** What a stored question format says about who owns a same-named
      *  model's templates. The authority for repair decisions lives in

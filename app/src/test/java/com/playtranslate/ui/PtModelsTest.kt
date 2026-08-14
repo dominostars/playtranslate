@@ -200,16 +200,25 @@ class PtModelsTest {
         }
     }
 
-    /** The watermark bar is a constant, not a state: same bar on every
-     *  face (handoff 7a "Identical on every face"), with its CSS in both
-     *  models and the icon riding a self-contained data URI. */
-    @Test fun `every face carries the watermark bar`() {
+    /** The maker's mark (superseding handoff 7a's every-face bar, by
+     *  Gilad's direction 2026-08-13): a footer credit on the BACK faces
+     *  only — present in the artifacts that travel, absent from the
+     *  recall path — with its CSS in both models and the icon riding a
+     *  self-contained data URI. No face carries the old top bar. */
+    @Test fun `backs carry the footer credit, fronts stay clean`() {
         for (spec in specs) {
-            assertTrue("${spec.name} qfmt missing watermark", spec.qfmt.contains("pt-brand"))
-            assertTrue("${spec.name} afmt missing watermark", spec.afmt.contains("pt-brand"))
-            assertTrue("${spec.name} css missing .pt-brand", spec.css.contains(".pt-brand{"))
+            assertTrue("${spec.name} qfmt must carry no branding",
+                !spec.qfmt.contains("pt-brand") && !spec.qfmt.contains("pt-madewith"))
+            assertTrue("${spec.name} afmt missing the footer credit",
+                spec.afmt.contains("pt-madewith"))
+            assertTrue("${spec.name} afmt missing the name",
+                spec.afmt.contains("Made with PlayTranslate"))
+            assertTrue("${spec.name} css missing .pt-madewith",
+                spec.css.contains(".pt-madewith{"))
+            assertTrue("${spec.name} css must not keep the old bar",
+                !spec.css.contains(".pt-brand{"))
             assertTrue("${spec.name} icon must be self-contained",
-                spec.qfmt.contains("data:image/jpeg;base64,"))
+                spec.afmt.contains("data:image/jpeg;base64,"))
         }
     }
 
