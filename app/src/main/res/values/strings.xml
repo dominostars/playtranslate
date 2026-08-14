@@ -604,10 +604,10 @@
          relevant for the user. -->
     <string name="lang_section_suggested">Suggested</string>
 
-    <!-- "No language" choice: the pinned leading row of the standalone
-         language picker (pick mode), and the Source Language row's value on
-         the dictionary detail page while nothing is selected. -->
-    <string name="lang_pick_none">None</string>
+    <!-- "Any language" choice (no restriction): the pinned leading row of the
+         standalone language picker (pick mode), and the Source Language row's
+         value on the dictionary detail page while nothing is selected. -->
+    <string name="lang_pick_any">Any</string>
 
     <!-- Section header for the full alphabetical list of languages. -->
     <string name="lang_section_all">All</string>
@@ -2995,7 +2995,7 @@
     <string name="yomitan_alias_hint">Add a nickname</string>
     <!-- Content description for the leading swatch in the per-dictionary accent picker (the subtitle text color = default). -->
     <string name="yomitan_accent_default_cd">Default (subtitle text color)</string>
-    <!-- Title of the Source Language row in the Configure section of the dictionary detail page (shown only when the dictionary's index.json declares no source language, which makes it apply to every language), and the toolbar title of the picker page the row opens. Its value renders lang_pick_none while unset. -->
+    <!-- Title of the Source Language row in the Configure section of the dictionary detail page (shown only when the dictionary's index.json declares no source language, which makes it apply to every language), and the toolbar title of the picker page the row opens. Its value renders lang_pick_any while unset. -->
     <string name="yomitan_source_language_label">Source Language</string>
 
     <!-- TOOLS — standalone utilities reachable from settings. -->
