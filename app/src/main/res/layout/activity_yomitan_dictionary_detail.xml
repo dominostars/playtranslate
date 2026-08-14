@@ -127,6 +127,14 @@
                         android:id="@+id/rowYomitanAutoUpdate"
                         layout="@layout/settings_row_switch" />
 
+                    <include
+                        android:id="@+id/checkUpdatesDivider"
+                        layout="@layout/settings_row_divider" />
+
+                    <include
+                        android:id="@+id/rowYomitanCheckUpdates"
+                        layout="@layout/settings_row_nav" />
+
                 </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>

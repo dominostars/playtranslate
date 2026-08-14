@@ -3,6 +3,7 @@ package com.playtranslate.yomitan
 import android.content.Context
 import android.util.Log
 import com.playtranslate.PtJson
+import com.playtranslate.language.DownloadProgress
 import com.playtranslate.language.LanguagePackDownloader
 import com.playtranslate.net.PtHttp
 import kotlinx.coroutines.CancellationException
@@ -61,6 +62,46 @@ object YomitanUpdater {
         val downloadUrl: String? = null,
     )
 
+    /** Outcome of a user-initiated [checkOne]. The silent scan collapses
+     *  everything into "did an update apply"; a manual check owes the user a
+     *  distinct answer for each state (the same split
+     *  [com.playtranslate.UpdateChecker] makes for the app's own updates). */
+    sealed interface ManualCheck {
+        /** The remote revision differs from the installed one. */
+        data class UpdateAvailable(val remote: RemoteIndex) : ManualCheck
+        /** Same revision, but the deck has NO ingested rows (a schema bump
+         *  dropped them) — a re-download repairs it now instead of waiting
+         *  for the debounced heal pass. */
+        data class RepairAvailable(val remote: RemoteIndex) : ManualCheck
+        /** The endpoint answered and the installed deck is current + intact. */
+        data object UpToDate : ManualCheck
+        /** Couldn't ask: offline, timeout, non-2xx, unparseable body, or the
+         *  deck declares no update capability. */
+        data object Failed : ManualCheck
+    }
+
+    /** Outcome of a user-initiated [downloadAndApply]. */
+    sealed interface ManualApply {
+        /** The swap committed. [dictionary] is the NEW registry entry — its
+         *  id differs from the replaced one (ids are content-derived), so any
+         *  UI holding the old id MUST re-point at this entry or its later
+         *  writes silently no-op. */
+        data class Updated(val dictionary: YomitanDictionary) : ManualApply
+        /** The busy gate refused the apply (translation session in progress).
+         *  The download is discarded; a retry re-checks idempotently. */
+        data object Deferred : ManualApply
+        /** Not enough disk for the download or the install. Pre-download the
+         *  exact need is unknown, so [requiredBytes] reports the free-space
+         *  margin the download refuses to eat into. */
+        data class NoSpace(val requiredBytes: Long, val availableBytes: Long) : ManualApply
+        /** The replacement was deliberately not applied (deck deleted or
+         *  opted out mid-update, or the endpoint served a different
+         *  dictionary). Expected-rare; logged at info. */
+        data class Skipped(val reason: String) : ManualApply
+        /** Download or apply failed (network error, invalid zip, IO). */
+        data object Failed : ManualApply
+    }
+
     /**
      * Yomitan's update rule: an update exists when the remote revision is
      * present AND differs from the installed one — string INEQUALITY, not
@@ -100,12 +141,121 @@ object YomitanUpdater {
     }
 
     /**
-     * Full single-deck cycle: check → (if newer) download → (if not busy) apply.
-     * Returns true iff an update was applied. [isBusy] is evaluated immediately
-     * before the registry-mutating apply; when it's true the validated download
-     * is discarded and the cycle bails — the next launch re-checks and
-     * re-downloads (idempotent), so no in-progress translation session is ever
-     * disrupted and no durable staged state is needed.
+     * User-initiated check for one deck (the detail page's "Check for updates"
+     * row). Distinguishes what the silent scan collapses: a newer revision, a
+     * same-revision deck whose rows are gone (repair via re-download, the
+     * manual analog of the heal pass), current-and-intact, and couldn't-ask.
+     * The apply path detects missing rows itself, so [RepairAvailable] needs
+     * no force flag downstream — [downloadAndApply] just runs.
+     */
+    suspend fun checkOne(ctx: Context, dict: YomitanDictionary): ManualCheck {
+        val indexUrl = dict.indexUrl
+        if (!dict.isUpdatable || indexUrl == null) return ManualCheck.Failed
+        val remote = fetchRemoteIndex(indexUrl) ?: return ManualCheck.Failed
+        return when {
+            shouldUpdate(dict.revision, remote.revision) -> ManualCheck.UpdateAvailable(remote)
+            !YomitanDataStore.isIngested(ctx, dict.id) -> ManualCheck.RepairAvailable(remote)
+            else -> ManualCheck.UpToDate
+        }
+    }
+
+    /**
+     * Download + apply for one deck whose [remote] index is already fetched:
+     * bounded download → (if not busy) apply. [isBusy] is evaluated
+     * immediately before the registry-mutating apply; when it's true the
+     * validated download is discarded and the cycle bails — a later attempt
+     * re-checks and re-downloads (idempotent), so no in-progress translation
+     * session is ever disrupted and no durable staged state is needed.
+     * [onProgress] streams download progress to a UI and [onApplying] fires
+     * once, after the busy gate passes and before the apply starts, so a UI
+     * can switch its bar to an indeterminate "installing" state (a large
+     * deck's ingest takes a while). The silent scan passes neither.
+     * [userInitiated] lets the commit ignore the deck's auto-update opt-out
+     * (an explicit tap outranks "don't update me silently"); the silent scan
+     * passes false. Never throws except on cancellation.
+     */
+    suspend fun downloadAndApply(
+        ctx: Context,
+        dict: YomitanDictionary,
+        remote: RemoteIndex,
+        isBusy: () -> Boolean,
+        onProgress: ((DownloadProgress.Downloading) -> Unit)? = null,
+        onApplying: (() -> Unit)? = null,
+        userInitiated: Boolean = false,
+    ): ManualApply = withContext(Dispatchers.IO) {
+        // IO-dispatched so the manual flow can call from a Main-dispatched
+        // scope: the disk probes/cleanup here run outside the internally
+        // dispatched download/apply. Callbacks fire on this dispatcher — a UI
+        // caller posts to its own thread.
+        val downloadUrl = remote.downloadUrl?.trim()?.takeUnless { it.isEmpty() }
+            ?: dict.downloadUrl
+            ?: run {
+                Log.w(TAG, "update for ${dict.id}: no downloadUrl (remote or installed)")
+                return@withContext ManualApply.Failed
+            }
+
+        val tmpDir = File(ctx.cacheDir, "yomitan-update").apply { mkdirs() }
+        val tmp = File(tmpDir, "${dict.id}.zip")
+        // Bound the download for an UNTRUSTED endpoint: never exceed the absolute
+        // ceiling, and never write so much it threatens the cache filesystem
+        // (installZip's post-download disk guard is too late to stop a fill).
+        val maxBytes = minOf(
+            MAX_UPDATE_ZIP_BYTES,
+            (tmpDir.usableSpace - DOWNLOAD_SPACE_MARGIN_BYTES).coerceAtLeast(0L),
+        )
+        if (maxBytes <= 0L) {
+            Log.w(TAG, "update for ${dict.id}: insufficient cache space to download")
+            return@withContext ManualApply.NoSpace(DOWNLOAD_SPACE_MARGIN_BYTES, tmpDir.usableSpace)
+        }
+        try {
+            tmp.delete() // mutable URL — never resume a stale partial
+            LanguagePackDownloader().download(downloadUrl, tmp, maxBytes = maxBytes) {
+                onProgress?.invoke(it)
+            }
+
+            // Gate immediately before the apply (the only step that mutates the
+            // registry / ingests / invalidates caches). Download already done; if
+            // the user is now translating, defer — a later attempt retries.
+            if (isBusy()) {
+                Log.i(TAG, "deferring apply for ${dict.id}: app busy")
+                return@withContext ManualApply.Deferred
+            }
+            onApplying?.invoke()
+            when (
+                val result = YomitanDictionaryStore.applyUpdate(
+                    ctx, dict, tmp,
+                    remoteRevision = remote.revision,
+                    userInitiated = userInitiated,
+                )
+            ) {
+                is YomitanImportResult.Success -> ManualApply.Updated(result.dictionary)
+                is YomitanImportResult.InsufficientSpace ->
+                    ManualApply.NoSpace(result.requiredBytes, result.availableBytes)
+                is YomitanImportResult.Skipped -> {
+                    // Expected: the deck was deleted or opted out during the
+                    // update, or superseded. Not a failure.
+                    Log.i(TAG, "update skipped for ${dict.id}: ${result.reason}")
+                    ManualApply.Skipped(result.reason)
+                }
+                else -> {
+                    Log.w(TAG, "applyUpdate failed for ${dict.id}: $result")
+                    ManualApply.Failed
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "update failed for ${dict.id}: ${e.message}", e)
+            ManualApply.Failed
+        } finally {
+            tmp.delete()
+        }
+    }
+
+    /**
+     * Full single-deck cycle for the SILENT scan: check → (if newer) download
+     * → (if not busy) apply, via [downloadAndApply]. Returns true iff an
+     * update was applied.
      *
      * [force] (the auto-heal pass) skips ONLY the revision-inequality check —
      * an outdated deck needs its rows back even at the same revision. The
@@ -124,60 +274,6 @@ object YomitanUpdater {
         val remote = fetchRemoteIndex(indexUrl) ?: return false
         if (!force && !shouldUpdate(dict.revision, remote.revision)) return false
 
-        val downloadUrl = remote.downloadUrl?.trim()?.takeUnless { it.isEmpty() }
-            ?: dict.downloadUrl
-            ?: run {
-                Log.w(TAG, "update for ${dict.id}: no downloadUrl (remote or installed)")
-                return false
-            }
-
-        val tmpDir = File(ctx.cacheDir, "yomitan-update").apply { mkdirs() }
-        val tmp = File(tmpDir, "${dict.id}.zip")
-        // Bound the download for an UNTRUSTED endpoint: never exceed the absolute
-        // ceiling, and never write so much it threatens the cache filesystem
-        // (installZip's post-download disk guard is too late to stop a fill).
-        val maxBytes = minOf(
-            MAX_UPDATE_ZIP_BYTES,
-            (tmpDir.usableSpace - DOWNLOAD_SPACE_MARGIN_BYTES).coerceAtLeast(0L),
-        )
-        if (maxBytes <= 0L) {
-            Log.w(TAG, "update for ${dict.id}: insufficient cache space to download")
-            return false
-        }
-        return try {
-            tmp.delete() // mutable URL — never resume a stale partial
-            LanguagePackDownloader().download(downloadUrl, tmp, maxBytes = maxBytes) { /* no UI progress */ }
-
-            // Gate immediately before the apply (the only step that mutates the
-            // registry / ingests / invalidates caches). Download already done; if
-            // the user is now translating, defer — next launch retries.
-            if (isBusy()) {
-                Log.i(TAG, "deferring apply for ${dict.id}: app busy")
-                return false
-            }
-            when (
-                val result =
-                    YomitanDictionaryStore.applyUpdate(ctx, dict, tmp, remoteRevision = remote.revision)
-            ) {
-                is YomitanImportResult.Success -> true
-                is YomitanImportResult.Skipped -> {
-                    // Expected: the deck was deleted or opted out during the
-                    // update, or superseded. Not a failure.
-                    Log.i(TAG, "update skipped for ${dict.id}: ${result.reason}")
-                    false
-                }
-                else -> {
-                    Log.w(TAG, "applyUpdate failed for ${dict.id}: $result")
-                    false
-                }
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "update failed for ${dict.id}: ${e.message}", e)
-            false
-        } finally {
-            tmp.delete()
-        }
+        return downloadAndApply(ctx, dict, remote, isBusy) is ManualApply.Updated
     }
 }

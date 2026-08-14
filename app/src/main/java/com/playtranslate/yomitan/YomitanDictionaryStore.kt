@@ -508,13 +508,22 @@ object YomitanDictionaryStore {
      * revision and the zip's bundled revision can differ). The caller owns
      * [newZip]'s lifecycle. [YomitanImportResult.Duplicate] is impossible here —
      * the title-collision check is skipped for replacements.
+     *
+     * [userInitiated] marks the detail page's manual "Check for updates" flow:
+     * the commit then ignores the deck's auto-update OPT-OUT (that flag means
+     * "don't update me silently", and an explicit tap outranks it) while still
+     * refusing to resurrect a deck deleted mid-update. The silent scan passes
+     * false, keeping its never-override-a-mid-flight-opt-out contract.
      */
     suspend fun applyUpdate(
         ctx: Context,
         old: YomitanDictionary,
         newZip: File,
         remoteRevision: String?,
-    ): YomitanImportResult = installZip(ctx, newZip, replacing = old, revisionOverride = remoteRevision)
+        userInitiated: Boolean = false,
+    ): YomitanImportResult = installZip(
+        ctx, newZip, replacing = old, revisionOverride = remoteRevision, userInitiated = userInitiated,
+    )
 
     /**
      * Validates [temp] as a Yomitan dictionary and registers it. When
@@ -532,6 +541,7 @@ object YomitanDictionaryStore {
         temp: File,
         replacing: YomitanDictionary?,
         revisionOverride: String? = null,
+        userInitiated: Boolean = false,
     ): YomitanImportResult = withContext(Dispatchers.IO) {
         // Disk guard: the zip itself is NOT retained (only index.json is), but
         // the derived term rows from a flattened glossary can exceed the
@@ -564,7 +574,7 @@ object YomitanDictionaryStore {
         if (replacing == null) {
             commitFreshInstall(ctx, temp, id, parsed)
         } else {
-            commitReplacement(ctx, temp, id, parsed, replacing, revisionOverride)
+            commitReplacement(ctx, temp, id, parsed, replacing, revisionOverride, userInitiated)
         }
     }
 
@@ -826,6 +836,7 @@ object YomitanDictionaryStore {
         parsed: ParsedDictionary,
         replacing: YomitanDictionary,
         revisionOverride: String?,
+        userInitiated: Boolean,
     ): YomitanImportResult {
         val candidate = newDictionary(id, parsed, temp.length(), carryFrom = null, revisionOverride = revisionOverride)
         // Identical bytes ⇒ same id as the deck being replaced: no swap —
@@ -894,10 +905,12 @@ object YomitanDictionaryStore {
             // Re-resolve against the CURRENT registry — never trust the stale
             // scan object for the swap decision or the carried-over user state.
             val current = registry.dictionaries.firstOrNull { it.id == replacing.id }
-            if (current == null || !current.autoUpdate) {
-                // Deleted or opted out during the update: don't resurrect or
-                // override. The old deck is untouched; the staged new id is
-                // dropped after the lock.
+            if (current == null || (!userInitiated && !current.autoUpdate)) {
+                // Deleted (any flow) or opted out during a SILENT update: don't
+                // resurrect or override. The old deck is untouched; the staged
+                // new id is dropped after the lock. A user-initiated update
+                // ignores the opt-out — that flag means "don't update me
+                // silently", and an explicit tap outranks it.
                 return@withLock ReplaceCommit.Aborted(
                     YomitanImportResult.Skipped(
                         if (current == null) "replaced dictionary removed during update"
@@ -1000,10 +1013,19 @@ object YomitanDictionaryStore {
 
     /**
      * Identity invariant for an auto-update REPLACEMENT: a new revision must
-     * still be the SAME dictionary. The title (trimmed, case-insensitive) must
-     * match, and any DECLARED source/target language must agree on its primary
+     * still be the SAME dictionary. The title must match after [titleIdentity]
+     * normalization (trimmed, case-insensitive, trailing date-stamp stripped),
+     * and any DECLARED source/target language must agree on its primary
      * subtag. A null/blank language on either side is tolerated — adding or
      * dropping language metadata across a revision is not a different dictionary.
+     *
+     * The date-stamp stripping exists because the most popular JA decks (the
+     * yomidevs jmdict-yomitan family: JMdict, JMnedict, KANJIDIC) bake the
+     * release date into the TITLE itself ("JMnedict [2026-08-13]" →
+     * "JMnedict [2026-08-14]"), so exact title equality refused every one of
+     * their legitimate updates as "a different dictionary" (Thor field
+     * evidence, 2026-08-13). Only a strictly date-shaped trailing bracket
+     * group is stripped — a non-date bracket suffix still distinguishes decks.
      *
      * This catches an `indexUrl`/`downloadUrl` that resolves to a DIFFERENT deck
      * (author misconfiguration) and keeps the installed deck rather than swap in
@@ -1020,9 +1042,25 @@ object YomitanDictionaryStore {
         installedSource: String?,
         installedTarget: String?,
     ): Boolean {
-        if (!newTitle.trim().equals(installedTitle.trim(), ignoreCase = true)) return false
+        if (!titleIdentity(newTitle).equals(titleIdentity(installedTitle), ignoreCase = true)) {
+            return false
+        }
         return languageCompatible(newSource, installedSource) &&
             languageCompatible(newTarget, installedTarget)
+    }
+
+    /** Trailing release-date stamp in a deck title, e.g. " [2026-08-14]".
+     *  Strictly date-shaped so non-date bracket suffixes keep distinguishing
+     *  decks. */
+    private val TITLE_DATE_STAMP = Regex("""\s*\[\d{4}-\d{2}-\d{2}]\s*$""")
+
+    /** A title's release-independent identity: trimmed, with a trailing
+     *  date-stamp bracket group removed. A title that is ONLY a date stamp
+     *  keeps its full form — stripping to nothing would make every such
+     *  (pathological) deck identical to every other. */
+    private fun titleIdentity(title: String): String {
+        val trimmed = title.trim()
+        return trimmed.replace(TITLE_DATE_STAMP, "").takeUnless { it.isEmpty() } ?: trimmed
     }
 
     /** True unless BOTH sides declare a language and their primary subtags differ. */
