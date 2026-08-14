@@ -5,6 +5,7 @@ import com.playtranslate.CaptureService
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.Prefs
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -39,9 +40,34 @@ object YomitanAutoUpdateOrchestrator {
     private val DEBOUNCE_MS = TimeUnit.HOURS.toMillis(24)
     private val HEAL_DEBOUNCE_MS = TimeUnit.MINUTES.toMillis(15)
 
-    /** The in-flight scan, if any. Single-flight guard: a new trigger while one
-     *  is active is a no-op. */
+    /** The in-flight scan OR manual per-deck update, if any. Single-flight
+     *  guard: a new trigger while one is active is a no-op. Claimed via
+     *  [tryClaimSlot] BEFORE the job starts, so there is no window where two
+     *  holders both pass the check and race the same deck's download+apply. */
     private val scanJob = AtomicReference<Job?>(null)
+
+    /**
+     * Claims the single-flight slot for [job] unless a previously claimed job
+     * still holds it. Shared with the detail page's manual "Check for
+     * updates" flow: both callers create their job UNSTARTED
+     * ([CoroutineStart.LAZY]), claim, and only then start it. The holding
+     * predicate is NOT-COMPLETED, never isActive — a claimed lazy job is in
+     * the NEW state (not active, not completed) until start(), and treating
+     * NEW as free would let a concurrent claimant CAS over it and run two
+     * update flows into the same temp path + apply (Codex adversarial catch;
+     * unreachable while every claimant is main-thread, but the invariant must
+     * not depend on caller threading). The slot self-releases when the job
+     * completes or cancels — so the claimant's contract is: START the claimed
+     * job, or CANCEL it (as the failed-claim path and any abort must), else
+     * a NEW job wedges the slot forever.
+     */
+    fun tryClaimSlot(job: Job): Boolean {
+        while (true) {
+            val current = scanJob.get()
+            if (current != null && !current.isCompleted) return false
+            if (scanJob.compareAndSet(current, job)) return true
+        }
+    }
 
     /**
      * Trigger from a launch/resume path (e.g. `MainActivity.onResume`).
@@ -56,14 +82,9 @@ object YomitanAutoUpdateOrchestrator {
         val fullDue = now - prefs.lastYomitanUpdateCheckMs >= DEBOUNCE_MS
         val healDue = now - prefs.lastYomitanHealAttemptMs >= HEAL_DEBOUNCE_MS
         if (!fullDue && !healDue) return
-        if (scanJob.get()?.isActive == true) return
-        if (fullDue) {
-            // Consume the debounce up front (matches UpdateChecker) so a failed
-            // or empty scan doesn't re-fire on every resume.
-            prefs.lastYomitanUpdateCheckMs = now
-        }
 
-        val job = app.appScope.launch {
+        // LAZY: the job must hold the slot BEFORE it can run (see tryClaimSlot).
+        val job = app.appScope.launch(start = CoroutineStart.LAZY) {
             try {
                 // One-time: delete the legacy retained zips (index.json is
                 // extracted first; a still-un-ingested deck keeps its zip and
@@ -96,7 +117,17 @@ object YomitanAutoUpdateOrchestrator {
                 Log.w(TAG, "scan failed", e)
             }
         }
-        scanJob.set(job)
+        if (!tryClaimSlot(job)) {
+            job.cancel()
+            return
+        }
+        if (fullDue) {
+            // Consume the debounce up front (matches UpdateChecker) so a failed
+            // or empty scan doesn't re-fire on every resume. After the claim,
+            // so a refused trigger doesn't burn the window.
+            prefs.lastYomitanUpdateCheckMs = now
+        }
+        job.start()
     }
 
     private suspend fun runScan(app: PlayTranslateApplication) {
@@ -139,6 +170,7 @@ object YomitanAutoUpdateOrchestrator {
 
     /** True when a translation session is in progress (live mode or either
      *  one-shot capture path), via the single [CaptureService.isCapturing]
-     *  predicate — the apply defers rather than disrupt it. */
-    private fun isAppBusy(): Boolean = CaptureService.instance?.isCapturing ?: false
+     *  predicate — the apply defers rather than disrupt it. Public because the
+     *  manual update flow gates its apply on the same predicate. */
+    fun isAppBusy(): Boolean = CaptureService.instance?.isCapturing ?: false
 }

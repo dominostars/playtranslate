@@ -54,4 +54,55 @@ class YomitanReplacementIdentityTest {
     @Test fun `blank language is treated as undeclared`() {
         assertTrue(match("JMdict", "  ", "en", "JMdict", "ja", "en"))
     }
+
+    // ── Date-stamped titles ──────────────────────────────────────────────
+    // The yomidevs jmdict-yomitan decks bake the release date into the title
+    // ("JMnedict [2026-08-13]" → "JMnedict [2026-08-14]"), so exact equality
+    // refused every legitimate update as "a different dictionary" (Thor field
+    // evidence, 2026-08-13). Identity compares titles with a trailing
+    // date-shaped bracket group stripped — and ONLY date-shaped, so non-date
+    // suffixes keep distinguishing decks.
+
+    @Test fun `trailing date stamps are release labels, not identity`() {
+        assertTrue(
+            match(
+                "JMnedict [2026-08-14]", null, null,
+                "JMnedict [2026-08-13]", null, null,
+            ),
+        )
+    }
+
+    @Test fun `a stamp added or dropped across revisions is the same deck`() {
+        assertTrue(match("JMnedict", null, null, "JMnedict [2026-08-13]", null, null))
+        assertTrue(match("JMnedict [2026-08-14]", null, null, "JMnedict", null, null))
+    }
+
+    @Test fun `different base names are rejected even with matching stamps`() {
+        assertFalse(
+            match(
+                "JMdict [2026-08-14]", null, null,
+                "JMnedict [2026-08-14]", null, null,
+            ),
+        )
+    }
+
+    @Test fun `non-date bracket suffixes still distinguish decks`() {
+        assertFalse(match("Deck [Extra]", null, null, "Deck [Names]", null, null))
+        assertFalse(match("Deck [v2]", null, null, "Deck [v3]", null, null))
+    }
+
+    @Test fun `a title that is only a date stamp keeps its full identity`() {
+        // Stripping to nothing would make every such deck identical.
+        assertFalse(match("[2026-08-14]", null, null, "[2026-08-13]", null, null))
+        assertTrue(match("[2026-08-14]", null, null, "[2026-08-14]", null, null))
+    }
+
+    @Test fun `language mismatch still rejects a date-stamped update`() {
+        assertFalse(
+            match(
+                "JMnedict [2026-08-14]", "zh", null,
+                "JMnedict [2026-08-13]", "ja", null,
+            ),
+        )
+    }
 }

@@ -2997,6 +2997,44 @@
     <string name="yomitan_accent_default_cd">Default (subtitle text color)</string>
     <!-- Title of the Source Language row in the Configure section of the dictionary detail page (shown only when the dictionary's index.json declares no source language, which makes it apply to every language), and the toolbar title of the picker page the row opens. Its value renders lang_pick_any while unset. -->
     <string name="yomitan_source_language_label">Source Language</string>
+    <!-- Title of the Check for Updates action row on the dictionary detail page (shown only for dictionaries that support updates, alongside the auto-update toggle). -->
+    <string name="yomitan_check_updates_label">Check for updates</string>
+    <!-- Title of the progress popup while the dictionary's update server is queried. -->
+    <string name="yomitan_update_checking_title">Checking for Updates</string>
+    <!-- Title of the prompt shown when the manual check finds a newer version. -->
+    <string name="yomitan_update_available_title">Update Available</string>
+    <!-- Body of the update-available prompt. %1$s = dictionary name, %2$s = the new version/revision string from the update server. -->
+    <string name="yomitan_update_available_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> can be updated to version <xliff:g id="revision" example="2026.02.05">%2$s</xliff:g>.</string>
+    <!-- Confirm button of the update-available prompt. -->
+    <string name="yomitan_update_confirm">Update</string>
+    <!-- Title of the prompt shown when the dictionary's data was dropped by an app upgrade and needs a re-download. -->
+    <string name="yomitan_update_repair_title">Re-download Needed</string>
+    <!-- Body of the re-download prompt. %1$s = dictionary name. -->
+    <string name="yomitan_update_repair_message">The data of <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> needs to be downloaded again to work with this version of the app.</string>
+    <!-- Confirm button of the re-download prompt. -->
+    <string name="yomitan_update_redownload_confirm">Re-download</string>
+    <!-- Title of the alert shown when the manual check finds no update. -->
+    <string name="yomitan_update_none_title">Up to Date</string>
+    <!-- Body of the no-update alert. %1$s = dictionary name. -->
+    <string name="yomitan_update_none_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> is on the latest version.</string>
+    <!-- Title of the alert shown when the dictionary's update server can't be reached. -->
+    <string name="yomitan_update_check_failed_title">Couldn\'t Check for Updates</string>
+    <!-- Body of the check-failure alert. -->
+    <string name="yomitan_update_check_failed_message">The dictionary\'s update server couldn\'t be reached. Check your connection and try again.</string>
+    <!-- Title of the alert shown when the update can't run right now (translation session active, or the background update check is already running). -->
+    <string name="yomitan_update_busy_title">Can\'t Update Right Now</string>
+    <!-- Body when an active translation session blocks the update's install step. -->
+    <string name="yomitan_update_busy_message">A translation session is in progress. Try again when it finishes.</string>
+    <!-- Body when the background update check is already running. -->
+    <string name="yomitan_update_scan_active_message">Dictionary updates are already being checked in the background. Try again in a moment.</string>
+    <!-- Title of the alert shown when a manual update downloaded fine but was deliberately not installed (e.g. the update server served a different dictionary). Distinct from the download-error alert so the user isn't told to check their connection. -->
+    <string name="yomitan_update_skipped_title">Update Not Applied</string>
+    <!-- Body of the not-applied alert. -->
+    <string name="yomitan_update_skipped_message">The update was downloaded but doesn\'t match this dictionary, so it wasn\'t installed.</string>
+    <!-- Title of the alert shown after a successful manual update. -->
+    <string name="yomitan_update_done_title">Dictionary Updated</string>
+    <!-- Body of the update-success alert. %1$s = dictionary name. -->
+    <string name="yomitan_update_done_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> is now up to date.</string>
 
     <!-- TOOLS — standalone utilities reachable from settings. -->
     <string name="settings_header_tools">Tools</string>

@@ -24,10 +24,17 @@ import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.R
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
+import com.playtranslate.translation.llm.humanSize
+import com.playtranslate.yomitan.YomitanAutoUpdateOrchestrator
 import com.playtranslate.yomitan.YomitanDictionary
 import com.playtranslate.yomitan.YomitanDictionaryStore
+import com.playtranslate.yomitan.YomitanUpdater
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
  * Detail view of an installed Yomitan dictionary: an editable Configure section
@@ -113,10 +120,21 @@ class YomitanDictionaryDetailActivity : SettingsSubPageActivity() {
      *  on each swatch tap, not here.) */
     override fun onPause() {
         super.onPause()
-        val id = dictId ?: return
-        if (!aliasLoaded) return
+        flushAlias()
+    }
+
+    /** Persists the alias field's current text; returns the write's job (null
+     *  when there is nothing to flush). [onPause] ignores it — fire-and-forget
+     *  on appScope so the write survives the activity finishing. The manual
+     *  update flow MUST await it: an update's swap carries whatever the
+     *  registry holds at commit time, and a still-queued alias write would
+     *  land after the swap against the removed old id and silently no-op,
+     *  losing the edit. */
+    private fun flushAlias(): Job? {
+        val id = dictId ?: return null
+        if (!aliasLoaded) return null
         val alias = findViewById<EditText>(R.id.etYomitanAlias).text?.toString()
-        (application as PlayTranslateApplication).appScope.launch {
+        return (application as PlayTranslateApplication).appScope.launch {
             YomitanDictionaryStore.setAlias(applicationContext, id, alias)
         }
     }
@@ -132,6 +150,7 @@ class YomitanDictionaryDetailActivity : SettingsSubPageActivity() {
             buildAccentPicker()
             bindAutoUpdateToggle(dict)
             bindSourceLanguageRow(dict)
+            bindCheckUpdatesRow(dict)
         }
     }
 
@@ -212,6 +231,253 @@ class YomitanDictionaryDetailActivity : SettingsSubPageActivity() {
             value.text = display
             value.setTextColor(themeColor(R.attr.ptAccent))
         }
+    }
+
+    // ── Manual update check ─────────────────────────────────────────────
+
+    /** The in-flight manual update flow; the progress popups' Cancel hooks it,
+     *  and the re-entrancy guard in [startManualUpdate] keys on it. */
+    private var manualUpdateJob: Job? = null
+
+    /** Wires the Check for Updates action row. Visible under the same condition
+     *  as the auto-update toggle (declared update capability). Runs the shared
+     *  per-deck update mechanism, but user-visibly: checking popup, then either
+     *  an up-to-date/failed alert or an update prompt → download progress →
+     *  outcome alert (the app-update UX). A deck whose rows were dropped by a
+     *  schema bump gets a re-download prompt even at the same revision — the
+     *  manual analog of the auto-heal pass. */
+    private fun bindCheckUpdatesRow(dict: YomitanDictionary?) {
+        val row = findViewById<View>(R.id.rowYomitanCheckUpdates)
+        val divider = findViewById<View>(R.id.checkUpdatesDivider)
+        val updatable = dict != null && dict.isUpdatable && dict.indexUrl != null
+        row.isVisible = updatable
+        divider.isVisible = updatable
+        if (!updatable) return
+        row.findViewById<TextView>(R.id.tvRowTitle)
+            .setText(R.string.yomitan_check_updates_label)
+        row.setOnClickListener { startManualUpdate() }
+    }
+
+    private fun startManualUpdate() {
+        if (manualUpdateJob?.isActive == true) return
+        val id = dictId ?: return
+        // Flush a pending alias edit, then AWAIT it inside the flow before
+        // touching the registry: the update's swap carries whatever the
+        // registry holds at commit time, so a still-queued write would land
+        // after the swap against the removed old id and the edit would be
+        // lost. Awaiting also means the re-read entry (and the prompt's
+        // dictionary name) already show the fresh alias.
+        val aliasFlush = flushAlias()
+        // LAZY + claim BEFORE start: this flow and the launch-time background
+        // scan share the orchestrator's single-flight slot, so they can never
+        // race the same deck's download+apply. One job spans the whole flow
+        // (check → prompt → download → apply), so the claim does too.
+        val job = lifecycleScope.launch(start = CoroutineStart.LAZY) {
+            aliasFlush?.join()
+            runManualUpdate(id)
+        }
+        if (!YomitanAutoUpdateOrchestrator.tryClaimSlot(job)) {
+            job.cancel()
+            showOutcomeAlert(
+                getString(R.string.yomitan_update_busy_title),
+                getString(R.string.yomitan_update_scan_active_message),
+            )
+            return
+        }
+        manualUpdateJob = job
+        job.start()
+    }
+
+    private suspend fun runManualUpdate(id: String) {
+        // Re-read the live entry: the page's loaded copy may be stale, and a
+        // scan that ran before this claim may have already replaced the deck
+        // (id gone). The check-failed alert is the honest answer then.
+        val dict = YomitanDictionaryStore.load(this)
+            .dictionaries.firstOrNull { it.id == id }
+        if (dict == null) {
+            showOutcomeAlert(
+                getString(R.string.yomitan_update_check_failed_title),
+                getString(R.string.yomitan_update_check_failed_message),
+            )
+            return
+        }
+        val name = dict.alias ?: dict.title
+
+        val checkProgress = OverlayProgress.Builder(this)
+            .setTitle(getString(R.string.yomitan_update_checking_title))
+            .setMessage(name)
+            .setOnDismiss { manualUpdateJob?.cancel() } // USER cancel/back only
+            .show()
+        checkProgress.setIndeterminate(true)
+        val check = try {
+            YomitanUpdater.checkOne(applicationContext, dict)
+        } finally {
+            checkProgress.dismiss() // idempotent; before any alert so scrims don't stack
+        }
+        when (check) {
+            YomitanUpdater.ManualCheck.UpToDate -> showOutcomeAlert(
+                getString(R.string.yomitan_update_none_title),
+                getString(R.string.yomitan_update_none_message, name),
+            )
+            YomitanUpdater.ManualCheck.Failed -> showOutcomeAlert(
+                getString(R.string.yomitan_update_check_failed_title),
+                getString(R.string.yomitan_update_check_failed_message),
+            )
+            is YomitanUpdater.ManualCheck.UpdateAvailable -> {
+                val confirmed = promptConfirm(
+                    getString(R.string.yomitan_update_available_title),
+                    getString(
+                        R.string.yomitan_update_available_message,
+                        name,
+                        check.remote.revision?.trim().orEmpty(),
+                    ),
+                    getString(R.string.yomitan_update_confirm),
+                )
+                if (confirmed) runDownloadAndApply(dict, check.remote, name)
+            }
+            is YomitanUpdater.ManualCheck.RepairAvailable -> {
+                val confirmed = promptConfirm(
+                    getString(R.string.yomitan_update_repair_title),
+                    getString(R.string.yomitan_update_repair_message, name),
+                    getString(R.string.yomitan_update_redownload_confirm),
+                )
+                if (confirmed) runDownloadAndApply(dict, check.remote, name)
+            }
+        }
+    }
+
+    private suspend fun runDownloadAndApply(
+        dict: YomitanDictionary,
+        remote: YomitanUpdater.RemoteIndex,
+        name: String,
+    ) {
+        val progress = OverlayProgress.Builder(this)
+            .setTitle(getString(R.string.yomitan_downloading_title))
+            .setMessage(name)
+            .setOnDismiss { manualUpdateJob?.cancel() } // USER cancel/back only
+            .show()
+        // Guard against a late determinate download update clobbering the
+        // apply phase's indeterminate switch — same race as the recommended
+        // download (see YomitanSettingsActivity.startRecommendedDownload).
+        var applying = false
+        val result = try {
+            YomitanUpdater.downloadAndApply(
+                applicationContext,
+                dict,
+                remote,
+                isBusy = YomitanAutoUpdateOrchestrator::isAppBusy,
+                // The user's explicit tap outranks the auto-update opt-out —
+                // without this, the row dead-ends on exactly the decks it is
+                // most useful for (auto-update OFF, updated by hand).
+                userInitiated = true,
+                onProgress = { p ->
+                    runOnUiThread {
+                        if (!applying) {
+                            progress.showYomitanDownloadProgress(
+                                this, p.bytesReceived, p.totalBytes,
+                            )
+                        }
+                    }
+                },
+                onApplying = {
+                    // Ingest of a large deck takes a while — don't sit on a
+                    // full determinate bar. Cancel is hidden because the
+                    // apply is committing (prove-then-swap) and cancelling
+                    // mid-commit buys nothing over letting it finish.
+                    runOnUiThread {
+                        applying = true
+                        progress.setIndeterminate(true)
+                        progress.setMessage(getString(R.string.yomitan_importing_message))
+                        progress.hideCancel()
+                    }
+                },
+            )
+        } finally {
+            progress.dismiss()
+        }
+        when (result) {
+            is YomitanUpdater.ManualApply.Updated -> {
+                // THE ID SWAP: the update replaced the content-derived id, so
+                // this page's handle is now stale — every later write (alias
+                // flush on pause, accent, source language, another check)
+                // would silently no-op against the gone entry. Re-point and
+                // reload; loadConfig re-binds every row on the new entry.
+                dictId = result.dictionary.id
+                loadConfig(result.dictionary.id)
+                render(result.dictionary.id)
+                // The toolbar title arrived as an intent extra and is stale
+                // now too — a date-stamped deck changes TITLE every release.
+                // The success alert names the NEW identity for the same reason.
+                val newName = result.dictionary.alias ?: result.dictionary.title
+                findViewById<MaterialToolbar>(R.id.toolbar).title = newName
+                showOutcomeAlert(
+                    getString(R.string.yomitan_update_done_title),
+                    getString(R.string.yomitan_update_done_message, newName),
+                )
+            }
+            YomitanUpdater.ManualApply.Deferred -> showOutcomeAlert(
+                getString(R.string.yomitan_update_busy_title),
+                getString(R.string.yomitan_update_busy_message),
+            )
+            is YomitanUpdater.ManualApply.NoSpace -> showOutcomeAlert(
+                getString(R.string.yomitan_no_space_title),
+                getString(
+                    R.string.yomitan_no_space_message,
+                    humanSize(this, result.requiredBytes),
+                    humanSize(this, result.availableBytes),
+                ),
+            )
+            // Skipped means the download was FINE but the commit refused it
+            // (endpoint served a different dictionary, or the deck vanished
+            // mid-update) — telling the user to check their connection would
+            // be a lie, and hid the identity-guard bug on first field use.
+            is YomitanUpdater.ManualApply.Skipped -> showOutcomeAlert(
+                getString(R.string.yomitan_update_skipped_title),
+                getString(R.string.yomitan_update_skipped_message),
+            )
+            YomitanUpdater.ManualApply.Failed -> showOutcomeAlert(
+                getString(R.string.yomitan_download_error_title),
+                getString(R.string.yomitan_download_error_message),
+            )
+        }
+    }
+
+    /** Suspends on an [OverlayAlert] with one confirm button + Cancel; true
+     *  only on the confirm tap. Cancel tap, scrim tap, back-press, and host
+     *  pause all resume false (the alert's cancel handler covers every
+     *  non-confirm dismissal); the flag makes the resume exactly-once. */
+    private suspend fun promptConfirm(
+        title: String,
+        message: String,
+        confirmLabel: String,
+    ): Boolean = suspendCancellableCoroutine { cont ->
+        val resumed = AtomicBoolean(false)
+        fun finish(value: Boolean) {
+            if (resumed.compareAndSet(false, true) && cont.isActive) cont.resume(value)
+        }
+        val alert = OverlayAlert.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .addButton(
+                confirmLabel,
+                themeColor(R.attr.ptAccent),
+                themeColor(R.attr.ptAccentOn),
+            ) { finish(true) }
+            .addCancelButton(getString(R.string.btn_cancel)) { finish(false) }
+            .show()
+        cont.invokeOnCancellation { runOnUiThread { alert.dismiss() } }
+    }
+
+    private fun showOutcomeAlert(title: String, message: String) {
+        OverlayAlert.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .addButton(
+                getString(R.string.btn_ok),
+                themeColor(R.attr.ptAccent),
+                themeColor(R.attr.ptAccentOn),
+            ) { }
+            .show()
     }
 
     // ── Accent picker ───────────────────────────────────────────────────
