@@ -2,8 +2,11 @@ package com.playtranslate.ui
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.util.Log
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
@@ -27,7 +30,9 @@ import kotlin.math.roundToInt
  * else with an empty response, so no dictionary CSS `url()`, font, or
  * beacon can reach the network (the shell's CSP is the second fence;
  * OkHttp's HTTPS-only enforcement never sees a WebView, so the guarantee
- * has to live here). Navigations are swallowed wholesale.
+ * has to live here). The WebView itself never navigates: an external
+ * http(s) link tap hands off to the system browser instead
+ * ([shouldOverrideUrlLoading]), everything else is swallowed.
  *
  * Failure is always downgrade, never absence: construction failure (no
  * WebView provider), a dead render process ([onRenderProcessGone] — the
@@ -54,6 +59,21 @@ internal class YomitanDefinitionsView(
     /** The render process died — this instance is dead ([isUsable] false);
      *  the host should fall back to its flat renderer. */
     var onRendererGone: (() -> Unit)? = null
+
+    /** When true this view refuses the whole touch stream (intercepts it,
+     *  then declines it), so every tap falls through to the nearest
+     *  clickable ancestor — the sentence sheet's word rows, where a tap
+     *  anywhere on the row must toggle target state and the WebView would
+     *  otherwise silently eat it. Link taps inside such a row are
+     *  deliberately sacrificed to the row's click. */
+    var passThroughTouches = false
+
+    /** A tap landed on the page but NOT on a link (the page's own hit
+     *  testing — reported via its click listener). Hosts with a
+     *  tap-anywhere action over this view (the lens's open-detail tap)
+     *  listen here instead of running their own detector over the WebView,
+     *  which would race the link handoff. Main thread. */
+    var onBodyTap: (() -> Unit)? = null
 
     private var webView: WebView? = null
     private var pageReady = false
@@ -146,9 +166,30 @@ internal class YomitanDefinitionsView(
         webView = null
     }
 
+    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean =
+        passThroughTouches || super.onInterceptTouchEvent(ev)
+
+    override fun onTouchEvent(event: MotionEvent): Boolean =
+        if (passThroughTouches) false else super.onTouchEvent(event)
+
     private fun exec(js: String) {
         val wv = webView ?: return
         if (pageReady) wv.evaluateJavascript(js, null) else pendingJs += js
+    }
+
+    private fun openInBrowser(url: Uri) {
+        try {
+            // NEW_TASK: some hosts are overlay windows (the lens), whose
+            // context is no Activity; harmless from the Activity-hosted
+            // sheets.
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        } catch (e: Exception) {
+            // No browser installed / activity start denied: the tap just
+            // does nothing, same as before.
+            Log.w(TAG, "openInBrowser failed for $url", e)
+        }
     }
 
     /** JSON string literal, additionally escaping the two codepoints legal
@@ -169,6 +210,11 @@ internal class YomitanDefinitionsView(
                 onContentHeight?.invoke(px)
             }
         }
+
+        @JavascriptInterface
+        fun onBodyTap() {
+            post { this@YomitanDefinitionsView.onBodyTap?.invoke() }
+        }
     }
 
     private inner class Client : WebViewClient() {
@@ -179,8 +225,19 @@ internal class YomitanDefinitionsView(
             pendingJs.clear()
         }
 
-        override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean =
-            true // no navigation, ever
+        override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+            // The WebView itself never navigates. The only navigation
+            // source in the closed content model is a tap on one of
+            // [YomitanContentHtml]'s external anchors — hand those to the
+            // system browser; anything else just dies here.
+            val url = request?.url
+            if (url != null && (url.scheme == "http" || url.scheme == "https") &&
+                "${url.scheme}://${url.host}" != YomitanContentHtml.MEDIA_ORIGIN
+            ) {
+                openInBrowser(url)
+            }
+            return true
+        }
 
         override fun shouldInterceptRequest(
             view: WebView?,

@@ -291,6 +291,18 @@ ruby > rt { font-size: .5em; }
     }
   }
 
+  // Semantic tap routing for hosts that overlay their own tap-anywhere
+  // action on this view (the lens's open-detail tap): the page is the one
+  // authority on what a tap actually hit. A click on an external anchor
+  // navigates (the Kotlin client hands it to the browser); any other click
+  // reports up as a plain body tap and the host acts on that instead of
+  // second-guessing the WebView from outside.
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (a) return;
+    if (window.PTBridge && window.PTBridge.onBodyTap) window.PTBridge.onBodyTap();
+  });
+
   window.ptSwap = function (html, g) {
     gen = g || 0;
     document.getElementById('root').innerHTML = html;

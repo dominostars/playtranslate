@@ -20,10 +20,12 @@ import com.google.gson.JsonParser
  * its declaration and inject properties outside the whitelist (the CSSOM
  * would reject such values too — Yomitan assigns per-property).
  *
- * Deliberate v1 degradations, all graceful: links render as styled inert
- * text (no browser to navigate in an overlay; `?`-internal cross-references
- * unwrap to their text), and an image's collapse/appearance dance is
- * reduced to the image itself with declared sizing.
+ * Deliberate degradations, all graceful: `?`-internal cross-references
+ * unwrap to their text (no in-app search surface to navigate), and an
+ * image's collapse/appearance dance is reduced to the image itself with
+ * declared sizing. External http(s) links are real anchors — in-app the
+ * WebView's client routes the tap to the system browser instead of
+ * navigating.
  */
 internal object YomitanContentHtml {
 
@@ -120,10 +122,11 @@ internal object YomitanContentHtml {
                 val content = obj.get("content")?.let { nodeHtml(it, dictId, includeImages) }.orEmpty()
                 val href = str(obj, "href").orEmpty()
                 when {
-                    // External links: styled, inert (v1 — nowhere to
-                    // navigate from an overlay window).
+                    // External links: real anchors. In-app the WebView's
+                    // client hands the tap to the system browser; on Anki
+                    // cards the reviewer's own link handling applies.
                     href.startsWith("http:") || href.startsWith("https:") ->
-                        "<span class=\"gloss-link\">$content</span>"
+                        "<a class=\"gloss-link\" href=\"${esc(href)}\">$content</a>"
                     // Internal search links (Yomitan's ?query=…): the
                     // cross-reference text stands alone.
                     else -> content
