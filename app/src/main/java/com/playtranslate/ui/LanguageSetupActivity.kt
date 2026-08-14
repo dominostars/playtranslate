@@ -234,7 +234,7 @@ class LanguageSetupActivity : AppCompatActivity() {
 
     /** Pure pick-a-language page: same list/search/Suggested chrome as the
      *  source list, but selecting a row just returns its code via setResult —
-     *  no Prefs write, no pack download, no engine priming. A leading "None"
+     *  no Prefs write, no pack download, no engine priming. A leading "Any"
      *  row (returned as an empty [EXTRA_PICKED_CODE]) clears the selection.
      *  Rows are never disabled or deletable: the result is a filter tag, so it
      *  needs no OCR capability or installed pack. Launched with
@@ -260,8 +260,8 @@ class LanguageSetupActivity : AppCompatActivity() {
 
         // Deliberately kept out of allRows so a search never surfaces it —
         // it is a fixed leading affordance, not a language.
-        val noneRow = LangRow(
-            titleNorm = normalizeWithMap(getString(R.string.lang_pick_none)),
+        val anyRow = LangRow(
+            titleNorm = normalizeWithMap(getString(R.string.lang_pick_any)),
             endonymNorm = normalizeWithMap(""),
             isSelected = currentId == null,
             canDelete = false,
@@ -279,7 +279,7 @@ class LanguageSetupActivity : AppCompatActivity() {
                     ?: getString(R.string.lang_translate_from),
                 allRows = allIds.map(::toRow),
                 suggestedRows = suggested.map(::toRow),
-                leadingRows = listOf(noneRow),
+                leadingRows = listOf(anyRow),
             )
         )
     }
@@ -504,7 +504,7 @@ class LanguageSetupActivity : AppCompatActivity() {
         /** Subset shown under "Suggested" when the query is blank. */
         val suggestedRows: List<LangRow>,
         /** Rows pinned above everything in their own headerless card when the
-         *  query is blank (e.g. the pick mode's "None"); excluded from search. */
+         *  query is blank (e.g. the pick mode's "Any"); excluded from search. */
         val leadingRows: List<LangRow> = emptyList(),
     )
 
@@ -1083,7 +1083,7 @@ class LanguageSetupActivity : AppCompatActivity() {
         private const val EXTRA_PICK_TITLE = "pick_title"
 
         /** Result extra of [MODE_PICK_SOURCE]: the picked [SourceLangId.code],
-         *  or "" when the user chose None. Absent on cancel (back). */
+         *  or "" when the user chose Any. Absent on cancel (back). */
         const val EXTRA_PICKED_CODE = "picked_code"
 
         var selectionDelegate: Delegate? = null
@@ -1097,7 +1097,7 @@ class LanguageSetupActivity : AppCompatActivity() {
 
         /** Intent for [MODE_PICK_SOURCE]: a pure pick-a-source-language page
          *  that returns [EXTRA_PICKED_CODE] instead of committing anything
-         *  globally. [currentCode] draws the checkmark (null/blank = the None
+         *  globally. [currentCode] draws the checkmark (null/blank = the Any
          *  row); [title] is the toolbar title. */
         fun pickSourceIntent(context: Context, currentCode: String?, title: String): Intent =
             Intent(context, LanguageSetupActivity::class.java)

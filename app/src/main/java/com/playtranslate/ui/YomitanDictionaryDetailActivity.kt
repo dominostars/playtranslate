@@ -55,7 +55,7 @@ class YomitanDictionaryDetailActivity : SettingsSubPageActivity() {
     private var autoUpdateWriteJob: Job? = null
 
     /** Current source-language override ([SourceLangId.code]), or null for
-     *  "None" (the dictionary stays a match-everything wildcard). Drives the
+     *  "Any" (the dictionary stays a match-everything wildcard). Drives the
      *  Source Language row's value and the picker's checkmark. */
     private var sourceLangOverride: String? = null
 
@@ -71,7 +71,7 @@ class YomitanDictionaryDetailActivity : SettingsSubPageActivity() {
         ) {
             return@registerForActivityResult
         }
-        // "" = the None row; anything else is a SourceLangId.code.
+        // "" = the Any row; anything else is a SourceLangId.code.
         val picked = data.getStringExtra(LanguageSetupActivity.EXTRA_PICKED_CODE)
             ?.takeUnless { it.isEmpty() }
         if (picked == sourceLangOverride) return@registerForActivityResult
@@ -169,7 +169,7 @@ class YomitanDictionaryDetailActivity : SettingsSubPageActivity() {
 
     /** Wires the Source Language value row. Visible ONLY for a dictionary whose
      *  index.json declares no sourceLanguage — undeclared is a match-everything
-     *  wildcard, and this row narrows it to one source language ("None" keeps
+     *  wildcard, and this row narrows it to one source language ("Any" keeps
      *  the wildcard). A dictionary with a declared language needs no row: the
      *  declaration already scopes it (and always wins over the override). Taps
      *  open [LanguageSetupActivity]'s standalone pick mode; the result persists
@@ -196,17 +196,17 @@ class YomitanDictionaryDetailActivity : SettingsSubPageActivity() {
         }
     }
 
-    /** Renders [sourceLangOverride] into the row value: muted "None" for the
+    /** Renders [sourceLangOverride] into the row value: muted "Any" for the
      *  wildcard, accent-colored language name otherwise (the Anki deck-row
      *  idiom). A stored code the enum no longer knows renders raw rather than
-     *  masquerading as None — the filter would still apply it. */
+     *  masquerading as Any — the filter would still apply it. */
     private fun applySourceLangValue() {
         val value = findViewById<View>(R.id.rowYomitanSourceLang)
             .findViewById<TextView>(R.id.tvRowValue)
         val display = SourceLangId.fromCode(sourceLangOverride)?.displayName()
             ?: sourceLangOverride
         if (display == null) {
-            value.setText(R.string.lang_pick_none)
+            value.setText(R.string.lang_pick_any)
             value.setTextColor(themeColor(R.attr.ptTextMuted))
         } else {
             value.text = display

@@ -54,26 +54,27 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
-                    <!-- Per-dictionary auto-update toggle; shown by the activity
-                         only for dictionaries that declare update capability. -->
-                    <include
-                        android:id="@+id/rowYomitanAutoUpdate"
-                        layout="@layout/settings_row_switch" />
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="@dimen/pt_row_v_padding">
 
-                    <include
-                        android:id="@+id/autoUpdateDivider"
-                        layout="@layout/settings_row_divider" />
+                        <TextView
+                            style="@style/Text.PT.RowTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/pt_accent_label" />
 
-                    <!-- Per-dictionary source-language tag; shown by the activity
-                         only when index.json declares no sourceLanguage (an
-                         undeclared language is a match-everything wildcard). -->
-                    <include
-                        android:id="@+id/rowYomitanSourceLang"
-                        layout="@layout/settings_row_value" />
+                        <com.playtranslate.ui.WrappingLinearLayout
+                            android:id="@+id/yomitanAccentPicker"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp" />
+                    </LinearLayout>
 
-                    <include
-                        android:id="@+id/sourceLangDivider"
-                        layout="@layout/settings_row_divider" />
+                    <include layout="@layout/settings_row_divider" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -105,27 +106,26 @@
                             android:textSize="15sp" />
                     </LinearLayout>
 
-                    <include layout="@layout/settings_row_divider" />
+                    <!-- The two rows below can each be hidden (language: only for
+                         dictionaries whose index.json declares no sourceLanguage;
+                         auto-update: only for dictionaries that declare update
+                         capability), so each owns the divider ABOVE it — the card
+                         never ends on a dangling divider. -->
+                    <include
+                        android:id="@+id/sourceLangDivider"
+                        layout="@layout/settings_row_divider" />
 
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:paddingHorizontal="@dimen/pt_row_h_padding"
-                        android:paddingVertical="@dimen/pt_row_v_padding">
+                    <include
+                        android:id="@+id/rowYomitanSourceLang"
+                        layout="@layout/settings_row_value" />
 
-                        <TextView
-                            style="@style/Text.PT.RowTitle"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/pt_accent_label" />
+                    <include
+                        android:id="@+id/autoUpdateDivider"
+                        layout="@layout/settings_row_divider" />
 
-                        <com.playtranslate.ui.WrappingLinearLayout
-                            android:id="@+id/yomitanAccentPicker"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp" />
-                    </LinearLayout>
+                    <include
+                        android:id="@+id/rowYomitanAutoUpdate"
+                        layout="@layout/settings_row_switch" />
 
                 </LinearLayout>
 
