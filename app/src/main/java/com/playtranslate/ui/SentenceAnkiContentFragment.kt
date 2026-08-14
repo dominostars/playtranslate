@@ -80,6 +80,52 @@ class SentenceAnkiContentFragment : Fragment() {
 
     private val words = mutableListOf<SentenceAnkiHtmlBuilder.WordEntry>()
     val selectedWords = mutableSetOf<String>()
+
+    /** Styled payload for the word rows (structured glossaries + dict
+     *  CSS), fetched once after the words list is built; null = every row
+     *  keeps its one-line flat meaning. */
+    private var sheetStyled: YomitanStyledData? = null
+
+    /** One styled renderer per structured word, cached across
+     *  [rebuildWordRows] passes (target toggles rebuild the whole list —
+     *  WebViews must not churn per tap). Destroyed on removal (✕) and in
+     *  [onDestroyView]. */
+    private val wordStyledViews = mutableMapOf<String, YomitanDefinitionsView>()
+
+    /** Render process died once — every row stays native for the sheet's
+     *  life. */
+    private var wordStyledBroken = false
+
+    /** Bumps on every styled-payload refresh so a slow fetch for a
+     *  superseded words list can't install a stale payload. */
+    private var styledFetchGen = 0
+
+    /**
+     * (Re)fetches the styled payload for the CURRENT words list. Called on
+     * first build and again from [applyWords], because the deferred flows
+     * replace the whole list after the sheet opens. Assigns
+     * unconditionally — a new word set with nothing structured must CLEAR
+     * the previous sentence's payload, not inherit it — and reaps cached
+     * renderers for words no longer present.
+     */
+    private fun refreshStyledPayload() {
+        if (!isAdded) return
+        val gen = ++styledFetchGen
+        val appCtx = requireContext().applicationContext
+        val styledLang = (SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG))
+            ?: SourceLangId.JA).yomitanConsumingLang()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val payload = fetchStyledForSenses(appCtx, styledLang, words.flatMap { it.senses })
+            if (!isAdded || gen != styledFetchGen) return@launch
+            val hadOrHas = sheetStyled != null || payload != null
+            sheetStyled = payload
+            val current = words.mapTo(mutableSetOf()) { it.word }
+            wordStyledViews.keys.filter { it !in current }.toList().forEach { w ->
+                wordStyledViews.remove(w)?.destroy()
+            }
+            if (hadOrHas) rebuildWordRows()
+        }
+    }
     var includePhoto = true
         private set
 
@@ -547,6 +593,9 @@ class SentenceAnkiContentFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        // Native WebView teardown for every styled word row.
+        wordStyledViews.values.forEach { it.destroy() }
+        wordStyledViews.clear()
         stopInlinePlayback()
         gameAudioFlashAnimator?.cancel()
         gameAudioFlashAnimator = null
@@ -633,6 +682,12 @@ class SentenceAnkiContentFragment : Fragment() {
         val translation = args.getString(ARG_TRANSLATION) ?: ""
         val screenshotPath = args.getString(ARG_SCREENSHOT_PATH)
         buildContent(original, translation, screenshotPath)
+
+        // Styled word definitions for whatever words exist right now. The
+        // deferred-fill flows (ARG_WORDS_LOADING open, sentence re-commit)
+        // re-run this from applyWords — a one-shot here would race the
+        // empty list and stay flat for the dialog's life (Codex catch).
+        refreshStyledPayload()
 
         // Freeze the rolling game-audio buffer for THIS card the moment the
         // flow opens ("snapshot at card-open"). One-shot: never on restore,
@@ -1408,6 +1463,74 @@ class SentenceAnkiContentFragment : Fragment() {
         }
     }
 
+    /**
+     * The full styled definitions for one word row (the word creation
+     * page's treatment), replacing the one-line flat meaning when the word
+     * has retained structured senses. One cached WebView per structured
+     * word, reparented across rebuilds; null = keep the flat line.
+     */
+    private fun wordStyledBlock(entry: SentenceAnkiHtmlBuilder.WordEntry): View? {
+        val st = sheetStyled ?: return null
+        if (wordStyledBroken) return null
+        val imported = entry.senses.filter { it.imported }
+        if (imported.none { it.scRowid != null && st.structured.containsKey(it.scRowid) }) return null
+        val ctx = requireContext()
+        val density = resources.displayMetrics.density
+        val v = wordStyledViews[entry.word] ?: run {
+            val created = YomitanDefinitionsView(
+                ctx,
+                DefinitionsDocument.Tokens(
+                    text = ctx.themeColor(R.attr.ptText),
+                    textMuted = ctx.themeColor(R.attr.ptTextMuted),
+                    textHint = ctx.themeColor(R.attr.ptTextHint),
+                    accent = ctx.themeColor(R.attr.ptAccent),
+                    panel = ctx.themeColor(R.attr.ptCard),
+                    baseFontSizePx = 13f,
+                ),
+            )
+            if (!created.isUsable()) {
+                wordStyledBroken = true
+                return null
+            }
+            created.onContentHeight = { h ->
+                created.layoutParams?.let { lp ->
+                    lp.height = h
+                    created.layoutParams = lp
+                }
+            }
+            created.onRendererGone = {
+                // That instance destroyed itself; drop the rest and stay
+                // native for the sheet's life.
+                wordStyledViews.remove(entry.word)
+                wordStyledViews.values.forEach { it.destroy() }
+                wordStyledViews.clear()
+                wordStyledBroken = true
+                rebuildWordRows()
+            }
+            wordStyledViews[entry.word] = created
+            created
+        }
+        (v.parent as? android.view.ViewGroup)?.removeView(v)
+        v.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            (v.layoutParams?.height ?: 1).coerceAtLeast(1),
+        ).also { it.topMargin = (3 * density).toInt() }
+        v.setContent(
+            DefinitionsDocument.contentHtml(
+                WordDefinitionData(
+                    word = entry.word, reading = null, senses = emptyList(),
+                    freqScore = 0, isCommon = false,
+                    importedGroups = importedGroupsFromSenses(imported),
+                ),
+                st.structured,
+                localizePos = { it.joinToString(" · ") },
+            ),
+            st.dictStyles,
+            st.sourceLanguage,
+        )
+        return v
+    }
+
     private fun buildWordRow(entry: SentenceAnkiHtmlBuilder.WordEntry): View {
         val ctx = requireContext()
         val density = resources.displayMetrics.density
@@ -1493,7 +1616,10 @@ class SentenceAnkiContentFragment : Fragment() {
         }
         col.addView(topLine)
 
-        if (entry.meaning.isNotBlank()) {
+        val styledBlock = wordStyledBlock(entry)
+        if (styledBlock != null) {
+            col.addView(styledBlock)
+        } else if (entry.meaning.isNotBlank()) {
             col.addView(TextView(ctx).apply {
                 text = entry.meaning.lines().firstOrNull { it.isNotBlank() } ?: entry.meaning
                 textSize = 13f
@@ -1519,6 +1645,8 @@ class SentenceAnkiContentFragment : Fragment() {
             setOnClickListener {
                 words.removeAll { it.word == entry.word }
                 selectedWords.remove(entry.word)
+                // The removed word's styled renderer dies with it.
+                wordStyledViews.remove(entry.word)?.destroy()
                 // Drop per-word audio state so the maps don't grow
                 // across remove/re-add cycles. rebuildWordRows would
                 // release the handle anyway, but the state slots need
@@ -1670,6 +1798,9 @@ class SentenceAnkiContentFragment : Fragment() {
             args.putIntArray(ARG_FREQ_SCORES, words.map { it.freqScore }.toIntArray())
         }
         rebuildWordRows()
+        // The list just changed wholesale — the styled payload must follow
+        // it (and the previous sentence's payload must not linger).
+        refreshStyledPayload()
     }
 
     companion object {

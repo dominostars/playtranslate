@@ -36,7 +36,9 @@ object PtModels {
     )
 
     val WORD = Spec(
-        name = "PlayTranslate Word v004",
+        // v005: structured Yomitan glossaries in the Definition field
+        // (GLOSSARY_CSS). The version-bump contract lives in the class doc.
+        name = "PlayTranslate Word v005",
         fields = listOf(
             "Expression", "Reading", "PitchPosition", "PartOfSpeech",
             "Definition", "Examples", "Frequency", "Picture",
@@ -48,7 +50,9 @@ object PtModels {
     )
 
     val SENTENCE = Spec(
-        name = "PlayTranslate Sentence v004",
+        // v005 in lockstep with WORD (shared CSS chain carries the
+        // glossary styles into both).
+        name = "PlayTranslate Sentence v005",
         fields = listOf(
             "Sentence", "SentenceFurigana", "Translation", "TargetWord",
             "WordsTable", "Picture", "SentenceAudio", "AudioCredit",

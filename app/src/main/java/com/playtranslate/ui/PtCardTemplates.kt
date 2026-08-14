@@ -144,6 +144,37 @@ internal object PtCardTemplates {
      * add the `.gl-pill` Common pill — so these can't live in the
      * sentence-only cell CSS.
      */
+    /**
+     * Structured Yomitan glossaries on cards (the v005 addition): the
+     * Definition field can carry [YomitanContentHtml] output inside a
+     * `.gl-sc` wrapper — real lists, tables, ruby, details, plus the one
+     * near-universal dictionary convention styled generically, the
+     * `data-sc-class="tag"` chip (Jitendex/JMdict and most converters).
+     * Format-generic by design: this styles the FORMAT's vocabulary, not
+     * any dictionary's styles.css. Engine-floor-safe (no nesting, no
+     * color-mix — AnkiDroid runs the system WebView, which can be an
+     * ancient AOSP build; hard-learned on the styled lens).
+     */
+    private const val GLOSSARY_CSS =
+        ".gl-sc{text-align:left;}" +
+        ".gl-sc .gloss-item+.gloss-item{margin-top:6px;}" +
+        ".gl-sc ul,.gl-sc ol{margin:4px 0;padding-left:1.4em;text-align:left;}" +
+        ".gl-sc li{margin:2px 0;}" +
+        ".gl-sc .gloss-sc-table-container{overflow-x:auto;max-width:100%;}" +
+        ".gl-sc table{border-collapse:collapse;margin:6px 0;}" +
+        ".gl-sc th,.gl-sc td{border:1px solid var(--pt-hairline);padding:2px 8px;" +
+            "vertical-align:top;font-size:0.85em;}" +
+        ".gl-sc th{font-weight:normal;color:var(--pt-secondary);}" +
+        ".gl-sc [data-sc-class~=\"tag\"]{display:inline-block;font-size:0.7em;" +
+            "font-weight:bold;padding:1px 6px;border-radius:4px;" +
+            "background:var(--pt-chip);color:var(--pt-secondary);" +
+            "margin-right:4px;vertical-align:middle;}" +
+        ".gl-sc .gloss-link{color:var(--pt-hl);text-decoration:underline;}" +
+        ".gl-sc details{margin:4px 0;}" +
+        ".gl-sc summary{color:var(--pt-secondary);cursor:pointer;}" +
+        ".gl-sc ruby rt{font-size:0.5em;}" +
+        ".gl-sc .gloss-image{max-width:100%;height:auto;}"
+
     private const val META_CSS =
         ".gl-pill{font-size:0.6em;font-weight:500;border:1px solid var(--pt-hairline);" +
             "border-radius:999px;padding:1px 9px;}" +
@@ -271,7 +302,7 @@ internal object PtCardTemplates {
      * sentence card's WordsTable field.
      */
     private val SHARED_CSS =
-        RESET_CSS + COLOR_CSS + DEFINITION_CSS + META_CSS + MEDIA_CSS + BRAND_CSS +
+        RESET_CSS + COLOR_CSS + DEFINITION_CSS + GLOSSARY_CSS + META_CSS + MEDIA_CSS + BRAND_CSS +
             PitchAccentHtml.PITCH_CSS
 
     /**

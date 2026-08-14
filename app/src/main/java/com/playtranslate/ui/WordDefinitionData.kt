@@ -63,6 +63,15 @@ data class SenseDisplay(
     /** Per-dictionary accent override (ARGB) for an imported row's title;
      *  null = the default muted header. */
     val accentColor: Int? = null,
+    /** `term_sc` rowid when this imported row's source entry retained a
+     *  structured glossary — rides the enrichment transport so the Anki
+     *  SENTENCE pipeline (which only ever sees flattened rows) can fetch
+     *  structured card HTML at send time. Null everywhere else; flat
+     *  renderers ignore it. */
+    val scRowid: Long? = null,
+    /** Owning dictionary id for [scRowid] rows (the card markup's
+     *  data-dictionary + media key). */
+    val dictId: String? = null,
     // Serializable so senses can ride [WordEnrichment] through the sentence
     // Anki review's intent/args snapshots (same transport as pitch/frequencies).
 ) : java.io.Serializable

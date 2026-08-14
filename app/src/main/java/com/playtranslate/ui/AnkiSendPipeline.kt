@@ -193,6 +193,18 @@ suspend fun Context.sendSentenceCard(
             ?: com.playtranslate.language.SourceLanguageEngines
                 .get(ctx.applicationContext, cardData.sourceLangId)
                 .annotate(cardData.source)
+        // Styled payload for the words table: fetched ONCE here so both
+        // the sheet path and one-tap (which funnel through this function)
+        // render imported senses as real structure on the card, with each
+        // dictionary's CSS scoped inline (Tier 2). Null (flat dicts,
+        // styling off) = today's flat rows.
+        val styledPayload = fetchStyledForSenses(
+            ctx.applicationContext,
+            cardData.sourceLangId.yomitanConsumingLang(),
+            cardData.words.flatMap { it.senses },
+        )
+        val structuredGlossaries = styledPayload?.structured.orEmpty()
+        val cardDictStyles = styledPayload?.dictStyles.orEmpty()
         ctx.dispatchSendToAnki(
             deckId = deckId,
             mode = CardMode.SENTENCE,
@@ -213,6 +225,8 @@ suspend fun Context.sendSentenceCard(
                     commonLabel = ctx.getString(R.string.word_detail_common),
                     localizePos = ctx::localizePos,
                     renderMisc = ctx::renderMiscText,
+                    structuredGlossaries = structuredGlossaries,
+                    dictStyles = cardDictStyles,
                 )
             },
             structured = { imageFilename, audioFilename, wordAudioFilenames ->
@@ -228,6 +242,8 @@ suspend fun Context.sendSentenceCard(
                     commonLabel = ctx.getString(R.string.word_detail_common),
                     localizePos = ctx::localizePos,
                     renderMisc = ctx::renderMiscText,
+                    structuredGlossaries = structuredGlossaries,
+                    dictStyles = cardDictStyles,
                 )
             },
         )
