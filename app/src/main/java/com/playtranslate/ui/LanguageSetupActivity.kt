@@ -73,7 +73,7 @@ import java.util.Locale
 
 class LanguageSetupActivity : AppCompatActivity() {
 
-    private enum class Page { SOURCE_LIST, TARGET_LIST }
+    private enum class Page { SOURCE_LIST, TARGET_LIST, SOURCE_PICK }
 
     private val pageStack = mutableListOf<Page>()
     private var selectedSource: SourceLangId? = null
@@ -123,6 +123,7 @@ class LanguageSetupActivity : AppCompatActivity() {
                 selectedSource = Prefs(this).sourceLangId
                 pushPage(Page.TARGET_LIST)
             }
+            MODE_PICK_SOURCE -> pushPage(Page.SOURCE_PICK)
             else -> pushPage(Page.SOURCE_LIST)
         }
     }
@@ -159,6 +160,7 @@ class LanguageSetupActivity : AppCompatActivity() {
         when (page) {
             Page.SOURCE_LIST -> showSourceList()
             Page.TARGET_LIST -> showTargetList()
+            Page.SOURCE_PICK -> showSourcePickList()
         }
     }
 
@@ -224,6 +226,60 @@ class LanguageSetupActivity : AppCompatActivity() {
                 toolbarTitle = getString(R.string.lang_translate_from),
                 allRows = allIds.map(::toRow),
                 suggestedRows = suggested.map(::toRow),
+            )
+        )
+    }
+
+    // ── Standalone source picker (MODE_PICK_SOURCE) ───────────────────────
+
+    /** Pure pick-a-language page: same list/search/Suggested chrome as the
+     *  source list, but selecting a row just returns its code via setResult —
+     *  no Prefs write, no pack download, no engine priming. A leading "None"
+     *  row (returned as an empty [EXTRA_PICKED_CODE]) clears the selection.
+     *  Rows are never disabled or deletable: the result is a filter tag, so it
+     *  needs no OCR capability or installed pack. Launched with
+     *  [pickSourceIntent]; backing out cancels (no result set). */
+    private fun showSourcePickList() {
+        val collator = Collator.getInstance(Locale.getDefault())
+        val allIds = SourceLangId.entries
+            .sortedWith(compareBy(collator) { it.displayName() })
+        val currentId = SourceLangId.fromCode(intent.getStringExtra(EXTRA_PICK_CURRENT))
+
+        fun finishWithPick(code: String?) {
+            setResult(RESULT_OK, Intent().putExtra(EXTRA_PICKED_CODE, code.orEmpty()))
+            finish()
+        }
+        fun toRow(id: SourceLangId) = LangRow(
+            titleNorm = normalizeWithMap(id.displayName()),
+            endonymNorm = normalizeWithMap(id.displayName(id.locale)),
+            isSelected = id == currentId,
+            canDelete = false,
+            onRowClick = { finishWithPick(id.code) },
+            onTrashClick = {},
+        )
+
+        // Deliberately kept out of allRows so a search never surfaces it —
+        // it is a fixed leading affordance, not a language.
+        val noneRow = LangRow(
+            titleNorm = normalizeWithMap(getString(R.string.lang_pick_none)),
+            endonymNorm = normalizeWithMap(""),
+            isSelected = currentId == null,
+            canDelete = false,
+            onRowClick = { finishWithPick(null) },
+            onTrashClick = {},
+        )
+
+        // Same "Suggested" notion as the source list: languages fully
+        // installed on this device, i.e. the ones the user actually plays in.
+        val suggested = allIds.filter { OcrModelManager.isFullyInstalled(this, it) }
+
+        bindLanguagePage(
+            LanguagePageData(
+                toolbarTitle = intent.getStringExtra(EXTRA_PICK_TITLE)
+                    ?: getString(R.string.lang_translate_from),
+                allRows = allIds.map(::toRow),
+                suggestedRows = suggested.map(::toRow),
+                leadingRows = listOf(noneRow),
             )
         )
     }
@@ -447,6 +503,9 @@ class LanguageSetupActivity : AppCompatActivity() {
         val allRows: List<LangRow>,
         /** Subset shown under "Suggested" when the query is blank. */
         val suggestedRows: List<LangRow>,
+        /** Rows pinned above everything in their own headerless card when the
+         *  query is blank (e.g. the pick mode's "None"); excluded from search. */
+        val leadingRows: List<LangRow> = emptyList(),
     )
 
     /** Inflates the picker page, wires the search field, and renders [data].
@@ -476,6 +535,9 @@ class LanguageSetupActivity : AppCompatActivity() {
             if (q.isEmpty()) {
                 tvNoResults.visibility = View.GONE
                 listRoot.visibility = View.VISIBLE
+                if (data.leadingRows.isNotEmpty()) {
+                    addLanguageSection(listRoot, null, data.leadingRows)
+                }
                 if (data.suggestedRows.isNotEmpty()) {
                     addLanguageSection(
                         listRoot,
@@ -1015,6 +1077,15 @@ class LanguageSetupActivity : AppCompatActivity() {
         const val MODE_SOURCE = "source"
         const val MODE_TARGET = "target"
 
+        /** Standalone result-returning picker (see [showSourcePickList]). */
+        const val MODE_PICK_SOURCE = "pick_source"
+        private const val EXTRA_PICK_CURRENT = "pick_current"
+        private const val EXTRA_PICK_TITLE = "pick_title"
+
+        /** Result extra of [MODE_PICK_SOURCE]: the picked [SourceLangId.code],
+         *  or "" when the user chose None. Absent on cancel (back). */
+        const val EXTRA_PICKED_CODE = "picked_code"
+
         var selectionDelegate: Delegate? = null
 
         fun launch(context: Context, mode: String) {
@@ -1023,6 +1094,16 @@ class LanguageSetupActivity : AppCompatActivity() {
                     .putExtra(EXTRA_MODE, mode)
             )
         }
+
+        /** Intent for [MODE_PICK_SOURCE]: a pure pick-a-source-language page
+         *  that returns [EXTRA_PICKED_CODE] instead of committing anything
+         *  globally. [currentCode] draws the checkmark (null/blank = the None
+         *  row); [title] is the toolbar title. */
+        fun pickSourceIntent(context: Context, currentCode: String?, title: String): Intent =
+            Intent(context, LanguageSetupActivity::class.java)
+                .putExtra(EXTRA_MODE, MODE_PICK_SOURCE)
+                .putExtra(EXTRA_PICK_CURRENT, currentCode)
+                .putExtra(EXTRA_PICK_TITLE, title)
     }
 }
 
