@@ -25,6 +25,48 @@ class YomitanStyledData(
     val sourceLanguage: String,
 )
 
+/**
+ * Reconstructs [ImportedSenseGroup]s from flattened [SenseDisplay] rows —
+ * the sentence sheet's shape, where only the flattened form survived the
+ * enrichment transport. Groups by consecutive dictId; the group label is
+ * the header's source prefix (the part before " · "), per-sense pos is the
+ * suffix. Non-imported rows are skipped.
+ */
+internal fun importedGroupsFromSenses(
+    senses: List<SenseDisplay>,
+): List<com.playtranslate.model.ImportedSenseGroup> {
+    val groups = mutableListOf<com.playtranslate.model.ImportedSenseGroup>()
+    var curDict: String? = null
+    var curSource = ""
+    var curAccent: Int? = null
+    var cur = mutableListOf<com.playtranslate.model.ImportedSense>()
+    fun flush() {
+        if (cur.isNotEmpty()) {
+            groups.add(
+                com.playtranslate.model.ImportedSenseGroup(
+                    curSource, cur.toList(), curAccent, dictId = curDict.orEmpty(),
+                ),
+            )
+        }
+        cur = mutableListOf()
+    }
+    for (s in senses) {
+        if (!s.imported) continue
+        val header = s.pos.firstOrNull().orEmpty()
+        val source = header.substringBefore(" · ")
+        val pos = header.substringAfter(" · ", "")
+        if (s.dictId != curDict) {
+            flush()
+            curDict = s.dictId
+            curSource = source
+            curAccent = s.accentColor
+        }
+        cur.add(com.playtranslate.model.ImportedSense(s.definition, pos, s.scRowid))
+    }
+    flush()
+    return groups
+}
+
 /** The styled document's meta row, mirroring [WordDefinitionsView]'s
  *  Common pill / ★ run / frequency chips / deck badge so switching a panel
  *  to the WebView renderer never costs the meta row. */
@@ -54,6 +96,31 @@ internal fun styledMetaChips(
     if (data.ankiDecks.isNotEmpty()) {
         add(DefinitionsDocument.MetaChip(AnkiDeckBadge.label(ctx, data.ankiDecks)))
     }
+}
+
+/**
+ * Styled payload for already-FLATTENED rows — the Anki sentence pipeline's
+ * and sentence sheet's shape, where only [SenseDisplay]s survive the
+ * enrichment transport. Same gates as [fetchYomitanStyledData]; null =
+ * flat rendering throughout.
+ */
+internal suspend fun fetchStyledForSenses(
+    ctx: Context,
+    sourceLanguage: String,
+    senses: Iterable<SenseDisplay>,
+): YomitanStyledData? {
+    val rowids = senses.mapNotNull { it.scRowid }
+    if (rowids.isEmpty()) return null
+    val caps = YomitanDataStore.stylingFor(ctx, sourceLanguage)
+    if (!caps.stylingActive) return null
+    val structured = YomitanDataStore.structuredGlossaries(ctx, sourceLanguage, rowids)
+    if (structured.isEmpty()) return null
+    val dictIds = senses.mapNotNullTo(mutableSetOf()) { it.dictId }
+    return YomitanStyledData(
+        structured = structured,
+        dictStyles = caps.stylesByDict.filterKeys { it in dictIds },
+        sourceLanguage = sourceLanguage,
+    )
 }
 
 /** Fetches the styled payload for [groups], or null when the styled path

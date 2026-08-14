@@ -33,28 +33,46 @@ internal object YomitanContentHtml {
 
     /** Converts one glossary array's JSON to HTML; null when [glossaryJson]
      *  doesn't parse (caller falls back to the flat text). */
-    fun glossaryHtml(glossaryJson: String, dictId: String): String? {
+    fun glossaryHtml(
+        glossaryJson: String,
+        dictId: String,
+        /** False for Anki cards (no media pipeline v1): img nodes emit
+         *  nothing; every other node renders as usual. */
+        includeImages: Boolean = true,
+    ): String? {
         val root = try {
             JsonParser.parseString(glossaryJson)
         } catch (_: RuntimeException) {
             return null
         }
         if (!root.isJsonArray) return null
-        val items = root.asJsonArray.mapNotNull { itemHtml(it, dictId).takeIf { h -> h.isNotBlank() } }
+        val items = root.asJsonArray
+            .mapNotNull { item ->
+                itemHtml(item, dictId, includeImages)
+                    .takeIf { h -> h.isNotBlank() }
+                    // Card mode: an image nested in a container survives
+                    // image-stripping as a TEXT-LESS wrapper — drop the
+                    // item like the top-level image case so a wrapper-only
+                    // glossary returns null and callers keep the flat
+                    // fallback (Codex P2). In-app (includeImages) an
+                    // image IS content, so no text gate there.
+                    ?.takeIf { h -> includeImages || hasTextContent(h) }
+            }
         if (items.isEmpty()) return null
         return items.joinToString("") { "<div class=\"gloss-item\">$it</div>" }
     }
 
     // ── Glossary items ──────────────────────────────────────────────────
 
-    private fun itemHtml(item: JsonElement, dictId: String): String = when {
+    private fun itemHtml(item: JsonElement, dictId: String, includeImages: Boolean): String = when {
         item.isJsonPrimitive && item.asJsonPrimitive.isString -> multiline(item.asString)
         item.isJsonObject -> {
             val obj = item.asJsonObject
             when (str(obj, "type")) {
                 "text" -> multiline(str(obj, "text").orEmpty())
-                "image" -> imageHtml(obj, dictId)
-                "structured-content" -> obj.get("content")?.let { nodeHtml(it, dictId) }.orEmpty()
+                "image" -> if (includeImages) imageHtml(obj, dictId) else ""
+                "structured-content" ->
+                    obj.get("content")?.let { nodeHtml(it, dictId, includeImages) }.orEmpty()
                 else -> ""
             }
         }
@@ -63,22 +81,22 @@ internal object YomitanContentHtml {
 
     // ── Structured-content nodes ────────────────────────────────────────
 
-    private fun nodeHtml(node: JsonElement, dictId: String): String = when {
+    private fun nodeHtml(node: JsonElement, dictId: String, includeImages: Boolean): String = when {
         node.isJsonPrimitive && node.asJsonPrimitive.isString -> multiline(node.asString)
-        node.isJsonArray -> node.asJsonArray.joinToString("") { nodeHtml(it, dictId) }
-        node.isJsonObject -> elementHtml(node.asJsonObject, dictId)
+        node.isJsonArray -> node.asJsonArray.joinToString("") { nodeHtml(it, dictId, includeImages) }
+        node.isJsonObject -> elementHtml(node.asJsonObject, dictId, includeImages)
         else -> ""
     }
 
     /** The closed tag switch. Unknown tags render NOTHING (their content
      *  included) — matching Yomitan, where an unrecognized tag returns null
      *  and the node is dropped. */
-    private fun elementHtml(obj: JsonObject, dictId: String): String {
+    private fun elementHtml(obj: JsonObject, dictId: String, includeImages: Boolean): String {
         return when (val tag = str(obj, "tag")) {
             "br" -> "<br>"
 
             "ruby", "rt", "rp", "table", "thead", "tbody", "tfoot", "tr" -> {
-                val html = container(tag, obj, dictId, attrs(obj, style = false, title = false))
+                val html = container(tag, obj, dictId, includeImages, attrs(obj, style = false, title = false))
                 if (tag == "table") "<div class=\"gloss-sc-table-container\">$html</div>" else html
             }
 
@@ -86,20 +104,20 @@ internal object YomitanContentHtml {
                 val extra = StringBuilder()
                 int(obj, "colSpan")?.takeIf { it > 1 }?.let { extra.append(" colspan=\"$it\"") }
                 int(obj, "rowSpan")?.takeIf { it > 1 }?.let { extra.append(" rowspan=\"$it\"") }
-                container(tag, obj, dictId, attrs(obj, style = true, title = false) + extra.toString())
+                container(tag, obj, dictId, includeImages, attrs(obj, style = true, title = false) + extra.toString())
             }
 
             "span", "div", "ol", "ul", "li", "details", "summary" -> {
                 val extra = if (tag == "details" && obj.get("open")?.takeIf { it.isJsonPrimitive }
                         ?.asJsonPrimitive?.let { it.isBoolean && it.asBoolean } == true
                 ) " open" else ""
-                container(tag, obj, dictId, attrs(obj, style = true, title = true) + extra)
+                container(tag, obj, dictId, includeImages, attrs(obj, style = true, title = true) + extra)
             }
 
-            "img" -> imageHtml(obj, dictId)
+            "img" -> if (includeImages) imageHtml(obj, dictId) else ""
 
             "a" -> {
-                val content = obj.get("content")?.let { nodeHtml(it, dictId) }.orEmpty()
+                val content = obj.get("content")?.let { nodeHtml(it, dictId, includeImages) }.orEmpty()
                 val href = str(obj, "href").orEmpty()
                 when {
                     // External links: styled, inert (v1 — nowhere to
@@ -116,8 +134,14 @@ internal object YomitanContentHtml {
         }
     }
 
-    private fun container(tag: String, obj: JsonObject, dictId: String, attributes: CharSequence): String {
-        val content = obj.get("content")?.let { nodeHtml(it, dictId) }.orEmpty()
+    private fun container(
+        tag: String,
+        obj: JsonObject,
+        dictId: String,
+        includeImages: Boolean,
+        attributes: CharSequence,
+    ): String {
+        val content = obj.get("content")?.let { nodeHtml(it, dictId, includeImages) }.orEmpty()
         return "<$tag class=\"gloss-sc-$tag\"$attributes>$content</$tag>"
     }
 
@@ -247,6 +271,12 @@ internal object YomitanContentHtml {
         v.none { it == ';' || it == '{' || it == '}' } && v.length <= 512
 
     // ── Small shared pieces ─────────────────────────────────────────────
+
+    private val TAG_PATTERN = Regex("<[^>]+>")
+
+    /** Whether [html] carries any text once tags are stripped. */
+    private fun hasTextContent(html: String): Boolean =
+        html.replace(TAG_PATTERN, "").isNotBlank()
 
     private val DATA_KEY = Regex("^[A-Za-z][A-Za-z0-9]*$")
     private val LANG = Regex("^[A-Za-z][A-Za-z0-9-]{0,15}$")

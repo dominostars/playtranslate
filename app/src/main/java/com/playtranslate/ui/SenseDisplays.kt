@@ -126,6 +126,8 @@ fun importedSenseDisplays(groups: List<ImportedSenseGroup>): List<SenseDisplay> 
                 misc = emptyList(),
                 imported = true,
                 accentColor = group.accentColor,
+                scRowid = sense.scRowid,
+                dictId = group.dictId.takeIf { it.isNotEmpty() },
             )
         }
     }

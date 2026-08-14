@@ -841,4 +841,94 @@ class SentenceAnkiHtmlBuilderTest {
         )
         assertEquals("小[xiǎo]<wbr>心[xīn]<wbr>地[de]", result)
     }
+
+    // ── Structured glossaries in the words table (v005) ─────────────────
+
+    @Test
+    fun `structured senses render as gl-sc blocks, others stay flat`() {
+        val words = listOf(
+            SentenceAnkiHtmlBuilder.WordEntry(
+                word = "猫", reading = "ねこ", meaning = "cat",
+                senses = listOf(
+                    SenseDisplay(
+                        pos = listOf("Gauntlet"), definition = "flat mash; text",
+                        misc = emptyList(), imported = true,
+                        scRowid = 7L, dictId = "d1",
+                    ),
+                    SenseDisplay(
+                        pos = listOf("Other"), definition = "plain def",
+                        misc = emptyList(), imported = true,
+                    ),
+                ),
+            ),
+        )
+        val html = SentenceAnkiHtmlBuilder.buildWordsHtmlWith(
+            words, highlightedWords = setOf("猫"),
+            styler = { cls, extra -> "class=\"$cls\" style=\"$extra\"" },
+            structuredGlossaries = mapOf(
+                7L to """[{"type":"structured-content","content":
+                    {"tag":"ul","content":[{"tag":"li","content":"cat"}]}}]""",
+            ),
+        )
+        // Sense with a retained glossary: structured block, scoped.
+        assertTrue(html.contains("data-dictionary=\"d1\""))
+        assertTrue(html.contains("<li class=\"gloss-sc-li\">cat</li>"))
+        // No dictStyles passed: no style blocks.
+        assertTrue(!html.contains("<style>"))
+        // Sense without: today's flat row.
+        assertTrue(html.contains("plain def"))
+        // The structured sense's flat text must NOT also render (no double).
+        assertTrue(!html.contains("flat mash"))
+    }
+
+    @Test
+    fun `tier 2 - rendering dictionaries ship their scoped css inline`() {
+        val words = listOf(
+            SentenceAnkiHtmlBuilder.WordEntry(
+                word = "猫", reading = "ねこ", meaning = "cat",
+                senses = listOf(
+                    SenseDisplay(
+                        pos = listOf("Gauntlet"), definition = "cat",
+                        misc = emptyList(), imported = true, scRowid = 7L, dictId = "d1",
+                    ),
+                ),
+            ),
+        )
+        val html = SentenceAnkiHtmlBuilder.buildWordsHtmlWith(
+            words, highlightedWords = emptySet(),
+            styler = { cls, _ -> "class=\"$cls\"" },
+            structuredGlossaries = mapOf(
+                7L to """[{"type":"structured-content","content":{"tag":"span","content":"cat"}}]""",
+            ),
+            dictStyles = mapOf(
+                "d1" to "span[data-sc-class=\"tag\"] { color: red }",
+                "unused" to "div { color: blue }",
+            ),
+        )
+        // The rendering dictionary's CSS, scoped, ahead of the table…
+        assertTrue(html.contains("<style>.gl-sc[data-dictionary=\"d1\"] span[data-sc-class=\"tag\"]"))
+        // …and only for dictionaries that actually rendered.
+        assertTrue(!html.contains("color: blue"))
+    }
+
+    @Test
+    fun `empty structured map keeps the flat rendering byte-for-byte`() {
+        val words = listOf(
+            SentenceAnkiHtmlBuilder.WordEntry(
+                word = "猫", reading = "ねこ", meaning = "cat",
+                senses = listOf(
+                    SenseDisplay(
+                        pos = listOf("Gauntlet"), definition = "line1\nline2",
+                        misc = emptyList(), imported = true, scRowid = 7L, dictId = "d1",
+                    ),
+                ),
+            ),
+        )
+        val html = SentenceAnkiHtmlBuilder.buildWordsHtmlWith(
+            words, highlightedWords = emptySet(),
+            styler = { cls, _ -> "class=\"$cls\"" },
+        )
+        assertTrue(html.contains("line1<br>line2"))
+        assertTrue(!html.contains("gl-sc"))
+    }
 }

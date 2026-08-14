@@ -215,6 +215,62 @@ class YomitanContentHtmlTest {
         assertNull(render("""[{"type":"image"}]"""))
     }
 
+    @Test
+    fun `includeImages=false drops img nodes and keeps everything else`() {
+        // The Anki-card mode: no media pipeline for dictionary graphics
+        // yet, so images vanish while structure survives.
+        val html = YomitanContentHtml.glossaryHtml(
+            """[{"type":"structured-content","content":[
+                {"tag":"ul","content":[{"tag":"li","content":"cat"}]},
+                {"tag":"img","path":"img/x.png","width":16,"height":16}]}]""",
+            "d1",
+            includeImages = false,
+        )!!
+        assertTrue(html.contains("<li class=\"gloss-sc-li\">cat</li>"))
+        assertFalse(html.contains("<img"))
+        assertFalse(html.contains("pt-media.internal"))
+    }
+
+    @Test
+    fun `includeImages=false with image-only glossary renders nothing`() {
+        assertNull(
+            YomitanContentHtml.glossaryHtml(
+                """[{"type":"image","path":"img/x.png"}]""", "d1", includeImages = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `card mode - image nested in a container leaves no empty wrapper`() {
+        // Codex P2: the stripped image's wrapper is text-less; the item
+        // must drop so a wrapper-only glossary falls back to flat text.
+        assertNull(
+            YomitanContentHtml.glossaryHtml(
+                """[{"type":"structured-content","content":
+                   {"tag":"div","content":{"tag":"img","path":"img/x.png","width":8,"height":8}}}]""",
+                "d1", includeImages = false,
+            ),
+        )
+        // Mixed glossary: the text item survives, the wrapper-only one drops.
+        val html = YomitanContentHtml.glossaryHtml(
+            """["a gloss",{"type":"structured-content","content":
+               {"tag":"div","content":{"tag":"img","path":"img/x.png"}}}]""",
+            "d1", includeImages = false,
+        )!!
+        assertEquals(1, Regex("class=\"gloss-item\"").findAll(html).count())
+        assertTrue(html.contains("a gloss"))
+    }
+
+    @Test
+    fun `app mode - image-only containers still render`() {
+        val html = YomitanContentHtml.glossaryHtml(
+            """[{"type":"structured-content","content":
+               {"tag":"div","content":{"tag":"img","path":"img/x.png","width":8,"height":8}}}]""",
+            "d1", includeImages = true,
+        )!!
+        assertTrue(html.contains("<img"))
+    }
+
     // ── The real thing ──────────────────────────────────────────────────
 
     @Test

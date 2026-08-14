@@ -488,9 +488,20 @@ object SentenceAnkiHtmlBuilder {
          *  passes Context::renderMiscText (the render-side authority) —
          *  the default drops misc, acceptable only in tests. */
         renderMisc: (List<String>) -> String? = { null },
+        /** [SenseDisplay.scRowid] → structured glossary JSON, prefetched by
+         *  the send pipeline. Senses with an entry render as real structure
+         *  (`.gl-sc`, GLOSSARY_CSS on the v005 model); everything else
+         *  keeps the flat row. Empty = today's rendering throughout. */
+        structuredGlossaries: Map<Long, String> = emptyMap(),
+        /** dictId -> raw styles.css. Dictionaries whose structured senses
+         *  actually render get their CSS scoped
+         *  ([AnkiCardCss.scopeFor]) and inlined as a <style> block ahead
+         *  of the table — the Yomitan-standard card shape. */
+        dictStyles: Map<String, String> = emptyMap(),
     ): String {
         if (words.isEmpty()) return ""
         val sb = StringBuilder()
+        val usedDictIds = mutableSetOf<String>()
         var prevWasTarget = false
         words.forEach { entry ->
             val isTarget = entry.word in highlightedWords
@@ -581,12 +592,36 @@ object SentenceAnkiHtmlBuilder {
                             .append(htmlEscape(label)).append("</div>")
                         previousPos = sense.pos
                     }
+                    val structuredHtml = sense.scRowid
+                        ?.let { structuredGlossaries[it] }
+                        ?.let {
+                            YomitanContentHtml.glossaryHtml(
+                                it, sense.dictId.orEmpty(), includeImages = false,
+                            )
+                        }
                     sb.append("<div ${styler("gl-def", "")}>")
                         .append("<span ${styler("gl-num gl-hint", defSize)}>")
                         .append(i + 1).append(".</span>")
-                        .append("<span ${styler("gl-dtext", defSize)}>")
-                        .append(htmlEscape(sense.definition)).append("</span>")
-                        .append("</div>")
+                    if (structuredHtml != null) {
+                        // Structured glossary (the word card's shape) in the
+                        // sense body slot; block-level, so it sits beside
+                        // the number like the flat span does.
+                        sense.dictId?.let { usedDictIds.add(it) }
+                        sb.append("<div ${styler("gl-sc", "display:inline-block;vertical-align:top;")} data-dictionary=\"")
+                            .append(htmlEscape(sense.dictId.orEmpty()))
+                            .append("\">")
+                            .append(structuredHtml)
+                            .append("</div>")
+                    } else {
+                        sb.append("<span ${styler("gl-dtext", defSize)}>")
+                            // Imported flattened text carries real newlines
+                            // (sense groups, note lines); without <br> they
+                            // collapse to spaces in HTML and the definition
+                            // reads as one mashed run-on.
+                            .append(htmlEscape(sense.definition).replace("\n", "<br>"))
+                            .append("</span>")
+                    }
+                    sb.append("</div>")
                     renderMisc(sense.misc)?.let { misc ->
                         sb.append("<div ${styler("gl-misc gl-hint", "margin-left:25px;")}>")
                             .append(htmlEscape(misc)).append("</div>")
@@ -602,6 +637,9 @@ object SentenceAnkiHtmlBuilder {
             }
             sb.append("</div>")
         }
-        return sb.toString()
+        // Tier 2: dictionaries whose structured senses actually rendered
+        // carry their own styles.css, scoped per dictionary and inlined
+        // ahead of the table — the Yomitan-standard card shape.
+        return AnkiCardCss.styleBlocks(usedDictIds, dictStyles) + sb.toString()
     }
 }

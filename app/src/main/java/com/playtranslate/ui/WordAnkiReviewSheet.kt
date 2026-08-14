@@ -184,6 +184,89 @@ class WordAnkiReviewSheet : DialogFragment() {
     private var resolvedFlatSenses: List<com.playtranslate.model.Sense> = emptyList()
     private var resolvedDefResult: DefinitionResult? = null
 
+    /** Structured glossaries + dict ids for the card's Definition field —
+     *  see the fetch beside [resolvedEntry]. */
+    private var resolvedStyled: YomitanStyledData? = null
+
+    /** The on-screen Definitions panel's styled renderer — ONE instance
+     *  reused across [rebuildDefinitions] passes (a × tap must not churn
+     *  WebViews), destroyed in [onDestroyView]. */
+    private var ankiStyledView: YomitanDefinitionsView? = null
+
+    /** Render process died once — stay native for the sheet's life. */
+    private var ankiStyledBroken = false
+
+    /**
+     * Styled imported block for the ON-SCREEN Definitions panel (same
+     * component as the lens/detail sheet). Returns false when the styled
+     * path shouldn't/can't run — the caller renders the native rows.
+     */
+    private fun addStyledImportedPanel(card: android.widget.LinearLayout): Boolean {
+        val styledData = resolvedStyled ?: return false
+        if (styledData.structured.isEmpty() || ankiStyledBroken) return false
+        val groups = resolvedEntry?.importedSenses.orEmpty()
+        if (groups.isEmpty()) return false
+        val ctx = requireContext()
+        val v = ankiStyledView ?: YomitanDefinitionsView(
+            ctx,
+            DefinitionsDocument.Tokens(
+                text = ctx.themeColor(R.attr.ptText),
+                textMuted = ctx.themeColor(R.attr.ptTextMuted),
+                textHint = ctx.themeColor(R.attr.ptTextHint),
+                accent = ctx.themeColor(R.attr.ptAccent),
+                panel = ctx.themeColor(R.attr.ptCard),
+                baseFontSizePx = 15f,
+            ),
+        ).also { created ->
+            if (!created.isUsable()) {
+                ankiStyledBroken = true
+                return false
+            }
+            val hPad = resources.getDimensionPixelSize(R.dimen.pt_row_h_padding)
+            created.setPadding(hPad, dpi(8), hPad, dpi(8))
+            created.onContentHeight = { h ->
+                val lp = created.layoutParams
+                    ?: android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1,
+                    )
+                lp.height = h + created.paddingTop + created.paddingBottom
+                created.layoutParams = lp
+            }
+            created.onRendererGone = {
+                ankiStyledView = null
+                ankiStyledBroken = true
+                rebuildDefinitions() // native rows take the block's place
+            }
+            ankiStyledView = created
+        }
+        // Re-parent for this rebuild pass (removeAllViews orphaned it).
+        (v.parent as? android.view.ViewGroup)?.removeView(v)
+        card.addView(
+            v,
+            android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                (v.layoutParams?.height ?: 1).coerceAtLeast(1),
+            ),
+        )
+        v.setContent(
+            DefinitionsDocument.contentHtml(
+                WordDefinitionData(
+                    word = "", reading = null, senses = emptyList(),
+                    freqScore = 0, isCommon = false,
+                    importedGroups = groups,
+                ),
+                styledData.structured,
+                localizePos = { it.joinToString(" · ") },
+            ),
+            styledData.dictStyles,
+            styledData.sourceLanguage,
+        )
+        return true
+    }
+
+    private fun dpi(v: Int): Int =
+        (v * resources.displayMetrics.density).toInt()
+
     /** Sense ords the user has removed via the row × — they're skipped
      *  in both the rendered Definitions card and the Anki HTML payload. */
     private val removedSenses = mutableSetOf<Int>()
@@ -244,6 +327,10 @@ class WordAnkiReviewSheet : DialogFragment() {
     }
 
     override fun onDestroyView() {
+        // Native WebView teardown for the styled Definitions panel — a
+        // dropped-but-undestroyed WebView holds renderer resources until GC.
+        ankiStyledView?.destroy()
+        ankiStyledView = null
         definitionsCard = null
         moreExamplesGroup = null
         moreExamplesBody = null
@@ -795,6 +882,15 @@ class WordAnkiReviewSheet : DialogFragment() {
         resolvedEntries = entries
         resolvedFlatSenses = entries.flatMap { it.senses }
         resolvedDefResult = defResult
+        // Structured-glossary payload for the CARD html (v005): fetched in
+        // the same resolve, so the synchronous send-time builders can use
+        // it. Null (flat dicts, styling off) leaves the flat text path.
+        resolvedStyled = fetchYomitanStyledData(
+            requireContext().applicationContext,
+            (SourceLangId.fromCode(arguments?.getString(ARG_SOURCE_LANG)) ?: SourceLangId.JA)
+                .yomitanConsumingLang(),
+            entry.importedSenses,
+        )
         // Now that the headword resolved, light up the reading's pitch contour.
         applyWordReadingPitch(word, readingHint.orEmpty())
 
@@ -900,25 +996,32 @@ class WordAnkiReviewSheet : DialogFragment() {
         // Imported term-dictionary definitions lead, mirroring the detail
         // sheet and what buildWordDefinitionHtml puts on the card. Not
         // curatable in v1 (visibleSiblingCount = 1 suppresses the ×).
+        // Styled path first (the same structured rendering the CARD gets,
+        // so the creation page previews what will actually be sent);
+        // native rows are the fallback.
         var importedRowCount = 0
-        entry.importedSenses.forEach { group ->
-            group.senses.forEachIndexed { defIdx, sense ->
-                if (importedRowCount > 0) ankiInsetDivider(card, indentDp = 16)
-                addAnkiSenseRow(
-                    parent = card,
-                    posLabels = buildList {
-                        if (defIdx == 0) add(group.source)
-                        if (sense.pos.isNotBlank()) add(sense.pos)
-                    },
-                    imported = true,
-                    glossList = listOf(sense.definition),
-                    senseNumber = null,
-                    miscText = null,
-                    examples = emptyList(),
-                    senseIndex = -1,
-                    visibleSiblingCount = 1,
-                )
-                importedRowCount++
+        if (addStyledImportedPanel(card)) {
+            importedRowCount = entry.importedSenses.sumOf { it.senses.size }
+        } else {
+            entry.importedSenses.forEach { group ->
+                group.senses.forEachIndexed { defIdx, sense ->
+                    if (importedRowCount > 0) ankiInsetDivider(card, indentDp = 16)
+                    addAnkiSenseRow(
+                        parent = card,
+                        posLabels = buildList {
+                            if (defIdx == 0) add(group.source)
+                            if (sense.pos.isNotBlank()) add(sense.pos)
+                        },
+                        imported = true,
+                        glossList = listOf(sense.definition),
+                        senseNumber = null,
+                        miscText = null,
+                        examples = emptyList(),
+                        senseIndex = -1,
+                        visibleSiblingCount = 1,
+                    )
+                    importedRowCount++
+                }
             }
         }
         val hasImportedRows = importedRowCount > 0
@@ -1639,7 +1742,16 @@ class WordAnkiReviewSheet : DialogFragment() {
                 fallback, styler, getString(R.string.anki_group_definitions))
         val body = buildString { appendSensesHtml(entry, fallback, styler) }
         if (body.isEmpty()) return ""
-        return "<div ${styler("gl-section", "")}>" +
+        // Tier 2: dictionaries whose structured senses render in this card
+        // ship their styles.css, scoped, inline in the field (identity by
+        // the data-dictionary the gl-sc blocks carry).
+        val styles = resolvedStyled?.let { st ->
+            val used = entry.importedSenses
+                .filter { g -> g.senses.any { it.scRowid != null && st.structured.containsKey(it.scRowid) } }
+                .map { it.dictId }
+            AnkiCardCss.styleBlocks(used, st.dictStyles)
+        }.orEmpty()
+        return styles + "<div ${styler("gl-section", "")}>" +
             htmlEscape(getString(R.string.anki_group_definitions)) +
             "</div><div ${styler("gl-panel", "")}>" + body + "</div>"
     }
@@ -1671,9 +1783,27 @@ class WordAnkiReviewSheet : DialogFragment() {
         entry.importedSenses.forEach { group ->
             group.senses.forEachIndexed { defIdx, sense ->
                 openSense()
-                append("<div ${styler("gl-gloss", "")}>")
-                append(htmlEscape(sense.definition).replace("\n", "<br>"))
-                append("</div>")
+                // Structured glossary when the sense retained one and the
+                // resolve-time fetch delivered it (the Yomitan-standard
+                // card shape: real lists/tables/chips, styled by the v005
+                // GLOSSARY_CSS on the default model; browser-default
+                // structure on user-picked note types). Images stay off
+                // until dictionary media ships to collection.media. Flat
+                // text remains the fallback for everything else.
+                val structuredHtml = sense.scRowid
+                    ?.let { resolvedStyled?.structured?.get(it) }
+                    ?.let { YomitanContentHtml.glossaryHtml(it, group.dictId, includeImages = false) }
+                if (structuredHtml != null) {
+                    append("<div ${styler("gl-sc", "")} data-dictionary=\"")
+                    append(htmlEscape(group.dictId))
+                    append("\">")
+                    append(structuredHtml)
+                    append("</div>")
+                } else {
+                    append("<div ${styler("gl-gloss", "")}>")
+                    append(htmlEscape(sense.definition).replace("\n", "<br>"))
+                    append("</div>")
+                }
                 val label = buildList {
                     if (defIdx == 0) add(group.source)
                     if (sense.pos.isNotBlank()) add(sense.pos)

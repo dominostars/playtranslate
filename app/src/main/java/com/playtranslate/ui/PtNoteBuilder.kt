@@ -87,6 +87,12 @@ internal object PtNoteBuilder {
         localizePos: (List<String>) -> String = { it.joinToString(" · ") },
         /** Misc register-tag renderer (Context::renderMiscText). */
         renderMisc: (List<String>) -> String? = { null },
+        /** scRowid -> glossary JSON for the words table's structured
+         *  senses; empty = flat rows. */
+        structuredGlossaries: Map<Long, String> = emptyMap(),
+        /** dictId -> raw styles.css; scoped and inlined as <style> when a
+         *  structured sense from that dictionary renders (Tier 2). */
+        dictStyles: Map<String, String> = emptyMap(),
     ): PtNote.Sentence {
         val firstHighlighted = cardData.words.firstOrNull {
             it.word in cardData.selectedWords
@@ -122,6 +128,8 @@ internal object PtNoteBuilder {
             commonLabel = commonLabel,
             localizePos = localizePos,
             renderMisc = renderMisc,
+            structuredGlossaries = structuredGlossaries,
+            dictStyles = dictStyles,
         )
         return PtNote.Sentence(
             sentence = SentenceAnkiHtmlBuilder.buildSentencePlain(

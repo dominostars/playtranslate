@@ -61,6 +61,12 @@ object AnkiCardOutputBuilder {
         commonLabel: String = "Common",
         localizePos: (List<String>) -> String = { it.joinToString(" · ") },
         renderMisc: (List<String>) -> String? = { null },
+        /** scRowid -> glossary JSON for the words table's structured
+         *  senses; empty = flat rows. */
+        structuredGlossaries: Map<Long, String> = emptyMap(),
+        /** dictId -> raw styles.css; scoped and inlined as <style> when a
+         *  structured sense from that dictionary renders (Tier 2). */
+        dictStyles: Map<String, String> = emptyMap(),
     ): CardOutputs {
         val firstHighlighted = cardData.words.firstOrNull {
             it.word in cardData.selectedWords
@@ -134,6 +140,8 @@ object AnkiCardOutputBuilder {
             commonLabel = commonLabel,
             localizePos = localizePos,
             renderMisc = renderMisc,
+            structuredGlossaries = structuredGlossaries,
+            dictStyles = dictStyles,
         )
         // Mapped audio fields (`ExpressionAudio`, `WordAudio`, `Word Audio`
         // in Lapis/JPMN/Migaku) bind to `ContentSource.WORD_AUDIO`, which
