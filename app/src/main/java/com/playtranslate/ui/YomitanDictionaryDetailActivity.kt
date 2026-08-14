@@ -14,6 +14,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
@@ -21,6 +22,7 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.R
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
 import com.playtranslate.yomitan.YomitanDictionary
 import com.playtranslate.yomitan.YomitanDictionaryStore
@@ -51,6 +53,35 @@ class YomitanDictionaryDetailActivity : SettingsSubPageActivity() {
      *  activity finishing) so rapid taps persist in tap order, not whichever
      *  IO write happens to win the store mutex. */
     private var autoUpdateWriteJob: Job? = null
+
+    /** Current source-language override ([SourceLangId.code]), or null for
+     *  "None" (the dictionary stays a match-everything wildcard). Drives the
+     *  Source Language row's value and the picker's checkmark. */
+    private var sourceLangOverride: String? = null
+
+    /** Returns the standalone picker's choice. Registered at construction (the
+     *  ActivityResult contract requires it before onStart); the row value
+     *  updates in place, so no resume-time reload is needed. */
+    private val sourceLangPicker = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val data = result.data
+        if (result.resultCode != RESULT_OK || data == null ||
+            !data.hasExtra(LanguageSetupActivity.EXTRA_PICKED_CODE)
+        ) {
+            return@registerForActivityResult
+        }
+        // "" = the None row; anything else is a SourceLangId.code.
+        val picked = data.getStringExtra(LanguageSetupActivity.EXTRA_PICKED_CODE)
+            ?.takeUnless { it.isEmpty() }
+        if (picked == sourceLangOverride) return@registerForActivityResult
+        sourceLangOverride = picked
+        applySourceLangValue()
+        val id = dictId ?: return@registerForActivityResult
+        (application as PlayTranslateApplication).appScope.launch {
+            YomitanDictionaryStore.setSourceLanguageOverride(applicationContext, id, picked)
+        }
+    }
 
     override fun onContentCreated(savedInstanceState: Bundle?) {
         val id = intent.getStringExtra(EXTRA_ID)
@@ -100,6 +131,7 @@ class YomitanDictionaryDetailActivity : SettingsSubPageActivity() {
             accentColor = dict?.accentColor
             buildAccentPicker()
             bindAutoUpdateToggle(dict)
+            bindSourceLanguageRow(dict)
         }
     }
 
@@ -132,6 +164,53 @@ class YomitanDictionaryDetailActivity : SettingsSubPageActivity() {
                 previous?.join()
                 YomitanDictionaryStore.setAutoUpdate(applicationContext, id, enabled)
             }
+        }
+    }
+
+    /** Wires the Source Language value row. Visible ONLY for a dictionary whose
+     *  index.json declares no sourceLanguage — undeclared is a match-everything
+     *  wildcard, and this row narrows it to one source language ("None" keeps
+     *  the wildcard). A dictionary with a declared language needs no row: the
+     *  declaration already scopes it (and always wins over the override). Taps
+     *  open [LanguageSetupActivity]'s standalone pick mode; the result persists
+     *  via [YomitanDictionaryStore.setSourceLanguageOverride]. */
+    private fun bindSourceLanguageRow(dict: YomitanDictionary?) {
+        val row = findViewById<View>(R.id.rowYomitanSourceLang)
+        val divider = findViewById<View>(R.id.sourceLangDivider)
+        val overridable = dict != null && dict.sourceLanguage == null
+        row.isVisible = overridable
+        divider.isVisible = overridable
+        if (!overridable) return
+        row.findViewById<TextView>(R.id.tvRowTitle)
+            .setText(R.string.yomitan_source_language_label)
+        sourceLangOverride = dict.sourceLanguageOverride
+        applySourceLangValue()
+        row.setOnClickListener {
+            sourceLangPicker.launch(
+                LanguageSetupActivity.pickSourceIntent(
+                    this,
+                    currentCode = sourceLangOverride,
+                    title = getString(R.string.yomitan_source_language_label),
+                ),
+            )
+        }
+    }
+
+    /** Renders [sourceLangOverride] into the row value: muted "None" for the
+     *  wildcard, accent-colored language name otherwise (the Anki deck-row
+     *  idiom). A stored code the enum no longer knows renders raw rather than
+     *  masquerading as None — the filter would still apply it. */
+    private fun applySourceLangValue() {
+        val value = findViewById<View>(R.id.rowYomitanSourceLang)
+            .findViewById<TextView>(R.id.tvRowValue)
+        val display = SourceLangId.fromCode(sourceLangOverride)?.displayName()
+            ?: sourceLangOverride
+        if (display == null) {
+            value.setText(R.string.lang_pick_none)
+            value.setTextColor(themeColor(R.attr.ptTextMuted))
+        } else {
+            value.text = display
+            value.setTextColor(themeColor(R.attr.ptAccent))
         }
     }
 

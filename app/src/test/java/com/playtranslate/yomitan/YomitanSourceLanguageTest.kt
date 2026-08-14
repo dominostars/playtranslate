@@ -8,7 +8,7 @@ import org.junit.Test
 
 class YomitanSourceLanguageTest {
 
-    private fun dict(sourceLanguage: String?) = YomitanDictionary(
+    private fun dict(sourceLanguage: String?, override: String? = null) = YomitanDictionary(
         id = "x",
         title = "t",
         revision = null,
@@ -19,6 +19,7 @@ class YomitanSourceLanguageTest {
         sizeBytes = 0,
         importedAtMs = 0,
         sourceLanguage = sourceLanguage,
+        sourceLanguageOverride = override,
     )
 
     @Test
@@ -55,6 +56,29 @@ class YomitanSourceLanguageTest {
         assertTrue(dict("ja").matchesSourceLanguage("ja-JP"))
         assertTrue(dict("en").matchesSourceLanguage("EN"))
         assertFalse(dict("ko").matchesSourceLanguage("zh-Hant"))
+    }
+
+    @Test
+    fun `user override narrows an undeclared wildcard to one language`() {
+        // The detail page's Source Language row: the tag matches exactly like
+        // a declared language would, ending the wildcard behavior.
+        assertTrue(dict(null, override = "ru").matchesSourceLanguage("ru"))
+        assertFalse(dict(null, override = "ru").matchesSourceLanguage("ja"))
+        assertFalse(dict(null, override = "ru").matchesSourceLanguage("en"))
+        // Override codes are SourceLangId.codes, so region/script variants
+        // must reduce to the primary subtag like declared languages do.
+        assertTrue(dict(null, override = "zh-Hant").matchesSourceLanguage("zh"))
+        assertTrue(dict(null, override = "zh-Hant").matchesSourceLanguage("zh-Hans"))
+        assertFalse(dict(null, override = "zh-Hant").matchesSourceLanguage("ja"))
+    }
+
+    @Test
+    fun `declared source language wins over a user override`() {
+        // The row is only offered while the dictionary declares nothing, but a
+        // later revision may add a declaration — the dictionary's own metadata
+        // then takes precedence over the stale user tag.
+        assertTrue(dict("ja", override = "ru").matchesSourceLanguage("ja"))
+        assertFalse(dict("ja", override = "ru").matchesSourceLanguage("ru"))
     }
 
     @Test

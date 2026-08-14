@@ -64,6 +64,17 @@
                         android:id="@+id/autoUpdateDivider"
                         layout="@layout/settings_row_divider" />
 
+                    <!-- Per-dictionary source-language tag; shown by the activity
+                         only when index.json declares no sourceLanguage (an
+                         undeclared language is a match-everything wildcard). -->
+                    <include
+                        android:id="@+id/rowYomitanSourceLang"
+                        layout="@layout/settings_row_value" />
+
+                    <include
+                        android:id="@+id/sourceLangDivider"
+                        layout="@layout/settings_row_divider" />
+
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
