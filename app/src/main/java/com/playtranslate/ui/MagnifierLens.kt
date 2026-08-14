@@ -1305,6 +1305,11 @@ class MagnifierLens(
             v.visibility = INVISIBLE
             v.onContentHeight = { h -> onStyledContentHeight(h) }
             v.onRendererGone = { onStyledRendererGone() }
+            // Non-link taps on the page open the detail view — the page's
+            // own hit testing decides, replacing the tap detector over this
+            // area (see [isTapEligible]). Same debounce as the detector
+            // path, so a gesture crossing both regions can't double-fire.
+            v.onBodyTap = { fireOpenTap() }
             bodyContainer.addView(v, LayoutParams(LayoutParams.MATCH_PARENT, 1))
             styledView = v
             return v
@@ -1705,7 +1710,28 @@ class MagnifierLens(
             if (y >= arrowTop && y < arrowBottom) return false
             if (isInChipBounds(leftChip, x, y)) return false
             if (isInChipBounds(rightChip, x, y)) return false
+            // The styled definitions area belongs to the WebView: the page
+            // reports what a tap actually hit — a link navigates and hands
+            // off to the browser, anything else comes back as a body tap
+            // (wired to [fireOpenTap] in [ensureStyledView]). Running the
+            // detector here too would race that handoff: the open tap
+            // lands first, tears the lens down, and destroys the WebView
+            // before the click ever processes.
+            if (isInStyledView(x, y)) return false
             return true
+        }
+
+        /** Whether a LensView-space point lands on the styled view (visible
+         *  and active only). getLocationInWindow on both ends absorbs the
+         *  definitions scroller's current scroll offset. */
+        private fun isInStyledView(x: Float, y: Float): Boolean {
+            val sv = styledView ?: return false
+            if (!styledActive || sv.visibility != VISIBLE) return false
+            val svLoc = IntArray(2).also { sv.getLocationInWindow(it) }
+            val myLoc = IntArray(2).also { getLocationInWindow(it) }
+            val lx = x + myLoc[0] - svLoc[0]
+            val ly = y + myLoc[1] - svLoc[1]
+            return lx >= 0 && lx < sv.width && ly >= 0 && ly < sv.height
         }
 
         private fun isInChipBounds(chip: View, x: Float, y: Float): Boolean {

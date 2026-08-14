@@ -159,14 +159,21 @@ class YomitanContentHtmlTest {
     // ── Links ───────────────────────────────────────────────────────────
 
     @Test
-    fun `external links render as styled inert spans`() {
+    fun `external links render as real anchors`() {
         val html = render(
             """[{"type":"structured-content","content":
                {"tag":"a","href":"https://example.com/x","content":"source"}}]"""
         )!!
-        assertTrue(html.contains("<span class=\"gloss-link\">source</span>"))
-        assertFalse(html.contains("<a"))
-        assertFalse(html.contains("href"))
+        assertTrue(html.contains("<a class=\"gloss-link\" href=\"https://example.com/x\">source</a>"))
+    }
+
+    @Test
+    fun `external link hrefs are attribute-escaped`() {
+        val html = render(
+            """[{"type":"structured-content","content":
+               {"tag":"a","href":"https://example.com/x?a=1&b=\"2\"","content":"source"}}]"""
+        )!!
+        assertTrue(html.contains("href=\"https://example.com/x?a=1&amp;b=&quot;2&quot;\""))
     }
 
     @Test
@@ -285,7 +292,11 @@ class YomitanContentHtmlTest {
         assertTrue(html.contains("gloss-sc-table-container"))
         assertTrue(html.contains("data-sc-content=\"forms-header-row\""))
         assertTrue(html.contains("/media/d1/jitendex/graphics/bb51.avif"))
-        assertTrue(html.contains("<span class=\"gloss-link\">Stan Shebs</span>"))
+        assertTrue(
+            html.contains(
+                "<a class=\"gloss-link\" href=\"https://commons.wikimedia.org/wiki/User:Stan_Shebs\">Stan Shebs</a>",
+            ),
+        )
     }
 
     private val JITENDEX_SPECIMEN = """

@@ -1492,6 +1492,10 @@ class SentenceAnkiContentFragment : Fragment() {
                 wordStyledBroken = true
                 return null
             }
+            // The row's tap toggles target state; without this the WebView
+            // eats every tap landing on the definitions block and the row
+            // click never fires. Link taps lose to the row here, by design.
+            created.passThroughTouches = true
             created.onContentHeight = { h ->
                 created.layoutParams?.let { lp ->
                     lp.height = h
