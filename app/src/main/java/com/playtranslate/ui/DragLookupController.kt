@@ -1177,7 +1177,13 @@ class DragLookupController(
             }
             null
         }
-        val lookupForm = matchedToken?.lookupForm ?: matchedSurface
+        // Phrase-aware: the longest dictionary expression starting at the
+        // dragged word wins over the word itself — the same longest-match
+        // behavior the tap surfaces get via [SourceWordLookup.resolveAt].
+        // [matchedIdx] is the matched surface's char offset in [lineText].
+        val phrase = withContext(Dispatchers.IO) { engine.longestPhraseAt(lineText, matchedIdx) }
+        val lookupForm = phrase ?: matchedToken?.lookupForm ?: matchedSurface
+        val readingHint = if (phrase != null) null else matchedToken?.reading
 
         // Dictionary lookup using the base/dictionary form + reading hint
         val prefs = Prefs(context)
@@ -1186,7 +1192,7 @@ class DragLookupController(
             OfflineFallbackTranslators.forPair(engine.profile.translationCode, prefs.targetLang), prefs.targetLang,
             OfflineFallbackTranslators.forTarget(prefs.targetLang),
             ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant))
-        val defResult = withContext(Dispatchers.IO) { resolver.lookup(lookupForm, matchedToken?.reading) }
+        val defResult = withContext(Dispatchers.IO) { resolver.lookup(lookupForm, readingHint) }
         val response = defResult?.response
         val entries = response?.entries.orEmpty()
         val entry = entries.firstOrNull()
@@ -1198,11 +1204,14 @@ class DragLookupController(
         // Wiktionary's per-POS entry split doesn't lose senses). This
         // replaced a hand-rolled copy of that cascade — the last one
         // outside the shared builder.
-        val reading = matchedToken?.reading
+        val reading = readingHint
+        // Phrase hits select/display against the expression, not the single
+        // dragged word — the entry's headword IS the phrase lemma.
+        val displaySurface = phrase ?: matchedSurface
         val popupData: PopupData = if (entry != null && defResult != null) {
             val display = entry.headwordDisplay(
-                entry.selectHeadword(matchedSurface, lookupForm, matchedToken?.reading),
-                matchedSurface,
+                entry.selectHeadword(displaySurface, lookupForm, readingHint),
+                displaySurface,
             )
             PopupData(
                 word = display.written,

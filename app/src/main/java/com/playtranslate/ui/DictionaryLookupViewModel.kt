@@ -99,7 +99,19 @@ class DictionaryLookupViewModel(app: Application) : AndroidViewModel(app) {
         val context = WordLookupContext(engine, prefs.targetLang, prefs.targetChineseVariant)
         val tokens = withContext(Dispatchers.IO) { engine.tokenize(q) }
         if (tokens.size >= 2) {
-            return resolveWordRows(app, context, tokens).rows to Mode.SEGMENTATION
+            // Whole-query expression attempt: a multi-token query that is
+            // itself a dictionary headword ("a great deal", "gave up",
+            // "well-being") resolves as one row ranked first, with the
+            // per-word segmentation rows after it. Dictionary-gated via
+            // engine.lookup — no row on a miss, so an arbitrary sentence
+            // never grows a machine-translated junk row on top.
+            val phraseToken =
+                if (withContext(Dispatchers.IO) { engine.lookup(q) } != null) {
+                    listOf(TokenSpan(surface = q, lookupForm = q))
+                } else {
+                    emptyList()
+                }
+            return resolveWordRows(app, context, phraseToken + tokens).rows to Mode.SEGMENTATION
         }
         // Single (possibly unfinished) word → live prefix completions.
         val candidates: List<TokenSpan> =

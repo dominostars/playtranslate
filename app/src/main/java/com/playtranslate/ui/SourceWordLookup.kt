@@ -68,6 +68,29 @@ object SourceWordLookup {
         return spans
     }
 
+    /**
+     * Phrase-aware [resolve] for word taps: probes the engine for the longest
+     * multi-word dictionary expression starting at the tapped word
+     * ([com.playtranslate.language.SourceLanguageEngine.longestPhraseAt]) and
+     * resolves THAT when one exists — tap "great" in "a great deal" and the
+     * expression's entry opens, not the word's. Falls through to the
+     * single-word [resolve] (reading hint intact) otherwise. Both tap
+     * surfaces route through here so phrase behavior can't drift between
+     * them. [spanStart] is the tapped span's start offset in [displayedText]
+     * — the same text the spans were computed against.
+     */
+    suspend fun resolveAt(
+        appCtx: Context,
+        displayedText: String,
+        spanStart: Int,
+        lookupForm: String,
+        reading: String,
+    ): Resolved {
+        val engine = SourceLanguageEngines.get(appCtx, Prefs(appCtx).sourceLangId)
+        val phrase = withContext(Dispatchers.IO) { engine.longestPhraseAt(displayedText, spanStart) }
+        return if (phrase != null) resolve(appCtx, phrase, "") else resolve(appCtx, lookupForm, reading)
+    }
+
     /** Resolve [lookupForm] (+ optional disambiguating [reading]) into lens data,
      *  using the same resolver + tier branching as the in-app results page. */
     suspend fun resolve(appCtx: Context, lookupForm: String, reading: String): Resolved {

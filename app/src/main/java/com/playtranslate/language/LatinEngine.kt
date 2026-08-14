@@ -39,6 +39,17 @@ import java.util.Locale
  *  - **Dictionary**: [WiktionaryDictionaryManager] queries the downloaded
  *    pack with surface-first and stem-fallback semantics.
  *
+ * [longestPhraseAt] adds tap-time multi-word expression matching over the
+ * same pack (plus imported Yomitan dicts): the packs index six-figure counts
+ * of space-joined headwords ("a great deal", "il y a", "máy tính") that
+ * one-token-per-word [tokenize] output can never query. Tap surfaces probe it
+ * with the tapped word's offset and look up the returned phrase instead.
+ * Deliberately NOT folded into [tokenize]: greedy stream-level fusing
+ * over-fuses English-class text (the packs list function-word bigrams like
+ * "on the"/"of a" that are data-indistinguishable from gold ones like
+ * "have to"), while tap-time matching bounds any marginal hit to a
+ * deliberate tap on the word that heads it.
+ *
  * Tokenizer and stemmer are both stateful and not thread-safe, so both
  * operations are guarded by per-instance `synchronized` blocks.
  */
@@ -96,10 +107,70 @@ class LatinEngine(
         dict.searchPrefix(normalizeForLookup(query), limit)
             .map { TokenSpan(surface = it, lookupForm = it, reading = null) }
 
+    override suspend fun longestPhraseAt(text: String, offset: Int): String? {
+        // Window collection needs the shared (stateful) BreakIterator; the
+        // dictionary gates suspend, so they run outside the lock.
+        val window = synchronized(iteratorLock) {
+            phraseWindow(text, offset, breakIterator, MAX_PHRASE_WINDOW_WORDS)
+        } ?: return null
+        val words = window.words
+        if (words.size < 2) return null
+        // Candidates: n-grams that INCLUDE the tapped word, anchored at the
+        // tapped word itself and at each single-letter left-context word
+        // ("a great deal" must be reachable from "great" — "a" has no tap
+        // target of its own). Longest first; at equal length the anchor
+        // nearest the tap wins (forward match beats left-context match,
+        // matching Yomitan's cursor-forward behavior). Forms are
+        // engine-normalized like [lookup]'s own key (AR undiacritization /
+        // HI NFC — identity elsewhere); joining word slices with one space
+        // collapses any run of source whitespace to the packs' space-joined
+        // headword shape.
+        val candidates: List<Pair<Int, String>> = buildList {
+            for (a in window.anchorIndex downTo 0) {
+                val minN = maxOf(2, window.anchorIndex - a + 1)
+                for (n in (words.size - a) downTo minN) {
+                    add(n to normalizeForLookup(
+                        words.subList(a, a + n).joinToString(" ") { text.substring(it) },
+                    ))
+                }
+            }
+        }.sortedWith(compareByDescending { it.first })
+        // Pack gate: only windows the build could have kept (MAX_HEADWORD_WORDS).
+        val packKnown = dict.phrasesExist(
+            candidates.mapNotNullTo(mutableSetOf()) { (n, c) ->
+                c.takeIf { n <= MAX_PACK_PHRASE_WORDS }
+            },
+        )
+        // Imported-dictionary gate for pack misses — Yomitan dicts list longer
+        // expressions and store original-case headwords, so each candidate is
+        // offered in both the as-written and locale-lowercased forms (the same
+        // pair [lookup]'s imported chain will try).
+        val oracleKnown = if (candidates.any { (n, c) -> n > MAX_PACK_PHRASE_WORDS || c !in packKnown }) {
+            yomitan.phraseOracle()?.invoke(
+                buildSet {
+                    for ((_, c) in candidates) {
+                        add(c)
+                        add(c.lowercase(locale))
+                    }
+                },
+            ).orEmpty()
+        } else {
+            emptySet()
+        }
+        return candidates.firstOrNull { (n, c) ->
+            (n <= MAX_PACK_PHRASE_WORDS && c in packKnown) ||
+                c in oracleKnown || c.lowercase(locale) in oracleKnown
+        }?.second
+    }
+
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? {
         val w = normalizeForLookup(word)
         val lower = w.lowercase(locale)
-        val stem = stemOf(w)
+        // Phrase keys skip real stemming: Snowball is single-word machinery,
+        // and a stemmed join could equal an UNRELATED entry's stem row —
+        // surfacing a wrong entry mislabeled [stem]. Inflected phrase surfaces
+        // resolve through the pack's position-2 alias rows ("gave up") instead.
+        val stem = if (w.any(Char::isWhitespace)) lower else stemOf(w)
         // Arabic gets a folded lookup key (casual/variant spellings) as a
         // fallback the dictionary tries after surface and before stem.
         val folded = if (langId == SourceLangId.AR) ArabicFold.fold(w) else null
@@ -152,6 +223,108 @@ class LatinEngine(
     }
 
     companion object {
+        /** Longest word window [longestPhraseAt] offers the imported-dictionary
+         *  oracle. Imported Yomitan dictionaries carry expressions past the
+         *  pack's cap ("as far as I know"); beyond ~5 words, English-class
+         *  headwords are proverbs a tap lookup shouldn't swallow. */
+        internal const val MAX_PHRASE_WINDOW_WORDS = 5
+
+        /** Mirror of the pack build's MAX_HEADWORD_WORDS
+         *  (scripts/wiktionary_filters.py) — longer candidates skip the pack
+         *  gate because the build guarantees they cannot exist there. */
+        internal const val MAX_PACK_PHRASE_WORDS = 3
+
+        /** Max single-letter left-context words a window absorbs before the
+         *  tapped word. Single-letter words are exactly the class [tokenize]'s
+         *  isLookupWorthy drops — they have no tap target of their own, so
+         *  the phrases they head must be reachable from the next word ("a
+         *  great deal" from "great", "à la carte" from "la"). Longer words
+         *  head their own taps and are never absorbed. */
+        internal const val MAX_SINGLE_LETTER_PREFIX = 2
+
+        /** [phraseWindow]'s result: the whitespace-adjacent [words] around
+         *  the tapped word, with [anchorIndex] pointing at the tapped word
+         *  itself (words before it are absorbed single-letter left context). */
+        internal data class PhraseWindow(
+            val words: List<IntRange>,
+            val anchorIndex: Int,
+        )
+
+        /**
+         * Word-range window for phrase matching: the word containing
+         * [offset], up to [maxWords] following words, plus up to
+         * [MAX_SINGLE_LETTER_PREFIX] single-letter words of left context —
+         * all chained only across whitespace-ONLY separators. A comma,
+         * hyphen, or digit run breaks the chain, because pack phrases are
+         * space-joined ("great, deal" must never gate "great deal"). Unlike
+         * [tokenize]'s isLookupWorthy filter this keeps single-letter words:
+         * phrases start with and contain them ("a great deal", "il y a").
+         * Null = [offset] doesn't land in a word; a singleton window = no
+         * phrase possible there.
+         *
+         * Caller must hold the lock guarding [iterator] (stateful, not
+         * thread-safe). Internal + iterator-injected so tests can drive it
+         * with a fresh instance.
+         */
+        internal fun phraseWindow(
+            text: String,
+            offset: Int,
+            iterator: BreakIterator,
+            maxWords: Int,
+        ): PhraseWindow? {
+            if (offset < 0 || offset >= text.length) return null
+            iterator.setText(text)
+            // Single forward scan. [chain] holds the current run of
+            // whitespace-adjacent words; it resets on every adjacency break
+            // until the word containing [offset] is found (so it then holds
+            // that word's contiguous left context), and the scan stops on the
+            // first break after it. Pre-anchor the chain is trimmed to the
+            // longest left context ever kept, so a long text can't grow it.
+            var chain = mutableListOf<IntRange>()
+            var anchor = -1
+            var start = iterator.first()
+            var end = iterator.next()
+            while (end != BreakIterator.DONE) {
+                val range = start until end
+                if (range.any { text[it].isLetter() }) {
+                    val gap = if (chain.isEmpty()) "" else text.substring(chain.last().last + 1, start)
+                    val adjacent = gap.isNotEmpty() && gap.all(Char::isWhitespace)
+                    if (!adjacent) {
+                        if (anchor >= 0) break              // forward chain ended past the tapped word
+                        if (offset < start) return null     // tapped a gap the chain can't cross
+                        chain = mutableListOf()             // adjacency broke before it: restart
+                    }
+                    chain += range
+                    if (anchor < 0) {
+                        if (offset in range) {
+                            anchor = chain.size - 1
+                        } else if (offset < end) {
+                            return null                     // passed the offset without a word hit
+                        } else if (chain.size > MAX_SINGLE_LETTER_PREFIX + 1) {
+                            chain.removeAt(0)               // keep memory bounded pre-anchor
+                        }
+                    } else if (chain.size - anchor >= maxWords) {
+                        break                               // forward cap reached
+                    }
+                } else if (anchor < 0 && offset in range) {
+                    return null                             // offset on whitespace/punctuation
+                }
+                start = end
+                end = iterator.next()
+            }
+            if (anchor < 0) return null
+            // Absorb the single-letter left context; drop anything longer.
+            var first = anchor
+            while (
+                first > 0 &&
+                anchor - first < MAX_SINGLE_LETTER_PREFIX &&
+                chain[first - 1].last == chain[first - 1].first
+            ) {
+                first--
+            }
+            return PhraseWindow(chain.subList(first, chain.size).toList(), anchor - first)
+        }
+
         /** Imported-term Yomitan lookup keys to try after the direct
          *  (original-case) surface [w] — which already matches dictionaries
          *  that store capitalized headwords (e.g. German nouns). In order,
