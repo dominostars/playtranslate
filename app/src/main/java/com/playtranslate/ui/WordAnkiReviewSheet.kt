@@ -709,13 +709,23 @@ class WordAnkiReviewSheet : DialogFragment() {
             onVoicePillTap = { launchWordAudioPicker(word, reading) },
         )
 
-        // ── Definitions group: starts with a loading placeholder. The
-        //    async lookup in onViewCreated replaces it with per-sense
-        //    rows once defResult lands.
+        // ── Definitions group. The resolve and this card build race in
+        //    BOTH orders: built-first (the standalone word sheet) the
+        //    async lookup's rebuildDefinitions replaces the placeholder;
+        //    resolved-first (the sentence sheet's lazily-built word tab)
+        //    the earlier rebuild hit a null definitionsCard and no-oped —
+        //    so a card built AFTER the resolve must render immediately,
+        //    or the placeholder stands forever (field-traced: lookup done
+        //    ~160ms after launch, tab built later, "Looking up words…"
+        //    stuck for the sheet's life).
         ankiGroupHeader(parent, getString(R.string.anki_group_definitions))
         val defCard = ankiGroupCard(parent)
         definitionsCard = defCard
-        defCard.addView(buildLoadingDefinitionsRow(fallbackDefinition))
+        if (resolvedEntry != null) {
+            rebuildDefinitions()
+        } else {
+            defCard.addView(buildLoadingDefinitionsRow(fallbackDefinition))
+        }
 
         // ── Screenshot group (when present). ─────────────────────────
         if (screenshotPath != null) {
@@ -873,11 +883,22 @@ class WordAnkiReviewSheet : DialogFragment() {
             enToTargetWrapper,
             charConverter,
         )
+        android.util.Log.i(LOOKUP_TAG, "lookup start: '$word' reading=$readingHint lang=$sourceLangId")
         val defResult = withContext(Dispatchers.IO) { resolver.lookup(word, readingHint) }
         val response = defResult?.response
         val entries = response?.entries.orEmpty()
         val entry = entries.firstOrNull()
-        if (!isAdded || entry == null) return
+        if (!isAdded || entry == null) {
+            // Field-trace: this silent return leaves the loading
+            // placeholder standing forever — the exact symptom must name
+            // its cause in the log.
+            android.util.Log.i(
+                LOOKUP_TAG,
+                "lookup DEAD-END: '$word' isAdded=$isAdded entries=${entries.size} " +
+                    "result=${defResult?.javaClass?.simpleName}",
+            )
+            return
+        }
         resolvedEntry = entry
         resolvedEntries = entries
         resolvedFlatSenses = entries.flatMap { it.senses }
@@ -906,6 +927,12 @@ class WordAnkiReviewSheet : DialogFragment() {
                 }
             }
         }
+        android.util.Log.i(
+            LOOKUP_TAG,
+            "lookup done: '$word' senses=${resolvedFlatSenses.size} " +
+                "imported=${entry.importedSenses.sumOf { it.senses.size }} " +
+                "styled=${resolvedStyled?.structured?.size ?: 0} -> rebuild",
+        )
         rebuildDefinitions()
 
         if (targetLangCode != "en") {
@@ -1122,7 +1149,12 @@ class WordAnkiReviewSheet : DialogFragment() {
             displayCount++
         }
 
-        if (displayCount == 0) {
+        if (displayCount == 0 && !hasImportedRows) {
+            // Same guard as the target-driven branch above: an
+            // imported-only word (senses=0, imported>0) HAS definitions —
+            // appending the blank-fallback loading row here rendered a
+            // literal "Looking up words…" under (or, with the styled
+            // panel's async height, INSTEAD of) real content.
             card.addView(buildLoadingDefinitionsRow(""))
         }
     }
@@ -2011,6 +2043,12 @@ class WordAnkiReviewSheet : DialogFragment() {
 
     companion object {
         const val TAG = "WordAnkiReviewSheet"
+
+        /** Field-trace tag for the definitions resolve — the loading
+         *  placeholder's replacement rides this coroutine, and every way
+         *  it can fail is otherwise silent. */
+        private const val LOOKUP_TAG = "WordSheetLookup"
+
         private const val TAG_CONTENT = "sentence_content"
         private const val ARG_WORD            = "word"
         private const val ARG_READING         = "reading"
