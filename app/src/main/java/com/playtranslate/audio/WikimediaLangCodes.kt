@@ -51,5 +51,6 @@ object WikimediaLangCodes {
         SourceLangId.CA -> "Q7026"
         SourceLangId.ID -> "Q9240"
         SourceLangId.HI -> "Q1568"
+        SourceLangId.PL -> "Q809"
     }
 }

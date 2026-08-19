@@ -143,6 +143,34 @@ class LanguageTest {
         assertFalse(profile.isScriptChar('a'))
     }
 
+    @Test fun `fromCode resolves Polish`() {
+        assertEquals(SourceLangId.PL, SourceLangId.fromCode("pl"))
+        assertEquals(SourceLangId.PL, SourceLangId.fromCode("PL"))
+        assertEquals(SourceLangId.PL, SourceLangId.fromCode("pl-PL"))
+    }
+
+    @Test fun `PL profile has an ML Kit Latin floor and Polish diacritics`() {
+        val profile = SourceLanguageProfiles[SourceLangId.PL]
+        assertEquals(TranslateLanguage.POLISH, profile.translationCode)
+        assertEquals(OcrBackend.MLKitLatin, profile.mlKitFloor)
+        assertEquals(ScriptFamily.LATIN, profile.scriptFamily)
+        assertEquals(TextDirection.LTR, profile.textDirection)
+        assertEquals(HintTextKind.NONE, profile.hintTextKind)
+        assertEquals(true, profile.wordsSeparatedByWhitespace)
+        // All nine diacritic letters — the reason PL declares its own profile
+        // instead of reusing latinProfile (whose range covers only ó).
+        for (c in "ąćęłńóśźż") assertTrue("missing $c", profile.isScriptChar(c))
+        for (c in "ĄĆĘŁŃÓŚŹŻ") assertTrue("missing $c", profile.isScriptChar(c))
+        assertFalse(profile.isScriptChar('д'))
+    }
+
+    @Test fun `PL defaults to the ML Kit recognizer like VI and TR`() {
+        assertEquals(
+            OcrBackend.MLKitLatin,
+            SourceLanguageProfiles[SourceLangId.PL].ocrBackends.first(),
+        )
+    }
+
     @Test fun `every SourceLangId resolves to a profile`() {
         // SourceLanguageProfiles.all is a map, not an exhaustive when — a missing
         // profile fails SILENTLY via forCode (the path OcrModelManager.ALL_PACK_KEYS

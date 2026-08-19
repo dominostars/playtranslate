@@ -35,6 +35,7 @@ import re
 import sqlite3
 
 from arabic_text import arabic_normalize
+from pack_aliases import _insert_aliases, _load_kept_lemma_ids
 
 # Floor on the camel bridge: the fraction of analyzed surfaces that map to >=1
 # in-pack lemma. A healthy run lands well above this; ~0 means the camel DB
@@ -49,29 +50,6 @@ DEFAULT_WORDFREQ_TOP_N = 60000
 # camel_morph lemmas are bare diacritized forms, but strip a trailing sense
 # index (e.g. "kitaAb_1") defensively in case a future DB build adds them.
 _LEMMA_INDEX_RE = re.compile(r"_\d+$")
-
-
-def _load_kept_lemma_ids(conn: sqlite3.Connection) -> dict[str, list[int]]:
-    """Map each position-0 lemma key → its entry_id(s). Aliases are emitted only
-    for lemmas already in the pack, so no source can introduce an orphan row."""
-    out: dict[str, list[int]] = {}
-    for entry_id, text in conn.execute(
-        "SELECT entry_id, text FROM headword WHERE position = 0"
-    ):
-        out.setdefault(text, []).append(entry_id)
-    return out
-
-
-def _insert_aliases(cur: sqlite3.Cursor, pairs: set[tuple[int, str]]) -> int:
-    """INSERT OR IGNORE the (entry_id, position-2, surface) rows. The unique
-    index on headword(entry_id, position, text) makes dedup structural — exact
-    overlaps with Wiktionary form_of rows or the other source are dropped."""
-    rows = list(pairs)
-    cur.executemany(
-        "INSERT OR IGNORE INTO headword (entry_id, position, text) VALUES (?, 2, ?)",
-        rows,
-    )
-    return len(rows)
 
 
 def emit_camel(

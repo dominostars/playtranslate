@@ -205,7 +205,10 @@ class LatinEngine(
             // prefix morphology (ber-, me-, di-, ter-) that Snowball doesn't
             // model; surface-only lookup is an acceptable first pass.
             // Hindi defers the Lucene HindiStemmer (v1 = surface + form_of aliases).
-            SourceLangId.VI, SourceLangId.ID, SourceLangId.HI -> null
+            // Polish has NO Snowball stemmer at all; its inflection ships as
+            // position-2 PoliMorf alias rows in the pack (build-time), so runtime
+            // stemming is intentionally null. See docs/polish-source-language-plan.md.
+            SourceLangId.VI, SourceLangId.ID, SourceLangId.HI, SourceLangId.PL -> null
             // Should never happen — CJK ids and Thai never reach LatinEngine
             // (each has a dedicated engine). Listed to satisfy the exhaustive when.
             SourceLangId.JA, SourceLangId.ZH, SourceLangId.ZH_HANT, SourceLangId.KO,

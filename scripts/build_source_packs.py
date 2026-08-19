@@ -36,17 +36,31 @@ HOME = ROOT.parent
 WORK = ROOT / "local" / "source-v3"
 WORK.mkdir(parents=True, exist_ok=True)
 SUMMARY = WORK / "SUMMARY.json"
-# Must track the packVersion the catalog serves (bumped to 3 when the entry_id
-# indexes shipped). A stale value here stamps old-version manifests into
-# new-version packs, which the app reads as permanently stale — an upgrade prompt
-# that re-fires on every launch and can never be satisfied.
+# The packVersion each language's manifest is stamped with. MUST equal that
+# language's catalog packVersion — a lower value on disk makes the app read the
+# installed pack as permanently stale (an upgrade prompt that re-fires on every
+# launch and can never be satisfied).
+#
+# PACK_VERSION is the fleet baseline; PACK_VERSION_OVERRIDES carries the languages
+# deliberately bumped AHEAD of the fleet. Do NOT raise the baseline to cover one
+# language — that stamps the new version onto every other pack whose catalog entry
+# is still at the baseline, inverting the exact staleness bug this guards against.
+#   - hi -> 4: forms[] inflection aliases shipped as an optional additive upgrade
+#              (catalog hi.packVersion == 4). See scripts/build_latin_dict.py.
 PACK_VERSION = 3
+PACK_VERSION_OVERRIDES: dict[str, int] = {"hi": 4}
+
+
+def pack_version_for(code: str) -> int:
+    """The packVersion for [code]'s manifest — its override, else the fleet
+    baseline. Keep in lockstep with langpack_catalog.json's per-entry packVersion."""
+    return PACK_VERSION_OVERRIDES.get(code, PACK_VERSION)
 
 # code -> kaikki language name (per-language source extract).
 LANGS: dict[str, str] = {
     "ca": "Catalan", "da": "Danish", "nl": "Dutch", "fr": "French", "de": "German",
     "hu": "Hungarian", "id": "Indonesian", "it": "Italian", "no": "Norwegian Bokmål",
-    "pt": "Portuguese", "ro": "Romanian", "es": "Spanish", "sv": "Swedish",
+    "pl": "Polish", "pt": "Portuguese", "ro": "Romanian", "es": "Spanish", "sv": "Swedish",
     "tr": "Turkish", "vi": "Vietnamese", "hi": "Hindi", "th": "Thai", "ko": "Korean",
     "ru": "Russian", "ar": "Arabic", "fi": "Finnish", "en": "English",
 }
@@ -59,6 +73,14 @@ CAMEL_DB_URL = (
     "lrec-coling2024_release/databases/camel-morph-msa/camel_morph_msa_v1.0.db"
 )
 CAMEL_DB = WORK / "camel_morph_msa_v1.0.db"
+# PoliMorf (pl morphology): three Morfologik jars from Maven Central + the
+# form\tlemma TSV DumpPoliMorf.java writes from them (built once, then reused).
+POLIMORF_TSV = WORK / "polimorf.tsv"
+MORFOLOGIK_JARS = [
+    "https://repo1.maven.org/maven2/org/carrot2/morfologik-polish/2.1.9/morfologik-polish-2.1.9.jar",
+    "https://repo1.maven.org/maven2/org/carrot2/morfologik-stemming/2.1.9/morfologik-stemming-2.1.9.jar",
+    "https://repo1.maven.org/maven2/org/carrot2/morfologik-fsa/2.1.9/morfologik-fsa-2.1.9.jar",
+]
 # KOMORAN (ko tokenizer) is a JitPack dep declared in app/build.gradle.kts; locate
 # its jar in the gradle cache by glob so this is not tied to one machine's hash path.
 KOMORAN_GLOB = "caches/modules-2/files-2.1/com.github.shin285/KOMORAN/*/*/KOMORAN-*.jar"
@@ -87,9 +109,11 @@ def download(url: str, dest: Path) -> None:
 
 
 def validate_existing(zip_path: Path, code: str) -> str | None:
-    """Return None if [zip_path] is a usable pack for [code] at PACK_VERSION, else
-    a human-readable reason. Guards against a stale v1 / partial zip being skipped
-    by path and later blessed as v2 by finalize_source_catalog.py."""
+    """Return None if [zip_path] is a usable pack for [code] at its expected
+    packVersion (per pack_version_for), else a human-readable reason. Guards
+    against a stale / partial zip being skipped by path and later blessed by
+    finalize_source_catalog.py."""
+    want = pack_version_for(code)
     try:
         with zipfile.ZipFile(zip_path) as zf:
             man = json.loads(zf.read("manifest.json"))
@@ -97,8 +121,8 @@ def validate_existing(zip_path: Path, code: str) -> str | None:
         return f"unreadable manifest ({e!r})"
     if man.get("langId") != code:
         return f"langId={man.get('langId')!r}, expected {code!r}"
-    if man.get("packVersion") != PACK_VERSION:
-        return f"packVersion={man.get('packVersion')!r}, expected {PACK_VERSION}"
+    if man.get("packVersion") != want:
+        return f"packVersion={man.get('packVersion')!r}, expected {want}"
     return None
 
 
@@ -115,6 +139,40 @@ def find_komoran_jar() -> str:
         "KOMORAN jar not found under ~/.gradle — run a gradle sync once (it is "
         f"declared in app/build.gradle.kts), or download {KOMORAN_JITPACK}"
     )
+
+
+def _java_bin() -> str:
+    """Prefer $JAVA_HOME/bin/java (the SDK JDK this repo pins) over a bare `java`
+    that may not be on PATH."""
+    java_home = os.environ.get("JAVA_HOME")
+    if java_home:
+        cand = Path(java_home) / "bin" / ("java.exe" if os.name == "nt" else "java")
+        if cand.is_file():
+            return str(cand)
+    return "java"
+
+
+def build_polimorf_tsv() -> None:
+    """Download the three Morfologik jars and run DumpPoliMorf ONCE to produce
+    POLIMORF_TSV (the form\\tlemma table polish_morphology.py bridges into
+    position-2 alias rows). Idempotent: skips whichever artifact already exists,
+    so a re-run after a failed pl build reuses the ~4.8M-row dump."""
+    jars: list[Path] = []
+    for url in MORFOLOGIK_JARS:
+        dest = WORK / url.rsplit("/", 1)[-1]
+        if not (dest.is_file() and dest.stat().st_size > 0):
+            print(f"[dl]    {dest.name}...", flush=True)
+            download(url, dest)
+        jars.append(dest)
+    if POLIMORF_TSV.is_file() and POLIMORF_TSV.stat().st_size > 0:
+        return
+    print("[build] DumpPoliMorf -> polimorf.tsv (~4.8M rows)...", flush=True)
+    cp = os.pathsep.join(str(j) for j in jars)
+    src = ROOT / "scripts" / "polish-morphology" / "DumpPoliMorf.java"
+    tmp = POLIMORF_TSV.with_suffix(".part")
+    with open(tmp, "wb") as out:
+        subprocess.run([_java_bin(), "-cp", cp, str(src)], check=True, stdout=out)
+    tmp.rename(POLIMORF_TSV)
 
 
 def main() -> int:
@@ -136,7 +194,7 @@ def main() -> int:
                 data = zip_path.read_bytes()
                 summary["built"][code] = {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
                 summary["failed"].pop(code, None)
-                print(f"[skip]  {code}: already built (v{PACK_VERSION} verified)", flush=True)
+                print(f"[skip]  {code}: already built (v{pack_version_for(code)} verified)", flush=True)
             else:
                 summary["built"].pop(code, None)
                 summary["failed"][code] = f"stale existing zip: {reason}"
@@ -161,12 +219,17 @@ def main() -> int:
                     print("[dl]    camel_morph_msa_v1.0.db (~85 MB)...", flush=True)
                     download(CAMEL_DB_URL, CAMEL_DB)
                 env["CAMEL_MORPH_DB"] = str(CAMEL_DB)
-            extra = ["--komoran-jar", find_komoran_jar()] if code == "ko" else []
+            extra: list[str] = []
+            if code == "ko":
+                extra = ["--komoran-jar", find_komoran_jar()]
+            elif code == "pl":
+                build_polimorf_tsv()
+                extra = ["--polimorf-tsv", str(POLIMORF_TSV)]
             print(f"[build] {code} ({src.stat().st_size // 1_000_000} MB)...", flush=True)
             subprocess.run(
                 [sys.executable, str(ROOT / "scripts" / "build_latin_dict.py"),
                  "--lang", code, "--input", str(src), "--output", str(outdir),
-                 "--pack-version", str(PACK_VERSION), *extra],
+                 "--pack-version", str(pack_version_for(code)), *extra],
                 check=True, env=env,
             )
             data = zip_path.read_bytes()

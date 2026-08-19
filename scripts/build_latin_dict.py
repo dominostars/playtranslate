@@ -148,6 +148,38 @@ MAX_EXAMPLES_PER_SENSE = 3
 MAX_EXAMPLE_CHARS = 200
 
 
+# kaikki `forms[]` rows that are not real word forms: table scaffolding, the
+# template name, and wiktextract's unparsed-cell marker.
+FORM_TAG_BLOCKLIST = frozenset({
+    "table-tags", "inflection-template", "error-unrecognized-form",
+    "no-table-tags", "romanization",
+})
+_FORM_JUNK_LITERALS = frozenset({"-", "—", "–", "?"})
+
+
+def _scripts_of(s: str) -> frozenset:
+    """Coarse Unicode-script tags of the LETTERS in [s] (marks/digits ignored).
+    Lets the forms[] pass keep an alias only when its script matches the lemma's:
+    kaikki lists cross-script transliterations (Urdu forms on a Devanagari lemma)
+    and grammar-class labels ("ā-stem") that a single-script OCR never produces."""
+    out = set()
+    for ch in s:
+        o = ord(ch)
+        if 0x0900 <= o <= 0x097F:
+            out.add("deva")
+        elif 0x0600 <= o <= 0x06FF or 0x0750 <= o <= 0x077F or 0xFB50 <= o <= 0xFDFF or 0xFE70 <= o <= 0xFEFF:
+            out.add("arab")
+        elif 0x0041 <= o <= 0x024F:
+            out.add("latn")
+        elif 0x0400 <= o <= 0x04FF:
+            out.add("cyrl")
+        elif 0x0E00 <= o <= 0x0E7F:
+            out.add("thai")
+        elif ch.isalpha():
+            out.add("other")
+    return frozenset(out)
+
+
 def extract_examples(sense: dict) -> list[tuple[str, str]]:
     """Pull up to MAX_EXAMPLES_PER_SENSE usage examples out of a kaikki
     sense dict. Each example becomes a (text, translation) tuple where
@@ -251,6 +283,8 @@ SNOWBALL_ALGO_FOR_LANG: dict[str, Optional[str]] = {
     "ko": None,
     "th": None,  # isolating; runtime tokenization is the newmm dictionary matcher
     "hi": None,  # no Snowball Hindi; v1 is surface + form_of aliases (no stem rows)
+    "pl": None,  # no Snowball Polish; inflection ships as position-2 PoliMorf
+                 # alias rows (scripts/polish_morphology.py), not stem rows
 }
 
 # Norwegian: our runtime and ML Kit use `no` for Norwegian, but kaikki
@@ -389,6 +423,10 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
     # `volontari`, so we track every entry_id per word and pass 2 emits
     # an alias row for each.
     kept_lemma_ids: dict[str, list[int]] = {}
+    # Inflection-table aliases mined from each kept lemma's own `forms[]`
+    # (pass 1); merged into the pass-2 alias set before the single position-2
+    # insert. See the block below and docs/polish-source-language-plan.md §3.3.
+    forms_alias_pairs: set[tuple[int, str]] = set()
 
     scanned = 0
     for obj in iter_kaikki(input_path):
@@ -572,6 +610,38 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         # out to both the "volunteer" (noun) and "voluntary" (adj) entries.
         kept_lemma_ids.setdefault(word_lower, []).append(entry_id)
 
+        # Inflection-table aliases. kaikki lemma entries carry their full
+        # declension/conjugation table inline in `forms[]`, which pass 2's
+        # redirect-entry scan never sees — a form only gets its own entry when
+        # someone created a wiki page for it. Measured on Polish: 5.1 pairs per
+        # lemma here vs 0.26 from redirect entries. Emitted at position 2, the
+        # same tier as form_of aliases, so they surface with the [inflected]
+        # marker and stay out of searchPrefix (which reads position 0 only).
+        lemma_scripts = _scripts_of(word_lower)
+        for form_obj in obj.get("forms") or ():
+            if set(form_obj.get("tags") or ()) & FORM_TAG_BLOCKLIST:
+                continue
+            form_text = lower_for_lang((form_obj.get("form") or "").strip(), lang)
+            if not form_text or form_text == word_lower:
+                continue
+            # Drop wiktextract inflection-template scaffolding: linking-vowel /
+            # affix notations (e.g. "-a-", "-t") surface as "forms" that start or
+            # end with a hyphen and are not real tappable words — word_frequency
+            # even mis-scores "-a-" as the bare article. Negligible for Polish
+            # (5 rows), ~1 per Hungarian paradigm.
+            if form_text.startswith("-") or form_text.endswith("-"):
+                continue
+            if " " in form_text or form_text in _FORM_JUNK_LITERALS:
+                continue
+            # Same-script gate: keep only forms whose scripts are a subset of the
+            # lemma's. Drops kaikki's cross-script transliterations (Urdu on a
+            # Devanagari lemma) and Latin grammar-class labels ("ā-stem") that a
+            # single-script OCR pack can never produce — ~31% of Hindi forms[].
+            form_scripts = _scripts_of(form_text)
+            if not form_scripts or (form_scripts - lemma_scripts):
+                continue
+            forms_alias_pairs.add((entry_id, form_text))
+
         # Stem row — position 1 headword pointing at the same entry_id.
         # WiktionaryDictionaryManager tries surface first, then the
         # Snowball stem of the queried word; the stem row is what that
@@ -673,6 +743,12 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
                 for target_id in target_ids:
                     alias_pairs.add((target_id, source_surface))
 
+    # Fold the pass-1 forms[] aliases into the pass-2 redirect-alias set: dedup
+    # is then structural (both are sets keyed on (entry_id, surface)) and there
+    # stays exactly ONE position-2 insertion point below.
+    forms_only = len(forms_alias_pairs - alias_pairs)
+    alias_pairs |= forms_alias_pairs
+
     if alias_pairs:
         cur.executemany(
             "INSERT INTO headword VALUES (?, ?, ?)",
@@ -686,7 +762,8 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         f"Built {db_path} with {kept:,} entries "
         f"({dropped_redirect:,} redirects filtered, "
         f"{stem_rows:,} stem rows indexed, "
-        f"{len(alias_pairs):,} alias rows covering {distinct_targets:,} lemmas, "
+        f"{len(alias_pairs):,} alias rows covering {distinct_targets:,} lemmas "
+        f"({forms_only:,} of them from inflection tables / forms[]), "
         f"{example_rows:,} example rows)."
     )
 
@@ -809,6 +886,14 @@ def build_manifest(
             "component": "Arramooz",
             "license": "GPL-3.0",
             "attribution": "© Taha Zerrouki, https://github.com/linuxscout/arramooz",
+        })
+    if lang == "pl":
+        # Morphology augmentation source (position-2 alias rows). See
+        # scripts/polish_morphology.py.
+        licenses.append({
+            "component": "Morfologik / PoliMorf",
+            "license": "BSD-2-Clause",
+            "attribution": "© Marcin Miłkowski, https://github.com/morfologik/morfologik-stemming",
         })
     if lang == "th":
         # PyThaiNLP CC0 word list, merged into the segmenter wordlist (words.txt).
@@ -933,6 +1018,25 @@ SMOKE_FIXTURES: dict[str, dict[str, str]] = {
         # query (which is ceiling-limited to position<=2 in the runner above).
         "مدرسه": "school",
     },
+    "pl": {
+        # No Snowball Polish stemmer, so each of these can ONLY resolve via a
+        # position-2 alias row. A surface-only regression fails all of them.
+        "psy": "dog",           # nominative plural of pies
+        "książki": "book",      # genitive singular / nominative plural of książka
+        "mieczem": "sword",     # instrumental singular of miecz
+        "robił": "do",          # masculine past of robić
+        # Irregular / suppletive — unreachable by any algorithmic stemmer.
+        "dzieci": "child",      # dziecko
+        "ludzi": "person",      # człowiek
+        "ręce": "hand",         # ręka
+    },
+    "hi": {
+        # Devanagari inflected surfaces that resolve ONLY via a forms[] alias
+        # row (Hindi has no stemmer). Verified against the built pack.
+        "कुत्ते": "dog",         # oblique/plural of कुत्ता
+        "कुत्तों": "dog",        # oblique plural of कुत्ता
+        "विश्वों": "universe",   # plural of विश्व
+    },
     # Other languages: fill in per-rebuild. Empty is OK — no fixtures
     # means "build still succeeds, just no regression guard for this lang."
 }
@@ -1022,6 +1126,28 @@ def postprocess_arabic(db_path: Path) -> None:
         stats = arabic_morphology.augment_arabic(conn, camel_db_path=camel_db)
         print(f"Morphology augmentation gated to {stats['lemmas']} pack lemmas.")
         _emit_fold_rows(conn)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def postprocess_polish(db_path: Path, polimorf_tsv: Path) -> None:
+    """Polish-only post-build pass: unique index, then PoliMorf alias rows.
+
+    Polish has no Snowball stemmer, so position-1 rows are never written and
+    these position-2 rows are the ONLY path from an inflected surface to its
+    lemma. See docs/polish-source-language-plan.md."""
+    import polish_morphology
+
+    conn = sqlite3.connect(db_path)
+    try:
+        _create_headword_unique_index(conn)
+        stats = polish_morphology.augment_polish(conn, polimorf_tsv)
+        print(
+            f"PoliMorf augmentation: {stats['rows']:,} alias rows over "
+            f"{stats['lemmas']:,} pack lemmas "
+            f"({stats['match_rate']:.1%} of lemmas known to PoliMorf)."
+        )
         conn.commit()
     finally:
         conn.close()
@@ -1122,6 +1248,11 @@ def main() -> int:
              "the models_light/ files into tokenizer/ inside the pack so the "
              "APK can strip the bundled models. Ignored for non-Korean packs.",
     )
+    parser.add_argument(
+        "--polimorf-tsv", type=Path, required=False,
+        help="form\\tlemma TSV from scripts/polish-morphology/DumpPoliMorf.java. "
+             "Required for --lang pl; ignored otherwise.",
+    )
     args = parser.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -1133,10 +1264,19 @@ def main() -> int:
     if not args.input.exists():
         print(f"error: input not found: {args.input}", file=sys.stderr)
         return 1
+    # Validate the Polish morphology TSV UP FRONT — build_sqlite streams the
+    # 772 MB extract for tens of minutes, so discovering the missing flag after
+    # that would waste the whole run.
+    if args.lang == "pl" and (args.polimorf_tsv is None or not args.polimorf_tsv.is_file()):
+        print("error: --lang pl requires --polimorf-tsv "
+              "(see scripts/polish-morphology/DumpPoliMorf.java)", file=sys.stderr)
+        return 1
 
     build_sqlite(args.input, db_path, args.lang)
     if args.lang == "ar":
         postprocess_arabic(db_path)
+    elif args.lang == "pl":
+        postprocess_polish(db_path, args.polimorf_tsv)
     run_smoke_test(db_path, args.lang)
 
     tokenizer_entries = None

@@ -50,7 +50,7 @@ object TatoebaClient {
         "it" to "ita", "pt" to "por", "nl" to "nld", "sv" to "swe",
         "da" to "dan", "no" to "nob", "nb" to "nob", "fi" to "fin",
         "hu" to "hun", "ro" to "ron", "ca" to "cat", "tr" to "tur",
-        "vi" to "vie", "id" to "ind",
+        "vi" to "vie", "id" to "ind", "pl" to "pol",
     )
 
     data class SentencePair(val source: String, val target: String)

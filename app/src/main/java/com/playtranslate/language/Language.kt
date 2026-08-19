@@ -36,6 +36,7 @@ enum class SourceLangId(val code: String) {
     AR("ar"),
     TH("th"),
     HI("hi"),
+    PL("pl"),
     ;
 
     /** The lang ID used for pack directory/catalog lookup. Variants that share
@@ -272,12 +273,15 @@ data class SourceLanguageProfile(
     val ocrBackends: List<OcrBackend>
         get() = buildList {
             if (id == SourceLangId.JA) add(OcrBackend.Meiki("meiki-ja"))
-            // Vietnamese and Turkish default to ML Kit instead of the shared Paddle
-            // latin recognizer, which handles their language-specific letters less
-            // reliably (Vietnamese's dense diacritics; Turkish's dotless ı/İ, ğ, ş).
+            // Vietnamese, Turkish and Polish default to ML Kit instead of the shared
+            // Paddle latin recognizer, which handles their language-specific letters
+            // less reliably (Vietnamese's dense diacritics; Turkish's dotless ı/İ, ğ, ş;
+            // Polish's ł/ż/ź, small marks that degrade at low resolution).
             // Putting the ML Kit floor first makes it the default; Paddle stays in
             // the list as a secondary, user-selectable option.
-            val mlKitDefault = (id == SourceLangId.VI || id == SourceLangId.TR) && mlKitFloor != null
+            val mlKitDefault =
+                (id == SourceLangId.VI || id == SourceLangId.TR || id == SourceLangId.PL) &&
+                    mlKitFloor != null
             if (mlKitDefault) add(mlKitFloor)  // smart-cast non-null via mlKitDefault
             // Each Paddle recognizer is offered as TWO speed tiers over the same
             // pack: accurate (fp32, full-res detection — the default tier, first)
@@ -576,6 +580,29 @@ object SourceLanguageProfiles {
             // LayoutAnalyzer.isSourceLangChar("hi").
             isScriptChar = { c -> c in DEVANAGARI_RANGE },
             translationCode = TranslateLanguage.HINDI,
+        ),
+        SourceLangId.PL to SourceLanguageProfile(
+            id = SourceLangId.PL,
+            scriptFamily = ScriptFamily.LATIN,
+            textDirection = TextDirection.LTR,
+            mlKitFloor = OcrBackend.MLKitLatin,
+            hintTextKind = HintTextKind.NONE,
+            wordsSeparatedByWhitespace = true,
+            // latinProfile's range covers only ó of Polish's nine diacritic
+            // letters, so PL declares its own. Verified: these five Extended-A
+            // ranges cover all 18 Polish letters exactly, with ZERO stray
+            // non-Polish characters pulled in.
+            isScriptChar = { c ->
+                c in 'A'..'Z'     // A-Z
+                    || c in 'a'..'z'  // a-z
+                    || c in 'À'..'ÿ'  // Latin-1 Supplement (Ó ó)
+                    || c in 'Ą'..'ć'  // Ą ą Ć ć   (U+0104–U+0107)
+                    || c in 'Ę'..'ę'  // Ę ę       (U+0118–U+0119)
+                    || c in 'Ł'..'ń'  // Ł ł Ń ń   (U+0141–U+0144)
+                    || c in 'Ś'..'ś'  // Ś ś       (U+015A–U+015B)
+                    || c in 'Ź'..'ż'  // Ź ź Ż ż   (U+0179–U+017C)
+            },
+            translationCode = TranslateLanguage.POLISH,
         ),
     )
 
