@@ -28,10 +28,13 @@ import kotlin.math.roundToInt
  * (horizontal 960×32, vertical 32×480) — converted from the official ONNX to MNN.
  * Unlike PaddleOCR these are **multi-IO** models (`images` + int32
  * `orig_target_sizes` → `char_codes`/`boxes`/`scores`), so they run through
- * [MnnInterpreter.run] (List<NamedTensor>). All pre/post-processing lives here and
- * is a faithful port of the desktop spike (`/tmp/ocr_bakeoff/run_bakeoff.py` +
- * the models' shipped `inference*.py`): BGR /255 input; D-FINE char outputs are
- * **Unicode codepoints** (`Character.toChars`); reading-axis overlap dedup + sort.
+ * [MnnInterpreter.run] (List<NamedTensor>). All pre/post-processing lives here,
+ * ported from the desktop spike (`/tmp/ocr_bakeoff/run_bakeoff.py` + the models'
+ * shipped `inference*.py`) — EXCEPT detection preprocessing, which follows
+ * upstream meikiocr's `ocr.py` (aspect-preserving letterbox) rather than the
+ * v0.1 demo script's plain stretch the spike copied; see [detect]. BGR /255
+ * input; D-FINE char outputs are **Unicode codepoints** (`Character.toChars`);
+ * reading-axis overlap dedup + sort.
  *
  * CRITICAL: `orig_target_sizes` MUST be int32 `[W, H]` — int64 (or the wrong axis)
  * zeroes the box height scaling (verified in the spike). Coordinates returned are
@@ -58,21 +61,40 @@ class MeikiSession private constructor(
     // ── Detection ────────────────────────────────────────────────────────────
 
     /** Run the D-FINE detector on [bitmap]; return text-region AABBs in
-     *  ORIGINAL-bitmap coords (boxes are produced in the stretched DET_W×DET_H
-     *  space and mapped back by the independent x/y ratios, like the spike). */
+     *  ORIGINAL-bitmap coords. The bitmap is LETTERBOXED into DET_W×DET_H —
+     *  aspect-preserving resize, content anchored top-left, black padding —
+     *  which is upstream meikiocr's `ocr.py` preprocessing; boxes map back
+     *  through the single uniform scale. The first port stretched to
+     *  DET_W×DET_H like the HF repo's v0.1 demo script instead, which coupled
+     *  the CROP's shape to the score distribution: a tight region arrived
+     *  several times more vertically distorted than a full frame, sliding
+     *  whole per-line score stacks across [DET_CONF] — one line emitted twice
+     *  when two stack members cleared it, a line lost when none did
+     *  (docs/meiki-detection-threshold-forensics.md). Survivors then pass
+     *  [dedupByIou], the region-tier analog of the recognizers' overlap dedup. */
     fun detect(bitmap: Bitmap): List<DetBox> {
-        val scaled = bitmap.scale(DET_W, DET_H)
-        val px = IntArray(DET_W * DET_H)
-        scaled.getPixels(px, 0, DET_W, 0, 0, DET_W, DET_H)
+        val scale = min(DET_W.toFloat() / bitmap.width, DET_H.toFloat() / bitmap.height)
+        val newW = min(DET_W, max(1, (bitmap.width * scale).roundToInt()))
+        val newH = min(DET_H, max(1, (bitmap.height * scale).roundToInt()))
+        val scaled = bitmap.scale(newW, newH)
+        val px = IntArray(newW * newH)
+        scaled.getPixels(px, 0, newW, 0, 0, newW, newH)
         if (scaled != bitmap) scaled.recycle()
-        // NCHW, BGR, /255 (Meiki trained on cv2/BGR; no mean-std).
+        // NCHW, BGR, /255 (Meiki trained on cv2/BGR; no mean-std). Content
+        // occupies the top-left newW×newH; the FloatArray's zero fill IS the
+        // black letterbox padding.
         val input = FloatArray(3 * DET_W * DET_H)
         val plane = DET_W * DET_H
-        for (i in 0 until plane) {
-            val p = px[i]
-            input[i] = (p and 0xff) / 255f                 // B
-            input[plane + i] = ((p ushr 8) and 0xff) / 255f  // G
-            input[2 * plane + i] = ((p ushr 16) and 0xff) / 255f // R
+        for (y in 0 until newH) {
+            val src = y * newW
+            val dst = y * DET_W
+            for (x in 0 until newW) {
+                val p = px[src + x]
+                val d = dst + x
+                input[d] = (p and 0xff) / 255f                 // B
+                input[plane + d] = ((p ushr 8) and 0xff) / 255f  // G
+                input[2 * plane + d] = ((p ushr 16) and 0xff) / 255f // R
+            }
         }
         val outs = det.run(listOf(
             NamedTensor("images", intArrayOf(1, 3, DET_H, DET_W), TensorData.Floats(input)),
@@ -80,18 +102,56 @@ class MeikiSession private constructor(
         ))
         val boxes = boxesOf(outs)
         val scores = scoresOf(outs)
-        val sx = bitmap.width.toFloat() / DET_W
-        val sy = bitmap.height.toFloat() / DET_H
+        val inv = 1f / scale
         val out = ArrayList<DetBox>(scores.size)
         for (i in scores.indices) {
             if (scores[i] < DET_CONF) continue
-            val x1 = (boxes[i * 4] * sx).roundToInt().coerceIn(0, bitmap.width - 1)
-            val y1 = (boxes[i * 4 + 1] * sy).roundToInt().coerceIn(0, bitmap.height - 1)
-            val x2 = (boxes[i * 4 + 2] * sx).roundToInt().coerceIn(1, bitmap.width)
-            val y2 = (boxes[i * 4 + 3] * sy).roundToInt().coerceIn(1, bitmap.height)
+            val x1 = (boxes[i * 4] * inv).roundToInt().coerceIn(0, bitmap.width - 1)
+            val y1 = (boxes[i * 4 + 1] * inv).roundToInt().coerceIn(0, bitmap.height - 1)
+            val x2 = (boxes[i * 4 + 2] * inv).roundToInt().coerceIn(1, bitmap.width)
+            val y2 = (boxes[i * 4 + 3] * inv).roundToInt().coerceIn(1, bitmap.height)
             if (x2 - x1 >= 2 && y2 - y1 >= 2) out += DetBox(Rect(x1, y1, x2, y2), scores[i])
         }
-        return out
+        return dedupByIou(out)
+    }
+
+    /**
+     * Score-descending greedy IoU suppression over the kept region boxes — the
+     * region tier's analog of [dedupByAxisOverlap]. The D-FINE head proposes a
+     * stack of near-copies for every text line (fixed 64 queries; no NMS in the
+     * model, and none in upstream meikiocr, which filters by confidence alone),
+     * so whenever two members of one stack clear [DET_CONF] the line is
+     * recognized and emitted twice. [DET_DEDUP_IOU] separates the regimes:
+     * measured same-line stack pairs sit at IoU ≥ 0.96, distinct upright lines
+     * at ~0.0, and the worst plausible distinct-line overlap — adjacent long
+     * 45°-slanted parallel lines at tight pitch, whose AABBs reach this tier
+     * intact because deskew happens per-region at recognition — sketches to
+     * ~0.76. Output preserves input (query) order.
+     */
+    private fun dedupByIou(boxes: List<DetBox>): List<DetBox> {
+        if (boxes.size < 2) return boxes
+        val suppressed = BooleanArray(boxes.size)
+        val order = boxes.indices.sortedByDescending { boxes[it].score }
+        for (oi in order.indices) {
+            val i = order[oi]
+            if (suppressed[i]) continue
+            for (oj in oi + 1 until order.size) {
+                val j = order[oj]
+                if (!suppressed[j] && iou(boxes[i].rect, boxes[j].rect) > DET_DEDUP_IOU) {
+                    suppressed[j] = true
+                }
+            }
+        }
+        return boxes.filterIndexed { i, _ -> !suppressed[i] }
+    }
+
+    /** Intersection-over-union of two pixel AABBs. */
+    private fun iou(a: Rect, b: Rect): Float {
+        val iw = min(a.right, b.right) - max(a.left, b.left)
+        val ih = min(a.bottom, b.bottom) - max(a.top, b.top)
+        if (iw <= 0 || ih <= 0) return 0f
+        val inter = iw.toFloat() * ih
+        return inter / (a.width().toFloat() * a.height() + b.width().toFloat() * b.height() - inter)
     }
 
     // ── Recognition ──────────────────────────────────────────────────────────
@@ -333,10 +393,15 @@ class MeikiSession private constructor(
     companion object {
         private const val TAG = "MeikiSession"
 
-        // Detector input (stretched), confidence gate.
+        // Detector input (letterboxed), confidence gate.
         private const val DET_W = 960
         private const val DET_H = 544
         private const val DET_CONF = 0.4f
+
+        /** Region-tier near-duplicate bar for [dedupByIou]: above the worst
+         *  plausible distinct-line AABB overlap (~0.76, adjacent slanted
+         *  lines), below every measured same-line stack pair (≥ 0.96). */
+        private const val DET_DEDUP_IOU = 0.8f
         // Recognizer inputs.
         private const val REC_H_W = 960
         private const val REC_H_H = 32
