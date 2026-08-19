@@ -159,9 +159,21 @@ _FORM_JUNK_LITERALS = frozenset({"-", "—", "–", "?"})
 
 def _scripts_of(s: str) -> frozenset:
     """Coarse Unicode-script tags of the LETTERS in [s] (marks/digits ignored).
-    Lets the forms[] pass keep an alias only when its script matches the lemma's:
+    Lets the alias passes keep a surface only when its script matches the lemma's:
     kaikki lists cross-script transliterations (Urdu forms on a Devanagari lemma)
-    and grammar-class labels ("ā-stem") that a single-script OCR never produces."""
+    and grammar-class labels ("ā-stem") that a single-script OCR never produces.
+
+    LIMITATION — the "other" bucket collapses every non-enumerated alphabetic
+    script (Hangul, Hanja/CJK, Greek, Hebrew, …) into ONE tag, so the gate cannot
+    distinguish among them. It is therefore PERMISSIVE for a language whose script
+    is not enumerated below: it still rejects an enumerated FOREIGN script (e.g. a
+    Latin romanization of a Korean word) but treats any two "other" surfaces as
+    same-script. For the one currently-affected build language, Korean, that is
+    the DESIRED behavior — Korean is genuinely multi-script (Hangul + Hanja, both
+    read by its OCR), so a Hanja alias on a Hangul lemma is useful, not junk. If a
+    future language instead needs cross-script filtering WITHIN "other" (e.g. Greek
+    dropping Coptic, or Korean treated as Hangul-only), give its script its own tag
+    here rather than relying on "other"."""
     out = set()
     for ch in s:
         o = ord(ch)
@@ -176,8 +188,30 @@ def _scripts_of(s: str) -> frozenset:
         elif 0x0E00 <= o <= 0x0E7F:
             out.add("thai")
         elif ch.isalpha():
-            out.add("other")
+            out.add("other")  # Hangul, Hanja/CJK, Greek, … all collapse here — see docstring
     return frozenset(out)
+
+
+def _alias_surface_is_junk(surface: str, lemma_scripts: frozenset) -> bool:
+    """True when [surface] must NOT become a position-2 alias, for reasons shared
+    by BOTH the forms[] pass and the redirect-alias pass — kept here as one
+    predicate so the two passes can't drift:
+
+      - hyphen-boundary template scaffolding: a linking-vowel / bound-morpheme
+        notation that starts or ends with a hyphen ("-a-", "मनो-") — never a
+        tappable word (word_frequency even mis-scores "-a-" as the bare article).
+      - a script the lemma doesn't use: cross-script transliterations (Urdu forms
+        on a Devanagari lemma) and Latin grammar-class labels ("ā-stem") a
+        single-script OCR pack can never produce, plus bare punctuation/digits
+        (no letters at all → empty script set).
+
+    The forms[]-only multi-word / literal filters stay at that call site: the
+    redirect pass legitimately aliases multi-word expressions, so it must NOT
+    apply them."""
+    if surface.startswith("-") or surface.endswith("-"):
+        return True
+    surface_scripts = _scripts_of(surface)
+    return not surface_scripts or bool(surface_scripts - lemma_scripts)
 
 
 def extract_examples(sense: dict) -> list[tuple[str, str]]:
@@ -624,21 +658,15 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
             form_text = lower_for_lang((form_obj.get("form") or "").strip(), lang)
             if not form_text or form_text == word_lower:
                 continue
-            # Drop wiktextract inflection-template scaffolding: linking-vowel /
-            # affix notations (e.g. "-a-", "-t") surface as "forms" that start or
-            # end with a hyphen and are not real tappable words — word_frequency
-            # even mis-scores "-a-" as the bare article. Negligible for Polish
-            # (5 rows), ~1 per Hungarian paradigm.
-            if form_text.startswith("-") or form_text.endswith("-"):
-                continue
+            # forms[]-only: inflection tables shouldn't carry multi-word or bare
+            # punctuation "forms". (The redirect pass legitimately aliases
+            # multi-word expressions, so it does NOT apply this check.)
             if " " in form_text or form_text in _FORM_JUNK_LITERALS:
                 continue
-            # Same-script gate: keep only forms whose scripts are a subset of the
-            # lemma's. Drops kaikki's cross-script transliterations (Urdu on a
-            # Devanagari lemma) and Latin grammar-class labels ("ā-stem") that a
-            # single-script OCR pack can never produce — ~31% of Hindi forms[].
-            form_scripts = _scripts_of(form_text)
-            if not form_scripts or (form_scripts - lemma_scripts):
+            # Shared junk gate (hyphen scaffolding + cross-script) — see
+            # _alias_surface_is_junk. Drops "-a-", Urdu-on-Devanagari, "ā-stem"
+            # (~31% of Hindi forms[]).
+            if _alias_surface_is_junk(form_text, lemma_scripts):
                 continue
             forms_alias_pairs.add((entry_id, form_text))
 
@@ -737,6 +765,13 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
                     continue
                 if source_surface == target_word:
                     continue  # self-alias, defensive
+                # Same shared junk gate the forms[] pass uses, against the TARGET
+                # lemma's script (the entry this row attaches to): drops
+                # hyphen-scaffolding redirect surfaces (bound-morpheme prefixes
+                # like "मनो-") and cross-script transliterations. Multi-word
+                # aliases survive — the space filter is forms[]-only.
+                if _alias_surface_is_junk(source_surface, _scripts_of(target_word)):
+                    continue
                 target_ids = kept_lemma_ids.get(target_word)
                 if not target_ids:
                     continue
