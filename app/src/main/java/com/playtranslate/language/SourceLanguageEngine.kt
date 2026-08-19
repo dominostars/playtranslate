@@ -195,7 +195,8 @@ object SourceLanguageEngines {
         SourceLangId.IT, SourceLangId.PT, SourceLangId.NL, SourceLangId.TR,
         SourceLangId.VI, SourceLangId.ID, SourceLangId.SV, SourceLangId.DA,
         SourceLangId.NO, SourceLangId.FI, SourceLangId.HU, SourceLangId.RO,
-        SourceLangId.CA, SourceLangId.RU, SourceLangId.AR, SourceLangId.HI -> LatinEngine(app, id)
+        SourceLangId.CA, SourceLangId.RU, SourceLangId.AR, SourceLangId.HI,
+        SourceLangId.PL -> LatinEngine(app, id)
         // Thai: no whitespace, isolating. Dedicated engine over a dictionary
         // maximal-matcher (newmm port); lookup via WiktionaryDictionaryManager.
         SourceLangId.TH -> ThaiEngine(app)

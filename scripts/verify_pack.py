@@ -32,6 +32,12 @@ from pathlib import Path
 ENTRY_INDEXES = {"idx_headword_entry", "idx_reading_entry", "idx_sense_entry"}
 APP_VERSION_CODE = 14  # app/build.gradle.kts
 
+# Row-count regression gate (--compare-against): a rebuild pulls a fresh upstream
+# extract, so some churn is normal — but a large DROP means the new pack is worse
+# than what users already have, which no other check here would catch. Allow 5%
+# churn per table before failing.
+REGRESSION_TOLERANCE = 0.05
+
 FAILURES: list[str] = []
 
 # JmdictSchemaProbe.kt:31-52 — all five must answer or the pack is force-wiped.
@@ -53,6 +59,42 @@ def ok(msg: str) -> None:
     print(f"  ok    {msg}")
 
 
+def compare_against_published(old_zip: Path, new_conn: sqlite3.Connection, work: Path) -> None:
+    """Fail on a material row-count DROP vs the currently-published pack.
+
+    `additiveFromVersion` describes the install MECHANISM, not the data: a
+    rebuild fully replaces the old pack, and nothing else in this toolchain
+    verifies the new one didn't silently lose entries/senses/examples to
+    upstream kaikki churn or a wordfreq shift. This is that gate. The `headword`
+    table legitimately GROWS once the forms[] pass lands, so the gate only ever
+    fires on drops. Only a fleet rebuild has a prior pack to compare against —
+    a brand-new language (e.g. Polish) has none; download the old pack from the
+    catalog `url` and pass it here for every language in a fleet campaign."""
+    if not old_zip.is_file():
+        fail(f"--compare-against {old_zip}: no such file")
+        return
+    old_dir = work / "_old"
+    old_dir.mkdir(exist_ok=True)
+    try:
+        with zipfile.ZipFile(old_zip) as z:
+            z.extract("dict.sqlite", old_dir)
+    except Exception as e:
+        fail(f"--compare-against {old_zip}: cannot read dict.sqlite ({e!r})")
+        return
+    old = sqlite3.connect(f"file:{old_dir / 'dict.sqlite'}?mode=ro", uri=True)
+    try:
+        for table in ("entry", "headword", "sense", "example"):
+            old_n = old.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            new_n = new_conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            delta = (new_n - old_n) / old_n if old_n else 0.0
+            if old_n and new_n < old_n * (1 - REGRESSION_TOLERANCE):
+                fail(f"{table}: {old_n:,} -> {new_n:,} ({delta:+.1%}) — rebuild LOSES data")
+            else:
+                ok(f"{table}: {old_n:,} -> {new_n:,} ({delta:+.1%})")
+    finally:
+        old.close()
+
+
 def misc_vocabulary(root: Path) -> tuple[set[str], set[str]]:
     v = json.loads((root / "app/src/main/resources/misc_vocabulary.json").read_text())
     alias = set()
@@ -69,6 +111,12 @@ def main() -> int:
     ap.add_argument("--lang", required=True)
     ap.add_argument("--pack-version", type=int, required=True)
     ap.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parent.parent)
+    ap.add_argument(
+        "--compare-against", type=Path, default=None,
+        help="Previously-published pack .zip for this language (downloaded from "
+             "the catalog `url`). Fails on a material row-count drop vs it. Run "
+             "for every language in a fleet rebuild before uploading.",
+    )
     args = ap.parse_args()
 
     print(f"verify {args.lang} — {args.zip}")
@@ -206,6 +254,11 @@ def main() -> int:
                 fail("no words.txt — Thai segmenter wordlist missing")
             else:
                 ok("words.txt present")
+
+        # ── regression gate vs the previously-published pack (§3.6) ────────
+        # Optional: only a fleet rebuild has a prior pack to compare against.
+        if args.compare_against is not None:
+            compare_against_published(args.compare_against, conn, work)
 
         conn.close()
 

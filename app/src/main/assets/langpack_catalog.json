@@ -552,11 +552,11 @@
       "display": "Hindi",
       "script": "DEVANAGARI",
       "bundled": false,
-      "packVersion": 3,
+      "packVersion": 4,
       "additiveFromVersion": 1,
-      "size": 1127988,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/hi-v3/hi.zip",
-      "sha256": "11541c8291a6693794c3b6c60aa7500ec95823b453cc1b43833eb4905fce9830",
+      "size": 1850498,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/hi-v4/hi.zip",
+      "sha256": "81b2381dc56401c2eaf55948e59ddc977c1b95c18539d44b3ac392fd8a95e371",
       "licenses": [
         {
           "component": "Wiktionary",
@@ -856,6 +856,28 @@
           "component": "KOMORAN",
           "license": "Apache-2.0",
           "attribution": "© Shineware, https://github.com/shineware/KOMORAN"
+        }
+      ]
+    },
+    "pl": {
+      "display": "Polish",
+      "script": "LATIN",
+      "bundled": false,
+      "packVersion": 3,
+      "additiveFromVersion": 1,
+      "size": 11532814,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/pl-v3/pl.zip",
+      "sha256": "5e4d952bb27ab9ddcf8e9f0fbdf1490f6af3117f5bfc98b5051e41248c6d2db7",
+      "licenses": [
+        {
+          "component": "Wiktionary",
+          "license": "CC-BY-SA-3.0",
+          "attribution": "© Wiktionary contributors, https://en.wiktionary.org/"
+        },
+        {
+          "component": "Morfologik / PoliMorf",
+          "license": "BSD-2-Clause",
+          "attribution": "© Marcin Miłkowski, https://github.com/morfologik/morfologik-stemming"
         }
       ]
     },
