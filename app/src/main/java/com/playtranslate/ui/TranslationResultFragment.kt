@@ -1167,13 +1167,12 @@ class TranslationResultFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val appCtx = ctx.applicationContext
-                // Shared phrase-aware resolution + tier branching (parity with
-                // the over-game capture panel — both surfaces resolve
-                // identically here). A multi-word expression starting at the
-                // tapped word wins over the word itself.
-                val resolved = SourceWordLookup.resolveAt(
-                    appCtx, tvOriginal.text?.toString().orEmpty(), span.first.first, lookupForm, reading,
-                )
+                // Shared resolution + tier branching (parity with the over-game
+                // capture panel — both surfaces resolve identically here).
+                // Multi-word expressions are already single spans (the
+                // tokenizer's phrase re-glob), so the span and its lookupForm
+                // cover the whole expression.
+                val resolved = SourceWordLookup.resolve(appCtx, lookupForm, reading)
                 val word = resolved.word
                 val popupReading = resolved.reading
                 val popupLabel = resolved.label
