@@ -592,3 +592,67 @@ and absent exactly where EN omits them (both toasts, the zoom hint, both headers
 **PASS.** Two 💬, no ⚠️, no ❌, no 🛑. The delta's hardest spot — a free-form,
 user-supplied AnkiDroid field name dropped into two Russian sentences — is handled with
 the head-noun-plus-citation-quotes construction and holds for any name.
+
+## Delta review 2026-08-19 (25 keys: language wildcard, Bergamot device gate, dictionary-styling toggle, Source Language row, manual dictionary-update flow, debug angle rollback)
+
+Mechanical layer verified programmatically across all 12 locales: all 25 delta names
+present, no extras, no duplicate `name=`; every `%n$s` present and matching EN; all
+`<xliff:g>` spans byte-identical to EN (`id`, `example`, inner placeholder); `<b>`, `\n`,
+`\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| yomitan_styling_subtitle | ⚠️ | «…с **версткой** и оформлением **самого словаря**. Применяется к словарям, **которые будут импортированы позже**…» | «…с **вёрсткой** и оформлением **каждого словаря**. Применяется к словарям, **импортированным с этого момента**…» | Three separate slips in one string. (a) **ё** — this file writes ё consistently (63 occurrences, incl. «идёт», «сохранённые»), and вёрстка is one of the words where the е-spelling is a genuine misreading risk. (b) «самого словаря» says *the dictionary itself*, singular and definite; EN says "**each** dictionary's own", which is the whole point of a per-dictionary styling switch. (c) «позже» = *later*, which reads as an unspecified future; EN's "from now on" is a boundary at the toggle flip, which «с этого момента» states. |
+
+### Clean areas (delta) — checked, no findings
+
+**Every placeholder sentence is case-safe by construction.** The four strings carrying the
+dictionary title use the head-noun-plus-guillemets pattern this file already established in
+`yomitan_duplicate_message` («Словарь «%1$s» уже импортирован») and `yomitan_delete_title`:
+«Словарь «%1$s» можно обновить…», «Данные словаря «%1$s» нужно скачать заново…»,
+«У словаря «%1$s» установлена последняя версия», «Словарь «%1$s» обновлён до последней
+версии». The runtime value stays a citation form inside the quotes, so it never has to
+decline, and every participle (обновлён) agrees with «словарь» (m.), not with an arbitrary
+title. This is precisely the failure mode that produced the «Импортирован 0…» bug in the
+2026-06-23 sync, closed here before it could recur.
+
+**«обновлён» is correct, and it is not the old bug.** In `yomitan_update_done_title`
+«Словарь обновлён» and `_message`, the short participle agrees with the explicit masculine
+subject «Словарь» — a fixed word, not a count and not a user value. The 2026-06-23 defect
+was a participle agreeing with a *number* slot; there is no number slot in this delta.
+
+**Update vocabulary is the app updater's.** «Доступно обновление» and «Не удалось проверить
+обновления» are byte-identical to `update_dialog_title` / `update_check_failed_title`;
+`yomitan_update_check_failed_message` follows `yomitan_download_error_message`'s
+«Проверьте подключение и повторите попытку»; `yomitan_update_scan_active_message` closes
+with `anki_models_unavailable`'s «Повторите попытку через минуту»; «в фоне» matches
+`onboarding_notif_row_silent_sub` rather than introducing «в фоновом режиме» as a second
+form. `yomitan_update_checking_title` «Проверка обновлений» is the deverbal-noun progress
+idiom of `update_progress_verifying` «Проверка…».
+
+**«Исходный язык» comes from the file, not from the English.** `llm_prompt_kw_source_desc`
+already says «исходного языка». Note this is deliberately *not* «Язык игры» — the app's
+term for the capture side (`pack_upgrade_label_source`, `cd_change_source_language`) — because
+this row is the *dictionary's* declared language, which need not be the game's.
+
+**«Любой язык» reads correctly in both of its slots.** It is the pinned first row of the
+language picker *and* the muted value of the Source Language row, and it agrees with
+«язык» (m.) in the second. The semantics are "applies everywhere", not "unset" — so the
+wildcard word (Любой), not a «Не выбран»/«Нет» form, which is exactly the distinction the
+EN rename from "None" to "Any" was making.
+
+**Register, length, truncation.** Formal lowercase «вы» throughout («Проверьте»,
+«Повторите», «выключите»); no «ты». The two long subtitles land in `Text.PT.RowSubtitle`
+and `settings_row_value`, neither of which sets `maxLines` or `ellipsize` (checked in
+`settings_row_value.xml` and `styles.xml`), so Russian's usual ~30% expansion wraps rather
+than clipping. No accuracy was traded for brevity.
+
+### Verdict
+
+**PASS after fix.** One ⚠️ carrying three sub-issues, no ❌, no 🛑. The delta's hardest
+spot — four sentences built around an arbitrary, indeclinable dictionary title — is solved
+with the head-noun construction the file already uses, so no case ever has to be guessed.

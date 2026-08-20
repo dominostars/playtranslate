@@ -212,6 +212,8 @@
 
     <string name="lang_section_suggested">แนะนำ</string>
 
+    <string name="lang_pick_any">ทุกภาษา</string>
+
     <string name="lang_section_all">ทั้งหมด</string>
 
     <plurals name="lang_search_match_count">
@@ -830,6 +832,8 @@
     <string name="bergamot_warmup_downloading_multi">กำลังดาวน์โหลดโมเดลออฟไลน์ <xliff:g id="file_index" example="1">%1$d</xliff:g> จาก <xliff:g id="file_count" example="2">%2$d</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%3$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%4$s</xliff:g></string>
     <string name="bergamot_pair_unsupported">ไม่รองรับสำหรับคู่ภาษาปัจจุบัน</string>
 
+    <string name="bergamot_device_unsupported">ไม่รองรับบนอุปกรณ์นี้</string>
+
     <string name="offline_backend_downloaded_cd">ดาวน์โหลดแล้ว</string>
     <string name="offline_backend_not_downloaded_cd">ยังไม่ได้ดาวน์โหลด</string>
     <string name="offline_backend_enabled_cd">เปิดใช้งาน</string>
@@ -1411,6 +1415,10 @@
 
     <string name="yomitan_single_dict_subtitle">คำจำกัดความจะมาจากพจนานุกรมที่มีลำดับความสำคัญสูงสุดที่มีผลลัพธ์ โดยพจนานุกรมในตัวเป็นตัวสำรองสุดท้าย</string>
 
+    <string name="yomitan_styling_title">สไตล์ของพจนานุกรม</string>
+
+    <string name="yomitan_styling_subtitle">แสดงคำจำกัดความด้วยเลย์เอาต์และสไตล์เฉพาะของพจนานุกรมแต่ละเล่ม มีผลกับพจนานุกรมที่นำเข้าตั้งแต่นี้เป็นต้นไป ปิดเพื่อใช้ข้อความธรรมดาเสมอ</string>
+
     <string name="yomitan_auto_update_label">อัปเดตอัตโนมัติ</string>
 
     <string name="yomitan_auto_update_subtitle">ดาวน์โหลดและติดตั้งพจนานุกรมนี้เวอร์ชันใหม่โดยอัตโนมัติ</string>
@@ -1456,6 +1464,46 @@
     <string name="yomitan_alias_hint">เพิ่มชื่อเล่น</string>
 
     <string name="yomitan_accent_default_cd">ค่าเริ่มต้น (สีข้อความคำบรรยาย)</string>
+
+    <string name="yomitan_source_language_label">ภาษาต้นทาง</string>
+
+    <string name="yomitan_check_updates_label">ตรวจสอบการอัปเดต</string>
+
+    <string name="yomitan_update_checking_title">กำลังตรวจสอบการอัปเดต</string>
+
+    <string name="yomitan_update_available_title">มีการอัปเดต</string>
+
+    <string name="yomitan_update_available_message">สามารถอัปเดต <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> เป็นเวอร์ชัน <xliff:g id="revision" example="2026.02.05">%2$s</xliff:g> ได้</string>
+
+    <string name="yomitan_update_confirm">อัปเดต</string>
+
+    <string name="yomitan_update_repair_title">ต้องดาวน์โหลดใหม่</string>
+
+    <string name="yomitan_update_repair_message">ต้องดาวน์โหลดข้อมูลของ <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> อีกครั้งเพื่อให้ใช้กับแอปเวอร์ชันนี้ได้</string>
+
+    <string name="yomitan_update_redownload_confirm">ดาวน์โหลดใหม่</string>
+
+    <string name="yomitan_update_none_title">อัปเดตอยู่แล้ว</string>
+
+    <string name="yomitan_update_none_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> เป็นเวอร์ชันล่าสุดแล้ว</string>
+
+    <string name="yomitan_update_check_failed_title">ตรวจสอบการอัปเดตไม่สำเร็จ</string>
+
+    <string name="yomitan_update_check_failed_message">เชื่อมต่อเซิร์ฟเวอร์อัปเดตของพจนานุกรมไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</string>
+
+    <string name="yomitan_update_busy_title">อัปเดตตอนนี้ไม่ได้</string>
+
+    <string name="yomitan_update_busy_message">มีเซสชันการแปลกำลังดำเนินอยู่ ลองอีกครั้งเมื่อเสร็จสิ้น</string>
+
+    <string name="yomitan_update_scan_active_message">กำลังตรวจสอบการอัปเดตพจนานุกรมอยู่เบื้องหลังแล้ว ลองอีกครั้งในอีกสักครู่</string>
+
+    <string name="yomitan_update_skipped_title">ไม่ได้ใช้การอัปเดต</string>
+
+    <string name="yomitan_update_skipped_message">ดาวน์โหลดการอัปเดตแล้ว แต่ไม่ตรงกับพจนานุกรมนี้ จึงไม่ได้ติดตั้ง</string>
+
+    <string name="yomitan_update_done_title">อัปเดตพจนานุกรมแล้ว</string>
+
+    <string name="yomitan_update_done_message">ตอนนี้ <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> เป็นเวอร์ชันล่าสุดแล้ว</string>
 
     <!-- ═══ SETTINGS — Tools ═══ -->
 
@@ -1718,6 +1766,7 @@
     <string name="settings_debug_log_pinhole">บันทึกเมตริก pinhole ของโหมดสด</string>
     <string name="settings_debug_save_ocr_seed">บันทึกภาพ OCR เป็นซีด</string>
     <string name="settings_debug_log_grouping">บันทึกการตัดสินใจจัดกลุ่ม OCR</string>
+    <string name="settings_debug_angle_gate">เกณฑ์มุมแบบเดิม (10°)</string>
     <string name="settings_debug_log_trace">เก็บ trace ของบันทึกการแปล</string>
     <string name="settings_debug_force_crash_title">บังคับให้ขัดข้อง</string>
 

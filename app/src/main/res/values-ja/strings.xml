@@ -225,6 +225,8 @@
 
     <string name="lang_section_suggested">おすすめ</string>
 
+    <string name="lang_pick_any">任意の言語</string>
+
     <string name="lang_section_all">すべて</string>
 
     <plurals name="lang_search_match_count">
@@ -912,6 +914,8 @@
     <string name="bergamot_warmup_downloading_multi">オフラインモデルをダウンロード中（<xliff:g id="file_index" example="1">%1$d</xliff:g>/<xliff:g id="file_count" example="2">%2$d</xliff:g>）… <xliff:g id="bytes_so_far" example="12 MB">%3$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%4$s</xliff:g></string>
     <string name="bergamot_pair_unsupported">現在の言語ペアには対応していません</string>
 
+    <string name="bergamot_device_unsupported">この端末には対応していません</string>
+
     <string name="offline_backend_downloaded_cd">ダウンロード済み</string>
     <string name="offline_backend_not_downloaded_cd">未ダウンロード</string>
     <string name="offline_backend_enabled_cd">有効</string>
@@ -1538,6 +1542,10 @@
 
     <string name="yomitan_single_dict_subtitle">定義は、結果のある辞書のうち最も優先順位の高いものから表示されます。内蔵辞書が最後の代替となります</string>
 
+    <string name="yomitan_styling_title">辞書のスタイル</string>
+
+    <string name="yomitan_styling_subtitle">各辞書独自のレイアウトとスタイルで定義を表示します。これ以降にインポートする辞書に適用されます。オフにすると常にプレーンテキストで表示します</string>
+
     <string name="yomitan_auto_update_label">自動更新</string>
 
     <string name="yomitan_auto_update_subtitle">この辞書の新しいバージョンを自動的にダウンロードしてインストールします</string>
@@ -1583,6 +1591,46 @@
     <string name="yomitan_alias_hint">ニックネームを追加</string>
 
     <string name="yomitan_accent_default_cd">デフォルト（サブタイトルのテキスト色）</string>
+
+    <string name="yomitan_source_language_label">翻訳元の言語</string>
+
+    <string name="yomitan_check_updates_label">更新を確認</string>
+
+    <string name="yomitan_update_checking_title">更新を確認中</string>
+
+    <string name="yomitan_update_available_title">更新があります</string>
+
+    <string name="yomitan_update_available_message">「<xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>」をバージョン<xliff:g id="revision" example="2026.02.05">%2$s</xliff:g>に更新できます。</string>
+
+    <string name="yomitan_update_confirm">更新</string>
+
+    <string name="yomitan_update_repair_title">再ダウンロードが必要です</string>
+
+    <string name="yomitan_update_repair_message">このバージョンのアプリで使用するには、「<xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>」のデータを再ダウンロードする必要があります。</string>
+
+    <string name="yomitan_update_redownload_confirm">再ダウンロード</string>
+
+    <string name="yomitan_update_none_title">最新の状態です</string>
+
+    <string name="yomitan_update_none_message">「<xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>」は最新バージョンです。</string>
+
+    <string name="yomitan_update_check_failed_title">更新を確認できませんでした</string>
+
+    <string name="yomitan_update_check_failed_message">辞書の更新サーバーに接続できませんでした。接続を確認して、もう一度お試しください。</string>
+
+    <string name="yomitan_update_busy_title">今は更新できません</string>
+
+    <string name="yomitan_update_busy_message">翻訳セッションの実行中です。終了してから、もう一度お試しください。</string>
+
+    <string name="yomitan_update_scan_active_message">辞書の更新をバックグラウンドで確認中です。しばらくしてからもう一度お試しください。</string>
+
+    <string name="yomitan_update_skipped_title">更新は適用されませんでした</string>
+
+    <string name="yomitan_update_skipped_message">更新はダウンロードされましたが、この辞書と一致しないためインストールされませんでした。</string>
+
+    <string name="yomitan_update_done_title">辞書を更新しました</string>
+
+    <string name="yomitan_update_done_message">「<xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>」は最新の状態になりました。</string>
 
     <string name="settings_header_tools">ツール</string>
 
@@ -1859,6 +1907,7 @@
     <string name="settings_debug_log_pinhole">ライブモードのピンホール指標をログ</string>
     <string name="settings_debug_save_ocr_seed">OCRキャプチャをシードとして保存</string>
     <string name="settings_debug_log_grouping">OCRのグループ化判定をログ</string>
+    <string name="settings_debug_angle_gate">従来の角度しきい値（10°）</string>
     <string name="settings_debug_log_trace">翻訳ログのトレースを記録</string>
     <string name="settings_debug_force_crash_title">クラッシュを強制</string>
 

@@ -338,3 +338,84 @@ Same for the waveform caption. The only clamped surface in the delta is the
   are polish, and the only one with a functional edge is the toast-length headroom on
   `anki_first_field_unmapped`.
 - **Ship as-is is defensible.** If one fix is taken, take that one.
+
+## Delta review 2026-08-19 (25 keys: language wildcard, Bergamot device gate, dictionary-styling toggle, Source Language row, manual dictionary-update flow, debug angle rollback)
+
+Mechanical layer verified programmatically across all 12 locales: all 25 delta names
+present, no extras, no duplicate `name=`; every `%n$s` present and matching EN; all
+`<xliff:g>` spans byte-identical to EN (`id`, `example`, inner placeholder); `<b>`, `\n`,
+`\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — applied
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| settings_debug_angle_gate | 💬 | «Seuil d\'angle classique (10°)» | «Seuil classique d\'angle (10°)» | Attachment: at the end of the noun phrase, «classique» binds to «angle», reading "classic angle". The EN comment is explicit that the *threshold* is the legacy one (10° instead of the current 3°). French allows the adjective to sit before the complement, which resolves it without extra words. Same fix applied in ar / es / pt-BR this round. |
+
+### Clean areas (delta) — checked, no findings
+
+**Update vocabulary reused from the app updater.** «Mise à jour disponible» and «Impossible
+de vérifier les mises à jour» are byte-identical to `update_dialog_title` /
+`update_check_failed_title`; `yomitan_update_check_failed_message` follows
+`yomitan_download_error_message`'s «Vérifiez votre connexion et réessayez»;
+`yomitan_update_scan_active_message` closes with `anki_models_unavailable`'s «Réessayez
+dans un instant»; «Recherche de mises à jour» is the deverbal progress form matching
+`update_progress_verifying` «Vérification…»; «en arrière-plan» matches
+`onboarding_notif_row_silent_sub`.
+
+**Apostrophes and French spacing.** Every apostrophe is escaped — «S\'applique»,
+«l\'application», «qu\'elle», «n\'a», «d\'angle» — and the space before high punctuation is
+present where French requires it: «à partir de maintenant **;** désactivez…»,
+«à ce dictionnaire **:** elle n\'a donc pas été installée». Verified programmatically as
+well as by eye.
+
+**Gender exposure is minimal and anchored where it exists.** «%1$s peut être **mis** à jour»
+defaults to masculine, matching the file's own `yomitan_duplicate_message` («%1$s est déjà
+importé») — agreement with the implied *dictionnaire*, not with an arbitrary title. And
+`yomitan_update_none_message` «%1$s est dans **sa** dernière version» is invariant by
+construction: «sa» agrees with *version* (f.), never with the placeholder.
+
+**«Langue source» is the file's own term**, from `llm_prompt_kw_source_desc` («de la langue
+source»), and distinct from «Langue du jeu» (`pack_upgrade_label_source`) — the row names
+the dictionary's declared language, not the capture language.
+
+**«maintenant» is present where EN says "now"**, keeping `yomitan_update_done_message`
+distinct from `yomitan_update_none_message`.
+
+**Register.** vous throughout («Vérifiez», «Réessayez», «désactivez cette option»). Button
+labels take the infinitive («Mettre à jour», «Télécharger à nouveau») as the file does
+(`update_dialog_download` «Télécharger et installer»).
+
+### Verdict
+
+**PASS after fix.** One 💬, no ⚠️/❌/🛑.
+
+### Delta review round 2 — 2026-08-19 (`lang_pick_any` read against the render code)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| lang_pick_any | ⚠️ | «Toutes les langues» | «N\'importe quelle langue» | The pinned wildcard row repeated `lang_section_all`'s own word: «Toutes les langues» sat two rows above a header reading «Toutes», so it read as a shortcut into the full list rather than "no language restriction". «N\'importe quelle langue» is the ordinary French wildcard and is lexically distinct in both slots; the apostrophe is escaped, and neither row clips (`settings_row_value.xml` sets no `maxLines`/`ellipsize`). |
+
+**Why round 1 missed it.** The string was reviewed against its English source and its two
+slots in isolation. It only fails when read against its *neighbours on screen*:
+`LanguageSetupActivity` passes the Any row as `leadingRows` (:282) and heads the list
+below it with `lang_section_suggested` then `lang_section_all` (:544, :550), so the pinned
+row and the "All" header are two rows apart. This is the doc's own lesson — read the render
+code, not the string — arriving from the other direction: not a truncation constraint, but
+an adjacency one.
+
+**Cross-locale shape.** Twelve independent renderings split into two camps: five chose an
+*any*-flavoured word (zh-rCN 任意语言, ru «Любой язык», ar «أي لغة», es «Cualquier idioma»,
+pt-BR «Qualquer idioma») and seven an *all*-flavoured one. Only the *all* camp can collide,
+and only where the pinned row repeats the header's own word — ja, tr, de and fr, now fixed.
+ko (모든 언어 / 전체), th (ทุกภาษา / ทั้งหมด) and vi (Mọi ngôn ngữ / Tất cả) use lexically
+distinct words in the two slots and were left alone. The fix also moves these four closer
+to the English, which deliberately says "Any" rather than "All" (and was itself renamed
+from "None" — the row means *no restriction*, not *unset*, and not *the whole list*).
+
+### Verdict (revised after round 2)
+
+**PASS after fixes.** One ⚠️ (round 2) and one 💬 (round 1). Apostrophe escaping and
+space-before-punctuation — the recurring French mechanical risks — were clean in both rounds.

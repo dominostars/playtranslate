@@ -209,6 +209,8 @@
 
     <string name="lang_section_suggested">Önerilen</string>
 
+    <string name="lang_pick_any">Herhangi bir dil</string>
+
     <string name="lang_section_all">Tümü</string>
 
     <plurals name="lang_search_match_count">
@@ -890,6 +892,8 @@
 
     <string name="bergamot_pair_unsupported">Geçerli dil çifti için desteklenmiyor</string>
 
+    <string name="bergamot_device_unsupported">Bu cihazda desteklenmiyor</string>
+
     <string name="offline_backend_downloaded_cd">İndirildi</string>
     <string name="offline_backend_not_downloaded_cd">İndirilmedi</string>
     <string name="offline_backend_enabled_cd">Etkin</string>
@@ -1490,6 +1494,8 @@
     <string name="yomitan_no_space_message">Bu sözlüğü içe aktarmak için yaklaşık <xliff:g id="needed" example="180 MB">%1$s</xliff:g> boş alan gerekir, ancak yalnızca <xliff:g id="available" example="42 MB">%2$s</xliff:g> kullanılabilir. Yer açıp tekrar deneyin.</string>
     <string name="yomitan_single_dict_title">Tanımları yalnızca tek bir sözlükten göster</string>
     <string name="yomitan_single_dict_subtitle">Tanımlar, sonuç bulunan en yüksek öncelikli sözlükten gelir; yerleşik sözlük son seçenektir</string>
+    <string name="yomitan_styling_title">Sözlük stili</string>
+    <string name="yomitan_styling_subtitle">Tanımları her sözlüğün kendi düzeni ve stiliyle gösterir. Bundan sonra içe aktarılan sözlükler için geçerlidir; her zaman düz metin kullanmak için kapatın</string>
     <string name="yomitan_auto_update_label">Otomatik güncelle</string>
     <string name="yomitan_auto_update_subtitle">Bu sözlüğün yeni sürümlerini otomatik olarak indirir ve yükler</string>
     <string name="yomitan_io_error_title">İçe aktarma başarısız</string>
@@ -1513,6 +1519,26 @@
     <string name="yomitan_alias_label">Takma ad</string>
     <string name="yomitan_alias_hint">Bir takma ad ekleyin</string>
     <string name="yomitan_accent_default_cd">Varsayılan (altyazı metni rengi)</string>
+    <string name="yomitan_source_language_label">Kaynak dil</string>
+    <string name="yomitan_check_updates_label">Güncellemeleri denetle</string>
+    <string name="yomitan_update_checking_title">Güncellemeler denetleniyor</string>
+    <string name="yomitan_update_available_title">Güncelleme mevcut</string>
+    <string name="yomitan_update_available_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> sözlüğü <xliff:g id="revision" example="2026.02.05">%2$s</xliff:g> sürümüne güncellenebilir.</string>
+    <string name="yomitan_update_confirm">Güncelle</string>
+    <string name="yomitan_update_repair_title">Yeniden indirme gerekiyor</string>
+    <string name="yomitan_update_repair_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> sözlüğünün verileri, uygulamanın bu sürümüyle çalışabilmesi için yeniden indirilmelidir.</string>
+    <string name="yomitan_update_redownload_confirm">Yeniden indir</string>
+    <string name="yomitan_update_none_title">Güncel</string>
+    <string name="yomitan_update_none_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> sözlüğü en son sürümde.</string>
+    <string name="yomitan_update_check_failed_title">Güncellemeler denetlenemedi</string>
+    <string name="yomitan_update_check_failed_message">Sözlüğün güncelleme sunucusuna ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.</string>
+    <string name="yomitan_update_busy_title">Şu anda güncellenemiyor</string>
+    <string name="yomitan_update_busy_message">Bir çeviri oturumu sürüyor. Bittiğinde tekrar deneyin.</string>
+    <string name="yomitan_update_scan_active_message">Sözlük güncellemeleri arka planda zaten denetleniyor. Birazdan tekrar deneyin.</string>
+    <string name="yomitan_update_skipped_title">Güncelleme uygulanmadı</string>
+    <string name="yomitan_update_skipped_message">Güncelleme indirildi ancak bu sözlükle eşleşmediği için yüklenmedi.</string>
+    <string name="yomitan_update_done_title">Sözlük güncellendi</string>
+    <string name="yomitan_update_done_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> sözlüğü artık güncel.</string>
     <string name="settings_header_tools">Araçlar</string>
     <string name="settings_cell_dictionary">Sözlük</string>
     <string name="settings_cell_history">Geçmiş</string>
@@ -1771,6 +1797,7 @@
     <string name="settings_debug_log_pinhole">Canlı mod iğne deliği ölçümlerini günlüğe kaydet</string>
     <string name="settings_debug_save_ocr_seed">OCR yakalamalarını tohum olarak kaydet</string>
     <string name="settings_debug_log_grouping">OCR gruplama kararlarını günlüğe kaydet</string>
+    <string name="settings_debug_angle_gate">Klasik açı eşiği (10°)</string>
     <string name="settings_debug_log_trace">Çeviri günlüğü izini kaydet</string>
     <string name="settings_debug_force_crash_title">Çökmeyi zorla</string>
     <string name="dictionary_screen_title">Sözlük</string>

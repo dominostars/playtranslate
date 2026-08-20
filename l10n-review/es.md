@@ -354,3 +354,54 @@ so there is no ¿ / ¡ contact point to miss. `Anki` untranslated in all four oc
 
 **Verdict: ship with one edit.** One ⚠️ (`anki_first_field_empty`'s null subject — it changes what
 the alert tells the user to do) and two 💬. No ❌, no 🛑.
+
+## Delta review 2026-08-19 (25 keys: language wildcard, Bergamot device gate, dictionary-styling toggle, Source Language row, manual dictionary-update flow, debug angle rollback)
+
+Mechanical layer verified programmatically across all 12 locales: all 25 delta names
+present, no extras, no duplicate `name=`; every `%n$s` present and matching EN; all
+`<xliff:g>` spans byte-identical to EN (`id`, `example`, inner placeholder); `<b>`, `\n`,
+`\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| yomitan_update_done_message | ⚠️ | «%1$s **ya** está actualizado.» | «%1$s **ahora** está actualizado.» | Meaning shift plus a collision. EN is "X is **now** up to date" — the alert that fires *after* a successful install, where "now" reports the result. «ya» says *already*, which is the no-update case, and it made this string echo `yomitan_update_none_title` («Ya está actualizado») verbatim, so success and no-op read alike. |
+| settings_debug_angle_gate | 💬 | «Umbral de ángulo clásico (10°)» | «Umbral clásico de ángulo (10°)» | Attachment: a postposed adjective binds to the nearest noun, so this reads "classic **angle**". The EN comment is explicit that the *threshold* is the legacy one (10° instead of the current 3°). Moving «clásico» onto «Umbral» fixes it without adding words. Same fix applied in ar / fr / pt-BR this round. |
+
+### Clean areas (delta) — checked, no findings
+
+**Update vocabulary reused from the app updater.** «Actualización disponible» and «No se
+pudo buscar actualizaciones» are byte-identical to `update_dialog_title` /
+`update_check_failed_title`; `yomitan_update_check_failed_message` follows
+`yomitan_download_error_message`'s «Comprueba tu conexión e inténtalo de nuevo»;
+`yomitan_update_scan_active_message` closes with `anki_models_unavailable`'s «Inténtalo de
+nuevo en un momento». «Buscando actualizaciones» is the gerund progress form of
+`update_progress_verifying` «Verificando…».
+
+**Gender around the placeholder is anchored, not guessed.** «%1$s se puede actualizar»,
+«los datos de %1$s», «%1$s tiene la última versión» — the only agreeing forms
+(«actualizado» in the success message) default to masculine, matching the file's own
+`yomitan_duplicate_message` («%1$s ya está importado»), i.e. agreement with the implied
+*diccionario*, not with an arbitrary title.
+
+**«Hay que volver a descargarlo» matches the file's own repair idiom.** `yomitan_outdated_label`
+already says «Hay que volver a importarlo tras actualizar la aplicación», so the re-download
+prompt is the same construction one verb over, rather than a new one.
+
+**«Idioma de origen» is the file's term**, from `llm_prompt_kw_source_desc` («del idioma de
+origen»), and deliberately not «Idioma del juego» (`pack_upgrade_label_source`) — the row
+names the dictionary's declared language, not the capture language.
+
+**Register and punctuation.** Informal tú throughout («Comprueba», «Inténtalo», «importes»,
+«desactívalo»); neutral international vocabulary, no vosotros and no regionalisms; no
+question or exclamation in the delta, so no ¿ / ¡ obligations. «aplicación» matches
+`yomitan_outdated_label` rather than switching to «app».
+
+### Verdict
+
+**PASS after fixes.** One ⚠️, one 💬, no ❌, no 🛑. The ⚠️ is the same class as the Korean
+one this round: the success and no-update alerts were written independently and collapsed
+onto the same wording, which the "now"/"already" distinction exists to prevent.

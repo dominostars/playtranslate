@@ -467,3 +467,58 @@ first-field strings, since the placeholder sits inside quotes followed by the cl
 ### Verdict
 
 **PASS.** One 💬 nit, no 🛑 / ❌ / ⚠️. Nothing blocks shipping these eight keys.
+
+## Delta review 2026-08-19 (25 keys: language wildcard, Bergamot device gate, dictionary-styling toggle, Source Language row, manual dictionary-update flow, debug angle rollback)
+
+Mechanical layer verified programmatically across all 12 locales: all 25 delta names
+present, no extras, no duplicate `name=`; every `%n$s` present and matching EN; all
+`<xliff:g>` spans byte-identical to EN (`id`, `example`, inner placeholder); `<b>`, `\n`,
+`\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+### Findings (delta)
+
+None applied. No 🛑/❌/⚠️; one 💬 recorded below.
+
+| name | severity | current | note |
+|---|---|---|---|
+| yomitan_update_skipped_title vs yomitan_update_repair_message | 💬 | 「未应用更新」 / 「…在此版本的应用中使用。」 | 应用 appears as the verb *to apply* in the first and the noun *app* in the second, inside the same feature. Left as is: the two live in different alerts, position disambiguates them in both cases, and 应用 is the file's established word for the app (`yomitan_outdated_label` 「应用更新后需要重新导入」), so replacing either would introduce a second term to fix a collision no reader is likely to hit. Recorded so a future pass does not "discover" it again. |
+
+### Clean areas (delta) — checked, no findings
+
+**Pangu spacing.** One space between Han and every adjacent Latin/digit run —
+「%1$s 可更新到版本 %2$s。」, 「需要重新下载 %1$s 的数据」, 「%1$s 已是最新版本。」,
+「%1$s 已更新到最新版本。」 — and none before full-width punctuation, including the digits
+inside full-width parentheses in 「经典角度阈值（10°）」. No space between Han runs anywhere.
+
+**Update vocabulary reused from the app updater.** 「有可用更新」 and 「无法检查更新」 are
+byte-identical to `update_dialog_title` / `update_check_failed_title`;
+`yomitan_update_check_failed_message` follows `yomitan_download_error_message`'s
+「请检查你的网络连接后重试」; `yomitan_update_scan_active_message` closes with
+`anki_models_unavailable`'s 「请稍后重试」; 「正在检查更新」 matches
+`update_progress_verifying` 「正在验证…」; 「后台」 matches
+`onboarding_notif_row_silent_sub`'s 「在后台完全静默运行」.
+
+**「源语言」 is the file's own term**, from `llm_prompt_kw_source_desc` (「源语言的英文名称」),
+and deliberately not 「游戏语言」 (`pack_upgrade_label_source`) — the row names the
+dictionary's declared language, not the capture language.
+
+**Terminology.** 词典 (dictionary), 释义 (definitions — matching
+`yomitan_single_dict_title`), 版本, 纯文本, 排版和样式. Simplified characters only; casual
+你 in 「请检查你的网络连接后重试」, never 您.
+
+**Sentence-final 。 follows the nearest neighbour.** `yomitan_styling_subtitle` ends with 。
+like `yomitan_single_dict_subtitle` — the other multi-clause subtitle in the same Terms
+section — rather than following `yomitan_auto_update_subtitle`, which is a single clause in
+a different card.
+
+**「已更新到最新版本」 carries EN's "now"**, keeping `yomitan_update_done_message` distinct
+from `yomitan_update_none_message` (「已是最新版本」). Two other locales lost that contrast
+this round.
+
+### Verdict
+
+**PASS.** No 🛑/❌/⚠️, one 💬 recorded as a decision. Chinese has no gender, case or
+agreement contact with the dictionary-title placeholder; the only real risk in this delta
+was pangu spacing around the Latin-script fills, and it holds throughout.

@@ -289,3 +289,58 @@ combining-mark sequences, no NBSP, no double spaces, and no merged or ASCII-stri
 ### Verdict
 
 **PASS with polish.** No 🛑, no ❌. Two ⚠️ worth fixing before the device pass — `anki_added_word_success` ("thẻ từ" reads as *magnetic card* / *card from*, and this toast exists solely to make the card shape legible at a glance) and `game_audio_zoom_hint` ("bớt âm thanh" reads as *turn the volume down* under a control that does not change volume) — plus one 💬 trim on `anki_first_field_unmapped` that buys back toast-clamp headroom the English comment explicitly budgets for. Everything else in the delta is correct, consistent with the committed file, and lands its render surface.
+
+## Delta review 2026-08-19 (25 keys: language wildcard, Bergamot device gate, dictionary-styling toggle, Source Language row, manual dictionary-update flow, debug angle rollback)
+
+Mechanical layer verified programmatically across all 12 locales: all 25 delta names
+present, no extras, no duplicate `name=`; every `%n$s` present and matching EN; all
+`<xliff:g>` spans byte-identical to EN (`id`, `example`, inner placeholder); `<b>`, `\n`,
+`\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| yomitan_styling_subtitle | ⚠️ | «…tắt để luôn dùng **văn bản thuần**» | «…tắt để luôn dùng **văn bản thuần túy**» | «thuần» alone is a bound morpheme here and reads as clipped; the established Vietnamese for "plain text" is «văn bản thuần túy». The file had no prior instance of the term (its five «văn bản thành …» hits are a different construction), so this one sets the precedent and should set it correctly. |
+
+### Clean areas (delta) — checked, no findings
+
+**The "translation session" trap was handled deliberately.** `yomitan_update_busy_message`
+says «Một phiên dịch thuật đang diễn ra», **not** «một phiên dịch» — which is the obvious
+literal rendering and is also the ordinary Vietnamese word for *an interpreter*. Splitting
+the compound as phiên + dịch thuật keeps the "session of translation" reading, and the
+frame «Một … đang diễn ra» forces «phiên» to be read as the head noun. This is the single
+highest-risk string in the Vietnamese delta and it is worth leaving the reasoning on the
+record: the app already calls a session «phiên» (`history_live_session_title` «Phiên trực
+tiếp»), so the collision is structural and will recur any time "translation session" is
+translated afresh.
+
+**Diacritics and syllable spacing.** Every syllable carries its tone marks and stands
+separate — «Kiểm tra bản cập nhật», «Ngưỡng góc kiểu cũ», «đang ở phiên bản mới nhất».
+Nothing merged, nothing stripped to ASCII.
+
+**Update vocabulary reused.** «Có bản cập nhật» and «Không thể kiểm tra bản cập nhật» are
+byte-identical to `update_dialog_title` / `update_check_failed_title`;
+`yomitan_update_check_failed_message` follows `yomitan_download_error_message`'s «Hãy kiểm
+tra kết nối và thử lại»; `yomitan_update_scan_active_message` closes with
+`anki_models_unavailable`'s «Hãy thử lại sau giây lát»; «Đang kiểm tra bản cập nhật»
+extends `update_progress_verifying` «Đang xác minh…»; «trong nền» matches
+`onboarding_notif_row_silent_sub`'s «khi chạy nền».
+
+**«%1$s đang ở phiên bản mới nhất» avoids a literal trap.** The app's own
+`update_none_message` reads «PlayTranslate %1$s là phiên bản mới nhất», but there the
+placeholder *is* a version number. Here it is a dictionary name, so «là phiên bản mới nhất»
+would assert the dictionary *is* a version. «đang ở» states what EN means ("is **on** the
+latest version"), and `yomitan_update_done_message`'s «hiện đã ở» carries EN's "now".
+
+**«Ngôn ngữ nguồn» is the file's term**, from `llm_prompt_kw_source_desc` («của ngôn ngữ
+nguồn»), and distinct from «Ngôn ngữ trò chơi» (`pack_upgrade_label_source`).
+
+**Register.** Polite, user addressed as bạn via «Hãy …» imperatives throughout.
+
+### Verdict
+
+**PASS after fix.** One ⚠️, no ❌, no 🛑. The delta's real hazard was the phiên dịch
+homograph, and it was avoided rather than stumbled into.

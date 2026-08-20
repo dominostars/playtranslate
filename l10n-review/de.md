@@ -356,3 +356,82 @@ in favour of «die Übersetzung» is the more natural German.
 
 **PASS.** No 🛑, no ❌, no ⚠️ — three 💬 polish items, two of them free (an unconstrained
 alert, a wrapping caption) and one a length-safety trim on the clipping toast.
+
+## Delta review 2026-08-19 (25 keys: language wildcard, Bergamot device gate, dictionary-styling toggle, Source Language row, manual dictionary-update flow, debug angle rollback)
+
+Mechanical layer verified programmatically across all 12 locales: all 25 delta names
+present, no extras, no duplicate `name=`; every `%n$s` present and matching EN; all
+`<xliff:g>` spans byte-identical to EN (`id`, `example`, inner placeholder); `<b>`, `\n`,
+`\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| settings_debug_angle_gate | 💬 | «Klassischer Winkel-Schwellenwert (10°)» | «Klassischer Winkelschwellenwert (10°)» | This file hyphenates only where one half is a loanword, acronym or brand — API-Schlüssel, Offline-Übersetzung, Live-Modus, Auto-Übersetzung, UI-Inhalte, Update-Prüfung, Sprachausgabe-Engine. Native German compounds are written solid: Kameraeinstellungen, Systemeinstellungen, Kontextgrenze, Häufigkeitsbewertung. Winkel + Schwellenwert are both native, so the hyphen is out of pattern. |
+
+### Clean areas (delta) — checked, no findings
+
+**Update vocabulary reused from the app updater.** «Update verfügbar» and
+«Update-Prüfung fehlgeschlagen» are byte-identical to `update_dialog_title` /
+`update_check_failed_title`; `yomitan_update_check_failed_message` follows
+`yomitan_download_error_message`'s «Überprüfe deine Verbindung und versuche es erneut»;
+`yomitan_update_scan_active_message` closes with `anki_models_unavailable`'s «Versuche es
+gleich noch einmal»; «im Hintergrund» matches `onboarding_notif_row_silent_sub`. The
+noun/verb split is kept: «Nach Updates suchen» for the tappable row, «Suche nach Updates»
+for the progress popup.
+
+**No agreement exposure around the placeholder.** German predicative adjectives do not
+inflect, so «%1$s ist auf dem neuesten Stand» and «%1$s kann auf Version %2$s aktualisiert
+werden» are safe for any dictionary title regardless of gender — the same reason
+`yomitan_duplicate_message` («%1$s ist bereits importiert») needed no head noun. «Die Daten
+von %1$s … damit **sie** … funktionieren» refers to Daten (pl.), which is what EN's "to
+work" attaches to; the Arabic locale had the mirror-image bug here and was fixed.
+
+**«Ausgangssprache» is the file's existing term**, already used twice in
+`llm_prompt_kw_source_desc` / `_source_code_desc`, and deliberately not «Spielsprache»
+(4 occurrences) — that names the capture language, not the dictionary's declared one.
+
+**«jetzt» is present where EN says "now"**, keeping `yomitan_update_done_message` distinct
+from `yomitan_update_none_message`.
+
+**Register and length.** Informal lowercase du throughout («Überprüfe», «Versuche»,
+«schalte die Option aus»); no Sie. The long styling subtitle and repair message land in
+`Text.PT.RowSubtitle` / the alert body, neither of which sets `maxLines` or `ellipsize`,
+so German compounding wraps rather than clipping — checked in `settings_row_value.xml` and
+`styles.xml` rather than assumed.
+
+### Verdict
+
+**PASS after fix.** One 💬, no ⚠️/❌/🛑. German is structurally the least exposed locale in
+this delta: no case, gender or particle contact with the dictionary-title placeholder.
+
+### Delta review round 2 — 2026-08-19 (`lang_pick_any` read against the render code)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| lang_pick_any | ⚠️ | «Alle Sprachen» | «Beliebige Sprache» | The pinned wildcard row repeated `lang_section_all` verbatim: «Alle Sprachen» sat two rows above a header reading «Alle», so it read as a shortcut into the full list rather than "no language restriction". «Beliebige Sprache» is the standard German wildcard and is lexically distinct in both slots. |
+
+**Why round 1 missed it.** The string was reviewed against its English source and its two
+slots in isolation. It only fails when read against its *neighbours on screen*:
+`LanguageSetupActivity` passes the Any row as `leadingRows` (:282) and heads the list
+below it with `lang_section_suggested` then `lang_section_all` (:544, :550), so the pinned
+row and the "All" header are two rows apart. This is the doc's own lesson — read the render
+code, not the string — arriving from the other direction: not a truncation constraint, but
+an adjacency one.
+
+**Cross-locale shape.** Twelve independent renderings split into two camps: five chose an
+*any*-flavoured word (zh-rCN 任意语言, ru «Любой язык», ar «أي لغة», es «Cualquier idioma»,
+pt-BR «Qualquer idioma») and seven an *all*-flavoured one. Only the *all* camp can collide,
+and only where the pinned row repeats the header's own word — ja, tr, de and fr, now fixed.
+ko (모든 언어 / 전체), th (ทุกภาษา / ทั้งหมด) and vi (Mọi ngôn ngữ / Tất cả) use lexically
+distinct words in the two slots and were left alone. The fix also moves these four closer
+to the English, which deliberately says "Any" rather than "All" (and was itself renamed
+from "None" — the row means *no restriction*, not *unset*, and not *the whole list*).
+
+### Verdict (revised after round 2)
+
+**PASS after fixes.** One ⚠️ (round 2) and one 💬 (round 1). German remains the least
+exposed locale for placeholder grammar in this delta; both findings were lexical.

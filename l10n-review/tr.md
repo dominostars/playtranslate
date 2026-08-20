@@ -438,3 +438,83 @@ delta attaches to a free-form placeholder.**
 harmonized and escaped, no suffix touches a free-form placeholder anywhere in the delta,
 and the register split across the History toggle matches the file's own precedent. The
 single ⚠️ is `game_audio_zoom_hint`'s pinch verb; the two 💬 are optional polish.
+
+## Delta review 2026-08-19 (25 keys: language wildcard, Bergamot device gate, dictionary-styling toggle, Source Language row, manual dictionary-update flow, debug angle rollback)
+
+Mechanical layer verified programmatically across all 12 locales: all 25 delta names
+present, no extras, no duplicate `name=`; every `%n$s` present and matching EN; all
+`<xliff:g>` spans byte-identical to EN (`id`, `example`, inner placeholder); `<b>`, `\n`,
+`\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| yomitan_update_repair_message | 💬 | «… uygulamanın bu sürümüyle **çalışmak için** yeniden indirilmelidir.» | «… uygulamanın bu sürümüyle **çalışabilmesi için** yeniden indirilmelidir.» | The bare -mak için infinitive requires the purpose clause to share the main clause's subject, which technically holds (veriler … çalışmak) but reads as a stated intention rather than a capability. EN is "**to work with** this version", i.e. so that it *can* work; the -Abilme + possessive gerund is the idiomatic Turkish for that, and it also removes the momentary garden-path where «uygulamanın» looks like the subject of çalışmak. |
+
+### Clean areas (delta) — checked, no findings
+
+**No suffix is ever attached to a placeholder.** This is the file's hard Turkish rule, and
+the delta respects it everywhere: «%1$s sözlüğü», «%1$s sözlüğünün verileri», «%1$s sözlüğü
+en son sürümde», «%1$s sözlüğü artık güncel» all hang the case and possessive marking on
+the head noun *sözlük*, whose vowel harmony is known. «%2$s sürümüne» likewise suffixes
+*sürüm*, not the revision string. A dictionary title can be «JMdict», «Jitendex.org» or
+«JMnedict [2026-08-13]» — none of those has predictable harmony, and none has to.
+
+**i / İ casing.** «Klasik», «İndir»-family forms and «denetle» are spelled with the correct
+dotted/dotless letters; nothing in the delta is pre-uppercased, so the runtime uppercasing
+in label views cannot produce an İSIM/FIIL-class defect here.
+
+**Update vocabulary reused from the app updater.** «Güncelleme mevcut» and «Güncellemeler
+denetlenemedi» are byte-identical to `update_dialog_title` / `update_check_failed_title`,
+and the whole family stays on **denetle** rather than mixing in kontrol et;
+`yomitan_update_check_failed_message` follows `yomitan_download_error_message`'s
+«Bağlantınızı kontrol edip tekrar deneyin»; `yomitan_update_scan_active_message` closes
+with `anki_models_unavailable`'s «Birazdan tekrar deneyin»; «Güncellemeler denetleniyor»
+matches `update_progress_verifying` «Doğrulanıyor…»; «arka planda» matches
+`onboarding_notif_row_silent_sub`.
+
+**«Kaynak dil» is the file's own term**, from `llm_prompt_kw_source_desc` («Kaynak dilin
+İngilizce adı»), and distinct from «Oyun Dili» (`pack_upgrade_label_source`).
+
+**Register.** siz-level imperatives throughout («deneyin», «kapatın», «kontrol edip»); the
+row and button labels take the short imperative/noun form («Güncelle», «Yeniden indir»,
+«Güncellemeleri denetle»), matching the file.
+
+**«artık güncel» carries EN's "now"**, keeping the success alert distinct from the
+no-update alert.
+
+### Verdict
+
+**PASS after fix.** One 💬, no ⚠️/❌/🛑. The usual Turkish failure mode in this app — a
+case suffix landing on a runtime value — does not occur anywhere in the delta.
+
+### Delta review round 2 — 2026-08-19 (`lang_pick_any` read against the render code)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| lang_pick_any | ⚠️ | «Tüm diller» | «Herhangi bir dil» | The pinned wildcard row shared its root with `lang_section_all`: «Tüm diller» sat two rows above a header reading «Tümü», so it read as a shortcut into the full list rather than "no language restriction". «Herhangi bir dil» is the ordinary Turkish wildcard and is lexically distinct in both slots. No suffix contact with any placeholder, so the change is free of harmony risk. |
+
+**Why round 1 missed it.** The string was reviewed against its English source and its two
+slots in isolation. It only fails when read against its *neighbours on screen*:
+`LanguageSetupActivity` passes the Any row as `leadingRows` (:282) and heads the list
+below it with `lang_section_suggested` then `lang_section_all` (:544, :550), so the pinned
+row and the "All" header are two rows apart. This is the doc's own lesson — read the render
+code, not the string — arriving from the other direction: not a truncation constraint, but
+an adjacency one.
+
+**Cross-locale shape.** Twelve independent renderings split into two camps: five chose an
+*any*-flavoured word (zh-rCN 任意语言, ru «Любой язык», ar «أي لغة», es «Cualquier idioma»,
+pt-BR «Qualquer idioma») and seven an *all*-flavoured one. Only the *all* camp can collide,
+and only where the pinned row repeats the header's own word — ja, tr, de and fr, now fixed.
+ko (모든 언어 / 전체), th (ทุกภาษา / ทั้งหมด) and vi (Mọi ngôn ngữ / Tất cả) use lexically
+distinct words in the two slots and were left alone. The fix also moves these four closer
+to the English, which deliberately says "Any" rather than "All" (and was itself renamed
+from "None" — the row means *no restriction*, not *unset*, and not *the whole list*).
+
+### Verdict (revised after round 2)
+
+**PASS after fixes.** One ⚠️ (round 2) and one 💬 (round 1). The Turkish-specific hazard —
+a case suffix landing on a runtime value — remains absent from the whole delta.

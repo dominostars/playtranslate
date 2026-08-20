@@ -231,6 +231,8 @@
 
     <string name="lang_section_suggested">Рекомендуемые</string>
 
+    <string name="lang_pick_any">Любой язык</string>
+
     <string name="lang_section_all">Все</string>
 
     <plurals name="lang_search_match_count">
@@ -917,6 +919,8 @@
     <string name="bergamot_warmup_downloading_multi">Скачивание офлайн-модели <xliff:g id="file_index" example="1">%1$d</xliff:g> из <xliff:g id="file_count" example="2">%2$d</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%3$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%4$s</xliff:g></string>
     <string name="bergamot_pair_unsupported">Не поддерживается для текущей языковой пары</string>
 
+    <string name="bergamot_device_unsupported">Не поддерживается на этом устройстве</string>
+
     <string name="offline_backend_downloaded_cd">Скачано</string>
     <string name="offline_backend_not_downloaded_cd">Не скачано</string>
     <string name="offline_backend_enabled_cd">Включено</string>
@@ -1561,6 +1565,10 @@
 
     <string name="yomitan_single_dict_subtitle">Определения берутся из словаря с наивысшим приоритетом, в котором есть результаты; встроенный словарь — последний запасной вариант</string>
 
+    <string name="yomitan_styling_title">Оформление словаря</string>
+
+    <string name="yomitan_styling_subtitle">Показывать определения с вёрсткой и оформлением каждого словаря. Применяется к словарям, импортированным с этого момента; выключите, чтобы всегда использовать простой текст</string>
+
     <string name="yomitan_auto_update_label">Автообновление</string>
 
     <string name="yomitan_auto_update_subtitle">Автоматически скачивать и устанавливать новые версии этого словаря</string>
@@ -1606,6 +1614,46 @@
     <string name="yomitan_alias_hint">Добавьте псевдоним</string>
 
     <string name="yomitan_accent_default_cd">По умолчанию (цвет текста подзаголовка)</string>
+
+    <string name="yomitan_source_language_label">Исходный язык</string>
+
+    <string name="yomitan_check_updates_label">Проверить обновления</string>
+
+    <string name="yomitan_update_checking_title">Проверка обновлений</string>
+
+    <string name="yomitan_update_available_title">Доступно обновление</string>
+
+    <string name="yomitan_update_available_message">Словарь «<xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>» можно обновить до версии <xliff:g id="revision" example="2026.02.05">%2$s</xliff:g>.</string>
+
+    <string name="yomitan_update_confirm">Обновить</string>
+
+    <string name="yomitan_update_repair_title">Нужно скачать заново</string>
+
+    <string name="yomitan_update_repair_message">Данные словаря «<xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>» нужно скачать заново, чтобы он работал с этой версией приложения.</string>
+
+    <string name="yomitan_update_redownload_confirm">Скачать заново</string>
+
+    <string name="yomitan_update_none_title">Последняя версия</string>
+
+    <string name="yomitan_update_none_message">У словаря «<xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>» установлена последняя версия.</string>
+
+    <string name="yomitan_update_check_failed_title">Не удалось проверить обновления</string>
+
+    <string name="yomitan_update_check_failed_message">Не удалось подключиться к серверу обновлений словаря. Проверьте подключение и повторите попытку.</string>
+
+    <string name="yomitan_update_busy_title">Сейчас обновление недоступно</string>
+
+    <string name="yomitan_update_busy_message">Идёт сеанс перевода. Повторите попытку после его завершения.</string>
+
+    <string name="yomitan_update_scan_active_message">Обновления словарей уже проверяются в фоне. Повторите попытку через минуту.</string>
+
+    <string name="yomitan_update_skipped_title">Обновление не применено</string>
+
+    <string name="yomitan_update_skipped_message">Обновление скачано, но не соответствует этому словарю, поэтому не было установлено.</string>
+
+    <string name="yomitan_update_done_title">Словарь обновлён</string>
+
+    <string name="yomitan_update_done_message">Словарь «<xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>» обновлён до последней версии.</string>
 
     <string name="settings_header_tools">Инструменты</string>
 
@@ -1885,6 +1933,7 @@
     <string name="settings_debug_log_pinhole">Журналировать метрики pinhole режима реального времени</string>
     <string name="settings_debug_save_ocr_seed">Сохранять захваты OCR как образцы</string>
     <string name="settings_debug_log_grouping">Журналировать решения группировки OCR</string>
+    <string name="settings_debug_angle_gate">Классический порог угла (10°)</string>
     <string name="settings_debug_log_trace">Записывать трассировку журнала переводов</string>
     <string name="settings_debug_force_crash_title">Принудительный сбой</string>
 

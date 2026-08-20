@@ -226,6 +226,8 @@
 
     <string name="lang_section_suggested">추천</string>
 
+    <string name="lang_pick_any">모든 언어</string>
+
     <string name="lang_section_all">전체</string>
 
     <plurals name="lang_search_match_count">
@@ -860,6 +862,8 @@
     <string name="bergamot_warmup_downloading_multi">오프라인 모델 다운로드 중(<xliff:g id="file_count" example="2">%2$d</xliff:g>개 중 <xliff:g id="file_index" example="1">%1$d</xliff:g>번째)… <xliff:g id="bytes_so_far" example="12 MB">%3$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%4$s</xliff:g></string>
     <string name="bergamot_pair_unsupported">현재 언어 쌍에서 지원되지 않음</string>
 
+    <string name="bergamot_device_unsupported">이 기기에서 지원되지 않음</string>
+
     <string name="offline_backend_downloaded_cd">다운로드됨</string>
     <string name="offline_backend_not_downloaded_cd">다운로드 안 됨</string>
     <string name="offline_backend_enabled_cd">사용 설정됨</string>
@@ -1481,6 +1485,10 @@
 
     <string name="yomitan_single_dict_subtitle">결과가 있는 가장 높은 우선순위의 사전에서 정의를 가져오며, 내장 사전이 최종 대체입니다</string>
 
+    <string name="yomitan_styling_title">사전 스타일</string>
+
+    <string name="yomitan_styling_subtitle">각 사전의 자체 레이아웃과 스타일로 정의를 표시합니다. 지금부터 가져오는 사전에 적용되며, 끄면 항상 일반 텍스트로 표시합니다</string>
+
     <string name="yomitan_auto_update_label">자동 업데이트</string>
 
     <string name="yomitan_auto_update_subtitle">이 사전의 새 버전을 자동으로 다운로드하고 설치합니다</string>
@@ -1526,6 +1534,46 @@
     <string name="yomitan_alias_hint">별칭 추가</string>
 
     <string name="yomitan_accent_default_cd">기본값(부제목 텍스트 색상)</string>
+
+    <string name="yomitan_source_language_label">원본 언어</string>
+
+    <string name="yomitan_check_updates_label">업데이트 확인</string>
+
+    <string name="yomitan_update_checking_title">업데이트 확인 중</string>
+
+    <string name="yomitan_update_available_title">업데이트 사용 가능</string>
+
+    <string name="yomitan_update_available_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>을(를) 버전 <xliff:g id="revision" example="2026.02.05">%2$s</xliff:g>(으)로 업데이트할 수 있습니다.</string>
+
+    <string name="yomitan_update_confirm">업데이트</string>
+
+    <string name="yomitan_update_repair_title">다시 다운로드 필요</string>
+
+    <string name="yomitan_update_repair_message">이 버전의 앱에서 사용하려면 <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>의 데이터를 다시 다운로드해야 합니다.</string>
+
+    <string name="yomitan_update_redownload_confirm">다시 다운로드</string>
+
+    <string name="yomitan_update_none_title">최신 상태</string>
+
+    <string name="yomitan_update_none_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>이(가) 최신 버전입니다.</string>
+
+    <string name="yomitan_update_check_failed_title">업데이트를 확인할 수 없습니다</string>
+
+    <string name="yomitan_update_check_failed_message">사전의 업데이트 서버에 연결할 수 없습니다. 연결을 확인하고 다시 시도하세요.</string>
+
+    <string name="yomitan_update_busy_title">지금은 업데이트할 수 없습니다</string>
+
+    <string name="yomitan_update_busy_message">번역 세션이 진행 중입니다. 끝난 후에 다시 시도하세요.</string>
+
+    <string name="yomitan_update_scan_active_message">백그라운드에서 이미 사전 업데이트를 확인하고 있습니다. 잠시 후 다시 시도하세요.</string>
+
+    <string name="yomitan_update_skipped_title">업데이트가 적용되지 않음</string>
+
+    <string name="yomitan_update_skipped_message">업데이트를 다운로드했지만 이 사전과 일치하지 않아 설치하지 않았습니다.</string>
+
+    <string name="yomitan_update_done_title">사전 업데이트 완료</string>
+
+    <string name="yomitan_update_done_message">이제 <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>이(가) 최신 상태입니다.</string>
 
     <string name="settings_header_tools">도구</string>
 
@@ -1787,6 +1835,7 @@
     <string name="settings_debug_log_pinhole">실시간 모드 핀홀 지표 로깅</string>
     <string name="settings_debug_save_ocr_seed">OCR 캡처를 시드로 저장</string>
     <string name="settings_debug_log_grouping">OCR 그룹화 결정 로깅</string>
+    <string name="settings_debug_angle_gate">기존 각도 임계값(10°)</string>
     <string name="settings_debug_log_trace">번역 로그 트레이스 기록</string>
     <string name="settings_debug_force_crash_title">강제 충돌</string>
 
