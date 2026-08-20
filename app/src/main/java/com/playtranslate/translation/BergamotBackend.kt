@@ -38,11 +38,14 @@ class BergamotBackend(
      *  OfflineFallbackTranslators). */
     override val usableAsOfflineFallback: Boolean = true
 
-    /** arm64-only (the .so) — gates the backend off 32-bit, like the MNN tier. */
-    fun supportsRequiredAbi(): Boolean = Process.is64Bit()
+    /** arm64-only (the .so) and real-ARM-only — gates the backend off 32-bit
+     *  (like the MNN tier) and off binary-translated environments, where
+     *  Houdini-class translators SIGSEGV libbergamot_jni's thread_locals
+     *  (see [BinaryTranslation]). */
+    fun supportsNativeRuntime(): Boolean = supportsNativeRuntime(appContext)
 
     override fun isUsable(source: String, target: String): Boolean {
-        if (!supportsRequiredAbi()) return false
+        if (!supportsNativeRuntime()) return false
         if (!enabledProvider()) return false
         if (source.equals(target, ignoreCase = true)) return false
         return manager.isInstalled(source, target) // implies supportsPair
@@ -86,5 +89,13 @@ class BergamotBackend(
         // process death; a test needing deterministic teardown builds its own
         // instance via BergamotTranslator.createForTest(ctx) and closes that —
         // never the shared singleton.
+    }
+
+    companion object {
+        /** Static form for callers without a backend instance (BergamotWarmup,
+         *  which runs before/without the registry). Same gate as the instance
+         *  [supportsNativeRuntime]. */
+        fun supportsNativeRuntime(context: Context): Boolean =
+            Process.is64Bit() && !BinaryTranslation.isTranslated(context)
     }
 }

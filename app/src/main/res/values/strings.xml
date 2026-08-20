@@ -1874,6 +1874,11 @@
          switch, like the LLM hardware-unsupported lines) when Mozilla's model
          set has no path for the current source→target language pair. -->
     <string name="bergamot_pair_unsupported">Not supported for the current language pair</string>
+    <!-- Same inert reason line for the device-level gate: 32-bit, or arm64
+         running under a binary translator (x86 emulators — Houdini crashes the
+         native engine; see BinaryTranslation). Device-level, so it outranks the
+         per-pair line above. -->
+    <string name="bergamot_device_unsupported">Not supported on this device</string>
 
     <!-- contentDescription suffix tokens for the offline row. -->
     <string name="offline_backend_downloaded_cd">Downloaded</string>
