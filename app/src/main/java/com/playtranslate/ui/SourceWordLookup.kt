@@ -56,43 +56,47 @@ object SourceWordLookup {
         var searchFrom = 0
         for (tok in tokenSpans) {
             val idx = displayedText.indexOf(tok.surface, searchFrom)
-            if (idx < 0) continue
-            val range = idx until (idx + tok.surface.length)
+            // Fused phrase spans contain whitespace, and the displayed text
+            // may have OCR line breaks the tokenized text lacked — retry the
+            // match with each whitespace run wild ("a great deal" still maps
+            // when the display wrapped it as "a great\ndeal"). Single words
+            // keep the exact-match-only behavior.
+            val range = if (idx >= 0) {
+                idx until (idx + tok.surface.length)
+            } else if (tok.surface.any(Char::isWhitespace)) {
+                whitespaceTolerantRange(displayedText, tok.surface, searchFrom) ?: continue
+            } else {
+                continue
+            }
             val reading = lookupToReading[tok.lookupForm]
                 ?: lookupToReading[tok.surface]
                 ?: tok.reading
                 ?: ""
             spans.add(Triple(range, tok.lookupForm, reading))
-            searchFrom = idx + tok.surface.length
+            searchFrom = range.last + 1
         }
         return spans
     }
 
-    /**
-     * Phrase-aware [resolve] for word taps: probes the engine for the longest
-     * multi-word dictionary expression starting at the tapped word
-     * ([com.playtranslate.language.SourceLanguageEngine.longestPhraseAt]) and
-     * resolves THAT when one exists — tap "great" in "a great deal" and the
-     * expression's entry opens, not the word's. Falls through to the
-     * single-word [resolve] (reading hint intact) otherwise. Both tap
-     * surfaces route through here so phrase behavior can't drift between
-     * them. [spanStart] is the tapped span's start offset in [displayedText]
-     * — the same text the spans were computed against.
-     */
-    suspend fun resolveAt(
-        appCtx: Context,
-        displayedText: String,
-        spanStart: Int,
-        lookupForm: String,
-        reading: String,
-    ): Resolved {
-        val engine = SourceLanguageEngines.get(appCtx, Prefs(appCtx).sourceLangId)
-        val phrase = withContext(Dispatchers.IO) { engine.longestPhraseAt(displayedText, spanStart) }
-        return if (phrase != null) resolve(appCtx, phrase, "") else resolve(appCtx, lookupForm, reading)
+    /** The [displayedText] range matching [surface] with every whitespace run
+     *  treated as "any whitespace run", searched from [from]. Null on miss. */
+    private fun whitespaceTolerantRange(displayedText: String, surface: String, from: Int): IntRange? {
+        val pattern = surface.split(WHITESPACE_RUN)
+            .filter { it.isNotEmpty() }
+            .joinToString("\\s+") { Regex.escape(it) }
+        if (pattern.isEmpty()) return null
+        val match = Regex(pattern).find(displayedText, from) ?: return null
+        return match.range
     }
 
+    private val WHITESPACE_RUN = Regex("\\s+")
+
     /** Resolve [lookupForm] (+ optional disambiguating [reading]) into lens data,
-     *  using the same resolver + tier branching as the in-app results page. */
+     *  using the same resolver + tier branching as the in-app results page.
+     *  Multi-word expressions arrive here pre-fused: [computeSpans] spans come
+     *  from the engine's tokenize, whose phrase re-glob makes a whole known
+     *  expression ("a great deal") one span — so its lookupForm and tap range
+     *  already cover the phrase. */
     suspend fun resolve(appCtx: Context, lookupForm: String, reading: String): Resolved {
         val prefs = Prefs(appCtx)
         val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)

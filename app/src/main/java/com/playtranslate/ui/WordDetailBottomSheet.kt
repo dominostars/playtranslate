@@ -79,6 +79,10 @@ class WordDetailBottomSheet : DialogFragment() {
         private const val COLLAPSE_DISTANCE_DP = 40
         /** Scale at the pinned end of the animation: 18sp / 38sp. */
         private const val TOOLBAR_SCALE = 0.47f
+        /** Splitter for member words of a multi-word headword ("a great
+         *  deal" → a/great/deal). Any whitespace run — pack headwords are
+         *  single-space joined, imported ones may not be. */
+        private val WHITESPACE_RUN = Regex("\\s+")
         private const val ARG_WORD            = "word"
         private const val ARG_READING         = "reading"
         private const val ARG_SCREENSHOT_PATH = "screenshot_path"
@@ -971,6 +975,86 @@ class WordDetailBottomSheet : DialogFragment() {
                     }
                 }
             }
+        }
+
+        // ── Member words (multi-word expressions) ────────────────────────
+        // For a fused expression ("a great deal", "il y a") the tokenizer's
+        // phrase re-glob hides the member words behind one span, so the
+        // detail page is where they resurface: one standard word-result cell
+        // per member, tappable through to that word's own detail. Members
+        // come from a whitespace SPLIT of the headword — NOT engine.tokenize,
+        // whose re-glob would fuse the expression right back into one token.
+        addMemberWordsSection(content, primary, engine, sourceLangId, targetLangCode)
+    }
+
+    /** Appends the "Words" section for a multi-word headword: each member
+     *  word resolved through the shared row pipeline ([resolveWordRows]) and
+     *  rendered as a [WordResultCell] whose tap opens a nested detail sheet
+     *  ([childFragmentManager], the [WordAnkiReviewSheet] stacking precedent).
+     *  No-op for single-word headwords or when no member resolves. */
+    private suspend fun addMemberWordsSection(
+        content: LinearLayout,
+        primary: DictionaryEntry,
+        engine: com.playtranslate.language.SourceLanguageEngine,
+        sourceLangId: SourceLangId,
+        targetLangCode: String,
+    ) {
+        val written = primary.headwords.firstOrNull()?.written ?: primary.slug
+        val members = written.split(WHITESPACE_RUN)
+            .filter { w -> w.any { it.isLetter() } }
+            .distinct()
+        if (members.size < 2) return
+        val appCtx = requireContext().applicationContext
+        val rows = resolveWordRows(
+            appCtx,
+            WordLookupContext(engine, targetLangCode, Prefs(appCtx).targetChineseVariant),
+            members.map { com.playtranslate.language.TokenSpan(surface = it, lookupForm = it) },
+        ).rows
+        if (!isAdded || rows.isEmpty()) return
+
+        addGroupHeader(content, getString(R.string.section_words))
+        val card = addGroupCard(content)
+        rows.forEachIndexed { index, row ->
+            if (index > 0) addInsetDivider(card, indentPx = dpRes(R.dimen.pt_row_h_padding))
+            val cell = WordResultCell(requireContext())
+            cell.bind(
+                data = WordDefinitionData(
+                    word = row.displayWord,
+                    reading = row.reading.ifEmpty { null },
+                    senses = row.senses,
+                    freqScore = row.freqScore,
+                    isCommon = row.isCommon,
+                    pitch = row.pitch,
+                    frequencies = row.frequencies,
+                    readingRows = row.readingRows,
+                ),
+                scale = WordResultCell.DEFAULT_SCALE,
+                inflectedForms = row.inflectedForms,
+                onCellTap = {
+                    newInstance(
+                        word = row.displayWord,
+                        reading = row.reading.ifEmpty { null },
+                    ).show(childFragmentManager, TAG)
+                },
+                onSpeak = { speakHeadword(row.displayWord, sourceLangId) },
+                onAnki = {
+                    if (!AnkiManager(requireContext()).isAnkiDroidInstalled()) {
+                        showAnkiNotInstalledDialog(requireActivity())
+                    } else {
+                        WordAnkiReviewSheet.newInstance(
+                            word = row.displayWord,
+                            reading = row.reading.takeIf { it.isNotEmpty() && it != row.displayWord } ?: "",
+                            pos = row.ankiPos,
+                            definition = row.meaning,
+                            screenshotPath = null,
+                            freqScore = row.freqScore,
+                            isCommon = row.isCommon,
+                            sourceLangId = sourceLangId,
+                        ).show(childFragmentManager, WordAnkiReviewSheet.TAG)
+                    }
+                },
+            )
+            card.addView(cell)
         }
     }
 

@@ -1177,13 +1177,11 @@ class DragLookupController(
             }
             null
         }
-        // Phrase-aware: the longest dictionary expression starting at the
-        // dragged word wins over the word itself — the same longest-match
-        // behavior the tap surfaces get via [SourceWordLookup.resolveAt].
-        // [matchedIdx] is the matched surface's char offset in [lineText].
-        val phrase = withContext(Dispatchers.IO) { engine.longestPhraseAt(lineText, matchedIdx) }
-        val lookupForm = phrase ?: matchedToken?.lookupForm ?: matchedSurface
-        val readingHint = if (phrase != null) null else matchedToken?.reading
+        // Multi-word expressions are already single tokens here (the
+        // tokenizer's phrase re-glob), so the matched token's surface and
+        // lookupForm cover the whole expression.
+        val lookupForm = matchedToken?.lookupForm ?: matchedSurface
+        val readingHint = matchedToken?.reading
 
         // Dictionary lookup using the base/dictionary form + reading hint
         val prefs = Prefs(context)
@@ -1205,13 +1203,10 @@ class DragLookupController(
         // replaced a hand-rolled copy of that cascade — the last one
         // outside the shared builder.
         val reading = readingHint
-        // Phrase hits select/display against the expression, not the single
-        // dragged word — the entry's headword IS the phrase lemma.
-        val displaySurface = phrase ?: matchedSurface
         val popupData: PopupData = if (entry != null && defResult != null) {
             val display = entry.headwordDisplay(
-                entry.selectHeadword(displaySurface, lookupForm, readingHint),
-                displaySurface,
+                entry.selectHeadword(matchedSurface, lookupForm, readingHint),
+                matchedSurface,
             )
             PopupData(
                 word = display.written,
