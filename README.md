@@ -26,7 +26,7 @@ To report issues, receive support, or make requests, please join the [Discord se
 
 ## How to Use
 
-1. [Download the latest release by clicking here](../../releases/download/v3.0.1/PlayTranslate-3.0.1.apk)
+1. [Download the latest release by clicking here](../../releases/download/v3.1.0/PlayTranslate-3.1.0.apk)
 2. On your Android, enable **Settings → Security → Install unknown apps** for your file manager or browser
 3. Open the APK and tap Install
 4. On first launch, follow the onboarding steps to grant the necessary permissions
@@ -189,6 +189,7 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 - [MNN](https://github.com/alibaba/MNN): on-device LLM and OCR inference engine (Apache 2.0)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR): on-device OCR from the bundled PP-OCRv6 text detector and unified recognizer, plus optional per-script recognizers (Apache 2.0)
 - [OpenCV](https://opencv.org/): image processing for OCR (DBNet contour postprocessing, crop rectification) and for the camera tool's planar tracker (ORB features, pyramidal Lucas-Kanade flow, RANSAC homography fitting) (Apache 2.0)
+- [Silero VAD](https://github.com/snakers4/silero-vad): voice-activity detection for the game-audio trimmer, bundled as a converted MNN model (MIT)
 - [OpenCC4j](https://github.com/houbb/opencc4j): Simplified/Traditional Chinese conversion (Apache 2.0)
 - [slimt](https://github.com/jerinphilip/slimt): tiny [Marian](https://marian-nmt.github.io/)-based NMT engine that runs the Bergamot offline models (GPL-2.0-or-later, with MPL-2.0 Marian components)
 - [OkHttp](https://square.github.io/okhttp/): HTTP client for online translation and downloads (Apache 2.0)
@@ -204,6 +205,7 @@ Work we reimplemented rather than linked. No source was copied verbatim.
 - [offline-translator](https://github.com/DavidVentura/offline-translator) (David Ventura): its `translator-rs` planar tracking engine is the design reference for the camera tool's keyframe-OCR tracker. We took the split between optical flow that sustains correspondences and descriptor re-matching that corrects drift, the Idle/Locked/Lost lifecycle with inlier hysteresis, the anchor cache that re-locks a previously seen scene without re-running OCR, and several tuned thresholds. Independently reimplemented in Kotlin over OpenCV, without the reference's IMU prior and with a smoothing filter of our own (offline-translator GPL 3.0; `translator-rs` MIT)
 - [PyThaiNLP](https://github.com/PyThaiNLP/pythainlp): Thai word segmentation, a faithful Kotlin port of its `newmm` maximal-matcher, run over a word list that includes its CC0 list (Apache 2.0)
 - [docTR](https://github.com/mindee/doctr) and [EasyOCR](https://github.com/JaidedAI/EasyOCR): line-grouping logic adapted for OCR word-box assembly, following docTR's recognize-then-group architecture with thresholds modelled on docTR `_resolve_lines` and EasyOCR `group_text_box` (Apache 2.0)
+- [Yomitan](https://github.com/yomidevs/yomitan): the dictionary format our importer and styled renderer target — structured-content glossaries, per-dictionary CSS scoping, and media references. `YomitanContentHtml` is an independent Kotlin implementation of the format's tag and inline-style whitelists, following Yomitan's render-side sanitisation model (GPL 3.0)
 
 ### (Optional) Downloadable Offline Models
 
@@ -228,6 +230,7 @@ Work we reimplemented rather than linked. No source was copied verbatim.
 - [wordfreq](https://github.com/rspeer/wordfreq): word frequency data
 - [Camel Morph MSA](https://github.com/CAMeL-Lab/camel_morph): Arabic morphology, used to map inflected and broken-plural surface forms to dictionary lemmas (© CAMeL Lab, NYU Abu Dhabi; CC BY 4.0, modified)
 - [Arramooz](https://github.com/linuxscout/arramooz): Arabic morphological dictionary (© Taha Zerrouki; GPL 3.0)
+- [Morfologik](https://github.com/morfologik/morfologik-stemming) / PoliMorf: Polish morphology, used to map inflected surface forms to dictionary lemmas (© Marcin Miłkowski; BSD-2-Clause)
 - [SudachiDict](https://github.com/WorksApplications/SudachiDict): Japanese tokenizer dictionary bundled for Sudachi, including [UniDic](https://clrd.ninjal.ac.jp/unidic/) (© NINJAL) and part of [mecab-ipadic-NEologd](https://github.com/neologd/mecab-ipadic-neologd) (Apache 2.0)
 - [Jiten](https://jiten.moe/): Japanese frequency data, offered as an optional in-app Yomitan dictionary download (CC BY-SA 4.0)
 - [Wikimedia Commons](https://commons.wikimedia.org/): pronunciation audio for word playback and Anki cards, fetched on demand. Each clip carries its own author and license (typically CC BY / CC BY-SA / public domain), shown as a credit that travels onto exported cards
