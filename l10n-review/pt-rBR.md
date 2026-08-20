@@ -544,3 +544,55 @@ sentence card already sent.
 ### Verdict (delta)
 
 One ⚠️ (`game_audio_zoom_hint`), no ❌, no 🛑. The other seven are clean.
+
+## Delta review 2026-08-19 (25 keys: language wildcard, Bergamot device gate, dictionary-styling toggle, Source Language row, manual dictionary-update flow, debug angle rollback)
+
+Mechanical layer verified programmatically across all 12 locales: all 25 delta names
+present, no extras, no duplicate `name=`; every `%n$s` present and matching EN; all
+`<xliff:g>` spans byte-identical to EN (`id`, `example`, inner placeholder); `<b>`, `\n`,
+`\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| settings_debug_angle_gate | ⚠️ | «Limite de ângulo clássico (10°)» | «Limiar clássico de ângulo (10°)» | Two issues in one label. «Limite» is a *limit* (a ceiling you must not exceed); the technical term for a detection threshold is «limiar», and the switch changes the angle at which slanted-text detection *triggers*, not a cap. And the postposed «clássico» binds to «ângulo», reading "classic angle" — the EN comment is explicit that the *threshold* is the legacy one (10° instead of the current 3°). The file had no prior «limiar»/«limite» precedent, so this string sets the term. |
+
+### Clean areas (delta) — checked, no findings
+
+**Update vocabulary reused from the app updater.** «Atualização disponível» and «Não foi
+possível verificar atualizações» are byte-identical to `update_dialog_title` /
+`update_check_failed_title`; `yomitan_update_check_failed_message` follows
+`yomitan_download_error_message`'s «Verifique sua conexão e tente novamente»;
+`yomitan_update_scan_active_message` closes with `anki_models_unavailable`'s «Tente
+novamente em instantes»; «Verificando atualizações» extends `update_progress_verifying`
+«Verificando…»; «em segundo plano» matches `onboarding_notif_row_silent_sub`.
+
+**Gender is anchored to the implied head noun, not to the runtime value.** «O %1$s pode ser
+atualizado», «Os dados do %1$s», «O %1$s está na versão mais recente», «O %1$s agora está
+atualizado» — the leading article follows the file's own `yomitan_duplicate_message` («O
+%1$s já foi importado») and `yomitan_delete_title` («Excluir o %1$s?»), i.e. agreement with
+*dicionário* (m.), so an arbitrary title cannot destabilise the sentence.
+
+**«agora» is present where EN says "now".** `yomitan_update_done_message` fires after a
+successful install and `yomitan_update_none_message` when nothing happened; keeping
+«agora» is what separates them. (Two other locales lost that contrast this round and were
+fixed.)
+
+**Brazilian vocabulary throughout.** baixar / Baixar de novo (never transferir), app (per
+`yomitan_outdated_label`'s «uma atualização do app»), tela not ecrã, and the delta
+introduces no eliminar/aplicação Europeanisms.
+
+**«Idioma de origem» is the file's own term**, from `llm_prompt_kw_source_desc` («do idioma
+de origem»), and distinct from «Idioma do jogo» (`pack_upgrade_label_source`) — the row
+names the dictionary's declared language, not the capture language.
+
+**Register.** Informal você throughout («Verifique sua conexão», «Tente novamente»,
+«desative»).
+
+### Verdict
+
+**PASS after fix.** One ⚠️, no ❌, no 🛑. The only defect was in the debug row, where a
+term was being coined for the first time in this file and the wrong one was reached for.

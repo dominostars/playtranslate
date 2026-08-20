@@ -227,6 +227,8 @@
 
     <string name="lang_section_suggested">Sugeridos</string>
 
+    <string name="lang_pick_any">Cualquier idioma</string>
+
     <string name="lang_section_all">Todos</string>
 
     <plurals name="lang_search_match_count">
@@ -862,6 +864,8 @@
     <string name="bergamot_warmup_downloading_multi">Descargando el modelo sin conexión <xliff:g id="file_index" example="1">%1$d</xliff:g> de <xliff:g id="file_count" example="2">%2$d</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%3$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%4$s</xliff:g></string>
     <string name="bergamot_pair_unsupported">No compatible con el par de idiomas actual</string>
 
+    <string name="bergamot_device_unsupported">No compatible con este dispositivo</string>
+
     <string name="offline_backend_downloaded_cd">Descargado</string>
     <string name="offline_backend_not_downloaded_cd">No descargado</string>
     <string name="offline_backend_enabled_cd">Activado</string>
@@ -1488,6 +1492,10 @@
 
     <string name="yomitan_single_dict_subtitle">Las definiciones provienen del diccionario de mayor prioridad que tenga resultados; el diccionario integrado es la alternativa final</string>
 
+    <string name="yomitan_styling_title">Estilo del diccionario</string>
+
+    <string name="yomitan_styling_subtitle">Mostrar las definiciones con el diseño y el estilo propios de cada diccionario. Se aplica a los diccionarios que importes a partir de ahora; desactívalo para usar siempre texto sin formato</string>
+
     <string name="yomitan_auto_update_label">Actualización automática</string>
 
     <string name="yomitan_auto_update_subtitle">Descargar e instalar automáticamente las nuevas versiones de este diccionario</string>
@@ -1533,6 +1541,46 @@
     <string name="yomitan_alias_hint">Añade un apodo</string>
 
     <string name="yomitan_accent_default_cd">Predeterminado (color del texto del subtítulo)</string>
+
+    <string name="yomitan_source_language_label">Idioma de origen</string>
+
+    <string name="yomitan_check_updates_label">Buscar actualizaciones</string>
+
+    <string name="yomitan_update_checking_title">Buscando actualizaciones</string>
+
+    <string name="yomitan_update_available_title">Actualización disponible</string>
+
+    <string name="yomitan_update_available_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> se puede actualizar a la versión <xliff:g id="revision" example="2026.02.05">%2$s</xliff:g>.</string>
+
+    <string name="yomitan_update_confirm">Actualizar</string>
+
+    <string name="yomitan_update_repair_title">Hay que volver a descargarlo</string>
+
+    <string name="yomitan_update_repair_message">Hay que volver a descargar los datos de <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> para que funcionen con esta versión de la aplicación.</string>
+
+    <string name="yomitan_update_redownload_confirm">Volver a descargar</string>
+
+    <string name="yomitan_update_none_title">Ya está actualizado</string>
+
+    <string name="yomitan_update_none_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> tiene la última versión.</string>
+
+    <string name="yomitan_update_check_failed_title">No se pudo buscar actualizaciones</string>
+
+    <string name="yomitan_update_check_failed_message">No se pudo conectar con el servidor de actualizaciones del diccionario. Comprueba tu conexión e inténtalo de nuevo.</string>
+
+    <string name="yomitan_update_busy_title">Ahora no se puede actualizar</string>
+
+    <string name="yomitan_update_busy_message">Hay una sesión de traducción en curso. Inténtalo de nuevo cuando termine.</string>
+
+    <string name="yomitan_update_scan_active_message">Ya se están buscando actualizaciones de diccionarios en segundo plano. Inténtalo de nuevo en un momento.</string>
+
+    <string name="yomitan_update_skipped_title">Actualización no aplicada</string>
+
+    <string name="yomitan_update_skipped_message">La actualización se descargó, pero no corresponde a este diccionario, así que no se instaló.</string>
+
+    <string name="yomitan_update_done_title">Diccionario actualizado</string>
+
+    <string name="yomitan_update_done_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> ahora está actualizado.</string>
 
     <string name="settings_header_tools">Herramientas</string>
 
@@ -1810,6 +1858,7 @@
     <string name="settings_debug_log_pinhole">Registrar métricas de pinhole del modo en vivo</string>
     <string name="settings_debug_save_ocr_seed">Guardar capturas de OCR como semillas</string>
     <string name="settings_debug_log_grouping">Registrar decisiones de agrupación de OCR</string>
+    <string name="settings_debug_angle_gate">Umbral clásico de ángulo (10°)</string>
     <string name="settings_debug_log_trace">Registrar traza del historial de traducciones</string>
     <string name="settings_debug_force_crash_title">Forzar fallo</string>
 

@@ -225,6 +225,8 @@
 
     <string name="lang_section_suggested">Đề xuất</string>
 
+    <string name="lang_pick_any">Mọi ngôn ngữ</string>
+
     <string name="lang_section_all">Tất cả</string>
 
     <plurals name="lang_search_match_count">
@@ -860,6 +862,8 @@
     <string name="bergamot_warmup_downloading_multi">Đang tải mô hình ngoại tuyến <xliff:g id="file_index" example="1">%1$d</xliff:g>/<xliff:g id="file_count" example="2">%2$d</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%3$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%4$s</xliff:g></string>
     <string name="bergamot_pair_unsupported">Không hỗ trợ cho cặp ngôn ngữ hiện tại</string>
 
+    <string name="bergamot_device_unsupported">Không hỗ trợ trên thiết bị này</string>
+
     <string name="offline_backend_downloaded_cd">Đã tải xuống</string>
     <string name="offline_backend_not_downloaded_cd">Chưa tải xuống</string>
     <string name="offline_backend_enabled_cd">Đã bật</string>
@@ -1480,6 +1484,10 @@
 
     <string name="yomitan_single_dict_subtitle">Định nghĩa lấy từ từ điển có độ ưu tiên cao nhất mà có kết quả; từ điển tích hợp sẵn là phương án dự phòng cuối cùng</string>
 
+    <string name="yomitan_styling_title">Kiểu hiển thị từ điển</string>
+
+    <string name="yomitan_styling_subtitle">Hiện định nghĩa theo bố cục và kiểu hiển thị riêng của từng từ điển. Chỉ áp dụng cho các từ điển được nhập từ giờ trở đi; tắt để luôn dùng văn bản thuần túy</string>
+
     <string name="yomitan_auto_update_label">Tự động cập nhật</string>
     <string name="yomitan_auto_update_subtitle">Tự động tải xuống và cài đặt các phiên bản mới của từ điển này</string>
 
@@ -1524,6 +1532,46 @@
     <string name="yomitan_alias_hint">Thêm biệt danh</string>
 
     <string name="yomitan_accent_default_cd">Mặc định (màu chữ phụ đề)</string>
+
+    <string name="yomitan_source_language_label">Ngôn ngữ nguồn</string>
+
+    <string name="yomitan_check_updates_label">Kiểm tra bản cập nhật</string>
+
+    <string name="yomitan_update_checking_title">Đang kiểm tra bản cập nhật</string>
+
+    <string name="yomitan_update_available_title">Có bản cập nhật</string>
+
+    <string name="yomitan_update_available_message">Có thể cập nhật <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> lên phiên bản <xliff:g id="revision" example="2026.02.05">%2$s</xliff:g>.</string>
+
+    <string name="yomitan_update_confirm">Cập nhật</string>
+
+    <string name="yomitan_update_repair_title">Cần tải lại</string>
+
+    <string name="yomitan_update_repair_message">Cần tải lại dữ liệu của <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> để dùng được với phiên bản ứng dụng này.</string>
+
+    <string name="yomitan_update_redownload_confirm">Tải lại</string>
+
+    <string name="yomitan_update_none_title">Đã là mới nhất</string>
+
+    <string name="yomitan_update_none_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> đang ở phiên bản mới nhất.</string>
+
+    <string name="yomitan_update_check_failed_title">Không thể kiểm tra bản cập nhật</string>
+
+    <string name="yomitan_update_check_failed_message">Không kết nối được tới máy chủ cập nhật của từ điển. Hãy kiểm tra kết nối và thử lại.</string>
+
+    <string name="yomitan_update_busy_title">Chưa thể cập nhật lúc này</string>
+
+    <string name="yomitan_update_busy_message">Một phiên dịch thuật đang diễn ra. Hãy thử lại khi phiên đó kết thúc.</string>
+
+    <string name="yomitan_update_scan_active_message">Các bản cập nhật từ điển đang được kiểm tra trong nền. Hãy thử lại sau giây lát.</string>
+
+    <string name="yomitan_update_skipped_title">Chưa áp dụng bản cập nhật</string>
+
+    <string name="yomitan_update_skipped_message">Bản cập nhật đã tải xong nhưng không khớp với từ điển này nên không được cài đặt.</string>
+
+    <string name="yomitan_update_done_title">Đã cập nhật từ điển</string>
+
+    <string name="yomitan_update_done_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> hiện đã ở phiên bản mới nhất.</string>
 
     <string name="settings_header_tools">Công cụ</string>
 
@@ -1800,6 +1848,7 @@
     <string name="settings_debug_log_pinhole">Ghi nhật ký số liệu pinhole của chế độ trực tiếp</string>
     <string name="settings_debug_save_ocr_seed">Lưu các bản chụp OCR làm seed</string>
     <string name="settings_debug_log_grouping">Ghi nhật ký quyết định nhóm OCR</string>
+    <string name="settings_debug_angle_gate">Ngưỡng góc kiểu cũ (10°)</string>
     <string name="settings_debug_log_trace">Ghi lại dấu vết nhật ký dịch</string>
     <string name="settings_debug_force_crash_title">Buộc gặp sự cố</string>
 

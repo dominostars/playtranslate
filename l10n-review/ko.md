@@ -548,3 +548,55 @@ the length note above is a two-line aesthetic risk, not truncation.
 **Word order.** `anki_first_field_unmapped` front-loads the purpose clause where EN
 front-loads the action. That is the correct Korean order, not an MT artifact, and it is
 what ja and zh also did.
+
+## Delta review 2026-08-19 (25 keys: language wildcard, Bergamot device gate, dictionary-styling toggle, Source Language row, manual dictionary-update flow, debug angle rollback)
+
+Mechanical layer verified programmatically across all 12 locales: all 25 delta names
+present, no extras, no duplicate `name=`; every `%n$s` present and matching EN; all
+`<xliff:g>` spans byte-identical to EN (`id`, `example`, inner placeholder); `<b>`, `\n`,
+`\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| yomitan_update_done_title | ⚠️ | 「사전 업데이트됨」 | 「사전 업데이트 완료」 | This file's own idiom for a completion alert is 완료: `yomitan_import_summary_title` 「가져오기 완료」, `label_done` 「완료」. The ~됨 nominalised passive is a status-badge form, not an alert title, and reads flatter than the neighbouring 「업데이트 사용 가능」. |
+| yomitan_update_done_message | ⚠️ | 「%1$s이(가) 최신 상태입니다.」 | 「이제 %1$s이(가) 최신 상태입니다.」 | EN is "X is **now** up to date" — the alert fires immediately after a successful install, and the "now" is what separates it from `yomitan_update_none_message` ("X **is on** the latest version"), which fires when nothing happened. Without 이제 the two success/no-op alerts say the same thing in Korean. |
+
+### Clean areas (delta) — checked, no findings
+
+**Particles after variable placeholders are all in combined form.** 「%1$s을(를)」,
+「%1$s이(가)」 and 「%2$s(으)로」 in `yomitan_update_available_message`, `_none_message` and
+`_done_message`. No bare 을/를/이/가/로 follows a runtime value anywhere in the delta, which
+is the file's hard rule — a dictionary title can end in a consonant (JMdict), a vowel
+(Jitendex.org 로 reading) or a bracket, and the combined form is the only safe choice.
+「%1$s의 데이터를」 in `_repair_message` uses 의, which is invariant.
+
+**Update vocabulary reused wholesale.** 「업데이트 사용 가능」 and
+「업데이트를 확인할 수 없습니다」 are byte-identical to `update_dialog_title` /
+`update_check_failed_title`; `yomitan_update_check_failed_message` follows
+`yomitan_download_error_message`'s 「연결을 확인하고 다시 시도하세요」;
+`yomitan_update_scan_active_message` closes with `anki_models_unavailable`'s
+「잠시 후 다시 시도하세요」. 「업데이트 확인 중」 matches `update_progress_verifying`
+「확인 중…」.
+
+**원본 언어 is the file's existing term.** Taken from `llm_prompt_kw_source_desc`
+(「원본 언어의 영어 이름」), not freshly coined, and deliberately not 「게임 언어」 — the row
+names the *dictionary's* declared language, not the capture language.
+
+**Register.** 합니다체 in every body; the row/button labels use nouns
+(업데이트, 다시 다운로드, 업데이트 확인) and the guidance sentences use 하세요 imperatives —
+the split the ko parameters call for. 띄어쓰기 observed throughout; no 당신.
+
+**모든 언어 works in both slots.** Pinned first row of the language picker and muted value
+of the Source Language row. It states *all*, not *none*, matching the deliberate EN rename
+from "None" to "Any".
+
+### Verdict
+
+**PASS after fixes.** Two ⚠️, no ❌, no 🛑. Both were the same underlying miss: the update
+alerts were translated string-by-string rather than as a set, so the success alert lost the
+contrast with the no-op alert. Particle handling — the usual Korean risk here — was clean
+on the first pass.

@@ -219,6 +219,8 @@
 
     <string name="lang_section_suggested">المقترحة</string>
 
+    <string name="lang_pick_any">أي لغة</string>
+
     <string name="lang_section_all">الكل</string>
 
     <plurals name="lang_search_match_count">
@@ -829,6 +831,8 @@
     <string name="bergamot_warmup_downloading_multi">جارٍ تنزيل النموذج دون اتصال <xliff:g id="file_index" example="1">%1$d</xliff:g> من <xliff:g id="file_count" example="2">%2$d</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%3$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%4$s</xliff:g></string>
     <string name="bergamot_pair_unsupported">غير مدعوم للزوج اللغوي الحالي</string>
 
+    <string name="bergamot_device_unsupported">غير مدعوم على هذا الجهاز</string>
+
     <string name="offline_backend_downloaded_cd">تم التنزيل</string>
     <string name="offline_backend_not_downloaded_cd">لم يتم التنزيل</string>
     <string name="offline_backend_enabled_cd">مفعّل</string>
@@ -1434,6 +1438,10 @@
 
     <string name="yomitan_single_dict_subtitle">تأتي التعريفات من القاموس ذي الأولوية الأعلى الذي يحتوي على نتائج؛ والقاموس المدمج هو الحل البديل الأخير</string>
 
+    <string name="yomitan_styling_title">تنسيق القاموس</string>
+
+    <string name="yomitan_styling_subtitle">عرض التعريفات بتخطيط كل قاموس وتنسيقه الخاص. ينطبق على القواميس المستوردة من الآن فصاعدًا؛ أوقفه لاستخدام النص العادي دائمًا</string>
+
     <string name="yomitan_auto_update_label">تحديث تلقائي</string>
 
     <string name="yomitan_auto_update_subtitle">تنزيل الإصدارات الجديدة من هذا القاموس وتثبيتها تلقائيًا</string>
@@ -1479,6 +1487,46 @@
     <string name="yomitan_alias_hint">أضف اسمًا مستعارًا</string>
 
     <string name="yomitan_accent_default_cd">افتراضي (لون نص العنوان الفرعي)</string>
+
+    <string name="yomitan_source_language_label">لغة المصدر</string>
+
+    <string name="yomitan_check_updates_label">التحقق من التحديثات</string>
+
+    <string name="yomitan_update_checking_title">جارٍ التحقق من التحديثات</string>
+
+    <string name="yomitan_update_available_title">تحديث متاح</string>
+
+    <string name="yomitan_update_available_message">يمكن تحديث «<xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>» إلى الإصدار <xliff:g id="revision" example="2026.02.05">%2$s</xliff:g>.</string>
+
+    <string name="yomitan_update_confirm">تحديث</string>
+
+    <string name="yomitan_update_repair_title">يلزم إعادة التنزيل</string>
+
+    <string name="yomitan_update_repair_message">يلزم تنزيل بيانات «<xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>» مرة أخرى لتعمل مع هذا الإصدار من التطبيق.</string>
+
+    <string name="yomitan_update_redownload_confirm">إعادة التنزيل</string>
+
+    <string name="yomitan_update_none_title">محدَّث بالفعل</string>
+
+    <string name="yomitan_update_none_message">القاموس «<xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>» على أحدث إصدار.</string>
+
+    <string name="yomitan_update_check_failed_title">تعذّر التحقق من التحديثات</string>
+
+    <string name="yomitan_update_check_failed_message">تعذّر الوصول إلى خادم تحديثات القاموس. تحقق من اتصالك وحاول مرة أخرى.</string>
+
+    <string name="yomitan_update_busy_title">لا يمكن التحديث الآن</string>
+
+    <string name="yomitan_update_busy_message">هناك جلسة ترجمة قيد التشغيل. حاول مرة أخرى بعد انتهائها.</string>
+
+    <string name="yomitan_update_scan_active_message">يجري بالفعل التحقق من تحديثات القواميس في الخلفية. حاول مرة أخرى بعد قليل.</string>
+
+    <string name="yomitan_update_skipped_title">لم يُطبَّق التحديث</string>
+
+    <string name="yomitan_update_skipped_message">تم تنزيل التحديث لكنه لا يطابق هذا القاموس، لذلك لم يُثبَّت.</string>
+
+    <string name="yomitan_update_done_title">تم تحديث القاموس</string>
+
+    <string name="yomitan_update_done_message">أصبح القاموس «<xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>» على أحدث إصدار.</string>
 
     <string name="settings_header_tools">الأدوات</string>
 
@@ -1742,6 +1790,7 @@
     <string name="settings_debug_log_pinhole">تسجيل مقاييس pinhole للوضع المباشر</string>
     <string name="settings_debug_save_ocr_seed">حفظ التقاطات OCR كبذور</string>
     <string name="settings_debug_log_grouping">تسجيل قرارات تجميع OCR</string>
+    <string name="settings_debug_angle_gate">العتبة الكلاسيكية للزاوية (10°)</string>
     <string name="settings_debug_log_trace">تسجيل تتبُّع لسجل الترجمة</string>
     <string name="settings_debug_force_crash_title">فرض تعطّل</string>
 

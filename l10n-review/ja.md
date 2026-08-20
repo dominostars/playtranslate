@@ -328,3 +328,92 @@ banners and key ordering still match English.
 than a Japanese issue. The ノート decision is correct and consistent; the two one-tap
 toasts satisfy the mode-naming contract; the History strings sit inside the file's existing
 capture vocabulary.
+
+## Delta review 2026-08-19 (25 keys: language wildcard, Bergamot device gate, dictionary-styling toggle, Source Language row, manual dictionary-update flow, debug angle rollback)
+
+Mechanical layer verified programmatically across all 12 locales: all 25 delta names
+present, no extras, no duplicate `name=`; every `%n$s` present and matching EN; all
+`<xliff:g>` spans byte-identical to EN (`id`, `example`, inner placeholder); `<b>`, `\n`,
+`\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+### Findings (delta)
+
+None. No 🛑/❌/⚠️; two 💬 recorded below as decisions rather than defects.
+
+| name | severity | current | note |
+|---|---|---|---|
+| yomitan_update_available_message, _repair_message, _none_message, _done_message | 💬 | 「%1$s」 | The dictionary title is bracketed with 「」 in all four strings, following `yomitan_delete_title` (「%1$s」を削除しますか？) rather than `yomitan_duplicate_message` (bare %1$s). Deliberate and worth recording: the fill is a Latin-script name (Jitendex.org, JMnedict [2026-08-13]) sitting inside Japanese with no inter-word spacing, so the brackets are what mark where the name ends. The file is currently split on this; the delta lands on the bracketed side consistently. |
+| yomitan_update_none_title | 💬 | 「最新の状態です」 | です-final rather than the noun form ja titles usually take. Kept because the file's own equivalent does the same — `update_none_title` is 「更新はありません」 — so the alert titles in the two update flows read alike. |
+
+### Clean areas (delta) — checked, no findings
+
+**Update vocabulary reused from the app updater.** 「更新があります」 and
+「更新を確認できませんでした」 are byte-identical to `update_dialog_title` /
+`update_check_failed_title`; `yomitan_update_check_failed_message` follows
+`yomitan_download_error_message`'s 「接続を確認して、もう一度お試しください」;
+`yomitan_update_scan_active_message` closes with `anki_models_unavailable`'s
+「しばらくしてからもう一度お試しください」; 「更新を確認中」 matches
+`update_progress_verifying` 「検証中…」; 「バックグラウンド」 matches
+`onboarding_notif_row_silent_sub`.
+
+**「翻訳元の言語」 is the file's own term**, from `llm_prompt_kw_source_desc`
+(「翻訳元の言語の英語名」, 3 occurrences) — not the ソース言語 loan a fresh translation
+reaches for, and deliberately not 「ゲームの言語」 (`pack_upgrade_label_source`,
+`cd_change_source_language`), which names the capture language rather than the dictionary's
+declared one.
+
+**Punctuation and spacing.** Full-width 。、（）「」 throughout; the degree sign and digits
+in `settings_debug_angle_gate` stay half-width inside full-width parentheses
+(「従来の角度しきい値（10°）」), matching `yomitan_accent_default_cd`'s
+「デフォルト（サブタイトルのテキスト色）」. No space is introduced around placeholders
+(「バージョン%2$sに更新できます」), per the file's convention.
+
+**Register.** です/ます in every alert body, clipped noun or 〜する form in every row title
+and button (更新, 再ダウンロード, 更新を確認, 辞書のスタイル). No あなた. Loanwords in
+katakana (レイアウト, スタイル, プレーンテキスト, バックグラウンド, セッション).
+
+**「最新の状態になりました」 carries EN's "now"** — the になりました change-of-state form is
+what keeps `yomitan_update_done_message` distinct from `yomitan_update_none_message`
+(「最新バージョンです」). Two other locales lost that contrast this round.
+
+**「すべての言語」 works in both of its slots** — the pinned first row of the language picker
+and the muted value of the Source Language row — and states *all*, not *unset*, which is the
+distinction the EN rename from "None" to "Any" was making.
+
+### Verdict
+
+**PASS.** No 🛑/❌/⚠️. Two 💬, both recorded as decisions. Japanese has no gender, case or
+particle contact with the dictionary-title placeholder, so the delta's cross-locale hazard
+does not arise here; the only judgement calls were bracketing and title register, and both
+were resolved against the file's own precedent.
+
+### Delta review round 2 — 2026-08-19 (`lang_pick_any` read against the render code)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| lang_pick_any | ⚠️ | 「すべての言語」 | 「任意の言語」 | The pinned wildcard row repeated `lang_section_all`'s own word: 「すべての言語」 sat two rows above a section header reading 「すべて」, so it read as a shortcut into the full list rather than "no language restriction". 「任意の言語」 is the standard Japanese wildcard idiom (cf. 任意の値/任意のファイル), lexically distinct from すべて, and works in both slots — the picker row and the muted Source Language value. |
+
+**Why round 1 missed it.** The string was reviewed against its English source and its two
+slots in isolation. It only fails when read against its *neighbours on screen*:
+`LanguageSetupActivity` passes the Any row as `leadingRows` (:282) and heads the list
+below it with `lang_section_suggested` then `lang_section_all` (:544, :550), so the pinned
+row and the "All" header are two rows apart. This is the doc's own lesson — read the render
+code, not the string — arriving from the other direction: not a truncation constraint, but
+an adjacency one.
+
+**Cross-locale shape.** Twelve independent renderings split into two camps: five chose an
+*any*-flavoured word (zh-rCN 任意语言, ru «Любой язык», ar «أي لغة», es «Cualquier idioma»,
+pt-BR «Qualquer idioma») and seven an *all*-flavoured one. Only the *all* camp can collide,
+and only where the pinned row repeats the header's own word — ja, tr, de and fr, now fixed.
+ko (모든 언어 / 전체), th (ทุกภาษา / ทั้งหมด) and vi (Mọi ngôn ngữ / Tất cả) use lexically
+distinct words in the two slots and were left alone. The fix also moves these four closer
+to the English, which deliberately says "Any" rather than "All" (and was itself renamed
+from "None" — the row means *no restriction*, not *unset*, and not *the whole list*).
+
+### Verdict (revised after round 2)
+
+**PASS after fix.** One ⚠️ from round 2, two 💬 from round 1. The ⚠️ was invisible to a
+string-by-string reading and only surfaced when the picker's rows were laid out in render
+order.

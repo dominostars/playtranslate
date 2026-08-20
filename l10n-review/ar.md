@@ -435,3 +435,61 @@ layer clean. One ⚠️ (الملاحظة → الملحوظة, spanning `anki_f
 clean, and three of them are clean specifically because they reused an in-file precedent
 rather than translating the English afresh. RTL geometry still wants a device pass — the
 guillemet-around-field-name case in the two first-field strings is the thing to look at.
+
+## Delta review 2026-08-19 (25 keys: language wildcard, Bergamot device gate, dictionary-styling toggle, Source Language row, manual dictionary-update flow, debug angle rollback)
+
+Mechanical layer verified programmatically across all 12 locales: all 25 delta names
+present, no extras, no duplicate `name=`; every `%n$s` present and matching EN; all
+`<xliff:g>` spans byte-identical to EN (`id`, `example`, inner placeholder); `<b>`, `\n`,
+`\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| yomitan_update_repair_message | ❌ | «…مرة أخرى **ليعمل** مع هذا الإصدار…» | «…مرة أخرى **لتعمل** مع هذا الإصدار…» | Agreement break. The subject of the purpose clause is بيانات — a non-human sound feminine plural, which takes **feminine singular** verb agreement (تعمل), not masculine يعمل. The masculine form silently re-points the clause at القاموس, which is not what EN says: "The **data** … needs to be downloaded again **to work** with this version of the app." |
+| settings_debug_angle_gate | 💬 | «عتبة الزاوية الكلاسيكية (10°)» | «العتبة الكلاسيكية للزاوية (10°)» | Attachment ambiguity: عتبة and الزاوية are both feminine, so الكلاسيكية can read as modifying either — "classic angle" rather than "classic threshold". Breaking the iḍāfa with لـ pins the adjective to العتبة, which is the intended reading (the *threshold* is the legacy one, per the EN comment). The same attachment fix was applied in es / fr / pt-BR this round.
+
+### Clean areas (delta) — checked, no findings
+
+**The device gate mirrors its siblings rather than the English.** `bergamot_device_unsupported`
+«غير مدعوم على هذا الجهاز» is `llm_hardware_unsupported_arm64` minus its parenthetical, and
+sits exactly parallel to `bergamot_pair_unsupported` «غير مدعوم للزوج اللغوي الحالي» — the
+line it outranks. No fresh translation was invented for a sentence the file already owned.
+
+**Update vocabulary reused from the app's own updater.** `yomitan_update_available_title`
+«تحديث متاح» and `yomitan_update_check_failed_title` «تعذّر التحقق من التحديثات» are
+byte-identical to the existing `update_dialog_title` / `update_check_failed_title`;
+`yomitan_update_check_failed_message` closes with `yomitan_download_error_message`'s tail
+(«تحقق من اتصالك وحاول مرة أخرى»); `yomitan_update_scan_active_message` closes with
+`anki_models_unavailable`'s «حاول مرة أخرى بعد قليل». One flow, one vocabulary.
+
+**No sentence opens with a Latin token.** Every string carrying the dictionary-name
+placeholder opens in Arabic, per the RTL rule: «يمكن تحديث «%1$s»…»,
+«يلزم تنزيل بيانات «%1$s»…», «القاموس «%1$s» على أحدث إصدار»,
+«أصبح القاموس «%1$s» على أحدث إصدار». The head noun القاموس doubles as the agreement
+anchor, so an arbitrary title (Jitendex.org, «JMnedict [2026-08-13]») cannot destabilise
+the sentence. Guillemets follow `yomitan_duplicate_message` and `yomitan_delete_title`.
+
+**Passive register is internally consistent.** `yomitan_update_skipped_title` «لم يُطبَّق التحديث»
+and its `_message`'s «لم يُثبَّت» use the same vocalised مبني للمجهول rather than mixing in
+«لم يتم» periphrasis inside one alert.
+
+**Progress title matches the app's progress idiom.** «جارٍ التحقق من التحديثات» extends
+`update_progress_verifying` «جارٍ التحقق…» and `yomitan_downloading_title` «جارٍ تنزيل القاموس».
+
+**Terminology.** قاموس (dictionary), التعريفات (definitions), إصدار (version), and
+لغة المصدر for "Source Language" — lifted from `llm_prompt_kw_source_desc`'s «للغة المصدر»
+rather than invented. MSA formal register; the imperative أوقفه addresses the user as the
+rest of the file does. Title Case in the EN alert titles is not replicated (Arabic has no
+case), and matches the Yomitan family's own convention anyway (`yomitan_io_error_title`
+"Import Failed", `yomitan_downloading_title` "Downloading Dictionary").
+
+### Verdict
+
+**PASS after fixes.** One ❌ — a real agreement break, now corrected — and one 💬. The
+delta's hardest spot, an arbitrary Latin-script dictionary title dropped into four Arabic
+sentences, is handled by the القاموس head-noun construction and holds for any title.
+RTL rendering of the four mixed Arabic + Latin + digit strings still wants a device pass.

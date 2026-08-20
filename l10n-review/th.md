@@ -370,3 +370,63 @@ so the ภาษา prefix rule is not in play here.
 range); `anki_first_field_empty` has an optional 💬. The other six are clean, and the two judgement
 calls the translator flagged — โน้ต over บันทึก, and rendering "more or less audio" as an extent rather
 than a quantity — are both correct in principle; only the second one's wording needs work.
+
+## Delta review 2026-08-19 (25 keys: language wildcard, Bergamot device gate, dictionary-styling toggle, Source Language row, manual dictionary-update flow, debug angle rollback)
+
+Mechanical layer verified programmatically across all 12 locales: all 25 delta names
+present, no extras, no duplicate `name=`; every `%n$s` present and matching EN; all
+`<xliff:g>` spans byte-identical to EN (`id`, `example`, inner placeholder); `<b>`, `\n`,
+`\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+### Findings (delta) — all applied
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| yomitan_update_none_title | ⚠️ | «เป็นเวอร์ชันล่าสุดแล้ว» | «อัปเดตอยู่แล้ว» | The title was a verbatim prefix of its own body («%1$s เป็นเวอร์ชันล่าสุดแล้ว»), so the alert said the same sentence twice, once without its subject. Every other locale's title/body pair in this alert differs; Thai was the only one that collapsed. «อัปเดตอยู่แล้ว» keeps the "already up to date" reading and leaves the body to name the dictionary. |
+| yomitan_update_available_message | 💬 | «อัปเดต %1$s เป็นเวอร์ชัน %2$s ได้» | «สามารถอัปเดต %1$s เป็นเวอร์ชัน %2$s ได้» | Verb-initial, the sentence reads as an imperative ("update X to version Y") until the final ได้ arrives and retro-fits the modal. This file uses the สามารถ…ได้ frame 27 times for exactly this; the prompt body is a statement of possibility, not a command — the command is the button. |
+| yomitan_update_busy_message | 💬 | «กำลังอยู่ในเซสชันการแปล …» | «มีเซสชันการแปลกำลังดำเนินอยู่ …» | EN's subject is the session ("A translation session is in progress"), not the user. The original put the user in the session, which is true but shifts the blame-free framing and reads oddly in an alert body that then tells them to wait for "it" to finish. |
+
+### Clean areas (delta) — checked, no findings
+
+**Spacing.** Latin runs and digits are bordered by spaces («%1$s เป็นเวอร์ชันล่าสุดแล้ว»,
+«เป็นเวอร์ชัน %2$s», «(10°)»); Thai runs are unbroken; the space after a clause boundary
+does the work a period does in English, and no terminal periods were introduced — matching
+`update_none_message` and `yomitan_download_error_message`, which also end bare. The ภาษา
+prefix rule does not apply anywhere in this delta: no string carries a language-name
+placeholder (`lang_pick_any` is a fixed label, not a fill).
+
+**Update vocabulary reused.** «มีการอัปเดต» and «ตรวจสอบการอัปเดตไม่สำเร็จ» are
+byte-identical to `update_dialog_title` / `update_check_failed_title`;
+`yomitan_update_check_failed_message` follows `yomitan_download_error_message`'s
+«ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง»; `yomitan_update_scan_active_message` closes with
+`anki_models_unavailable`'s «ลองอีกครั้งในอีกสักครู่»; «กำลังตรวจสอบการอัปเดต» is
+`update_progress_verifying`'s «กำลังตรวจสอบ…» extended. «อยู่เบื้องหลัง» matches
+`onboarding_notif_row_silent_sub`.
+
+**«ภาษาต้นทาง» is the file's own term**, from `llm_prompt_kw_source_desc`
+(«ชื่อภาษาต้นทางในภาษาอังกฤษ»), not a fresh coinage, and distinct from «ภาษาของเกม»
+(`pack_upgrade_label_source`) which names the capture language rather than the dictionary's.
+
+**Register.** Neutral-polite, no ครับ/ค่ะ anywhere. «ตอนนี้» in `yomitan_update_done_message`
+carries EN's "now", which is what keeps the success alert distinct from the no-update one
+(two other locales lost that contrast this round).
+
+### Verdict
+
+**PASS after fixes.** One ⚠️, two 💬, no ❌, no 🛑. The ⚠️ was a redundancy visible only
+when title and body are read together as one alert, which is how the user sees them.
+
+---
+
+**Source-side observation (reported, not fixed).** `yomitan_source_language_label` is the
+only Title-Case row title in the Configure card — its neighbours are `yomitan_alias_label`
+("Alias"), `yomitan_styling_title` ("Dictionary styling"), `yomitan_auto_update_label`
+("Auto-update") and `yomitan_check_updates_label` ("Check for updates"), all sentence case.
+It affects no locale in this set (none of the 12 carries English title case into row
+labels), so it is an English-source polish item only. The Title Case on the new
+`yomitan_update_*` **alert** titles is *not* an inconsistency: it matches the Yomitan
+family's existing alert titles (`yomitan_io_error_title` "Import Failed",
+`yomitan_duplicate_title` "Already Imported", `yomitan_downloading_title` "Downloading
+Dictionary", `yomitan_download_error_title` "Download Failed").
