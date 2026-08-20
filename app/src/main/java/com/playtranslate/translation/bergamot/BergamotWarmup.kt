@@ -1,9 +1,9 @@
 package com.playtranslate.translation.bergamot
 
 import android.content.Context
-import android.os.Process
 import android.util.Log
 import com.playtranslate.Prefs
+import com.playtranslate.translation.BergamotBackend
 import com.playtranslate.translation.llm.OnDeviceLlmDownloader
 
 /**
@@ -16,8 +16,9 @@ import com.playtranslate.translation.llm.OnDeviceLlmDownloader
  * smoke translate; only on that success does the caller SKIP the ML Kit warm-up,
  * making Bergamot the default offline translator. It falls back to ML Kit
  * (returns false) when Bergamot is disabled, the pair is unsupported by Mozilla's
- * xx↔en model set, the device is 32-bit, any download fails, OR the native engine
- * can't load/translate — so we never suppress ML Kit provisioning on the strength
+ * xx↔en model set, the device is 32-bit or binary-translated (see
+ * [com.playtranslate.translation.BinaryTranslation]), any download fails, OR the
+ * native engine can't load/translate — so we never suppress ML Kit provisioning on the strength
  * of files-on-disk the engine can't actually use (which would leave an offline
  * user with no fallback when Bergamot fails at runtime).
  *
@@ -54,7 +55,10 @@ object BergamotWarmup {
     ): Boolean {
         val ctx = context.applicationContext
         if (!Prefs(ctx).bergamotEnabled) return false
-        if (!Process.is64Bit()) return false
+        // 32-bit or binary-translated (Houdini-class translators SIGSEGV the
+        // engine's thread_locals — the smoke translate below would kill the
+        // process, not fail soft). Returning false keeps ML Kit provisioning.
+        if (!BergamotBackend.supportsNativeRuntime(ctx)) return false
 
         val manager = BergamotModelManager(ctx)
         val dirs = manager.requiredDirections(source, target) ?: return false // unsupported pair

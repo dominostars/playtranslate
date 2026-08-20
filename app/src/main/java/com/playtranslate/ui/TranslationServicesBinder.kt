@@ -350,13 +350,18 @@ class TranslationServicesBinder(
 
     /** Bergamot's row can't reuse [wireOfflineLlmRow]: install state is
      *  **per-pair** (the model for the current source→target), not the global
-     *  [OnDeviceLlmBackend.isInstalled]. Hidden outright on 32-bit (the .so is
-     *  arm64-only), mirroring HyMt's region gate. Otherwise the same three-state
-     *  tap branch — enabled+installed → disable dialog · installed → enable ·
-     *  else → download — but keyed off [offlineInstalled] for the current pair. */
+     *  [OnDeviceLlmBackend.isInstalled]. On devices the native engine can't
+     *  run — 32-bit, or arm64 under a binary translator (Houdini crashes the
+     *  engine — see BinaryTranslation) — the row stays VISIBLE but inert:
+     *  [renderOfflineBackendRow] swaps the stat grid + switch for a
+     *  "Not supported on this device" reason line and un-clickables the row,
+     *  the same treatment the LLM rows get for a failed hardware floor.
+     *  Otherwise the same three-state tap branch — enabled+installed →
+     *  disable dialog · installed → enable · else → download — but keyed off
+     *  [offlineInstalled] for the current pair. */
     private fun wireBergamotBackendRow() {
         val bergamot = TranslationBackendRegistry.byId("bergamot") as? BergamotBackend
-        if (bergamot == null || !bergamot.supportsRequiredAbi()) {
+        if (bergamot == null) {
             rowBackendBergamot.isGone = true
             dividerBackendBergamot.isGone = true
             return
@@ -526,8 +531,12 @@ class TranslationServicesBinder(
 
         // "Visible but inert" branch — the row stays so the user sees what's
         // unavailable and why, but the stat grid + status icon + switch are
-        // replaced by a single reason line. Two triggers:
+        // replaced by a single reason line. Three triggers:
         //   • on-device LLM whose device fails the hardware floor (arch / RAM)
+        //   • Bergamot on a device the native engine can't run: 32-bit, or
+        //     arm64 under a binary translator (Houdini SIGSEGVs the engine —
+        //     see BinaryTranslation). Device-level, so it outranks the
+        //     per-pair line below.
         //   • Bergamot when Mozilla ships no model for the current source→target
         //     pair — this is per-pair, so it's re-evaluated on every refresh and
         //     the row's interactivity is toggled here (not in the one-time
@@ -535,6 +544,8 @@ class TranslationServicesBinder(
         val disabledReason: String? = when {
             onDeviceLlm != null && !onDeviceLlm.meetsHardwareRequirements() ->
                 onDeviceLlm.hardwareIncompatibilityReason()
+            backend is BergamotBackend && !backend.supportsNativeRuntime() ->
+                ctx.getString(R.string.bergamot_device_unsupported)
             backend is BergamotBackend && !bergamotPairSupported(backend) ->
                 ctx.getString(R.string.bergamot_pair_unsupported)
             else -> null
