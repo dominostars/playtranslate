@@ -1910,10 +1910,20 @@ class CaptureResultOverlay(
         }
     }
 
+    /** The in-flight [refreshWordSpans] job. Each refresh cancels the prior
+     *  one: the sweep suspends on IO (tokenize + the phrase gate query), so
+     *  without cancellation a STALE refresh finishing after a newer bind or
+     *  edit would publish old tokens against the current displayed text and
+     *  misroute taps. Both launcher and publisher run on the main-dispatched
+     *  [scope], so cancel-before-relaunch fully orders the publishes (a
+     *  cancelled job's withContext resume throws instead of publishing). */
+    private var wordSpansJob: Job? = null
+
     /** (Re)tokenize the source so taps resolve to spans against the displayed
      *  text. Called for a fresh result and after an in-place edit. */
     private fun refreshWordSpans(originalText: String) {
-        scope.launch {
+        wordSpansJob?.cancel()
+        wordSpansJob = scope.launch {
             val engine = SourceLanguageEngines.get(ctx.applicationContext, prefs.sourceLangId)
             // Phrase occurrences ride along so single-letter phrase members
             // ("a" in "a great deal") get tap spans despite tokenize's
