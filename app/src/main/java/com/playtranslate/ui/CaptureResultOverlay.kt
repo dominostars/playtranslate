@@ -1933,10 +1933,8 @@ class CaptureResultOverlay(
             }
             if (dismissed) return@launch
             val b = binder ?: return@launch
-            wordSpans = SourceWordLookup.computeSpans(
-                b.displayedSourceText(),
-                SourceWordLookup.tapTokensWithPhraseMembers(originalText, tokens, phrases),
-                emptyMap(),
+            wordSpans = SourceWordLookup.computeTapSpans(
+                b.displayedSourceText(), tokens, emptyMap(), phrases,
             )
             nav?.onWordSpansChanged()
         }

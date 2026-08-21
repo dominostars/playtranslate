@@ -1445,7 +1445,7 @@ class TranslationResultFragment : Fragment() {
             }
             is WordLookupsState.Settled -> {
                 renderWordRows(state.rows)
-                recomputeWordSpans(state.tokenSpans, state.lookupToReading)
+                recomputeWordSpans(state.tokenSpans, state.lookupToReading, state.phrases)
                 // Furigana is NOT applied here: it's driven by bindSource in
                 // renderResult, so it paints with the source text (during the
                 // Translating placeholder), not after this heavier lookup settles.
@@ -1645,10 +1645,13 @@ class TranslationResultFragment : Fragment() {
     private fun recomputeWordSpans(
         tokenSpans: List<com.playtranslate.language.TokenSpan>,
         lookupToReading: Map<String, String>,
+        phrases: List<com.playtranslate.language.PhraseOccurrence>,
     ) {
         wordSpans.clear()
         val displayedText = tvOriginal.text?.toString() ?: return
-        wordSpans.addAll(SourceWordLookup.computeSpans(displayedText, tokenSpans, lookupToReading))
+        wordSpans.addAll(
+            SourceWordLookup.computeTapSpans(displayedText, tokenSpans, lookupToReading, phrases),
+        )
     }
 
 }
