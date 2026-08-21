@@ -1164,6 +1164,10 @@ class TranslationResultFragment : Fragment() {
         // Look up in dictionary and show the floating popup
         val ctx = context ?: return
         val activity = activity ?: return
+        // Snapshot what the user actually tapped ON; the lookup below
+        // suspends, and a new result rendering meanwhile must not let a
+        // stale span position a lens over the new text.
+        val tappedText = tvOriginal.text?.toString().orEmpty()
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val appCtx = ctx.applicationContext
@@ -1174,8 +1178,9 @@ class TranslationResultFragment : Fragment() {
                 // or a fused expression's member words (JA) — ride along as
                 // the lens's secondary sections.
                 val resolvedAt = SourceWordLookup.resolveAt(
-                    appCtx, tvOriginal.text?.toString().orEmpty(), span.first.first, lookupForm, reading,
+                    appCtx, tappedText, span.first.first, lookupForm, reading,
                 )
+                if (tvOriginal.text?.toString().orEmpty() != tappedText) return@launch
                 val resolved = resolvedAt.word
                 val phrase = resolvedAt.phrase
                 val secondaries = phrase?.let { listOf(it) } ?: resolvedAt.members

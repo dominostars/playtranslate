@@ -1923,6 +1923,14 @@ class CaptureResultOverlay(
      *  text. Called for a fresh result and after an in-place edit. */
     private fun refreshWordSpans(originalText: String) {
         wordSpansJob?.cancel()
+        // The caller just bound NEW text; the old spans must die NOW, not
+        // at publish — a tap during the sweep's suspension would bind old
+        // ranges + lookupForms onto the freshly displayed text (wrong word,
+        // wrong phrase, attached to the new capture's context). A tap in
+        // the brief span-less window simply no-ops. (The in-app fragment
+        // already clears on Loading; this is the overlay's parity.)
+        wordSpans = emptyList()
+        nav?.onWordSpansChanged()
         wordSpansJob = scope.launch {
             val engine = SourceLanguageEngines.get(ctx.applicationContext, prefs.sourceLangId)
             // Phrase occurrences ride along so single-letter phrase members
@@ -1949,15 +1957,21 @@ class CaptureResultOverlay(
         if (!wordLensEnabled) return
         val span = wordSpans.firstOrNull { offset in it.first } ?: return
         val b = binder ?: return
+        // Snapshot what the user actually tapped ON; the lookup below
+        // suspends, and a result/edit binding meanwhile must not let a
+        // stale span open a lens over the new text (with the new capture's
+        // sentence/screenshot riding into its actions).
+        val tappedText = b.displayedSourceText()
         scope.launch {
             try {
                 val resolvedAt = SourceWordLookup.resolveAt(
-                    ctx.applicationContext, b.displayedSourceText(), span.first.first, span.second, span.third,
+                    ctx.applicationContext, tappedText, span.first.first, span.second, span.third,
                 )
                 val resolved = resolvedAt.word
                 val phrase = resolvedAt.phrase
                 val secondaries = phrase?.let { listOf(it) } ?: resolvedAt.members
                 if (dismissed) return@launch
+                if (binder?.displayedSourceText() != tappedText) return@launch
                 val wordRect = Rect()
                 if (!wordRectOnScreen(span.first, wordRect)) return@launch
                 val screenX = wordRect.centerX()
