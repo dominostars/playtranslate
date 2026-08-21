@@ -165,6 +165,39 @@ class LatinEngine(
         }?.second
     }
 
+    override suspend fun phrasesIn(text: String): List<PhraseOccurrence> {
+        if (text.isEmpty()) return emptyList()
+        val chains = synchronized(iteratorLock) { wordChains(text, breakIterator) }
+        val candidates = phraseCandidatesIn(text, chains, MAX_PHRASE_WINDOW_WORDS, ::normalizeForLookup)
+        if (candidates.isEmpty()) return emptyList()
+        // Same two membership gates as [longestPhraseAt], batched once for
+        // the whole text: the pack for build-cap-length candidates, the
+        // imported-dictionary oracle (as-written + locale-lowercased) for
+        // the rest.
+        val packKnown = dict.phrasesExist(
+            candidates.mapNotNullTo(mutableSetOf()) { c ->
+                c.form.takeIf { c.len <= MAX_PACK_PHRASE_WORDS }
+            },
+        )
+        val oracleKnown = if (candidates.any { it.len > MAX_PACK_PHRASE_WORDS || it.form !in packKnown }) {
+            yomitan.phraseOracle()?.invoke(
+                buildSet {
+                    for (c in candidates) {
+                        add(c.form)
+                        add(c.form.lowercase(locale))
+                    }
+                },
+            ).orEmpty()
+        } else {
+            emptySet()
+        }
+        val known = candidates.filter { c ->
+            (c.len <= MAX_PACK_PHRASE_WORDS && c.form in packKnown) ||
+                c.form in oracleKnown || c.form.lowercase(locale) in oracleKnown
+        }
+        return claimPhraseOccurrences(text, chains, known)
+    }
+
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? {
         val w = normalizeForLookup(word)
         val lower = w.lowercase(locale)
@@ -311,6 +344,101 @@ class LatinEngine(
             }
             if (anchor < 0) return null
             return PhraseWindow(chain.toList(), anchor)
+        }
+
+        /** One sentence-level phrase candidate: words `start until start+len`
+         *  of chain [chain], with the normalized single-space-joined [form]. */
+        internal data class SentencePhraseCandidate(
+            val chain: Int,
+            val start: Int,
+            val len: Int,
+            val form: String,
+        )
+
+        /** Whitespace-adjacent word chains across the whole [text] —
+         *  [phraseWindow]'s adjacency rules (letter-bearing words, keeping
+         *  single-letter ones; a punctuation/hyphen/digit gap breaks the
+         *  chain) applied text-wide, for [phrasesIn]'s sentence sweep.
+         *  Caller must hold the lock guarding [iterator]. */
+        internal fun wordChains(text: String, iterator: BreakIterator): List<List<IntRange>> {
+            if (text.isEmpty()) return emptyList()
+            iterator.setText(text)
+            val chains = mutableListOf<List<IntRange>>()
+            var chain = mutableListOf<IntRange>()
+            var start = iterator.first()
+            var end = iterator.next()
+            while (end != BreakIterator.DONE) {
+                val range = start until end
+                if (range.any { text[it].isLetter() }) {
+                    val gap = if (chain.isEmpty()) "" else text.substring(chain.last().last + 1, start)
+                    val adjacent = gap.isNotEmpty() && gap.all(Char::isWhitespace)
+                    if (!adjacent && chain.isNotEmpty()) {
+                        chains += chain
+                        chain = mutableListOf()
+                    }
+                    chain += range
+                }
+                start = end
+                end = iterator.next()
+            }
+            if (chain.isNotEmpty()) chains += chain
+            return chains
+        }
+
+        /** All 2..[maxWords]-gram candidates over [chains], forms built the
+         *  way [longestPhraseAt] builds them: [normalize]d, word slices
+         *  joined by one space. */
+        internal fun phraseCandidatesIn(
+            text: String,
+            chains: List<List<IntRange>>,
+            maxWords: Int,
+            normalize: (String) -> String,
+        ): List<SentencePhraseCandidate> = buildList {
+            chains.forEachIndexed { ci, words ->
+                for (n in 2..minOf(words.size, maxWords)) {
+                    for (a in 0..words.size - n) {
+                        add(
+                            SentencePhraseCandidate(
+                                ci, a, n,
+                                normalize(words.subList(a, a + n).joinToString(" ") { text.substring(it) }),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+        /** Non-overlapping claim over the gate-passed [known] candidates:
+         *  longest first, leftmost text position on ties (the pinned
+         *  no-data-signal tie-break), each winner claiming its member words
+         *  so a shorter overlapper can't also fire ("a great deal" blocks
+         *  "great deal"). Returns occurrences in text order; surface is the
+         *  verbatim slice, lookupForm the candidate's normalized form. */
+        internal fun claimPhraseOccurrences(
+            text: String,
+            chains: List<List<IntRange>>,
+            known: List<SentencePhraseCandidate>,
+        ): List<PhraseOccurrence> {
+            val used = chains.map { BooleanArray(it.size) }
+            val out = mutableListOf<PhraseOccurrence>()
+            val ordered = known.sortedWith(
+                compareByDescending<SentencePhraseCandidate> { it.len }
+                    .thenBy { chains[it.chain][it.start].first },
+            )
+            for (c in ordered) {
+                val slots = c.start until c.start + c.len
+                if (slots.any { used[c.chain][it] }) continue
+                slots.forEach { used[c.chain][it] = true }
+                val first = chains[c.chain][c.start]
+                val last = chains[c.chain][c.start + c.len - 1]
+                out += PhraseOccurrence(
+                    range = first.first..last.last,
+                    surface = text.substring(first.first, last.last + 1),
+                    lookupForm = c.form,
+                )
+            }
+            out.sortBy { it.range.first }
+            return out
         }
 
         /** Imported-term Yomitan lookup keys to try after the direct

@@ -25,6 +25,19 @@ data class TokenSpan(
 )
 
 /**
+ * One multi-word dictionary expression located in a text
+ * ([SourceLanguageEngine.phrasesIn]): [range] is its char range there,
+ * [surface] the verbatim slice at that range, [lookupForm] the
+ * space-joined, engine-normalized key ready for
+ * [SourceLanguageEngine.lookup].
+ */
+data class PhraseOccurrence(
+    val range: IntRange,
+    val surface: String,
+    val lookupForm: String,
+)
+
+/**
  * A hint-text annotation positioned over a range of the source text (e.g.
  * furigana over kanji). Phase 1 only produces these from [JapaneseEngine].
  */
@@ -120,6 +133,22 @@ interface SourceLanguageEngine {
      * reach the packs' multi-word headwords.
      */
     suspend fun longestPhraseAt(text: String, offset: Int): String? = null
+
+    /**
+     * Every known multi-word dictionary expression in [text], as
+     * non-overlapping occurrences in text order — the sentence-level
+     * counterpart of [longestPhraseAt], used to surface idiomatic phrases
+     * as their own rows in the words list (and, through it, the Anki
+     * sentence card). Overlaps resolve by longest-first claiming with a
+     * leftmost tie-break — the same pinned no-data-signal ordering
+     * [longestPhraseAt] uses.
+     *
+     * Defaulted to empty: engines whose segmentation already emits
+     * multi-word units as single tokens (JA re-glob, ZH/TH dictionary
+     * segmentation) have nothing to add. [LatinEngine] overrides it for
+     * the space-delimited languages.
+     */
+    suspend fun phrasesIn(text: String): List<PhraseOccurrence> = emptyList()
 
     /** Character-level lookup. JA returns [com.playtranslate.model.KanjiDetail];
      *  ZH returns [com.playtranslate.model.HanziDetail]. Other engines return null.
