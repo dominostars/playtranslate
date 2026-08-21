@@ -71,48 +71,61 @@ object SourceWordLookup {
     }
 
     /**
-     * Tap-span token list for [text]: [tokens] (the tokenizer's
-     * lookup-worthy words) plus a synthetic span for each single-letter
-     * word inside a detected phrase occurrence. tokenize drops sub-2-char
-     * words as words-panel policy, but inside a known expression they must
-     * stay tappable — "a" in "a great deal" anchors the containment probe
-     * ([resolveAt]) like any other member, and without a span the tap
-     * silently does nothing while every longer member shows the phrase.
-     * Output is in text order ([computeSpans] consumes sequentially); a
-     * token [computeSpans] wouldn't find sorts to the end (it skips misses
-     * without advancing, so placement of misses is harmless). Synthetic
-     * spans exist ONLY for the tap pipeline — callers must not feed the
-     * result to the words-panel row resolution.
+     * Tap spans for [displayedText]: [computeSpans] over the tokenizer's
+     * words PLUS a span for each single-letter word inside a detected
+     * phrase occurrence. tokenize drops sub-2-char words as words-panel
+     * policy, but a member of a known expression must stay tappable — "a"
+     * in "a great deal" anchors the containment probe ([resolveAt]) like
+     * any other member, and without a span the tap silently does nothing
+     * while every longer member shows the phrase.
+     *
+     * Member positions derive from the PHRASE's own displayed range — a
+     * whitespace-tolerant, in-order match of the occurrence surface (so
+     * display-only OCR newlines inside the phrase don't hide it) — never
+     * from re-searching the letter itself: the token list doesn't tile
+     * single-letter occurrences, so a bare indexOf("a") binds to any
+     * earlier stray duplicate ("cat a a great deal") and leaves the real
+     * member dead. A phrase the tolerant match can't locate contributes no
+     * member spans (degrades to longer-members-only, never misbinds).
+     * Result is sorted by range start. Member spans exist ONLY for the tap
+     * pipeline — they never join the words-panel rows.
      */
-    fun tapTokensWithPhraseMembers(
-        text: String,
-        tokens: List<TokenSpan>,
+    fun computeTapSpans(
+        displayedText: String,
+        tokenSpans: List<TokenSpan>,
+        lookupToReading: Map<String, String>,
         phrases: List<PhraseOccurrence>,
-    ): List<TokenSpan> {
-        if (phrases.isEmpty()) return tokens
-        data class Positioned(val start: Int, val token: TokenSpan)
-        val positioned = mutableListOf<Positioned>()
+    ): List<Triple<IntRange, String, String>> {
+        val spans = computeSpans(displayedText, tokenSpans, lookupToReading)
+        if (phrases.isEmpty()) return spans
+        val extra = mutableListOf<Triple<IntRange, String, String>>()
         var searchFrom = 0
-        for (tok in tokens) {
-            val idx = text.indexOf(tok.surface, searchFrom)
-            if (idx < 0) {
-                positioned += Positioned(Int.MAX_VALUE, tok)
-                continue
-            }
-            positioned += Positioned(idx, tok)
-            searchFrom = idx + tok.surface.length
-        }
         for (occ in phrases) {
-            for (m in SINGLE_LETTER_WORD.findAll(occ.surface)) {
-                positioned += Positioned(
-                    occ.range.first + m.range.first,
-                    TokenSpan(surface = m.value, lookupForm = m.value),
-                )
+            val range = whitespaceTolerantRange(displayedText, occ.surface, searchFrom) ?: continue
+            searchFrom = range.last + 1
+            val slice = displayedText.substring(range.first, range.last + 1)
+            for (m in SINGLE_LETTER_WORD.findAll(slice)) {
+                val at = range.first + m.range.first
+                extra += Triple(at..at, m.value, "")
             }
         }
-        return positioned.sortedBy { it.start }.map { it.token }
+        if (extra.isEmpty()) return spans
+        return (spans + extra).sortedBy { it.first.first }
     }
 
+    /** The [displayedText] range matching [surface] with every whitespace
+     *  run treated as "any whitespace run", searched from [from]. Null on
+     *  miss. */
+    private fun whitespaceTolerantRange(displayedText: String, surface: String, from: Int): IntRange? {
+        val pattern = surface.split(WHITESPACE_RUN)
+            .filter { it.isNotEmpty() }
+            .joinToString("\\s+") { Regex.escape(it) }
+        if (pattern.isEmpty()) return null
+        val match = Regex(pattern).find(displayedText, from) ?: return null
+        return match.range
+    }
+
+    private val WHITESPACE_RUN = Regex("\\s+")
     private val SINGLE_LETTER_WORD = Regex("(?<=^|\\s)\\p{L}(?=\\s|$)")
 
     /** [resolveAt]'s result: the tapped unit's resolution — the popup's

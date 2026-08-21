@@ -377,12 +377,13 @@ class TranslationResultViewModel : ViewModel() {
         _wordLookups.value = WordLookupsState.Loading
         lookupJob = viewModelScope.launch {
             try {
-                val (data, annotation) = performLookups(appCtx, text)
+                val (data, annotation, phrases) = performLookups(appCtx, text)
                 _wordLookups.value = WordLookupsState.Settled(
                     rows = data.rows,
                     tokenSpans = data.tokenSpans,
                     lookupToReading = data.lookupToReading,
                     annotation = annotation,
+                    phrases = phrases,
                 )
                 // Pair the settled lookup with its source text and (re)write the
                 // cache. If the translation has already landed (Ready, same text),
@@ -410,7 +411,8 @@ class TranslationResultViewModel : ViewModel() {
     private suspend fun performLookups(
         appCtx: Context,
         text: String,
-    ): Pair<LookupData, com.playtranslate.language.SentenceAnnotation> {
+    ): Triple<LookupData, com.playtranslate.language.SentenceAnnotation,
+        List<com.playtranslate.language.PhraseOccurrence>> {
         // Snapshot source/target prefs ONCE, before analyzing, so the whole
         // lookup runs against one consistent language pair even if the user
         // changes settings mid-flight (see [WordLookupContext]).
@@ -452,13 +454,11 @@ class TranslationResultViewModel : ViewModel() {
             }
         }
         val data = resolveWordRows(appCtx, context, rowTokens)
-        // Tap spans: the word tokens PLUS synthetic spans for single-letter
-        // phrase members ("a" in "a great deal") — tokenize drops sub-2-char
-        // words, but a member of a detected phrase must stay tappable or the
-        // phrase is reachable from every member except one.
-        return data.copy(
-            tokenSpans = SourceWordLookup.tapTokensWithPhraseMembers(text, allTokens, phrases),
-        ) to annotation
+        // Tap spans project from the word tokens; the phrase occurrences
+        // ride to the fragment so its span computation can add tap targets
+        // for single-letter phrase members ("a" in "a great deal") anchored
+        // by the PHRASE's displayed range (SourceWordLookup.computeTapSpans).
+        return Triple(data.copy(tokenSpans = allTokens), annotation, phrases)
     }
 }
 
@@ -530,6 +530,10 @@ sealed class WordLookupsState {
         /** The analysis the rows were projected from; rides into hand-built
          *  one-tap WordsPayloads so isTrustedFor can prove freshness. */
         val annotation: com.playtranslate.language.SentenceAnnotation? = null,
+        /** Detected multi-word expression occurrences — the fragment's span
+         *  computation anchors single-letter phrase members' tap targets on
+         *  these ([SourceWordLookup.computeTapSpans]). */
+        val phrases: List<com.playtranslate.language.PhraseOccurrence> = emptyList(),
     ) : WordLookupsState()
 }
 
