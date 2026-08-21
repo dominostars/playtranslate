@@ -2395,10 +2395,11 @@ class MagnifierLens(
             syncNavRing()
         }
 
-        private fun navCandidates(): List<View> =
-            (listOf(pillView, leftChip, rightChip) +
-                listOfNotNull(splitPhraseSection, splitWordSection))
-                .filter { it.isShown }
+        private fun navChromeRow(): List<View> =
+            listOf(leftChip, pillView, rightChip).filter { it.isShown }
+
+        private fun navSections(): List<View> =
+            listOfNotNull(splitPhraseSection, splitWordSection).filter { it.isShown }
 
         /** Item rect in THIS view's coordinates. Chips ring their 32dp visible
          *  disk, not the 48dp hit halo. */
@@ -2451,20 +2452,58 @@ class MagnifierLens(
             return true
         }
 
+        /** Explicit nav graph instead of spatial scoring. The lens is two
+         *  strips: the chrome row (Speak chip · pill · Anki chip) along one
+         *  card edge, and the split body's sections stacked on the body
+         *  side. Spatial scoring breaks on this layout — a section is a
+         *  card-wide rect centered like the pill, so once the body has
+         *  scrolled (unclipped rects, center rounding) a section can beat a
+         *  chip on a LEFT/RIGHT move with a near-zero axis distance.
+         *  LEFT/RIGHT walk the chrome row only; the vertical axis moves
+         *  between the row and the sections (direction flip-aware: the
+         *  body is below the chrome when the lens sits above the word,
+         *  above it when flipped). */
         private fun moveNav(cur: View, dir: SheetNavGeometry.Dir) {
-            val cands = navCandidates()
-            val fromIdx = cands.indexOf(cur)
-            if (fromIdx < 0) {
+            val chrome = navChromeRow()
+            val sections = navSections()
+            if (cur !in chrome && cur !in sections) {
                 focusPill()
                 return
             }
-            val rects = cands.map { v ->
-                val r = Rect()
-                navRectInView(v, r)
-                SheetNavGeometry.NavRect(r.left, r.top, r.right, r.bottom)
+            val towardBody =
+                if (lensFlipped) SheetNavGeometry.Dir.UP else SheetNavGeometry.Dir.DOWN
+            val towardChrome =
+                if (lensFlipped) SheetNavGeometry.Dir.DOWN else SheetNavGeometry.Dir.UP
+            // Walk order into/through the body follows the physical axis:
+            // chrome-on-top enters at the stack's top (phrase) and walks
+            // down; a flipped lens (chrome at the bottom) enters at the
+            // stack's bottom (word) and walks up.
+            val bodyWalk = if (lensFlipped) sections.reversed() else sections
+            val next: View = when {
+                cur in chrome &&
+                    (dir == SheetNavGeometry.Dir.LEFT || dir == SheetNavGeometry.Dir.RIGHT) -> {
+                    val i = chrome.indexOf(cur)
+                    chrome.getOrNull(if (dir == SheetNavGeometry.Dir.LEFT) i - 1 else i + 1)
+                }
+                cur in chrome && dir == towardBody -> bodyWalk.firstOrNull()
+                cur in sections && dir == towardBody ->
+                    bodyWalk.getOrNull(bodyWalk.indexOf(cur) + 1)
+                cur in sections && dir == towardChrome ->
+                    bodyWalk.getOrNull(bodyWalk.indexOf(cur) - 1)
+                        ?: pillView.takeIf { it.isShown }
+                else -> null
+            } ?: return
+            navCursor = next
+            // A selected definitions section reads top-aligned: scroll its
+            // top to where the first row rests at scroll 0 (clear of the
+            // pill band — section tops within splitContent ARE resting
+            // scroll offsets, see the scroll's padding derivation). Stepping
+            // back out to the chrome restores the resting scroll.
+            if (next in sections) {
+                definitionsScroll.smoothScrollTo(0, next.top)
+            } else if (cur in sections) {
+                definitionsScroll.smoothScrollTo(0, 0)
             }
-            val next = SheetNavGeometry.nextInDirection(rects[fromIdx], rects, dir) ?: return
-            navCursor = cands[next]
             syncNavRing()
         }
 
