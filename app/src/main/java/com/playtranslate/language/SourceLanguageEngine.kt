@@ -104,6 +104,23 @@ interface SourceLanguageEngine {
     /** Full dictionary lookup. [reading] is a narrowing hint (JA hiragana). */
     suspend fun lookup(word: String, reading: String? = null): DictionaryResponse?
 
+    /**
+     * The longest multi-word dictionary expression CONTAINING the word that
+     * contains [offset] in [text], returned as a lookup key for [lookup] —
+     * null when no known expression spans that word. Word-tap surfaces call
+     * this so a tap on ANY member word — "great" OR "deal" in "a great
+     * deal", "door" in "open the door" — surfaces the expression alongside
+     * the word itself (the popup shows both; the tap target stays the
+     * single word).
+     *
+     * Defaulted to null: engines whose segmentation already resolves
+     * multi-token units (JA re-glob, ZH/TH dictionary segmentation) have
+     * nothing to add at tap time. [LatinEngine] overrides it for the
+     * space-delimited languages, whose one-token-per-word [tokenize] can't
+     * reach the packs' multi-word headwords.
+     */
+    suspend fun longestPhraseAt(text: String, offset: Int): String? = null
+
     /** Character-level lookup. JA returns [com.playtranslate.model.KanjiDetail];
      *  ZH returns [com.playtranslate.model.HanziDetail]. Other engines return null.
      *

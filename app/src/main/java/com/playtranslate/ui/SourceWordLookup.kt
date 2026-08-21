@@ -22,8 +22,8 @@ import kotlinx.coroutines.withContext
  * (definition / reading / pitch / frequency / sense tiers). Used by BOTH the
  * in-app results page ([TranslationResultFragment]) and the over-game capture
  * panel ([CaptureResultOverlay]), so the displayed lookup can't drift. Each
- * surface builds its own [MagnifierLens] around this — the in-app lens adds the
- * Anki chip + open-detail tap; the panel is display + speak only.
+ * surface builds its own [MagnifierLens] around this and wires its own
+ * open-detail / Anki / speak actions.
  */
 object SourceWordLookup {
 
@@ -56,47 +56,57 @@ object SourceWordLookup {
         var searchFrom = 0
         for (tok in tokenSpans) {
             val idx = displayedText.indexOf(tok.surface, searchFrom)
-            // Fused phrase spans contain whitespace, and the displayed text
-            // may have OCR line breaks the tokenized text lacked — retry the
-            // match with each whitespace run wild ("a great deal" still maps
-            // when the display wrapped it as "a great\ndeal"). Single words
-            // keep the exact-match-only behavior.
-            val range = if (idx >= 0) {
-                idx until (idx + tok.surface.length)
-            } else if (tok.surface.any(Char::isWhitespace)) {
-                whitespaceTolerantRange(displayedText, tok.surface, searchFrom) ?: continue
-            } else {
-                continue
-            }
+            if (idx < 0) continue
+            val range = idx until (idx + tok.surface.length)
             val reading = lookupToReading[tok.lookupForm]
                 ?: lookupToReading[tok.surface]
                 ?: tok.reading
                 ?: ""
             spans.add(Triple(range, tok.lookupForm, reading))
-            searchFrom = range.last + 1
+            searchFrom = idx + tok.surface.length
         }
         return spans
     }
 
-    /** The [displayedText] range matching [surface] with every whitespace run
-     *  treated as "any whitespace run", searched from [from]. Null on miss. */
-    private fun whitespaceTolerantRange(displayedText: String, surface: String, from: Int): IntRange? {
-        val pattern = surface.split(WHITESPACE_RUN)
-            .filter { it.isNotEmpty() }
-            .joinToString("\\s+") { Regex.escape(it) }
-        if (pattern.isEmpty()) return null
-        val match = Regex(pattern).find(displayedText, from) ?: return null
-        return match.range
+    /** [resolveAt]'s result: the tapped word's resolution — the popup's
+     *  identity — plus, when the engine designates a multi-word expression
+     *  spanning the tap, the expression's own resolution for the lens's
+     *  split (phrase above word) body. */
+    data class ResolvedAt(
+        val word: Resolved,
+        val phrase: Resolved?,
+    )
+
+    /**
+     * Phrase-aware [resolve] for word taps: resolves the tapped word itself,
+     * and ADDITIONALLY probes the engine for the longest multi-word
+     * dictionary expression containing it
+     * ([com.playtranslate.language.SourceLanguageEngine.longestPhraseAt]) —
+     * tap "door" in "open the door" and the popup shows the expression's
+     * entry above the word's. The phrase slot is null when no expression
+     * spans the tap OR its lookup lands no real entry (an empty phrase
+     * section above the word would be pure noise). Both tap surfaces route
+     * through here so phrase behavior can't drift between them. [spanStart]
+     * is the tapped span's start offset in [displayedText] — the same text
+     * the spans were computed against.
+     */
+    suspend fun resolveAt(
+        appCtx: Context,
+        displayedText: String,
+        spanStart: Int,
+        lookupForm: String,
+        reading: String,
+    ): ResolvedAt {
+        val engine = SourceLanguageEngines.get(appCtx, Prefs(appCtx).sourceLangId)
+        val phraseKey = withContext(Dispatchers.IO) { engine.longestPhraseAt(displayedText, spanStart) }
+        return ResolvedAt(
+            word = resolve(appCtx, lookupForm, reading),
+            phrase = phraseKey?.let { resolve(appCtx, it, "") }?.takeIf { it.entry != null },
+        )
     }
 
-    private val WHITESPACE_RUN = Regex("\\s+")
-
     /** Resolve [lookupForm] (+ optional disambiguating [reading]) into lens data,
-     *  using the same resolver + tier branching as the in-app results page.
-     *  Multi-word expressions arrive here pre-fused: [computeSpans] spans come
-     *  from the engine's tokenize, whose phrase re-glob makes a whole known
-     *  expression ("a great deal") one span — so its lookupForm and tap range
-     *  already cover the phrase. */
+     *  using the same resolver + tier branching as the in-app results page. */
     suspend fun resolve(appCtx: Context, lookupForm: String, reading: String): Resolved {
         val prefs = Prefs(appCtx)
         val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)

@@ -82,6 +82,11 @@ import kotlin.math.sign
  *  - In sticky mode, tapping anywhere on the card OR the pill fires
  *    [onOpenTap] (opens the detail page). The chevron is purely a visual
  *    cue.
+ *  - Split mode ([setSplitDefinitions] — a word inside a known multi-word
+ *    expression): the body is two sections, phrase over word, each its OWN
+ *    tap target ([onPhraseOpenTap] / [onOpenTap]) with its own chevron;
+ *    the card-wide open detector stands down over the body. The pill still
+ *    fires [onOpenTap] — it carries the word's identity.
  *  - Chip taps are absorbed (no-op) — they do NOT fall through to the
  *    card-wide open handler.
  *  - The arrow strip and the (currently hidden) pill chrome region outside
@@ -92,6 +97,17 @@ import kotlin.math.sign
  *  is a small floating card, so it renders the same body scaled down to keep
  *  its compact footprint (definitions land near the lens's former ~13sp). */
 private const val LENS_DEFINITIONS_SCALE = 0.8f
+
+/** One section of the lens's split (phrase + word) definitions body — see
+ *  [MagnifierLens.setSplitDefinitions]. [opens] renders the section's
+ *  trailing chevron and makes the whole section a tap target for its
+ *  open-detail callback; pass false on surfaces (or entries) with nothing
+ *  to open into. */
+data class LensSection(
+    val data: WordDefinitionData,
+    val label: String?,
+    val opens: Boolean,
+)
 
 /**
  * Clamped card-body height for the post-release grow-to-fit. The card grows
@@ -266,8 +282,13 @@ class MagnifierLens(
     /** Fires once per actual window teardown (tap-outside in sticky mode,
      *  new drag start, [dismiss] caller). */
     var onDismiss: (() -> Unit)? = null
-    /** Fires when the card or pill is tapped in sticky mode. */
+    /** Fires when the card or pill is tapped in sticky mode. In split mode
+     *  ([setSplitDefinitions]) this is the WORD section's open action — the
+     *  pill and the word section both fire it. */
     var onOpenTap: (() -> Unit)? = null
+    /** Fires when the split body's PHRASE section is tapped in sticky mode.
+     *  Never fires outside split mode. */
+    var onPhraseOpenTap: (() -> Unit)? = null
     /** Fires when the right chip (Anki) is tapped in sticky mode. */
     var onAnkiTap: (() -> Unit)? = null
     /** Fires when the right chip (Anki) is long-pressed in sticky mode.
@@ -315,6 +336,18 @@ class MagnifierLens(
         // deck-badge back-fill re-binds after makeInteractive). Pre-release
         // and dwell-preview binds aren't interactive, so they stay at base
         // height until makeInteractive runs the first fit.
+        if (isInteractive) fitHeightToContent()
+    }
+
+    /** Split definitions body for a word that sits inside a known multi-word
+     *  expression: the [phrase] section renders above the [word] section
+     *  with a divider between, each headed by its own headword and (when it
+     *  opens) a trailing chevron. The pill keeps the tapped WORD's identity.
+     *  Section taps route to [onPhraseOpenTap] / [onOpenTap]. Both sections
+     *  render flat — the styled (WebView) treatment stays single-word-only;
+     *  the styled experience lives one tap away on each detail page. */
+    fun setSplitDefinitions(phrase: LensSection, word: LensSection) {
+        lensView?.setSplitDefinitions(phrase, word)
         if (isInteractive) fitHeightToContent()
     }
 
@@ -669,6 +702,7 @@ class MagnifierLens(
             chipHaloPadPx = chipHaloPadPx,
             density = density,
             onOpenTap = { onOpenTap?.invoke() },
+            onPhraseOpenTap = { onPhraseOpenTap?.invoke() },
             onAnkiTap = { onAnkiTap?.invoke() },
             onAnkiLongPress = { onAnkiLongPress?.invoke() },
             onSpeakTap = { onSpeakTap?.invoke() },
@@ -823,6 +857,7 @@ class MagnifierLens(
         private val chipHaloPadPx: Int,
         private val density: Float,
         private val onOpenTap: () -> Unit,
+        private val onPhraseOpenTap: () -> Unit,
         private val onAnkiTap: () -> Unit,
         private val onAnkiLongPress: () -> Unit,
         private val onSpeakTap: () -> Unit,
@@ -1236,14 +1271,35 @@ class MagnifierLens(
             // both the drag lens and the in-app tap-word lens.
             emptyPlaceholder = ctx.getString(R.string.word_detail_no_definitions)
         }
-        /** The scroll's single child: the flat renderer plus (lazily) the
-         *  styled WebView renderer, visibility-swapped per bind. Keeping
-         *  the ScrollView as the ONE scroller preserves the stick-scroll
-         *  repeater and the clip/translation grow animation unchanged —
-         *  the styled view is always sized to its full content height and
-         *  never scrolls itself ([YomitanDefinitionsView]'s contract). */
+        /** Split (phrase + word) body — built per bind by
+         *  [setSplitDefinitions], visibility-swapped against the flat and
+         *  styled renderers. */
+        private val splitContent = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = GONE
+        }
+        /** True while [splitContent] is the visible body. Drives the
+         *  height fit, the tap-eligibility carve-out (sections own their
+         *  taps), and the controller-nav candidate list. */
+        private var splitActive = false
+        /** The split body's tappable section roots (null when the section
+         *  doesn't open) — controller-nav candidates while shown. */
+        private var splitPhraseSection: View? = null
+        private var splitWordSection: View? = null
+
+        /** The scroll's single child: the flat renderer plus the split
+         *  container plus (lazily) the styled WebView renderer,
+         *  visibility-swapped per bind. Keeping the ScrollView as the ONE
+         *  scroller preserves the stick-scroll repeater and the
+         *  clip/translation grow animation unchanged — the styled view is
+         *  always sized to its full content height and never scrolls itself
+         *  ([YomitanDefinitionsView]'s contract). */
         private val bodyContainer = FrameLayout(ctx).apply {
             addView(definitionsContent)
+            addView(
+                splitContent,
+                LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT),
+            )
         }
         private val definitionsScroll = ScrollView(ctx).apply {
             isVerticalScrollBarEnabled = true
@@ -1367,7 +1423,10 @@ class MagnifierLens(
          *  width for the next swap's measurement), and not its old height
          *  (an INVISIBLE view still counts toward the container's
          *  wrap-content measure; a stale tall view would leave the scroll
-         *  full of blank space under the flat content). */
+         *  full of blank space under the flat content). The split body is
+         *  fully torn down — unlike the styled view it has no deferred
+         *  measurement to keep warm, and stale section views must not stay
+         *  controller-nav candidates. */
         private fun showFlatBody() {
             styledActive = false
             pendingStyledSwap = false
@@ -1380,7 +1439,16 @@ class MagnifierLens(
                     }
                 }
             }
+            hideSplitBody()
             definitionsContent.visibility = VISIBLE
+        }
+
+        private fun hideSplitBody() {
+            splitActive = false
+            splitPhraseSection = null
+            splitWordSection = null
+            splitContent.removeAllViews()
+            splitContent.visibility = GONE
         }
 
         private val clipPath = Path()
@@ -1622,6 +1690,13 @@ class MagnifierLens(
          *  call only after [setDefinitions] has bound a word. */
         fun desiredCardHeightForContent(): Int {
             val chrome = bodyPillSidePadPx + bodyOuterSidePadPx + 2 * bodyEdgeBufferPx
+            if (splitActive) {
+                splitContent.measure(
+                    MeasureSpec.makeMeasureSpec(cardW - 2 * bodyEdgeBufferPx, MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+                )
+                return splitContent.measuredHeight + chrome
+            }
             // Styled body: a WebView can't report a synchronous measured
             // height — use the page's own painted-height report (which
             // re-runs [MagnifierLens.fitHeightToContent] whenever it lands,
@@ -1636,14 +1711,22 @@ class MagnifierLens(
             return definitionsContent.measuredHeight + chrome
         }
 
-        /** Debounce so the open handler can't fire twice from a single
-         *  gesture that crosses the open detector and any other receiver. */
+        /** Debounce so the open handlers can't fire twice from a single
+         *  gesture that crosses the open detector and any other receiver —
+         *  shared between the word and phrase opens (one gesture, one open). */
         private var lastOpenTapMs = 0L
         private fun fireOpenTap() {
             val now = SystemClock.uptimeMillis()
             if (now - lastOpenTapMs < 300L) return
             lastOpenTapMs = now
             onOpenTap()
+        }
+
+        private fun firePhraseOpenTap() {
+            val now = SystemClock.uptimeMillis()
+            if (now - lastOpenTapMs < 300L) return
+            lastOpenTapMs = now
+            onPhraseOpenTap()
         }
 
         private val tapDetector = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
@@ -1718,7 +1801,24 @@ class MagnifierLens(
             // lands first, tears the lens down, and destroys the WebView
             // before the click ever processes.
             if (isInStyledView(x, y)) return false
+            if (isInSplitBody(x, y)) return false
             return true
+        }
+
+        /** In split mode the definitions area belongs to the section views —
+         *  each section is its own tap target and the space between (the
+         *  divider band) deliberately inert — so the card-wide open detector
+         *  must stand down there. The pill overhangs the scroll frame and
+         *  keeps the card-wide open (it carries the WORD's identity). */
+        private fun isInSplitBody(x: Float, y: Float): Boolean {
+            if (!splitActive) return false
+            if (x >= pillView.left && x < pillView.right &&
+                y >= pillView.top && y < pillView.bottom
+            ) {
+                return false
+            }
+            return x >= definitionsScroll.left && x < definitionsScroll.right &&
+                y >= definitionsScroll.top && y < definitionsScroll.bottom
         }
 
         /** Whether a LensView-space point lands on the styled view (visible
@@ -2057,6 +2157,130 @@ class MagnifierLens(
             invalidate()
         }
 
+        /** Split body: [phrase] section above [word] section with a divider
+         *  between — see [MagnifierLens.setSplitDefinitions]. The pill keeps
+         *  the tapped word's identity; each section carries its own headword
+         *  header (the pill can't name both) and, when it opens, a trailing
+         *  chevron + full-section tap target. Deliberately flat-only: the
+         *  styled WebView path stays single-word — its body-tap report
+         *  couldn't attribute a tap to a section anyway. */
+        fun setSplitDefinitions(phrase: LensSection, word: LensSection) {
+            mode = Mode.DEFINITIONS
+            setLabel(word.data.word, word.data.reading, word.data.pitch)
+            // Styled steps aside; any prior split is torn down for rebuild.
+            showFlatBody()
+            definitionsContent.visibility = GONE
+            splitPhraseSection = addSplitSection(phrase, isPhrase = true)
+            splitContent.addView(buildSplitDivider())
+            splitWordSection = addSplitSection(word, isPhrase = false)
+            splitActive = true
+            splitContent.visibility = VISIBLE
+            definitionsScroll.scrollTo(0, 0)
+            definitionsScroll.visibility = VISIBLE
+            invalidate()
+        }
+
+        /** Builds one split section — headword header (+ reading, + chevron
+         *  when it opens) over the flat definitions body — into
+         *  [splitContent]. Returns the section root when it's a tap target
+         *  ([LensSection.opens]), null otherwise. */
+        private fun addSplitSection(section: LensSection, isPhrase: Boolean): View? {
+            val col = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            val header = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(bodyHPaddingPx - dp(6f), 0, bodyHPaddingPx + dp(2f), 0)
+            }
+            header.addView(
+                TextView(context).apply {
+                    text = section.data.word
+                    setTextColor(panelPrimaryText)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+            )
+            section.data.reading?.let { reading ->
+                header.addView(
+                    TextView(context).apply {
+                        text = reading
+                        setTextColor(panelSecondaryText)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                    },
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ).apply { marginStart = dp(8f) },
+                )
+            }
+            if (section.opens) {
+                header.addView(
+                    ImageView(context).apply {
+                        val d = AppCompatResources.getDrawable(context, R.drawable.ic_lens_chevron)?.mutate()
+                        if (d != null) {
+                            DrawableCompat.setTint(d, panelSecondaryText)
+                            setImageDrawable(d)
+                        }
+                    },
+                    LinearLayout.LayoutParams(pillChevronSize, pillChevronSize)
+                        .apply { marginStart = dp(8f) },
+                )
+            }
+            col.addView(
+                header,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { bottomMargin = dp(2f) },
+            )
+            val body = WordDefinitionsView(context).apply {
+                setPadding(bodyHPaddingPx - dp(6f), 0, bodyHPaddingPx + dp(2f), 0)
+                metaChipFill = panelBadgeBg
+                emptyPlaceholder = context.getString(R.string.word_detail_no_definitions)
+                bind(section.data, section.label, LENS_DEFINITIONS_SCALE, showMisc = false)
+            }
+            col.addView(
+                body,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            if (section.opens) {
+                col.isClickable = true
+                col.setOnClickListener { if (isPhrase) firePhraseOpenTap() else fireOpenTap() }
+            }
+            splitContent.addView(
+                col,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            return col.takeIf { section.opens }
+        }
+
+        /** Hairline between the split sections — card-border color, inset to
+         *  the text column. */
+        private fun buildSplitDivider(): View = View(context).apply {
+            setBackgroundColor(cardBorderColor)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                (density * 1f).toInt().coerceAtLeast(1),
+            ).apply {
+                topMargin = dp(9f)
+                bottomMargin = dp(9f)
+                marginStart = bodyHPaddingPx - dp(6f)
+                marginEnd = bodyHPaddingPx + dp(2f)
+            }
+        }
+
         fun setLoading(word: String?, reading: String?) {
             mode = Mode.LOADING
             setLabel(word, reading)
@@ -2172,7 +2396,9 @@ class MagnifierLens(
         }
 
         private fun navCandidates(): List<View> =
-            listOf(pillView, leftChip, rightChip).filter { it.isShown }
+            (listOf(pillView, leftChip, rightChip) +
+                listOfNotNull(splitPhraseSection, splitWordSection))
+                .filter { it.isShown }
 
         /** Item rect in THIS view's coordinates. Chips ring their 32dp visible
          *  disk, not the 48dp hit halo. */
@@ -2247,6 +2473,8 @@ class MagnifierLens(
                 v === pillView -> fireOpenTap()
                 v === leftChip -> onSpeakTap()
                 v === rightChip -> onAnkiTap()
+                v === splitPhraseSection -> firePhraseOpenTap()
+                v === splitWordSection -> fireOpenTap()
             }
         }
 

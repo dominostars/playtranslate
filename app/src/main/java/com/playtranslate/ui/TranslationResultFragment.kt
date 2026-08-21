@@ -1167,12 +1167,16 @@ class TranslationResultFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val appCtx = ctx.applicationContext
-                // Shared resolution + tier branching (parity with the over-game
-                // capture panel — both surfaces resolve identically here).
-                // Multi-word expressions are already single spans (the
-                // tokenizer's phrase re-glob), so the span and its lookupForm
-                // cover the whole expression.
-                val resolved = SourceWordLookup.resolve(appCtx, lookupForm, reading)
+                // Shared phrase-aware resolution + tier branching (parity with
+                // the over-game capture panel — both surfaces resolve
+                // identically here). The popup is the tapped WORD's; a
+                // multi-word expression containing it rides along as the
+                // lens's phrase section.
+                val resolvedAt = SourceWordLookup.resolveAt(
+                    appCtx, tvOriginal.text?.toString().orEmpty(), span.first.first, lookupForm, reading,
+                )
+                val resolved = resolvedAt.word
+                val phrase = resolvedAt.phrase
                 val word = resolved.word
                 val popupReading = resolved.reading
                 val popupLabel = resolved.label
@@ -1223,6 +1227,24 @@ class TranslationResultFragment : Fragment() {
                             )
                         }
                     }
+                    if (phrase != null) {
+                        // Phrase section drill-in: same detail route as the
+                        // word — the sheet re-looks the string up, and the
+                        // multi-word key round-trips it unchanged.
+                        onPhraseOpenTap = {
+                            dismissWordPopup()
+                            host?.onInteraction()
+                            val ready = currentReady()
+                            val wr = currentSettledRows()?.toLegacyMap() ?: emptyMap()
+                            host?.onWordTapped(
+                                phrase.word, phrase.reading,
+                                ready?.screenshotPath,
+                                ready?.originalText,
+                                ready?.translatedText,
+                                wr,
+                            )
+                        }
+                    }
                     // Tap opens the editable review sheet (default).
                     // Long-press is the headless one-tap shortcut —
                     // documented by the pro-tip footer in Settings.
@@ -1258,8 +1280,30 @@ class TranslationResultFragment : Fragment() {
                     dm.widthPixels, dm.heightPixels,
                     anchorHeight = lineH,
                 )
-                wordLens?.setDefinitions(lensData, popupLabel)
-                wordLens?.let { maybeUpdateLensDecks(it, lensData, popupLabel, word) }
+                if (phrase != null) {
+                    // Word inside a known expression: split body — phrase
+                    // section above, tapped word below, each with its own
+                    // drill-in. The deck back-fill rebinds the SPLIT shape
+                    // so it can't collapse the phrase section.
+                    val phraseSection = LensSection(phrase.data, phrase.label, opens = true)
+                    wordLens?.setSplitDefinitions(
+                        phraseSection, LensSection(lensData, popupLabel, opens = canOpen),
+                    )
+                    wordLens?.let { lens ->
+                        maybeUpdateLensDecks(lens, lensData, word) { updated ->
+                            lens.setSplitDefinitions(
+                                phraseSection, LensSection(updated, popupLabel, opens = canOpen),
+                            )
+                        }
+                    }
+                } else {
+                    wordLens?.setDefinitions(lensData, popupLabel)
+                    wordLens?.let { lens ->
+                        maybeUpdateLensDecks(lens, lensData, word) { updated ->
+                            lens.setDefinitions(updated, popupLabel)
+                        }
+                    }
+                }
                 wordLens?.makeInteractive()
             } catch (_: Exception) {}
         }
@@ -1480,11 +1524,13 @@ class TranslationResultFragment : Fragment() {
     private fun maybeUpdateLensDecks(
         lens: MagnifierLens,
         base: WordDefinitionData,
-        label: String?,
         word: String,
+        // The caller owns the rebind shape — single vs split body — so the
+        // deck back-fill can't collapse a split lens to a single section.
+        rebind: (WordDefinitionData) -> Unit,
     ) {
         ankiDecksByWord[word]?.let { cached ->
-            if (cached.isNotEmpty()) lens.setDefinitions(base.copy(ankiDecks = cached), label)
+            if (cached.isNotEmpty()) rebind(base.copy(ankiDecks = cached))
             return
         }
         val anki = AnkiManager(requireContext())
@@ -1496,7 +1542,7 @@ class TranslationResultFragment : Fragment() {
             if (!isAdded) return@launch
             ankiDecksByWord[word] = decks
             if (decks.isEmpty() || wordLens !== lens) return@launch
-            lens.setDefinitions(base.copy(ankiDecks = decks), label)
+            rebind(base.copy(ankiDecks = decks))
         }
     }
 

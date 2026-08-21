@@ -1934,7 +1934,11 @@ class CaptureResultOverlay(
         val b = binder ?: return
         scope.launch {
             try {
-                val resolved = SourceWordLookup.resolve(ctx.applicationContext, span.second, span.third)
+                val resolvedAt = SourceWordLookup.resolveAt(
+                    ctx.applicationContext, b.displayedSourceText(), span.first.first, span.second, span.third,
+                )
+                val resolved = resolvedAt.word
+                val phrase = resolvedAt.phrase
                 if (dismissed) return@launch
                 val wordRect = Rect()
                 if (!wordRectOnScreen(span.first, wordRect)) return@launch
@@ -1989,6 +1993,20 @@ class CaptureResultOverlay(
                     },
                     tagDetailReturn = !wordLensInActivity,
                     showAnkiNotInstalled = if (wordLensInActivity) showAnkiNotInstalled else null,
+                    // Phrase section drill-in: same open-sentence route, with
+                    // the expression as the word context.
+                    currentPhrase = phrase?.let { p ->
+                        {
+                            LensActionContext(
+                                p.word,
+                                p.reading,
+                                p.entry,
+                                lastResult?.originalText,
+                                lastResult?.screenshotPath,
+                                audioAnchorMs = lastResult?.createdAtMs?.takeIf { it > 0 },
+                            )
+                        }
+                    },
                 ) {
                     LensActionContext(
                         resolved.word,
@@ -2001,7 +2019,18 @@ class CaptureResultOverlay(
                 }
                 b.setWordHighlight(span.first)
                 lens.show(screenX, anchorY, screenW, screenH, anchorHeight = lineH)
-                lens.setDefinitions(resolved.data, resolved.label)
+                if (phrase != null) {
+                    // Word inside a known expression: phrase section above
+                    // the tapped word's, each drilling into the detail
+                    // screen (the open works entry-or-not — it opens the
+                    // sentence view — so both sections open).
+                    lens.setSplitDefinitions(
+                        LensSection(phrase.data, phrase.label, opens = true),
+                        LensSection(resolved.data, resolved.label, opens = true),
+                    )
+                } else {
+                    lens.setDefinitions(resolved.data, resolved.label)
+                }
                 lens.makeInteractive()
                 if (fromController) lens.focusPillForController()
             } catch (_: Exception) {}

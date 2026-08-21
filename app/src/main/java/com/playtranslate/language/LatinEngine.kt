@@ -39,17 +39,18 @@ import java.util.Locale
  *  - **Dictionary**: [WiktionaryDictionaryManager] queries the downloaded
  *    pack with surface-first and stem-fallback semantics.
  *
- * [tokenize] runs the space-delimited phrase re-glob (the analog of the JA
- * n-gram re-glob in [com.playtranslate.dictionary.DictionaryManager]): the
- * packs index six-figure counts of space-joined headwords ("a great deal",
- * "il y a", "máy tính") that one-token-per-word output could never query, so
- * every dictionary-known n-gram fuses into a single span — one words-panel
- * row, one tap target covering the whole expression. The packs also list
- * marginal function-word bigrams ("on the", "of a") that are
- * data-indistinguishable from gold entries ("have to", "at all"); those fuse
- * too, by decision — the phrase detail page's member-word drill-down keeps
- * each individual word one tap away, which is the escape hatch that makes
- * aggressive fusing acceptable.
+ * [longestPhraseAt] adds tap-time multi-word expression matching over the
+ * same pack (plus imported Yomitan dicts): the packs index six-figure counts
+ * of space-joined headwords ("a great deal", "il y a", "máy tính") that
+ * one-token-per-word [tokenize] output can never query. Tap surfaces probe it
+ * with the tapped word's offset and show the returned phrase's entry
+ * ALONGSIDE the word's own — the tap target and popup identity stay the
+ * single word. Deliberately NOT folded into [tokenize]: greedy stream-level
+ * fusing over-fuses English-class text (the packs list function-word bigrams
+ * like "on the"/"of a" that are data-indistinguishable from gold ones like
+ * "have to"), and a curated exclusion list proved unmaintainable — showing
+ * the phrase as an extra popup section instead bounds any marginal hit to
+ * one ignorable row while the tapped word's definition is always present.
  *
  * Tokenizer and stemmer are both stateful and not thread-safe, so both
  * operations are guarded by per-instance `synchronized` blocks.
@@ -79,114 +80,90 @@ class LatinEngine(
         return PreloadResult.Success
     }
 
-    /** Same LRU the JA/ZH engines keep in front of their dictionary-backed
-     *  annotation: now that the phrase re-glob gates candidates against the
-     *  pack + imported dicts, repeated-text calls (the drag flow re-tokenizes
-     *  the same OCR line every dwell tick; result surfaces re-tokenize on
-     *  re-render) must be map hits, not re-queries. Import mutations
-     *  invalidate via [AnnotationGenerations]; pack swaps clear via [close]. */
-    private val annotationCache = AnnotationCache()
+    override suspend fun tokenize(text: String): List<TokenSpan> = withContext(Dispatchers.Default) {
+        val result = mutableListOf<TokenSpan>()
+        val tokenSpans = mutableListOf<String>()
 
-    override suspend fun tokenize(text: String): List<TokenSpan> =
-        lexicalAnnotation(text).spans.map {
-            TokenSpan(
-                surface = it.surface, lookupForm = it.lookupForm ?: it.surface,
-                reading = it.reading, inflections = it.inflections,
-            )
+        synchronized(iteratorLock) {
+            breakIterator.setText(text)
+            var start = breakIterator.first()
+            var end = breakIterator.next()
+            while (end != BreakIterator.DONE) {
+                val slice = text.substring(start, end)
+                if (isLookupWorthy(slice)) tokenSpans += slice
+                start = end
+                end = breakIterator.next()
+            }
         }
 
-    override suspend fun annotate(text: String, depth: AnnotationDepth): SentenceAnnotation {
-        val lexical = lexicalAnnotation(text)
-        // Interface contract kept from the default implementation: one plain
-        // span when tokenization yields nothing.
-        return if (lexical.spans.isEmpty()) SentenceAnnotation.plain(text, profile.id) else lexical
+        for (slice in tokenSpans) {
+            // lookupForm = surface (not stem). WiktionaryDictionaryManager handles
+            // surface-first + stem-fallback internally. Emitting the stem as
+            // lookupForm would double-stem and miss dictionary entries.
+            result += TokenSpan(surface = slice, lookupForm = slice, reading = null)
+        }
+        result
     }
 
-    /**
-     * The cached LEXICAL-tier analysis both [tokenize] and [annotate] serve
-     * from — offsetless spans, possibly empty (unlike [annotate]'s plain
-     * fallback, [tokenize] of lookup-unworthy text must stay `[]`).
-     *
-     * The space-delimited re-glob: collect the raw word stream (offsets +
-     * whitespace-adjacency) under the iterator lock, gate every n-gram
-     * candidate against the pack + imported dicts (suspends — outside the
-     * lock), then fuse with longest-first claiming. A fused span's surface
-     * is the VERBATIM source slice (word-tap surfaces re-find surfaces by
-     * indexOf, so fabricated whitespace would break span mapping) while its
-     * lookupForm is the single-space join the packs store. Words not
-     * consumed by a phrase emit exactly as before.
-     */
-    private suspend fun lexicalAnnotation(text: String): SentenceAnnotation {
-        if (text.isEmpty()) return SentenceAnnotation(text, profile.id, 0, emptyList())
-        annotationCache.get(text)?.let { return it }
-        // Generation read BEFORE the dictionary gates: an import that commits
-        // mid-annotate must invalidate this entry, never ride in it.
-        val generation = AnnotationGenerations.current()
-        val spans = withContext(Dispatchers.Default) {
-            val stream = synchronized(iteratorLock) { wordStream(text, breakIterator) }
-            val candidates = phraseCandidates(text, stream, MAX_PHRASE_WINDOW_WORDS)
-            fuseSpans(text, stream, candidates, knownPhraseForms(candidates))
-        }.map {
-            AnnotatedSpan(
-                start = -1, end = -1, surface = it.surface,
-                lookupForm = it.lookupForm, reading = it.reading,
-                inflections = it.inflections,
-            )
-        }
-        return SentenceAnnotation(text, profile.id, generation, spans)
-            .also { annotationCache.put(it) }
-    }
+    override suspend fun searchPrefix(query: String, limit: Int): List<TokenSpan> =
+        dict.searchPrefix(normalizeForLookup(query), limit)
+            .map { TokenSpan(surface = it, lookupForm = it, reading = null) }
 
-    /** The raw phrase-candidate [forms][PhraseCandidate.form] that exist in
-     *  the pack or an imported Yomitan dictionary. Both gates run on the
-     *  engine-normalized key ([normalizeForLookup] — AR undiacritization /
-     *  HI NFC, identity elsewhere): the pack gate lowercases internally,
-     *  the imported gate is offered the as-written + locale-lowercased pair
-     *  (the same forms [lookup]'s imported chain tries). Pack candidates are
-     *  capped at the build's headword limit; the oracle sees them all. */
-    private suspend fun knownPhraseForms(allCandidates: List<PhraseCandidate>): Set<String> {
-        if (allCandidates.isEmpty()) return emptySet()
-        // Fuse-exclusion list first ([PhraseNofuse]): sequences that are
-        // usually compositional in ordinary text never fuse, regardless of
-        // which gate (pack or imported) knows them. Keyed like the gates:
-        // engine-normalized, locale-lowercased.
-        val nofuse = PhraseNofuse.forLang(appContext, langId)
-        val candidates = if (nofuse.isEmpty()) allCandidates else allCandidates.filter {
-            normalizeForLookup(it.form).lowercase(locale) !in nofuse
+    override suspend fun longestPhraseAt(text: String, offset: Int): String? {
+        // Window collection needs the shared (stateful) BreakIterator; the
+        // dictionary gates suspend, so they run outside the lock.
+        val window = synchronized(iteratorLock) {
+            phraseWindow(text, offset, breakIterator, MAX_PHRASE_WINDOW_WORDS)
+        } ?: return null
+        val words = window.words
+        if (words.size < 2) return null
+        // Candidates: every n-gram that CONTAINS the tapped word — "open the
+        // door" must be reachable from a tap on "door" just as from "open".
+        // Longest first; at equal length the leftmost start wins (tap "up"
+        // in "give up on it": "give up" beats "up on" — a pinned tie-break,
+        // no data signal distinguishes them). The descending-length /
+        // ascending-start loop order IS that ordering, so no sort. Forms are
+        // engine-normalized like [lookup]'s own key (AR undiacritization /
+        // HI NFC — identity elsewhere); joining word slices with one space
+        // collapses any run of source whitespace to the packs' space-joined
+        // headword shape.
+        val candidates: List<Pair<Int, String>> = buildList {
+            for (n in minOf(words.size, MAX_PHRASE_WINDOW_WORDS) downTo 2) {
+                for (a in maxOf(0, window.anchorIndex - n + 1)..
+                    minOf(window.anchorIndex, words.size - n)) {
+                    add(n to normalizeForLookup(
+                        words.subList(a, a + n).joinToString(" ") { text.substring(it) },
+                    ))
+                }
+            }
         }
-        if (candidates.isEmpty()) return emptySet()
-        val normalized = candidates.associate { it.form to normalizeForLookup(it.form) }
+        // Pack gate: only windows the build could have kept (MAX_HEADWORD_WORDS).
         val packKnown = dict.phrasesExist(
-            candidates.mapNotNullTo(mutableSetOf()) { c ->
-                normalized.getValue(c.form).takeIf { c.wordCount <= MAX_PACK_PHRASE_WORDS }
+            candidates.mapNotNullTo(mutableSetOf()) { (n, c) ->
+                c.takeIf { n <= MAX_PACK_PHRASE_WORDS }
             },
         )
-        val anyUnresolved = candidates.any { c ->
-            c.wordCount > MAX_PACK_PHRASE_WORDS || normalized.getValue(c.form) !in packKnown
-        }
-        val oracleKnown = if (anyUnresolved) {
+        // Imported-dictionary gate for pack misses — Yomitan dicts list longer
+        // expressions and store original-case headwords, so each candidate is
+        // offered in both the as-written and locale-lowercased forms (the same
+        // pair [lookup]'s imported chain will try).
+        val oracleKnown = if (candidates.any { (n, c) -> n > MAX_PACK_PHRASE_WORDS || c !in packKnown }) {
             yomitan.phraseOracle()?.invoke(
                 buildSet {
-                    for (c in candidates) {
-                        val n = normalized.getValue(c.form)
-                        add(n)
-                        add(n.lowercase(locale))
+                    for ((_, c) in candidates) {
+                        add(c)
+                        add(c.lowercase(locale))
                     }
                 },
             ).orEmpty()
         } else {
             emptySet()
         }
-        return candidates.filterTo(mutableListOf()) { c ->
-            val n = normalized.getValue(c.form)
-            (c.wordCount <= MAX_PACK_PHRASE_WORDS && n in packKnown) ||
-                n in oracleKnown || n.lowercase(locale) in oracleKnown
-        }.mapTo(mutableSetOf()) { it.form }
+        return candidates.firstOrNull { (n, c) ->
+            (n <= MAX_PACK_PHRASE_WORDS && c in packKnown) ||
+                c in oracleKnown || c.lowercase(locale) in oracleKnown
+        }?.second
     }
-
-    override suspend fun searchPrefix(query: String, limit: Int): List<TokenSpan> =
-        dict.searchPrefix(normalizeForLookup(query), limit)
-            .map { TokenSpan(surface = it, lookupForm = it, reading = null) }
 
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? {
         val w = normalizeForLookup(word)
@@ -207,7 +184,6 @@ class LatinEngine(
     }
 
     override fun close() {
-        annotationCache.clear()
         dict.close()
     }
 
@@ -241,19 +217,20 @@ class LatinEngine(
         else -> word
     }
 
-    companion object {
-        internal fun isLookupWorthy(token: String): Boolean {
-            if (token.isBlank()) return false
-            if (!token.any { it.isLetter() }) return false
-            if (token.length < 2) return false
-            return true
-        }
+    private fun isLookupWorthy(token: String): Boolean {
+        if (token.isBlank()) return false
+        if (!token.any { it.isLetter() }) return false
+        if (token.length < 2) return false
+        return true
+    }
 
-        /** Longest phrase candidate [tokenize]'s re-glob offers the
-         *  imported-dictionary oracle. Imported Yomitan dictionaries carry
-         *  expressions past the pack's cap ("as far as I know"); beyond ~5
-         *  words, English-class headwords are proverbs a fuse shouldn't
-         *  swallow. */
+    companion object {
+        /** Longest phrase candidate [longestPhraseAt] considers, in words.
+         *  Imported Yomitan dictionaries carry expressions past the pack's
+         *  cap ("as far as I know"); beyond ~5 words, English-class
+         *  headwords are proverbs a tap lookup shouldn't swallow. The window
+         *  spans up to this many words on EACH side of the tapped word
+         *  (candidates contain the tap, so a longer reach is unreachable). */
         internal const val MAX_PHRASE_WINDOW_WORDS = 5
 
         /** Mirror of the pack build's MAX_HEADWORD_WORDS
@@ -261,137 +238,79 @@ class LatinEngine(
          *  gate because the build guarantees they cannot exist there. */
         internal const val MAX_PACK_PHRASE_WORDS = 3
 
-        /** [wordStream]'s result: every letter-containing segment of the
-         *  text in order, plus which consecutive pairs are separated by
-         *  whitespace ONLY ([adjacent] size = words.size - 1, or empty). */
-        internal class WordStream(
+        /** [phraseWindow]'s result: the whitespace-adjacent [words] around
+         *  the tapped word, with [anchorIndex] pointing at the tapped word
+         *  itself. */
+        internal data class PhraseWindow(
             val words: List<IntRange>,
-            val adjacent: BooleanArray,
-        )
-
-        /** One n-gram phrase candidate over the word stream: [wordCount]
-         *  words starting at word index [start], with [form] the single-space
-         *  join of their surfaces (original case — the caller normalizes for
-         *  gating; a run of source whitespace collapses to the packs'
-         *  space-joined headword shape). */
-        internal data class PhraseCandidate(
-            val start: Int,
-            val wordCount: Int,
-            val form: String,
+            val anchorIndex: Int,
         )
 
         /**
-         * Collects the raw word stream for [tokenize]'s phrase re-glob:
-         * every letter-containing segment (unlike isLookupWorthy this keeps
-         * single-letter words — phrases start with and contain them: "a
-         * great deal", "il y a") plus whitespace-adjacency between
-         * neighbors. A comma, hyphen, or digit run between two words marks
-         * them non-adjacent, because pack phrases are space-joined
-         * ("great, deal" must never gate "great deal").
+         * Word-range window for phrase matching: the word containing
+         * [offset], plus up to [maxWords] − 1 words of context on each side
+         * — all chained only across whitespace-ONLY separators. A comma,
+         * hyphen, or digit run breaks the chain, because pack phrases are
+         * space-joined ("great, deal" must never gate "great deal"). Unlike
+         * [tokenize]'s isLookupWorthy filter this keeps single-letter words:
+         * phrases start with and contain them ("a great deal", "il y a").
+         * Left context is collected so a phrase is reachable from a tap on
+         * ANY member word ("open the door" from "door"). Null = [offset]
+         * doesn't land in a word; a singleton window = no phrase possible
+         * there.
          *
          * Caller must hold the lock guarding [iterator] (stateful, not
          * thread-safe). Internal + iterator-injected so tests can drive it
          * with a fresh instance.
          */
-        internal fun wordStream(text: String, iterator: BreakIterator): WordStream {
-            val words = mutableListOf<IntRange>()
+        internal fun phraseWindow(
+            text: String,
+            offset: Int,
+            iterator: BreakIterator,
+            maxWords: Int,
+        ): PhraseWindow? {
+            if (offset < 0 || offset >= text.length) return null
             iterator.setText(text)
+            // Single forward scan. [chain] holds the current run of
+            // whitespace-adjacent words; it resets on every adjacency break
+            // until the word containing [offset] is found (so it then holds
+            // that word's contiguous left context), and the scan stops on the
+            // first break after it. Pre-anchor the chain is trimmed to the
+            // longest left context ever kept, so a long text can't grow it.
+            var chain = mutableListOf<IntRange>()
+            var anchor = -1
             var start = iterator.first()
             var end = iterator.next()
             while (end != BreakIterator.DONE) {
                 val range = start until end
-                if (range.any { text[it].isLetter() }) words += range
+                if (range.any { text[it].isLetter() }) {
+                    val gap = if (chain.isEmpty()) "" else text.substring(chain.last().last + 1, start)
+                    val adjacent = gap.isNotEmpty() && gap.all(Char::isWhitespace)
+                    if (!adjacent) {
+                        if (anchor >= 0) break              // forward chain ended past the tapped word
+                        if (offset < start) return null     // tapped a gap the chain can't cross
+                        chain = mutableListOf()             // adjacency broke before it: restart
+                    }
+                    chain += range
+                    if (anchor < 0) {
+                        if (offset in range) {
+                            anchor = chain.size - 1
+                        } else if (offset < end) {
+                            return null                     // passed the offset without a word hit
+                        } else if (chain.size > maxWords - 1) {
+                            chain.removeAt(0)               // keep only reachable left context
+                        }
+                    } else if (chain.size - anchor >= maxWords) {
+                        break                               // forward cap reached
+                    }
+                } else if (anchor < 0 && offset in range) {
+                    return null                             // offset on whitespace/punctuation
+                }
                 start = end
                 end = iterator.next()
             }
-            val adjacent = BooleanArray(maxOf(0, words.size - 1)) { i ->
-                val gap = text.substring(words[i].last + 1, words[i + 1].first)
-                gap.isNotEmpty() && gap.all(Char::isWhitespace)
-            }
-            return WordStream(words, adjacent)
-        }
-
-        /** Every 2..[maxWords]-gram of whitespace-adjacent words in the
-         *  stream. Pure — the caller gates the forms for membership. */
-        internal fun phraseCandidates(
-            text: String,
-            stream: WordStream,
-            maxWords: Int,
-        ): List<PhraseCandidate> {
-            val out = mutableListOf<PhraseCandidate>()
-            for (i in stream.words.indices) {
-                var n = 2
-                while (n <= maxWords && i + n <= stream.words.size && stream.adjacent[i + n - 2]) {
-                    out += PhraseCandidate(
-                        start = i, wordCount = n,
-                        form = stream.words.subList(i, i + n).joinToString(" ") { text.substring(it) },
-                    )
-                    n++
-                }
-            }
-            return out
-        }
-
-        /**
-         * Longest-first claiming fuse over the word stream: every [known]
-         * candidate is offered its words in word-count order (longest first,
-         * ties leftmost) and claims them only while none are already taken.
-         * A fused span's surface is the VERBATIM source slice, its
-         * lookupForm the space-joined [PhraseCandidate.form]; unclaimed
-         * words emit alone under the [isLookupWorthy] filter, exactly as the
-         * pre-phrase tokenizer did. Single-word lookupForm stays the surface
-         * (not the stem): [WiktionaryDictionaryManager] handles
-         * surface-first + stem-fallback internally, and emitting the stem
-         * would double-stem and miss dictionary entries.
-         *
-         * NOT left-to-right greed (the JA re-glob's shape): a marginal early
-         * bigram would consume the head of a longer expression — "of a"
-         * swallowing the "a" of "a great deal" — and the packs' function-word
-         * bigrams make that collision common in ordinary text. JA keeps
-         * left-first greed because JMdict's rank guard keeps marginal
-         * phrases out of its known set; Wiktionary has no such guard, so
-         * overlap resolution must do the work here. Equal-length overlaps
-         * have no data signal either way (the marginal bigrams carry HIGHER
-         * inherited freq than gold ones), so leftmost is the deterministic
-         * tie-break.
-         */
-        internal fun fuseSpans(
-            text: String,
-            stream: WordStream,
-            candidates: List<PhraseCandidate>,
-            known: Set<String>,
-        ): List<TokenSpan> {
-            val claimed = BooleanArray(stream.words.size)
-            val matchAt = arrayOfNulls<PhraseCandidate>(stream.words.size)
-            val winners = candidates
-                .filter { it.form in known }
-                .sortedWith(compareByDescending<PhraseCandidate> { it.wordCount }.thenBy { it.start })
-            for (c in winners) {
-                val span = c.start until c.start + c.wordCount
-                if (span.any { claimed[it] }) continue
-                for (w in span) claimed[w] = true
-                matchAt[c.start] = c
-            }
-            val result = mutableListOf<TokenSpan>()
-            var i = 0
-            while (i < stream.words.size) {
-                val match = matchAt[i]
-                if (match != null) {
-                    val surface = text.substring(
-                        stream.words[i].first,
-                        stream.words[i + match.wordCount - 1].last + 1,
-                    )
-                    result += TokenSpan(surface = surface, lookupForm = match.form, reading = null)
-                    i += match.wordCount
-                    continue
-                }
-                val word = text.substring(stream.words[i])
-                if (isLookupWorthy(word)) {
-                    result += TokenSpan(surface = word, lookupForm = word, reading = null)
-                }
-                i++
-            }
-            return result
+            if (anchor < 0) return null
+            return PhraseWindow(chain.toList(), anchor)
         }
 
         /** Imported-term Yomitan lookup keys to try after the direct
