@@ -56,6 +56,12 @@ class SourceLensActions(
      *  not installed" dialog through their own presenter — the default
      *  overlay window needs a permission an activity flow may not have. */
     private val showAnkiNotInstalled: (() -> Unit)? = null,
+    /** Context for the lens's split-body PHRASE section, when the tap sits
+     *  inside a known multi-word expression — same sentence/screenshot as
+     *  [current], with the expression as the word. Null (the default) leaves
+     *  [MagnifierLens.onPhraseOpenTap] unwired; a wired provider may itself
+     *  return null (no expression at the moment of the tap) for a no-op. */
+    private val currentPhrase: (() -> LensActionContext?)? = null,
     private val current: () -> LensActionContext,
 ) {
     /** Which Activity an action launched, so the caller can react differently. */
@@ -65,9 +71,12 @@ class SourceLensActions(
         // "Open in detail view" always goes to TranslationResultActivity —
         // sentence + segmented Sentence/Word toggle. Anki chip: tap opens the
         // editable review sheet; long-press is the headless one-tap shortcut.
-        lens.onOpenTap = { openSentenceInApp() }
+        lens.onOpenTap = { openSentenceInApp(current()) }
         lens.onAnkiTap = { openAnkiReviewForLens() }
         lens.onAnkiLongPress = { oneTapFromLens() }
+        currentPhrase?.let { phrase ->
+            lens.onPhraseOpenTap = { phrase()?.let { openSentenceInApp(it) } }
+        }
     }
 
     private data class LensAnkiSnapshot(
@@ -85,8 +94,7 @@ class SourceLensActions(
         val audioAnchorMs: Long?,
     )
 
-    private fun openSentenceInApp() {
-        val cur = current()
+    private fun openSentenceInApp(cur: LensActionContext) {
         val sentence = cur.sentence ?: return
         // Snapshot word context + cached sentence translation/words BEFORE
         // lens.dismiss() — dismiss nulls the source's word/entry and (drag flow)

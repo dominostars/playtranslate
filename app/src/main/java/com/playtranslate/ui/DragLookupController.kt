@@ -98,11 +98,29 @@ class DragLookupController(
     private var lastSentSentence: String? = null
     private var wordLookupJob: Job? = null
 
+    /** The containing multi-word expression's popup data for the current
+     *  lens, when the release lookup resolved one — drives the split
+     *  phrase section's open action. Overwritten by every release lookup
+     *  (null when the released word sits in no known expression). */
+    private var currentPhrasePopup: PopupData? = null
+
     /** Open-detail + Anki chip actions, shared with the capture overlay. Reads
      *  this controller's live word/entry/sentence/screenshot at tap time. */
     private val lensActions = SourceLensActions(
         context, displayId, overlayHost, magnifier,
         showAnkiNotInstalled = showAnkiNotInstalled,
+        // Phrase-section drill-in: same open-sentence route with the
+        // expression as the word context. Null (no expression at the last
+        // release) leaves the tap a no-op — unreachable anyway, since the
+        // phrase section only renders when one resolved.
+        currentPhrase = {
+            currentPhrasePopup?.let { p ->
+                LensActionContext(
+                    p.word, p.reading, p.entry, currentSentence, screenshotPath,
+                    audioAnchorMs = dragCapturedAtMs,
+                )
+            }
+        },
     ) {
         LensActionContext(
             lastWord, lastReading, currentEntry, currentSentence, screenshotPath,
@@ -168,7 +186,7 @@ class DragLookupController(
     private var dwellAnchorToken: TokenHit? = null
     private var dwellScheduled = false
     private var dwellLookupJob: Job? = null
-    private var dwellResult: Pair<DwellKey, PopupData>? = null
+    private var dwellResult: Pair<DwellKey, LookupResolution>? = null
     private val dwellTolerancePx = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP,
         DWELL_TOLERANCE_DP,
@@ -677,9 +695,8 @@ class DragLookupController(
                             it.token.charOffset == anchor.token.charOffset
                     } == true
                     if (!stillHere) return@withContext
-                    val (popupData, label) = resolved
-                    dwellResult = key to popupData
-                    magnifier.setDefinitions(popupData.toLensData(), label)
+                    dwellResult = key to resolved
+                    publishLensDefinitions(resolved)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -884,11 +901,8 @@ class DragLookupController(
             "line: ${hitLine.text}, cached=${cachedData != null}")
         lookupJob = scope.launch {
             try {
-                val resolved = if (cachedData != null) {
-                    cachedData to cachedData.machineTranslatedLabel()
-                } else {
-                    resolveLookupData(lastX.toInt(), lastY.toInt(), lines, isDwell = false)
-                }
+                val resolved = cachedData
+                    ?: resolveLookupData(lastX.toInt(), lastY.toInt(), lines, isDwell = false)
                 if (resolved == null) {
                     withContext(Dispatchers.Main) {
                         magnifier.dismiss()
@@ -896,11 +910,12 @@ class DragLookupController(
                     }
                     return@launch
                 }
-                val (popupData, label) = resolved
+                val popupData = resolved.word
                 // Release-only side effects (only when lookup succeeded).
                 lastWord = popupData.word
                 currentEntry = popupData.entry
                 lastReading = popupData.reading
+                currentPhrasePopup = resolved.phrase
                 var sentenceToRecord: String? = null
                 currentSentence?.let { sent ->
                     if (sent != lastSentSentence) {
@@ -911,7 +926,7 @@ class DragLookupController(
                 }
                 withContext(Dispatchers.Main) {
                     sentenceToRecord?.let { recordLookupSentence(it) }
-                    magnifier.setDefinitions(popupData.toLensData(), label)
+                    publishLensDefinitions(resolved)
                     magnifier.makeInteractive()
                     // Lens is now in DEFINITIONS mode — the zoom no longer
                     // renders, so the bitmap can be released.
@@ -928,9 +943,7 @@ class DragLookupController(
                             anki.decksByWord(listOf(popupData.word))[popupData.word].orEmpty()
                         }
                         if (decks.isNotEmpty()) withContext(Dispatchers.Main) {
-                            magnifier.setDefinitions(
-                                popupData.toLensData().copy(ankiDecks = decks), label,
-                            )
+                            publishLensDefinitions(resolved, ankiDecks = decks)
                         }
                     }
                 } catch (e: CancellationException) {
@@ -1095,22 +1108,22 @@ class DragLookupController(
 
     /**
      * Tokenizes the line under (fingerX, fingerY), runs the dictionary
-     * lookup, and returns a (PopupData, label) pair ready to feed into
-     * the lens — or null if no word can be resolved.
+     * lookup, and returns a [LookupResolution] ready to feed into the lens
+     * — or null if no word can be resolved.
      *
      * Idempotent side effects (`prefetchWordLookups`, `currentSentence`
      * write) run in both dwell and release branches. Release-only side
-     * effects (`lastWord`, `currentEntry`, `sendLineToMainApp`) live in
-     * the [onDragEnd] caller, NOT here — running them on dwell would push
-     * sentence intents to MainActivity before the user committed by
-     * releasing.
+     * effects (`lastWord`, `currentEntry`, `currentPhrasePopup`,
+     * `sendLineToMainApp`) live in the [onDragEnd] caller, NOT here —
+     * running them on dwell would push sentence intents to MainActivity
+     * before the user committed by releasing.
      */
     private suspend fun resolveLookupData(
         fingerX: Int,
         fingerY: Int,
         lines: List<OcrManager.OcrLine>,
         @Suppress("UNUSED_PARAMETER") isDwell: Boolean,
-    ): Pair<PopupData, String?>? {
+    ): LookupResolution? {
         // Find the line the finger is over
         val hitLine = findLineAt(fingerX, fingerY, lines)
 
@@ -1177,9 +1190,12 @@ class DragLookupController(
             }
             null
         }
-        // Multi-word expressions are already single tokens here (the
-        // tokenizer's phrase re-glob), so the matched token's surface and
-        // lookupForm cover the whole expression.
+        // Phrase-aware, word-first: the popup's identity is the dragged
+        // word; the longest dictionary expression CONTAINING it rides along
+        // as the lens's phrase section — the same split the tap surfaces
+        // get via [SourceWordLookup.resolveAt]. [matchedIdx] is the matched
+        // surface's char offset in [lineText].
+        val phraseKey = withContext(Dispatchers.IO) { engine.longestPhraseAt(lineText, matchedIdx) }
         val lookupForm = matchedToken?.lookupForm ?: matchedSurface
         val readingHint = matchedToken?.reading
 
@@ -1203,10 +1219,11 @@ class DragLookupController(
         // replaced a hand-rolled copy of that cascade — the last one
         // outside the shared builder.
         val reading = readingHint
+        val displaySurface = matchedSurface
         val popupData: PopupData = if (entry != null && defResult != null) {
             val display = entry.headwordDisplay(
-                entry.selectHeadword(matchedSurface, lookupForm, readingHint),
-                matchedSurface,
+                entry.selectHeadword(displaySurface, lookupForm, readingHint),
+                displaySurface,
             )
             PopupData(
                 word = display.written,
@@ -1254,10 +1271,65 @@ class DragLookupController(
         currentSentence = sentence
         prefetchWordLookups(sentence)
 
+        // Phrase section: the expression's own lookup, kept only when it
+        // lands a real entry (the membership gates make a miss unlikely,
+        // but an empty phrase section would be pure noise). No styled
+        // fetch — the split body renders flat; the styled experience lives
+        // on the detail screen.
+        val phrasePopup: PopupData? = phraseKey?.let { key ->
+            val phraseResult = withContext(Dispatchers.IO) { resolver.lookup(key, null) }
+            val phraseEntries = phraseResult?.response?.entries.orEmpty()
+            val phraseEntry = phraseEntries.firstOrNull() ?: return@let null
+            val display = phraseEntry.headwordDisplay(
+                phraseEntry.selectHeadword(key, key, null), key,
+            )
+            PopupData(
+                word = display.written,
+                reading = display.reading,
+                senses = buildSenseDisplays(phraseResult!!, phraseEntries, prefs.targetLang),
+                freqScore = phraseEntry.freqScore,
+                isCommon = phraseEntry.isCommon == true,
+                entry = phraseEntry,
+                machineTranslated = phraseResult is DefinitionResult.MachineTranslated ||
+                    (phraseResult is DefinitionResult.EnglishFallback &&
+                        phraseResult.translatedDefinitions != null),
+                pitch = display.pitch,
+                frequencies = display.frequencies,
+                importedGroups = phraseEntry.importedSenses,
+            )
+        }
+
         // The "already in Anki" deck badge is filled in AFTER the definitions
         // render (see onDragEnd), so the dictionary lookup is never delayed by
         // the Anki content-provider query.
-        return popupData to popupData.machineTranslatedLabel()
+        return LookupResolution(word = popupData, phrase = phrasePopup)
+    }
+
+    /** [resolveLookupData]'s result: the word under the finger, plus the
+     *  containing multi-word expression's data when one resolved (the
+     *  lens's split phrase section). */
+    private data class LookupResolution(
+        val word: PopupData,
+        val phrase: PopupData?,
+    )
+
+    /** Bind [res] into the lens: split body (phrase over word) when a
+     *  phrase section resolved, the single-word body otherwise.
+     *  [ankiDecks] rides the WORD section — the deck badge back-fill
+     *  rebinds through here so it can't collapse a split lens. */
+    private fun publishLensDefinitions(res: LookupResolution, ankiDecks: List<String> = emptyList()) {
+        val wordData = res.word.toLensData()
+            .let { if (ankiDecks.isEmpty()) it else it.copy(ankiDecks = ankiDecks) }
+        val wordLabel = res.word.machineTranslatedLabel()
+        val phrase = res.phrase
+        if (phrase != null) {
+            magnifier.setSplitDefinitions(
+                LensSection(phrase.toLensData(), phrase.machineTranslatedLabel(), opens = true),
+                LensSection(wordData, wordLabel, opens = true),
+            )
+        } else {
+            magnifier.setDefinitions(wordData, wordLabel)
+        }
     }
 
     /** Convert the controller's popup-shaped data into the lens's data

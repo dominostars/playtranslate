@@ -157,20 +157,20 @@ class WiktionaryDictionaryManager private constructor(
     }
 
     /**
-     * Batch existence gate for the phrase re-glob ([LatinEngine.tokenize]):
-     * the subset of [candidates] with a lemma (position 0) or `form_of`
-     * alias (position 2) headword row — so inflected phrase surfaces
-     * ("gave up") gate through their alias rows exactly like the follow-up
-     * [lookup] will resolve them. Position-1 STEM rows are deliberately
-     * excluded, unlike [lookup]'s surface tier: the build Snowball-stems the
-     * whole joined phrase, producing garbage keys that collide with real
-     * word sequences ("that is" stems to "that i", which would fuse every
-     * "that I" in ordinary text — the en pack carries ~40k such stem-only
-     * multi-word keys). Nothing legitimate is lost: lemmas gate via 0,
-     * inflected surfaces via 2. Each candidate is lowercased with the
-     * pack's locale for the query; the returned set contains the candidates
-     * AS PASSED. Empty when the pack isn't openable, degrading callers to
-     * single-word behavior.
+     * Batch existence gate for multi-word expression matching
+     * ([LatinEngine.longestPhraseAt]): the subset of [candidates] with a
+     * lemma (position 0) or `form_of` alias (position 2) headword row — so
+     * inflected phrase surfaces ("gave up") gate through their alias rows
+     * exactly like the follow-up [lookup] will resolve them. Position-1 STEM
+     * rows are deliberately excluded, unlike [lookup]'s surface tier: the
+     * build Snowball-stems the whole joined phrase, producing garbage keys
+     * that collide with real word sequences ("that is" stems to "that i",
+     * which would phrase-match every "that I" in ordinary text — the en pack
+     * carries ~40k such stem-only multi-word keys). Nothing legitimate is
+     * lost: lemmas gate via 0, inflected surfaces via 2. Each candidate is
+     * lowercased with the pack's locale for the query; the returned set
+     * contains the candidates AS PASSED. Empty when the pack isn't openable,
+     * degrading callers to single-word behavior.
      */
     suspend fun phrasesExist(candidates: Set<String>): Set<String> = withContext(Dispatchers.IO) {
         if (candidates.isEmpty()) return@withContext emptySet()
@@ -420,9 +420,10 @@ class WiktionaryDictionaryManager private constructor(
         /** SQL core of [phrasesExist], separated so tests drive it against a
          *  fixture DB. Returns the subset of (already locale-lowercased)
          *  [keys] with a position-0 lemma or position-2 alias row —
-         *  position-1 phrase stems are garbage fuse keys (see [phrasesExist])
-         *  and position-3 fold rows stay fallback-only. Chunked so an
-         *  oversized caller can't blow SQLite's bind-argument limit. */
+         *  position-1 phrase stems are garbage match keys (see
+         *  [phrasesExist]) and position-3 fold rows stay fallback-only.
+         *  Chunked so an oversized caller can't blow SQLite's bind-argument
+         *  limit (phrase windows pass a handful). */
         internal fun phrasesExistQuery(db: SQLiteDatabase, keys: Collection<String>): Set<String> {
             val found = mutableSetOf<String>()
             for (chunk in keys.chunked(500)) {

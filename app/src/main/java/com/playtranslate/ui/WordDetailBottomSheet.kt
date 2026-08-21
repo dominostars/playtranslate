@@ -978,12 +978,12 @@ class WordDetailBottomSheet : DialogFragment() {
         }
 
         // ── Member words (multi-word expressions) ────────────────────────
-        // For a fused expression ("a great deal", "il y a") the tokenizer's
-        // phrase re-glob hides the member words behind one span, so the
-        // detail page is where they resurface: one standard word-result cell
-        // per member, tappable through to that word's own detail. Members
-        // come from a whitespace SPLIT of the headword — NOT engine.tokenize,
-        // whose re-glob would fuse the expression right back into one token.
+        // For a multi-word expression ("a great deal", "il y a") the detail
+        // page is where the member words resurface: one standard word-result
+        // cell per member, tappable through to that word's own detail.
+        // Members come from a whitespace SPLIT of the headword — NOT
+        // engine.tokenize, which emits per-word tokens anyway but would
+        // re-run the whole annotation pipeline for a known-shape string.
         addMemberWordsSection(content, primary, engine, sourceLangId, targetLangCode)
     }
 
