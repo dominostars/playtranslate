@@ -29,6 +29,7 @@ import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.yomitan.YomitanDataStore
 import com.playtranslate.model.headwordDisplay
+import com.playtranslate.model.isExpressionEntry
 import com.playtranslate.model.selectHeadword
 import kotlinx.coroutines.*
 import java.io.File
@@ -98,23 +99,23 @@ class DragLookupController(
     private var lastSentSentence: String? = null
     private var wordLookupJob: Job? = null
 
-    /** The containing multi-word expression's popup data for the current
-     *  lens, when the release lookup resolved one — drives the split
-     *  phrase section's open action. Overwritten by every release lookup
-     *  (null when the released word sits in no known expression). */
-    private var currentPhrasePopup: PopupData? = null
+    /** The related units' popup data for the current lens — the containing
+     *  multi-word expression (Latin) or a fused expression's member words
+     *  (JA) the release lookup resolved — driving the split secondary
+     *  sections' open actions by index. Overwritten by every release lookup
+     *  (empty when the released word has no related units). */
+    private var currentSecondaryPopups: List<PopupData> = emptyList()
 
     /** Open-detail + Anki chip actions, shared with the capture overlay. Reads
      *  this controller's live word/entry/sentence/screenshot at tap time. */
     private val lensActions = SourceLensActions(
         context, displayId, overlayHost, magnifier,
         showAnkiNotInstalled = showAnkiNotInstalled,
-        // Phrase-section drill-in: same open-sentence route with the
-        // expression as the word context. Null (no expression at the last
-        // release) leaves the tap a no-op — unreachable anyway, since the
-        // phrase section only renders when one resolved.
-        currentPhrase = {
-            currentPhrasePopup?.let { p ->
+        // Secondary-section drill-in: same open-sentence route with the
+        // related unit as the word context. An out-of-range index (stale
+        // lens) is a no-op.
+        currentSecondary = { i ->
+            currentSecondaryPopups.getOrNull(i)?.let { p ->
                 LensActionContext(
                     p.word, p.reading, p.entry, currentSentence, screenshotPath,
                     audioAnchorMs = dragCapturedAtMs,
@@ -915,7 +916,7 @@ class DragLookupController(
                 lastWord = popupData.word
                 currentEntry = popupData.entry
                 lastReading = popupData.reading
-                currentPhrasePopup = resolved.phrase
+                currentSecondaryPopups = resolved.phrase?.let { listOf(it) } ?: resolved.members
                 var sentenceToRecord: String? = null
                 currentSentence?.let { sent ->
                     if (sent != lastSentSentence) {
@@ -1277,55 +1278,97 @@ class DragLookupController(
         // fetch — the split body renders flat; the styled experience lives
         // on the detail screen.
         val phrasePopup: PopupData? = phraseKey?.let { key ->
-            val phraseResult = withContext(Dispatchers.IO) { resolver.lookup(key, null) }
-            val phraseEntries = phraseResult?.response?.entries.orEmpty()
-            val phraseEntry = phraseEntries.firstOrNull() ?: return@let null
-            val display = phraseEntry.headwordDisplay(
-                phraseEntry.selectHeadword(key, key, null), key,
-            )
-            PopupData(
-                word = display.written,
-                reading = display.reading,
-                senses = buildSenseDisplays(phraseResult!!, phraseEntries, prefs.targetLang),
-                freqScore = phraseEntry.freqScore,
-                isCommon = phraseEntry.isCommon == true,
-                entry = phraseEntry,
-                machineTranslated = phraseResult is DefinitionResult.MachineTranslated ||
-                    (phraseResult is DefinitionResult.EnglishFallback &&
-                        phraseResult.translatedDefinitions != null),
-                pitch = display.pitch,
-                frequencies = display.frequencies,
-                importedGroups = phraseEntry.importedSenses,
-            )
+            relatedPopupData(resolver, prefs.targetLang, key, key, null, excludeSlug = null)
+        }
+
+        // JA inverse: the dragged token may itself be an engine-fused unit —
+        // offer ALL its qualifying member words as secondary sections
+        // (position-independent; an unresolvable member — 手当たり has no
+        // JMdict entry — simply doesn't appear). The engine's policy sets
+        // the strictness by POS class: expressions loose, transparent
+        // compounds (放送番組/国内向け) need every unit to be a ≥2-char
+        // kanji word, so 図書館 stays whole.
+        val memberPopups: List<PopupData> = if (phraseKey == null && entry != null) {
+            withContext(Dispatchers.IO) {
+                engine.memberWordsOf(popupData.word, expressionClass = entry.isExpressionEntry())
+            }
+                .mapNotNull { m ->
+                    relatedPopupData(
+                        resolver, prefs.targetLang, m.lookupForm, m.surface, m.reading,
+                        excludeSlug = entry.slug,
+                    )
+                }
+                .distinctBy { it.word }
+        } else {
+            emptyList()
         }
 
         // The "already in Anki" deck badge is filled in AFTER the definitions
         // render (see onDragEnd), so the dictionary lookup is never delayed by
         // the Anki content-provider query.
-        return LookupResolution(word = popupData, phrase = phrasePopup)
+        return LookupResolution(word = popupData, phrase = phrasePopup, members = memberPopups)
     }
 
-    /** [resolveLookupData]'s result: the word under the finger, plus the
-     *  containing multi-word expression's data when one resolved (the
-     *  lens's split phrase section). */
+    /** Resolve one related-unit key (phrase or member) into the section
+     *  shape [resolveLookupData] returns — null when no real entry lands,
+     *  or when it lands back on [excludeSlug]'s own entry. */
+    private suspend fun relatedPopupData(
+        resolver: com.playtranslate.language.DefinitionResolver,
+        targetLang: String,
+        lookupForm: String,
+        surface: String,
+        readingHint: String?,
+        excludeSlug: String?,
+    ): PopupData? {
+        val result = withContext(Dispatchers.IO) { resolver.lookup(lookupForm, readingHint) }
+        val entries = result?.response?.entries.orEmpty()
+        val entry = entries.firstOrNull() ?: return null
+        if (excludeSlug != null && entry.slug == excludeSlug) return null
+        val display = entry.headwordDisplay(
+            entry.selectHeadword(surface, lookupForm, readingHint), surface,
+        )
+        return PopupData(
+            word = display.written,
+            reading = display.reading,
+            senses = buildSenseDisplays(result!!, entries, targetLang),
+            freqScore = entry.freqScore,
+            isCommon = entry.isCommon == true,
+            entry = entry,
+            machineTranslated = result is DefinitionResult.MachineTranslated ||
+                (result is DefinitionResult.EnglishFallback &&
+                    result.translatedDefinitions != null),
+            pitch = display.pitch,
+            frequencies = display.frequencies,
+            importedGroups = entry.importedSenses,
+        )
+    }
+
+    /** [resolveLookupData]'s result: the word under the finger, plus its
+     *  related units — the containing multi-word expression ([phrase],
+     *  Latin) or a fused expression's member words ([members], JA) — for
+     *  the lens's split secondary sections. At most one of the two is
+     *  populated. */
     private data class LookupResolution(
         val word: PopupData,
         val phrase: PopupData?,
+        val members: List<PopupData> = emptyList(),
     )
 
-    /** Bind [res] into the lens: split body (phrase over word) when a
-     *  phrase section resolved, the single-word body otherwise.
-     *  [ankiDecks] rides the WORD section — the deck badge back-fill
-     *  rebinds through here so it can't collapse a split lens. */
+    /** Bind [res] into the lens: split body when related units resolved —
+     *  phrase above the word (Latin), member words below the expression
+     *  (JA) — the single-unit body otherwise. [ankiDecks] rides the
+     *  PRIMARY section — the deck badge back-fill rebinds through here so
+     *  it can't collapse a split lens. */
     private fun publishLensDefinitions(res: LookupResolution, ankiDecks: List<String> = emptyList()) {
         val wordData = res.word.toLensData()
             .let { if (ankiDecks.isEmpty()) it else it.copy(ankiDecks = ankiDecks) }
         val wordLabel = res.word.machineTranslatedLabel()
-        val phrase = res.phrase
-        if (phrase != null) {
+        val secondaries = res.phrase?.let { listOf(it) } ?: res.members
+        if (secondaries.isNotEmpty()) {
             magnifier.setSplitDefinitions(
-                LensSection(phrase.toLensData(), phrase.machineTranslatedLabel(), opens = true),
                 LensSection(wordData, wordLabel, opens = true),
+                secondaries.map { LensSection(it.toLensData(), it.machineTranslatedLabel(), opens = true) },
+                secondariesOnTop = res.phrase != null,
             )
         } else {
             magnifier.setDefinitions(wordData, wordLabel)

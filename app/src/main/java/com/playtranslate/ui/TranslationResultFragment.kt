@@ -1169,14 +1169,16 @@ class TranslationResultFragment : Fragment() {
                 val appCtx = ctx.applicationContext
                 // Shared phrase-aware resolution + tier branching (parity with
                 // the over-game capture panel — both surfaces resolve
-                // identically here). The popup is the tapped WORD's; a
-                // multi-word expression containing it rides along as the
-                // lens's phrase section.
+                // identically here). The popup is the tapped unit's; the
+                // related units — a containing multi-word expression (Latin)
+                // or a fused expression's member words (JA) — ride along as
+                // the lens's secondary sections.
                 val resolvedAt = SourceWordLookup.resolveAt(
                     appCtx, tvOriginal.text?.toString().orEmpty(), span.first.first, lookupForm, reading,
                 )
                 val resolved = resolvedAt.word
                 val phrase = resolvedAt.phrase
+                val secondaries = phrase?.let { listOf(it) } ?: resolvedAt.members
                 val word = resolved.word
                 val popupReading = resolved.reading
                 val popupLabel = resolved.label
@@ -1227,22 +1229,25 @@ class TranslationResultFragment : Fragment() {
                             )
                         }
                     }
-                    if (phrase != null) {
-                        // Phrase section drill-in: same detail route as the
-                        // word — the sheet re-looks the string up, and the
+                    if (secondaries.isNotEmpty()) {
+                        // Secondary-section drill-in (containing phrase or
+                        // member words): same detail route as the tapped
+                        // unit — the sheet re-looks the string up, and a
                         // multi-word key round-trips it unchanged.
-                        onPhraseOpenTap = {
-                            dismissWordPopup()
-                            host?.onInteraction()
-                            val ready = currentReady()
-                            val wr = currentSettledRows()?.toLegacyMap() ?: emptyMap()
-                            host?.onWordTapped(
-                                phrase.word, phrase.reading,
-                                ready?.screenshotPath,
-                                ready?.originalText,
-                                ready?.translatedText,
-                                wr,
-                            )
+                        onSecondaryOpenTap = { i ->
+                            secondaries.getOrNull(i)?.let { sec ->
+                                dismissWordPopup()
+                                host?.onInteraction()
+                                val ready = currentReady()
+                                val wr = currentSettledRows()?.toLegacyMap() ?: emptyMap()
+                                host?.onWordTapped(
+                                    sec.word, sec.reading,
+                                    ready?.screenshotPath,
+                                    ready?.originalText,
+                                    ready?.translatedText,
+                                    wr,
+                                )
+                            }
                         }
                     }
                     // Tap opens the editable review sheet (default).
@@ -1280,19 +1285,23 @@ class TranslationResultFragment : Fragment() {
                     dm.widthPixels, dm.heightPixels,
                     anchorHeight = lineH,
                 )
-                if (phrase != null) {
-                    // Word inside a known expression: split body — phrase
-                    // section above, tapped word below, each with its own
-                    // drill-in. The deck back-fill rebinds the SPLIT shape
-                    // so it can't collapse the phrase section.
-                    val phraseSection = LensSection(phrase.data, phrase.label, opens = true)
+                if (secondaries.isNotEmpty()) {
+                    // Split body: tapped unit (pill identity) + the related
+                    // units — containing phrase above it (Latin) or member
+                    // words below it (JA) — each with its own drill-in. The
+                    // deck back-fill rebinds the SPLIT shape so it can't
+                    // collapse the secondary sections.
+                    val secondarySections = secondaries.map { LensSection(it.data, it.label, opens = true) }
+                    val secondariesOnTop = phrase != null
                     wordLens?.setSplitDefinitions(
-                        phraseSection, LensSection(lensData, popupLabel, opens = canOpen),
+                        LensSection(lensData, popupLabel, opens = canOpen),
+                        secondarySections, secondariesOnTop,
                     )
                     wordLens?.let { lens ->
                         maybeUpdateLensDecks(lens, lensData, word) { updated ->
                             lens.setSplitDefinitions(
-                                phraseSection, LensSection(updated, popupLabel, opens = canOpen),
+                                LensSection(updated, popupLabel, opens = canOpen),
+                                secondarySections, secondariesOnTop,
                             )
                         }
                     }

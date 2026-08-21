@@ -183,6 +183,69 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
                 )
             }
 
+    /**
+     * Member words of a fused expression, at dictionary-WORD granularity:
+     * the [headword]'s Sudachi short units are re-globbed through the same
+     * JMdict-gated fusing the tokenizer uses — with the expression's own
+     * join excluded, so it can't fuse back into itself — which is what
+     * reassembles member compounds (やさしい日本語 → 日本語, not 日本+語).
+     * Tokens the re-glob's emission drops (it keeps content singles only —
+     * suffix-tagged members like 次第 in 手当たり次第 would vanish) are
+     * unioned back in when kanji-bearing: the KANJI gate, not the UniDic
+     * category, is the membership signal here — kana morphemes are where
+     * the grammar noise lives, and it's what keeps かもしれない member-free
+     * while idioms qualify. Callers pass the DISPLAYED headword form (`uk`
+     * entries in kana — かも知れない's 知れ must never see the gate).
+     * Unresolvable members are filtered downstream by the row/section
+     * resolution, not here.
+     */
+    override suspend fun memberWordsOf(headword: String, expressionClass: Boolean): List<TokenSpan> {
+        val tokens = withContext(Dispatchers.Default) {
+            runCatching { SudachiJapaneseTokenizer.Provider.analyze(headword) }
+                .getOrNull().orEmpty()
+        }
+        if (tokens.size < 2) return emptyList()
+        val spans = dict.reglobSpansForTokens(
+            tokens, yomitan.phraseOracle(), excludePhrases = setOf(headword),
+        ).orEmpty()
+        data class Member(val order: Int, val surface: String, val lookupForm: String, val reading: String?)
+        val members = mutableListOf<Member>()
+        val covered = BooleanArray(tokens.size)
+        for (s in spans) {
+            for (i in s.tokenStart until (s.tokenStart + s.tokenCount).coerceAtMost(tokens.size)) {
+                covered[i] = true
+            }
+            members += Member(s.tokenStart, s.surface, s.lookupForm, s.reading)
+        }
+        tokens.forEachIndexed { i, t ->
+            if (!covered[i]) {
+                members += Member(
+                    i, t.surface, t.dictionaryForm,
+                    t.reading?.let(Deinflector::katakanaToHiragana),
+                )
+            }
+        }
+        // Transparent compounds (non-expression fused entries — 放送番組,
+        // 国内向け) decompose only when EVERY unit is a ≥2-char
+        // kanji-bearing word: a partial decomposition misleads (図書館 →
+        // 図書 alone implies 館 is nothing — and single characters are the
+        // kanji-breakdown section's job; 電源ボタン stays whole because
+        // ボタン fails the kanji gate), so one disqualified unit turns the
+        // whole offer off. Expressions keep the loose per-member gate —
+        // 気になる's 気 is one char and load-bearing.
+        if (!expressionClass && members.any { it.surface.length < 2 || !hasKanji(it.surface) }) {
+            return emptyList()
+        }
+        return members
+            .sortedBy { it.order }
+            .filter { hasKanji(it.surface) && it.lookupForm != headword && it.surface != headword }
+            .map { TokenSpan(surface = it.surface, lookupForm = it.lookupForm, reading = it.reading) }
+            .distinctBy { it.lookupForm }
+    }
+
+    private fun hasKanji(s: String): Boolean =
+        s.any { c -> c.code in 0x4E00..0x9FFF || c.code in 0x3400..0x4DBF }
+
     /** Two-store resolution for one (lookupForm, occurrence-hint) pair.
      *  Pack-first via the READINGS-ONLY path — identical entry choice to the
      *  full lookup by shared SQL and shared headword pairing, at 2–3 indexed

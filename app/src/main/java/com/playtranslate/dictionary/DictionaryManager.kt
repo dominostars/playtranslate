@@ -203,6 +203,13 @@ class DictionaryManager private constructor(private val context: Context) {
     internal suspend fun reglobSpansForTokens(
         tokens: List<JaToken>,
         phraseOracle: (suspend (Set<String>) -> Set<String>)? = null,
+        /** Phrase lookupForms that must NOT fuse — the member-words split
+         *  ([com.playtranslate.language.JapaneseEngine.memberWordsOf]) passes
+         *  the expression being decomposed, so re-globbing its own tokens
+         *  can't just fuse the whole expression back together. Filtered at
+         *  candidacy, so shorter member-level joins (日本+語 → 日本語) still
+         *  win their windows. */
+        excludePhrases: Set<String> = emptySet(),
     ): List<ReglobSpan>? = withContext(Dispatchers.IO) {
         val database = ensureOpen() ?: return@withContext null
 
@@ -210,6 +217,7 @@ class DictionaryManager private constructor(private val context: Context) {
         // token's dictionaryForm/normalizedForm (layer 1 — lets us pick the
         // form that actually resolves, e.g. キミ→君).
         val candidates = phraseCandidatesFor(tokens)
+            .filter { it.lookupForm !in excludePhrases }
         // Single content-token forms (layer 1: dictionaryForm / normalizedForm).
         val formCandidates = mutableSetOf<String>()
         for (t in tokens) {
