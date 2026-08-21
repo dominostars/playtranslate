@@ -11,13 +11,18 @@ import java.io.File
 
 /**
  * Pins [WiktionaryDictionaryManager.phrasesExistQuery], the batched
- * membership gate behind [LatinEngine.longestPhraseAt]. Tier contract:
+ * membership gate behind [LatinEngine.longestPhraseAt] and
+ * [LatinEngine.phrasesIn]. Tier contract:
  * position-0 lemmas and position-2 form_of aliases gate a phrase — so
  * inflected surfaces like "gave up" pass through their alias rows — while
  * position-1 STEM rows must NOT gate (the build stems the whole joined
  * phrase, so "that is" emits the stem key "that i", which would
  * phrase-match every ordinary "that I") and position-3 fold rows stay
- * reachable only through the Arabic folded fallback.
+ * reachable only through the Arabic folded fallback. Sense contract: a key
+ * gates only when its entry carries at least one REAL sense — pure `&lit`
+ * cross-reference stubs ("Used other than figuratively or idiomatically:
+ * see do, you.") define nothing and must not gate, while a stub ALONGSIDE
+ * real senses ("open the door") still does.
  */
 @RunWith(RobolectricTestRunner::class)
 class WiktionaryPhrasesExistTest {
@@ -39,7 +44,32 @@ class WiktionaryPhrasesExistTest {
         // collides with the ordinary sequence "that I"; must not gate.
         db.execSQL("INSERT INTO headword VALUES (5, 0, 'that is')")
         db.execSQL("INSERT INTO headword VALUES (5, 1, 'that i')")
+        // &lit-only cross-reference stub — Wiktionary marks the sequence
+        // non-idiomatic; the entry defines nothing and must not gate.
+        db.execSQL("INSERT INTO headword VALUES (6, 0, 'do you')")
+        // &lit stub ALONGSIDE a real sense — the real sense keeps it gating.
+        db.execSQL("INSERT INTO headword VALUES (7, 0, 'open the door')")
+        db.execSQL(
+            "CREATE TABLE sense (entry_id INTEGER NOT NULL, position INTEGER NOT NULL, pos TEXT, glosses TEXT NOT NULL, misc TEXT)"
+        )
+        db.execSQL("INSERT INTO sense VALUES (1, 0, 'verb', 'to stop trying', '')")
+        db.execSQL("INSERT INTO sense VALUES (2, 0, 'adv', 'very much', '')")
+        db.execSQL("INSERT INTO sense VALUES (3, 0, 'noun', 'unreachable', '')")
+        db.execSQL("INSERT INTO sense VALUES (4, 0, 'noun', 'one thing', '')")
+        db.execSQL("INSERT INTO sense VALUES (5, 0, 'phrase', 'namely', '')")
+        db.execSQL("INSERT INTO sense VALUES (6, 0, 'phrase', 'Used other than figuratively or idiomatically: see do, you.', '')")
+        db.execSQL("INSERT INTO sense VALUES (7, 0, 'phrase', 'Used other than figuratively or idiomatically: see open, door.', '')")
+        db.execSQL("INSERT INTO sense VALUES (7, 1, 'phrase', 'to create an opportunity', '')")
         return db
+    }
+
+    @Test fun `lit-only stubs do not gate, a stub beside a real sense does`() {
+        fixtureDb().use { db ->
+            assertEquals(
+                setOf("open the door"),
+                WiktionaryDictionaryManager.phrasesExistQuery(db, listOf("do you", "open the door")),
+            )
+        }
     }
 
     @Test fun `stem-only phrase keys do not gate`() {

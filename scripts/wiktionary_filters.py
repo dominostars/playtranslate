@@ -91,6 +91,19 @@ def is_multi_word_ok(word: str) -> bool:
     return len(word.split()) <= MAX_HEADWORD_WORDS
 
 
+# TODO(next pack rebuild): drop multi-word entries whose EVERY sense is a
+# Wiktionary `&lit` cross-reference stub — glosses starting with "Used other
+# than figuratively or idiomatically" ("do you", "want to"; 179 in the en
+# pack). Wiktionary itself marks these non-idiomatic and the entry defines
+# nothing, yet it currently reaches both typed lookup and (but for the
+# runtime gate) tap-time phrase matching. The runtime already filters them at
+# phrase candidacy (WiktionaryDictionaryManager.phrasesExistQuery's
+# LIT_STUB_PREFIX EXISTS clause) — dropping them here additionally cleans
+# typed lookup and shrinks the packs; the runtime gate then filters nothing
+# and remains as a safety. Keep entries where a stub sits ALONGSIDE real
+# senses ("open the door") — only all-stub entries go.
+
+
 # ── Misc register-tag filter ────────────────────────────────────────────
 #
 # The single curated misc vocabulary lives in

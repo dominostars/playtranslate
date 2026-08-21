@@ -158,7 +158,8 @@ class WiktionaryDictionaryManager private constructor(
 
     /**
      * Batch existence gate for multi-word expression matching
-     * ([LatinEngine.longestPhraseAt]): the subset of [candidates] with a
+     * ([LatinEngine.longestPhraseAt] and [LatinEngine.phrasesIn]): the
+     * subset of [candidates] with a
      * lemma (position 0) or `form_of` alias (position 2) headword row — so
      * inflected phrase surfaces ("gave up") gate through their alias rows
      * exactly like the follow-up [lookup] will resolve them. Position-1 STEM
@@ -169,8 +170,10 @@ class WiktionaryDictionaryManager private constructor(
      * carries ~40k such stem-only multi-word keys). Nothing legitimate is
      * lost: lemmas gate via 0, inflected surfaces via 2. Each candidate is
      * lowercased with the pack's locale for the query; the returned set
-     * contains the candidates AS PASSED. Empty when the pack isn't openable,
-     * degrading callers to single-word behavior.
+     * contains the candidates AS PASSED. Keys whose entries are pure `&lit`
+     * cross-reference stubs are also excluded — see [phrasesExistQuery].
+     * Empty when the pack isn't openable, degrading callers to single-word
+     * behavior.
      */
     suspend fun phrasesExist(candidates: Set<String>): Set<String> = withContext(Dispatchers.IO) {
         if (candidates.isEmpty()) return@withContext emptySet()
@@ -417,11 +420,31 @@ class WiktionaryDictionaryManager private constructor(
     companion object {
         private const val TAG = "WiktionaryDictMgr"
 
+        /** Wiktionary's `&lit` cross-reference template rendering — the
+         *  "definition" of a phrase Wiktionary itself marks non-idiomatic
+         *  ("Used other than figuratively or idiomatically: see do, you.").
+         *  An entry whose every sense starts with this defines nothing. */
+        private const val LIT_STUB_PREFIX = "Used other than figuratively or idiomatically"
+
         /** SQL core of [phrasesExist], separated so tests drive it against a
          *  fixture DB. Returns the subset of (already locale-lowercased)
          *  [keys] with a position-0 lemma or position-2 alias row —
          *  position-1 phrase stems are garbage match keys (see
-         *  [phrasesExist]) and position-3 fold rows stay fallback-only.
+         *  [phrasesExist]) and position-3 fold rows stay fallback-only —
+         *  whose entry carries at least one REAL sense: keys reaching only
+         *  `&lit` cross-reference stubs ([LIT_STUB_PREFIX] — the en pack has
+         *  179 such all-stub phrases, "do you", "want to", …) are dropped at
+         *  candidacy, so the longest-match tie-breaks fall through to the
+         *  next candidate instead of surfacing an entry that defines
+         *  nothing. Entries with a stub ALONGSIDE real senses ("open the
+         *  door") still gate. The prefix test is per sense ROW (a row's
+         *  tab-joined glosses mixing a stub prefix with a real gloss would
+         *  read as stub — doesn't occur: `&lit` is always its own sense).
+         *  Glosses are English in every pack (all built from en-Wiktionary),
+         *  so one prefix covers all languages. FUTURE PACK REBUILD: drop
+         *  all-stub multi-word entries at build time
+         *  (scripts/wiktionary_filters.py) so typed lookup stops surfacing
+         *  them too; this gate then filters nothing and stays as a safety.
          *  Chunked so an oversized caller can't blow SQLite's bind-argument
          *  limit (phrase windows pass a handful). */
         internal fun phrasesExistQuery(db: SQLiteDatabase, keys: Collection<String>): Set<String> {
@@ -429,8 +452,11 @@ class WiktionaryDictionaryManager private constructor(
             for (chunk in keys.chunked(500)) {
                 val placeholders = chunk.joinToString(",") { "?" }
                 db.rawQuery(
-                    "SELECT DISTINCT text FROM headword WHERE position IN (0, 2) AND text IN ($placeholders)",
-                    chunk.toTypedArray(),
+                    "SELECT DISTINCT h.text FROM headword h" +
+                        " WHERE h.position IN (0, 2) AND h.text IN ($placeholders)" +
+                        " AND EXISTS (SELECT 1 FROM sense s WHERE s.entry_id = h.entry_id" +
+                        " AND s.glosses NOT LIKE ?)",
+                    (chunk + "$LIT_STUB_PREFIX%").toTypedArray(),
                 ).use { c ->
                     while (c.moveToNext()) found.add(c.getString(0))
                 }
