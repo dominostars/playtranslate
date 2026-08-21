@@ -14,6 +14,7 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.SystemClock
 import android.text.TextUtils
 import android.util.TypedValue
@@ -1445,6 +1446,7 @@ class MagnifierLens(
 
         private fun hideSplitBody() {
             splitActive = false
+            applySectionTint(null)
             splitPhraseSection = null
             splitWordSection = null
             splitContent.removeAllViews()
@@ -2364,6 +2366,7 @@ class MagnifierLens(
             stopNavScroll()
             navCursor = null
             navConsumedDown.clear()
+            applySectionTint(null)
             focusRing.setTarget(null, null)
             dismissRequest = null
             clearFocus()
@@ -2417,8 +2420,45 @@ class MagnifierLens(
             return true
         }
 
+        /** The split section currently carrying the cursor tint, so the
+         *  per-preDraw [syncNavRing] only mutates backgrounds on an actual
+         *  cursor change. */
+        private var tintedSection: View? = null
+
+        /** Move the cursor tint to [target] (null clears). Sections render
+         *  selection as a soft accent fill (10% alpha) instead of the
+         *  boundary ring — a full-width definitions cell wants a
+         *  background, not chrome. The inset is a LayerDrawable layer inset
+         *  with padding pinned to zero, NOT an InsetDrawable: a background's
+         *  reported padding becomes the VIEW's padding on setBackground,
+         *  which shifted the section's text on selection. */
+        private fun applySectionTint(target: View?) {
+            if (tintedSection === target) return
+            tintedSection?.background = null
+            tintedSection = target
+            target?.background = LayerDrawable(
+                arrayOf(
+                    GradientDrawable().apply {
+                        setColor(withAlpha(accentColor, 0x1A))
+                        cornerRadius = dp(10f).toFloat()
+                    },
+                ),
+            ).apply {
+                setLayerInset(0, dp(8f), dp(2f), dp(8f), dp(2f))
+                setPadding(0, 0, 0, 0)
+            }
+        }
+
         private fun syncNavRing() {
             val cur = navCursor
+            val curSection = cur?.takeIf {
+                (it === splitPhraseSection || it === splitWordSection) && it.isShown
+            }
+            applySectionTint(curSection)
+            if (curSection != null) {
+                focusRing.setTarget(null, null)
+                return
+            }
             if (cur == null || !navRectInView(cur, navTmp)) {
                 focusRing.setTarget(null, null)
                 return
