@@ -13,9 +13,11 @@ package com.playtranslate.language
  *    and per-span ruby parts.
  *  - LEXICAL (KO, TH, Latin pipeline): spans carry [AnnotatedSpan.word] /
  *    [AnnotatedSpan.lookupForm] for the words feature; readings/parts stay
- *    empty and offsets may be absent — no consumer of a lexical-tier
- *    annotation renders ruby, so the tiling invariant applies only to the
- *    full tier.
+ *    empty. Offsets are real — located by the default annotate's
+ *    forward-cursor walk (the drag lens hit-tests lexical spans by offset)
+ *    — but spans don't tile: gaps at whitespace/punctuation, and a surface
+ *    the walk can't locate stays offsetless. The tiling invariant applies
+ *    only to the full tier.
  *  - PLAIN (no tokenizer support): one bare span.
  */
 
