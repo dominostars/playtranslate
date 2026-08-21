@@ -1915,10 +1915,19 @@ class CaptureResultOverlay(
     private fun refreshWordSpans(originalText: String) {
         scope.launch {
             val engine = SourceLanguageEngines.get(ctx.applicationContext, prefs.sourceLangId)
-            val tokens = withContext(Dispatchers.IO) { engine.tokenize(originalText) }
+            // Phrase occurrences ride along so single-letter phrase members
+            // ("a" in "a great deal") get tap spans despite tokenize's
+            // sub-2-char filter — parity with the in-app results page.
+            val (tokens, phrases) = withContext(Dispatchers.IO) {
+                engine.tokenize(originalText) to engine.phrasesIn(originalText)
+            }
             if (dismissed) return@launch
             val b = binder ?: return@launch
-            wordSpans = SourceWordLookup.computeSpans(b.displayedSourceText(), tokens, emptyMap())
+            wordSpans = SourceWordLookup.computeSpans(
+                b.displayedSourceText(),
+                SourceWordLookup.tapTokensWithPhraseMembers(originalText, tokens, phrases),
+                emptyMap(),
+            )
             nav?.onWordSpansChanged()
         }
     }

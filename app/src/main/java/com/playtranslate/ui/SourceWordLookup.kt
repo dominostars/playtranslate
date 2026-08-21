@@ -5,6 +5,7 @@ import com.playtranslate.Prefs
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.OfflineFallbackTranslators
+import com.playtranslate.language.PhraseOccurrence
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TokenSpan
@@ -68,6 +69,51 @@ object SourceWordLookup {
         }
         return spans
     }
+
+    /**
+     * Tap-span token list for [text]: [tokens] (the tokenizer's
+     * lookup-worthy words) plus a synthetic span for each single-letter
+     * word inside a detected phrase occurrence. tokenize drops sub-2-char
+     * words as words-panel policy, but inside a known expression they must
+     * stay tappable — "a" in "a great deal" anchors the containment probe
+     * ([resolveAt]) like any other member, and without a span the tap
+     * silently does nothing while every longer member shows the phrase.
+     * Output is in text order ([computeSpans] consumes sequentially); a
+     * token [computeSpans] wouldn't find sorts to the end (it skips misses
+     * without advancing, so placement of misses is harmless). Synthetic
+     * spans exist ONLY for the tap pipeline — callers must not feed the
+     * result to the words-panel row resolution.
+     */
+    fun tapTokensWithPhraseMembers(
+        text: String,
+        tokens: List<TokenSpan>,
+        phrases: List<PhraseOccurrence>,
+    ): List<TokenSpan> {
+        if (phrases.isEmpty()) return tokens
+        data class Positioned(val start: Int, val token: TokenSpan)
+        val positioned = mutableListOf<Positioned>()
+        var searchFrom = 0
+        for (tok in tokens) {
+            val idx = text.indexOf(tok.surface, searchFrom)
+            if (idx < 0) {
+                positioned += Positioned(Int.MAX_VALUE, tok)
+                continue
+            }
+            positioned += Positioned(idx, tok)
+            searchFrom = idx + tok.surface.length
+        }
+        for (occ in phrases) {
+            for (m in SINGLE_LETTER_WORD.findAll(occ.surface)) {
+                positioned += Positioned(
+                    occ.range.first + m.range.first,
+                    TokenSpan(surface = m.value, lookupForm = m.value),
+                )
+            }
+        }
+        return positioned.sortedBy { it.start }.map { it.token }
+    }
+
+    private val SINGLE_LETTER_WORD = Regex("(?<=^|\\s)\\p{L}(?=\\s|$)")
 
     /** [resolveAt]'s result: the tapped unit's resolution — the popup's
      *  identity — plus its secondary resolutions for the lens's split

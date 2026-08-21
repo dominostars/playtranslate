@@ -452,7 +452,13 @@ class TranslationResultViewModel : ViewModel() {
             }
         }
         val data = resolveWordRows(appCtx, context, rowTokens)
-        return data.copy(tokenSpans = allTokens) to annotation
+        // Tap spans: the word tokens PLUS synthetic spans for single-letter
+        // phrase members ("a" in "a great deal") — tokenize drops sub-2-char
+        // words, but a member of a detected phrase must stay tappable or the
+        // phrase is reachable from every member except one.
+        return data.copy(
+            tokenSpans = SourceWordLookup.tapTokensWithPhraseMembers(text, allTokens, phrases),
+        ) to annotation
     }
 }
 
