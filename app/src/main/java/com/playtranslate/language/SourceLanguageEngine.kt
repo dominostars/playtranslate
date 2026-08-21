@@ -120,18 +120,28 @@ interface SourceLanguageEngine {
      * reading-bearing surface projects from (see [SentenceAnnotation] and
      * docs/sentence-annotation-refactor.md). FULL-tier engines (JA, ZH)
      * override with dictionary-resolved, text-tiled annotations; this
-     * default is the LEXICAL/PLAIN tier: offsetless spans from [tokenize]
-     * (no consumer of a lexical annotation renders ruby, so tiling is not
-     * required), or one plain span when tokenization yields nothing.
+     * default is the LEXICAL/PLAIN tier: spans from [tokenize] positioned
+     * in [text] by a forward-cursor search (every engine's tokenizer emits
+     * verbatim slices in text order, so the walk is exact, and duplicate
+     * surfaces resolve to successive occurrences). Offsets matter here: the
+     * drag lens hit-tests lexical spans by [AnnotatedSpan.start] and drops
+     * offsetless ones. Spans need not tile — whitespace/punctuation gaps
+     * stay uncovered — and a surface the search can't locate keeps the
+     * offsetless sentinel without derailing the spans after it. One plain
+     * span when tokenization yields nothing.
      */
     suspend fun annotate(
         text: String,
         depth: AnnotationDepth = AnnotationDepth.FULL,
     ): SentenceAnnotation {
         if (text.isEmpty()) return SentenceAnnotation(text, profile.id, 0, emptyList())
+        var pos = 0
         val spans = tokenize(text).map {
+            val at = text.indexOf(it.surface, pos)
+            if (at >= 0) pos = at + it.surface.length
             AnnotatedSpan(
-                start = -1, end = -1, surface = it.surface,
+                start = at, end = if (at < 0) -1 else at + it.surface.length,
+                surface = it.surface,
                 lookupForm = it.lookupForm, reading = it.reading,
                 inflections = it.inflections,
             )
