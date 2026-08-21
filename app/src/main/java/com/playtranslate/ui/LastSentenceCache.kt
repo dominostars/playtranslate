@@ -436,13 +436,11 @@ object LastSentenceCache {
         // span's own lookup hint, so a row can never land on a different
         // entry than the annotation resolved.
         val annotation = engine.annotate(sentence)
-        val tokens = annotation.spans
-            .filter { it.lookupForm != null }
-            .map {
-                com.playtranslate.language.TokenSpan(
-                    it.surface, it.lookupForm!!, it.lookupHint, it.inflections,
-                )
-            }
+        // Phrase-aware row tokens from the SHARED producer (the result VM
+        // builds from the same one) — multi-word expression rows must
+        // appear in cache-produced Anki payloads exactly as they do on the
+        // result screen's words panel.
+        val tokens = phraseAwareRowTokens(engine, sentence, annotation).rowTokens
         val lookupCtx = WordLookupContext(engine, prefs.targetLang, prefs.targetChineseVariant)
         val data = resolveWordRows(appCtx, lookupCtx, tokens)
         WordsPayload(

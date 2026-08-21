@@ -55,6 +55,59 @@ data class WordLookupContext(
     val targetChineseVariant: ChineseScriptVariant,
 )
 
+/** [phraseAwareRowTokens]'s result: the annotation's plain tokenize
+ *  projection ([wordTokens] — tap spans and other word-only consumers),
+ *  the row-pipeline input with phrase rows interleaved ([rowTokens]), and
+ *  the detected [phrases] themselves (tap-span member anchoring —
+ *  [SourceWordLookup.computeTapSpans]). */
+data class PhraseAwareTokens(
+    val wordTokens: List<TokenSpan>,
+    val rowTokens: List<TokenSpan>,
+    val phrases: List<com.playtranslate.language.PhraseOccurrence>,
+)
+
+/**
+ * THE single producer of phrase-aware row-token lists: [annotation]'s word
+ * tokens with every detected multi-word expression
+ * ([SourceLanguageEngine.phrasesIn]) inserted as a row token ahead of its
+ * first member word. Both words-payload producers — the result screen's
+ * lookup pipeline (TranslationResultViewModel) and the sentence cache's
+ * ([LastSentenceCache.lookupWords], which feeds the capture overlay's Anki
+ * payloads) — MUST build their rows from [PhraseAwareTokens.rowTokens], so
+ * the words panel and every Anki words table agree on phrase policy by
+ * construction. [PhraseAwareTokens.wordTokens] stays phrase-free: tap
+ * spans consume tokens sequentially against the displayed text, and a
+ * phrase span would swallow its members' ranges.
+ */
+suspend fun phraseAwareRowTokens(
+    engine: SourceLanguageEngine,
+    text: String,
+    annotation: com.playtranslate.language.SentenceAnnotation,
+): PhraseAwareTokens {
+    val wordSpans = annotation.spans.filter { it.lookupForm != null }
+    val wordTokens = wordSpans.map {
+        TokenSpan(it.surface, it.lookupForm!!, it.lookupHint, it.inflections)
+    }
+    val phrases = withContext(Dispatchers.IO) { engine.phrasesIn(text) }
+    if (phrases.isEmpty()) return PhraseAwareTokens(wordTokens, wordTokens, phrases)
+    val rowTokens = buildList {
+        var p = 0
+        wordSpans.forEachIndexed { i, s ->
+            val wordStart = if (s.start >= 0) s.start else Int.MAX_VALUE
+            while (p < phrases.size && phrases[p].range.first <= wordStart) {
+                add(TokenSpan(phrases[p].surface, phrases[p].lookupForm))
+                p++
+            }
+            add(wordTokens[i])
+        }
+        while (p < phrases.size) {
+            add(TokenSpan(phrases[p].surface, phrases[p].lookupForm))
+            p++
+        }
+    }
+    return PhraseAwareTokens(wordTokens, rowTokens, phrases)
+}
+
 /**
  * Resolve a list of already-tokenized [tokens] into renderable word [rows],
  * against the caller-owned [context] snapshot.

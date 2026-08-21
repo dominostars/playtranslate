@@ -425,40 +425,17 @@ class TranslationResultViewModel : ViewModel() {
         // [resolveWordRows]); tokenSpans round-trips so the fragment can
         // derive word spans against the displayed text.
         val annotation = withContext(Dispatchers.IO) { engine.annotate(text) }
-        val wordSpans = annotation.spans.filter { it.lookupForm != null }
-        val allTokens = wordSpans.map {
-            com.playtranslate.language.TokenSpan(
-                it.surface, it.lookupForm!!, it.lookupHint, it.inflections,
-            )
-        }
-        // Sentence-level phrase sweep: known multi-word expressions become
-        // their own word-list rows, each inserted ahead of its first member
-        // word. ROWS ONLY — the returned tokenSpans stays the word tokens,
-        // because the fragment's tap spans consume tokens sequentially
-        // against the displayed text (a phrase span would swallow its
-        // members' ranges and single words must stay the tap targets).
-        val phrases = withContext(Dispatchers.IO) { engine.phrasesIn(text) }
-        val rowTokens = if (phrases.isEmpty()) allTokens else buildList {
-            var p = 0
-            wordSpans.forEachIndexed { i, s ->
-                val wordStart = if (s.start >= 0) s.start else Int.MAX_VALUE
-                while (p < phrases.size && phrases[p].range.first <= wordStart) {
-                    add(com.playtranslate.language.TokenSpan(phrases[p].surface, phrases[p].lookupForm))
-                    p++
-                }
-                add(allTokens[i])
-            }
-            while (p < phrases.size) {
-                add(com.playtranslate.language.TokenSpan(phrases[p].surface, phrases[p].lookupForm))
-                p++
-            }
-        }
-        val data = resolveWordRows(appCtx, context, rowTokens)
+        // Phrase-aware row tokens come from the SHARED producer — the
+        // sentence cache's lookupWords builds from the same one, so the
+        // words panel and every Anki words payload agree on phrase policy
+        // by construction.
+        val t = phraseAwareRowTokens(engine, text, annotation)
+        val data = resolveWordRows(appCtx, context, t.rowTokens)
         // Tap spans project from the word tokens; the phrase occurrences
         // ride to the fragment so its span computation can add tap targets
         // for single-letter phrase members ("a" in "a great deal") anchored
         // by the PHRASE's displayed range (SourceWordLookup.computeTapSpans).
-        return Triple(data.copy(tokenSpans = allTokens), annotation, phrases)
+        return Triple(data.copy(tokenSpans = t.wordTokens), annotation, t.phrases)
     }
 }
 
