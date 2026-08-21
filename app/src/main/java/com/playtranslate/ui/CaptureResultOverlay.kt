@@ -1485,6 +1485,10 @@ class CaptureResultOverlay(
          *  the only kind the collapsed sliver echoes (see [updateSliverHint]). */
         loading: Boolean = false,
     ) {
+        // A status takes over the panel (the scroll with the source text
+        // hides below) — any word lens is now floating over vanished text
+        // with a stale action context.
+        dismissWordLens()
         // No-text status affordances, each its own tappable span (so tapping one can't
         // trigger the other): the source-language name is accent-colored → source picker
         // (same as the source header); the gear → OCR picker, shown only when a pinned
@@ -1557,6 +1561,17 @@ class CaptureResultOverlay(
 
     private fun bindResult(result: TranslationResult) {
         val b = binder ?: return
+        // New SOURCE text replaces what an open word lens is anchored on —
+        // dismiss it, or its lazily-read action context (sentence /
+        // screenshot from [lastResult]) would cross captures on the next
+        // chip tap. The Translating→Done promotion keeps the same source
+        // text and deliberately keeps the lens: after this guard, the lazy
+        // read can only ever see a same-source result, which is exactly
+        // what lets a lens opened mid-translation pick up the finished
+        // translation for its Anki context.
+        if (wordLens != null && lastResult?.originalText != result.originalText) {
+            dismissWordLens()
+        }
         lastResult = result
         populateSentenceCache(result)
         nav?.clearCursor()   // fresh content: word indices + layout are stale
