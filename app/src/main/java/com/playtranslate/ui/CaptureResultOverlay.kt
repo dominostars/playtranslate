@@ -1939,6 +1939,7 @@ class CaptureResultOverlay(
                 )
                 val resolved = resolvedAt.word
                 val phrase = resolvedAt.phrase
+                val secondaries = phrase?.let { listOf(it) } ?: resolvedAt.members
                 if (dismissed) return@launch
                 val wordRect = Rect()
                 if (!wordRectOnScreen(span.first, wordRect)) return@launch
@@ -1993,14 +1994,15 @@ class CaptureResultOverlay(
                     },
                     tagDetailReturn = !wordLensInActivity,
                     showAnkiNotInstalled = if (wordLensInActivity) showAnkiNotInstalled else null,
-                    // Phrase section drill-in: same open-sentence route, with
-                    // the expression as the word context.
-                    currentPhrase = phrase?.let { p ->
-                        {
+                    // Secondary-section drill-in (containing phrase or member
+                    // words): same open-sentence route, with the secondary
+                    // unit as the word context.
+                    currentSecondary = if (secondaries.isEmpty()) null else { i ->
+                        secondaries.getOrNull(i)?.let { s ->
                             LensActionContext(
-                                p.word,
-                                p.reading,
-                                p.entry,
+                                s.word,
+                                s.reading,
+                                s.entry,
                                 lastResult?.originalText,
                                 lastResult?.screenshotPath,
                                 audioAnchorMs = lastResult?.createdAtMs?.takeIf { it > 0 },
@@ -2019,14 +2021,16 @@ class CaptureResultOverlay(
                 }
                 b.setWordHighlight(span.first)
                 lens.show(screenX, anchorY, screenW, screenH, anchorHeight = lineH)
-                if (phrase != null) {
-                    // Word inside a known expression: phrase section above
-                    // the tapped word's, each drilling into the detail
-                    // screen (the open works entry-or-not — it opens the
-                    // sentence view — so both sections open).
+                if (secondaries.isNotEmpty()) {
+                    // Split body: tapped unit + the related units — phrase
+                    // above (Latin) or member words below (JA) — each
+                    // drilling into the detail screen (the open works
+                    // entry-or-not — it opens the sentence view — so every
+                    // section opens).
                     lens.setSplitDefinitions(
-                        LensSection(phrase.data, phrase.label, opens = true),
                         LensSection(resolved.data, resolved.label, opens = true),
+                        secondaries.map { LensSection(it.data, it.label, opens = true) },
+                        secondariesOnTop = phrase != null,
                     )
                 } else {
                     lens.setDefinitions(resolved.data, resolved.label)

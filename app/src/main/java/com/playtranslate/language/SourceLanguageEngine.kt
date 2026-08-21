@@ -150,6 +150,36 @@ interface SourceLanguageEngine {
      */
     suspend fun phrasesIn(text: String): List<PhraseOccurrence> = emptyList()
 
+    /**
+     * The member words of the multi-word unit [headword] — each a
+     * [TokenSpan] whose lookupForm feeds the shared row/section pipelines.
+     * Drives BOTH member surfaces: the popup's member sections under a
+     * fused unit, and the detail page's Words section. Empty when
+     * [headword] isn't a multi-member unit or no member qualifies.
+     *
+     * [expressionClass] is the caller's POS verdict on the entry
+     * ([com.playtranslate.model.isExpressionEntry]; spaced headwords count
+     * as expressions by form). Expressions get the loose per-member gate
+     * (気になる → 気 — one char, load-bearing). Non-expression fused
+     * entries — transparent compounds like 放送番組 and 国内向け — get
+     * members only when EVERY unit is a ≥2-char kanji-bearing word:
+     * partial decompositions mislead (図書館 → 図書 alone implies 館 is
+     * nothing, and single characters are the kanji-breakdown section's
+     * job), so one disqualified unit turns the whole offer off.
+     *
+     * Callers must pass the DISPLAYED headword form: for JA `uk` entries
+     * the kanji variant (かも知れない) would let 知れ through the
+     * kanji-member gate the displayed kana form (かもしれない) correctly
+     * fails. Default: whitespace split, the space-delimited languages'
+     * behavior ([whitespaceMemberWords]), which ignores [expressionClass];
+     * [JapaneseEngine] overrides with a member-level re-glob (members come
+     * out at dictionary-word granularity, kanji-bearing only).
+     */
+    suspend fun memberWordsOf(
+        headword: String,
+        expressionClass: Boolean = true,
+    ): List<TokenSpan> = whitespaceMemberWords(headword)
+
     /** Character-level lookup. JA returns [com.playtranslate.model.KanjiDetail];
      *  ZH returns [com.playtranslate.model.HanziDetail]. Other engines return null.
      *
@@ -210,6 +240,21 @@ interface SourceLanguageEngine {
 
     fun close()
 }
+
+private val MEMBER_SPLIT_WHITESPACE = Regex("\\s+")
+
+/** [SourceLanguageEngine.memberWordsOf]'s default: whitespace split of a
+ *  space-delimited multi-word headword ("a great deal" → a/great/deal),
+ *  letter-bearing words only, deduped; empty below two members (a
+ *  single-word headword has no Words section). Top-level + internal so the
+ *  contract is unit-testable without an engine instance. */
+internal fun whitespaceMemberWords(headword: String): List<TokenSpan> =
+    headword.split(MEMBER_SPLIT_WHITESPACE)
+        .filter { w -> w.any(Char::isLetter) }
+        .distinct()
+        .takeIf { it.size >= 2 }
+        .orEmpty()
+        .map { TokenSpan(surface = it, lookupForm = it) }
 
 /**
  * Process-scoped engine cache. Enforces application-context at the boundary so

@@ -56,12 +56,14 @@ class SourceLensActions(
      *  not installed" dialog through their own presenter — the default
      *  overlay window needs a permission an activity flow may not have. */
     private val showAnkiNotInstalled: (() -> Unit)? = null,
-    /** Context for the lens's split-body PHRASE section, when the tap sits
-     *  inside a known multi-word expression — same sentence/screenshot as
-     *  [current], with the expression as the word. Null (the default) leaves
-     *  [MagnifierLens.onPhraseOpenTap] unwired; a wired provider may itself
-     *  return null (no expression at the moment of the tap) for a no-op. */
-    private val currentPhrase: (() -> LensActionContext?)? = null,
+    /** Context for the lens's split-body SECONDARY sections by index — the
+     *  containing phrase (space-delimited surfaces) or a fused expression's
+     *  member words (JA) — same sentence/screenshot as [current], with the
+     *  secondary unit as the word. Null (the default) leaves
+     *  [MagnifierLens.onSecondaryOpenTap] unwired; a wired provider may
+     *  itself return null (no such secondary at the moment of the tap) for
+     *  a no-op. */
+    private val currentSecondary: ((Int) -> LensActionContext?)? = null,
     private val current: () -> LensActionContext,
 ) {
     /** Which Activity an action launched, so the caller can react differently. */
@@ -74,8 +76,8 @@ class SourceLensActions(
         lens.onOpenTap = { openSentenceInApp(current()) }
         lens.onAnkiTap = { openAnkiReviewForLens() }
         lens.onAnkiLongPress = { oneTapFromLens() }
-        currentPhrase?.let { phrase ->
-            lens.onPhraseOpenTap = { phrase()?.let { openSentenceInApp(it) } }
+        currentSecondary?.let { secondary ->
+            lens.onSecondaryOpenTap = { i -> secondary(i)?.let { openSentenceInApp(it) } }
         }
     }
 

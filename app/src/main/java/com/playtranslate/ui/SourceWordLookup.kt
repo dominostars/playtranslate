@@ -11,6 +11,7 @@ import com.playtranslate.language.TokenSpan
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.headwordDisplay
+import com.playtranslate.model.isExpressionEntry
 import com.playtranslate.model.selectHeadword
 import com.playtranslate.translation.ChineseScriptConverter
 import kotlinx.coroutines.Dispatchers
@@ -68,27 +69,39 @@ object SourceWordLookup {
         return spans
     }
 
-    /** [resolveAt]'s result: the tapped word's resolution — the popup's
-     *  identity — plus, when the engine designates a multi-word expression
-     *  spanning the tap, the expression's own resolution for the lens's
-     *  split (phrase above word) body. */
+    /** [resolveAt]'s result: the tapped unit's resolution — the popup's
+     *  identity — plus its secondary resolutions for the lens's split
+     *  body: [phrase] when the engine designates a multi-word expression
+     *  CONTAINING the tapped word (space-delimited languages — renders
+     *  above the word), or [members] when the tapped unit is itself a
+     *  fused expression (JA — every qualifying member word, in expression
+     *  order, rendered below it). At most one of the two is populated. */
     data class ResolvedAt(
         val word: Resolved,
-        val phrase: Resolved?,
+        val phrase: Resolved? = null,
+        val members: List<Resolved> = emptyList(),
     )
 
     /**
-     * Phrase-aware [resolve] for word taps: resolves the tapped word itself,
-     * and ADDITIONALLY probes the engine for the longest multi-word
-     * dictionary expression containing it
-     * ([com.playtranslate.language.SourceLanguageEngine.longestPhraseAt]) —
-     * tap "door" in "open the door" and the popup shows the expression's
-     * entry above the word's. The phrase slot is null when no expression
-     * spans the tap OR its lookup lands no real entry (an empty phrase
-     * section above the word would be pure noise). Both tap surfaces route
-     * through here so phrase behavior can't drift between them. [spanStart]
-     * is the tapped span's start offset in [displayedText] — the same text
-     * the spans were computed against.
+     * Phrase-aware [resolve] for word taps: resolves the tapped unit itself,
+     * and ADDITIONALLY probes the engine in both directions —
+     * [com.playtranslate.language.SourceLanguageEngine.longestPhraseAt] for
+     * a multi-word expression containing the tap ("door" in "open the
+     * door"), and, when none, [com.playtranslate.language.SourceLanguageEngine.memberWordsOf]
+     * for the member words of an engine-fused expression (気になった →
+     * 気). ALL qualifying members resolve — tap position inside the fused
+     * span deliberately doesn't matter: position-dependent members proved
+     * undiscoverable on device, and one unresolvable member (手当たり has
+     * no JMdict entry) must not blank the whole feature. Member strictness
+     * follows the entry's POS class (see
+     * [com.playtranslate.language.SourceLanguageEngine.memberWordsOf]:
+     * expressions loose; transparent compounds — 放送番組, 国内向け —
+     * need every unit to be a ≥2-char kanji word, so 図書館 stays whole),
+     * and every secondary drops unless its lookup lands a real entry
+     * distinct from the tapped unit's headword. Both tap surfaces route
+     * through here so behavior can't drift between them.
+     * [spanStart] is the tapped span's start offset in [displayedText] —
+     * the same text the spans were computed against.
      */
     suspend fun resolveAt(
         appCtx: Context,
@@ -99,9 +112,26 @@ object SourceWordLookup {
     ): ResolvedAt {
         val engine = SourceLanguageEngines.get(appCtx, Prefs(appCtx).sourceLangId)
         val phraseKey = withContext(Dispatchers.IO) { engine.longestPhraseAt(displayedText, spanStart) }
+        val word = resolve(appCtx, lookupForm, reading)
+        // Members for any entry-backed fused unit; the engine's policy
+        // decides how strictly (expressions loose, transparent compounds
+        // need every unit to be a ≥2-char kanji word — 放送番組/国内向け
+        // decompose, 図書館 stays whole).
+        val wordEntry = word.entry
+        val memberSpans = if (phraseKey == null && wordEntry != null) {
+            withContext(Dispatchers.IO) {
+                engine.memberWordsOf(word.word, expressionClass = wordEntry.isExpressionEntry())
+            }
+        } else {
+            emptyList()
+        }
         return ResolvedAt(
-            word = resolve(appCtx, lookupForm, reading),
+            word = word,
             phrase = phraseKey?.let { resolve(appCtx, it, "") }?.takeIf { it.entry != null },
+            members = memberSpans
+                .map { resolve(appCtx, it.lookupForm, it.reading.orEmpty()) }
+                .filter { it.entry != null && it.word != word.word }
+                .distinctBy { it.word },
         )
     }
 

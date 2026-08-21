@@ -137,3 +137,19 @@ object PosVocabulary {
             .replace('´', '\'')   // acute accent
             .replace('’', '\'')   // right single quote
 }
+
+/** True when any sense marks this entry EXPRESSION-class (JMdict exp /
+ *  phrase / proverb) rather than an ordinary word or compound. The gate
+ *  deciding whether a no-whitespace fused span's member words are offered:
+ *  気になる [exp,v5r] yes, 図書館 [n] no — Sudachi's short units plus the
+ *  re-glob fuse BOTH, and only the entry's own POS separates them. */
+fun DictionaryEntry.isExpressionEntry(): Boolean = senses.any { sense ->
+    sense.partsOfSpeech.any {
+        when (PosVocabulary.canonical(it)) {
+            PosVocabulary.PosCode.EXPRESSION,
+            PosVocabulary.PosCode.PHRASE,
+            PosVocabulary.PosCode.PROVERB -> true
+            else -> false
+        }
+    }
+}
