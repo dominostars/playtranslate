@@ -1166,23 +1166,29 @@ class WordDetailBottomSheet : DialogFragment() {
         }
         if (isCommon) badgeRow.addView(buildCommonPill())
         if (freqStars > 0) badgeRow.addView(buildStarRow(freqStars))
-        // Imported-dictionary frequency chips are neutral by default (data, not
-        // a highlight), unless the user set a per-dictionary accent override
-        // (tag.accentColor), which tints the chip's rounded background.
+        // Imported-dictionary frequency chips take their colours from the
+        // shared contract — neutral data chip, or a filled pill when the
+        // dictionary carries an accent override.
+        val chipInk = BadgeChips.onAccentInk(ctx)
         for (tag in display.frequencies) {
+            val colors = freqChipColors(
+                tag.accentColor,
+                chipFill = ctx.themeColor(R.attr.ptSurface),
+                mutedText = ctx.themeColor(R.attr.ptTextMuted),
+                ink = chipInk,
+            )
             badgeRow.addView(
                 BadgeChips.freqChip(
                     ctx,
                     tag,
-                    // With an accent override the chip is a filled pill: text
-                    // takes the default chip background (ptSurface) so it reads
-                    // as knocked out of the accent fill.
-                    textColor = if (tag.accentColor != null) ctx.themeColor(R.attr.ptSurface)
-                        else ctx.themeColor(R.attr.ptTextMuted),
-                    background = tag.accentColor?.let {
-                        GradientDrawable().apply { setColor(it); cornerRadius = dp(4).toFloat() }
-                    } ?: (AppCompatResources.getDrawable(ctx, R.drawable.bg_meta_chip)
-                        ?: GradientDrawable()),
+                    textColor = colors.text,
+                    // bg_meta_chip's programmatic equivalent (its ptSurface
+                    // fill, 4dp corners), so a tinted and a neutral chip take
+                    // the same shape from the same resolved fill.
+                    background = GradientDrawable().apply {
+                        setColor(colors.fill)
+                        cornerRadius = dp(4).toFloat()
+                    },
                     textSizeSp = 11f,
                     horizontalPadPx = dp(10),
                     verticalPadPx = dp(3),

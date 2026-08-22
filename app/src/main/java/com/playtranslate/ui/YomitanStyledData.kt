@@ -90,8 +90,19 @@ internal fun styledMetaChips(
             ),
         )
     }
+    val ink = BadgeChips.onAccentInk(ctx)
     for (tag in data.frequencies) {
-        add(DefinitionsDocument.MetaChip("${tag.source}: ${tag.display}", accentColor = tag.accentColor))
+        add(
+            DefinitionsDocument.MetaChip(
+                "${tag.source}: ${tag.display}",
+                // Inline colours only for an accent override: an untinted
+                // chip already renders muted-on-translucent from the shell
+                // stylesheet, which is the neutral chip's own treatment —
+                // so this renderer needs only the override half of the
+                // contract, and never a surface fill.
+                tint = tag.accentColor?.let { accentChipColors(it, ink) },
+            ),
+        )
     }
     if (data.ankiDecks.isNotEmpty()) {
         add(DefinitionsDocument.MetaChip(AnkiDeckBadge.label(ctx, data.ankiDecks)))
