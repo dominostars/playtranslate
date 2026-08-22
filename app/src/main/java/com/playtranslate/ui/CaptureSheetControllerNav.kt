@@ -2,22 +2,20 @@ package com.playtranslate.ui
 
 import android.content.Context
 import android.graphics.Rect
-import android.os.Handler
-import android.os.Looper
 import android.view.Choreographer
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewConfiguration
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sign
 
 /** A controller-reachable action in the sheet: the view, and whether the A
- *  button uses hold semantics — press-and-hold fires the view's long-press
- *  (the Anki one-tap add), release before the timeout clicks. Everything else
- *  activates on A press-down. */
+ *  button is delivered as a real press on the view ([ConfirmKeyPress]) with
+ *  the view's own hold semantics — its long-press (the Anki one-tap add)
+ *  fires at the long-press timeout exactly as a touch hold does, an earlier
+ *  release clicks. Everything else activates on A press-down. */
 data class NavAction(val view: View, val holdActivates: Boolean = false)
 
 /** The sheet's side of the controller-navigation seam. [CaptureResultOverlay]
@@ -93,7 +91,6 @@ class CaptureSheetControllerNav(
     }
 
     private val density = ctx.resources.displayMetrics.density
-    private val handler = Handler(Looper.getMainLooper())
 
     private var cursor: Item? = null
 
@@ -109,7 +106,7 @@ class CaptureSheetControllerNav(
             if (!consumedDown.remove(ev.keyCode)) return false
             when {
                 ControllerKeys.isBack(ev.keyCode) -> host.onControllerBack()
-                ControllerKeys.isActivate(ev.keyCode) -> onActivateUp()
+                ControllerKeys.isActivate(ev.keyCode) -> onActivateUp(ev)
             }
             return true
         }
@@ -148,27 +145,29 @@ class CaptureSheetControllerNav(
                 if (cursor == null) selectFirst() else moveCursor(dir)
             }
             // First A selects; only a second activates.
-            ev.repeatCount == 0 -> if (cursor == null) selectFirst() else onActivateDown()
+            ev.repeatCount == 0 -> if (cursor == null) selectFirst() else onActivateDown(ev)
         }
         consumedDown.add(keyCode)
         return true
     }
 
-    /** INVARIANT: an action fired from here (A-DOWN) must not tear the sheet
-     *  window down synchronously — the consumed A's UP would then orphan into
-     *  the app beneath (the dispatcher delivers unmatched UPs; see
-     *  InputState::trackKey). Holds today: every dismissing action (the Anki
-     *  review) is hold-gated, so it fires from [onActivateUp] with its pair
-     *  already consumed. Audit any new nav item's click path before it lands
-     *  in the DOWN-activated set. */
-    private fun onActivateDown() {
+    /** An action fired from here may freely dismiss the sheet — even
+     *  mid-press, as the hold path's long-press (the one-tap) does at the
+     *  long-press timeout: the consumed A's UP cannot orphan into the app
+     *  beneath, because the dismissal seam holds the window as an invisible
+     *  key sink until every tracked press releases ([WindowKeyPairGuard] on
+     *  the sheet root). */
+    private fun onActivateDown(ev: KeyEvent) {
         when (val cur = cursor) {
             null -> selectFirst()
             is Item.Button -> {
                 if (!cur.view.isShown) {
                     selectFirst()
                 } else if (cur.holdActivates) {
-                    beginHold(cur)
+                    if (keyPressView == null) {
+                        keyPressView = cur.view
+                        ConfirmKeyPress.down(cur.view, ev)
+                    }
                 } else {
                     cur.view.performClick()
                 }
@@ -179,47 +178,24 @@ class CaptureSheetControllerNav(
         }
     }
 
-    // ── Hold-A = the view's long-press (Anki one-tap) ────────────────────
+    // ── Hold-capable buttons: A is a real press on the view ──────────────
+    // [ConfirmKeyPress] runs the view's own press machinery, so hold timing
+    // and outcomes are identical to a touch press: pressed ripple on DOWN,
+    // long-press at the timeout, click on an early release. The only nav-side
+    // state is which view holds the in-flight press.
 
-    private var holdItem: Item.Button? = null
-    private var holdLatched = false
-    private val holdRunnable = Runnable {
-        val item = holdItem ?: return@Runnable
-        holdLatched = true
-        // The ripple releasing is the "hold registered" cue — but only LATCH
-        // here; the long-press ACTION fires from the consumed A-UP in
-        // [onActivateUp]. Firing it mid-press would break the onActivateDown
-        // invariant: the one-tap's no-permission / no-deck fallback opens the
-        // review, which DISMISSES this focused window, orphaning the still-
-        // pending A-up into the game.
-        item.view.isPressed = false
-    }
+    private var keyPressView: View? = null
 
-    private fun beginHold(item: Item.Button) {
-        cancelHold()
-        holdItem = item
-        holdLatched = false
-        // Ripple while held, mirroring a touch press.
-        item.view.isPressed = true
-        handler.postDelayed(holdRunnable, ViewConfiguration.getLongPressTimeout().toLong())
-    }
-
-    private fun onActivateUp() {
-        val item = holdItem ?: return
-        handler.removeCallbacks(holdRunnable)
-        holdItem = null
-        item.view.isPressed = false
-        val latched = holdLatched
-        holdLatched = false
-        if (latched) item.view.performLongClick() else item.view.performClick()
+    private fun onActivateUp(ev: KeyEvent) {
+        val held = keyPressView ?: return
+        keyPressView = null
+        ConfirmKeyPress.up(held, ev)
     }
 
     private fun cancelHold() {
-        val item = holdItem ?: return
-        handler.removeCallbacks(holdRunnable)
-        holdItem = null
-        holdLatched = false
-        item.view.isPressed = false
+        val held = keyPressView ?: return
+        keyPressView = null
+        ConfirmKeyPress.cancel(held)
     }
 
     // ── Cursor ───────────────────────────────────────────────────────────

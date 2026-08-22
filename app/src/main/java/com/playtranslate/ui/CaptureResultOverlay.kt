@@ -1083,7 +1083,17 @@ class CaptureResultOverlay(
         nav = null
         shadowSync?.let { root.viewTreeObserver.removeOnPreDrawListener(it) }
         shadowSync = null
-        sheetHost.detach(root)
+        // Orphaned-UP guard: a key that went down on this focused window is
+        // still held (the Anki one-tap long-press fires at the timeout, and
+        // its no-permission / no-deck fallback dismisses mid-press) — the
+        // window must outlive its UI as an invisible key sink until the
+        // release lands here, or the UP would be delivered unmatched to
+        // whatever window is focused next. See [WindowKeyPairGuard].
+        if (root.keyGuard.hasPendingDown && sheetHost.beginKeySink(root)) {
+            root.keyGuard.beginLinger { sheetHost.detach(root) }
+        } else {
+            sheetHost.detach(root)
+        }
         shadowBitmap?.recycle()
         shadowBitmap = null
         backdropSmall?.recycle()
@@ -3152,11 +3162,19 @@ class CaptureResultOverlay(
             return true
         }
 
+        /** Orphaned-UP guard: pairs tracked here, and the dismissal seam
+         *  ([dismiss]) lingers this window as an invisible key sink while a
+         *  press is still in flight. */
+        val keyGuard = WindowKeyPairGuard()
+
         /** Controller keys, live only while the window took focus at show()
          *  ([nav] non-null). Before super so nav sees keys first — its own
          *  edit/popover awareness decides what falls through to children. */
-        override fun dispatchKeyEvent(ev: KeyEvent): Boolean =
-            nav?.handleKey(ev) == true || super.dispatchKeyEvent(ev)
+        override fun dispatchKeyEvent(ev: KeyEvent): Boolean {
+            if (keyGuard.isLingering) return keyGuard.lingerKey(ev)
+            keyGuard.track(ev)
+            return nav?.handleKey(ev) == true || super.dispatchKeyEvent(ev)
+        }
 
         /** Left-stick scroll. Non-pointer generic motion reaches the focused
          *  window's focused view — this root, which holds view focus while nav

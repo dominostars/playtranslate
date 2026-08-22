@@ -684,11 +684,28 @@ class MagnifierLens(
         lensCardHeight = lensH
         lensView = null
         lensRoot = null
+        val p = params
         params = null
-        if (overlayHost != null) {
-            overlayHost.removeOverlayWindow(root)
+        val remove: () -> Unit = {
+            if (overlayHost != null) {
+                overlayHost.removeOverlayWindow(root)
+            } else {
+                try { wm.removeView(root) } catch (_: Exception) {}
+            }
+        }
+        // Orphaned-UP guard: a key that went down on this focused window is
+        // still held (the Anki one-tap long-press fires at the timeout and
+        // dismisses mid-press) — the window must outlive its UI as an
+        // invisible, untouchable key sink until the release lands here, or
+        // the UP would be delivered unmatched to whatever window is focused
+        // next (the game, in the drag flow). See [WindowKeyPairGuard].
+        if (root.keyGuard.hasPendingDown && p != null) {
+            root.visibility = View.INVISIBLE
+            p.flags = p.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            try { wm.updateViewLayout(root, p) } catch (_: Exception) {}
+            root.keyGuard.beginLinger(remove)
         } else {
-            try { wm.removeView(root) } catch (_: Exception) {}
+            remove()
         }
     }
 
@@ -788,7 +805,14 @@ class MagnifierLens(
          *  for a press that began on this window. */
         private var backDownSeen = false
 
+        /** Orphaned-UP guard: pairs tracked here, and the dismissal seam
+         *  ([removeOverlayInternal]) lingers this window as an invisible key
+         *  sink while a press is still in flight. */
+        val keyGuard = WindowKeyPairGuard()
+
         override fun dispatchKeyEvent(ev: KeyEvent): Boolean {
+            if (keyGuard.isLingering) return keyGuard.lingerKey(ev)
+            keyGuard.track(ev)
             if (interactive && ControllerKeys.isBack(ev.keyCode)) {
                 // Fire on UP, not DOWN: dismissing removes this FOCUSED window,
                 // and acting on the DOWN would orphan the UP into whatever sits
@@ -2459,6 +2483,8 @@ class MagnifierLens(
             navPreDraw?.let { viewTreeObserver.removeOnPreDrawListener(it) }
             navPreDraw = null
             stopNavScroll()
+            keyPressView?.let { ConfirmKeyPress.cancel(it) }
+            keyPressView = null
             navCursor = null
             navConsumedDown.clear()
             applySectionTint(null)
@@ -2559,18 +2585,31 @@ class MagnifierLens(
             focusRing.setTarget(navTmp, null)
         }
 
-        /** Dpad + A for the sticky lens (B stays in [LensRoot]). A fires on
-         *  UP: the pill and the Anki chip tear this focused window down
-         *  (detail / review launch), so the pair must be consumed first —
-         *  the same invariant as the sheet's activations. */
+        /** Dpad + A for the sticky lens (B stays in [LensRoot]). On the Anki
+         *  chip the A is delivered as a real press on the chip
+         *  ([ConfirmKeyPress]), so a held A runs the chip's own long-press
+         *  (the headless one-tap) at the long-press timeout, exactly as a
+         *  held finger does; an early release is the chip's click (the
+         *  review sheet). Everything else activates on the consumed UP.
+         *  Any of these — the timeout-fired one-tap included — may dismiss
+         *  this focused window mid-press: the dismissal seam lingers the
+         *  window as an invisible key sink until every tracked press
+         *  releases ([WindowKeyPairGuard] on [LensRoot]), so a still-held
+         *  key's UP cannot orphan into the app beneath. */
         fun handleNavKey(ev: KeyEvent): Boolean {
             if (!isInteractive) return false
             if (ev.action == KeyEvent.ACTION_UP) {
                 if (!navConsumedDown.remove(ev.keyCode)) return false
                 if (ControllerKeys.isActivate(ev.keyCode)) {
-                    val cur = navCursor
-                    // First A selects the pill; only a second activates.
-                    if (cur == null || !cur.isShown) focusPill() else activateNav(cur)
+                    val held = keyPressView
+                    if (held != null) {
+                        keyPressView = null
+                        ConfirmKeyPress.up(held, ev)
+                    } else {
+                        val cur = navCursor
+                        // First A selects the pill; only a second activates.
+                        if (cur == null || !cur.isShown) focusPill() else activateNav(cur)
+                    }
                 }
                 return true
             }
@@ -2578,12 +2617,26 @@ class MagnifierLens(
             val dir = ControllerKeys.direction(ev.keyCode)
             if (dir == null && !ControllerKeys.isActivate(ev.keyCode)) return false
             if (dir != null) {
+                // Cursor leaving the chip mid-press: cancel the view press
+                // (no click, no pending long-press). The ref is deliberately
+                // KEPT — the eventual A-UP then routes to the now-unpressed
+                // chip and no-ops, instead of activating the moved-to item.
+                keyPressView?.let { ConfirmKeyPress.cancel(it) }
                 val cur = navCursor
                 if (cur == null || !cur.isShown) focusPill() else moveNav(cur, dir)
+            } else if (ev.repeatCount == 0 && keyPressView == null &&
+                navCursor === rightChip && rightChip.isShown
+            ) {
+                keyPressView = rightChip
+                ConfirmKeyPress.down(rightChip, ev)
             }
             navConsumedDown.add(ev.keyCode)
             return true
         }
+
+        /** The view holding an in-flight forwarded key press (the Anki chip —
+         *  the lens's one hold-capable item). See [ConfirmKeyPress]. */
+        private var keyPressView: View? = null
 
         /** Explicit nav graph instead of spatial scoring. The lens is two
          *  strips: the chrome row (Speak chip · pill · Anki chip) along one
