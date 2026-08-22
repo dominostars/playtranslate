@@ -1,6 +1,8 @@
 package com.playtranslate.ui
 
 import com.playtranslate.model.ImportedSenseGroup
+import java.util.Locale
+import kotlin.math.roundToInt
 
 /**
  * Assembles the styled-definitions WebView document: a persistent SHELL
@@ -43,6 +45,26 @@ internal object DefinitionsDocument {
         val baseFontSizePx: Float,
     )
 
+    /**
+     * [argb]'s RGB at [alpha] (0..1), as a CSS color.
+     *
+     * The chip fills are washes of a theme color, which `color-mix(in srgb,
+     * X p%, transparent)` expresses exactly — and which is also exactly X at
+     * p% alpha, so we compute it here instead. That is not a style
+     * preference: a value containing `var()` cannot be validated at PARSE
+     * time, so the declaration wins the cascade and only fails later, at
+     * computed-value time, where an unsupported `color-mix` leaves the
+     * property at its INITIAL value. A second `background:` written above it
+     * as a fallback is never consulted — it lost the cascade before the
+     * failure happened. Field symptom: on the Thor's Chromium 109
+     * (color-mix landed in 111) every meta chip rendered with NO fill at
+     * all, visible the moment a structured dictionary put the panel on the
+     * styled renderer. Same rule as [PtCardTemplates]' glossary CSS: the
+     * page gets concrete colors, never an engine feature.
+     */
+    fun cssAlpha(argb: Int, alpha: Float): String =
+        cssHex(((alpha.coerceIn(0f, 1f) * 255f).roundToInt() shl 24) or (argb and 0xFFFFFF))
+
     /** ARGB Int → CSS color. Alpha-aware: opaque renders #RRGGBB, else
      *  rgba(). */
     fun cssHex(argb: Int): String {
@@ -50,10 +72,17 @@ internal object DefinitionsDocument {
         val r = (argb shr 16) and 0xFF
         val g = (argb shr 8) and 0xFF
         val b = argb and 0xFF
+        // Locale.ROOT is load-bearing, not hygiene: the default-locale
+        // formatter localizes BOTH conversions here — '%.3f' takes a comma
+        // decimal separator (de, fr, ru, pt) and '%d' can take non-Latin
+        // digits (ar). Either turns the value into something the CSS parser
+        // rejects, the declaration drops, and background falls back to
+        // transparent — the same no-fill failure as the color-mix trap
+        // above, reached by a different door and only on some devices.
         return if (a == 0xFF) {
-            "#%02X%02X%02X".format(r, g, b)
+            String.format(Locale.ROOT, "#%02X%02X%02X", r, g, b)
         } else {
-            "rgba(%d,%d,%d,%.3f)".format(r, g, b, a / 255f)
+            String.format(Locale.ROOT, "rgba(%d,%d,%d,%.3f)", r, g, b, a / 255f)
         }
     }
 
@@ -107,16 +136,15 @@ body {
 }
 .meta-chip {
   font-size: .7em; color: var(--pt-secondary);
-  /* rgba fallback first: engines without color-mix (Chromium <111) drop
-     the second declaration and keep this one. */
-  background: rgba(128,128,128,0.16);
-  background: color-mix(in srgb, var(--pt-fg) 10%, transparent);
+  /* Concrete rgba, resolved Android-side — see [cssAlpha]. NEVER color-mix
+     with a var() operand: the fallback declaration above it can't save an
+     engine that lacks the function, and the chip loses its fill entirely. */
+  background: ${cssAlpha(tokens.text, 0.10f)};
   border-radius: 4px; padding: .18em .55em;
 }
 .meta-chip.common {
   color: var(--pt-accent);
-  background: rgba(0,150,170,0.18);
-  background: color-mix(in srgb, var(--pt-accent) 16%, transparent);
+  background: ${cssAlpha(tokens.accent, 0.16f)};
   border-radius: 1em;
 }
 .meta-chip.stars { background: none; padding-left: 0; padding-right: 0; }
@@ -345,8 +373,11 @@ ruby > rt { font-size: .5em; }
     class MetaChip(
         val text: String,
         val kind: Kind = Kind.NEUTRAL,
-        /** Per-dictionary accent override (ARGB) for a frequency chip. */
-        val accentColor: Int? = null,
+        /** A frequency chip's accent-override colours from [freqChipColors]
+         *  — BOTH halves, so this document can only ever paint the pair the
+         *  native rows paint. Null = no override, and the stylesheet's
+         *  neutral chip treatment stands. */
+        val tint: MetaChipColors? = null,
     ) {
         enum class Kind { NEUTRAL, COMMON, STARS }
     }
@@ -372,8 +403,9 @@ ruby > rt { font-size: .5em; }
                     MetaChip.Kind.STARS -> "meta-chip stars"
                     MetaChip.Kind.NEUTRAL -> "meta-chip"
                 }
-                val tint = chip.accentColor
-                    ?.let { " style=\"background:${cssHex(it)}\"" }.orEmpty()
+                val tint = chip.tint?.let {
+                    " style=\"background:${cssHex(it.fill)};color:${cssHex(it.text)}\""
+                }.orEmpty()
                 sb.append("<span class=\"$cls\"$tint>")
                     .append(htmlEscape(chip.text)).append("</span>")
             }

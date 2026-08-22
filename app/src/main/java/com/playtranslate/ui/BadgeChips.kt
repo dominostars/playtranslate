@@ -7,6 +7,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import com.playtranslate.R
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.themeColor
@@ -24,6 +25,17 @@ import com.playtranslate.themeColor
 object BadgeChips {
 
     private val medium = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+
+    /**
+     * The ink candidates [freqChipColors] picks between for a label on an
+     * accent fill. Read as raw colours, NOT through the theme: which one
+     * wins is a property of the accent swatch, so a light accent takes the
+     * near-black ink in light theme too (see [OnAccentInk]).
+     */
+    fun onAccentInk(ctx: Context): OnAccentInk = OnAccentInk(
+        dark = ContextCompat.getColor(ctx, R.color.pt_dark_text_on_accent),
+        light = ContextCompat.getColor(ctx, R.color.pt_light_text_on_accent),
+    )
 
     /** The accent "Common" pill ([R.drawable.bg_word_common_pill] —
      *  ptAccentTint fill, fully rounded). Callers attach layoutParams. */
@@ -76,11 +88,11 @@ object BadgeChips {
     }
 
     /**
-     * One imported frequency dictionary's chip: "JPDB: 1234". A neutral data
-     * chip on every surface (frequency is information, not a highlight), so
-     * callers pass the muted text colour and [R.drawable.bg_meta_chip]-style
-     * background. The source name is never ellipsized — long names
-     * wrap with their row's FlowLayout.
+     * One imported frequency dictionary's chip: "JPDB: 1234". [textColor]
+     * and the fill behind [background] are ONE decision — resolve them
+     * together with [freqChipColors] rather than per call site; each
+     * surface still owns the chip's shape and metrics. The source name is
+     * never ellipsized — long names wrap with their row's FlowLayout.
      */
     fun freqChip(
         ctx: Context,

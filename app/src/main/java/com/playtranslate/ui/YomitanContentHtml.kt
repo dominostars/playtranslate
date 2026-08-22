@@ -318,7 +318,8 @@ internal object YomitanContentHtml {
             when {
                 u < 128 && c.isLetterOrDigit() -> append(c)
                 c in "/-._~" -> append(c)
-                else -> append('%').append("%02X".format(u))
+                // Locale.ROOT for the same reason the CSS colours pin it.
+                else -> append('%').append(String.format(java.util.Locale.ROOT, "%02X", u))
             }
         }
     }

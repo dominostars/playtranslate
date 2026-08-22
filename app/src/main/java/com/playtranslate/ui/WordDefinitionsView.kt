@@ -188,16 +188,15 @@ class WordDefinitionsView @JvmOverloads constructor(
             // 0–3 filled/empty design.
             add(BadgeChips.filledStars(context, data.freqScore, 13f * scale, secondaryText))
         }
+        val ink = BadgeChips.onAccentInk(context)
         for (tag in data.frequencies) {
+            val colors = freqChipColors(tag.accentColor, metaChipFill, secondaryText, ink)
             add(
                 BadgeChips.freqChip(
                     context,
                     tag,
-                    // With an accent override the chip is a filled pill: text
-                    // takes the default chip background color so it reads as
-                    // knocked out of the accent fill.
-                    textColor = if (tag.accentColor != null) metaChipFill else secondaryText,
-                    background = freqChipBackground(tag.accentColor),
+                    textColor = colors.text,
+                    background = chipBackground(colors.fill),
                     textSizeSp = 11.5f * scale,
                     horizontalPadPx = dp(8f * scale),
                     verticalPadPx = dp(2f * scale),
@@ -209,7 +208,7 @@ class WordDefinitionsView @JvmOverloads constructor(
                 ctx = context,
                 deckNames = data.ankiDecks,
                 textColor = secondaryText,
-                background = metaChipBackground(),
+                background = chipBackground(),
                 textSizeSp = 11.5f * scale,
                 horizontalPadPx = dp(8f * scale),
                 verticalPadPx = dp(2f * scale),
@@ -218,18 +217,11 @@ class WordDefinitionsView @JvmOverloads constructor(
         return row
     }
 
-    /** [metaChipFill] as the lightly-rounded data-chip shape (the
-     *  programmatic equivalent of bg_meta_chip). Fresh instance per
-     *  chip — drawables can't be shared across views. */
-    private fun metaChipBackground(): GradientDrawable = GradientDrawable().apply {
-        setColor(metaChipFill)
-        cornerRadius = dp(4f).toFloat()
-    }
-
-    /** Frequency-chip background: the dictionary's per-dict accent override
-     *  ([accentColor], ARGB) when set, else the neutral [metaChipFill]. */
-    private fun freqChipBackground(accentColor: Int?): GradientDrawable = GradientDrawable().apply {
-        setColor(accentColor ?: metaChipFill)
+    /** [fill] as the lightly-rounded data-chip shape (the programmatic
+     *  equivalent of bg_meta_chip). Fresh instance per chip — drawables
+     *  can't be shared across views. */
+    private fun chipBackground(fill: Int = metaChipFill): GradientDrawable = GradientDrawable().apply {
+        setColor(fill)
         cornerRadius = dp(4f).toFloat()
     }
 
