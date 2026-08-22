@@ -31,6 +31,16 @@ interface SheetHost {
      *  no-op — the activity window is already focusable and owns its own
      *  softInputMode. */
     fun setFocusPolicy(root: View, focusable: Boolean, wantsIme: Boolean)
+
+    /** Convert the dismissed sheet into an invisible key sink so it can
+     *  outlive its UI while a controller key is still held: hidden content,
+     *  untouchable (touches fall through to the app beneath), focusability
+     *  untouched — held keys keep landing here until released (the
+     *  orphaned-UP guard, [WindowKeyPairGuard]). Returns false when the host
+     *  has no window of its own to linger (activity hosting): the activity
+     *  window survives the sheet, so pending keys cannot orphan and the
+     *  caller detaches immediately. */
+    fun beginKeySink(root: View): Boolean
 }
 
 /** The over-game host: a full-screen overlay window whose type is stamped by
@@ -72,6 +82,18 @@ class WindowSheetHost(
         try {
             wm.updateViewLayout(root, lp)
         } catch (_: Exception) {
+        }
+    }
+
+    override fun beginKeySink(root: View): Boolean {
+        val lp = params ?: return false
+        root.visibility = View.INVISIBLE
+        lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        return try {
+            wm.updateViewLayout(root, lp)
+            true
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -136,4 +158,8 @@ class ActivitySheetHost(private val parent: ViewGroup) : SheetHost {
         // Activity windows are always focusable; the IME rides the activity's
         // own softInputMode and the sheet's existing ime-inset lift.
     }
+
+    // The activity window outlives the sheet child — held keys keep landing
+    // in the activity, so there is nothing to linger.
+    override fun beginKeySink(root: View): Boolean = false
 }
