@@ -26,6 +26,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.ViewTreeObserver
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -353,9 +354,10 @@ class MagnifierLens(
      *  [secondariesOnTop] places the LONGER unit above: true on the
      *  space-delimited surfaces (tapped word + containing phrase above it),
      *  false on JA (tapped fused expression on top + its member words
-     *  below, in expression order). All sections render flat — the styled
-     *  (WebView) treatment stays single-unit-only; the styled experience
-     *  lives one tap away on each detail page. */
+     *  below, in expression order). Sections bind flat instantly; any
+     *  section whose data carries a structured Yomitan payload upgrades to
+     *  its own styled (WebView) renderer once painted, exactly like the
+     *  single-unit body. */
     fun setSplitDefinitions(
         primary: LensSection,
         secondaries: List<LensSection>,
@@ -1370,20 +1372,63 @@ class MagnifierLens(
             private set
         private var styledContentHeight = 0
 
+        // ── Split-section styled (WebView) renderers ──────────────────
+        /** Pool of per-SECTION styled renderers for the split body, handed
+         *  out in section order by [obtainSplitStyledView] and reused across
+         *  binds — WebView construction is the expensive part, content swaps
+         *  are cheap, and the drag lens rebinds on every dwell. Detached
+         *  from their section columns between binds; destroyed only with the
+         *  window ([releaseStyledView]) or on renderer death. Distinct from
+         *  [styledView] (the single-unit body's renderer) so the two modes
+         *  can't fight over one instance's height reports. */
+        private val splitStyledPool = mutableListOf<YomitanDefinitionsView>()
+        /** Next pool slot to hand out during the current split build. */
+        private var splitStyledCursor = 0
+        /** Bind generation for the split styled closures, bumped at every
+         *  [hideSplitBody]: a pooled view's late height report from a
+         *  superseded bind must not resurrect detached section views or
+         *  re-fit the card ([YomitanDefinitionsView]'s own render-seq guard
+         *  covers reports superseded by a NEW setContent, but not reports
+         *  from content that was simply torn down). */
+        private var splitBindSeq = 0
+
+        /** A styled renderer for the next split section: reuse the pool in
+         *  order, growing it on demand. Null when styled rendering is
+         *  unavailable (no WebView provider / a renderer died) — the
+         *  section then simply stays flat. */
+        private fun obtainSplitStyledView(): YomitanDefinitionsView? {
+            if (styledUnavailable) return null
+            splitStyledPool.getOrNull(splitStyledCursor)?.let { pooled ->
+                splitStyledCursor++
+                (pooled.parent as? ViewGroup)?.removeView(pooled)
+                return pooled
+            }
+            val v = YomitanDefinitionsView(context, lensStyledTokens())
+            if (!v.isUsable()) {
+                styledUnavailable = true
+                return null
+            }
+            // Symmetric insets, matching the split sections' flat bodies
+            // (not the single body's scrollbar-gutter asymmetry).
+            v.setPadding(bodyHPaddingPx - dp(6f), 0, bodyHPaddingPx - dp(6f), 0)
+            splitStyledPool.add(v)
+            splitStyledCursor++
+            return v
+        }
+
+        private fun lensStyledTokens() = DefinitionsDocument.Tokens(
+            text = context.themeColor(R.attr.ptText),
+            textMuted = context.themeColor(R.attr.ptTextMuted),
+            textHint = context.themeColor(R.attr.ptTextHint),
+            accent = accentColor,
+            panel = context.themeColor(R.attr.ptSurface),
+            baseFontSizePx = 16.5f * LENS_DEFINITIONS_SCALE,
+        )
+
         private fun ensureStyledView(): YomitanDefinitionsView? {
             styledView?.let { return it }
             if (styledUnavailable) return null
-            val v = YomitanDefinitionsView(
-                context,
-                DefinitionsDocument.Tokens(
-                    text = context.themeColor(R.attr.ptText),
-                    textMuted = context.themeColor(R.attr.ptTextMuted),
-                    textHint = context.themeColor(R.attr.ptTextHint),
-                    accent = accentColor,
-                    panel = context.themeColor(R.attr.ptSurface),
-                    baseFontSizePx = 16.5f * LENS_DEFINITIONS_SCALE,
-                ),
-            )
+            val v = YomitanDefinitionsView(context, lensStyledTokens())
             if (!v.isUsable()) {
                 styledUnavailable = true
                 return null
@@ -1420,6 +1465,13 @@ class MagnifierLens(
                 pendingStyledSwap = false
                 return
             }
+            // Neither pending nor live: the bind this report belongs to was
+            // superseded WITHOUT a new setContent on this view (a split or
+            // loading rebind — [showFlatBody] parked it at 1px), so the
+            // component's render-generation guard can't catch it. Sizing the
+            // INVISIBLE view here would silently stretch the scroll range
+            // under whatever body is now showing.
+            if (!pendingStyledSwap && !styledActive) return
             styledContentHeight = h
             sv.layoutParams = (sv.layoutParams as? LayoutParams
                 ?: LayoutParams(LayoutParams.MATCH_PARENT, h)).apply { height = h }
@@ -1443,6 +1495,11 @@ class MagnifierLens(
             styledView = null
             styledActive = false
             pendingStyledSwap = false
+            splitStyledPool.forEach {
+                it.destroy()
+                (it.parent as? ViewGroup)?.removeView(it)
+            }
+            splitStyledPool.clear()
         }
 
         /** Render process death: drop the instance and stay flat — the
@@ -1484,8 +1541,14 @@ class MagnifierLens(
 
         private fun hideSplitBody() {
             splitActive = false
+            splitBindSeq++
             applySectionTint(null)
             splitSectionViews = emptyList()
+            // Pool views come OUT of the dying section columns (they're
+            // reused next split bind — never destroyed here); the columns
+            // themselves are discarded wholesale.
+            splitStyledPool.forEach { (it.parent as? ViewGroup)?.removeView(it) }
+            splitStyledCursor = 0
             splitContent.removeAllViews()
             splitContent.visibility = GONE
         }
@@ -2201,9 +2264,11 @@ class MagnifierLens(
          *  its own headword header (the pill can't name them all) and, when
          *  it opens, a trailing chevron + full-section tap target.
          *  [secondariesOnTop] picks the visual order (the longer unit
-         *  renders on top on every surface). Deliberately flat-only: the
-         *  styled WebView path stays single-unit — its body-tap report
-         *  couldn't attribute a tap to a section anyway. */
+         *  renders on top on every surface). Every section binds flat
+         *  instantly and upgrades to its OWN styled renderer when its data
+         *  carries a structured payload ([attachSectionStyled]) — one
+         *  WebView per section, because a single shared page's body-tap
+         *  report couldn't attribute a tap to a section. */
         fun setSplitDefinitions(
             primary: LensSection,
             secondaries: List<LensSection>,
@@ -2325,15 +2390,14 @@ class MagnifierLens(
                 emptyPlaceholder = context.getString(R.string.word_detail_no_definitions)
                 bind(section.data, section.label, LENS_DEFINITIONS_SCALE, showMisc = false)
             }
-            if (showHeader || !section.opens) {
-                col.addView(
-                    body,
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                    ),
-                )
-            } else {
+            // Flat and (maybe) styled renderers share one holder, so the
+            // styled swap-in is a visibility flip INSIDE the section —
+            // invisible to the column layout around it.
+            val holder = FrameLayout(context).apply {
+                addView(body, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+            }
+            attachSectionStyled(holder, body, section, fire)
+            if (!showHeader && section.opens) {
                 // A headerless section keeps its open affordance: the
                 // chevron floats over the body's top-right at the CONTENT
                 // edge — the same column every header chevron ends at —
@@ -2341,30 +2405,26 @@ class MagnifierLens(
                 // cost. (A maximal-width first gloss line could reach under
                 // it; the usual first row is the left-packed meta chips.)
                 // Absolute RIGHT, matching the lens's canvas-aligned layout
-                // discipline.
-                col.addView(
-                    FrameLayout(context).apply {
-                        addView(
-                            body,
-                            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT),
-                        )
-                        addView(
-                            buildSectionChevron(),
-                            LayoutParams(
-                                pillChevronSize, pillChevronSize,
-                                Gravity.TOP or Gravity.RIGHT,
-                            ).apply {
-                                topMargin = dp(4f)
-                                rightMargin = bodyHPaddingPx - dp(6f)
-                            },
-                        )
+                // discipline. Added LAST so it stays painted over a styled
+                // swap-in.
+                holder.addView(
+                    buildSectionChevron(),
+                    LayoutParams(
+                        pillChevronSize, pillChevronSize,
+                        Gravity.TOP or Gravity.RIGHT,
+                    ).apply {
+                        topMargin = dp(4f)
+                        rightMargin = bodyHPaddingPx - dp(6f)
                     },
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                    ),
                 )
             }
+            col.addView(
+                holder,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ),
+            )
             if (section.opens) {
                 col.isClickable = true
                 col.setOnClickListener { fire() }
@@ -2377,6 +2437,75 @@ class MagnifierLens(
                 ),
             )
             return col.takeIf { section.opens }
+        }
+
+        /** The section's styled (WebView) upgrade, mirroring the single-unit
+         *  body's contract: the flat [body] renders instantly and stands as
+         *  the fallback; when the section's data carries a structured
+         *  payload, a pooled renderer binds behind it — INVISIBLE at 1px,
+         *  never GONE, for the same laid-out-at-real-width reasons as
+         *  [ensureStyledView] — and swaps over the flat view only once the
+         *  page reports painted height. Body taps report through the page's
+         *  own hit testing ([YomitanDefinitionsView.onBodyTap]) into the
+         *  SECTION's (already-debounced) open action — per-section views are
+         *  exactly what makes tap attribution possible here, where one
+         *  shared page couldn't say which section a tap landed in — and
+         *  link taps stay live, handing off to the browser as in the
+         *  single-unit body. */
+        private fun attachSectionStyled(
+            holder: FrameLayout,
+            body: WordDefinitionsView,
+            section: LensSection,
+            fire: () -> Unit,
+        ) {
+            val styledData = section.data.styled ?: return
+            if (styledData.structured.isEmpty()) return
+            val sv = obtainSplitStyledView() ?: return
+            val bindSeq = splitBindSeq
+            sv.visibility = INVISIBLE
+            // A non-opening section's body must stay inert — and a pooled
+            // view must never keep a previous bind's handler.
+            sv.onBodyTap = if (section.opens) {
+                { fire() }
+            } else {
+                null
+            }
+            sv.onContentHeight = { h ->
+                // Superseded-bind reports must not touch the live tree; the
+                // splitActive check additionally covers the window between
+                // this bind and a non-split rebind that hasn't detached yet.
+                if (h > 0 && bindSeq == splitBindSeq && splitActive) {
+                    sv.layoutParams = (sv.layoutParams as? LayoutParams
+                        ?: LayoutParams(LayoutParams.MATCH_PARENT, h)).apply { height = h }
+                    if (sv.visibility != VISIBLE) {
+                        sv.visibility = VISIBLE
+                        body.visibility = GONE
+                    }
+                    onStyledHeightChanged()
+                }
+            }
+            sv.onRendererGone = {
+                // The component destroyed itself; drop it from the pool (its
+                // siblings will report their own deaths) and never build
+                // another — flat is the standing fallback.
+                splitStyledPool.remove(sv)
+                (sv.parent as? ViewGroup)?.removeView(sv)
+                styledUnavailable = true
+                if (bindSeq == splitBindSeq) body.visibility = VISIBLE
+            }
+            holder.addView(sv, LayoutParams(LayoutParams.MATCH_PARENT, 1))
+            sv.setContent(
+                DefinitionsDocument.contentHtml(
+                    section.data,
+                    styledData.structured,
+                    localizePos = { context.localizePos(it) },
+                    showMisc = false,
+                    metaChips = styledMetaChips(context, section.data),
+                    label = section.label,
+                ),
+                styledData.dictStyles,
+                styledData.sourceLanguage,
+            )
         }
 
         private fun buildSectionChevron(): ImageView = ImageView(context).apply {

@@ -1274,9 +1274,9 @@ class DragLookupController(
 
         // Phrase section: the expression's own lookup, kept only when it
         // lands a real entry (the membership gates make a miss unlikely,
-        // but an empty phrase section would be pure noise). No styled
-        // fetch — the split body renders flat; the styled experience lives
-        // on the detail screen.
+        // but an empty phrase section would be pure noise). Carries its
+        // styled payload like the primary — split sections render styled
+        // per section.
         val phrasePopup: PopupData? = phraseKey?.let { key ->
             relatedPopupData(resolver, prefs.targetLang, key, key, null, excludeSlug = null)
         }
@@ -1340,6 +1340,9 @@ class DragLookupController(
             pitch = display.pitch,
             frequencies = display.frequencies,
             importedGroups = entry.importedSenses,
+            styled = fetchYomitanStyledData(
+                context, Prefs(context).sourceLangId.yomitanConsumingLang(), entry.importedSenses,
+            ),
         )
     }
 
