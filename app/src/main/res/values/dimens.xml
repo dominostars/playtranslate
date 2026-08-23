@@ -11,7 +11,7 @@
     <!-- Screen-edge inset of the floating workspace card (OverlayWorkspace):
          the game stays visible on all four sides, and the inset is what gives
          the card's elevation shadow room to render. -->
-    <dimen name="pt_workspace_inset">32dp</dimen>
+    <dimen name="pt_workspace_inset">24dp</dimen>
 
     <!-- Offline backend row header touch-target floor (= MaterialSwitch's 48dp
          height) so every enabled row is the same height. Collapsed to 0 by

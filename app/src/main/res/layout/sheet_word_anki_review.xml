@@ -112,7 +112,7 @@
             android:layout_marginHorizontal="12dp"
             android:layout_marginTop="8dp"
             android:layout_marginBottom="8dp"
-            android:minHeight="60dp"
+            android:minHeight="52dp"
             android:background="@drawable/bg_anki_save_button"
             android:clickable="true"
             android:focusable="true">

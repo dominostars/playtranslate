@@ -126,6 +126,8 @@ class OverlayWorkspace(
         // absolute; see FloatingIconMenu's RTL rule) + centered bold title,
         // hairline below — the house toolbar pattern.
         val header = headerFrame
+        // The 48dp chevron/X touch frames overhang the 44dp header strip.
+        header.clipChildren = false
         val chevron = ImageView(ctx).apply {
             setImageResource(R.drawable.ic_arrow_back)
             imageTintList = ColorStateList.valueOf(ctx.themeColor(R.attr.ptText))
@@ -223,8 +225,10 @@ class OverlayWorkspace(
         root.addView(
             closeBtn,
             FrameLayout.LayoutParams(touchPx, touchPx, Gravity.TOP or Gravity.RIGHT).apply {
-                topMargin = insetPx - touchPx / 2
-                rightMargin = insetPx - touchPx / 2
+                // 8dp inward from riding the corner exactly: the circle sits
+                // slightly inside the card's top-right corner.
+                topMargin = insetPx - touchPx / 2 + dp(8f)
+                rightMargin = insetPx - touchPx / 2 + dp(8f)
             },
         )
 
@@ -468,8 +472,24 @@ class OverlayWorkspace(
 
         override fun onControllerBack() = onBackPressed()
 
-        override fun navActions(): List<NavAction> =
-            stack.lastOrNull()?.page?.navActions() ?: emptyList()
+        override fun navActions(): List<NavAction> {
+            // The page's custom header content (the Anki editor's mode
+            // toggle) lives in the workspace's own header, outside the page
+            // view — its targets must still be controller-reachable.
+            val header = collectWorkspaceNavActions(currentHeaderView)
+            val page = stack.lastOrNull()?.page?.navActions() ?: emptyList()
+            return header + page
+        }
+
+        override fun viewInScrollViewport(v: View): Boolean {
+            val sv = stack.lastOrNull()?.page?.scrollView() ?: return false
+            var p: android.view.ViewParent? = v.parent
+            while (p != null) {
+                if (p === sv) return true
+                p = p.parent
+            }
+            return false
+        }
 
         override fun scrollViewportOnScreen(out: Rect): Boolean {
             val sv = stack.lastOrNull()?.page?.scrollView() ?: return false
@@ -720,7 +740,7 @@ class OverlayWorkspace(
         const val CARD_RADIUS_MULT = 1.5f
         const val CARD_ELEVATION_DP = 12f
         const val CLOSE_BTN_DP = 32f
-        const val HEADER_H_DP = 56f
+        const val HEADER_H_DP = 44f
         const val SCRIM_ALPHA = 0x80
         /** Live pages kept on the back stack (see [push]'s retirement rule). */
         const val MAX_STACK_DEPTH = 6

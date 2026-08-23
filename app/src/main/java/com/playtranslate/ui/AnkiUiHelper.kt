@@ -6,6 +6,8 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import androidx.core.animation.doOnEnd
+import androidx.core.graphics.ColorUtils
 import android.net.Uri
 import android.text.TextUtils
 import android.view.Gravity
@@ -13,6 +15,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -201,6 +204,10 @@ fun addAnkiSection(
     val deckRow = inflater.inflate(R.layout.settings_row_value, card, false)
     val deckTitle = deckRow.findViewById<TextView>(R.id.tvRowTitle)
     val deckValue = deckRow.findViewById<TextView>(R.id.tvRowValue)
+    // The row chevron's app:tint is AppCompat-only — a workspace page's
+    // plain inflater drops it. Tint in code for both hosts.
+    deckRow.findViewById<ImageView>(R.id.ivRowChevron).imageTintList =
+        ColorStateList.valueOf(muted)
     deckTitle.text = ctx.getString(R.string.anki_deck_row_label)
     fun applyDeckValue(name: String) {
         if (name.isBlank()) {
@@ -233,6 +240,8 @@ fun addAnkiSection(
     val cardTypeRow = inflater.inflate(R.layout.settings_row_value, card, false)
     val cardTypeTitle = cardTypeRow.findViewById<TextView>(R.id.tvRowTitle)
     val cardTypeValue = cardTypeRow.findViewById<TextView>(R.id.tvRowValue)
+    cardTypeRow.findViewById<ImageView>(R.id.ivRowChevron).imageTintList =
+        ColorStateList.valueOf(muted)
     cardTypeTitle.text = ctx.getString(R.string.anki_card_type_row_label)
     fun applyCardTypeValue(name: String) {
         if (name.isBlank()) {
@@ -736,15 +745,17 @@ fun buildAnkiModeToggle(
     container.addView(track)
 
     var currentIdx = initialIdx
+    var sliding = false
     // Resize + reposition the indicator on every layout pass: the
     // initial measurement (via `pillRow.post`) wasn't enough because
     // the activity now handles config changes itself, so a rotation
     // resizes the toolbar without recreating the toggle. We need the
     // indicator width / translation to track the new pill width as
     // pills resize. Guarded against no-op writes to avoid a relayout
-    // loop.
+    // loop, and stood down while a click's slide runs — a stray layout
+    // pass would snap the indicator to its target mid-animation.
     pillRow.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-        if (pills.isEmpty()) return@addOnLayoutChangeListener
+        if (pills.isEmpty() || sliding) return@addOnLayoutChangeListener
         val pillW = pills[0].width
         if (pillW <= 0) return@addOnLayoutChangeListener
         val targetX = (pillW * currentIdx).toFloat()
@@ -761,19 +772,53 @@ fun buildAnkiModeToggle(
             if (idx == currentIdx) return@setOnClickListener
             currentIdx = idx
             val pillW = pills[0].width
+            // One motion, no flash: the labels crossfade between their
+            // active/muted colors over the same 200ms the indicator slides
+            // — an instant text swap reads as the highlight jumping to the
+            // new segment before the pill arrives. The bold swap lands at
+            // the end (binary anyway, and it re-renders the glyphs).
+            sliding = true
             indicator.animate()
                 .translationX((pillW * idx).toFloat())
                 .setDuration(200)
                 .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .withEndAction { sliding = false }
                 .start()
-            pills.forEachIndexed { i, p ->
-                val active = i == idx
-                p.setTextColor(if (active) accentOnColor else mutedColor)
-                p.typeface = Typeface.create("sans-serif-medium",
-                    if (active) Typeface.BOLD else Typeface.NORMAL)
+            val startColors = pills.map { it.currentTextColor }
+            android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 200
+                interpolator = android.view.animation.DecelerateInterpolator()
+                addUpdateListener { va ->
+                    val f = va.animatedFraction
+                    pills.forEachIndexed { i, p ->
+                        val end = if (i == idx) accentOnColor else mutedColor
+                        p.setTextColor(ColorUtils.blendARGB(startColors[i], end, f))
+                    }
+                }
+                doOnEnd {
+                    pills.forEachIndexed { i, p ->
+                        p.typeface = Typeface.create("sans-serif-medium",
+                            if (i == idx) Typeface.BOLD else Typeface.NORMAL)
+                    }
+                }
+                start()
             }
             onSelect(idx == 0)
         }
+    }
+}
+
+/**
+ * Recess the [buildAnkiModeToggle] track to [color]. The default track is
+ * ptSurface-tinted, which vanishes when the toggle is hosted ON a ptSurface
+ * ground (the floating workspace's header) — those hosts recess it to the
+ * window ground (ptBg) instead.
+ */
+fun restyleAnkiModeToggleTrack(container: FrameLayout, color: Int) {
+    val track = container.getChildAt(0) ?: return
+    track.background = GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = 100 * container.resources.displayMetrics.density
     }
 }
 
