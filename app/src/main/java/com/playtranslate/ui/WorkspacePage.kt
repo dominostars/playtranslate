@@ -82,6 +82,16 @@ interface WorkspaceHost {
     /** Retitle the header for the topmost page (e.g. after a data load). */
     fun setTitle(title: CharSequence)
 
+    /** Put a custom view (e.g. a segmented mode toggle) in the header's
+     *  centre, replacing the title — the workspace header IS the page's
+     *  navigation bar; a page must never render a second bar of its own.
+     *  Callable during [WorkspacePage.onCreateView] (it binds to the page
+     *  being pushed); per-page, restored on pop. Null clears back to the
+     *  title. The view should carry FrameLayout LayoutParams (centre
+     *  gravity, explicit width — the header centre is ~56dp in from each
+     *  edge for the chevron/X wells). */
+    fun setHeaderView(view: View?)
+
     /** Flip the window's focus/IME policy for in-page text entry — true while
      *  an EditText needs the keyboard, false when editing ends. The workspace
      *  restores controller focus (when a controller is attached) on false. */

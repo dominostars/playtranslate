@@ -17,6 +17,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.isGone
+import androidx.core.view.isVisible
 import androidx.core.widget.NestedScrollView
 import com.playtranslate.AnkiManager
 import com.playtranslate.PlayTranslateApplication
@@ -179,14 +180,34 @@ class AnkiEditorPage(private val args: Bundle) : WorkspacePage {
         pageScope = scope
         val view = LayoutInflater.from(ctx)
             .inflate(R.layout.sheet_word_anki_review, parent, false)
-        // The workspace header owns back; the sheet's own back button and
-        // its dropped app:tint go together.
-        view.findViewById<View>(R.id.btnBackWordAnki).isGone = true
         tintSaveIcon(view.findViewById(R.id.btnWordAnkiSend), ctx)
         pageView = view
         val b = WordAnkiReviewBinder(ctx, scope, args, EditorHost(ctx, host))
         binder = b
         b.bind(view, null)
+        // ONE navigation bar: the workspace header hosts what the sheet's
+        // toolbar hosted. The binder built the Sentence/Word toggle into the
+        // sheet's toolbar slot (visible only with sentence data) — reparent
+        // it into the header; word-only editors keep the word title. Then
+        // the sheet's whole toolbar row AND its hairline disappear (the
+        // header carries its own).
+        val toggle = view.findViewById<FrameLayout>(R.id.wordAnkiToolbarToggle)
+        val toolbarRow = view.findViewById<View>(R.id.btnBackWordAnki).parent as View
+        val sheetRoot = toolbarRow.parent as ViewGroup
+        val rowIdx = sheetRoot.indexOfChild(toolbarRow)
+        if (toggle.isVisible) {
+            (toggle.parent as ViewGroup).removeView(toggle)
+            // The toggle's track fills its container — give it the fixed
+            // centre slot the sheet's weighted toolbar half approximated.
+            toggle.layoutParams = FrameLayout.LayoutParams(
+                (220 * ctx.resources.displayMetrics.density).toInt(),
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER,
+            )
+            host.setHeaderView(toggle)
+        }
+        toolbarRow.isGone = true
+        sheetRoot.getChildAt(rowIdx + 1)?.isGone = true
         imeWatcher = ImeFocusWatcher(view, host).also { it.attach() }
         return view
     }
@@ -288,7 +309,8 @@ class AnkiSentenceEditorPage(
     private var pinnedScreenshotPath: String? = null
     private var imeWatcher: ImeFocusWatcher? = null
 
-    override fun title(ctx: Context): CharSequence = ctx.getString(R.string.anki_mode_sentence)
+    override fun title(ctx: Context): CharSequence =
+        ctx.getString(R.string.anki_sheet_title_new_card)
 
     override fun onCreateView(ctx: Context, parent: ViewGroup, host: WorkspaceHost): View {
         hostRef = host
@@ -296,7 +318,13 @@ class AnkiSentenceEditorPage(
         pageScope = scope
         val view = LayoutInflater.from(ctx)
             .inflate(R.layout.bottom_sheet_anki_review, parent, false)
-        view.findViewById<View>(R.id.btnBackReview).isGone = true
+        // ONE navigation bar: the workspace header carries the sheet
+        // toolbar's title ("New Anki card"), so the sheet's own toolbar row
+        // and its hairline disappear entirely.
+        val toolbarRow = view.findViewById<View>(R.id.btnBackReview).parent as View
+        val sheetRoot = toolbarRow.parent as ViewGroup
+        sheetRoot.getChildAt(sheetRoot.indexOfChild(toolbarRow) + 1)?.isGone = true
+        toolbarRow.isGone = true
         tintSaveIcon(view.findViewById(R.id.btnSendToAnki), ctx)
         pageView = view
 
