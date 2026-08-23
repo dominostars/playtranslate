@@ -1672,6 +1672,7 @@
     <string name="tts_voice_picker_title">เสียง</string>
 
     <string name="tts_voices_section_header">เสียงภาษา<xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
+    <string name="tts_speed_section_header">ความเร็วการอ่านออกเสียง</string>
 
     <string name="tts_no_engine_dialog_title">ไม่มีการอ่านออกเสียงข้อความ</string>
 

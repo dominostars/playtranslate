@@ -1740,6 +1740,7 @@
     <string name="tts_voice_picker_title">Giọng nói</string>
 
     <string name="tts_voices_section_header">GIỌNG <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
+    <string name="tts_speed_section_header">Tốc độ đọc văn bản</string>
 
     <string name="tts_no_engine_dialog_title">Không có công cụ đọc văn bản</string>
 

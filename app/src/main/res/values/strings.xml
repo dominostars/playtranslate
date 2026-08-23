@@ -3271,6 +3271,19 @@
          (already locale-aware via Locale.displayName().uppercase()). -->
     <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g> VOICES</string>
 
+    <!-- Section header above the global TTS speed slider, shown at the top
+         of the TTS voice picker and above the Text-to-speech section of the
+         Anki audio picker. Rendered in ALL CAPS by the group-header style. -->
+    <string name="tts_speed_section_header">TTS Speed</string>
+
+    <!-- Scale labels under the speed slider: multiplier notation for the
+         slow edge (2x slower) and fast edge (2x faster), plus the dot mark
+         repeated under each snap detent (1.5x slower, 1x, 1.5x faster).
+         Numeric/symbolic notation, never translated. -->
+    <string name="tts_speed_slow_label" translatable="false">-2x</string>
+    <string name="tts_speed_detent_dot" translatable="false">·</string>
+    <string name="tts_speed_fast_label" translatable="false">2x</string>
+
     <!-- Title of the dialog shown when the user tries to read a word
          aloud but no TTS engine is installed. -->
     <string name="tts_no_engine_dialog_title">No Text-to-Speech</string>

@@ -237,6 +237,26 @@ class Prefs internal constructor(
         }
     }
 
+    /** Global TTS speech rate (0.5..2.0, 1.0 = normal), or null while the
+     *  user has never moved the speed slider. Applied by
+     *  [com.playtranslate.tts.TtsEngine] to every utterance — auditions,
+     *  speak buttons, and the Anki audio synthesized to WAV alike — so the
+     *  slider is the one app-wide speed, for every language. While null,
+     *  nothing is applied and the engine's own default rate stands (it
+     *  tracks the system-wide accessibility speech rate); the setter never
+     *  removes the key, so a cached engine can't be left holding a stale
+     *  rate after the slider returns to the 1x centre. */
+    val ttsSpeechRate: Float?
+        get() = if (sp.contains("tts_speech_rate")) {
+            sp.getFloat("tts_speech_rate", 1f)
+        } else {
+            null
+        }
+
+    fun setTtsSpeechRate(rate: Float) {
+        sp.edit { putFloat("tts_speech_rate", rate) }
+    }
+
     /**
      * Set of displays the user has selected to translate. Insertion order
      * is preserved (LinkedHashSet) so "primary" disambiguators (hotkey
