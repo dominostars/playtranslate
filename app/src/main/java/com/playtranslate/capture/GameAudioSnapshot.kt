@@ -10,7 +10,7 @@ import java.io.File
  * OWNERSHIP MODEL (the architectural fix for the snapshot-churn bug class):
  * each card flow gets its own `snap-<millis>.wav`, written once by
  * [GameAudioRecorder.snapshotToFile] and never modified; the owning
- * [com.playtranslate.ui.SentenceAnkiContentFragment] deletes it only on
+ * [com.playtranslate.ui.SentenceAnkiContentView] deletes it only on
  * provably-final teardown (onDestroyView with the activity finishing, or
  * with no saved state at all — either way no restore can reference the
  * file). A restorable saved-state teardown keeps the file for the

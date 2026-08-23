@@ -266,7 +266,7 @@ suspend fun Context.oneTapSendSentence(
 
     // Match the sheet's defaults exactly:
     //  - With a target word (lens / popup path), select only that
-    //    word. SentenceAnkiContentFragment.kt:228-231 does the same.
+    //    word. SentenceAnkiContentView.handleAudioPick does the same.
     //  - Without a target word (translation-result path), start with
     //    NO words selected. The sheet leaves selectedWords empty and
     //    relies on the user toggling targets via the per-word rows;
@@ -279,7 +279,7 @@ suspend fun Context.oneTapSendSentence(
         else
             emptySet()
     // Per-target-word audio: the sheet seeds each target's audio
-    // toggle from prefs.ankiWordAudioEnabled (SentenceAnkiContentFragment.kt:509-510).
+    // toggle from prefs.ankiWordAudioEnabled (SentenceAnkiContentView.rebuildWordRows).
     // Mirror that — every selected target gets word audio when the
     // pref is on. With selectedWords empty (path A), this is empty
     // too; no extra TTS synthesis.

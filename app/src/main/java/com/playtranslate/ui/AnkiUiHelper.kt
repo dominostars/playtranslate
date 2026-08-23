@@ -42,6 +42,27 @@ import androidx.core.view.isVisible
 import androidx.core.view.isGone
 
 /**
+ * True when a Fragment view teardown is provably FINAL for files this
+ * surface owns (screenshot pins, game-audio snapshots): the activity is
+ * finishing (finished activities are never restored), or the teardown ran
+ * with no state saved AND the host not even stopped (plain dismissal while
+ * resumed — no bundle exists that could recreate this surface). Everything
+ * else is a potential saved-state destroy — the activity released while
+ * stopped behind the trim editor / audio picker, memory pressure,
+ * don't-keep-activities — and MUST keep the files: the just-saved bundle
+ * references them and the restored instance re-owns them. Both clauses
+ * matter: isStateSaved alone is not "a bundle exists" (FragmentManager
+ * reports true for a merely-stopped host, so finish-from-stopped would leak
+ * every file to the sweep), and isFinishing alone misses resumed-state
+ * dismissal. Process death skips teardown entirely; a restore that never
+ * happens is the orphan sweep's job. Don't replace this with a hand-tracked
+ * flag or an isChangingConfigurations proxy — those enumerate single
+ * recreation paths and re-open the deleted-snapshot-on-restore hole.
+ */
+fun Fragment.isFinalMediaTeardown(): Boolean =
+    activity?.isFinishing == true || !isStateSaved
+
+/**
  * Selected-row background for grouped-card pickers (deck + card type).
  * Mirrors LanguageSetupActivity's buildSelectedRowBackground: a 10%
  * accent fill over the card color, with a 1dp stroke made from the

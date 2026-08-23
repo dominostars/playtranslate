@@ -1,6 +1,8 @@
 package com.playtranslate.ui
 
+import android.app.Activity
 import android.content.DialogInterface
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -9,25 +11,42 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.os.bundleOf
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.applyDialogEdgeToEdge
+import com.playtranslate.audio.AudioSelection
 import com.playtranslate.fullScreenDialogTheme
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import com.playtranslate.language.SourceLangId
 import kotlinx.coroutines.launch
 
+/**
+ * Sentence-only Anki review sheet (the in-app results page's card-level
+ * "Add to Anki"). The card editor itself is a directly-hosted
+ * [SentenceAnkiContentView] — shared with [WordAnkiReviewBinder]'s sentence
+ * tab and the floating workspace's editor page; this DialogFragment keeps
+ * the dialog window, the deck section, the screenshot pin, the lazy
+ * translation fill, and the send.
+ */
 class AnkiReviewBottomSheet : DialogFragment() {
 
     private var deckSubtitleView: TextView? = null
 
     /** Controller for the Save button's idle ↔ loading swap. */
     private var sendButton: AnkiSendButton? = null
+
+    private var contentView: SentenceAnkiContentView? = null
+
+    /** The content's launch-state bundle — fresh at first creation, the
+     *  persisted bundle on a saved-state recreation (applied translation
+     *  survives; the old child-fragment auto-restore semantics). */
+    private var contentArgs: Bundle? = null
 
     /** Optional listener called when this sheet is dismissed (used by
      *  [SentenceAnkiReviewActivity] to finish the host activity). */
@@ -54,13 +73,27 @@ class AnkiReviewBottomSheet : DialogFragment() {
      *  provably-final teardown, same contract as the word sheet. */
     private var pinnedScreenshotPath: String? = null
 
+    override fun onResume() {
+        super.onResume()
+        contentView?.onHostResumed()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        contentArgs?.let { outState.putBundle(STATE_CONTENT_ARGS, it) }
+        contentView?.saveState(outState)
+    }
+
     override fun onDestroyView() {
         deckSubtitleView = null
         sendButton = null
-        if (activity?.isFinishing == true || !isStateSaved) {
+        val finalTeardown = isFinalMediaTeardown()
+        if (finalTeardown) {
             context?.let { AnkiScreenshotPin.release(it, pinnedScreenshotPath) }
         }
         pinnedScreenshotPath = null
+        contentView?.release(deleteSnapshotFile = finalTeardown)
+        contentView = null
         super.onDestroyView()
     }
 
@@ -89,12 +122,11 @@ class AnkiReviewBottomSheet : DialogFragment() {
         // Pin at open: the arg is a fixed cache filename
         // (capture-d{id}.jpg) that any capture taken while this sheet
         // is open overwrites — the card must keep the frame the user
-        // acted on, not whatever a later capture wrote there. The
-        // pinned path is written back into args so a restored instance
-        // can RE-OWN the pin (the child fragment keeps rendering it
-        // from its own args either way) and release it on final
+        // acted on. The pinned path is written back into args so a
+        // restored instance RE-OWNS the pin and releases it on final
         // teardown instead of leaving it for the stale sweep.
-        val screenshotPath = if (savedInstanceState == null) {
+        val restoredContentArgs = savedInstanceState?.getBundle(STATE_CONTENT_ARGS)
+        val screenshotPath = if (restoredContentArgs == null) {
             AnkiScreenshotPin.pin(requireContext(), args.getString(ARG_SCREENSHOT_PATH))
                 .also {
                     pinnedScreenshotPath = it
@@ -103,7 +135,9 @@ class AnkiReviewBottomSheet : DialogFragment() {
         } else {
             pinnedScreenshotPath = args.getString(ARG_SCREENSHOT_PATH)
                 ?.takeIf { AnkiScreenshotPin.isPin(requireContext(), it) }
-            null  // child already exists; no new child gets created
+            // The restored content args already carry the pinned path (or
+            // its removal) — nothing new gets pinned.
+            null
         }
 
         val words = mutableListOf<SentenceAnkiHtmlBuilder.WordEntry>()
@@ -136,11 +170,6 @@ class AnkiReviewBottomSheet : DialogFragment() {
 
         val sourceLangId = SourceLangId.fromCode(args.getString(ARG_SOURCE_LANG)) ?: SourceLangId.JA
 
-        // Both child hosts come from the layout XML — fragment-host IDs
-        // need to stay stable so FragmentManager can re-attach the
-        // SentenceAnkiContentFragment to the same container after
-        // rotation / process recreation. Generated IDs change every
-        // inflation and break the restore path.
         val deckHost = view.findViewById<LinearLayout>(R.id.sentenceAnkiDeckHost)
         deckSubtitleView = view.findViewById(R.id.tvAnkiSendSubtitle)
         addAnkiSection(
@@ -151,16 +180,22 @@ class AnkiReviewBottomSheet : DialogFragment() {
         )
         refreshDeckSubtitle()
 
-        if (savedInstanceState == null) {
-            val contentFragment = SentenceAnkiContentFragment.newInstance(
-                original, translation, words, screenshotPath, sourceLangId = sourceLangId,
-                audioAnchorMs = args.takeIf { it.containsKey(ARG_AUDIO_ANCHOR_MS) }
-                    ?.getLong(ARG_AUDIO_ANCHOR_MS),
-            )
-            childFragmentManager.beginTransaction()
-                .replace(R.id.sentenceAnkiFragmentHost, contentFragment, TAG_CONTENT)
-                .commitNow()
-        }
+        // The card editor, hosted directly (the child-fragment hop is gone).
+        val cArgs = restoredContentArgs ?: SentenceAnkiContentView.buildArgs(
+            original, translation, words, screenshotPath, sourceLangId = sourceLangId,
+            audioAnchorMs = args.takeIf { it.containsKey(ARG_AUDIO_ANCHOR_MS) }
+                ?.getLong(ARG_AUDIO_ANCHOR_MS),
+        )
+        contentArgs = cArgs
+        val host = view.findViewById<ViewGroup>(R.id.sentenceAnkiFragmentHost)
+        val contentRoot = LayoutInflater.from(requireContext())
+            .inflate(R.layout.fragment_sentence_anki_content, host, false) as LinearLayout
+        val content = SentenceAnkiContentView(
+            requireContext(), viewLifecycleOwner.lifecycleScope, cArgs, ContentHost(),
+        )
+        contentView = content
+        host.addView(contentRoot)
+        content.buildInto(contentRoot, savedInstanceState)
 
         val sendBtn = view.findViewById<FrameLayout>(R.id.btnSendToAnki)
         sendButton = AnkiSendButton(sendBtn)
@@ -176,27 +211,47 @@ class AnkiReviewBottomSheet : DialogFragment() {
             }
         }
 
-        // Lazy translation fill (mirror of WordAnkiReviewSheet's): a blank
+        // Lazy translation fill (mirror of the word editor's): a blank
         // incoming translation means the sheet was opened from a result whose
         // translation never ran — the hidden-section deferral — or hasn't
-        // landed yet, and the content fragment's field would otherwise sit on
-        // its placeholder forever. A deferred capture's pending rides the
-        // args, and resolveAnkiTranslation routes it through the deferred
-        // completion (History rows fill, idempotently, and NEVER gated by
-        // the sentence-text cache — see its KDoc) instead of a bare
-        // translateOnce. Failures are contained (null → applyTranslation
-        // renders the error variant without clobbering user edits). Safe
-        // after restore too: applyTranslation guards on the visible original
-        // and on user-touched state.
+        // landed yet. A deferred capture's pending rides the args, and
+        // resolveAnkiTranslation routes it through the deferred completion
+        // (History rows fill, idempotently). Failures are contained (null →
+        // applyTranslation renders the error variant without clobbering user
+        // edits). Safe after restore too: applyTranslation guards on the
+        // visible original and on user-touched state.
         if (translation.isBlank() && original.isNotBlank()) {
             @Suppress("DEPRECATION")
             val pending = args.getSerializable(ARG_PENDING_TRANSLATION)
                 as? com.playtranslate.model.PendingTranslation
             viewLifecycleOwner.lifecycleScope.launch {
                 val outcome = resolveAnkiTranslation(pending, original)
-                getContentFragment()?.applyTranslation(original, outcome?.text)
+                contentView?.applyTranslation(original, outcome?.text)
             }
         }
+    }
+
+    // ── Audio picker (the content's cells, via the shared Host seam) ─────
+
+    private var pendingPickerCallback: ((AudioSelection) -> Unit)? = null
+
+    private val audioPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val cb = pendingPickerCallback.also { pendingPickerCallback = null }
+            ?: return@registerForActivityResult
+        if (result.resultCode != Activity.RESULT_OK) return@registerForActivityResult
+        cb(SentenceAnkiContentView.parsePickerResult(result.data))
+    }
+
+    private inner class ContentHost : SentenceAnkiContentView.Host {
+        override val isAlive: Boolean get() = isAdded
+
+        override fun openAudioPicker(intent: Intent, onPicked: (AudioSelection) -> Unit) {
+            pendingPickerCallback = onPicked
+            audioPickerLauncher.launch(intent)
+        }
+        // No sibling tab to mirror screenshot removal into.
     }
 
     /** Updates the save button's "Deck: <name>" subtitle whenever the
@@ -210,13 +265,10 @@ class AnkiReviewBottomSheet : DialogFragment() {
         sub.text = ctx.getString(R.string.anki_deck_label_format, deckName)
     }
 
-    private fun getContentFragment(): SentenceAnkiContentFragment? =
-        childFragmentManager.findFragmentByTag(TAG_CONTENT) as? SentenceAnkiContentFragment
-
     private suspend fun sendToAnki(deckId: Long) {
-        val content = getContentFragment() ?: run { sendButton?.setLoading(false); return }
-        // Untrimmed game audio resolves here (trim editor opens once);
-        // false = the user backed out of the editor — abort the send.
+        val content = contentView ?: run { sendButton?.setLoading(false); return }
+        // Untrimmed game audio resolves here (the review nudge fires once);
+        // false = the nudge held this Save — abort the send.
         if (!content.resolveGameAudioForSend()) {
             sendButton?.setLoading(false)
             return
@@ -258,7 +310,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
     companion object {
         const val RESULT_ANKI_ADDED = "anki_added"
         const val TAG = "AnkiReviewBottomSheet"
-        private const val TAG_CONTENT = "sentence_content"
+        private const val STATE_CONTENT_ARGS = "sentence_content_args"
 
         private const val ARG_ORIGINAL        = "original"
         private const val ARG_TRANSLATION     = "translation"
