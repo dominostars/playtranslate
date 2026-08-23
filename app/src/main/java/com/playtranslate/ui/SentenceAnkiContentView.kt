@@ -63,7 +63,7 @@ private const val TAG = "SentenceAnkiContent"
 /**
  * Sentence-card content for Anki review (Original, Translation, Words,
  * Screenshot) as a host-agnostic view class — extracted from
- * [SentenceAnkiContentFragment] so the SAME card editor renders inside the
+ * its former fragment host so the SAME card editor renders inside the
  * fragment-hosted review sheets AND the floating workspace's editor page.
  * Each section renders as a grouped [PtGroupCard] with the design-system
  * header on top, matching the Settings / Word Detail rhythm.
