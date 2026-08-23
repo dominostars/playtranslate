@@ -385,6 +385,9 @@ class OverlayWorkspace(
 
         override fun setImeMode(wantsIme: Boolean) = this@OverlayWorkspace.setImeMode(wantsIme)
 
+        override fun setParkedForActivity(parked: Boolean) =
+            this@OverlayWorkspace.setParkedForActivity(parked)
+
         override fun showProgress(
             title: String,
             onDismiss: (DismissReason) -> Unit,
@@ -470,6 +473,15 @@ class OverlayWorkspace(
     }
 
     // ── Focus / IME ──────────────────────────────────────────────────────
+
+    /** Park this window while a helper Activity (the audio picker) runs
+     *  above the game — an overlay window would otherwise cover and block
+     *  it. The gate's result callback un-parks. */
+    private fun setParkedForActivity(parked: Boolean) {
+        if (dismissed) return
+        sheetHost.setParked(root, parked)
+        if (!parked) applyWindowFocusPolicy()
+    }
 
     private fun setImeMode(wantsIme: Boolean) {
         if (imeMode == wantsIme) return

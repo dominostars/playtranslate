@@ -65,6 +65,25 @@ class AudioSourcePickerActivity : AppCompatActivity() {
     private var selectedLocator: String? = null
     private var selectedAttribution: Attribution? = null
 
+    /** The Save button's result extras, held so the [resultGate] delivery
+     *  on finish can hand them to a non-Activity launcher. Null until (and
+     *  unless) Save is tapped — a plain back/close delivers null. */
+    private var gateResultData: Intent? = null
+
+    /** One-shot [resultGate] delivery — finish() covers every user close
+     *  path; the onDestroy(isFinishing) call backs up task-swipe kills.
+     *  NOT fired on configuration recreations (isFinishing false). */
+    private fun deliverGateResult() {
+        val gate = resultGate ?: return
+        resultGate = null
+        gate(gateResultData)
+    }
+
+    override fun finish() {
+        deliverGateResult()
+        super.finish()
+    }
+
     private val loaded = HashMap<String, List<AudioCandidate>>()
     private val rowHosts = HashMap<String, LinearLayout>()
 
@@ -113,19 +132,18 @@ class AudioSourcePickerActivity : AppCompatActivity() {
             setNavigationOnClickListener { finish() }
         }
         findViewById<MaterialButton>(R.id.btnSave).setOnClickListener {
-            setResult(
-                RESULT_OK,
-                Intent()
-                    .putExtra(EXTRA_PICKED_SOURCE, selectedSourceId)
-                    .putExtra(EXTRA_PICKED_KEY, selectedKey)
-                    .putExtra(EXTRA_PICKED_LOCATOR, selectedLocator)
-                    .putExtra(
-                        EXTRA_PICKED_ATTRIBUTION,
-                        selectedAttribution?.let {
-                            PtJson.lenient.encodeToString(Attribution.serializer(), it)
-                        },
-                    ),
-            )
+            val data = Intent()
+                .putExtra(EXTRA_PICKED_SOURCE, selectedSourceId)
+                .putExtra(EXTRA_PICKED_KEY, selectedKey)
+                .putExtra(EXTRA_PICKED_LOCATOR, selectedLocator)
+                .putExtra(
+                    EXTRA_PICKED_ATTRIBUTION,
+                    selectedAttribution?.let {
+                        PtJson.lenient.encodeToString(Attribution.serializer(), it)
+                    },
+                )
+            setResult(RESULT_OK, data)
+            gateResultData = data
             finish()
         }
         sections = findViewById(R.id.sourceSections)
@@ -134,6 +152,10 @@ class AudioSourcePickerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         PronunciationPlayer.stop()
+        // Task-swipe / system kill of a finishing instance: finish() may not
+        // have run — deliver (one-shot) so a parked workspace un-parks. A
+        // configuration recreation (isFinishing false) keeps the gate armed.
+        if (isFinishing) deliverGateResult()
         super.onDestroy()
     }
 
@@ -310,6 +332,17 @@ class AudioSourcePickerActivity : AppCompatActivity() {
     }
 
     companion object {
+        /** One-shot result hook for hosts that launch this picker from a
+         *  non-Activity surface (the floating workspace, which PARKS its
+         *  overlay window while this runs — see
+         *  [OverlayWorkspace]): invoked exactly once on the main thread as
+         *  the picker finishes, with the Save button's result Intent, or
+         *  null when the picker closed without saving. Cleared on delivery
+         *  AND overwritten by the next gate-mode launch, so a stale hook
+         *  can never receive a later launch's pick. Activity hosts keep
+         *  using the normal setResult contract and never touch this. */
+        var resultGate: ((Intent?) -> Unit)? = null
+
         private const val EXTRA_LANG = "lang"
         private const val EXTRA_SURFACE = "surface"
         private const val EXTRA_READING = "reading"

@@ -2246,6 +2246,35 @@ class CaptureResultOverlay(
                 ?: showAnkiNotInstalledDialog(ctx, overlayHost, wm, displayId)
             return
         }
+        // Single-screen with the permission already held: the sentence editor
+        // opens as a floating-workspace page over the game, receiving the
+        // payload as OBJECTS — the size-gated intent-extras transport below
+        // is bypassed entirely on this path (the Activity fallback keeps it
+        // verbatim). The sheet stashes-for-reshow, so a USER dismissal of
+        // the workspace (or a completed save) brings it back — the detail
+        // round-trip's semantics. A missing permission stays on the
+        // trampoline, which owns the runtime request.
+        if (AnkiManager(app).hasPermission()) {
+            val snap = LastSentenceCache.snapshotFor(sentence)
+            val opened = CaptureBackendResolver.activeOverlayUi?.openWorkspace(displayId) {
+                AnkiSentenceEditorPage(
+                    original = sentence,
+                    translation = result.translatedText,
+                    wordResults = snap?.results ?: emptyMap(),
+                    surfaceForms = snap?.surfaces ?: emptyMap(),
+                    wordEnrichment = snap?.enrichment ?: emptyMap(),
+                    screenshotPath = result.screenshotPath,
+                    sourceLangId = prefs.sourceLangId,
+                    pendingTranslation = result.pendingTranslation,
+                    audioAnchorMs = result.createdAtMs.takeIf { it > 0 },
+                )
+            } == true
+            if (opened) {
+                val nav = onNavigateToDetail
+                if (nav != null) nav(result) else if (dismissOnActivityLaunch) dismiss()
+                return
+            }
+        }
         // One locked snapshot for every word extra below. NOT gated direct
         // field reads: the blank-meaning transport requires the meaning
         // slots and EXTRA_ENRICHMENT to come from the SAME maps, and the

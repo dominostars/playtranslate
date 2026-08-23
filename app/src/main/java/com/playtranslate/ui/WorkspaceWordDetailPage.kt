@@ -8,6 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.core.view.isGone
+import com.playtranslate.AnkiManager
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.R
 import com.playtranslate.capture.CaptureBackendResolver
@@ -130,6 +131,33 @@ class WorkspaceWordDetailPage(
         }
 
         override fun openAnkiReview(args: WordDetailBinder.WordAnkiArgs) {
+            // In-window editor when the AnkiDroid permission is already held
+            // — the headline flow: editor, deck picker, save, all without
+            // leaving the game. Missing permission falls back to the
+            // trampoline (an Activity must front the runtime request).
+            val h = hostRef
+            if (h != null && AnkiManager(ctx).hasPermission()) {
+                h.push(
+                    AnkiEditorPage(
+                        WordAnkiReviewBinder.buildArgs(
+                            word = args.word,
+                            reading = args.reading,
+                            pos = args.pos,
+                            definition = args.definition,
+                            screenshotPath = args.screenshotPath,
+                            freqScore = args.freqScore,
+                            isCommon = args.isCommon,
+                            sentenceOriginal = args.sentenceOriginal,
+                            sentenceTranslation = args.sentenceTranslation,
+                            sentenceWordResults = args.sentenceWordResults,
+                            sourceLangId = args.sourceLangId,
+                            sentencePending = args.sentencePending,
+                            audioAnchorMs = audioAnchorMs,
+                        ),
+                    ),
+                )
+                return
+            }
             launchWordAnkiTrampoline(args)
         }
 
