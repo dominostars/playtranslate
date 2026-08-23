@@ -18,8 +18,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
+import androidx.core.content.ContextCompat
 import androidx.core.widget.NestedScrollView
-import com.google.android.material.button.MaterialButton
 import com.playtranslate.AnkiManager
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.Prefs
@@ -218,24 +218,55 @@ class AudioPickerPage(
             scroll,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f),
         )
-        root.addView(
+        // Footer — the editor pages' Save bar, in code: ptBg strip over a
+        // hairline, the accent pill (bg_anki_save_button) inset 12dp/8dp,
+        // and the editors' label typography (16sp bold sans-serif-medium on
+        // ptAccentOn), so the picker's Save reads as the same control one
+        // page down the stack.
+        val footer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(ctx.themeColor(R.attr.ptBg))
+        }
+        footer.addView(
             View(ctx).apply { setBackgroundColor(ctx.themeColor(R.attr.ptDivider)) },
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, (1 * density).toInt().coerceAtLeast(1),
             ),
         )
-        val save = MaterialButton(ctx).apply {
-            text = ctx.getString(R.string.btn_save)
-            isAllCaps = false
+        val save = FrameLayout(ctx).apply {
+            minimumHeight = (52 * density).toInt()
+            background = ContextCompat.getDrawable(ctx, R.drawable.bg_anki_save_button)
+            isClickable = true
+            isFocusable = true
         }
-        root.addView(
+        save.addView(
+            TextView(ctx).apply {
+                text = ctx.getString(R.string.btn_save)
+                textSize = 16f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(ctx.themeColor(R.attr.ptAccentOn))
+            },
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER,
+            ),
+        )
+        footer.addView(
             save,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
             ).apply {
-                val m = (16 * density).toInt()
-                setMargins(m, m, m, m)
+                marginStart = (12 * density).toInt()
+                marginEnd = (12 * density).toInt()
+                topMargin = (8 * density).toInt()
+                bottomMargin = (8 * density).toInt()
             },
+        )
+        root.addView(
+            footer,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
         )
 
         val p = AudioSourcePickerView(
