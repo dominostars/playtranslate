@@ -86,6 +86,7 @@ class CameraWordLookup(
         overlayHost = OverlayHost(activity, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY),
         ttsAlertTarget = TtsAlertTarget.InActivity(activity),
         showAnkiNotInstalled = { showAnkiNotInstalledDialog(activity) },
+        workspaceRoute = false,
     )
 
     private val handler = Handler(Looper.getMainLooper())

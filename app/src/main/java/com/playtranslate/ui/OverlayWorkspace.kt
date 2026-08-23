@@ -255,6 +255,14 @@ class OverlayWorkspace(
 
     private fun push(page: WorkspacePage) {
         if (dismissed) return
+        // Depth cap: every buried page keeps its views (and any WebView)
+        // alive for scroll-position restore — unbounded cross-reference
+        // drill-downs would hold N renderers on a 4GB handheld. Past the
+        // cap the OLDEST entry is retired; back then bottoms out one page
+        // earlier, which nobody walking six references deep will miss.
+        if (stack.size >= MAX_STACK_DEPTH) {
+            destroyEntry(stack.removeAt(0))
+        }
         val view = page.onCreateView(ctx, pageContainer, hostImpl)
         val prev = stack.lastOrNull()
         stack.add(PageEntry(page, view))
@@ -657,6 +665,8 @@ class OverlayWorkspace(
         const val CLOSE_BTN_DP = 32f
         const val HEADER_H_DP = 56f
         const val SCRIM_ALPHA = 0x80
+        /** Live pages kept on the back stack (see [push]'s retirement rule). */
+        const val MAX_STACK_DEPTH = 6
         const val ENTER_MS = 200L
         const val EXIT_MS = 160L
         const val PAGE_FADE_MS = 150L

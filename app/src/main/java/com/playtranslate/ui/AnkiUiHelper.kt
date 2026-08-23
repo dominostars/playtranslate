@@ -803,6 +803,14 @@ fun showAnkiNotInstalledDialog(
     ).showAsOverlay()
 }
 
+/** In-window variant — for the floating workspace's modal layer, where a
+ *  sibling overlay window would be dimmed by the MediaProjection QTI clamp
+ *  and steal the workspace's taps (see [FontSizeRangePopover]). */
+fun showAnkiNotInstalledDialog(context: Context, parent: ViewGroup) {
+    configureAnkiNotInstalled(context, OverlayAlert.Builder(context))
+        .showInParent(parent)
+}
+
 /**
  * Styled "AnkiDroid permission needed" rationale alert. [onContinue]
  * fires when the user taps Continue — the permission request itself is

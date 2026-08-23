@@ -2051,6 +2051,7 @@ class CaptureResultOverlay(
                     },
                     tagDetailReturn = !wordLensInActivity,
                     showAnkiNotInstalled = if (wordLensInActivity) showAnkiNotInstalled else null,
+                    workspaceRoute = !wordLensInActivity,
                     // Secondary-section drill-in (containing phrase or member
                     // words): same open-sentence route, with the secondary
                     // unit as the word context.

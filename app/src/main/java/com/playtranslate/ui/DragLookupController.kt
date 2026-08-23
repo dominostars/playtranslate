@@ -57,6 +57,10 @@ class DragLookupController(
      *  activity flow may not hold. Null = the over-game defaults. */
     private val ttsAlertTarget: TtsAlertTarget? = null,
     private val showAnkiNotInstalled: (() -> Unit)? = null,
+    /** The lens's open-detail tap prefers the floating workspace over the
+     *  game (see [SourceLensActions]); false keeps in-activity hosts (the
+     *  camera's frozen-frame lookup) on their Activity routing. */
+    private val workspaceRoute: Boolean = true,
 ) {
     /** Fires once per drag, on the main thread, when no popup will surface
      *  from this drag (release with no OCR / no hit / async lookup miss) or
@@ -111,6 +115,7 @@ class DragLookupController(
     private val lensActions = SourceLensActions(
         context, displayId, overlayHost, magnifier,
         showAnkiNotInstalled = showAnkiNotInstalled,
+        workspaceRoute = workspaceRoute,
         // Secondary-section drill-in: same open-sentence route with the
         // related unit as the word context. An out-of-range index (stale
         // lens) is a no-op.

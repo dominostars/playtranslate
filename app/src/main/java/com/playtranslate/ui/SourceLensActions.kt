@@ -56,6 +56,11 @@ class SourceLensActions(
      *  not installed" dialog through their own presenter — the default
      *  overlay window needs a permission an activity flow may not have. */
     private val showAnkiNotInstalled: (() -> Unit)? = null,
+    /** The open-detail tap prefers the floating workspace's word-detail page
+     *  over the game (single-screen, word context present) before falling
+     *  back to the [TranslationResultActivity] launch. False for in-activity
+     *  hosts (camera / import), whose lens actions stay activity-routed. */
+    private val workspaceRoute: Boolean = true,
     /** Context for the lens's split-body SECONDARY sections by index — the
      *  containing phrase (space-delimited surfaces) or a fused expression's
      *  member words (JA) — same sentence/screenshot as [current], with the
@@ -112,8 +117,41 @@ class SourceLensActions(
         val cachedTranslation = cached?.translation
         val cachedTranslationSource = cached?.translationSource
         val cachedWordResults = cached?.wordResults?.takeIf { it.isNotEmpty() }
+        // The workspace page's Anki flow wants the ATOMIC words payload
+        // (results + surfaces + enrichment) — snapshotted here for the same
+        // stomp reason as the fields above.
+        val wordsPayload = if (workspaceRoute) LastSentenceCache.snapshotFor(sentence) else null
         CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
         lens.dismiss()
+        // Single-screen: the word-detail page opens in the floating workspace
+        // over the game instead of leaving it. Deliberately the WORD page —
+        // the sentence is already rendered by the surface the tap came from;
+        // its context still travels for the Anki card. openWorkspace()
+        // returning false (dual-screen) falls through to the Activity launch.
+        if (workspaceRoute && word != null) {
+            val snapshot = SentenceContext(
+                original = sentence,
+                translation = cachedTranslation,
+                wordResults = wordsPayload?.results ?: cachedWordResults,
+                surfaceForms = wordsPayload?.surfaces,
+                wordEnrichment = wordsPayload?.enrichment,
+            )
+            val opened = CaptureBackendResolver.activeOverlayUi?.openWorkspace(displayId) {
+                WorkspaceWordDetailPage(
+                    word = word,
+                    reading = reading,
+                    screenshotPath = cur.screenshotPath,
+                    audioAnchorMs = cur.audioAnchorMs,
+                    sentenceContext = { snapshot },
+                )
+            } == true
+            if (opened) {
+                // The capture sheet maps Detail to its stash-for-reshow, so a
+                // USER dismissal of the workspace brings the sheet back.
+                onLaunchedActivity(LaunchKind.Detail)
+                return
+            }
+        }
         // Replace any previously launched TRA (MULTIPLE_TASK otherwise leaves it
         // alive in a hidden task on a possibly-wrong display).
         TranslationResultActivity.finishCurrentIfAny()
