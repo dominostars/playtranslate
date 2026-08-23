@@ -37,6 +37,9 @@ import com.playtranslate.ui.OcrPicker
 import com.playtranslate.ui.FloatingOverlayIcon
 import com.playtranslate.ui.MagnifierLens
 import com.playtranslate.ui.OverlayAlert
+import com.playtranslate.ui.OverlayWorkspace
+import com.playtranslate.ui.WorkspaceHost
+import com.playtranslate.ui.WorkspacePage
 import com.playtranslate.ui.SonarPingIntroView
 import com.playtranslate.ui.TextBox
 import com.playtranslate.ui.TranslationOverlayView
@@ -125,6 +128,13 @@ class OverlayUiController(
         val stashedAtMs: Long,
     )
 
+    /** The floating workspace while showing (single-screen). Single instance —
+     *  a new open replaces it. Geometry tracked like the capture panel's, so a
+     *  display reconfiguration dismisses it ([dismissWorkspaceIfReconfigured]). */
+    private var workspace: OverlayWorkspace? = null
+    private var workspaceDisplayId = -1
+    private var workspaceGeometry: DisplayGeometry? = null
+
     /** Listens for display changes (rotation, hot-plug, foldable state) so
      *  icons can be repositioned against the new dimensions and the icon
      *  registry can be reconciled against the new set of available displays.
@@ -171,6 +181,8 @@ class OverlayUiController(
             // spurious / cross-display event can't cancel a just-tapped capture — that was the
             // rotate-then-tap no-op. 180° flips change rotation, so a stale panel still drops.
             dismissCaptureResultPanelIfReconfigured(displayId)
+            // Same stale-layout rule for the floating workspace.
+            dismissWorkspaceIfReconfigured(displayId)
             // A rotation / resize invalidates a per-box translation overlay
             // group — its cached displayW/displayH drive the OCR→screen
             // mapping. Drop it on a size change; the next capture cycle
@@ -1374,6 +1386,13 @@ class OverlayUiController(
                 display.displayId,
             )
         }
+        if (BuildConfig.DEBUG) {
+            // Step-0 workspace harness (see WorkspaceDebugPage) — debug only.
+            menu.onDebugLanguageLongPress = {
+                dismissFloatingMenu()
+                openWorkspace(display.displayId) { com.playtranslate.ui.WorkspaceDebugPage() }
+            }
+        }
         menu.onSelectOcr = {
             // Show the picker over the still-open menu so its holdActive keeps
             // live capture paused. The menu dismisses only if a different engine
@@ -2083,6 +2102,71 @@ class OverlayUiController(
         overlay.showWithResult(size.x, size.y, result)
     }
 
+    /**
+     * Open the floating workspace ([OverlayWorkspace]) on [displayId] with
+     * [page] as its root page. The single-screen funnel for flows that
+     * otherwise escape to full-screen Activities: returns false — and does
+     * NOTHING — when the workspace presentation isn't available (dual-screen,
+     * where the activity routes are the correct presentation; or the display/
+     * WindowManager can't be resolved), so the caller runs its existing
+     * Activity launch unchanged.
+     *
+     * A USER dismissal of the workspace re-shows a stashed capture sheet via
+     * [onCaptureDetailBackPressed] (a no-op unless the opening flow stashed
+     * one). Programmatic teardown ([dismissWorkspace]) never re-shows: it
+     * clears the tracking field first, so the workspace's dismiss callback
+     * sees a mismatch and stands down.
+     */
+    fun openWorkspace(displayId: Int, page: (WorkspaceHost) -> WorkspacePage): Boolean {
+        if (!Prefs.isSingleScreen(context)) return false
+        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager ?: return false
+        val display = dm.getDisplay(displayId) ?: return false
+        val displayCtx = context.createDisplayContext(display)
+        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return false
+        dismissWorkspace()
+        val size = getDisplaySize(display)
+        val ws = OverlayWorkspace(displayCtx, wm, displayId, overlayHost)
+        ws.onDismiss = {
+            if (workspace === ws) {
+                workspace = null
+                workspaceDisplayId = -1
+                workspaceGeometry = null
+                onCaptureDetailBackPressed(displayId)
+            }
+        }
+        workspace = ws
+        workspaceDisplayId = displayId
+        workspaceGeometry = DisplayGeometry(size.x, size.y, display.rotation)
+        ws.show(size.x, size.y, page)
+        return true
+    }
+
+    /** Programmatic workspace teardown (hideAll, display reconfiguration).
+     *  Clears the tracking field BEFORE dismissing so the workspace's
+     *  onDismiss sees a mismatch — no capture-sheet re-show fires from a
+     *  teardown the user didn't perform. Idempotent. */
+    fun dismissWorkspace() {
+        val ws = workspace ?: return
+        workspace = null
+        workspaceDisplayId = -1
+        workspaceGeometry = null
+        ws.dismiss()
+    }
+
+    /** Dismiss a showing workspace when its own display's geometry (size or
+     *  rotation) changed — its window is pinned to explicit pixels and its
+     *  pages were laid out against that geometry. Mirrors
+     *  [dismissCaptureResultPanelIfReconfigured]. */
+    private fun dismissWorkspaceIfReconfigured(changedDisplayId: Int) {
+        if (workspace == null) return
+        if (changedDisplayId != workspaceDisplayId) return
+        val built = workspaceGeometry ?: return
+        val now = displayGeometry(changedDisplayId) ?: return
+        if (now != built) {
+            dismissWorkspace()
+        }
+    }
+
     /** Saves a pre-captured screenshot to the cache for TranslationResultActivity. */
     private fun savePreCapturedScreenshot(bitmap: Bitmap): String? {
         return try {
@@ -2133,6 +2217,7 @@ class OverlayUiController(
      *  hadn't reached yet. */
     fun hideAll() {
         dismissCaptureResultOverlay()
+        dismissWorkspace()
         hideTranslationOverlay()
         hideAppBoxes()
         regionController.hideAll()

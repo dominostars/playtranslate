@@ -178,6 +178,19 @@ class OverlayAlert private constructor(
             alert.showInDialog(dialog)
             return alert
         }
+
+        /** Shows as an in-window child of [parent] — the floating workspace's
+         *  modal layer ([com.playtranslate.ui.OverlayWorkspace]). In-window
+         *  rather than a sibling overlay window because MediaProjection's QTI
+         *  clamp dims a sibling to ~80% and it steals the host window's taps
+         *  (see [FontSizeRangePopover]). If the parent's window is torn down
+         *  while the alert is up (workspace dismissal), the cancel handler
+         *  fires with [DismissReason.LIFECYCLE_PAUSE]. */
+        fun showInParent(parent: ViewGroup): OverlayAlert {
+            val alert = OverlayAlert(context, title, message, buttons, showAppIcon, onCancel)
+            alert.showInParent(parent)
+            return alert
+        }
     }
 
     private var scrim: FrameLayout? = null
@@ -432,6 +445,20 @@ class OverlayAlert private constructor(
     private fun showInDialog(dialog: Dialog) {
         val decor = dialog.window?.decorView as? ViewGroup ?: return
         attachToDecor(decor)
+    }
+
+    /** Attaches as a child of [parent] (the workspace modal layer). A detach
+     *  of the scrim we didn't initiate — the parent's window tearing down —
+     *  dispatches LIFECYCLE_PAUSE, mirroring [attachToForeground]'s listener;
+     *  our own removeView is guarded by [dismissed] in [detachAndDispatch]. */
+    private fun showInParent(parent: ViewGroup) {
+        attachToDecor(parent)
+        scrim?.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) {
+                detachAndDispatch(DismissReason.LIFECYCLE_PAUSE)
+            }
+        })
     }
 
     private fun attachToDecor(decor: ViewGroup) {

@@ -115,6 +115,11 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     var showRecordAudio: Boolean = false
     // Expanded settings-panel row actions.
     var onSelectLanguage: (() -> Unit)? = null
+
+    /** Debug-only long-press on the Language row — the Step-0 harness for the
+     *  floating workspace's stub page. Wired only in debug builds; unset in
+     *  release, where the row has no long-press at all. */
+    var onDebugLanguageLongPress: (() -> Unit)? = null
     var onSelectOcr: (() -> Unit)? = null
     var onToggleMangaOcr: (() -> Unit)? = null
     var onCycleOverlayMode: (() -> Unit)? = null
@@ -846,8 +851,16 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         mangaOcrValueView = null
 
         // Language + OCR: title on the left, right-aligned value (chevron hidden).
-        addPanelValueRow(inflater, context.getString(R.string.floating_menu_panel_language), languageName) {
+        val languageRow = addPanelValueRow(
+            inflater, context.getString(R.string.floating_menu_panel_language), languageName
+        ) {
             onSelectLanguage?.invoke()
+        }
+        onDebugLanguageLongPress?.let { hook ->
+            languageRow.setOnLongClickListener {
+                hook()
+                true
+            }
         }
         panelRows.addView(panelDivider())
         addPanelValueRow(inflater, context.getString(R.string.floating_menu_panel_ocr), ocrName) {
