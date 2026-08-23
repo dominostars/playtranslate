@@ -268,8 +268,16 @@ class AudioSourcePickerActivity : AppCompatActivity() {
                 text = sub.orEmpty()
                 visibility = if (sub.isNullOrBlank()) View.GONE else View.VISIBLE
             }
+            // Second deliberate source-specific exception (see the Game
+            // audio enable row): game audio's selection key is state-bearing
+            // (trim range + snapshot mtime) while its one candidate carries
+            // the provisional "snapshot" key, so key equality can't
+            // establish identity for it. Single-candidate source: source
+            // match alone is candidate match.
+            val isSelected = selectedSourceId == source.id &&
+                (selectedKey == c.key || source.id == RecordingAudioSource.ID)
             row.findViewById<ImageView>(R.id.ivCheck).visibility =
-                if (selectedSourceId == source.id && selectedKey == c.key) View.VISIBLE else View.GONE
+                if (isSelected) View.VISIBLE else View.GONE
             row.setOnClickListener { select(source, c) }
             host.addView(row)
         }
