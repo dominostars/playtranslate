@@ -468,6 +468,7 @@
     <string name="anki_deck_picker_empty">Колоды не найдены</string>
 
     <string name="anki_deck_picker_loading">Загрузка колод…</string>
+    <string name="anki_deck_picker_title">Выбор колоды Anki</string>
 
     <string name="anki_card_type_picker_loading">Загрузка типов карточек…</string>
 

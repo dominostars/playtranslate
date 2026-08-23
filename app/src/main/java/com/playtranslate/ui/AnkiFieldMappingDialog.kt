@@ -1,52 +1,33 @@
 package com.playtranslate.ui
 
-import android.graphics.Typeface
 import android.os.Bundle
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.DialogFragment
-import com.playtranslate.AnkiManager
-import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.applyDialogEdgeToEdge
 import com.playtranslate.fullScreenDialogTheme
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import com.playtranslate.themeColor
-
-private const val TAG = "FieldMappingDialog"
 
 /**
- * Per-field mapping editor. Shown after the user picks a non-Default
- * card type from [AnkiCardTypePickerDialog], or directly via the
- * send-time guard when the current model has no mapping configured.
- *
- * Toolbar shows the model name and a Save action. Body lists one row
- * per field of the chosen model: tapping a row opens a `PopupMenu`
- * anchored to the row with all [ContentSource] options. Save commits
- * `prefs.ankiModelId` / `ankiModelName` / `setAnkiFieldMapping(id, map)`.
- * Back / Cancel commits nothing — the card type selection reverts to
- * whatever was selected before the picker opened.
+ * Per-field mapping editor. Shown after the user picks a non-Default card
+ * type from [AnkiCardTypePickerDialog], or directly via the send-time guard
+ * when the current model has no mapping configured. The rows and the
+ * commit-on-Save live in [AnkiFieldMappingView] (shared with the floating
+ * workspace's page); this shell keeps the dialog window, insets, toolbar
+ * title, the Save footer wiring, and the content-source picker's
+ * child-fragment presentation. Back / Cancel commits nothing — the card
+ * type selection reverts to whatever was selected before the picker opened.
  */
 class AnkiFieldMappingDialog : DialogFragment() {
 
     /** Fires when the user Saves. Not fired on Back / Cancel. */
     var onSaved: ((modelId: Long, modelName: String) -> Unit)? = null
-
-    private lateinit var modelName: String
-    private var modelId: Long = -1L
-    private lateinit var fieldNames: List<String>
-    private lateinit var mode: CardMode
-
-    /** Mutable working copy. Initial state from saved prefs (if any) or
-     *  template defaults; user edits write here until Save commits. */
-    private val workingMapping = linkedMapOf<String, ContentSource>()
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
 
@@ -78,121 +59,33 @@ class AnkiFieldMappingDialog : DialogFragment() {
             WindowInsetsCompat.CONSUMED
         }
         val args = arguments ?: run { dismiss(); return }
-        modelId = args.getLong(ARG_MODEL_ID, -1L)
-        modelName = args.getString(ARG_MODEL_NAME).orEmpty()
-        fieldNames = args.getStringArray(ARG_FIELD_NAMES)?.toList().orEmpty()
-        mode = CardMode.valueOf(args.getString(ARG_MODE) ?: CardMode.SENTENCE.name)
+        val modelId = args.getLong(ARG_MODEL_ID, -1L)
+        val modelName = args.getString(ARG_MODEL_NAME).orEmpty()
+        val fieldNames = args.getStringArray(ARG_FIELD_NAMES)?.toList().orEmpty()
+        val mode = CardMode.valueOf(args.getString(ARG_MODE) ?: CardMode.SENTENCE.name)
 
         val ctx = requireContext()
-        val prefs = Prefs(ctx)
-
-        // Initial state: saved mapping if any, else template defaults.
-        val saved = prefs.getAnkiFieldMapping(modelId)
-        Log.d(TAG, "onViewCreated: model='$modelName' id=$modelId " +
-            "mode=$mode fieldNames=$fieldNames saved=$saved")
-        val starter = if (saved.isNotEmpty()) {
-            Log.d(TAG, "  using saved mapping ($saved)")
-            saved
-        } else {
-            val model = AnkiManager.ModelInfo(modelId, modelName, fieldNames, 0)
-            val defaults = AnkiCardTypeMapper.defaultsForModel(model, mode)
-            Log.d(TAG, "  no saved mapping; defaults from mapper=$defaults")
-            defaults
-        }
-        // Initialize working map: every field gets an entry (NONE if
-        // unmapped) so the dialog shows a complete view.
-        fieldNames.forEach { fieldName ->
-            workingMapping[fieldName] = starter[fieldName] ?: ContentSource.NONE
-        }
-        Log.d(TAG, "  workingMapping initialized: $workingMapping")
-
         val toolbar = view.findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
         toolbar.title = ctx.getString(R.string.anki_field_mapping_title, modelName)
         toolbar.setNavigationOnClickListener { dismiss() }
 
+        val mappingView = AnkiFieldMappingView(
+            ctx, modelId, modelName, fieldNames, mode,
+            openSourcePicker = { fieldName, current, onPicked ->
+                val picker = AnkiContentSourcePickerDialog.newInstance(fieldName, current)
+                picker.onPicked = onPicked
+                picker.show(childFragmentManager, AnkiContentSourcePickerDialog.TAG)
+            },
+            onSaved = { id, name ->
+                onSaved?.invoke(id, name)
+                dismiss()
+            },
+        )
         val container = view.findViewById<LinearLayout>(R.id.fieldMappingContainer)
-        renderRows(container)
-
+        container.addView(mappingView.build(container))
         view.findViewById<FrameLayout>(R.id.btnSaveMapping).setOnClickListener {
-            prefs.ankiModelId = modelId
-            prefs.ankiModelName = modelName
-            prefs.setAnkiFieldMapping(modelId, workingMapping)
-            onSaved?.invoke(modelId, modelName)
-            dismiss()
+            mappingView.save()
         }
-    }
-
-    private fun renderRows(container: LinearLayout) {
-        if (fieldNames.isEmpty()) return
-        val ctx = requireContext()
-        val inflater = layoutInflater
-
-        // Group all fields inside a single grouped card, with inset
-        // dividers between rows — same grouped-card look as the Anki
-        // section in Settings and the Card Type picker. Reuses the
-        // shared [PtGroupCard].
-        val card = PtGroupCard(container.context)
-        val rowContainer: LinearLayout = card
-
-        fieldNames.forEachIndexed { idx, fieldName ->
-            if (idx > 0) {
-                rowContainer.addView(
-                    inflater.inflate(R.layout.settings_row_divider, rowContainer, false)
-                )
-            }
-            val row = inflater.inflate(R.layout.settings_row_value, rowContainer, false)
-            val titleTv = row.findViewById<TextView>(R.id.tvRowTitle)
-            val valueTv = row.findViewById<TextView>(R.id.tvRowValue)
-            titleTv.text = fieldName
-            val current = workingMapping[fieldName] ?: ContentSource.NONE
-            applyValueStyle(valueTv, current)
-            row.setOnClickListener {
-                showSourcePicker(fieldName, workingMapping[fieldName] ?: ContentSource.NONE) { picked ->
-                    workingMapping[fieldName] = picked
-                    applyValueStyle(valueTv, picked)
-                }
-            }
-            rowContainer.addView(row)
-        }
-        container.addView(card)
-    }
-
-    /**
-     * Renders the row's value text. NONE gets the same italic +
-     * `ptTextHint` treatment the offline-translation cells use for
-     * their neutral-tone secondary subtitle — visually marks the
-     * absence of a mapping without making it disappear. Any other
-     * source uses the default RowValue color (`ptTextMuted`) with
-     * upright type. Pass null for the family in setTypeface so only
-     * the style flag toggles; otherwise platforms can cache italic
-     * state on the resolved typeface.
-     */
-    private fun applyValueStyle(tv: TextView, source: ContentSource) {
-        val ctx = requireContext()
-        tv.text = ctx.getString(source.labelRes)
-        if (source == ContentSource.NONE) {
-            tv.setTypeface(null, Typeface.ITALIC)
-            tv.setTextColor(ctx.themeColor(R.attr.ptTextHint))
-        } else {
-            tv.setTypeface(null, Typeface.NORMAL)
-            tv.setTextColor(ctx.themeColor(R.attr.ptTextMuted))
-        }
-    }
-
-    /**
-     * Pushes [AnkiContentSourcePickerDialog] for [fieldName]; on
-     * dismiss-with-selection, [onPicked] fires. Cancelling without
-     * a selection (back button / nav-up) leaves the working mapping
-     * untouched.
-     */
-    private fun showSourcePicker(
-        fieldName: String,
-        current: ContentSource,
-        onPicked: (ContentSource) -> Unit,
-    ) {
-        val picker = AnkiContentSourcePickerDialog.newInstance(fieldName, current)
-        picker.onPicked = onPicked
-        picker.show(childFragmentManager, AnkiContentSourcePickerDialog.TAG)
     }
 
     companion object {

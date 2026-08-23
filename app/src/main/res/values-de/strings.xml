@@ -452,6 +452,7 @@
     <string name="anki_deck_picker_empty">Keine Stapel gefunden</string>
 
     <string name="anki_deck_picker_loading">Stapel werden geladen…</string>
+    <string name="anki_deck_picker_title">Anki-Stapel auswählen</string>
 
     <string name="anki_card_type_picker_loading">Kartentypen werden geladen…</string>
 

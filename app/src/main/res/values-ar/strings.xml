@@ -434,6 +434,7 @@
     <string name="anki_deck_picker_empty">لم يتم العثور على أي مجموعات</string>
 
     <string name="anki_deck_picker_loading">جارٍ تحميل المجموعات…</string>
+    <string name="anki_deck_picker_title">اختيار مجموعة Anki</string>
 
     <string name="anki_card_type_picker_loading">جارٍ تحميل أنواع البطاقات…</string>
 

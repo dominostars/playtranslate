@@ -451,6 +451,7 @@
     <string name="anki_deck_picker_empty">Nenhum baralho encontrado</string>
 
     <string name="anki_deck_picker_loading">Carregando baralhos…</string>
+    <string name="anki_deck_picker_title">Selecionar baralho do Anki</string>
 
     <string name="anki_card_type_picker_loading">Carregando tipos de cartão…</string>
 

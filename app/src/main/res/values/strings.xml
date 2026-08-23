@@ -1053,6 +1053,7 @@
          AnkiDroid in the background. The trailing ellipsis is a single
          character (…), not three dots. -->
     <string name="anki_deck_picker_loading">Loading decks…</string>
+    <string name="anki_deck_picker_title">Select Anki Deck</string>
 
     <!-- Loading indicator shown while the Anki card-type picker queries
          AnkiDroid for available card types. -->

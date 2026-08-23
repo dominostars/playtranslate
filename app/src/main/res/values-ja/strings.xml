@@ -459,6 +459,7 @@
     <string name="anki_deck_picker_empty">デッキが見つかりません</string>
 
     <string name="anki_deck_picker_loading">デッキを読み込み中…</string>
+    <string name="anki_deck_picker_title">Ankiデッキを選択</string>
 
     <string name="anki_card_type_picker_loading">カードタイプを読み込み中…</string>
 

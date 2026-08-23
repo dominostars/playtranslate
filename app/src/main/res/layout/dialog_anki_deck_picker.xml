@@ -10,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         android:background="?attr/ptBg"
-        app:title="Select Anki Deck"
+        app:title="@string/anki_deck_picker_title"
         app:navigationIcon="@drawable/ic_arrow_back"
         app:navigationIconTint="?attr/ptText"
         app:titleTextColor="?attr/ptText" />

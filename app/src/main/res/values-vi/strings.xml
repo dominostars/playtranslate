@@ -448,6 +448,7 @@
     <string name="anki_deck_picker_empty">Không tìm thấy bộ thẻ nào</string>
 
     <string name="anki_deck_picker_loading">Đang tải bộ thẻ…</string>
+    <string name="anki_deck_picker_title">Chọn bộ thẻ Anki</string>
 
     <string name="anki_card_type_picker_loading">Đang tải loại thẻ…</string>
 

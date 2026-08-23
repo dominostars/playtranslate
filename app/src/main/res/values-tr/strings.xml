@@ -444,6 +444,7 @@
     <string name="anki_deck_picker_empty">Deste bulunamadı</string>
 
     <string name="anki_deck_picker_loading">Desteler yükleniyor…</string>
+    <string name="anki_deck_picker_title">Anki Destesi Seç</string>
 
     <string name="anki_card_type_picker_loading">Kart türleri yükleniyor…</string>
 

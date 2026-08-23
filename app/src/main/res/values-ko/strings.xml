@@ -449,6 +449,7 @@
     <string name="anki_deck_picker_empty">덱을 찾을 수 없음</string>
 
     <string name="anki_deck_picker_loading">덱 불러오는 중…</string>
+    <string name="anki_deck_picker_title">Anki 덱 선택</string>
 
     <string name="anki_card_type_picker_loading">카드 유형 불러오는 중…</string>
 

@@ -451,6 +451,7 @@
     <string name="anki_deck_picker_empty">No se encontraron mazos</string>
 
     <string name="anki_deck_picker_loading">Cargando mazos…</string>
+    <string name="anki_deck_picker_title">Seleccionar mazo de Anki</string>
 
     <string name="anki_card_type_picker_loading">Cargando tipos de tarjeta…</string>
 
