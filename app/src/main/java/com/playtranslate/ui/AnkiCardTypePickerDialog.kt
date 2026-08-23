@@ -1,41 +1,26 @@
 package com.playtranslate.ui
 
-import android.graphics.Typeface
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
-import com.playtranslate.AnkiManager
-import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.applyDialogEdgeToEdge
 import com.playtranslate.fullScreenDialogTheme
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import com.playtranslate.themeColor
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
- * Full-screen card-type picker. Layout mirrors LanguageSetupActivity:
- * grouped-card sections with uppercase headers, inset dividers between
- * rows, accent-tinted background on the currently-selected row.
- *
- * Sections:
- *  - "Default" — synthetic "Default (PlayTranslate)" row (modelId = -1L)
- *  - "Card Types" — the user's AnkiDroid note types
- *
- * Tapping the Default row commits `ankiModelId = -1L` and dismisses.
- * Tapping any other row dismisses the picker and opens
- * [AnkiFieldMappingDialog]; that dialog is responsible for committing
- * the model id + name + per-field mapping if the user Saves.
+ * Full-screen card-type picker. The Default/Card Types list itself lives in
+ * [AnkiCardTypePickerView] (shared with the floating workspace's page);
+ * this shell keeps the dialog window, insets, and toolbar, and owns the
+ * DialogFragment choreography for a non-basic model: dismiss this picker,
+ * then push [AnkiFieldMappingDialog] on the PARENT fragment manager — that
+ * dialog commits the model id + name + per-field mapping if the user Saves.
  */
 class AnkiCardTypePickerDialog : DialogFragment() {
 
@@ -80,171 +65,32 @@ class AnkiCardTypePickerDialog : DialogFragment() {
         toolbar.setNavigationOnClickListener { dismiss() }
 
         val container = view.findViewById<LinearLayout>(R.id.cardTypeListContainer)
-        val ctx = requireContext()
-        val density = resources.displayMetrics.density
-
-        container.addView(TextView(ctx).apply {
-            text = getString(R.string.anki_card_type_picker_loading)
-            setTextColor(ctx.themeColor(R.attr.ptTextMuted))
-            textSize = 14f
-            setPadding(0, (16 * density).toInt(), 0, 0)
-        })
-
-        viewLifecycleOwner.lifecycleScope.launch {
-            val models = withContext(Dispatchers.IO) { AnkiManager(ctx).getModels() }
-            if (!isAdded) return@launch
-            container.removeAllViews()
-            render(container, models)
-        }
-    }
-
-    private fun render(container: LinearLayout, models: List<AnkiManager.ModelInfo>) {
-        val ctx = requireContext()
-        val prefs = Prefs(ctx)
-
-        // Section 1: Default (PlayTranslate) — always shown.
-        renderSection(
-            parent = container,
-            title = ctx.getString(R.string.anki_card_type_section_default),
-            rows = listOf(
-                CardTypeRow(
-                    title = ctx.getString(R.string.anki_card_type_row_empty),
-                    subtitle = null,
-                    isSelected = prefs.ankiModelId == -1L,
-                    onClick = {
-                        prefs.ankiModelId = -1L
-                        prefs.ankiModelName = ""
-                        onCardTypePicked?.invoke(-1L, "")
-                        dismiss()
-                    },
-                )
-            ),
-        )
-
-        // Section 2: Card Types from AnkiDroid — or empty-state caption
-        // if AnkiDroid has none.
-        if (models.isEmpty()) {
-            container.addView(TextView(ctx).apply {
-                text = ctx.getString(R.string.anki_card_type_no_models)
-                setTextColor(ctx.themeColor(R.attr.ptTextMuted))
-                textSize = 14f
-                val density = resources.displayMetrics.density
-                setPadding(
-                    (4 * density).toInt(), (16 * density).toInt(),
-                    (4 * density).toInt(), 0,
-                )
-            })
-            return
-        }
-        renderSection(
-            parent = container,
-            title = ctx.getString(R.string.anki_card_type_section_custom),
-            rows = models.map { model ->
-                CardTypeRow(
-                    title = model.name,
-                    subtitle = model.fieldNames.joinToString(" · "),
-                    isSelected = prefs.ankiModelId == model.id,
-                    onClick = {
-                        if (AnkiCardTypeMapper.isBasicShape(model.fieldNames)) {
-                            // Basic-shape templates send mode-appropriate
-                            // content automatically at dispatch time — no
-                            // per-field mapping to configure. Commit the
-                            // selection directly and skip the mapping
-                            // dialog.
-                            prefs.ankiModelId = model.id
-                            prefs.ankiModelName = model.name
-                            // Wipe any stale mapping from an earlier
-                            // build that auto-populated Basic defaults
-                            // — those would otherwise sit unused in
-                            // prefs forever.
-                            prefs.setAnkiFieldMapping(model.id, emptyMap())
-                            onCardTypePicked?.invoke(model.id, model.name)
-                            dismiss()
-                        } else {
-                            val mapping = AnkiFieldMappingDialog.newInstance(
-                                modelId = model.id,
-                                modelName = model.name,
-                                fieldNames = model.fieldNames,
-                                mode = mode,
-                            )
-                            mapping.onSaved = { id, name ->
-                                onCardTypePicked?.invoke(id, name)
-                            }
-                            val fm = parentFragmentManager
-                            dismiss()
-                            mapping.show(fm, AnkiFieldMappingDialog.TAG)
-                        }
-                    },
-                )
-            },
+        container.addView(
+            AnkiCardTypePickerView(
+                requireContext(),
+                viewLifecycleOwner.lifecycleScope,
+                isAlive = { isAdded },
+                onCardTypePicked = { id, name ->
+                    onCardTypePicked?.invoke(id, name)
+                    dismiss()
+                },
+                openFieldMapping = { model ->
+                    val mapping = AnkiFieldMappingDialog.newInstance(
+                        modelId = model.id,
+                        modelName = model.name,
+                        fieldNames = model.fieldNames,
+                        mode = mode,
+                    )
+                    mapping.onSaved = { id, name ->
+                        onCardTypePicked?.invoke(id, name)
+                    }
+                    val fm = parentFragmentManager
+                    dismiss()
+                    mapping.show(fm, AnkiFieldMappingDialog.TAG)
+                },
+            ).build(container)
         )
     }
-
-    private data class CardTypeRow(
-        val title: String,
-        val subtitle: String?,
-        val isSelected: Boolean,
-        val onClick: () -> Unit,
-    )
-
-    private fun renderSection(
-        parent: LinearLayout,
-        title: String,
-        rows: List<CardTypeRow>,
-    ) {
-        if (rows.isEmpty()) return
-        val ctx = requireContext()
-        val inflater = layoutInflater
-
-        val header = inflater.inflate(R.layout.settings_group_header, parent, false)
-        header.findViewById<TextView>(R.id.tvGroupTitle).text = title.uppercase()
-        parent.addView(header)
-
-        val card = PtGroupCard(parent.context)
-        val rowContainer: LinearLayout = card
-        val cardRadius = card.radiusPx
-        val lastIdx = rows.lastIndex
-        rows.forEachIndexed { idx, row ->
-            if (idx > 0) rowContainer.addView(insetDivider(rowContainer))
-            val topRadius = if (idx == 0) cardRadius else 0f
-            val bottomRadius = if (idx == lastIdx) cardRadius else 0f
-            rowContainer.addView(buildRow(rowContainer, row, topRadius, bottomRadius))
-        }
-        parent.addView(card)
-    }
-
-    private fun buildRow(
-        container: ViewGroup,
-        row: CardTypeRow,
-        topCornerRadius: Float,
-        bottomCornerRadius: Float,
-    ): View {
-        val ctx = requireContext()
-        val view = layoutInflater
-            .inflate(R.layout.anki_card_type_picker_row, container, false)
-        view.findViewById<TextView>(R.id.tvRowTitle).apply {
-            text = row.title
-            setTypeface(typeface, if (row.isSelected) Typeface.BOLD else Typeface.NORMAL)
-        }
-        val subtitleTv = view.findViewById<TextView>(R.id.tvRowSubtitle)
-        if (row.subtitle.isNullOrEmpty()) {
-            subtitleTv.visibility = View.GONE
-        } else {
-            subtitleTv.text = row.subtitle
-            subtitleTv.visibility = View.VISIBLE
-        }
-        val check = view.findViewById<ImageView>(R.id.ivSelectedCheck)
-        check.visibility = if (row.isSelected) View.VISIBLE else View.GONE
-        if (row.isSelected) {
-            view.background = ctx.pickerSelectedRowBackground(topCornerRadius, bottomCornerRadius)
-        }
-        view.setOnClickListener { row.onClick() }
-        return view
-    }
-
-    private fun insetDivider(container: ViewGroup): View =
-        layoutInflater
-            .inflate(R.layout.settings_row_divider, container, false)
 
     companion object {
         const val TAG = "AnkiCardTypePickerDialog"

@@ -410,6 +410,7 @@
     <string name="anki_deck_picker_empty">ไม่พบสำรับ</string>
 
     <string name="anki_deck_picker_loading">กำลังโหลดสำรับ…</string>
+    <string name="anki_deck_picker_title">เลือกสำรับ Anki</string>
 
     <string name="anki_card_type_picker_loading">กำลังโหลดประเภทการ์ด…</string>
 

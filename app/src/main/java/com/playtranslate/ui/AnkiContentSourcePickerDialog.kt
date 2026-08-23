@@ -1,47 +1,28 @@
 package com.playtranslate.ui
 
-import android.graphics.Typeface
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.TextView
-import androidx.core.text.HtmlCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.DialogFragment
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.applyDialogEdgeToEdge
 import com.playtranslate.fullScreenDialogTheme
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import com.playtranslate.themeColor
 
 /**
  * Full-screen picker for a single field's [ContentSource]. Opened from
- * [AnkiFieldMappingDialog] when the user taps a row to change what
- * content fills that field. Same grouped-card surface as
- * [AnkiCardTypePickerDialog], split into two sections by
- * [ContentSource.Kind]:
- *  - CONTENT (NONE + the substantive content sources, including the
- *    Sentence/Expression furigana-bracket variants — those appear
- *    adjacent to their plain counterparts so users see the related
- *    options as a contiguous group instead of scattered across the
- *    picker)
- *  - CARD TYPE FLAG (mode-aware "x"/"" markers for Mustache section
- *    gates like Migaku's `Is Vocabulary Card` or Lapis's
- *    `IsSentenceCard`)
- *
- * Each row shows the source name on top and a per-source description
- * with a formatting example as the subtitle, so users mapping fields
- * can see at a glance what PT will write into the target field. The
- * currently-mapped source is highlighted (accent background + bold
- * title + trailing checkmark).
+ * [AnkiFieldMappingDialog] when the user taps a row to change what content
+ * fills that field. The option list itself lives in
+ * [AnkiContentSourcePickerView] (shared with the floating workspace's
+ * page); this shell keeps the dialog window, insets, and toolbar.
  *
  * Tapping any row dismisses the picker and invokes [onPicked] with the
- * selected source. Tapping back without picking is a no-op (the
- * mapping dialog keeps the prior selection).
+ * selected source. Tapping back without picking is a no-op (the mapping
+ * surface keeps the prior selection).
  */
 class AnkiContentSourcePickerDialog : DialogFragment() {
 
@@ -91,101 +72,12 @@ class AnkiContentSourcePickerDialog : DialogFragment() {
         toolbar.setNavigationOnClickListener { dismiss() }
 
         val container = view.findViewById<LinearLayout>(R.id.contentSourceListContainer)
-        val content = ContentSource.values().filter { it.kind == ContentSource.Kind.CONTENT }
-        val flags = ContentSource.values().filter { it.kind == ContentSource.Kind.FLAG }
-        renderSection(container, R.string.anki_content_section_content, content)
-        renderSection(container, R.string.anki_content_section_flag, flags)
-    }
-
-    private fun renderSection(
-        parent: LinearLayout,
-        @androidx.annotation.StringRes titleRes: Int,
-        options: List<ContentSource>,
-    ) {
-        if (options.isEmpty()) return
-        val ctx = requireContext()
-        val inflater = layoutInflater
-
-        val header = inflater.inflate(R.layout.settings_group_header, parent, false)
-        header.findViewById<TextView>(R.id.tvGroupTitle).text =
-            ctx.getString(titleRes).uppercase()
-        parent.addView(header)
-
-        val card = PtGroupCard(parent.context)
-        val rowContainer: LinearLayout = card
-        val cardRadius = card.radiusPx
-        val lastIdx = options.lastIndex
-        options.forEachIndexed { idx, source ->
-            if (idx > 0) {
-                rowContainer.addView(
-                    inflater.inflate(R.layout.settings_row_divider, rowContainer, false)
-                )
-            }
-            val topRadius = if (idx == 0) cardRadius else 0f
-            val bottomRadius = if (idx == lastIdx) cardRadius else 0f
-            rowContainer.addView(buildRow(rowContainer, source, topRadius, bottomRadius))
-        }
-        parent.addView(card)
-    }
-
-    private fun buildRow(
-        container: ViewGroup,
-        source: ContentSource,
-        topCornerRadius: Float,
-        bottomCornerRadius: Float,
-    ): View {
-        val ctx = requireContext()
-        val isSelected = source == current
-        // anki_card_type_picker_row gives us the title + subtitle slots
-        // and a trailing check icon — same two-line shape the Card Type
-        // picker uses one screen up the stack, so the visual rhythm
-        // carries through. The subtitle shows each source's description
-        // + example so users mapping a field don't have to guess what
-        // PT will write into it.
-        val view = layoutInflater
-            .inflate(R.layout.anki_card_type_picker_row, container, false)
-        val titleTv    = view.findViewById<TextView>(R.id.tvRowTitle)
-        val subtitleTv = view.findViewById<TextView>(R.id.tvRowSubtitle)
-        val check      = view.findViewById<ImageView>(R.id.ivSelectedCheck)
-
-        titleTv.text = ctx.getString(source.labelRes)
-        // Descriptions include literal `<b>` markup to show what the
-        // example will look like on the card. HtmlCompat renders those
-        // inline rather than dumping the raw tags as text.
-        subtitleTv.text = HtmlCompat.fromHtml(
-            ctx.getString(source.descriptionRes),
-            HtmlCompat.FROM_HTML_MODE_LEGACY,
+        container.addView(
+            AnkiContentSourcePickerView(ctx, current) { source ->
+                onPicked?.invoke(source)
+                dismiss()
+            }.build(container)
         )
-        // The card-type picker constrains the subtitle to 2 lines for
-        // long field lists; descriptions here can run a bit longer
-        // (especially the furigana variants with bracket examples).
-        // Let them wrap freely.
-        subtitleTv.maxLines = Int.MAX_VALUE
-        subtitleTv.ellipsize = null
-
-        if (source == ContentSource.NONE) {
-            // Match the "Empty" label styling on the mapping screen —
-            // italic + hint color — so NONE reads consistently whether
-            // it's a row value on the mapping screen or an option here.
-            titleTv.setTypeface(null, Typeface.ITALIC)
-            if (!isSelected) {
-                titleTv.setTextColor(ctx.themeColor(R.attr.ptTextHint))
-            }
-        } else {
-            titleTv.setTypeface(null, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
-        }
-
-        if (isSelected) {
-            check.visibility = View.VISIBLE
-            check.imageTintList =
-                android.content.res.ColorStateList.valueOf(ctx.themeColor(R.attr.ptAccent))
-            view.background = ctx.pickerSelectedRowBackground(topCornerRadius, bottomCornerRadius)
-        }
-        view.setOnClickListener {
-            onPicked?.invoke(source)
-            dismiss()
-        }
-        return view
     }
 
     companion object {

@@ -449,6 +449,7 @@
     <string name="anki_deck_picker_empty">未找到牌组</string>
 
     <string name="anki_deck_picker_loading">正在加载牌组…</string>
+    <string name="anki_deck_picker_title">选择 Anki 牌组</string>
 
     <string name="anki_card_type_picker_loading">正在加载卡片类型…</string>
 

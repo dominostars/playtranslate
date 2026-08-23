@@ -463,6 +463,7 @@
     <string name="anki_deck_picker_empty">Aucun paquet trouvé</string>
 
     <string name="anki_deck_picker_loading">Chargement des paquets…</string>
+    <string name="anki_deck_picker_title">Sélectionner le paquet Anki</string>
 
     <string name="anki_card_type_picker_loading">Chargement des types de carte…</string>
 
