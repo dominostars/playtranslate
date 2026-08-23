@@ -12,7 +12,6 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import com.google.android.material.appbar.MaterialToolbar
-import com.google.android.material.card.MaterialCardView
 import com.playtranslate.R
 import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.applyTheme
@@ -77,8 +76,8 @@ class AddOnlineServiceActivity : AppCompatActivity() {
     private fun renderServiceList(parent: LinearLayout) {
         parent.removeAllViews()
         val inflater = LayoutInflater.from(this)
-        val card = inflater.inflate(R.layout.language_list_section, parent, false) as MaterialCardView
-        val rowContainer = card.findViewById<LinearLayout>(R.id.sectionRows)
+        val card = PtGroupCard(this)
+        val rowContainer: LinearLayout = card
 
         val services = CATALOG.map { type ->
             ServiceRow(

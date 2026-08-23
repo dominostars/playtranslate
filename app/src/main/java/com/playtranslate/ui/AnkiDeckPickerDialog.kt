@@ -12,7 +12,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.card.MaterialCardView
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.R
@@ -29,7 +28,7 @@ import kotlinx.coroutines.withContext
 /**
  * Full-screen deck picker for Anki. Shows the user's AnkiDroid decks
  * inside a grouped-card section that mirrors the Settings / Language
- * picker styling (MaterialCardView wrapper, inset dividers, accent-
+ * picker styling ([PtGroupCard] wrapper, inset dividers, accent-
  * tinted background on the currently-selected row).
  */
 class AnkiDeckPickerDialog : DialogFragment() {
@@ -110,9 +109,9 @@ class AnkiDeckPickerDialog : DialogFragment() {
         val ctx = requireContext()
         val inflater = layoutInflater
 
-        val card = inflater.inflate(R.layout.language_list_section, parent, false) as MaterialCardView
-        val rowContainer = card.findViewById<LinearLayout>(R.id.sectionRows)
-        val cardRadius = card.radius
+        val card = PtGroupCard(ctx)
+        val rowContainer: LinearLayout = card
+        val cardRadius = card.radiusPx
         val lastIdx = decks.lastIndex
         decks.forEachIndexed { idx, entry ->
             if (idx > 0) rowContainer.addView(insetDivider(rowContainer))

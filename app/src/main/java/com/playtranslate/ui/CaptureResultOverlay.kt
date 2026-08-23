@@ -48,6 +48,7 @@ import android.widget.Toast
 import androidx.core.widget.NestedScrollView
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
+import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
 import com.playtranslate.OneShotOverlayData
@@ -2191,14 +2192,21 @@ class CaptureResultOverlay(
         app.startActivity(intent, opts)
     }
 
-    /** Change the source ([isSource]) or target language: null the stale Settings delegate,
-     *  dismiss this overlay, and open the picker on the foreground display. Shared by the
-     *  language section headers and the tappable language name in the no-text status. The
-     *  user re-captures to see it in the new language. */
+    /** Change the source ([isSource]) or target language. Shared by the language section
+     *  headers and the tappable language name in the no-text status. The bound result is
+     *  stale in the new language either way, so this sheet dismisses first (no stash /
+     *  re-show — the user re-captures on return, exactly the Activity path's semantics).
+     *  Single-screen: the picker opens as a floating-workspace page over the game.
+     *  Fallback (dual-screen, no controller instance): null the stale Settings delegate
+     *  and launch [LanguageSetupActivity] on the foreground display. */
     private fun changeLanguage(isSource: Boolean) {
         chooseLanguage?.let { it(isSource); return }
-        LanguageSetupActivity.selectionDelegate = null
         dismiss()
+        val opened = CaptureBackendResolver.activeOverlayUi?.openWorkspace(displayId) {
+            if (isSource) SourceListPage() else TargetListPage()
+        } == true
+        if (opened) return
+        LanguageSetupActivity.selectionDelegate = null
         launchLanguageSetup(
             if (isSource) LanguageSetupActivity.MODE_SOURCE else LanguageSetupActivity.MODE_TARGET,
         )

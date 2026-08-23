@@ -38,6 +38,7 @@ import com.playtranslate.ui.FloatingOverlayIcon
 import com.playtranslate.ui.MagnifierLens
 import com.playtranslate.ui.OverlayAlert
 import com.playtranslate.ui.OverlayWorkspace
+import com.playtranslate.ui.SourceListPage
 import com.playtranslate.ui.WorkspaceHost
 import com.playtranslate.ui.WorkspacePage
 import com.playtranslate.ui.SonarPingIntroView
@@ -1377,20 +1378,18 @@ class OverlayUiController(
         val overlayValue = if (hintKind != HintTextKind.NONE)
             overlayModeLabel(prefs.overlayMode, hintKind) else null
         menu.onSelectLanguage = {
-            // Mirror CaptureResultOverlay.changeLanguage(true): open the source picker.
+            // Mirror CaptureResultOverlay.changeLanguage(true): open the source
+            // picker — in the floating workspace over the game where available,
+            // else the Activity (dual-screen, where full pages are the correct
+            // presentation on the app display).
             dismissFloatingMenu()
-            LanguageSetupActivity.selectionDelegate = null
-            launchOnOverlayDisplay(
-                Intent(context.applicationContext, LanguageSetupActivity::class.java)
-                    .putExtra(LanguageSetupActivity.EXTRA_MODE, LanguageSetupActivity.MODE_SOURCE),
-                display.displayId,
-            )
-        }
-        if (BuildConfig.DEBUG) {
-            // Step-0 workspace harness (see WorkspaceDebugPage) — debug only.
-            menu.onDebugLanguageLongPress = {
-                dismissFloatingMenu()
-                openWorkspace(display.displayId) { com.playtranslate.ui.WorkspaceDebugPage() }
+            if (!openWorkspace(display.displayId) { SourceListPage() }) {
+                LanguageSetupActivity.selectionDelegate = null
+                launchOnOverlayDisplay(
+                    Intent(context.applicationContext, LanguageSetupActivity::class.java)
+                        .putExtra(LanguageSetupActivity.EXTRA_MODE, LanguageSetupActivity.MODE_SOURCE),
+                    display.displayId,
+                )
             }
         }
         menu.onSelectOcr = {

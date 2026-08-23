@@ -10,7 +10,6 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.fragment.app.DialogFragment
-import com.google.android.material.card.MaterialCardView
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.R
@@ -128,12 +127,12 @@ class AnkiFieldMappingDialog : DialogFragment() {
         val ctx = requireContext()
         val inflater = layoutInflater
 
-        // Group all fields inside a single MaterialCardView, with inset
+        // Group all fields inside a single grouped card, with inset
         // dividers between rows — same grouped-card look as the Anki
         // section in Settings and the Card Type picker. Reuses the
-        // shared `language_list_section` wrapper.
-        val card = inflater.inflate(R.layout.language_list_section, container, false) as MaterialCardView
-        val rowContainer = card.findViewById<LinearLayout>(R.id.sectionRows)
+        // shared [PtGroupCard].
+        val card = PtGroupCard(container.context)
+        val rowContainer: LinearLayout = card
 
         fieldNames.forEachIndexed { idx, fieldName ->
             if (idx > 0) {
