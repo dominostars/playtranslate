@@ -240,6 +240,13 @@ class OverlayWorkspace(
 
     private val stack = ArrayList<PageEntry>()
 
+    /** Pages popped off [stack] whose 150ms exit animation is still
+     *  running: their destruction rides the animation's end action, which
+     *  stands down once [dismissed] — so a dismissal mid-animation must
+     *  sweep them itself, or the popped page's [WorkspacePage.onDestroy]
+     *  (WebViews, audio jobs, pinned files) never runs. */
+    private val poppingEntries = ArrayList<PageEntry>()
+
     /** The entry whose [WorkspacePage.onCreateView] is currently running —
      *  a page's [WorkspaceHost.setHeaderView] during creation must land on
      *  the entry being pushed, which is not on [stack] yet. */
@@ -310,13 +317,21 @@ class OverlayWorkspace(
         revealed.view.visibility = View.VISIBLE
         revealed.view.translationX = 0f
         revealed.view.animate().alpha(1f).setDuration(PAGE_FADE_MS).start()
+        poppingEntries.add(top)
         top.view.animate().cancel()
         top.view.animate()
             .alpha(0f)
             .translationX(12 * density)
             .setDuration(PAGE_FADE_MS)
             .setInterpolator(AccelerateInterpolator())
-            .withEndAction { if (!dismissed) destroyEntry(top) }
+            .withEndAction {
+                // Once dismissed, dismiss() has already destroyed this entry
+                // (via poppingEntries) — stand down.
+                if (!dismissed) {
+                    poppingEntries.remove(top)
+                    destroyEntry(top)
+                }
+            }
             .start()
         setImeMode(false)
         updateHeader()
@@ -628,6 +643,11 @@ class OverlayWorkspace(
         while (stack.isNotEmpty()) {
             destroyEntry(stack.removeAt(stack.size - 1))
         }
+        // Pages mid-pop-animation are off the stack but not yet destroyed —
+        // their end action stands down now that [dismissed] is set (and may
+        // never fire on a detached window), so destroy them here.
+        for (entry in poppingEntries) destroyEntry(entry)
+        poppingEntries.clear()
         // Orphaned-UP guard: a key that went down on this focused window may
         // still be held — linger the window as an invisible key sink until
         // the release lands here (see [WindowKeyPairGuard]).
