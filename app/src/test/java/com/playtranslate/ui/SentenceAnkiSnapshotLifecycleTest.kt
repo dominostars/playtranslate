@@ -125,16 +125,24 @@ class SentenceAnkiSnapshotLifecycleTest {
     }
 
     // The field is deliberately private prod API; tests inject the ownership
-    // state directly rather than widening it.
+    // state directly rather than widening it. It lives on the extracted
+    // [SentenceAnkiContentView], reached through the fragment shell's
+    // (equally private) content handle.
     private fun setSnapshotField(fragment: SentenceAnkiContentFragment, file: File) {
-        snapshotField().set(fragment, file)
+        snapshotField().set(contentOf(fragment), file)
     }
 
     private fun getSnapshotField(fragment: SentenceAnkiContentFragment): File? =
-        snapshotField().get(fragment) as File?
+        snapshotField().get(contentOf(fragment)) as File?
+
+    private fun contentOf(fragment: SentenceAnkiContentFragment): SentenceAnkiContentView =
+        SentenceAnkiContentFragment::class.java
+            .getDeclaredField("content")
+            .apply { isAccessible = true }
+            .get(fragment) as SentenceAnkiContentView
 
     private fun snapshotField() =
-        SentenceAnkiContentFragment::class.java
+        SentenceAnkiContentView::class.java
             .getDeclaredField("gameAudioSnapshotFile")
             .apply { isAccessible = true }
 

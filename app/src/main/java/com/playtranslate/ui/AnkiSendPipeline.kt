@@ -44,7 +44,7 @@ fun sentenceIsJustTheWord(sentenceOriginal: String?, word: String): Boolean {
 }
 
 /** Inputs needed to send a sentence card. Mirrors the fields of
- *  [SentenceAnkiContentFragment.CardData] plus the audio-toggle state
+ *  [SentenceAnkiContentView.CardData] plus the audio-toggle state
  *  the sheet keeps separately. One-tap callers build this directly
  *  from their available context. */
 data class SentenceSendInput(
@@ -402,12 +402,12 @@ suspend fun Fragment.sendWordCard(
     return result
 }
 
-/** Reconstitutes a [SentenceAnkiContentFragment.CardData] from the
+/** Reconstitutes a [SentenceAnkiContentView.CardData] from the
  *  pipeline input so the structured builder
  *  ([AnkiCardOutputBuilder.forSentence]) — which still takes the
  *  CardData type — keeps working unchanged. */
-private fun SentenceSendInput.toCardData(): SentenceAnkiContentFragment.CardData =
-    SentenceAnkiContentFragment.CardData(
+private fun SentenceSendInput.toCardData(): SentenceAnkiContentView.CardData =
+    SentenceAnkiContentView.CardData(
         source = original,
         target = translation,
         words = words,
