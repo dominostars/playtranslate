@@ -1696,6 +1696,7 @@
     <string name="tts_voice_picker_title">الصوت</string>
 
     <string name="tts_voices_section_header">أصوات <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
+    <string name="tts_speed_section_header">سرعة تحويل النص إلى كلام</string>
 
     <string name="tts_no_engine_dialog_title">لا يوجد تحويل نص إلى كلام</string>
 

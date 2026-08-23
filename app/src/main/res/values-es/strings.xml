@@ -1750,6 +1750,7 @@
     <string name="tts_voice_picker_title">Voz</string>
 
     <string name="tts_voices_section_header">VOCES EN <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
+    <string name="tts_speed_section_header">Velocidad de texto a voz</string>
 
     <string name="tts_no_engine_dialog_title">Sin texto a voz</string>
 

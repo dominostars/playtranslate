@@ -33,6 +33,9 @@
             android:paddingTop="4dp"
             android:paddingBottom="20dp">
 
+            <include layout="@layout/section_tts_speed"
+                android:id="@+id/speedSection" />
+
             <include layout="@layout/settings_group_header"
                 android:id="@+id/headerVoices" />
 

@@ -1785,6 +1785,7 @@
     <string name="tts_voice_picker_title">语音</string>
 
     <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g>语音</string>
+    <string name="tts_speed_section_header">文字转语音速度</string>
 
     <string name="tts_no_engine_dialog_title">无文字转语音引擎</string>
 

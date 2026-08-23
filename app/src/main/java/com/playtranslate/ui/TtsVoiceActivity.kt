@@ -37,6 +37,11 @@ import kotlinx.coroutines.launch
  *    per-cell voice state and never touch [Prefs].
  *
  * Back press / toolbar X → default [RESULT_CANCELED]; callers ignore.
+ *
+ * The speed section at the top is the one exception to pure-picker: the
+ * global speech rate has no per-caller variant, so releasing the slider
+ * persists it directly (see [TtsSpeedSection]) — Save and Cancel don't
+ * touch it.
  */
 class TtsVoiceActivity : AppCompatActivity() {
 
@@ -99,6 +104,15 @@ class TtsVoiceActivity : AppCompatActivity() {
                 Intent().putExtra(EXTRA_PICKED_VOICE, selectedName),
             )
             finish()
+        }
+
+        TtsSpeedSection.bind(findViewById(R.id.speedSection), prefs) {
+            // Audition the committed speed with the voice currently selected
+            // in the picker (the transient selection, not the saved pref).
+            val voice = selectedName?.let { n -> voices.firstOrNull { it.name == n } }
+            lifecycleScope.launch {
+                TtsEngine.previewVoice(this@TtsVoiceActivity, voice, lang)
+            }
         }
 
         loadVoices()

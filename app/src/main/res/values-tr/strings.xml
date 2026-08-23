@@ -1689,6 +1689,7 @@
     <string name="tts_voice_picker_title">Ses</string>
 
     <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g> SESLERİ</string>
+    <string name="tts_speed_section_header">Metin okuma hızı</string>
 
     <string name="tts_no_engine_dialog_title">Metin Okuma Yok</string>
 

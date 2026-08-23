@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
+import com.playtranslate.Prefs
 import com.playtranslate.language.SourceLangId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -154,6 +155,7 @@ object TtsEngine {
                     return SpeakResult.LanguageUnsupported(activeEngineLabel(engine))
                 }
             }
+            applyUserRate(context, engine)
             val utteranceId = "pt-tts-${++utteranceCounter}"
             // Every speak() flushes the queue, so any prior utterance — and a
             // synthesizeToFile in flight — is aborted the moment this one is
@@ -218,6 +220,7 @@ object TtsEngine {
                 engine = currentEngine(context) ?: return null
                 if (!prepareEngine(engine, lang, savedVoiceName)) return null
             }
+            applyUserRate(context, engine)
             val dir = File(context.cacheDir, "tts-audio").apply { mkdirs() }
             val utteranceId = "pt-synth-${++utteranceCounter}"
             val file = File(dir, "$utteranceId.wav")
@@ -304,12 +307,26 @@ object TtsEngine {
     suspend fun previewVoice(context: Context, voice: Voice?, lang: SourceLangId) {
         lock.withLock {
             val engine = currentEngine(context) ?: return@withLock
+            applyUserRate(context, engine)
             if (voice != null) engine.voice = voice else engine.setLanguage(lang.locale)
             engine.speak(
                 lang.displayName(lang.locale),
                 TextToSpeech.QUEUE_FLUSH, null, "pt-tts-preview",
             )
         }
+    }
+
+    /** Apply the user's saved speech rate (the Settings/Anki speed slider)
+     *  to [engine] — one global knob honoured by every utterance, spoken OR
+     *  synthesized to a file. Unlike the voice, which callers resolve so
+     *  per-cell flows can diverge from the global pref, the rate has no
+     *  per-call variant, so it is read from [Prefs] right here. While the
+     *  pref is unset (slider never moved) nothing is applied and the
+     *  engine's own default rate stands — which tracks the system-wide
+     *  accessibility speech rate. Once set the pref is never removed, so a
+     *  cached engine can't be left holding a stale rate. */
+    private fun applyUserRate(context: Context, engine: TextToSpeech) {
+        Prefs(context).ttsSpeechRate?.let { engine.setSpeechRate(it) }
     }
 
     /** Select [lang] on [engine] and report whether it can serve it.
