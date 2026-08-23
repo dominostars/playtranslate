@@ -10,7 +10,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.text.HtmlCompat
 import androidx.fragment.app.DialogFragment
-import com.google.android.material.card.MaterialCardView
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.applyDialogEdgeToEdge
@@ -112,9 +111,9 @@ class AnkiContentSourcePickerDialog : DialogFragment() {
             ctx.getString(titleRes).uppercase()
         parent.addView(header)
 
-        val card = inflater.inflate(R.layout.language_list_section, parent, false) as MaterialCardView
-        val rowContainer = card.findViewById<LinearLayout>(R.id.sectionRows)
-        val cardRadius = card.radius
+        val card = PtGroupCard(parent.context)
+        val rowContainer: LinearLayout = card
+        val cardRadius = card.radiusPx
         val lastIdx = options.lastIndex
         options.forEachIndexed { idx, source ->
             if (idx > 0) {

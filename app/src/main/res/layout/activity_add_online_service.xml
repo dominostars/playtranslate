@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Add-service picker: the full list of online translation services a
      user can add an instance of. Mirrors activity_llm_model_picker's
-     shell; rows are built programmatically (language_list_section /
+     shell; rows are built programmatically (PtGroupCard /
      item_add_online_service) by AddOnlineServiceActivity. Back arrow = leave
      without adding; picking a keyed service pushes its config page and
      this screen dismisses itself once the new instance is saved. -->

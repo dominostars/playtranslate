@@ -17,7 +17,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
-import com.google.android.material.card.MaterialCardView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.playtranslate.R
@@ -109,9 +108,9 @@ class LlmModelPickerActivity : AppCompatActivity() {
         parent.removeAllViews()
 
         val inflater = LayoutInflater.from(this)
-        val card = inflater.inflate(R.layout.language_list_section, parent, false) as MaterialCardView
-        val rowContainer = card.findViewById<LinearLayout>(R.id.sectionRows)
-        val cardRadius = card.radius
+        val card = PtGroupCard(this)
+        val rowContainer: LinearLayout = card
+        val cardRadius = card.radiusPx
 
         val currentModel = config.getModel()
         val isCurrentInFetched = currentModel in fetched

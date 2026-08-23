@@ -1,6 +1,9 @@
 package com.playtranslate.ui
 
 import android.app.Activity
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.playtranslate.R
@@ -21,27 +24,66 @@ import java.util.Locale
 /**
  * Downloads the target-gloss pack (if the catalog has one and it isn't
  * installed yet) plus the ML Kit translation models needed for a given
- * source → target pair. Shows the shared progress popup anchored to the
- * hosting [activity]; on completion calls [installAndLoad]'s `onSuccess`
- * callback on the main thread.
+ * source → target pair, streaming progress through [InstallerUi]; on
+ * completion calls [installAndLoad]'s `onSuccess` callback on the main
+ * thread.
  *
- * Reused by both [LanguageSetupActivity] (when the user picks a target from
- * the list) and [com.playtranslate.MainActivity] (when the user hits
- * Continue on the welcome page with a computed-default target). The helper
+ * Host-agnostic: the Activity hosts ([LanguageSetupActivity]'s target list,
+ * [com.playtranslate.MainActivity]'s welcome Continue) use the
+ * (activity, scope) constructor — bit-for-bit the old behavior — while the
+ * floating workspace supplies its own in-window [InstallerUi]. The helper
  * intentionally does NOT write [com.playtranslate.Prefs.targetLang] — the
  * caller is responsible for committing prefs and deciding what to do next
- * (finish activity vs. advance onboarding).
+ * (finish activity vs. advance onboarding vs. dismiss the workspace).
  *
- * Cancellation is silent — if the user taps Cancel in the progress popup,
- * the job is cancelled, the popup dismisses, and no callback fires. Errors
- * surface via the standard lang-download-error AlertDialog; the caller's
- * onSuccess simply doesn't fire.
+ * Cancellation is silent — if the user cancels the progress popup, the job
+ * is cancelled, the popup dismisses, and no callback fires. Errors surface
+ * via [InstallerUi.error]; the caller's onSuccess simply doesn't fire.
  */
 class TargetPackInstaller(
-    private val activity: Activity,
+    private val context: Context,
     private val scope: CoroutineScope,
+    private val ui: InstallerUi,
 ) {
+    /** The host seam: progress/error surfaces for the install flow. */
+    interface InstallerUi {
+        /** Progress popup; [onDismiss] must cancel the in-flight install. */
+        fun progress(title: String, onDismiss: (DismissReason) -> Unit): OverlayProgress
+        fun error(reason: String)
+        fun toast(text: String)
+    }
 
+    /** Activity-host behavior, unchanged: OverlayProgress rides the
+     *  foreground activity's decor, errors are an AlertDialog, toasts are
+     *  plain toasts. */
+    constructor(activity: Activity, scope: CoroutineScope) : this(
+        activity,
+        scope,
+        object : InstallerUi {
+            override fun progress(
+                title: String,
+                onDismiss: (DismissReason) -> Unit,
+            ): OverlayProgress =
+                OverlayProgress.Builder(activity)
+                    .setTitle(title)
+                    .setOnDismiss(onDismiss)
+                    .show()
+
+            override fun error(reason: String) {
+                AlertDialog.Builder(activity)
+                    .setTitle(R.string.lang_download_error_title)
+                    .setMessage(reason)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
+            }
+
+            override fun toast(text: String) {
+                Toast.makeText(activity, text, Toast.LENGTH_LONG).show()
+            }
+        },
+    )
+
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var activeJob: Job? = null
 
     fun installAndLoad(
@@ -58,27 +100,27 @@ class TargetPackInstaller(
         val targetName = Locale.forLanguageTag(targetCode).getDisplayLanguage(Locale.getDefault())
             .replaceFirstChar { it.uppercase(Locale.getDefault()) }
         val needsTargetPack = targetCode != "en"
-            && LanguagePackCatalogLoader.entryForKey(activity, "target-$targetCode") != null
-            && !LanguagePackStore.isTargetInstalled(activity, targetCode)
+            && LanguagePackCatalogLoader.entryForKey(context, "target-$targetCode") != null
+            && !LanguagePackStore.isTargetInstalled(context, targetCode)
 
-        val dialog = buildPopupDialog(targetName)
+        val dialog = ui.progress(targetName) { activeJob?.cancel() }
 
         if (needsTargetPack) {
-            dialog.setMessage(activity.getString(R.string.install_downloading_definitions))
+            dialog.setMessage(context.getString(R.string.install_downloading_definitions))
             dialog.setProgress(0)
             activeJob = scope.launch {
                 val result = LanguagePackStore.installTarget(
-                    activity.applicationContext, targetCode
+                    context.applicationContext, targetCode
                 ) { progress ->
                     if (progress is DownloadProgress.Downloading && progress.totalBytes > 0) {
                         val pct = (progress.bytesReceived * 100L / progress.totalBytes).toInt()
-                        activity.runOnUiThread {
+                        mainHandler.post {
                             dialog.setProgress(pct)
                             dialog.setMessage(
-                                activity.getString(
+                                context.getString(
                                     R.string.install_downloading_definitions_with_bytes,
-                                    humanSize(activity, progress.bytesReceived),
-                                    humanSize(activity, progress.totalBytes)
+                                    humanSize(context, progress.bytesReceived),
+                                    humanSize(context, progress.totalBytes)
                                 )
                             )
                         }
@@ -86,21 +128,21 @@ class TargetPackInstaller(
                 }
                 when (result) {
                     is InstallResult.Success -> {
-                        activity.runOnUiThread {
-                            dialog.setMessage(activity.getString(R.string.lang_setup_preloading_message))
+                        mainHandler.post {
+                            dialog.setMessage(context.getString(R.string.lang_setup_preloading_message))
                             dialog.setIndeterminate(true)
                         }
                         runLoadThenFinish(dialog, sourceLangCode, targetCode, onSuccess)
                     }
                     is InstallResult.Failed -> {
                         dialog.dismiss()
-                        showErrorPopup(result.reason)
+                        ui.error(result.reason)
                     }
                     is InstallResult.Cancelled -> dialog.dismiss()
                 }
             }
         } else {
-            dialog.setMessage(activity.getString(R.string.install_downloading_translation_model))
+            dialog.setMessage(context.getString(R.string.install_downloading_translation_model))
             dialog.setIndeterminate(true)
             activeJob = scope.launch {
                 runLoadThenFinish(dialog, sourceLangCode, targetCode, onSuccess)
@@ -127,10 +169,10 @@ class TargetPackInstaller(
                 // for this pair and skip ML Kit on success. Falls back to ML Kit
                 // for unsupported pairs / download failures.
                 val warmed = BergamotWarmup.ensureForPair(
-                    activity, sourceLangCode, targetCode
+                    context, sourceLangCode, targetCode
                 ) { i, n, recv, total ->
-                    activity.runOnUiThread {
-                        dialog.showBergamotWarmupProgress(activity, i, n, recv, total)
+                    mainHandler.post {
+                        dialog.showBergamotWarmupProgress(context, i, n, recv, total)
                     }
                 }
                 if (warmed) true
@@ -138,32 +180,14 @@ class TargetPackInstaller(
             }
             dialog.dismiss()
             if (!mlKitReady) {
-                Toast.makeText(
-                    activity,
-                    R.string.lang_setup_offline_model_unavailable,
-                    Toast.LENGTH_LONG,
-                ).show()
+                ui.toast(context.getString(R.string.lang_setup_offline_model_unavailable))
             }
             onSuccess()
         } catch (_: kotlin.coroutines.cancellation.CancellationException) {
             // User tapped Cancel — dialog already dismissed, silent.
         } catch (e: Exception) {
             dialog.dismiss()
-            showErrorPopup(e.message ?: "Failed to download translation model")
+            ui.error(e.message ?: "Failed to download translation model")
         }
-    }
-
-    private fun buildPopupDialog(title: String): OverlayProgress =
-        OverlayProgress.Builder(activity)
-            .setTitle(title)
-            .setOnDismiss { activeJob?.cancel() }
-            .show()
-
-    private fun showErrorPopup(reason: String) {
-        AlertDialog.Builder(activity)
-            .setTitle(R.string.lang_download_error_title)
-            .setMessage(reason)
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
     }
 }

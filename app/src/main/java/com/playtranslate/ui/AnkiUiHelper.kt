@@ -137,34 +137,19 @@ fun ankiGroupHeader(parent: LinearLayout, title: String, suffix: String? = null)
     parent.addView(header)
 }
 
-/** Adds a flat MaterialCardView with the design-system stroke + radius to
- *  [parent] and returns its inner vertical LinearLayout. Mirrors the
- *  pattern Word Detail uses so headers, dividers, and rows compose
- *  consistently across sheets. */
+/** Adds a flat design-system group card ([PtGroupCard]) to [parent] and
+ *  returns it as the row container. Mirrors the pattern Word Detail uses so
+ *  headers, dividers, and rows compose consistently across sheets — and
+ *  plain-view, so overlay-hosted surfaces compose the same card. */
 fun ankiGroupCard(parent: LinearLayout): LinearLayout {
-    val ctx = parent.context
-    val density = ctx.resources.displayMetrics.density
-    val card = com.google.android.material.card.MaterialCardView(ctx).apply {
-        setCardBackgroundColor(ctx.themeColor(R.attr.ptCard))
-        radius = ctx.resources.getDimension(R.dimen.pt_radius)
-        cardElevation = 0f
-        strokeColor = ctx.themeColor(R.attr.ptDivider)
-        strokeWidth = (1 * density).toInt()
+    val card = PtGroupCard(parent.context).apply {
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         )
     }
-    val inner = LinearLayout(ctx).apply {
-        orientation = LinearLayout.VERTICAL
-        layoutParams = ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-    }
-    card.addView(inner)
     parent.addView(card)
-    return inner
+    return card
 }
 
 /** Adds a 1dp inset divider inside a group card. The default 16dp inset
