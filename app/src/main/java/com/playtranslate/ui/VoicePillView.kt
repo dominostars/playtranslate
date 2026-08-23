@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
@@ -27,8 +28,10 @@ import com.playtranslate.themeColor
  * can resolve a theme attr cleanly — same pattern as the chip's
  * `circleBg`.
  */
-class VoicePillView(host: Fragment, @Suppress("unused") lang: SourceLangId) {
-    private val ctx = host.requireContext()
+class VoicePillView(private val ctx: Context, @Suppress("unused") lang: SourceLangId) {
+    /** Fragment-host convenience. */
+    constructor(host: Fragment, lang: SourceLangId) : this(host.requireContext(), lang)
+
     private val density = ctx.resources.displayMetrics.density
     private fun dp(v: Int) = (v * density).toInt()
 

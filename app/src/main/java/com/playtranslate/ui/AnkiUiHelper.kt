@@ -12,12 +12,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
-import android.widget.Spinner
 import android.widget.TextView
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
@@ -37,52 +34,12 @@ import com.playtranslate.themeColor
 import com.playtranslate.tts.TtsEngine
 import com.playtranslate.tts.TtsVoiceLabels
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.core.view.isGone
-
-/**
- * Loads AnkiDroid decks into [spinner] and auto-saves the selection to [Prefs].
- * [onLoaded] is called with the ordered list of deck entries once loaded.
- *
- * No-ops if AnkiDroid is not installed or permission has not been granted.
- * Must be called from a Fragment with a live [viewLifecycleOwner].
- */
-fun Fragment.loadAnkiDecksInto(
-    spinner: Spinner,
-    onLoaded: (entries: List<Map.Entry<Long, String>>) -> Unit
-) {
-    viewLifecycleOwner.lifecycleScope.launch {
-        val prefs       = Prefs(requireContext())
-        val ankiManager = AnkiManager(requireContext())
-        if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) return@launch
-
-        val decks = withContext(Dispatchers.IO) { ankiManager.getDecks() }
-        if (decks.isEmpty()) return@launch
-
-        val entries = decks.entries.toList()
-        spinner.adapter = ArrayAdapter(
-            requireContext(),
-            android.R.layout.simple_spinner_dropdown_item,
-            entries.map { it.value }
-        )
-        val savedIdx = entries.indexOfFirst { it.key == prefs.ankiDeckId }.takeIf { it >= 0 } ?: 0
-        spinner.setSelection(savedIdx)
-
-        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>, v: View?, pos: Int, id: Long) {
-                val entry = entries.getOrNull(pos) ?: return
-                prefs.ankiDeckId   = entry.key
-                prefs.ankiDeckName = entry.value
-            }
-            override fun onNothingSelected(parent: AdapterView<*>) {}
-        }
-
-        onLoaded(entries)
-    }
-}
 
 /**
  * Selected-row background for grouped-card pickers (deck + card type).
@@ -186,8 +143,30 @@ fun Fragment.addAnkiSection(
     mode: CardMode,
     onDeckChanged: () -> Unit,
     onCardTypeChanged: () -> Unit,
+) = addAnkiSection(
+    requireContext(),
+    viewLifecycleOwner.lifecycleScope,
+    parent,
+    // The Fragment host presents the pickers as DialogFragments; a
+    // workspace host pushes its picker pages instead.
+    openDeckPicker = { onPicked -> showAnkiDeckPicker(onPicked) },
+    openCardTypePicker = { onPicked -> showAnkiCardTypePicker(mode, onPicked) },
+    onDeckChanged = onDeckChanged,
+    onCardTypeChanged = onCardTypeChanged,
+)
+
+/** Host-agnostic core of [Fragment.addAnkiSection]: the picker
+ *  presentations are injected, so the same section renders inside the
+ *  review sheets and the floating workspace's editor page. */
+fun addAnkiSection(
+    ctx: Context,
+    scope: CoroutineScope,
+    parent: LinearLayout,
+    openDeckPicker: (onPicked: (deckId: Long, deckName: String) -> Unit) -> Unit,
+    openCardTypePicker: (onPicked: (modelId: Long, modelName: String) -> Unit) -> Unit,
+    onDeckChanged: () -> Unit,
+    onCardTypeChanged: () -> Unit,
 ) {
-    val ctx = requireContext()
     val density = ctx.resources.displayMetrics.density
     val inflater = android.view.LayoutInflater.from(ctx)
     val prefs = Prefs(ctx)
@@ -213,7 +192,7 @@ fun Fragment.addAnkiSection(
     }
     applyDeckValue(prefs.ankiDeckName)
     deckRow.setOnClickListener {
-        showAnkiDeckPicker { _, name ->
+        openDeckPicker { _, name ->
             applyDeckValue(name)
             onDeckChanged()
         }
@@ -245,7 +224,7 @@ fun Fragment.addAnkiSection(
     }
     applyCardTypeValue(prefs.ankiModelName)
     cardTypeRow.setOnClickListener {
-        showAnkiCardTypePicker(mode) { _, name ->
+        openCardTypePicker { _, name ->
             applyCardTypeValue(name)
             onCardTypeChanged()
         }
@@ -254,7 +233,7 @@ fun Fragment.addAnkiSection(
 
     // -- Healing pass: rectify deck + model selections against
     //    AnkiDroid's live state. Runs once on view-created.
-    viewLifecycleOwner.lifecycleScope.launch {
+    scope.launch {
         val ankiManager = AnkiManager(ctx)
         if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) return@launch
         val (decks, models) = withContext(Dispatchers.IO) {
@@ -310,27 +289,34 @@ class AnkiAudioToggleHandle internal constructor(
      *  index → "Voice N" resolution requires [TtsEngine.voicesFor]
      *  which suspends on engine bind. */
     fun refreshPillLabel(
-        fragment: Fragment,
+        scope: CoroutineScope,
         lang: SourceLangId,
         voice: String?,
     ) {
         val p = pill ?: return
-        fragment.viewLifecycleOwner.lifecycleScope.launch {
+        scope.launch {
             p.setLabel(computeVoicePillLabel(p.view.context, lang, voice))
         }
     }
 
     /** Refresh the pill from an [AudioSelection] (multi-source Anki flow). */
     fun refreshPillLabel(
-        fragment: Fragment,
+        scope: CoroutineScope,
         lang: SourceLangId,
         selection: AudioSelection,
     ) {
         val p = pill ?: return
-        fragment.viewLifecycleOwner.lifecycleScope.launch {
+        scope.launch {
             p.setLabel(AudioSelections.label(p.view.context, selection, lang))
         }
     }
+
+    /** Fragment-host conveniences (view-lifecycle scope). */
+    fun refreshPillLabel(fragment: Fragment, lang: SourceLangId, voice: String?) =
+        refreshPillLabel(fragment.viewLifecycleOwner.lifecycleScope, lang, voice)
+
+    fun refreshPillLabel(fragment: Fragment, lang: SourceLangId, selection: AudioSelection) =
+        refreshPillLabel(fragment.viewLifecycleOwner.lifecycleScope, lang, selection)
 }
 
 /** Pill label for a cell: the [AudioSelection] label in multi-source mode,
@@ -388,8 +374,27 @@ fun Fragment.addAnkiAudioSection(
     onVoicePillTap: (() -> Unit)? = null,
     selection: (() -> AudioSelection)? = null,
     audioRequest: (() -> AudioRequest)? = null,
+): AnkiAudioToggleHandle = addAnkiAudioSection(
+    requireContext(), viewLifecycleOwner.lifecycleScope, parent, lang, rowLabel,
+    previewText, initialChecked, onCheckedChange, voiceOverride, onVoicePillTap,
+    selection, audioRequest,
+)
+
+/** Host-agnostic core of [Fragment.addAnkiAudioSection]. */
+fun addAnkiAudioSection(
+    ctx: Context,
+    scope: CoroutineScope,
+    parent: LinearLayout,
+    lang: SourceLangId,
+    rowLabel: String,
+    previewText: () -> String,
+    initialChecked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    voiceOverride: () -> String? = { null },
+    onVoicePillTap: (() -> Unit)? = null,
+    selection: (() -> AudioSelection)? = null,
+    audioRequest: (() -> AudioRequest)? = null,
 ): AnkiAudioToggleHandle {
-    val ctx = requireContext()
     val inflater = android.view.LayoutInflater.from(ctx)
 
     ankiGroupHeader(parent, ctx.getString(R.string.anki_group_audio))
@@ -411,17 +416,17 @@ fun Fragment.addAnkiAudioSection(
     }
     val switch = audioRow.findViewById<MaterialSwitch>(R.id.switchRowToggle)
     val chip = AnkiAudioPreviewChip(
-        this, lang, previewText, voiceOverride,
+        ctx, scope, lang, previewText, voiceOverride,
         selectionProvider = selection, requestProvider = audioRequest,
     )
     audioRow.addView(chip.view, 0)
     val pill: VoicePillView? = if (onVoicePillTap != null) {
-        val p = VoicePillView(this, lang)
+        val p = VoicePillView(ctx, lang)
         p.setOnTap(onVoicePillTap)
         // Insert immediately after the chip — index 1, before the title TextView.
         audioRow.addView(p.view, 1)
         // Initial label fills in async (engine bind suspends).
-        viewLifecycleOwner.lifecycleScope.launch {
+        scope.launch {
             p.setLabel(audioPillLabel(ctx, lang, selection, voiceOverride))
         }
         p
@@ -482,8 +487,29 @@ fun Fragment.addCompactAudioToggleRow(
     /** See [AnkiAudioPreviewChip]'s playOverride — host-played preview
      *  (the sentence cell's inline game-audio playback). */
     playOverride: (suspend (onStart: (() -> Unit)?) -> PlayOutcome?)? = null,
+): AnkiAudioToggleHandle = addCompactAudioToggleRow(
+    requireContext(), viewLifecycleOwner.lifecycleScope, parent, lang, label,
+    previewText, initialChecked, onCheckedChange, voiceOverride, onVoicePillTap,
+    prepare, selection, audioRequest, playOverride,
+)
+
+/** Host-agnostic core of [Fragment.addCompactAudioToggleRow]. */
+fun addCompactAudioToggleRow(
+    ctx: Context,
+    scope: CoroutineScope,
+    parent: LinearLayout,
+    lang: SourceLangId,
+    label: String,
+    previewText: () -> String,
+    initialChecked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    voiceOverride: () -> String? = { null },
+    onVoicePillTap: (() -> Unit)? = null,
+    prepare: suspend (String) -> String = { it },
+    selection: (() -> AudioSelection)? = null,
+    audioRequest: (() -> AudioRequest)? = null,
+    playOverride: (suspend (onStart: (() -> Unit)?) -> PlayOutcome?)? = null,
 ): AnkiAudioToggleHandle {
-    val ctx = requireContext()
     val inflater = android.view.LayoutInflater.from(ctx)
     val density = ctx.resources.displayMetrics.density
 
@@ -506,16 +532,16 @@ fun Fragment.addCompactAudioToggleRow(
     }
     val switch = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
     val chip = AnkiAudioPreviewChip(
-        this, lang, previewText, voiceOverride, prepare,
+        ctx, scope, lang, previewText, voiceOverride, prepare,
         selectionProvider = selection, requestProvider = audioRequest,
         playOverride = playOverride,
     )
     row.addView(chip.view, 0)
     val pill: VoicePillView? = if (onVoicePillTap != null) {
-        val p = VoicePillView(this, lang)
+        val p = VoicePillView(ctx, lang)
         p.setOnTap(onVoicePillTap)
         row.addView(p.view, 1)
-        viewLifecycleOwner.lifecycleScope.launch {
+        scope.launch {
             p.setLabel(audioPillLabel(ctx, lang, selection, voiceOverride))
         }
         p
@@ -955,20 +981,36 @@ fun DialogFragment.applyAnkiSendResult(
     result: AnkiSendResult,
     onSuccess: () -> Unit,
     onRestore: () -> Unit,
+) = applyAnkiSendResult(
+    requireContext(), result,
+    presentAlert = { it.showInDialog(requireDialog()) },
+    onSuccess = onSuccess,
+    onRestore = onRestore,
+)
+
+/** Host-agnostic core of [DialogFragment.applyAnkiSendResult]:
+ *  [presentAlert] is the failure alert's terminal — the sheet's own dialog
+ *  window for fragment hosts, the workspace's modal layer otherwise. */
+fun applyAnkiSendResult(
+    ctx: Context,
+    result: AnkiSendResult,
+    presentAlert: (OverlayAlert.Builder) -> Unit,
+    onSuccess: () -> Unit,
+    onRestore: () -> Unit,
 ) {
     when (result) {
         is AnkiSendResult.Success -> onSuccess()
         is AnkiSendResult.Failed -> {
-            val ctx = requireContext()
-            OverlayAlert.Builder(ctx)
-                .setTitle(getString(R.string.anki_send_failed_title))
-                .setMessage(result.message ?: getString(result.messageRes))
-                .addButton(
-                    getString(android.R.string.ok),
-                    ctx.themeColor(R.attr.ptAccent),
-                    ctx.themeColor(R.attr.ptAccentOn),
-                ) {}
-                .showInDialog(requireDialog())
+            presentAlert(
+                OverlayAlert.Builder(ctx)
+                    .setTitle(ctx.getString(R.string.anki_send_failed_title))
+                    .setMessage(result.message ?: ctx.getString(result.messageRes))
+                    .addButton(
+                        ctx.getString(android.R.string.ok),
+                        ctx.themeColor(R.attr.ptAccent),
+                        ctx.themeColor(R.attr.ptAccentOn),
+                    ) {}
+            )
             onRestore()
         }
         is AnkiSendResult.NeedsMapping -> onRestore()
