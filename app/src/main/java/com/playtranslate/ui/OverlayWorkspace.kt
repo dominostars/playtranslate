@@ -84,7 +84,14 @@ class OverlayWorkspace(
     private val card = LinearLayout(ctx)
     private val backBtn = FrameLayout(ctx)
     private val titleView = TextView(ctx)
+    private val headerFrame = FrameLayout(ctx)
     private val pageContainer = FrameLayout(ctx)
+
+    /** The top page's custom header content (e.g. the Anki editor's
+     *  Sentence/Word toggle), swapped by [updateHeader]. While set, the
+     *  title is hidden — the header IS the page's navigation bar, never a
+     *  second one stacked above the content's own. */
+    private var currentHeaderView: View? = null
     private val closeBtn = FrameLayout(ctx)
     val modalLayer = FrameLayout(ctx)
     private val focusRing = FocusRingView(ctx)
@@ -118,7 +125,7 @@ class OverlayWorkspace(
         // Header: back chevron (absolute LEFT — WindowManager roots are
         // absolute; see FloatingIconMenu's RTL rule) + centered bold title,
         // hairline below — the house toolbar pattern.
-        val header = FrameLayout(ctx)
+        val header = headerFrame
         val chevron = ImageView(ctx).apply {
             setImageResource(R.drawable.ic_arrow_back)
             imageTintList = ColorStateList.valueOf(ctx.themeColor(R.attr.ptText))
@@ -249,9 +256,20 @@ class OverlayWorkspace(
 
     // ── Back stack ───────────────────────────────────────────────────────
 
-    private class PageEntry(val page: WorkspacePage, val view: View)
+    private class PageEntry(val page: WorkspacePage) {
+        lateinit var view: View
+
+        /** The page's custom header content ([WorkspaceHost.setHeaderView]);
+         *  null = the plain title from [WorkspacePage.title]. */
+        var headerView: View? = null
+    }
 
     private val stack = ArrayList<PageEntry>()
+
+    /** The entry whose [WorkspacePage.onCreateView] is currently running —
+     *  a page's [WorkspaceHost.setHeaderView] during creation must land on
+     *  the entry being pushed, which is not on [stack] yet. */
+    private var pushTarget: PageEntry? = null
 
     private fun push(page: WorkspacePage) {
         if (dismissed) return
@@ -263,9 +281,16 @@ class OverlayWorkspace(
         if (stack.size >= MAX_STACK_DEPTH) {
             destroyEntry(stack.removeAt(0))
         }
-        val view = page.onCreateView(ctx, pageContainer, hostImpl)
+        val entry = PageEntry(page)
+        pushTarget = entry
+        val view = try {
+            page.onCreateView(ctx, pageContainer, hostImpl)
+        } finally {
+            pushTarget = null
+        }
+        entry.view = view
         val prev = stack.lastOrNull()
-        stack.add(PageEntry(page, view))
+        stack.add(entry)
         pageContainer.addView(
             view,
             FrameLayout.LayoutParams(
@@ -331,6 +356,18 @@ class OverlayWorkspace(
 
     private fun updateHeader() {
         val top = stack.lastOrNull() ?: return
+        // Swap the custom header slot for the top page's (the Anki editor's
+        // mode toggle); the plain title stands in when a page has none.
+        val custom = top.headerView
+        if (currentHeaderView !== custom) {
+            currentHeaderView?.let { headerFrame.removeView(it) }
+            custom?.let {
+                (it.parent as? ViewGroup)?.removeView(it)
+                headerFrame.addView(it)
+            }
+            currentHeaderView = custom
+        }
+        titleView.visibility = if (custom != null) View.GONE else View.VISIBLE
         titleView.text = top.page.title(ctx)
         backBtn.visibility = if (stack.size > 1) View.VISIBLE else View.GONE
     }
@@ -381,6 +418,14 @@ class OverlayWorkspace(
 
         override fun setTitle(title: CharSequence) {
             titleView.text = title
+        }
+
+        override fun setHeaderView(view: View?) {
+            val entry = pushTarget ?: stack.lastOrNull() ?: return
+            entry.headerView = view
+            // During onCreateView the entry isn't on the stack yet — the
+            // push's own updateHeader applies it once it is.
+            if (pushTarget == null) updateHeader()
         }
 
         override fun setImeMode(wantsIme: Boolean) = this@OverlayWorkspace.setImeMode(wantsIme)

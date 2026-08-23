@@ -8,6 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.core.view.isGone
+import androidx.core.widget.NestedScrollView
 import com.playtranslate.AnkiManager
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.R
@@ -52,7 +53,13 @@ class WorkspaceWordDetailPage(
     private var pageView: View? = null
     private var hostRef: WorkspaceHost? = null
 
-    override fun title(ctx: Context): CharSequence = word
+    /** The workspace header must not duplicate the in-content headword —
+     *  the in-app dialog's toolbar is likewise empty until the headword
+     *  shrinks into it on scroll. The header title appears only once the
+     *  headword has scrolled out of view. */
+    private var titleRevealed = false
+
+    override fun title(ctx: Context): CharSequence = if (titleRevealed) word else ""
 
     override fun onCreateView(ctx: Context, parent: ViewGroup, host: WorkspaceHost): View {
         hostRef = host
@@ -76,6 +83,22 @@ class WorkspaceWordDetailPage(
                 screenshotPath = screenshotPath,
                 embedded = true,
             ),
+        )
+        // Collapse-into-the-header: the word appears in the workspace header
+        // only once the in-content headword (child 0 of detailContent in
+        // embedded mode) scrolls off the top — mirroring the in-app dialog,
+        // whose toolbar is empty until the headword shrinks into it. Embedded
+        // mode sets no scroll listener of its own, so this slot is free.
+        val scroll = view.findViewById<NestedScrollView>(R.id.detailScrollView)
+        val headword = view.findViewById<View>(R.id.tvDetailHeadword)
+        scroll.setOnScrollChangeListener(
+            NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
+                val revealed = headword.bottom > 0 && scrollY > headword.bottom
+                if (revealed != titleRevealed) {
+                    titleRevealed = revealed
+                    host.setTitle(if (revealed) word else "")
+                }
+            },
         )
         return view
     }
