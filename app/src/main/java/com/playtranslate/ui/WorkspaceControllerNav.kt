@@ -29,6 +29,12 @@ interface WorkspaceNavHost {
     fun scrollBy(dy: Int)
     fun ensureVisible(itemOnScreen: Rect)
 
+    /** Whether [v] lives inside the page's scroll viewport. Fixed chrome
+     *  (the workspace header's custom content, sticky footers) is not —
+     *  its ring must not be clipped to the viewport, nor the page scrolled
+     *  to chase it. */
+    fun viewInScrollViewport(v: View): Boolean
+
     /** Paint (or hide, null) the focus ring. Screen-space; the host converts. */
     fun setRing(itemOnScreen: Rect?, clipOnScreen: Rect?)
 }
@@ -173,7 +179,7 @@ class WorkspaceControllerNav(
     private fun setCursor(view: View, rectOnScreen: Rect) {
         cursorView = view
         lastItemRect.set(rectOnScreen)
-        host.ensureVisible(rectOnScreen)
+        if (host.viewInScrollViewport(view)) host.ensureVisible(rectOnScreen)
         syncRing()
     }
 
@@ -209,7 +215,9 @@ class WorkspaceControllerNav(
             host.setRing(null, null)
             return
         }
-        val clip = if (host.scrollViewportOnScreen(clipRect)) clipRect else null
+        val clip = if (host.viewInScrollViewport(cur) &&
+            host.scrollViewportOnScreen(clipRect)
+        ) clipRect else null
         lastItemRect.set(tmpRect)
         host.setRing(tmpRect, clip)
     }

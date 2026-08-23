@@ -204,6 +204,9 @@ class AnkiEditorPage(private val args: Bundle) : WorkspacePage {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER,
             )
+            // The default surface-tinted track vanishes on the header's
+            // ptSurface ground — recess it to the window ground instead.
+            restyleAnkiModeToggleTrack(toggle, ctx.themeColor(R.attr.ptBg))
             host.setHeaderView(toggle)
         }
         toolbarRow.isGone = true
