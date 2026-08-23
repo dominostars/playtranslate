@@ -1731,7 +1731,7 @@
     <string name="tts_voice_picker_title">Voz</string>
 
     <string name="tts_voices_section_header">VOZES EM <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
-    <string name="tts_speed_section_header">Velocidade da conversão de texto em voz</string>
+    <string name="tts_speed_title">Velocidade</string>
 
     <string name="tts_no_engine_dialog_title">Sem conversão de texto em voz</string>
 

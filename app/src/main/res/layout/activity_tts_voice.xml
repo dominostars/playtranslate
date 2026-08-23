@@ -34,7 +34,10 @@
             android:paddingBottom="20dp">
 
             <include layout="@layout/section_tts_speed"
-                android:id="@+id/speedSection" />
+                android:id="@+id/speedSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" />
 
             <include layout="@layout/settings_group_header"
                 android:id="@+id/headerVoices" />

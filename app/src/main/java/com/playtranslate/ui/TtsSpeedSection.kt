@@ -1,7 +1,6 @@
 package com.playtranslate.ui
 
 import android.view.View
-import android.widget.TextView
 import com.google.android.material.slider.Slider
 import com.playtranslate.Prefs
 import com.playtranslate.R
@@ -10,9 +9,10 @@ import kotlin.math.log2
 import kotlin.math.pow
 
 /**
- * Wires a `section_tts_speed` layout: the global TTS speed slider shown at
- * the top of the voice picker (Settings) and above the Text-to-speech
- * section of the Anki audio picker.
+ * Wires a `section_tts_speed` layout: the global TTS speed cell — a card
+ * with its own in-cell "Speed" title — shown at the top of the voice picker
+ * (Settings) and under the Text-to-speech section header of the Anki audio
+ * picker, separate from the voice list below it.
  *
  * The track runs half speed to double speed on a log scale ("-2x" at the
  * start edge, "2x" at the end) with magnetic detents at 1x and 1.5x
@@ -38,10 +38,6 @@ object TtsSpeedSection {
     private const val SNAP_RANGE = 0.05f
 
     fun bind(root: View, prefs: Prefs, onPreview: () -> Unit) {
-        root.findViewById<View>(R.id.headerSpeed)
-            .findViewById<TextView>(R.id.tvGroupTitle)
-            .setText(R.string.tts_speed_section_header)
-
         val slider = root.findViewById<Slider>(R.id.speedSlider)
         slider.value = rateToPosition(prefs.ttsSpeechRate ?: 1f)
         slider.addOnChangeListener { s, value, fromUser ->

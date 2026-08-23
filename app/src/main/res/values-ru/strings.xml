@@ -1825,7 +1825,7 @@
     <string name="tts_voice_picker_title">Голос</string>
 
     <string name="tts_voices_section_header">ГОЛОСА: <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
-    <string name="tts_speed_section_header">Скорость синтеза речи</string>
+    <string name="tts_speed_title">Скорость</string>
 
     <string name="tts_no_engine_dialog_title">Нет синтеза речи</string>
 

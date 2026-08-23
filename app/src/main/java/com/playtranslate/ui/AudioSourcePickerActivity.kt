@@ -144,18 +144,18 @@ class AudioSourcePickerActivity : AppCompatActivity() {
         // sentence request omits Commons (word-level only) rather than showing
         // it as a permanently-empty "No results" row and querying it for nothing.
         AudioSourceRegistry.all().filter { it.serves(req.kind) }.forEach { source ->
-            // The global TTS speed rides directly above the Text-to-speech
-            // section — the same section Settings' voice picker shows — so
-            // the rate the saved card audio will be synthesized at is
-            // adjustable from the Anki flow too.
+            val header = inflater.inflate(R.layout.settings_group_header, sections, false)
+            header.findViewById<TextView>(R.id.tvGroupTitle).text = source.label(this).uppercase()
+            sections.addView(header)
+            // The global TTS speed lives inside the Text-to-speech section,
+            // as its own cell above the voice list — the same cell Settings'
+            // voice picker shows — so the rate the saved card audio will be
+            // synthesized at is adjustable from the Anki flow too.
             if (source.id == TtsAudioSource.ID) {
                 val speed = inflater.inflate(R.layout.section_tts_speed, sections, false)
                 TtsSpeedSection.bind(speed, Prefs(this)) { previewTtsSpeed() }
                 sections.addView(speed)
             }
-            val header = inflater.inflate(R.layout.settings_group_header, sections, false)
-            header.findViewById<TextView>(R.id.tvGroupTitle).text = source.label(this).uppercase()
-            sections.addView(header)
 
             val rows = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
