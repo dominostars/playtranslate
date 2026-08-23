@@ -1059,9 +1059,12 @@ class CaptureResultOverlay(
 
     /** Re-show entry point for the controller's stash-and-rebind path: set up the
      *  window exactly like [show], then bind a previously-captured result directly
-     *  (no capture session) — used when the user backs out of the detail screen. */
-    fun showWithResult(screenW: Int, screenH: Int, result: TranslationResult) {
-        show(screenW, screenH)
+     *  (no capture session) — used when the user backs out of the detail screen.
+     *  [backdrop] re-supplies the clean capture for the frosted sheet fill — a
+     *  re-show is a NEW overlay (the stash keeps no bitmap), so without it the
+     *  sheet returns frost-less from every detail / workspace round trip. */
+    fun showWithResult(screenW: Int, screenH: Int, result: TranslationResult, backdrop: Bitmap? = null) {
+        show(screenW, screenH, backdrop)
         bindResult(result)
     }
 
