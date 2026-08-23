@@ -24,6 +24,13 @@ interface WorkspaceNavHost {
     /** The topmost page's currently-reachable actions. */
     fun navActions(): List<NavAction>
 
+    /** Actions in the workspace's own header (the top page's custom header
+     *  content, e.g. the Anki editor's mode toggle). Kept OUT of the page
+     *  candidate set: the header is chrome, entered only by pressing UP with
+     *  no page candidate above the cursor — never by ordinary geometric
+     *  moves from mid-page, and never as a fresh cursor's landing spot. */
+    fun headerNavActions(): List<NavAction>
+
     /** The topmost page's scroll viewport, or false when it has none. */
     fun scrollViewportOnScreen(out: Rect): Boolean
     fun scrollBy(dy: Int)
@@ -120,7 +127,8 @@ class WorkspaceControllerNav(
 
     private fun onActivateDown(ev: KeyEvent) {
         val cur = cursorView ?: run { selectFirst(); return }
-        val action = host.navActions().firstOrNull { it.view === cur }
+        val action = (host.navActions() + host.headerNavActions())
+            .firstOrNull { it.view === cur }
         if (action == null || !cur.isShown) {
             selectFirst()
             return
@@ -167,14 +175,16 @@ class WorkspaceControllerNav(
     }
 
     /** Collected lazily per keypress — no registry to go stale. */
-    private fun candidates(): List<Pair<View, Rect>> {
+    private fun candidatesOf(actions: List<NavAction>): List<Pair<View, Rect>> {
         val out = ArrayList<Pair<View, Rect>>()
-        for (a in host.navActions()) {
+        for (a in actions) {
             val r = Rect()
             if (viewRectOnScreen(a.view, r)) out.add(a.view to r)
         }
         return out
     }
+
+    private fun candidates(): List<Pair<View, Rect>> = candidatesOf(host.navActions())
 
     private fun setCursor(view: View, rectOnScreen: Rect) {
         cursorView = view
@@ -184,24 +194,87 @@ class WorkspaceControllerNav(
     }
 
     private fun selectFirst() {
-        val cands = candidates()
+        // Page content first: a fresh (or recovered) cursor starts on the
+        // page — preferring what is VISIBLE, so it never lands on a
+        // scrolled-out row and yanks the scroll position. The header is
+        // only the fallback of an actionless page.
+        var cands = candidates()
+        val viewport = Rect()
+        if (host.scrollViewportOnScreen(viewport)) {
+            val visible = cands.filter {
+                !host.viewInScrollViewport(it.first) || Rect.intersects(it.second, viewport)
+            }
+            if (visible.isNotEmpty()) cands = visible
+        }
+        if (cands.isEmpty()) cands = candidatesOf(host.headerNavActions())
         val idx = SheetNavGeometry.firstItem(cands.map { it.second.toNavRect() }) ?: return
         setCursor(cands[idx].first, cands[idx].second)
     }
 
     private fun moveCursor(dir: SheetNavGeometry.Dir) {
         val cur = cursorView ?: return
-        val cands = candidates()
-        val curIdx = cands.indexOfFirst { it.first === cur }
-        if (curIdx < 0) {
+        val header = candidatesOf(host.headerNavActions())
+        val page = candidates()
+        // Screen-space rects interleave across the scroll boundary: content
+        // scrolled out below the viewport sits AT and BEYOND the fixed Save
+        // footer's rect (and content scrolled above, over the header's). Raw
+        // geometry over the flat list therefore bounces the cursor between
+        // the footer and hidden rows. Partition instead: items inside the
+        // scroll viewport's subtree (where a move to a scrolled-out row
+        // reveals it — the walk-to-reveal design) vs fixed page chrome.
+        val scrollContent = page.filter { host.viewInScrollViewport(it.first) }
+        val fixed = page.filter { !host.viewInScrollViewport(it.first) }
+        // What fixed chrome and the header may move INTO: only content
+        // that is actually visible right now — never a scrolled-out
+        // phantom, whose rect lies past the chrome itself.
+        val viewport = Rect()
+        val visibleContent = if (host.scrollViewportOnScreen(viewport)) {
+            scrollContent.filter { Rect.intersects(it.second, viewport) }
+        } else {
+            scrollContent
+        }
+
+        fun moveAmong(cands: List<Pair<View, Rect>>, from: SheetNavGeometry.NavRect): Boolean {
+            val t = SheetNavGeometry.nextInDirection(
+                from, cands.map { it.second.toNavRect() }, dir,
+            ) ?: return false
+            setCursor(cands[t].first, cands[t].second)
+            return true
+        }
+
+        val headerFrom = header.firstOrNull { it.first === cur }
+        if (headerFrom != null) {
+            // In the header: within it first (left/right between the
+            // toggle's segments), then outward back into the page.
+            val from = headerFrom.second.toNavRect()
+            if (moveAmong(header, from)) return
+            if (dir == SheetNavGeometry.Dir.UP) return   // nothing above the header
+            moveAmong(visibleContent + fixed, from)
+            return
+        }
+
+        val pageFrom = page.firstOrNull { it.first === cur }
+        if (pageFrom == null) {
             // The cursor's item vanished (layout change) — restart from the top.
             selectFirst()
             return
         }
-        val from = cands[curIdx].second.toNavRect()
-        val target = SheetNavGeometry.nextInDirection(from, cands.map { it.second.toNavRect() }, dir)
-            ?: return   // nothing that way: the cursor stays (no wrap-around)
-        setCursor(cands[target].first, cands[target].second)
+        val from = pageFrom.second.toNavRect()
+        if (host.viewInScrollViewport(cur)) {
+            // Inside the scroll content: stay among the content until it is
+            // exhausted in this direction — the fixed footer must not steal
+            // a DOWN while more rows lie below the fold.
+            if (moveAmong(scrollContent, from)) return
+        } else {
+            // On fixed chrome: fixed siblings and visible content only —
+            // a hidden row past the footer must not pull the cursor "down"
+            // back into the view.
+            if (moveAmong(visibleContent + fixed, from)) return
+        }
+        if (host.viewInScrollViewport(cur) && moveAmong(fixed, from)) return
+        // Terminal: only walking UP off the top may enter the header;
+        // every other direction stays put (no wrap-around).
+        if (dir == SheetNavGeometry.Dir.UP) moveAmong(header, from)
     }
 
     /** Per-frame from the workspace's pre-draw hook: re-read the item's live
@@ -230,10 +303,13 @@ class WorkspaceControllerNav(
     }
 
     /** After a layout-changing activation: if the cursor's item left the
-     *  screen, retarget to whatever now sits nearest where the ring last was. */
+     *  screen, retarget to whatever now sits nearest where the ring last was
+     *  — among the PAGE's items (the header is never an automatic landing). */
     fun revalidateCursor() {
         val cur = cursorView ?: return
-        if (cur.isShown && host.navActions().any { it.view === cur }) return
+        if (cur.isShown &&
+            (host.navActions() + host.headerNavActions()).any { it.view === cur }
+        ) return
         val cands = candidates()
         if (cands.isEmpty()) {
             clearCursor()

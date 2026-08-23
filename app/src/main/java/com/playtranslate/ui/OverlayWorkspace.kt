@@ -472,14 +472,11 @@ class OverlayWorkspace(
 
         override fun onControllerBack() = onBackPressed()
 
-        override fun navActions(): List<NavAction> {
-            // The page's custom header content (the Anki editor's mode
-            // toggle) lives in the workspace's own header, outside the page
-            // view — its targets must still be controller-reachable.
-            val header = collectWorkspaceNavActions(currentHeaderView)
-            val page = stack.lastOrNull()?.page?.navActions() ?: emptyList()
-            return header + page
-        }
+        override fun navActions(): List<NavAction> =
+            stack.lastOrNull()?.page?.navActions() ?: emptyList()
+
+        override fun headerNavActions(): List<NavAction> =
+            collectWorkspaceNavActions(currentHeaderView)
 
         override fun viewInScrollViewport(v: View): Boolean {
             val sv = stack.lastOrNull()?.page?.scrollView() ?: return false
