@@ -37,7 +37,7 @@ import kotlinx.coroutines.cancel
  * [R.dimen.pt_workspace_inset] from every screen edge, hosting a back stack
  * of [WorkspacePage]s — so flows that previously escaped to full-screen
  * Activities (language picker, word detail, the Anki editor) run over the
- * game without pausing it. Dismissed by the corner X, a tap outside the
+ * game without pausing it. Dismissed by the header X (root page), a tap outside the
  * card, or B/back at depth 1.
  *
  * One full-screen WINDOW whose card and modals are in-window children —
@@ -82,7 +82,12 @@ class OverlayWorkspace(
     private val scrim = View(ctx)
     private val cardWrap = FrameLayout(ctx)
     private val card = LinearLayout(ctx)
+
+    /** The header's left button — dual-role: an X on the root page
+     *  (dismisses the workspace), the back chevron when deeper (pops).
+     *  [updateHeader] swaps [leftIcon] per depth. */
     private val backBtn = FrameLayout(ctx)
+    private val leftIcon = ImageView(ctx)
     private val titleView = TextView(ctx)
     private val headerFrame = FrameLayout(ctx)
     private val pageContainer = FrameLayout(ctx)
@@ -92,7 +97,6 @@ class OverlayWorkspace(
      *  title is hidden — the header IS the page's navigation bar, never a
      *  second one stacked above the content's own. */
     private var currentHeaderView: View? = null
-    private val closeBtn = FrameLayout(ctx)
     val modalLayer = FrameLayout(ctx)
     private val focusRing = FocusRingView(ctx)
 
@@ -122,27 +126,30 @@ class OverlayWorkspace(
         card.clipToOutline = true
         card.elevation = CARD_ELEVATION_DP * density
 
-        // Header: back chevron (absolute LEFT — WindowManager roots are
+        // Header: the X/back button (absolute LEFT — WindowManager roots are
         // absolute; see FloatingIconMenu's RTL rule) + centered bold title,
         // hairline below — the house toolbar pattern.
         val header = headerFrame
-        // The 48dp chevron/X touch frames overhang the 44dp header strip.
+        // The 48dp button touch frame overhangs the 44dp header strip.
         header.clipChildren = false
-        val chevron = ImageView(ctx).apply {
-            setImageResource(R.drawable.ic_arrow_back)
+        leftIcon.apply {
+            setImageResource(R.drawable.ic_close)
             imageTintList = ColorStateList.valueOf(ctx.themeColor(R.attr.ptText))
             scaleType = ImageView.ScaleType.FIT_CENTER
             val inset = dp(12f)
             setPadding(inset, inset, inset, inset)
         }
         backBtn.addView(
-            chevron,
+            leftIcon,
             FrameLayout.LayoutParams(dp(48f), dp(48f), Gravity.CENTER),
         )
-        backBtn.contentDescription = ctx.getString(R.string.cd_back)
+        backBtn.contentDescription = ctx.getString(R.string.cd_close)
         backBtn.foreground = borderlessRipple()
-        backBtn.setOnClickListener { onBackPressed() }
-        backBtn.visibility = View.GONE
+        backBtn.setOnClickListener {
+            // Root page: the X — a hard close, like the retired corner X.
+            // Deeper: back, through the modal → page → pop ladder.
+            if (stack.size <= 1) animateOutAndDismiss() else onBackPressed()
+        }
         header.addView(
             backBtn,
             FrameLayout.LayoutParams(dp(48f), dp(48f), Gravity.LEFT or Gravity.CENTER_VERTICAL)
@@ -192,43 +199,6 @@ class OverlayWorkspace(
                 topMargin = insetPx
                 rightMargin = insetPx
                 bottomMargin = insetPx
-            },
-        )
-
-        // Corner X: the FloatingIconMenu region-chrome pattern — a 32dp
-        // circle riding a transparent 48dp tap frame, centred on the card's
-        // top-right corner. A direct child of the ROOT (drawn after cardWrap,
-        // so above the elevated card): as a cardWrap child its outer half
-        // would sit outside cardWrap's bounds where hit testing never offers
-        // it the DOWN.
-        val circle = ImageView(ctx).apply {
-            setImageResource(R.drawable.ic_close)
-            imageTintList = ColorStateList.valueOf(ctx.themeColor(R.attr.ptText))
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            val glyphInset = ((CLOSE_BTN_DP * density - dp(16f)) / 2).toInt()
-            setPadding(glyphInset, glyphInset, glyphInset, glyphInset)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(ctx.themeColor(R.attr.ptCard))
-                setStroke(dp(1f), ctx.themeColor(R.attr.ptOutline))
-            }
-            elevation = 3 * density
-        }
-        closeBtn.addView(
-            circle,
-            FrameLayout.LayoutParams(dp(CLOSE_BTN_DP), dp(CLOSE_BTN_DP), Gravity.CENTER),
-        )
-        closeBtn.contentDescription = ctx.getString(R.string.cd_close)
-        closeBtn.foreground = borderlessRipple()
-        closeBtn.setOnClickListener { animateOutAndDismiss() }
-        val touchPx = ctx.resources.getDimensionPixelSize(R.dimen.pt_touch_target)
-        root.addView(
-            closeBtn,
-            FrameLayout.LayoutParams(touchPx, touchPx, Gravity.TOP or Gravity.RIGHT).apply {
-                // 8dp inward from riding the corner exactly: the circle sits
-                // slightly inside the card's top-right corner.
-                topMargin = insetPx - touchPx / 2 + dp(8f)
-                rightMargin = insetPx - touchPx / 2 + dp(8f)
             },
         )
 
@@ -373,7 +343,12 @@ class OverlayWorkspace(
         }
         titleView.visibility = if (custom != null) View.GONE else View.VISIBLE
         titleView.text = top.page.title(ctx)
-        backBtn.visibility = if (stack.size > 1) View.VISIBLE else View.GONE
+        // Left button dual-role: X on the root page (dismiss), chevron when
+        // deeper (pop).
+        val atRoot = stack.size <= 1
+        leftIcon.setImageResource(if (atRoot) R.drawable.ic_close else R.drawable.ic_arrow_back)
+        backBtn.contentDescription =
+            ctx.getString(if (atRoot) R.string.cd_close else R.string.cd_back)
     }
 
     /** Modal → page.onBack → pop (dismiss at depth 1) — the workspace mirror
@@ -584,8 +559,8 @@ class OverlayWorkspace(
         }
         // Nav-bar buffer + IME lift, both as extra bottom margin on the card:
         // FLAG_LAYOUT_NO_LIMITS makes the window ignore ADJUST_RESIZE, so the
-        // card shrinks from the bottom instead — keeping the top edge and the
-        // X pinned (the only visible exit while the IME is up).
+        // card shrinks from the bottom instead — keeping the top edge (and
+        // the header's X, the only visible exit while the IME is up) pinned.
         root.setOnApplyWindowInsetsListener { _, insets ->
             val navInset: Int
             val imeLift: Int
@@ -615,18 +590,16 @@ class OverlayWorkspace(
         // Enter: scrim fade + card scale-up, the popup house pattern.
         scrim.alpha = 0f
         scrim.animate().alpha(1f).setDuration(ENTER_MS).start()
-        for (v in listOf<View>(cardWrap, closeBtn)) {
-            v.alpha = 0f
-            v.scaleX = 0.96f
-            v.scaleY = 0.96f
-            v.animate()
-                .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .setDuration(ENTER_MS)
-                .setInterpolator(DecelerateInterpolator())
-                .start()
-        }
+        cardWrap.alpha = 0f
+        cardWrap.scaleX = 0.96f
+        cardWrap.scaleY = 0.96f
+        cardWrap.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(ENTER_MS)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
     }
 
     fun animateOutAndDismiss() {
@@ -634,7 +607,6 @@ class OverlayWorkspace(
         animatingOut = true
         nav?.clearCursor()
         scrim.animate().alpha(0f).setDuration(EXIT_MS).start()
-        closeBtn.animate().alpha(0f).setDuration(EXIT_MS).start()
         cardWrap.animate()
             .alpha(0f)
             .scaleX(0.96f)
@@ -718,7 +690,7 @@ class OverlayWorkspace(
             if (hasModal) return super.dispatchTouchEvent(ev)
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN ->
-                    if (!hits(cardWrap, ev) && !hits(closeBtn, ev)) {
+                    if (!hits(cardWrap, ev)) {
                         animateOutAndDismiss()
                         return true   // consumed — never leaks to the game
                     }
@@ -736,7 +708,6 @@ class OverlayWorkspace(
          *  radius (21dp at the standard 14dp token). */
         const val CARD_RADIUS_MULT = 1.5f
         const val CARD_ELEVATION_DP = 12f
-        const val CLOSE_BTN_DP = 32f
         const val HEADER_H_DP = 44f
         const val SCRIM_ALPHA = 0x80
         /** Live pages kept on the back stack (see [push]'s retirement rule). */
