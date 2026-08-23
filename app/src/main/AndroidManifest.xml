@@ -179,6 +179,18 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- Translucent trampoline for the RECORD_AUDIO grant, launched from
+             the floating workspace's audio picker page (an overlay window
+             can't run a runtime-permission request; the workspace parks
+             under this while the system dialog is up). -->
+        <activity
+            android:name=".ui.RecordAudioPermissionActivity"
+            android:exported="false"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
+
         <!-- Appearance sub-page (theme + accent), launched from Settings → Configure. -->
         <activity
             android:name=".ui.AppearanceSettingsActivity"
