@@ -2098,7 +2098,14 @@ class OverlayUiController(
         // would come back keyless after a detail round-trip.
         overlay.controllerNavEnabled = true
         captureResultOverlay = overlay
-        overlay.showWithResult(size.x, size.y, result)
+        // The frosted backdrop is rebuilt from the result's clean capture
+        // (the same image the fresh path blurred): decoded here, blurred by
+        // show into its small copy, recycled immediately after.
+        val backdrop = result.screenshotPath?.let {
+            runCatching { android.graphics.BitmapFactory.decodeFile(it) }.getOrNull()
+        }
+        overlay.showWithResult(size.x, size.y, result, backdrop)
+        backdrop?.recycle()
     }
 
     /**
