@@ -87,6 +87,11 @@ interface WorkspaceHost {
      *  restores controller focus (when a controller is attached) on false. */
     fun setImeMode(wantsIme: Boolean)
 
+    /** Park the workspace window while a helper Activity runs above the
+     *  game (the audio picker) — an overlay window would otherwise cover
+     *  it. The launching page un-parks from its result gate. */
+    fun setParkedForActivity(parked: Boolean)
+
     /** Show an in-window progress modal (B / its Cancel button cancel it with
      *  [DismissReason.USER], matching the Activity flows' back-press). */
     fun showProgress(title: String, onDismiss: (DismissReason) -> Unit): OverlayProgress

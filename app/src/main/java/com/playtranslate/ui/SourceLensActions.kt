@@ -208,7 +208,39 @@ class SourceLensActions(
         val snap = snapshotLensFieldsForAnki(word, entry, cur)
         CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
         lens.dismiss()
+        if (openAnkiEditorWorkspace(snap)) return
         launchWordAnkiActivity(snap)
+    }
+
+    /** Single-screen with the AnkiDroid permission already held: the editor
+     *  opens as a floating-workspace page over the game. False (dual-screen,
+     *  in-activity host, permission missing) leaves the caller on the
+     *  Activity trampoline — which owns the runtime permission request. */
+    private fun openAnkiEditorWorkspace(snap: LensAnkiSnapshot): Boolean {
+        if (!workspaceRoute) return false
+        if (!AnkiManager(context).hasPermission()) return false
+        val opened = CaptureBackendResolver.activeOverlayUi?.openWorkspace(displayId) {
+            AnkiEditorPage(
+                WordAnkiReviewBinder.buildArgs(
+                    word = snap.word,
+                    reading = snap.reading,
+                    pos = snap.pos,
+                    definition = snap.definition,
+                    screenshotPath = snap.screenshotPath,
+                    freqScore = snap.freqScore,
+                    sentenceOriginal = snap.sentence,
+                    sentenceTranslation = snap.sentenceTranslation,
+                    sourceLangId = Prefs(context).sourceLangId,
+                    audioAnchorMs = snap.audioAnchorMs,
+                ),
+            )
+        } == true
+        if (opened) {
+            // The capture sheet maps Anki to its dismiss — same as the
+            // activity launch it replaces.
+            onLaunchedActivity(LaunchKind.Anki)
+        }
+        return opened
     }
 
     private fun oneTapFromLens() {
@@ -252,7 +284,11 @@ class SourceLensActions(
                 sourceLangId = sourceLangId,
             )
             when (result) {
-                is AnkiSendResult.NeedsMapping -> launchWordAnkiActivity(snap)
+                // The mapping needs UI: the workspace editor when available
+                // (its NeedsMapping flow configures the mapping in-window),
+                // else the review activity — the lens's existing parity.
+                is AnkiSendResult.NeedsMapping ->
+                    if (!openAnkiEditorWorkspace(snap)) launchWordAnkiActivity(snap)
                 else -> oneTapResultToast(context.applicationContext, result, mode)
             }
         }

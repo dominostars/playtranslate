@@ -43,6 +43,14 @@ interface SheetHost {
      *  window survives the sheet, so pending keys cannot orphan and the
      *  caller detaches immediately. */
     fun beginKeySink(root: View): Boolean
+
+    /** Temporarily park the window while a helper Activity runs above the
+     *  game (the workspace's audio picker): hidden, untouchable, and
+     *  non-focusable so the activity owns the screen and its input. Unpark
+     *  restores visibility and touchability; the caller re-applies its own
+     *  focus policy after ([setFocusPolicy]). Activity hosting is a no-op —
+     *  a launched activity naturally covers the host activity. */
+    fun setParked(root: View, parked: Boolean) {}
 }
 
 /** The over-game host: a full-screen overlay window whose type is stamped by
@@ -96,6 +104,24 @@ class WindowSheetHost(
             true
         } catch (_: Exception) {
             false
+        }
+    }
+
+    override fun setParked(root: View, parked: Boolean) {
+        val lp = params ?: return
+        root.visibility = if (parked) View.INVISIBLE else View.VISIBLE
+        lp.flags = if (parked) {
+            lp.flags or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        } else {
+            // Touchability back on; focus flags are the caller's to restore
+            // via setFocusPolicy (which rewrites the whole flag set anyway).
+            lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        }
+        try {
+            wm.updateViewLayout(root, lp)
+        } catch (_: Exception) {
         }
     }
 
