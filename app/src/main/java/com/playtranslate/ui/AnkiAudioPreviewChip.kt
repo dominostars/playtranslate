@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -22,6 +23,7 @@ import com.playtranslate.audio.PronunciationPlayer
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
 import com.playtranslate.tts.TtsEngine
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -39,7 +41,10 @@ import kotlinx.coroutines.launch
  * audio doesn't outlive the sheet.
  */
 class AnkiAudioPreviewChip(
-    private val fragment: Fragment,
+    private val ctx: Context,
+    /** Host-view lifetime scope: the fragment's viewLifecycleOwner scope, or
+     *  a workspace page's own scope — playback jobs die with the surface. */
+    private val scope: CoroutineScope,
     private val lang: SourceLangId,
     private val previewText: () -> String,
     /** Per-call voice override. Read on every tap so a host that lets
@@ -65,9 +70,24 @@ class AnkiAudioPreviewChip(
      *  cancels the chip's job). */
     private val playOverride: (suspend (onStart: (() -> Unit)?) -> PlayOutcome?)? = null,
 ) {
-    private enum class State { IDLE, LOADING, PLAYING }
+    /** Fragment-host convenience: context + view-lifecycle scope. */
+    constructor(
+        fragment: Fragment,
+        lang: SourceLangId,
+        previewText: () -> String,
+        voiceOverride: () -> String? = { null },
+        prepare: suspend (String) -> String = { it },
+        selectionProvider: (() -> AudioSelection)? = null,
+        requestProvider: (() -> AudioRequest)? = null,
+        playOverride: (suspend (onStart: (() -> Unit)?) -> PlayOutcome?)? = null,
+    ) : this(
+        fragment.requireContext(),
+        fragment.viewLifecycleOwner.lifecycleScope,
+        lang, previewText, voiceOverride, prepare,
+        selectionProvider, requestProvider, playOverride,
+    )
 
-    private val ctx = fragment.requireContext()
+    private enum class State { IDLE, LOADING, PLAYING }
     private val density = ctx.resources.displayMetrics.density
     private fun dp(v: Int) = (v * density).toInt()
 
@@ -175,7 +195,7 @@ class AnkiAudioPreviewChip(
         val raw = previewText().trim()
         if (raw.isEmpty()) return
         val gen = ++generation
-        job = fragment.viewLifecycleOwner.lifecycleScope.launch {
+        job = scope.launch {
             state = State.LOADING
             render()
             try {
