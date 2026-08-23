@@ -50,7 +50,7 @@ class PtNoteBuilderTest {
         ),
         selected: Set<String> = setOf("cat"),
         lang: SourceLangId = SourceLangId.EN,
-    ) = SentenceAnkiContentFragment.CardData(
+    ) = SentenceAnkiContentView.CardData(
         source = source, target = target, words = words,
         selectedWords = selected, screenshotPath = null, sourceLangId = lang,
     )

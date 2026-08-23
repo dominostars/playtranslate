@@ -331,7 +331,7 @@ class AnkiCardTypeMapperTest {
     }
 
     @Test fun `forSentence sources pitch and frequency from the highlighted word`() {
-        val data = SentenceAnkiContentFragment.CardData(
+        val data = SentenceAnkiContentView.CardData(
             source = "猫が好き",
             target = "I like cats",
             words = listOf(
@@ -621,7 +621,7 @@ class AnkiCardTypeMapperTest {
     }
 
     @Test fun `forSentence with selectedWords emits sentence and targeted flags and always-on`() {
-        val data = SentenceAnkiContentFragment.CardData(
+        val data = SentenceAnkiContentView.CardData(
             source = "私は猫が好き",
             target = "I like cats",
             words = emptyList(),
@@ -649,7 +649,7 @@ class AnkiCardTypeMapperTest {
             SentenceAnkiHtmlBuilder.WordEntry("猫", "ねこ", "cat", 0),
             SentenceAnkiHtmlBuilder.WordEntry("好き", "すき", "fond", 0),
         )
-        val data = SentenceAnkiContentFragment.CardData(
+        val data = SentenceAnkiContentView.CardData(
             source = "私は猫が好き",
             target = "I like cats",
             words = words,
@@ -673,7 +673,7 @@ class AnkiCardTypeMapperTest {
     }
 
     @Test fun `forSentence with no wordAudioFilenames leaves wordAudio empty`() {
-        val data = SentenceAnkiContentFragment.CardData(
+        val data = SentenceAnkiContentView.CardData(
             source = "今日はいい天気だ",
             target = "Nice weather today",
             words = emptyList(),
@@ -690,7 +690,7 @@ class AnkiCardTypeMapperTest {
         // IsTargetedSentenceCard would have nothing to target — the
         // flag must stay empty so JPMN renders a pure sentence card
         // (whole-sentence test) rather than a broken targeted card.
-        val data = SentenceAnkiContentFragment.CardData(
+        val data = SentenceAnkiContentView.CardData(
             source = "今日はいい天気だ",
             target = "Nice weather today",
             words = emptyList(),

@@ -35,7 +35,7 @@ object AnkiCardOutputBuilder {
      * ([AnkiReviewBottomSheet]) pass empty.
      */
     fun forSentence(
-        cardData: SentenceAnkiContentFragment.CardData,
+        cardData: SentenceAnkiContentView.CardData,
         /** The sentence's single analysis — the furigana renderer draws it.
          *  Null degrades SENTENCE_FURIGANA to the plain+<b> form. */
         annotation: com.playtranslate.language.SentenceAnnotation? = null,

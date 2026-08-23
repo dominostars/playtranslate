@@ -3,7 +3,7 @@ package com.playtranslate
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.ui.AnkiCardOutputBuilder
 import com.playtranslate.ui.PtNoteBuilder
-import com.playtranslate.ui.SentenceAnkiContentFragment
+import com.playtranslate.ui.SentenceAnkiContentView
 import com.playtranslate.ui.SentenceAnkiHtmlBuilder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -22,7 +22,7 @@ import org.robolectric.RobolectricTestRunner
 class AnkiCardWordAudioCreditTest {
 
     @Test fun word_audio_field_carries_its_credit() {
-        val card = SentenceAnkiContentFragment.CardData(
+        val card = SentenceAnkiContentView.CardData(
             source = "cat",
             target = "gato",
             words = listOf(SentenceAnkiHtmlBuilder.WordEntry("cat", "", "gato", 0)),
@@ -79,7 +79,7 @@ class AnkiCardWordAudioCreditTest {
     }
 
     @Test fun pt_sentence_note_splits_credit_from_the_audio_field() {
-        val card = SentenceAnkiContentFragment.CardData(
+        val card = SentenceAnkiContentView.CardData(
             source = "cat",
             target = "gato",
             words = listOf(SentenceAnkiHtmlBuilder.WordEntry("cat", "", "gato", 0)),

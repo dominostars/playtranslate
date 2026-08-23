@@ -61,7 +61,7 @@ internal object PtNoteBuilder {
     )
 
     fun forSentence(
-        cardData: SentenceAnkiContentFragment.CardData,
+        cardData: SentenceAnkiContentView.CardData,
         /** The sentence's [com.playtranslate.language.SentenceAnnotation] —
          *  the single analysis the furigana renderer draws. Null (tests,
          *  legacy callers) degrades the furigana field to the plain+<b>
