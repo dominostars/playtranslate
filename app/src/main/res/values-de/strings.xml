@@ -1753,7 +1753,7 @@
     <string name="tts_voice_picker_title">Stimme</string>
 
     <string name="tts_voices_section_header">STIMMEN FÜR <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
-    <string name="tts_speed_section_header">Sprachausgabe-Geschwindigkeit</string>
+    <string name="tts_speed_title">Geschwindigkeit</string>
 
     <string name="tts_no_engine_dialog_title">Keine Sprachausgabe</string>
 

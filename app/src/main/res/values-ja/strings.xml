@@ -1799,7 +1799,7 @@
     <string name="tts_voice_picker_title">音声</string>
 
     <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g>の音声</string>
-    <string name="tts_speed_section_header">読み上げ速度</string>
+    <string name="tts_speed_title">速度</string>
 
     <string name="tts_no_engine_dialog_title">テキスト読み上げがありません</string>
 

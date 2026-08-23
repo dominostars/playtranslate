@@ -1,127 +1,129 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Shared TTS speed section: group header + card holding the global
-     speech-rate slider. Hosted at the top of the TTS voice picker
-     (TtsVoiceActivity) and above the Text-to-speech section of the Anki
-     audio picker (AudioSourcePickerActivity); wired by TtsSpeedSection. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Shared TTS speed cell: a standalone card with its own in-cell "Speed"
+     title and the global speech-rate slider. Hosted at the top of the TTS
+     voice picker (TtsVoiceActivity, which overrides these layout params via
+     its include tag) and under the Text-to-speech section header of the
+     Anki audio picker (AudioSourcePickerActivity), separate from the voice
+     list card below it; wired by TtsSpeedSection. -->
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical">
+    android:layout_marginBottom="8dp"
+    app:cardBackgroundColor="?attr/ptCard"
+    app:cardCornerRadius="@dimen/pt_radius"
+    app:cardElevation="0dp"
+    app:strokeColor="?attr/ptDivider"
+    app:strokeWidth="1dp">
 
-    <include layout="@layout/settings_group_header"
-        android:id="@+id/headerSpeed" />
-
-    <com.google.android.material.card.MaterialCardView
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:cardBackgroundColor="?attr/ptCard"
-        app:cardCornerRadius="@dimen/pt_radius"
-        app:cardElevation="0dp"
-        app:strokeColor="?attr/ptDivider"
-        app:strokeWidth="1dp">
+        android:orientation="vertical"
+        android:paddingTop="12dp"
+        android:paddingBottom="10dp">
 
-        <LinearLayout
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="@dimen/pt_row_h_padding"
+            android:paddingEnd="@dimen/pt_row_h_padding"
+            android:text="@string/tts_speed_title"
+            style="@style/Text.PT.RowTitle" />
+
+        <!-- minTouchTargetSize keeps the widget's touch band at least
+             48dp tall (the whole width is draggable, so the handle's
+             grab area is at least 48x48dp); the 24dp halo visualizes
+             that target. -->
+        <com.google.android.material.slider.Slider
+            android:id="@+id/speedSlider"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingTop="8dp"
-            android:paddingBottom="10dp">
+            android:valueFrom="-1.0"
+            android:valueTo="1.0"
+            android:value="0.0"
+            app:labelBehavior="gone"
+            app:minTouchTargetSize="48dp"
+            app:haloRadius="24dp"
+            app:thumbColor="?attr/ptAccent"
+            app:haloColor="?attr/ptAccentTint"
+            app:trackColorActive="?attr/ptAccent"
+            app:trackColorInactive="?attr/ptOutline" />
 
-            <!-- minTouchTargetSize keeps the widget's touch band at least
-                 48dp tall (the whole width is draggable, so the handle's
-                 grab area is at least 48x48dp); the 24dp halo visualizes
-                 that target. -->
-            <com.google.android.material.slider.Slider
-                android:id="@+id/speedSlider"
-                android:layout_width="match_parent"
+        <!-- Scale labels: "-2x" / "2x" under the track ends, and a dot
+             under each snap detent (1.5x slower, 1x, 1.5x faster). A
+             detent at track position t sits at (t+1)/2 of the width:
+             t = ±log2(1.5) = ±0.585 → biases 0.2075 / 0.7925. 16dp side
+             padding approximates the slider's own track inset. -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
+
+            <TextView
+                android:id="@+id/tvSpeedSlow"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:valueFrom="-1.0"
-                android:valueTo="1.0"
-                android:value="0.0"
-                app:labelBehavior="gone"
-                app:minTouchTargetSize="48dp"
-                app:haloRadius="24dp"
-                app:thumbColor="?attr/ptAccent"
-                app:haloColor="?attr/ptAccentTint"
-                app:trackColorActive="?attr/ptAccent"
-                app:trackColorInactive="?attr/ptOutline" />
+                android:text="@string/tts_speed_slow_label"
+                android:textSize="11sp"
+                android:textColor="?attr/ptTextHint"
+                android:fontFamily="sans-serif-medium"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
 
-            <!-- Scale labels: "-2x" / "2x" under the track ends, and a dot
-                 under each snap detent (1.5x slower, 1x, 1.5x faster). A
-                 detent at track position t sits at (t+1)/2 of the width:
-                 t = ±log2(1.5) = ±0.585 → biases 0.2075 / 0.7925. 16dp side
-                 padding approximates the slider's own track inset. -->
-            <androidx.constraintlayout.widget.ConstraintLayout
-                android:layout_width="match_parent"
+            <TextView
+                android:id="@+id/tvSpeedDetentSlow"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp">
+                android:text="@string/tts_speed_detent_dot"
+                android:textSize="11sp"
+                android:textColor="?attr/ptTextHint"
+                android:fontFamily="sans-serif-medium"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="0.2075"
+                app:layout_constraintTop_toTopOf="parent" />
 
-                <TextView
-                    android:id="@+id/tvSpeedSlow"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/tts_speed_slow_label"
-                    android:textSize="11sp"
-                    android:textColor="?attr/ptTextHint"
-                    android:fontFamily="sans-serif-medium"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toTopOf="parent" />
+            <TextView
+                android:id="@+id/tvSpeedDetentNormal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/tts_speed_detent_dot"
+                android:textSize="11sp"
+                android:textColor="?attr/ptTextHint"
+                android:fontFamily="sans-serif-medium"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
 
-                <TextView
-                    android:id="@+id/tvSpeedDetentSlow"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/tts_speed_detent_dot"
-                    android:textSize="11sp"
-                    android:textColor="?attr/ptTextHint"
-                    android:fontFamily="sans-serif-medium"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintHorizontal_bias="0.2075"
-                    app:layout_constraintTop_toTopOf="parent" />
+            <TextView
+                android:id="@+id/tvSpeedDetentFast"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/tts_speed_detent_dot"
+                android:textSize="11sp"
+                android:textColor="?attr/ptTextHint"
+                android:fontFamily="sans-serif-medium"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="0.7925"
+                app:layout_constraintTop_toTopOf="parent" />
 
-                <TextView
-                    android:id="@+id/tvSpeedDetentNormal"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/tts_speed_detent_dot"
-                    android:textSize="11sp"
-                    android:textColor="?attr/ptTextHint"
-                    android:fontFamily="sans-serif-medium"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintTop_toTopOf="parent" />
+            <TextView
+                android:id="@+id/tvSpeedFast"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/tts_speed_fast_label"
+                android:textSize="11sp"
+                android:textColor="?attr/ptTextHint"
+                android:fontFamily="sans-serif-medium"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
 
-                <TextView
-                    android:id="@+id/tvSpeedDetentFast"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/tts_speed_detent_dot"
-                    android:textSize="11sp"
-                    android:textColor="?attr/ptTextHint"
-                    android:fontFamily="sans-serif-medium"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintHorizontal_bias="0.7925"
-                    app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
-                <TextView
-                    android:id="@+id/tvSpeedFast"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/tts_speed_fast_label"
-                    android:textSize="11sp"
-                    android:textColor="?attr/ptTextHint"
-                    android:fontFamily="sans-serif-medium"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintTop_toTopOf="parent" />
+    </LinearLayout>
 
-            </androidx.constraintlayout.widget.ConstraintLayout>
-
-        </LinearLayout>
-
-    </com.google.android.material.card.MaterialCardView>
-
-</LinearLayout>
+</com.google.android.material.card.MaterialCardView>

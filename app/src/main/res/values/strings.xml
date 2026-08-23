@@ -3271,10 +3271,10 @@
          (already locale-aware via Locale.displayName().uppercase()). -->
     <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g> VOICES</string>
 
-    <!-- Section header above the global TTS speed slider, shown at the top
-         of the TTS voice picker and above the Text-to-speech section of the
-         Anki audio picker. Rendered in ALL CAPS by the group-header style. -->
-    <string name="tts_speed_section_header">TTS Speed</string>
+    <!-- Title inside the global TTS speed cell, shown at the top of the TTS
+         voice picker and under the Text-to-speech section header of the
+         Anki audio picker. -->
+    <string name="tts_speed_title">Speed</string>
 
     <!-- Scale labels under the speed slider: multiplier notation for the
          slow edge (2x slower) and fast edge (2x faster), plus the dot mark
