@@ -2103,12 +2103,18 @@ class OverlayUiController(
 
     /**
      * Open the floating workspace ([OverlayWorkspace]) on [displayId] with
-     * [page] as its root page. The single-screen funnel for flows that
-     * otherwise escape to full-screen Activities: returns false — and does
-     * NOTHING — when the workspace presentation isn't available (dual-screen,
-     * where the activity routes are the correct presentation; or the display/
-     * WindowManager can't be resolved), so the caller runs its existing
-     * Activity launch unchanged.
+     * [page] as its root page. The over-game funnel for flows that otherwise
+     * escape to full-screen Activities: returns false — and does NOTHING —
+     * when the workspace presentation isn't the right route, so the caller
+     * runs its existing Activity launch unchanged.
+     *
+     * Gated on [effectivelySingleScreen] — the SAME routing rule as the
+     * over-game capture sheet, NOT bare [Prefs.isSingleScreen]: a dual-screen
+     * handheld (the Thor) reports 2+ capturable displays and is never
+     * "single-screen", yet the game still owns the screen whenever
+     * MainActivity is backgrounded — exactly when over-game presentation is
+     * wanted. Only the true coordinator posture (dual-screen AND the app
+     * foregrounded on its own viewport) falls back to the Activity routes.
      *
      * A USER dismissal of the workspace re-shows a stashed capture sheet via
      * [onCaptureDetailBackPressed] (a no-op unless the opening flow stashed
@@ -2117,7 +2123,7 @@ class OverlayUiController(
      * sees a mismatch and stands down.
      */
     fun openWorkspace(displayId: Int, page: (WorkspaceHost) -> WorkspacePage): Boolean {
-        if (!Prefs.isSingleScreen(context)) return false
+        if (!effectivelySingleScreen()) return false
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager ?: return false
         val display = dm.getDisplay(displayId) ?: return false
         val displayCtx = context.createDisplayContext(display)
