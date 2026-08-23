@@ -19,6 +19,7 @@ import android.widget.Toast
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.core.widget.NestedScrollView
+import com.google.android.material.button.MaterialButton
 import com.playtranslate.AnkiManager
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.Prefs
@@ -43,10 +44,11 @@ import kotlinx.coroutines.launch
  * OBJECTS — the intent-extras transport marshalling is bypassed on this
  * path). The picker pages host the 3a view classes.
  *
- * The audio-source picker remains an Activity (it requests RECORD_AUDIO):
- * the workspace PARKS its window while the picker runs
- * ([WorkspaceHost.setParkedForActivity]) and un-parks from the picker's
- * one-shot [AudioSourcePickerActivity.resultGate]. Entry points front the
+ * The audio-source picker is a page too ([AudioPickerPage], hosting
+ * [AudioSourcePickerView]); only its RECORD_AUDIO grant still leaves the
+ * window — the workspace PARKS while the translucent
+ * [RecordAudioPermissionActivity] runs ([WorkspaceHost.setParkedForActivity],
+ * un-parked from the trampoline's one-shot gate). Entry points front the
  * AnkiDroid permission BEFORE opening a workspace editor (missing
  * permission falls back to the Activity flow, whose trampoline owns the
  * runtime request).
@@ -137,25 +139,139 @@ private class ImeFocusWatcher(
     }
 }
 
-/** Shared picker-Activity round trip: park the workspace under the
- *  launched picker, deliver the parsed pick, un-park either way. */
-private fun launchAudioPickerParked(
+/** Shared RECORD_AUDIO round trip for the audio picker page's game-audio
+ *  enable switch: park the workspace under the translucent
+ *  [RecordAudioPermissionActivity] while the system dialog is up, deliver
+ *  the grant, un-park either way. */
+private fun requestRecordAudioParked(
     host: WorkspaceHost,
-    intent: Intent,
-    onReturned: () -> Unit,
-    onPicked: (AudioSelection) -> Unit,
+    onResult: (granted: Boolean) -> Unit,
 ) {
     host.setParkedForActivity(true)
-    AudioSourcePickerActivity.resultGate = { data ->
+    RecordAudioPermissionActivity.resultGate = { granted ->
         host.setParkedForActivity(false)
-        onReturned()
-        if (data != null) onPicked(SentenceAnkiContentView.parsePickerResult(data))
+        onResult(granted)
     }
     val target = PlayTranslateApplication.foregroundDisplayId() ?: host.displayId
     val opts = android.app.ActivityOptions.makeBasic()
         .setLaunchDisplayId(target)
         .toBundle()
-    host.ctx.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), opts)
+    host.ctx.startActivity(
+        Intent(host.ctx, RecordAudioPermissionActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        opts,
+    )
+}
+
+// ── The audio-source picker ──────────────────────────────────────────────
+
+/** The Anki cell's audio picker over the game — [AudioSourcePickerView]
+ *  (Commons/TTS/game-audio sections + the global speed cell) as a workspace
+ *  page with Save as fixed footer chrome, so changing a card's audio no
+ *  longer leaves the window. Only the RECORD_AUDIO grant still does (the
+ *  enable switch parks under [RecordAudioPermissionActivity]).
+ *
+ *  [args] rides the same Intent transport the activity flow uses, decoded
+ *  via [AudioSourcePickerActivity.argsFrom]. Delivery keeps the retired
+ *  activity gate's discipline — exactly once, on destroy, whatever the
+ *  close path: Save marks the pick then pops; a plain pop or workspace
+ *  dismissal delivers [onReturned] alone. */
+class AudioPickerPage(
+    private val args: AudioSourcePickerView.Args,
+    private val onReturned: () -> Unit,
+    private val onPicked: (AudioSelection) -> Unit,
+) : WorkspacePage {
+
+    private var pageScope: CoroutineScope? = null
+    private var pageView: View? = null
+    private var picker: AudioSourcePickerView? = null
+    private var saved: AudioSelection? = null
+    private var delivered = false
+
+    override fun title(ctx: Context): CharSequence =
+        ctx.getString(R.string.audio_source_picker_title)
+
+    override fun onCreateView(ctx: Context, parent: ViewGroup, host: WorkspaceHost): View {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        pageScope = scope
+        val density = ctx.resources.displayMetrics.density
+        // The activity_audio_source_picker shape: scrolling sections over a
+        // hairline and a full-width Save — built in code (the workspace's
+        // plain inflater drops app: attrs on framework tags; the Material
+        // classes the content uses style themselves from the M3 theme).
+        val root = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        val sections = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            val h = ctx.resources.getDimensionPixelSize(R.dimen.pt_section_h_padding)
+            setPadding(h, (4 * density).toInt(), h, (20 * density).toInt())
+        }
+        val scroll = NestedScrollView(ctx).apply {
+            isFillViewport = true
+            addView(
+                sections,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+        }
+        root.addView(
+            scroll,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f),
+        )
+        root.addView(
+            View(ctx).apply { setBackgroundColor(ctx.themeColor(R.attr.ptDivider)) },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, (1 * density).toInt().coerceAtLeast(1),
+            ),
+        )
+        val save = MaterialButton(ctx).apply {
+            text = ctx.getString(R.string.btn_save)
+            isAllCaps = false
+        }
+        root.addView(
+            save,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                val m = (16 * density).toInt()
+                setMargins(m, m, m, m)
+            },
+        )
+
+        val p = AudioSourcePickerView(
+            ctx, scope, args,
+            object : AudioSourcePickerView.Host {
+                override fun requestRecordAudio(onResult: (Boolean) -> Unit) =
+                    requestRecordAudioParked(host, onResult)
+            },
+        )
+        picker = p
+        p.buildInto(sections)
+        save.setOnClickListener {
+            saved = p.pickedSelection()
+            host.pop()
+        }
+        pageView = root
+        return root
+    }
+
+    override fun navActions(): List<NavAction> = collectWorkspaceNavActions(pageView)
+
+    override fun scrollView(): ViewGroup? =
+        pageView?.firstDescendant<NestedScrollView>()
+
+    override fun onDestroy() {
+        picker?.release()
+        picker = null
+        pageScope?.cancel()
+        pageScope = null
+        pageView = null
+        if (!delivered) {
+            delivered = true
+            onReturned()
+            saved?.let(onPicked)
+        }
+    }
 }
 
 // ── The word/sentence editor ─────────────────────────────────────────────
@@ -250,10 +366,12 @@ class AnkiEditorPage(private val args: Bundle) : WorkspacePage {
         override val isAlive: Boolean get() = pageView != null
 
         override fun openAudioPicker(intent: Intent, onPicked: (AudioSelection) -> Unit) {
-            launchAudioPickerParked(
-                host, intent,
-                onReturned = { binder?.onHostResumed() },
-                onPicked = onPicked,
+            host.push(
+                AudioPickerPage(
+                    AudioSourcePickerActivity.argsFrom(intent),
+                    onReturned = { binder?.onHostResumed() },
+                    onPicked = onPicked,
+                ),
             )
         }
 
@@ -406,10 +524,12 @@ class AnkiSentenceEditorPage(
         override val isAlive: Boolean get() = pageView != null
 
         override fun openAudioPicker(intent: Intent, onPicked: (AudioSelection) -> Unit) {
-            launchAudioPickerParked(
-                host, intent,
-                onReturned = { contentView?.onHostResumed() },
-                onPicked = onPicked,
+            host.push(
+                AudioPickerPage(
+                    AudioSourcePickerActivity.argsFrom(intent),
+                    onReturned = { contentView?.onHostResumed() },
+                    onPicked = onPicked,
+                ),
             )
         }
         // No sibling tab to mirror screenshot removal into.
