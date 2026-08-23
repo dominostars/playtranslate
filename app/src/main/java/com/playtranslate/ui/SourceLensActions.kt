@@ -97,6 +97,11 @@ class SourceLensActions(
         val screenshotPath: String?,
         val sentence: String?,
         val sentenceTranslation: String?,
+        /** The sentence's per-word breakdown, snapshotted with the
+         *  translation (and for the same reason — see
+         *  [snapshotLensFieldsForAnki]). The workspace editor builds from
+         *  this; the Activity route re-reads the cache in its own onCreate. */
+        val sentenceWordResults: Map<String, Triple<String, String, Int>>?,
         val sourceLangCode: String,
         val audioAnchorMs: Long?,
     )
@@ -230,6 +235,7 @@ class SourceLensActions(
                     freqScore = snap.freqScore,
                     sentenceOriginal = snap.sentence,
                     sentenceTranslation = snap.sentenceTranslation,
+                    sentenceWordResults = snap.sentenceWordResults,
                     sourceLangId = Prefs(context).sourceLangId,
                     audioAnchorMs = snap.audioAnchorMs,
                 ),
@@ -312,6 +318,14 @@ class SourceLensActions(
         val sentence = cur.sentence
         val sentenceTranslation = LastSentenceCache
             .takeIf { it.original == sentence }?.translation
+        // Word breakdown for the editor's Sentence card, snapshotted BEFORE
+        // lens.dismiss() like the translation above: dismiss resumes live
+        // mode (drag flow), and a fresh capture can rotate the cache before
+        // the editor binds. Null (cache already rotated) leaves the binder's
+        // lazy words-fill to recompute — the same fallback the Activity
+        // route has when ITS cache read misses.
+        val sentenceWordResults = LastSentenceCache
+            .takeIf { it.original == sentence }?.wordResults
         return LensAnkiSnapshot(
             word = word,
             reading = reading,
@@ -323,6 +337,7 @@ class SourceLensActions(
             screenshotPath = cur.screenshotPath,
             sentence = sentence,
             sentenceTranslation = sentenceTranslation,
+            sentenceWordResults = sentenceWordResults,
             sourceLangCode = Prefs(context).sourceLangId.code,
             audioAnchorMs = cur.audioAnchorMs,
         )
