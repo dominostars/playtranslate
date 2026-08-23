@@ -8,11 +8,13 @@ import android.view.WindowManager
 import com.playtranslate.overlay.OverlayHost
 
 /**
- * Where a [CaptureResultOverlay] sheet lives: an overlay WINDOW over another
+ * Where a full-screen overlay panel lives: an overlay WINDOW over another
  * app (the floating-icon capture flow) or a plain child view inside an
- * activity (the camera tool's snapshot panel). The sheet's view tree and
+ * activity (the camera tool's snapshot panel). The panel's view tree and
  * behavior are host-agnostic; only attachment, removal, and the focus/IME
- * plumbing (the in-place edit, controller navigation) differ.
+ * plumbing (in-place edits, controller navigation) differ. Consumers:
+ * [CaptureResultOverlay] (the capture sheet) and [OverlayWorkspace] (the
+ * floating workspace).
  */
 interface SheetHost {
     /** Attach the sheet's full-screen [root]. Called once, from show().

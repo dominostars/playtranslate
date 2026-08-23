@@ -169,6 +169,23 @@ class OverlayProgress private constructor(
             }
             return overlay
         }
+
+        /** Attaches as an in-window child of [parent] — the floating
+         *  workspace's modal layer ([com.playtranslate.ui.OverlayWorkspace]).
+         *  In-window rather than a sibling overlay window because
+         *  MediaProjection's QTI clamp dims a sibling to ~80% and it steals
+         *  the host window's taps (see [FontSizeRangePopover]). Cancel-button
+         *  tap (and the workspace's B) dispatch [DismissReason.USER]; the
+         *  parent's window tearing down mid-download (workspace dismissal)
+         *  dispatches [DismissReason.LIFECYCLE_PAUSE] so the .partial is
+         *  kept for a later resume. */
+        fun showInParent(parent: ViewGroup): OverlayProgress {
+            val overlay = OverlayProgress(
+                context, title, initialMessage, initialProgress, cancelLabel, onDismiss,
+            )
+            overlay.attachToParent(parent)
+            return overlay
+        }
     }
 
     private var scrim: FrameLayout? = null
@@ -225,6 +242,11 @@ class OverlayProgress private constructor(
         backPressedCallback?.remove()
         backPressedCallback = null
     }
+
+    /** Explicit user cancellation from a host that owns its own back/key
+     *  handling (the workspace's B press) — identical to a cancel-button tap:
+     *  dismisses and dispatches [DismissReason.USER]. */
+    fun cancel() = detachAndDispatch(DismissReason.USER)
 
     private fun detachAndDispatch(reason: DismissReason) {
         // Idempotent: cancel / back / the detach-listener (host teardown or
@@ -286,6 +308,28 @@ class OverlayProgress private constructor(
             dispatcher.addCallback(backCb)
             backPressedCallback = backCb
         }
+    }
+
+    /** In-window attach (the workspace modal layer): same scrim, no back
+     *  dispatcher (the workspace owns back), detach-not-ours →
+     *  LIFECYCLE_PAUSE — mirroring [attachToForeground]'s listener. */
+    private fun attachToParent(parent: ViewGroup) {
+        val scrimView = buildScrim()
+        parent.addView(
+            scrimView,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        scrim = scrimView
+        dismissAction = { try { parent.removeView(scrimView) } catch (_: Exception) {} }
+        scrimView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) {
+                detachAndDispatch(DismissReason.LIFECYCLE_PAUSE)
+            }
+        })
     }
 
     private fun buildScrim(): FrameLayout {
