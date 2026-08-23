@@ -89,6 +89,15 @@ class SentenceAnkiContentView(
     private val scope: CoroutineScope,
     private val args: Bundle,
     private val host: Host,
+    /** The initial word rows as full [SentenceAnkiHtmlBuilder.WordEntry]s —
+     *  the ATOMIC snapshot the host already holds. [buildArgs] flattens
+     *  entries to word/reading/meaning/frequency (the Bundle is also saved
+     *  state, where full enrichment is a size hazard), so without this the
+     *  build re-derives surfaces/pitch/senses from [LastSentenceCache],
+     *  which may have rotated to another sentence. Pass the same list the
+     *  args were built from; null (a restore, or a host with no enrichment
+     *  to give) falls back to a SENTENCE-GATED cache read. */
+    private val initialWords: List<SentenceAnkiHtmlBuilder.WordEntry>? = null,
 ) {
     /** The host seam. */
     interface Host {
@@ -637,24 +646,37 @@ class SentenceAnkiContentView(
         words.clear()
         selectedWords.clear()
 
-        val wordArr    = args.getStringArray(ARG_WORDS) ?: emptyArray()
-        val readingArr = args.getStringArray(ARG_READINGS) ?: emptyArray()
-        val meaningArr = args.getStringArray(ARG_MEANINGS) ?: emptyArray()
-        val freqArr    = args.getIntArray(ARG_FREQ_SCORES) ?: IntArray(0)
-        val surfaces   = LastSentenceCache.surfaceForms ?: emptyMap()
-        val enrich     = LastSentenceCache.wordEnrichment ?: emptyMap()
-        wordArr.forEachIndexed { i, w ->
-            words.add(SentenceAnkiHtmlBuilder.WordEntry(
-                w,
-                readingArr.getOrElse(i) { "" },
-                meaningArr.getOrElse(i) { "" },
-                freqArr.getOrElse(i) { 0 },
-                surfaceForm = surfaces[w] ?: "",
-                pitch = enrich[w]?.pitch.orEmpty(),
-                frequencies = enrich[w]?.frequencies.orEmpty(),
-                isCommon = enrich[w]?.isCommon ?: false,
-                senses = enrich[w]?.senses.orEmpty(),
-            ))
+        val original = args.getString(ARG_ORIGINAL) ?: ""
+        if (initialWords != null) {
+            // The host's atomic snapshot — the rich fields survive as-is,
+            // with no dependence on where the global cache points now.
+            words.addAll(initialWords)
+        } else {
+            val wordArr    = args.getStringArray(ARG_WORDS) ?: emptyArray()
+            val readingArr = args.getStringArray(ARG_READINGS) ?: emptyArray()
+            val meaningArr = args.getStringArray(ARG_MEANINGS) ?: emptyArray()
+            val freqArr    = args.getIntArray(ARG_FREQ_SCORES) ?: IntArray(0)
+            // Surfaces/enrichment fall back to the cache, GATED on this
+            // card's own sentence: a rotated cache yields plain rows, never
+            // another sentence's surfaces or senses misattributed to this
+            // one. (snapshotFor is atomic; separate field reads could
+            // straddle a rotation.)
+            val snap = LastSentenceCache.snapshotFor(original)
+            val surfaces = snap?.surfaces ?: emptyMap()
+            val enrich   = snap?.enrichment ?: emptyMap()
+            wordArr.forEachIndexed { i, w ->
+                words.add(SentenceAnkiHtmlBuilder.WordEntry(
+                    w,
+                    readingArr.getOrElse(i) { "" },
+                    meaningArr.getOrElse(i) { "" },
+                    freqArr.getOrElse(i) { 0 },
+                    surfaceForm = surfaces[w] ?: "",
+                    pitch = enrich[w]?.pitch.orEmpty(),
+                    frequencies = enrich[w]?.frequencies.orEmpty(),
+                    isCommon = enrich[w]?.isCommon ?: false,
+                    senses = enrich[w]?.senses.orEmpty(),
+                ))
+            }
         }
 
         // Auto-target the looked-up word and float targets to the top.
@@ -668,7 +690,6 @@ class SentenceAnkiContentView(
             words.addAll(sorted)
         }
 
-        val original = args.getString(ARG_ORIGINAL) ?: ""
         val translation = args.getString(ARG_TRANSLATION) ?: ""
         val screenshotPath = args.getString(ARG_SCREENSHOT_PATH)
         buildContent(original, translation, screenshotPath)

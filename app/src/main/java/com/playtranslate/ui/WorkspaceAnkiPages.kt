@@ -518,7 +518,13 @@ class AnkiSentenceEditorPage(
         val contentHost = view.findViewById<ViewGroup>(R.id.sentenceAnkiFragmentHost)
         val contentRoot = LayoutInflater.from(ctx)
             .inflate(R.layout.fragment_sentence_anki_content, contentHost, false) as LinearLayout
-        val content = SentenceAnkiContentView(ctx, scope, cArgs, ContentHost(host))
+        // initialWords carries the rich entries (surfaces, pitch, senses)
+        // past buildArgs' flattening — the build must render THIS page's
+        // snapshot, not whatever sentence the global cache holds by now.
+        val content = SentenceAnkiContentView(
+            ctx, scope, cArgs, ContentHost(host),
+            initialWords = words,
+        )
         contentView = content
         contentHost.addView(contentRoot)
         content.buildInto(contentRoot, null)

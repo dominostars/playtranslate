@@ -1524,24 +1524,23 @@ class WordAnkiReviewBinder(
         sendButton?.setFillingPending(translationFillCount > 0 || wordsFillCount > 0)
     }
 
+    /** Flat entries from the launch args (which carry no enrichment).
+     *  Deliberately NOT enriched from [LastSentenceCache] here: these are
+     *  flattened by [SentenceAnkiContentView.buildArgs] anyway, and the
+     *  content's build supplies surfaces/pitch/senses from a
+     *  sentence-GATED cache read — the ungated read this used to do could
+     *  misattribute a rotated cache's data to this sentence. */
     private fun buildWordEntries(args: Bundle): List<SentenceAnkiHtmlBuilder.WordEntry> {
         val wordArr    = args.getStringArray(ARG_SENTENCE_WORDS) ?: return emptyList()
         val readingArr = args.getStringArray(ARG_SENTENCE_READINGS) ?: emptyArray()
         val meaningArr = args.getStringArray(ARG_SENTENCE_MEANINGS) ?: emptyArray()
         val freqArr    = args.getIntArray(ARG_SENTENCE_FREQ_SCORES) ?: IntArray(0)
-        val surfaces   = LastSentenceCache.surfaceForms ?: emptyMap()
-        val enrich     = LastSentenceCache.wordEnrichment ?: emptyMap()
         return wordArr.mapIndexed { i, w ->
             SentenceAnkiHtmlBuilder.WordEntry(
                 w,
                 readingArr.getOrElse(i) { "" },
                 meaningArr.getOrElse(i) { "" },
                 freqArr.getOrElse(i) { 0 },
-                surfaceForm = surfaces[w] ?: "",
-                pitch = enrich[w]?.pitch.orEmpty(),
-                frequencies = enrich[w]?.frequencies.orEmpty(),
-                isCommon = enrich[w]?.isCommon ?: false,
-                senses = enrich[w]?.senses.orEmpty(),
             )
         }
     }
