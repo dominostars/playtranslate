@@ -192,6 +192,12 @@ class AnkiReviewBottomSheet : DialogFragment() {
             .inflate(R.layout.fragment_sentence_anki_content, host, false) as LinearLayout
         val content = SentenceAnkiContentView(
             requireContext(), viewLifecycleOwner.lifecycleScope, cArgs, ContentHost(),
+            // Fresh bind: hand the rich entries (built from this sheet's own
+            // atomic args) past buildArgs' flattening. On restore the
+            // restored arrays are the truth — an edited sentence's rows may
+            // have replaced these — so the build falls back to them plus the
+            // sentence-gated cache read.
+            initialWords = words.takeIf { restoredContentArgs == null },
         )
         contentView = content
         host.addView(contentRoot)
