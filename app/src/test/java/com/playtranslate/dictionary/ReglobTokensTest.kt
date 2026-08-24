@@ -93,6 +93,118 @@ class ReglobTokensTest {
         assertNull(result[0].reading)
     }
 
+    // ── Adjectival suffixes (づらい/にくい/やすい/がたい) ─────────────────
+    // UniDic tags these 接尾辞,形容詞的; the tokenizer maps them to ADJ_I so
+    // they emit their own span, fold their glue, and can end a lemma-variant
+    // window. The whole-word entry, when one exists, still wins its window.
+
+    @Test
+    fun `adjectival suffix after a verb stem gets its own span`() {
+        val tokens = listOf(
+            jaToken("歩き", JaCategory.VERB, dict = "歩く", reading = "アルキ", infl = "連用形-一般"),
+            jaToken("づらい", JaCategory.ADJ_I, norm = "辛い", reading = "ヅライ", infl = "終止形-一般"),
+        )
+        val result = glob(tokens, knownForms = setOf("歩く", "づらい", "辛い"))
+        assertEquals(listOf("歩く", "づらい"), result.map { it.lookupForm })
+        assertEquals("づらい", result[1].surface)
+        assertEquals("づらい", result[1].reading)
+    }
+
+    @Test
+    fun `inflected adjectival suffix folds its glue and labels past`() {
+        val tokens = listOf(
+            jaToken("歩き", JaCategory.VERB, dict = "歩く", infl = "連用形-一般"),
+            jaToken("づらかっ", JaCategory.ADJ_I, dict = "づらい", norm = "辛い", infl = "連用形-促音便"),
+            jaToken("た", JaCategory.AUX),
+        )
+        val result = glob(tokens, knownForms = setOf("歩く", "づらい"))
+        assertEquals(listOf("歩く", "づらい"), result.map { it.lookupForm })
+        assertEquals("づらかった", result[1].surface)
+        assertEquals(listOf(InflectionTag.PAST), result[1].inflections)
+    }
+
+    @Test
+    fun `compound with its own entry still fuses over the suffix span`() {
+        val tokens = listOf(
+            jaToken("読み", JaCategory.VERB, dict = "読む", reading = "ヨミ", infl = "連用形-一般"),
+            jaToken("づらい", JaCategory.ADJ_I, norm = "辛い", reading = "ヅライ", infl = "終止形-一般"),
+        )
+        val result = glob(
+            tokens,
+            knownPhrases = setOf("読みづらい"),
+            knownForms = setOf("読む", "づらい"),
+        )
+        assertEquals(1, result.size)
+        assertEquals("読みづらい", result[0].lookupForm)
+        assertEquals("よみづらい", result[0].reading)
+    }
+
+    @Test
+    fun `inflected compound reaches its entry through the suffix lemma`() {
+        // 読みづらかった: the window ends at an inflected ADJ_I suffix, so the
+        // lemma-variant candidate 読み+づらい fires and matches the entry —
+        // before the fix, 接尾辞 mapped to OTHER and this window was skipped.
+        val tokens = listOf(
+            jaToken("読み", JaCategory.VERB, dict = "読む", infl = "連用形-一般"),
+            jaToken("づらかっ", JaCategory.ADJ_I, dict = "づらい", norm = "辛い", infl = "連用形-促音便"),
+            jaToken("た", JaCategory.AUX),
+        )
+        val result = glob(tokens, knownPhrases = setOf("読みづらい"), knownForms = setOf("読む", "づらい"))
+        assertEquals(1, result.size)
+        assertEquals("読みづらい", result[0].lookupForm)
+        assertEquals("読みづらかった", result[0].surface)
+        assertEquals(listOf(InflectionTag.PAST), result[0].inflections)
+    }
+
+    // ── Kana nominal/verbal suffixes (ぶり, めく) ─────────────────────────
+    // The Codex-review class: kana suffixes whose entries are meaning-bearing
+    // must emit spans when the host compound is NOT its own entry.
+
+    @Test
+    fun `kana nominal suffix in a non-entry compound gets its own span`() {
+        // 五年ぶり: not a JMdict entry, so nothing fuses — ぶり must survive
+        // as a span resolving its own entry (振り【ぶり】 1361140).
+        val tokens = listOf(
+            jaToken("五", JaCategory.NOUN, dict = "5", reading = "ゴ"),
+            jaToken("年", JaCategory.NOUN, reading = "ネン"),
+            jaToken("ぶり", JaCategory.NOUN, norm = "振り", reading = "ブリ"),
+        )
+        val result = glob(tokens, knownForms = setOf("年", "ぶり", "振り"))
+        assertEquals(listOf("年", "ぶり"), result.map { it.lookupForm }.takeLast(2))
+        assertEquals("ぶり", result.last().surface)
+        assertEquals("ぶり", result.last().reading)
+    }
+
+    @Test
+    fun `kana verbal suffix conjugates like a verb`() {
+        // 謎めいた: めい (dict めく) folds た and labels past.
+        val tokens = listOf(
+            jaToken("謎", JaCategory.NOUN, reading = "ナゾ"),
+            jaToken("めい", JaCategory.VERB, dict = "めく", infl = "連用形-イ音便"),
+            jaToken("た", JaCategory.AUX),
+        )
+        val result = glob(tokens, knownForms = setOf("謎", "めく"))
+        assertEquals(listOf("謎", "めく"), result.map { it.lookupForm })
+        assertEquals("めいた", result[1].surface)
+        assertEquals(listOf(InflectionTag.PAST), result[1].inflections)
+    }
+
+    @Test
+    fun `inflected verbal-suffix compound reaches its whole-word entry`() {
+        // When 謎めく IS an entry, the lemma-variant window fuses the whole
+        // thing — possible only because めい is content and startsConjugation.
+        val tokens = listOf(
+            jaToken("謎", JaCategory.NOUN, reading = "ナゾ"),
+            jaToken("めい", JaCategory.VERB, dict = "めく", infl = "連用形-イ音便"),
+            jaToken("た", JaCategory.AUX),
+        )
+        val result = glob(tokens, knownPhrases = setOf("謎めく"), knownForms = setOf("謎", "めく"))
+        assertEquals(1, result.size)
+        assertEquals("謎めく", result[0].lookupForm)
+        assertEquals("謎めいた", result[0].surface)
+        assertEquals(listOf(InflectionTag.PAST), result[0].inflections)
+    }
+
     // ── Existing-behavior preservation ───────────────────────────────────
 
     @Test

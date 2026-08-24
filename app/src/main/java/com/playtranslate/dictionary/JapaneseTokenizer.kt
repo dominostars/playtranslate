@@ -44,8 +44,11 @@ data class JaToken(
  * across [DictionaryManager] and [Deinflector].
  *
  * UniDic differences the migration must honor: na-adjectives are `形状詞` (not
- * IPADIC's `形容動詞`), and pronouns are split out as `代名詞` (IPADIC lumps
- * them under `名詞`). [fromUniDic] maps Sudachi's `partOfSpeech()[0]`.
+ * IPADIC's `形容動詞`), pronouns are split out as `代名詞` (IPADIC lumps them
+ * under `名詞`), and suffixes are promoted to their own level-1 `接尾辞`
+ * (IPADIC kept them under the derived class: `名詞,接尾` / `形容詞,接尾`).
+ * [fromUniDic] maps Sudachi's `partOfSpeech()[0]`; the three-argument
+ * overload additionally resolves `接尾辞` by its level-2 subtype and surface.
  */
 enum class JaCategory {
     NOUN, PRONOUN, VERB, ADJ_I, ADJ_NA, ADVERB, INTERJECTION, CONJUNCTION,
@@ -70,7 +73,62 @@ enum class JaCategory {
         get() = this == PARTICLE || this == AUX
 
     companion object {
-        /** Map a Sudachi / UniDic major POS class (`partOfSpeech()[0]`). */
+        /**
+         * Map a Sudachi / UniDic POS. Suffixes (`接尾辞`) take the category of
+         * the class they derive, resolved from the level-2 subtype — EXCEPT
+         * the closed honorific/pluralizer lemma family, which stays [OTHER].
+         *
+         * The rule was designed against a full census of the core lexicon's
+         * 1,987 接尾辞 rows (Sudachi DictionaryPrinter dump, 2026-08-23):
+         *  - `形容詞的` (38 kana lemmas: づらい/にくい/やすい/がたい/っぽい/くさい +
+         *    colloquial variants) and `動詞的` (めく/ぶる/じみる/がる/ばむ…) and
+         *    `形状詞的` (だらけ/がち/げ/風/過ぎ/放し…) contain NO noise members —
+         *    every lemma is a dictionary word a learner may need. Unconditional.
+         *  - `名詞的` (1,134 lemmas) is content EXCEPT honorifics and
+         *    pluralizers ([NOISE_SUFFIX_LEMMAS]) — grammar-transparent, and as
+         *    content they would put a words-panel row on nearly every line of
+         *    name-bearing dialogue. Everything else (ぶり/かた/つき/毎/counters/
+         *    まみれ/ずくめ/ぐるみ/がてら…) is admitted.
+         *
+         * The denylist keys on NORMALIZED form, not surface: the lexicon
+         * carries ~40 stretched surface variants (さ〜ん、ちゃぁん、くーん…) that
+         * all normalize to さん/ちゃん/様/君 — one lemma entry covers the cloud,
+         * and kanji spellings (田中様/山田君/私達) are denied consistently.
+         * A kanji gate was REJECTED twice over: gating on surface kanji killed
+         * meaning-bearing kana suffixes (ぶり in 五年ぶり — Codex review find),
+         * and gating on normalized-form kanji still kills the self-normalizing
+         * kana lemmas (つき/がてら/ぐるみ/ぽっち). Single-kana members (さ/め/げ/つ)
+         * need no handling here: DictionaryManager.isLookupWorthy already
+         * blocks single-hiragana forms at span emission (ら alone would leak
+         * via its kanji normalized form 等 — it is denylisted).
+         *
+         * Anything else (unknown subtype) → [OTHER].
+         */
+        fun fromUniDic(majorPos: String, subPos: String, normalizedForm: String): JaCategory {
+            if (majorPos != "接尾辞") return fromUniDic(majorPos)
+            if (normalizedForm in NOISE_SUFFIX_LEMMAS) return OTHER
+            return when (subPos) {
+                "形容詞的" -> ADJ_I
+                "名詞的" -> NOUN
+                "形状詞的" -> ADJ_NA
+                "動詞的" -> VERB
+                else -> OTHER
+            }
+        }
+
+        /** Grammar-transparent suffix lemmas (UniDic NORMALIZED forms): the
+         *  honorifics and pluralizers, the census's only noise family. Kept
+         *  non-content so they take no tap target and no words-panel row.
+         *  Common whole compounds (王様/神様/私たち) are JMdict entries and
+         *  still fuse via the phrase re-glob. */
+        private val NOISE_SUFFIX_LEMMAS = setOf(
+            "さん", "ちゃん", "たん", "やん", "ちん", "様", "君", // honorifics
+            "達", "等", "共",                                   // pluralizers
+        )
+
+        /** Map a Sudachi / UniDic major POS class (`partOfSpeech()[0]`) alone.
+         *  `接尾辞` maps to [OTHER] here; use the three-argument overload to
+         *  resolve suffixes by subtype. */
         fun fromUniDic(majorPos: String): JaCategory = when (majorPos) {
             "名詞" -> NOUN
             "代名詞" -> PRONOUN

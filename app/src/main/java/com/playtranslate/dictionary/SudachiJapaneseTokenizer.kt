@@ -34,16 +34,20 @@ class SudachiJapaneseTokenizer private constructor(
             val surface = m.surface()
             // Skip zero-width morphemes (input-rewrite artifacts, e.g. around …).
             if (surface.isEmpty()) return@mapNotNull null
+            val pos = m.partOfSpeech()
+            val normalized = m.normalizedForm().ifEmpty { surface }
             JaToken(
                 surface = surface,
                 begin = m.begin(),
                 end = m.end(),
-                category = JaCategory.fromUniDic(m.partOfSpeech().getOrElse(0) { "" }),
+                category = JaCategory.fromUniDic(
+                    pos.getOrElse(0) { "" }, pos.getOrElse(1) { "" }, normalized,
+                ),
                 dictionaryForm = m.dictionaryForm().ifEmpty { surface },
-                normalizedForm = m.normalizedForm().ifEmpty { surface },
+                normalizedForm = normalized,
                 reading = m.readingForm().takeIf { it.isNotEmpty() },
                 isOov = m.isOOV(),
-                inflectionForm = m.partOfSpeech().getOrElse(5) { "" }
+                inflectionForm = pos.getOrElse(5) { "" }
                     .takeIf { it.isNotEmpty() && it != "*" },
             )
         }
