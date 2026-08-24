@@ -1910,6 +1910,9 @@
     <string name="pos_conjunction">Conjunção</string>
     <string name="pos_interjection">Interjeição</string>
     <string name="pos_preposition">Preposição</string>
+    <string name="pos_postposition">Posposição</string>
+    <string name="pos_determiner">Determinante</string>
+    <string name="pos_article">Artigo</string>
     <string name="pos_prefix">Prefixo</string>
     <string name="pos_suffix">Sufixo</string>
     <string name="pos_counter">Classificador</string>

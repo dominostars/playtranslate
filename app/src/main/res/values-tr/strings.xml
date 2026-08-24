@@ -1857,6 +1857,9 @@
     <string name="pos_conjunction">Bağlaç</string>
     <string name="pos_interjection">Ünlem</string>
     <string name="pos_preposition">İlgeç</string>
+    <string name="pos_postposition">Sontakı</string>
+    <string name="pos_determiner">Belirleyici</string>
+    <string name="pos_article">Tanımlık</string>
     <string name="pos_prefix">Ön ek</string>
     <string name="pos_suffix">Son ek</string>
     <string name="pos_counter">Sayma sözcüğü</string>

@@ -2004,6 +2004,9 @@
     <string name="pos_conjunction">Союз</string>
     <string name="pos_interjection">Междометие</string>
     <string name="pos_preposition">Предлог</string>
+    <string name="pos_postposition">Послелог</string>
+    <string name="pos_determiner">Детерминатив</string>
+    <string name="pos_article">Артикль</string>
     <string name="pos_prefix">Приставка</string>
     <string name="pos_suffix">Суффикс</string>
     <string name="pos_counter">Счётное слово</string>

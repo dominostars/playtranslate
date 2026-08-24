@@ -1963,6 +1963,9 @@
     <string name="pos_conjunction">连词</string>
     <string name="pos_interjection">叹词</string>
     <string name="pos_preposition">介词</string>
+    <string name="pos_postposition">后置词</string>
+    <string name="pos_determiner">限定词</string>
+    <string name="pos_article">冠词</string>
     <string name="pos_prefix">前缀</string>
     <string name="pos_suffix">后缀</string>
     <string name="pos_counter">量词</string>

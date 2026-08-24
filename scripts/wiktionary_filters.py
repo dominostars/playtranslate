@@ -43,6 +43,15 @@ WIKT_REDIRECT_KEYS: frozenset[str] = frozenset({
 # strings kaikki emits in its `pos` field (verified against the full
 # English dataset on 2026-04-15). Excludes `name` (proper nouns — noise
 # without translation value for game text).
+#
+# `det` / `article` / `postp` were added 2026-08 after a coverage audit of
+# the shipped packs: excluding them silently deleted top-frequency function
+# words with no homograph under a kept POS — en "every" (det-only, zipf
+# 5.8) had NO entry; en "the"/"a" survived only via their adv/prep
+# homographs (the article senses were gone); fr possessives mon/ma/votre/
+# notre/cet and es lo/su/tus/aquellos were absent; hi postpositions को/से
+# (among the most common words in the language) were absent. A tap on any
+# of these resolved to nothing — or, worse, to a stem-fallback lookalike.
 CONTENT_POS: frozenset[str] = frozenset({
     "noun",
     "verb",
@@ -58,6 +67,9 @@ CONTENT_POS: frozenset[str] = frozenset({
     "num",
     "contraction",
     "abbrev",
+    "det",
+    "article",
+    "postp",
 })
 
 # Caps shared across pipelines to keep pack size bounded.
