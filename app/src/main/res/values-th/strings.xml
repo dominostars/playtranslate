@@ -1834,6 +1834,9 @@
     <string name="pos_conjunction">คำสันธาน</string>
     <string name="pos_interjection">คำอุทาน</string>
     <string name="pos_preposition">คำบุพบท</string>
+    <string name="pos_postposition">คำบุพบทท้ายคำ</string>
+    <string name="pos_determiner">คำกำหนด</string>
+    <string name="pos_article">คำนำหน้านาม</string>
     <string name="pos_prefix">อุปสรรค</string>
     <string name="pos_suffix">ปัจจัย</string>
     <string name="pos_counter">ลักษณนาม</string>

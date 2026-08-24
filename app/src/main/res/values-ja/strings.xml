@@ -1975,6 +1975,9 @@
     <string name="pos_conjunction">接続詞</string>
     <string name="pos_interjection">感動詞</string>
     <string name="pos_preposition">前置詞</string>
+    <string name="pos_postposition">後置詞</string>
+    <string name="pos_determiner">限定詞</string>
+    <string name="pos_article">冠詞</string>
     <string name="pos_prefix">接頭辞</string>
     <string name="pos_suffix">接尾辞</string>
     <string name="pos_counter">助数詞</string>

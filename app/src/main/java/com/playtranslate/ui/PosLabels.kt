@@ -33,6 +33,9 @@ private fun PosCode.stringRes(): Int = when (this) {
     PosCode.CONJUNCTION -> R.string.pos_conjunction
     PosCode.INTERJECTION -> R.string.pos_interjection
     PosCode.PREPOSITION -> R.string.pos_preposition
+    PosCode.POSTPOSITION -> R.string.pos_postposition
+    PosCode.DETERMINER -> R.string.pos_determiner
+    PosCode.ARTICLE -> R.string.pos_article
     PosCode.PREFIX -> R.string.pos_prefix
     PosCode.SUFFIX -> R.string.pos_suffix
     PosCode.COUNTER -> R.string.pos_counter

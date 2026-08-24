@@ -79,6 +79,7 @@ class PosVocabularyTest {
         val universal = listOf(
             "noun", "Noun", "pronoun", "pron", "verb", "adj", "adverb", "adv",
             "particle", "conjunction", "conj", "interjection", "intj", "prep",
+            "postp", "postposition", "det", "determiner", "article",
             "prefix", "suffix", "counter", "numeric", "num", "expression",
             "phrase", "prep_phrase", "proverb", "abbrev", "contraction",
             "auxiliary", "aux. verb",

@@ -31,7 +31,8 @@ object PosVocabulary {
     /** Universal POS we localize. Anything outside this set renders English. */
     enum class PosCode {
         NOUN, PRONOUN, VERB, ADJECTIVE, ADVERB, PARTICLE, CONJUNCTION,
-        INTERJECTION, PREPOSITION, PREFIX, SUFFIX, COUNTER, NUMERAL,
+        INTERJECTION, PREPOSITION, POSTPOSITION, DETERMINER, ARTICLE,
+        PREFIX, SUFFIX, COUNTER, NUMERAL,
         EXPRESSION, PHRASE, PROVERB, ABBREVIATION, CONTRACTION, AUXILIARY,
     }
 
@@ -77,6 +78,12 @@ object PosVocabulary {
         put(PosCode.CONJUNCTION, "conjunction", "conj")
         put(PosCode.INTERJECTION, "interjection", "interjection (kandoushi)", "intj")
         put(PosCode.PREPOSITION, "prep")
+        // det / article / postp entered CONTENT_POS in the 2026-08 coverage
+        // fix (en "every", fr/es possessives+articles, hi postpositions), so
+        // rebuilt packs store these Wiktionary tokens.
+        put(PosCode.POSTPOSITION, "postp", "postposition")
+        put(PosCode.DETERMINER, "det", "determiner")
+        put(PosCode.ARTICLE, "article")
         put(PosCode.PREFIX, "prefix")
         put(PosCode.SUFFIX, "suffix")
         put(PosCode.COUNTER, "counter")

@@ -1905,6 +1905,9 @@
     <string name="pos_conjunction">접속사</string>
     <string name="pos_interjection">감탄사</string>
     <string name="pos_preposition">전치사</string>
+    <string name="pos_postposition">후치사</string>
+    <string name="pos_determiner">한정사</string>
+    <string name="pos_article">관사</string>
     <string name="pos_prefix">접두사</string>
     <string name="pos_suffix">접미사</string>
     <string name="pos_counter">분류사</string>

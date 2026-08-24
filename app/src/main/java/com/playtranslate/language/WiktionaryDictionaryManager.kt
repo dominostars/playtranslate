@@ -243,13 +243,19 @@ class WiktionaryDictionaryManager private constructor(
      * match position (0 = direct lemma, 1 = stem, 2 = form_of alias). The
      * caller uses that position to derive the POS marker shown to users.
      *
-     * Sort order is freq_score DESC → match position ASC → entry_id ASC.
-     *  - `pos ASC` keeps direct-lemma matches (position 0) ahead of stem
-     *    matches (1) and `form_of` aliases (2). Otherwise a query string
-     *    that's both a standalone lemma AND an inflected alias of another
-     *    entry could surface the alias as primary, mislabeling the popup
-     *    header (e.g. "ran" → "run" with an inflection note instead of
-     *    "ran" itself).
+     * Sort order is match position ASC → freq_score DESC → entry_id ASC.
+     *  - `pos ASC` FIRST keeps direct-lemma matches (position 0) ahead of
+     *    stem matches (1) and `form_of` aliases (2). Otherwise a query
+     *    string that's both a standalone lemma AND an inflected alias of
+     *    another entry surfaces the alias's parent as primary, mislabeling
+     *    the popup header with a different word. Position must dominate
+     *    frequency: with freq_score sorted first, any alias parent more
+     *    frequent than the word's own entry won — "hinder" surfaced "hind",
+     *    "running" surfaced "run", German "es" surfaced "das" (4k affected
+     *    surfaces in the en pack alone). The alias parent still appears in
+     *    the response, after the word's own entries, with its [inflected]
+     *    marker.
+     *  - `freq_score DESC` ranks entries within a position tier.
      *  - `entry_id ASC` is the freq_score tiebreaker. Wiktionary sections
      *    are typically Noun → Verb → Adjective → Interjection in
      *    dictionary order; the kaikki extractor emits them in that order
@@ -281,7 +287,7 @@ class WiktionaryDictionaryManager private constructor(
                 "JOIN entry e ON e.id = h.entry_id " +
                 "WHERE h.text = ?$positionClause " +
                 "GROUP BY h.entry_id " +
-                "ORDER BY e.freq_score DESC, pos ASC, h.entry_id ASC LIMIT 8",
+                "ORDER BY pos ASC, e.freq_score DESC, h.entry_id ASC LIMIT 8",
             arrayOf(word)
         ).use { c ->
             while (c.moveToNext()) results.add(c.getLong(0) to c.getInt(1))

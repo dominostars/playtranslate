@@ -24,9 +24,12 @@ automatically.)
 Pipeline
 --------
 1. Stream the kaikki JSON-Lines file (one JSON object per line).
-2. Filter to content-word parts of speech (noun/verb/adj/adv/...).
+2. Filter to content-word parts of speech (noun/verb/adj/adv/det/...).
 3. Drop entries where `lang_code` doesn't match `--lang`.
-4. Drop rare words (`wordfreq.word_frequency` below MIN_FREQUENCY).
+4. Drop rare LEXEMES: the frequency cut tests the SUM of
+   `wordfreq.word_frequency` over the citation form and its `forms[]`
+   surfaces against MIN_FREQUENCY (see the comment there for why the
+   bare citation form alone is the wrong keep signal).
 5. Write a SQLite file with the JMdict schema shared by DictionaryManager /
    WiktionaryDictionaryManager (`kanjidic` stays empty for non-JA packs).
 6. Write `manifest.json` and produce `<lang>.zip`.
@@ -214,6 +217,86 @@ def _alias_surface_is_junk(surface: str, lemma_scripts: frozenset) -> bool:
     return not surface_scripts or bool(surface_scripts - lemma_scripts)
 
 
+def eligible_form_surfaces(obj: dict, lang: str, word_lower: str,
+                           lemma_scripts: frozenset) -> set[str]:
+    """Single-word inflection surfaces from the entry's own kaikki `forms[]`
+    table, junk-filtered and build-normalized — the ONE definition shared by
+    the lexeme-aggregate frequency probe and the position-2 forms[] alias
+    pass, so the two can't drift on what counts as a real form.
+
+    Filters (all forms[]-specific except the shared junk gate):
+      - FORM_TAG_BLOCKLIST rows (table scaffolding, template names,
+        wiktextract's unparsed-cell marker).
+      - Empty, lemma-identical, multi-word, and bare-punctuation "forms"
+        (inflection tables shouldn't carry them; the REDIRECT pass
+        legitimately aliases multi-word expressions, so that pass must not
+        route through here).
+      - _alias_surface_is_junk: hyphen scaffolding + cross-script
+        transliterations (~31% of Hindi forms[])."""
+    out: set[str] = set()
+    for form_obj in obj.get("forms") or ():
+        if set(form_obj.get("tags") or ()) & FORM_TAG_BLOCKLIST:
+            continue
+        form_text = lower_for_lang((form_obj.get("form") or "").strip(), lang)
+        if not form_text or form_text == word_lower:
+            continue
+        if " " in form_text or form_text in _FORM_JUNK_LITERALS:
+            continue
+        if _alias_surface_is_junk(form_text, lemma_scripts):
+            continue
+        out.add(form_text)
+    return out
+
+
+# Chained-redirect resolution depth for pass 2 (see resolve_redirect_chain).
+# 2 hops covers the motivating population — inflection page → alternative-
+# spelling page → lemma ("criticised" → "criticise" → "criticize"); one
+# spare hop absorbs a form-of chain stacked on that. Deeper chains are
+# Wiktionary anomalies not worth chasing.
+MAX_REDIRECT_HOPS = 3
+
+
+def resolve_redirect_chain(
+    source: str,
+    redirect_targets: dict[str, set[str]],
+    kept_surfaces,
+    max_hops: int = MAX_REDIRECT_HOPS,
+) -> set[str]:
+    """Kept-lemma surfaces reachable from redirect surface [source] by
+    following [redirect_targets] transitively — breadth-first, cycle-guarded,
+    capped at [max_hops]. A branch TERMINATES at the first kept lemma it
+    reaches (a kept lemma is the answer, never a waypoint: "criticise" is
+    both an altspell_of redirect page and — once aliased — a resolvable
+    surface, but a chain that already landed on a kept lemma must not keep
+    walking through its outgoing redirects).
+
+    Single-hop resolution ("target must be a kept lemma") silently dropped
+    every inflection of every alternative-spelling lemma: "criticised" is
+    form_of "criticise", which is only altspell_of "criticize" — one hop
+    reached a non-kept surface and gave up, so the en pack had NO row for
+    "criticised" (or "recognising", "characterised", …).
+
+    [kept_surfaces] only needs membership (`in`) — pass kept_lemma_ids.
+    Pure + import-safe so scripts/test_alias_chains.py can drive it."""
+    resolved: set[str] = set()
+    frontier = redirect_targets.get(source, set())
+    visited = {source}
+    for _ in range(max_hops):
+        nxt: set[str] = set()
+        for target in frontier:
+            if target in visited:
+                continue
+            visited.add(target)
+            if target in kept_surfaces:
+                resolved.add(target)
+            else:
+                nxt |= redirect_targets.get(target, set())
+        if not nxt:
+            break
+        frontier = nxt
+    return resolved
+
+
 def extract_examples(sense: dict) -> list[tuple[str, str]]:
     """Pull up to MAX_EXAMPLES_PER_SENSE usage examples out of a kaikki
     sense dict. Each example becomes a (text, translation) tuple where
@@ -276,9 +359,30 @@ def lower_for_lang(word: str, lang: str) -> str:
     return word.lower()
 
 
-# Frequency threshold (Zipf scale). Words with frequency below this are
-# dropped. 1e-6 = "at least one occurrence per million words" — yields
-# ~30-50k entries for well-covered languages.
+# Frequency threshold (Zipf scale). LEXEMES with aggregate frequency below
+# this are dropped. 1e-6 = "at least one occurrence per million words" —
+# yields ~30-50k entries for well-covered languages.
+#
+# The cut is applied to the LEXEME AGGREGATE — the citation form's
+# frequency plus every (junk-filtered, deduped) `forms[]` surface's
+# frequency — not the bare citation form. wordfreq counts each surface
+# separately, and inflection-heavy lexemes concentrate their usage in
+# non-citation forms: en "confiscated" is 3.0e-06 while "confiscate" is
+# 8.5e-07. Cutting on the citation form alone dropped such lexemes whole,
+# and with the lemma went EVERY resolution path for its inflections (no
+# position-0 row, no position-1 stem row, and the form_of redirect pages
+# couldn't alias because their target wasn't kept) — so surfaces users
+# actually meet ("confiscated", "besieged", "larvae", fr "décédé")
+# resolved to nothing. SUM, not max: total surface mass IS the lexeme's
+# corpus frequency, and max still dropped lexemes whose most common single
+# form sits just under the bar ("deafening" 9.6e-07, "riveting" 9.8e-07 —
+# family sums 1.1e-06 / 2.6e-06).
+#
+# Accepted skew: a rare lexeme whose form collides with an unrelated common
+# surface inherits that surface's frequency for keep/score. Bounded — the
+# entry is only reachable through its own surfaces, so the inflated score
+# matters only when those surfaces are queried, where the entry is a
+# legitimate candidate anyway.
 MIN_FREQUENCY = 1e-6
 
 # Higher threshold for the is_common flag. Roughly top 3000 common words.
@@ -517,6 +621,10 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         # them with a Wiktionary-intrinsic proxy capped below the
         # real-frequency range.
         word_lower = lower_for_lang(word, lang)
+        lemma_scripts = _scripts_of(word_lower)
+        # Shared by the lexeme-aggregate frequency probe below and the
+        # forms[] alias emission after the entry inserts.
+        form_surfaces = eligible_form_surfaces(obj, lang, word_lower, lemma_scripts)
         if lang == "ko":
             key = word_lower
             if pos_raw in ("verb", "adj") and len(key) > 1 and key.endswith("다"):
@@ -536,10 +644,20 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
             # small, so every content entry is worth keeping.
             freq = None
         else:
+            # Lexeme aggregate: the citation form's contribution (max of its
+            # two case probes) PLUS every distinct forms[] surface — the
+            # lexeme's total corpus mass (see the MIN_FREQUENCY comment for
+            # why sum, not bare-lemma or max). form_surfaces is a set that
+            # excludes the lemma-identical surface, so nothing double-counts.
+            # The forms probe skips the Turkish dual-case probe: the corpus
+            # case-fold inconsistency was observed on lemma acronyms, and
+            # forms[] surfaces arrive already-lowercased from the tables.
             freq = max(
                 word_frequency(word.lower(), wordfreq_locale),
                 word_frequency(word_lower, wordfreq_locale),
             )
+            for form_surface in form_surfaces:
+                freq += word_frequency(form_surface, wordfreq_locale)
             if freq < MIN_FREQUENCY:
                 continue
 
@@ -651,23 +769,9 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         # lemma here vs 0.26 from redirect entries. Emitted at position 2, the
         # same tier as form_of aliases, so they surface with the [inflected]
         # marker and stay out of searchPrefix (which reads position 0 only).
-        lemma_scripts = _scripts_of(word_lower)
-        for form_obj in obj.get("forms") or ():
-            if set(form_obj.get("tags") or ()) & FORM_TAG_BLOCKLIST:
-                continue
-            form_text = lower_for_lang((form_obj.get("form") or "").strip(), lang)
-            if not form_text or form_text == word_lower:
-                continue
-            # forms[]-only: inflection tables shouldn't carry multi-word or bare
-            # punctuation "forms". (The redirect pass legitimately aliases
-            # multi-word expressions, so it does NOT apply this check.)
-            if " " in form_text or form_text in _FORM_JUNK_LITERALS:
-                continue
-            # Shared junk gate (hyphen scaffolding + cross-script) — see
-            # _alias_surface_is_junk. Drops "-a-", Urdu-on-Devanagari, "ā-stem"
-            # (~31% of Hindi forms[]).
-            if _alias_surface_is_junk(form_text, lemma_scripts):
-                continue
+        # The surface set (junk-filtered in eligible_form_surfaces) is the
+        # same one the frequency aggregate above probed.
+        for form_text in form_surfaces:
             forms_alias_pairs.add((entry_id, form_text))
 
         # Stem row — position 1 headword pointing at the same entry_id.
@@ -710,9 +814,12 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
     # Re-stream the kaikki file. For each entry we dropped as a redirect
     # in pass 1, extract its target lemma word from any sense's
     # `form_of` / `alt_of` / `altspell_of` / `abbreviation_of` /
-    # `synonym_of` field, and if that lemma is in the pack, add a
-    # position-2 headword row so `WiktionaryDictionaryManager` can
-    # resolve the inflected/alternate surface to the lemma's entry_id.
+    # `synonym_of` field, resolve it through the redirect graph to a KEPT
+    # lemma (targets can themselves be redirect pages — "criticised" is
+    # form_of "criticise", which is only altspell_of "criticize"; see
+    # resolve_redirect_chain), and add a position-2 headword row so
+    # `WiktionaryDictionaryManager` can resolve the inflected/alternate
+    # surface to the lemma's entry_id.
     #
     # `compound_of` is INTENTIONALLY EXCLUDED. Italian compounds like
     # `dacci = da' + ci` would route the user to `da'`'s gloss, which
@@ -728,14 +835,17 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         "synonym_of",
     )
 
-    alias_pairs: set[tuple[int, str]] = set()
+    # Sub-pass 2a: collect the redirect GRAPH (surface → named targets)
+    # rather than resolving inline — chain resolution needs the whole graph
+    # before any source can be routed through an intermediate redirect page.
+    redirect_targets: dict[str, set[str]] = {}
     scanned2 = 0
     for obj in iter_kaikki(input_path):
         scanned2 += 1
         if scanned2 % 200000 == 0:
             print(
                 f"  [pass2] {scanned2:,} scanned, "
-                f"{len(alias_pairs):,} alias pairs collected…"
+                f"{len(redirect_targets):,} redirect surfaces mapped…"
             )
 
         word = obj.get("word")
@@ -765,18 +875,24 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
                     continue
                 if source_surface == target_word:
                     continue  # self-alias, defensive
-                # Same shared junk gate the forms[] pass uses, against the TARGET
-                # lemma's script (the entry this row attaches to): drops
-                # hyphen-scaffolding redirect surfaces (bound-morpheme prefixes
-                # like "मनो-") and cross-script transliterations. Multi-word
-                # aliases survive — the space filter is forms[]-only.
-                if _alias_surface_is_junk(source_surface, _scripts_of(target_word)):
-                    continue
-                target_ids = kept_lemma_ids.get(target_word)
-                if not target_ids:
-                    continue
-                for target_id in target_ids:
-                    alias_pairs.add((target_id, source_surface))
+                redirect_targets.setdefault(source_surface, set()).add(target_word)
+
+    # Sub-pass 2b: route every redirect surface through the graph to its
+    # kept lemma(s) and emit the alias rows.
+    alias_pairs: set[tuple[int, str]] = set()
+    for source_surface in redirect_targets:
+        for target_word in resolve_redirect_chain(
+            source_surface, redirect_targets, kept_lemma_ids,
+        ):
+            # Same shared junk gate the forms[] pass uses, against the FINAL
+            # kept lemma's script (the entry this row attaches to): drops
+            # hyphen-scaffolding redirect surfaces (bound-morpheme prefixes
+            # like "मनो-") and cross-script transliterations. Multi-word
+            # aliases survive — the space filter is forms[]-only.
+            if _alias_surface_is_junk(source_surface, _scripts_of(target_word)):
+                continue
+            for target_id in kept_lemma_ids[target_word]:
+                alias_pairs.add((target_id, source_surface))
 
     # Fold the pass-1 forms[] aliases into the pass-2 redirect-alias set: dedup
     # is then structural (both are sets keyed on (entry_id, surface)) and there
@@ -995,6 +1111,34 @@ def build_zip(
 # as regressions surface. Empty dict means "no smoke test for this
 # language" (build still succeeds).
 SMOKE_FIXTURES: dict[str, dict[str, str]] = {
+    "en": {
+        # Lexeme-aggregate frequency keep: "confiscate" alone is 8.5e-07 —
+        # below the 1e-6 cut — while "confiscated" is ~3.0e-06. The bare-
+        # citation-form cut dropped the whole lexeme (no lemma row, no stem
+        # row, no alias target), so "confiscated" resolved to NOTHING.
+        # Resolves post-fix via the kept lemma's alias/stem rows.
+        "confiscated": "possession",  # confiscate: "…separate a possession from its holder"
+        # det POS keep: "every" is det-only (unlike each/the/those it has no
+        # homograph under a previously-kept POS) — a zipf-5.8 word with NO
+        # entry while `det` sat outside CONTENT_POS.
+        "every": "without exception",
+        # Chained redirect: criticised —form_of→ criticise —altspell_of→
+        # criticize. Single-hop alias resolution reached the non-kept
+        # intermediate and gave up; the chain resolver lands the lemma.
+        "criticised": "fault",        # criticize: "To find fault (with something)"
+    },
+    "fr": {
+        # det POS keep: French possessive determiners were entirely absent
+        # from the pack while `det` sat outside CONTENT_POS (mon/ma/votre/
+        # notre/cet — top-frequency words a learner taps constantly).
+        "mon": "my",
+        "votre": "your",
+    },
+    "es": {
+        # det POS keep: same class as fr — possessives were absent.
+        "su": "his",
+        "tus": "your",
+    },
     "it": {
         # Regular plurals resolve via the Snowball stem path.
         "cani": "dog",            # cani → cane → "dog"

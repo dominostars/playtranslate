@@ -1916,6 +1916,9 @@
     <string name="pos_conjunction">Liên từ</string>
     <string name="pos_interjection">Thán từ</string>
     <string name="pos_preposition">Giới từ</string>
+    <string name="pos_postposition">Hậu giới từ</string>
+    <string name="pos_determiner">Từ hạn định</string>
+    <string name="pos_article">Mạo từ</string>
     <string name="pos_prefix">Tiền tố</string>
     <string name="pos_suffix">Hậu tố</string>
     <string name="pos_counter">Loại từ</string>

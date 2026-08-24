@@ -1863,6 +1863,9 @@
     <string name="pos_conjunction">حرف عطف</string>
     <string name="pos_interjection">تعجب</string>
     <string name="pos_preposition">حرف جر</string>
+    <string name="pos_postposition">حرف جر لاحق</string>
+    <string name="pos_determiner">محدد</string>
+    <string name="pos_article">أداة تعريف</string>
     <string name="pos_prefix">بادئة</string>
     <string name="pos_suffix">لاحقة</string>
     <string name="pos_counter">أداة عد</string>

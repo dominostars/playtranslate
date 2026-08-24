@@ -347,6 +347,12 @@
     <string name="pos_interjection">Interjection</string>
     <!-- POS tag shown with a word's definitions: the "preposition" category. -->
     <string name="pos_preposition">Preposition</string>
+    <!-- POS tag shown with a word's definitions: the "postposition" category (e.g. Hindi को/से). -->
+    <string name="pos_postposition">Postposition</string>
+    <!-- POS tag shown with a word's definitions: the "determiner" category (e.g. "every"). -->
+    <string name="pos_determiner">Determiner</string>
+    <!-- POS tag shown with a word's definitions: the "article" category (e.g. "the"). -->
+    <string name="pos_article">Article</string>
     <!-- POS tag shown with a word's definitions: the "prefix" category. -->
     <string name="pos_prefix">Prefix</string>
     <!-- POS tag shown with a word's definitions: the "suffix" category. -->

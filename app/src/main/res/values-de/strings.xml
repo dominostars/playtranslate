@@ -1932,6 +1932,9 @@
     <string name="pos_conjunction">Konjunktion</string>
     <string name="pos_interjection">Interjektion</string>
     <string name="pos_preposition">Präposition</string>
+    <string name="pos_postposition">Postposition</string>
+    <string name="pos_determiner">Determinativ</string>
+    <string name="pos_article">Artikel</string>
     <string name="pos_prefix">Präfix</string>
     <string name="pos_suffix">Suffix</string>
     <string name="pos_counter">Zählwort</string>
