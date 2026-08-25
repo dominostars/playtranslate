@@ -104,9 +104,9 @@ internal fun styledMetaChips(
             ),
         )
     }
-    if (data.ankiDecks.isNotEmpty()) {
-        add(DefinitionsDocument.MetaChip(AnkiDeckBadge.label(ctx, data.ankiDecks)))
-    }
+    // The whole badge from its owner, never [AnkiDeckBadge.label] alone —
+    // the label-only assembly this replaced is what dropped the icon.
+    AnkiDeckBadge.metaChip(ctx, data.ankiDecks)?.let { add(it) }
 }
 
 /**
