@@ -808,20 +808,6 @@ fun buildAnkiModeToggle(
     }
 }
 
-/**
- * Recess the [buildAnkiModeToggle] track to [color]. The default track is
- * ptSurface-tinted, which vanishes when the toggle is hosted ON a ptSurface
- * ground (the floating workspace's header) — those hosts recess it to the
- * window ground (ptBg) instead.
- */
-fun restyleAnkiModeToggleTrack(container: FrameLayout, color: Int) {
-    val track = container.getChildAt(0) ?: return
-    track.background = GradientDrawable().apply {
-        setColor(color)
-        cornerRadius = 100 * container.resources.displayMetrics.density
-    }
-}
-
 /** Configures [builder] with the "AnkiDroid not installed" copy + actions.
  *  Caller picks the show path: [OverlayAlert.Builder.show] for an
  *  Activity, [OverlayAlert.Builder.showAsOverlay] for an accessibility overlay.
