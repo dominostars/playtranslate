@@ -18,6 +18,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
+import android.view.TouchDelegate
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewParent
@@ -1639,15 +1640,27 @@ class SentenceAnkiContentView(
 
         row.addView(col)
 
-        row.addView(TextView(ctx).apply {
+        val removeGlyph = TextView(ctx).apply {
             text = "✕"
             textSize = 16f
             setTextColor(ctx.themeColor(R.attr.ptTextMuted))
             isClickable = true
             isFocusable = true
             contentDescription = ctx.getString(R.string.anki_word_remove_content_description)
-            setPadding((10 * density).toInt(), (4 * density).toInt(),
-                (10 * density).toInt(), (4 * density).toInt())
+            // Horizontal padding only. The vertical padding used to buy hit
+            // area — expandTouchTarget owns that now — and once top-aligned
+            // it would only push the glyph below the word title's line.
+            // Zeroed, the ✕'s line box starts at the same content top as the
+            // title's, and both being 16sp they land on one baseline (the
+            // pitch-overline rows nudge the title ~2dp lower; imperceptible).
+            setPadding((10 * density).toInt(), 0, (10 * density).toInt(), 0)
+            // TOP against the row's CENTER_VERTICAL default: a tall row (a
+            // styled definitions block, a wrapped meaning) would otherwise
+            // strand the ✕ halfway down, far from the word it removes.
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).also { it.gravity = Gravity.TOP }
             setOnClickListener {
                 words.removeAll { it.word == entry.word }
                 selectedWords.remove(entry.word)
@@ -1663,8 +1676,32 @@ class SentenceAnkiContentView(
                 wordSelections.remove(entry.word)
                 rebuildWordRows()
             }
-        })
+        }
+        row.addView(removeGlyph)
+        // Grow the tap area to the 48dp minimum around the unchanged 16sp
+        // glyph. A TouchDelegate rather than padding: padding would widen the
+        // view, and the weight-1 word column would give that width back by
+        // reflowing its meaning text.
+        expandTouchTarget(row, removeGlyph, (48 * density).toInt())
         return row
+    }
+
+    /**
+     * Routes taps landing in a [minPx]-square rect centred on [child] to
+     * [child], leaving its own bounds — and so the whole row's layout —
+     * untouched. Recomputed on every layout pass of [parent]: rows are
+     * rebuilt often and the sheet can be resized under them, and a stale
+     * rect would hand taps to the wrong word.
+     */
+    private fun expandTouchTarget(parent: ViewGroup, child: View, minPx: Int) {
+        parent.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            val hit = Rect(child.left, child.top, child.right, child.bottom)
+            hit.inset(
+                -((minPx - hit.width()) / 2).coerceAtLeast(0),
+                -((minPx - hit.height()) / 2).coerceAtLeast(0),
+            )
+            parent.touchDelegate = TouchDelegate(hit, child)
+        }
     }
 
     // ── Async fill-in API ────────────────────────────────────────────
