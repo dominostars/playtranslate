@@ -115,8 +115,16 @@ class OverlayWorkspace(
         )
 
         card.orientation = LinearLayout.VERTICAL
+        // ptBg, not ptSurface: this card IS the window, so its fill is the
+        // window ground the hosted pages were built against
+        // (`android:windowBackground=?ptBg` in every Activity these flows
+        // came from). One ground for the whole card — the header shares it
+        // and is delineated by the hairline alone, not by a fill. Painting
+        // the card ptSurface instead handed page content a RAISED-surface
+        // colour, which collided with any content using ptSurface as a
+        // recess INSIDE a ptCard (the Anki words helper strip vanished).
         card.background = GradientDrawable().apply {
-            setColor(ctx.themeColor(R.attr.ptSurface))
+            setColor(ctx.themeColor(R.attr.ptBg))
             setStroke(dp(1f), ctx.themeColor(R.attr.ptDivider))
             cornerRadius = cardRadiusPx
         }
@@ -130,6 +138,10 @@ class OverlayWorkspace(
         // absolute; see FloatingIconMenu's RTL rule) + centered bold title,
         // hairline below — the house toolbar pattern.
         val header = headerFrame
+        // No fill of its own: the header rides the card's window ground and
+        // the hairline below separates it, so a control a page parks here
+        // via setHeaderView (the Anki editors' Sentence/Word toggle) sits on
+        // ptBg and needs no host-specific restyle.
         // The 48dp button touch frame overhangs the 44dp header strip.
         header.clipChildren = false
         leftIcon.apply {
