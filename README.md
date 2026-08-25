@@ -62,7 +62,7 @@ You can support PlayTranslate on Ko-fi at https://ko-fi.com/playtranslate
 
 ## Supported Languages
 
-PlayTranslate translates from **25 game languages** (the text it can read off the screen) into **59 translation languages** (the language shown to you). Both tables are sorted by total worldwide speakers.
+PlayTranslate translates from **26 game languages** (the text it can read off the screen) into **59 translation languages** (the language shown to you). Both tables are sorted by total worldwide speakers.
 
 ### Game languages (read from the screen)
 
@@ -93,6 +93,7 @@ PlayTranslate translates from **25 game languages** (the text it can read off th
 | Danish                | Dansk            | da       |
 | Finnish               | Suomi            | fi       |
 | Norwegian             | Norsk            | no       |
+| Polish                | Polski           | pl       |
 
 ### Translation languages (translated for you)
 
