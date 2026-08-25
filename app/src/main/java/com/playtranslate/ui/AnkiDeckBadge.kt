@@ -17,6 +17,13 @@ import com.playtranslate.R
  * background so the pill matches that surface's Common pill; the label text,
  * the leading [R.drawable.ic_card_stack] icon, and the accessibility text
  * are produced here so the three stay in lockstep.
+ *
+ * BOTH mediums are built here — [buildPill] for the native rows,
+ * [metaChip] for the styled (WebView) renderer's meta row. That is the
+ * lockstep rule made enforceable rather than advisory: the styled path
+ * used to assemble its own chip out of [label] alone and shipped an
+ * icon-less badge for as long as a Yomitan dictionary put a panel on the
+ * WebView, because taking half a badge was something a caller could do.
  */
 object AnkiDeckBadge {
 
@@ -67,5 +74,31 @@ object AnkiDeckBadge {
             setPadding(horizontalPadPx, verticalPadPx, horizontalPadPx, verticalPadPx)
             contentDescription = ctx.getString(R.string.word_anki_deck_badge_cd, text)
         }
+    }
+
+    /**
+     * The same badge for the styled document's meta row
+     * ([DefinitionsDocument.contentHtml]): the [R.drawable.ic_card_stack]
+     * glyph as that page's inline-SVG counterpart, then [label]. Colours
+     * are not passed — an untinted chip already renders muted-on-
+     * translucent from the shell stylesheet, which is the neutral chip's
+     * own treatment, and the glyph follows the chip's ink via
+     * `currentColor`. Null on an empty [deckNames], same as [buildPill].
+     *
+     * No accessibility text rides along: [buildPill]'s contentDescription
+     * has no dependable HTML counterpart here (`aria-label` on a bare
+     * `span` is honoured inconsistently, and `role="img"` would suppress
+     * the deck name it wraps), so the chip's visible text is what a screen
+     * reader reads and the glyph is marked decorative.
+     */
+    internal fun metaChip(
+        ctx: Context,
+        deckNames: List<String>,
+    ): DefinitionsDocument.MetaChip? {
+        if (deckNames.isEmpty()) return null
+        return DefinitionsDocument.MetaChip(
+            label(ctx, deckNames),
+            icon = DefinitionsDocument.MetaChip.Icon.CARD_STACK,
+        )
     }
 }
