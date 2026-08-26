@@ -103,6 +103,20 @@ import kotlin.math.sign
  *  its compact footprint (definitions land near the lens's former ~13sp). */
 private const val LENS_DEFINITIONS_SCALE = 0.8f
 
+/** How long a flat→styled bind holds BOTH bodies for the styled render
+ *  before falling back to flat ([LensView.holdBodyForStyled]): under the
+ *  "feels instant" threshold, and a warm WebView pipeline beats it
+ *  essentially always — so the same content rendering twice (flat, then
+ *  restyled: the visible "hop") is never seen on a device fast enough to
+ *  ever avoid it. */
+private const val STYLED_HOLD_DEADLINE_MS = 150L
+
+/** How long a styled→styled in-place rebind waits for the new word's
+ *  painted-height report before dropping to flat. Longer than the hold:
+ *  the previous content is still on screen, so nothing is missing while
+ *  it waits. */
+private const val STYLED_INPLACE_DEADLINE_MS = 250L
+
 /** One section of the lens's split (phrase + word) definitions body — see
  *  [MagnifierLens.setSplitDefinitions]. [opens] renders the section's
  *  trailing chevron and makes the whole section a tap target for its
@@ -244,6 +258,16 @@ class MagnifierLens(
     private val growBufferPx = dp(8f)
 
     private var lensView: LensView? = null
+    /** A caller announced styled dictionaries are live: every window this
+     *  lens builds should construct its styled renderer eagerly so the
+     *  shell loads during the drag, not at first bind ([LensView.
+     *  prewarmStyledRenderer]). Sticky for the lens's lifetime — set from
+     *  an async styling check that races window construction, so
+     *  [ensureWindow] honors it at build and [prewarmStyledRenderer]
+     *  covers the already-built case. Worst case after a mid-session
+     *  styling-off is one idle parked WebView per window, destroyed with
+     *  it. */
+    private var styledPrewarmRequested = false
     /** Full-screen host that owns the window; [lensView] is its single child,
      *  slid horizontally inside it. The window is the whole display so a tap
      *  anywhere off the card is caught and consumed (dismiss without leaking
@@ -311,6 +335,18 @@ class MagnifierLens(
     private val useActivityWindow: Boolean get() = overlayHost == null
 
     val isInteractive: Boolean get() = lensView?.isInteractive == true
+
+    /** Styled dictionaries are live for this session: build each window's
+     *  styled renderer eagerly so its shell page loads during the drag
+     *  instead of at the first styled bind — the shell load is what makes
+     *  a fresh renderer lose [LensView.setDefinitions]'s grace hold and
+     *  flash flat-then-styled on every lookup. Call whenever styling is
+     *  known active (e.g. drag start, beside [YomitanDefinitionsView.
+     *  warmUp]); sticky for this lens's lifetime. */
+    fun prewarmStyledRenderer() {
+        styledPrewarmRequested = true
+        lensView?.prewarmStyledRenderer()
+    }
 
     /** True while the sticky lens HOLDS WINDOW FOCUS for controller input —
      *  [makeInteractive] found a controller, so A/B/dpad/stick are driving the
@@ -777,6 +813,7 @@ class MagnifierLens(
         lensView = view
         lensRoot = root
         params = lp
+        if (styledPrewarmRequested) view.prewarmStyledRenderer()
         // A bitmap attached before this view existed (deferred-reveal scene
         // flow) applies now; null is a harmless no-op-equivalent.
         view.setSourceBitmap(sourceBitmapForShow)
@@ -908,8 +945,12 @@ class MagnifierLens(
         private val onAnkiLongPress: () -> Unit,
         private val onSpeakTap: () -> Unit,
         private val showAnkiChip: Boolean,
-        /** Styled body reported a (new) painted height — the owner re-runs
-         *  its card-height fit (LensView is not an inner class). */
+        /** The body the card should fit changed height — a styled paint
+         *  report, or a fallback to flat in a card fitted to a styled
+         *  panel (deadline, empty render, renderer death). The owner
+         *  re-runs its card-height fit, which is grow-only, so calling it
+         *  when the body already fits is a no-op (LensView is not an
+         *  inner class). */
         private val onStyledHeightChanged: () -> Unit,
     ) : FrameLayout(ctx) {
         private fun dp(v: Float): Int = (density * v).toInt()
@@ -1377,6 +1418,13 @@ class MagnifierLens(
         var styledActive = false
             private set
         private var styledContentHeight = 0
+        /** Identity (headword + reading) of the last single-body bind fed
+         *  to the styled view — [setDefinitions] compares against it to
+         *  decide whether a bind may ride the in-place path. Only consulted
+         *  while [styledActive], which is set exclusively in the funnel
+         *  that also writes this, so it can never be stale when it
+         *  matters. */
+        private var styledBoundKey: Pair<String, String?>? = null
 
         // ── Split-section styled (WebView) renderers ──────────────────
         /** Pool of per-SECTION styled renderers for the split body, handed
@@ -1422,6 +1470,17 @@ class MagnifierLens(
             return v
         }
 
+        /** Builds the styled renderer AHEAD of the first styled bind so its
+         *  shell page loads while the user is still dragging toward a word
+         *  — the shell is the expensive part (~150ms on the Thor), and a
+         *  bind against a loaded shell is what lets [setDefinitions]'s
+         *  grace hold actually win. The view idles INVISIBLE at 1px until
+         *  a bind swaps content in; no-op when styled rendering is
+         *  unavailable or the view already exists. */
+        fun prewarmStyledRenderer() {
+            ensureStyledView()
+        }
+
         private fun lensStyledTokens() = DefinitionsDocument.Tokens(
             text = context.themeColor(R.attr.ptText),
             textMuted = context.themeColor(R.attr.ptTextMuted),
@@ -1462,13 +1521,24 @@ class MagnifierLens(
         }
 
         /** Painted-height report from the page: size the styled view, and
-         *  if this bind was waiting to swap, reveal it now — the flat
-         *  content showed instantly and the styled render replaces it only
-         *  once it actually has pixels (no blank-panel gap). */
+         *  if this bind was waiting to swap, reveal it now — flat (shown,
+         *  or held back by [holdBodyForStyled]) stands until the styled
+         *  render actually has pixels (no blank-panel gap). */
         private fun onStyledContentHeight(h: Int) {
             val sv = styledView ?: return
             if (h <= 0) {
-                pendingStyledSwap = false
+                if (pendingStyledSwap) {
+                    // Empty render: styled is not coming for this bind.
+                    // Settle on the flat body — the flat-first path already
+                    // has it showing, but a held or in-place bind doesn't.
+                    pendingStyledSwap = false
+                    cancelStyledDeadline()
+                    styledActive = false
+                    parkStyledView()
+                    definitionsContent.visibility = VISIBLE
+                    // Refit for the flat body — see the deadline runnable.
+                    onStyledHeightChanged()
+                }
                 return
             }
             // Neither pending nor live: the bind this report belongs to was
@@ -1478,6 +1548,7 @@ class MagnifierLens(
             // INVISIBLE view here would silently stretch the scroll range
             // under whatever body is now showing.
             if (!pendingStyledSwap && !styledActive) return
+            cancelStyledDeadline()
             styledContentHeight = h
             sv.layoutParams = (sv.layoutParams as? LayoutParams
                 ?: LayoutParams(LayoutParams.MATCH_PARENT, h)).apply { height = h }
@@ -1501,6 +1572,7 @@ class MagnifierLens(
             styledView = null
             styledActive = false
             pendingStyledSwap = false
+            cancelStyledDeadline()
             splitStyledPool.forEach {
                 it.destroy()
                 (it.parent as? ViewGroup)?.removeView(it)
@@ -1516,22 +1588,35 @@ class MagnifierLens(
             styledUnavailable = true
             styledActive = false
             pendingStyledSwap = false
+            cancelStyledDeadline()
             definitionsContent.visibility = VISIBLE
+            // Pre-existing member of the same refit gap (predates the hop
+            // fix): renderer death mid-styled revealed flat in a card
+            // fitted to the dead styled panel. Same closure as the
+            // deadline runnable.
+            onStyledHeightChanged()
         }
 
         /** Back to the flat renderer as the visible body (loading, ZOOM,
-         *  or a bind with no styled payload). The styled view drops to
-         *  INVISIBLE at 1px — not GONE (it must stay laid out at real
-         *  width for the next swap's measurement), and not its old height
-         *  (an INVISIBLE view still counts toward the container's
-         *  wrap-content measure; a stale tall view would leave the scroll
-         *  full of blank space under the flat content). The split body is
-         *  fully torn down — unlike the styled view it has no deferred
-         *  measurement to keep warm, and stale section views must not stay
-         *  controller-nav candidates. */
+         *  or a bind with no styled payload). The split body is fully torn
+         *  down — unlike the styled view it has no deferred measurement to
+         *  keep warm, and stale section views must not stay controller-nav
+         *  candidates. */
         private fun showFlatBody() {
+            cancelStyledDeadline()
             styledActive = false
             pendingStyledSwap = false
+            parkStyledView()
+            hideSplitBody()
+            definitionsContent.visibility = VISIBLE
+        }
+
+        /** The styled view drops to INVISIBLE at 1px — not GONE (it must
+         *  stay laid out at real width for the next swap's measurement),
+         *  and not its old height (an INVISIBLE view still counts toward
+         *  the container's wrap-content measure; a stale tall view would
+         *  leave the scroll full of blank space under the visible body). */
+        private fun parkStyledView() {
             styledView?.let { sv ->
                 sv.visibility = INVISIBLE
                 (sv.layoutParams as? LayoutParams)?.let { lp ->
@@ -1541,8 +1626,50 @@ class MagnifierLens(
                     }
                 }
             }
+        }
+
+        /** Grace hold for a warm flat→styled bind ([setDefinitions]):
+         *  NEITHER body is visible while the styled render races the
+         *  deadline. Flat is bound and ready underneath — INVISIBLE, not
+         *  GONE, so the card still sizes to it and the reveal doesn't grow
+         *  from nothing. Every exit reveals exactly one body: the
+         *  painted-height report reveals styled; the deadline, an empty
+         *  render, and renderer death reveal flat. */
+        private fun holdBodyForStyled() {
+            styledActive = false
+            parkStyledView()
             hideSplitBody()
-            definitionsContent.visibility = VISIBLE
+            definitionsContent.visibility = INVISIBLE
+        }
+
+        /** Bounds a pending styled swap that is NOT showing flat meanwhile
+         *  (a held first reveal, or an in-place styled→styled rebind): if
+         *  the page hasn't reported painted height by the deadline, reveal
+         *  flat now. The swap stays PENDING — a late report still upgrades
+         *  to styled, exactly the old flat-first contract, so a slow render
+         *  costs the hop but never the content. */
+        private var styledDeadline: Runnable? = null
+
+        private fun scheduleStyledDeadline(delayMs: Long) {
+            cancelStyledDeadline()
+            val r = Runnable {
+                styledDeadline = null
+                styledActive = false
+                parkStyledView()
+                definitionsContent.visibility = VISIBLE
+                // The card may have been fitted to the styled height (an
+                // in-place rebind measures the OLD styled panel at bind
+                // time); refit against what's actually showing now. Grow-
+                // only, so a flat body that already fits is a no-op.
+                onStyledHeightChanged()
+            }
+            styledDeadline = r
+            postDelayed(r, delayMs)
+        }
+
+        private fun cancelStyledDeadline() {
+            styledDeadline?.let { removeCallbacks(it) }
+            styledDeadline = null
         }
 
         private fun hideSplitBody() {
@@ -2234,16 +2361,54 @@ class MagnifierLens(
             // content of every lookup and the standing fallback the styled
             // path degrades to (renderer death, empty render).
             definitionsContent.bind(data, label, LENS_DEFINITIONS_SCALE, showMisc = false)
-            showFlatBody()
             val styledData = data.styled
             val sv = if (styledData != null && styledData.structured.isNotEmpty()) {
                 ensureStyledView()
             } else {
                 null
             }
-            if (sv != null) {
-                // Styled upgrade: swap over the flat content when the page
-                // reports painted height (see [onStyledContentHeight]).
+            if (sv == null) {
+                showFlatBody()
+            } else {
+                // Styled upgrade: the page reports painted height and the
+                // styled body swaps in ([onStyledContentHeight]). Which body
+                // shows UNTIL then decides whether the user watches the same
+                // content render twice (the flat→styled "hop"):
+                //  - styled already live with the SAME logical word
+                //    (headword + reading): keep it — ptSwap repaints the
+                //    visible page in place, no flat flash, and what stands
+                //    meanwhile is that same word (deck backfill,
+                //    dwell→release). The same-word gate is a lens-enforced
+                //    invariant, not a caller courtesy: a DIFFERENT word
+                //    riding in place would leave the pill naming the new
+                //    word over the old word's body until the swap paints
+                //    (Codex adversarial catch — today's callers all pass
+                //    through ZOOM/loading/dismiss between words, but
+                //    nothing in this method's contract said so).
+                //    (A live split is impossible here: split binds go
+                //    through [showFlatBody], dropping styledActive first.)
+                //  - flat→styled on a READY shell ([isPageReady] — this
+                //    view's page is loaded, so the swap is a JS round-trip):
+                //    hold both bodies ([holdBodyForStyled]) so the reveal is
+                //    styled-or-flat, never flat-then-styled. A styled bind
+                //    of a DIFFERENT word over a live styled body lands here
+                //    too (a live page is ready by definition): the old body
+                //    parks instantly, so mislabeled content never shows.
+                //    The capture flow prewarms the shell at drag start
+                //    ([prewarmStyledRenderer]) precisely so binds land here.
+                //  - shell still loading (a just-built view — measured
+                //    ~150ms on the Thor, dwarfing any sane hold):
+                //    flat-first as always.
+                // Every path keeps flat bound as the standing fallback;
+                // the non-flat-first paths are bounded by
+                // [scheduleStyledDeadline].
+                val bindKey = data.word to data.reading
+                val inPlace = styledActive && bindKey == styledBoundKey
+                styledBoundKey = bindKey
+                val hold = !inPlace && sv.isPageReady()
+                if (!inPlace) {
+                    if (hold) holdBodyForStyled() else showFlatBody()
+                }
                 pendingStyledSwap = true
                 sv.setContent(
                     DefinitionsDocument.contentHtml(
@@ -2257,6 +2422,11 @@ class MagnifierLens(
                     styledData.dictStyles,
                     styledData.sourceLanguage,
                 )
+                if (inPlace || hold) {
+                    scheduleStyledDeadline(
+                        if (inPlace) STYLED_INPLACE_DEADLINE_MS else STYLED_HOLD_DEADLINE_MS,
+                    )
+                }
             }
             definitionsScroll.scrollTo(0, 0)
             definitionsScroll.visibility = VISIBLE

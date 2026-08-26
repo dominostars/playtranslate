@@ -126,6 +126,14 @@ internal class YomitanDefinitionsView(
 
     fun isUsable(): Boolean = webView != null
 
+    /** The shell page has finished loading, so a [setContent] executes
+     *  immediately instead of queueing behind the load — the difference
+     *  between a swap that paints in a frame or two and one that pays the
+     *  full shell load (~150ms on the Thor's AOSP WebView) first. Hosts
+     *  racing a reveal against the styled render should only bother when
+     *  this is true. */
+    fun isPageReady(): Boolean = webView != null && pageReady
+
     /**
      * Swaps in a lookup's content. [contentHtml] comes from
      * [DefinitionsDocument.contentHtml]; [dictCss] maps dict id → raw
