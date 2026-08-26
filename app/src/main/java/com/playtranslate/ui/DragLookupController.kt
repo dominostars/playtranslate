@@ -407,16 +407,19 @@ class DragLookupController(
      * popup is committed at release ([onDragEnd]).
      */
     fun onDragStart(existingScreenshotPath: String? = null) {
-        // Pre-pay the first-WebView-in-process provider init while the user
-        // is still dragging toward a word, so the first styled panel doesn't
-        // stall on it. Gated on styling actually being live; warmUp itself
-        // is once-per-process.
+        // Pre-pay the styled renderer's startup while the user is still
+        // dragging toward a word: the once-per-process provider init
+        // (warmUp) AND this window's shell-page load (prewarm) — a bind
+        // against a loaded shell is what lets the lens reveal styled
+        // directly instead of flashing flat-then-styled. Gated on styling
+        // actually being live.
         scope.launch {
             if (YomitanDataStore.stylingFor(
                     context, Prefs(context).sourceLangId.yomitanConsumingLang(),
                 ).stylingActive
             ) {
                 YomitanDefinitionsView.warmUp(context)
+                magnifier.prewarmStyledRenderer()
             }
         }
         // Tear down everything left over from the previous drag. Previous
