@@ -63,7 +63,19 @@ class WindowSheetHost(
 
     private var params: WindowManager.LayoutParams? = null
 
+    /** System bars the game had hidden when the sheet attached
+     *  ([OverlayHost.hiddenSystemBars] mask). Latched ONCE, at attach, and
+     *  re-armed on every later flip to focusable — a fresh read at flip time
+     *  would be poisoned in the unpark flow, where the helper Activity that
+     *  parked us (bars visible) is still on top when the caller restores our
+     *  focus policy. Attach always happens directly over the game, so the
+     *  attach-time read is the clean one. */
+    private var gameHiddenBars: Int? = null
+
     override fun attach(root: View, screenW: Int, screenH: Int, focusable: Boolean) {
+        // Read before our own window exists: once a focusable sheet holds the
+        // bar control, the observable state is our request, not the game's.
+        gameHiddenBars = overlayHost.hiddenSystemBarsOnDisplay(displayId)
         val lp = WindowManager.LayoutParams(
             screenW, screenH,
             0, // type stamped by OverlayHost
@@ -76,6 +88,8 @@ class WindowSheetHost(
         }
         applyPolicy(lp, focusable = focusable, wantsIme = false)
         params = lp
+        // addOverlayWindow itself mirrors the bars onto an attach-time
+        // focusable window; later flips re-arm from the latch below.
         overlayHost.addOverlayWindow(root, wm, lp, displayId)
     }
 
@@ -88,6 +102,15 @@ class WindowSheetHost(
 
     override fun setFocusPolicy(root: View, focusable: Boolean, wantsIme: Boolean) {
         val lp = params ?: return
+        if (focusable) {
+            // Attach found no window to read from (first overlay up on this
+            // display): fall back to our own root's insets — we're currently
+            // non-focusable, so they still reflect the game's state.
+            if (gameHiddenBars == null) gameHiddenBars = OverlayHost.hiddenSystemBars(root)
+            // Arm before the flag change so the request is already recorded
+            // when the focus grant makes this window the bar control target.
+            OverlayHost.mirrorSystemBars(root, gameHiddenBars)
+        }
         applyPolicy(lp, focusable, wantsIme)
         try {
             wm.updateViewLayout(root, lp)

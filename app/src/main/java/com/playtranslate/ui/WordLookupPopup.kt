@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.app.Activity
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -217,10 +218,21 @@ class WordLookupPopup(
 
         if (overlayHost != null) {
             // Backend overlay host — registers the window so it's blanked
-            // alongside the icon/magnifier during clean screenshots.
+            // alongside the icon/magnifier during clean screenshots. The host
+            // also mirrors the game's system-bar state onto this focusable
+            // window, so taking focus doesn't flash the nav pill over an
+            // immersive game.
             if (!overlayHost.addOverlayWindow(container, wm, popupParams, displayId)) return false
         } else {
+            // Activity-window popup: the focused panel becomes the system-bar
+            // control target just like an overlay would, so mirror the hosting
+            // activity's bar state (read from its decor BEFORE our window can
+            // affect it) — else opening the popup un-hides bars the activity
+            // keeps hidden.
+            val activityHiddenBars = (ctx as? Activity)?.window?.decorView
+                ?.let { OverlayHost.hiddenSystemBars(it) }
             try { wm.addView(container, popupParams) } catch (_: Exception) { return false }
+            OverlayHost.mirrorSystemBars(container, activityHiddenBars)
         }
         // Request window focus so onGenericMotionListener receives joystick
         // events (the previous architecture got focus via the backdrop).

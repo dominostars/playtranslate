@@ -392,10 +392,9 @@ class MagnifierLens(
         // The interactive card needs window focus only for key/stick
         // navigation (dpad + A over the pill/chips, stick scroll, B/Escape
         // dismiss). With no gamepad or hardware keyboard attached there is
-        // nothing to navigate WITH, so stay non-focusable: that keeps the
-        // window from becoming the system-bar owner and showing the nav
-        // pill over an immersive game. Touch and outside-touch dismissal
-        // work either way — neither needs focus.
+        // nothing to navigate WITH, so stay non-focusable: focus taking is
+        // never free (it steals key input from the app beneath). Touch and
+        // outside-touch dismissal work either way — neither needs focus.
         var flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -404,6 +403,13 @@ class MagnifierLens(
         tookControllerFocus = hasNavInputDevice(rawCtx)
         if (!tookControllerFocus) {
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        } else {
+            // Focus makes this window the system-bar control target, whose
+            // default request would show the nav pill over an immersive game.
+            // The window has been attached non-focusable since show(), so its
+            // own insets still reflect the game's bar state — mirror it, armed
+            // before the flag flip so the request rides the focus grant.
+            OverlayHost.mirrorSystemBars(root, OverlayHost.hiddenSystemBars(root))
         }
         // The window is already full-screen (set in show()); this flag change
         // is flags-only — no size or position change, so it can't trigger the
