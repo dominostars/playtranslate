@@ -10,6 +10,8 @@ import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.view.WindowManager
 import androidx.core.view.doOnLayout
 import com.playtranslate.DrawRateProbe
@@ -114,8 +116,17 @@ class OverlayHost(
         // overlay to its own display's explicit size so overlay == display by
         // construction on every API level.
         if (fullScreen) pinFullScreenSize(params, displayId)
+        // A focusable window becomes the system-bar control target on focus,
+        // and its default requested state is "bars visible" — which yanks the
+        // nav pill (and status bar) back over an immersive game the moment a
+        // popup opens. Read the game's current bar state BEFORE this window
+        // exists, and arm the same request on it right after addView so the
+        // request is already recorded when focus lands.
+        val focusable = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0
+        val hiddenBars = if (focusable) hiddenSystemBarsOnDisplay(displayId) else null
         return try {
             wm.addView(view, params)
+            if (focusable) mirrorSystemBars(view, hiddenBars)
             overlayWindows += OverlayHandle(view, wm, params, displayId)
             logOverlayGeometry(view, params, displayId, fullScreen)
             logFocusableOverlay("add", view, params, displayId)
@@ -162,6 +173,30 @@ class OverlayHost(
         val handle = overlayWindows.firstOrNull { it.view === view } ?: return
         if (!pinFullScreenSize(handle.params, displayId)) return
         try { handle.wm.updateViewLayout(view, handle.params) } catch (_: Exception) {}
+    }
+
+    /**
+     * Which system bars (status/navigation) the app under our overlays
+     * currently has hidden, as a [WindowInsets.Type] mask — read from the
+     * last insets dispatch any registered window on [displayId] received.
+     * Null when unknowable: no attached window to read from, or pre-R
+     * (per-type visibility only exists in the R insets model, and the
+     * legacy approximation reads a NO_LIMITS window's zero insets as
+     * "hidden", which would blanket-hide bars the game never hid).
+     *
+     * Only meaningful as a picture of the GAME's state while no focusable
+     * overlay of ours holds the bar control — but every focusable overlay we
+     * add mirrors the state it observed (see [addOverlayWindow] /
+     * [mirrorSystemBars]), so inductively the global state under any stack of
+     * our windows still equals the game's own request.
+     */
+    fun hiddenSystemBarsOnDisplay(displayId: Int): Int? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        for (handle in overlayWindows) {
+            if (handle.displayId != displayId) continue
+            return hiddenSystemBars(handle.view) ?: continue
+        }
+        return null
     }
 
     /**
@@ -378,6 +413,57 @@ class OverlayHost(
          * Idempotent. Honors callers that explicitly set a non-DEFAULT cutout
          * mode — only the DEFAULT case is upgraded.
          */
+        /** Per-type mask of the system bars currently hidden, read from
+         *  [view]'s last-received window insets. [view] must be attached.
+         *  Null pre-R or before the first insets dispatch. See
+         *  [hiddenSystemBarsOnDisplay] for why pre-R stays null. */
+        fun hiddenSystemBars(view: View): Int? {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+            val insets = view.rootWindowInsets ?: return null
+            var hidden = 0
+            if (!insets.isVisible(WindowInsets.Type.statusBars())) {
+                hidden = hidden or WindowInsets.Type.statusBars()
+            }
+            if (!insets.isVisible(WindowInsets.Type.navigationBars())) {
+                hidden = hidden or WindowInsets.Type.navigationBars()
+            }
+            return hidden
+        }
+
+        /**
+         * Arm [view]'s window with the same system-bar visibility the app
+         * beneath maintains ([hiddenTypes], from [hiddenSystemBars] /
+         * [hiddenSystemBarsOnDisplay]) so the window can take input focus —
+         * and with it the bar control — without flashing the nav pill or
+         * status bar over an immersive game. Call on an ATTACHED window,
+         * BEFORE the focus grant lands (right after addView, or before the
+         * updateViewLayout that clears FLAG_NOT_FOCUSABLE): requested
+         * visibility is per-window state the system applies when the window
+         * becomes the control target.
+         *
+         * [hiddenTypes] == null (state unknowable) leaves the window's
+         * default request — today's behavior. Bars the app shows are
+         * explicitly show()n so a re-arm can clear a stale hide.
+         */
+        fun mirrorSystemBars(view: View, hiddenTypes: Int?) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || hiddenTypes == null) return
+            val controller = view.windowInsetsController ?: return
+            val allBars = WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars()
+            val showTypes = allBars and hiddenTypes.inv()
+            if (hiddenTypes != 0) {
+                // The game's own semantics: hidden bars stay swipeable, and a
+                // swipe reveals them transiently rather than re-showing them.
+                controller.systemBarsBehavior =
+                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                controller.hide(hiddenTypes)
+            }
+            if (showTypes != 0) controller.show(showTypes)
+            Log.i(
+                TAG,
+                "[BarMirror] ${view.javaClass.simpleName} hidden=0x${hiddenTypes.toString(16)}"
+            )
+        }
+
         fun applyFullScreenOverlayDefaults(params: WindowManager.LayoutParams) {
             val fullScreen =
                 params.width == WindowManager.LayoutParams.MATCH_PARENT &&
