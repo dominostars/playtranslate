@@ -96,6 +96,12 @@ class WordAnkiReviewBinder(
          *  result so the results page refreshes; the workspace no-ops. */
         fun onSentenceCardAdded() {}
 
+        /** Hold point before the resolve's completion bind — the workspace
+         *  suspends until its enter animation settles so the definitions
+         *  rebuild (and its styled WebView) can't drop entrance frames; the
+         *  sheet host holds nothing. Callers re-check [isAlive] after. */
+        suspend fun awaitEnterSettled() {}
+
         /** Close the hosting surface (a card was sent, or back). */
         fun dismiss()
     }
@@ -501,6 +507,8 @@ class WordAnkiReviewBinder(
     private inner class ContentHost : SentenceAnkiContentView.Host {
         override val isAlive: Boolean get() = host.isAlive
 
+        override suspend fun awaitEnterSettled() = host.awaitEnterSettled()
+
         override fun openAudioPicker(intent: Intent, onPicked: (AudioSelection) -> Unit) =
             host.openAudioPicker(intent, onPicked)
 
@@ -760,8 +768,16 @@ class WordAnkiReviewBinder(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
             )
         }
-        val bmp = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
-        if (bmp != null) img.setImageBitmap(bmp)
+        // Decoded off the main thread: bind runs synchronously inside the
+        // workspace push, and a full-screen decode there stalls the window's
+        // enter animation. Display-only — the card gets the file itself
+        // (addMediaFromFile), never this bitmap.
+        scope.launch {
+            val bmp = withContext(Dispatchers.IO) {
+                decodeScreenshotForDisplay(file, ctx.resources.displayMetrics.widthPixels)
+            }
+            if (bmp != null) img.setImageBitmap(bmp)
+        }
         frame.addView(img)
         val removeSize = (32 * density).toInt()
         frame.addView(TextView(ctx).apply {
@@ -811,6 +827,9 @@ class WordAnkiReviewBinder(
         )
         android.util.Log.i(LOOKUP_TAG, "lookup start: '$word' reading=$readingHint lang=$sourceLangId")
         val defResult = withContext(Dispatchers.IO) { resolver.lookup(word, readingHint) }
+        // Everything below touches the view tree (pitch line, definitions
+        // rebuild, the styled WebView) — hold it out of the entrance window.
+        host.awaitEnterSettled()
         val response = defResult?.response
         val entries = response?.entries.orEmpty()
         val entry = entries.firstOrNull()
@@ -1984,4 +2003,21 @@ class WordAnkiReviewBinder(
             if (audioAnchorMs != null) putLong(ARG_AUDIO_ANCHOR_MS, audioAnchorMs)
         }
     }
+}
+
+/** Decode [file] for an in-editor screenshot preview, sampled down
+ *  (power-of-2) toward [targetW] instead of always inflating the full file.
+ *  Conservative: the decoded width never drops below [targetW], so a
+ *  same-display screenshot resolves to inSampleSize 1 and the cap only bites
+ *  when the source is at least twice the width it will be displayed at. Call
+ *  off the main thread; the bounds pass alone is a header parse. */
+internal fun decodeScreenshotForDisplay(file: File, targetW: Int): android.graphics.Bitmap? {
+    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    android.graphics.BitmapFactory.decodeFile(file.absolutePath, bounds)
+    var sample = 1
+    if (bounds.outWidth > 0 && targetW > 0) {
+        while (bounds.outWidth / (sample * 2) >= targetW) sample *= 2
+    }
+    val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+    return android.graphics.BitmapFactory.decodeFile(file.absolutePath, opts)
 }

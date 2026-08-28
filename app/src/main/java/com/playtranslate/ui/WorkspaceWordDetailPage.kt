@@ -143,6 +143,8 @@ class WorkspaceWordDetailPage(
     ) : WordDetailBinder.Ui {
         override val isAlive: Boolean get() = pageView != null
 
+        override suspend fun awaitEnterSettled() = host.awaitEnterSettled()
+
         override fun sentenceContext(): SentenceContext? =
             this@WorkspaceWordDetailPage.sentenceContext.invoke()
 

@@ -396,6 +396,8 @@ class AnkiEditorPage(private val args: Bundle) : WorkspacePage {
     ) : WordAnkiReviewBinder.Host {
         override val isAlive: Boolean get() = pageView != null
 
+        override suspend fun awaitEnterSettled() = host.awaitEnterSettled()
+
         override fun openAudioPicker(intent: Intent, onPicked: (AudioSelection) -> Unit) {
             host.push(
                 AudioPickerPage(
@@ -559,6 +561,8 @@ class AnkiSentenceEditorPage(
         private val host: WorkspaceHost,
     ) : SentenceAnkiContentView.Host {
         override val isAlive: Boolean get() = pageView != null
+
+        override suspend fun awaitEnterSettled() = host.awaitEnterSettled()
 
         override fun openAudioPicker(intent: Intent, onPicked: (AudioSelection) -> Unit) {
             host.push(
