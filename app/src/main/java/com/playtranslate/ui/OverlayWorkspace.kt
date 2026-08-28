@@ -2,7 +2,10 @@ package com.playtranslate.ui
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -32,6 +35,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The floating over-game workspace: a rounded card inset
@@ -89,7 +94,24 @@ class OverlayWorkspace(
     private val root = WorkspaceRoot(ctx)
     private val scrim = View(ctx)
     private val cardWrap = FrameLayout(ctx)
-    private val card = LinearLayout(ctx)
+    private val card = FrostedCard(ctx)
+
+    /** The card's fill — held so the frost apply can swap it from the opaque
+     *  ptBg fallback to the translucent wash ([FrostBackdrop.WASH_ALPHA]).
+     *  The same instance stays the card's background throughout: it is also
+     *  the outline source for the shadow and the child clip. */
+    private val cardFill = GradientDrawable()
+
+    /** Frosted backdrop: the launch screenshot blurred once
+     *  ([FrostBackdrop.decodeAndBlur], off-main), drawn at full-screen scale
+     *  under the wash and clipped by the card's rounded outline — the
+     *  capture sheet's treatment on the workspace card. Null (no screenshot,
+     *  decode failed, not yet arrived) leaves the opaque ptBg ground. */
+    private var frostBitmap: Bitmap? = null
+    private val frostPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val frostDst = Rect()
+    private var screenWPx = 0
+    private var screenHPx = 0
 
     /** The header's left button — dual-role: an X on the root page
      *  (dismisses the workspace), the back chevron when deeper (pops).
@@ -135,7 +157,9 @@ class OverlayWorkspace(
         // the card ptSurface instead handed page content a RAISED-surface
         // colour, which collided with any content using ptSurface as a
         // recess INSIDE a ptCard (the Anki words helper strip vanished).
-        card.background = GradientDrawable().apply {
+        // Opaque here is the NO-SCREENSHOT ground; a frost apply re-tints
+        // this same drawable to the translucent wash over the backdrop.
+        card.background = cardFill.apply {
             setColor(ctx.themeColor(R.attr.ptBg))
             setStroke(dp(1f), ctx.themeColor(R.attr.ptDivider))
             cornerRadius = cardRadiusPx
@@ -582,7 +606,40 @@ class OverlayWorkspace(
 
     // ── Show / dismiss ───────────────────────────────────────────────────
 
-    fun show(screenW: Int, screenH: Int, initialPage: (WorkspaceHost) -> WorkspacePage) {
+    fun show(
+        screenW: Int,
+        screenH: Int,
+        screenshotPath: String? = null,
+        initialPage: (WorkspaceHost) -> WorkspacePage,
+    ) {
+        screenWPx = screenW
+        screenHPx = screenH
+        // Frosted ground from the launch screenshot, when the flow has one.
+        // Decode + blur ride IO (the sampled decode is small — the full
+        // screenshot never inflates) and typically land within the first
+        // frames of the enter fade, where the swap from the opaque fallback
+        // is masked by the fade itself; a slow or failed decode just leaves
+        // the flat ptBg ground — the frost never blocks or stalls the open.
+        if (screenshotPath != null) {
+            scope.launch {
+                val frost = withContext(Dispatchers.IO) {
+                    FrostBackdrop.decodeAndBlur(screenshotPath, screenW, screenH)
+                } ?: return@launch
+                if (dismissed) {
+                    frost.recycle()
+                    return@launch
+                }
+                frostBitmap = frost
+                val bg = ctx.themeColor(R.attr.ptBg)
+                cardFill.setColor(
+                    Color.argb(
+                        FrostBackdrop.WORKSPACE_WASH_ALPHA,
+                        Color.red(bg), Color.green(bg), Color.blue(bg),
+                    ),
+                )
+                card.invalidate()
+            }
+        }
         // Controller nav arms only when a nav-capable device is attached —
         // evaluated once here, like the capture sheet: the window is created
         // already-focusable so there's no async flag flip to race.
@@ -717,6 +774,10 @@ class OverlayWorkspace(
         // complete()); this is the backstop for an awaiter on any scope a
         // page failed to cancel.
         enterSettled.complete(Unit)
+        // Nothing draws past this point (the linger path below goes
+        // INVISIBLE) — release the frost like the sheet does its backdrop.
+        frostBitmap?.recycle()
+        frostBitmap = null
         // Orphaned-UP guard: a key that went down on this focused window may
         // still be held — linger the window as an invisible key sink until
         // the release lands here (see [WindowKeyPairGuard]).
@@ -727,6 +788,27 @@ class OverlayWorkspace(
         }
         scope.cancel()
         onDismiss?.invoke()
+    }
+
+    // ── Card ─────────────────────────────────────────────────────────────
+
+    /** The card surface. Draws the frosted backdrop FIRST (before super →
+     *  under the translucent [cardFill] wash and the content), scaled to
+     *  full screen and offset so the slice aligns 1:1 with the screen region
+     *  the card covers; clipToOutline rounds it — the sheet's BodyView
+     *  treatment. Offsets are LAYOUT coords (never transforms), so the
+     *  enter/exit scale carries the frost with the card instead of sliding
+     *  it, and an inset-driven margin change re-aligns on its own relayout. */
+    private inner class FrostedCard(c: Context) : LinearLayout(c) {
+        override fun draw(canvas: Canvas) {
+            frostBitmap?.let {
+                val x = cardWrap.left + left
+                val y = cardWrap.top + top
+                frostDst.set(-x, -y, screenWPx - x, screenHPx - y)
+                canvas.drawBitmap(it, null, frostDst, frostPaint)
+            }
+            super.draw(canvas)
+        }
     }
 
     // ── Root ─────────────────────────────────────────────────────────────

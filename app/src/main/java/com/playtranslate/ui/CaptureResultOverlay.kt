@@ -577,7 +577,12 @@ class CaptureResultOverlay(
                     // Slightly translucent sheet fill — the game shows faintly
                     // through (stroke stays opaque). SHEET_ALPHA is the dial.
                     val bg = ctx.themeColor(R.attr.ptBg)
-                    setColor(Color.argb(SHEET_ALPHA, Color.red(bg), Color.green(bg), Color.blue(bg)))
+                    setColor(
+                        Color.argb(
+                            FrostBackdrop.WASH_ALPHA,
+                            Color.red(bg), Color.green(bg), Color.blue(bg),
+                        ),
+                    )
                     cornerRadius = cornerRadiusPx
                     setStroke(dp(1), ctx.themeColor(R.attr.ptDivider))
                 },
@@ -712,7 +717,7 @@ class CaptureResultOverlay(
             )
         }
         backdrop?.let {
-            backdropSmall = blurBackdrop(it)
+            backdropSmall = FrostBackdrop.blur(it)
             backdropDst.set(0, 0, screenW, screenH)
             body.invalidate()
         }
@@ -2205,8 +2210,11 @@ class CaptureResultOverlay(
      *  and launch [LanguageSetupActivity] on the foreground display. */
     private fun changeLanguage(isSource: Boolean) {
         chooseLanguage?.let { it(isSource); return }
+        // Read before dismiss(): the picker workspace frosts over the same
+        // capture this sheet was frosted with.
+        val frostPath = lastResult?.screenshotPath
         dismiss()
-        val opened = CaptureBackendResolver.activeOverlayUi?.openWorkspace(displayId) {
+        val opened = CaptureBackendResolver.activeOverlayUi?.openWorkspace(displayId, frostPath) {
             if (isSource) SourceListPage() else TargetListPage()
         } == true
         if (opened) return
@@ -2259,19 +2267,20 @@ class CaptureResultOverlay(
         // trampoline, which owns the runtime request.
         if (AnkiManager(app).hasPermission()) {
             val snap = LastSentenceCache.snapshotFor(sentence)
-            val opened = CaptureBackendResolver.activeOverlayUi?.openWorkspace(displayId) {
-                AnkiSentenceEditorPage(
-                    original = sentence,
-                    translation = result.translatedText,
-                    wordResults = snap?.results ?: emptyMap(),
-                    surfaceForms = snap?.surfaces ?: emptyMap(),
-                    wordEnrichment = snap?.enrichment ?: emptyMap(),
-                    screenshotPath = result.screenshotPath,
-                    sourceLangId = prefs.sourceLangId,
-                    pendingTranslation = result.pendingTranslation,
-                    audioAnchorMs = result.createdAtMs.takeIf { it > 0 },
-                )
-            } == true
+            val opened = CaptureBackendResolver.activeOverlayUi
+                ?.openWorkspace(displayId, result.screenshotPath) {
+                    AnkiSentenceEditorPage(
+                        original = sentence,
+                        translation = result.translatedText,
+                        wordResults = snap?.results ?: emptyMap(),
+                        surfaceForms = snap?.surfaces ?: emptyMap(),
+                        wordEnrichment = snap?.enrichment ?: emptyMap(),
+                        screenshotPath = result.screenshotPath,
+                        sourceLangId = prefs.sourceLangId,
+                        pendingTranslation = result.pendingTranslation,
+                        audioAnchorMs = result.createdAtMs.takeIf { it > 0 },
+                    )
+                } == true
             if (opened) {
                 val nav = onNavigateToDetail
                 if (nav != null) nav(result) else if (dismissOnActivityLaunch) dismiss()
@@ -3068,69 +3077,6 @@ class CaptureResultOverlay(
         return bitmap
     }
 
-    /** The blur: downscale for cheapness, then a separable box blur (3 passes ≈
-     *  Gaussian) over the small bitmap so it reads as a smooth frost instead of
-     *  visible low-res pixels — a plain downscale+upscale aliases (the grid shows
-     *  through). Small bitmap → sub-millisecond. Reads [src] synchronously so the
-     *  caller can recycle it right after. */
-    private fun blurBackdrop(src: Bitmap): Bitmap? {
-        if (src.isRecycled || src.width <= 0 || src.height <= 0) return null
-        val w = (src.width / BACKDROP_DOWNSCALE).coerceAtLeast(1)
-        val h = (src.height / BACKDROP_DOWNSCALE).coerceAtLeast(1)
-        val small = try {
-            Bitmap.createScaledBitmap(src, w, h, true)
-        } catch (_: Exception) {
-            return null
-        }
-        val blurred = boxBlur(small, BACKDROP_BLUR_RADIUS, passes = 3)
-        if (blurred !== small) small.recycle()
-        return blurred
-    }
-
-    /** Separable box blur over a small ARGB bitmap, [passes] times (3 ≈ Gaussian). */
-    private fun boxBlur(src: Bitmap, radius: Int, passes: Int): Bitmap {
-        val w = src.width
-        val h = src.height
-        if (radius < 1 || w < 2 || h < 2) return src
-        val a = IntArray(w * h)
-        val b = IntArray(w * h)
-        src.getPixels(a, 0, w, 0, 0, w, h)
-        repeat(passes) {
-            boxBlurAxis(a, b, w, h, radius, horizontal = true)
-            boxBlurAxis(b, a, w, h, radius, horizontal = false)
-        }
-        return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply {
-            setPixels(a, 0, w, 0, 0, w, h)
-        }
-    }
-
-    /** One running-window box-blur pass along one axis (edges clamp). */
-    private fun boxBlurAxis(src: IntArray, dst: IntArray, w: Int, h: Int, r: Int, horizontal: Boolean) {
-        val lines = if (horizontal) h else w
-        val len = if (horizontal) w else h
-        val step = if (horizontal) 1 else w
-        val div = 2 * r + 1
-        for (line in 0 until lines) {
-            val base = if (horizontal) line * w else line
-            var sa = 0; var sr = 0; var sg = 0; var sb = 0
-            for (i in -r..r) {
-                val c = src[base + i.coerceIn(0, len - 1) * step]
-                sa += (c ushr 24) and 0xff; sr += (c ushr 16) and 0xff
-                sg += (c ushr 8) and 0xff; sb += c and 0xff
-            }
-            for (j in 0 until len) {
-                dst[base + j * step] =
-                    ((sa / div) shl 24) or ((sr / div) shl 16) or ((sg / div) shl 8) or (sb / div)
-                val co = src[base + (j - r).coerceIn(0, len - 1) * step]
-                val ci = src[base + (j + r + 1).coerceIn(0, len - 1) * step]
-                sa += ((ci ushr 24) and 0xff) - ((co ushr 24) and 0xff)
-                sr += ((ci ushr 16) and 0xff) - ((co ushr 16) and 0xff)
-                sg += ((ci ushr 8) and 0xff) - ((co ushr 8) and 0xff)
-                sb += (ci and 0xff) - (co and 0xff)
-            }
-        }
-    }
-
     // ── Custom views ─────────────────────────────────────────────────────
 
     /** Blits the pre-baked [shadowBitmap] (never re-blurs); positioned via
@@ -3445,22 +3391,15 @@ class CaptureResultOverlay(
          *  ~100/255). Tune these two for darker/softer. */
         const val SHADOW_BLUR_DP = 11f
         const val SHADOW_ALPHA = 200
-        /** Sheet fill opacity (255 = opaque). Lower → more of the frosted backdrop
-         *  shows through the tint. */
-        const val SHEET_ALPHA = 205
         /** Text-card fill opacity (0–1) — very slightly translucent so the frost
-         *  shows faintly behind the text too. */
+         *  shows faintly behind the text too. The sheet fill's own opacity is
+         *  the shared [FrostBackdrop.WASH_ALPHA]. */
         const val CARD_FILL_ALPHA = 0.8f
         /** [opaqueBackgroundBoost] variants — barely transparent for hosts
          *  with no frosted backdrop behind the sheet (the un-blurred app
          *  behind is distracting at the normal translucency). */
         const val SHEET_ALPHA_NO_IMAGE = 247
         const val CARD_FILL_ALPHA_NO_IMAGE = 0.96f
-        /** Backdrop downscale before the box blur (cheapness; the blur does the
-         *  smoothing now, so this no longer needs to be aggressive). */
-        const val BACKDROP_DOWNSCALE = 6
-        /** Box-blur radius (in downscaled px) — the main blur dial. */
-        const val BACKDROP_BLUR_RADIUS = 5
         const val SECTION_H_PAD_DP = 12
         /** Space below the filled side-by-side cards (to the panel's bottom). */
         const val SIDE_BY_SIDE_BOTTOM_BUFFER_DP = 5
