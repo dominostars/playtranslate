@@ -102,6 +102,14 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
                 !CaptureBackendResolver.active().requiresAccessibilityService
         }
         val singleScreen = Prefs.isSingleScreen(app)
-        return computeReadiness(languageConfigured, notifGranted, captureReady, singleScreen)
+        val state = computeReadiness(languageConfigured, notifGranted, captureReady, singleScreen)
+        android.util.Log.i(
+            com.playtranslate.MainActivity.TAG_HOME_ROUTE,
+            "derive lang=$languageConfigured notif=$notifGranted capture=$captureReady " +
+                "single=$singleScreen multi=${Prefs.hasMultipleDisplays(app)} " +
+                "a11y=${PlayTranslateAccessibilityService.isEnabled(app)} " +
+                "backendA11y=${CaptureBackendResolver.active().requiresAccessibilityService} -> $state",
+        )
+        return state
     }
 }

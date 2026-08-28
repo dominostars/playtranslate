@@ -580,6 +580,7 @@ class MainActivity :
         lastSeenCaptureDisplayIds = prefs.captureDisplayIds
         applyEdgeToEdge(this)
         super.onCreate(savedInstanceState)
+        android.util.Log.i(TAG_HOME_ROUTE, "onCreate saved=${savedInstanceState != null} instance=${System.identityHashCode(this)}")
         maybePromptForCrashShare()
         // Suppress the window transition that would otherwise flash when recreating for a theme change
         if (prefs.suppressNextTransition) {
@@ -756,6 +757,7 @@ class MainActivity :
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        android.util.Log.i(TAG_HOME_ROUTE, "onNewIntent action=${intent.action}")
         when (intent.action) {
             ACTION_DRAG_SENTENCE -> handleDragSentence(intent)
             ACTION_DRAG_WORD -> handleDragWord(intent)
@@ -817,6 +819,7 @@ class MainActivity :
 
     override fun onResume() {
         super.onResume()
+        android.util.Log.i(TAG_HOME_ROUTE, "onResume tab=$selectedTab")
         // Appearance (theme mode / accent) is changed on the standalone
         // AppearanceSettingsActivity, which writes the prefs and recreates
         // itself. MainActivity, sitting behind it, re-applies on return: if
@@ -893,6 +896,7 @@ class MainActivity :
         //  - a Ready result is stale if its full (source/target/variant) context drifted;
         //  - a "no text detected" status is stale if its SOURCE language drifted — it has no
         //    translation, so only the source (which its message names) matters.
+        android.util.Log.i(TAG_HOME_ROUTE, "onStart tab=$selectedTab instance=${System.identityHashCode(this)}")
         val stale = when (val state = resultVm.result.value) {
             is com.playtranslate.ui.ResultState.Ready ->
                 state.result.langContext != Prefs(this).langContext()
@@ -907,8 +911,14 @@ class MainActivity :
         super.onStart()
     }
 
+    override fun onPause() {
+        super.onPause()
+        android.util.Log.i(TAG_HOME_ROUTE, "onPause")
+    }
+
     override fun onStop() {
         super.onStop()
+        android.util.Log.i(TAG_HOME_ROUTE, "onStop")
         isInForeground = false
         // The on-screen boxes are this activity's presentation — leaving the
         // foreground (app switch, another activity, rotation teardown) ends
@@ -1309,6 +1319,7 @@ class MainActivity :
      *  surfaces were hidden for onboarding ([setMainSurfacesVisible]) — a path
      *  selectTab's "only on change" guard would otherwise skip. */
     private fun applyTabVisibility(tab: Tab) {
+        android.util.Log.i(TAG_HOME_ROUTE, "applyTabVisibility $tab")
         resultsContainer.visibility = if (tab == Tab.TRANSLATE) View.VISIBLE else View.GONE
         settingsContainer.visibility = if (tab == Tab.SETTINGS) View.VISIBLE else View.GONE
         regionPickerContainer.visibility = if (tab == Tab.REGIONS) View.VISIBLE else View.GONE
@@ -1320,6 +1331,7 @@ class MainActivity :
      *  out of the layout entirely, not merely covered by an opaque overlay. On
      *  Ready they're restored, the containers following the selected tab. */
     private fun setMainSurfacesVisible(visible: Boolean) {
+        android.util.Log.i(TAG_HOME_ROUTE, "setMainSurfacesVisible visible=$visible tab=$selectedTab")
         bottomBar.isVisible = visible
         if (visible) {
             applyTabVisibility(selectedTab)
@@ -1331,6 +1343,8 @@ class MainActivity :
     }
 
     private fun selectTab(tab: Tab) {
+        android.util.Log.i(TAG_HOME_ROUTE, "selectTab $selectedTab -> $tab from " +
+            Throwable().stackTrace.drop(1).take(4).joinToString(" < ") { it.methodName })
         if (selectedTab != tab) {
             selectedTab = tab
 
@@ -1414,7 +1428,9 @@ class MainActivity :
      *  re-routes through the Settings tab preserves the live fragment (and its
      *  scroll/state) instead of rebuilding it via `replace()`. */
     private fun openSettingsInline() {
-        if (supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG) != null) return
+        val existing = supportFragmentManager.findFragmentByTag(SettingsBottomSheet.TAG)
+        android.util.Log.i(TAG_HOME_ROUTE, "openSettingsInline existing=${existing != null}")
+        if (existing != null) return
         val sheet = SettingsBottomSheet.newInstance().apply {
             setShowsDialog(false)
             onSourceLangChanged = { onSourceLanguageChanged() }
@@ -1638,8 +1654,17 @@ class MainActivity :
         }
         svc.liveModeState.observe(this) { isLive -> onLiveModeChanged(isLive) }
         svc.activeRegionLiveData.observe(this) { _ ->
+            // Label refresh only, deliberately no picker dismissal: this
+            // LiveData is state, not an event. Writes that land while the
+            // activity is stopped (a capture-once installs an override)
+            // replay on the next foreground, and a replay-driven selectTab
+            // once stranded the single-screen forced-Settings home on the
+            // Translate tab with the bottom bar hidden. Every foreground
+            // flow that installs an override already owns its tab move
+            // (ACTION_REGION_CAPTURE, the picker's translate-once, the
+            // region dropdown), so a close here was redundant for them
+            // and wrong for replays.
             updateRegionButton()
-            if (svc.isOverrideForDisplay(svc.primaryGameDisplayId())) hideRegionPicker()
         }
 
         ensureConfigured()
@@ -2189,6 +2214,7 @@ class MainActivity :
      *  dismissal nuance (the step itself doesn't encode screen mode); the Ready
      *  home comes from [current] directly. */
     private fun route(prev: AppReadiness?, current: AppReadiness) {
+        android.util.Log.i(TAG_HOME_ROUTE, "route prev=$prev current=$current tab=$selectedTab")
         when (current) {
             is AppReadiness.Onboarding -> {
                 setMainSurfacesVisible(false)
@@ -2224,6 +2250,7 @@ class MainActivity :
         singleScreen: Boolean,
         existingSheet: SettingsBottomSheet?,
     ) {
+        android.util.Log.i(TAG_HOME_ROUTE, "showOnboardingStep step=$step single=$singleScreen sheet=${existingSheet != null}")
         when (step) {
             AppReadiness.Step.LANGUAGE -> {
                 // Welcome + language setup comes first: tap a language pair
@@ -2263,6 +2290,8 @@ class MainActivity :
             restoredTab = restoredTab,
             requiresA11y = CaptureBackendResolver.active().requiresAccessibilityService,
         )
+        android.util.Log.i(TAG_HOME_ROUTE, "showReadyHome home=$home action=${decision.action.javaClass.simpleName} " +
+            "decisionTab=${(decision.action as? HomeAction.ShowTab)?.tab} restoredTab=${decision.restoredTab} tab=$selectedTab")
         restoredTab = decision.restoredTab
         onboardingContainer.isGone = true
         when (val action = decision.action) {
@@ -2932,6 +2961,13 @@ class MainActivity :
             }
             sheet.onDismissed = { refreshRegionPicker() }
             sheet.onTranslateOnce = { region ->
+                // Land on the surface the capture renders on, like the
+                // region picker's translate-once: the activeRegionLiveData
+                // observer no longer navigates, so this flow owns its own
+                // tab move. Only reachable foregrounded on dual (the
+                // single-screen route goes to the over-game editor), so
+                // Translate is always a legal destination here.
+                selectTab(Tab.TRANSLATE)
                 // The dropdown's drag overlay rendered on [targetDisplayId],
                 // so the user drew this region against THAT screen — apply
                 // the override and capture against the same display rather
@@ -3028,6 +3064,12 @@ class MainActivity :
 
     companion object {
         private const val TAG_DISPLAY_DUMP = "DisplayDump"
+        /** Diagnostic trace of the home-routing state machine (route /
+         *  decideHome / selectTab / surface visibility). Greps cleanly:
+         *  `adb logcat -s HomeRoute`. Added while chasing a user report of
+         *  the single-screen home landing on the Translate tab with no
+         *  bottom bar after a capture. */
+        const val TAG_HOME_ROUTE = "HomeRoute"
 
         const val ACTION_DRAG_SENTENCE = "com.playtranslate.ACTION_DRAG_SENTENCE"
         const val EXTRA_DRAG_LINE_TEXT = "extra_drag_line_text"
