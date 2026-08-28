@@ -443,7 +443,17 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         try { wm?.updateViewLayout(this, p) } catch (_: Exception) {}
         enterDragMode()
         dragStartFired = true
-        post { onDragStart?.invoke() }
+        // Synchronous, and it must stay synchronous: ACTION_CANCEL/ACTION_UP
+        // invoke their teardown callbacks inline, and a same-batch cancel
+        // (the system pilfering the pointers for an edge/bottom swipe it
+        // recognized just as the drag threshold tripped) is dispatched before
+        // any posted message. A deferred start then runs AFTER the teardown,
+        // re-arming the drag with no gesture left to end it — the capture
+        // reveals a magnifier lens that nothing will ever dismiss. The old
+        // post's reason ("let WM redraw the ring before the screenshot") is
+        // obsolete: the clean-capture path blanks the icon's whole window by
+        // alpha, so captured pixels never see the icon's drawn state.
+        onDragStart?.invoke()
         onDragMove?.invoke(rawX, rawY)
     }
 
