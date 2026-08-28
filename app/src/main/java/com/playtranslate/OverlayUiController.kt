@@ -2129,7 +2129,13 @@ class OverlayUiController(
      * clears the tracking field first, so the workspace's dismiss callback
      * sees a mismatch and stands down.
      */
-    fun openWorkspace(displayId: Int, page: (WorkspaceHost) -> WorkspacePage): Boolean {
+    fun openWorkspace(
+        displayId: Int,
+        /** Launch screenshot for the card's frosted ground; null (a flow with
+         *  no capture, e.g. the icon menu's language picker) keeps flat ptBg. */
+        screenshotPath: String? = null,
+        page: (WorkspaceHost) -> WorkspacePage,
+    ): Boolean {
         if (!effectivelySingleScreen()) return false
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager ?: return false
         val display = dm.getDisplay(displayId) ?: return false
@@ -2149,7 +2155,7 @@ class OverlayUiController(
         workspace = ws
         workspaceDisplayId = displayId
         workspaceGeometry = DisplayGeometry(size.x, size.y, display.rotation)
-        ws.show(size.x, size.y, page)
+        ws.show(size.x, size.y, screenshotPath, page)
         return true
     }
 

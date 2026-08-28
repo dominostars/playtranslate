@@ -141,15 +141,16 @@ class SourceLensActions(
                 surfaceForms = wordsPayload?.surfaces,
                 wordEnrichment = wordsPayload?.enrichment,
             )
-            val opened = CaptureBackendResolver.activeOverlayUi?.openWorkspace(displayId) {
-                WorkspaceWordDetailPage(
-                    word = word,
-                    reading = reading,
-                    screenshotPath = cur.screenshotPath,
-                    audioAnchorMs = cur.audioAnchorMs,
-                    sentenceContext = { snapshot },
-                )
-            } == true
+            val opened = CaptureBackendResolver.activeOverlayUi
+                ?.openWorkspace(displayId, cur.screenshotPath) {
+                    WorkspaceWordDetailPage(
+                        word = word,
+                        reading = reading,
+                        screenshotPath = cur.screenshotPath,
+                        audioAnchorMs = cur.audioAnchorMs,
+                        sentenceContext = { snapshot },
+                    )
+                } == true
             if (opened) {
                 // The capture sheet maps Detail to its stash-for-reshow, so a
                 // USER dismissal of the workspace brings the sheet back.
@@ -224,23 +225,24 @@ class SourceLensActions(
     private fun openAnkiEditorWorkspace(snap: LensAnkiSnapshot): Boolean {
         if (!workspaceRoute) return false
         if (!AnkiManager(context).hasPermission()) return false
-        val opened = CaptureBackendResolver.activeOverlayUi?.openWorkspace(displayId) {
-            AnkiEditorPage(
-                WordAnkiReviewBinder.buildArgs(
-                    word = snap.word,
-                    reading = snap.reading,
-                    pos = snap.pos,
-                    definition = snap.definition,
-                    screenshotPath = snap.screenshotPath,
-                    freqScore = snap.freqScore,
-                    sentenceOriginal = snap.sentence,
-                    sentenceTranslation = snap.sentenceTranslation,
-                    sentenceWordResults = snap.sentenceWordResults,
-                    sourceLangId = Prefs(context).sourceLangId,
-                    audioAnchorMs = snap.audioAnchorMs,
-                ),
-            )
-        } == true
+        val opened = CaptureBackendResolver.activeOverlayUi
+            ?.openWorkspace(displayId, snap.screenshotPath) {
+                AnkiEditorPage(
+                    WordAnkiReviewBinder.buildArgs(
+                        word = snap.word,
+                        reading = snap.reading,
+                        pos = snap.pos,
+                        definition = snap.definition,
+                        screenshotPath = snap.screenshotPath,
+                        freqScore = snap.freqScore,
+                        sentenceOriginal = snap.sentence,
+                        sentenceTranslation = snap.sentenceTranslation,
+                        sentenceWordResults = snap.sentenceWordResults,
+                        sourceLangId = Prefs(context).sourceLangId,
+                        audioAnchorMs = snap.audioAnchorMs,
+                    ),
+                )
+            } == true
         if (opened) {
             // The capture sheet maps Anki to its dismiss — same as the
             // activity launch it replaces.
