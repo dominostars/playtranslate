@@ -27,6 +27,7 @@ import com.playtranslate.R
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -70,6 +71,13 @@ class OverlayWorkspace(
 
     private var dismissed = false
     private var animatingOut = false
+
+    /** The [WorkspaceHost.awaitEnterSettled] gate. Completed by the enter
+     *  animation's end action, and swept by [dismiss] — a ViewPropertyAnimator
+     *  end action stands down when the animation is cancelled (the exit
+     *  animation replacing it, a detach), so dismissal is the failure bound
+     *  that keeps no awaiter parked on a window that will never settle. */
+    private val enterSettled = CompletableDeferred<Unit>()
     private var imeMode = false
     private var nav: WorkspaceControllerNav? = null
     private var ringSync: ViewTreeObserver.OnPreDrawListener? = null
@@ -107,6 +115,10 @@ class OverlayWorkspace(
         cardWrap.clipChildren = false
 
         scrim.setBackgroundColor(Color.argb(SCRIM_ALPHA, 0, 0, 0))
+        // A solid fill composites identically under direct alpha modulation,
+        // so the enter/exit fades skip the full-screen offscreen pass the
+        // default (overlapping-rendering) path would pay every frame.
+        scrim.forceHasOverlappingRendering(false)
         root.addView(
             scrim,
             FrameLayout.LayoutParams(
@@ -434,6 +446,8 @@ class OverlayWorkspace(
             if (pushTarget == null) updateHeader()
         }
 
+        override suspend fun awaitEnterSettled() = enterSettled.await()
+
         override fun setImeMode(wantsIme: Boolean) = this@OverlayWorkspace.setImeMode(wantsIme)
 
         override fun setParkedForActivity(parked: Boolean) =
@@ -584,18 +598,32 @@ class OverlayWorkspace(
         ringSync = ViewTreeObserver.OnPreDrawListener { nav?.syncRing(); true }.also {
             root.viewTreeObserver.addOnPreDrawListener(it)
         }
-        // Nav-bar buffer + IME lift, both as extra bottom margin on the card:
-        // FLAG_LAYOUT_NO_LIMITS makes the window ignore ADJUST_RESIZE, so the
-        // card shrinks from the bottom instead — keeping the top edge (and
-        // the header's X, the only visible exit while the IME is up) pinned.
+        // System-bar buffers as extra margins on the card — the NO_LIMITS
+        // window spans edge to edge behind the bars, so the card steps aside
+        // itself. Bottom: nav-bar buffer + IME lift (FLAG_LAYOUT_NO_LIMITS
+        // makes the window ignore ADJUST_RESIZE, so the card shrinks from the
+        // bottom instead — keeping the top edge, and the header's X, the only
+        // visible exit while the IME is up, pinned). Top: the status bar —
+        // taller than the card's fixed inset, and visible whenever the game
+        // shows its own bars (the capture sheet shares this listener's shape
+        // but is bottom-anchored, which is why it never needed a top half).
+        // Listener-driven, so a bar that grows mid-session (an in-call bar)
+        // re-fires this and the card re-lays out; the display cutout is
+        // folded in because it obscures pixels even while bars are hidden.
         root.setOnApplyWindowInsetsListener { _, insets ->
             val navInset: Int
             val imeLift: Int
+            val topInset: Int
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val nav = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
                 navInset = if (insets.isVisible(WindowInsets.Type.navigationBars())) nav else 0
                 val ime = insets.getInsets(WindowInsets.Type.ime()).bottom
                 imeLift = if (insets.isVisible(WindowInsets.Type.ime())) ime else 0
+                val status = insets.getInsets(WindowInsets.Type.statusBars()).top
+                topInset = maxOf(
+                    if (insets.isVisible(WindowInsets.Type.statusBars())) status else 0,
+                    insets.getInsets(WindowInsets.Type.displayCutout()).top,
+                )
             } else {
                 // API 29 fallback — see CaptureResultOverlay's inset listener.
                 @Suppress("DEPRECATION")
@@ -604,28 +632,48 @@ class OverlayWorkspace(
                 val stable = insets.stableInsetBottom
                 navInset = minOf(current, stable)
                 imeLift = if (current > stable) current else 0
+                // Top mirror of the same visible-bar isolation: current is 0
+                // with bars hidden, the bar height with them up; no IME term.
+                @Suppress("DEPRECATION")
+                val currentTop = insets.systemWindowInsetTop
+                @Suppress("DEPRECATION")
+                val stableTop = insets.stableInsetTop
+                topInset = maxOf(
+                    minOf(currentTop, stableTop),
+                    insets.displayCutout?.safeInsetTop ?: 0,
+                )
             }
             val lp = cardWrap.layoutParams as FrameLayout.LayoutParams
-            val want = insetPx + maxOf(navInset, imeLift)
-            if (lp.bottomMargin != want) {
-                lp.bottomMargin = want
+            val wantBottom = insetPx + maxOf(navInset, imeLift)
+            val wantTop = insetPx + topInset
+            if (lp.bottomMargin != wantBottom || lp.topMargin != wantTop) {
+                lp.bottomMargin = wantBottom
+                lp.topMargin = wantTop
                 cardWrap.requestLayout()
             }
             insets
         }
         push(initialPage(hostImpl))
         // Enter: scrim fade + card scale-up, the popup house pattern.
+        // withLayer, both directions: a bare alpha+scale on this
+        // near-screen-sized tree pays an offscreen SaveLayer plus a shadow
+        // re-render every frame, against a game that is still animating under
+        // the window. The layer rides [card], not [cardWrap]: the elevation
+        // shadow is drawn by the parent from the card's outline, so it stays
+        // outside the layer instead of being clipped at the layer's bounds.
         scrim.alpha = 0f
         scrim.animate().alpha(1f).setDuration(ENTER_MS).start()
-        cardWrap.alpha = 0f
-        cardWrap.scaleX = 0.96f
-        cardWrap.scaleY = 0.96f
-        cardWrap.animate()
+        card.alpha = 0f
+        card.scaleX = 0.96f
+        card.scaleY = 0.96f
+        card.animate()
             .alpha(1f)
             .scaleX(1f)
             .scaleY(1f)
             .setDuration(ENTER_MS)
             .setInterpolator(DecelerateInterpolator())
+            .withLayer()
+            .withEndAction { enterSettled.complete(Unit) }
             .start()
     }
 
@@ -634,12 +682,13 @@ class OverlayWorkspace(
         animatingOut = true
         nav?.clearCursor()
         scrim.animate().alpha(0f).setDuration(EXIT_MS).start()
-        cardWrap.animate()
+        card.animate()
             .alpha(0f)
             .scaleX(0.96f)
             .scaleY(0.96f)
             .setDuration(EXIT_MS)
             .setInterpolator(AccelerateInterpolator())
+            .withLayer()
             .withEndAction { dismiss() }
             .start()
     }
@@ -660,6 +709,14 @@ class OverlayWorkspace(
         // never fire on a detached window), so destroy them here.
         for (entry in poppingEntries) destroyEntry(entry)
         poppingEntries.clear()
+        // Sweep the enter gate — a dismissal mid-enter cancelled the
+        // animation and its end action with it. AFTER the destroy loops:
+        // page-scope cancellation has already killed every awaiter, so no
+        // resumed coroutine can run its heavy bind against a window that is
+        // tearing down (Main.immediate resumes synchronously inside
+        // complete()); this is the backstop for an awaiter on any scope a
+        // page failed to cancel.
+        enterSettled.complete(Unit)
         // Orphaned-UP guard: a key that went down on this focused window may
         // still be held — linger the window as an invisible key sink until
         // the release lands here (see [WindowKeyPairGuard]).

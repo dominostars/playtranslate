@@ -6,7 +6,6 @@ import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.graphics.Rect
 import android.graphics.Typeface
 import android.os.Bundle
@@ -113,6 +112,12 @@ class SentenceAnkiContentView(
         /** The screenshot was removed on this card — mirror into a sibling
          *  tab when one shares the media (the word/sentence tab pair). */
         fun onScreenshotRemoved() {}
+
+        /** Hold point before the styled-payload apply — the workspace
+         *  suspends until its enter animation settles so the word rows'
+         *  styled WebViews (one per structured word) can't drop entrance
+         *  frames. Default: no hold. Callers re-check [isAlive] after. */
+        suspend fun awaitEnterSettled() {}
     }
 
     private val words = mutableListOf<SentenceAnkiHtmlBuilder.WordEntry>()
@@ -153,6 +158,10 @@ class SentenceAnkiContentView(
             ?: SourceLangId.JA).yomitanConsumingLang()
         scope.launch {
             val payload = fetchStyledForSenses(appCtx, styledLang, words.flatMap { it.senses })
+            // The apply below can construct one WebView per structured word
+            // (rebuildWordRows → wordStyledBlock) — hold it out of the
+            // workspace's entrance window. Gen re-check follows the await.
+            host.awaitEnterSettled()
             if (!host.isAlive || gen != styledFetchGen) return@launch
             val hadOrHas = sheetStyled != null || payload != null
             sheetStyled = payload
@@ -1351,8 +1360,16 @@ class SentenceAnkiContentView(
                 FrameLayout.LayoutParams.WRAP_CONTENT
             )
         }
-        val bmp = BitmapFactory.decodeFile(file.absolutePath)
-        if (bmp != null) img.setImageBitmap(bmp)
+        // Decoded off the main thread — the word tab's rule
+        // ([decodeScreenshotForDisplay]): this build runs synchronously
+        // inside the workspace push, and a full-screen decode there stalls
+        // the window's enter animation. Display-only; the card gets the file.
+        scope.launch {
+            val bmp = withContext(Dispatchers.IO) {
+                decodeScreenshotForDisplay(file, ctx.resources.displayMetrics.widthPixels)
+            }
+            if (bmp != null) img.setImageBitmap(bmp)
+        }
         ivPhoto = img
         frame.addView(img)
 

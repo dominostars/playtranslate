@@ -119,6 +119,14 @@ class WordDetailBinder(
          *  workspace page not yet destroyed) — guards every async re-entry. */
         val isAlive: Boolean
 
+        /** Hold point before the lookup's completion bind: a host with an
+         *  entrance transition (the workspace) suspends here until it has
+         *  settled, so the content build — and any styled-definitions
+         *  WebView it constructs — can't land its main-thread cost inside
+         *  the entrance and drop its frames. Default: no hold. Callers
+         *  re-check [isAlive] after resuming. */
+        suspend fun awaitEnterSettled() {}
+
         /** Live sentence context at tap time (the embedded host activity's
          *  [SentenceContextProvider], or the workspace caller's snapshot);
          *  null when the host has none — [Args]' sentence fields then apply. */
@@ -350,6 +358,11 @@ class WordDetailBinder(
             // headwords are duplicated across entries anyway).
             val entries = response?.entries.orEmpty()
             val primary = entries.firstOrNull()
+            // Hold the whole completion bind — not just the styled block —
+            // until the host's entrance settles: a partial (native-first)
+            // render with a styled upgrade behind it is the flat-then-styled
+            // flash family the popup had to engineer away. One reveal.
+            ui.awaitEnterSettled()
             if (!ui.isAlive) return@launch
             content.removeView(loadingView)
             if (primary == null) {

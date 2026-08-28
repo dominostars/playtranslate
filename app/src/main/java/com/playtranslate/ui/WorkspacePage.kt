@@ -92,6 +92,15 @@ interface WorkspaceHost {
      *  edge for the chevron/X wells). */
     fun setHeaderView(view: View?)
 
+    /** Suspends until the workspace's enter animation has settled (returns
+     *  immediately once it has, and forever after). Heavy completion binds —
+     *  styled-definition WebViews, large content trees — await this before
+     *  touching the view tree, so their main-thread cost can't land inside
+     *  the enter window and drop its frames. Guaranteed to unblock: the end
+     *  action completes it, and dismissal sweeps it (end actions stand down
+     *  on cancel). Re-check liveness after resuming. */
+    suspend fun awaitEnterSettled() {}
+
     /** Flip the window's focus/IME policy for in-page text entry — true while
      *  an EditText needs the keyboard, false when editing ends. The workspace
      *  restores controller focus (when a controller is attached) on false. */
