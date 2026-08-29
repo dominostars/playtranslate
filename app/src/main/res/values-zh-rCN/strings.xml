@@ -282,6 +282,9 @@
     <string name="note_mlkit_no_internet">⚠ 无网络连接——显示离线翻译（质量较低）。</string>
 
     <string name="note_mlkit_service_unavailable">⚠ 翻译服务不可用——显示离线翻译（质量较低）。</string>
+    <string name="note_mlkit_service_cooldown">⚠ 翻译服务暂时不可用。<xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> 前将显示离线翻译（质量较低）。</string>
+    <string name="note_mlkit_quota_exhausted">⚠ 翻译额度已用完。<xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> 前将显示离线翻译（质量较低）。</string>
+    <string name="note_mlkit_account_issue">⚠ 翻译服务账户存在问题（账单或额度）。将显示离线翻译（质量较低）。请在设置中检查该服务。</string>
 
     <string name="note_low_memory_fallback">⚠ 内存不足——显示离线翻译（质量较低）。</string>
 
@@ -1084,6 +1087,9 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="degraded_warning_offline">离线——翻译质量已降低</string>
+    <string name="degraded_warning_cooldown">服务不可用，<xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> 前质量较低</string>
+    <string name="degraded_warning_quota">额度已用完，<xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> 前质量较低</string>
+    <string name="degraded_warning_account">服务账户存在问题，质量较低</string>
     <string name="degraded_warning_low_memory">内存不足——翻译质量已降低</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

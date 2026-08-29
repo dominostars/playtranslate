@@ -291,6 +291,9 @@
     <string name="note_mlkit_no_internet">⚠ Нет подключения к интернету — показан офлайн-перевод (более низкое качество).</string>
 
     <string name="note_mlkit_service_unavailable">⚠ Сервис перевода недоступен — показан офлайн-перевод (более низкое качество).</string>
+    <string name="note_mlkit_service_cooldown">⚠ Сервис перевода временно недоступен. Показан офлайн-перевод (более низкое качество) до <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>.</string>
+    <string name="note_mlkit_quota_exhausted">⚠ Квота перевода исчерпана. Показан офлайн-перевод (более низкое качество) до <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>.</string>
+    <string name="note_mlkit_account_issue">⚠ Проблема с аккаунтом сервиса перевода (оплата или баланс). Показан офлайн-перевод (более низкое качество). Проверьте сервис в настройках.</string>
 
     <string name="note_low_memory_fallback">⚠ Недостаточно памяти — показан офлайн-перевод (более низкое качество).</string>
 
@@ -1103,6 +1106,9 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="degraded_warning_offline">Офлайн — качество перевода снижено</string>
+    <string name="degraded_warning_cooldown">Сервис недоступен до <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>. Качество снижено</string>
+    <string name="degraded_warning_quota">Квота исчерпана до <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>. Качество снижено</string>
+    <string name="degraded_warning_account">Проблема с аккаунтом сервиса. Качество снижено</string>
     <string name="degraded_warning_low_memory">Недостаточно памяти — качество перевода снижено</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

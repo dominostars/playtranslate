@@ -3,6 +3,7 @@ package com.playtranslate.translation
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -295,6 +296,32 @@ class TranslationBackendRegistryTest {
         assertEquals("expected cooled backend to be skipped without translate()",
             0, cooled.translateCalls.get())
         assertEquals(1, healthy.translateCalls.get())
+    }
+
+    @Test fun `earliestCooldownEnd returns the soonest USABLE cooldown`() {
+        val now = System.currentTimeMillis()
+        val late = FakeCooldownableBackend(id = "late", priority = 10)
+        late.cooldownState.recordParsedFailure(now + 300_000, "Rate limited")
+        val soon = FakeCooldownableBackend(id = "soon", priority = 20)
+        soon.cooldownState.recordParsedFailure(
+            now + 60_000, "Monthly quota used", CooldownCause.MONTHLY_QUOTA,
+        )
+        // Soonest of all, but unusable for the pair — a cooldown ticking
+        // on a disabled backend must not drive the "busy until X" label.
+        val disabled = FakeCooldownableBackend(id = "disabled", priority = 30, usable = false)
+        disabled.cooldownState.recordParsedFailure(now + 1_000, "Rate limited")
+        TranslationBackendRegistry.init(listOf(late, soon, disabled))
+
+        val active = TranslationBackendRegistry.earliestCooldownEnd("ja", "en")
+        assertEquals(soon.cooldownState.unavailableUntil(), active?.retryAt)
+        // The soonest backend's typed cause rides along, so the UI can
+        // distinguish quota exhaustion from a transient rate limit.
+        assertEquals(CooldownCause.MONTHLY_QUOTA, active?.cause)
+    }
+
+    @Test fun `earliestCooldownEnd is null with no active cooldowns`() {
+        TranslationBackendRegistry.init(listOf(FakeCooldownableBackend(id = "ready", priority = 10)))
+        assertNull(TranslationBackendRegistry.earliestCooldownEnd("ja", "en"))
     }
 
     @Test fun `cooldownable backend recordSuccess called on win`() = runBlocking {

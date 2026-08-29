@@ -3551,7 +3551,7 @@ class CaptureService : Service() {
 
         ensureLanguageManagersFor(target)
         val result = TranslationBackendRegistry.translate(text, target.source, target.target)
-        return result.toOutcome()
+        return result.toOutcome(target.source, target.target)
     }
 
     /**
@@ -3575,14 +3575,17 @@ class CaptureService : Service() {
         }
         ensureLanguageManagersFor(target)
         val results = TranslationBackendRegistry.translateBatch(texts, target.source, target.target)
-        return results.map { it.toOutcome() }
+        return results.map { it.toOutcome(target.source, target.target) }
     }
 
     /** Map a [WaterfallResult] to a [TranslateOutcome] with the per-result
      *  kind + inline-note logic. Used by both the single-text [translate]
      *  and the batched [translateBatch] paths so the degraded-state
      *  semantics stay identical between them. */
-    private fun com.playtranslate.translation.WaterfallResult.toOutcome(): TranslateOutcome {
+    private fun com.playtranslate.translation.WaterfallResult.toOutcome(
+        source: String,
+        target: String,
+    ): TranslateOutcome {
         // Per-group kind. Displacement that bottomed out at ML Kit is the
         // LowMemory kind; ML Kit chosen for network/service reasons is
         // Offline. Displacement that stayed in the offline tier (Qwen
@@ -3599,19 +3602,40 @@ class CaptureService : Service() {
             this.displacedLlmId != null -> DegradedWarningKind.LowMemory
             else -> DegradedWarningKind.Offline
         }
-        // The inline note adds one more bit of detail that the icon doesn't
-        // need — when the cause is "Offline", distinguish network-not-
-        // present from service-unavailable. Both surface as the Offline
-        // pill on the floating icon.
+        // The inline note adds more detail than the icon needs — when the
+        // cause is "Offline", distinguish network-not-present from the
+        // active-cooldown wordings (transient / quota / account, selected
+        // by the typed CooldownCause inside DegradedMessages) and the
+        // generic service-unavailable. The floating icon's pill makes the
+        // same cooldown query at render time via [currentDegradedCooldown].
+        // Network is checked FIRST: with no internet, a cooldown still
+        // ticking on some backend is not what the user needs to fix.
         val note = when (kind) {
             DegradedWarningKind.None -> null
             DegradedWarningKind.LowMemory ->
                 getString(R.string.note_low_memory_fallback)
             DegradedWarningKind.Offline ->
-                if (isNetworkAvailable()) getString(R.string.note_mlkit_service_unavailable)
-                else getString(R.string.note_mlkit_no_internet)
+                if (!isNetworkAvailable()) getString(R.string.note_mlkit_no_internet)
+                else com.playtranslate.ui.DegradedMessages.onlineFailureNote(
+                    this@CaptureService,
+                    TranslationBackendRegistry.earliestCooldownEnd(source, target),
+                )
         }
         return TranslateOutcome(this.text, note, kind, this.displacedLlmId, this.backend.displayName)
+    }
+
+    /**
+     * Active cooldown for the floating-icon pill while the degradation
+     * kind is [DegradedWarningKind.Offline]: the soonest-ending cooldown
+     * (with its typed cause) among backends usable for the CURRENT
+     * language pair, or null when the degradation isn't cooldown-driven
+     * (genuinely offline, or a fresh failure nothing has cooled down
+     * yet). Null with no network — same ordering rule as the note above.
+     */
+    fun currentDegradedCooldown(): com.playtranslate.translation.ActiveCooldown? {
+        if (!isNetworkAvailable()) return null
+        val target = snapshotTranslationTarget()
+        return TranslationBackendRegistry.earliestCooldownEnd(target.source, target.target)
     }
 
     /**

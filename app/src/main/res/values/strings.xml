@@ -723,6 +723,23 @@
     <!-- Shown when online backends are reachable but returning errors. -->
     <string name="note_mlkit_service_unavailable">⚠ Translation service unavailable — showing offline translation (lower quality).</string>
 
+    <!-- Shown when the online backend is in a TRANSIENT cooldown (rate
+         limit, server error, or a recent connection-failure ladder).
+         %1$s is a locale-formatted clock time ("3:42 PM") or, for a
+         cooldown more than a day out, a short date ("Sep 1") — both
+         read naturally after "until". -->
+    <string name="note_mlkit_service_cooldown">⚠ Translation service is temporarily unavailable. Showing offline translation (lower quality) until <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>.</string>
+
+    <!-- Shown when the online backend's usage quota is exhausted (Gemini
+         daily / DeepL monthly).  %1$s: same time-or-date value as
+         note_mlkit_service_cooldown. -->
+    <string name="note_mlkit_quota_exhausted">⚠ Translation quota used up. Showing offline translation (lower quality) until <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>.</string>
+
+    <!-- Shown when the online backend reports an account/billing problem
+         (e.g. OpenAI insufficient_quota).  Deliberately NO retry time:
+         the user has to fix the account, waiting won't help. -->
+    <string name="note_mlkit_account_issue">⚠ Translation service account problem (billing or credit). Showing offline translation (lower quality). Check the service in Settings.</string>
+
     <!-- Shown when a TG / Qwen / Gemma backend OOMed and we fell
          through to a lighter backend. -->
     <string name="note_low_memory_fallback">⚠ Low memory — showing offline translation (lower quality).</string>
@@ -2184,8 +2201,10 @@
     <string name="llm_status_low_memory_badge">Low memory, translations using fallback</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
-         FLOATING-ICON MENU WARNING PILL.  Two strings cover the same
-         pill, depending on the cause: network/service degradation
+         FLOATING-ICON MENU WARNING PILL.  Five strings cover the same
+         pill, depending on the cause: an active cooldown shows one of
+         three cause-typed labels (transient / quota / account — see
+         each string's comment); other network/service degradation
          falls back to ML Kit (offline label); a TG / Qwen displacement
          caused by transient memory pressure shows the low-memory label
          even when the chain also bottomed out at ML Kit (memory is the
@@ -2194,6 +2213,19 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="degraded_warning_offline">Offline — translation quality is reduced</string>
+    <!-- Warning-pill label while the online service is in a TRANSIENT
+         cooldown (rate limit / server error / connection ladder).  Keep
+         it short (single pill line).  %1$s is a locale clock time
+         ("3:42 PM") or short date ("Sep 1"); both must read naturally
+         after "until". -->
+    <string name="degraded_warning_cooldown">Service unavailable until <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>. Quality reduced</string>
+    <!-- Warning-pill label while the online service's usage quota is
+         exhausted.  %1$s: same time-or-date value as degraded_warning_cooldown. -->
+    <string name="degraded_warning_quota">Quota used up until <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>. Quality reduced</string>
+    <!-- Warning-pill label for an account/billing problem on the online
+         service.  No retry time on purpose: the user has to fix the
+         account, waiting won't help. -->
+    <string name="degraded_warning_account">Service account problem. Quality reduced</string>
     <string name="degraded_warning_low_memory">Low memory — translation quality is reduced</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

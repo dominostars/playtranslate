@@ -93,13 +93,14 @@ internal class FakeCooldownableBackend(
     override val status: BackendStatus = BackendStatus.Hidden,
     private val response: String = "translated-by-$id",
     val cooldownState: CooldownState = CooldownState(context = null, backendId = id),
+    private val usable: Boolean = true,
 ) : TranslationBackend, Cooldownable {
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
     val translateCalls = AtomicInteger(0)
     val recordSuccessCalls = AtomicInteger(0)
 
-    override fun isUsable(source: String, target: String): Boolean = true
+    override fun isUsable(source: String, target: String): Boolean = usable
     override suspend fun translate(text: String, source: String, target: String): String {
         translateCalls.incrementAndGet()
         return response
@@ -107,6 +108,7 @@ internal class FakeCooldownableBackend(
 
     override fun unavailableUntil(): Long? = cooldownState.unavailableUntil()
     override fun unavailableDescription(): String? = cooldownState.unavailableDescription()
+    override fun unavailableCause(): CooldownCause? = cooldownState.unavailableCause()
     override fun recordSuccess(attemptStartedAtMs: Long) {
         recordSuccessCalls.incrementAndGet()
         cooldownState.recordSuccess(attemptStartedAtMs)

@@ -95,6 +95,7 @@ class GeminiBackend(
         return cooldownState.unavailableUntil()
     }
     override fun unavailableDescription(): String? = cooldownState.unavailableDescription()
+    override fun unavailableCause(): CooldownCause? = cooldownState.unavailableCause()
     override fun recordSuccess(attemptStartedAtMs: Long) =
         cooldownState.recordSuccess(attemptStartedAtMs)
 
@@ -173,7 +174,8 @@ class GeminiBackend(
                         else -> if (!response.isSuccessful) {
                             if (response.code >= 500) {
                                 cooldownState.recordLadderFailure(
-                                    CooldownLadder.RateLimit, "Server error"
+                                    CooldownLadder.RateLimit, "Server error",
+                                    CooldownCause.SERVER_ERROR,
                                 )
                             }
                             throw StructuralFailureException("Gemini error ${response.code}")
@@ -287,7 +289,8 @@ class GeminiBackend(
                     else -> if (!response.isSuccessful) {
                         if (response.code >= 500) {
                             cooldownState.recordLadderFailure(
-                                CooldownLadder.RateLimit, "Server error"
+                                CooldownLadder.RateLimit, "Server error",
+                                CooldownCause.SERVER_ERROR,
                             )
                         }
                         throw StructuralFailureException("Gemini error ${response.code}")
@@ -469,7 +472,12 @@ class GeminiBackend(
     private fun recordGemini429(body: String) {
         val parsed = parseGemini429Body(body)
         if (parsed != null) {
-            cooldownState.recordParsedFailure(parsed.first, parsed.second)
+            // parseGemini429Body's two descriptions are file-local
+            // constants; the daily-quota one maps to the QUOTA message
+            // class (resets at midnight PT), everything else is transient.
+            val cause = if (parsed.second == "Daily quota used") CooldownCause.DAILY_QUOTA
+                        else CooldownCause.RATE_LIMITED
+            cooldownState.recordParsedFailure(parsed.first, parsed.second, cause)
         } else {
             cooldownState.recordLadderFailure(CooldownLadder.RateLimit, "Rate limited")
         }

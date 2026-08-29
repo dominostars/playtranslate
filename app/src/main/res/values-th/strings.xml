@@ -263,6 +263,9 @@
     <string name="note_mlkit_no_internet">⚠ ไม่มีการเชื่อมต่ออินเทอร์เน็ต — กำลังแสดงการแปลออฟไลน์ (คุณภาพต่ำกว่า)</string>
 
     <string name="note_mlkit_service_unavailable">⚠ บริการแปลไม่พร้อมใช้งาน — กำลังแสดงการแปลออฟไลน์ (คุณภาพต่ำกว่า)</string>
+    <string name="note_mlkit_service_cooldown">⚠ บริการแปลไม่พร้อมใช้งานชั่วคราว กำลังแสดงการแปลออฟไลน์ (คุณภาพต่ำกว่า) จนถึง <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g></string>
+    <string name="note_mlkit_quota_exhausted">⚠ ใช้โควตาการแปลหมดแล้ว กำลังแสดงการแปลออฟไลน์ (คุณภาพต่ำกว่า) จนถึง <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g></string>
+    <string name="note_mlkit_account_issue">⚠ บัญชีบริการแปลมีปัญหา (การเรียกเก็บเงินหรือเครดิต) กำลังแสดงการแปลออฟไลน์ (คุณภาพต่ำกว่า) โปรดตรวจสอบบริการในการตั้งค่า</string>
 
     <string name="note_low_memory_fallback">⚠ หน่วยความจำต่ำ — กำลังแสดงการแปลออฟไลน์ (คุณภาพต่ำกว่า)</string>
 
@@ -1000,6 +1003,9 @@
     <!-- ═══ FLOATING-ICON MENU WARNING PILL ═══ -->
 
     <string name="degraded_warning_offline">ออฟไลน์ — คุณภาพการแปลลดลง</string>
+    <string name="degraded_warning_cooldown">บริการไม่พร้อมใช้งานจนถึง <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> คุณภาพลดลง</string>
+    <string name="degraded_warning_quota">โควตาหมดจนถึง <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> คุณภาพลดลง</string>
+    <string name="degraded_warning_account">บัญชีบริการมีปัญหา คุณภาพลดลง</string>
     <string name="degraded_warning_low_memory">หน่วยความจำต่ำ — คุณภาพการแปลลดลง</string>
 
     <!-- ═══ MAIN SCREEN — bottom-bar and overflow-menu items ═══ -->

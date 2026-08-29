@@ -267,6 +267,9 @@
     <string name="note_mlkit_no_internet">⚠ İnternet bağlantısı yok — çevrimdışı çeviri gösteriliyor (daha düşük kalite).</string>
 
     <string name="note_mlkit_service_unavailable">⚠ Çeviri hizmeti kullanılamıyor — çevrimdışı çeviri gösteriliyor (daha düşük kalite).</string>
+    <string name="note_mlkit_service_cooldown">⚠ Çeviri hizmeti geçici olarak kullanılamıyor. Çevrimdışı çeviri gösteriliyor (daha düşük kalite). Yeniden deneme: <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>.</string>
+    <string name="note_mlkit_quota_exhausted">⚠ Çeviri kotası doldu. Çevrimdışı çeviri gösteriliyor (daha düşük kalite). Yeniden deneme: <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>.</string>
+    <string name="note_mlkit_account_issue">⚠ Çeviri hizmeti hesabında sorun var (faturalandırma veya bakiye). Çevrimdışı çeviri gösteriliyor (daha düşük kalite). Ayarlardan hizmeti kontrol edin.</string>
 
     <string name="note_low_memory_fallback">⚠ Düşük bellek — çevrimdışı çeviri gösteriliyor (daha düşük kalite).</string>
 
@@ -1076,6 +1079,9 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="degraded_warning_offline">Çevrimdışı — çeviri kalitesi düşük</string>
+    <string name="degraded_warning_cooldown">Hizmet kullanılamıyor, kalite düşük. Yeniden deneme: <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g></string>
+    <string name="degraded_warning_quota">Kota doldu, kalite düşük. Yeniden deneme: <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g></string>
+    <string name="degraded_warning_account">Hizmet hesabında sorun var. Kalite düşük</string>
     <string name="degraded_warning_low_memory">Düşük bellek — çeviri kalitesi düşük</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

@@ -103,7 +103,11 @@ class CameraTranslator(private val context: Context) {
             synchronized(cache) {
                 uncachedIndices.forEachIndexed { i, idx ->
                     val outcome = outcomes.getOrNull(i) ?: return@forEachIndexed
-                    val detailed = Detailed(outcome.text, noteFor(outcome), outcome.backend.displayName)
+                    val detailed = Detailed(
+                        outcome.text,
+                        noteFor(outcome, snap.source, snap.target),
+                        outcome.backend.displayName,
+                    )
                     results[idx] = detailed
                     // Mirror the service's cache-write policy: skip degraded
                     // fallback output and LLM-displacement output so a
@@ -121,14 +125,24 @@ class CameraTranslator(private val context: Context) {
     }
 
     /** Mirror of the service's degraded-note derivation — the subset the
-     *  panel renders inline (no icon-state aggregation here). */
-    private fun noteFor(outcome: com.playtranslate.translation.WaterfallResult): String? = when {
+     *  panel renders inline (no icon-state aggregation here). Network is
+     *  checked first, then the shared cause-typed cooldown wording via
+     *  [com.playtranslate.ui.DegradedMessages] — same ordering as
+     *  [com.playtranslate.CaptureService]'s toOutcome. */
+    private fun noteFor(
+        outcome: com.playtranslate.translation.WaterfallResult,
+        source: String,
+        target: String,
+    ): String? = when {
         !outcome.isDegraded -> null
         outcome.displacedLlmId != null ->
             context.getString(com.playtranslate.R.string.note_low_memory_fallback)
-        isNetworkAvailable() ->
-            context.getString(com.playtranslate.R.string.note_mlkit_service_unavailable)
-        else -> context.getString(com.playtranslate.R.string.note_mlkit_no_internet)
+        !isNetworkAvailable() ->
+            context.getString(com.playtranslate.R.string.note_mlkit_no_internet)
+        else -> com.playtranslate.ui.DegradedMessages.onlineFailureNote(
+            context,
+            TranslationBackendRegistry.earliestCooldownEnd(source, target),
+        )
     }
 
     private fun isNetworkAvailable(): Boolean {
