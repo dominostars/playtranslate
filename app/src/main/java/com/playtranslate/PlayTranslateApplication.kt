@@ -39,6 +39,10 @@ class PlayTranslateApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashHandler.install(this)
+        // Translation-waterfall forensics (failure ring + connectivity
+        // summary for the log-export header). Before the registry init so
+        // the first waterfall pass can already record.
+        com.playtranslate.diagnostics.TranslationDiag.init(this)
         // Collect Anki screenshot pins orphaned by a crash/process death
         // (their send's finally never ran). Also swept opportunistically on
         // every pin; this catches the "never sends again" tail. Off-main:

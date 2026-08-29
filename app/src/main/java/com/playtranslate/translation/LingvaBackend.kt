@@ -14,8 +14,9 @@ import java.util.concurrent.TimeUnit
 /** Thrown when the gtx endpoint rate-limits or blocks the caller
  *  (HTTP 429 / 403). The cooldown is recorded at the throw site; the
  *  registry treats the throw as "this backend failed", same as
- *  [GeminiRateLimitException]. */
-class LingvaRateLimitException(code: Int) : IOException("Lingva rate limited (HTTP $code)")
+ *  [GeminiRateLimitException]. [httpCode] rides along so the registry's
+ *  diagnostics ring can record the status without touching the message. */
+class LingvaRateLimitException(val httpCode: Int) : IOException("Lingva rate limited (HTTP $httpCode)")
 
 /**
  * "Lingva" backend — historically a Lingva-proxy translator, currently
@@ -201,12 +202,13 @@ class LingvaBackend(
                 // harder abuse blocks are the only thing it can be, and
                 // those want the same back-off, not a retry per cycle.
                 response.code == 429 || response.code == 403 -> {
-                    cooldownState?.recordRetryAfterFailure(
-                        response.header("Retry-After"), "Rate limited"
-                    )
+                    val retryAfter = response.header("Retry-After")
+                    logHttpFailure(response.code, retryAfter, response)
+                    cooldownState?.recordRetryAfterFailure(retryAfter, "Rate limited")
                     throw LingvaRateLimitException(response.code)
                 }
                 response.code >= 500 -> {
+                    logHttpFailure(response.code, null, response)
                     cooldownState?.recordLadderFailure(
                         CooldownLadder.RateLimit, "Server error"
                     )
@@ -220,6 +222,21 @@ class LingvaBackend(
             }
             return response.body.string()
         }
+    }
+
+    /** Header-level detail on a gtx refusal. PRIVACY: never log the URL
+     *  (its `q=` params carry the captured text) or any body content
+     *  (Google's 403 block page echoes the full request URL, text
+     *  included). Content-Type + declared length still distinguish a
+     *  bare API error from an HTML block page — which tells us how hard
+     *  the block is — without reading a byte of the body. */
+    private fun logHttpFailure(code: Int, retryAfter: String?, response: okhttp3.Response) {
+        android.util.Log.w(
+            "Lingva",
+            "gtx $code: retryAfter=${retryAfter ?: "none"}" +
+                " contentType=${response.header("Content-Type") ?: "?"}" +
+                " contentLength=${response.body.contentLength()}"
+        )
     }
 
     /** Reassemble the per-q chunks array (`[[translated, original, ...], ...]`)
