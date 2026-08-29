@@ -1002,8 +1002,9 @@ class WordDetailBinder(
         // Spaced headwords are expressions by form; no-whitespace ones
         // carry their POS class into the engine's member policy —
         // expressions get the loose gate, transparent compounds
-        // (放送番組/国内向け) need every unit to be a ≥2-char kanji word,
-        // and 図書館-style compounds stay whole.
+        // (放送番組/ペース配分) need every unit accounted for (kanji words
+        // render, katakana words are excused), and 図書館-style compounds
+        // stay whole.
         val members = engine.memberWordsOf(
             displayed,
             expressionClass = displayed.any(Char::isWhitespace) || primary.isExpressionEntry(),

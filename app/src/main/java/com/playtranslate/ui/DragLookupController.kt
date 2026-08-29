@@ -1294,8 +1294,9 @@ class DragLookupController(
         // (position-independent; an unresolvable member — 手当たり has no
         // JMdict entry — simply doesn't appear). The engine's policy sets
         // the strictness by POS class: expressions loose, transparent
-        // compounds (放送番組/国内向け) need every unit to be a ≥2-char
-        // kanji word, so 図書館 stays whole.
+        // compounds (放送番組/ペース配分) need every unit accounted for —
+        // kanji words render, katakana words are excused — so 図書館
+        // stays whole.
         val memberPopups: List<PopupData> = if (phraseKey == null && entry != null) {
             withContext(Dispatchers.IO) {
                 engine.memberWordsOf(popupData.word, expressionClass = entry.isExpressionEntry())
