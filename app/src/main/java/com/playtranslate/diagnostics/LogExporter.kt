@@ -143,8 +143,28 @@ object LogExporter {
         appendLine("App: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) ${BuildConfig.BUILD_TYPE}")
         appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE}, ${Build.HARDWARE})")
         appendLine("Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}, patch ${Build.VERSION.SECURITY_PATCH})")
+        appendTranslationDiagnostics()
         appendLine("─".repeat(60))
         appendLine()
+    }
+
+    /** Translation-waterfall forensics — so an export made AFTER logcat
+     *  rolled past a rate-limit episode still carries the evidence.
+     *  SILENT when there is nothing to show: the header is shared by
+     *  every support flow, and translation earns space in it only when
+     *  it has recorded failures or an active cooldown. Content-free by
+     *  construction (see [TranslationDiag]); best-effort so a half-
+     *  initialized process can never break a crash export. */
+    private fun StringBuilder.appendTranslationDiagnostics() {
+        runCatching {
+            val cooldowns = com.playtranslate.translation.TranslationBackendRegistry
+                .activeCooldowns()
+            val failures = TranslationDiag.recentFailures()
+            if (cooldowns.isEmpty() && failures.isEmpty()) return
+            appendLine("Translation diagnostics:")
+            cooldowns.forEach { appendLine("- $it") }
+            failures.forEach { appendLine("- $it") }
+        }
     }
 
     private fun fileToUri(context: Context, file: File): Uri =

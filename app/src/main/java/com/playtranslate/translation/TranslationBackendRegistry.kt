@@ -1,12 +1,14 @@
 package com.playtranslate.translation
 
 import android.util.Log
+import com.playtranslate.diagnostics.TranslationDiag
 import com.playtranslate.translation.llm.OnDeviceLlmBackend
 import com.playtranslate.translation.llm.OnDeviceLlmTransientException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Holds the ordered list of [TranslationBackend]s and runs the
@@ -34,6 +36,19 @@ import kotlinx.coroutines.coroutineScope
 object TranslationBackendRegistry {
 
     private const val TAG = "TranslationBackendRegistry"
+
+    /** Dedicated support-forensics tag (same family as HomeRoute /
+     *  DisplayDump): one line per DEGRADED waterfall outcome — which
+     *  backends were skipped/failed and why, plus the connectivity
+     *  summary. Quiet on healthy passes so the live loop stays clean. */
+    private const val DIAG_TAG = "TranslateDiag"
+
+    private fun logWaterfall(label: String, trail: List<String>) {
+        Log.i(
+            DIAG_TAG,
+            "waterfall($label): ${trail.joinToString(" -> ")} | ${TranslationDiag.connectivitySummary()}"
+        )
+    }
 
     @Volatile private var backends: List<TranslationBackend> = emptyList()
     @Volatile private var orderOverride: List<BackendId>? = null
@@ -144,6 +159,14 @@ object TranslationBackendRegistry {
         // single low-memory moment would freeze a lower-quality result in the
         // cache until the next pref change.
         var displacedLlmId: BackendId? = null
+        // Trail lists only backends the pass ENGAGED (attempted, failed,
+        // or cooldown-skipped) — unusable tiers are omitted to keep the
+        // line short. Logged only when something EVENTFUL degraded the
+        // pass (a failure or a cooldown skip): a user whose only backend
+        // IS the degraded fallback would otherwise emit one line per live
+        // cycle, rolling logcat past the diagnostics we want to keep.
+        val trail = ArrayList<String>(ordered.size)
+        var eventful = false
         for (backend in ordered) {
             if (!backend.isUsable(source, target)) continue
             // Cooldown skip: backends in a parsed/ladder cooldown stay out
@@ -159,12 +182,16 @@ object TranslationBackendRegistry {
             val coolDown = (backend as? Cooldownable)?.unavailableUntil()
             if (coolDown != null && coolDown > now) {
                 Log.d(TAG, "Backend ${backend.id} skipped (cooldown ${coolDown - now}ms remaining)")
+                trail.add("${backend.displayName}[cooldown ${(coolDown - now) / 1000}s]")
+                eventful = true
                 continue
             }
             val attemptStartedAt = System.currentTimeMillis()
             try {
                 val translated = backend.translate(text, source, target)
                 (backend as? Cooldownable)?.recordSuccess(attemptStartedAt)
+                trail.add("${backend.displayName}[ok]")
+                if (backend.isDegradedFallback && eventful) logWaterfall("single", trail)
                 return WaterfallResult(
                     text = translated,
                     backend = backend,
@@ -182,9 +209,26 @@ object TranslationBackendRegistry {
                     if (displacedLlmId == null) displacedLlmId = backend.id
                 }
                 Log.w(TAG, "Backend ${backend.id} failed (${e.javaClass.simpleName}: ${e.message}), falling back")
+                trail.add("${backend.displayName}[${e.javaClass.simpleName}]")
+                eventful = true
+                recordFailureDiag(backend, e)
             }
         }
+        logWaterfall("single ALL FAILED", trail)
         throw IllegalStateException("All translation backends failed")
+    }
+
+    /** Push one backend failure into [TranslationDiag]'s persisted ring.
+     *  Content-free by construction: class name, HTTP code, and cooldown
+     *  timestamp only — never the exception MESSAGE (transport messages
+     *  embed request URLs, and Lingva URLs carry captured text). */
+    private fun recordFailureDiag(backend: TranslationBackend, e: Exception) {
+        TranslationDiag.recordFailure(
+            backendName = backend.displayName,
+            exceptionClass = e.javaClass.simpleName,
+            httpCode = (e as? LingvaRateLimitException)?.httpCode,
+            cooldownUntil = (backend as? Cooldownable)?.unavailableUntil(),
+        )
     }
 
     /**
@@ -238,6 +282,9 @@ object TranslationBackendRegistry {
         // succeeds at a fallback backend carries this id so the caller
         // can skip caching the fallback output.
         var displacedLlmId: BackendId? = null
+        val trail = ArrayList<String>(ordered.size)
+        // Same eventful gate as [translate] — see the comment there.
+        var eventful = false
 
         for (backend in ordered) {
             if (pendingIndices.isEmpty()) break
@@ -245,6 +292,8 @@ object TranslationBackendRegistry {
             val coolDown = (backend as? Cooldownable)?.unavailableUntil()
             if (coolDown != null && coolDown > System.currentTimeMillis()) {
                 Log.d(TAG, "Backend ${backend.id} skipped (cooldown ${coolDown - System.currentTimeMillis()}ms remaining)")
+                trail.add("${backend.displayName}[cooldown ${(coolDown - System.currentTimeMillis()) / 1000}s]")
+                eventful = true
                 continue
             }
 
@@ -260,6 +309,7 @@ object TranslationBackendRegistry {
                         )
                     }
                     (backend as? Cooldownable)?.recordSuccess(batchStartedAt)
+                    trail.add("${backend.displayName}[ok]")
                     pendingIndices.forEachIndexed { i, origIdx ->
                         results[origIdx] = WaterfallResult(
                             text = translated[i],
@@ -288,11 +338,15 @@ object TranslationBackendRegistry {
                         TAG,
                         "Backend ${backend.id} batch parse failed (${e.message}), retrying per-text on same backend"
                     )
+                    trail.add("${backend.displayName}[batch-parse, per-text retry]")
                 } catch (e: Exception) {
                     Log.w(
                         TAG,
                         "Backend ${backend.id} batch failed (${e.javaClass.simpleName}: ${e.message}), falling back"
                     )
+                    trail.add("${backend.displayName}[batch ${e.javaClass.simpleName}]")
+                    eventful = true
+                    recordFailureDiag(backend, e)
                     // Fall through to the next backend with the FULL
                     // pending list. Intentional: per-text retry inside
                     // the same backend would defeat the batching point
@@ -308,6 +362,7 @@ object TranslationBackendRegistry {
             // tracking and the LLM-transient backend-wide bailout.
             val perTextStartedAt = System.currentTimeMillis()
             var transientHit = false
+            val firstFailure = AtomicReference<Exception?>(null)
             val perBackend = coroutineScope {
                 pendingTexts.map { t ->
                     async {
@@ -321,6 +376,7 @@ object TranslationBackendRegistry {
                                     transientHit = true
                                     if (displacedLlmId == null) displacedLlmId = backend.id
                                 }
+                                firstFailure.compareAndSet(null, e)
                                 Log.w(
                                     TAG,
                                     "Backend ${backend.id} failed (${e.javaClass.simpleName}: ${e.message}), falling back"
@@ -338,7 +394,20 @@ object TranslationBackendRegistry {
             // full pending list. Otherwise, slot successes into results
             // and shrink the pending list to just the failures.
             if (transientHit) {
+                trail.add("${backend.displayName}[llm-transient]")
+                eventful = true
                 continue
+            }
+            val succeeded = perBackend.count { it != null }
+            if (succeeded == perBackend.size) {
+                trail.add("${backend.displayName}[ok]")
+            } else {
+                trail.add("${backend.displayName}[$succeeded/${perBackend.size} ok]")
+                eventful = true
+                // One ring entry per backend per pass — the batched
+                // fan-out can fail N texts on the same underlying cause,
+                // and N entries would flush the 20-slot ring for nothing.
+                firstFailure.get()?.let { recordFailureDiag(backend, it) }
             }
             // Only clear cooldown when EVERY attempted text succeeded.
             // Mixed results mean some sibling call recorded a cooldown
@@ -368,6 +437,11 @@ object TranslationBackendRegistry {
             pendingIndices = stillPending
         }
 
+        val anyDegraded = results.any { it != null && it.isDegraded }
+        if (eventful && (anyDegraded || pendingIndices.isNotEmpty())) {
+            logWaterfall("batch ${texts.size}", trail)
+        }
+
         if (pendingIndices.isNotEmpty()) {
             throw IllegalStateException(
                 "All translation backends failed for ${pendingIndices.size} of ${texts.size} texts"
@@ -375,6 +449,31 @@ object TranslationBackendRegistry {
         }
         @Suppress("UNCHECKED_CAST")
         return results.toList() as List<WaterfallResult>
+    }
+
+    /**
+     * Backends currently sidelined by a cooldown, one line each — for
+     * the log-export header, which stays EMPTY when nothing is wrong
+     * (the export is shared by every support flow; translation gets
+     * header space only when it has evidence to show). Content-free by
+     * construction: display names and durations only — never API keys
+     * or base URLs (a custom base URL can itself embed a token). See
+     * [com.playtranslate.diagnostics.TranslationDiag].
+     */
+    fun activeCooldowns(): List<String> {
+        val now = System.currentTimeMillis()
+        return orderedBackends().mapNotNull { backend ->
+            val cooldownable = backend as? Cooldownable ?: return@mapNotNull null
+            val cool = cooldownable.unavailableUntil() ?: return@mapNotNull null
+            if (cool <= now) return@mapNotNull null
+            buildString {
+                append(backend.displayName)
+                append(": cooldown ").append((cool - now) / 1000).append("s remaining")
+                cooldownable.unavailableDescription()?.let {
+                    append(" (").append(it).append(')')
+                }
+            }
+        }
     }
 
     fun close() {

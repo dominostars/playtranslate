@@ -57,6 +57,21 @@ class CooldownState(
         sp?.getString(keyDescription(), null)?.takeIf { it.isNotBlank() }
     @Volatile private var rung: Int = sp?.getInt(keyRung(), 0) ?: 0
 
+    init {
+        // A cooldown restored from a PREVIOUS process has its cause in
+        // that process's logs, which no logcat export will contain —
+        // announce it here so a launch-time skip is explicable from this
+        // session's log alone.
+        val restored = untilMs
+        if (restored != null && restored > nowMs()) {
+            android.util.Log.i(
+                "CooldownState",
+                "$backendId: restored persisted cooldown, " +
+                    "${(restored - nowMs()) / 1000}s remaining (${descriptionText ?: "?"})"
+            )
+        }
+    }
+
     /** Epoch-ms when the current cooldown was set. Used by [recordSuccess]
      *  to refuse to clear a cooldown that's newer than the success's
      *  attempt-start timestamp (otherwise a stale in-flight success from
