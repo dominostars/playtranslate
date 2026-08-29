@@ -76,6 +76,7 @@ object OnlineBackendFactory {
                 id = id,
                 priority = ONLINE_PRIORITY,
                 enabledProvider = { current().enabled },
+                cooldownState = CooldownState(appContext, id),
             )
         }
     }

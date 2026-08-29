@@ -127,6 +127,55 @@ class CooldownState(
     }
 
     /**
+     * Rate-limit / blocked response whose only retry signal is the
+     * standard `Retry-After` header. Both RFC 9110 forms are parsed —
+     * delta-seconds and the IMF-fixdate (RFC 1123) HTTP-date; garbage,
+     * the archaic RFC 850 / asctime date forms, and a date not in the
+     * future all fall through to the [CooldownLadder.RateLimit] ladder
+     * (a past date is "no usable signal", not "retry immediately").
+     * A parsed value is capped at [MAX_PARSED_RETRY_AFTER] (the
+     * ladder's own top rung) so a bogus header or a skewed device
+     * clock can't latch the backend out for days — an unkeyed backend
+     * has no credentials-change path to clear a runaway cooldown.
+     *
+     * Reusable by any HTTP backend without a provider-specific retry
+     * signal; provider-specific parsers (Gemini's `error.details[]`,
+     * OpenAI's `x-ratelimit-reset-*` dialects) stay in their backends
+     * and call [recordParsedFailure] / [recordLadderFailure] directly.
+     */
+    fun recordRetryAfterFailure(retryAfterHeader: String?, description: String) {
+        val retryAt = parseRetryAfterMs(retryAfterHeader)
+        if (retryAt != null) {
+            recordParsedFailure(retryAt, description)
+        } else {
+            recordLadderFailure(CooldownLadder.RateLimit, description)
+        }
+    }
+
+    /** Epoch-ms retry time from a `Retry-After` header value, or null
+     *  when the header carries no usable future signal. */
+    private fun parseRetryAfterMs(header: String?): Long? {
+        val value = header?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val now = nowMs()
+        val capMs = MAX_PARSED_RETRY_AFTER.inWholeMilliseconds
+        val seconds = value.toLongOrNull()
+        if (seconds != null) {
+            if (seconds <= 0) return null
+            // Duration saturates instead of overflowing on huge inputs.
+            return now + seconds.seconds.coerceAtMost(MAX_PARSED_RETRY_AFTER).inWholeMilliseconds
+        }
+        val dateMs = try {
+            java.time.ZonedDateTime
+                .parse(value, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME)
+                .toInstant().toEpochMilli()
+        } catch (_: java.time.DateTimeException) {
+            return null
+        }
+        if (dateMs <= now) return null
+        return dateMs.coerceAtMost(now + capMs)
+    }
+
+    /**
      * Network / connection failures: the first one in a long while is
      * ignored (wifi blips happen) — only a second within
      * [IO_PAIR_WINDOW_MS] escalates to the network ladder. This keeps
@@ -204,6 +253,11 @@ class CooldownState(
         /** Cap on the ladder rung — the top tier (4h) stays put forever
          *  until a [recordSuccess] resets it. */
         private const val MAX_RUNG = 3
+
+        /** Ceiling for a parsed `Retry-After` value — matches the rate-
+         *  limit ladder's top rung so a header-driven cooldown can never
+         *  exceed what repeated unsignaled failures would earn. */
+        private val MAX_PARSED_RETRY_AFTER = 4.hours
 
         /** Two IOExceptions within this window are treated as a real
          *  pattern; an isolated one is forgiven. 60 s is wide enough to

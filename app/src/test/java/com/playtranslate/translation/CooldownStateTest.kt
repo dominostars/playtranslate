@@ -181,6 +181,86 @@ class CooldownStateTest {
         assertEquals(clock.get() + 4 * 60 * 60 * 1000L, s.unavailableUntil())
     }
 
+    @Test fun `recordRetryAfterFailure parses integer seconds`() {
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        s.recordRetryAfterFailure("120", "Rate limited")
+        assertEquals(clock.get() + 120_000L, s.unavailableUntil())
+        assertEquals("Rate limited", s.unavailableDescription())
+    }
+
+    @Test fun `recordRetryAfterFailure trims whitespace`() {
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        s.recordRetryAfterFailure(" 45 ", "Rate limited")
+        assertEquals(clock.get() + 45_000L, s.unavailableUntil())
+    }
+
+    @Test fun `recordRetryAfterFailure caps parsed value at the ladder maximum`() {
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        s.recordRetryAfterFailure("999999999", "Rate limited")
+        assertEquals(clock.get() + 4 * 60 * 60 * 1000L, s.unavailableUntil())
+    }
+
+    @Test fun `recordRetryAfterFailure falls to ladder without a header`() {
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        s.recordRetryAfterFailure(null, "Rate limited")
+        // Rate-limit ladder rung 0 = 1 minute.
+        assertEquals(clock.get() + 60_000L, s.unavailableUntil())
+    }
+
+    @Test fun `recordRetryAfterFailure falls to ladder on unusable header`() {
+        val clock = AtomicLong(1_000_000L)
+        // Zero, negatives, fractions, prose, and the archaic RFC 850
+        // date form all mean "no usable signal".
+        for (header in listOf("0", "-5", "1.5", "tomorrow",
+                              "Thursday, 01-Jan-70 01:00:00 GMT")) {
+            val s = newState(clock)
+            s.recordRetryAfterFailure(header, "Rate limited")
+            assertEquals("header '$header'", clock.get() + 60_000L, s.unavailableUntil())
+        }
+    }
+
+    @Test fun `recordRetryAfterFailure parses a future HTTP-date`() {
+        // Clock at epoch+1,000,000ms = 1970-01-01T00:16:40Z; the header
+        // names 01:00:00Z the same day = epoch+3,600,000ms.
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        s.recordRetryAfterFailure("Thu, 01 Jan 1970 01:00:00 GMT", "Rate limited")
+        assertEquals(3_600_000L, s.unavailableUntil())
+        assertEquals("Rate limited", s.unavailableDescription())
+    }
+
+    @Test fun `recordRetryAfterFailure caps a far-future HTTP-date at the ladder maximum`() {
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        s.recordRetryAfterFailure("Wed, 21 Oct 2026 07:28:00 GMT", "Rate limited")
+        assertEquals(clock.get() + 4 * 60 * 60 * 1000L, s.unavailableUntil())
+    }
+
+    @Test fun `recordRetryAfterFailure treats a past HTTP-date as no signal`() {
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        // Epoch itself — before the injected now. A past date is "no
+        // usable signal" (ladder), never "retry immediately" (no-op).
+        s.recordRetryAfterFailure("Thu, 01 Jan 1970 00:00:00 GMT", "Rate limited")
+        assertEquals(clock.get() + 60_000L, s.unavailableUntil())
+    }
+
+    @Test fun `recordRetryAfterFailure parsed path does not advance the ladder rung`() {
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        s.recordRetryAfterFailure("30", "Rate limited")
+        clock.addAndGet(60_000)  // past the parsed cooldown
+        assertNull(s.unavailableUntil())
+        // Next failure without a signal starts at rung 0 (1 minute),
+        // proving the parsed failure didn't consume a rung.
+        s.recordRetryAfterFailure(null, "Rate limited")
+        assertEquals(clock.get() + 60_000L, s.unavailableUntil())
+    }
+
     @Test fun `Cooldownable interface delegates correctly`() {
         val clock = AtomicLong(1_000_000L)
         val s = newState(clock)

@@ -11,6 +11,12 @@ import java.io.IOException
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
+/** Thrown when the gtx endpoint rate-limits or blocks the caller
+ *  (HTTP 429 / 403). The cooldown is recorded at the throw site; the
+ *  registry treats the throw as "this backend failed", same as
+ *  [GeminiRateLimitException]. */
+class LingvaRateLimitException(code: Int) : IOException("Lingva rate limited (HTTP $code)")
+
 /**
  * "Lingva" backend — historically a Lingva-proxy translator, currently
  * pointed at Google's `translate.googleapis.com/translate_a/single`
@@ -23,6 +29,13 @@ import java.util.concurrent.TimeUnit
  *
  * [enabledProvider] reflects the user's explicit on/off state from
  * Settings — the registry's waterfall skips this backend when disabled.
+ *
+ * Cooldown: gtx rate-limits per IP with plain 429s (observed in the
+ * field: sustained live-mode cadence trips it, and continued retries
+ * every capture cycle keep the limiter hot indefinitely). [Cooldownable]
+ * participation means the waterfall stops hammering a limited endpoint
+ * — which is also what lets the limiter recover without the user
+ * restarting anything.
  */
 class LingvaBackend(
     // Identity is parameterized (defaults preserve the legacy singleton)
@@ -32,7 +45,12 @@ class LingvaBackend(
     override val displayName: String = "Lingva",
     override val priority: Int = 20,
     private val enabledProvider: () -> Boolean,
-) : TranslationBackend, BatchTranslator {
+    /** Null (legacy/test constructors) = no cooldown participation:
+     *  [unavailableUntil] stays null and failures aren't recorded. The
+     *  factory always passes a real instance. */
+    private val cooldownState: CooldownState? = null,
+    private val client: OkHttpClient = defaultClient(),
+) : TranslationBackend, BatchTranslator, Cooldownable {
 
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
@@ -41,24 +59,40 @@ class LingvaBackend(
     /** Constant: Lingva has no key to hold, so it never leaves this state. */
     override val status: BackendStatus = BackendStatus.Account(ServiceType.LINGVA.account)
 
-    private val client = PtHttp.clientBuilder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
-        .build()
-
     override fun isUsable(source: String, target: String): Boolean = enabledProvider()
+
+    // No credentials-change escape hatch here (nothing to reconfigure,
+    // unlike Gemini/OpenAI's fingerprint clear): a cooldown ends by
+    // expiring or by the registry recording a waterfall win.
+    override fun unavailableUntil(): Long? = cooldownState?.unavailableUntil()
+    override fun unavailableDescription(): String? = cooldownState?.unavailableDescription()
+    override fun recordSuccess(attemptStartedAtMs: Long) {
+        cooldownState?.recordSuccess(attemptStartedAtMs)
+    }
 
     override suspend fun translate(text: String, source: String, target: String): String =
         withContext(Dispatchers.IO) {
-            val url = buildUrl(listOf(text), source, target)
-            val body = fetchBody(url)
-            // Single-q response shape: [[["translated","original",...], ...], null, "ja", ...]
-            // The chunks array is at index 0 of the top-level array.
-            val top = JSONArray(body)
-            val chunks = top.getJSONArray(0)
-            val result = reassembleChunks(chunks)
-            if (result.isBlank()) throw IOException("Blank translation in response")
-            result
+            try {
+                val url = buildUrl(listOf(text), source, target)
+                val body = fetchBody(url)
+                // Single-q response shape: [[["translated","original",...], ...], null, "ja", ...]
+                // The chunks array is at index 0 of the top-level array.
+                val top = JSONArray(body)
+                val chunks = top.getJSONArray(0)
+                val result = reassembleChunks(chunks)
+                if (result.isBlank()) throw StructuralFailureException("Blank translation in response")
+                result
+            } catch (e: LingvaRateLimitException) { throw e }
+            catch (e: StructuralFailureException) { throw e }
+            catch (e: IOException) {
+                // True transport failure (connect/DNS/timeout/body read) —
+                // the typed throws above are all recorded (or deliberately
+                // not) at their categorization site, so anything reaching
+                // this catch is a real connection problem. First one is
+                // forgiven inside recordNetworkFailure.
+                cooldownState?.recordNetworkFailure("Connection failed")
+                throw e
+            }
         }
 
     override suspend fun translateBatch(
@@ -66,6 +100,28 @@ class LingvaBackend(
         source: String,
         target: String,
     ): List<String> = withContext(Dispatchers.IO) {
+        try {
+            translateBatchInner(texts, source, target)
+        } catch (e: BatchParseException) {
+            // Structural (URL too long, response shape drift) — the
+            // registry retries per-text on this same backend, so the
+            // provider isn't unhealthy and nothing is recorded. Must be
+            // rethrown before the IOException catch below: it IS an
+            // IOException subclass.
+            throw e
+        } catch (e: LingvaRateLimitException) { throw e }
+        catch (e: StructuralFailureException) { throw e }
+        catch (e: IOException) {
+            cooldownState?.recordNetworkFailure("Connection failed")
+            throw e
+        }
+    }
+
+    private fun translateBatchInner(
+        texts: List<String>,
+        source: String,
+        target: String,
+    ): List<String> {
         // gtx is undocumented; the multi-q convention used by tools like
         // translate-shell and LunaTranslator is to repeat &q= per input
         // and treat the top-level array as a list of per-q results, each
@@ -98,7 +154,7 @@ class LingvaBackend(
                 "Lingva batch: top length ${top.length()} != input size ${texts.size}"
             )
         }
-        (0 until top.length()).map { i ->
+        return (0 until top.length()).map { i ->
             val perQ = try {
                 top.getJSONArray(i)
             } catch (e: JSONException) {
@@ -129,12 +185,39 @@ class LingvaBackend(
         /** Conservative cap below the typical 8 KiB server URI limit.
          *  Leaves headroom for headers + the fixed query prefix. */
         const val MAX_BATCH_URL_LENGTH = 6 * 1024
+
+        fun defaultClient(): OkHttpClient = PtHttp.clientBuilder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .build()
     }
 
     private fun fetchBody(url: String): String {
         val request = Request.Builder().url(url).build()
         client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Translate error ${response.code}")
+            when {
+                // 403 rides with 429: gtx is keyless, so an auth-flavored
+                // status can't mean "fix your credentials" — Google's
+                // harder abuse blocks are the only thing it can be, and
+                // those want the same back-off, not a retry per cycle.
+                response.code == 429 || response.code == 403 -> {
+                    cooldownState?.recordRetryAfterFailure(
+                        response.header("Retry-After"), "Rate limited"
+                    )
+                    throw LingvaRateLimitException(response.code)
+                }
+                response.code >= 500 -> {
+                    cooldownState?.recordLadderFailure(
+                        CooldownLadder.RateLimit, "Server error"
+                    )
+                    throw StructuralFailureException("Lingva error ${response.code}")
+                }
+                !response.isSuccessful ->
+                    // Remaining 4xx (bad params, 414 the preflight missed):
+                    // deterministic rejection, not provider health — no
+                    // cooldown, mirroring the other backends' structural path.
+                    throw StructuralFailureException("Lingva error ${response.code}")
+            }
             return response.body.string()
         }
     }
