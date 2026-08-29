@@ -1,6 +1,8 @@
 package com.playtranslate.dictionary
 
 import com.playtranslate.dictionary.DictionaryManager.Companion.PhraseCandidate
+import com.playtranslate.dictionary.DictionaryManager.Companion.Suspicion
+import com.playtranslate.dictionary.DictionaryManager.Companion.admissiblePhraseCandidates
 import com.playtranslate.dictionary.DictionaryManager.Companion.phraseCandidatesFor
 import com.playtranslate.dictionary.DictionaryManager.Companion.reglobTokens
 import com.playtranslate.language.InflectionTag
@@ -24,10 +26,12 @@ class ReglobTokensTest {
         norm: String = dict,
         reading: String? = null,
         infl: String? = null,
+        conj: Boolean = false,
+        punct: Boolean = false,
     ) = JaToken(
         surface = surface, begin = 0, end = surface.length, category = cat,
         dictionaryForm = dict, normalizedForm = norm, reading = reading, isOov = false,
-        inflectionForm = infl,
+        inflectionForm = infl, isConjunctiveParticle = conj, isPunctuation = punct,
     )
 
     private fun glob(
@@ -661,5 +665,184 @@ class ReglobTokensTest {
             emptyList<InflectionTag>(),
             glob(tokens, knownForms = setOf("食べる"))[0].inflections,
         )
+    }
+
+    // ── Suspicion (conjugation-cut veto + function-run gate) ─────────────
+    // Corpus-validated specimens (P5 500-line A/B, 2026-08-28): joins that
+    // contradict Sudachi's parse must not fuse on a reading coincidence.
+
+    private fun exactSuspicion(tokens: List<JaToken>, lookup: String): Suspicion? =
+        phraseCandidatesFor(tokens).first { it.lookupForm == lookup && !it.isVariant }.suspicion
+
+    @Test
+    fun `glue after an incomplete stem is a conjugation cut - the teori specimen`() {
+        // いただい|て|おり|ます — ており is 手織り's reading, but て is bound to
+        // いただい's 連用形-イ音便. The join severs the conjugation.
+        val tokens = listOf(
+            jaToken("いただい", JaCategory.VERB, dict = "いただく", infl = "連用形-イ音便"),
+            jaToken("て", JaCategory.PARTICLE, conj = true),
+            jaToken("おり", JaCategory.VERB, dict = "おる", infl = "連用形-一般"),
+            jaToken("ます", JaCategory.AUX, infl = "終止形-一般"),
+        )
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "ており"))
+
+        // End to end: even with ており in the membership set (JMdict has it),
+        // admissibility drops the candidate and the parse comes out right.
+        val admissible = admissiblePhraseCandidates(
+            phraseCandidatesFor(tokens), headwords = emptySet(), kanaNativeReadings = emptySet(),
+        )
+        assertTrue(admissible.none { it.lookupForm == "ており" })
+        val r = reglobTokens(tokens, admissible, setOf("ており"), setOf("いただく", "おる"))
+        assertEquals(listOf("いただく", "おる"), r.map { it.lookupForm })
+        assertEquals("いただいて", r[0].surface)
+        assertEquals("おります", r[1].surface)
+    }
+
+    @Test
+    fun `join starting at a conjunctive particle is a conjugation cut`() {
+        // 言われた|が|どう… — がどう (画道) must not steal the conjunctive が.
+        val tokens = listOf(
+            jaToken("た", JaCategory.AUX, infl = "終止形-一般"),
+            jaToken("が", JaCategory.PARTICLE, conj = true),
+            jaToken("どう", JaCategory.ADVERB),
+        )
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "がどう"))
+    }
+
+    @Test
+    fun `conjunctive particle with no attachable left material is clean`() {
+        // Postpositions can't attach across punctuation or a line start, so a
+        // 接続助詞 there heads an expression: 、ていうか and line-initial
+        // ていうか must stay fusable (JMdict 2848596).
+        val afterComma = listOf(
+            jaToken("、", JaCategory.OTHER, punct = true),
+            jaToken("て", JaCategory.PARTICLE, conj = true),
+            jaToken("いう", JaCategory.VERB, infl = "終止形-一般"),
+            jaToken("か", JaCategory.PARTICLE),
+        )
+        assertNull(exactSuspicion(afterComma, "ていうか"))
+
+        val lineInitial = afterComma.drop(1)
+        assertNull(exactSuspicion(lineInitial, "ていうか"))
+    }
+
+    @Test
+    fun `clipped fragment starting mid-conjugation is still vetoed via the mirror shape`() {
+        // OCR can clip a wrapped sentence so the line STARTS at the て of
+        // ております. The 接続助詞-start exemption must not reopen ており→手織り
+        // there: おり is an incomplete stem with ます just outside the window,
+        // which is a conjugation cut on its own.
+        val tokens = listOf(
+            jaToken("て", JaCategory.PARTICLE, conj = true),
+            jaToken("おり", JaCategory.VERB, dict = "おる", infl = "連用形-一般"),
+            jaToken("ます", JaCategory.AUX, infl = "終止形-一般"),
+        )
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "ており"))
+    }
+
+    @Test
+    fun `join starting inside a te-form glue run is a conjugation cut`() {
+        // 言っ|て|た|な — たな (棚) starts right after the 接続助詞 て.
+        val tokens = listOf(
+            jaToken("言っ", JaCategory.VERB, dict = "言う", infl = "連用形-促音便"),
+            jaToken("て", JaCategory.PARTICLE, conj = true),
+            jaToken("た", JaCategory.AUX, infl = "終止形-一般"),
+            jaToken("な", JaCategory.PARTICLE),
+        )
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "たな"))
+    }
+
+    @Test
+    fun `incomplete stem plus its own glue is a conjugation cut`() {
+        // 勝利|し|た — した (下/舌) is an inflection surface of する, not a word.
+        val tokens = listOf(
+            jaToken("勝利", JaCategory.NOUN),
+            jaToken("し", JaCategory.VERB, dict = "する", infl = "連用形-一般"),
+            jaToken("た", JaCategory.AUX, infl = "終止形-一般"),
+        )
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "した"))
+        // The kanji-bearing 勝利した window is NOT suspect (content start, ends
+        // at glue): it can still fuse, but only via a headword match.
+        assertNull(exactSuspicion(tokens, "勝利した"))
+    }
+
+    @Test
+    fun `stealing a stem from its upcoming glue is a conjugation cut - mirror shape`() {
+        // こんな|こと|し|て|くる — ことし (今年) would strip し from its て.
+        val tokens = listOf(
+            jaToken("こと", JaCategory.NOUN),
+            jaToken("し", JaCategory.VERB, dict = "する", infl = "連用形-一般"),
+            jaToken("て", JaCategory.PARTICLE, conj = true),
+            jaToken("くる", JaCategory.VERB, infl = "終止形-一般"),
+        )
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "ことし"))
+    }
+
+    @Test
+    fun `kamoshirenai after a complete predicate is clean`() {
+        // 言わ|れる|か|も|しれ|ない — れる is 終止形: nothing is severed, so the
+        // expression stays matchable exactly as before the veto.
+        val tokens = listOf(
+            jaToken("言わ", JaCategory.VERB, dict = "言う", infl = "未然形-一般"),
+            jaToken("れる", JaCategory.AUX, infl = "終止形-一般"),
+            jaToken("か", JaCategory.PARTICLE),
+            jaToken("も", JaCategory.PARTICLE),
+            jaToken("しれ", JaCategory.VERB, dict = "しれる", infl = "未然形-一般"),
+            jaToken("ない", JaCategory.AUX, infl = "終止形-一般"),
+        )
+        assertNull(exactSuspicion(tokens, "かもしれない"))
+        val admissible = admissiblePhraseCandidates(
+            phraseCandidatesFor(tokens), headwords = emptySet(), kanaNativeReadings = emptySet(),
+        )
+        val r = reglobTokens(tokens, admissible, setOf("かもしれない"), setOf("言う"))
+        assertTrue(r.any { it.lookupForm == "かもしれない" })
+    }
+
+    @Test
+    fun `function run fuses only as a kana-native entry`() {
+        // だ|から|安心 — だから is all function morphemes. As a kanji-less JMdict
+        // entry it fuses; the same shape matching a kanji word's reading
+        // (と+の → 殿) must not.
+        val tokens = listOf(
+            jaToken("だ", JaCategory.AUX, infl = "終止形-一般"),
+            jaToken("から", JaCategory.PARTICLE),
+            jaToken("安心", JaCategory.NOUN),
+        )
+        assertEquals(Suspicion.FUNCTION_RUN, exactSuspicion(tokens, "だから"))
+        val candidates = phraseCandidatesFor(tokens)
+        val kanaNative = admissiblePhraseCandidates(candidates, emptySet(), setOf("だから"))
+        assertTrue(kanaNative.any { it.lookupForm == "だから" })
+        val notKanaNative = admissiblePhraseCandidates(candidates, emptySet(), emptySet())
+        assertTrue(notKanaNative.none { it.lookupForm == "だから" })
+    }
+
+    @Test
+    fun `lemma variants are never suspect`() {
+        // 気になった → 気になる: the variant mechanism deliberately lemma-swaps
+        // the final stem and folds its glue — that is not a cut. The EXACT
+        // window 気になっ over the same tokens IS suspect (mirror shape).
+        val tokens = listOf(
+            jaToken("気", JaCategory.NOUN),
+            jaToken("に", JaCategory.PARTICLE),
+            jaToken("なっ", JaCategory.VERB, dict = "なる", infl = "連用形-促音便"),
+            jaToken("た", JaCategory.AUX, infl = "終止形-一般"),
+        )
+        val variant = phraseCandidatesFor(tokens).first { it.isVariant && it.lookupForm == "気になる" }
+        assertNull(variant.suspicion)
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "気になっ"))
+    }
+
+    @Test
+    fun `conjugation cut with a headword match stays admissible`() {
+        // The veto blocks reading coincidences, not written forms: a candidate
+        // whose joined surface matches a HEADWORD is admissible regardless.
+        val tokens = listOf(
+            jaToken("勝利", JaCategory.NOUN),
+            jaToken("し", JaCategory.VERB, dict = "する", infl = "連用形-一般"),
+            jaToken("た", JaCategory.AUX, infl = "終止形-一般"),
+        )
+        val candidates = phraseCandidatesFor(tokens)
+        val admissible = admissiblePhraseCandidates(candidates, setOf("した"), emptySet())
+        assertTrue(admissible.any { it.lookupForm == "した" })
     }
 }

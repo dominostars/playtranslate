@@ -49,6 +49,10 @@ class SudachiJapaneseTokenizer private constructor(
                 isOov = m.isOOV(),
                 inflectionForm = pos.getOrElse(5) { "" }
                     .takeIf { it.isNotEmpty() && it != "*" },
+                isConjunctiveParticle =
+                    pos.getOrElse(0) { "" } == "助詞" && pos.getOrElse(1) { "" } == "接続助詞",
+                isPunctuation =
+                    pos.getOrElse(0) { "" }.let { it == "補助記号" || it == "空白" },
             )
         }
 

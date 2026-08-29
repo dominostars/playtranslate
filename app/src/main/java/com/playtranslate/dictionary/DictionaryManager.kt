@@ -98,6 +98,15 @@ class DictionaryManager private constructor(private val context: Context) {
     private val noKanjiSupport = WeakHashMap<SQLiteDatabase, Boolean>()
     private val noKanjiSupportLock = Any()
 
+    /** Per-handle capability cache for `reading.uk_applicable`, parallel to
+     *  [kePriSupport]. Shipped in the same ja-v2 schema as `rank_score`, but
+     *  [batchCheckPhrases] dereferences it in its own SQL, so it probes its
+     *  own column instead of trusting rank_score's presence to imply it
+     *  (Codex review find, 2026-08-28). Absent → the kana-native tier fails
+     *  open while the rank floor stays. */
+    private val ukApplicableSupport = WeakHashMap<SQLiteDatabase, Boolean>()
+    private val ukApplicableSupportLock = Any()
+
     /** All access to [rankScoreSupport] — read AND write — happens inside
      *  the lock. WeakHashMap's `get` can internally expunge stale entries,
      *  so even reads mutate the structure; serializing every operation
@@ -118,6 +127,15 @@ class DictionaryManager private constructor(private val context: Context) {
             kePriSupport[db]?.let { return it }
             val supports = checkColumnExists(db, "headword", "ke_pri")
             kePriSupport[db] = supports
+            return supports
+        }
+    }
+
+    private fun hasUkApplicable(db: SQLiteDatabase): Boolean {
+        synchronized(ukApplicableSupportLock) {
+            ukApplicableSupport[db]?.let { return it }
+            val supports = checkColumnExists(db, "reading", "uk_applicable")
+            ukApplicableSupport[db] = supports
             return supports
         }
     }
@@ -227,25 +245,33 @@ class DictionaryManager private constructor(private val context: Context) {
                 formCandidates.add(t.normalizedForm)
             }
         }
-        // Phrases must match a headword or a PRIMARY reading (rank_score >= 0)
-        // so a particle isn't fused into a coincidental marginal reading
-        // (ここ+の → 九's position-2 stem ここの). Single forms match any
-        // headword/reading — lookup ranking disambiguates those later.
+        // Tiered membership (headword / primary reading / kana-native reading)
+        // feeds the per-candidate Suspicion admissibility below. Single forms
+        // match any headword/reading — lookup ranking disambiguates those later.
         val known = database.withRefcount {
             val phraseStrings = candidates.mapTo(mutableSetOf()) { it.lookupForm }
             batchCheckPhrases(database, phraseStrings) to batchCheckEntries(database, formCandidates)
         } ?: return@withContext null
-        var (knownPhrases, knownForms) = known
+        val (membership, knownForms) = known
+
+        // Structural admissibility: joins that contradict Sudachi's parse are
+        // vetoed (conjugation cuts) or held to the kana-native tier (function
+        // runs) BEFORE the oracle sees them — a conjugation cut is wrong no
+        // matter which dictionary lists the string. See [Suspicion].
+        val admissible = admissiblePhraseCandidates(
+            candidates, membership.headwords, membership.kanaNativeReadings,
+        )
+        var knownPhrases = membership.headwords + membership.readings
 
         // Imported-dictionary gate for JMdict misses. Runs OUTSIDE withRefcount
         // (the oracle suspends; the refcount lambda must not). Kanji-only: see doc.
         if (phraseOracle != null) {
-            val forOracle = candidates.mapTo(mutableSetOf()) { it.lookupForm }
+            val forOracle = admissible.mapTo(mutableSetOf()) { it.lookupForm }
                 .filterTo(mutableSetOf()) { oracleEligible(it, knownPhrases) }
             if (forOracle.isNotEmpty()) knownPhrases = knownPhrases + phraseOracle(forOracle)
         }
 
-        reglobSpans(tokens, candidates, knownPhrases, knownForms)
+        reglobSpans(tokens, admissible, knownPhrases, knownForms)
     }
 
     /** Fallback when the JMdict DB isn't ready: content words on their own
@@ -486,41 +512,69 @@ class DictionaryManager private constructor(private val context: Context) {
     }
 
     /**
-     * Like [batchCheckEntries], but for multi-token N-gram phrases: a phrase
-     * counts as a real compound only if it matches a headword (a written form)
-     * or a PRIMARY reading (`rank_score >= 0`). This stops a coincidental kana
-     * run that merely equals a marginal positional reading — e.g. ここ+の →
-     * "ここの", which is 九's position-2 counter-stem reading (rank_score
-     * -20000) — from being fused into a spurious word that swallows the
-     * particle. Legit kana idioms (かもしれない +1M, ないわけにはいかない 0, …) all
-     * rank >= 0 and survive.
+     * Like [batchCheckEntries], but for multi-token N-gram phrases, tiered so
+     * the caller can apply per-candidate [Suspicion] admissibility:
      *
-     * On v1 packs without `rank_score`, falls back to bare existence (the pre-
-     * guard behavior — the ここの mis-glob persists there, but such packs are
-     * force-upgraded to v3).
+     *  - [PhraseMembership.headwords] — matches a written form. Kanji surfaces
+     *    can't collide by pronunciation; always admissible.
+     *  - [PhraseMembership.readings] — matches a PRIMARY reading
+     *    (`rank_score >= 0`). The rank floor stops marginal positional
+     *    readings (ここ+の → 九's position-2 counter stem, rank -20000).
+     *  - [PhraseMembership.kanaNativeReadings] — subset of [readings] whose
+     *    entry is a kana word: uk-tagged for that reading (`uk_applicable`,
+     *    <stagr>-aware) or with no kanji headword at all. だから/でも/かな
+     *    qualify; 手織り(ており)/殿(との) don't. This is the only tier a
+     *    [Suspicion.FUNCTION_RUN] candidate may fuse from.
+     *
+     * Each SQL variant is guarded by a probe for the columns IT dereferences
+     * (Codex review find: rank_score's presence must not be trusted to imply
+     * uk_applicable, even though ja-v2 shipped them together). Degradation
+     * ladder on older/partial schemas: no `uk_applicable` → rank floor
+     * stays, kanaNativeReadings FAILS OPEN to the full reading set; no
+     * `rank_score` either → bare existence, everything fails open (degraded
+     * pre-v2 behavior, same precedent as the ranking SQL; such packs are
+     * force-upgraded). The [Suspicion.CONJUGATION_CUT] veto is structural and
+     * applies regardless of pack schema.
      */
-    private fun batchCheckPhrases(db: SQLiteDatabase, candidates: Set<String>): Set<String> {
-        if (candidates.isEmpty()) return emptySet()
-        val readingSql = if (hasRankScore(db)) {
-            "SELECT DISTINCT text FROM reading WHERE rank_score >= 0 AND text IN"
-        } else {
-            "SELECT DISTINCT text FROM reading WHERE text IN"
-        }
-        val found = mutableSetOf<String>()
+    private fun batchCheckPhrases(db: SQLiteDatabase, candidates: Set<String>): PhraseMembership {
+        if (candidates.isEmpty()) return PhraseMembership(emptySet(), emptySet(), emptySet())
+        val ranked = hasRankScore(db)
+        val tiered = ranked && hasUkApplicable(db)
+        val headwords = mutableSetOf<String>()
+        val readings = mutableSetOf<String>()
+        val kanaNative = mutableSetOf<String>()
         for (chunk in candidates.chunked(500)) {
             val placeholders = chunk.joinToString(",") { "?" }
             val args = chunk.toTypedArray()
             db.rawQuery("SELECT DISTINCT text FROM headword WHERE text IN ($placeholders)", args)
-                .use { c -> while (c.moveToNext()) found.add(c.getString(0)) }
-            val remaining = chunk.filter { it !in found }
-            if (remaining.isNotEmpty()) {
-                val ph2 = remaining.joinToString(",") { "?" }
-                val args2 = remaining.toTypedArray()
-                db.rawQuery("$readingSql ($ph2)", args2)
-                    .use { c -> while (c.moveToNext()) found.add(c.getString(0)) }
+                .use { c -> while (c.moveToNext()) headwords.add(c.getString(0)) }
+            val remaining = chunk.filter { it !in headwords }
+            if (remaining.isEmpty()) continue
+            val ph2 = remaining.joinToString(",") { "?" }
+            val args2 = remaining.toTypedArray()
+            if (tiered) {
+                db.rawQuery("$RANKED_PHRASE_READING_SQL ($ph2) GROUP BY r.text", args2).use { c ->
+                    while (c.moveToNext()) {
+                        readings.add(c.getString(0))
+                        if (c.getInt(1) == 1) kanaNative.add(c.getString(0))
+                    }
+                }
+            } else {
+                val sql = if (ranked) {
+                    "SELECT DISTINCT text FROM reading WHERE rank_score >= 0 AND text IN ($ph2)"
+                } else {
+                    "SELECT DISTINCT text FROM reading WHERE text IN ($ph2)"
+                }
+                db.rawQuery(sql, args2).use { c ->
+                    while (c.moveToNext()) {
+                        val text = c.getString(0)
+                        readings.add(text)
+                        kanaNative.add(text)
+                    }
+                }
             }
         }
-        return found
+        return PhraseMembership(headwords, readings, kanaNative)
     }
 
     /** Query entries matching both a kanji form and a reading (narrowed
@@ -770,13 +824,17 @@ class DictionaryManager private constructor(private val context: Context) {
 
         /**
          * Max tokens the n-gram re-glob fuses into one JMdict-lookup phrase.
-         * JMdict lists idioms (かもしれない, わけにはいかない, …) that Sudachi's
+         * JMdict lists expressions (かもしれない, わけにはいかない, …) that Sudachi's
          * short-unit output splits into 4-6 morphemes; kuromoji split coarser, so
          * 4 used to suffice, but Sudachi pushed common expressions past it
-         * (かもしれません=5, ないわけにはいかない=6). 8 covers the observed span with
-         * headroom; the rank>=0 guard in [batchCheckPhrases] keeps the wider
-         * window from re-introducing reading-coincidence globs. Not derived from
-         * the lexicon — a build-time max-span computation could replace it.
+         * (かもしれません=5, わけにはいかない=5). 8 covers the observed span with
+         * headroom; the rank>=0 guard in [batchCheckPhrases] and the [Suspicion]
+         * admissibility gate keep the wider window from re-introducing
+         * reading-coincidence globs. Expressions that BEGIN inside a host word's
+         * conjugation (ないわけにはいかない swallowing 行か's ない) are deliberately
+         * OUT OF SCOPE — the app surfaces words, not grammar patterns — so the
+         * window only needs to cover clean-start spans. Not derived from the
+         * lexicon — a build-time max-span computation could replace it.
          */
         private const val REGLOB_WINDOW = 8
 
@@ -815,7 +873,127 @@ class DictionaryManager private constructor(private val context: Context) {
             val tokensConsumed: Int,
             /** False = exact surface join; true = last-token lemma variant. */
             val isVariant: Boolean,
+            /** How this window collides with the morphological parse, or null
+             *  for a clean join. Decides admissibility — see [Suspicion]. */
+            val suspicion: Suspicion? = null,
         )
+
+        /**
+         * A phrase window's structural collision with Sudachi's parse. The
+         * analyzer already arbitrated the sentence's segmentation on trained
+         * costs; a join existing in JMdict is not by itself grounds to overturn
+         * it (て+おり is 手織り's reading — corpus-validated as the dominant
+         * misglob class: した→下, してい→指定, てい→体…).
+         *
+         * [CONJUGATION_CUT] — the window severs an inflection: it starts at a
+         * 接続助詞 with attachable material to its left (がどう after た; at a
+         * line start or after punctuation nothing can be severed, so
+         * 、ていうか stays fusable), starts on glue bound to an incomplete stem
+         * (いただい|ており, 言って|たな), is itself an incomplete stem plus its
+         * own glue (した, いない), or ends at an incomplete stem whose glue
+         * sits just outside the window (ことし|て, となり|ます). Vetoed
+         * outright: JMdict entries reachable only this way are conjugation
+         *-spanning grammar patterns (ないわけにはいかない) or reading
+         * coincidences — neither is a WORD the app is trying to surface.
+         * "Incomplete" = 連用形/未然形/語幹 — forms that grammatically require
+         * a continuation. 終止形-adjacent joins stay clean, which is what
+         * keeps かもしれない matchable after 言われる.
+         *
+         * [FUNCTION_RUN] — no content morpheme in the window: pure
+         * particle/aux(/prefix) runs. Not a conjugation matter — Sudachi
+         * doesn't lexicalize compound function words that JMdict rightly
+         * treats as words (だから, でも, かな, のか). Admitted only when the
+         * matched entry is itself a kana word (uk-tagged or kanji-less),
+         * which separates those from kanji readings with the same shape
+         * (との=殿, なん=南, にお=鳰). Grammar cannot make this call — it is
+         * a fact about the lexicon, not the sentence.
+         *
+         * Validated against the P5 500-line corpus (2026-08-28 A/B harness):
+         * 99/501 lines change, all garbage-removal; だから/でも/かな/
+         * かもしれない/ストレスかいしょう keep fusing.
+         */
+        internal enum class Suspicion { CONJUGATION_CUT, FUNCTION_RUN }
+
+        /** Tiered phrase membership from [batchCheckPhrases] — see its doc. */
+        internal data class PhraseMembership(
+            val headwords: Set<String>,
+            val readings: Set<String>,
+            val kanaNativeReadings: Set<String>,
+        )
+
+        /**
+         * Drop candidates whose [Suspicion] their membership tier can't
+         * license: conjugation cuts fuse only as written forms (in practice,
+         * never — their surfaces are kana); function runs additionally as
+         * kana-native readings. Clean candidates pass through. Pure; the
+         * matcher then needs no admissibility knowledge.
+         */
+        internal fun admissiblePhraseCandidates(
+            candidates: List<PhraseCandidate>,
+            headwords: Set<String>,
+            kanaNativeReadings: Set<String>,
+        ): List<PhraseCandidate> = candidates.filter { c ->
+            when (c.suspicion) {
+                null -> true
+                Suspicion.CONJUGATION_CUT -> c.lookupForm in headwords
+                Suspicion.FUNCTION_RUN ->
+                    c.lookupForm in headwords || c.lookupForm in kanaNativeReadings
+            }
+        }
+
+        /** Inflection-form prefixes that grammatically require a continuation.
+         *  A stem in one of these cannot end a word's surface on its own. */
+        private val INCOMPLETE_INFLECTIONS = arrayOf("連用形", "未然形", "語幹")
+
+        private val JaToken.hasIncompleteInflection: Boolean
+            get() = inflectionForm?.let { f -> INCOMPLETE_INFLECTIONS.any(f::startsWith) } == true
+
+        /**
+         * Classify a candidate window's [Suspicion]. Lemma variants are never
+         * suspect: candidate generation already restricts them to content
+         * starts, and their whole mechanism is deliberate lemma-swap + glue
+         * folding of the final stem.
+         */
+        internal fun suspicionFor(tokens: List<JaToken>, start: Int, windowLen: Int, isVariant: Boolean): Suspicion? {
+            if (isVariant) return null
+            val first = tokens[start]
+            if (first.category.isConjugationGlue) {
+                if (start > 0) {
+                    val prev = tokens[start - 1]
+                    // A 接続助詞-initial window severs only when there is
+                    // attachable material to its left. Postpositions can't
+                    // attach across punctuation or a line start, so a て
+                    // there is expression-initial (、ていうか) — nothing to
+                    // cut; the mirror shape below still protects clipped
+                    // fragments (line-initial ており|ます). がどう keeps its
+                    // veto: its neighbor た is real material.
+                    if (first.isConjunctiveParticle && !prev.isPunctuation) {
+                        return Suspicion.CONJUGATION_CUT
+                    }
+                    if (prev.isConjunctiveParticle) return Suspicion.CONJUGATION_CUT
+                    if ((prev.category == JaCategory.AUX || prev.category.isContent) &&
+                        prev.hasIncompleteInflection
+                    ) return Suspicion.CONJUGATION_CUT
+                }
+                // Clean-context glue start: fall through to the mirror /
+                // function-run shapes below.
+            } else if (first.category.isContent && first.category.startsConjugation &&
+                first.hasIncompleteInflection && tokens[start + 1].category.isConjugationGlue
+            ) {
+                return Suspicion.CONJUGATION_CUT
+            }
+            val last = tokens[start + windowLen - 1]
+            if (last.category.isContent && last.category.startsConjugation &&
+                last.hasIncompleteInflection &&
+                start + windowLen < tokens.size &&
+                tokens[start + windowLen].category.isConjugationGlue
+            ) return Suspicion.CONJUGATION_CUT
+            if ((start until start + windowLen).all {
+                    tokens[it].category.isConjugationGlue || tokens[it].category == JaCategory.OTHER
+                }
+            ) return Suspicion.FUNCTION_RUN
+            return null
+        }
 
         /**
          * Generate every n-gram phrase candidate (REGLOB_WINDOW down to 2)
@@ -843,6 +1021,7 @@ class DictionaryManager private constructor(private val context: Context) {
                         out.add(PhraseCandidate(
                             startIndex = i, windowLen = n, lookupForm = phrase,
                             surface = phrase, tokensConsumed = n, isVariant = false,
+                            suspicion = suspicionFor(tokens, i, n, isVariant = false),
                         ))
                     }
                     // Lemma variant: window ends at an inflected verb/i-adjective.
@@ -1028,6 +1207,20 @@ class DictionaryManager private constructor(private val context: Context) {
         // The LEGACY path is degraded but functional; queries succeed and
         // the dictionary stays usable while the user upgrades to a pack
         // that carries the rank_score column.
+
+        /** Reading-tier phrase membership: every primary reading
+         *  (rank_score >= 0) with a per-text kana-native bit — 1 when some
+         *  qualifying row is uk-applicable or its entry has no kanji headword.
+         *  The caller appends the IN list and `GROUP BY r.text`. Verbatim-
+         *  copied into `PhraseMembershipSqlTest`. */
+        private const val RANKED_PHRASE_READING_SQL = """
+            SELECT r.text,
+                   MAX(CASE WHEN r.uk_applicable = 1
+                             OR NOT EXISTS (SELECT 1 FROM headword h WHERE h.entry_id = r.entry_id)
+                        THEN 1 ELSE 0 END)
+            FROM reading r
+            WHERE r.rank_score >= 0 AND r.text IN
+        """
 
         private const val RANKED_QUERY_KANJI = """
             SELECT entry_id FROM headword
