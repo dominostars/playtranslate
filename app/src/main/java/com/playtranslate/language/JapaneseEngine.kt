@@ -226,14 +226,18 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
             }
         }
         // Transparent compounds (non-expression fused entries — 放送番組,
-        // 国内向け) decompose only when EVERY unit is a ≥2-char
-        // kanji-bearing word: a partial decomposition misleads (図書館 →
-        // 図書 alone implies 館 is nothing — and single characters are the
-        // kanji-breakdown section's job; 電源ボタン stays whole because
-        // ボタン fails the kanji gate), so one disqualified unit turns the
-        // whole offer off. Expressions keep the loose per-member gate —
-        // 気になる's 気 is one char and load-bearing.
-        if (!expressionClass && members.any { it.surface.length < 2 || !hasKanji(it.surface) }) {
+        // 国内向け) decompose only when EVERY unit is accounted for
+        // ([isAccountedCompoundUnit]): a ≥2-char kanji word, rendered as a
+        // member, or a ≥2-char katakana word, EXCUSED — katakana loanwords
+        // self-decode, so ペース配分 offers 配分 with no ペース row (the
+        // kanji-only emission below keeps excused units out, and an
+        // all-katakana compound emits no members at all). Any other unit
+        // still turns the whole offer off: a partial decomposition of
+        // OPAQUE units misleads (図書館 → 図書 alone implies 館 is nothing —
+        // and single characters are the kanji-breakdown section's job).
+        // Expressions keep the loose per-member gate — 気になる's 気 is one
+        // char and load-bearing.
+        if (!expressionClass && members.any { !isAccountedCompoundUnit(it.surface) }) {
             return emptyList()
         }
         return members
@@ -242,9 +246,6 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
             .map { TokenSpan(surface = it.surface, lookupForm = it.lookupForm, reading = it.reading) }
             .distinctBy { it.lookupForm }
     }
-
-    private fun hasKanji(s: String): Boolean =
-        s.any { c -> c.code in 0x4E00..0x9FFF || c.code in 0x3400..0x4DBF }
 
     /** Two-store resolution for one (lookupForm, occurrence-hint) pair.
      *  Pack-first via the READINGS-ONLY path — identical entry choice to the
@@ -327,3 +328,22 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
         dict.close()
     }
 }
+
+private fun hasKanji(s: String): Boolean =
+    s.any { c -> c.code in 0x4E00..0x9FFF || c.code in 0x3400..0x4DBF }
+
+/** [JapaneseEngine.memberWordsOf]'s transparent-compound unit accounting: a
+ *  unit is accounted for when the member section leaves the reader either
+ *  DEFINED or already able to read it — a ≥2-char kanji-bearing word
+ *  (rendered as a member row) or a ≥2-char katakana word (excused, never
+ *  rendered: katakana loanwords self-decode, so ペース in ペース配分 needs
+ *  no row — the block check admits ー, and requiring one true katakana
+ *  letter keeps mark-only strings out). Hiragana, single characters, and
+ *  mixed-script units stay unaccounted — any one of those turns the whole
+ *  compound offer off (図書館, 生ビール). Top-level + internal so the
+ *  contract is unit-testable without a Sudachi instance. */
+internal fun isAccountedCompoundUnit(surface: String): Boolean =
+    surface.length >= 2 && (
+        hasKanji(surface) ||
+            (surface.all { it.code in 0x30A0..0x30FF } && surface.any { it.code in 0x30A1..0x30FA })
+        )

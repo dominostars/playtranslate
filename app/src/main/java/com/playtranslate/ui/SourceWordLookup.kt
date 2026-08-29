@@ -155,7 +155,8 @@ object SourceWordLookup {
      * follows the entry's POS class (see
      * [com.playtranslate.language.SourceLanguageEngine.memberWordsOf]:
      * expressions loose; transparent compounds — 放送番組, 国内向け —
-     * need every unit to be a ≥2-char kanji word, so 図書館 stays whole),
+     * need every unit accounted for, a ≥2-char kanji word or an excused
+     * katakana word — ペース配分 offers 配分, 図書館 stays whole),
      * and every secondary drops unless its lookup lands a real entry
      * distinct from the tapped unit's headword. Both tap surfaces route
      * through here so behavior can't drift between them.
@@ -174,8 +175,9 @@ object SourceWordLookup {
         val word = resolve(appCtx, lookupForm, reading)
         // Members for any entry-backed fused unit; the engine's policy
         // decides how strictly (expressions loose, transparent compounds
-        // need every unit to be a ≥2-char kanji word — 放送番組/国内向け
-        // decompose, 図書館 stays whole).
+        // need every unit accounted for: kanji words render, katakana words
+        // are excused — 放送番組/国内向け/ペース配分 decompose, 図書館
+        // stays whole).
         val wordEntry = word.entry
         val memberSpans = if (phraseKey == null && wordEntry != null) {
             withContext(Dispatchers.IO) {

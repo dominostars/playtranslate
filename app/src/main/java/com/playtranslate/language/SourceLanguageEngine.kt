@@ -162,10 +162,12 @@ interface SourceLanguageEngine {
      * as expressions by form). Expressions get the loose per-member gate
      * (気になる → 気 — one char, load-bearing). Non-expression fused
      * entries — transparent compounds like 放送番組 and 国内向け — get
-     * members only when EVERY unit is a ≥2-char kanji-bearing word:
-     * partial decompositions mislead (図書館 → 図書 alone implies 館 is
-     * nothing, and single characters are the kanji-breakdown section's
-     * job), so one disqualified unit turns the whole offer off.
+     * members only when EVERY unit is accounted for: a ≥2-char
+     * kanji-bearing word (rendered) or a ≥2-char katakana word (excused —
+     * katakana self-decodes, so ペース配分 offers 配分 with no ペース row).
+     * Partial decompositions of OPAQUE units mislead (図書館 → 図書 alone
+     * implies 館 is nothing, and single characters are the kanji-breakdown
+     * section's job), so any other unit turns the whole offer off.
      *
      * Callers must pass the DISPLAYED headword form: for JA `uk` entries
      * the kanji variant (かも知れない) would let 知れ through the
