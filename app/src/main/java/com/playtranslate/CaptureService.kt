@@ -642,11 +642,35 @@ class CaptureService : Service() {
      *  display is resolved per-call from [Prefs.selectedRegionIdForDisplay]
      *  — there is no longer a "the saved region" on the service. Any
      *  outstanding per-display overrides are cleared (a fresh configure
-     *  treats the persisted Prefs as the source of truth). */
+     *  treats the persisted Prefs as the source of truth). Callers pass
+     *  [Prefs.captureDisplayIds] verbatim; [gameDisplayIds] keeps that raw
+     *  selection, and only the region-change fan-out is resolved through
+     *  the backend shim — see the comment below. */
     fun configureSaved(
         displayIds: Set<Int>,
         primaryDisplayId: Int = displayIds.firstOrNull() ?: 0,
     ) {
+        // Resolve the region-change fan-out through the backend shim. The
+        // raw prefs selection can name displays the active backend cannot
+        // capture (a second-screen id while MediaProjection mirrors only the
+        // default display). Live start already resolves via setLiveDisplays,
+        // and the region picker writes its selection under the resolved id —
+        // so fanning out over the raw ids sent afterRegionChange's
+        // refresh/flash to a display whose region map has no entry
+        // (full-screen fallback, which the indicator silently skips) instead
+        // of the display the picker wrote and live mode actually captures.
+        // Identity on the accessibility backend for any non-empty set.
+        //
+        // gameDisplayIds deliberately keeps the RAW selection: its
+        // cardinality is load-bearing. shouldSkipDisplay's foreground gate
+        // and oneShotFanoutDisplayIds' single-display exception both read
+        // `gameDisplayIds.size` to tell a genuine single-display setup from
+        // a stale multi-display selection that capturableTargets collapsed
+        // to the MediaProjection fallback — storing the collapsed set would
+        // disarm that guard and let a fan-out one-shot OCR the app's own
+        // foregrounded UI (Codex review find).
+        val resolvedIds = CaptureBackendResolver.active().capturableTargets(displayIds)
+
         // Hide overlays for displays leaving the selection — the wasLive
         // path tears them down via setLiveDisplays(emptySet)→mode.stop, but
         // the not-live path has no other cleanup, so a residual override
@@ -659,8 +683,20 @@ class CaptureService : Service() {
         gameDisplayIds   = displayIds
         // Track the user's intent for the primary so the in-app UI focuses
         // on it. Keeps lastInteractedDisplayId fresh for the new selection.
+        val rememberedPrimary = lastInteractedDisplayId
         if (primaryDisplayId in displayIds) {
             lastInteractedDisplayId = primaryDisplayId
+        } else if (rememberedPrimary != null && rememberedPrimary !in displayIds) {
+            // The remembered primary fell out of the selection (display
+            // deselected in settings). Re-home it onto a selected display —
+            // the same repair onDisplayRemoved performs — because
+            // primaryGameDisplayId() prefers this field WITHOUT a membership
+            // check, so a stale value would keep routing hotkey one-shots
+            // and the in-app panel to a display the service no longer
+            // captures. firstOrNull: no caller passes an empty set today
+            // (the Prefs getter never returns one), and null simply defers
+            // to primaryGameDisplayId's own fallback chain.
+            lastInteractedDisplayId = displayIds.firstOrNull()
         }
         overrideRegions.clear()
         hasCaptureStateConfigured = true
@@ -672,12 +708,12 @@ class CaptureService : Service() {
         // state, cancels in-flight one-shots tied to the prior region,
         // and clears each display's overlay. Symmetric with
         // configureOverride / clearOverride, both of which already do
-        // this. Pass the full display set because configureSaved is the
+        // this. Pass the full resolved set because configureSaved is the
         // fan-out path — every selected display's region selection in
         // Prefs may have been rewritten by the caller before this call.
         // Region indicator should only flash on still-selected displays,
         // so removed ids stay out of the changed set.
-        afterRegionChange(displayIds)
+        afterRegionChange(resolvedIds)
     }
 
     /** Single-display convenience for un-migrated callers. Resolves to
