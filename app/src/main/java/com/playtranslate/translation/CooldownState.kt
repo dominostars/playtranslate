@@ -20,6 +20,33 @@ import kotlin.time.Duration.Companion.seconds
 enum class CooldownLadder { RateLimit, Network }
 
 /**
+ * WHY a backend is cooling down — recorded alongside every cooldown and
+ * persisted with it, so user-facing messaging can distinguish states
+ * whose corrective action differs (Codex adversarial find: a bare
+ * timestamp let a billing-exhausted account render as "rate limited").
+ */
+enum class CooldownCause {
+    RATE_LIMITED, SERVER_ERROR, CONNECTION_FAILED, DAILY_QUOTA, MONTHLY_QUOTA, BILLING;
+
+    /** Collapse to the user-facing message class. Users can't act
+     *  differently on a 429 vs a 5xx vs a lingering network-ladder
+     *  cooldown, so those merge into TRANSIENT ("unavailable until X");
+     *  quota and billing keep their own wording because the correct
+     *  user action differs (wait for the reset / fix the account). */
+    val messageClass: CooldownMessageClass
+        get() = when (this) {
+            RATE_LIMITED, SERVER_ERROR, CONNECTION_FAILED -> CooldownMessageClass.TRANSIENT
+            DAILY_QUOTA, MONTHLY_QUOTA -> CooldownMessageClass.QUOTA
+            BILLING -> CooldownMessageClass.ACCOUNT
+        }
+}
+
+/** The three user-facing wordings a cooldown can surface as. ACCOUNT
+ *  deliberately renders WITHOUT a retry time: billing re-probes loop
+ *  every few minutes, so any "until X" there would be a false promise. */
+enum class CooldownMessageClass { TRANSIENT, QUOTA, ACCOUNT }
+
+/**
  * Per-backend state machine implementing the [Cooldownable] capability.
  *
  * Each cooldown-capable backend owns one [CooldownState] instance,
@@ -56,6 +83,8 @@ class CooldownState(
     @Volatile private var descriptionText: String? =
         sp?.getString(keyDescription(), null)?.takeIf { it.isNotBlank() }
     @Volatile private var rung: Int = sp?.getInt(keyRung(), 0) ?: 0
+    @Volatile private var causeValue: CooldownCause? = sp?.getString(keyCause(), null)
+        ?.let { raw -> CooldownCause.entries.firstOrNull { it.name == raw } }
 
     init {
         // A cooldown restored from a PREVIOUS process has its cause in
@@ -105,6 +134,11 @@ class CooldownState(
         return descriptionText
     }
 
+    override fun unavailableCause(): CooldownCause? {
+        if (unavailableUntil() == null) return null
+        return causeValue
+    }
+
     /**
      * Cooldown using a retry timestamp we parsed directly from the
      * provider's response (Gemini retryDelay, OpenAI retry-after,
@@ -113,12 +147,32 @@ class CooldownState(
      *
      * No-ops if the backend is already in cooldown, so a batched
      * fan-out where 5 texts each see the same 429 only counts once.
+     *
+     * DELIBERATE first-writer-wins across CAUSES too: at a provider's
+     * state-transition boundary, a transient 429 racing an in-flight
+     * sibling's quota/billing response can record first and keep the
+     * TRANSIENT cause. Accepted as bounded: the wrongly-labeled
+     * cooldown is by construction the short kind (parsed retry delay
+     * or a low ladder rung), and its expiry triggers the retry that
+     * receives the provider's now-stable answer and records the right
+     * cause via this same method. Cause-upgrade semantics were
+     * considered and rejected — they'd need a cause ordering, retryAt
+     * replacement rules, and rung/stale-guard interactions to shave
+     * under two minutes off a rare self-healing mislabel (2026-08-29
+     * Codex adversarial finding, assessed real-but-marginal).
      */
     @Synchronized
-    fun recordParsedFailure(retryAt: Long, description: String) {
+    fun recordParsedFailure(
+        retryAt: Long,
+        description: String,
+        /** Defaults to the transient class, which every wording is safe
+         *  for; pass the real cause at any site where it is known. */
+        cause: CooldownCause = CooldownCause.RATE_LIMITED,
+    ) {
         if (inCooldown()) return
         untilMs = retryAt
         descriptionText = description
+        causeValue = cause
         setAtMs = nowMs()
         persist()
     }
@@ -131,11 +185,16 @@ class CooldownState(
      * Like [recordParsedFailure], no-ops if already in cooldown.
      */
     @Synchronized
-    fun recordLadderFailure(ladder: CooldownLadder, description: String) {
+    fun recordLadderFailure(
+        ladder: CooldownLadder,
+        description: String,
+        cause: CooldownCause = CooldownCause.RATE_LIMITED,
+    ) {
         if (inCooldown()) return
         val duration = ladderDuration(ladder, rung)
         untilMs = nowMs() + duration.inWholeMilliseconds
         descriptionText = description
+        causeValue = cause
         setAtMs = nowMs()
         rung = (rung + 1).coerceAtMost(MAX_RUNG)
         persist()
@@ -161,9 +220,9 @@ class CooldownState(
     fun recordRetryAfterFailure(retryAfterHeader: String?, description: String) {
         val retryAt = parseRetryAfterMs(retryAfterHeader)
         if (retryAt != null) {
-            recordParsedFailure(retryAt, description)
+            recordParsedFailure(retryAt, description, CooldownCause.RATE_LIMITED)
         } else {
-            recordLadderFailure(CooldownLadder.RateLimit, description)
+            recordLadderFailure(CooldownLadder.RateLimit, description, CooldownCause.RATE_LIMITED)
         }
     }
 
@@ -206,7 +265,7 @@ class CooldownState(
             // First failure (or no recent one): remember and forgive.
             return
         }
-        recordLadderFailure(CooldownLadder.Network, description)
+        recordLadderFailure(CooldownLadder.Network, description, CooldownCause.CONNECTION_FAILED)
     }
 
     @Synchronized
@@ -223,6 +282,7 @@ class CooldownState(
         }
         untilMs = null
         descriptionText = null
+        causeValue = null
         rung = 0
         setAtMs = null
         lastIOExceptionAtMs = null
@@ -241,9 +301,11 @@ class CooldownState(
         // call.
         untilMs = null
         descriptionText = null
+        causeValue = null
         sp?.edit {
             remove(keyUntil())
             remove(keyDescription())
+            remove(keyCause())
         }
     }
 
@@ -254,6 +316,8 @@ class CooldownState(
             if (u == null) remove(keyUntil()) else putLong(keyUntil(), u)
             val d = descriptionText
             if (d.isNullOrBlank()) remove(keyDescription()) else putString(keyDescription(), d)
+            val c = causeValue
+            if (c == null) remove(keyCause()) else putString(keyCause(), c.name)
             if (rung == 0) remove(keyRung()) else putInt(keyRung(), rung)
         }
     }
@@ -261,6 +325,7 @@ class CooldownState(
     private fun keyUntil() = "$backendId.until"
     private fun keyDescription() = "$backendId.description"
     private fun keyRung() = "$backendId.rung"
+    private fun keyCause() = "$backendId.cause"
 
     companion object {
         private const val PREF_FILE = "playtranslate_cooldown"

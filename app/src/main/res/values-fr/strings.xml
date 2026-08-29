@@ -286,6 +286,9 @@
     <string name="note_mlkit_no_internet">⚠ Aucune connexion Internet — affichage de la traduction hors ligne (qualité inférieure).</string>
 
     <string name="note_mlkit_service_unavailable">⚠ Service de traduction indisponible — affichage de la traduction hors ligne (qualité inférieure).</string>
+    <string name="note_mlkit_service_cooldown">⚠ Service de traduction temporairement indisponible. Affichage de la traduction hors ligne (qualité inférieure) jusqu\'à <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>.</string>
+    <string name="note_mlkit_quota_exhausted">⚠ Quota de traduction épuisé. Affichage de la traduction hors ligne (qualité inférieure) jusqu\'à <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>.</string>
+    <string name="note_mlkit_account_issue">⚠ Problème de compte du service de traduction (facturation ou crédit). Affichage de la traduction hors ligne (qualité inférieure). Vérifiez le service dans les réglages.</string>
 
     <string name="note_low_memory_fallback">⚠ Mémoire insuffisante — affichage de la traduction hors ligne (qualité inférieure).</string>
 
@@ -1086,6 +1089,9 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="degraded_warning_offline">Hors ligne — la qualité de traduction est réduite</string>
+    <string name="degraded_warning_cooldown">Service indisponible jusqu\'à <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>. Qualité réduite</string>
+    <string name="degraded_warning_quota">Quota épuisé jusqu\'à <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>. Qualité réduite</string>
+    <string name="degraded_warning_account">Problème de compte du service. Qualité réduite</string>
     <string name="degraded_warning_low_memory">Mémoire insuffisante — la qualité de traduction est réduite</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

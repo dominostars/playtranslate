@@ -261,6 +261,41 @@ class CooldownStateTest {
         assertEquals(clock.get() + 60_000L, s.unavailableUntil())
     }
 
+    @Test fun `unavailableCause reports the recorded cause while active`() {
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        s.recordParsedFailure(clock.get() + 60_000, "Billing exhausted", CooldownCause.BILLING)
+        assertEquals(CooldownCause.BILLING, s.unavailableCause())
+        // Cleared with the cooldown on success...
+        s.recordSuccess(clock.get())
+        assertNull(s.unavailableCause())
+        // ...and gated by expiry like the description.
+        s.recordLadderFailure(CooldownLadder.RateLimit, "Server error", CooldownCause.SERVER_ERROR)
+        assertEquals(CooldownCause.SERVER_ERROR, s.unavailableCause())
+        clock.addAndGet(10L * 60 * 60 * 1000)
+        assertNull(s.unavailableCause())
+    }
+
+    @Test fun `network failures record the connection cause`() {
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        s.recordNetworkFailure("Connection failed")
+        s.recordNetworkFailure("Connection failed")
+        assertEquals(CooldownCause.CONNECTION_FAILED, s.unavailableCause())
+    }
+
+    @Test fun `message classes separate the three user-facing wordings`() {
+        // The Codex adversarial find pinned at the mapping level: quota
+        // and billing cooldowns must NOT collapse into the transient
+        // ("rate limited") wording.
+        assertEquals(CooldownMessageClass.TRANSIENT, CooldownCause.RATE_LIMITED.messageClass)
+        assertEquals(CooldownMessageClass.TRANSIENT, CooldownCause.SERVER_ERROR.messageClass)
+        assertEquals(CooldownMessageClass.TRANSIENT, CooldownCause.CONNECTION_FAILED.messageClass)
+        assertEquals(CooldownMessageClass.QUOTA, CooldownCause.DAILY_QUOTA.messageClass)
+        assertEquals(CooldownMessageClass.QUOTA, CooldownCause.MONTHLY_QUOTA.messageClass)
+        assertEquals(CooldownMessageClass.ACCOUNT, CooldownCause.BILLING.messageClass)
+    }
+
     @Test fun `Cooldownable interface delegates correctly`() {
         val clock = AtomicLong(1_000_000L)
         val s = newState(clock)

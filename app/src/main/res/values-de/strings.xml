@@ -285,6 +285,9 @@
     <string name="note_mlkit_no_internet">⚠ Keine Internetverbindung – Offline-Übersetzung wird angezeigt (geringere Qualität).</string>
 
     <string name="note_mlkit_service_unavailable">⚠ Übersetzungsdienst nicht verfügbar – Offline-Übersetzung wird angezeigt (geringere Qualität).</string>
+    <string name="note_mlkit_service_cooldown">⚠ Übersetzungsdienst ist vorübergehend nicht verfügbar. Bis <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> wird die Offline-Übersetzung angezeigt (geringere Qualität).</string>
+    <string name="note_mlkit_quota_exhausted">⚠ Übersetzungskontingent aufgebraucht. Bis <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> wird die Offline-Übersetzung angezeigt (geringere Qualität).</string>
+    <string name="note_mlkit_account_issue">⚠ Problem mit dem Konto des Übersetzungsdienstes (Abrechnung oder Guthaben). Offline-Übersetzung wird angezeigt (geringere Qualität). Bitte den Dienst in den Einstellungen prüfen.</string>
 
     <string name="note_low_memory_fallback">⚠ Wenig Arbeitsspeicher – Offline-Übersetzung wird angezeigt (geringere Qualität).</string>
 
@@ -1049,6 +1052,9 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="degraded_warning_offline">Offline – die Übersetzungsqualität ist reduziert</string>
+    <string name="degraded_warning_cooldown">Dienst nicht verfügbar bis <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>. Qualität reduziert</string>
+    <string name="degraded_warning_quota">Kontingent aufgebraucht bis <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>. Qualität reduziert</string>
+    <string name="degraded_warning_account">Problem mit dem Dienstkonto. Qualität reduziert</string>
     <string name="degraded_warning_low_memory">Wenig Arbeitsspeicher – die Übersetzungsqualität ist reduziert</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

@@ -1431,9 +1431,11 @@ class OverlayUiController(
             sendMainActivityIntent(MainActivity.ACTION_OPEN_SETTINGS)
         }
         menu.setPanelData(languageName, ocrName, overlayValue, mangaOcrValue)
-        menu.degradedWarningKind =
+        menu.setDegradedWarning(
             CaptureService.instance?.degradationState?.value
-                ?: com.playtranslate.ui.DegradedWarningKind.None
+                ?: com.playtranslate.ui.DegradedWarningKind.None,
+            CaptureService.instance?.currentDegradedCooldown(),
+        )
         menu.onHideIcon = {
             dismissFloatingMenu()
             PlayTranslateAccessibilityService.disable(context, "menu_turn_off")

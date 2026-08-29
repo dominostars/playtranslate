@@ -80,6 +80,7 @@ class DeepLBackend(
         return cooldownState.unavailableUntil()
     }
     override fun unavailableDescription(): String? = cooldownState.unavailableDescription()
+    override fun unavailableCause(): CooldownCause? = cooldownState.unavailableCause()
     override fun recordSuccess(attemptStartedAtMs: Long) =
         cooldownState.recordSuccess(attemptStartedAtMs)
 
@@ -248,13 +249,15 @@ class DeepLBackend(
                         cooldownState.recordParsedFailure(
                             retryAt = firstOfNextMonthUtc(),
                             description = "Monthly quota used",
+                            cause = CooldownCause.MONTHLY_QUOTA,
                         )
                         throw DeepLQuotaExceededException()
                     }
                     else -> if (!response.isSuccessful) {
                         if (response.code >= 500) {
                             cooldownState.recordLadderFailure(
-                                CooldownLadder.RateLimit, "Server error"
+                                CooldownLadder.RateLimit, "Server error",
+                                CooldownCause.SERVER_ERROR,
                             )
                         }
                         throw StructuralFailureException("DeepL error ${response.code}")

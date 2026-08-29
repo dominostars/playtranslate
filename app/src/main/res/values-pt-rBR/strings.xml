@@ -285,6 +285,9 @@
     <string name="note_mlkit_no_internet">⚠ Sem conexão com a internet — mostrando tradução offline (qualidade inferior).</string>
 
     <string name="note_mlkit_service_unavailable">⚠ Serviço de tradução indisponível — mostrando tradução offline (qualidade inferior).</string>
+    <string name="note_mlkit_service_cooldown">⚠ Serviço de tradução temporariamente indisponível. Mostrando tradução offline (qualidade inferior) até <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>.</string>
+    <string name="note_mlkit_quota_exhausted">⚠ Cota de tradução esgotada. Mostrando tradução offline (qualidade inferior) até <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>.</string>
+    <string name="note_mlkit_account_issue">⚠ Problema na conta do serviço de tradução (cobrança ou crédito). Mostrando tradução offline (qualidade inferior). Verifique o serviço nas Configurações.</string>
 
     <string name="note_low_memory_fallback">⚠ Memória insuficiente — mostrando tradução offline (qualidade inferior).</string>
 
@@ -1046,6 +1049,9 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="degraded_warning_offline">Offline — a qualidade da tradução está reduzida</string>
+    <string name="degraded_warning_cooldown">Serviço indisponível até <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>. Qualidade reduzida</string>
+    <string name="degraded_warning_quota">Cota esgotada até <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>. Qualidade reduzida</string>
+    <string name="degraded_warning_account">Problema na conta do serviço. Qualidade reduzida</string>
     <string name="degraded_warning_low_memory">Memória insuficiente — a qualidade da tradução está reduzida</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

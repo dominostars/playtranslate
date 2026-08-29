@@ -10,6 +10,12 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import java.util.concurrent.atomic.AtomicReference
 
+/** One active cooldown as seen by [TranslationBackendRegistry.earliestCooldownEnd]:
+ *  when the backend becomes available again, and why it is down. [cause]
+ *  is null for implementations predating cause tracking — consumers
+ *  treat that as the transient message class. */
+data class ActiveCooldown(val retryAt: Long, val cause: CooldownCause?)
+
 /**
  * Holds the ordered list of [TranslationBackend]s and runs the
  * translation waterfall.
@@ -449,6 +455,26 @@ object TranslationBackendRegistry {
         }
         @Suppress("UNCHECKED_CAST")
         return results.toList() as List<WaterfallResult>
+    }
+
+    /**
+     * The soonest-ending active cooldown among backends USABLE for the
+     * pair, or null when none is active. Drives the user-facing
+     * degraded messaging. The pair filter matters (DeepL's isUsable
+     * excludes Thai, and a cooldown ticking on a DISABLED backend is
+     * not the cause of the current degradation); the typed [CooldownCause]
+     * rides along so quota and billing states aren't mislabeled as
+     * transient rate limits.
+     */
+    fun earliestCooldownEnd(source: String, target: String): ActiveCooldown? {
+        val now = System.currentTimeMillis()
+        return orderedBackends().mapNotNull { backend ->
+            if (!backend.isUsable(source, target)) return@mapNotNull null
+            val cooldownable = backend as? Cooldownable ?: return@mapNotNull null
+            val until = cooldownable.unavailableUntil()?.takeIf { it > now }
+                ?: return@mapNotNull null
+            ActiveCooldown(until, cooldownable.unavailableCause())
+        }.minByOrNull { it.retryAt }
     }
 
     /**

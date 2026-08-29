@@ -75,6 +75,13 @@ interface Cooldownable {
      *  null when [unavailableUntil] is null. */
     fun unavailableDescription(): String?
 
+    /** Typed cause of the current cooldown, for user-facing message
+     *  selection (the description above is hardcoded English and must
+     *  never reach localized UI). Null when [unavailableUntil] is null
+     *  or the implementation predates cause tracking; consumers treat
+     *  null as the transient class. */
+    fun unavailableCause(): CooldownCause? = null
+
     /** Called by [TranslationBackendRegistry] when this backend wins
      *  the waterfall. [attemptStartedAtMs] is the epoch-ms time at
      *  which the registry began the winning translate call. The

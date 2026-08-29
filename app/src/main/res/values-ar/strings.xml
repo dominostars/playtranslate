@@ -275,6 +275,9 @@
     <string name="note_mlkit_no_internet">⚠ لا يوجد اتصال بالإنترنت — يتم عرض الترجمة دون اتصال (جودة أقل).</string>
 
     <string name="note_mlkit_service_unavailable">⚠ خدمة الترجمة غير متاحة — يتم عرض الترجمة دون اتصال (جودة أقل).</string>
+    <string name="note_mlkit_service_cooldown">⚠ خدمة الترجمة غير متاحة مؤقتًا. يتم عرض الترجمة دون اتصال (جودة أقل) حتى <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>.</string>
+    <string name="note_mlkit_quota_exhausted">⚠ تم استهلاك حصة الترجمة. يتم عرض الترجمة دون اتصال (جودة أقل) حتى <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>.</string>
+    <string name="note_mlkit_account_issue">⚠ مشكلة في حساب خدمة الترجمة (الفوترة أو الرصيد). يتم عرض الترجمة دون اتصال (جودة أقل). يرجى مراجعة الخدمة في الإعدادات.</string>
 
     <string name="note_low_memory_fallback">⚠ ذاكرة منخفضة — يتم عرض الترجمة دون اتصال (جودة أقل).</string>
 
@@ -999,6 +1002,9 @@
     <!-- ═══ FLOATING-ICON MENU WARNING PILL ═══ -->
 
     <string name="degraded_warning_offline">دون اتصال — جودة الترجمة منخفضة</string>
+    <string name="degraded_warning_cooldown">الخدمة غير متاحة حتى <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>. الجودة منخفضة</string>
+    <string name="degraded_warning_quota">الحصة مستهلكة حتى <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>. الجودة منخفضة</string>
+    <string name="degraded_warning_account">مشكلة في حساب الخدمة. الجودة منخفضة</string>
     <string name="degraded_warning_low_memory">ذاكرة منخفضة — جودة الترجمة منخفضة</string>
 
     <!-- ═══ MAIN SCREEN — bottom-bar and overflow-menu items ═══ -->

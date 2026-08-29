@@ -282,6 +282,9 @@
     <string name="note_mlkit_no_internet">⚠ Không có kết nối internet — đang hiển thị bản dịch ngoại tuyến (chất lượng thấp hơn).</string>
 
     <string name="note_mlkit_service_unavailable">⚠ Dịch vụ dịch thuật không khả dụng — đang hiển thị bản dịch ngoại tuyến (chất lượng thấp hơn).</string>
+    <string name="note_mlkit_service_cooldown">⚠ Dịch vụ dịch thuật tạm thời không khả dụng. Đang hiển thị bản dịch ngoại tuyến (chất lượng thấp hơn) cho đến <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>.</string>
+    <string name="note_mlkit_quota_exhausted">⚠ Đã dùng hết hạn mức dịch. Đang hiển thị bản dịch ngoại tuyến (chất lượng thấp hơn) cho đến <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>.</string>
+    <string name="note_mlkit_account_issue">⚠ Tài khoản dịch vụ dịch thuật gặp sự cố (thanh toán hoặc tín dụng). Đang hiển thị bản dịch ngoại tuyến (chất lượng thấp hơn). Hãy kiểm tra dịch vụ trong phần Cài đặt.</string>
 
     <string name="note_low_memory_fallback">⚠ Bộ nhớ thấp — đang hiển thị bản dịch ngoại tuyến (chất lượng thấp hơn).</string>
 
@@ -1046,6 +1049,9 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="degraded_warning_offline">Ngoại tuyến — chất lượng bản dịch bị giảm</string>
+    <string name="degraded_warning_cooldown">Dịch vụ không khả dụng đến <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>. Chất lượng giảm</string>
+    <string name="degraded_warning_quota">Hết hạn mức đến <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>. Chất lượng giảm</string>
+    <string name="degraded_warning_account">Tài khoản dịch vụ gặp sự cố. Chất lượng giảm</string>
     <string name="degraded_warning_low_memory">Bộ nhớ thấp — chất lượng bản dịch bị giảm</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

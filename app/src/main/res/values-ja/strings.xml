@@ -282,6 +282,9 @@
     <string name="note_mlkit_no_internet">⚠ インターネット接続がありません。オフライン翻訳を表示しています（品質は低下します）。</string>
 
     <string name="note_mlkit_service_unavailable">⚠ 翻訳サービスを利用できません。オフライン翻訳を表示しています（品質は低下します）。</string>
+    <string name="note_mlkit_service_cooldown">⚠ 翻訳サービスは一時的に利用できません。<xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> まではオフライン翻訳を表示しています（品質は低下します）。</string>
+    <string name="note_mlkit_quota_exhausted">⚠ 翻訳の利用枠を使い切りました。<xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> まではオフライン翻訳を表示しています（品質は低下します）。</string>
+    <string name="note_mlkit_account_issue">⚠ 翻訳サービスのアカウントに問題があります（請求または残高）。オフライン翻訳を表示しています（品質は低下します）。設定でサービスをご確認ください。</string>
 
     <string name="note_low_memory_fallback">⚠ メモリ不足です。オフライン翻訳を表示しています（品質は低下します）。</string>
 
@@ -1098,6 +1101,9 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="degraded_warning_offline">オフライン：翻訳品質が低下しています</string>
+    <string name="degraded_warning_cooldown">サービス停止中（<xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> まで）：翻訳品質が低下しています</string>
+    <string name="degraded_warning_quota">利用枠を使い切りました（<xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> まで）：翻訳品質が低下しています</string>
+    <string name="degraded_warning_account">サービスのアカウントに問題：翻訳品質が低下しています</string>
     <string name="degraded_warning_low_memory">メモリ不足：翻訳品質が低下しています</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

@@ -67,6 +67,7 @@ class LingvaBackend(
     // expiring or by the registry recording a waterfall win.
     override fun unavailableUntil(): Long? = cooldownState?.unavailableUntil()
     override fun unavailableDescription(): String? = cooldownState?.unavailableDescription()
+    override fun unavailableCause(): CooldownCause? = cooldownState?.unavailableCause()
     override fun recordSuccess(attemptStartedAtMs: Long) {
         cooldownState?.recordSuccess(attemptStartedAtMs)
     }
@@ -210,7 +211,8 @@ class LingvaBackend(
                 response.code >= 500 -> {
                     logHttpFailure(response.code, null, response)
                     cooldownState?.recordLadderFailure(
-                        CooldownLadder.RateLimit, "Server error"
+                        CooldownLadder.RateLimit, "Server error",
+                        CooldownCause.SERVER_ERROR,
                     )
                     throw StructuralFailureException("Lingva error ${response.code}")
                 }

@@ -174,23 +174,35 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
      *  [DegradedWarningKind.Offline] / [DegradedWarningKind.LowMemory] show
      *  it with the appropriate label. Set by the accessibility service at
      *  menu build time based on the current
-     *  [com.playtranslate.CaptureService] state. */
-    var degradedWarningKind: DegradedWarningKind = DegradedWarningKind.None
-        set(value) {
-            field = value
-            when (value) {
-                DegradedWarningKind.None ->
-                    degradedWarningView?.visibility = View.GONE
-                DegradedWarningKind.Offline -> {
+     *  [com.playtranslate.CaptureService] state.
+     *
+     *  [cooldown] refines the Offline label: non-null means the
+     *  degradation is an active cooldown with a known retry time and a
+     *  typed cause, so the pill shows the cause-appropriate wording via
+     *  [DegradedMessages.pillText] instead of the misleading bare
+     *  "Offline" (the field report behind this: users read the pill as
+     *  a connectivity claim and debugged their internet). */
+    fun setDegradedWarning(
+        kind: DegradedWarningKind,
+        cooldown: com.playtranslate.translation.ActiveCooldown? = null,
+    ) {
+        when (kind) {
+            DegradedWarningKind.None ->
+                degradedWarningView?.visibility = View.GONE
+            DegradedWarningKind.Offline -> {
+                if (cooldown != null) {
+                    degradedWarningLabel?.text = DegradedMessages.pillText(context, cooldown)
+                } else {
                     degradedWarningLabel?.setText(R.string.degraded_warning_offline)
-                    degradedWarningView?.visibility = View.VISIBLE
                 }
-                DegradedWarningKind.LowMemory -> {
-                    degradedWarningLabel?.setText(R.string.degraded_warning_low_memory)
-                    degradedWarningView?.visibility = View.VISIBLE
-                }
+                degradedWarningView?.visibility = View.VISIBLE
+            }
+            DegradedWarningKind.LowMemory -> {
+                degradedWarningLabel?.setText(R.string.degraded_warning_low_memory)
+                degradedWarningView?.visibility = View.VISIBLE
             }
         }
+    }
 
     private val dimPaint = Paint().apply {
         // Match the region-editing view's dim (alpha 200) — a little less see-through.

@@ -283,6 +283,9 @@
     <string name="note_mlkit_no_internet">⚠ 인터넷 연결 없음 — 오프라인 번역 표시 중(품질 저하).</string>
 
     <string name="note_mlkit_service_unavailable">⚠ 번역 서비스 사용 불가 — 오프라인 번역 표시 중(품질 저하).</string>
+    <string name="note_mlkit_service_cooldown">⚠ 번역 서비스를 일시적으로 사용할 수 없습니다. <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>까지 오프라인 번역 표시 중(품질 저하).</string>
+    <string name="note_mlkit_quota_exhausted">⚠ 번역 할당량을 모두 사용했습니다. <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>까지 오프라인 번역 표시 중(품질 저하).</string>
+    <string name="note_mlkit_account_issue">⚠ 번역 서비스 계정 문제(결제 또는 크레딧). 오프라인 번역 표시 중(품질 저하). 설정에서 서비스를 확인하세요.</string>
 
     <string name="note_low_memory_fallback">⚠ 메모리 부족 — 오프라인 번역 표시 중(품질 저하).</string>
 
@@ -1046,6 +1049,9 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="degraded_warning_offline">오프라인 — 번역 품질 저하</string>
+    <string name="degraded_warning_cooldown">서비스 사용 불가, <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>까지 품질 저하</string>
+    <string name="degraded_warning_quota">할당량 소진, <xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g>까지 품질 저하</string>
+    <string name="degraded_warning_account">서비스 계정 문제, 품질 저하</string>
     <string name="degraded_warning_low_memory">메모리 부족 — 번역 품질 저하</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

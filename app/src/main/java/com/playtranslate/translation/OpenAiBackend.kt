@@ -127,6 +127,7 @@ class OpenAiBackend(
         return cooldownState?.unavailableUntil()
     }
     override fun unavailableDescription(): String? = cooldownState?.unavailableDescription()
+    override fun unavailableCause(): CooldownCause? = cooldownState?.unavailableCause()
     override fun recordSuccess(attemptStartedAtMs: Long) {
         cooldownState?.recordSuccess(attemptStartedAtMs)
     }
@@ -197,7 +198,8 @@ class OpenAiBackend(
                             Log.w(TAG, "translate error code=${response.code} body=$errBody")
                             if (response.code >= 500) {
                                 cooldownState?.recordLadderFailure(
-                                    CooldownLadder.RateLimit, "Server error"
+                                    CooldownLadder.RateLimit, "Server error",
+                                    CooldownCause.SERVER_ERROR,
                                 )
                             }
                             throw StructuralFailureException("OpenAI error ${response.code}: $errBody")
@@ -308,7 +310,8 @@ class OpenAiBackend(
                         Log.w(TAG, "translate batch error code=${response.code} body=$errBody")
                         if (response.code >= 500) {
                             cooldownState?.recordLadderFailure(
-                                CooldownLadder.RateLimit, "Server error"
+                                CooldownLadder.RateLimit, "Server error",
+                                CooldownCause.SERVER_ERROR,
                             )
                         }
                         throw StructuralFailureException("OpenAI error ${response.code}: $errBody")
@@ -595,6 +598,7 @@ class OpenAiBackend(
             state.recordParsedFailure(
                 retryAt = System.currentTimeMillis() + INSUFFICIENT_QUOTA_MS,
                 description = "Billing exhausted",
+                cause = CooldownCause.BILLING,
             )
             return
         }
