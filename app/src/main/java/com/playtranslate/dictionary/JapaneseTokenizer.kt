@@ -36,6 +36,18 @@ data class JaToken(
      *  語幹 marks an incomplete stem awaiting a derivational continuation
      *  (良さ before そう) — see the re-glob's lemma-variant guard. */
     val inflectionForm: String? = null,
+    /** UniDic 接続助詞 (て/で/が/し/から/けど…) — the particles that continue
+     *  a conjugation or clause mid-stream. Drives the re-glob's
+     *  conjugation-cut veto: a phrase join may not start at one (がどう) or
+     *  right after one (言って|たな). False for analyzers that don't report
+     *  level-2 POS — the veto then fails open to plain category checks. */
+    val isConjunctiveParticle: Boolean = false,
+    /** Non-linguistic material: UniDic 補助記号 (、。！？「」…) and 空白.
+     *  Postpositions cannot attach across these, so a 接続助詞 right after
+     *  one is expression-initial (、ていうか) — the conjugation-cut veto
+     *  needs the distinction because [JaCategory.OTHER] alone conflates
+     *  punctuation with prefixes and denylisted suffixes. */
+    val isPunctuation: Boolean = false,
 )
 
 /**
