@@ -82,6 +82,12 @@ import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.language.targetSupportsVerticalText
 import com.playtranslate.language.stackableTargetScript
 import com.playtranslate.translation.TranslationBackendRegistry
+import com.playtranslate.language.ShortTextTokenCounters
+import com.playtranslate.language.isShortText
+import com.playtranslate.translation.PartitionedResult
+import com.playtranslate.translation.ShortTextOfflineRoute
+import com.playtranslate.translation.dispatchPartitioned
+import com.playtranslate.translation.shouldBypassForLlm
 import com.playtranslate.ui.DegradedWarningKind
 import com.playtranslate.ui.TextBox
 import com.playtranslate.ui.noTextStatusMessage
@@ -742,6 +748,11 @@ class CaptureService : Service() {
          *  Traditional pass. Only [source]/[target] feed the cache key, so these
          *  extra fields don't fragment the shared "zh" cache. */
         val sourceIsTraditional: Boolean,
+        /** The resolved source-language id behind [source], for the short-text
+         *  classifier's per-language segmenter. Snapshotted with the pair so a
+         *  mid-batch source switch can't classify under one language and
+         *  translate under another. */
+        val sourceId: SourceLangId,
     ) {
         /** OpenCC converter for Traditional Chinese output, or null when no
          *  conversion applies (non-Chinese target, Simplified, or an already-
@@ -773,18 +784,26 @@ class CaptureService : Service() {
             deeplKey = prefs.deeplApiKey,
             chineseVariant = prefs.targetChineseVariant,
             sourceIsTraditional = srcId == SourceLangId.ZH_HANT,
+            sourceId = srcId,
         )
     }
 
     /** Called at the top of every translation call to keep the cache's
-     *  "preferred backend" identity in sync with current configuration.
-     *  Backends themselves are owned by [TranslationBackendRegistry] and
-     *  are pair-agnostic singletons — there is no per-pair instance
-     *  churn to reconcile. Pair changes are handled by the cache key
-     *  itself — no explicit clear needed. */
+     *  ROUTING identity (preferred backend + short-text policy knobs, see
+     *  [TranslationCache.routingIdentity]) in sync with current
+     *  configuration. Backends themselves are owned by
+     *  [TranslationBackendRegistry] and are pair-agnostic singletons —
+     *  there is no per-pair instance churn to reconcile. Pair changes are
+     *  handled by the cache key itself — no explicit clear needed. */
     private fun ensureLanguageManagersFor(target: TranslationTarget) {
+        val prefs = Prefs(this)
         translationCache.reconcilePreferredBackend(
-            TranslationBackendRegistry.preferredOnlineId(target.source, target.target)
+            TranslationCache.routingIdentity(
+                preferredOnlineId =
+                    TranslationBackendRegistry.preferredOnlineId(target.source, target.target),
+                llmContextEnabled = prefs.llmContextEnabled,
+                bergamotEnabled = prefs.bergamotEnabled,
+            )
         )
     }
 
@@ -3319,18 +3338,81 @@ class CaptureService : Service() {
             // parallel fan-out inside the registry, so today's
             // structured-cancellation guarantee (children of the
             // calling capture job) is preserved end-to-end.
-            val outcomes = translateBatch(uncached.map { it.value.text }, target)
+            val texts = uncached.map { it.value.text }
 
-            // Set the icon/menu state ONCE from the worst outcome in the
-            // batch. Each child's `translate` no longer touches the global
-            // state, so a clean group that happens to finish after a
-            // displaced sibling can't clear the warning. A fully-cached
-            // batch (outcomes empty) deliberately doesn't update state —
-            // matches the pre-refactor behavior where cache hits left the
-            // previous state in place.
-            val aggregateKind = outcomes.maxByOrNull { it.kind.severity() }?.kind
-                ?: DegradedWarningKind.None
-            setDegraded(aggregateKind)
+            // Short-text offline routing: texts with ≤2 content words (menu
+            // items, HUD labels, one-word lines) go to the fast offline tier
+            // instead of spending online quota; everything else still travels
+            // as ONE online batch. Bypassed entirely when the backend that
+            // would serve is a context-carrying batching LLM — shorts then
+            // ride its batch so dialogue-choice one-worders keep the context
+            // ring (user decision; the cost is one LLM request on all-short
+            // pages). NOTE: translateOnce (deliberate re-translate / edit /
+            // select) and CameraTranslator stay online-only by design. Short
+            // results — including deliberately-routed ML Kit ones (user
+            // decision: cached, no degraded note) — enter the cache as
+            // first-class entries. The cache's routing identity folds in
+            // llmContextEnabled + bergamotEnabled (TranslationCache
+            // .routingIdentity), so flipping either toggle clears cached
+            // shorts and routing changes apply immediately; the residual pin
+            // (a pack/model INSTALL mid-session, identity unchanged) is
+            // accepted — bounded by the 500-entry LRU and process restart.
+            // The whole routing decision runs off-main: this method runs on
+            // the Main-dispatched serviceScope (the cache's thread-safety
+            // invariant), while the bypass check and route resolve do
+            // filesystem probes (Bergamot's isUsable) and possibly a GMS
+            // round-trip (ML Kit model presence), and a first JA/ZH/TH
+            // classification pays lazy segmenter init (Sudachi mmap / HanLP
+            // models / Thai trie). Resolve happens only AFTER classification
+            // found shorts, so all-sentence pages pay nothing beyond the
+            // classifier. No cache access crosses the dispatcher — only the
+            // (route, shorts) pair comes back; null = today's single batch.
+            val routing: Pair<ShortTextOfflineRoute, List<Boolean>>? =
+                withContext(Dispatchers.Default) {
+                    val llmBypass = shouldBypassForLlm(
+                        TranslationBackendRegistry.preferredBackend(target.source, target.target),
+                        Prefs(this@CaptureService).llmContextEnabled,
+                    )
+                    if (llmBypass) return@withContext null
+                    val profile = SourceLanguageProfiles[target.sourceId]
+                    val counter =
+                        ShortTextTokenCounters.forLanguage(this@CaptureService, target.sourceId)
+                    val shorts = texts.map { isShortText(it, profile, counter) }
+                    if (shorts.none { it }) return@withContext null
+                    ShortTextOfflineRoute.resolve(target.source, target.target)
+                        ?.let { it to shorts }
+                }
+
+            val dispatch = if (routing == null) {
+                translateBatch(texts, target).let { PartitionedResult(it, it) }
+            } else {
+                val (route, shorts) = routing
+                dispatchPartitioned(
+                    texts, shorts,
+                    offline = { t ->
+                        withContext(Dispatchers.Default) {
+                            route.translateOrNull(t, target.source, target.target)
+                        }?.let {
+                            TranslateOutcome(it, null, DegradedWarningKind.None, null, route.displayName)
+                        }
+                    },
+                    online = { batch -> translateBatch(batch, target) },
+                )
+            }
+            val outcomes = dispatch.all
+
+            // Set the icon/menu state ONCE from the worst outcome the ONLINE
+            // waterfall produced. Each child's `translate` no longer touches
+            // the global state, so a clean group that happens to finish after
+            // a displaced sibling can't clear the warning. Deliberately-offline
+            // short results are excluded: their kind is None by construction,
+            // and letting an all-short page aggregate to None would CLEAR the
+            // "Offline" badge while the online tier is still cooling down
+            // (flapping between all-short and mixed pages). When no online
+            // call ran at all (fully-cached batch, or an all-short page), the
+            // state is left untouched — the same rule the fully-cached early
+            // return has always followed.
+            dispatch.fromOnline.maxByOrNull { it.kind.severity() }?.let { setDegraded(it.kind) }
 
             // Re-reconcile AFTER translate too. A higher-priority backend
             // may have cooled down DURING translateBatch — preferredOnlineId

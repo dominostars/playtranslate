@@ -133,7 +133,10 @@ object OverlayToolkit {
      *  across cycles (kept + fresh, cache hits + MT), so one label is only
      *  honest when every translated box names the same backend — any
      *  disagreement, or a translated box with unknown provenance (the
-     *  same-language OCR bypass), suppresses it. */
+     *  same-language OCR bypass), suppresses it. NOTE: short-text offline
+     *  routing makes mixed provenance the COMMON case on menu-heavy screens
+     *  (shorts by Bergamot/ML Kit, sentences by the online tier) — the label
+     *  going quiet there is accepted behavior, not a bug. */
     fun panelBackendLabel(boxes: List<TextBox>): String? =
         boxes.filter { it.translatedText.isNotEmpty() }
             .map { it.backendDisplayName }

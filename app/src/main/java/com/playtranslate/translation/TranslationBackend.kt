@@ -72,6 +72,16 @@ interface TranslationBackend {
      *  [com.playtranslate.language.OfflineFallbackTranslators]. */
     val usableAsOfflineFallback: Boolean get() = false
 
+    /** True for online LLM backends whose prompts carry the recent-dialogue
+     *  context ring ([com.playtranslate.translation.llm.LlmPromptTemplates]'s
+     *  `{context}` block — Gemini and OpenAI, which pass `includeContext =
+     *  true`). The short-text offline route bypasses itself for these when the
+     *  user has LLM context enabled: shorts ride the LLM batch so
+     *  context-sensitive one-worders (dialogue choices) keep their context.
+     *  On-device LLMs stay false — their templates hardcode context OFF for
+     *  prefill latency. */
+    val providesLlmContext: Boolean get() = false
+
     /** Synchronous gate that excludes a backend from the waterfall when
      *  configuration or pair compatibility precludes it. Network
      *  reachability is intentionally NOT checked here — try-and-catch is

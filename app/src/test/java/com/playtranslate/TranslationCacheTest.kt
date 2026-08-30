@@ -113,4 +113,36 @@ class TranslationCacheTest {
         cache.reconcilePreferredBackend("lingva")  // clears again
         assertNull(cache[key("hello")])
     }
+
+    // ── Routing identity (short-text offline routing) ────────────────────
+
+    @Test fun `routingIdentity distinguishes every policy knob`() {
+        // Each knob flip must produce a distinct identity, or a toggle
+        // wouldn't clear shorts cached under the old routing policy
+        // (adversarial-review find: enabling LLM context left cached
+        // Bergamot shorts serving instead of re-routing to the LLM batch).
+        val base = TranslationCache.routingIdentity("gemini", llmContextEnabled = false, bergamotEnabled = true)
+        val ctxOn = TranslationCache.routingIdentity("gemini", llmContextEnabled = true, bergamotEnabled = true)
+        val brgOff = TranslationCache.routingIdentity("gemini", llmContextEnabled = false, bergamotEnabled = false)
+        val otherBackend = TranslationCache.routingIdentity("lingva", llmContextEnabled = false, bergamotEnabled = true)
+        assertEquals(4, setOf(base, ctxOn, brgOff, otherBackend).size)
+    }
+
+    @Test fun `context toggle clears cached shorts via routing identity`() {
+        val cache = TranslationCache()
+        cache.reconcilePreferredBackend(
+            TranslationCache.routingIdentity("gemini", llmContextEnabled = false, bergamotEnabled = true),
+        )
+        cache[key("はい")] = "Yes" to "Firefox Translations"
+        // Same config → entry survives.
+        cache.reconcilePreferredBackend(
+            TranslationCache.routingIdentity("gemini", llmContextEnabled = false, bergamotEnabled = true),
+        )
+        assertEquals("Yes" to "Firefox Translations", cache[key("はい")])
+        // User enables LLM context → shorts must re-route; cache clears.
+        cache.reconcilePreferredBackend(
+            TranslationCache.routingIdentity("gemini", llmContextEnabled = true, bergamotEnabled = true),
+        )
+        assertNull(cache[key("はい")])
+    }
 }

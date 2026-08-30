@@ -137,6 +137,13 @@ object TranslationBackendRegistry {
      *  Trade-off: cache thrashes on cooldown cycles, but cooldowns are
      *  rare and the cache rebuilds quickly. */
     fun preferredOnlineId(source: String, target: String): BackendId =
+        preferredBackend(source, target)?.id ?: "none"
+
+    /** The backend [preferredOnlineId] resolves to — the first non-degraded
+     *  usable backend for the pair not currently in a cooldown, i.e. the one
+     *  the waterfall would engage first. Null when none is configured. Used by
+     *  the short-text route's LLM bypass, which keys on WHO would serve. */
+    fun preferredBackend(source: String, target: String): TranslationBackend? =
         orderedBackends()
             .firstOrNull { backend ->
                 if (backend.isDegradedFallback) return@firstOrNull false
@@ -144,8 +151,6 @@ object TranslationBackendRegistry {
                 val cool = (backend as? Cooldownable)?.unavailableUntil()
                 cool == null || cool <= System.currentTimeMillis()
             }
-            ?.id
-            ?: "none"
 
     /** Run the waterfall: try each [orderedBackends] entry in order,
      *  skipping those whose [TranslationBackend.isUsable] is false, and

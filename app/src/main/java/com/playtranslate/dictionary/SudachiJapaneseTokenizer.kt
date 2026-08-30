@@ -29,8 +29,14 @@ class SudachiJapaneseTokenizer private constructor(
     private val mode: Tokenizer.SplitMode,
 ) : JapaneseTokenizer, AutoCloseable {
 
-    override fun analyze(text: String): List<JaToken> =
-        dictionary.create().tokenize(mode, text).mapNotNull { m ->
+    override fun analyze(text: String): List<JaToken> = analyze(text, modeOverride = null)
+
+    /** [analyze] with a per-call [Tokenizer.SplitMode] override (null = the
+     *  instance mode, A). Mode is a tokenize-time argument in Sudachi, so this
+     *  costs nothing; the short-text classifier passes C for word-like units
+     *  while every dictionary-lookup caller stays on A (best JMdict hit-rate). */
+    fun analyze(text: String, modeOverride: Tokenizer.SplitMode?): List<JaToken> =
+        dictionary.create().tokenize(modeOverride ?: mode, text).mapNotNull { m ->
             val surface = m.surface()
             // Skip zero-width morphemes (input-rewrite artifacts, e.g. around …).
             if (surface.isEmpty()) return@mapNotNull null
@@ -53,6 +59,8 @@ class SudachiJapaneseTokenizer private constructor(
                     pos.getOrElse(0) { "" } == "助詞" && pos.getOrElse(1) { "" } == "接続助詞",
                 isPunctuation =
                     pos.getOrElse(0) { "" }.let { it == "補助記号" || it == "空白" },
+                isProperNoun =
+                    pos.getOrElse(0) { "" } == "名詞" && pos.getOrElse(1) { "" } == "固有名詞",
             )
         }
 
@@ -130,8 +138,13 @@ class SudachiJapaneseTokenizer private constructor(
          * genuine build / runtime-tokenize failures — logged WITH the stack (not
          * silently dropped), so real bugs stay visible.
          */
-        override fun analyze(text: String): List<JaToken> = try {
-            tokenizeStrict(text)
+        override fun analyze(text: String): List<JaToken> = analyze(text, modeOverride = null)
+
+        /** [analyze] with a per-call [Tokenizer.SplitMode] override. Same
+         *  fail-soft contract; [tokenizerOverrideForTest] ignores the mode
+         *  (the seam implements the plain [JapaneseTokenizer] interface). */
+        fun analyze(text: String, modeOverride: Tokenizer.SplitMode?): List<JaToken> = try {
+            tokenizeStrict(text, modeOverride)
         } catch (noDict: NoDictException) {
             // Expected: the installed pack has no system_*.dic yet (pre-ja-v3).
             // Degrade quietly to no tokens — preload() surfaces this as
@@ -153,14 +166,17 @@ class SudachiJapaneseTokenizer private constructor(
         /** Strict tokenize: builds if needed, then tokenizes under the read lock,
          *  PROPAGATING build/tokenize failures. Shared by [preload] (which surfaces
          *  them) and [analyze] (which absorbs them into empty tokens). */
-        private fun tokenizeStrict(text: String): List<JaToken> {
+        private fun tokenizeStrict(
+            text: String,
+            modeOverride: Tokenizer.SplitMode? = null,
+        ): List<JaToken> {
             tokenizerOverrideForTest?.let { return it.analyze(text) }
             ensureBuilt()
             return rw.read {
                 // The read lock blocks close()/initPackDir(), so the Dictionary
                 // stays open for the whole tokenize. `current` is null only if a
                 // close() landed between ensureBuilt and here -> empty (not a fault).
-                current?.analyze(text) ?: emptyList()
+                current?.analyze(text, modeOverride) ?: emptyList()
             }
         }
 
