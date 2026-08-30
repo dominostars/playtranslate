@@ -21,7 +21,14 @@ class TermMergeTest {
         normalizedReading: String?,
         normalizedTerm: String = "端",
         singleDictionary: Boolean = false,
-    ) = TermMerge.merge(rows, order, normalizedReading, normalizedTerm, singleDictionary)
+    ) = mergeReadings(rows, normalizedReading?.let(::setOf), normalizedTerm, singleDictionary)
+
+    private fun mergeReadings(
+        rows: List<TermMerge.Row>,
+        normalizedReadings: Set<String>?,
+        normalizedTerm: String = "端",
+        singleDictionary: Boolean = false,
+    ) = TermMerge.merge(rows, order, normalizedReadings, normalizedTerm, singleDictionary)
 
     @Test
     fun `groups follow section order regardless of row order`() {
@@ -86,6 +93,44 @@ class TermMergeTest {
             normalizedReading = "はし",
         )
         assertEquals(emptyList<ImportedSenseGroup>(), result.groups)
+    }
+
+    @Test
+    fun `every reading in the set narrows in - the pack's own breadth`() {
+        // 拘る: the pack couldn't narrow by the tap's reading and returned
+        // BOTH homographs, so the imported groups must show both too.
+        val result = mergeReadings(
+            rows = listOf(
+                row("dictA", "こだわる", 99.0, "to be obsessive"),
+                row("dictA", "かかわる", 98.0, "to be involved"),
+                row("dictA", "かかずらう", 1.0, "yomitan-only reading"),
+            ),
+            normalizedReadings = setOf("こだわる", "かかわる"),
+            normalizedTerm = "拘る",
+        )
+        assertEquals(listOf("to be obsessive", "to be involved"), result.definitionsOf(0))
+    }
+
+    @Test
+    fun `a reading set leaves the resolved reading to the surviving rows`() {
+        // No single supplied reading to echo back, so the first surviving
+        // row in section order answers — as it does for a null disambiguator.
+        val result = mergeReadings(
+            rows = listOf(row("dictA", "こだわる", 0.0, "def")),
+            normalizedReadings = setOf("こだわる", "かかわる"),
+            normalizedTerm = "拘る",
+        )
+        assertEquals("こだわる", result.resolvedReading)
+    }
+
+    @Test
+    fun `an empty reading set narrows nothing`() {
+        val result = mergeReadings(
+            rows = listOf(row("dictA", "はし", 0.0, "edge"), row("dictA", "はじ", 0.0, "shame")),
+            normalizedReadings = emptySet(),
+        )
+        assertEquals(listOf("edge", "shame"), result.definitionsOf(0))
+        assertEquals("はし", result.resolvedReading)
     }
 
     @Test

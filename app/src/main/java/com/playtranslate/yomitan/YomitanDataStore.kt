@@ -440,18 +440,19 @@ object YomitanDataStore {
      * Imported-term definition lookup for one candidate form. Every
      * TERMS-section dictionary with definitions contributes a group, in
      * section order; within a dict, entries sort by their bank score
-     * (descending). A supplied [reading] is a hard disambiguator (see
+     * (descending). Supplied [readings] are a hard disambiguator (see
      * [TermMerge.merge] — homograph content must not attach to the wrong
-     * word). Returns a [TermLookup] with empty groups when nothing matches
-     * (or no term dictionary is installed).
+     * word); null or empty narrows nothing. Returns a [TermLookup] with
+     * empty groups when nothing matches (or no term dictionary is
+     * installed).
      */
     suspend fun termSensesFor(
         ctx: Context,
         sourceLanguage: String,
         term: String,
-        reading: String?,
+        readings: Set<String>?,
     ): TermLookup = withContext(Dispatchers.IO) {
-        val empty = TermLookup(emptyList(), reading)
+        val empty = TermLookup(emptyList(), readings?.singleOrNull())
         if (term.isEmpty()) return@withContext empty
         val (database, caps) = ready(ctx, sourceLanguage)
         if (caps.termDicts.isEmpty()) return@withContext empty
@@ -485,7 +486,7 @@ object YomitanDataStore {
         TermMerge.merge(
             rows = rows,
             dictOrder = caps.termDicts,
-            normalizedReading = reading?.let(Deinflector::katakanaToHiragana),
+            normalizedReadings = readings?.mapTo(mutableSetOf(), Deinflector::katakanaToHiragana),
             normalizedTerm = Deinflector.katakanaToHiragana(term),
             singleDictionary = caps.termsSingleDictionary,
             dictColors = caps.dictColors,

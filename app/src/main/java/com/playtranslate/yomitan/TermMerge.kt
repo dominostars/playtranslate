@@ -28,14 +28,20 @@ internal object TermMerge {
 
     /**
      * [dictOrder] is the TERMS section's (dict id, group label) display
-     * order. A non-null [normalizedReading] is a HARD disambiguator: only
-     * rows with that reading survive — widening to other readings of the
-     * same spelling would attach a homograph's definitions (端/はじ) under
-     * the resolved word (端/はし). Rows whose stored reading is just the
-     * term itself ([normalizedTerm]) didn't disambiguate at all (the
+     * order. A non-empty [normalizedReadings] is a HARD disambiguator: only
+     * rows with one of those readings survive — widening to other readings
+     * of the same spelling would attach a homograph's definitions (端/はじ)
+     * under the resolved word (端/はし). Rows whose stored reading is just
+     * the term itself ([normalizedTerm]) didn't disambiguate at all (the
      * format's blank-reading sentinel, common in sloppier conversions) and
      * match any supplied reading. With no reading supplied, every row for
      * the term applies.
+     *
+     * A SET rather than one reading because the caller's disambiguator is
+     * not always a single reading: when the tap's reading narrows nothing,
+     * [com.playtranslate.language.YomitanEnrichment] retries with every
+     * reading the built-in pack resolved for the spelling, so the imported
+     * groups are narrowed by exactly the identity the pack landed on.
      *
      * [singleDictionary] (the user's TERMS-section toggle) keeps only the
      * first dictionary's group — groups exist only for dicts whose rows
@@ -48,7 +54,7 @@ internal object TermMerge {
     fun merge(
         rows: List<Row>,
         dictOrder: List<Pair<String, String>>,
-        normalizedReading: String?,
+        normalizedReadings: Set<String>?,
         normalizedTerm: String,
         singleDictionary: Boolean = false,
         /** Per-dictionary accent override (ARGB) keyed by dict id; tints each
@@ -56,9 +62,9 @@ internal object TermMerge {
         dictColors: Map<String, Int?> = emptyMap(),
     ): YomitanDataStore.TermLookup {
         val narrowed =
-            if (normalizedReading == null) rows
+            if (normalizedReadings.isNullOrEmpty()) rows
             else rows.filter {
-                it.reading == normalizedReading || it.reading == normalizedTerm
+                it.reading in normalizedReadings || it.reading == normalizedTerm
             }
         // Section order across dicts; score (desc) within a dict —
         // sortedByDescending is stable, so equal scores keep bank order.
@@ -79,7 +85,10 @@ internal object TermMerge {
                 .takeIf { it.isNotEmpty() }
                 ?.let { ImportedSenseGroup(label, it, dictColors[dictId], dictId = dictId) }
         }.let { if (singleDictionary) it.take(1) else it }
-        val resolvedReading = normalizedReading
+        // One supplied reading IS the resolved reading; a SET disambiguates
+        // without naming one, so the surviving rows answer instead — the
+        // same source a null disambiguator has always used.
+        val resolvedReading = normalizedReadings?.singleOrNull()
             ?: dictOrder.firstNotNullOfOrNull { (dictId, _) ->
                 narrowed.firstOrNull { it.dictId == dictId }?.reading
             }
