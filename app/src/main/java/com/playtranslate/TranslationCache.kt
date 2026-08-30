@@ -5,12 +5,13 @@ package com.playtranslate
  * triple so cross-pair stale reads are impossible by construction. A
  * cached JA→EN gloss can never be served for a JA→ES lookup.
  *
- * The preferred backend's id (e.g. "deepl", "google-gtx", or "none"
- * — sourced from [com.playtranslate.translation.TranslationBackendRegistry.preferredOnlineId])
- * is tracked separately via [reconcilePreferredBackend]. A backend
- * toggle clears the cache so the newly-preferred backend's translations
- * aren't shadowed by whatever was cached under the old preference.
- * Pair changes are NOT handled here — the key does that job.
+ * The ROUTING IDENTITY — the preferred backend's id plus the short-text
+ * routing policy knobs, built by [routingIdentity] — is tracked separately
+ * via [reconcilePreferredBackend]. Any identity change clears the cache so
+ * translations produced under the old routing (a different preferred
+ * backend, or shorts served offline under a policy the user has since
+ * flipped) aren't shadowed into the new one. Pair changes are NOT handled
+ * here — the key does that job.
  *
  * Not thread-safe. [com.playtranslate.CaptureService] mutates exclusively
  * from its `serviceScope` (Main-dispatched) with network calls dispatched
@@ -18,6 +19,27 @@ package com.playtranslate
  * implicitly serial.
  */
 class TranslationCache(private val capacity: Int = 500) {
+
+    companion object {
+        /**
+         * Composite routing identity for [reconcilePreferredBackend]. Beyond
+         * the preferred online backend id, it folds in the two user-actionable
+         * knobs that decide whether a SHORT text is served by the offline
+         * route or rides the online batch: [llmContextEnabled] (the LLM full
+         * bypass) and [bergamotEnabled]. Without them, a short cached from
+         * Bergamot before a toggle keeps serving after it — the user flips
+         * "LLM context" expecting Gemini to take over and the overlay keeps
+         * showing the offline text (adversarial-review find). Deliberately
+         * prefs-only: folding in the RESOLVED offline route would put
+         * Bergamot's filesystem probe on every reconcile; a pack/model
+         * install mid-session is the accepted residual (heals on restart).
+         */
+        fun routingIdentity(
+            preferredOnlineId: String,
+            llmContextEnabled: Boolean,
+            bergamotEnabled: Boolean,
+        ): String = "$preferredOnlineId|ctx=$llmContextEnabled|brg=$bergamotEnabled"
+    }
 
     data class Key(val text: String, val source: String, val target: String)
 

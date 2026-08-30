@@ -71,6 +71,7 @@ class GeminiBackend(
 
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
+    override val providesLlmContext: Boolean = true
     override val qualityStars: StarRating = 4.5f
 
     override val status: BackendStatus

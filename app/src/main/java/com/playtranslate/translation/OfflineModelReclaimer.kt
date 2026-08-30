@@ -124,6 +124,12 @@ object OfflineModelReclaimer {
     }
 
     private suspend fun deleteMlKitModel(mlkitCode: String) {
+        // Both reclaim paths funnel here, so this is the one place a sticky
+        // "models present" verdict must be dropped. Invalidate BEFORE the
+        // delete (new sticks stop forming from the cached set) and AFTER it
+        // (a probe that read GMS mid-delete — model still on disk — can
+        // re-stick a pair; the post-delete invalidate kills that survivor).
+        MlKitModelPresence.invalidate()
         // Close any warm Translator holding this model before deleting the file.
         TranslationManagerProvider.evictLanguage(mlkitCode)
         try {
@@ -138,6 +144,8 @@ object OfflineModelReclaimer {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "Failed to delete ML Kit model $mlkitCode; leaving it in place", e)
+        } finally {
+            MlKitModelPresence.invalidate()
         }
     }
 
@@ -172,7 +180,9 @@ object OfflineModelReclaimer {
         return false
     }
 
-    private suspend fun downloadedMlKitCodes(): Set<String> =
+    /** All ML Kit language codes with a downloaded model, or empty on GMS
+     *  failure. Internal for [MlKitModelPresence]'s presence probe. */
+    internal suspend fun downloadedMlKitCodes(): Set<String> =
         try {
             suspendCancellableCoroutine<Set<TranslateRemoteModel>> { cont ->
                 RemoteModelManager.getInstance()

@@ -34,6 +34,11 @@ class ThaiEngine(
     private val segmenterLazy = lazy { MaximalMatchThaiSegmenter(loadTrie()) }
     private val segmenter: ThaiSegmenter get() = segmenterOverride ?: segmenterLazy.value
 
+    /** The lazily-built trie segmenter, for the short-text classifier (which
+     *  counts segments without the TokenSpan/suspend wrapper of [tokenize]).
+     *  Honors [segmenterOverride], so fixture tests exercise the same path. */
+    internal val shortTextSegmenter: ThaiSegmenter get() = segmenter
+
     override suspend fun preload(): PreloadResult {
         if (!LanguagePackStore.isInstalled(appContext, SourceLangId.TH)) {
             return PreloadResult.PackMissing

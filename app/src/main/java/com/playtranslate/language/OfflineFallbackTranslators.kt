@@ -51,8 +51,7 @@ object OfflineFallbackTranslators {
     fun forPair(source: String, target: String): WordTranslator? {
         if (source.equals(target, ignoreCase = true)) return null
         val candidates = lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-            TranslationBackendRegistry.orderedBackends()
-                .filter { it.usableAsOfflineFallback && it.isUsable(source, target) }
+            offlineFallbackCandidates(source, target)
         }
         return WordTranslator { text -> waterfall(candidates.value, text, source, target) }
     }
@@ -84,3 +83,17 @@ object OfflineFallbackTranslators {
         throw lastError ?: IllegalStateException("no offline fallback backend for $source->$target")
     }
 }
+
+/**
+ * The offline-fallback backend candidates for [source]→[target], in registry
+ * priority order (Bergamot before the ML Kit floor). The ONE definition of the
+ * candidate set, shared by [OfflineFallbackTranslators] (opaque word-tap
+ * waterfall, download-on-demand allowed) and
+ * [com.playtranslate.translation.ShortTextOfflineRoute] (named backend,
+ * downloads forbidden) so the two policies can't drift on membership.
+ * Bergamot's `isUsable` is an on-disk probe — call once per operation, never
+ * per text.
+ */
+internal fun offlineFallbackCandidates(source: String, target: String): List<TranslationBackend> =
+    TranslationBackendRegistry.orderedBackends()
+        .filter { it.usableAsOfflineFallback && it.isUsable(source, target) }

@@ -48,6 +48,11 @@ data class JaToken(
      *  needs the distinction because [JaCategory.OTHER] alone conflates
      *  punctuation with prefixes and denylisted suffixes. */
     val isPunctuation: Boolean = false,
+    /** UniDic 名詞,固有名詞 (person/place/org names). Names are the class small
+     *  offline NMT mangles worst (kanji names translated semantically), so the
+     *  short-text route vetoes any text containing one — it goes online
+     *  instead. False for analyzers that don't report level-2 POS. */
+    val isProperNoun: Boolean = false,
 )
 
 /**
