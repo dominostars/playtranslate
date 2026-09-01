@@ -21,6 +21,7 @@ import android.widget.TextView
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.DrawableCompat
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.overlay.WindowChurnGate
 import com.playtranslate.R
 import androidx.core.graphics.toColorInt
 
@@ -232,6 +233,7 @@ class WordLookupPopup(
             val activityHiddenBars = (ctx as? Activity)?.window?.decorView
                 ?.let { OverlayHost.hiddenSystemBars(it) }
             try { wm.addView(container, popupParams) } catch (_: Exception) { return false }
+            WindowChurnGate.noteWindowAdded()
             OverlayHost.mirrorSystemBars(container, activityHiddenBars)
         }
         // Request window focus so onGenericMotionListener receives joystick
@@ -247,6 +249,11 @@ class WordLookupPopup(
             if (overlayHost != null) {
                 overlayHost.removeOverlayWindow(view)
             } else {
+                // Activity-window popup: deliberately NOT gated through
+                // WindowChurnGate — a destroy deferred past the hosting
+                // activity's finish would trip the framework's
+                // window-leak detection. Its add still ticks the gate's
+                // quiet clock above.
                 try { wm.removeView(view) } catch (_: Exception) {}
             }
         }

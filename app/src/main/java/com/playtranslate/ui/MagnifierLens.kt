@@ -38,6 +38,7 @@ import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.DrawableCompat
 import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.overlay.WindowChurnGate
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.isEffectivelyDark
@@ -734,6 +735,10 @@ class MagnifierLens(
             if (overlayHost != null) {
                 overlayHost.removeOverlayWindow(root)
             } else {
+                // Activity-window lens: deliberately NOT gated through
+                // WindowChurnGate — a destroy deferred past the hosting
+                // activity's finish would trip the framework's window-leak
+                // detection. Its add still ticks the gate's quiet clock.
                 try { wm.removeView(root) } catch (_: Exception) {}
             }
         }
@@ -807,7 +812,11 @@ class MagnifierLens(
         val attached = if (overlayHost != null) {
             overlayHost.addOverlayWindow(root, wm, lp, displayId)
         } else {
-            try { wm.addView(root, lp); true } catch (_: Exception) { false }
+            try {
+                wm.addView(root, lp)
+                WindowChurnGate.noteWindowAdded()
+                true
+            } catch (_: Exception) { false }
         }
         if (!attached) return
         lensView = view

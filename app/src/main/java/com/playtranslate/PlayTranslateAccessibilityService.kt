@@ -28,6 +28,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.overlay.WindowChurnGate
 import com.playtranslate.ui.DimController
 import com.playtranslate.ui.OverlayAlert
 import com.playtranslate.ui.DragLookupController
@@ -903,22 +904,40 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             displayId: Int,
         ): Boolean {
             instance?.let { return it.overlayHost.addOverlayWindow(view, wm, params, displayId) }
+            WindowChurnGate.flushPendingFor(view)
             OverlayHost.applyFullScreenOverlayDefaults(params)
             // No host to stamp it: same hardware-acceleration rule as
             // OverlayHost.addOverlayWindow.
             params.flags = params.flags or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-            return try { wm.addView(view, params); true } catch (_: Exception) { false }
+            return try {
+                wm.addView(view, params)
+                WindowChurnGate.noteWindowAdded()
+                true
+            } catch (_: Exception) { false }
         }
 
         fun removeOverlay(view: View, wm: WindowManager) {
             // If the service is connected and the view is in the registry,
-            // removeOverlayWindow handles both unregister + removeView. If
-            // the view was added via the no-service fallback path of
-            // [addOverlay] (service connected later), it's not in the
-            // registry — fall through to a direct removeView so the window
-            // doesn't leak.
+            // removeOverlayWindow handles both unregister + removeView (gated
+            // through WindowChurnGate). If the view was added via the
+            // no-service fallback path of [addOverlay] (service connected
+            // later), it's not in the registry — fall through to a direct
+            // removal so the window doesn't leak, gated when the live params
+            // are recoverable. WindowManagerGlobal.addView stores the params
+            // as the root view's layoutParams, so this cast holds for any
+            // window actually attached; a null/foreign value means there is
+            // nothing attached to defer, and the plain removeView (whose
+            // failure is caught) matches today's behavior.
             if (instance?.overlayHost?.removeOverlayWindow(view) == true) return
-            try { wm.removeView(view) } catch (_: Exception) {}
+            val lp = view.layoutParams as? WindowManager.LayoutParams
+            if (lp != null) {
+                // No registry handle to read the display from — UNKNOWN makes
+                // the ghost conservatively arm OverlayState.uncompositedGhost
+                // on every display.
+                WindowChurnGate.removeWindow(view, wm, lp, WindowChurnGate.DISPLAY_UNKNOWN)
+            } else {
+                try { wm.removeView(view) } catch (_: Exception) {}
+            }
         }
     }
 }

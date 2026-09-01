@@ -6,6 +6,7 @@ import com.playtranslate.CaptureService
 import com.playtranslate.DetectionLog
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.overlay.WindowChurnGate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -35,6 +36,17 @@ class MediaProjectionCaptureSource(
      *  controller's VirtualDisplay / ImageReader are shared mutable state, so
      *  captures must not interleave — mirrors ScreenshotManager.captureMutex. */
     private val captureMutex = Mutex()
+
+    /** Delivery-seq clock handed to [WindowChurnGate] so every defuse records
+     *  the anchor the ghost-only clean-capture proof waits against (see
+     *  [cleanCapture]). Kept as a field so [destroy] only clears the gate's
+     *  clock if it is still OURS — a backend swap may construct the new
+     *  source before destroying this one. */
+    private val ghostAnchorClock: () -> Long = { controller.deliverySeqNow }
+
+    init {
+        WindowChurnGate.deliverySeqClock = ghostAnchorClock
+    }
 
     /** A task-scoped ("single app") mirror contains no system UI at all;
      *  whole-display mirrors do. See [CaptureSource.framesIncludeSystemUi]. */
@@ -141,19 +153,44 @@ class MediaProjectionCaptureSource(
         val seqBefore = controller.deliverySeqNow
         val state = host?.prepareForCleanCapture(displayId)
         return try {
-            if (state == null || !state.blankedAnything) {
-                // Nothing visible on this display: no frame can contain our
-                // overlays, and no repaint is coming — gating on the anchor
-                // would burn the whole freshness budget on every quiet-screen
-                // one-shot and then serve the same frame it could have served
-                // immediately. Take the current frame, without advancing the
-                // live delivery-gate cursor.
+            if (state == null || (!state.blankedAnything && !state.uncompositedGhost)) {
+                // Nothing of ours can reach a frame: no visible overlay on
+                // this display and no defused-ghost repaint in flight —
+                // gating on the anchor would burn the whole freshness budget
+                // on every quiet-screen one-shot and then serve the same
+                // frame it could have served immediately. Take the current
+                // frame, without advancing the live delivery-gate cursor.
                 warnIfNotProjected(displayId)
                 controller.captureFrameUngated()
+            } else if (!state.blankedAnything) {
+                // Ghost only. Its repaint was PRODUCED (it was visible when
+                // defused — see OverlayState.uncompositedGhost) but the
+                // defuse ran before this call, so seqBefore is useless as an
+                // anchor (the repaint may already sit below it). The gate
+                // recorded the delivery seq BEFORE each defuse was submitted:
+                // the repaint is guaranteed to be delivered above that
+                // anchor, so waiting on it terminates AND proves the served
+                // frame postdates the defuse, with the same take-newest
+                // tolerance as the blanked branch below. Anchor null means
+                // either every ghost composited since prepare (current frame
+                // is fine) or a ghost predates the projection's clock
+                // (near-unreachable — projection startup dwarfs the ghost
+                // composite window); the heuristic keeps both from failing.
+                val anchor = WindowChurnGate.ghostDefuseAnchorOn(displayId)
+                waitVsync(2)
+                warnIfNotProjected(displayId)
+                if (anchor != null) {
+                    controller.captureFrameNewerThan(anchor)
+                } else {
+                    controller.captureFrameNewerThan(seqBefore)
+                        ?: controller.captureFrameUngated()
+                }
             } else {
-                // The blank goes through updateViewLayout → WMS/SF commit on
-                // their schedule (~1-2 vsyncs); the wait keeps the freshness
-                // loop from spinning through that latency.
+                // Something was blanked (any ghost rides along — its defuse
+                // committed even earlier than the blank). The blank's repaint
+                // is guaranteed to come and lands above seqBefore, so the
+                // anchored wait terminates; the vsync wait just keeps the
+                // freshness loop from spinning through commit latency.
                 waitVsync(2)
                 warnIfNotProjected(displayId)
                 controller.captureFrameNewerThan(seqBefore)
@@ -171,6 +208,11 @@ class MediaProjectionCaptureSource(
     override fun destroy() {
         stopAllLoops()
         controller.destroy()
+        // Only clear the gate's clock if it is still ours — a replacement
+        // source may already have installed its own.
+        if (WindowChurnGate.deliverySeqClock === ghostAnchorClock) {
+            WindowChurnGate.deliverySeqClock = null
+        }
     }
 
     // ── Continuous poll loop (live mode) ─────────────────────────────────

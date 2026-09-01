@@ -13,6 +13,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import com.playtranslate.R
+import com.playtranslate.overlay.WindowChurnGate
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
 
@@ -54,6 +55,8 @@ import com.playtranslate.themeColor
 internal class StartupChip private constructor(
     private val wm: WindowManager,
     private val root: View,
+    private val windowParams: WindowManager.LayoutParams,
+    private val displayId: Int,
     private val pattern: StreamKindProbe.PatternView,
     private val spinner: ProgressBar,
 ) : StreamKindProbe.ProbeSurface {
@@ -154,10 +157,11 @@ internal class StartupChip private constructor(
     fun remove() {
         if (isRemoved) return
         isRemoved = true
-        try {
-            wm.removeViewImmediate(root)
-        } catch (_: Exception) {
-        }
+        // Gated destroy (Thor firmware add/remove race — see WindowChurnGate).
+        // The defused ghost is composited out (window alpha 0), so it can't
+        // land in captures even though [onScreenRect] stops excluding it the
+        // moment isRemoved flips.
+        WindowChurnGate.removeWindow(root, wm, windowParams, displayId)
     }
 
     companion object {
@@ -259,13 +263,14 @@ internal class StartupChip private constructor(
                 gravity = Gravity.CENTER
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
             }
-            val chip = StartupChip(wm, card, pattern, spinner)
+            val chip = StartupChip(wm, card, params, controller.projectedDisplayId, pattern, spinner)
             // Anchor BEFORE the window exists — the add's own composition is
             // round-1 freshness evidence (the ephemeral probe's seqAtAdd,
             // transferred faithfully).
             chip.patternAddedSeq = controller.deliverySeqNow
             return try {
                 wm.addView(card, params)
+                WindowChurnGate.noteWindowAdded()
                 chip
             } catch (_: Exception) {
                 null
