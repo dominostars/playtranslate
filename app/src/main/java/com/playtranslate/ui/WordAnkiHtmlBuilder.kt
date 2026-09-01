@@ -13,11 +13,9 @@ internal object WordAnkiHtmlBuilder {
      * chrome: optional localized `.gl-section` header, then a `.gl-panel`
      * holding the lines as one `.gl-gloss` row — the same surfaces real
      * senses get, so a no-entry card doesn't read as a different design.
-     * One-tap (no resolved entry) passes the result as the Definition
-     * field value for both the default and structured paths; the sheet
-     * uses it as its own fallback when [WordAnkiReviewSheet] couldn't
-     * resolve a dictionary entry. Empty string in → empty string out, so
-     * the template's `{{Definition}}` slot stays blank.
+     * [WordCardDefinition] renders it for both the default and structured
+     * paths when no dictionary entry resolved. Empty string in → empty
+     * string out, so the template's `{{Definition}}` slot stays blank.
      */
     fun wrapFlatDefinitionHtml(
         fallbackDefinition: String,

@@ -962,7 +962,7 @@ class WordAnkiReviewBinder(
         card.removeAllViews()
 
         // Imported term-dictionary definitions lead, mirroring the detail
-        // sheet and what buildWordDefinitionHtml puts on the card. Not
+        // sheet and what WordCardDefinition puts on the card. Not
         // curatable in v1 (visibleSiblingCount = 1 suppresses the ×).
         var importedRowCount = 0
         if (addStyledImportedPanel(card)) {
@@ -1571,15 +1571,29 @@ class WordAnkiReviewBinder(
         freqScore: Int, deckId: Long, screenshotPath: String?,
         sourceLangId: SourceLangId,
     ) {
-        // The default PlayTranslate model's Definition/Examples fields
-        // use classStyler (the model CSS carries the gl-* classes) and
-        // are SPLIT — senses in Definition, the "More examples" block
-        // (with its section header) in Examples — so each is editable
-        // on its own in Anki. The structured path uses inlineStyler
-        // since the structured outputs ship with no CSS.
-        val defaultDefinitionHtml = buildDefinitionPanel(classStyler)
+        // The Definition field is described as data and rendered by the
+        // pipeline (WordCardDefinition) — the same builder one-tap uses,
+        // fed here with the editor's curation. The default PlayTranslate
+        // model's Definition/Examples fields are SPLIT — senses in
+        // Definition, the "More examples" block (with its section header)
+        // in Examples — so each is editable on its own in Anki; the
+        // structured path carries the block inline after the panel, styled
+        // with inlineStyler since the structured outputs ship with no CSS.
+        val definition = WordCardDefinition(
+            fallback = args.getString(ARG_DEFINITION) ?: "",
+            entry = resolvedEntry,
+            entries = resolvedEntries,
+            defResult = resolvedDefResult,
+            targetLang = moreExamplesTargetLang,
+            removedSenses = removedSenses.toSet(),
+            removedExamples = removedExamples.toSet(),
+            exampleTranslations = exampleTranslationCache.toMap(),
+        )
         val defaultExamplesHtml = buildString {
             if (resolvedEntry != null) appendMoreExamplesHtml(classStyler)
+        }
+        val inlineMoreExamplesHtml = buildString {
+            if (resolvedEntry != null) appendMoreExamplesHtml(inlineStyler)
         }
         // Pitch + per-dictionary frequencies for the structured path's
         // PITCH_POSITION / FREQUENCY_* sources, from the resolved entry's
@@ -1598,9 +1612,9 @@ class WordAnkiReviewBinder(
             // Multi-source selection (Commons-first → TTS) for the headword,
             // mirroring the sentence cell. Auto unless the user pinned a pick.
             wordSelection = wordSelection,
-            defaultDefinitionHtml = defaultDefinitionHtml,
+            definition = definition,
             defaultExamplesHtml = defaultExamplesHtml,
-            inlineDefinitionHtml = buildWordDefinitionHtml(inlineStyler),
+            inlineMoreExamplesHtml = inlineMoreExamplesHtml,
             inlineExamplesHtml = buildExamplesHtml(inlineStyler),
         )
         val result = ctx.sendWordCard(input, deckId)
@@ -1646,220 +1660,6 @@ class WordAnkiReviewBinder(
             sb.append("</div>")
         }
         return sb.toString()
-    }
-
-    /**
-     * Builds the per-sense Definition HTML for the structured-path
-     * word-card send (DEFINITION ContentSource). Mirrors the `classStyler`
-     * branch in [sendWordToAnki]'s `defaultDefinitionHtml` builder but
-     * emits inline styles via [inlineStyler], and keeps the "More examples"
-     * block inline. Honors the same curation state so what the user sees
-     * on the editor is what lands on the card.
-     */
-    internal fun buildWordDefinitionHtml(styler: HtmlStyler): String {
-        val sb = StringBuilder()
-        sb.append(buildDefinitionPanel(styler))
-        if (resolvedEntry != null) sb.appendMoreExamplesHtml(styler)
-        return sb.toString()
-    }
-
-    /**
-     * The Definition field's full v002 chrome — localized "Definitions"
-     * `.gl-section` header plus the `.gl-panel` holding the senses (or
-     * the flat fallback when no entry resolved) — shared by the
-     * default-model and structured sends so both read alike. "" when
-     * there is nothing to show, keeping the field blank.
-     */
-    private fun buildDefinitionPanel(styler: HtmlStyler): String {
-        val fallback = args.getString(ARG_DEFINITION) ?: ""
-        val entry = resolvedEntry
-            ?: return WordAnkiHtmlBuilder.wrapFlatDefinitionHtml(
-                fallback, styler, ctx.getString(R.string.anki_group_definitions))
-        val body = buildString { appendSensesHtml(entry, fallback, styler) }
-        if (body.isEmpty()) return ""
-        // Tier 2: dictionaries whose structured senses render in this card
-        // ship their styles.css, scoped, inline in the field (identity by
-        // the data-dictionary the gl-sc blocks carry).
-        val styles = resolvedStyled?.let { st ->
-            val used = entry.importedSenses
-                .filter { g -> g.senses.any { it.scRowid != null && st.structured.containsKey(it.scRowid) } }
-                .map { it.dictId }
-            AnkiCardCss.styleBlocks(used, st.dictStyles)
-        }.orEmpty()
-        return styles + "<div ${styler("gl-section", "")}>" +
-            htmlEscape(ctx.getString(R.string.anki_group_definitions)) +
-            "</div><div ${styler("gl-panel", "")}>" + body + "</div>"
-    }
-
-    private fun StringBuilder.appendSensesHtml(
-        entry: DictionaryEntry, fallback: String, styler: HtmlStyler,
-    ) {
-        // Sense rows are flex: a right-aligned number column beside the
-        // sense body (the lens's buildDefinitionRow, in HTML). One counter
-        // across every branch keeps numbering continuous (imported rows
-        // first, like the lens) and gives the structured path its
-        // border-top:0 on row 0.
-        var rowIdx = 0
-        fun openSense() {
-            append("<div ${styler("gl-sense", if (rowIdx == 0) "border-top:0;" else "")}>")
-            append("<span ${styler("gl-sense-n gl-hint", "")}>")
-            append(++rowIdx)
-            append("</span><div ${styler("gl-sense-b", "")}>")
-        }
-        fun closeSense() {
-            append("</div></div>")
-        }
-        // Imported term-dictionary definitions lead the card, final text.
-        val hasImportedRows = entry.importedSenses.any { it.senses.isNotEmpty() }
-        entry.importedSenses.forEach { group ->
-            group.senses.forEachIndexed { defIdx, sense ->
-                openSense()
-                // Structured glossary when the sense retained one and the
-                // resolve-time fetch delivered it; flat text otherwise.
-                val structuredHtml = sense.scRowid
-                    ?.let { resolvedStyled?.structured?.get(it) }
-                    ?.let { YomitanContentHtml.glossaryHtml(it, group.dictId, includeImages = false) }
-                if (structuredHtml != null) {
-                    append("<div ${styler("gl-sc", "")} data-dictionary=\"")
-                    append(htmlEscape(group.dictId))
-                    append("\">")
-                    append(structuredHtml)
-                    append("</div>")
-                } else {
-                    append("<div ${styler("gl-gloss", "")}>")
-                    append(htmlEscape(sense.definition).replace("\n", "<br>"))
-                    append("</div>")
-                }
-                val label = buildList {
-                    if (defIdx == 0) add(group.source)
-                    if (sense.pos.isNotBlank()) add(sense.pos)
-                }.joinToString(" · ")
-                if (label.isNotEmpty()) {
-                    append("<div ${styler("gl-pos gl-hint", "")}>")
-                    append(htmlEscape(label))
-                    append("</div>")
-                }
-                closeSense()
-            }
-        }
-
-        val flatSenses = resolvedFlatSenses
-        val defResult = resolvedDefResult
-        val translatedDefs = when (defResult) {
-            is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
-            is DefinitionResult.EnglishFallback -> defResult.translatedDefinitions
-            else -> null
-        }
-
-        val nativeTargetSenses = (defResult as? DefinitionResult.Native)
-            ?.targetSenses
-            ?.sortedBy { it.senseOrd }
-            ?.takeIf { it.isNotEmpty() }
-        val isTargetDriven = moreExamplesTargetLang != "en" && nativeTargetSenses != null
-
-        if (isTargetDriven) {
-            // See rebuildDefinitions for the unambiguous-fallback rationale.
-            val fallbackPos = com.playtranslate.model
-                .unambiguousFallbackPos(resolvedEntries)
-            val visibleTarget = nativeTargetSenses.withIndex()
-                .filter { (idx, _) -> idx !in removedSenses }
-            if (visibleTarget.isEmpty()) {
-                // The flat fallback already contains the imported lines —
-                // emitting it after the imported blocks would duplicate them.
-                if (!hasImportedRows) {
-                    val defHtml = fallback.lines().filter { it.isNotBlank() }
-                        .joinToString("<br>") { htmlEscape(it.trimStart()) }
-                    append("<div ${styler("gl-gloss", "padding:14px 0;")}>$defHtml</div>")
-                }
-                return
-            }
-            visibleTarget.forEach { (idx, target) ->
-                val posLabels = target.pos.filter { it.isNotBlank() }
-                    .takeIf { it.isNotEmpty() }
-                    ?: fallbackPos
-                openSense()
-                append("<div ${styler("gl-gloss", "")}>")
-                append(htmlEscape(target.glosses.joinToString("; ")))
-                append("</div>")
-                if (posLabels.isNotEmpty()) {
-                    append("<div ${styler("gl-pos gl-hint", "")}>")
-                    append(htmlEscape(posLabels.joinToString(" · ")))
-                    append("</div>")
-                }
-                ctx.renderMiscText(target.misc)?.let { misc ->
-                    append("<div ${styler("gl-misc gl-hint", "")}>")
-                    append(htmlEscape(misc))
-                    append("</div>")
-                }
-                target.examples.withIndex()
-                    .filter { (eIdx, _) -> (idx to eIdx) !in removedExamples }
-                    .forEach { (_, ex) ->
-                        append("<div ${styler("gl-ex gl-hint", "")}>")
-                        append(htmlEscape(ex.text))
-                        if (ex.translation.isNotBlank()) {
-                            append("<div ${styler("gl-ex-tr", "")}>")
-                            append(htmlEscape(ex.translation))
-                            append("</div>")
-                        }
-                        append("</div>")
-                    }
-                closeSense()
-            }
-            return
-        }
-
-        val targetByOrd = if (defResult is DefinitionResult.Native)
-            defResult.targetSenses.associateBy { it.senseOrd } else null
-        val visibleSenses = flatSenses.withIndex().filter { (idx, s) ->
-            s.targetDefinitions.isNotEmpty() && idx !in removedSenses
-        }
-        if (visibleSenses.isEmpty()) {
-            // User stripped every sense — the renderer hides the × on
-            // the last visible sense, but defensive: emit the fallback
-            // so the card never goes empty. Skipped when imported blocks
-            // already rendered (the fallback would duplicate them).
-            if (!hasImportedRows) {
-                val defHtml = fallback.lines().filter { it.isNotBlank() }
-                    .joinToString("<br>") { htmlEscape(it.trimStart()) }
-                append("<div ${styler("gl-gloss", "padding:14px 0;")}>$defHtml</div>")
-            }
-            return
-        }
-        visibleSenses.forEach { (flatIdx, sense) ->
-            val target = targetByOrd?.get(flatIdx)
-            val posLabels = (target?.pos ?: sense.partsOfSpeech).filter { it.isNotBlank() }
-            val gloss = target?.glosses?.joinToString("; ")
-                ?: translatedDefs?.getOrNull(flatIdx)
-                ?: sense.targetDefinitions.joinToString("; ")
-            openSense()
-            append("<div ${styler("gl-gloss", "")}>")
-            append(htmlEscape(gloss))
-            append("</div>")
-            if (posLabels.isNotEmpty()) {
-                append("<div ${styler("gl-pos gl-hint", "")}>")
-                append(htmlEscape(posLabels.joinToString(" · ")))
-                append("</div>")
-            }
-            ctx.renderMiscText(sense.misc)?.let { misc ->
-                append("<div ${styler("gl-misc gl-hint", "")}>")
-                append(htmlEscape(misc))
-                append("</div>")
-            }
-            sense.examples.withIndex()
-                .filter { (eIdx, _) -> (flatIdx to eIdx) !in removedExamples }
-                .forEach { (eIdx, ex) ->
-                    val tr = exampleTranslationCache[flatIdx to eIdx] ?: ex.translation
-                    append("<div ${styler("gl-ex gl-hint", "")}>")
-                    append(htmlEscape(ex.text))
-                    if (tr.isNotBlank()) {
-                        append("<div ${styler("gl-ex-tr", "")}>")
-                        append(htmlEscape(tr))
-                        append("</div>")
-                    }
-                    append("</div>")
-                }
-            closeSense()
-        }
     }
 
     private fun StringBuilder.appendMoreExamplesHtml(styler: HtmlStyler) {

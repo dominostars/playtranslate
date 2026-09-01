@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import android.util.Log
 import androidx.fragment.app.Fragment
 import com.playtranslate.R
 import com.playtranslate.audio.Attribution
@@ -71,12 +72,11 @@ data class SentenceSendInput(
     val examplesHtml: String = "",
 )
 
-/** Inputs needed to send a word card. The sheet pre-renders rich,
- *  curation-aware definition HTML in both [defaultDefinitionHtml] (for
- *  the default PlayTranslate model's Definition field) and
- *  [inlineDefinitionHtml] (for the structured path). One-tap callers
- *  pass a flat fallback in both via
- *  [WordAnkiHtmlBuilder.wrapFlatDefinitionHtml]. */
+/** Inputs needed to send a word card. The Definition field arrives as
+ *  DATA ([definition]) — the pipeline fetches its structured-glossary
+ *  payload and renders both the default model's class-styled HTML and the
+ *  structured path's inline-styled HTML, so the sheet and one-tap cannot
+ *  drift (see [WordCardDefinition]). */
 data class WordSendInput(
     val word: String,
     val reading: String,
@@ -96,21 +96,20 @@ data class WordSendInput(
      *  [AudioSelection.Auto] (the default, and what one-tap sends) resolves
      *  the user's saved voice — see [SentenceSendInput.sentenceSelection]. */
     val wordSelection: AudioSelection = AudioSelection.Auto,
-    /** Definition body (senses only) for the default PlayTranslate
-     *  model's Definition field. Built with [classStyler] in the sheet
-     *  (the model CSS supplies the gl-* classes); one-tap passes the
-     *  inline-styled flat fallback (works either way — class refs
-     *  without matching CSS just don't bind, which is fine for the
-     *  flat case). */
-    val defaultDefinitionHtml: String,
+    /** What the Definition field renders: the resolved entry plus the
+     *  sheet's curation (one-tap: the bare entry). Rendered by
+     *  [sendWordCard] with [classStyler] for the default model and
+     *  [inlineStyler] for the structured path. */
+    val definition: WordCardDefinition,
     /** Tatoeba "More examples" block — WITH its localized gl-section
      *  header — for the default model's Examples field. Built with
      *  [classStyler] in the sheet; empty for one-tap. */
     val defaultExamplesHtml: String = "",
-    /** Definition body for the structured (mapped) path's DEFINITION
-     *  content source. Built with [inlineStyler] in the sheet; one-tap
-     *  passes the same flat-fallback HTML. */
-    val inlineDefinitionHtml: String,
+    /** The same "More examples" block, inline-styled, appended after the
+     *  definition panel in the structured path's DEFINITION content source
+     *  (that source carries the whole definition body). Empty for one-tap
+     *  (no Tatoeba lookup). */
+    val inlineMoreExamplesHtml: String = "",
     /** Tatoeba "more examples" block for the structured path's
      *  EXAMPLE_SENTENCES content source — headerless (the receiving
      *  field's template carries its own label). Empty for one-tap (no
@@ -269,9 +268,13 @@ suspend fun Context.sendSentenceCard(
     )
 }
 
+private const val WORD_SEND_TAG = "AnkiWordSend"
+
 /**
- * Word-card send pipeline. Synthesizes word audio, dispatches the
- * card, and cleans up the temp WAV in a finally.
+ * Word-card send pipeline. Renders the Definition field from
+ * [WordSendInput.definition] (structured-glossary fetch included),
+ * synthesizes word audio, dispatches the card, and cleans up the temp WAV
+ * in a finally.
  */
 suspend fun Context.sendWordCard(
     input: WordSendInput,
@@ -294,6 +297,28 @@ suspend fun Context.sendWordCard(
     val audioCredit: String? =
         wordResolved?.attribution?.let { Attribution.creditBlock(listOf(it)) }
     val result = try {
+        // The Definition field renders HERE, for every caller: structured
+        // glossaries for the entry's imported groups (null = flat text
+        // throughout), then both stylers' HTML from one builder. Inside the
+        // try so a throw still releases the audio temp file and the pin.
+        val definition = input.definition
+        val styled = fetchYomitanStyledData(
+            ctx.applicationContext,
+            input.sourceLangId.yomitanConsumingLang(),
+            definition.importedGroups,
+        )
+        Log.i(
+            WORD_SEND_TAG,
+            "word card: groups=${definition.importedGroups.size} " +
+                "styled=${styled?.structured?.size ?: 0}",
+        )
+        val definitionsHeader = ctx.getString(R.string.anki_group_definitions)
+        val renderMisc: (List<String>) -> String? = ctx::renderMiscText
+        val defaultDefinitionHtml =
+            definition.panelHtml(classStyler, styled, definitionsHeader, renderMisc)
+        val inlineDefinitionHtml =
+            definition.panelHtml(inlineStyler, styled, definitionsHeader, renderMisc) +
+                input.inlineMoreExamplesHtml
         ctx.dispatchSendToAnki(
             deckId = deckId,
             mode = CardMode.WORD,
@@ -306,7 +331,7 @@ suspend fun Context.sendWordCard(
                     word = input.word,
                     reading = input.reading,
                     pos = input.pos,
-                    definitionHtml = input.defaultDefinitionHtml,
+                    definitionHtml = defaultDefinitionHtml,
                     examplesHtml = input.defaultExamplesHtml,
                     freqScore = input.freqScore,
                     pitch = input.pitch,
@@ -321,7 +346,7 @@ suspend fun Context.sendWordCard(
                     word = input.word,
                     reading = input.reading,
                     pos = input.pos,
-                    definitionHtml = input.inlineDefinitionHtml,
+                    definitionHtml = inlineDefinitionHtml,
                     freqScore = input.freqScore,
                     pitch = input.pitch,
                     frequencies = input.frequencies,

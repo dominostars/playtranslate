@@ -2072,6 +2072,7 @@ class CaptureResultOverlay(
                                 lastResult?.originalText,
                                 lastResult?.screenshotPath,
                                 audioAnchorMs = lastResult?.createdAtMs?.takeIf { it > 0 },
+                                entries = s.entries,
                             )
                         }
                     },
@@ -2083,6 +2084,7 @@ class CaptureResultOverlay(
                         lastResult?.originalText,
                         lastResult?.screenshotPath,
                         audioAnchorMs = lastResult?.createdAtMs?.takeIf { it > 0 },
+                        entries = resolved.entries,
                     )
                 }
                 b.setWordHighlight(span.first)

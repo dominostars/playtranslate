@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import android.util.Log
 import android.content.Intent
 import android.widget.Toast
 import com.playtranslate.AnkiManager
@@ -13,6 +14,7 @@ import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.selectHeadword
 import com.playtranslate.overlay.OverlayHost
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** The looked-up word context the lens actions operate on, snapshotted at
@@ -29,6 +31,10 @@ data class LensActionContext(
      *  was produced ([com.playtranslate.model.TranslationResult.createdAtMs]).
      *  Null when the hosting surface has no capture moment (drag flow). */
     val audioAnchorMs: Long? = null,
+    /** Every entry the lookup resolved ([entry] first) — POS-split packs
+     *  return several, and the lens's sense rows span all of them, so the
+     *  Anki card built from here must too. */
+    val entries: List<DictionaryEntry> = listOfNotNull(entry),
 )
 
 /**
@@ -277,20 +283,34 @@ class SourceLensActions(
         ankiOneTapSendScope.launch {
             // Sentence card (dragged word bolded) vs word card routing — incl.
             // the single-word-sentence rule — is shared via oneTapSend.
-            val (result, mode) = context.oneTapSend(
-                word = snap.word,
-                reading = snap.reading,
-                pos = snap.pos,
-                fallbackDefinition = snap.definition,
-                freqScore = snap.freqScore,
-                pitch = snap.pitch,
-                frequencies = snap.frequencies,
-                sentenceOriginal = snap.sentence,
-                sentenceTranslation = snap.sentenceTranslation,
-                wordsPayload = null,
-                screenshotPath = snap.screenshotPath,
-                sourceLangId = sourceLangId,
-            )
+            // The pipeline is exception-free by contract; a bug that escapes
+            // anyway is contained here the way launchOneTapSend contains it
+            // for fragment hosts (loud log + failure toast), instead of
+            // crashing the app from a detached coroutine.
+            val (result, mode) = try {
+                context.oneTapSend(
+                    word = snap.word,
+                    reading = snap.reading,
+                    pos = snap.pos,
+                    entry = entry,
+                    entries = cur.entries,
+                    fallbackDefinition = snap.definition,
+                    freqScore = snap.freqScore,
+                    pitch = snap.pitch,
+                    frequencies = snap.frequencies,
+                    sentenceOriginal = snap.sentence,
+                    sentenceTranslation = snap.sentenceTranslation,
+                    wordsPayload = null,
+                    screenshotPath = snap.screenshotPath,
+                    sourceLangId = sourceLangId,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(ONE_TAP_TAG, "lens one-tap send escaped an exception", e)
+                oneTapSendFailedToast(context.applicationContext)
+                return@launch
+            }
             when (result) {
                 // The mapping needs UI: the workspace editor when available
                 // (its NeedsMapping flow configures the mapping in-window),

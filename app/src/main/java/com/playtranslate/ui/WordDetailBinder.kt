@@ -396,7 +396,7 @@ class WordDetailBinder(
                 if (!ankiManager.isAnkiDroidInstalled()) {
                     ui.showAnkiNotInstalled()
                 } else {
-                    oneTapWordFromDetail(pill, word, primary, screenshotPath, defResult)
+                    oneTapWordFromDetail(pill, word, primary, entries, screenshotPath, defResult)
                 }
                 true
             }
@@ -579,6 +579,7 @@ class WordDetailBinder(
         pill: PillAnkiButton,
         word: String,
         entry: DictionaryEntry,
+        entries: List<DictionaryEntry>,
         screenshotPath: String?,
         defResult: DefinitionResult?,
     ) {
@@ -638,6 +639,8 @@ class WordDetailBinder(
                     word = word,
                     reading = reading,
                     pos = pos,
+                    entry = entry,
+                    entries = entries,
                     fallbackDefinition = definition,
                     freqScore = entry.freqScore,
                     pitch = hw.pitch,
@@ -648,6 +651,9 @@ class WordDetailBinder(
                     screenshotPath = screenshotPath,
                     sourceLangId = sourceLangId,
                     pendingTranslation = sentencePending,
+                    // The page's target-language tier rides to the card so
+                    // its senses read as the page showed them.
+                    defResult = defResult,
                 )
             },
             presentResult = { (result, mode) ->

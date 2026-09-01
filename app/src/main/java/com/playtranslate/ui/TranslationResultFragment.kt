@@ -995,6 +995,7 @@ class TranslationResultFragment : Fragment() {
         word: String,
         reading: String?,
         entry: com.playtranslate.model.DictionaryEntry?,
+        entries: List<com.playtranslate.model.DictionaryEntry>,
     ) {
         val ankiManager = AnkiManager(activity)
         if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) {
@@ -1047,6 +1048,8 @@ class TranslationResultFragment : Fragment() {
                     word = word,
                     reading = readingClean,
                     pos = pos,
+                    entry = entry,
+                    entries = entries,
                     fallbackDefinition = definition,
                     freqScore = entry.freqScore,
                     pitch = hw.pitch,
@@ -1214,6 +1217,7 @@ class TranslationResultFragment : Fragment() {
                 dismissWordPopup()
                 val canOpen = entry != null
                 val displayEntry = entry
+                val displayEntries = resolved.entries
                 wordLens = MagnifierLens(
                     activity,
                     activity.windowManager,
@@ -1264,7 +1268,7 @@ class TranslationResultFragment : Fragment() {
                     }
                     onAnkiLongPress = {
                         host?.onInteraction()
-                        oneTapWordFromPopup(activity, word, popupReading, displayEntry)
+                        oneTapWordFromPopup(activity, word, popupReading, displayEntry, displayEntries)
                     }
                     // onDismiss is the single funnel for every teardown path
                     // (tap-outside, LensSpeakChip's no-engine action,
