@@ -1,6 +1,5 @@
 package com.playtranslate.ui
 
-import android.app.Activity
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -230,8 +229,7 @@ class WordLookupPopup(
             // activity's bar state (read from its decor BEFORE our window can
             // affect it) — else opening the popup un-hides bars the activity
             // keeps hidden.
-            val activityHiddenBars = (ctx as? Activity)?.window?.decorView
-                ?.let { OverlayHost.hiddenSystemBars(it) }
+            val activityHiddenBars = OverlayHost.hiddenSystemBarsOfActivity(ctx)
             try { wm.addView(container, popupParams) } catch (_: Exception) { return false }
             WindowChurnGate.noteWindowAdded()
             OverlayHost.mirrorSystemBars(container, activityHiddenBars)

@@ -369,6 +369,17 @@ class MagnifierLens(
         lensView?.setSourceBitmap(bitmap)
     }
 
+    /** The bars the app beneath keeps hidden, for [makeInteractive]'s focus
+     *  flip: the host's read across its attached windows (overlay hosting) or
+     *  the hosting activity's decor (activity-window hosting; [rawCtx] may
+     *  be a themed wrapper around the Activity — the capture sheet's is —
+     *  which the host read unwraps). Both answer from a window older than
+     *  ours, so the answer never depends on whether our own root has
+     *  traversed yet. Null pre-R, by [OverlayHost]'s policy. */
+    private fun gameHiddenBarsForFlip(): Int? =
+        if (overlayHost != null) overlayHost.hiddenSystemBarsOnDisplay(displayId)
+        else OverlayHost.hiddenSystemBarsOfActivity(rawCtx)
+
     /** Update the word + reading on the pill. Pass null for either to hide. */
     fun setLabel(word: String?, reading: String?) {
         lensView?.setLabel(word, reading)
@@ -443,10 +454,14 @@ class MagnifierLens(
         } else {
             // Focus makes this window the system-bar control target, whose
             // default request would show the nav pill over an immersive game.
-            // The window has been attached non-focusable since show(), so its
-            // own insets still reflect the game's bar state — mirror it, armed
-            // before the flag flip so the request rides the focus grant.
-            OverlayHost.mirrorSystemBars(root, OverlayHost.hiddenSystemBars(root))
+            // Mirror the game's state, armed before the flag flip so the
+            // request rides the focus grant. The mask is read from windows
+            // attached BEFORE this one, never from this root: show() and this
+            // flip can run in the same frame (the capture sheet's word tap),
+            // and a window's own rootWindowInsets are null until its first
+            // traversal — a self-read there silently left the default request
+            // in place and the pill came up with the lens.
+            OverlayHost.mirrorSystemBars(root, gameHiddenBarsForFlip())
         }
         // The window is already full-screen (set in show()); this flag change
         // is flags-only — no size or position change, so it can't trigger the

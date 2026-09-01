@@ -1,7 +1,9 @@
 package com.playtranslate.overlay
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.PixelFormat
 import android.graphics.Point
 import android.hardware.display.DisplayManager
@@ -204,7 +206,10 @@ class OverlayHost(
      * Null when unknowable: no attached window to read from, or pre-R
      * (per-type visibility only exists in the R insets model, and the
      * legacy approximation reads a NO_LIMITS window's zero insets as
-     * "hidden", which would blanket-hide bars the game never hid).
+     * "hidden", which would blanket-hide bars the game never hid). A
+     * registered window that hasn't traversed yet (added this frame) has
+     * no insets and is skipped, so this is safe to call in the same frame
+     * a window was added — unlike a read of that window's own root.
      *
      * Only meaningful as a picture of the GAME's state while no focusable
      * overlay of ours holds the bar control — but every focusable overlay we
@@ -474,8 +479,13 @@ class OverlayHost(
          * mode — only the DEFAULT case is upgraded.
          */
         /** Per-type mask of the system bars currently hidden, read from
-         *  [view]'s last-received window insets. [view] must be attached.
-         *  Null pre-R or before the first insets dispatch. See
+         *  [view]'s last-received window insets. [view] must be attached
+         *  AND have traversed once: between addView and the first traversal
+         *  a root has no attach info and reports null insets (there is no
+         *  parent fallback, unlike [View.getWindowInsetsController]), so a
+         *  same-frame self-read is null, not the game's state — read from
+         *  an older window ([hiddenSystemBarsOnDisplay], or an activity's
+         *  decor) for a window's own arming. Null pre-R; see
          *  [hiddenSystemBarsOnDisplay] for why pre-R stays null. */
         fun hiddenSystemBars(view: View): Int? {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
@@ -490,6 +500,29 @@ class OverlayHost(
             return hidden
         }
 
+        /** The bars the Activity hosting [ctx] keeps hidden — the mirror
+         *  source for a window attached to an activity token (the in-app
+         *  lens and dictionary popup), read from the activity's decor, which
+         *  has been attached far longer than any window we add. [ctx] is
+         *  resolved through the ContextWrapper chain, not a bare cast: the
+         *  activity-hosted capture sheet hands its lens a themed wrapper
+         *  (CaptureResultOverlay wraps its context in overlayThemedContext),
+         *  and `as? Activity` on that is null — read as "no activity, arm
+         *  nothing" (a Codex find). Null when no Activity hosts [ctx], or
+         *  pre-R. */
+        fun hiddenSystemBarsOfActivity(ctx: Context): Int? =
+            hostingActivity(ctx)?.window?.decorView?.let { hiddenSystemBars(it) }
+
+        /** The Activity beneath [ctx]'s wrapper chain, if any. */
+        fun hostingActivity(ctx: Context): Activity? {
+            var c: Context? = ctx
+            while (c != null) {
+                if (c is Activity) return c
+                c = (c as? ContextWrapper)?.baseContext
+            }
+            return null
+        }
+
         /**
          * Arm [view]'s window with the same system-bar visibility the app
          * beneath maintains ([hiddenTypes], from [hiddenSystemBars] /
@@ -502,11 +535,21 @@ class OverlayHost(
          * becomes the control target.
          *
          * [hiddenTypes] == null (state unknowable) leaves the window's
-         * default request — today's behavior. Bars the app shows are
-         * explicitly show()n so a re-arm can clear a stale hide.
+         * default request, bars visible. Pre-R that is policy and silent;
+         * on R+ it is a miss and is logged, because the device-pass probes
+         * grep this tag and a silent no-op is exactly the failure they
+         * cannot see. Bars the app shows are explicitly show()n so a re-arm
+         * can clear a stale hide.
          */
         fun mirrorSystemBars(view: View, hiddenTypes: Int?) {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || hiddenTypes == null) return
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+            if (hiddenTypes == null) {
+                Log.w(
+                    TAG,
+                    "[BarMirror] ${view.javaClass.simpleName} unknowable, default request stands"
+                )
+                return
+            }
             val controller = view.windowInsetsController ?: return
             val allBars = WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars()
             val showTypes = allBars and hiddenTypes.inv()
