@@ -86,6 +86,10 @@ class DragLookupController(
     private var lastWord: String? = null
     /** Current dictionary entry shown in the popup. */
     private var currentEntry: DictionaryEntry? = null
+    /** Every entry the release lookup resolved (POS-split packs return
+     *  several) — the Anki card's pack senses span all of them, like the
+     *  popup's sense rows. */
+    private var currentEntries: List<DictionaryEntry> = emptyList()
     /** Reading shown in the lens for [lastWord] — the occurrence reading
      *  (明日 → あす), stored so the Speak chip pronounces what's displayed
      *  rather than re-deriving the entry's primary headword reading (あした). */
@@ -124,6 +128,7 @@ class DragLookupController(
                 LensActionContext(
                     p.word, p.reading, p.entry, currentSentence, screenshotPath,
                     audioAnchorMs = dragCapturedAtMs,
+                    entries = p.entries,
                 )
             }
         },
@@ -131,6 +136,7 @@ class DragLookupController(
         LensActionContext(
             lastWord, lastReading, currentEntry, currentSentence, screenshotPath,
             audioAnchorMs = dragCapturedAtMs,
+            entries = currentEntries,
         )
     }
 
@@ -233,6 +239,7 @@ class DragLookupController(
         magnifier.onDismiss = {
             lastWord = null
             currentEntry = null
+            currentEntries = emptyList()
             lastReading = null
             // Cancel a pending speak and stop any in-progress speech when
             // the lens goes away.
@@ -923,6 +930,7 @@ class DragLookupController(
                 // Release-only side effects (only when lookup succeeded).
                 lastWord = popupData.word
                 currentEntry = popupData.entry
+                currentEntries = popupData.entries
                 lastReading = popupData.reading
                 currentSecondaryPopups = resolved.phrase?.let { listOf(it) } ?: resolved.members
                 var sentenceToRecord: String? = null
@@ -1241,6 +1249,7 @@ class DragLookupController(
                 freqScore = entry.freqScore,
                 isCommon = entry.isCommon == true,
                 entry = entry,
+                entries = entries,
                 // The MT badge marks tiers whose TEXT came through a
                 // translator: all of MachineTranslated, and EnglishFallback
                 // only when it carries translated definitions — the same
@@ -1343,6 +1352,7 @@ class DragLookupController(
             freqScore = entry.freqScore,
             isCommon = entry.isCommon == true,
             entry = entry,
+            entries = entries,
             machineTranslated = result is DefinitionResult.MachineTranslated ||
                 (result is DefinitionResult.EnglishFallback &&
                     result.translatedDefinitions != null),
@@ -1418,6 +1428,9 @@ class DragLookupController(
         val freqScore: Int,
         val isCommon: Boolean,
         val entry: DictionaryEntry?,
+        /** Every entry the lookup returned ([entry] first); the sense rows
+         *  flatten across them, and so must an Anki card built from here. */
+        val entries: List<DictionaryEntry> = listOfNotNull(entry),
         val machineTranslated: Boolean = false,
         /** Pitch-accent downsteps from the displayed headword, for the pill. */
         val pitch: List<Int> = emptyList(),

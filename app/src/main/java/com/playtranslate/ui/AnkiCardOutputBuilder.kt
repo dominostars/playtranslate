@@ -200,11 +200,10 @@ object AnkiCardOutputBuilder {
     }
 
     /**
-     * Builds outputs from a word-sheet send. [definitionHtml] is the
-     * caller's pre-rendered Definition HTML (built via
-     * `WordAnkiReviewSheet.buildWordDefinitionHtml(inlineStyler)`)
-     * because it depends on the sheet's curation state. Same for
-     * [examplesHtml] (Tatoeba pairs, honoring `removedTatoebaIdx`).
+     * Builds outputs from a word-card send. [definitionHtml] is the
+     * pipeline's inline-styled rendering of the caller's
+     * [WordCardDefinition] (sheet curation included); [examplesHtml] is
+     * the sheet's pre-rendered Tatoeba list (honoring `removedTatoebaIdx`).
      */
     fun forWord(
         word: String,

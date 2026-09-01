@@ -40,6 +40,10 @@ object SourceWordLookup {
         /** The dictionary entry, when matched — drives the in-app Anki/open path.
          *  Null for a no-match (the lens shows the shared empty-state). */
         val entry: DictionaryEntry?,
+        /** Every entry the lookup returned ([entry] first). [data]'s sense
+         *  rows flatten across them (POS-split packs), so an Anki card built
+         *  from this resolution must span them too. */
+        val entries: List<DictionaryEntry> = listOfNotNull(entry),
     )
 
     /**
@@ -289,6 +293,7 @@ object SourceWordLookup {
             word = word,
             reading = popupReading,
             label = popupLabel,
+            entries = entries,
             data = WordDefinitionData(
                 word = word,
                 reading = popupReading?.takeIf { it != word },
