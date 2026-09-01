@@ -14,6 +14,7 @@ import android.view.WindowManager
 import androidx.core.view.doOnLayout
 import com.playtranslate.DetectionLog
 import com.playtranslate.displaySizePx
+import com.playtranslate.overlay.WindowChurnGate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -138,7 +139,7 @@ object StreamKindProbe {
         val surface: ProbeSurface = external ?: run {
             val wm = displayContext.getSystemService(WindowManager::class.java)
                 ?: return aborted("no WindowManager")
-            EphemeralProbeSurface(displayContext, host.windowType, wm)
+            EphemeralProbeSurface(displayContext, host.windowType, wm, controller.projectedDisplayId)
                 .also { ephemeral = it }
         }
         try {
@@ -555,6 +556,7 @@ object StreamKindProbe {
         displayContext: Context,
         windowType: Int,
         private val wm: WindowManager,
+        private val displayId: Int,
     ) : ProbeSurface {
 
         private val view = ProbeView(displayContext)
@@ -599,6 +601,7 @@ object StreamKindProbe {
             patternAddedSeq = controller.deliverySeqNow
             return try {
                 wm.addView(view, params)
+                WindowChurnGate.noteWindowAdded()
                 null
             } catch (e: Exception) {
                 "probe window add failed: ${e.message}"
@@ -630,7 +633,10 @@ object StreamKindProbe {
         }
 
         fun remove() {
-            try { wm.removeViewImmediate(view) } catch (_: Exception) {}
+            // Gated destroy (Thor firmware add/remove race — see
+            // WindowChurnGate). The probe finished measuring; the defused
+            // ghost can't contaminate later captures at window alpha 0.
+            WindowChurnGate.removeWindow(view, wm, params, displayId)
         }
     }
 

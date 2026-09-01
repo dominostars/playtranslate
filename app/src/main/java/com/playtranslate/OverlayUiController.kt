@@ -238,6 +238,16 @@ class OverlayUiController(
         val wm: WindowManager,
         val dragController: DragLookupController,
         val clearLivePauseFlag: () -> Unit,
+        /** Builds a fresh, fully wired icon VIEW for this display — closes
+         *  over the display's collaborators (drag controller, session state)
+         *  inside [installFloatingIconForDisplay], so install and the
+         *  z-order re-raise share one wiring and cannot drift. The re-raise
+         *  REPLACES the icon view with a fresh one instead of re-adding the
+         *  same view, because a same-view re-add forces the gate to destroy
+         *  the old surface synchronously beside the new add
+         *  ([com.playtranslate.overlay.WindowChurnGate.flushPendingFor]) —
+         *  the release-adjacent-to-create shape the gate exists to prevent. */
+        val makeIcon: () -> FloatingOverlayIcon,
     )
 
     private val iconHandles: MutableMap<Int, FloatingIconHandle> = mutableMapOf()
@@ -249,8 +259,8 @@ class OverlayUiController(
     // capture activation, the QS tile flipping showOverlayIcon on, a new
     // display being added, etc. Does NOT fire for rotation
     // (repositionIconForDisplay updates the existing icon's params in place)
-    // or for z-order re-raises (bringFloatingIconsToFront removes-and-re-
-    // adds the same icon view without going through install).
+    // or for z-order re-raises (bringFloatingIconsToFront swaps in a fresh
+    // icon view via the handle's makeIcon, without going through install).
     //
     // Keyed by displayId so simultaneous intros on multi-display setups don't
     // overwrite each other's overlay-window references and leave one
@@ -997,34 +1007,6 @@ class OverlayUiController(
         val displayCtx = context.createDisplayContext(display)
         val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
 
-        val icon = FloatingOverlayIcon(displayCtx).apply {
-            this.wm = wm
-            this.displayId = displayId
-            this.overlayHost = this@OverlayUiController.overlayHost
-        }
-
-        val params = WindowManager.LayoutParams(
-            icon.viewSizePx, icon.viewSizePx,
-            overlayHost.windowType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = android.view.Gravity.TOP or android.view.Gravity.START
-        }
-
-        icon.params = params
-
-        // Drag-end persists the icon's snap position to this display's slot.
-        icon.onPositionChanged = { edge, fraction ->
-            prefs.setIconPositionForDisplay(displayId, IconPosition(edge, fraction))
-        }
-        icon.onTap = {
-            showFloatingMenu(display, icon)
-        }
-
         // Drag-to-lookup: independent controller per display so the popup +
         // magnifier render against the correct display context.
         val popup = WordLookupPopup(displayCtx, wm, displayId, overlayHost)
@@ -1059,28 +1041,70 @@ class OverlayUiController(
             restoreRegionOverlay()
             resumeLiveMode()
         }
-        icon.onDragStart = {
-            // Hide region preview so the user can see game text while dragging
-            if (regionController.hideIndicatorForDrag()) {
-                overlayHiddenForDrag = true
+
+        // One builder for every icon VIEW this display ever shows — the
+        // install below and bringFloatingIconsToFront's replace both use it,
+        // so the wiring cannot drift between them. Fresh view + fresh params
+        // per call: a view attaches only once, and the z-order re-raise
+        // replaces the window instead of re-adding it (see
+        // [FloatingIconHandle.makeIcon] for why). The session state the
+        // callbacks mutate (liveWasPausedForPopup, overlayHiddenForDrag) and
+        // the controller are captured from THIS install scope, shared by
+        // every icon generation, so controller.onSettled always reads the
+        // same flags the current icon's onDragStart wrote.
+        val makeWiredIcon: () -> FloatingOverlayIcon = {
+            val icon = FloatingOverlayIcon(displayCtx).apply {
+                this.wm = wm
+                this.displayId = displayId
+                this.overlayHost = this@OverlayUiController.overlayHost
             }
-            // Pause live mode while dragging for definitions
-            if (CaptureService.instance?.isLive == true) {
-                liveWasPausedForPopup = true
-                stopLiveRouted()
+            val params = WindowManager.LayoutParams(
+                icon.viewSizePx, icon.viewSizePx,
+                overlayHost.windowType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = android.view.Gravity.TOP or android.view.Gravity.START
             }
-            controller.onDragStart()
+            icon.params = params
+
+            // Drag-end persists the icon's snap position to this display's slot.
+            icon.onPositionChanged = { edge, fraction ->
+                prefs.setIconPositionForDisplay(displayId, IconPosition(edge, fraction))
+            }
+            icon.onTap = {
+                showFloatingMenu(display, icon)
+            }
+            icon.onDragStart = {
+                // Hide region preview so the user can see game text while dragging
+                if (regionController.hideIndicatorForDrag()) {
+                    overlayHiddenForDrag = true
+                }
+                // Pause live mode while dragging for definitions
+                if (CaptureService.instance?.isLive == true) {
+                    liveWasPausedForPopup = true
+                    stopLiveRouted()
+                }
+                controller.onDragStart()
+            }
+            icon.onDragMove = { rawX, rawY -> controller.onDragMove(rawX, rawY) }
+            icon.onDragEnd = { controller.onDragEnd() }
+            icon.onDragCancel = { controller.cancelDrag() }
+            icon.onHoldCancel = { CaptureService.instance?.holdCancel() }
+            icon.onHoldStart  = { CaptureService.instance?.holdStart(displayId) }
+            icon.onHoldEnd    = { CaptureService.instance?.holdEnd() }
+            icon.onAnyTouch   = {
+                CaptureService.instance?.lastInteractedDisplayId = displayId
+                DimController.notifyInteraction()
+            }
+            icon
         }
-        icon.onDragMove = { rawX, rawY -> controller.onDragMove(rawX, rawY) }
-        icon.onDragEnd = { controller.onDragEnd() }
-        icon.onDragCancel = { controller.cancelDrag() }
-        icon.onHoldCancel = { CaptureService.instance?.holdCancel() }
-        icon.onHoldStart  = { CaptureService.instance?.holdStart(displayId) }
-        icon.onHoldEnd    = { CaptureService.instance?.holdEnd() }
-        icon.onAnyTouch   = {
-            CaptureService.instance?.lastInteractedDisplayId = displayId
-            DimController.notifyInteraction()
-        }
+
+        val icon = makeWiredIcon()
+        val params = icon.params ?: return
         if (overlayHost.addOverlayWindow(icon, wm, params, displayId)) {
             // Set position after addView from this display's saved slot.
             val pos = prefs.iconPositionForDisplay(displayId)
@@ -1091,10 +1115,12 @@ class OverlayUiController(
                 wm = wm,
                 dragController = controller,
                 clearLivePauseFlag = clearLivePauseFlag,
+                makeIcon = makeWiredIcon,
             )
             // Fresh icon → sonar-ping intro. This is the only "icon added to
-            // a window" path (rotation reuses the existing icon's params;
-            // bring-to-front re-stacks without going through install), so
+            // a window" path that means a fresh APPEARANCE (rotation reuses
+            // the existing icon's params; bring-to-front swaps views for
+            // z-order without going through install), so
             // gating the intro here gives us exactly the firing model the
             // design asked for: every fresh appearance, never a routine
             // re-layout. The one non-appearance that reaches this path is the
@@ -1262,25 +1288,72 @@ class OverlayUiController(
     }
 
     /**
-     * Remove and re-add floating icons so they draw above newly added
-     * overlays. Pass [displayId] = null to bring every icon forward.
+     * Raise floating icons above newly added overlays by REPLACING each with
+     * a freshly built view ([FloatingIconHandle.makeIcon]) rather than
+     * removing and re-adding the same view. A same-view re-add would force
+     * [com.playtranslate.overlay.WindowChurnGate.flushPendingFor] to destroy
+     * the old surface synchronously beside this call site's adds — the
+     * release-adjacent-to-create shape behind the Thor firmware
+     * system_server crash. With a fresh view the old window retires through
+     * the gate's quiet gap like every other removal, and the no-release-
+     * near-create invariant holds with no exceptions.
+     *
+     * Replacement is REST-STATE only — guaranteed by the gesture guard
+     * below — so the carry-over is exactly: persisted snap position (written
+     * at every drag end) plus the three status flags. Session state
+     * (drag/live pause bookkeeping) lives in the install scope shared by
+     * every icon generation, not on the view.
+     *
+     * Pass [displayId] = null to bring every icon forward.
      */
     fun bringFloatingIconsToFront(displayId: Int? = null) {
-        val targets: List<Map.Entry<Int, FloatingIconHandle>> = if (displayId != null) {
-            listOfNotNull(iconHandles.entries.firstOrNull { it.key == displayId })
+        val targets: List<Pair<Int, FloatingIconHandle>> = if (displayId != null) {
+            listOfNotNull(iconHandles[displayId]?.let { displayId to it })
         } else {
-            iconHandles.entries.toList()
+            iconHandles.map { it.key to it.value }
         }
         for ((id, handle) in targets) {
-            // Never remove+re-add an icon the user is currently touching:
-            // destroying its window mid-gesture drops the touch stream, so the
+            // Never replace an icon the user is currently touching: killing
+            // its window mid-gesture drops the touch stream, so the
             // finger-lift never fires onHoldEnd/onDragEnd and the held overlay
             // is never torn down. The re-raise resumes on the next overlay
             // update once the gesture ends.
             if (handle.icon.hasActiveGesture) continue
-            val params = handle.icon.params ?: continue
-            overlayHost.removeOverlayWindow(handle.icon)
-            overlayHost.addOverlayWindow(handle.icon, handle.wm, params, id)
+            val old = handle.icon
+            // A blanked icon (window alpha 0) belongs to an in-flight clean
+            // capture. The old same-params re-add inherited that alpha and
+            // was healed by the capture's restore; a REPLACEMENT would go up
+            // at alpha 1 mid-capture (contaminating the bitmap), and the
+            // restore only knows the old view, so inheriting alpha 0 instead
+            // would leave the fresh icon invisible forever. Skip — the icon
+            // stays one layer low until the next overlay show re-raises it.
+            val oldParams = old.params
+            if (oldParams == null || oldParams.alpha == 0f) continue
+            val fresh = handle.makeIcon()
+            val params = fresh.params ?: continue
+            // On add failure keep the old icon: still functional, just below
+            // the new overlay — matching the old path's failure behavior.
+            if (!overlayHost.addOverlayWindow(fresh, handle.wm, params, id)) continue
+            val pos = Prefs(context).iconPositionForDisplay(id)
+            fresh.setPosition(pos.edge, pos.fraction)
+            try { handle.wm.updateViewLayout(fresh, params) } catch (_: Exception) {}
+            fresh.showLoading = old.showLoading
+            fresh.degraded = old.degraded
+            fresh.liveMode = old.liveMode
+            iconHandles[id] = handle.copy(icon = fresh)
+            // The spinner is a SEPARATE window the old icon owns and tears
+            // down on its own removal path — which the gate now defers. Clear
+            // the flag (after the copy above) so the setter retires the old
+            // spinner window through the gate NOW (defused, instantly
+            // invisible) instead of a stale twin lingering beside the fresh
+            // icon's spinner until the old icon's deferred detach.
+            old.showLoading = false
+            // Add-then-remove: worst case is one frame of two identical icons
+            // at the same spot; remove-first would flash a frame of none. The
+            // gate defuses the old window in this same call (invisible,
+            // untouchable), so the ghost can't eat the fresh icon's taps.
+            old.destroy()
+            overlayHost.removeOverlayWindow(old)
         }
     }
 
@@ -1617,9 +1690,12 @@ class OverlayUiController(
      *  wake a live-mode cycle between frames. */
     fun dismissFloatingMenu(clearHoldActive: Boolean = true) {
         val wasShowing = floatingMenu != null
-        // Remove the menu's surface synchronously: a capture started right after
-        // (e.g. live mode's first clean frame on "auto translate") must not catch
-        // the menu's lingering dim/"Drag finger" hint in the shot.
+        // A capture started right after (e.g. live mode's first clean frame on
+        // "auto translate") must not catch the menu's lingering dim/"Drag
+        // finger" hint in the shot. Guaranteed structurally: the removal's
+        // WindowChurnGate ghost arms OverlayState.uncompositedGhost until its
+        // alpha-0 composites, so that capture waits instead of fast-pathing.
+        // (immediate is vestigial — kept for the paper trail.)
         floatingMenu?.let { overlayHost.removeOverlayWindow(it, immediate = true) }
         floatingMenu = null
         floatingMenuDisplayId = null

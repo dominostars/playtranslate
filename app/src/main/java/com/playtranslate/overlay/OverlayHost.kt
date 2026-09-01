@@ -63,28 +63,41 @@ class OverlayHost(
         val originalAlpha: Float,
     )
 
-    /** Opaque snapshot returned by [prepareForCleanCapture]. */
+    /** Opaque snapshot returned by [prepareForCleanCapture]. The two flags
+     *  are deliberately separate because their freshness-wait PROOFS differ
+     *  and a consumer must know which one it holds. */
     class OverlayState internal constructor(
-        internal val saved: List<SavedHandle>
-    ) {
-        /** True when the prepare call actually blanked at least one visible
-         *  window. When false, no frame can contain this backend's overlays
-         *  AND no blank-induced repaint is coming — callers gating capture
-         *  freshness on the blank must not wait for one. */
-        val blankedAnything: Boolean get() = saved.isNotEmpty()
-    }
+        internal val saved: List<SavedHandle>,
+        /** This prepare blanked at least one visible window. The blank's own
+         *  repaint is guaranteed to come AND lands after any anchor taken
+         *  before the prepare call, so a wait predicated on that anchor
+         *  terminates. */
+        val blankedAnything: Boolean,
+        /** A just-removed window is a defused-but-not-yet-composited
+         *  [WindowChurnGate] ghost on this display — visible when defused,
+         *  unregistered, surface still live until its alpha-0 commits. Its
+         *  repaint is guaranteed to have been PRODUCED (visible → invisible
+         *  is a content change) but may have been DELIVERED before any
+         *  anchor a consumer takes now, so an anchored wait can starve on a
+         *  static screen and needs a serve-current fallback. Ghosts that
+         *  were already blanked when removed never set this: they composite
+         *  nothing and are already absent from every frame. When both flags
+         *  are false, no frame can contain this backend's overlays and no
+         *  repaint of ours is coming — waiting would only burn budget. */
+        val uncompositedGhost: Boolean,
+    )
 
     /**
      * Add a window via [WindowManager.addView] AND register it for
      * clean-capture blanking. The window's type is forced to [windowType], so
      * the caller's params need not pick a backend. Returns true on success.
      *
-     * Honors whatever [WindowManager.LayoutParams.alpha] is on [params]. In
-     * particular, the floating-icon "bring to front" path removes and re-adds
-     * the icon with the same params object — if a clean capture has the icon
-     * blanked at alpha=0, the re-added window stays invisible until the
-     * capture's restore fires. Forcing alpha=1 here would flash the icon
-     * mid-capture and contaminate the bitmap.
+     * Honors whatever [WindowManager.LayoutParams.alpha] is on [params] —
+     * never forces alpha=1. Historically load-bearing for the icon
+     * bring-to-front's same-params re-add (a capture-blanked icon had to
+     * come back at alpha 0); that path now replaces its view with fresh
+     * params, but the contract stays: a caller's pre-set alpha is a
+     * deliberate statement about capture interplay, not a bug to correct.
      */
     fun addOverlayWindow(
         view: View,
@@ -92,6 +105,14 @@ class OverlayHost(
         params: WindowManager.LayoutParams,
         displayId: Int,
     ): Boolean {
+        // Belt: a re-add of a view with a pending gated destroy would make
+        // the addView below throw "view already attached", so flush it first.
+        // No current caller re-adds a removed view (the icon re-raise
+        // replaces its view instead — the flush's synchronous destroy is
+        // release-adjacent to this add, the shape the gate prevents), so
+        // this should never fire; it exists so a future same-view re-add
+        // degrades to the old risk instead of crashing the add.
+        WindowChurnGate.flushPendingFor(view)
         params.type = windowType
         // Service-added windows are software-rendered by default (the
         // manifest's hardwareAccelerated only covers activity windows).
@@ -126,6 +147,7 @@ class OverlayHost(
         val hiddenBars = if (focusable) hiddenSystemBarsOnDisplay(displayId) else null
         return try {
             wm.addView(view, params)
+            WindowChurnGate.noteWindowAdded()
             if (focusable) mirrorSystemBars(view, hiddenBars)
             overlayWindows += OverlayHandle(view, wm, params, displayId)
             logOverlayGeometry(view, params, displayId, fullScreen)
@@ -268,23 +290,34 @@ class OverlayHost(
         return context.createDisplayContext(display)
     }
 
-    /** Unregister and call [WindowManager.removeView]. Returns true if the
-     *  view was registered (and thus removed). Returns false if the view was
-     *  never registered — callers that fall back to a direct removeView for
-     *  windows added before a host existed rely on this.
+    /** Unregister and remove. Returns true if the view was registered (and
+     *  thus removed). Returns false if the view was never registered — callers
+     *  that fall back to a direct removeView for windows added before a host
+     *  existed rely on this.
      *
-     *  [immediate] tears the window's surface down synchronously
-     *  ([WindowManager.removeViewImmediate]) instead of queuing an async
-     *  removeView whose surface lingers a frame or two — so a clean capture
-     *  started right after the removal can't race the leftover surface (e.g. the
-     *  floating menu's dim/hint landing in live mode's first frame). */
+     *  Removal is routed through [WindowChurnGate]: the window is defused
+     *  synchronously (window alpha 0 — invisible to eyes AND captures by the
+     *  same SurfaceFlinger mechanism clean-capture blanking trusts —
+     *  untouchable, unfocusable) and its surface destroyed in the next
+     *  add-quiet gap, keeping our surface releases away from our surface
+     *  creations (the Thor firmware crash — see the gate's docs).
+     *
+     *  [immediate] used to mean [WindowManager.removeViewImmediate] so a
+     *  clean capture started right after couldn't race the leftover visible
+     *  surface (the floating menu's dim/hint in live mode's first frame).
+     *  That guarantee is now structural instead: a defused ghost arms
+     *  [OverlayState.awaitRepaint] until its alpha-0 has provably composited
+     *  ([WindowChurnGate.hasUncompositedGhostOn]), so the capture paths wait
+     *  for a post-defuse frame instead of relying on synchronous teardown.
+     *  Both variants defuse identically; the flag is vestigial. */
     fun removeOverlayWindow(view: View, immediate: Boolean = false): Boolean {
         val handle = overlayWindows.firstOrNull { it.view === view } ?: return false
         overlayWindows -= handle
-        try {
-            if (immediate) handle.wm.removeViewImmediate(view) else handle.wm.removeView(view)
-        } catch (_: Exception) {}
+        // Log BEFORE the gate: its defuse sets NOT_FOCUSABLE on these params,
+        // which would make every removal read as non-focusable and silence
+        // the focusable paper trail.
         logFocusableOverlay("remove", view, handle.params, handle.displayId)
+        WindowChurnGate.removeWindow(view, handle.wm, handle.params, handle.displayId)
         return true
     }
 
@@ -365,7 +398,11 @@ class OverlayHost(
                 handle.params.alpha = originalAlpha
             }
         }
-        return OverlayState(saved)
+        return OverlayState(
+            saved,
+            blankedAnything = saved.isNotEmpty(),
+            uncompositedGhost = WindowChurnGate.hasUncompositedGhostOn(displayId),
+        )
     }
 
     /** Restores blanked overlays to the alpha they had before
@@ -374,6 +411,29 @@ class OverlayHost(
      *  only current exception (returns to the system obscuring cap). */
     fun restoreAfterCapture(state: OverlayState) {
         for (saved in state.saved) {
+            // A window removed between prepare and restore is a defused ghost
+            // lingering in [WindowChurnGate] — still ATTACHED, so the
+            // updateViewLayout below would succeed and resurrect a dead
+            // overlay at full alpha. Don't touch its SCREEN state — but its
+            // BOOKKEEPING must still be restored (the old code did this
+            // implicitly: the params write preceded the try, so a detached
+            // window's throw still left the object corrected). Two writes,
+            // both required: the in-memory params.alpha, and the gate ghost's
+            // own restore-snapshot — defused mid-blank, it captured our 0,
+            // and the deferred destroy writes it back into this same params
+            // object LAST, so correcting only the object here would be
+            // clobbered. Without both, a later re-add reusing the params
+            // object (icon bring-to-front) attaches invisible.
+            // Matched by VIEW, not handle identity: a same-view re-add
+            // registers a fresh handle whose window would still need its
+            // blanked alpha restored on screen below. (No current caller
+            // re-adds a removed view — the icon re-raise replaces instead —
+            // but the guard must stay correct if one appears.)
+            if (overlayWindows.none { it.view === saved.handle.view }) {
+                saved.handle.params.alpha = saved.originalAlpha
+                WindowChurnGate.correctSnapshotAlpha(saved.handle.view, saved.originalAlpha)
+                continue
+            }
             saved.handle.params.alpha = saved.originalAlpha
             try {
                 saved.handle.wm.updateViewLayout(saved.handle.view, saved.handle.params)
@@ -388,7 +448,7 @@ class OverlayHost(
         overlayWindows.clear()
         touchSentinels.clear()
         for (h in handles) {
-            try { h.wm.removeView(h.view) } catch (_: Exception) {}
+            WindowChurnGate.removeWindow(h.view, h.wm, h.params, h.displayId)
         }
     }
 
