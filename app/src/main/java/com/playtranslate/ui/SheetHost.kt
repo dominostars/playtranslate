@@ -104,9 +104,11 @@ class WindowSheetHost(
         val lp = params ?: return
         if (focusable) {
             // Attach found no window to read from (first overlay up on this
-            // display): fall back to our own root's insets — we're currently
-            // non-focusable, so they still reflect the game's state.
-            if (gameHiddenBars == null) gameHiddenBars = OverlayHost.hiddenSystemBars(root)
+            // display): latch now. Our own root is registered and — still
+            // non-focusable, so not the bar owner — reflects the game's
+            // state; the host's read reaches it along with anything attached
+            // since, and skips any window that hasn't traversed yet.
+            if (gameHiddenBars == null) gameHiddenBars = overlayHost.hiddenSystemBarsOnDisplay(displayId)
             // Arm before the flag change so the request is already recorded
             // when the focus grant makes this window the bar control target.
             OverlayHost.mirrorSystemBars(root, gameHiddenBars)
