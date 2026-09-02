@@ -1,6 +1,8 @@
 package com.playtranslate.translation
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import com.playtranslate.net.PtHttp
 import okhttp3.OkHttpClient
@@ -77,11 +79,7 @@ class LingvaBackend(
             try {
                 val url = buildUrl(listOf(text), source, target)
                 val body = fetchBody(url)
-                // Single-q response shape: [[["translated","original",...], ...], null, "ja", ...]
-                // The chunks array is at index 0 of the top-level array.
-                val top = JSONArray(body)
-                val chunks = top.getJSONArray(0)
-                val result = reassembleChunks(chunks)
+                val result = parseSingleBody(body)
                 if (result.isBlank()) throw StructuralFailureException("Blank translation in response")
                 result
             } catch (e: LingvaRateLimitException) { throw e }
@@ -105,11 +103,10 @@ class LingvaBackend(
         try {
             translateBatchInner(texts, source, target)
         } catch (e: BatchParseException) {
-            // Structural (URL too long, response shape drift) — the
-            // registry retries per-text on this same backend, so the
-            // provider isn't unhealthy and nothing is recorded. Must be
-            // rethrown before the IOException catch below: it IS an
-            // IOException subclass.
+            // Structural (response shape drift) — the registry retries
+            // per-text on this same backend, so the provider isn't
+            // unhealthy and nothing is recorded. Must be rethrown before
+            // the IOException catch below: it IS an IOException subclass.
             throw e
         } catch (e: LingvaRateLimitException) { throw e }
         catch (e: StructuralFailureException) { throw e }
@@ -119,7 +116,7 @@ class LingvaBackend(
         }
     }
 
-    private fun translateBatchInner(
+    private suspend fun translateBatchInner(
         texts: List<String>,
         source: String,
         target: String,
@@ -128,65 +125,169 @@ class LingvaBackend(
         // translate-shell and LunaTranslator is to repeat &q= per input
         // and treat the top-level array as a list of per-q results, each
         // shaped like the single-q response. If Google ever changes that
-        // shape, the size / JSONException checks below throw
+        // shape, the size / JSONException checks in parseBatchBody throw
         // BatchParseException so the registry falls through to per-text
         // fan-out within the same backend turn — Lingva keeps working
         // either way, just loses the batching speedup.
-        val url = buildUrl(texts, source, target)
-        // Preflight URL length. Many HTTP servers / intermediaries cap
-        // request URIs around 8 KiB (default Tomcat, common nginx
-        // builds). Throwing BatchParseException before the request so
-        // the registry retries per-text on the same backend means an
-        // OCR pass with many long groups still translates via Lingva
-        // (per-text URLs are short) instead of silently dropping to
-        // ML Kit on a 414 / connection reset.
-        if (url.length > MAX_BATCH_URL_LENGTH) {
-            throw BatchParseException(
-                "Lingva batch: URL too long (${url.length} > $MAX_BATCH_URL_LENGTH chars); retrying per-text"
+        //
+        // URL length is a packing boundary, not a failure. Many HTTP
+        // servers / intermediaries cap request URIs around 8 KiB, and a
+        // percent-encoded CJK character costs nine URL bytes, so a
+        // text-heavy Japanese screen overruns MAX_BATCH_URL_LENGTH
+        // easily. The old preflight threw BatchParseException here and
+        // the registry's per-text retry then fanned the whole page out
+        // as N parallel requests against the same per-IP limiter the
+        // batching exists to protect. Now the pending texts are packed
+        // greedily into the fewest chunks that each fit, and the page
+        // costs ceil(bytes / cap) requests instead of N.
+        //
+        // Chunks go out SEQUENTIALLY and the first failure ends the
+        // sequence: a 429 on chunk one must not be followed by chunk two
+        // (parallel chunks would re-create the burst in miniature), and
+        // a capture cancelled mid-sequence stops before its next send.
+        // The batch contract stays all-or-nothing, so a failure on a
+        // later chunk discards the earlier chunks' answers and the
+        // registry moves the FULL pending list to the next backend.
+        // Accepted: it costs Lingva-quality output on exactly the pass
+        // that trips the limiter, the fallback tier is offline so the
+        // discard spends no quota, and the cooldown keeps later passes
+        // off Lingva anyway. A text that alone overruns the cap is sent
+        // as its own single-q chunk — the identical URL the per-text
+        // path would build for it — and the server decides.
+        //
+        // A one-text chunk (that lone oversize text, or a one-item
+        // remainder after packing) carries a single q, and gtx answers
+        // a single q with the SINGLE-q shape, not a one-element per-q
+        // list: it is parsed by translate()'s parser, with its failures
+        // classed the way this batch path classes them. A Codex native
+        // review caught the multi-q parse being applied to it, which
+        // would have turned every such page into the per-text retry
+        // this change exists to remove.
+        val prefix = urlPrefix(source, target)
+        val params = texts.map { encodeQ(it) }
+        val chunks = packChunks(prefix.length, params.map { it.length }, MAX_BATCH_URL_LENGTH)
+        if (chunks.size > 1) {
+            android.util.Log.d(
+                "Lingva",
+                "batch: ${texts.size} texts packed into ${chunks.size} requests (url cap $MAX_BATCH_URL_LENGTH)"
             )
         }
-        val body = fetchBody(url)
+        val out = ArrayList<String>(texts.size)
+        for ((k, range) in chunks.withIndex()) {
+            if (k > 0) currentCoroutineContext().ensureActive()
+            val url = prefix + "&" + params.subList(range.first, range.last + 1).joinToString("&")
+            val body = fetchBody(url)
+            val size = range.last - range.first + 1
+            out += if (size == 1) parseSingleChunk(body, offset = range.first)
+            else parseBatchBody(body, expected = size, offset = range.first)
+        }
+        return out
+    }
+
+    /** Single-q response shape: `[[["translated","original",...], ...], null, "ja", ...]`
+     *  — the chunks array sits at index 0 of the top-level array, which
+     *  is NOT a per-q list. May be blank; the caller decides what a
+     *  blank means ([translate] makes it structural, the batch path a
+     *  parse failure), and a JSONException is left to the caller for
+     *  the same reason. */
+    private fun parseSingleBody(body: String): String =
+        reassembleChunks(JSONArray(body).getJSONArray(0))
+
+    /** A one-text chunk of the batched path: the single-q shape, with
+     *  failures classed as the batch classes them ([BatchParseException]
+     *  so the registry retries per-text on this backend). [offset] is
+     *  the text's page index. */
+    private fun parseSingleChunk(body: String, offset: Int): List<String> {
+        val s = try {
+            parseSingleBody(body)
+        } catch (e: JSONException) {
+            throw BatchParseException("Lingva batch: single-q[$offset] parse failed", e)
+        }
+        if (s.isBlank()) throw BatchParseException("Lingva batch: blank result at index $offset")
+        return listOf(s)
+    }
+
+    /** Parse one multi-q response body into exactly [expected] strings.
+     *  [offset] is the global index of this chunk's first text, so a
+     *  diagnostic names the page position rather than the chunk-local
+     *  one. */
+    private fun parseBatchBody(body: String, expected: Int, offset: Int): List<String> {
         val top = try {
             JSONArray(body)
         } catch (e: JSONException) {
             throw BatchParseException("Lingva batch: top-level JSON parse failed", e)
         }
-        if (top.length() != texts.size) {
+        if (top.length() != expected) {
             throw BatchParseException(
-                "Lingva batch: top length ${top.length()} != input size ${texts.size}"
+                "Lingva batch: top length ${top.length()} != input size $expected"
             )
         }
         return (0 until top.length()).map { i ->
             val perQ = try {
                 top.getJSONArray(i)
             } catch (e: JSONException) {
-                throw BatchParseException("Lingva batch: per-q[$i] not array", e)
+                throw BatchParseException("Lingva batch: per-q[${offset + i}] not array", e)
             }
             val chunks = try {
                 perQ.getJSONArray(0)
             } catch (e: JSONException) {
-                throw BatchParseException("Lingva batch: per-q[$i] missing chunks", e)
+                throw BatchParseException("Lingva batch: per-q[${offset + i}] missing chunks", e)
             }
             val s = reassembleChunks(chunks)
-            if (s.isBlank()) throw BatchParseException("Lingva batch: blank result at index $i")
+            if (s.isBlank()) throw BatchParseException("Lingva batch: blank result at index ${offset + i}")
             s
         }
     }
 
     /** Build the gtx URL with one or more URL-encoded `&q=` params.
-     *  Re-used by both single-text and batched paths. */
-    private fun buildUrl(texts: List<String>, source: String, target: String): String {
-        val qs = texts.joinToString(separator = "&") { t ->
-            "q=" + URLEncoder.encode(t, "UTF-8")
-        }
-        return "https://translate.googleapis.com/translate_a/single" +
-            "?client=gtx&sl=$source&tl=$target&dt=t&$qs"
-    }
+     *  Single-text path; the batched path packs [encodeQ] params itself. */
+    private fun buildUrl(texts: List<String>, source: String, target: String): String =
+        urlPrefix(source, target) + "&" + texts.joinToString(separator = "&") { encodeQ(it) }
 
-    private companion object {
+    private fun urlPrefix(source: String, target: String): String =
+        "https://translate.googleapis.com/translate_a/single" +
+            "?client=gtx&sl=$source&tl=$target&dt=t"
+
+    private fun encodeQ(text: String): String = "q=" + URLEncoder.encode(text, "UTF-8")
+
+    internal companion object {
         /** Conservative cap below the typical 8 KiB server URI limit.
-         *  Leaves headroom for headers + the fixed query prefix. */
+         *  Leaves headroom for headers + the fixed query prefix. The
+         *  batched path packs its `&q=` params so each request's URL
+         *  stays at or under this; a lone param that can't fit is sent
+         *  alone. Never measured against Google's own front end — that
+         *  probe is still owed, and a higher measured limit would simply
+         *  make chunking rarer. */
         const val MAX_BATCH_URL_LENGTH = 6 * 1024
+
+        /**
+         * Greedy first-fit packing of pre-encoded `q=` params into the
+         * fewest contiguous chunks whose full URL fits [maxUrlLength].
+         * Each param costs its own length plus one for the joining `&`
+         * (the prefix carries the query `?` and the last fixed param, so
+         * every q is `&`-joined). Order is preserved — the registry
+         * recombines results positionally. A param whose lone URL would
+         * still exceed the cap gets a chunk of its own rather than
+         * failing the pack: the caller sends it and the server answers.
+         * Pure and index-based so it is unit-testable without a client.
+         */
+        fun packChunks(prefixLength: Int, paramLengths: List<Int>, maxUrlLength: Int): List<IntRange> {
+            if (paramLengths.isEmpty()) return emptyList()
+            val chunks = ArrayList<IntRange>()
+            var start = 0
+            var urlLength = prefixLength
+            for (i in paramLengths.indices) {
+                val cost = 1 + paramLengths[i]
+                if (i > start && urlLength + cost > maxUrlLength) {
+                    chunks += start until i
+                    start = i
+                    urlLength = prefixLength
+                }
+                urlLength += cost
+            }
+            chunks += start until paramLengths.size
+            return chunks
+        }
 
         fun defaultClient(): OkHttpClient = PtHttp.clientBuilder()
             .connectTimeout(5, TimeUnit.SECONDS)
