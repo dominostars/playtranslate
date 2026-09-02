@@ -45,6 +45,16 @@ internal class ShortTextOfflineRoute private constructor(
     companion object {
         private const val TAG = "ShortTextRoute"
 
+        // GATED OFF BY DEFAULT — Prefs.debugShortTextRouting (debug-build
+        // Settings row) since the 2026-09-02 device-pass verdict: Bergamot's
+        // output on real game shorts was bad a lot of the time, even for
+        // ordinary short phrases (the 2★ tier's quality floor, not a routing
+        // bug — the name veto had already pulled names out). The row exists
+        // to A/B on device without a rebuild; if the idea returns for
+        // production, the salvageable variant is fallback-not-override —
+        // engage only when the online waterfall is down/cooled, where the
+        // competition is a blank box, not Gemini.
+
         /**
          * The route for [source]→[target], or null when no offline backend
          * qualifies (fail-open: shorts stay on the online path). Walks the

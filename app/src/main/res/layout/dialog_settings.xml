@@ -583,6 +583,11 @@
                         <include layout="@layout/settings_row_divider" />
 
                         <include layout="@layout/settings_row_switch"
+                            android:id="@+id/rowShortTextRouting" />
+
+                        <include layout="@layout/settings_row_divider" />
+
+                        <include layout="@layout/settings_row_switch"
                             android:id="@+id/rowLogGrouping" />
 
                         <include layout="@layout/settings_row_divider" />

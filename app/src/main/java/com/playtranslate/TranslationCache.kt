@@ -38,7 +38,9 @@ class TranslationCache(private val capacity: Int = 500) {
             preferredOnlineId: String,
             llmContextEnabled: Boolean,
             bergamotEnabled: Boolean,
-        ): String = "$preferredOnlineId|ctx=$llmContextEnabled|brg=$bergamotEnabled"
+            shortTextRoutingEnabled: Boolean,
+        ): String =
+            "$preferredOnlineId|ctx=$llmContextEnabled|brg=$bergamotEnabled|str=$shortTextRoutingEnabled"
     }
 
     data class Key(val text: String, val source: String, val target: String)

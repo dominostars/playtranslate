@@ -805,6 +805,7 @@ class CaptureService : Service() {
                     TranslationBackendRegistry.preferredOnlineId(target.source, target.target),
                 llmContextEnabled = prefs.llmContextEnabled,
                 bergamotEnabled = prefs.bergamotEnabled,
+                shortTextRoutingEnabled = prefs.debugShortTextRouting,
             )
         )
     }
@@ -3342,10 +3343,13 @@ class CaptureService : Service() {
             // calling capture job) is preserved end-to-end.
             val texts = uncached.map { it.value.text }
 
-            // Short-text offline routing: texts with ≤2 content words (menu
-            // items, HUD labels, one-word lines) go to the fast offline tier
-            // instead of spending online quota; everything else still travels
-            // as ONE online batch. Bypassed entirely when the backend that
+            // Short-text offline routing — OFF BY DEFAULT, debug-row gated
+            // (Prefs.debugShortTextRouting; device-pass verdict 2026-09-02:
+            // 2★ output too poor even on ordinary short phrases). When on:
+            // texts with ≤2 content words (menu items, HUD labels, one-word
+            // lines) go to the fast offline tier instead of spending online
+            // quota; everything else still travels as ONE online batch.
+            // Bypassed entirely when the backend that
             // would serve is a context-carrying batching LLM — shorts then
             // ride its batch so dialogue-choice one-worders keep the context
             // ring (user decision; the cost is one LLM request on all-short
@@ -3370,7 +3374,8 @@ class CaptureService : Service() {
             // classifier. No cache access crosses the dispatcher — only the
             // (route, shorts) pair comes back; null = today's single batch.
             val routing: Pair<ShortTextOfflineRoute, List<Boolean>>? =
-                withContext(Dispatchers.Default) {
+                if (!Prefs(this).debugShortTextRouting) null
+                else withContext(Dispatchers.Default) {
                     val llmBypass = shouldBypassForLlm(
                         TranslationBackendRegistry.preferredBackend(target.source, target.target),
                         Prefs(this@CaptureService).llmContextEnabled,

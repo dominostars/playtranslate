@@ -1500,6 +1500,21 @@ class SettingsRenderer(
         }
         rowSaveOcrSeed.setOnClickListener { switchSaveOcrSeed.toggle() }
 
+        // Short-text offline routing (default OFF per the 2026-09-02 device
+        // verdict; row exists to A/B the routing without a rebuild). The
+        // reconcile nudge matters: the pref is part of the cache's routing
+        // identity, so flipping it must clear cached shorts immediately —
+        // same eager pattern the backend toggles use.
+        val rowShortText = root.findViewById<View>(R.id.rowShortTextRouting)
+        val switchShortText = rowShortText.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        rowShortText.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_short_text_routing)
+        switchShortText.isChecked = prefs.debugShortTextRouting
+        switchShortText.setOnCheckedChangeListener { _, checked ->
+            prefs.debugShortTextRouting = checked
+            CaptureService.instance?.reconcileBackendPreference()
+        }
+        rowShortText.setOnClickListener { switchShortText.toggle() }
+
         // Log OCR grouping decisions (per-pair MERGE/SPLIT + numeric reason)
         val rowLogGrouping = root.findViewById<View>(R.id.rowLogGrouping)
         val switchLogGrouping = rowLogGrouping.findViewById<MaterialSwitch>(R.id.switchRowToggle)
