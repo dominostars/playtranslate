@@ -1235,6 +1235,7 @@ class CaptureResultOverlay(
     private fun expandFromSliver() {
         if (dismissed || animatingOut || !sliverMode) return
         sliverMode = false
+        nav?.clearCursor()   // every exit from the park drops the sliver cursor
         val target = preSliverHeightPx.coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
         animateSliverHeight(target) {
             updateShowOnScreenAction()
@@ -1263,6 +1264,7 @@ class CaptureResultOverlay(
     private fun expandFromSliverForStatus() {
         if (dismissed || animatingOut || !sliverMode) return
         sliverMode = false
+        nav?.clearCursor()   // every exit from the park drops the sliver cursor
         animateSliverHeight(CaptureResultGeometry.minPanelHeight(screenH)) {
             updateShowOnScreenAction()
         }
@@ -1310,6 +1312,7 @@ class CaptureResultOverlay(
      *  dragged height). */
     private fun beginSliverDrag() {
         heightAnimator?.cancel()
+        nav?.clearCursor()   // a pull out of the park drops the sliver cursor
     }
 
     /** Per-frame sliver drag: the resize math with the floor lowered to the
@@ -2533,6 +2536,8 @@ class CaptureResultOverlay(
             fontPopover?.isShowing == true -> fontPopover?.dismiss()
             editContainer.visibility == View.VISIBLE -> cancelEdit()
             wordLens != null -> dismissWordLens()
+            // One B, ringed or not: the sliver cursor is not a rung of this
+            // ladder (see CaptureSheetControllerNav.handleKey).
             sliverMode -> dismissFromSliver()
             else -> animateOutAndDismiss()
         }
@@ -2579,6 +2584,23 @@ class CaptureResultOverlay(
         }
 
         override fun collapseToSliver() = this@CaptureResultOverlay.collapseToSliver()
+
+        private val sliverLoc = IntArray(2)
+        override fun sliverRect(out: Rect): Boolean {
+            // Parked and at rest only: the row fades in through the collapse
+            // band (applyCollapseCrossfade), and a half-faded row is not yet a
+            // target — the pill's gate, mirrored. The ring outlines the hint
+            // row, the strip's one drawn element, the way the pill is ringed
+            // at its drawn bounds rather than its full-width strip.
+            if (!sliverMode || !sliverRow.isShown || sliverRow.alpha < 1f) return false
+            if (sliverRow.width <= 0 || sliverRow.height <= 0) return false
+            sliverRow.getLocationOnScreen(sliverLoc)
+            out.set(
+                sliverLoc[0], sliverLoc[1],
+                sliverLoc[0] + sliverRow.width, sliverLoc[1] + sliverRow.height,
+            )
+            return true
+        }
 
         override fun resizeBy(dyPx: Int) = stickResizeBy(dyPx)
 
@@ -2927,6 +2949,11 @@ class CaptureResultOverlay(
             stickResizeFromSliver = sliverMode
             stickResizeStartHeight = panelHeightPx
         }
+        // The stick pulling the sheet UP out of its park drops the sliver
+        // cursor (the touch drag's beginSliverDrag). Per frame, and only for
+        // an upward drive: a downward push at the sliver moves nothing and
+        // leaves the ring standing.
+        if (sliverMode && dyPx > 0) nav?.clearCursor()
         // Same clamps as updateResize: [floor, 90%], capped at the content's
         // max-needed height; the in-place edit keeps the classic floor (the
         // nav loop is suspended while editing anyway — belt and braces).
