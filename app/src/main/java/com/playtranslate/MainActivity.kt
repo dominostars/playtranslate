@@ -22,7 +22,6 @@ import android.view.Display
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
-import android.view.WindowManager
 import android.graphics.Typeface
 import android.text.Spannable
 import android.text.SpannableStringBuilder
@@ -615,17 +614,14 @@ class MainActivity :
                 .build()
         }
 
-        // Prevent PlayTranslate's own UI from appearing in screenshots
-        // (including the accessibility takeScreenshot path used by the
-        // capture loop). In Android multi-window mode both the game and
-        // this app share one display; without FLAG_SECURE the OCR would
-        // read the translated text we just rendered and try to translate
-        // it again, creating a feedback loop. SurfaceFlinger enforces
-        // FLAG_SECURE in all capture paths, so this is a complete fix.
-        // Cost: system screenshot tools can't capture PlayTranslate's own
-        // UI — users who want to share their translator UI would have to
-        // screenshot externally, which is acceptable for a translation tool.
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // Deliberately NO FLAG_SECURE here, or on any activity. In
+        // multi-window the capture loop shares this display with the game
+        // and our own translated UI must stay out of OCR; that is done by
+        // com.playtranslate.capture.OwnWindowMask, which paints every
+        // started opaque activity's window bounds black into each served
+        // frame. The compositor flag used to do it, at the cost of blocking
+        // the user's screenshots and recordings of our UI and blinding the
+        // drag-lookup lens over our own pages.
 
         hideNavigationBar()
 

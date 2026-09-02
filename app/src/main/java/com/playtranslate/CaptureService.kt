@@ -453,8 +453,10 @@ class CaptureService : Service() {
                         "contentSize=${mediaProjectionController.contentSize.value} " +
                         "visible=${mediaProjectionController.contentVisible.value}"
                 )
+                // maskOwnWindows = false: a diagnostic dump of the mirror
+                // must show what the mirror actually carries.
                 val bmp = mediaProjectionCaptureSource
-                    .requestRaw(mediaProjectionController.projectedDisplayId)
+                    .requestRaw(mediaProjectionController.projectedDisplayId, maskOwnWindows = false)
                 if (bmp == null) {
                     DetectionLog.log("MP probe: capture failed")
                     return@launch

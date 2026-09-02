@@ -76,8 +76,15 @@ interface CaptureSource {
 
     /** Capture a clean frame of [displayId] with the app's own overlays
      *  hidden. The caller owns the returned frame and must recycle it.
-     *  Returns null if the capture could not be taken. */
-    suspend fun requestClean(displayId: Int): CapturedFrame?
+     *  Returns null if the capture could not be taken.
+     *
+     *  [maskOwnWindows] (default true): paint our own started activity
+     *  windows on [displayId] black before serving ([OwnWindowMask]), so a
+     *  split-screen pane of our UI never reaches OCR. Pass false ONLY when
+     *  the consumer wants the real screen, our UI included: the drag-lookup
+     *  lens (looking up words inside our own app is the feature), the
+     *  capture-settings display thumbnails, the debug mirror dump. */
+    suspend fun requestClean(displayId: Int, maskOwnWindows: Boolean = true): CapturedFrame?
 
     /** Persist [bitmap] to the screenshot cache, keyed per display. Returns
      *  the absolute file path, or null on failure. (Pixels only — a saved
@@ -147,7 +154,14 @@ interface LiveCaptureSource : CaptureSource {
      *  MediaProjection backend has no platform limit and uses a small floor. */
     val minCaptureIntervalMs: Long
 
-    suspend fun requestRaw(displayId: Int, onCaptured: (() -> Unit)? = null): CapturedFrame?
+    /** Raw frame with our overlays visible. [maskOwnWindows] as on
+     *  [CaptureSource.requestClean]: our own activity windows are painted
+     *  black unless the consumer asks for the real screen. */
+    suspend fun requestRaw(
+        displayId: Int,
+        onCaptured: (() -> Unit)? = null,
+        maskOwnWindows: Boolean = true,
+    ): CapturedFrame?
     fun startLoop(
         displayId: Int,
         scope: CoroutineScope,

@@ -2,7 +2,6 @@ package com.playtranslate.ui
 
 import android.content.DialogInterface
 import android.os.Bundle
-import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
 import com.playtranslate.Prefs
 import com.playtranslate.language.SourceLangId
@@ -23,10 +22,6 @@ class SentenceAnkiReviewActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         applyTheme()
         super.onCreate(savedInstanceState)
-
-        // Hide our own UI from accessibility screenshots (see MainActivity
-        // for the full rationale — prevents OCR feedback loop in multi-window).
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         // Register before any early-return so [finishCurrentIfAny] can
         // reach this instance even after a saved-state restore.

@@ -193,6 +193,10 @@ class PlayTranslateApplication : Application() {
         // Right-stick scrolling on every in-app page — one Window.Callback
         // wrap per activity, so no page implements it.
         com.playtranslate.ui.ActivityStickScroll.install(this)
+        // Keep our own activity windows out of captured frames (the
+        // FLAG_SECURE replacement) — tracks started opaque activities so the
+        // capture sources can mask them at serve time.
+        com.playtranslate.capture.OwnWindowMask.install(this)
     }
 
     companion object {

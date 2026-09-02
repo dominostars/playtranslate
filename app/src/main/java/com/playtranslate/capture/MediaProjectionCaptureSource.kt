@@ -71,15 +71,35 @@ class MediaProjectionCaptureSource(
      *  [ownOverlaysBlanked]: whether this serve path blanked our overlay
      *  windows pre-grab ([cleanCapture]). On a CLEAN task mirror the answer
      *  is moot — our windows never composite in, so the frame is
-     *  own-overlay-free either way ([framesIncludeSystemUi] false). */
-    private fun stamp(bitmap: Bitmap, ownOverlaysBlanked: Boolean): CapturedFrame =
-        CapturedFrame(
-            bitmap,
-            includesSystemUi = framesIncludeSystemUi,
-            includesOwnOverlays = framesIncludeSystemUi && !ownOverlaysBlanked,
+     *  own-overlay-free either way ([framesIncludeSystemUi] false).
+     *
+     *  Being the single serve point, this is also where our own activity
+     *  windows are masked ([OwnWindowMask]), gated on the SAME fact: a
+     *  whole-display mirror can contain our activities and is masked; a
+     *  CLEAN task mirror never composites them, and painting our window
+     *  bounds into it would black out the GAME's pixels at that rect. The
+     *  fact is read once so the stamp and the gate can't disagree.
+     *  [maskOwnWindows] is the consumer's opt-out. */
+    private suspend fun stamp(
+        bitmap: Bitmap,
+        displayId: Int,
+        ownOverlaysBlanked: Boolean,
+        maskOwnWindows: Boolean,
+    ): CapturedFrame {
+        val includesSystemUi = framesIncludeSystemUi
+        val pixels = if (includesSystemUi && maskOwnWindows) {
+            OwnWindowMask.maskServedFrame(bitmap, displayId)
+        } else {
+            bitmap
+        }
+        return CapturedFrame(
+            pixels,
+            includesSystemUi = includesSystemUi,
+            includesOwnOverlays = includesSystemUi && !ownOverlaysBlanked,
         )
+    }
 
-    override suspend fun requestClean(displayId: Int): CapturedFrame? {
+    override suspend fun requestClean(displayId: Int, maskOwnWindows: Boolean): CapturedFrame? {
         // One-shot capture: prompt for consent up front so first-use paths
         // (Translate button, drag-lookup, region OCR, scene-detect's
         // captureScreen) work before screen-record has been granted via the
@@ -102,10 +122,14 @@ class MediaProjectionCaptureSource(
         // must know to short-circuit. Cached per session; instant thereafter.
         controller.resolveStreamKind()
         return captureMutex.withLock { cleanCapture(displayId) }
-            ?.let { stamp(it, ownOverlaysBlanked = true) }
+            ?.let { stamp(it, displayId, ownOverlaysBlanked = true, maskOwnWindows = maskOwnWindows) }
     }
 
-    override suspend fun requestRaw(displayId: Int, onCaptured: (() -> Unit)?): CapturedFrame? =
+    override suspend fun requestRaw(
+        displayId: Int,
+        onCaptured: (() -> Unit)?,
+        maskOwnWindows: Boolean,
+    ): CapturedFrame? =
         captureMutex.withLock {
             // MediaProjection exposes no separate "buffer captured" moment —
             // captureFrame returns the finished bitmap — so fire onCaptured
@@ -116,7 +140,7 @@ class MediaProjectionCaptureSource(
                 // PinholeOverlayMode drives its own cycle via requestRaw (not
                 // startLoop), so the loop's consent guard wouldn't cover it.
                 checkConsentLost(it)
-            }?.let { stamp(it, ownOverlaysBlanked = false) }
+            }?.let { stamp(it, displayId, ownOverlaysBlanked = false, maskOwnWindows = maskOwnWindows) }
         }
 
     /**
@@ -256,8 +280,8 @@ class MediaProjectionCaptureSource(
 
                 when {
                     bitmap != null ->
-                        if (isClean) onCleanFrame(stamp(bitmap, ownOverlaysBlanked = true))
-                        else onRawFrame(stamp(bitmap, ownOverlaysBlanked = false))
+                        if (isClean) onCleanFrame(stamp(bitmap, displayId, ownOverlaysBlanked = true, maskOwnWindows = true))
+                        else onRawFrame(stamp(bitmap, displayId, ownOverlaysBlanked = false, maskOwnWindows = true))
                     checkConsentLost(bitmap) -> {
                         // Consent denied or revoked — checkConsentLost stopped
                         // live mode; exit before the next captureFrame would

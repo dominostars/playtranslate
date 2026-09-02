@@ -1079,8 +1079,15 @@ class DragLookupController(
     private suspend fun captureAndOcr() {
         Log.d(TAG, "Taking screenshot for full-screen OCR...")
 
+        // maskOwnWindows = false: the lens looks up words wherever the
+        // finger is, our own pages included, so this frame must carry our
+        // UI's real pixels. The saved screenshot below therefore contains
+        // them too, by design. Live mode is already stopped for the drag
+        // (OverlayUiController's onDragStart), so no translate-path frame
+        // can be served from this capture.
         val bitmap = withTimeoutOrNull(3000L) {
-            CaptureBackendResolver.active().captureSource?.requestClean(displayId)?.bitmap
+            CaptureBackendResolver.active().captureSource
+                ?.requestClean(displayId, maskOwnWindows = false)?.bitmap
         }
         // The clean frame was captured with the lens off-screen — now it's
         // safe to bring the lens up (capture-before-reveal). Reveal even on

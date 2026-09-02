@@ -489,7 +489,12 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         displays.forEach { display ->
             if (mgr != null && backend.canCapture(display.displayId)) {
                 lifecycleScope.launch {
-                    val bitmap = mgr.requestClean(display.displayId)?.bitmap
+                    // maskOwnWindows = false: these are thumbnails of what
+                    // each display shows, and this page sits on one of them.
+                    // A masked frame is non-null, so the captureActivityWindow
+                    // fallback below would never fire; the row would show a
+                    // solid black thumbnail instead of this screen.
+                    val bitmap = mgr.requestClean(display.displayId, maskOwnWindows = false)?.bitmap
                     if (bitmap != null) {
                         displayThumbnails[display.displayId] = scaleThumbnail(bitmap)
                         if (!isFinishing) refreshDisplayRows()
