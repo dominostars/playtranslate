@@ -43,6 +43,12 @@ interface CaptureSheetNavHost {
      *  this is safe to fire from a DOWN). */
     fun collapseToSliver()
 
+    /** The parked strip's hint row while the sheet rests in its sliver: false
+     *  while expanded, and while the row is still fading in through the park
+     *  animation. A on the parked sheet rings this; a second A expands (see
+     *  [CaptureSheetControllerNav.handleKey]). */
+    fun sliverRect(out: Rect): Boolean
+
     /** Left stick: move the panel's top edge by [dyPx] (positive = grow) —
      *  the virtual grabber drag, including pulling the sheet out of its
      *  sliver park. */
@@ -71,7 +77,8 @@ interface CaptureSheetNavHost {
 /**
  * Gamepad navigation for the over-game capture sheet: B/back dismisses (the
  * host's ladder), dpad moves a VIRTUAL cursor across the grabber pill,
- * buttons, and source words, A activates (the pill parks to the sliver), the
+ * buttons, and source words, A activates (the pill parks to the sliver; on the
+ * parked sheet a first A rings the strip and a second expands it), the
  * right stick scrolls, and the left stick drags the sheet's edge like the
  * grabber. Virtual — no Android view ever gains
  * focus — because words aren't views, the ring is custom anyway, and real
@@ -88,6 +95,9 @@ class CaptureSheetControllerNav(
         data class Word(val index: Int) : Item
         /** The grabber pill above the sheet — A parks the sheet to its sliver. */
         object Handle : Item
+        /** The parked sheet itself — reached only by A while slivered, never
+         *  a spatial candidate; a second A expands it. */
+        object Sliver : Item
     }
 
     private val density = ctx.resources.displayMetrics.density
@@ -134,8 +144,16 @@ class CaptureSheetControllerNav(
         if (dir == null && !activate) return false
 
         when {
-            // Slivered: any navigation input re-expands (the tap-expand mirror).
-            host.inSliver -> if (ev.repeatCount == 0) host.expandFromSliver()
+            // Slivered: dpad re-expands outright (the tap-expand mirror); A is
+            // two-step — the first rings the parked strip, the second expands
+            // it. B is deliberately NOT part of the two-step: the back path
+            // above never spends a press on un-ringing, so a ringed sliver
+            // still dismisses on ONE B. The repeat gate is load-bearing: a
+            // held A auto-repeats, and without it the hold would ring and
+            // then expand through its first repeat.
+            host.inSliver -> if (ev.repeatCount == 0) {
+                if (dir != null || cursor == Item.Sliver) host.expandFromSliver() else selectSliver()
+            }
             // Popover up: swallow nav keys so framework focus search can't
             // wander into a button and paint a stock highlight, but act on
             // none of them (B above closes the popover).
@@ -175,6 +193,9 @@ class CaptureSheetControllerNav(
             is Item.Word -> host.activateWord(cur.index)
             // Parks, never dismisses — the window survives, so DOWN is safe.
             Item.Handle -> host.collapseToSliver()
+            // Only reachable with a stale cursor (every exit from the park
+            // clears it) — restart like a vanished button.
+            Item.Sliver -> selectFirst()
         }
     }
 
@@ -247,6 +268,17 @@ class CaptureSheetControllerNav(
         setCursor(cands[idx].first, cands[idx].second)
     }
 
+    /** A on the parked sheet: ring the strip. The cursor is set even while
+     *  the strip's hint is still fading in (a press during the park
+     *  animation): [syncRing] paints the ring once the host has a
+     *  [CaptureSheetNavHost.sliverRect], and the second A expands either way.
+     *  The host drops this cursor on every path out of the park — expand,
+     *  tap, drag, stick pull — so it never outlives the sliver. */
+    private fun selectSliver() {
+        cursor = Item.Sliver
+        syncRing()
+    }
+
     private fun moveCursor(dir: SheetNavGeometry.Dir) {
         val cur = cursor ?: return
         // Inside the word run, left/right steps document order — CJK wrapping
@@ -278,7 +310,8 @@ class CaptureSheetControllerNav(
 
     /** Per-frame from the sheet's pre-draw hook: re-read the item's live rect
      *  (scroll, resize, entrance/exit all move it) and re-clip to the viewport.
-     *  The pill sits OUTSIDE the scroller and rings unclipped. */
+     *  The pill and the parked strip sit OUTSIDE the scroller and ring
+     *  unclipped. */
     fun syncRing() {
         val cur = cursor ?: run {
             host.setRing(null, null)
@@ -288,12 +321,13 @@ class CaptureSheetControllerNav(
             is Item.Button -> viewRectOnScreen(cur.view, tmpRect)
             is Item.Word -> host.wordRect(cur.index, tmpRect)
             Item.Handle -> host.handleRect(tmpRect)
+            Item.Sliver -> host.sliverRect(tmpRect)
         }
         if (!ok) {
             host.setRing(null, null)
             return
         }
-        val clip = if (cur == Item.Handle) {
+        val clip = if (cur == Item.Handle || cur == Item.Sliver) {
             null
         } else if (host.scrollViewportOnScreen(clipRect)) {
             clipRect
@@ -329,6 +363,7 @@ class CaptureSheetControllerNav(
             is Item.Button -> cur.view.isShown
             is Item.Word -> cur.index < host.wordCount() && host.wordRect(cur.index, tmpRect)
             Item.Handle -> host.handleRect(tmpRect)
+            Item.Sliver -> host.inSliver
         }
         if (stillValid) return
         val cands = candidates()
