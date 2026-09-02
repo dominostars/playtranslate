@@ -1334,6 +1334,16 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_DEBUG_LIVE_MODE, false)
         set(v) = sp.edit { putBoolean(KEY_DEBUG_LIVE_MODE, v) }
 
+    /** Debug-only: enables short-text offline routing (≤2-content-word OCR
+     *  groups served by Bergamot/ML Kit instead of the online waterfall —
+     *  see [com.playtranslate.translation.ShortTextOfflineRoute]). Default
+     *  OFF per the 2026-09-02 device verdict: the 2★ tier's output on real
+     *  game shorts was bad even for ordinary phrases. The row exists so the
+     *  routing can be A/B'd on device without a rebuild. */
+    var debugShortTextRouting: Boolean
+        get() = sp.getBoolean(KEY_DEBUG_SHORT_TEXT_ROUTING, false)
+        set(v) = sp.edit { putBoolean(KEY_DEBUG_SHORT_TEXT_ROUTING, v) }
+
     /** Debug-only: when on, [com.playtranslate.OcrSeedWriter] writes the
      *  bitmap that was fed to OCR plus a transcription of the result to
      *  external files dir. Intended for one-off seeding of the golden-set
@@ -1631,6 +1641,7 @@ class Prefs internal constructor(
         private const val KEY_DEBUG_SHOW_DETECTION_LOG      = "debug_show_detection_log"
         private const val KEY_DEBUG_LIVE_MODE                = "debug_live_mode"
         private const val KEY_DEBUG_SAVE_OCR_SEED            = "debug_save_ocr_seed"
+        private const val KEY_DEBUG_SHORT_TEXT_ROUTING       = "debug_short_text_routing"
         private const val KEY_DEBUG_LOG_GROUPING             = "debug_log_grouping"
         private const val KEY_DEBUG_ANGLE_GATE_TARGET        = "debug_angle_gate_target"
         private const val KEY_DEBUG_LOG_TRACE                = "debug_log_trace"

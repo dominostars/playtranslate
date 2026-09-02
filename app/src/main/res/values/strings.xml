@@ -3515,6 +3515,10 @@
     <string name="settings_debug_show_detection_log">Show detection log</string>
     <string name="settings_debug_log_pinhole">Log live-mode pinhole metrics</string>
     <string name="settings_debug_save_ocr_seed">Save OCR captures as seeds</string>
+    <!-- Switch-row title in the debug section of Settings. Toggles whether very short
+         OCR texts (menu items) are translated by the on-device engine instead of the
+         online service. Debug-build-only surface. -->
+    <string name="settings_debug_short_text_routing">Short-text offline routing</string>
     <string name="settings_debug_log_grouping">Log OCR grouping decisions</string>
     <!-- Settings dialog, debug section: switch-row title. Rollback switch:
          while ON, slanted-text detection uses the old 10-degree threshold

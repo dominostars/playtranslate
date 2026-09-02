@@ -116,33 +116,52 @@ class TranslationCacheTest {
 
     // ── Routing identity (short-text offline routing) ────────────────────
 
+    private fun identity(
+        backend: String = "gemini",
+        ctx: Boolean = false,
+        brg: Boolean = true,
+        str: Boolean = true,
+    ) = TranslationCache.routingIdentity(
+        preferredOnlineId = backend,
+        llmContextEnabled = ctx,
+        bergamotEnabled = brg,
+        shortTextRoutingEnabled = str,
+    )
+
     @Test fun `routingIdentity distinguishes every policy knob`() {
         // Each knob flip must produce a distinct identity, or a toggle
         // wouldn't clear shorts cached under the old routing policy
         // (adversarial-review find: enabling LLM context left cached
         // Bergamot shorts serving instead of re-routing to the LLM batch).
-        val base = TranslationCache.routingIdentity("gemini", llmContextEnabled = false, bergamotEnabled = true)
-        val ctxOn = TranslationCache.routingIdentity("gemini", llmContextEnabled = true, bergamotEnabled = true)
-        val brgOff = TranslationCache.routingIdentity("gemini", llmContextEnabled = false, bergamotEnabled = false)
-        val otherBackend = TranslationCache.routingIdentity("lingva", llmContextEnabled = false, bergamotEnabled = true)
-        assertEquals(4, setOf(base, ctxOn, brgOff, otherBackend).size)
+        val variants = setOf(
+            identity(),
+            identity(ctx = true),
+            identity(brg = false),
+            identity(str = false),
+            identity(backend = "lingva"),
+        )
+        assertEquals(5, variants.size)
     }
 
     @Test fun `context toggle clears cached shorts via routing identity`() {
         val cache = TranslationCache()
-        cache.reconcilePreferredBackend(
-            TranslationCache.routingIdentity("gemini", llmContextEnabled = false, bergamotEnabled = true),
-        )
+        cache.reconcilePreferredBackend(identity())
         cache[key("はい")] = "Yes" to "Firefox Translations"
         // Same config → entry survives.
-        cache.reconcilePreferredBackend(
-            TranslationCache.routingIdentity("gemini", llmContextEnabled = false, bergamotEnabled = true),
-        )
+        cache.reconcilePreferredBackend(identity())
         assertEquals("Yes" to "Firefox Translations", cache[key("はい")])
         // User enables LLM context → shorts must re-route; cache clears.
-        cache.reconcilePreferredBackend(
-            TranslationCache.routingIdentity("gemini", llmContextEnabled = true, bergamotEnabled = true),
-        )
+        cache.reconcilePreferredBackend(identity(ctx = true))
         assertNull(cache[key("はい")])
+    }
+
+    @Test fun `short-routing debug toggle clears cached shorts`() {
+        // The debug row's whole point is A/B-ing routing on device: turning
+        // it OFF must not leave Bergamot shorts serving from the cache.
+        val cache = TranslationCache()
+        cache.reconcilePreferredBackend(identity(str = true))
+        cache[key("装備")] = "Equip" to "Firefox Translations"
+        cache.reconcilePreferredBackend(identity(str = false))
+        assertNull(cache[key("装備")])
     }
 }
