@@ -289,7 +289,10 @@ class Prefs internal constructor(
      *  can't distinguish "user picked display 0" from "no selection ever made."
      *  This key-presence check is the clean signal for the auto-detect gate
      *  in `MainActivity.ensureConfigured`: only seed an auto-detected display
-     *  when there's no persisted selection to clobber.
+     *  when there's no persisted selection to clobber, and only once the
+     *  active backend is permission-backed (see
+     *  `capture.DisplaySelectionSeed`) — an unseeded getter reads as the
+     *  default display, which is exactly what MediaProjection can capture.
      *
      *  Pre-multi-display upgrade users get this set to true by
      *  [migrateLegacyPrefs], which writes [KEY_DISPLAY_IDS] from the legacy

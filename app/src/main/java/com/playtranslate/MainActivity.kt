@@ -1,6 +1,7 @@
 package com.playtranslate
 
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.capture.DisplaySelectionSeed
 import com.playtranslate.capture.CaptureLifecycle
 
 import android.Manifest
@@ -861,6 +862,16 @@ class MainActivity :
         CaptureLifecycle.setFloatingIconSuppressed(this, false)
         CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
         refreshReadiness()
+        // Give the first-launch display seed its chance AFTER the backend is
+        // re-resolved: a fresh install returning from the overlay-permission
+        // screen has no accessibility service connected, so until the
+        // refreshReadiness() above swapped to MediaProjection the resolver
+        // still sat on its pre-onboarding accessibility default and the seed
+        // would have been skipped — and a later seed under an enabled
+        // accessibility service would store the detected non-default display,
+        // the exact guess this seed gating exists to avoid (Codex review
+        // find). No-op once seeded (one key-presence check).
+        ensureConfigured()
         maybeCheckForUpdates()
         // Silent, debounced, launch-time Yomitan dictionary auto-update. Runs on
         // appScope (no UI), gates its apply on CaptureService.isCapturing.
@@ -1859,30 +1870,72 @@ class MainActivity :
         }
     }
 
+    /** Push the saved display selection to the service on first bind, and
+     *  run the first-launch auto-detect seed the first time it can run under
+     *  a backend that will actually capture. Cheap when there is nothing to
+     *  do (one key-presence check), so every caller about to capture, plus
+     *  onResume, goes through it. */
     private fun ensureConfigured() {
         val svc = captureService ?: return
-        if (!svc.isConfigured) {
-            // First-launch auto-detect: seed the selection set with the
-            // detected game display. The hasDisplaySelection guard is
-            // load-bearing — `isConfigured` is per-process state (false on
-            // every cold-start), so without it this branch would clobber
-            // the user's persisted multi-display selection on every restart.
-            // The legacy single-display path is safe because
-            // [Prefs.migrateLegacyPrefs] (called from onCreate) writes
-            // KEY_DISPLAY_IDS from the legacy KEY_DISPLAY_ID before this
-            // gate ever runs.
-            if (!prefs.hasDisplaySelection) {
-                // Seed the saved selection: the auto-detected game display if
-                // this backend can capture it, else the backend's fallback
-                // (MediaProjection only mirrors the default, so any other
-                // detection is stale from the start). Routes through the
-                // shared backend shim so seeding behaves like every other
-                // call site that turns a selection into the working set.
-                prefs.captureDisplayIds = CaptureBackendResolver.active()
-                    .capturableTargets(setOf(findGameDisplayId()))
-            }
+        if (seedDisplaySelectionIfReady()) {
+            // ONE post-seed path, whether or not the service was already
+            // configured: push the seeded set, re-place the floating icons,
+            // restart live if it is running — the same path a Settings
+            // picker change takes. Every consumer that holds the selection
+            // as state is covered by that one call, so no branch can skip
+            // one. The icons in particular may already be placed from the
+            // getter's default-display fallback: on a cold start with the
+            // accessibility service already enabled, the service's
+            // connect-time reconcile and onResume both run before the
+            // CaptureService bind that brings the first seed here, and a
+            // configure-only branch left the icon on the wrong screen until
+            // the next resume (Codex review find).
+            reconfigureForDisplayChange()
+        } else if (!svc.isConfigured) {
             configureService()
         }
+    }
+
+    /**
+     * First-launch auto-detect: seed the saved selection with the detected
+     * game display, once per install. Returns true when it wrote.
+     *
+     * The hasDisplaySelection guard is load-bearing — without it every cold
+     * start would clobber the user's persisted selection. The legacy
+     * single-display path is safe because [Prefs.migrateLegacyPrefs] (called
+     * from onCreate) writes KEY_DISPLAY_IDS from the legacy KEY_DISPLAY_ID
+     * before this gate ever runs.
+     *
+     * The seed waits for a permission-backed backend
+     * ([DisplaySelectionSeed.isBackendPermissionBacked]). It used to run on
+     * the first service bind, before onboarding granted anything, when the
+     * resolver still sat on its accessibility default whose shim is identity,
+     * so on a dual-screen device it stored the screen the app did NOT launch
+     * on and treated that guess as a choice. MediaProjection collapsed it to
+     * the default display at read time for as long as that backend ran, and
+     * the guess resurfaced the moment the accessibility service was enabled:
+     * on the Thor the icon and the display picker jumped to Screen-2, the
+     * screen the app itself had since been parked on (2026-09-02). Seeding
+     * under the backend that will run captures stores the default display
+     * for a MediaProjection user, which is what they see, and a later switch
+     * to accessibility keeps it until they change it. Nothing rewrites the
+     * selection on a backend swap: an OEM switching the accessibility service
+     * off arrives as the same swap and must not touch a display the user
+     * picked (a write-at-swap variant was built and pulled for that reason).
+     *
+     * Before the seed runs, [Prefs.captureDisplayIds] already reads as the
+     * default display, so an unseeded MediaProjection session behaves
+     * identically to a seeded one; only the accessibility-first path can
+     * observe the delay, as the icon moving to the seeded screen.
+     */
+    private fun seedDisplaySelectionIfReady(): Boolean {
+        if (prefs.hasDisplaySelection) return false
+        val backend = CaptureBackendResolver.active()
+        if (!DisplaySelectionSeed.isBackendPermissionBacked(this, backend)) return false
+        prefs.captureDisplayIds = DisplaySelectionSeed.seedFor(backend, findGameDisplayId())
+        // Keep onResume's picker-change diff from re-applying the seed.
+        lastSeenCaptureDisplayIds = prefs.captureDisplayIds
+        return true
     }
 
     /** Applies display + region to the capture service. Language managers
