@@ -37,7 +37,21 @@ import kotlin.math.roundToInt
  * frame's regions (the composite feeds them sequentially). `threadSafe = false`
  * (shared MNN session, serialized by the composite mutex).
  *
- * ## Slanted text: the confidence-gated deskew retry
+ * ## Slanted text: the confidence-gated deskew retry — DISABLED
+ *
+ * Switched off by [SKEW_RETRY_ENABLED] on 2026-09-01 after a Thor session on
+ * P3R status/skill screens: per-line slant estimates on axis-aligned crops
+ * are contaminated by neighbour ink by a frame-varying amount (a three-line
+ * paragraph at one angle measured −10.7 / +5.5 / −8.0 and rendered two lines
+ * rotated, one upright), a detector union over a multi-element HUD widget
+ * measures layout rather than a baseline and passes the guard because the
+ * deskewed strip is a different crop, and the guard's own margin sits inside
+ * recognizer noise (12 of 82 accepts that day won by ≤ 0.05; verdicts flipped
+ * between passes on 7 of 20 boxes). A frame-level consensus pass built on top
+ * did not fix the reporting screen and rotated an upright HUD label; it was
+ * reverted (docs/meiki-frame-pass-2026-09-01.patch). Any revival needs
+ * detector-native geometry (DBNet quads / ML Kit corner points), not pixels
+ * inside an AABB. The mechanism below is kept, inert, for that record.
  *
  * Meiki's detector emits AABBs only and its recognizer reads a slanted crop as
  * garbage (the upright crop clips a long line's ends AND the aspect-fit into
@@ -167,7 +181,8 @@ class MeikiRecognizer(private val session: MeikiSession) : TextRecognizer {
         res: MeikiSession.RecResult,
         cropWidth: Int,
     ): Boolean =
-        region.orientation == TextOrientation.HORIZONTAL &&
+        SKEW_RETRY_ENABLED &&
+            region.orientation == TextOrientation.HORIZONTAL &&
             !region.box.isRotated &&
             cropWidth >= SKEW_MIN_WIDTH_PX &&
             res.text.length >= SKEW_MIN_CHARS
@@ -342,6 +357,12 @@ class MeikiRecognizer(private val session: MeikiSession) : TextRecognizer {
 
     companion object {
         private const val TAG = "MeikiRecognizer"
+
+        /** Master switch for the deskew retry (class kdoc, "DISABLED"). Off:
+         *  no estimator pass, no re-read, Meiki emits upright boxes only —
+         *  the pre-b77069e4 behaviour. ML Kit and Paddle angles, which come
+         *  from detector geometry, are unaffected. */
+        internal const val SKEW_RETRY_ENABLED = false
 
         /**
          * Acceptance for the deskewed re-read: a confidence win AND length
