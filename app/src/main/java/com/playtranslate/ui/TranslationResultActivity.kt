@@ -11,7 +11,6 @@ import android.os.Bundle
 import android.os.IBinder
 import android.view.Gravity
 import android.view.View
-import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
@@ -373,10 +372,6 @@ class TranslationResultActivity :
             v.setPadding(sys.left, sys.top, sys.right, maxOf(sys.bottom, ime.bottom))
             WindowInsetsCompat.CONSUMED
         }
-
-        // Hide our own UI from accessibility screenshots (see MainActivity
-        // for the full rationale — prevents OCR feedback loop in multi-window).
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
         // Register before any other onCreate work so [finishCurrentIfAny]
         // can reach this instance.
