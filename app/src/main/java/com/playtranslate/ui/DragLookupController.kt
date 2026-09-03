@@ -162,15 +162,18 @@ class DragLookupController(
     private var lensRevealed = false
 
     /** Cached per-line token info for the magnifier label readout. We store
-     *  the visible surface (for hit-testing), the dictionary form (the
-     *  word shown in the lens left panel), the reading (furigana/pinyin
-     *  shown above the word), and the token's character offset within the
-     *  line text — the offset disambiguates duplicate surfaces in the same
-     *  line, which can resolve to different lemmas in context. Filled on
-     *  the OCR coroutine after recognition completes because
-     *  [engine.tokenize] is suspend; per-frame label detection then reads
-     *  this map synchronously. */
-    private data class LabelToken(
+     *  the visible surface (hit-testing AND the label text: the pill shows
+     *  what is under the finger, exactly as OCR read it), the dictionary
+     *  form (lookup identity only; it replaces the label once the
+     *  definitions land), the reading (the occurrence reading, shown above
+     *  the surface only when it adds information), and the token's
+     *  character offset within the line text — the offset disambiguates
+     *  duplicate surfaces in the same line, which can resolve to different
+     *  lemmas in context. Filled on the OCR coroutine after recognition
+     *  completes because [engine.tokenize] is suspend; per-frame label
+     *  detection then reads this map synchronously. Built by
+     *  [labelTokenFrom]. */
+    internal data class LabelToken(
         val surface: String,
         val lookupForm: String,
         val reading: String?,
@@ -283,6 +286,46 @@ class DragLookupController(
         private fun hasKanji(s: String): Boolean = s.any { c ->
             val code = c.code
             code in 0x4E00..0x9FFF || code in 0x3400..0x4DBF
+        }
+
+        /** True when [reading] adds information beyond [word] — non-blank,
+         *  not redundant, and the word actually contains kanji that the
+         *  reading clarifies. Mirrors the popup's intent (`reading != word`
+         *  on the TextView side) and the cache's hasKanji gate so both
+         *  paths converge on the same display rule. */
+        internal fun readingAddsInfo(word: String, reading: String): Boolean =
+            reading.isNotBlank() && reading != word && hasKanji(word)
+
+        /** The drag label for one annotated span, or null when the span is
+         *  not a content word (no lemma and no resolved word) or carries no
+         *  offset (lexical-tier spans).
+         *
+         *  The LABEL is the span's SURFACE — the text as OCR read it — with
+         *  the occurrence reading beneath when [readingAddsInfo] says it
+         *  helps. It is deliberately NOT the dictionary form the annotation
+         *  resolved: that form is canonical JMdict spelling with no kana
+         *  collapse (the annotation resolves through the senses-less
+         *  readings-only path, so it cannot know a word is usually kana),
+         *  and labelling with it showed 其れとも for an on-screen それとも
+         *  until the definitions replaced the pill (Thor, 2026-09-02). The
+         *  surface is what the user is pointing at, is already in hand, and
+         *  costs nothing; the dictionary form still rides along as
+         *  [LabelToken.lookupForm] for lookup identity and takes over the
+         *  pill when the definitions land. A kana surface therefore labels
+         *  as kana with no reading line, and an inflected kanji surface
+         *  (食べていた) labels as written with its own reading (たべていた),
+         *  flipping to the lemma (食べる) on release — the same flip the
+         *  pill already made for readings. Non-JA languages follow: a Latin
+         *  surface previews inflected; ZH surface and lemma coincide. */
+        internal fun labelTokenFrom(span: com.playtranslate.language.AnnotatedSpan): LabelToken? {
+            if (span.start < 0) return null
+            val form = span.word ?: span.lookupForm ?: return null
+            return LabelToken(
+                surface = span.surface,
+                lookupForm = form,
+                reading = span.reading?.takeIf { readingAddsInfo(span.surface, it) },
+                charOffset = span.start,
+            )
         }
 
         /** Expansion around the line bounds for hit-testing (3 tiers, tight
@@ -648,7 +691,7 @@ class DragLookupController(
     private fun refreshLabelAndDwell() {
         if (!dragInProgress) return
         val currentHit = detectLabelTokenAt(lastX.toInt(), lastY.toInt())
-        magnifier.setLabel(currentHit?.token?.lookupForm, currentHit?.token?.reading)
+        magnifier.setLabel(currentHit?.token?.surface, currentHit?.token?.reading)
 
         // Dwell tracking: reset on movement past tolerance OR when the
         // token under the finger changes (rare — different word at the
@@ -779,10 +822,12 @@ class DragLookupController(
      *  after recognition completes.
      *
      *  One FULL-depth annotation per line (the same single analysis every
-     *  other reading surface projects from): spans arrive with canonical
-     *  written forms, occurrence-validated readings, and real offsets, so
-     *  labels are correct at first paint — the old two-phase
+     *  other reading surface projects from): spans arrive with their
+     *  surfaces, occurrence-validated readings, lookup forms and real
+     *  offsets, so labels are correct at first paint — the old two-phase
      *  tokenize-then-patch pass (and its mid-drag label upgrades) is gone.
+     *  The label shows the surface, not the resolved dictionary form; see
+     *  [labelTokenFrom] for why.
      *  Homograph disambiguation rides the annotator's per-occurrence
      *  resolution (人 → ひと vs にん by context hint), and the engine's
      *  annotation LRU makes repeat drags over an unchanged screen
@@ -798,8 +843,8 @@ class DragLookupController(
         val engine = SourceLanguageEngines.get(context, Prefs(context).sourceLangId)
         val cache = mutableMapOf<String, List<LabelToken>>()
 
-        // One FULL-depth annotation per line: spans arrive with canonical
-        // written forms and occurrence-validated readings already resolved,
+        // One FULL-depth annotation per line: spans arrive with surfaces,
+        // occurrence-validated readings and lookup forms already resolved,
         // so the label is correct at FIRST paint — no patch-in-place upgrade
         // pass, no mid-drag label flicker. The engine's annotation LRU makes
         // repeat drags over the same screen near-free. Offsets come from the
@@ -810,18 +855,7 @@ class DragLookupController(
                 val ann = engine.annotate(line.text)
                 val labels = mutableListOf<LabelToken>()
                 for (s in ann.spans) {
-                    if (s.start < 0) continue
-                    val form = s.word ?: s.lookupForm ?: continue
-                    // Same "show reading when it adds info" gate the popup
-                    // applies internally: drop blanks, drop reading equal
-                    // to the word, drop readings for kanji-free words.
-                    val reading = s.reading?.takeIf { readingAddsInfo(form, it) }
-                    labels += LabelToken(
-                        surface = s.surface,
-                        lookupForm = form,
-                        reading = reading,
-                        charOffset = s.start,
-                    )
+                    labels += labelTokenFrom(s) ?: continue
                 }
                 cache[line.text] = labels
             } catch (e: CancellationException) {
@@ -840,14 +874,6 @@ class DragLookupController(
             refreshLabelAndDwell()
         }
     }
-
-    /** True when [reading] adds information beyond [word] — non-blank,
-     *  not redundant, and the word actually contains kanji that the
-     *  reading clarifies. Mirrors the popup's intent (`reading != word`
-     *  on the TextView side) and the cache's hasKanji gate so both
-     *  paths converge on the same display rule. */
-    private fun readingAddsInfo(word: String, reading: String): Boolean =
-        reading.isNotBlank() && reading != word && hasKanji(word)
 
     /** Called on ACTION_UP. Returns true if the icon should restore to its
      *  saved position (the lens is about to settle into sticky mode with
@@ -908,7 +934,7 @@ class DragLookupController(
         // a flash of LOADING would be visually noisy.
         if (cachedData == null) {
             magnifier.setLoading(
-                releaseHit?.token?.lookupForm,
+                releaseHit?.token?.surface,
                 releaseHit?.token?.reading,
             )
         }
