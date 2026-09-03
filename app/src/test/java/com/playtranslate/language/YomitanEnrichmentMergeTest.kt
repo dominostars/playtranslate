@@ -6,6 +6,7 @@ import com.playtranslate.model.Headword
 import com.playtranslate.model.ImportedSense
 import com.playtranslate.model.ImportedSenseGroup
 import com.playtranslate.model.Sense
+import com.playtranslate.model.kanaOnlyFrom
 import com.playtranslate.yomitan.YomitanDataStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -195,5 +196,28 @@ class YomitanEnrichmentMergeTest {
     @Test
     fun `pack miss with no imported groups returns null`() {
         assertNull(YomitanEnrichment.mergeImportedTerms(null, "w", lookup(), resolvedTerm = null))
+    }
+
+    @Test
+    fun `single-dictionary suppression keeps the pack entry's kana-only verdict`() {
+        // それとも on the Thor: the lens pill stayed 其れとも because the
+        // kana-only check used to be derived from the senses this strip
+        // empties. The verdict is carried on the entry and must survive.
+        val ukSense = Sense(
+            targetDefinitions = listOf("or"), partsOfSpeech = emptyList(), tags = emptyList(),
+            restrictions = emptyList(), info = emptyList(), misc = listOf("Kana only"),
+        )
+        val soretomo = DictionaryEntry(
+            slug = "其れとも", isCommon = null, tags = emptyList(), jlpt = emptyList(),
+            headwords = listOf(hw("其れとも", "それとも")),
+            senses = listOf(ukSense),
+            isKanaOnly = kanaOnlyFrom(listOf(ukSense)),
+        )
+        val merged = YomitanEnrichment.mergeImportedTerms(
+            DictionaryResponse(listOf(soretomo)), "それとも",
+            lookup(groups = listOf(group("dictA")), suppressesPackSenses = true), null,
+        )!!
+        assertTrue(merged.entries.first().senses.isEmpty())
+        assertTrue(merged.entries.first().isKanaOnly)
     }
 }

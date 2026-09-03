@@ -15,6 +15,7 @@ import com.playtranslate.model.Headword
 import com.playtranslate.model.PosVocabulary
 import com.playtranslate.model.KanjiDetail
 import com.playtranslate.model.Sense
+import com.playtranslate.model.kanaOnlyFrom
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -86,7 +87,8 @@ class DictionaryManager private constructor(private val context: Context) {
      *  schema, but caching independently keeps each call site honest about
      *  what it actually needs and survives any future divergence. When
      *  ke_pri is absent (v1 packs), [buildEntry] leaves `Headword.hasPriority`
-     *  false — `isKanaOnly` then degrades to its uk-only behaviour. */
+     *  false; no display decision reads it any more (see `isKanaOnly`), so
+     *  v1 and v2 packs render headwords identically. */
     private val kePriSupport = WeakHashMap<SQLiteDatabase, Boolean>()
     private val kePriSupportLock = Any()
 
@@ -626,9 +628,10 @@ class DictionaryManager private constructor(private val context: Context) {
      * [lookupReadingsOnly], so the readings-only path can never drift from
      * the full path's pairing.
      *
-     * Kanji headwords: v2 packs carry `ke_pri` per form so we can mark
-     * common kanji forms as priority (lets `isKanaOnly` distinguish 決まる
-     * from 何故); v1 packs degrade to "no priority known". `no_kanji`
+     * Kanji headwords: v2 packs carry `ke_pri` per form, surfaced as
+     * `Headword.hasPriority` (informational: the kana-vs-kanji display rule
+     * in `isKanaOnly` no longer reads it); v1 packs degrade to "no priority
+     * known". `no_kanji`
      * (JMdict re_nokanji) lets [buildHeadwords] drop readings never written
      * with the kanji; `rank_score` rides along for the word-detail reading
      * rows. ORDER BY position keeps `headwords` position-ordered —
@@ -804,7 +807,8 @@ class DictionaryManager private constructor(private val context: Context) {
             jlpt = emptyList(),   // JMdict doesn't reliably carry JLPT levels
             headwords = headwords,
             senses = senses,
-            freqScore = freqScore
+            freqScore = freqScore,
+            isKanaOnly = kanaOnlyFrom(senses),
         )
     }
 
