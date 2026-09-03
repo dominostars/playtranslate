@@ -220,4 +220,98 @@ class YomitanEnrichmentMergeTest {
         assertTrue(merged.entries.first().senses.isEmpty())
         assertTrue(merged.entries.first().isKanaOnly)
     }
+
+    // ── packWrittenForms: the kana-keyed retry's candidates ─────────────
+
+    @Test
+    fun `packWrittenForms offers the kanji spelling for a kana-keyed lookup`() {
+        // いつも: Jitendex stores it under 何時も only; the pack resolved
+        // 何時も/いつも, so the retry runs on that spelling, narrowed to いつも.
+        val pack = DictionaryResponse(listOf(packEntry(hw("何時も", "いつも"))))
+        assertEquals(
+            listOf("何時も" to setOf("いつも")),
+            YomitanEnrichment.packWrittenForms(pack, "いつも", "いつも"),
+        )
+    }
+
+    @Test
+    fun `packWrittenForms is empty when the word already is a pack spelling`() {
+        // The common kanji-keyed lookup must add no query.
+        val pack = DictionaryResponse(listOf(packEntry(hw("何時も", "いつも"))))
+        assertTrue(YomitanEnrichment.packWrittenForms(pack, "何時も", "いつも").isEmpty())
+        assertTrue(YomitanEnrichment.packWrittenForms(null, "いつも", "いつも").isEmpty())
+    }
+
+    @Test
+    fun `packWrittenForms offers nothing for a spelling whose entry has other spellings`() {
+        // Codex find: 端 looked up with no reading hint misses the imported
+        // dictionaries; the entry also lists 辺/ほとり, positionally paired.
+        // Offering 辺 would attach ほとり's definitions to the 端 anchor.
+        val pack = DictionaryResponse(listOf(packEntry(hw("端", "はし"), hw("辺", "ほとり"))))
+        assertTrue(YomitanEnrichment.packWrittenForms(pack, "端", null).isEmpty())
+    }
+
+    @Test
+    fun `packWrittenForms with no hint narrows to the reading the kana word names`() {
+        // ほとり names its own reading, which belongs to the SECOND spelling;
+        // the primary-spelling fallback would wrongly offer 端.
+        val pack = DictionaryResponse(listOf(packEntry(hw("端", "はし"), hw("辺", "ほとり"))))
+        assertEquals(listOf("辺" to setOf("ほとり")), YomitanEnrichment.packWrittenForms(pack, "ほとり", null))
+    }
+
+    @Test
+    fun `packWrittenForms narrows to the headwords carrying the reading`() {
+        // Positional pairing: 端/はし and 辺/ほとり share an entry. A lookup by
+        // はし must retry with 端 only, never 辺.
+        val pack = DictionaryResponse(listOf(packEntry(hw("端", "はし"), hw("辺", "ほとり"))))
+        assertEquals(listOf("端" to setOf("はし")), YomitanEnrichment.packWrittenForms(pack, "はし", "はし"))
+    }
+
+    @Test
+    fun `packWrittenForms with an unmatched hint uses the reading the word names`() {
+        // Drag path shape: kana lemma こだわる with the surface reading こだわっ,
+        // which names no headword. The word itself does, and both spellings
+        // carry it, so both are offered in headword order.
+        val pack = DictionaryResponse(listOf(packEntry(hw("拘る", "こだわる"), hw("拘わる", "こだわる"))))
+        assertEquals(
+            listOf("拘る" to setOf("こだわる"), "拘わる" to setOf("こだわる")),
+            YomitanEnrichment.packWrittenForms(pack, "こだわる", "こだわっ"),
+        )
+    }
+
+    @Test
+    fun `packWrittenForms falls back to the primary spelling only when nothing names a reading`() {
+        // Neither the hint nor the word is a reading of the entry: offer the
+        // entry's anchor spelling, never the whole positional set.
+        val pack = DictionaryResponse(listOf(packEntry(hw("端", "はし"), hw("辺", "ほとり"))))
+        assertEquals(listOf("端" to setOf("はし")), YomitanEnrichment.packWrittenForms(pack, "はしっ", "はしっ"))
+    }
+
+    @Test
+    fun `packWrittenForms uses the first pack entry only`() {
+        // ここ ranks 此処 above 個々; 個々's spelling would pull another
+        // word's definitions onto the 此処 anchor.
+        val pack = DictionaryResponse(listOf(packEntry(hw("此処", "ここ")), packEntry(hw("個々", "ここ"))))
+        assertEquals(listOf("此処" to setOf("ここ")), YomitanEnrichment.packWrittenForms(pack, "ここ", "ここ"))
+    }
+
+    @Test
+    fun `packWrittenForms narrows a multi-reading spelling to the reading the word names`() {
+        // 明日 after single-kanji expansion: one headword per reading. A kana
+        // key あした names one of them, so the retry is narrowed to it —
+        // the imported 明日【あす】 rows are another occurrence's.
+        val pack = DictionaryResponse(listOf(packEntry(hw("明日", "あした"), hw("明日", "あす"))))
+        assertEquals(listOf("明日" to setOf("あした")), YomitanEnrichment.packWrittenForms(pack, "あした", null))
+    }
+
+    @Test
+    fun `packWrittenForms merges the primary spelling's readings when nothing names one`() {
+        // Same entry, a key that is no reading of it: the primary spelling is
+        // offered once, carrying every reading the pack pairs with it.
+        val pack = DictionaryResponse(listOf(packEntry(hw("明日", "あした"), hw("明日", "あす"))))
+        assertEquals(
+            listOf("明日" to setOf("あした", "あす")),
+            YomitanEnrichment.packWrittenForms(pack, "あしたは", null),
+        )
+    }
 }

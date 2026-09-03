@@ -85,7 +85,10 @@ class YomitanEnrichment(
         // failure returns [packResponse] unchanged, and an enrich failure
         // returns the already-merged definitions without pitch/frequency.
         val imported = failOpen<ImportedTerms?>(null, "term lookup") {
-            lookupImportedTerms(word, reading, packReadings(packResponse, word), fallbackForms)
+            lookupImportedTerms(
+                word, reading, packReadings(packResponse, word),
+                packWrittenForms(packResponse, word, reading), fallbackForms,
+            )
         } ?: return packResponse
         val merged = mergeImportedTerms(packResponse, word, imported.lookup, imported.resolvedTerm)
             ?: return null
@@ -127,7 +130,8 @@ class YomitanEnrichment(
      * independently (Yomitan semantics — sources don't need to agree on a
      * lemma): the word as passed first, then — when [reading] disambiguated
      * everything away — the readings the pack itself resolved, then the
-     * engine's fallback forms.
+     * pack's own spellings of the word ([packForms]), then the engine's
+     * fallback forms.
      *
      * The [packReadings] tier exists because `reading` has no single
      * meaning across callers. The tap surfaces pass the JMdict-RESOLVED
@@ -143,13 +147,34 @@ class YomitanEnrichment(
      * groups are narrowed by exactly the identity the pack landed on and the
      * two sources cannot disagree per-surface again.
      *
-     * Strictly additive: it runs only after a narrowed lookup found nothing,
-     * so no lookup that resolves today can change.
+     * The [packForms] tier exists because the store matches imported rows on
+     * the TERM column alone, while Yomitan itself queries its expression AND
+     * reading indexes: a lookup keyed by kana never reaches an imported row
+     * whose headword is the kanji spelling. Jitendex stores いつも under
+     * 何時も only (its kana headwords exist just for all-rare kanji or a
+     * priority tag the kanji lacks, and 何時も carries ichi1 like its
+     * reading), so every kana-keyed lookup lost it: the lens always keyed on
+     * the tokenizer's kana lemma, and the detail sheet, the lookup screen
+     * and the Anki review sheet key on the DISPLAYED word, which the
+     * kana-only rule turned from 何時も into いつも for 686 words on
+     * 2026-09-02, taking Jitendex off those screens at once. The pack has
+     * already resolved the spelling by the time this runs, so the retry uses
+     * the FIRST pack entry's written forms, each narrowed to the readings
+     * the pack pairs with it — the identity the imported groups attach to
+     * ([mergeImportedTerms] rides the first entry), never a homograph's.
+     * Cost: zero queries when the word already is a pack spelling (the
+     * common kanji case filters to nothing), else one indexed point query
+     * per distinct spelling, short-circuiting on the first hit, and only
+     * after the two tiers above missed.
+     *
+     * Strictly additive: every tier runs only after a narrower lookup found
+     * nothing, so no lookup that resolves today can change.
      */
     private suspend fun lookupImportedTerms(
         word: String,
         reading: String?,
         packReadings: Set<String>,
+        packForms: List<Pair<String, Set<String>>>,
         fallbackForms: List<String>,
     ): ImportedTerms {
         if (!YomitanDataStore.hasTermDictionaries(appContext, sourceLang)) {
@@ -163,6 +188,10 @@ class YomitanEnrichment(
         if (reading != null && packReadings.isNotEmpty()) {
             val byPack = YomitanDataStore.termSensesFor(appContext, sourceLang, word, packReadings)
             if (byPack.groups.isNotEmpty()) return ImportedTerms(byPack, word)
+        }
+        for ((form, formReadings) in packForms) {
+            val bySpelling = YomitanDataStore.termSensesFor(appContext, sourceLang, form, formReadings)
+            if (bySpelling.groups.isNotEmpty()) return ImportedTerms(bySpelling, form)
         }
         for (form in fallbackForms) {
             val hit = YomitanDataStore.termSensesFor(appContext, sourceLang, form, null)
@@ -212,6 +241,53 @@ class YomitanEnrichment(
                         .mapNotNull { it.reading?.takeIf(String::isNotBlank) }
                 }
                 .orEmpty()
+
+        /**
+         * The pack's own spellings of [word], for [lookupImportedTerms]'s
+         * retry when a kana-keyed lookup misses imported rows stored under
+         * the kanji: each written form of the FIRST pack entry that differs
+         * from [word], paired with the readings the pack lists for it, in
+         * headword order. Empty on a pack miss and when [word] already is a
+         * pack spelling, so the common kanji-keyed lookup adds no query.
+         *
+         * First entry only, unlike [packReadings]: imported groups attach to
+         * the first entry ([mergeImportedTerms]), and a kana key can return
+         * homographs (ここ → 此処 above 個々), whose spellings would fetch
+         * another word's definitions onto this one's anchor.
+         *
+         * A [word] that already IS one of the entry's spellings gets nothing:
+         * a miss on it is a genuine miss, and under positional pairing the
+         * entry's other spellings can be other words (端/はし beside 辺/ほとり),
+         * so offering them would attach a neighbour's definitions to this
+         * anchor — the bleed the tier exists to avoid (Codex find).
+         *
+         * Within the entry, only reading-compatible headwords contribute: the
+         * ones carrying [reading] when it names a reading; else the ones whose
+         * reading IS [word] (a kana key names its own reading); else — the
+         * drag path's surface reading (こだわっ) on a key that names nothing —
+         * the primary spelling alone, the same anchor the entry's slug uses,
+         * never the whole positional set.
+         */
+        internal fun packWrittenForms(
+            packResponse: DictionaryResponse?,
+            word: String,
+            reading: String?,
+        ): List<Pair<String, Set<String>>> {
+            val entry = packResponse?.entries?.firstOrNull() ?: return emptyList()
+            if (entry.headwords.any { it.written == word }) return emptyList()
+            val primary = entry.headwords.firstOrNull()?.written
+            val compatible = entry.headwords
+                .filter { reading != null && it.reading == reading }
+                .ifEmpty { entry.headwords.filter { it.reading == word } }
+                .ifEmpty { entry.headwords.filter { it.written != null && it.written == primary } }
+            val byForm = LinkedHashMap<String, MutableSet<String>>()
+            for (hw in compatible) {
+                val written = hw.written?.takeIf { it.isNotBlank() } ?: continue
+                val readings = byForm.getOrPut(written) { mutableSetOf() }
+                hw.reading?.takeIf(String::isNotBlank)?.let(readings::add)
+            }
+            return byForm.map { (form, readings) -> form to readings.toSet() }
+        }
 
         /** Pure term-merge, extracted so it's unit-testable without a Context:
          *  attaches imported definition groups from [lookup] to [packResponse]
