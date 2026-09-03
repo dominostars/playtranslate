@@ -169,4 +169,63 @@ class WordCardDefinitionTest {
         assertTrue(html, html.contains("cat (flat)"))
         assertFalse("imported rows already carry the fallback's lines", html.contains("the fallback"))
     }
+
+    // ─── fromSenses: the sentence card's shape ───────────────────────────
+    // The sentence pipeline holds only flattened SenseDisplay rows for the
+    // highlighted word. Described through fromSenses, they must render the
+    // panel an uncurated word card sends for the same dictionary state —
+    // that parity is what lets a DEFINITION-mapped field look the same in
+    // both send modes (issue #31).
+
+    private val importedRow = SenseDisplay(
+        pos = listOf("Jitendex · n"), definition = "cat (flat)", misc = emptyList(),
+        imported = true, scRowid = 7L, dictId = "d1",
+    )
+
+    @Test
+    fun `fromSenses renders the transported rows exactly as the entry-driven word card`() {
+        val e = entry(imported = listOf(jitendex), senses = listOf(sense("a cat"), sense("kitten")))
+        val rows = listOf(
+            importedRow,
+            SenseDisplay(pos = listOf("noun"), definition = "a cat", misc = emptyList()),
+            SenseDisplay(pos = listOf("noun"), definition = "kitten", misc = emptyList()),
+        )
+        val fromEntry = WordCardDefinition(fallback = "fallback", entry = e)
+        val fromRows = WordCardDefinition.fromSenses("猫", rows, fallback = "fallback")
+
+        assertEquals(fromEntry.importedGroups, fromRows.importedGroups)
+        for (styler in listOf(classStyler, inlineStyler)) {
+            for (st in listOf(null, styled(mapOf("d1" to "li{color:red}")))) {
+                assertEquals(
+                    fromEntry.panelHtml(styler, st, header, noMisc),
+                    fromRows.panelHtml(styler, st, header, noMisc),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `fromSenses skips a blank pack row like an entry sense with no definitions`() {
+        val e = entry(senses = listOf(sense("a cat")))
+        val rows = listOf(
+            SenseDisplay(pos = listOf("noun"), definition = "a cat", misc = emptyList()),
+            SenseDisplay(pos = listOf("noun"), definition = "", misc = emptyList()),
+        )
+        assertEquals(
+            WordCardDefinition(fallback = "f", entry = e).panelHtml(inlineStyler, null, header, noMisc),
+            WordCardDefinition.fromSenses("猫", rows, fallback = "f").panelHtml(inlineStyler, null, header, noMisc),
+        )
+    }
+
+    @Test
+    fun `fromSenses with no rows is the flat fallback description`() {
+        val def = WordCardDefinition.fromSenses("猫", emptyList(), fallback = "1. cat\n2. kitten")
+
+        assertTrue(def.importedGroups.isEmpty())
+        assertEquals(
+            WordAnkiHtmlBuilder.wrapFlatDefinitionHtml("1. cat\n2. kitten", inlineStyler, header),
+            def.panelHtml(inlineStyler, null, header, noMisc),
+        )
+    }
+
 }
