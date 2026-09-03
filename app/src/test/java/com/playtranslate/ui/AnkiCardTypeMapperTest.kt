@@ -714,4 +714,71 @@ class AnkiCardTypeMapperTest {
         val out = AnkiCardTypeMapper.assembleNote(fields, mapping, sampleOutputs())
         assertEquals(listOf("x"), out)
     }
+
+    // ─── DEFINITION on sentence sends (issue #31) ────────────────────────
+    // A custom note type mapping a field to DEFINITION got the flat
+    // transport text on sentence-mode sends — one run, tags glued, source
+    // in trailing parens — while word-mode sends shipped the styled panel.
+    // forSentence now describes the highlighted word's transported senses
+    // as a WordCardDefinition and renders it with the pipeline's styled
+    // payload, inline-styled, under the localized header.
+
+    private val structuredCat =
+        """[{"type":"structured-content","content":{"tag":"ul","content":[{"tag":"li","content":"cat"}]}}]"""
+
+    private fun sentenceWith(
+        vararg senses: SenseDisplay,
+        meaning: String = "cat (Jitendex)",
+    ) = SentenceAnkiContentView.CardData(
+        source = "猫が好き",
+        target = "I like cats",
+        words = listOf(SentenceAnkiHtmlBuilder.WordEntry("猫", "ねこ", meaning, senses = senses.toList())),
+        selectedWords = setOf("猫"),
+        screenshotPath = null,
+        sourceLangId = com.playtranslate.language.SourceLangId.JA,
+    )
+
+    @Test fun `forSentence renders the highlighted word's senses as the word card's Definition panel`() {
+        val imported = SenseDisplay(
+            pos = listOf("Jitendex · n"), definition = "cat (flat)", misc = emptyList(),
+            imported = true, scRowid = 7L, dictId = "d1",
+        )
+        val glossaries = mapOf(7L to structuredCat)
+        val css = mapOf("d1" to "li{color:red}")
+
+        val outputs = AnkiCardOutputBuilder.forSentence(
+            sentenceWith(imported), imageFilename = null,
+            definitionsHeader = "Definitions",
+            structuredGlossaries = glossaries, dictStyles = css,
+        )
+
+        assertEquals(
+            WordCardDefinition.fromSenses("猫", listOf(imported), fallback = "cat (Jitendex)")
+                .panelHtml(inlineStyler, YomitanStyledData(glossaries, css, "ja"), "Definitions") { null },
+            outputs.definition,
+        )
+        assertTrue(outputs.definition, outputs.definition.contains("data-dictionary=\"d1\""))
+        assertTrue(outputs.definition, outputs.definition.contains("<style>"))
+        assertTrue(outputs.definition, outputs.definition.contains("Definitions"))
+        assertFalse("flat transport text no longer ships", outputs.definition.contains("cat (Jitendex)"))
+        assertFalse("structured sense replaces its flat text", outputs.definition.contains("cat (flat)"))
+    }
+
+    @Test fun `forSentence without transported senses wraps the flat meaning in the panel chrome`() {
+        val outputs = AnkiCardOutputBuilder.forSentence(
+            sentenceWith(meaning = "1. cat\n2. kitten"), imageFilename = null,
+        )
+        assertEquals(
+            WordAnkiHtmlBuilder.wrapFlatDefinitionHtml("1. cat\n2. kitten", inlineStyler, "Definitions"),
+            outputs.definition,
+        )
+    }
+
+    @Test fun `forSentence with nothing highlighted leaves definition empty`() {
+        val data = sentenceWith(
+            SenseDisplay(pos = listOf("noun"), definition = "cat", misc = emptyList()),
+        ).copy(selectedWords = emptySet())
+        assertEquals("", AnkiCardOutputBuilder.forSentence(data, imageFilename = null).definition)
+    }
+
 }

@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.ImportedSenseGroup
+import com.playtranslate.model.Sense
 import com.playtranslate.model.unambiguousFallbackPos
 
 /**
@@ -253,6 +254,52 @@ data class WordCardDefinition(
                     append("</div>")
                 }
             closeSense()
+        }
+    }
+
+    companion object {
+        /**
+         * The sentence card's shape. The sentence pipeline never holds a
+         * [DictionaryEntry] for the highlighted word — only the flattened
+         * [SenseDisplay] rows that crossed the enrichment transport — so the
+         * DEFINITION source describes the field by rebuilding the two sense
+         * lists [panelHtml] reads: imported rows regrouped by dictionary the
+         * way the sentence sheet's preview does ([importedGroupsFromSenses]),
+         * pack rows as one-gloss [Sense]s carrying their POS and misc. The
+         * rows already reflect the target-language tier (the transport's
+         * builder applied it), so the description carries no [defResult]
+         * and no curation: for the same senses it renders byte-identically
+         * to an uncurated word card. A blank pack row becomes a
+         * definition-less sense, which the renderer skips exactly as it
+         * skips an entry sense with no target definitions. [fallback] is the
+         * flat meaning, rendered only when [senses] is empty.
+         */
+        fun fromSenses(
+            word: String,
+            senses: List<SenseDisplay>,
+            fallback: String,
+        ): WordCardDefinition {
+            if (senses.isEmpty()) return WordCardDefinition(fallback = fallback)
+            val packSenses = senses.filterNot { it.imported }.map { s ->
+                Sense(
+                    targetDefinitions = listOf(s.definition).filter { it.isNotBlank() },
+                    partsOfSpeech = s.pos,
+                    tags = emptyList(),
+                    restrictions = emptyList(),
+                    info = emptyList(),
+                    misc = s.misc,
+                )
+            }
+            val entry = DictionaryEntry(
+                slug = word,
+                isCommon = null,
+                tags = emptyList(),
+                jlpt = emptyList(),
+                headwords = emptyList(),
+                senses = packSenses,
+                importedSenses = importedGroupsFromSenses(senses),
+            )
+            return WordCardDefinition(fallback = fallback, entry = entry)
         }
     }
 }

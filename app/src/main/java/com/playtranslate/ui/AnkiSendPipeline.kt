@@ -241,6 +241,7 @@ suspend fun Context.sendSentenceCard(
                     commonLabel = ctx.getString(R.string.word_detail_common),
                     localizePos = ctx::localizePos,
                     renderMisc = ctx::renderMiscText,
+                    definitionsHeader = ctx.getString(R.string.anki_group_definitions),
                     structuredGlossaries = structuredGlossaries,
                     dictStyles = cardDictStyles,
                 )

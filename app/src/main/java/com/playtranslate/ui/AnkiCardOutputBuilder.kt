@@ -11,7 +11,10 @@ import com.playtranslate.model.FrequencyTag
  * Word-card definition HTML is supplied by the caller (the word sheet)
  * because it depends on per-card curation state (`removedSenses`,
  * `removedExamples`, `removedTatoebaIdx`). Sentence-card definition is
- * derived inline from the first highlighted word's `meaning`.
+ * described from the first highlighted word's transported senses
+ * ([WordCardDefinition.fromSenses]) and rendered by the same panel
+ * builder the word card uses, so a DEFINITION-mapped field reads the
+ * same whichever mode sent the card.
  */
 object AnkiCardOutputBuilder {
 
@@ -61,8 +64,13 @@ object AnkiCardOutputBuilder {
         commonLabel: String = "Common",
         localizePos: (List<String>) -> String = { it.joinToString(" · ") },
         renderMisc: (List<String>) -> String? = { null },
-        /** scRowid -> glossary JSON for the words table's structured
-         *  senses; empty = flat rows. */
+        /** Localized "Definitions" section header for the DEFINITION
+         *  source's panel — the chrome the word card's field ships.
+         *  Production passes R.string.anki_group_definitions; the default
+         *  keeps JVM tests context-free. */
+        definitionsHeader: String = "Definitions",
+        /** scRowid -> glossary JSON for the structured senses of the words
+         *  table and the DEFINITION source; empty = flat rows. */
         structuredGlossaries: Map<Long, String> = emptyMap(),
         /** dictId -> raw styles.css; scoped and inlined as <style> when a
          *  structured sense from that dictionary renders (Tier 2). */
@@ -94,13 +102,24 @@ object AnkiCardOutputBuilder {
             )
         }.orEmpty()
         val reading = htmlEscape(firstHighlighted?.reading.orEmpty())
-        // DEFINITION: empty when nothing's highlighted. assembleNote's
-        // sentence-mode fold (not yet implemented for this flow; see
-        // plan §3 — left explicit "" so the WORDS_TABLE is what a user
-        // would map their main definition field to instead).
-        val definition = firstHighlighted?.meaning?.let { m ->
-            m.lines().filter { it.isNotBlank() }
-                .joinToString("<br>") { htmlEscape(it.trimStart()) }
+        // DEFINITION: the highlighted word's senses through the word card's
+        // own Definition builder — imported glossaries as structured HTML
+        // with their dictionary's scoped CSS (the payload the pipeline
+        // fetched for the words table), pack senses as gloss rows, and the
+        // flat meaning only when no senses crossed the transport. One
+        // renderer for both modes: a field mapped to DEFINITION reads the
+        // same whether the card was sent as a word or a sentence (issue
+        // #31 — the flat transport text used to ship here, tags glued and
+        // source in trailing parens, while word sends got the panel).
+        // Empty when nothing's highlighted; WORDS_TABLE covers the sentence.
+        val styled = YomitanStyledData(
+            structured = structuredGlossaries,
+            dictStyles = dictStyles,
+            sourceLanguage = cardData.sourceLangId.yomitanConsumingLang(),
+        ).takeIf { structuredGlossaries.isNotEmpty() }
+        val definition = firstHighlighted?.let { w ->
+            WordCardDefinition.fromSenses(w.word, w.senses, fallback = w.meaning)
+                .panelHtml(inlineStyler, styled, definitionsHeader, renderMisc)
         }.orEmpty()
         // starsString emits only ★ glyphs — safe by construction.
         val frequency = firstHighlighted?.let {
