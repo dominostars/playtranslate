@@ -7,6 +7,7 @@ import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.Headword
 import com.playtranslate.model.ImportedKanji
+import com.playtranslate.model.preferDisplayable
 import com.playtranslate.yomitan.YomitanDataStore
 import kotlinx.coroutines.CancellationException
 
@@ -275,13 +276,21 @@ class YomitanEnrichment(
         ): List<Pair<String, Set<String>>> {
             val entry = packResponse?.entries?.firstOrNull() ?: return emptyList()
             if (entry.headwords.any { it.written == word }) return emptyList()
-            val primary = entry.headwords.firstOrNull()?.written
+            // The anchor spelling is the first DISPLAYABLE headword, not the
+            // first listed: 141 JMdict entries list a search-only form first,
+            // and anchoring there would pick a spelling the loop below then
+            // skips, leaving nothing to retry with (Codex adversarial find).
+            val primary = entry.headwords.preferDisplayable()?.written
             val compatible = entry.headwords
                 .filter { reading != null && it.reading == reading }
                 .ifEmpty { entry.headwords.filter { it.reading == word } }
                 .ifEmpty { entry.headwords.filter { it.written != null && it.written == primary } }
             val byForm = LinkedHashMap<String, MutableSet<String>>()
             for (hw in compatible) {
+                // A search-only spelling is a lookup key, not a word: imported
+                // dictionaries built by yomitan-import carry it only as a
+                // redirect stub (⟶ the real headword), which is no definition.
+                if (hw.isSearchOnly) continue
                 val written = hw.written?.takeIf { it.isNotBlank() } ?: continue
                 val readings = byForm.getOrPut(written) { mutableSetOf() }
                 hw.reading?.takeIf(String::isNotBlank)?.let(readings::add)

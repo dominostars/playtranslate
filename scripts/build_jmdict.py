@@ -244,17 +244,34 @@ def compute_uk_readings_for_entry(entry, value_to_name: dict[str, str]) -> set:
     return uk_readings
 
 
-def extract_re_inf_names(r_ele, value_to_name: dict[str, str]) -> set:
-    """Extract the set of <re_inf> entity NAMES (short form: 'ik', 'ok',
-    'rk') for one <r_ele>. Converts expanded entity values back via
-    value_to_name. Empty set when no info tags."""
+def _extract_inf_names(ele, tag: str, value_to_name: dict[str, str]) -> set:
+    """Shared body of extract_re_inf_names / extract_ke_inf_names: the set of
+    entity NAMES for every <tag> child of ele, converting the expanded entity
+    values the parser hands us back via value_to_name. Values the map does
+    not know (a tag JMdict added after this script) are dropped rather than
+    stored verbatim, so the app never sees an unknown token."""
     out: set = set()
-    for inf in r_ele.findall("re_inf"):
+    for inf in ele.findall(tag):
         if inf.text:
             name = value_to_name.get(inf.text)
             if name:
                 out.add(name)
     return out
+
+
+def extract_re_inf_names(r_ele, value_to_name: dict[str, str]) -> set:
+    """Extract the set of <re_inf> entity NAMES (short form: 'ik', 'ok',
+    'rk') for one <r_ele>. Converts expanded entity values back via
+    value_to_name. Empty set when no info tags."""
+    return _extract_inf_names(r_ele, "re_inf", value_to_name)
+
+
+def extract_ke_inf_names(k_ele, value_to_name: dict[str, str]) -> set:
+    """Extract the set of <ke_inf> entity NAMES ('sK', 'rK', 'iK', 'oK',
+    'io', 'ik', 'ateji') for one <k_ele>, stored as headword.ke_inf so the
+    app can keep search-only spellings out of display and rank rare ones
+    last. Same value→name conversion as extract_re_inf_names."""
+    return _extract_inf_names(k_ele, "ke_inf", value_to_name)
 
 
 def download_jmdict() -> bytes:
@@ -338,7 +355,16 @@ def create_schema(conn: sqlite3.Connection) -> None:
             -- millions (positive priority signals + negative position
             -- penalty). Distinct from entry.freq_score (0-5, used for
             -- star display) — see project_kana_lookup_ranking.md.
-            rank_score INTEGER NOT NULL DEFAULT 0
+            rank_score INTEGER NOT NULL DEFAULT 0,
+            -- JMdict <ke_inf> tags for THIS kanji form as compact entity
+            -- NAMES, comma-joined and sorted (e.g. "ateji,rK"; "sK").
+            -- Empty when the form carries no info tag. ja-v5+; the app
+            -- probes the column (DictionaryManager.hasKeInf) and treats
+            -- every form as display-eligible on older packs. sK = search-
+            -- only kanji form (lookup key, never displayed); rK/iK/oK/io/ik
+            -- = rare / irregular / outdated spellings (displayed last).
+            -- See project_jmdict_keinf_pack_pass.md.
+            ke_inf     TEXT    NOT NULL DEFAULT ''
         );
         CREATE TABLE reading (
             entry_id   INTEGER NOT NULL,
@@ -465,9 +491,14 @@ def parse_and_insert(
             ke_pri_tags = {p.text for p in k_ele.findall("ke_pri") if p.text}
             ke_pri_str = ",".join(sorted(ke_pri_tags))
             rank_score = compute_headword_rank_score(ke_pri_tags, pos)
+            # Per-form info tags (sK / rK / ...), compact entity names; the
+            # rank score deliberately does NOT read them (rK marks usually-
+            # kana words; a penalty there backfired, see compute_headword_
+            # rank_score). Display handles them in the app.
+            ke_inf_str = ",".join(sorted(extract_ke_inf_names(k_ele, value_to_name)))
             cur.execute(
-                "INSERT INTO headword VALUES (?,?,?,?,?)",
-                (entry_id, pos, keb, ke_pri_str, rank_score),
+                "INSERT INTO headword VALUES (?,?,?,?,?,?)",
+                (entry_id, pos, keb, ke_pri_str, rank_score, ke_inf_str),
             )
 
         # Reading forms

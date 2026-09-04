@@ -108,4 +108,56 @@ class BuildHeadwordsTest {
         assertEquals(listOf("あした", "あす", "みょうにち"), hw.map { it.reading })
         assertEquals(listOf(10, 50, 5), hw.map { it.rankScore })
     }
+
+    // ── ke_inf / uk_applicable propagation (ja-v5 columns) ─────────────
+
+    @Test fun `single-kanji path carries the form flags and per-reading uk scope`() {
+        val hws = buildHeadwords(
+            listOf(JmKanjiForm("新", hasPriority = true, searchOnly = false, rareForm = true)),
+            listOf(
+                JmReadingForm("さら", noKanji = false, ukApplicable = true),
+                JmReadingForm("にい", noKanji = false, ukApplicable = false),
+            ),
+            hasNoKanjiColumn = true,
+        )
+        assertEquals(listOf(true, true), hws.map { it.isRareForm })
+        assertEquals(listOf(false, false), hws.map { it.isSearchOnly })
+        assertEquals(listOf(true, false), hws.map { it.ukApplicable })
+    }
+
+    @Test fun `positional path carries each form's flags with its own reading's uk scope`() {
+        val hws = buildHeadwords(
+            listOf(
+                JmKanjiForm("A", hasPriority = false, searchOnly = true),
+                JmKanjiForm("B", hasPriority = false, rareForm = true),
+            ),
+            listOf(
+                JmReadingForm("x", noKanji = false, ukApplicable = false),
+                JmReadingForm("y", noKanji = false, ukApplicable = true),
+            ),
+            hasNoKanjiColumn = true,
+        )
+        assertEquals(listOf(true, false), hws.map { it.isSearchOnly })
+        assertEquals(listOf(false, true), hws.map { it.isRareForm })
+        assertEquals(listOf(false, true), hws.map { it.ukApplicable })
+    }
+
+    @Test fun `re_nokanji kana-only headwords carry their reading's uk scope`() {
+        val hws = buildHeadwords(
+            listOf(JmKanjiForm("烏", hasPriority = false)),
+            listOf(
+                JmReadingForm("からす", noKanji = false, ukApplicable = true),
+                JmReadingForm("カラス", noKanji = true, ukApplicable = false),
+            ),
+            hasNoKanjiColumn = true,
+        )
+        assertEquals(listOf("烏", null), hws.map { it.written })
+        assertEquals(listOf(true, false), hws.map { it.ukApplicable })
+    }
+
+    @Test fun `parseKeInf splits the stored csv and treats empty as no tags`() {
+        assertEquals(setOf("ateji", "rK"), parseKeInf("ateji,rK"))
+        assertEquals(emptySet<String>(), parseKeInf(""))
+        assertEquals(emptySet<String>(), parseKeInf(null))
+    }
 }

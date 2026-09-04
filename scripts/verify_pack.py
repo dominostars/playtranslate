@@ -202,6 +202,29 @@ def main() -> int:
             if probes_ok == len(JA_PROBES):
                 ok(f"JmdictSchemaProbe: {probes_ok}/{len(JA_PROBES)} probes answer")
 
+            # ja-v5: the ke_inf pass. Deliberately NOT a JmdictSchemaProbe probe
+            # (the app guards the column so v4 installs stay ADDITIVE), which is
+            # exactly why a v5+ build from a pre-ke_inf build_jmdict.py would
+            # ship silently with v4 behaviour. This is the gate for that.
+            if args.pack_version >= 5:
+                hcols = {r[1] for r in conn.execute("PRAGMA table_info(headword)")}
+                rcols = {r[1] for r in conn.execute("PRAGMA table_info(reading)")}
+                if "ke_inf" not in hcols:
+                    fail("headword.ke_inf missing — built with a pre-ke_inf build_jmdict.py")
+                else:
+                    n_sk = sum(
+                        1 for (inf,) in conn.execute("SELECT ke_inf FROM headword WHERE ke_inf<>''")
+                        if "sK" in inf.split(",")
+                    )
+                    if n_sk < 10_000:
+                        fail(f"only {n_sk:,} search-only kanji forms (JMdict carries ~15k) — ke_inf not populated")
+                    else:
+                        ok(f"headword.ke_inf populated ({n_sk:,} sK forms)")
+                if "uk_applicable" not in rcols:
+                    fail("reading.uk_applicable missing — the per-reading uk scope needs it")
+                else:
+                    ok("reading.uk_applicable present")
+
             tok = [n for n in names if n.startswith("tokenizer/") and n.endswith(".dic")]
             if not tok:
                 fail("no tokenizer/system_*.dic — pack would die at the first JA lookup")

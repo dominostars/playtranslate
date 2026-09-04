@@ -314,4 +314,28 @@ class YomitanEnrichmentMergeTest {
             YomitanEnrichment.packWrittenForms(pack, "あしたは", null),
         )
     }
+
+    @Test
+    fun `packWrittenForms skips search-only spellings`() {
+        // 其れから is a search-only form: yomitan-import stores it only as a
+        // redirect stub, which must not be fetched as a definition group.
+        val pack = DictionaryResponse(listOf(packEntry(
+            Headword("其れから", "それから", isSearchOnly = true), hw("其から", "それから"),
+        )))
+        assertEquals(listOf("其から" to setOf("それから")), YomitanEnrichment.packWrittenForms(pack, "それから", "それから"))
+    }
+
+    @Test
+    fun `packWrittenForms anchors the no-reading fallback on the displayable spelling`() {
+        // First-listed form is search-only and neither the hint nor the word
+        // names a reading: the fallback must still offer the everyday
+        // spelling, not anchor on the stub and then skip it.
+        val pack = DictionaryResponse(listOf(packEntry(
+            Headword("其れから", "それから", isSearchOnly = true), hw("其から", "それから"),
+        )))
+        assertEquals(
+            listOf("其から" to setOf("それから")),
+            YomitanEnrichment.packWrittenForms(pack, "それからね", "それからね"),
+        )
+    }
 }

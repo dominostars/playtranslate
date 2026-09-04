@@ -34,7 +34,12 @@ PY="$HOME/playtranslate/.venv-pt/bin/python"
 
 SOURCES=(ar ca da de en es fi fr hi hu id it ko nl no pt ro ru sv th tr vi)
 SRC_VERSION=3
-JA_VERSION=4
+# 5 = the ke_inf pass (headword.ke_inf; see project_jmdict_keinf_pack_pass):
+# drives --pack-version for build AND verify (the verifier's ke_inf gate only
+# runs at >= 5) and the upload tag. Never leave this at a released version
+# with a newer build_jmdict.py: the upload would clobber that release in
+# place, which older catalogs pin by sha.
+JA_VERSION=5
 ZH_VERSION=2
 
 cd "$ROOT" || exit 1

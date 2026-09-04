@@ -359,5 +359,63 @@ class ReInfExtractionTests(unittest.TestCase):
         )
 
 
+class ExtractKeInfNamesTest(unittest.TestCase):
+    """headword.ke_inf (ja-v5): the kanji-form info tags the app uses to keep
+    search-only spellings out of display and rank rare ones last."""
+
+    VALUE_TO_NAME = {
+        "search-only kanji form": "sK",
+        "rarely used kanji form": "rK",
+        "ateji (phonetic) reading": "ateji",
+        "word containing irregular kanji usage": "iK",
+    }
+
+    def _k_ele(self, xml_str: str):
+        return ET.fromstring(xml_str)
+
+    def test_search_only_form(self):
+        # 其れから's 其れから is search-only in JMdict; it must never display.
+        k_ele = self._k_ele(
+            "<k_ele><keb>其れから</keb>"
+            "<ke_inf>search-only kanji form</ke_inf></k_ele>"
+        )
+        self.assertEqual(
+            build_jmdict.extract_ke_inf_names(k_ele, self.VALUE_TO_NAME), {"sK"}
+        )
+
+    def test_multiple_tags_sorted_when_joined(self):
+        # 矢張り carries both ateji and rK; the column stores "ateji,rK".
+        k_ele = self._k_ele(
+            "<k_ele><keb>矢張り</keb>"
+            "<ke_inf>rarely used kanji form</ke_inf>"
+            "<ke_inf>ateji (phonetic) reading</ke_inf></k_ele>"
+        )
+        names = build_jmdict.extract_ke_inf_names(k_ele, self.VALUE_TO_NAME)
+        self.assertEqual(names, {"ateji", "rK"})
+        self.assertEqual(",".join(sorted(names)), "ateji,rK")
+
+    def test_unknown_value_dropped(self):
+        k_ele = self._k_ele(
+            "<k_ele><keb>x</keb><ke_inf>some brand-new info tag</ke_inf></k_ele>"
+        )
+        self.assertEqual(
+            build_jmdict.extract_ke_inf_names(k_ele, self.VALUE_TO_NAME), set()
+        )
+
+    def test_no_ke_inf_returns_empty(self):
+        k_ele = self._k_ele("<k_ele><keb>沢山</keb><ke_pri>ichi1</ke_pri></k_ele>")
+        self.assertEqual(build_jmdict.extract_ke_inf_names(k_ele, {}), set())
+
+    def test_re_inf_still_delegates(self):
+        # The shared body must not change the reading-side result.
+        r_ele = ET.fromstring(
+            "<r_ele><reb>x</reb><re_inf>rarely used kana form</re_inf></r_ele>"
+        )
+        self.assertEqual(
+            build_jmdict.extract_re_inf_names(r_ele, {"rarely used kana form": "rk"}),
+            {"rk"},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
