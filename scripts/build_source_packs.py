@@ -4,7 +4,7 @@
 For each language: use a local kaikki extract when present, otherwise stream the
 per-language extract from kaikki.org, then run build_latin_dict.py to produce a
 <code>.zip whose `sense.misc` column is populated by the curated filter. Records
-sha256 + size to local/source-v4/SUMMARY.json. Resumable (skips a built zip);
+sha256 + size to local/source-v4b/SUMMARY.json. Resumable (skips a built zip);
 downloaded extracts are deleted after a successful build to reclaim disk.
 
 RUN WITH THE ARABIC BUILD VENV so camel-tools / arramooz are importable for `ar`
@@ -33,7 +33,7 @@ from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent.parent
 HOME = ROOT.parent
-WORK = ROOT / "local" / "source-v4"
+WORK = ROOT / "local" / "source-v4b"
 WORK.mkdir(parents=True, exist_ok=True)
 SUMMARY = WORK / "SUMMARY.json"
 # The packVersion each language's manifest is stamped with. MUST equal that
