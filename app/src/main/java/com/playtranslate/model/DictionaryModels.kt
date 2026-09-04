@@ -113,6 +113,23 @@ data class Headword(
      *  the pack predates the column. Orders the reading rows in the word-detail
      *  view; does NOT affect headword order (kept position-ordered). */
     val rankScore: Int = 0,
+    /** JMdict `sK`, search-only kanji form: a spelling kept as a lookup key
+     *  only, never shown as a headword (JMdict applies it at roughly 5% of
+     *  occurrences or below). False on packs predating `headword.ke_inf`
+     *  (ja-v4 and older), which is the prior behaviour: every spelling was
+     *  display-eligible. */
+    val isSearchOnly: Boolean = false,
+    /** JMdict `rK` / `iK` / `oK` / `io` / `ik` on the kanji form: a rare,
+     *  irregular or outdated spelling (rK: under 3% of the common form's
+     *  occurrences). Display-eligible when the user saw it, but last in every
+     *  fallback order so a kana lookup lands on the everyday spelling. False
+     *  on older packs. */
+    val isRareForm: Boolean = false,
+    /** Whether a usually-kana sense of the entry covers THIS reading — the
+     *  pack's stagr-aware `reading.uk_applicable`. True on packs predating
+     *  the column, so the entry-wide [DictionaryEntry.isKanaOnly] verdict
+     *  stands alone there, the prior behaviour. */
+    val ukApplicable: Boolean = true,
 )
 
 /**
@@ -243,6 +260,21 @@ data class HanziDetail(
 ) : CharacterDetail
 
 /**
+ * The entry's display anchor among these headwords: the first that is
+ * neither search-only nor rare, else the first that is not search-only, else
+ * the first. Every fallback that used to take `headwords.firstOrNull()` goes
+ * through here, so a JMdict entry that lists a search-only or rare spelling
+ * first (141 and 361 common entries respectively, 2026-09-02 census: 居らっしゃる
+ * before いらっしゃる, 彼処 before あそこ) anchors on its everyday spelling. On
+ * packs without `headword.ke_inf` every flag is false and this IS
+ * `firstOrNull()`.
+ */
+fun List<Headword>.preferDisplayable(): Headword? =
+    firstOrNull { !it.isSearchOnly && !it.isRareForm }
+        ?: firstOrNull { !it.isSearchOnly }
+        ?: firstOrNull()
+
+/**
  * Returns the headword whose [Headword.written] or [Headword.reading]
  * exactly matches [query], or null when none match. Use when rendering an
  * entry that the user reached by clicking a specific surface — JMdict
@@ -257,10 +289,19 @@ data class HanziDetail(
  * inflected surface that doesn't match any headword surfaces (出逢って vs
  * stored 出逢う) correctly falls through to the next branch instead of
  * silently latching onto the entry's primary form.
+ *
+ * A [query] that IS a written form wins as that form, search-only or rare
+ * included: the user saw that spelling on screen, and hiding it would show a
+ * headword that is not what they pointed at (10ten shows such matches with
+ * a note). A [query] that matches only by reading — the kana lookups — takes
+ * the [preferDisplayable] headword among the matches, so 其れから's kana
+ * lands on the everyday spelling rather than the search-only or rare form
+ * JMdict happens to list first.
  */
 fun DictionaryEntry.headwordFor(query: String?): Headword? {
     if (query.isNullOrEmpty()) return null
-    return headwords.firstOrNull { it.written == query || it.reading == query }
+    val matches = headwords.filter { it.written == query || it.reading == query }
+    return matches.firstOrNull { it.written == query } ?: matches.preferDisplayable()
 }
 
 /**
@@ -296,7 +337,7 @@ fun DictionaryEntry.selectHeadword(
     headwordForReading(surface, reading)
         ?: headwordFor(surface)
         ?: headwordFor(lookupForm)
-        ?: headwords.firstOrNull()
+        ?: headwords.preferDisplayable()
 
 /**
  * The kana-only verdict carried as [DictionaryEntry.isKanaOnly], from the
@@ -329,18 +370,14 @@ fun DictionaryEntry.selectHeadword(
  *    沢山 with たくさん beneath. This verdict only answers the case where
  *    no kanji was seen.
  *
- * Not consulted, on purpose: `stagr`/`stagk` restrictions that scope a uk
- * sense to particular readings or kanji forms (89 of 11,791 uk senses). The
- * verdict is entry-wide, so a reading the uk sense excludes collapses too.
- * Sized 2026-09-02: 11 first-sense-uk entries restrict readings, 6 leave a
- * visible reading uncovered (梓 し, 何がし なにぼう, 山鳥 さんちょう, 樺桜
- * かにわざくら, 新 あら/にい, 螺 つび/つみ), and the 11 stagk cases are
- * unreachable because [selectHeadword] takes the first headword with the
- * seen reading. The collapse only ever shows the kana the user saw, so the
- * cost is the hidden kanji, not an invented spelling. The refinement is the
- * pack's per-reading `uk_applicable` (already in v2 packs, serving the
- * cross-entry ranker) carried on [Headword] and required alongside this
- * verdict; planned with the ke_inf pass, which gives Headword per-form flags.
+ * Reading scope: `stagr` can confine a uk sense to particular readings (89 of
+ * 11,791 uk senses; 6 entries leave a visible reading uncovered: 梓 し, 何がし
+ * なにぼう, 山鳥 さんちょう, 樺桜 かにわざくら, 新 あら/にい, 螺 つび/つみ). This
+ * verdict is entry-wide; [headwordDisplay] narrows it to the selected reading
+ * through [Headword.ukApplicable], the pack's stagr-aware `reading.uk_applicable`,
+ * so にい keeps 新 while さら collapses. `stagk` (11 entries) is not consulted:
+ * [selectHeadword] takes the first headword carrying the seen reading, which
+ * in every such entry is a form the uk sense covers.
  */
 fun kanaOnlyFrom(senses: List<Sense>): Boolean =
     senses.firstOrNull()?.misc?.any {
@@ -396,7 +433,11 @@ fun DictionaryEntry.headwordDisplay(
         val kanaHw = form?.takeIf { it.reading?.isNotBlank() == true }
             ?: headwords.firstOrNull { it.reading?.isNotBlank() == true }
         val kana = kanaHw?.reading
-        if (kana != null) {
+        // The entry-wide verdict narrowed to THIS reading: a uk sense JMdict
+        // scopes to other readings (stagr: 新 is さら in kana but にい in kanji)
+        // leaves this occurrence in kanji. Packs without the column answer
+        // true, the entry-wide behaviour.
+        if (kana != null && kanaHw.ukApplicable) {
             return HeadwordDisplay(
                 written = kana,
                 reading = null,
@@ -419,7 +460,7 @@ fun DictionaryEntry.headwordDisplay(
 
 fun DictionaryEntry.headwordDisplay(queriedWord: String? = null): HeadwordDisplay =
     headwordDisplay(
-        form = headwordFor(queriedWord) ?: headwords.firstOrNull(),
+        form = headwordFor(queriedWord) ?: headwords.preferDisplayable(),
         surface = queriedWord,
     )
 

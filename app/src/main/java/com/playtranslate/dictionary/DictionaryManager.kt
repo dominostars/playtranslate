@@ -16,6 +16,7 @@ import com.playtranslate.model.PosVocabulary
 import com.playtranslate.model.KanjiDetail
 import com.playtranslate.model.Sense
 import com.playtranslate.model.kanaOnlyFrom
+import com.playtranslate.model.preferDisplayable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -100,6 +101,16 @@ class DictionaryManager private constructor(private val context: Context) {
     private val noKanjiSupport = WeakHashMap<SQLiteDatabase, Boolean>()
     private val noKanjiSupportLock = Any()
 
+    /** Per-handle capability cache for `headword.ke_inf` (ja-v5): the kanji
+     *  form's JMdict info tags, read by [loadHeadwords] into
+     *  `Headword.isSearchOnly` / `isRareForm`. Absent (v4 and older) → every
+     *  flag false, every spelling display-eligible: the prior behaviour.
+     *  Deliberately NOT part of [JmdictSchemaProbe]: probing it there would
+     *  classify every v4 install as FORCE and close the additive-upgrade
+     *  path (see project_pack_upgrade_flow). */
+    private val keInfSupport = WeakHashMap<SQLiteDatabase, Boolean>()
+    private val keInfSupportLock = Any()
+
     /** Per-handle capability cache for `reading.uk_applicable`, parallel to
      *  [kePriSupport]. Shipped in the same ja-v2 schema as `rank_score`, but
      *  [batchCheckPhrases] dereferences it in its own SQL, so it probes its
@@ -147,6 +158,15 @@ class DictionaryManager private constructor(private val context: Context) {
             noKanjiSupport[db]?.let { return it }
             val supports = checkColumnExists(db, "reading", "no_kanji")
             noKanjiSupport[db] = supports
+            return supports
+        }
+    }
+
+    private fun hasKeInf(db: SQLiteDatabase): Boolean {
+        synchronized(keInfSupportLock) {
+            keInfSupport[db]?.let { return it }
+            val supports = checkColumnExists(db, "headword", "ke_inf")
+            keInfSupport[db] = supports
             return supports
         }
     }
@@ -630,8 +650,13 @@ class DictionaryManager private constructor(private val context: Context) {
      *
      * Kanji headwords: v2 packs carry `ke_pri` per form, surfaced as
      * `Headword.hasPriority` (informational: the kana-vs-kanji display rule
-     * in `isKanaOnly` no longer reads it); v1 packs degrade to "no priority
-     * known". `no_kanji`
+     * in `isKanaOnly` no longer reads it); v5 packs add `ke_inf`, the form's
+     * JMdict info tags, surfaced as `isSearchOnly` (sK) and `isRareForm`
+     * (rK/iK/oK/io/ik) so display can skip search-only spellings and rank
+     * rare ones last; older packs degrade to "no priority known" and every
+     * spelling display-eligible. Readings carry `uk_applicable` (v2+) as
+     * `Headword.ukApplicable`, the stagr-aware per-reading uk scope that
+     * narrows the entry-wide kana-only verdict at display. `no_kanji`
      * (JMdict re_nokanji) lets [buildHeadwords] drop readings never written
      * with the kanji; `rank_score` rides along for the word-detail reading
      * rows. ORDER BY position keeps `headwords` position-ordered —
@@ -639,24 +664,39 @@ class DictionaryManager private constructor(private val context: Context) {
      */
     private fun loadHeadwords(db: SQLiteDatabase, idStr: String): List<Headword> {
         val kanjiForms = mutableListOf<JmKanjiForm>()
-        val v2HeadwordSchema = hasKePri(db)
-        val kanjiSql = if (v2HeadwordSchema)
-            "SELECT text, ke_pri FROM headword WHERE entry_id=? ORDER BY position"
-        else
-            "SELECT text FROM headword WHERE entry_id=? ORDER BY position"
-        db.rawQuery(kanjiSql, arrayOf(idStr)).use { c ->
+        val kePriColumn = hasKePri(db)
+        val keInfColumn = hasKeInf(db)
+        val kanjiCols = buildList {
+            add("text")
+            if (kePriColumn) add("ke_pri")
+            if (keInfColumn) add("ke_inf")
+        }.joinToString(", ")
+        db.rawQuery(
+            "SELECT $kanjiCols FROM headword WHERE entry_id=? ORDER BY position",
+            arrayOf(idStr),
+        ).use { c ->
+            val priIdx = c.getColumnIndex("ke_pri")
+            val infIdx = c.getColumnIndex("ke_inf")
             while (c.moveToNext()) {
-                val text = c.getString(0)
-                val hasPriority = v2HeadwordSchema && c.getString(1).orEmpty().isNotEmpty()
-                kanjiForms.add(JmKanjiForm(text, hasPriority))
+                val info = if (infIdx >= 0) parseKeInf(c.getString(infIdx)) else emptySet()
+                kanjiForms.add(
+                    JmKanjiForm(
+                        text = c.getString(0),
+                        hasPriority = priIdx >= 0 && c.getString(priIdx).orEmpty().isNotEmpty(),
+                        searchOnly = SEARCH_ONLY_TAG in info,
+                        rareForm = info.any { it in RARE_FORM_TAGS },
+                    )
+                )
             }
         }
         val noKanjiColumn = hasNoKanji(db)
         val rankScoreColumn = hasRankScore(db)
+        val ukApplicableColumn = hasUkApplicable(db)
         val readingCols = buildList {
             add("text")
             if (noKanjiColumn) add("no_kanji")
             if (rankScoreColumn) add("rank_score")
+            if (ukApplicableColumn) add("uk_applicable")
         }.joinToString(", ")
         val readingForms = mutableListOf<JmReadingForm>()
         db.rawQuery(
@@ -665,12 +705,14 @@ class DictionaryManager private constructor(private val context: Context) {
         ).use { c ->
             val noKanjiIdx = c.getColumnIndex("no_kanji")
             val rankIdx = c.getColumnIndex("rank_score")
+            val ukIdx = c.getColumnIndex("uk_applicable")
             while (c.moveToNext()) {
                 readingForms.add(
                     JmReadingForm(
                         text = c.getString(0),
                         noKanji = noKanjiIdx >= 0 && c.getInt(noKanjiIdx) != 0,
                         rankScore = if (rankIdx >= 0) c.getInt(rankIdx) else 0,
+                        ukApplicable = ukIdx < 0 || c.getInt(ukIdx) != 0,
                     )
                 )
             }
@@ -710,8 +752,8 @@ class DictionaryManager private constructor(private val context: Context) {
                 val headwords = loadHeadwords(database, entryId.toString())
                 if (headwords.isEmpty()) return@withRefcount null
                 DictionaryEntry(
-                    slug = headwords.firstOrNull()?.written
-                        ?: headwords.firstOrNull()?.reading ?: entryId.toString(),
+                    slug = headwords.preferDisplayable()?.let { it.written ?: it.reading }
+                        ?: entryId.toString(),
                     packId = entryId,
                     isCommon = null,
                     tags = emptyList(),
@@ -799,8 +841,7 @@ class DictionaryManager private constructor(private val context: Context) {
         if (senses.isEmpty()) return null
 
         return DictionaryEntry(
-            slug = headwords.firstOrNull()?.written
-                ?: headwords.firstOrNull()?.reading ?: idStr,
+            slug = headwords.preferDisplayable()?.let { it.written ?: it.reading } ?: idStr,
             packId = id,
             isCommon = isCommon,
             tags = emptyList(),
@@ -1394,14 +1435,41 @@ class DictionaryManager private constructor(private val context: Context) {
     }
 }
 
-/** One kanji headword form for [buildHeadwords]: surface text + whether the
- *  source dictionary marks it priority/common (JMdict `ke_pri`). */
-internal data class JmKanjiForm(val text: String, val hasPriority: Boolean)
+/** One kanji headword form for [buildHeadwords]: surface text, whether the
+ *  source dictionary marks it priority/common (JMdict `ke_pri`), and its
+ *  `ke_inf` verdicts — [searchOnly] (sK) and [rareForm] (rK/iK/oK/io/ik);
+ *  both false on packs predating the column. */
+internal data class JmKanjiForm(
+    val text: String,
+    val hasPriority: Boolean,
+    val searchOnly: Boolean = false,
+    val rareForm: Boolean = false,
+)
 
 /** One reading form for [buildHeadwords]: the kana, whether JMdict tags it
- *  `re_nokanji` (never written with the entry's kanji), and its `rank_score`
- *  (common-use rank; 0 on packs predating the column). */
-internal data class JmReadingForm(val text: String, val noKanji: Boolean, val rankScore: Int = 0)
+ *  `re_nokanji` (never written with the entry's kanji), its `rank_score`
+ *  (common-use rank; 0 on packs predating the column), and whether a uk
+ *  sense covers it (`uk_applicable`; true on packs predating the column). */
+internal data class JmReadingForm(
+    val text: String,
+    val noKanji: Boolean,
+    val rankScore: Int = 0,
+    val ukApplicable: Boolean = true,
+)
+
+/** `headword.ke_inf` is the sorted, comma-joined set of JMdict entity names
+ *  build_jmdict.py stored for the form ("ateji,rK", "sK"); empty = no tag. */
+internal fun parseKeInf(raw: String?): Set<String> =
+    raw.orEmpty().split(',').filterTo(mutableSetOf()) { it.isNotEmpty() }
+
+/** JMdict search-only kanji form: lookup key only, never a headword. */
+internal const val SEARCH_ONLY_TAG = "sK"
+
+/** JMdict kanji-form tags that mark a rare, irregular or outdated spelling:
+ *  rarely-used (rK), irregular kanji (iK), outdated kanji (oK), irregular
+ *  okurigana (io), irregular kana usage (ik). Displayed when seen, ranked
+ *  last otherwise. `ateji` is neither: it is how the word is written. */
+internal val RARE_FORM_TAGS = setOf("rK", "iK", "oK", "io", "ik")
 
 /**
  * Pair an entry's kanji forms with its readings into [Headword]s.
@@ -1433,7 +1501,9 @@ internal fun buildHeadwords(
     hasNoKanjiColumn: Boolean,
 ): List<Headword> {
     if (kanjiForms.isEmpty()) {
-        return readingForms.map { Headword(written = null, reading = it.text, rankScore = it.rankScore) }
+        return readingForms.map {
+            Headword(written = null, reading = it.text, rankScore = it.rankScore, ukApplicable = it.ukApplicable)
+        }
     }
     if (kanjiForms.size == 1 && hasNoKanjiColumn && readingForms.isNotEmpty()) {
         val k = kanjiForms[0]
@@ -1441,26 +1511,38 @@ internal fun buildHeadwords(
         // Pathological all-re_nokanji entry: pair them with the kanji rather than
         // vanish (keeps the entry; matches the old positional fallback).
         if (kanjiReadings.isEmpty()) {
-            return readingForms.map {
-                Headword(written = k.text, reading = it.text, hasPriority = k.hasPriority, rankScore = it.rankScore)
-            }
+            return readingForms.map { k.pairedWith(it) }
         }
         // Kanji-compatible readings pair with the kanji (primary stays first);
         // re_nokanji readings stay as kana-only headwords (written = null) so a
         // lookup BY that kana resolves to its own reading via headwordFor's
         // reading branch instead of falling back to the kanji pair.
-        return kanjiReadings.map {
-            Headword(written = k.text, reading = it.text, hasPriority = k.hasPriority, rankScore = it.rankScore)
-        } + readingForms.filter { it.noKanji }.map {
-            Headword(written = null, reading = it.text, rankScore = it.rankScore)
+        return kanjiReadings.map { k.pairedWith(it) } + readingForms.filter { it.noKanji }.map {
+            Headword(written = null, reading = it.text, rankScore = it.rankScore, ukApplicable = it.ukApplicable)
         }
     }
     return kanjiForms.mapIndexed { i, k ->
+        val r = readingForms.getOrNull(i)
         Headword(
             written = k.text,
-            reading = readingForms.getOrNull(i)?.text ?: readingForms.firstOrNull()?.text,
+            reading = r?.text ?: readingForms.firstOrNull()?.text,
             hasPriority = k.hasPriority,
-            rankScore = readingForms.getOrNull(i)?.rankScore ?: 0,
+            rankScore = r?.rankScore ?: 0,
+            isSearchOnly = k.searchOnly,
+            isRareForm = k.rareForm,
+            ukApplicable = r?.ukApplicable ?: true,
         )
     }
 }
+
+/** The kanji×reading [Headword] for one pairing, carrying the form's ke_inf
+ *  verdicts and the reading's uk scope. */
+private fun JmKanjiForm.pairedWith(r: JmReadingForm): Headword = Headword(
+    written = text,
+    reading = r.text,
+    hasPriority = hasPriority,
+    rankScore = r.rankScore,
+    isSearchOnly = searchOnly,
+    isRareForm = rareForm,
+    ukApplicable = r.ukApplicable,
+)

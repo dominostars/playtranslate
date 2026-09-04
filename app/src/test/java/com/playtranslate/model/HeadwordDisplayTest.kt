@@ -157,6 +157,104 @@ class HeadwordDisplayTest {
         assertNull(display.reading)
     }
 
+    // ── ke_inf: search-only and rare spellings (ja-v5 packs) ───────────
+
+    @Test fun `kana lookup skips a search-only spelling listed first`() {
+        // JMdict lists 141 entries with a search-only form FIRST. Its kana
+        // must land on the everyday spelling, not the lookup-key stub.
+        val e = entry(
+            headwords = listOf(
+                Headword("其れから", "それから", isSearchOnly = true),
+                Headword("其から", "それから"),
+            ),
+            senses = listOf(plainSense("and then")),
+        )
+        assertEquals("其から", e.headwordFor("それから")?.written)
+        assertEquals("其から", e.selectHeadword("それから", "それから", "それから")?.written)
+        assertEquals("其から", e.headwords.preferDisplayable()?.written)
+    }
+
+    @Test fun `a search-only spelling the user actually saw still displays`() {
+        // 10ten shows a search-only match with a note rather than swapping the
+        // word out from under the pointer; the seen spelling wins by written match.
+        val e = entry(
+            headwords = listOf(
+                Headword("其から", "それから"),
+                Headword("其れから", "それから", isSearchOnly = true),
+            ),
+            senses = listOf(plainSense("and then")),
+        )
+        assertEquals("其れから", e.selectHeadword("其れから", "其れから", "それから")?.written)
+    }
+
+    @Test fun `kana lookup prefers the everyday spelling over a rare one listed first`() {
+        // 361 common entries list a rare form first; a mixed entry must pick
+        // the non-rare form for a kana lookup.
+        val e = entry(
+            headwords = listOf(
+                Headword("彼処", "あそこ", isRareForm = true),
+                Headword("彼所", "あそこ"),
+            ),
+            senses = listOf(plainSense("there")),
+        )
+        assertEquals("彼所", e.headwordFor("あそこ")?.written)
+        assertEquals("彼所", e.headwords.preferDisplayable()?.written)
+    }
+
+    @Test fun `rare beats search-only when nothing better exists`() {
+        val e = entry(
+            headwords = listOf(
+                Headword("A", "x", isSearchOnly = true),
+                Headword("B", "x", isRareForm = true),
+            ),
+            senses = listOf(plainSense("def")),
+        )
+        assertEquals("B", e.headwords.preferDisplayable()?.written)
+        // All search-only: still never empty — the first is the anchor.
+        val allSk = entry(
+            headwords = listOf(Headword("A", "x", isSearchOnly = true)),
+            senses = listOf(plainSense("def")),
+        )
+        assertEquals("A", allSk.headwords.preferDisplayable()?.written)
+    }
+
+    // ── per-reading uk scope (reading.uk_applicable on the Headword) ───
+
+    /** 新: さら is the usually-kana reading (sense 1 uk, stagr さら); にい is a
+     *  kanji reading the uk sense does not cover. Entry verdict: kana-only. */
+    private fun sara() = entry(
+        headwords = listOf(
+            Headword("新", "さら", ukApplicable = true),
+            Headword("新", "にい", ukApplicable = false),
+        ),
+        senses = listOf(ukSense("new"), plainSense("new (prefix)")),
+    )
+
+    @Test fun `a reading the uk sense covers collapses to kana`() {
+        val e = sara()
+        val display = e.headwordDisplay(e.selectHeadword("さら", "さら", "さら"), "さら")
+        assertEquals("さら", display.written)
+        assertNull(display.reading)
+    }
+
+    @Test fun `a reading the uk sense excludes keeps the kanji`() {
+        // The Codex adversarial find on the entry-wide verdict: にい was
+        // collapsing because the entry as a whole is kana-only.
+        val e = sara()
+        val display = e.headwordDisplay(e.selectHeadword("にい", "にい", "にい"), "にい")
+        assertEquals("新", display.written)
+        assertEquals("にい", display.reading)
+    }
+
+    @Test fun `packs without the column keep the entry-wide collapse`() {
+        // Headword.ukApplicable defaults true: ja-v4 behaviour is unchanged.
+        val e = entry(
+            headwords = listOf(Headword("新", "さら"), Headword("新", "にい")),
+            senses = listOf(ukSense("new")),
+        )
+        assertEquals("にい", e.headwordDisplay(e.selectHeadword("にい", "にい", "にい"), "にい").written)
+    }
+
     // ── headwordDisplay: the reported たくさん case ─────────────────────
 
     /** 沢山 (entry 1415870) as the ja-v2+ pack builds it: priority kanji, all uk. */
