@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Rebuild every Wiktionary source-language pack at packVersion 2.
+"""Rebuild every Wiktionary source-language pack at packVersion 4.
 
 For each language: use a local kaikki extract when present, otherwise stream the
 per-language extract from kaikki.org, then run build_latin_dict.py to produce a
 <code>.zip whose `sense.misc` column is populated by the curated filter. Records
-sha256 + size to local/source-v2/SUMMARY.json. Resumable (skips a built zip);
+sha256 + size to local/source-v4/SUMMARY.json. Resumable (skips a built zip);
 downloaded extracts are deleted after a successful build to reclaim disk.
 
 RUN WITH THE ARABIC BUILD VENV so camel-tools / arramooz are importable for `ar`
@@ -33,7 +33,7 @@ from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent.parent
 HOME = ROOT.parent
-WORK = ROOT / "local" / "source-v3"
+WORK = ROOT / "local" / "source-v4"
 WORK.mkdir(parents=True, exist_ok=True)
 SUMMARY = WORK / "SUMMARY.json"
 # The packVersion each language's manifest is stamped with. MUST equal that
@@ -45,10 +45,12 @@ SUMMARY = WORK / "SUMMARY.json"
 # deliberately bumped AHEAD of the fleet. Do NOT raise the baseline to cover one
 # language — that stamps the new version onto every other pack whose catalog entry
 # is still at the baseline, inverting the exact staleness bug this guards against.
-#   - hi -> 4: forms[] inflection aliases shipped as an optional additive upgrade
-#              (catalog hi.packVersion == 4). See scripts/build_latin_dict.py.
-PACK_VERSION = 3
-PACK_VERSION_OVERRIDES: dict[str, int] = {"hi": 4}
+#   - hi -> 5: hi shipped its forms[] inflection-alias upgrade ahead of the
+#              fleet (catalog hi.packVersion == 4), so the coverage rebuild that
+#              takes the fleet 3 -> 4 has to take hi 4 -> 5 or its manifest would
+#              read as a downgrade against the catalog it is being finalized into.
+PACK_VERSION = 4
+PACK_VERSION_OVERRIDES: dict[str, int] = {"hi": 5}
 
 
 def pack_version_for(code: str) -> int:
