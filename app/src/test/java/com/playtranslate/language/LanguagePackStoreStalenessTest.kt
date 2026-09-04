@@ -22,14 +22,17 @@ import java.io.File
  * `noBackupFilesDir/langpacks/<id>/manifest.json` to simulate various
  * installed-pack states.
  *
- * The catalog's current state: `ja` has packVersion=4, additiveFromVersion=3.
+ * The catalog's current state: `ja` has packVersion=5, additiveFromVersion=3.
  * Any installed ja below v3 (v1 or v2) is below additiveFromVersion, so its
  * upgrade is FORCE (pre-uninstall + clean reinstall) — the Sudachi cutover at
  * ja-v3 is the boundary those packs can't cross additively. From v3 up it is a
- * deferrable ADDITIVE swap: v3 -> v4 (the entry_id-index rebuild) leaves the
- * user with a working pack throughout. The 22 Wiktionary source packs are at
- * packVersion=3, `zh` at 2, and target packs at 2 — all with
- * additiveFromVersion=1, so every one of them upgrades additively.
+ * deferrable ADDITIVE swap: v3 -> v4 (the entry_id-index rebuild) and v4 -> v5
+ * (the ke_inf pass) each leave the user with a working pack throughout, because
+ * the app column-probes every field those versions added. The Wiktionary source
+ * packs are at packVersion=4 except `hi` at 5 (it shipped its forms[] upgrade
+ * ahead of the fleet) and `es`/`fi`, still at 3; `zh` is at 2 and target packs
+ * at 2 — all with additiveFromVersion=1, so every one of them upgrades
+ * additively.
  */
 @RunWith(RobolectricTestRunner::class)
 class LanguagePackStoreStalenessTest {
@@ -139,8 +142,8 @@ class LanguagePackStoreStalenessTest {
         }
     }
 
-    @Test fun `ja pack at v4 on disk vs catalog v4 -- not stale`() {
-        writeManifest("ja", packVersion = 4)
+    @Test fun `ja pack at v5 on disk vs catalog v5 -- not stale`() {
+        writeManifest("ja", packVersion = 5)
         // Also write a minimal SQLite to satisfy the schema-current
         // corruption backstop in the source path.
         writeJaSchemaCurrentDb()
@@ -151,7 +154,7 @@ class LanguagePackStoreStalenessTest {
         )
     }
 
-    @Test fun `ja pack at v3 on disk vs catalog v4 -- stale ADDITIVE`() {
+    @Test fun `ja pack at v3 on disk vs catalog v5 -- stale ADDITIVE`() {
         // The entry_id-index rebuild (ja-v3 -> ja-v4). v3 is at
         // additiveFromVersion, so this upgrade must be the deferrable additive
         // swap, not a FORCE: safeSwap keeps the old pack working until the new
@@ -161,7 +164,23 @@ class LanguagePackStoreStalenessTest {
         writeJaSchemaCurrentDb()
         val stale = LanguagePackStore.staleInstalledPacks(ctx)
         val ja = stale.firstOrNull { it.catalogKey == "ja" }
-        assertNotNull("ja v3 is below catalog v4, so it must be stale", ja)
+        assertNotNull("ja v3 is below catalog v5, so it must be stale", ja)
+        assertEquals(UpgradeMode.ADDITIVE, ja!!.upgradeMode)
+    }
+
+    @Test fun `ja pack at v4 on disk vs catalog v5 -- stale ADDITIVE`() {
+        // The ke_inf pass (ja-v4 -> ja-v5), and the upgrade every currently
+        // installed Japanese user actually takes. v4 is above
+        // additiveFromVersion=3, and the app column-probes headword.ke_inf and
+        // reading.uk_applicable (DictionaryManager.hasKeInf), so a v4 pack stays
+        // fully usable while v5 downloads. If this ever flips to FORCE, every
+        // Japanese user is pre-uninstalled and stranded mid-download for a pack
+        // upgrade that adds two optional columns.
+        writeManifest("ja", packVersion = 4)
+        writeJaSchemaCurrentDb()
+        val stale = LanguagePackStore.staleInstalledPacks(ctx)
+        val ja = stale.firstOrNull { it.catalogKey == "ja" }
+        assertNotNull("ja v4 is below catalog v5, so it must be stale", ja)
         assertEquals(UpgradeMode.ADDITIVE, ja!!.upgradeMode)
     }
 
