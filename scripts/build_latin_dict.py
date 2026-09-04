@@ -109,6 +109,7 @@ except ImportError:
 # Shared constants + redirect predicates — kept in scripts/wiktionary_filters.py
 # so build_latin_dict.py and build_target_pack.py can't drift on filter rules.
 from wiktionary_filters import (
+    redirect_target_from_gloss,
     CONTENT_POS,
     MAX_HEADWORD_WORDS,
     MAX_SENSES_PER_ENTRY,
@@ -255,6 +256,16 @@ def eligible_form_surfaces(obj: dict, lang: str, word_lower: str,
 # Wiktionary anomalies not worth chasing.
 MAX_REDIRECT_HOPS = 3
 
+# Languages whose forms[] alias rows are limited to surfaces wordfreq has
+# actually seen. Only defensible for a `large_` list: Finnish's is 600k words,
+# so "wordfreq has never seen this form" is real evidence the form is not worth
+# a row, and ~150 generated rows per lemma is otherwise a 150-300 MB pack. It is
+# NOT evidence for a small list — only 3% of Turkish's alias surfaces appear in
+# its 63k-word list, and unattested there does not mean unused — so this stays
+# scoped rather than becoming a general rule. The Snowball Finnish stem row
+# (position 1) remains the backstop for every unattested inflection.
+ALIAS_ATTESTED_ONLY_LANGS: frozenset[str] = frozenset({"fi"})
+
 
 def resolve_redirect_chain(
     source: str,
@@ -378,6 +389,21 @@ def lower_for_lang(word: str, lang: str) -> str:
 # form sits just under the bar ("deafening" 9.6e-07, "riveting" 9.8e-07 —
 # family sums 1.1e-06 / 2.6e-06).
 #
+# Only the AGGREGATE_TOP_FORMS most frequent surfaces are summed, not all of
+# them. Summing every form makes the cut stop cutting for languages that have
+# BOTH a `large_` wordfreq list (floor ~1e-8, so a long-tail form scores a small
+# non-zero instead of 0) and many forms per lexeme: Finnish has 540k words
+# between 1e-8 and 1e-6 and ~150 forms per lemma, and 150 near-floor values add
+# up to a keep for almost any page — fi kept 156,345 lexemes against the ~60k
+# Finnish words wordfreq places at or above 1e-6. Small-list languages cannot
+# inflate this way (their list floor IS 1e-6, so a form clears the bar alone or
+# contributes exactly 0), which is why the symptom was Finnish-shaped.
+#
+# Ten preserves every motivating case above, because those lexemes are carried
+# by one or two frequent forms, not by a long tail: "confiscated" alone is
+# 3.0e-06, and "deafening"'s family sum of 1.1e-06 is two forms deep.
+AGGREGATE_TOP_FORMS = 10
+
 # Accepted skew: a rare lexeme whose form collides with an unrelated common
 # surface inherits that surface's frequency for keep/score. Bounded — the
 # entry is only reachable through its own surfaces, so the inflated score
@@ -656,8 +682,12 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
                 word_frequency(word.lower(), wordfreq_locale),
                 word_frequency(word_lower, wordfreq_locale),
             )
-            for form_surface in form_surfaces:
-                freq += word_frequency(form_surface, wordfreq_locale)
+            freq += sum(
+                sorted(
+                    (word_frequency(f, wordfreq_locale) for f in form_surfaces),
+                    reverse=True,
+                )[:AGGREGATE_TOP_FORMS]
+            )
             if freq < MIN_FREQUENCY:
                 continue
 
@@ -772,6 +802,10 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         # The surface set (junk-filtered in eligible_form_surfaces) is the
         # same one the frequency aggregate above probed.
         for form_text in form_surfaces:
+            if lang in ALIAS_ATTESTED_ONLY_LANGS and not word_frequency(
+                form_text, wordfreq_locale
+            ):
+                continue
             forms_alias_pairs.add((entry_id, form_text))
 
         # Stem row — position 1 headword pointing at the same entry_id.
@@ -863,6 +897,7 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         source_surface = lower_for_lang(word, lang)
         senses = obj.get("senses") or []
         for sense in senses:
+            named = False
             for key in ALIAS_KEYS:
                 target_list = sense.get(key)
                 if not target_list:
@@ -873,9 +908,26 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
                 target_word = lower_for_lang(target.get("word") or "", lang)
                 if not target_word:
                     continue
+                named = True
                 if source_surface == target_word:
                     continue  # self-alias, defensive
                 redirect_targets.setdefault(source_surface, set()).add(target_word)
+            if named:
+                continue
+            # The sense named no target structurally. It can still be the reason
+            # pass 1 dropped this page — is_redirect_sense also fires on a
+            # form-of TAG and on a prose form-of gloss — so read the target back
+            # out of the gloss, or the page is dropped with nothing to alias.
+            glosses = sense.get("glosses") or ()
+            gloss_target = redirect_target_from_gloss(
+                glosses[0], MAX_HEADWORD_WORDS
+            ) if glosses else None
+            if not gloss_target:
+                continue
+            target_word = lower_for_lang(gloss_target, lang)
+            if not target_word or source_surface == target_word:
+                continue
+            redirect_targets.setdefault(source_surface, set()).add(target_word)
 
     # Sub-pass 2b: route every redirect surface through the graph to its
     # kept lemma(s) and emit the alias rows.
@@ -1126,6 +1178,30 @@ SMOKE_FIXTURES: dict[str, dict[str, str]] = {
         # criticize. Single-hop alias resolution reached the non-kept
         # intermediate and gave up; the chain resolver lands the lemma.
         "criticised": "fault",        # criticize: "To find fault (with something)"
+        # Fix B (prose form-of gloss): "Dated spelling of today." is a redirect
+        # expressed only in prose, so to-day was kept as its own adv+noun lemma
+        # and shadowed today. It must now alias onto today.
+        "to-day": "current day",      # today: "On the current day or date."
+    },
+    "fi": {
+        # Fix C (ALIAS_ATTESTED_ONLY_LANGS): only wordfreq-attested forms get a
+        # position-2 alias row, so these two pairs pin BOTH resolution paths.
+        # Attested — resolves on the alias row:
+        "kirjan": "book",        # kirja
+        "kissasi": "cat",        # kissa
+        # Not in wordfreq, so deliberately NO alias row — these must come back
+        # through the position-1 Snowball stem, which is the whole reason the
+        # attestation filter is safe to apply:
+        "kirjallanne": "book",   # stems to "kirj"
+        "kissastansa": "cat",    # stems to "kis"
+    },
+    "hu": {
+        # Fix B (prose form-of gloss): "past participle of készül:" carries no
+        # structured alias field and no form-of tag, so készült survived as its
+        # own lemma. It must now also reach készül through a position-2 alias.
+        # (Its unrelated adjective sense "knowledgeable, educated" is a real
+        # definition and keeps készült a lemma in its own right.)
+        "készült": "prepare",
     },
     "fr": {
         # det POS keep: French possessive determiners were entirely absent
