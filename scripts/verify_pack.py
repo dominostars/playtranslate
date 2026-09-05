@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sqlite3
 import sys
 import tempfile
@@ -95,6 +96,85 @@ def compare_against_published(old_zip: Path, new_conn: sqlite3.Connection, work:
         old.close()
 
 
+# ── stub-lemma gate (Wiktionary source packs) ──────────────────────────────
+# A redirect page that pass 2 cannot alias onto is kept as a lemma carrying its
+# own "form of X" gloss, so the surface stays reachable. That is a FALLBACK. When
+# the target is in fact present, the stub is a defect: the user taps the word and
+# gets "plural of X" instead of X's definition, and the stub sits at position 0
+# where it feeds searchPrefix.
+#
+# Two shapes, counted separately because they mean different things:
+#   RESOLVABLE — the target is a kept lemma with a real gloss, so the alias was
+#                simply missed (the junk gate rejecting a letterless surface,
+#                "+1" -> "plus one").
+#   CHAINED    — the target is itself a stub, so resolution stopped one link
+#                short (house lights -> house light -> houselight).
+# Both were found by opening a shipped pack; this gate is so they fail the build.
+STUB_RESOLVABLE_MAX = 50
+STUB_CHAINED_MAX = 100
+
+_STUB_GLOSS_RE = re.compile(
+    r"^\s*(?:\([^)]*\)\s*)*"
+    r"(?!(?:an?|the)\s)"
+    r"(?:[^\W\d_][\w'’-]*\s+){0,3}"
+    r"(?:form|spelling|version|contraction|abbreviation|clipping|misspelling|"
+    r"plural|participle|tense|singular|case)\s+of\s+"
+    r"(?P<target>\S.*)$",
+    re.IGNORECASE,
+)
+_STUB_TARGET_END_RE = re.compile(r"[(:,;.]")
+
+
+def stub_target(gloss: str) -> str | None:
+    """The lemma a single-sense form-of gloss points at, or None."""
+    m = _STUB_GLOSS_RE.match(gloss or "")
+    if not m:
+        return None
+    t = _STUB_TARGET_END_RE.split(m.group("target"), 1)[0].strip()
+    return t.lower() or None
+
+
+def stub_audit(conn: sqlite3.Connection) -> dict:
+    """Classify every single-sense position-0 lemma whose only gloss is a form-of
+    pointer. Returns counts plus samples; pure so a fixture DB can drive it."""
+    glosses: dict[str, list[str]] = {}
+    for text, g in conn.execute(
+        "SELECT h.text, s.glosses FROM headword h JOIN sense s ON s.entry_id = h.entry_id "
+        "WHERE h.position = 0"
+    ):
+        glosses.setdefault(text, []).append(g or "")
+    # A lemma is a stub only when EVERY sense on it is a form-of pointer;
+    # a word with a real sense elsewhere is a real entry.
+    stubs: dict[str, str] = {}
+    for text, gs in glosses.items():
+        if len(gs) != 1:
+            continue
+        t = stub_target(gs[0])
+        if t:
+            stubs[text] = t
+    resolvable, chained, dangling, selfref = [], [], [], []
+    for text, target in stubs.items():
+        if target == text:
+            # The gloss names the page itself once case is folded away: en `nazi`
+            # -> "Alternative form of Nazi", de `aids` -> "form of AIDS". There is
+            # nothing else to point at, so this is never fixable by resolution and
+            # must not count toward the chained budget.
+            selfref.append((text, target))
+        elif target not in glosses:
+            dangling.append((text, target))
+        elif target in stubs:
+            chained.append((text, target))
+        else:
+            resolvable.append((text, target))
+    return {
+        "stubs": len(stubs),
+        "resolvable": sorted(resolvable),
+        "chained": sorted(chained),
+        "dangling": sorted(dangling),
+        "selfref": sorted(selfref),
+    }
+
+
 def misc_vocabulary(root: Path) -> tuple[set[str], set[str]]:
     v = json.loads((root / "app/src/main/resources/misc_vocabulary.json").read_text())
     alias = set()
@@ -116,6 +196,16 @@ def main() -> int:
         help="Previously-published pack .zip for this language (downloaded from "
              "the catalog `url`). Fails on a material row-count drop vs it. Run "
              "for every language in a fleet rebuild before uploading.",
+    )
+    ap.add_argument(
+        "--stub-resolvable-max", type=int, default=STUB_RESOLVABLE_MAX,
+        help="per-language override: how many stub lemmas whose target is a real "
+             "kept lemma are tolerated before the pack fails",
+    )
+    ap.add_argument(
+        "--stub-chained-max", type=int, default=STUB_CHAINED_MAX,
+        help="per-language override: how many stub lemmas whose target is itself "
+             "a stub are tolerated before the pack fails",
     )
     args = ap.parse_args()
 
@@ -277,6 +367,25 @@ def main() -> int:
                 fail("no words.txt — Thai segmenter wordlist missing")
             else:
                 ok("words.txt present")
+
+        # ── stub-lemma gate (every Wiktionary source pack) ────────────────
+        if args.lang not in ("ja", "zh"):
+            a = stub_audit(conn)
+            nr, nc = len(a["resolvable"]), len(a["chained"])
+            print(f"  stub lemmas: {a['stubs']:,} total — {nr:,} resolvable, "
+                  f"{nc:,} chained, {len(a['dangling']):,} dangling (target absent), "
+                  f"{len(a['selfref']):,} self-referential")
+            for label, rows, cap in (("resolvable", a["resolvable"], args.stub_resolvable_max),
+                                     ("chained", a["chained"], args.stub_chained_max)):
+                if rows:
+                    print(f"    {label} samples: "
+                          + ", ".join(f"{t}->{x}" for t, x in rows[:10]))
+                if len(rows) > cap:
+                    fail(f"{len(rows):,} {label} stub lemmas (max {cap}) — the "
+                         f"redirect pass left reachable targets unaliased")
+            if nr <= args.stub_resolvable_max and nc <= args.stub_chained_max:
+                ok(f"stub gate: {nr} resolvable <= {args.stub_resolvable_max}, "
+                   f"{nc} chained <= {args.stub_chained_max}")
 
         # ── regression gate vs the previously-published pack (§3.6) ────────
         # Optional: only a fleet rebuild has a prior pack to compare against.
