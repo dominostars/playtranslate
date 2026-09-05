@@ -126,6 +126,119 @@ def test_a_stressed_redirect_target_resolves_to_its_unstressed_lemma():
     assert KNIGI not in lemmas, "it should alias, not be rescued as a stub"
 
 
+# ── The rescue fixpoint ──────────────────────────────────────────────────
+
+def test_chain_into_a_rescued_terminal_aliases_instead_of_stubbing():
+    # The shape of en "house lights -> house light -> houselight": the terminal
+    # only becomes a lemma via the rescue, so resolving once against
+    # kept_lemma_ids left BOTH as stubs. Fixture words must clear MIN_FREQUENCY
+    # to be rescuable at all, so this uses the same shape with frequent words.
+    lemmas, aliases, _ = build([
+        entry("walk", "verb", ["to move on foot"]),
+        entry("pot man", "noun", ["alternative form of potmanx"],
+              form_of="potmanx"),                       # terminal: target absent
+        entry("pot men", "noun", ["plural of pot man"], form_of="pot man"),
+    ])
+    assert "pot man" in lemmas, "the terminal page must be rescued as a lemma"
+    assert "pot men" in aliases, aliases
+    assert "pot men" not in lemmas, "a page that can alias must not also stub"
+
+
+def test_two_hop_chain_into_a_rescued_terminal():
+    lemmas, aliases, _ = build([
+        entry("walk", "verb", ["to move on foot"]),
+        entry("color", "noun", ["alternative form of colorx"], form_of="colorx"),
+        entry("colour", "noun", ["alternative form of color"], form_of="color"),
+        entry("colours", "noun", ["plural of colour"], form_of="colour"),
+    ])
+    assert "color" in lemmas, "the terminal page must be rescued as a lemma"
+    for surf in ("colour", "colours"):
+        assert surf in aliases, (surf, aliases)
+        assert surf not in lemmas, f"{surf} must alias, not stub"
+
+
+def test_a_page_resolving_to_a_real_lemma_is_untouched_by_the_loop():
+    lemmas, aliases, _ = build([
+        entry("walk", "verb", ["to move on foot"]),
+        entry("walked", "verb", ["past tense of walk"], form_of="walk"),
+    ])
+    assert "walked" in aliases and "walked" not in lemmas
+    assert "walk" in lemmas
+
+
+def test_case_fold_self_loop_is_not_emitted_twice():
+    # en `nazi` is glossed "Alternative form of Nazi": the target lowercases back
+    # onto the source, so the page is targetless, but the real Nazi entry is
+    # already kept under that same surface. One entry, not two.
+    lemmas, _, glosses = build([
+        entry("Nazi", "noun", ["a member of the National Socialist party"]),
+        entry("nazi", "noun", ["alternative form of Nazi"], form_of="Nazi"),
+    ])
+    assert "nazi" in lemmas
+    real = [g for g in glosses["nazi"] if "National Socialist" in g]
+    assert real, glosses["nazi"]
+    assert len(glosses["nazi"]) == 1, f"one entry expected, got {glosses['nazi']}"
+
+
+def test_letterless_redirect_surfaces_alias_instead_of_stubbing():
+    # "+1" -> "plus one" was an alias in v3 and became stub lemmas once the
+    # cross-script gate started reading an empty script set as foreign.
+    lemmas, aliases, _ = build([
+        entry("plus one", "noun", ["a guest accompanying an invitee"]),
+        entry("+1", "noun", ["alternative form of plus one"], form_of="plus one"),
+        entry("360", "noun", ["a complete rotation"]),
+        entry("three-sixty", "noun", ["alternative form of 360"], form_of="360"),
+    ])
+    assert "+1" in aliases, aliases
+    assert "+1" not in lemmas, "letterless source must alias, not stub"
+    assert "three-sixty" in aliases, "letterless target must be reachable"
+    assert "three-sixty" not in lemmas
+
+
+def test_a_redirect_page_never_shadows_a_real_entry_at_the_same_surface():
+    # kaikki emits `nazi` ("Alternative form of Nazi") BEFORE `Nazi`, and both
+    # lowercase to one surface. While redirect pages shared the real entries'
+    # (word, pos) dedupe namespace, the stub claimed the slot and all of Nazi's
+    # real senses were dropped from the pack.
+    lemmas, aliases, glosses = build([
+        entry("nazi", "noun", ["alternative form of Nazi"], form_of="Nazi"),
+        entry("Nazi", "noun", ["a member of the National Socialist party"]),
+    ])
+    assert "nazi" in lemmas
+    assert any("National Socialist" in g for g in glosses["nazi"]), glosses["nazi"]
+    assert not any("alternative form" in g.lower() for g in glosses["nazi"]), glosses["nazi"]
+
+
+def test_vietnamese_diacritics_are_latin_not_a_foreign_script():
+    # Nearly every accented Vietnamese vowel is Latin Extended Additional
+    # (U+1E00-1EFF). While that block fell outside the "latn" range, `bác sỹ`
+    # scored {latn, other} against `bác sĩ`'s {latn} and the alias was rejected
+    # as a cross-script transliteration.
+    assert _scripts_of("bác sỹ") == _scripts_of("bác sĩ") == frozenset({"latn"})
+    lemmas, aliases, _ = build([
+        entry("bác sĩ", "noun", ["a medical doctor; a physician"], lang_code="vi"),
+        entry("bác sỹ", "noun", ["alternative spelling of bác sĩ"],
+              form_of="bác sĩ", lang_code="vi"),
+    ], lang="vi")
+    assert "bác sỹ" in aliases, aliases
+    assert "bác sỹ" not in lemmas, "a same-script alias must not become a stub"
+
+
+def test_a_target_naming_its_hanja_inline_still_resolves():
+    # Korean `alt_of` gives "고등학생(高等學生)" while the pack keys the lemma on
+    # "고등학생". Hangul -> Hangul, so the cross-script gate is not involved:
+    # a Latin ROMANIZATION like "hoxy" is a different case the gate correctly
+    # still rejects.
+    lemmas, aliases, _ = build([
+        entry("고등학생", "noun", ["a high school student"], lang_code="ko"),
+        entry("고딩", "noun", ["abbreviation of 고등학생"],
+              form_of="고등학생(高等學生)", lang_code="ko"),
+    ], lang="ko")
+    assert "고등학생" in lemmas
+    assert "고딩" in aliases, aliases
+    assert "고딩" not in lemmas
+
+
 # ── Change 1: inflection-class rows are not word forms ───────────────────
 
 def test_inflection_class_rows_are_excluded_but_real_slash_forms_are_not():

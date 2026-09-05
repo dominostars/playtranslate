@@ -81,6 +81,7 @@ import argparse
 import json
 import math
 import os
+import re
 import sqlite3
 import sys
 import unicodedata
@@ -201,7 +202,14 @@ def _scripts_of(s: str) -> frozenset:
             out.add("deva")
         elif 0x0600 <= o <= 0x06FF or 0x0750 <= o <= 0x077F or 0xFB50 <= o <= 0xFDFF or 0xFE70 <= o <= 0xFEFF:
             out.add("arab")
-        elif 0x0041 <= o <= 0x024F:
+        elif 0x0041 <= o <= 0x024F or 0x1E00 <= o <= 0x1EFF:
+            # U+1E00-1EFF is Latin Extended Additional, which is where nearly
+            # every accented Vietnamese vowel lives (ạ ế ộ ứ ỳ ỹ …). Without it
+            # they fell through to "other" and a Vietnamese word read as
+            # MIXED-script: `bác sỹ` scored {latn, other} against `bác sĩ`'s
+            # {latn} (ĩ is U+0129, inside the old range), so the alias was
+            # rejected as a cross-script transliteration and the page became a
+            # stub lemma. 66 of vi's stubs were this one gap.
             out.add("latn")
         elif 0x0400 <= o <= 0x04FF:
             out.add("cyrl")
@@ -212,7 +220,8 @@ def _scripts_of(s: str) -> frozenset:
     return frozenset(out)
 
 
-def _alias_surface_is_junk(surface: str, lemma_scripts: frozenset) -> bool:
+def _alias_surface_is_junk(surface: str, lemma_scripts: frozenset,
+                           *, allow_letterless: bool = False) -> bool:
     """True when [surface] must NOT become a position-2 alias, for reasons shared
     by BOTH the forms[] pass and the redirect-alias pass — kept here as one
     predicate so the two passes can't drift:
@@ -222,8 +231,23 @@ def _alias_surface_is_junk(surface: str, lemma_scripts: frozenset) -> bool:
         tappable word (word_frequency even mis-scores "-a-" as the bare article).
       - a script the lemma doesn't use: cross-script transliterations (Urdu forms
         on a Devanagari lemma) and Latin grammar-class labels ("ā-stem") a
-        single-script OCR pack can never produce, plus bare punctuation/digits
-        (no letters at all → empty script set).
+        single-script OCR pack can never produce.
+
+    [allow_letterless] governs the one case where the two passes must differ. A
+    string with no LETTERS has an empty script set, which the subtraction below
+    reads as "foreign" — so a redirect whose source or target is digits and
+    symbols was rejected even when both sides are real words of the language:
+    en "+1" -> "plus one" was an alias in v3 and became three stub lemmas, and
+    "three-sixty" never reached "360". Those are legitimate, so the REDIRECT pass
+    passes True and skips the script test when either side is letterless.
+
+    The forms[] pass keeps rejecting them (the default), and that asymmetry is
+    deliberate: this predicate also gates which surfaces feed the lexeme
+    frequency aggregate, and a digit-only "form" is scaffolding whose wordfreq
+    value is the numeral's — word_frequency("1","nl") is 1.17e-03, which is how
+    Dutch strong-verb class labels were keeping 191 zero-frequency verbs alive
+    before the "class" tag was blocklisted. Relaxing it there would reopen that
+    door through a different one.
 
     The forms[]-only multi-word / literal filters stay at that call site: the
     redirect pass legitimately aliases multi-word expressions, so it must NOT
@@ -231,6 +255,8 @@ def _alias_surface_is_junk(surface: str, lemma_scripts: frozenset) -> bool:
     if surface.startswith("-") or surface.endswith("-"):
         return True
     surface_scripts = _scripts_of(surface)
+    if allow_letterless and (not surface_scripts or not lemma_scripts):
+        return False
     return not surface_scripts or bool(surface_scripts - lemma_scripts)
 
 
@@ -304,6 +330,15 @@ ALIAS_ATTESTED_ONLY_LANGS: frozenset[str] = frozenset({"fi"})
 # PRECOMPOSED in NFC, so a bare combining acute only survives on scripts that
 # have no precomposed form — Cyrillic stress being the case this exists for.
 _STRESS_MARKS = dict.fromkeys(map(ord, "́̀́̀"))
+
+
+_PARENTHETICAL_RE = re.compile(r"\s*[(（][^)）]*[)）]\s*")
+
+
+def _strip_parenthetical(word: str) -> str:
+    """[word] without bracketed asides. kaikki's Korean `alt_of` targets carry the
+    Hanja inline ("혹시(或是)"), which is not how the headword is keyed."""
+    return _PARENTHETICAL_RE.sub("", word).strip()
 
 
 def destress(word: str) -> str:
@@ -618,6 +653,7 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
     stem_rows = 0
     example_rows = 0
     seen_headwords: set[str] = set()
+    seen_redirect_pages: set[str] = set()
 
     # Pass 1 populates this map; pass 2 consults it to check whether a
     # redirect entry's target lemma was actually kept in the pack. A
@@ -878,6 +914,25 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
             if lang == "ko"
             else f"{word_lower}\t{pos_raw}"
         )
+        if is_redirect:
+            # Held until pass 2 has resolved the graph. Recorded AFTER the
+            # frequency cut, so the map only ever holds pages that could
+            # legitimately become entries.
+            #
+            # Deduped in a SEPARATE namespace from real entries, and claimed
+            # before `seen_headwords` is touched. A redirect page must never
+            # consume a real entry's (word, pos) slot: en `nazi` ("Alternative
+            # form of Nazi") is emitted by kaikki before `Nazi` and lowercases
+            # onto the same surface, so a shared key let the stub shadow all
+            # four of Nazi's real senses — the page vanished from the pack.
+            if key not in seen_redirect_pages:
+                seen_redirect_pages.add(key)
+                redirect_pages.setdefault(word_lower, []).append(
+                    (pos_raw, senses_data, glosses_list, freq, form_surfaces,
+                     _etym_num(obj))
+                )
+            continue
+
         if key in seen_headwords:
             continue
         seen_headwords.add(key)
@@ -898,17 +953,6 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         #     them. kaikki orders etymologies by Wiktionary page order
         #     (usually primary meaning first), which is the right thing
         #     for sort-by-freq-score-desc.
-        if is_redirect:
-            # Held until pass 2 has resolved the graph. Recorded AFTER the
-            # frequency cut, so the map only ever holds pages that could
-            # legitimately become entries.
-            if senses_data:
-                redirect_pages.setdefault(word_lower, []).append(
-                    (pos_raw, senses_data, glosses_list, freq, form_surfaces,
-                     _etym_num(obj))
-                )
-            continue
-
         emit_lemma(word_lower, pos_raw, senses_data, glosses_list, freq,
                    form_surfaces, _etym_num(obj))
 
@@ -938,11 +982,26 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
     )
 
     def _target_variants(target_word: str) -> tuple[str, ...]:
-        """The target as written, plus its destressed form when that differs.
-        Additive on purpose: a language that really does write the stress keeps
-        resolving on the literal string, and nothing that resolved before stops."""
-        bare = destress(target_word)
-        return (target_word,) if bare == target_word else (target_word, bare)
+        """The target as written, plus normalized forms when they differ.
+
+        Additive on purpose: a language that really writes the stress, or whose
+        headword genuinely contains brackets, keeps resolving on the literal
+        string, and nothing that resolved before stops resolving.
+
+          - destressed: ru/uk write redirect targets with the pronunciation
+            stress on ("о́ко") while lemma keys never carry it.
+          - de-parenthesized: Korean `alt_of` names the Hangul with its Hanja
+            appended, "혹시(或是)", which matches no lemma — the pack keys on
+            "혹시". 62 of ko's stub lemmas were this alone.
+        """
+        out = [target_word]
+        for cand in (destress(target_word), _strip_parenthetical(target_word)):
+            if cand and cand not in out:
+                out.append(cand)
+        bare = _strip_parenthetical(destress(target_word))
+        if bare and bare not in out:
+            out.append(bare)
+        return tuple(out)
 
     # Sub-pass 2a: collect the redirect GRAPH (surface → named targets)
     # rather than resolving inline — chain resolution needs the whole graph
@@ -1008,45 +1067,103 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
                     continue
                 redirect_targets.setdefault(source_surface, set()).add(cand)
 
-    # Sub-pass 2b: route every redirect surface through the graph to its
-    # kept lemma(s) and emit the alias rows.
+    # Sub-pass 2b: route every redirect surface through the graph to its kept
+    # lemma(s) and emit the alias rows — then keep going, because one pass is
+    # not enough. A chain can end at a page that only BECOMES a lemma when the
+    # rescue below emits it, and resolving once against kept_lemma_ids leaves
+    # both the source and that terminal page as stubs: hosted en-v4 carried
+    # 9,117 stub lemmas, 2,164 of them naming a target that is itself a stub
+    # (house lights -> house light -> houselight, pot men -> pot man -> potman).
+    # So this is a fixpoint: resolve, emit the pages nothing can still walk to,
+    # re-resolve against those, repeat.
     alias_pairs: set[tuple[int, str]] = set()
     resolved_surfaces: set[str] = set()
-    for source_surface in redirect_targets:
+
+    def _try_resolve(surface: str) -> bool:
+        """Alias [surface] onto every kept lemma its chain reaches. True when at
+        least one alias row was emitted — a surface whose every target died in
+        the junk gate still counts as unresolved and is rescued as a lemma."""
+        hit = False
         for target_word in resolve_redirect_chain(
-            source_surface, redirect_targets, kept_lemma_ids,
+            surface, redirect_targets, kept_lemma_ids,
         ):
-            # Same shared junk gate the forms[] pass uses, against the FINAL
-            # kept lemma's script (the entry this row attaches to): drops
-            # hyphen-scaffolding redirect surfaces (bound-morpheme prefixes
-            # like "मनो-") and cross-script transliterations. Multi-word
-            # aliases survive — the space filter is forms[]-only.
-            if _alias_surface_is_junk(source_surface, _scripts_of(target_word)):
+            # Same shared junk gate the forms[] pass uses, against the FINAL kept
+            # lemma's script: drops hyphen-scaffolding surfaces ("मनो-") and
+            # cross-script transliterations. Multi-word aliases survive (the
+            # space filter is forms[]-only), and so do letterless ones ("+1").
+            if _alias_surface_is_junk(surface, _scripts_of(target_word),
+                                      allow_letterless=True):
                 continue
             for target_id in kept_lemma_ids[target_word]:
-                alias_pairs.add((target_id, source_surface))
-            # Recorded only once an alias row actually exists, so a surface
-            # whose every target died in the junk gate still counts as
-            # unresolved and is rescued as a lemma below.
+                alias_pairs.add((target_id, surface))
+            hit = True
+        return hit
+
+    for source_surface in redirect_targets:
+        if _try_resolve(source_surface):
             resolved_surfaces.add(source_surface)
+
+    # Reverse edges, so a round only re-resolves surfaces that can actually
+    # reach something newly emitted instead of re-walking the whole graph.
+    preds: dict[str, set[str]] = {}
+    for src, tgts in redirect_targets.items():
+        for t in tgts:
+            preds.setdefault(t, set()).add(src)
 
     # Rescue: a redirect page nothing could alias onto becomes a lemma carrying
     # its own redirect gloss. Runs BEFORE the alias insert below so a rescued
     # page's own forms[] surfaces join the same single position-2 insertion.
     #
-    # Two populations land here. (1) The chain ended at a target the frequency
-    # cut dropped — Hindi's अखबार -> अख़बार, where the nuqta-less spelling is the
-    # common one. (2) The page named no followable target at all: an entry-level
-    # form_of with prose in it (en `oneself`, whose target reads "the indefinite
-    # personal pronoun one"), or a tag-only form-of sense. Both used to vanish.
+    # Populations: the chain ended at a target the frequency cut dropped (hi
+    # अखबार -> अख़बार, where the nuqta-less spelling is the common one); the page
+    # named no followable target at all (en `oneself`, whose entry-level form_of
+    # reads "the indefinite personal pronoun one"); or the chain ended at another
+    # rescuable page, which the loop below now resolves instead of stubbing.
     redirect_lemmas = 0
-    for surface, pages in redirect_pages.items():
-        if surface in resolved_surfaces:
-            continue
-        for pos_raw_, senses_data_, glosses_, freq_, forms_, etym_ in pages:
-            emit_lemma(surface, pos_raw_, senses_data_, glosses_, freq_,
-                       forms_, etym_)
-            redirect_lemmas += 1
+    fixpoint_rounds = 0
+    pending = {s for s in redirect_pages if s not in resolved_surfaces}
+    # A surface that is ALREADY a kept lemma needs no stub — the real entry
+    # covers it. Chiefly the case-fold self-loop: en `nazi` is glossed
+    # "Alternative form of Nazi", whose target lowercases back onto the source
+    # and was dropped as a self-alias, leaving the page targetless; the real
+    # `Nazi` entry is already kept under the same surface. Emitting the stub too
+    # would put two entries on one surface, one of them contentless.
+    selfloop_skipped = sorted(s for s in pending if s in kept_lemma_ids)
+    pending -= set(selfloop_skipped)
+    unresolved = set(redirect_targets) - resolved_surfaces
+
+    while pending:
+        fixpoint_rounds += 1
+        # Terminal = nothing left to walk to: no target of this page is a kept
+        # lemma (it would have resolved) nor another page still pending.
+        terminals = {
+            s for s in pending
+            if not any(t in kept_lemma_ids or t in pending
+                       for t in redirect_targets.get(s, ()))
+        }
+        # A cycle among pending pages has no terminal; emit them all and stop.
+        if not terminals:
+            terminals = set(pending)
+        for surface in sorted(terminals):
+            for pos_raw_, senses_data_, glosses_, freq_, forms_, etym_ in redirect_pages[surface]:
+                emit_lemma(surface, pos_raw_, senses_data_, glosses_, freq_,
+                           forms_, etym_)
+                redirect_lemmas += 1
+        pending -= terminals
+        unresolved -= terminals          # they are lemmas now, never aliases
+
+        # Only surfaces within MAX_REDIRECT_HOPS of something just emitted can
+        # have changed. Walk the reverse edges that far and retry those.
+        frontier, candidates = set(terminals), set()
+        for _ in range(MAX_REDIRECT_HOPS):
+            frontier = {p for t in frontier for p in preds.get(t, ())} - candidates
+            if not frontier:
+                break
+            candidates |= frontier
+        newly = {s for s in sorted(candidates & unresolved) if _try_resolve(s)}
+        resolved_surfaces |= newly
+        unresolved -= newly
+        pending -= newly
 
     # Fold the pass-1 forms[] aliases into the pass-2 redirect-alias set: dedup
     # is then structural (both are sets keyed on (entry_id, surface)) and there
@@ -1066,7 +1183,9 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
     print(
         f"Built {db_path} with {kept:,} entries "
         f"({dropped_redirect:,} redirects filtered, "
-        f"{redirect_lemmas:,} of them kept as lemmas (unresolvable), "
+        f"{redirect_lemmas:,} of them kept as lemmas (unresolvable) after "
+        f"{fixpoint_rounds} fixpoint round(s), "
+        f"{len(selfloop_skipped):,} self-loop page(s) skipped, "
         f"{stem_rows:,} stem rows indexed, "
         f"{len(alias_pairs):,} alias rows covering {distinct_targets:,} lemmas "
         f"({forms_only:,} of them from inflection tables / forms[]), "
