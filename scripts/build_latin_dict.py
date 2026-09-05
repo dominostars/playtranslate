@@ -154,9 +154,25 @@ MAX_EXAMPLE_CHARS = 200
 
 # kaikki `forms[]` rows that are not real word forms: table scaffolding, the
 # template name, and wiktextract's unparsed-cell marker.
+#
+# "class" is wiktextract's tag for the inflection-CLASS label a conjugation or
+# declension table carries — never a word form. Every language that has
+# inflection classes emits them: fi "38/nainen" and "52/sanoa" (Kotus type +
+# model word), ru "velar-stem" / "accent-a", ko "consonant-stem", es "o-ue
+# alternation". Most were already filtered incidentally — es's carries a space,
+# ru's and ko's are Latin against a Cyrillic/Hangul lemma so the cross-script
+# gate caught them — but Finnish's are Latin on a Latin lemma and slipped
+# through, with consequences well beyond one junk row: wordfreq TOKENIZES
+# "38/nainen" as ["38", "nainen"] and returns the model word's frequency, so
+# every Finnish lemma inherited the corpus mass of its declension model and
+# cleared MIN_FREQUENCY regardless of its own rarity. That is 139,305 of fi's
+# 139,717 spurious lexemes, and it moved is_common from 966 to 5,934 — a rare
+# mushroom name rendered as Common. Filtering by TAG rather than by shape is
+# deliberate: a `/` rule would eat real English forms like "3/4 sister" and
+# "1/sgt".
 FORM_TAG_BLOCKLIST = frozenset({
     "table-tags", "inflection-template", "error-unrecognized-form",
-    "no-table-tags", "romanization",
+    "no-table-tags", "romanization", "class",
 })
 _FORM_JUNK_LITERALS = frozenset({"-", "—", "–", "?"})
 
@@ -218,6 +234,19 @@ def _alias_surface_is_junk(surface: str, lemma_scripts: frozenset) -> bool:
     return not surface_scripts or bool(surface_scripts - lemma_scripts)
 
 
+def _etym_num(obj: dict) -> int:
+    """kaikki's `etymology_number`, coerced. Most languages emit an int, but
+    Italian uses sub-etymologies like "1.1". Only the Korean freq_score branch
+    reads this (where it is always a plain int), and it only needs the leading
+    number, so coerce defensively instead of failing the build.
+    """
+    raw = obj.get("etymology_number") or 1
+    try:
+        return int(str(raw).split(".")[0])
+    except (TypeError, ValueError):
+        return 1
+
+
 def eligible_form_surfaces(obj: dict, lang: str, word_lower: str,
                            lemma_scripts: frozenset) -> set[str]:
     """Single-word inflection surfaces from the entry's own kaikki `forms[]`
@@ -265,6 +294,22 @@ MAX_REDIRECT_HOPS = 3
 # scoped rather than becoming a general rule. The Snowball Finnish stem row
 # (position 1) remains the backstop for every unattested inflection.
 ALIAS_ATTESTED_ONLY_LANGS: frozenset[str] = frozenset({"fi"})
+
+
+# Combining stress marks. Russian/Ukrainian Wiktionary writes redirect targets
+# with the pronunciation stress on ("о́ко", "пара́граф"), but a lemma's own `word`
+# never carries it, so a target string never matched a kept lemma and the page
+# was treated as unresolvable: 31,960 ru redirect glosses name a stressed target
+# and 86.2% of them ARE kept lemmas once the mark comes off. Latin á/é/í are
+# PRECOMPOSED in NFC, so a bare combining acute only survives on scripts that
+# have no precomposed form — Cyrillic stress being the case this exists for.
+_STRESS_MARKS = dict.fromkeys(map(ord, "́̀́̀"))
+
+
+def destress(word: str) -> str:
+    """[word] without combining stress marks. Used ONLY to widen redirect target
+    matching, never to rewrite a stored surface."""
+    return word.translate(_STRESS_MARKS)
 
 
 def resolve_redirect_chain(
@@ -388,27 +433,22 @@ def lower_for_lang(word: str, lang: str) -> str:
 # corpus frequency, and max still dropped lexemes whose most common single
 # form sits just under the bar ("deafening" 9.6e-07, "riveting" 9.8e-07 —
 # family sums 1.1e-06 / 2.6e-06).
-#
-# Only the AGGREGATE_TOP_FORMS most frequent surfaces are summed, not all of
-# them. Summing every form makes the cut stop cutting for languages that have
-# BOTH a `large_` wordfreq list (floor ~1e-8, so a long-tail form scores a small
-# non-zero instead of 0) and many forms per lexeme: Finnish has 540k words
-# between 1e-8 and 1e-6 and ~150 forms per lemma, and 150 near-floor values add
-# up to a keep for almost any page — fi kept 156,345 lexemes against the ~60k
-# Finnish words wordfreq places at or above 1e-6. Small-list languages cannot
-# inflate this way (their list floor IS 1e-6, so a form clears the bar alone or
-# contributes exactly 0), which is why the symptom was Finnish-shaped.
-#
-# Ten preserves every motivating case above, because those lexemes are carried
-# by one or two frequent forms, not by a long tail: "confiscated" alone is
-# 3.0e-06, and "deafening"'s family sum of 1.1e-06 is two forms deep.
-AGGREGATE_TOP_FORMS = 10
-
 # Accepted skew: a rare lexeme whose form collides with an unrelated common
 # surface inherits that surface's frequency for keep/score. Bounded — the
 # entry is only reachable through its own surfaces, so the inflated score
 # matters only when those surfaces are queried, where the entry is a
 # legitimate candidate anyway.
+#
+# TODO (not implemented): make the aggregate REDIRECT-AWARE — add a redirect
+# surface's frequency to the lexeme it points at. Hindi shows why: nuqta is
+# routinely omitted in running text, so the nuqta-LESS spelling (अखबार) carries
+# the corpus mass while the nuqta-bearing lemma it redirects to (अख़बार) can sit
+# below this cut and be dropped, taking the common spelling's only resolution
+# path with it. Crediting the redirect's frequency to its target would keep the
+# target and let the common spelling alias onto a properly-glossed lemma —
+# strictly better than the fallback that now exists (keeping the unresolvable
+# redirect page itself as a lemma showing "nuqtaless form of …"). Needs the
+# redirect graph before the cut runs, i.e. a frequency pre-pass.
 MIN_FREQUENCY = 1e-6
 
 # Higher threshold for the is_common flag. Roughly top 3000 common words.
@@ -591,172 +631,17 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
     # (pass 1); merged into the pass-2 alias set before the single position-2
     # insert. See the block below and docs/polish-source-language-plan.md §3.3.
     forms_alias_pairs: set[tuple[int, str]] = set()
+    # surface -> the redirect pages under it, held for the post-pass-2 rescue.
+    redirect_pages: dict[str, list[tuple]] = {}
 
-    scanned = 0
-    for obj in iter_kaikki(input_path):
-        scanned += 1
-        if scanned % 100000 == 0:
-            print(
-                f"  [pass1] {scanned:,} scanned, {kept:,} kept, "
-                f"{dropped_redirect:,} redirects dropped…"
-            )
-
-        word = obj.get("word")
-        pos_raw = (obj.get("pos") or "").lower()
-        lang_code = obj.get("lang_code")
-
-        if not word or not pos_raw:
-            continue
-        if lang_code and lang_code != kaikki_lang:
-            continue
-        if pos_raw not in CONTENT_POS:
-            continue
-        if len(word.split()) > MAX_HEADWORD_WORDS:
-            continue
-
-        # Drop entire entries whose senses are all "form_of" / "alt_of"
-        # redirects. Keeping them shadows the real lemma on direct lookup
-        # (e.g. tap `volontari` → "masculine plural of volontario" instead
-        # of the real gloss). Pass 2 below converts their surfaces into
-        # alias rows so users can still reach the lemma.
-        if is_redirect_entry(obj):
-            dropped_redirect += 1
-            continue
-
-        # Frequency cut — drops rare archaic words, misspellings, and
-        # obscure technical terms that bloat the pack.
-        #
-        # wordfreq's Turkish corpus is inconsistent about case folding.
-        # Some words are indexed under the Unicode-default fold (e.g.
-        # `LGBTI` → `lgbti`, because `str.lower()` keeps the dotless
-        # plural mapping `I → i`). Others are indexed under the
-        # Turkish-aware fold (e.g. `İstanbul` → `istanbul`, because
-        # Python's default decomposes `İ` → `i + ◌̇` and wordfreq
-        # collapsed that during corpus build).
-        # Probing both and taking the max is the only way to keep both
-        # `LGBTI` AND `İngilizce`-style headwords in the pack.
-        #
-        # Korean: wordfreq's `word_frequency()` path tokenizes via MeCab
-        # which isn't available on Windows Python, so we consult the raw
-        # corpus dict directly (loaded once above). The corpus stores
-        # morpheme-level keys — nouns resolve as-is; verbs and adjectives
-        # need the citation `다` stripped before lookup (Wiktionary stores
-        # `먹다`, corpus stores `먹`). Entries missed by the corpus
-        # (archaic words, specialized terminology) are kept but flagged
-        # with freq=None so the fallback scoring branch below handles
-        # them with a Wiktionary-intrinsic proxy capped below the
-        # real-frequency range.
-        word_lower = lower_for_lang(word, lang)
-        lemma_scripts = _scripts_of(word_lower)
-        # Shared by the lexeme-aggregate frequency probe below and the
-        # forms[] alias emission after the entry inserts.
-        form_surfaces = eligible_form_surfaces(obj, lang, word_lower, lemma_scripts)
+    def emit_lemma(word_lower, pos_raw, senses_data, glosses_list, freq,
+                   form_surfaces, etym_num=1):
+        """Insert one lexeme: entry row, position-0 headword, stem row, senses
+        and examples, plus its forms[] alias contributions. Shared by pass 1 and
+        by the post-pass-2 rescue of redirect pages that resolved to nothing, so
+        a rescued page is indistinguishable from any other lemma."""
+        nonlocal entry_id, kept, stem_rows, example_rows
         if lang == "ko":
-            key = word_lower
-            if pos_raw in ("verb", "adj") and len(key) > 1 and key.endswith("다"):
-                key = key[:-1]
-            ko_freq = ko_freq_dict.get(key, 0.0) if ko_freq_dict is not None else 0.0
-            freq = ko_freq if ko_freq >= MIN_FREQUENCY else None
-            # No frequency cut for Korean: we want every non-redirect
-            # entry in the pack, even archaic ones (the corpus miss rate
-            # for the long tail is high, and dropping those would hurt
-            # Hanja aliases more than it helps pack size).
-        elif lang == "th":
-            # wordfreq has NO Thai at all (verified: wordfreq 3.1.1,
-            # `word_frequency(w, "th")` raises LookupError — no Thai-script
-            # tokenizer), and there is no clean, redistributable Thai frequency
-            # list. So Thai carries no frequency (freq=None → sense-count
-            # freq_score below) and takes NO frequency cut: Thai Wiktionary is
-            # small, so every content entry is worth keeping.
-            freq = None
-        else:
-            # Lexeme aggregate: the citation form's contribution (max of its
-            # two case probes) PLUS every distinct forms[] surface — the
-            # lexeme's total corpus mass (see the MIN_FREQUENCY comment for
-            # why sum, not bare-lemma or max). form_surfaces is a set that
-            # excludes the lemma-identical surface, so nothing double-counts.
-            # The forms probe skips the Turkish dual-case probe: the corpus
-            # case-fold inconsistency was observed on lemma acronyms, and
-            # forms[] surfaces arrive already-lowercased from the tables.
-            freq = max(
-                word_frequency(word.lower(), wordfreq_locale),
-                word_frequency(word_lower, wordfreq_locale),
-            )
-            freq += sum(
-                sorted(
-                    (word_frequency(f, wordfreq_locale) for f in form_surfaces),
-                    reverse=True,
-                )[:AGGREGATE_TOP_FORMS]
-            )
-            if freq < MIN_FREQUENCY:
-                continue
-
-        # Collect senses into structured records (glosses + examples) so we
-        # can emit one sense row per kaikki sense and thread each sense's
-        # examples through the new example table. `glosses_list` is kept as
-        # a flat view for the Korean freq-score heuristic below, which only
-        # needs gloss count.
-        senses_data: list[dict] = []
-        glosses_list: list[str] = []
-        for sense in (obj.get("senses") or [])[:MAX_SENSES_PER_ENTRY]:
-            # Skip individual redirect senses even on entries we're keeping
-            # (the `is_redirect_entry` check above only drops entries where
-            # ALL senses are redirects).
-            if is_redirect_sense(sense):
-                continue
-            this_glosses: list[str] = []
-            for g in sense.get("glosses") or []:
-                g_clean = (g or "").strip()
-                if g_clean:
-                    this_glosses.append(g_clean)
-                    glosses_list.append(g_clean)
-            if not this_glosses:
-                continue
-            this_examples = extract_examples(sense)
-            this_misc = filter_misc(sense.get("tags"), sense.get("raw_tags"))
-            senses_data.append(
-                {"glosses": this_glosses, "examples": this_examples, "misc": this_misc}
-            )
-        if not senses_data:
-            continue
-
-        # De-duplicate (word, pos) — kaikki sometimes emits repeats.
-        # For Korean, distinct etymologies at the same (word, pos) are
-        # separate dictionary entries (눈 eye vs 눈 snow, 밤 night vs 밤
-        # chestnut, 배 stomach/boat/pear — all NNG homographs), so the
-        # dedupe key MUST preserve `etymology_number` or the post-first
-        # senses are silently dropped before the ko scoring branch below
-        # ever runs. Other languages fold homographs into multi-sense
-        # entries under a single etymology, so the tighter key still
-        # behaves as before for them.
-        etym_num_raw = obj.get("etymology_number") or 1
-        key = (
-            f"{word_lower}\t{pos_raw}\t{etym_num_raw}"
-            if lang == "ko"
-            else f"{word_lower}\t{pos_raw}"
-        )
-        if key in seen_headwords:
-            continue
-        seen_headwords.add(key)
-
-        # Scale frequency into an integer score for sort ordering.
-        # log10(freq) ranges from ~-7 (rare) to ~-2 (very common). Shift
-        # and clamp to 0..100.
-        #
-        # Korean adds two wrinkles to the generic formula:
-        #  1. Corpus-miss fallback — entries not in wordfreq's Korean
-        #     dict (archaic lemmas, rare Hanja, specialized terms) get a
-        #     Wiktionary-intrinsic proxy (sense count + etymology order)
-        #     capped below the real-frequency range so they don't
-        #     outrank corpus-known words.
-        #  2. Homograph tie-breaking — multiple Wiktionary entries with
-        #     the same spelling share one morpheme frequency in the
-        #     corpus, so a small etymology-order offset differentiates
-        #     them. kaikki orders etymologies by Wiktionary page order
-        #     (usually primary meaning first), which is the right thing
-        #     for sort-by-freq-score-desc.
-        if lang == "ko":
-            etym_num = int(obj.get("etymology_number") or 1)
             if freq is None:
                 sense_count = len(glosses_list)
                 freq_score = max(10, min(50, 25 + sense_count * 3 - (etym_num - 1) * 5))
@@ -843,6 +728,189 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
                 example_rows += 1
 
         kept += 1
+        return entry_id
+
+    scanned = 0
+    for obj in iter_kaikki(input_path):
+        scanned += 1
+        if scanned % 100000 == 0:
+            print(
+                f"  [pass1] {scanned:,} scanned, {kept:,} kept, "
+                f"{dropped_redirect:,} redirects dropped…"
+            )
+
+        word = obj.get("word")
+        pos_raw = (obj.get("pos") or "").lower()
+        lang_code = obj.get("lang_code")
+
+        if not word or not pos_raw:
+            continue
+        if lang_code and lang_code != kaikki_lang:
+            continue
+        if pos_raw not in CONTENT_POS:
+            continue
+        if len(word.split()) > MAX_HEADWORD_WORDS:
+            continue
+
+        # Entries whose senses are ALL redirects do not become lemmas here:
+        # keeping them shadows the real word on direct lookup (tap `volontari`
+        # and get "masculine plural of volontario" instead of the real gloss),
+        # and pass 2 turns their surfaces into alias rows instead.
+        #
+        # They are RECORDED rather than discarded, because pass 2 can only
+        # alias onto a lemma the pack actually kept. When a redirect's chain
+        # ends at a target that the frequency cut dropped, the page used to
+        # vanish outright and take the surface with it — Hindi's nuqta-less
+        # spellings are the common ones and redirect to rarer nuqta-bearing
+        # lemmas, so 34 everyday words disappeared. Anything still unresolved
+        # after pass 2 is emitted as a lemma carrying its own redirect gloss,
+        # which is what these pages showed before redirect detection widened.
+        is_redirect = is_redirect_entry(obj)
+        if is_redirect:
+            dropped_redirect += 1
+
+        # Frequency cut — drops rare archaic words, misspellings, and
+        # obscure technical terms that bloat the pack.
+        #
+        # wordfreq's Turkish corpus is inconsistent about case folding.
+        # Some words are indexed under the Unicode-default fold (e.g.
+        # `LGBTI` → `lgbti`, because `str.lower()` keeps the dotless
+        # plural mapping `I → i`). Others are indexed under the
+        # Turkish-aware fold (e.g. `İstanbul` → `istanbul`, because
+        # Python's default decomposes `İ` → `i + ◌̇` and wordfreq
+        # collapsed that during corpus build).
+        # Probing both and taking the max is the only way to keep both
+        # `LGBTI` AND `İngilizce`-style headwords in the pack.
+        #
+        # Korean: wordfreq's `word_frequency()` path tokenizes via MeCab
+        # which isn't available on Windows Python, so we consult the raw
+        # corpus dict directly (loaded once above). The corpus stores
+        # morpheme-level keys — nouns resolve as-is; verbs and adjectives
+        # need the citation `다` stripped before lookup (Wiktionary stores
+        # `먹다`, corpus stores `먹`). Entries missed by the corpus
+        # (archaic words, specialized terminology) are kept but flagged
+        # with freq=None so the fallback scoring branch below handles
+        # them with a Wiktionary-intrinsic proxy capped below the
+        # real-frequency range.
+        word_lower = lower_for_lang(word, lang)
+        lemma_scripts = _scripts_of(word_lower)
+        # Shared by the lexeme-aggregate frequency probe below and the
+        # forms[] alias emission after the entry inserts.
+        form_surfaces = eligible_form_surfaces(obj, lang, word_lower, lemma_scripts)
+        if lang == "ko":
+            key = word_lower
+            if pos_raw in ("verb", "adj") and len(key) > 1 and key.endswith("다"):
+                key = key[:-1]
+            ko_freq = ko_freq_dict.get(key, 0.0) if ko_freq_dict is not None else 0.0
+            freq = ko_freq if ko_freq >= MIN_FREQUENCY else None
+            # No frequency cut for Korean: we want every non-redirect
+            # entry in the pack, even archaic ones (the corpus miss rate
+            # for the long tail is high, and dropping those would hurt
+            # Hanja aliases more than it helps pack size).
+        elif lang == "th":
+            # wordfreq has NO Thai at all (verified: wordfreq 3.1.1,
+            # `word_frequency(w, "th")` raises LookupError — no Thai-script
+            # tokenizer), and there is no clean, redistributable Thai frequency
+            # list. So Thai carries no frequency (freq=None → sense-count
+            # freq_score below) and takes NO frequency cut: Thai Wiktionary is
+            # small, so every content entry is worth keeping.
+            freq = None
+        else:
+            # Lexeme aggregate: the citation form's contribution (max of its
+            # two case probes) PLUS every distinct forms[] surface — the
+            # lexeme's total corpus mass (see the MIN_FREQUENCY comment for
+            # why sum, not bare-lemma or max). form_surfaces is a set that
+            # excludes the lemma-identical surface, so nothing double-counts.
+            # The forms probe skips the Turkish dual-case probe: the corpus
+            # case-fold inconsistency was observed on lemma acronyms, and
+            # forms[] surfaces arrive already-lowercased from the tables.
+            freq = max(
+                word_frequency(word.lower(), wordfreq_locale),
+                word_frequency(word_lower, wordfreq_locale),
+            )
+            for form_surface in form_surfaces:
+                freq += word_frequency(form_surface, wordfreq_locale)
+            if freq < MIN_FREQUENCY:
+                continue
+
+        # Collect senses into structured records (glosses + examples) so we
+        # can emit one sense row per kaikki sense and thread each sense's
+        # examples through the new example table. `glosses_list` is kept as
+        # a flat view for the Korean freq-score heuristic below, which only
+        # needs gloss count.
+        senses_data: list[dict] = []
+        glosses_list: list[str] = []
+        for sense in (obj.get("senses") or [])[:MAX_SENSES_PER_ENTRY]:
+            # Skip individual redirect senses on entries we're keeping as
+            # lemmas in their own right. On a page that is ENTIRELY redirects
+            # every sense is one, and the redirect text is the only gloss it
+            # has — dropping them would emit an entry with no senses at all.
+            if not is_redirect and is_redirect_sense(sense):
+                continue
+            this_glosses: list[str] = []
+            for g in sense.get("glosses") or []:
+                g_clean = (g or "").strip()
+                if g_clean:
+                    this_glosses.append(g_clean)
+                    glosses_list.append(g_clean)
+            if not this_glosses:
+                continue
+            this_examples = extract_examples(sense)
+            this_misc = filter_misc(sense.get("tags"), sense.get("raw_tags"))
+            senses_data.append(
+                {"glosses": this_glosses, "examples": this_examples, "misc": this_misc}
+            )
+        if not senses_data:
+            continue
+
+        # De-duplicate (word, pos) — kaikki sometimes emits repeats.
+        # For Korean, distinct etymologies at the same (word, pos) are
+        # separate dictionary entries (눈 eye vs 눈 snow, 밤 night vs 밤
+        # chestnut, 배 stomach/boat/pear — all NNG homographs), so the
+        # dedupe key MUST preserve `etymology_number` or the post-first
+        # senses are silently dropped before the ko scoring branch below
+        # ever runs. Other languages fold homographs into multi-sense
+        # entries under a single etymology, so the tighter key still
+        # behaves as before for them.
+        etym_num_raw = obj.get("etymology_number") or 1
+        key = (
+            f"{word_lower}\t{pos_raw}\t{etym_num_raw}"
+            if lang == "ko"
+            else f"{word_lower}\t{pos_raw}"
+        )
+        if key in seen_headwords:
+            continue
+        seen_headwords.add(key)
+
+        # Scale frequency into an integer score for sort ordering.
+        # log10(freq) ranges from ~-7 (rare) to ~-2 (very common). Shift
+        # and clamp to 0..100.
+        #
+        # Korean adds two wrinkles to the generic formula:
+        #  1. Corpus-miss fallback — entries not in wordfreq's Korean
+        #     dict (archaic lemmas, rare Hanja, specialized terms) get a
+        #     Wiktionary-intrinsic proxy (sense count + etymology order)
+        #     capped below the real-frequency range so they don't
+        #     outrank corpus-known words.
+        #  2. Homograph tie-breaking — multiple Wiktionary entries with
+        #     the same spelling share one morpheme frequency in the
+        #     corpus, so a small etymology-order offset differentiates
+        #     them. kaikki orders etymologies by Wiktionary page order
+        #     (usually primary meaning first), which is the right thing
+        #     for sort-by-freq-score-desc.
+        if is_redirect:
+            # Held until pass 2 has resolved the graph. Recorded AFTER the
+            # frequency cut, so the map only ever holds pages that could
+            # legitimately become entries.
+            if senses_data:
+                redirect_pages.setdefault(word_lower, []).append(
+                    (pos_raw, senses_data, glosses_list, freq, form_surfaces,
+                     _etym_num(obj))
+                )
+            continue
+
+        emit_lemma(word_lower, pos_raw, senses_data, glosses_list, freq,
+                   form_surfaces, _etym_num(obj))
 
     # ── Pass 2: redirect-alias indexing ─────────────────────────────
     # Re-stream the kaikki file. For each entry we dropped as a redirect
@@ -868,6 +936,13 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         "abbreviation_of",
         "synonym_of",
     )
+
+    def _target_variants(target_word: str) -> tuple[str, ...]:
+        """The target as written, plus its destressed form when that differs.
+        Additive on purpose: a language that really does write the stress keeps
+        resolving on the literal string, and nothing that resolved before stops."""
+        bare = destress(target_word)
+        return (target_word,) if bare == target_word else (target_word, bare)
 
     # Sub-pass 2a: collect the redirect GRAPH (surface → named targets)
     # rather than resolving inline — chain resolution needs the whole graph
@@ -909,9 +984,10 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
                 if not target_word:
                     continue
                 named = True
-                if source_surface == target_word:
-                    continue  # self-alias, defensive
-                redirect_targets.setdefault(source_surface, set()).add(target_word)
+                for cand in _target_variants(target_word):
+                    if source_surface == cand:
+                        continue  # self-alias, defensive
+                    redirect_targets.setdefault(source_surface, set()).add(cand)
             if named:
                 continue
             # The sense named no target structurally. It can still be the reason
@@ -925,13 +1001,17 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
             if not gloss_target:
                 continue
             target_word = lower_for_lang(gloss_target, lang)
-            if not target_word or source_surface == target_word:
+            if not target_word:
                 continue
-            redirect_targets.setdefault(source_surface, set()).add(target_word)
+            for cand in _target_variants(target_word):
+                if source_surface == cand:
+                    continue
+                redirect_targets.setdefault(source_surface, set()).add(cand)
 
     # Sub-pass 2b: route every redirect surface through the graph to its
     # kept lemma(s) and emit the alias rows.
     alias_pairs: set[tuple[int, str]] = set()
+    resolved_surfaces: set[str] = set()
     for source_surface in redirect_targets:
         for target_word in resolve_redirect_chain(
             source_surface, redirect_targets, kept_lemma_ids,
@@ -945,6 +1025,28 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
                 continue
             for target_id in kept_lemma_ids[target_word]:
                 alias_pairs.add((target_id, source_surface))
+            # Recorded only once an alias row actually exists, so a surface
+            # whose every target died in the junk gate still counts as
+            # unresolved and is rescued as a lemma below.
+            resolved_surfaces.add(source_surface)
+
+    # Rescue: a redirect page nothing could alias onto becomes a lemma carrying
+    # its own redirect gloss. Runs BEFORE the alias insert below so a rescued
+    # page's own forms[] surfaces join the same single position-2 insertion.
+    #
+    # Two populations land here. (1) The chain ended at a target the frequency
+    # cut dropped — Hindi's अखबार -> अख़बार, where the nuqta-less spelling is the
+    # common one. (2) The page named no followable target at all: an entry-level
+    # form_of with prose in it (en `oneself`, whose target reads "the indefinite
+    # personal pronoun one"), or a tag-only form-of sense. Both used to vanish.
+    redirect_lemmas = 0
+    for surface, pages in redirect_pages.items():
+        if surface in resolved_surfaces:
+            continue
+        for pos_raw_, senses_data_, glosses_, freq_, forms_, etym_ in pages:
+            emit_lemma(surface, pos_raw_, senses_data_, glosses_, freq_,
+                       forms_, etym_)
+            redirect_lemmas += 1
 
     # Fold the pass-1 forms[] aliases into the pass-2 redirect-alias set: dedup
     # is then structural (both are sets keyed on (entry_id, surface)) and there
@@ -964,6 +1066,7 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
     print(
         f"Built {db_path} with {kept:,} entries "
         f"({dropped_redirect:,} redirects filtered, "
+        f"{redirect_lemmas:,} of them kept as lemmas (unresolvable), "
         f"{stem_rows:,} stem rows indexed, "
         f"{len(alias_pairs):,} alias rows covering {distinct_targets:,} lemmas "
         f"({forms_only:,} of them from inflection tables / forms[]), "
