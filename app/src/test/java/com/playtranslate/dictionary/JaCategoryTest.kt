@@ -18,6 +18,29 @@ class JaCategoryTest {
 
     private fun cat(sub: String, norm: String) = JaCategory.fromUniDic("接尾辞", sub, norm)
 
+    /**
+     * TRIPWIRE. `動詞,非自立可能` marks a lemma CAPABLE of auxiliary use, not an
+     * occurrence that IS auxiliary — verified against sudachi 0.7.4: the main
+     * verb of 映画を見る, 机の上に本がある, 宿題をする and 彼が来る all carry it. So it
+     * must stay VERB and stay content: 18% of content tokens are tagged this
+     * way, and demoting them would silently empty the words panel via
+     * `DictionaryManager.contentOnlyTokens`, the single-token fallback, AND
+     * would corrupt [DictionaryManager.Companion.suspicionFor]'s content
+     * checks (a false-content verb reads as function-run glue) — none of
+     * which any other test covers, because every fixture hand-authors
+     * [JaCategory] literals.
+     */
+    @Test
+    fun `非自立可能 verbs stay content words`() {
+        for (lemma in listOf("見る", "ある", "する", "来る", "いる", "くれる", "しまう")) {
+            assertEquals(lemma, JaCategory.VERB, JaCategory.fromUniDic("動詞", "非自立可能", lemma))
+        }
+        assertEquals(true, JaCategory.fromUniDic("動詞", "非自立可能", "見る").isContent)
+        assertEquals(true, JaCategory.fromUniDic("動詞", "非自立可能", "見る").startsConjugation)
+        // 形容詞 carries it too (なけれ standalone), same rule.
+        assertEquals(JaCategory.ADJ_I, JaCategory.fromUniDic("形容詞", "非自立可能", "ない"))
+    }
+
     @Test
     fun `adjectival suffixes are i-adjectives`() {
         for (n in listOf("辛い", "難い", "易い", "ぽい", "臭い", "らしい")) {
