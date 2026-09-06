@@ -319,6 +319,47 @@ class TranslationBackendRegistryTest {
         assertEquals(CooldownCause.MONTHLY_QUOTA, active?.cause)
     }
 
+    @Test fun `onConnectivityRestored clears connection cooldowns on every backend and nothing else`() {
+        val now = System.currentTimeMillis()
+        val offlineA = FakeCooldownableBackend(id = "offline-a", priority = 10)
+        offlineA.cooldownState.recordLadderFailure(
+            CooldownLadder.Network, "Connection failed", CooldownCause.CONNECTION_FAILED,
+        )
+        // Disabled for the pair, yet its connection cooldown must not outlive
+        // the outage either — the user may re-enable it next.
+        val offlineB = FakeCooldownableBackend(id = "offline-b", priority = 20, usable = false)
+        offlineB.cooldownState.recordLadderFailure(
+            CooldownLadder.Network, "Connection failed", CooldownCause.CONNECTION_FAILED,
+        )
+        val limited = FakeCooldownableBackend(id = "limited", priority = 30)
+        limited.cooldownState.recordParsedFailure(now + 300_000, "Rate limited")
+        val plain = FakeOnlineBackend(id = "plain", priority = 40)
+        TranslationBackendRegistry.init(listOf(offlineA, offlineB, limited, plain))
+
+        TranslationBackendRegistry.onConnectivityRestored()
+
+        assertNull(offlineA.unavailableUntil())
+        assertNull(offlineB.unavailableUntil())
+        assertEquals(now + 300_000, limited.unavailableUntil())
+    }
+
+    @Test fun `resetCooldown clears only the named backend`() {
+        val now = System.currentTimeMillis()
+        val toggled = FakeCooldownableBackend(id = "toggled", priority = 10)
+        toggled.cooldownState.recordParsedFailure(
+            now + 3_600_000, "Monthly quota used", CooldownCause.MONTHLY_QUOTA,
+        )
+        val other = FakeCooldownableBackend(id = "other", priority = 20)
+        other.cooldownState.recordParsedFailure(now + 300_000, "Rate limited")
+        TranslationBackendRegistry.init(listOf(toggled, other))
+
+        TranslationBackendRegistry.resetCooldown("toggled")
+        TranslationBackendRegistry.resetCooldown("unknown-id")   // no-op
+
+        assertNull(toggled.unavailableUntil())
+        assertEquals(now + 300_000, other.unavailableUntil())
+    }
+
     @Test fun `earliestCooldownEnd is null with no active cooldowns`() {
         TranslationBackendRegistry.init(listOf(FakeCooldownableBackend(id = "ready", priority = 10)))
         assertNull(TranslationBackendRegistry.earliestCooldownEnd("ja", "en"))

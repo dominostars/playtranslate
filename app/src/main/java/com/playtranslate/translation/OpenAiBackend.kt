@@ -151,6 +151,11 @@ class OpenAiBackend(
     override fun recordSuccess(attemptStartedAtMs: Long) {
         cooldownState?.recordSuccess(attemptStartedAtMs)
     }
+    override fun onConnectivityRestored(): Boolean =
+        cooldownState?.onConnectivityRestored() ?: false
+    override fun resetCooldown() {
+        cooldownState?.resetCooldown()
+    }
 
     /** Last-seen `(key | model | baseUrl)` fingerprint. When it changes
      *  (user swaps in a new key, picks a different model, etc.), any
@@ -163,7 +168,7 @@ class OpenAiBackend(
         val prev = lastCredentialsFingerprint
         lastCredentialsFingerprint = current
         if (prev != null && prev != current) {
-            cooldownState?.recordSuccess(System.currentTimeMillis())
+            cooldownState?.resetCooldown()
         }
     }
 

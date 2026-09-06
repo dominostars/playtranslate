@@ -113,6 +113,8 @@ internal class FakeCooldownableBackend(
         recordSuccessCalls.incrementAndGet()
         cooldownState.recordSuccess(attemptStartedAtMs)
     }
+    override fun onConnectivityRestored(): Boolean = cooldownState.onConnectivityRestored()
+    override fun resetCooldown() = cooldownState.resetCooldown()
 }
 
 /** Cooldownable backend that succeeds on some texts and fails (with a
@@ -153,6 +155,8 @@ internal class FakeMixedResultCooldownableBackend(
         recordSuccessCalls.incrementAndGet()
         cooldownState.recordSuccess(attemptStartedAtMs)
     }
+    override fun onConnectivityRestored(): Boolean = cooldownState.onConnectivityRestored()
+    override fun resetCooldown() = cooldownState.resetCooldown()
 }
 
 /**

@@ -83,6 +83,8 @@ class DeepLBackend(
     override fun unavailableCause(): CooldownCause? = cooldownState.unavailableCause()
     override fun recordSuccess(attemptStartedAtMs: Long) =
         cooldownState.recordSuccess(attemptStartedAtMs)
+    override fun onConnectivityRestored(): Boolean = cooldownState.onConnectivityRestored()
+    override fun resetCooldown() = cooldownState.resetCooldown()
 
     /** Last-seen key fingerprint. When the user replaces the DeepL key
      *  (free → pro, or any swap), any persisted cooldown — including
@@ -95,7 +97,7 @@ class DeepLBackend(
         val prev = lastCredentialsFingerprint
         lastCredentialsFingerprint = current
         if (prev != null && prev != current) {
-            cooldownState.recordSuccess(System.currentTimeMillis())
+            cooldownState.resetCooldown()
         }
     }
 

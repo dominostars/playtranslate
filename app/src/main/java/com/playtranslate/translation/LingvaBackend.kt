@@ -66,12 +66,19 @@ class LingvaBackend(
 
     // No credentials-change escape hatch here (nothing to reconfigure,
     // unlike Gemini/OpenAI's fingerprint clear): a cooldown ends by
-    // expiring or by the registry recording a waterfall win.
+    // expiring, by the registry recording a waterfall win, by the
+    // services-page toggle (resetCooldown), or — for a connection-caused
+    // one — by the device regaining a network (onConnectivityRestored).
     override fun unavailableUntil(): Long? = cooldownState?.unavailableUntil()
     override fun unavailableDescription(): String? = cooldownState?.unavailableDescription()
     override fun unavailableCause(): CooldownCause? = cooldownState?.unavailableCause()
     override fun recordSuccess(attemptStartedAtMs: Long) {
         cooldownState?.recordSuccess(attemptStartedAtMs)
+    }
+    override fun onConnectivityRestored(): Boolean =
+        cooldownState?.onConnectivityRestored() ?: false
+    override fun resetCooldown() {
+        cooldownState?.resetCooldown()
     }
 
     override suspend fun translate(text: String, source: String, target: String): String =

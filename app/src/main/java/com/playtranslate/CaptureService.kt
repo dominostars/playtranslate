@@ -3826,7 +3826,8 @@ class CaptureService : Service() {
             DegradedWarningKind.LowMemory ->
                 getString(R.string.note_low_memory_fallback)
             DegradedWarningKind.Offline ->
-                if (!isNetworkAvailable()) getString(R.string.note_mlkit_no_internet)
+                if (!com.playtranslate.net.NetworkConnectivity.isAvailable(this@CaptureService))
+                    getString(R.string.note_mlkit_no_internet)
                 else com.playtranslate.ui.DegradedMessages.onlineFailureNote(
                     this@CaptureService,
                     TranslationBackendRegistry.earliestCooldownEnd(source, target),
@@ -3844,7 +3845,7 @@ class CaptureService : Service() {
      * yet). Null with no network — same ordering rule as the note above.
      */
     fun currentDegradedCooldown(): com.playtranslate.translation.ActiveCooldown? {
-        if (!isNetworkAvailable()) return null
+        if (!com.playtranslate.net.NetworkConnectivity.isAvailable(this)) return null
         val target = snapshotTranslationTarget()
         return TranslationBackendRegistry.earliestCooldownEnd(target.source, target.target)
     }
@@ -3859,11 +3860,6 @@ class CaptureService : Service() {
         return try {
             createDisplayContext(display).statusBarHeightPx()
         } catch (_: Exception) { 0 }
-    }
-
-    private fun isNetworkAvailable(): Boolean {
-        val cm = getSystemService(android.net.ConnectivityManager::class.java)
-        return cm?.activeNetwork != null
     }
 
     /**

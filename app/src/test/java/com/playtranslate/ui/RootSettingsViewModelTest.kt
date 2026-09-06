@@ -198,6 +198,8 @@ class RootSettingsViewModelTest {
         override fun unavailableUntil(): Long? = until
         override fun unavailableDescription(): String? = "test cooldown"
         override fun recordSuccess(attemptStartedAtMs: Long) {}
+        override fun onConnectivityRestored(): Boolean = false
+        override fun resetCooldown() {}
     }
 
     @Test fun `a cooling-down backend is excluded from the digest`() {

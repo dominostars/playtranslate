@@ -158,6 +158,15 @@ class PlayTranslateApplication : Application() {
             )
         )
         TranslationBackendRegistry.setOrder(OnlineServiceStore.all().map { it.id })
+        // A regained network (airplane mode off, wifi back) drops every
+        // "Connection failed" cooldown: those were recorded against the
+        // device being offline, not against the provider, and the user
+        // expects online services to work the moment connectivity is back.
+        // After the registry init on purpose — registration replays the
+        // current network at once, and the replay must find the backends.
+        com.playtranslate.net.NetworkConnectivity.install(this) {
+            TranslationBackendRegistry.onConnectivityRestored()
+        }
 
         // Launch-time cleanup: drop in-flight download partials for any
         // deprecated model (generic — driven by CatalogEntry.deprecated), so a

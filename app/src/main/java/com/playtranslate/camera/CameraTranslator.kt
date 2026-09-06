@@ -137,16 +137,11 @@ class CameraTranslator(private val context: Context) {
         !outcome.isDegraded -> null
         outcome.displacedLlmId != null ->
             context.getString(com.playtranslate.R.string.note_low_memory_fallback)
-        !isNetworkAvailable() ->
+        !com.playtranslate.net.NetworkConnectivity.isAvailable(context) ->
             context.getString(com.playtranslate.R.string.note_mlkit_no_internet)
         else -> com.playtranslate.ui.DegradedMessages.onlineFailureNote(
             context,
             TranslationBackendRegistry.earliestCooldownEnd(source, target),
         )
-    }
-
-    private fun isNetworkAvailable(): Boolean {
-        val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
-        return cm?.activeNetwork != null
     }
 }

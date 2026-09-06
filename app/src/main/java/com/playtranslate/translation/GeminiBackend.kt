@@ -99,6 +99,8 @@ class GeminiBackend(
     override fun unavailableCause(): CooldownCause? = cooldownState.unavailableCause()
     override fun recordSuccess(attemptStartedAtMs: Long) =
         cooldownState.recordSuccess(attemptStartedAtMs)
+    override fun onConnectivityRestored(): Boolean = cooldownState.onConnectivityRestored()
+    override fun resetCooldown() = cooldownState.resetCooldown()
 
     /** Last-seen `(key | model)` fingerprint. When it changes, any
      *  persisted cooldown (e.g. a daily-quota or insufficient_quota
@@ -112,7 +114,7 @@ class GeminiBackend(
         val prev = lastCredentialsFingerprint
         lastCredentialsFingerprint = current
         if (prev != null && prev != current) {
-            cooldownState.recordSuccess(System.currentTimeMillis())
+            cooldownState.resetCooldown()
         }
     }
 

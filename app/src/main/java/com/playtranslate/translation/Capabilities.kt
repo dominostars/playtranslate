@@ -91,6 +91,26 @@ interface Cooldownable {
      *  cooldown recorded by a later failure. Idempotent for the
      *  already-clean case. */
     fun recordSuccess(attemptStartedAtMs: Long)
+
+    /** The device regained a network (fanned out by
+     *  [TranslationBackendRegistry.onConnectivityRestored] from
+     *  [com.playtranslate.net.NetworkConnectivity]). A connection failure
+     *  describes the device, not the provider, so the implementation drops
+     *  an active [CooldownCause.CONNECTION_FAILED] cooldown together with
+     *  the network ladder's rung and the forgiven-first-failure tracker,
+     *  and leaves rate-limit / server-error / quota / billing cooldowns
+     *  alone. Returns true when an active cooldown was cleared (the
+     *  registry names the backend in its forensics log). Called off the
+     *  main thread, from the ConnectivityManager callback. */
+    fun onConnectivityRestored(): Boolean
+
+    /** Clean slate on a user gesture that means "try it again now": the
+     *  services-page toggle, a credentials change, deletion. Drops the
+     *  active cooldown whatever its cause and resets both ladders. A
+     *  quota / billing cooldown reset this way costs one re-probe that
+     *  records the same state again, which is the price of honouring
+     *  the gesture. */
+    fun resetCooldown()
 }
 
 /**

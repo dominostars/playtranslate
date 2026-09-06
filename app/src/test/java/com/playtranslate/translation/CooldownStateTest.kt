@@ -296,6 +296,143 @@ class CooldownStateTest {
         assertEquals(CooldownMessageClass.ACCOUNT, CooldownCause.BILLING.messageClass)
     }
 
+    // ── Connectivity vs provider health ──────────────────────────────────
+
+    /** Two network failures inside the pair window: the shape a dead
+     *  network produces on every live-mode cycle. */
+    private fun CooldownState.offlinePair(clock: AtomicLong) {
+        recordNetworkFailure("Connection failed")
+        clock.addAndGet(1_000)
+        recordNetworkFailure("Connection failed")
+    }
+
+    @Test fun `network and rate-limit ladders keep separate rungs`() {
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        // Two network cycles climb the network ladder to rung 2.
+        s.recordLadderFailure(CooldownLadder.Network, "net", CooldownCause.CONNECTION_FAILED)
+        clock.addAndGet(60_000)
+        s.recordLadderFailure(CooldownLadder.Network, "net", CooldownCause.CONNECTION_FAILED)
+        clock.addAndGet(10L * 60 * 1000)
+        assertNull(s.unavailableUntil())
+        // The first 429 afterwards still starts at the rate-limit ladder's
+        // bottom rung (1 minute), not an hour up it.
+        s.recordLadderFailure(CooldownLadder.RateLimit, "Rate limited")
+        assertEquals(clock.get() + 60_000L, s.unavailableUntil())
+    }
+
+    @Test fun `onConnectivityRestored clears an active connection cooldown and resets the network rung`() {
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        s.offlinePair(clock)
+        assertEquals(CooldownCause.CONNECTION_FAILED, s.unavailableCause())
+
+        assertTrue(s.onConnectivityRestored())
+        assertNull(s.unavailableUntil())
+        assertNull(s.unavailableDescription())
+        assertNull(s.unavailableCause())
+
+        // The next offline pair starts the network ladder over at 30 s.
+        s.offlinePair(clock)
+        assertEquals(clock.get() + 30_000L, s.unavailableUntil())
+    }
+
+    @Test fun `onConnectivityRestored leaves a provider-side cooldown and its rung alone`() {
+        val clock = AtomicLong(1_000_000L)
+        for (cause in listOf(CooldownCause.RATE_LIMITED, CooldownCause.SERVER_ERROR)) {
+            val s = newState(clock)
+            s.recordLadderFailure(CooldownLadder.RateLimit, "provider", cause)
+            val until = s.unavailableUntil()
+            assertEquals("cause $cause", false, s.onConnectivityRestored())
+            assertEquals("cause $cause", until, s.unavailableUntil())
+            assertEquals("cause $cause", cause, s.unavailableCause())
+            // Rate-limit rung untouched: the next unsignaled 429 after expiry
+            // lands on rung 1 (10 minutes).
+            clock.addAndGet(2L * 60 * 1000)
+            s.recordLadderFailure(CooldownLadder.RateLimit, "provider", cause)
+            assertEquals("cause $cause", clock.get() + 10L * 60 * 1000, s.unavailableUntil())
+        }
+        val quota = newState(clock)
+        quota.recordParsedFailure(clock.get() + 3_600_000, "Monthly quota used", CooldownCause.MONTHLY_QUOTA)
+        assertEquals(false, quota.onConnectivityRestored())
+        assertEquals(clock.get() + 3_600_000, quota.unavailableUntil())
+    }
+
+    @Test fun `onConnectivityRestored resets the network rung even after the cooldown expired`() {
+        // Airplane mode for 35 s: the 30 s cooldown has already lapsed when
+        // the network returns, so there is nothing active to clear — but the
+        // rung it left behind must not make the next blip cost 5 minutes.
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        s.offlinePair(clock)
+        clock.addAndGet(35_000)
+        assertNull(s.unavailableUntil())
+
+        assertEquals(false, s.onConnectivityRestored())
+
+        s.offlinePair(clock)
+        assertEquals(clock.get() + 30_000L, s.unavailableUntil())
+    }
+
+    @Test fun `onConnectivityRestored forgets a pending first network failure`() {
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        s.recordNetworkFailure("Connection failed")   // forgiven, remembered
+        s.onConnectivityRestored()
+        clock.addAndGet(1_000)
+        // Would have paired with the pre-restore failure; now it is a
+        // fresh first failure and is forgiven again.
+        s.recordNetworkFailure("Connection failed")
+        assertNull(s.unavailableUntil())
+    }
+
+    @Test fun `an offline session's ladder climb is undone the moment connectivity returns`() {
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        // Live mode keeps cycling while the device is offline: each expiry
+        // is followed by another failing pair, climbing 30 s → 5 m → 30 m → 4 h.
+        val expected = listOf(30_000L, 5L * 60 * 1000, 30L * 60 * 1000, 4L * 60 * 60 * 1000)
+        for (duration in expected) {
+            s.offlinePair(clock)
+            assertEquals(clock.get() + duration, s.unavailableUntil())
+            // Past the cooldown AND past the pair window, so each cycle's
+            // pair is a fresh pair rather than chaining onto the last one.
+            clock.addAndGet(duration + 61_000)
+            assertNull(s.unavailableUntil())
+        }
+        s.offlinePair(clock)
+        assertEquals(clock.get() + 4L * 60 * 60 * 1000, s.unavailableUntil())
+
+        // Airplane mode off: usable immediately, not in four hours.
+        assertTrue(s.onConnectivityRestored())
+        assertNull(s.unavailableUntil())
+        s.offlinePair(clock)
+        assertEquals(clock.get() + 30_000L, s.unavailableUntil())
+    }
+
+    @Test fun `resetCooldown clears any cause and both rungs`() {
+        val clock = AtomicLong(1_000_000L)
+        val s = newState(clock)
+        s.recordLadderFailure(CooldownLadder.Network, "net", CooldownCause.CONNECTION_FAILED)
+        clock.addAndGet(60_000)
+        s.recordLadderFailure(CooldownLadder.RateLimit, "Rate limited")
+        clock.addAndGet(2L * 60 * 1000)
+        // A quota cooldown weeks out — the services-page toggle still means
+        // "try again now".
+        s.recordParsedFailure(clock.get() + 30L * 24 * 60 * 60 * 1000, "Monthly quota used", CooldownCause.MONTHLY_QUOTA)
+        assertEquals(CooldownCause.MONTHLY_QUOTA, s.unavailableCause())
+
+        s.resetCooldown()
+        assertNull(s.unavailableUntil())
+        assertNull(s.unavailableCause())
+        // Both ladders back at the bottom.
+        s.recordLadderFailure(CooldownLadder.RateLimit, "Rate limited")
+        assertEquals(clock.get() + 60_000L, s.unavailableUntil())
+        clock.addAndGet(2L * 60 * 1000)
+        s.recordLadderFailure(CooldownLadder.Network, "net", CooldownCause.CONNECTION_FAILED)
+        assertEquals(clock.get() + 30_000L, s.unavailableUntil())
+    }
+
     @Test fun `Cooldownable interface delegates correctly`() {
         val clock = AtomicLong(1_000_000L)
         val s = newState(clock)

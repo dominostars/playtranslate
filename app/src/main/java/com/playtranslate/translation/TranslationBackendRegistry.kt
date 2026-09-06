@@ -483,6 +483,40 @@ object TranslationBackendRegistry {
     }
 
     /**
+     * Fan the regained-network signal out to every cooldown-capable
+     * backend. All registered backends, not just the usable ones: a
+     * "Connection failed" cooldown ticking on a disabled instance would
+     * otherwise outlive the outage that caused it and greet the user
+     * when they re-enable it. Called from the ConnectivityManager
+     * callback thread — only [CooldownState]'s own synchronized
+     * mutations run here, none of the main-thread-only mutators above.
+     * Logs under the forensics tag only when a cooldown was actually
+     * cleared, so a healthy network flap stays quiet.
+     */
+    fun onConnectivityRestored() {
+        val cleared = backends.filter { (it as? Cooldownable)?.onConnectivityRestored() == true }
+        if (cleared.isNotEmpty()) {
+            Log.i(
+                DIAG_TAG,
+                "connectivity restored: cleared cooldown on " +
+                    cleared.joinToString { it.displayName },
+            )
+        }
+    }
+
+    /**
+     * Drop [id]'s cooldown state entirely (the services-page enable
+     * toggle). Must go through the LIVE backend: a fresh
+     * `CooldownState(context, id)` would clear the prefs mirror but
+     * leave the registered backend's in-memory cooldown ticking, since
+     * a toggle doesn't rebuild the backend. No-op for unknown ids and
+     * for backends without cooldown participation.
+     */
+    fun resetCooldown(id: BackendId) {
+        (byId(id) as? Cooldownable)?.resetCooldown()
+    }
+
+    /**
      * Backends currently sidelined by a cooldown, one line each — for
      * the log-export header, which stays EMPTY when nothing is wrong
      * (the export is shared by every support flow; translation gets
