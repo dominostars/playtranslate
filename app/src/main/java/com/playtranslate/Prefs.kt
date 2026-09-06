@@ -90,6 +90,13 @@ data class IconPosition(val edge: Int, val fraction: Float) {
 class Prefs internal constructor(
     context: Context,
     private val codec: SecretCodec,
+    /** Whether debug-only overrides may take effect. Debug and release builds
+     *  share an applicationId (and, here, a signing key), so a release install
+     *  over a debug one inherits every pref the debug build wrote. An override
+     *  that changes production behaviour must therefore read as OFF outside
+     *  debug builds regardless of what is stored; see [debugForceMmapWeights].
+     *  Seam for JVM tests; production always passes [BuildConfig.DEBUG]. */
+    private val debugBuild: Boolean = BuildConfig.DEBUG,
 ) {
 
     /** Production constructor — always the AndroidKeyStore-backed [SecretCipher].
@@ -1347,6 +1354,22 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_DEBUG_SHORT_TEXT_ROUTING, false)
         set(v) = sp.edit { putBoolean(KEY_DEBUG_SHORT_TEXT_ROUTING, v) }
 
+    /** Debug-only: forces the on-device LLM tier to load weights through the
+     *  mmap (reclaimable, file-backed) path regardless of live availMem, as if
+     *  the device were below the model's resident floor. The mmap path is
+     *  otherwise exercised only on constrained devices, never on a 16 GB dev
+     *  device, which is how the cache-prefix collision fixed in
+     *  [com.playtranslate.mnn.MmapWeightCache] shipped unnoticed. Read by
+     *  [com.playtranslate.translation.mnn.MnnTranslator].
+     *
+     *  Reads as false outside debug builds even when the stored value is true:
+     *  the Settings row only exists in debug builds, so a stale `true` carried
+     *  into a release install would otherwise force every on-device LLM load
+     *  onto the slower mmap path with no UI to turn it off. */
+    var debugForceMmapWeights: Boolean
+        get() = debugBuild && sp.getBoolean(KEY_DEBUG_FORCE_MMAP_WEIGHTS, false)
+        set(v) = sp.edit { putBoolean(KEY_DEBUG_FORCE_MMAP_WEIGHTS, v) }
+
     /** Debug-only: when on, [com.playtranslate.OcrSeedWriter] writes the
      *  bitmap that was fed to OCR plus a transcription of the result to
      *  external files dir. Intended for one-off seeding of the golden-set
@@ -1645,6 +1668,7 @@ class Prefs internal constructor(
         private const val KEY_DEBUG_LIVE_MODE                = "debug_live_mode"
         private const val KEY_DEBUG_SAVE_OCR_SEED            = "debug_save_ocr_seed"
         private const val KEY_DEBUG_SHORT_TEXT_ROUTING       = "debug_short_text_routing"
+        private const val KEY_DEBUG_FORCE_MMAP_WEIGHTS       = "debug_force_mmap_weights"
         private const val KEY_DEBUG_LOG_GROUPING             = "debug_log_grouping"
         private const val KEY_DEBUG_ANGLE_GATE_TARGET        = "debug_angle_gate_target"
         private const val KEY_DEBUG_LOG_TRACE                = "debug_log_trace"

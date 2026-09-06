@@ -1545,6 +1545,19 @@ class SettingsRenderer(
         }
         rowShortText.setOnClickListener { switchShortText.toggle() }
 
+        // Force the on-device LLM's mmap weight path (normally taken only
+        // below the model's availMem floor, so never on a 16 GB dev device).
+        // Read at the next model load; a loaded model keeps its current mode
+        // until it is reloaded (backend swap, unload, or process restart).
+        val rowForceMmap = root.findViewById<View>(R.id.rowForceMmapWeights)
+        val switchForceMmap = rowForceMmap.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        rowForceMmap.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_force_mmap_weights)
+        switchForceMmap.isChecked = prefs.debugForceMmapWeights
+        switchForceMmap.setOnCheckedChangeListener { _, checked ->
+            prefs.debugForceMmapWeights = checked
+        }
+        rowForceMmap.setOnClickListener { switchForceMmap.toggle() }
+
         // Log OCR grouping decisions (per-pair MERGE/SPLIT + numeric reason)
         val rowLogGrouping = root.findViewById<View>(R.id.rowLogGrouping)
         val switchLogGrouping = rowLogGrouping.findViewById<MaterialSwitch>(R.id.switchRowToggle)
