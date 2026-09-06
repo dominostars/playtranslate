@@ -833,16 +833,84 @@ class ReglobTokensTest {
     }
 
     @Test
-    fun `conjugation cut with a headword match stays admissible`() {
-        // The veto blocks reading coincidences, not written forms: a candidate
-        // whose joined surface matches a HEADWORD is admissible regardless.
+    fun `conjugation cut (auxiliary glue) stays admissible on a bare headword`() {
+        // した = し(する,連用形)+た(AUX) — auxiliary glue, not CONVERB_CUT.
         val tokens = listOf(
             jaToken("勝利", JaCategory.NOUN),
             jaToken("し", JaCategory.VERB, dict = "する", infl = "連用形-一般"),
             jaToken("た", JaCategory.AUX, infl = "終止形-一般"),
         )
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "した"))
         val candidates = phraseCandidatesFor(tokens)
-        val admissible = admissiblePhraseCandidates(candidates, setOf("した"), emptySet())
+        val admissible = admissiblePhraseCandidates(candidates, headwords = setOf("した"), kanaNativeReadings = emptySet())
         assertTrue(admissible.any { it.lookupForm == "した" })
+    }
+
+    @Test
+    fun `auxiliary-glue derived verbs keep fusing without a priority tag`() {
+        // The priority floor must not reach 助動詞 chains deriving real words.
+        val shiraseru = listOf(
+            jaToken("知ら", JaCategory.VERB, dict = "知る", infl = "未然形-一般"),
+            jaToken("せる", JaCategory.AUX, dict = "せる"),
+        )
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(shiraseru, "知らせる"))
+        assertEquals(
+            "知らせる",
+            glob(shiraseru, knownPhrases = setOf("知らせる"))[0].lookupForm,
+        )
+
+        val kudaranai = listOf(
+            jaToken("下ら", JaCategory.VERB, dict = "下る", infl = "未然形-一般"),
+            jaToken("ない", JaCategory.AUX, dict = "ない"),
+        )
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(kudaranai, "下らない"))
+        assertEquals(
+            "下らない",
+            glob(kudaranai, knownPhrases = setOf("下らない"))[0].lookupForm,
+        )
+
+        // 済み+ませ+ん: an AUX anywhere in the glue run stays CONJUGATION_CUT.
+        val sumimasen = listOf(
+            jaToken("済み", JaCategory.VERB, dict = "済む", infl = "連用形-一般"),
+            jaToken("ませ", JaCategory.AUX, dict = "ます"),
+            jaToken("ん", JaCategory.AUX, dict = "ぬ"),
+        )
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(sumimasen, "済みません"))
+        assertEquals(
+            "済みません",
+            glob(sumimasen, knownPhrases = setOf("済みません"))[0].lookupForm,
+        )
+    }
+
+    @Test
+    fun `oshite fossilized adverb needs priority to override the te-form fallback`() {
+        // 押し(連用形)+て is PARTICLE-only glue: CONVERB_CUT, needing priority.
+        val tokens = listOf(
+            jaToken("押し", JaCategory.VERB, dict = "押す", infl = "連用形-一般"),
+            jaToken("て", JaCategory.PARTICLE, conj = true),
+        )
+        assertEquals(Suspicion.CONVERB_CUT, exactSuspicion(tokens, "押して"))
+        val admissible = admissiblePhraseCandidates(
+            phraseCandidatesFor(tokens), headwords = setOf("押して"), kanaNativeReadings = emptySet(),
+        )
+        assertTrue("without a priority tag, 押して stays inadmissible",
+            admissible.none { it.lookupForm == "押して" })
+        val r = reglobTokens(tokens, admissible, setOf("押して"), setOf("押す"))
+        assertEquals(listOf("押す"), r.map { it.lookupForm })
+        assertEquals("押して", r[0].surface)
+    }
+
+    @Test
+    fun `a priority-tagged converb headword clears the floor`() {
+        val tokens = listOf(
+            jaToken("従っ", JaCategory.VERB, dict = "従う", infl = "連用形-促音便"),
+            jaToken("て", JaCategory.PARTICLE, conj = true),
+        )
+        assertEquals(Suspicion.CONVERB_CUT, exactSuspicion(tokens, "従って"))
+        val admissible = admissiblePhraseCandidates(
+            phraseCandidatesFor(tokens), headwords = setOf("従って"), kanaNativeReadings = emptySet(),
+            priorityHeadwords = setOf("従って"),
+        )
+        assertTrue(admissible.any { it.lookupForm == "従って" })
     }
 }
