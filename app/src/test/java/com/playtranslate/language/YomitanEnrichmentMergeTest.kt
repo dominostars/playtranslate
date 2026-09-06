@@ -338,4 +338,17 @@ class YomitanEnrichmentMergeTest {
             YomitanEnrichment.packWrittenForms(pack, "それからね", "それからね"),
         )
     }
+
+    @Test
+    fun `packWrittenForms retries with the displayable spelling when the word is a search-only one`() {
+        // ja-v5 review find: an OCR'd 其れから matches the entry's search-only
+        // spelling exactly. Imported dictionaries hold that spelling as a
+        // redirect stub at best, so the retry must run on 其から.
+        val pack = DictionaryResponse(listOf(packEntry(
+            Headword("其れから", "それから", isSearchOnly = true), hw("其から", "それから"),
+        )))
+        assertEquals(listOf("其から" to setOf("それから")), YomitanEnrichment.packWrittenForms(pack, "其れから", "それから"))
+        // A word matching a DISPLAYABLE spelling still offers nothing.
+        assertTrue(YomitanEnrichment.packWrittenForms(pack, "其から", "それから").isEmpty())
+    }
 }

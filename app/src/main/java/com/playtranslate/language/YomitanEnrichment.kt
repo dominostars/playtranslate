@@ -256,11 +256,18 @@ class YomitanEnrichment(
          * homographs (ここ → 此処 above 個々), whose spellings would fetch
          * another word's definitions onto this one's anchor.
          *
-         * A [word] that already IS one of the entry's spellings gets nothing:
-         * a miss on it is a genuine miss, and under positional pairing the
-         * entry's other spellings can be other words (端/はし beside 辺/ほとり),
+         * A [word] that already IS one of the entry's displayable spellings gets
+         * nothing: a miss on it is a genuine miss, and under positional pairing
+         * the entry's other spellings can be other words (端/はし beside 辺/ほとり),
          * so offering them would attach a neighbour's definitions to this
-         * anchor — the bleed the tier exists to avoid (Codex find).
+         * anchor — the bleed the tier exists to avoid (Codex find). A word that
+         * matches only a SEARCH-ONLY spelling (an OCR'd 其れから) is not that
+         * case: imported dictionaries carry such spellings as redirect stubs at
+         * best, so the miss is expected and the displayable spelling (其から)
+         * is exactly what to retry with (second Codex find, ja-v5 review).
+         * Costs nothing on the common path: the gate is one in-memory scan of
+         * the entry's headwords either way, and on packs without ke_inf every
+         * spelling is displayable, so the behaviour is identical to before.
          *
          * Within the entry, only reading-compatible headwords contribute: the
          * ones carrying [reading] when it names a reading; else the ones whose
@@ -275,7 +282,7 @@ class YomitanEnrichment(
             reading: String?,
         ): List<Pair<String, Set<String>>> {
             val entry = packResponse?.entries?.firstOrNull() ?: return emptyList()
-            if (entry.headwords.any { it.written == word }) return emptyList()
+            if (entry.headwords.any { it.written == word && !it.isSearchOnly }) return emptyList()
             // The anchor spelling is the first DISPLAYABLE headword, not the
             // first listed: 141 JMdict entries list a search-only form first,
             // and anchoring there would pick a spelling the loop below then
