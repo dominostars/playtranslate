@@ -573,9 +573,16 @@ class DictionaryManager private constructor(private val context: Context) {
      *
      * Each SQL variant is guarded by a probe for the columns IT dereferences
      * (Codex review find: rank_score's presence must not be trusted to imply
-     * uk_applicable, even though ja-v2 shipped them together). Missing columns
-     * fail open (bare existence / no priority floor) rather than crash —
-     * degraded but functional on older packs.
+     * uk_applicable, even though ja-v2 shipped them together). Degradation
+     * ladder on older/partial schemas: no `uk_applicable` → rank floor
+     * stays, kanaNativeReadings FAILS OPEN to the full reading set; no
+     * `reading.rank_score` either → bare existence, everything fails open
+     * (degraded pre-v2 behavior, same precedent as the ranking SQL; such
+     * packs are force-upgraded); no `headword.rank_score` → priorityHeadwords
+     * FAILS OPEN to the full headword set, so a CONVERB_CUT candidate admits
+     * on a bare headword match exactly as a CONJUGATION_CUT does. The
+     * [Suspicion.CONJUGATION_CUT] veto is structural and applies regardless
+     * of pack schema.
      */
     private fun batchCheckPhrases(db: SQLiteDatabase, candidates: Set<String>): PhraseMembership {
         if (candidates.isEmpty()) return PhraseMembership(emptySet(), emptySet(), emptySet())
@@ -1014,8 +1021,13 @@ class DictionaryManager private constructor(private val context: Context) {
             val headwords: Set<String>,
             val readings: Set<String>,
             val kanaNativeReadings: Set<String>,
-            /** Subset of [headwords] the pack ALSO ranks as priority
-             *  (`headword.rank_score > 0`, i.e. carries a ke_pri tag). The
+            /** Subset of [headwords] with `headword.rank_score > 0`. The score
+             *  is built at pack time (scripts/build_jmdict.py,
+             *  compute_headword_rank_score): +1M for a top-tier ke_pri tag
+             *  (ichi1/news1/gai1/spec1/spec2), +1M for two or more frequency
+             *  tags, minus 10k per headword position. So "> 0" means a
+             *  top-tier or doubly-tagged form, NOT any ke_pri tag: 対して
+             *  (news2,nf33) and 概して (news2,nf28) carry tags and score 0. The
              *  only tier a [Suspicion.CONVERB_CUT] candidate may fuse
              *  from — see [admissiblePhraseCandidates]. */
             val priorityHeadwords: Set<String> = emptySet(),
