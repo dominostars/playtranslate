@@ -391,6 +391,7 @@
     <string name="audio_recording_row_start">Empezar a grabar audio</string>
 
     <string name="audio_recording_row_active">Grabando audio</string>
+    <string name="audio_recording_row_failed">Error al grabar audio</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          MEDIAPROJECTION OVERLAY-PERMISSION DIALOG

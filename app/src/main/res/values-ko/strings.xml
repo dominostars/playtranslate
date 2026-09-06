@@ -389,6 +389,7 @@
     <string name="audio_recording_row_start">오디오 녹음 시작</string>
 
     <string name="audio_recording_row_active">오디오 녹음 중</string>
+    <string name="audio_recording_row_failed">오디오 녹음 실패</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          MEDIAPROJECTION OVERLAY-PERMISSION DIALOG

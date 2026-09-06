@@ -436,7 +436,10 @@ class CaptureService : Service() {
         ui.setIconsLoading(holdLoading)
         ui.setIconsGlyph(
             GameAudioGate.iconGlyph(
-                this, mediaProjectionControllerIfInitialized, CaptureBackendResolver.active(),
+                this,
+                mediaProjectionControllerIfInitialized,
+                gameAudioRecorderIfInitialized,
+                CaptureBackendResolver.active(),
             ),
         )
     }
@@ -1323,6 +1326,10 @@ class CaptureService : Service() {
         GameAudioRecorder(this, mediaProjectionController)
     }
     internal val gameAudioRecorder: GameAudioRecorder by gameAudioRecorderLazy
+    /** The recorder if it was ever realized — display surfaces read its
+     *  health through this so rendering never allocates the ring. */
+    internal val gameAudioRecorderIfInitialized: GameAudioRecorder?
+        get() = if (gameAudioRecorderLazy.isInitialized()) gameAudioRecorder else null
 
     /** Re-evaluate whether the game-audio recorder should RUN — the single
      *  push-point entry the consent/activate/deactivate/backend-swap/settings
@@ -1350,17 +1357,18 @@ class CaptureService : Service() {
     }
 
     fun reconcileGameAudio() {
-        if (!Prefs(this).recordGameAudio) {
-            if (gameAudioRecorderLazy.isInitialized()) gameAudioRecorder.stop("pref off")
-            // Feature off ⇒ the icon's glyph is the plain chevron again; in
-            // the on state the recorder's own reconcile pushes the sync.
-            // Main-routed like GameAudioRecorder.reconcile, since this
-            // push-point is documented safe from any context.
-            if (Looper.myLooper() === Looper.getMainLooper()) syncIconState()
-            else mainHandler.post { syncIconState() }
+        // A realized recorder always gets the reconcile, feature on or off:
+        // it reads the pref itself, and the off state must clear its health
+        // bit as well as stop it. Never-opted-in stays un-allocated (no ring
+        // just to be told to stop) and only the icon's glyph is pushed —
+        // main-routed like GameAudioRecorder.reconcile, since this
+        // push-point is documented safe from any context.
+        if (gameAudioRecorderLazy.isInitialized() || Prefs(this).recordGameAudio) {
+            gameAudioRecorder.reconcile()
             return
         }
-        gameAudioRecorder.reconcile()
+        if (Looper.myLooper() === Looper.getMainLooper()) syncIconState()
+        else mainHandler.post { syncIconState() }
     }
 
     /** Feature-off hygiene, reached only from [setRecordGameAudio] on

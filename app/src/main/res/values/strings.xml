@@ -963,6 +963,11 @@
          in this state; the tap is the quiet manage path (Anki settings). -->
     <string name="audio_recording_row_active">Recording audio</string>
 
+    <!-- Settings row title while the permission gates pass but the recorder
+         could not start (or its reader died and the automatic restart did
+         not take); the tap retries. -->
+    <string name="audio_recording_row_failed">Audio recording failed</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          MEDIAPROJECTION OVERLAY-PERMISSION DIALOG
          ═══════════════════════════════════════════════════════════════ -->

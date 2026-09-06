@@ -360,6 +360,7 @@
     <string name="audio_recording_row_start">เริ่มบันทึกเสียง</string>
 
     <string name="audio_recording_row_active">กำลังบันทึกเสียง</string>
+    <string name="audio_recording_row_failed">บันทึกเสียงไม่สำเร็จ</string>
 
     <!-- ═══ MEDIAPROJECTION OVERLAY-PERMISSION DIALOG ═══ -->
 

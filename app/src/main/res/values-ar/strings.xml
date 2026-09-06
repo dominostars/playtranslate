@@ -384,6 +384,7 @@
     <string name="audio_recording_row_start">بدء تسجيل الصوت</string>
 
     <string name="audio_recording_row_active">جارٍ تسجيل الصوت</string>
+    <string name="audio_recording_row_failed">فشل تسجيل الصوت</string>
 
     <!-- ═══ MEDIAPROJECTION OVERLAY-PERMISSION DIALOG ═══ -->
 

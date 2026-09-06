@@ -5,9 +5,11 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioPlaybackCaptureConfiguration
 import android.media.AudioRecord
+import android.media.projection.MediaProjection
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import com.playtranslate.CaptureService
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.Prefs
@@ -99,6 +101,59 @@ class GameAudioRecorder(
     @Volatile var running = false
         private set
 
+    /**
+     * Health, for the display surfaces ([GameAudioGate.recording]): the gate
+     * WANTED the recorder running, a start was attempted, and it is not
+     * running. Set at the end of [reconcileOnMain] and by a reader-thread
+     * death ([onReaderDied]) until its automatic restart settles. Displays
+     * read this rather than [running] so the deliberate card-flow pause never
+     * flaps them (a pause makes the run unwanted, which reads healthy), and
+     * transient failures heal through the same reconcile that retries them.
+     * Closes the 2026-07-22 residual — a dead recorder behind passing gates
+     * showed "Recording audio" — which the arrow glyph made too visible to
+     * keep (Codex adversarial find 2026-09-05).
+     */
+    @Volatile var startFailed = false
+        private set
+
+    /** Observers of [startFailed] TRANSITIONS — the Settings sheet while it
+     *  is resumed, mirroring the teardown listener it holds on the
+     *  projection controller for consent loss, so the audio row learns of a
+     *  reader death the same push-style way it learns of a revoked token
+     *  instead of waiting for its next own refresh (Codex adversarial find
+     *  2026-09-05). Main-thread only, like the controller's list; fires only
+     *  when the bit actually flips, never per reconcile. The floating icon
+     *  does not use this — it rides [CaptureService.syncIconState]. */
+    private val healthListeners = mutableListOf<() -> Unit>()
+    fun addHealthListener(listener: () -> Unit) { healthListeners += listener }
+    fun removeHealthListener(listener: () -> Unit) { healthListeners -= listener }
+
+    /** The ONE write path for [startFailed] (main thread): notifies
+     *  [healthListeners] on a change, snapshotting the list since a listener
+     *  may unregister itself as it runs. */
+    private fun setStartFailed(failed: Boolean) {
+        if (startFailed == failed) return
+        startFailed = failed
+        healthListeners.toList().forEach { it() }
+    }
+
+    /** One automatic restart per push-point-initiated run: a reader death
+     *  restarts the recorder once; a restart whose reader dies again waits
+     *  for the next push-point ([reconcile]) instead of looping against a
+     *  dead audio server. Main-thread state. */
+    private var autoRetried = false
+
+    /** How [start] obtains the MediaProjection an AudioRecord attaches to —
+     *  the controller's audio hook. Replaceable in tests so a start failure
+     *  ("no projection could be materialized", the shape of a dead token or
+     *  a dead audio path) can be produced without a real projection, which
+     *  Robolectric cannot supply: its platform stub rejects the
+     *  mediaProjection foreground-service type inside the hook and the
+     *  existing catch invalidates the consent, so the gates never stay green
+     *  long enough to observe the failure any other way. */
+    @VisibleForTesting
+    internal var projectionSource: () -> MediaProjection? = { controller.projectionForAudioCapture() }
+
     private val onProjectionTeardown: () -> Unit = {
         // Fires on main, after the controller has already stopped the
         // projection — the AudioRecord is delivering end-of-stream by now.
@@ -110,8 +165,8 @@ class GameAudioRecorder(
      *  safe-from-any-context); the work always runs on main, where the
      *  controller's listener list and consent state live. */
     fun reconcile() {
-        if (Looper.myLooper() === Looper.getMainLooper()) reconcileOnMain()
-        else mainHandler.post { reconcileOnMain() }
+        if (Looper.myLooper() === Looper.getMainLooper()) reconcileOnMain(fromPushPoint = true)
+        else mainHandler.post { reconcileOnMain(fromPushPoint = true) }
     }
 
     /** Last logged gate verdict — the verdict line is the primary field
@@ -119,7 +174,8 @@ class GameAudioRecorder(
      *  (not every reconcile — the activity push-point fires constantly). */
     private var lastVerdict: String? = null
 
-    private fun reconcileOnMain() {
+    private fun reconcileOnMain(fromPushPoint: Boolean) {
+        if (fromPushPoint) autoRetried = false
         val ctx = service.applicationContext
         val pref = Prefs(ctx).recordGameAudio
         val active = CaptureLifecycle.isSessionActive(ctx)
@@ -136,19 +192,48 @@ class GameAudioRecorder(
         }
         if (wantsRun && !running) start()
         else if (!wantsRun && running) stop("reconcile: gate closed")
+        // Health for the displays: wanted, attempted, not running. Computed
+        // AFTER start/stop so it reflects this attempt; the card-flow pause
+        // reads healthy by construction (pause ⇒ !wantsRun).
+        val failedNow = wantsRun && !running
+        if (failedNow && !startFailed) Log.w(TAG, "wanted but not running after the start attempt: displays read failed")
+        setStartFailed(failedNow)
         // The floating icon's glyph reads the same gate inputs (consent, mic —
-        // [GameAudioGate]); push it from here, AFTER start/stop, so a consent
-        // the start attempt just invalidated (FGS-type rejection) is already
-        // reflected. Every seam that moves those inputs reaches this
-        // reconcile, which is what makes the glyph's freshness structural.
+        // [GameAudioGate]) plus [startFailed]; push it from here, AFTER
+        // start/stop, so a consent the start attempt just invalidated
+        // (FGS-type rejection) is already reflected. Every seam that moves
+        // those inputs reaches this reconcile, which is what makes the
+        // glyph's freshness structural.
         service.syncIconState()
+    }
+
+    /** Reader-thread death (a read error such as the audio server dying —
+     *  not a [stop], which clears shouldRun first): stop, mark unhealthy so
+     *  the displays stop claiming audio, and restart ONCE per push-point run
+     *  through the ordinary reconcile — the retry loop this class already
+     *  is. A restart whose reader dies again stays failed until the next
+     *  push-point rather than spinning. Called on the reader thread; the
+     *  bookkeeping hops to main where the rest of the state lives. */
+    private fun onReaderDied(reason: String) {
+        stop(reason)
+        mainHandler.post {
+            setStartFailed(true)
+            if (!autoRetried) {
+                autoRetried = true
+                Log.i(TAG, "reader died ($reason): one automatic restart")
+                reconcileOnMain(fromPushPoint = false)
+            } else {
+                Log.w(TAG, "reader died again after the automatic restart ($reason): waiting for the next push-point")
+                service.syncIconState()
+            }
+        }
     }
 
     /** Main-thread only (via [reconcileOnMain]). The permission is checked by
      *  the gate; the SuppressLint covers AudioRecord.Builder's lint contract. */
     @SuppressLint("MissingPermission")
     private fun start() {
-        val projection = controller.projectionForAudioCapture() ?: run {
+        val projection = projectionSource() ?: run {
             Log.w(TAG, "start skipped: no projection (consent token dead?)")
             return
         }
@@ -284,8 +369,9 @@ class GameAudioRecorder(
             val n = rec.read(chunk, 0, chunk.size)
             if (n <= 0) {
                 // 0 = stall, negative = error. A normal stop() unblocks the
-                // read via rec.stop() and clears shouldRun first.
-                if (shouldRun) stop("read returned $n")
+                // read via rec.stop() and clears shouldRun first; anything
+                // else is a death the displays must learn about.
+                if (shouldRun) onReaderDied("read returned $n")
                 return
             }
             var chunkPeak = 0
