@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * Maps an [OnlineServiceInstance] to a live [TranslationBackend].
@@ -103,6 +106,12 @@ object OnlineBackendFactory {
                 else resolveBaseUrl(c)
             },
             keyProbeUrlProvider = { base -> base.trimEnd('/') + keyProbePathFor(current().preset) },
+            modelsAuthHeaders = { key -> modelsAuthHeadersFor(current().preset, key) },
+            // Every preset but CUSTOM names a provider whose catalog endpoint
+            // exists and authenticates, so a 400 from the key probe is about
+            // the key; a user-typed endpoint keeps the lenient probe.
+            pinnedEndpoint = { current().preset != OpenAiPreset.CUSTOM },
+            requestExtras = { model -> requestExtrasFor(current().preset, model) },
             usageTracker = UsageTracker(sharedPrefs, id),
             // owned_by filtering only makes sense against the canonical
             // first-party OpenAI catalog; every other provider tags models
@@ -128,6 +137,7 @@ object OnlineBackendFactory {
         OpenAiPreset.MISTRAL -> OnlineServiceStore.MISTRAL_BASE_URL
         OpenAiPreset.GROQ -> OnlineServiceStore.GROQ_BASE_URL
         OpenAiPreset.OPENROUTER -> OnlineServiceStore.OPENROUTER_BASE_URL
+        OpenAiPreset.CLAUDE -> OnlineServiceStore.CLAUDE_BASE_URL
         OpenAiPreset.CUSTOM -> instance.baseUrl.ifBlank { Prefs.DEFAULT_OPENAI_BASE_URL }
     }
 
@@ -138,6 +148,7 @@ object OnlineBackendFactory {
             OpenAiPreset.MISTRAL -> Prefs.DEFAULT_MISTRAL_MODEL
             OpenAiPreset.GROQ -> Prefs.DEFAULT_GROQ_MODEL
             OpenAiPreset.OPENROUTER -> Prefs.DEFAULT_OPENROUTER_MODEL
+            OpenAiPreset.CLAUDE -> Prefs.DEFAULT_CLAUDE_MODEL
             OpenAiPreset.OPENAI, OpenAiPreset.CUSTOM -> Prefs.DEFAULT_OPENAI_MODEL
         }
         ServiceType.DEEPL, ServiceType.LINGVA -> ""
@@ -152,6 +163,47 @@ object OnlineBackendFactory {
         OpenAiPreset.OPENROUTER -> OnlineServiceStore.OPENROUTER_KEY_PROBE_PATH
         else -> "/models"
     }
+
+    /**
+     * Extra top-level fields on a chat-completions request. Claude only:
+     * Anthropic's compatible layer turns thinking ON by default for Claude 5
+     * models, ignores `reasoning_effort`, and passes only a `thinking` field
+     * through, so switching thinking off is the one latency lever a live
+     * overlay has there. On the Thor (2026-09-06) Sonnet 5 took 4.9 s and
+     * 23.4 s for batches of 5 and 7 short strings, about 2,000 tokens of
+     * hidden reasoning across the pair, where Haiku 4.5 (no thinking by
+     * default) took 1.9 to 3.1 s on the same screens.
+     *
+     * Fable and Mythos ids get no field: thinking is always on there and an
+     * explicit off is a 400, which the batch path would then hand to the
+     * per-text retry. Their latency is whatever the model decides.
+     */
+    fun requestExtrasFor(preset: OpenAiPreset, model: String): Map<String, JsonElement> = when {
+        preset != OpenAiPreset.CLAUDE -> emptyMap()
+        CLAUDE_THINKING_ALWAYS_ON.any { model.startsWith(it) } -> emptyMap()
+        else -> mapOf("thinking" to buildJsonObject { put("type", "disabled") })
+    }
+
+    /** Model-id prefixes that reject `thinking: disabled`. */
+    private val CLAUDE_THINKING_ALWAYS_ON = listOf("claude-fable", "claude-mythos")
+
+    /** Headers that carry [apiKey] on the catalog calls: the key probe and
+     *  the model picker's /models. Every provider takes the same Bearer
+     *  token its chat endpoint takes — except Claude, whose compatible
+     *  layer stops at chat-completions: its /models is Anthropic's native
+     *  endpoint, which answers a Bearer token with 401 "invalid x-api-key"
+     *  and reads `x-api-key` plus `anthropic-version` instead (see
+     *  [OnlineServiceStore.CLAUDE_BASE_URL]). Without these, the settings
+     *  page would report every valid Claude key as rejected and the picker
+     *  would never load. */
+    fun modelsAuthHeadersFor(preset: OpenAiPreset, apiKey: String): Map<String, String> =
+        when (preset) {
+            OpenAiPreset.CLAUDE -> mapOf(
+                "x-api-key" to apiKey,
+                "anthropic-version" to OnlineServiceStore.CLAUDE_API_VERSION,
+            )
+            else -> mapOf("Authorization" to "Bearer $apiKey")
+        }
 
     /** User-facing name for the instance — the service brand, except
      *  OPENAI-type instances take their preset's name ("OpenAI" /
@@ -174,6 +226,7 @@ object OnlineBackendFactory {
         OpenAiPreset.MISTRAL -> context.getString(R.string.mistral_display_name)
         OpenAiPreset.GROQ -> context.getString(R.string.groq_display_name)
         OpenAiPreset.OPENROUTER -> context.getString(R.string.openrouter_display_name)
+        OpenAiPreset.CLAUDE -> context.getString(R.string.claude_display_name)
         OpenAiPreset.CUSTOM -> context.getString(R.string.llm_backend_preset_custom)
     }
 

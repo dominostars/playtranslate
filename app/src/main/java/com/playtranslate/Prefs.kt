@@ -1655,6 +1655,13 @@ class Prefs internal constructor(
         // same small/fast/cheap tier we default to on Gemini, and holds up
         // on CJK short text far better than the cheaper open models.
         const val DEFAULT_OPENROUTER_MODEL = "google/gemini-2.5-flash-lite"
+        /** Claude's fast tier, matching every other preset's default (flash,
+         *  small, lite). Haiku 4.5 needs no thinking switch and did the Thor's
+         *  test screens in 1.9-3.1 s where Sonnet 5 with thinking took 5-23 s
+         *  (2026-09-06). The dated id is the one the native /v1/models lists,
+         *  so a fresh instance shows as selected in the picker rather than as
+         *  a custom entry. */
+        const val DEFAULT_CLAUDE_MODEL    = "claude-haiku-4-5-20251001"
         private const val KEY_LEGACY_THEME_INDEX    = "theme_index"
         const val KEY_THEME_MODE                    = "theme_mode"
         const val KEY_ACCENT_NAME                   = "accent_name"

@@ -740,6 +740,7 @@
     <string name="llm_backend_invalid_key_alert_title">无法验证 API 密钥</string>
 
     <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> 拒绝了你输入的密钥。请在 <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> 仔细核对后重试。</string>
+    <string name="llm_backend_key_needs_workspace_scope">此密钥未绑定到工作区，因此无法在此使用。请在 Claude Console 中于特定工作区内创建密钥，然后改为输入该密钥。</string>
 
     <string name="llm_backend_invalid_key_alert_button">好的</string>
 

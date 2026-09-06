@@ -737,6 +737,7 @@
     <string name="llm_backend_invalid_key_alert_title">Không thể xác minh khóa API</string>
 
     <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> đã từ chối khóa bạn nhập. Hãy kiểm tra lại tại <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> và thử lại.</string>
+    <string name="llm_backend_key_needs_workspace_scope">Khóa này không gắn với một workspace nên không dùng được ở đây. Trong Claude Console, hãy tạo khóa bên trong một workspace cụ thể rồi nhập khóa đó.</string>
 
     <string name="llm_backend_invalid_key_alert_button">OK</string>
 

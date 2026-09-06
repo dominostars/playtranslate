@@ -6,8 +6,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
 
@@ -119,7 +121,53 @@ class OpenAiBackendCooldownTest {
         )
     }
 
+    /** Anthropic reports a dead balance as a 400 whose only signal is the
+     *  message. It must land in the same BILLING cooldown as OpenAI's 429
+     *  `insufficient_quota`, or the waterfall pays a rejected call per
+     *  frame against an account that cannot answer. */
+    @Test fun `Anthropic credit-balance 400 records the billing cooldown`() = runBlocking {
+        val cooldown = CooldownState(context = null, backendId = "openai")
+        val backend = openAiWith(cooldown, cannedClient(400, CREDIT_BALANCE_400_BODY))
+
+        val thrown = runCatching { backend.translate("hello", "ja", "en") }.exceptionOrNull()
+        assertTrue("billing 400 is deterministic upstream", thrown is StructuralFailureException)
+        assertEquals(CooldownCause.BILLING, cooldown.unavailableCause())
+        assertNotNull(cooldown.unavailableUntil())
+    }
+
+    /** On the batch path the same 400 must NOT be read as "strict JSON
+     *  unsupported": that hand-off retries every string one by one against
+     *  the same dead account (seen on the Thor 2026-09-06, five extra calls
+     *  per batch). */
+    @Test fun `batch credit-balance 400 cools down instead of retrying per-text`() = runBlocking {
+        val cooldown = CooldownState(context = null, backendId = "openai")
+        val backend = openAiWith(cooldown, cannedClient(400, CREDIT_BALANCE_400_BODY))
+
+        val thrown = runCatching { backend.translateBatch(listOf("a", "b"), "ja", "en") }.exceptionOrNull()
+        assertTrue("must not be the per-text retry signal", thrown is StructuralFailureException)
+        assertEquals(CooldownCause.BILLING, cooldown.unavailableCause())
+    }
+
+    /** The per-text hand-off itself is unchanged for every other 400. */
+    @Test fun `generic batch 400 still hands off to the per-text retry`() = runBlocking {
+        val cooldown = CooldownState(context = null, backendId = "openai")
+        val backend = openAiWith(
+            cooldown,
+            cannedClient(400, """{"error":{"message":"response_format is not supported","type":"invalid_request_error"}}"""),
+        )
+
+        val thrown = runCatching { backend.translateBatch(listOf("a", "b"), "ja", "en") }.exceptionOrNull()
+        assertTrue(thrown is BatchParseException)
+        assertNull(cooldown.unavailableUntil())
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
+
+    private companion object {
+        /** Verbatim from the Thor's log, 2026-09-06. */
+        const val CREDIT_BALANCE_400_BODY =
+            """{"error":{"code":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.","type":"invalid_request_error","param":null}}"""
+    }
 
     private fun openAiWith(cooldown: CooldownState, client: OkHttpClient): OpenAiBackend =
         OpenAiBackend(

@@ -740,6 +740,7 @@
     <string name="llm_backend_invalid_key_alert_title">No se pudo verificar la clave de API</string>
 
     <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> rechazó la clave que introdujiste. Compruébala en <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> e inténtalo de nuevo.</string>
+    <string name="llm_backend_key_needs_workspace_scope">Esta clave no está asociada a un espacio de trabajo, así que no se puede usar aquí. En la Claude Console, crea una clave dentro de un espacio de trabajo concreto e introduce esa en su lugar.</string>
 
     <string name="llm_backend_invalid_key_alert_button">OK</string>
 

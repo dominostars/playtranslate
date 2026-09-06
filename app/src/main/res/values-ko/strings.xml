@@ -738,6 +738,7 @@
     <string name="llm_backend_invalid_key_alert_title">API 키를 확인할 수 없음</string>
 
     <string name="llm_backend_invalid_key_alert_message_fmt">입력하신 키를 <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g>에서 거부했습니다. <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g>에서 다시 확인하고 시도하세요.</string>
+    <string name="llm_backend_key_needs_workspace_scope">이 키는 워크스페이스에 연결되어 있지 않아 여기서 사용할 수 없습니다. Claude Console에서 특정 워크스페이스 안에 키를 만들고 그 키를 입력하세요.</string>
 
     <string name="llm_backend_invalid_key_alert_button">확인</string>
 

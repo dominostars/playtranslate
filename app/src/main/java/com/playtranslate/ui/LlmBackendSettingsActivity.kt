@@ -11,6 +11,7 @@ import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
 import androidx.lifecycle.lifecycleScope
@@ -296,7 +297,7 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
             when (status) {
                 is KeyStatus.Invalid -> {
                     setLoading(false)
-                    showInvalidKeyAlert()
+                    showInvalidKeyAlert(status.explanationRes)
                 }
                 else -> {
                     // Ok / Unreachable — persist and finish. Unreachable
@@ -339,16 +340,22 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
             findViewById<EditText>(R.id.etBaseUrl).text.toString().trim()
         } else null
 
-    private fun showInvalidKeyAlert() {
+    /** [explanationRes] is the backend's condition-specific body, when the
+     *  rejection has one ([KeyStatus.Invalid.explanationRes]); otherwise the
+     *  generic "double-check it at the console" text. */
+    private fun showInvalidKeyAlert(@StringRes explanationRes: Int?) {
+        val message = if (explanationRes != null) {
+            getString(explanationRes)
+        } else {
+            getString(
+                R.string.llm_backend_invalid_key_alert_message_fmt,
+                config.displayName,
+                config.getKeyUrl,
+            )
+        }
         OverlayAlert.Builder(this)
             .setTitle(getString(R.string.llm_backend_invalid_key_alert_title))
-            .setMessage(
-                getString(
-                    R.string.llm_backend_invalid_key_alert_message_fmt,
-                    config.displayName,
-                    config.getKeyUrl,
-                )
-            )
+            .setMessage(message)
             .addCancelButton(getString(R.string.llm_backend_invalid_key_alert_button))
             .show()
     }

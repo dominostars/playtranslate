@@ -49,3 +49,27 @@ private fun stripWrappingQuotes(s: String): String {
     }
     return s
 }
+
+/**
+ * Unwraps a Markdown code fence around a payload: ```json … ``` or a bare
+ * ``` … ```, with any whitespace outside the fence. Only a fence that
+ * wraps the WHOLE payload is removed; a fence inside the text, or an
+ * unterminated one, is left alone so a genuine translation containing
+ * backticks survives.
+ *
+ * For the cloud batch path, whose `{"translations": [...]}` contract is
+ * enforced by `response_format` on OpenAI-style endpoints but only by the
+ * prompt on endpoints that ignore that field (Anthropic's compatibility
+ * layer, documented), where a fenced reply would otherwise fail the parse
+ * and trip the per-text retry.
+ */
+fun stripCodeFence(raw: String): String {
+    val s = raw.trim()
+    val match = CODE_FENCE_PATTERN.matchEntire(s) ?: return s
+    return match.groupValues[1].trim()
+}
+
+/** Opening fence with an optional language tag, the payload, closing fence.
+ *  The tag class excludes `{` and `[`, so a fence with no tag and no
+ *  newline still leaves a JSON payload intact. */
+private val CODE_FENCE_PATTERN = Regex("""^```[\w-]*\s*([\s\S]*?)\s*```$""")

@@ -1546,6 +1546,7 @@
     <string name="mistral_display_name" translatable="false">Mistral</string>
     <string name="groq_display_name" translatable="false">Groq</string>
     <string name="openrouter_display_name" translatable="false">OpenRouter</string>
+    <string name="claude_display_name" translatable="false">Claude</string>
     <string name="deepl_display_name" translatable="false">DeepL</string>
     <!-- Cell title + provider-preset pill label for an OpenAI-compatible
          service pointed at a user-entered URL (LM Studio, OpenRouter, …). -->
@@ -1599,6 +1600,14 @@
          (e.g. "OpenAI"); %2$s = the backend's developer console URL
          (e.g. "platform.openai.com"). -->
     <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> rejected the key you entered. Double-check it at <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> and try again.</string>
+
+    <!-- Body of the same dialog when Claude reported that the key is a
+         valid account-level key not scoped to a workspace. The app cannot
+         send the workspace header such keys need, so re-checking the key
+         would send the user in circles; a key created inside a workspace
+         is the fix. "Claude Console" is the product name of Anthropic's
+         developer console at platform.claude.com. -->
+    <string name="llm_backend_key_needs_workspace_scope">This key isn\'t scoped to a workspace, so it can\'t be used here. In the Claude Console, create a key inside a specific workspace and enter that one instead.</string>
 
     <!-- Dismiss button on the same dialog. -->
     <string name="llm_backend_invalid_key_alert_button">OK</string>

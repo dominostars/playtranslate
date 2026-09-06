@@ -741,6 +741,7 @@
     <string name="llm_backend_invalid_key_alert_title">API-Schlüssel konnte nicht überprüft werden</string>
 
     <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> hat den von dir eingegebenen Schlüssel abgelehnt. Überprüfe ihn unter <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> und versuche es erneut.</string>
+    <string name="llm_backend_key_needs_workspace_scope">Dieser Schlüssel ist keinem Workspace zugeordnet und kann hier nicht verwendet werden. Erstelle in der Claude Console einen Schlüssel innerhalb eines bestimmten Workspace und gib diesen stattdessen ein.</string>
 
     <string name="llm_backend_invalid_key_alert_button">OK</string>
 

@@ -683,6 +683,7 @@
     <string name="llm_backend_invalid_key_alert_title">ไม่สามารถยืนยันคีย์ API ได้</string>
 
     <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> ปฏิเสธคีย์ที่คุณป้อน ตรวจสอบอีกครั้งที่ <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> แล้วลองอีกครั้ง</string>
+    <string name="llm_backend_key_needs_workspace_scope">คีย์นี้ไม่ได้ผูกกับเวิร์กสเปซ จึงใช้ที่นี่ไม่ได้ ใน Claude Console ให้สร้างคีย์ภายในเวิร์กสเปซที่ต้องการ แล้วป้อนคีย์นั้นแทน</string>
 
     <string name="llm_backend_invalid_key_alert_button">ตกลง</string>
 
