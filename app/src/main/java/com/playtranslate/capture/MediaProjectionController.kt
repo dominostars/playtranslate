@@ -1010,9 +1010,12 @@ class MediaProjectionController(private val service: CaptureService) {
         teardown()
         CaptureBackendResolver.activeOverlayUi?.apply {
             hideAll()
-            // showIntro=false: the icon was just swept and comes straight
-            // back — to the user it never left, so no sonar-ping replay.
-            reconcileFloatingIcons(showIntro = false)
+            // freshAppearance=false: the icon was just swept and comes
+            // straight back — to the user it never left, so no sonar-ping
+            // replay and no game-audio consent prompt (this is how a
+            // status-bar-chip stop lands; re-asking would nag right after a
+            // deliberate no).
+            reconcileFloatingIcons(freshAppearance = false)
         }
         PlayTranslateTileService.TileSync.refresh(service.applicationContext)
     }

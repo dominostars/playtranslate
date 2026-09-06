@@ -858,9 +858,11 @@ class MainActivity :
         // Opening the app is what summons the a11y floating icon: lift the
         // process-lifetime suppression (boot / "Hide for Now" — see
         // CaptureLifecycle.floatingIconSuppressed) before the reconcile
-        // below, which is the shared install path for every icon.
+        // below, which is the shared install path for every icon. This is a
+        // user summon (userSummoned): a fresh icon here may ask for the
+        // game-audio consent.
         CaptureLifecycle.setFloatingIconSuppressed(this, false)
-        CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
+        CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons(userSummoned = true)
         refreshReadiness()
         // Give the first-launch display seed its chance AFTER the backend is
         // re-resolved: a fresh install returning from the overlay-permission

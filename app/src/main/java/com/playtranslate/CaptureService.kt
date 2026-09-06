@@ -67,6 +67,7 @@ import java.util.Date
 import java.util.Locale
 import android.hardware.display.DisplayManager
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.capture.GameAudioGate
 import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.capture.GameAudioRecorder
 import com.playtranslate.capture.MediaProjectionCaptureBackend
@@ -422,14 +423,22 @@ class CaptureService : Service() {
 
     /** Push current service state to every floating icon. Called automatically
      *  by [setLiveDisplays] (on the empty↔non-empty transition), [setDegraded],
-     *  and when icons are installed or torn down (from
-     *  PlayTranslateAccessibilityService.installFloatingIconForDisplay /
-     *  hideFloatingIconForDisplay). */
+     *  when icons are installed or torn down (from
+     *  OverlayUiController.installFloatingIconForDisplay /
+     *  hideFloatingIconForDisplay), and by the game-audio reconcile
+     *  ([reconcileGameAudio] / GameAudioRecorder.reconcile) — every seam that
+     *  moves the audio gates the icon's glyph reads already funnels through
+     *  that reconcile. Main thread only. */
     fun syncIconState() {
         val ui = CaptureBackendResolver.activeOverlayUi ?: return
         ui.setIconsLiveMode(isLive)
         ui.setIconsDegraded(translationDegraded)
         ui.setIconsLoading(holdLoading)
+        ui.setIconsGlyph(
+            GameAudioGate.iconGlyph(
+                this, mediaProjectionControllerIfInitialized, CaptureBackendResolver.active(),
+            ),
+        )
     }
 
     // ── Debug: MediaProjection mirror probe (Step-0 "D1" verification) ────
@@ -495,6 +504,20 @@ class CaptureService : Service() {
 
         // Register hotkey callbacks (whichever service started first)
         PlayTranslateAccessibilityService.instance?.registerHotkeyCallbacks()
+        // The accessibility backend's floating icon can pre-date this service
+        // — it is hosted by the accessibility service, and a cold app open
+        // installs it before the bind that creates us lands — while its glyph
+        // reads consent state only this service owns. Push it now rather than
+        // leaving the default filled arrow up until the next state change. Accessibility-gated on purpose: the MediaProjection icon is
+        // hosted by this service's own lazily-built overlay UI, which the sync
+        // would otherwise force-initialize here.
+        if (CaptureBackendResolver.active().requiresAccessibilityService) {
+            syncIconState()
+            // A fresh icon placement that found no service alive (that same
+            // cold app open) parked its game-audio consent prompt rather than
+            // cold-starting us from a passive path; fire it now that we exist.
+            CaptureBackendResolver.activeOverlayUi?.firePendingPlacementPrompt(this)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -1231,7 +1254,18 @@ class CaptureService : Service() {
      *  accessibility branch of
      *  [com.playtranslate.capture.CaptureLifecycle.deactivate]) gate on THIS
      *  lazy via [mediaProjectionControllerIfInitialized]. */
-    private val mediaProjectionControllerLazy = lazy { MediaProjectionController(this) }
+    private val mediaProjectionControllerLazy = lazy {
+        MediaProjectionController(this).also { controller ->
+            // Consent loss ⇒ the floating icon's arrow goes outlined. Bound to
+            // the controller's own teardown notification (every consent-ending
+            // path fires it) rather than to each caller's downstream
+            // reconcile, so a path with no reconcile of its own
+            // (invalidateConsent on an FGS-type rejection) still repaints.
+            // Grants reach the icon through onConsentResult →
+            // reconcileGameAudio → syncIconState.
+            controller.addTeardownListener { syncIconState() }
+        }
+    }
     internal val mediaProjectionController: MediaProjectionController
         by mediaProjectionControllerLazy
 
@@ -1303,9 +1337,27 @@ class CaptureService : Service() {
      *  activity's own resume/pause, so a release here would burn a
      *  just-granted token — the live-start stream borrow arrives exactly
      *  there: granted, not yet live — in the same breath that granted it. */
+    /** The live half of [launchAudioCaptureConsent]: ask for the consent with
+     *  this service already running, so no foreground-service start is
+     *  involved — the only entry the passive icon-placement prompt may use
+     *  ([com.playtranslate.OverlayUiController.firePendingPlacementPrompt]).
+     *  A grant reaches the recorder and the icon through
+     *  [MediaProjectionController.onConsentResult] → [reconcileGameAudio]; a
+     *  decline changes nothing. The dialog itself is an activity started from
+     *  a service; the caller owns the launch-context question. */
+    fun requestAudioCaptureConsent() {
+        serviceScope.launch { mediaProjectionController.ensureConsent() }
+    }
+
     fun reconcileGameAudio() {
         if (!Prefs(this).recordGameAudio) {
             if (gameAudioRecorderLazy.isInitialized()) gameAudioRecorder.stop("pref off")
+            // Feature off ⇒ the icon's glyph is the plain chevron again; in
+            // the on state the recorder's own reconcile pushes the sync.
+            // Main-routed like GameAudioRecorder.reconcile, since this
+            // push-point is documented safe from any context.
+            if (Looper.myLooper() === Looper.getMainLooper()) syncIconState()
+            else mainHandler.post { syncIconState() }
             return
         }
         gameAudioRecorder.reconcile()
@@ -2956,20 +3008,82 @@ class CaptureService : Service() {
             private set
 
         /** The ONE write path for [Prefs.recordGameAudio]: pref write +
-         *  recorder reconcile + (on disable) the audio-only session release.
-         *  Session lifecycle rides the explicit user transition HERE, never
-         *  the [reconcileGameAudio] push-point — that push-point fires from
+         *  recorder reconcile + the session's consent lifecycle at both
+         *  ends — on disable the audio-only session release, on enable the
+         *  ask for the consent the recorder rides on. Session lifecycle
+         *  rides the explicit user transition HERE, never the
+         *  [reconcileGameAudio] push-point — that push-point fires from
          *  every seam, including consent delivery itself and the consent
          *  activity's own resume/pause, where a release would burn a
-         *  just-granted token. At this seam no consent can be mid-delivery,
-         *  and an explicit feature-off is the user saying the session's
-         *  audio client is gone for good. No service running ⇒ nothing to
-         *  release (the controller lives on the service instance). */
+         *  just-granted token and an ask would re-prompt. At this seam no
+         *  consent can be mid-delivery; an explicit feature-off is the user
+         *  saying the session's audio client is gone for good, and an
+         *  explicit feature-on is the user asking for audio NOW — the
+         *  recorder never prompts, so without the ask here it would sit
+         *  unarmed until a fresh icon placement or a live start. The ask is
+         *  gated on [GameAudioGate.wouldRunGivenConsent]: consent must be
+         *  the one gate left, so enabling the feature never prompts for a
+         *  session that isn't running (on the MediaProjection backend a
+         *  grant there would double as Turn On). No service running ⇒
+         *  nothing to reconcile or release; the ask still goes out through
+         *  [launchAudioCaptureConsent]'s cold-start path when the gate is
+         *  open. */
         fun setRecordGameAudio(ctx: Context, enabled: Boolean) {
             Prefs(ctx).recordGameAudio = enabled
-            val svc = instance ?: return
-            svc.reconcileGameAudio()
-            if (!enabled) svc.releaseAudioOnlyProjection()
+            val svc = instance
+            svc?.reconcileGameAudio()
+            if (!enabled) {
+                svc?.releaseAudioOnlyProjection()
+                return
+            }
+            if (GameAudioGate.wouldRunGivenConsent(ctx, svc?.mediaProjectionControllerIfInitialized)) {
+                launchAudioCaptureConsent(ctx)
+            }
+        }
+
+        /** Ask for the MediaProjection consent game audio rides on — the one
+         *  audio verb, shared by the floating menu's "Record audio" bar and
+         *  [setRecordGameAudio]'s feature-on. (Settings' repair row keeps its
+         *  own awaiting variant, which refreshes its row when the dialog
+         *  settles; the icon-placement prompt goes through the instance's
+         *  [requestAudioCaptureConsent] directly — see there.)
+         *
+         *  USER-INITIATED CALLERS ONLY. With no service alive this cold-starts
+         *  one through [ACTION_MP_ACTIVATE], the tile's FGS-safe path (on the
+         *  accessibility backend activateMediaProjection degrades to exactly
+         *  ensureConsent + reconcile, since the a11y branch of
+         *  [com.playtranslate.capture.MediaProjectionController.onConsentResult]
+         *  never writes MP lifecycle state) — and a foreground-service start
+         *  is legal only from a user-visible or user-interaction context: API
+         *  31+ throws ForegroundServiceStartNotAllowedException otherwise, the
+         *  2026-07-15 field-crash class documented in [updateForegroundState].
+         *  The feature-on toggle runs inside an activity (exempt). The menu
+         *  bar is a tap on our own overlay with no activity behind it, so its
+         *  start rides SYSTEM_ALERT_WINDOW / accessibility exemptions that
+         *  vary by device — the platform's refusal is caught and logged, and
+         *  the icon's outlined arrow plus Settings' repair row remain the
+         *  recovery. A PASSIVE trigger must never reach this: the placement
+         *  prompt parks itself in OverlayUiController and lets the service's
+         *  own onCreate fire it (Codex adversarial finding 2026-09-05). */
+        fun launchAudioCaptureConsent(ctx: Context) {
+            val svc = instance
+            if (svc != null) {
+                svc.requestAudioCaptureConsent()
+                return
+            }
+            try {
+                ContextCompat.startForegroundService(
+                    ctx.applicationContext,
+                    Intent(ctx.applicationContext, CaptureService::class.java)
+                        .setAction(ACTION_MP_ACTIVATE),
+                )
+            } catch (e: IllegalStateException) {
+                // ForegroundServiceStartNotAllowedException (API 31+) and its
+                // ServiceStartNotAllowedException parent are
+                // IllegalStateExceptions; caught by the parent so the
+                // reference compiles on every minSdk.
+                Log.w(TAG, "audio consent cold start refused (background FGS start): ${e.javaClass.simpleName}")
+            }
         }
 
         /** Action for an [onStartCommand] intent meaning "obtain MediaProjection
