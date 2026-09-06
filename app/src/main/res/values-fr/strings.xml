@@ -748,6 +748,7 @@
     <string name="llm_backend_invalid_key_alert_title">Impossible de vérifier la clé d\'API</string>
 
     <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> a rejeté la clé que vous avez saisie. Vérifiez-la sur <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> et réessayez.</string>
+    <string name="llm_backend_key_needs_workspace_scope">Cette clé n\'est pas rattachée à un espace de travail et ne peut donc pas être utilisée ici. Dans la Claude Console, créez une clé au sein d\'un espace de travail précis et saisissez celle-ci à la place.</string>
 
     <string name="llm_backend_invalid_key_alert_button">OK</string>
 

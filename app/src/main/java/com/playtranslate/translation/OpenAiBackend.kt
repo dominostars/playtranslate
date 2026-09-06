@@ -1,11 +1,13 @@
 package com.playtranslate.translation
 
 import android.util.Log
+import androidx.annotation.StringRes
 import com.playtranslate.PtJson
 import com.playtranslate.R
 import com.playtranslate.net.PtHttp
 import com.playtranslate.translation.llm.LlmBatchPrompt
 import com.playtranslate.translation.llm.cleanLlmOutput
+import com.playtranslate.translation.llm.stripCodeFence
 import com.playtranslate.translation.qwen.QwenChatTemplate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -13,6 +15,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -80,6 +83,22 @@ class OpenAiBackend(
      *  than reading [baseUrlProvider] because the settings page validates a
      *  URL the user has typed but not yet saved. */
     private val keyProbeUrlProvider: (String) -> String = { "${it.trimEnd('/')}/models" },
+    /** Headers that carry the key on the catalog calls ([validateKey]'s
+     *  probe and [listModels]). Bearer for every OpenAI-compatible provider;
+     *  Claude's /models is Anthropic's native endpoint and wants `x-api-key`
+     *  (see [OnlineBackendFactory.modelsAuthHeadersFor]). The chat endpoint
+     *  takes Bearer everywhere, so translate() never consults this. */
+    private val modelsAuthHeaders: (String) -> Map<String, String> = { mapOf("Authorization" to "Bearer $it") },
+    /** True when the endpoint is a known provider (every preset but CUSTOM):
+     *  its catalog endpoint exists and authenticates, so a 400 from the key
+     *  probe is a rejection, not a shrug. False for a user-typed endpoint,
+     *  where a 400 may only mean "no such route" and the probe stays
+     *  lenient ([validateKey]). */
+    private val pinnedEndpoint: () -> Boolean = { false },
+    /** Extra top-level fields for the chat-completions body, chosen per
+     *  model. Empty for every OpenAI-compatible provider; Claude switches
+     *  thinking off here ([OnlineBackendFactory.requestExtrasFor]). */
+    private val requestExtras: (String) -> Map<String, JsonElement> = { emptyMap() },
     private val usageTracker: UsageTracker,
     /** Returns true when [listModels] should apply OpenAI's first-party
      *  `owned_by` filter (strips fine-tunes / user-uploaded models on
@@ -173,6 +192,7 @@ class OpenAiBackend(
                     addJsonObject { put("role", "system"); put("content", system) }
                     addJsonObject { put("role", "user"); put("content", user) }
                 }
+                requestExtras(model).forEach { (name, value) -> put(name, value) }
             }.toString()
 
             val request = Request.Builder()
@@ -194,10 +214,12 @@ class OpenAiBackend(
                             throw OpenAiRateLimitException()
                         }
                         else -> if (!response.isSuccessful) {
-                            val errBody = response.body.string()
-                                .take(300).replace('\n', ' ')
+                            val fullBody = response.body.string()
+                            val errBody = fullBody.take(300).replace('\n', ' ')
                             Log.w(TAG, "translate error code=${response.code} body=$errBody")
-                            if (response.code >= 500) {
+                            if (response.code == 400 && isBillingExhausted(fullBody)) {
+                                recordBillingExhausted()
+                            } else if (response.code >= 500) {
                                 cooldownState?.recordLadderFailure(
                                     CooldownLadder.RateLimit, "Server error",
                                     CooldownCause.SERVER_ERROR,
@@ -247,6 +269,10 @@ class OpenAiBackend(
         // required[] + strict:true together. Some OpenAI-compatible
         // endpoints (older models, some proxies) reject strict mode
         // with HTTP 400 — registry handles that by falling through.
+        // Anthropic's compatibility layer instead IGNORES response_format
+        // (documented), so there the JSON shape rests on the prompt's own
+        // contract, and the parse below unwraps a code fence first rather
+        // than letting a fenced reply trip the per-text retry.
         val schema = buildJsonObject {
             put("type", "object")
             put("additionalProperties", false)
@@ -272,6 +298,7 @@ class OpenAiBackend(
                     put("schema", schema)
                 }
             }
+            requestExtras(model).forEach { (name, value) -> put(name, value) }
         }.toString()
 
         val request = Request.Builder()
@@ -293,7 +320,18 @@ class OpenAiBackend(
                         throw OpenAiRateLimitException()
                     }
                     400 -> {
-                        // 400 on the batch path is most often
+                        val fullBody = response.body.string()
+                        val body = fullBody.take(500)
+                        if (isBillingExhausted(fullBody)) {
+                            // Anthropic reports a dead balance as a 400, and
+                            // the per-text retry below would pay one more
+                            // rejected call per string for it, every frame.
+                            // Cool down instead, as the OpenAI 429 path does.
+                            Log.w(TAG, "batch 400 billing body=$body")
+                            recordBillingExhausted()
+                            throw StructuralFailureException("OpenAI error 400: $body")
+                        }
+                        // Otherwise a 400 on the batch path is most often
                         // "this endpoint doesn't support strict json_schema"
                         // — common on OpenAI-compatible endpoints (older
                         // OpenRouter / LM Studio / non-`o` model families).
@@ -301,7 +339,6 @@ class OpenAiBackend(
                         // retries this same backend's per-text translate()
                         // (which doesn't send response_format) before
                         // skipping to a degraded fallback.
-                        val body = response.body.string().take(500)
                         Log.w(TAG, "batch 400 body=$body — retrying per-text on same backend")
                         throw BatchParseException("OpenAI batch 400: $body")
                     }
@@ -324,7 +361,7 @@ class OpenAiBackend(
                     ?: throw BatchParseException("OpenAI batch: empty message content")
                 parsed.usage?.let { usageTracker.addTokens(it.prompt_tokens, it.completion_tokens) }
                 val wrapper = try {
-                    PtJson.lenient.decodeFromString<BatchTranslationsWrapper>(rawJson)
+                    PtJson.lenient.decodeFromString<BatchTranslationsWrapper>(stripCodeFence(rawJson))
                 } catch (e: SerializationException) {
                     throw BatchParseException("OpenAI batch: response JSON parse failed", e)
                 }
@@ -364,8 +401,9 @@ class OpenAiBackend(
      * first-party-vetted: a custom OpenAI-compatible server may not
      * support `/models` or may use a different key shape. Validation is
      * therefore best-effort — a definitive 401/403 is [KeyStatus.Invalid],
-     * anything else (incl. a missing `/models`) is [KeyStatus.Unreachable],
-     * which the save path treats as "save anyway".
+     * and so is a 400 from a pinned provider ([pinnedEndpoint]); anything
+     * else (incl. a missing `/models` on a custom endpoint) is
+     * [KeyStatus.Unreachable], which the save path treats as "save anyway".
      *
      * [overrideKey] / [overrideBaseUrl] let the settings-save path validate
      * a key + URL the user just typed but hasn't persisted yet. Both fall
@@ -377,7 +415,7 @@ class OpenAiBackend(
         val probeUrl = keyProbeUrlProvider((overrideBaseUrl ?: modelsUrlProvider()).trim())
         try {
             val keyed = probe(probeUrl, apiKey)
-            when (keyed) {
+            when (keyed.code) {
                 in 200..299 -> {
                     // A 2xx only means "the key was accepted" if the endpoint
                     // would have REFUSED us without one. Several OpenAI-
@@ -387,14 +425,27 @@ class OpenAiBackend(
                     // endpoint what it does with no key at all: if it still
                     // says 2xx, this probe cannot see keys, and reporting Ok
                     // would be a verification we never performed.
-                    if (probe(probeUrl, apiKey = null) in 200..299) {
+                    if (probe(probeUrl, apiKey = null).code in 200..299) {
                         Log.w(TAG, "key probe endpoint is unauthenticated, cannot verify: $probeUrl")
                         KeyStatus.Unreachable
                     } else {
                         KeyStatus.Ok
                     }
                 }
-                401, 403 -> KeyStatus.Invalid("HTTP $keyed")
+                401, 403 -> KeyStatus.Invalid("HTTP ${keyed.code}")
+                400 -> if (pinnedEndpoint()) {
+                    // A known provider's catalog endpoint answering 400 to a
+                    // keyed GET is talking about the key. Anthropic does so
+                    // for a key not scoped to a workspace: on the Thor
+                    // (2026-09-06) the shrug below let that key save, and
+                    // every translate then failed with the same 400. Only a
+                    // user-typed endpoint keeps the shrug — there a 400 may
+                    // mean no more than "no such route".
+                    Log.w(TAG, "key probe 400 body=${keyed.body.take(300).replace('\n', ' ')}")
+                    KeyStatus.Invalid("HTTP 400", explanationRes = keyRejectionExplanation(keyed.body))
+                } else {
+                    KeyStatus.Unreachable
+                }
                 else -> KeyStatus.Unreachable
             }
         } catch (e: CancellationException) {
@@ -404,24 +455,50 @@ class OpenAiBackend(
         }
     }
 
-    /** GET [url], with a Bearer key when [apiKey] is non-null. Returns the
-     *  status code; -1 when the control probe itself fails, which reads as
-     *  "not a 2xx" and so leaves a keyed 2xx standing — a flaky second
-     *  request must never turn a good key into a rejected one. */
-    private fun probe(url: String, apiKey: String?): Int {
+    /** What the key probe saw: the status code, plus the body on a 4xx
+     *  (a 400's explanation is what [keyRejectionExplanation] reads). */
+    private data class ProbeResult(val code: Int, val body: String)
+
+    /** GET [url], with the catalog headers when [apiKey] is non-null.
+     *  Code -1 when the control probe itself fails, which reads as "not a
+     *  2xx" and so leaves a keyed 2xx standing — a flaky second request
+     *  must never turn a good key into a rejected one. */
+    private fun probe(url: String, apiKey: String?): ProbeResult {
         val request = Request.Builder()
             .url(url)
-            .apply { apiKey?.let { addHeader("Authorization", "Bearer $it") } }
+            .apply {
+                apiKey?.let { key ->
+                    modelsAuthHeaders(key).forEach { (name, value) -> addHeader(name, value) }
+                }
+            }
             .build()
+        fun execute(): ProbeResult = client.newCall(request).execute().use { response ->
+            ProbeResult(
+                code = response.code,
+                body = if (response.code in 400..499) response.body.string() else "",
+            )
+        }
         return if (apiKey != null) {
-            client.newCall(request).execute().use { it.code }
+            execute()
         } else {
             try {
-                client.newCall(request).execute().use { it.code }
+                execute()
             } catch (e: IOException) {
-                -1
+                ProbeResult(-1, "")
             }
         }
+    }
+
+    /** A condition-specific alert body for a rejected key, when the
+     *  provider's 400 names a condition the generic "double-check it at the
+     *  console" advice would send the user in circles over. Anthropic: a
+     *  key not scoped to a workspace is a VALID key this app cannot use (it
+     *  would need the `anthropic-workspace-id` header on every call), and
+     *  the fix is a different key, created inside a workspace. */
+    @StringRes
+    private fun keyRejectionExplanation(body: String): Int? = when {
+        body.contains("anthropic-workspace-id") -> R.string.llm_backend_key_needs_workspace_scope
+        else -> null
     }
 
     /**
@@ -443,7 +520,7 @@ class OpenAiBackend(
         val modelsUrl = modelsUrlProvider().trim().trimEnd('/')
         val request = Request.Builder()
             .url("$modelsUrl/models")
-            .addHeader("Authorization", "Bearer $apiKey")
+            .apply { modelsAuthHeaders(apiKey).forEach { (name, value) -> addHeader(name, value) } }
             .build()
         client.newCall(request).execute().use { response ->
             when (response.code) {
@@ -596,11 +673,7 @@ class OpenAiBackend(
             null
         }
         if (errorCode == "insufficient_quota") {
-            state.recordParsedFailure(
-                retryAt = System.currentTimeMillis() + INSUFFICIENT_QUOTA_MS,
-                description = "Billing exhausted",
-                cause = CooldownCause.BILLING,
-            )
+            recordBillingExhausted()
             return
         }
         fun seconds(raw: String?): Long? = raw?.trim()?.toLongOrNull()?.let { it * 1000 }
@@ -620,10 +693,41 @@ class OpenAiBackend(
         }
     }
 
+    /** Fixed [INSUFFICIENT_QUOTA_MS] BILLING cooldown, shared by OpenAI's
+     *  429 `insufficient_quota` ([recordOpenAi429]) and Anthropic's 400s
+     *  ([isBillingExhausted]). No-op when [cooldownState] is null. */
+    private fun recordBillingExhausted() {
+        cooldownState?.recordParsedFailure(
+            retryAt = System.currentTimeMillis() + INSUFFICIENT_QUOTA_MS,
+            description = "Billing exhausted",
+            cause = CooldownCause.BILLING,
+        )
+    }
+
+    /**
+     * Anthropic's "can't pay" answers are 400s carrying the generic
+     * `invalid_request_error` code, so the message is the only signal:
+     * "Your credit balance is too low to access the Anthropic API" (seen on
+     * the Thor 2026-09-06 on every frame, each batch then retried per-text
+     * against the same dead account) and the self-set spend limit's "You
+     * have reached your specified API usage limits" (rate-limits doc, with
+     * a "workspace" variant). OpenAI says the same thing as a 429 with
+     * `insufficient_quota` ([recordOpenAi429]); both land in the same
+     * BILLING cooldown.
+     */
+    private fun isBillingExhausted(body: String): Boolean {
+        val message = try {
+            PtJson.lenient.decodeFromString<OpenAiErrorEnvelope>(body).error?.message
+        } catch (e: SerializationException) {
+            null
+        } ?: return false
+        return BILLING_EXHAUSTED_MESSAGES.any { message.contains(it, ignoreCase = true) }
+    }
+
     @Serializable
     private data class OpenAiErrorEnvelope(val error: OpenAiErrorBody? = null) {
         @Serializable
-        data class OpenAiErrorBody(val code: String? = null)
+        data class OpenAiErrorBody(val code: String? = null, val message: String? = null)
     }
 
     @Serializable
@@ -660,6 +764,14 @@ class OpenAiBackend(
          *  Short enough that fixing billing doesn't leave the user
          *  waiting; long enough not to spam the API. */
         private const val INSUFFICIENT_QUOTA_MS = 5L * 60 * 1000
+
+        /** Message fragments that mark an Anthropic 400 as billing-dead
+         *  ([isBillingExhausted]); matched case-insensitively. */
+        private val BILLING_EXHAUSTED_MESSAGES = listOf(
+            "credit balance is too low",
+            "reached your specified API usage limits",
+            "reached your specified workspace API usage limits",
+        )
 
         // 30s timeouts: gpt-4o on long passages can take 15-20s; OkHttp's
         // default 10s read timeout would spuriously fail those calls.

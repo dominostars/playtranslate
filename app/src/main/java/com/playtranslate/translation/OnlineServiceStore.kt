@@ -66,6 +66,19 @@ object OnlineServiceStore {
     const val OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
     const val OPENROUTER_KEY_PROBE_PATH = "/key"
 
+    /** Anthropic's OpenAI-compatible layer shares the /v1 prefix with the
+     *  native API: `/v1/chat/completions` takes the Claude key as a Bearer
+     *  token, but there is no compatible `/v1/models`. That path is the
+     *  NATIVE model list, which ignores `Authorization: Bearer` (401
+     *  "invalid x-api-key", verified with a bogus key on 2026-09-05) and
+     *  reads `x-api-key` plus the `anthropic-version` header instead, so
+     *  the catalog calls send those ([OnlineBackendFactory.modelsAuthHeadersFor]).
+     *  Anthropic documents the layer as ignoring `response_format`, so the
+     *  batch path's JSON shape rests on the prompt there (see
+     *  OpenAiBackend.translateBatch). */
+    const val CLAUDE_BASE_URL = "https://api.anthropic.com/v1"
+    const val CLAUDE_API_VERSION = "2023-06-01"
+
     /** Migrated instances keep the legacy encrypted key slots so no
      *  ciphertext ever moves: SecretCodec binds each blob to its slot
      *  name as GCM AAD, so a copy to a new slot would not decrypt. */

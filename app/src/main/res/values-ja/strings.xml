@@ -754,6 +754,7 @@
     <string name="llm_backend_invalid_key_alert_title">APIキーを確認できませんでした</string>
 
     <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g>が入力されたキーを拒否しました。<xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g>で再確認して、もう一度お試しください。</string>
+    <string name="llm_backend_key_needs_workspace_scope">このキーはワークスペースに紐づいていないため、ここでは使用できません。Claude Consoleで特定のワークスペース内にキーを作成し、そちらを入力してください。</string>
 
     <string name="llm_backend_invalid_key_alert_button">OK</string>
 

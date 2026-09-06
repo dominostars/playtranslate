@@ -1,5 +1,7 @@
 package com.playtranslate.translation
 
+import androidx.annotation.StringRes
+
 /**
  * Result of an on-save API-key validation ping.
  *
@@ -15,6 +17,15 @@ package com.playtranslate.translation
  */
 sealed class KeyStatus {
     data object Ok : KeyStatus()
-    data class Invalid(val reason: String) : KeyStatus()
+    /** [explanationRes], when set, replaces the generic "rejected the key,
+     *  double-check it at the console" alert body with a condition-specific
+     *  one. Some rejections are of a VALID key the app cannot use (an
+     *  Anthropic key not scoped to a workspace), where re-checking the key
+     *  is the wrong advice. A resource id rather than text because the
+     *  backends are Context-free, as with [BackendStatus]. */
+    data class Invalid(
+        val reason: String,
+        @StringRes val explanationRes: Int? = null,
+    ) : KeyStatus()
     data object Unreachable : KeyStatus()
 }

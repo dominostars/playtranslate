@@ -170,6 +170,7 @@ By default, translation uses [Lingva](https://github.com/thedaviddelta/lingva-tr
 - **Mistral**: [console.mistral.ai](https://console.mistral.ai/api-keys) — pick a model at runtime
 - **Groq**: [console.groq.com](https://console.groq.com/keys) — pick a model at runtime
 - **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys) — pick a model at runtime
+- **Claude**: [platform.claude.com](https://platform.claude.com/settings/keys) — pick a model at runtime
 - **Custom**: any other OpenAI-compatible endpoint — point it at your own base URL
 
 ## Optional: Anki Flashcards

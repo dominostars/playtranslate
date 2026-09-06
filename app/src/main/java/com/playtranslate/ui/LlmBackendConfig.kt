@@ -91,7 +91,8 @@ object LlmBackendConfigs {
      * OpenAI (`sk-`, `sk-proj-`) and DeepSeek (`sk-`) do; Gemini's are
      * `AIza`-prefixed.
      *
-     * Groq issues `gsk_` and OpenRouter `sk-or-v1-`. Mistral's are not
+     * Groq issues `gsk_`, OpenRouter `sk-or-v1-` and Anthropic `sk-ant-`.
+     * Mistral's are not
      * prefixed at all, and CUSTOM can point at anyone — a raw JWT (MiniMax),
      * an opaque token, anything. Those two show no placeholder rather than an
      * `sk-...` that would have the user hunting for a key they don't have.
@@ -108,6 +109,7 @@ object LlmBackendConfigs {
             OpenAiPreset.OPENAI, OpenAiPreset.DEEPSEEK -> "sk-..."
             OpenAiPreset.GROQ -> "gsk_..."
             OpenAiPreset.OPENROUTER -> "sk-or-v1-..."
+            OpenAiPreset.CLAUDE -> "sk-ant-..."
             OpenAiPreset.MISTRAL, OpenAiPreset.CUSTOM -> ""
         }
         // DeepL and Lingva don't route through this screen.
@@ -125,6 +127,7 @@ object LlmBackendConfigs {
             OpenAiPreset.MISTRAL -> "https://console.mistral.ai/api-keys"
             OpenAiPreset.GROQ -> "https://console.groq.com/keys"
             OpenAiPreset.OPENROUTER -> "https://openrouter.ai/keys"
+            OpenAiPreset.CLAUDE -> "https://platform.claude.com/settings/keys"
             else -> "https://platform.openai.com/api-keys"
         }
         // DeepL and Lingva don't route through this screen.

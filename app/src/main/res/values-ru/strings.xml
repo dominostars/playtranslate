@@ -759,6 +759,7 @@
     <string name="llm_backend_invalid_key_alert_title">Не удалось проверить API-ключ</string>
 
     <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> отклонил введённый ключ. Проверьте его на <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> и повторите попытку.</string>
+    <string name="llm_backend_key_needs_workspace_scope">Этот ключ не привязан к рабочему пространству, поэтому здесь его использовать нельзя. В Claude Console создайте ключ внутри конкретного рабочего пространства и введите его.</string>
 
     <string name="llm_backend_invalid_key_alert_button">ОК</string>
 

@@ -733,6 +733,7 @@
     <string name="llm_backend_invalid_key_alert_title">API anahtarı doğrulanamadı</string>
 
     <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> girdiğiniz anahtarı reddetti. <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> adresinden tekrar kontrol edip yeniden deneyin.</string>
+    <string name="llm_backend_key_needs_workspace_scope">Bu anahtar bir çalışma alanına bağlı değil, bu yüzden burada kullanılamaz. Claude Console\'da belirli bir çalışma alanı içinde bir anahtar oluşturup onu girin.</string>
 
     <string name="llm_backend_invalid_key_alert_button">Tamam</string>
 

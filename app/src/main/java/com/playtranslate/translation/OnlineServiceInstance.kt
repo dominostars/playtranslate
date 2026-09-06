@@ -71,9 +71,13 @@ enum class ServiceType(
  *  which enumerate this enum rather than restating it — so a new provider
  *  surfaces in the UI from this line alone. Keep OPENAI first (the default)
  *  and CUSTOM last (the escape hatch). Serialization is by name, so
- *  inserting a value doesn't disturb stored instances. */
+ *  inserting a value doesn't disturb stored instances.
+ *
+ *  CLAUDE is Anthropic's OpenAI-compatible layer, which covers
+ *  chat-completions only: its /models is the native endpoint with its own
+ *  auth headers ([OnlineBackendFactory.modelsAuthHeadersFor]). */
 @Serializable
-enum class OpenAiPreset { OPENAI, DEEPSEEK, MISTRAL, GROQ, OPENROUTER, CUSTOM }
+enum class OpenAiPreset { OPENAI, DEEPSEEK, MISTRAL, GROQ, OPENROUTER, CLAUDE, CUSTOM }
 
 /**
  * One user-configured online translation service. Users can hold any

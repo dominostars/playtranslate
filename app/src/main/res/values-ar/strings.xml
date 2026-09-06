@@ -707,6 +707,7 @@
     <string name="llm_backend_invalid_key_alert_title">تعذّر التحقق من مفتاح API</string>
 
     <string name="llm_backend_invalid_key_alert_message_fmt">رفض <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> المفتاح الذي أدخلته. تحقق منه مجددًا على <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> وحاول مرة أخرى.</string>
+    <string name="llm_backend_key_needs_workspace_scope">هذا المفتاح غير مرتبط بمساحة عمل، لذا لا يمكن استخدامه هنا. في Claude Console، أنشئ مفتاحًا داخل مساحة عمل محددة وأدخل ذلك المفتاح بدلًا منه.</string>
 
     <string name="llm_backend_invalid_key_alert_button">موافق</string>
 
