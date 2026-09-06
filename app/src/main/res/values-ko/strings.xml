@@ -973,6 +973,18 @@
 
     <!-- ── Tencent Hunyuan-MT 1.5 1.8B ────────────────────────────── -->
 
+    <string name="hymt2_status_not_downloaded">메모리 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>, 저장공간 <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> 필요</string>
+    <string name="hymt2_status_downloaded_disabled">다운로드됨, 사용 안 함(저장공간 <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>)</string>
+    <string name="hymt2_status_ready">메모리 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>, 저장공간 <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> 필요</string>
+    <string name="hymt2_status_downloading">다운로드 중… <xliff:g id="bytes_total" example="1.5 GB">%2$s</xliff:g> 중 <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g></string>
+    <string name="hymt2_status_verifying">다운로드 확인 중…</string>
+    <string name="hymt2_disable_title"><xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g> 사용을 중지하시겠습니까?</string>
+    <string name="hymt2_disable_message"><xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> 모델이 설치되어 있습니다. 나중을 위해 보관하거나 삭제하여 공간을 확보할 수 있습니다.</string>
+    <string name="hymt2_download_failed">다운로드 실패: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+    <string name="hymt2_metered_warning_title">종량제 네트워크에서 다운로드하시겠습니까?</string>
+    <string name="hymt2_metered_warning_message"><xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g> 크기는 <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g>입니다. 이 네트워크는 종량제로 표시되어 있습니다. 계속하시겠습니까?</string>
+    <string name="hymt2_disable_keep">사용 중지만</string>
+    <string name="hymt2_disable_delete">모델 삭제</string>
     <string name="hymt_status_not_downloaded">메모리 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>, 저장공간 <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> 필요</string>
 
     <string name="hymt_status_downloaded_disabled">다운로드됨, 사용 안 함(저장공간 <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>)</string>

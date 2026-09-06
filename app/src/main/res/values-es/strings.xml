@@ -974,6 +974,18 @@
 
     <!-- ── Tencent Hunyuan-MT 1.5 1.8B ────────────────────────────── -->
 
+    <string name="hymt2_status_not_downloaded">Requiere <xliff:g id="ram" example="4 GB">%1$s</xliff:g> de memoria, <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> de almacenamiento</string>
+    <string name="hymt2_status_downloaded_disabled">Descargado pero desactivado (<xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> de almacenamiento)</string>
+    <string name="hymt2_status_ready">Requiere <xliff:g id="ram" example="4 GB">%1$s</xliff:g> de memoria, <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> de almacenamiento</string>
+    <string name="hymt2_status_downloading">Descargando… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> de <xliff:g id="bytes_total" example="1.5 GB">%2$s</xliff:g></string>
+    <string name="hymt2_status_verifying">Verificando la descarga…</string>
+    <string name="hymt2_disable_title">¿Desactivar <xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g>?</string>
+    <string name="hymt2_disable_message">El modelo de <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> está instalado. Puedes conservarlo para más tarde o eliminarlo para liberar espacio.</string>
+    <string name="hymt2_download_failed">Error de descarga: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+    <string name="hymt2_metered_warning_title">¿Descargar en una red de uso medido?</string>
+    <string name="hymt2_metered_warning_message"><xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g> ocupa <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g>. Esta red está marcada como de uso medido. ¿Continuar?</string>
+    <string name="hymt2_disable_keep">Solo desactivar</string>
+    <string name="hymt2_disable_delete">Eliminar modelo</string>
     <string name="hymt_status_not_downloaded">Requiere <xliff:g id="ram" example="4 GB">%1$s</xliff:g> de memoria, <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> de almacenamiento</string>
 
     <string name="hymt_status_downloaded_disabled">Descargado pero desactivado (<xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> de almacenamiento)</string>

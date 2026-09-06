@@ -1025,6 +1025,18 @@
 
     <!-- ── Tencent Hunyuan-MT 1.5 1.8B ────────────────────────────── -->
 
+    <string name="hymt2_status_not_downloaded">メモリ<xliff:g id="ram" example="4 GB">%1$s</xliff:g>、ストレージ<xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g>が必要です</string>
+    <string name="hymt2_status_downloaded_disabled">ダウンロード済みですが無効です（ストレージ<xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>）</string>
+    <string name="hymt2_status_ready">メモリ<xliff:g id="ram" example="4 GB">%1$s</xliff:g>、ストレージ<xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g>が必要です</string>
+    <string name="hymt2_status_downloading">ダウンロード中… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="1.5 GB">%2$s</xliff:g></string>
+    <string name="hymt2_status_verifying">ダウンロードを検証中…</string>
+    <string name="hymt2_disable_title"><xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g>を無効にしますか？</string>
+    <string name="hymt2_disable_message"><xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>のモデルがインストールされています。後で使うために残すことも、削除して空き容量を増やすこともできます。</string>
+    <string name="hymt2_download_failed">ダウンロードに失敗しました：<xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+    <string name="hymt2_metered_warning_title">従量制ネットワークでダウンロードしますか？</string>
+    <string name="hymt2_metered_warning_message"><xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g>は<xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g>です。このネットワークは従量制に設定されています。続けますか？</string>
+    <string name="hymt2_disable_keep">無効にするだけ</string>
+    <string name="hymt2_disable_delete">モデルを削除</string>
     <string name="hymt_status_not_downloaded">メモリ<xliff:g id="ram" example="4 GB">%1$s</xliff:g>、ストレージ<xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g>が必要です</string>
 
     <string name="hymt_status_downloaded_disabled">ダウンロード済みですが無効です（ストレージ<xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>）</string>

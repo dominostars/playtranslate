@@ -22,11 +22,12 @@ import kotlinx.coroutines.launch
 /**
  * Drives the offline-model install flows for [TranslationServicesActivity].
  *
- * The four MNN tiers (Qwen-MNN, Qwen-3.5, Gemma-E2B, Hunyuan-MT) share ONE
- * descriptor-driven flow — an [OfflineModel] descriptor plus [download] /
- * [enableInstalled] / [disable] — replacing the three near-identical bespoke
- * copies the old SettingsBottomSheet carried. Hunyuan-MT adds its one-time
- * legal attestation via the optional [OfflineModel.legal] gate.
+ * The five MNN tiers (Qwen-MNN, Qwen-3.5, Gemma-E2B, Hunyuan-MT 1.5, Hy-MT2)
+ * share ONE descriptor-driven flow — an [OfflineModel] descriptor plus
+ * [download] / [enableInstalled] / [disable] — replacing the three
+ * near-identical bespoke copies the old SettingsBottomSheet carried.
+ * Hunyuan-MT 1.5 alone adds a one-time legal attestation via the optional
+ * [OfflineModel.legal] gate; its Apache-2.0 successor Hy-MT2 needs none.
  *
  * Bergamot is a deliberate sibling, not a descriptor: its per-language-pair,
  * multi-direction install, flat RAM floor, and per-direction eviction don't fit
@@ -59,7 +60,7 @@ class OfflineModelInstallController(
         @StringRes val disableMessage: Int,
         @StringRes val disableKeep: Int,
         @StringRes val disableDelete: Int,
-        /** Optional one-time pre-download attestation (Hunyuan-MT only). */
+        /** Optional one-time pre-download attestation (Hunyuan-MT 1.5 only). */
         val legal: LegalGate? = null,
     )
 
@@ -147,6 +148,25 @@ class OfflineModelInstallController(
             agree = R.string.hymt_legal_agree,
             cancel = R.string.hymt_legal_cancel,
         ),
+    )
+
+    /** Hy-MT2 — the Hunyuan-MT 1.5 replacement. No [LegalGate]: Apache-2.0
+     *  weights, so there is nothing to attest to before the download. */
+    val hymt2 = OfflineModel(
+        backendId = "hymt2_mnn",
+        model = com.playtranslate.translation.hymt.HyMt2Model,
+        setEnabled = { c, v -> Prefs(c).hyMt2Enabled = v },
+        refreshSwitch = { binder.refreshHyMt2Switch() },
+        displayName = R.string.hymt2_display_name,
+        statusDownloading = R.string.hymt2_status_downloading,
+        statusVerifying = R.string.hymt2_status_verifying,
+        downloadFailed = R.string.hymt2_download_failed,
+        meteredTitle = R.string.hymt2_metered_warning_title,
+        meteredMessage = R.string.hymt2_metered_warning_message,
+        disableTitle = R.string.hymt2_disable_title,
+        disableMessage = R.string.hymt2_disable_message,
+        disableKeep = R.string.hymt2_disable_keep,
+        disableDelete = R.string.hymt2_disable_delete,
     )
 
     private val downloadJobs = mutableMapOf<String, Job?>()

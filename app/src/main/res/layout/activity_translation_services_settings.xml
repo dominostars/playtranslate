@@ -118,12 +118,21 @@
                     <include layout="@layout/settings_row_backend_offline"
                         android:id="@+id/rowBackendGemmaE2bMnn" />
 
-                    <!-- Divider above the Hunyuan-MT 1.5 row (translation-
-                         specialist tier). The HyMt row is hidden entirely
-                         (visibility=GONE) when RegionPolicy.isHunyuanRestricted
-                         returns true (EU/UK/SK) OR when the catalog entry's
-                         size/sha256 are still placeholders; see
-                         SettingsRenderer.wireHyMtBackendRow. -->
+                    <!-- Hy-MT2 (translation-specialist tier). Apache-2.0:
+                         no region gate, no legal attestation. -->
+                    <include layout="@layout/settings_row_divider"
+                        android:id="@+id/dividerBackendHyMt2" />
+
+                    <include layout="@layout/settings_row_backend_offline"
+                        android:id="@+id/rowBackendHyMt2" />
+
+                    <!-- Divider above the retired Hunyuan-MT 1.5 row. That row
+                         and this divider hide when
+                         RegionPolicy.isHunyuanRestricted returns true (EU/UK/SK)
+                         — see TranslationServicesBinder.wireHyMtBackendRow — and,
+                         since the catalog entry is deprecated, also whenever the
+                         model is not fully installed (renderOfflineBackendRow's
+                         deprecation gate). -->
                     <include layout="@layout/settings_row_divider"
                         android:id="@+id/dividerBackendHyMt" />
 

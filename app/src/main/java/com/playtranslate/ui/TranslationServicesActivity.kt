@@ -97,6 +97,9 @@ class TranslationServicesActivity : SettingsSubPageActivity() {
                 override fun startHyMtDownload() = installer.download(installer.hymt)
                 override fun enableInstalledHyMt() = installer.enableInstalled(installer.hymt)
                 override fun showHyMtDisableDialog() = installer.disable(installer.hymt)
+                override fun startHyMt2Download() = installer.download(installer.hymt2)
+                override fun enableInstalledHyMt2() = installer.enableInstalled(installer.hymt2)
+                override fun showHyMt2DisableDialog() = installer.disable(installer.hymt2)
                 override fun startBergamotDownload() = installer.downloadBergamot()
                 override fun enableInstalledBergamot() = installer.enableInstalledBergamot()
                 override fun showBergamotDisableDialog() = installer.disableBergamot()
@@ -138,6 +141,7 @@ class TranslationServicesActivity : SettingsSubPageActivity() {
         binder.refreshQwen35Mnn2bSwitch()
         binder.refreshGemmaE2bSwitch()
         binder.refreshHyMtSwitch()
+        binder.refreshHyMt2Switch()
         binder.refreshBergamotSwitch()
         binder.refreshAllBackendStatuses()
         CaptureService.instance?.reconcileBackendPreference()
@@ -172,6 +176,12 @@ class TranslationServicesActivity : SettingsSubPageActivity() {
                     CaptureService.instance?.reconcileBackendPreference()
                     maybeUnloadIdleEngines()
                 }
+                Prefs.KEY_HYMT2_ENABLED -> {
+                    binder.refreshHyMt2Switch()
+                    binder.refreshAllBackendStatuses()
+                    CaptureService.instance?.reconcileBackendPreference()
+                    maybeUnloadIdleEngines()
+                }
                 Prefs.KEY_BERGAMOT_ENABLED -> {
                     binder.refreshBergamotSwitch()
                     binder.refreshAllBackendStatuses()
@@ -197,7 +207,7 @@ class TranslationServicesActivity : SettingsSubPageActivity() {
     private fun maybeUnloadIdleEngines() {
         val prefs = Prefs(this)
         if (!prefs.qwenMnnEnabled && !prefs.gemmaE2bEnabled && !prefs.hyMtEnabled &&
-            !prefs.qwen35Mnn2bEnabled) {
+            !prefs.hyMt2Enabled && !prefs.qwen35Mnn2bEnabled) {
             lifecycleScope.launch {
                 com.playtranslate.translation.mnn.MnnTranslator.getInstance(this@TranslationServicesActivity).unloadModel()
             }

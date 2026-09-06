@@ -1003,6 +1003,18 @@
 
     <!-- ── Tencent Hunyuan-MT 1.5 1.8B ────────────────────────────── -->
 
+    <string name="hymt2_status_not_downloaded"><xliff:g id="ram" example="4 GB">%1$s</xliff:g> bellek, <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> disk alanı gerektirir</string>
+    <string name="hymt2_status_downloaded_disabled">İndirildi ama devre dışı (diskte <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>)</string>
+    <string name="hymt2_status_ready"><xliff:g id="ram" example="4 GB">%1$s</xliff:g> bellek, <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> disk alanı gerektirir</string>
+    <string name="hymt2_status_downloading">İndiriliyor… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="1.5 GB">%2$s</xliff:g></string>
+    <string name="hymt2_status_verifying">İndirme doğrulanıyor…</string>
+    <string name="hymt2_disable_title"><xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g> devre dışı bırakılsın mı?</string>
+    <string name="hymt2_disable_message"><xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> boyutundaki model yüklü. Daha sonrası için saklayabilir veya yer açmak için silebilirsiniz.</string>
+    <string name="hymt2_download_failed">İndirme başarısız: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+    <string name="hymt2_metered_warning_title">Sayaçlı ağda indirilsin mi?</string>
+    <string name="hymt2_metered_warning_message"><xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g>, <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g> boyutundadır. Bu ağ sayaçlı olarak işaretlenmiş. Devam edilsin mi?</string>
+    <string name="hymt2_disable_keep">Yalnızca devre dışı bırak</string>
+    <string name="hymt2_disable_delete">Modeli sil</string>
     <string name="hymt_status_not_downloaded"><xliff:g id="ram" example="4 GB">%1$s</xliff:g> bellek, <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> disk alanı gerektirir</string>
 
     <string name="hymt_status_downloaded_disabled">İndirildi ama devre dışı (diskte <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>)</string>

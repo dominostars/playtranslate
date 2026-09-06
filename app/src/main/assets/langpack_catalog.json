@@ -358,8 +358,62 @@
         }
       ]
     },
+    "engine-hy-mt2-1-8b-mnn": {
+      "display": "Hy-MT2 1.8B (MNN)",
+      "type": "engine",
+      "script": "",
+      "bundled": false,
+      "packVersion": 1,
+      "additiveFromVersion": 1,
+      "size": 1012570351,
+      "files": [
+        {
+          "path": "config.json",
+          "url": "https://huggingface.co/playtranslate/hy-mt2-1.8b-mnn/resolve/main/config.json",
+          "size": 502,
+          "sha256": "801311d0461dceffb4fe06f71a38b8ffb9616022626109537d3343ecc747619f"
+        },
+        {
+          "path": "llm.mnn",
+          "url": "https://huggingface.co/playtranslate/hy-mt2-1.8b-mnn/resolve/main/llm.mnn",
+          "size": 575192,
+          "sha256": "e58616348ba5d80d6e2d51913104edaa08c4aea6926ed61ecc72865462f979ce"
+        },
+        {
+          "path": "llm.mnn.weight",
+          "url": "https://huggingface.co/playtranslate/hy-mt2-1.8b-mnn/resolve/main/llm.mnn.weight",
+          "size": 1008538714,
+          "sha256": "bae6b34bff0234e95c98460649578f7fb6febbca340e72bc99c37a3412fc39f0"
+        },
+        {
+          "path": "tokenizer.mtok",
+          "url": "https://huggingface.co/playtranslate/hy-mt2-1.8b-mnn/resolve/main/tokenizer.mtok",
+          "size": 3454710,
+          "sha256": "c8b146938905b88f5aeff4dac65aeea5f3dc0e3a2f8e0e9f1ae56b405e4a71aa"
+        },
+        {
+          "path": "llm_config.json",
+          "url": "https://huggingface.co/playtranslate/hy-mt2-1.8b-mnn/resolve/main/llm_config.json",
+          "size": 1233,
+          "sha256": "b72080d8d0096ab93dfbcb164a2d7ff0ee1716335eac97ef41d61681cb2d7196"
+        }
+      ],
+      "licenses": [
+        {
+          "component": "Hy-MT2 1.8B (MNN format)",
+          "license": "Apache-2.0",
+          "attribution": "\u00a9 Tencent. Apache 2.0 \u2014 https://www.apache.org/licenses/LICENSE-2.0 (LICENSE.txt in https://huggingface.co/tencent/Hy-MT2-1.8B). Unlike Hunyuan-MT 1.5, this line carries no territory restriction. MNN conversion by @starsharp06sharp (https://huggingface.co/starsharp06sharp/Hy-MT2-1.8B-MNN), re-hosted unmodified at https://huggingface.co/playtranslate/hy-mt2-1.8b-mnn with the base model's LICENSE.txt and attribution alongside."
+        },
+        {
+          "component": "MNN runtime (libMNN.so / libllm.so / libMNN_Express.so)",
+          "license": "Apache-2.0",
+          "attribution": "\u00a9 Alibaba. Apache 2.0 \u2014 https://www.apache.org/licenses/LICENSE-2.0."
+        }
+      ]
+    },
     "engine-hunyuan-mt1-5-1-8b-mnn": {
       "display": "Hunyuan-MT 1.5 1.8B (MNN)",
+      "deprecated": true,
       "type": "engine",
       "script": "",
       "bundled": false,

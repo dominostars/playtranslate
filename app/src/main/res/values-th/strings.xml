@@ -939,6 +939,18 @@
 
     <!-- ── Tencent Hunyuan-MT 1.5 1.8B ── -->
 
+    <string name="hymt2_status_not_downloaded">ต้องใช้หน่วยความจำ <xliff:g id="ram" example="4 GB">%1$s</xliff:g> พื้นที่จัดเก็บ <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
+    <string name="hymt2_status_downloaded_disabled">ดาวน์โหลดแล้วแต่ปิดใช้งาน (พื้นที่จัดเก็บ <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>)</string>
+    <string name="hymt2_status_ready">ต้องใช้หน่วยความจำ <xliff:g id="ram" example="4 GB">%1$s</xliff:g> พื้นที่จัดเก็บ <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
+    <string name="hymt2_status_downloading">กำลังดาวน์โหลด… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> จาก <xliff:g id="bytes_total" example="1.5 GB">%2$s</xliff:g></string>
+    <string name="hymt2_status_verifying">กำลังตรวจสอบการดาวน์โหลด…</string>
+    <string name="hymt2_disable_title">ปิดใช้งาน <xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g> หรือไม่</string>
+    <string name="hymt2_disable_message">มีโมเดลขนาด <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> ติดตั้งอยู่ คุณสามารถเก็บไว้ใช้ภายหลังหรือลบเพื่อเพิ่มพื้นที่ว่างได้</string>
+    <string name="hymt2_download_failed">ดาวน์โหลดไม่สำเร็จ: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+    <string name="hymt2_metered_warning_title">ดาวน์โหลดผ่านเครือข่ายที่จำกัดปริมาณหรือไม่</string>
+    <string name="hymt2_metered_warning_message"><xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g> มีขนาด <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g> เครือข่ายนี้ถูกทำเครื่องหมายว่าจำกัดปริมาณ ดำเนินการต่อหรือไม่</string>
+    <string name="hymt2_disable_keep">ปิดใช้งานเท่านั้น</string>
+    <string name="hymt2_disable_delete">ลบโมเดล</string>
     <string name="hymt_status_not_downloaded">ต้องใช้หน่วยความจำ <xliff:g id="ram" example="4 GB">%1$s</xliff:g> พื้นที่จัดเก็บ <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
 
     <string name="hymt_status_downloaded_disabled">ดาวน์โหลดแล้วแต่ปิดใช้งาน (พื้นที่จัดเก็บ <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>)</string>
