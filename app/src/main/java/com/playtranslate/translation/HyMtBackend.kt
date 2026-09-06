@@ -8,18 +8,31 @@ import com.playtranslate.translation.llm.PromptStyle
 import com.playtranslate.translation.llm.StatusStringIds
 
 /**
- * MNN-backed Tencent Hunyuan-MT 1.5 1.8B — the translation-specialist
- * on-device tier (Tencent HY Community License, restricted to outside EU/UK/
- * SK). Routed through the same MNN runtime (`:mnn` Gradle module) as
- * [QwenMnnBackend] and [GemmaE2BMnnBackend]; the [HyMtChatTemplate] supplies
- * Hunyuan's single-user-turn envelope ([PromptStyle.HyMtChat]).
+ * MNN-backed Tencent Hunyuan-MT 1.5 1.8B — the **retired** translation-
+ * specialist on-device tier (Tencent HY Community License, restricted to
+ * outside EU/UK/SK). Routed through the same MNN runtime (`:mnn` Gradle
+ * module) as [QwenMnnBackend] and [GemmaE2BMnnBackend]; the
+ * [HyMtChatTemplate] supplies Hunyuan's single-user-turn envelope
+ * ([PromptStyle.HyMtChat]).
  *
- * Slots into the waterfall at [PRIORITY] = 26 — above [QwenMnnBackend] (27)
- * so Hunyuan's stronger translation quality (LLM-judge mean 4.50 vs Qwen 4.02
- * per the 500-sentence spike) wins by default when both are enabled, at the
- * cost of ~30% higher latency and ~70% more peak RAM. Gemma 4 E2B at
- * priority 25 still wins over both since it's the absolute quality leader
- * (judge mean 4.71).
+ * **Retired in favour of [HyMt2Backend]** — Hy-MT2 is the same model shape
+ * retrained, under Apache-2.0 instead of a licence whose Territory excludes
+ * the EU/UK/KR. Its catalog entry carries `"deprecated": true`, so the
+ * Settings row is shown **only while the model is fully installed**: nobody
+ * can start a fresh download, existing installs keep working with a
+ * DEPRECATED badge, and a launch-time sweep drops any half-finished download.
+ * Nothing here reclaims disk — a user who keeps the model deletes it from the
+ * row when they choose to. The region gate below stays for exactly as long as
+ * this backend does; it is what keeps an already-installed model from being
+ * *used* after a move into a restricted territory, which hiding a row cannot
+ * do.
+ *
+ * Slots into the waterfall at [PRIORITY] = 26 — unchanged, so a user who
+ * keeps 1.5 and never installs Hy-MT2 gets exactly the routing they had:
+ * above [QwenMnnBackend] (29) and Qwen 3.5 (27) so Hunyuan's stronger
+ * translation quality (LLM-judge mean 4.50 vs Qwen 2.5's 4.02 per the
+ * 500-sentence spike) still wins when both are enabled. [HyMt2Backend] (25)
+ * and Gemma 4 E2B (24) rank above it.
  *
  * **Region gating** — this backend is only registered after passing the
  * [com.playtranslate.region.RegionPolicy.isHunyuanRestricted] check in
@@ -72,9 +85,9 @@ class HyMtBackend(
     )
 
     companion object {
-        /** Below [GemmaE2BMnnBackend.PRIORITY] (25, premium quality) and
-         *  above [QwenMnnBackend.PRIORITY] (27). See the class kdoc for the
-         *  rationale. */
+        /** Below [HyMt2Backend.PRIORITY] (25, the replacement) and above
+         *  [Qwen35Mnn2bBackend.PRIORITY] (27). Deliberately unchanged by the
+         *  Hy-MT2 rollout. See the class kdoc for the rationale. */
         const val PRIORITY = 26
     }
 }

@@ -973,6 +973,18 @@
 
     <!-- ── Tencent Hunyuan-MT 1.5 1.8B ────────────────────────────── -->
 
+    <string name="hymt2_status_not_downloaded">Requer <xliff:g id="ram" example="4 GB">%1$s</xliff:g> de memória, <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> de armazenamento</string>
+    <string name="hymt2_status_downloaded_disabled">Baixado, mas desativado (<xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> de armazenamento)</string>
+    <string name="hymt2_status_ready">Requer <xliff:g id="ram" example="4 GB">%1$s</xliff:g> de memória, <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> de armazenamento</string>
+    <string name="hymt2_status_downloading">Baixando… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> de <xliff:g id="bytes_total" example="1.5 GB">%2$s</xliff:g></string>
+    <string name="hymt2_status_verifying">Verificando o download…</string>
+    <string name="hymt2_disable_title">Desativar o <xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g>?</string>
+    <string name="hymt2_disable_message">O modelo de <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> está instalado. Você pode mantê-lo para depois ou excluí-lo para liberar espaço.</string>
+    <string name="hymt2_download_failed">Falha no download: <xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+    <string name="hymt2_metered_warning_title">Baixar em rede limitada?</string>
+    <string name="hymt2_metered_warning_message">O <xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g> tem <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g>. Esta rede está marcada como limitada. Continuar?</string>
+    <string name="hymt2_disable_keep">Apenas desativar</string>
+    <string name="hymt2_disable_delete">Excluir modelo</string>
     <string name="hymt_status_not_downloaded">Requer <xliff:g id="ram" example="4 GB">%1$s</xliff:g> de memória, <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g> de armazenamento</string>
 
     <string name="hymt_status_downloaded_disabled">Baixado, mas desativado (<xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> de armazenamento)</string>

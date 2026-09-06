@@ -1011,6 +1011,18 @@
 
     <!-- ── Tencent Hunyuan-MT 1.5 1.8B ────────────────────────────── -->
 
+    <string name="hymt2_status_not_downloaded">需要内存 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>，占用存储 <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
+    <string name="hymt2_status_downloaded_disabled">已下载但已禁用（占用存储 <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>）</string>
+    <string name="hymt2_status_ready">需要内存 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>，占用存储 <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
+    <string name="hymt2_status_downloading">正在下载… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="1.5 GB">%2$s</xliff:g></string>
+    <string name="hymt2_status_verifying">正在验证下载…</string>
+    <string name="hymt2_disable_title">禁用 <xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g>？</string>
+    <string name="hymt2_disable_message">已安装该 <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> 模型。你可以保留以备后用，或删除它以释放空间。</string>
+    <string name="hymt2_download_failed">下载失败：<xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+    <string name="hymt2_metered_warning_title">在按流量计费的网络上下载？</string>
+    <string name="hymt2_metered_warning_message"><xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g> 大小为 <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g>。此网络被标记为按流量计费。是否继续？</string>
+    <string name="hymt2_disable_keep">仅禁用</string>
+    <string name="hymt2_disable_delete">删除模型</string>
     <string name="hymt_status_not_downloaded">需要内存 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>，占用存储 <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
 
     <string name="hymt_status_downloaded_disabled">已下载但已禁用（占用存储 <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>）</string>

@@ -10,7 +10,9 @@ import com.playtranslate.translation.llm.StatusStringIds
 /**
  * MNN-backed Gemma 4 E2B Instruct tier — the premium-quality manual-lookup
  * backend, replacing the legacy `TranslateGemmaBackend` (Gemma 3 4B via
- * llama.cpp). Slots at priority [PRIORITY] = 25, where TG used to live.
+ * llama.cpp). Slots at priority [PRIORITY] = 24 — the top of the offline
+ * band, where TG used to live (25 until Hy-MT2 took that slot; every
+ * relative order in the band is unchanged).
  *
  * Per the Gemma-4 follow-up spike (`mnn-spike/SPIKE_REPORT.md`), measured on
  * Thor (Snapdragon 8 Gen 2 / 16 GB) against the Q4_K_M TG baseline on the
@@ -67,7 +69,7 @@ class GemmaE2BMnnBackend(
 
     companion object {
         /** Where TranslateGemma used to sit — the premium-quality manual-lookup
-         *  slot. Above [QwenMnnBackend.PRIORITY] (26, live-mode tier). */
-        const val PRIORITY = 25
+         *  slot, top of the offline band. Above [HyMt2Backend.PRIORITY] (25). */
+        const val PRIORITY = 24
     }
 }

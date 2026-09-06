@@ -13,8 +13,9 @@ import com.playtranslate.translation.qwen.QwenMnnModel
  * spike (`mnn-spike/SPIKE_REPORT.md`) on Thor (Snapdragon 8 Gen 2):
  * ~513 ms median wall-time, 0.0% catastrophic failure rate.
  *
- * Slots into the waterfall at priority [PRIORITY] = 27 — below
- * [GemmaE2BMnnBackend] (25) and [HyMtBackend] (26), above ML Kit (30). The
+ * Slots into the waterfall at priority [PRIORITY] = 29 — below
+ * [GemmaE2BMnnBackend] (24), [HyMt2Backend] (25) and [HyMtBackend] (26),
+ * above ML Kit (30). The
  * higher-quality on-device tiers (Gemma 4 E2B, Hunyuan-MT 1.5) win first
  * when enabled; Qwen-MNN is the lower-cost on-device fallback before
  * ML Kit. Originally priority 26 (the translation-specialist tier slot)

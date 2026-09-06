@@ -14,8 +14,9 @@ import com.playtranslate.translation.qwen.Qwen35Mnn2bModel
  * including the smaller Qwen 2.5, thanks to its linear-attention layers),
  * 0.0% catastrophic, blind-judge quality clearly above Qwen 2.5. Apache-2.0.
  *
- * Priority [PRIORITY] = 27 (the fast-tier slot below Gemma 25 / HyMt 26; above
- * the deprecated Qwen 2.5 at 29 and ML Kit at 30).
+ * Priority [PRIORITY] = 27 (the fast-tier slot below Gemma 24 / Hy-MT2 25 /
+ * the retired Hunyuan-MT 1.5 at 26; above the deprecated Qwen 2.5 at 29 and
+ * ML Kit at 30).
  *
  * Catalog entry: `engine-qwen-3-5-2b-mnn`. Prompt style [PromptStyle.Qwen35Chat]
  * (no-think envelope). Mixed-attention KV-reuse correctness relies on the
@@ -46,8 +47,9 @@ class Qwen35Mnn2bBackend(
     )
 
     companion object {
-        /** Fast-tier slot: below Gemma (25) / HyMt (26), above deprecated
-         *  Qwen 2.5 (29) and ML Kit (30). */
+        /** Fast-tier slot: below Gemma (24) / Hy-MT2 (25) / the retired
+         *  Hunyuan-MT 1.5 (26), above deprecated Qwen 2.5 (29) and ML Kit
+         *  (30). */
         const val PRIORITY = 27
     }
 }

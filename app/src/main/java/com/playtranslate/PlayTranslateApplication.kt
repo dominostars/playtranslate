@@ -8,8 +8,10 @@ import android.os.Bundle
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.diagnostics.CrashHandler
 import android.content.Context
+import android.util.Log
 import com.playtranslate.region.RegionPolicy
 import com.playtranslate.translation.GemmaE2BMnnBackend
+import com.playtranslate.translation.HyMt2Backend
 import com.playtranslate.translation.HyMtBackend
 import com.playtranslate.translation.BergamotBackend
 import com.playtranslate.translation.MlKitBackend
@@ -133,6 +135,13 @@ class PlayTranslateApplication : Application() {
                             !RegionPolicy.isHunyuanRestricted(this)
                     },
                 ),
+                HyMt2Backend(
+                    // No region AND-gate here, unlike the 1.5 backend above:
+                    // Hy-MT2 is Apache-2.0 with no Territory restriction, so
+                    // the only gate is the user's own toggle.
+                    context         = this,
+                    enabledProvider = { Prefs(this).hyMt2Enabled },
+                ),
                 QwenMnnBackend(
                     context         = this,
                     enabledProvider = { Prefs(this).qwenMnnEnabled },
@@ -154,11 +163,26 @@ class PlayTranslateApplication : Application() {
         // deprecated model (generic — driven by CatalogEntry.deprecated), so a
         // retired model can't resume a stale partial download. No-op for live
         // models and for fully-installed deprecated models (their install is
-        // kept; only the .partial / .tmp staging artifacts are removed). File
-        // unlinks are O(1), so this is negligible on cold start.
-        TranslationBackendRegistry.orderedBackends()
+        // kept; only the .partial / .tmp staging artifacts are removed).
+        //
+        // The unlinks run on [appScope] (IO), not here: a directory-mode model
+        // stages its verified parts in `<model>.tmp`, so an interrupted
+        // MultiFile download can leave up to a model's worth of bytes to free
+        // (Hunyuan-MT 1.5 is ~1 GB across five files), and how long that takes
+        // is entirely a property of the device's storage. Nothing downstream
+        // orders against it — a deprecated model's row is hidden unless it is
+        // fully installed, so the stale partial this deletes cannot be resumed
+        // by the user in the meantime. Backends are resolved on the main
+        // thread, where the registry was just initialized; only the deletes
+        // are deferred.
+        val deprecatedCleanup = TranslationBackendRegistry.orderedBackends()
             .filterIsInstance<com.playtranslate.translation.llm.OnDeviceLlmBackend>()
-            .forEach { it.cleanupPartialsIfDeprecated() }
+        appScope.launch {
+            deprecatedCleanup.forEach {
+                runCatching { it.cleanupPartialsIfDeprecated() }
+                    .onFailure { e -> Log.w(TAG, "deprecated partial cleanup failed: $e") }
+            }
+        }
         // Same launch-time-cleanup rationale for game-audio snapshots: the
         // in-session sweep runs only when a NEW snapshot is taken, so a
         // ~16 MB zombie from a killed-and-never-restored card flow would
@@ -200,6 +224,8 @@ class PlayTranslateApplication : Application() {
     }
 
     companion object {
+        private const val TAG = "PlayTranslateApp"
+
         /** Single-slot tracker for the currently-resumed PlayTranslate
          *  activity. Treats "PlayTranslate is on display X" as a 1-element
          *  set, which is correct for our usage: MainActivity launches

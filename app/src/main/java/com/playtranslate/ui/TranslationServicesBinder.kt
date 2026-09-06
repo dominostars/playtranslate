@@ -117,6 +117,9 @@ class TranslationServicesBinder(
         fun startHyMtDownload()
         fun enableInstalledHyMt()
         fun showHyMtDisableDialog()
+        fun startHyMt2Download()
+        fun enableInstalledHyMt2()
+        fun showHyMt2DisableDialog()
         fun startBergamotDownload()
         fun enableInstalledBergamot()
         fun showBergamotDisableDialog()
@@ -133,8 +136,22 @@ class TranslationServicesBinder(
     private val rowBackendQwenMnn: View = root.findViewById(R.id.rowBackendQwenMnn)
     private val dividerBackendQwen35Mnn2b: View = root.findViewById(R.id.dividerBackendQwen35Mnn2b)
     private val rowBackendQwen35Mnn2b: View = root.findViewById(R.id.rowBackendQwen35Mnn2b)
+    private val dividerBackendHyMt2: View = root.findViewById(R.id.dividerBackendHyMt2)
+    private val rowBackendHyMt2: View = root.findViewById(R.id.rowBackendHyMt2)
     private val dividerBackendHyMt: View = root.findViewById(R.id.dividerBackendHyMt)
     private val rowBackendHyMt: View = root.findViewById(R.id.rowBackendHyMt)
+
+    /** Set by [wireHyMtBackendRow] when the region gate hides Hunyuan-MT 1.5.
+     *  A region-hidden row is treated as *absent* rather than merely invisible
+     *  ([backendRowById] returns null for it), because the render pass would
+     *  otherwise fight the wiring pass: now that the 1.5 catalog entry is
+     *  deprecated, [renderOfflineBackendRow] sets `isGone = !installed` on
+     *  every refresh, which would un-hide the row for the one user the region
+     *  gate is actually for — someone who installed the model outside the
+     *  restricted territory and then moved into it. The backend's runtime
+     *  region AND-gate keeps it from being *used* there either way; this keeps
+     *  the row from reappearing with a switch that can't do anything. */
+    private var hyMtRegionHidden = false
     private val dividerBackendBergamot: View = root.findViewById(R.id.dividerBackendBergamot)
     private val rowBackendBergamot: View = root.findViewById(R.id.rowBackendBergamot)
     private val rowBackendMlkit: View = root.findViewById(R.id.rowBackendMlkit)
@@ -155,6 +172,7 @@ class TranslationServicesBinder(
         wireGemmaE2bMnnBackendRow()
         wireQwenMnnBackendRow()
         wireQwen35Mnn2bBackendRow()
+        wireHyMt2BackendRow()
         wireHyMtBackendRow()
         wireBergamotBackendRow()
 
@@ -192,10 +210,16 @@ class TranslationServicesBinder(
         updateOfflineStatusIconAndSwitch(rowBackendGemmaE2bMnn, backend)
     }
 
-    /** Refresh the Hunyuan-MT row. Mirrors [refreshQwenMnnSwitch]. */
+    /** Refresh the Hunyuan-MT 1.5 row. Mirrors [refreshQwenMnnSwitch]. */
     fun refreshHyMtSwitch() {
         val backend = TranslationBackendRegistry.byId("hymt_mnn") ?: return
         updateOfflineStatusIconAndSwitch(rowBackendHyMt, backend)
+    }
+
+    /** Refresh the Hy-MT2 row. Mirrors [refreshQwenMnnSwitch]. */
+    fun refreshHyMt2Switch() {
+        val backend = TranslationBackendRegistry.byId("hymt2_mnn") ?: return
+        updateOfflineStatusIconAndSwitch(rowBackendHyMt2, backend)
     }
 
     /** Re-render every offline backend row and kick off an async
@@ -226,7 +250,8 @@ class TranslationServicesBinder(
         "gemma_e2b_mnn"   -> rowBackendGemmaE2bMnn
         "qwen_mnn"        -> rowBackendQwenMnn
         "qwen35_mnn_2b"   -> rowBackendQwen35Mnn2b
-        "hymt_mnn"        -> rowBackendHyMt
+        "hymt_mnn"        -> if (hyMtRegionHidden) null else rowBackendHyMt
+        "hymt2_mnn"       -> rowBackendHyMt2
         "bergamot"        -> rowBackendBergamot
         "mlkit"           -> rowBackendMlkit
         else              -> null
@@ -302,6 +327,18 @@ class TranslationServicesBinder(
         onDownload = callbacks::startGemmaE2bMnnDownload,
     )
 
+    /** Hy-MT2 wires like any other Apache-2.0 offline tier: no region gate
+     *  and no legal attestation, both of which exist on the Hunyuan-MT 1.5
+     *  path only because of that model's Territory-restricted licence. */
+    private fun wireHyMt2BackendRow() = wireOfflineLlmRow(
+        row = rowBackendHyMt2,
+        backendId = "hymt2_mnn",
+        isEnabled = { prefs.hyMt2Enabled },
+        onDisable = callbacks::showHyMt2DisableDialog,
+        onEnableInstalled = callbacks::enableInstalledHyMt2,
+        onDownload = callbacks::startHyMt2Download,
+    )
+
     /** Hunyuan-MT 1.5 has an extra **region gate** before the standard
      *  wiring: if [com.playtranslate.region.RegionPolicy.isHunyuanRestricted]
      *  reports true (any device-region signal indicates EU/UK/SK per the
@@ -315,6 +352,7 @@ class TranslationServicesBinder(
         if (com.playtranslate.region.RegionPolicy.isHunyuanRestricted(ctx)) {
             rowBackendHyMt.isGone = true
             dividerBackendHyMt.isGone = true
+            hyMtRegionHidden = true
             return
         }
         wireOfflineLlmRow(
@@ -444,6 +482,7 @@ class TranslationServicesBinder(
         "qwen35_mnn_2b"  -> prefs.qwen35Mnn2bEnabled
         "gemma_e2b_mnn"  -> prefs.gemmaE2bEnabled
         "hymt_mnn"       -> prefs.hyMtEnabled
+        "hymt2_mnn"      -> prefs.hyMt2Enabled
         "bergamot"       -> prefs.bergamotEnabled
         else             -> null
     }
@@ -477,6 +516,7 @@ class TranslationServicesBinder(
         "qwen_mnn"       -> dividerBackendQwenMnn
         "qwen35_mnn_2b"  -> dividerBackendQwen35Mnn2b
         "hymt_mnn"       -> dividerBackendHyMt
+        "hymt2_mnn"      -> dividerBackendHyMt2
         "bergamot"       -> dividerBackendBergamot
         else             -> null
     }

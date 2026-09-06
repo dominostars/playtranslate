@@ -686,6 +686,16 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_HYMT_ENABLED, false)
         set(v) = sp.edit { putBoolean(KEY_HYMT_ENABLED, v) }
 
+    /** User-controlled toggle for the MNN-backed Hy-MT2 1.8B — the
+     *  translation-specialist tier that replaces the retired Hunyuan-MT 1.5
+     *  ([hyMtEnabled]). Apache-2.0, so there is no region gate and no legal
+     *  attestation on this path. Default false; same enable/disable semantics
+     *  as [qwenMnnEnabled]. File existence checked via
+     *  [com.playtranslate.translation.hymt.HyMt2Model.isInstalled]. */
+    var hyMt2Enabled: Boolean
+        get() = sp.getBoolean(KEY_HYMT2_ENABLED, false)
+        set(v) = sp.edit { putBoolean(KEY_HYMT2_ENABLED, v) }
+
     /** Persisted acknowledgement of the Hunyuan-MT 1.5 click-through legal
      *  attestation dialog. Set to true after the user taps "Agree" the first
      *  time they enable [hyMtEnabled]; subsequent enables skip the dialog.
@@ -1585,6 +1595,7 @@ class Prefs internal constructor(
         const val KEY_QWEN35_MNN_2B_ENABLED = "qwen35_mnn_2b_enabled"
         const val KEY_GEMMA_E2B_ENABLED  = "gemma_e2b_enabled"
         const val KEY_HYMT_ENABLED          = "hymt_enabled"
+        const val KEY_HYMT2_ENABLED         = "hymt2_enabled"
         const val KEY_HYMT_LEGAL_ACCEPTED   = "hymt_legal_accepted"
         const val KEY_GEMINI_KEY                    = "gemini_api_key"
         const val KEY_GEMINI_ENABLED                = "gemini_enabled"
