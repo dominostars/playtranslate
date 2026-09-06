@@ -116,6 +116,50 @@ class PhraseMembershipSqlTest {
         assertEquals(setOf("ており"), found)
     }
 
+    // ── Priority-headword tier (Suspicion.CONVERB_CUT's admission bar) ────
+    // A CONVERB_CUT candidate may only fuse via a headword the pack ALSO
+    // ranks as priority (`headword.rank_score > 0`) — plain headword
+    // membership isn't enough (押して, adv "forcibly", is a genuine headword
+    // without a ke_pri tag).
+
+    /** Verbatim copy of `batchCheckPhrases`'s headword-rank query. */
+    private val HEADWORD_RANK_SQL =
+        "SELECT text, MAX(rank_score) FROM headword WHERE text IN (?, ?) GROUP BY text"
+
+    @Test fun `a headword without a priority tag is found but not priority`() {
+        val db = openDb()
+        // 押して (1852820): adv "forcibly" — a genuine headword, rank_score 0.
+        insertHeadword(db, entryId = 1852820, text = "押して", rankScore = 0)
+        // 知らせる (1361140): ichi1 — rank_score > 0.
+        insertHeadword(db, entryId = 1361140, text = "知らせる", rankScore = 1_000_000)
+
+        val found = mutableSetOf<String>()
+        val priority = mutableSetOf<String>()
+        db.rawQuery(HEADWORD_RANK_SQL, arrayOf("押して", "知らせる")).use { c ->
+            while (c.moveToNext()) {
+                val text = c.getString(0)
+                found.add(text)
+                if (c.getInt(1) > 0) priority.add(text)
+            }
+        }
+        assertEquals(setOf("押して", "知らせる"), found)
+        assertEquals(setOf("知らせる"), priority)
+    }
+
+    @Test fun `one priority row among homograph headwords is enough`() {
+        val db = openDb()
+        // MAX over rows: any priority-tagged homograph makes the text priority.
+        insertHeadword(db, entryId = 1, text = "した", rankScore = 0)
+        insertHeadword(db, entryId = 2, text = "した", rankScore = 1_000_000)
+
+        var maxRank = Int.MIN_VALUE
+        db.rawQuery(
+            "SELECT text, MAX(rank_score) FROM headword WHERE text IN (?) GROUP BY text",
+            arrayOf("した"),
+        ).use { c -> if (c.moveToNext()) maxRank = c.getInt(1) }
+        assertTrue(maxRank > 0)
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────
 
     private fun run(db: SQLiteDatabase, text: String): Pair<Set<String>, Set<String>> {
@@ -150,7 +194,8 @@ class PhraseMembershipSqlTest {
             CREATE TABLE headword (
                 entry_id INTEGER NOT NULL,
                 position INTEGER NOT NULL DEFAULT 0,
-                text TEXT NOT NULL
+                text TEXT NOT NULL,
+                rank_score INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent()
         )
@@ -164,7 +209,10 @@ class PhraseMembershipSqlTest {
         )
     }
 
-    private fun insertHeadword(db: SQLiteDatabase, entryId: Long, text: String) {
-        db.execSQL("INSERT INTO headword (entry_id, text) VALUES (?, ?)", arrayOf<Any>(entryId, text))
+    private fun insertHeadword(db: SQLiteDatabase, entryId: Long, text: String, rankScore: Int = 0) {
+        db.execSQL(
+            "INSERT INTO headword (entry_id, text, rank_score) VALUES (?, ?, ?)",
+            arrayOf<Any>(entryId, text, rankScore),
+        )
     }
 }
