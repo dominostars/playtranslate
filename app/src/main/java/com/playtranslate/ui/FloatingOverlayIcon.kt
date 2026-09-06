@@ -47,11 +47,31 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
     /** When true, the circle fill turns red to indicate live mode is active. */
     var liveMode = false
-        set(value) { field = value; invalidate() }
+        set(value) { if (field == value) return; field = value; invalidate() }
 
     /** When true (and liveMode), the circle turns yellow to indicate degraded translation. */
     var degraded = false
-        set(value) { field = value; invalidate() }
+        set(value) { if (field == value) return; field = value; invalidate() }
+
+    /**
+     * The mark drawn in the icon's visible edge slice: the Material Symbols
+     * `arrow_left` triangle, pointing at the screen, whose WEIGHT is the
+     * session's state light. [ARROW_FILLED] means the capture session has
+     * everything it needs right now; [ARROW_OUTLINED] means a MediaProjection
+     * token it needs is missing — on the MediaProjection backend the token is
+     * the capture backend itself, on the accessibility backend it matters only
+     * while the Anki game-audio feature is on (then consent held plus mic
+     * granted reads filled). One mark that changes weight, rather than a mark
+     * plus a warning badge, so the icon stays a single glyph at a glance.
+     * Decided by [com.playtranslate.capture.GameAudioGate.iconGlyph]; pushed
+     * through CaptureService.syncIconState like the other status flags. Filled
+     * is the resting default so an icon that lands before the service has
+     * pushed shows the common state.
+     */
+    enum class Glyph { ARROW_FILLED, ARROW_OUTLINED }
+
+    var glyph = Glyph.ARROW_FILLED
+        set(value) { if (field == value) return; field = value; invalidate() }
 
     // ── Normal mode paints ──────────────────────────────────────────────
     private val defaultCircleColor = "#CC000000".toColorInt()
@@ -72,26 +92,46 @@ class FloatingOverlayIcon(context: Context) : View(context) {
      *  white arrow is the icon's main burn-in risk; a light silver cuts emitted
      *  light ~25% with no perceptible change against the dark disc. */
     private val arrowColor = "#C0C0C0".toColorInt()
-    private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    /** Arrow paints ([Glyph.ARROW_FILLED] / [Glyph.ARROW_OUTLINED]). The
+     *  filled arrow is a solid glyph AND the resting state — a deliberate
+     *  design choice (2026-09-05: the arrow's weight is the status light, so
+     *  the outline must read as the exception), accepted against the burn-in
+     *  argument that had kept the old edge mark a thin stroked chevron: a
+     *  fill's core never gets an off-frame from the micro-orbit, so the idle
+     *  dim now carries more of the mitigation. The outline's 1.5dp stroke
+     *  keeps its interior visibly open at this size. */
+    private val triangleFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = arrowColor
-        // Stroked chevron, not a solid triangle: far fewer lit subpixels, and
-        // every lit pixel is thin enough that the slow micro-orbit fully cycles
-        // it (a fill's core would never get an off-frame to recover in).
+        style = Paint.Style.FILL
+    }
+    private val triangleStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = arrowColor
         style = Paint.Style.STROKE
-        strokeWidth = 1.8f * resources.displayMetrics.density
-        strokeCap = Paint.Cap.ROUND
+        strokeWidth = 1.5f * resources.displayMetrics.density
         strokeJoin = Paint.Join.ROUND
     }
+    /** Triangle glyph geometry as fractions of the disc radius: half-height
+     *  (Material `arrow_left` is a 1:2 triangle, so its width equals this) and
+     *  the nudge from the off-screen disc centre toward the screen that lands
+     *  it in the visible slice. About the chevron's height (half-height
+     *  0.154r): settled on device review (0.22r read too large, 0.147r a
+     *  touch small), so filled vs outlined reads through weight, not size. */
+    private val triangleHalfHeight = 0.16f
+    private val triangleNudge = 0.72f
+    /** Device-review correction: the triangle sits 1dp closer to the screen
+     *  edge than the nudge alone puts it (mirrored on the left edge). */
+    private val triangleEdgePullPx = 1f * resources.displayMetrics.density
     // Scratch objects reused in onLayout/onDraw — allocating per frame is lint DrawAllocation.
+    private val glyphPath = android.graphics.Path()
     private val gestureRect = Rect()
     private val gestureRectList = listOf(gestureRect)
 
     // ── OLED burn-in mitigation ─────────────────────────────────────────
-    // The edge chevron is the only bright, static, always-on element, so it
+    // The edge arrow is the only bright, static, always-on element, so it
     // drives burn-in. Three mitigations stack and are all draw-time only (no
     // window moves, so the touch target / gestures / persistence stay
-    // untouched): the silver *stroked* chevron above lowers luminance and
-    // lit-pixel count; [dimLevel] darkens the glyph's colours after inactivity
+    // untouched): the silver (not white) glyph colour above lowers luminance;
+    // [dimLevel] darkens the glyph's colours after inactivity
     // — opacity is deliberately left alone, see [applyDim]; and [orbitDy]
     // slowly slides it a few px so no subpixel stays lit forever.
     private var dimLevel = 1f
@@ -366,32 +406,34 @@ class FloatingOverlayIcon(context: Context) : View(context) {
             canvas.drawCircle(cx, center, r, circlePaint)
             applyDim(borderPaint, borderColor)
             canvas.drawCircle(cx, center, r, borderPaint)
-            // Arrow in the visible slice, nudged toward the screen edge.
-            val arrowNudge = r * 0.65f
-            val arrowCx = if (currentEdge == Edge.LEFT) cx + arrowNudge else cx - arrowNudge
-            applyDim(arrowPaint, arrowColor)
-            drawEdgeArrow(canvas, arrowCx, center, r * 0.22f)
+            // Arrow in the visible slice, nudged from the (off-screen) disc
+            // centre toward the screen.
+            val nudge = r * triangleNudge - triangleEdgePullPx
+            val triCx = if (currentEdge == Edge.LEFT) cx + nudge else cx - nudge
+            val paint = if (glyph == Glyph.ARROW_FILLED) triangleFillPaint else triangleStrokePaint
+            applyDim(paint, arrowColor)
+            drawEdgeTriangle(canvas, triCx, center, r * triangleHalfHeight, paint)
         }
     }
 
-    /** Draws a small chevron pointing toward the screen center (away from the
-     *  edge). Stroked and open (no base bar) — see [arrowPaint]. */
-    private fun drawEdgeArrow(canvas: Canvas, cx: Float, cy: Float, size: Float) {
-        val path = android.graphics.Path()
-        val hw = size * 0.5f  // half-width (horizontal)
-        val hh = size * 0.7f  // half-height (vertical)
+    /** Draws the Material `arrow_left` triangle — a 1:2 right isosceles
+     *  triangle (width = half-height) with its tip toward the screen centre
+     *  and its base toward the edge — filled or outlined per [paint]. */
+    private fun drawEdgeTriangle(canvas: Canvas, cx: Float, cy: Float, halfH: Float, paint: Paint) {
+        val halfW = halfH / 2
+        val path = glyphPath.also { it.reset() }
         if (currentEdge == Edge.LEFT) {
-            // Chevron pointing right (toward screen): arms meet at the tip.
-            path.moveTo(cx - hw * 0.3f, cy - hh)
-            path.lineTo(cx + hw, cy)
-            path.lineTo(cx - hw * 0.3f, cy + hh)
+            // Tip points right (toward the screen); base sits toward the edge.
+            path.moveTo(cx + halfW, cy)
+            path.lineTo(cx - halfW, cy - halfH)
+            path.lineTo(cx - halfW, cy + halfH)
         } else {
-            // Chevron pointing left (toward screen).
-            path.moveTo(cx + hw * 0.3f, cy - hh)
-            path.lineTo(cx - hw, cy)
-            path.lineTo(cx + hw * 0.3f, cy + hh)
+            path.moveTo(cx - halfW, cy)
+            path.lineTo(cx + halfW, cy - halfH)
+            path.lineTo(cx + halfW, cy + halfH)
         }
-        canvas.drawPath(path, arrowPaint)
+        path.close()
+        canvas.drawPath(path, paint)
     }
 
     private fun drawMagnifyingGlass(canvas: Canvas, cx: Float, cy: Float, size: Float) {

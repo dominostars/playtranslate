@@ -7,6 +7,7 @@ import com.playtranslate.camera.CameraActivity
 import com.playtranslate.capturableDisplays
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CaptureLifecycle
+import com.playtranslate.capture.GameAudioGate
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -693,17 +694,12 @@ class SettingsRenderer(
         updateToolbarCrossfade(settingsScrollView.scrollY)
     }
 
-    /** Whether the session's audio is armed: the MediaProjection consent it
-     *  rides on is held AND the mic permission still stands. Keyed on gate
-     *  inputs, NOT [com.playtranslate.capture.GameAudioRecorder.running] —
-     *  the recorder legitimately pauses during the Anki card-flow activities
-     *  and the row must not flap there. (IfInitialized: an unrealized
-     *  controller holds no consent — don't force-init one to render a row.) */
-    private fun audioArmed(): Boolean =
-        CaptureService.instance?.mediaProjectionControllerIfInitialized?.hasConsent == true &&
-            ContextCompat.checkSelfPermission(
-                ctx, android.Manifest.permission.RECORD_AUDIO
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    /** Whether the session's audio is armed — [GameAudioGate.armed], the one
+     *  definition shared with the floating icon's glyph and the menu's repair
+     *  bar (its kdoc carries the gate-inputs-not-running rationale). */
+    private fun audioArmed(): Boolean = GameAudioGate.armed(
+        ctx, CaptureService.instance?.mediaProjectionControllerIfInitialized,
+    )
 
     /** Render the audio row for [armed]: the title tracks state — "Start
      *  recording audio" (a verb; the tap IS the action) while dark,

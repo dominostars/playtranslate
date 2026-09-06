@@ -18,6 +18,7 @@ import android.view.View
 import android.view.WindowManager
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CaptureLifecycle
+import com.playtranslate.capture.GameAudioGate
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
@@ -281,6 +282,10 @@ class OverlayUiController(
 
     fun setIconsLiveMode(liveMode: Boolean) {
         iconHandles.values.forEach { it.icon.liveMode = liveMode }
+    }
+
+    fun setIconsGlyph(glyph: FloatingOverlayIcon.Glyph) {
+        iconHandles.values.forEach { it.icon.glyph = glyph }
     }
 
     fun anyIconInDragMode(): Boolean = iconHandles.values.any { it.icon.inDragMode }
@@ -913,14 +918,29 @@ class OverlayUiController(
      * icons whose display is no longer selected or has been disconnected, and
      * install icons for newly-selected, currently-connected displays.
      *
-     * [showIntro] is false only for the projection-loss reinstall
+     * [freshAppearance] is false only for the projection-loss reinstall
      * ([com.playtranslate.capture.MediaProjectionController.onProjectionLost]):
      * there the icon window was just swept by hideAll and comes straight back,
-     * so to the user it never left — replaying the sonar intro reads as a
-     * spurious flash (field report 2026-07-11). Every genuinely fresh
-     * appearance (Turn On, backend swap, display added) keeps the intro.
+     * so to the user it never left. Two things key on it: the sonar intro
+     * (replaying it there reads as a spurious flash, field report 2026-07-11)
+     * and the game-audio consent prompt ([promptGameAudioConsentIfMissing] —
+     * that path is how a status-bar-chip stop lands, and re-asking there would
+     * nag right after a deliberate no). Every genuinely fresh appearance (app
+     * open after boot, Turn On, backend swap, display added, Hide for Now and
+     * back) gets the intro.
+     *
+     * [userSummoned] is true only from the two places a USER brings the icon
+     * up — MainActivity.onResume (app open) and
+     * [CaptureLifecycle.activateAccessibility] (Settings' Turn On, the Quick
+     * Settings tile), the same two sites that lift
+     * [CaptureLifecycle.floatingIconSuppressed] — and it is what lets a fresh
+     * placement ask for the game-audio consent: a summon is a user interaction
+     * the platform credits for the service start and the dialog launch, where
+     * a passive reinstall (service reconnect, display hot-plug, backend swap,
+     * language change) is not, and would also drop a system dialog over live
+     * gameplay. Passive paths leave the outlined arrow as the signal.
      */
-    fun reconcileFloatingIcons(showIntro: Boolean = true) {
+    fun reconcileFloatingIcons(freshAppearance: Boolean = true, userSummoned: Boolean = false) {
         val prefs = Prefs(context)
         // The "show the floating icon" preference gates the icon only on the
         // accessibility backend. MediaProjection has no in-app toggle for it
@@ -970,19 +990,99 @@ class OverlayUiController(
         // If the user has nothing selected OR every selected display is
         // unreachable, fall back to the legacy single-display heuristic so the
         // app always has at least one icon while it's "configured."
+        var installedAny = false
         if (target.none { dm.getDisplay(it) != null }) {
             val display = findIconDisplay(prefs) ?: return
             if (display.displayId !in iconHandles) {
-                installFloatingIconForDisplay(display, prefs, showIntro)
+                installedAny = installFloatingIconForDisplay(display, prefs, freshAppearance)
             }
+        } else {
+            for (id in target) {
+                if (id in iconHandles) continue
+                val display = dm.getDisplay(id) ?: continue
+                if (installFloatingIconForDisplay(display, prefs, freshAppearance)) installedAny = true
+            }
+        }
+        // Once per reconcile, not per display, and only when an icon actually
+        // landed as a fresh appearance the user asked for.
+        if (installedAny && freshAppearance && userSummoned && !isMediaProjection) onFreshAccessibilityPlacement()
+    }
+
+    /**
+     * User-summoned fresh accessibility-backend placement: arm or fire the
+     * game-audio consent prompt. The prompt needs the capture service alive —
+     * it asks through the SERVICE's own coroutine scope, never by starting
+     * one: a cold app open installs this icon before the bind that creates
+     * the service lands, and the tile summon cold-starts the service itself
+     * ([CaptureLifecycle.activateAccessibility]) with the icon landing before
+     * onCreate; a service start from HERE would be a second, uncredited one —
+     * the API 31+ ForegroundServiceStartNotAllowedException crash class
+     * (Codex adversarial finding 2026-09-05; the 2026-07-15 field crash in
+     * CaptureService.updateForegroundState was the same class). With no
+     * service the prompt is parked in [placementPromptPending] and fired by
+     * [CaptureService]'s onCreate through [firePendingPlacementPrompt].
+     */
+    private fun onFreshAccessibilityPlacement() {
+        val svc = CaptureService.instance
+        if (svc == null) {
+            placementPromptPending = true
             return
         }
+        promptGameAudioConsentIfMissing(svc)
+    }
 
-        for (id in target) {
-            if (id in iconHandles) continue
-            val display = dm.getDisplay(id) ?: continue
-            installFloatingIconForDisplay(display, prefs, showIntro)
-        }
+    /** Armed by a fresh placement that found no service; consumed once by
+     *  [firePendingPlacementPrompt], dropped when the last icon goes away
+     *  (a parked prompt must not outlive the appearance that armed it). */
+    private var placementPromptPending = false
+
+    /** Called by [CaptureService] once it exists (onCreate, accessibility
+     *  backend): fires the prompt a fresh placement parked, if any. */
+    fun firePendingPlacementPrompt(svc: CaptureService) {
+        if (!placementPromptPending) return
+        placementPromptPending = false
+        promptGameAudioConsentIfMissing(svc)
+    }
+
+    /**
+     * Placement prompt: a floating icon has just made a fresh appearance on
+     * the accessibility backend and the Anki game-audio feature is on, but
+     * the MediaProjection consent the recorder rides on is not held — ask for
+     * it now. The recorder never prompts
+     * ([com.playtranslate.capture.GameAudioRecorder]), and on this backend
+     * nothing else asks until a live-mode start borrows the stream, so before
+     * this the user had to find the menu's "Record audio" bar or Settings'
+     * repair row to get the audio they had switched on. Predicate:
+     * [GameAudioGate.wouldRunGivenConsent] — the bar's own predicate plus
+     * session-active, which an installed accessibility icon already implies.
+     * The mic gate is part of it, because an overlay cannot walk a
+     * runtime-permission flow — a missing mic leaves the icon's outlined
+     * arrow as the signal and Settings as the repair.
+     *
+     * Launch context: only user summons reach here ([reconcileFloatingIcons]'s
+     * userSummoned — app open after boot, Hide for Now and back, Settings'
+     * Turn On, the Quick Settings tile). The dialog is then an activity
+     * started from the service on the heels of that interaction, the same
+     * shape as the MediaProjection tile path (ACTION_MP_ACTIVATE →
+     * activateMediaProjection → ensureConsent) and the live-start borrow, and
+     * it rides the same background-activity-start allowances (a visible
+     * activity for the app-open case; SYSTEM_ALERT_WINDOW or the bound
+     * accessibility service for the tile). Passive reinstalls (service
+     * reconnect, display hot-plug, backend swap) never ask — no credited
+     * interaction, and a system dialog over live gameplay — and leave the
+     * outlined arrow as the signal and the menu's "Record audio" bar as the
+     * tap-to-fix. (A first cut gated on a resumed PlayTranslate activity
+     * instead; that skipped the tile summon, field report 2026-09-05.) A
+     * decline is not remembered; the next summoned fresh appearance asks
+     * again, matching the live-start borrow's 2026-07-07 decision. Runs once
+     * per reconcile (the controller's consent gate would dedupe concurrent
+     * requests anyway) and never on the projection-loss reinstall — see
+     * [reconcileFloatingIcons].
+     */
+    private fun promptGameAudioConsentIfMissing(svc: CaptureService) {
+        if (!GameAudioGate.wouldRunGivenConsent(context, svc.mediaProjectionControllerIfInitialized)) return
+        Log.i(TAG, "summoned icon placement with game audio unarmed: requesting screen-record consent")
+        svc.requestAudioCaptureConsent()
     }
 
     /** Reposition an icon after its display changed (e.g. rotation). */
@@ -994,18 +1094,19 @@ class OverlayUiController(
         try { handle.wm.updateViewLayout(handle.icon, p) } catch (_: Exception) {}
     }
 
+    /** Returns whether the icon window was actually added. */
     private fun installFloatingIconForDisplay(
         display: Display,
         prefs: Prefs,
-        showIntro: Boolean = true,
-    ) {
+        freshAppearance: Boolean = true,
+    ): Boolean {
         val displayId = display.displayId
         // Idempotent: if an icon was already there for this display, tear it
         // down first so the closures and registry stay coherent.
         hideFloatingIconForDisplay(displayId, "recreating")
 
         val displayCtx = context.createDisplayContext(display)
-        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
+        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return false
 
         // Drag-to-lookup: independent controller per display so the popup +
         // magnifier render against the correct display context.
@@ -1104,8 +1205,9 @@ class OverlayUiController(
         }
 
         val icon = makeWiredIcon()
-        val params = icon.params ?: return
-        if (overlayHost.addOverlayWindow(icon, wm, params, displayId)) {
+        val params = icon.params ?: return false
+        val added = overlayHost.addOverlayWindow(icon, wm, params, displayId)
+        if (added) {
             // Set position after addView from this display's saved slot.
             val pos = prefs.iconPositionForDisplay(displayId)
             icon.setPosition(pos.edge, pos.fraction)
@@ -1125,14 +1227,15 @@ class OverlayUiController(
             // design asked for: every fresh appearance, never a routine
             // re-layout. The one non-appearance that reaches this path is the
             // projection-loss sweep-and-reinstall, which passes
-            // showIntro=false (see reconcileFloatingIcons).
-            if (showIntro) showSonarIntro(icon, displayId, displayCtx, pos)
+            // freshAppearance=false (see reconcileFloatingIcons).
+            if (freshAppearance) showSonarIntro(icon, displayId, displayCtx, pos)
         } else {
             controller.destroy()
         }
 
         CaptureService.instance?.updateForegroundState()
         CaptureService.instance?.syncIconState()
+        return added
     }
 
     /** Install the sonar-ping intro overlay on top of the just-added
@@ -1300,7 +1403,7 @@ class OverlayUiController(
      *
      * Replacement is REST-STATE only — guaranteed by the gesture guard
      * below — so the carry-over is exactly: persisted snap position (written
-     * at every drag end) plus the three status flags. Session state
+     * at every drag end) plus the four status flags. Session state
      * (drag/live pause bookkeeping) lives in the install scope shared by
      * every icon generation, not on the view.
      *
@@ -1340,6 +1443,7 @@ class OverlayUiController(
             fresh.showLoading = old.showLoading
             fresh.degraded = old.degraded
             fresh.liveMode = old.liveMode
+            fresh.glyph = old.glyph
             iconHandles[id] = handle.copy(icon = fresh)
             // The spinner is a SEPARATE window the old icon owns and tears
             // down on its own removal path — which the gate now defers. Clear
@@ -1367,6 +1471,8 @@ class OverlayUiController(
         handle.dragController.destroy()
         handle.icon.destroy()
         overlayHost.removeOverlayWindow(handle.icon)
+        // A parked placement prompt belongs to the appearance that armed it.
+        if (iconHandles.isEmpty()) placementPromptPending = false
 
         CaptureService.instance?.updateForegroundState()
         CaptureService.instance?.syncIconState()
@@ -1579,21 +1685,15 @@ class OverlayUiController(
         // "Record audio" — the in-game twin of Settings' audio repair row:
         // shown only when game-audio recording is enabled but the
         // MediaProjection consent it rides on is not held (the recorder never
-        // prompts itself). IfInitialized: an unrealized controller holds no
-        // consent; don't force-init it just to render a button. The
-        // RECORD_AUDIO gate is part of the predicate, not the action: an
-        // overlay can't walk the user through a runtime-permission grant, so
-        // when the mic is the missing piece this surface offers nothing and
-        // the Settings row (which CAN run that flow) is the recovery path —
-        // a surface must not offer a verb it can't perform.
-        menu.showRecordAudio = prefs.recordGameAudio &&
-            CaptureService.instance?.mediaProjectionControllerIfInitialized?.hasConsent != true &&
-            androidx.core.content.ContextCompat.checkSelfPermission(
-                context, android.Manifest.permission.RECORD_AUDIO
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        // prompts itself) and the mic is granted — the one repair an overlay
+        // can perform ([GameAudioGate.consentMissingButFixable] carries the
+        // why: the mic gate is part of the predicate, not the action).
+        menu.showRecordAudio = GameAudioGate.consentMissingButFixable(
+            context, CaptureService.instance?.mediaProjectionControllerIfInitialized,
+        )
         menu.onRecordAudio = {
             dismissFloatingMenu()
-            startAudioCaptureConsent()
+            CaptureService.launchAudioCaptureConsent(context)
         }
 
         val params = WindowManager.LayoutParams(
@@ -1714,19 +1814,6 @@ class OverlayUiController(
      *  backend, service not yet started) — activateMediaProjection degrades
      *  to exactly ensureConsent + reconcile there, and the intent brings the
      *  service up first. */
-    private fun startAudioCaptureConsent() {
-        val svc = CaptureService.instance
-        if (svc != null) {
-            svc.serviceScope.launch { svc.mediaProjectionController.ensureConsent() }
-        } else {
-            androidx.core.content.ContextCompat.startForegroundService(
-                context.applicationContext,
-                Intent(context.applicationContext, CaptureService::class.java)
-                    .setAction(CaptureService.ACTION_MP_ACTIVATE),
-            )
-        }
-    }
-
     private fun showHideConfirmAlert(display: Display) {
         val displayCtx = context.createDisplayContext(display)
         val overlayWm = displayCtx.getSystemService(WindowManager::class.java) ?: return

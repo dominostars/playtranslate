@@ -182,7 +182,10 @@ object CaptureLifecycle {
         // The setter's tile push also covers the pref write above (the tile
         // reads both at bind time), so no standalone refresh here.
         setFloatingIconSuppressed(ctx, false)
-        CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
+        // Turn On is a user summon (userSummoned): a fresh icon may ask for
+        // the game-audio consent — parked until the cold-started service's
+        // onCreate when the start above has not landed yet.
+        CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons(userSummoned = true)
         // Session on ⇒ recording may start (if a warm consent token exists —
         // the recorder never prompts).
         CaptureService.instance?.reconcileGameAudio()

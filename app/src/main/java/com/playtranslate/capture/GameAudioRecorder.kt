@@ -1,8 +1,6 @@
 package com.playtranslate.capture
 
-import android.Manifest
 import android.annotation.SuppressLint
-import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioPlaybackCaptureConfiguration
@@ -10,7 +8,6 @@ import android.media.AudioRecord
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import androidx.core.content.ContextCompat
 import com.playtranslate.CaptureService
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.Prefs
@@ -127,7 +124,7 @@ class GameAudioRecorder(
         val pref = Prefs(ctx).recordGameAudio
         val active = CaptureLifecycle.isSessionActive(ctx)
         val consent = controller.hasConsent
-        val perm = hasRecordPermission()
+        val perm = GameAudioGate.micGranted(ctx)
         val pausedBy = PlayTranslateApplication.resumedActivitySimpleName()
             ?.takeIf { it in CARD_FLOW_PAUSE }
         val wantsRun = pref && active && consent && perm && pausedBy == null
@@ -139,11 +136,13 @@ class GameAudioRecorder(
         }
         if (wantsRun && !running) start()
         else if (!wantsRun && running) stop("reconcile: gate closed")
+        // The floating icon's glyph reads the same gate inputs (consent, mic —
+        // [GameAudioGate]); push it from here, AFTER start/stop, so a consent
+        // the start attempt just invalidated (FGS-type rejection) is already
+        // reflected. Every seam that moves those inputs reaches this
+        // reconcile, which is what makes the glyph's freshness structural.
+        service.syncIconState()
     }
-
-    private fun hasRecordPermission(): Boolean =
-        ContextCompat.checkSelfPermission(service, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
 
     /** Main-thread only (via [reconcileOnMain]). The permission is checked by
      *  the gate; the SuppressLint covers AudioRecord.Builder's lint contract. */
