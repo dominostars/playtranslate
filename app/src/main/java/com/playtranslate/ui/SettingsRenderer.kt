@@ -233,6 +233,14 @@ class SettingsRenderer(
          *  to its armed state. */
         fun requestAudioCaptureConsent()
 
+        /** Tap on the audio row in its FAILED state ("Audio recording
+         *  failed": gates pass but the recorder could not start, or its
+         *  reader died and the automatic restart did not take). Implementer
+         *  re-runs the recorder's reconcile — a user push-point, which
+         *  resets the automatic-restart budget — and refreshes the top
+         *  section so the row shows the outcome. */
+        fun retryGameAudioRecording()
+
         /** Tap on the "Update language packs" row in the Language section.
          *  Implementer instantiates [com.playtranslate.language.PackUpgradeOrchestrator]
          *  and calls `upgradeAll(stalePacks)`. On completion, calls
@@ -567,8 +575,11 @@ class SettingsRenderer(
         // to Anki settings, where the feature switch — the real stop lever —
         // lives. Recording itself starts and stops with the session.
         rowAudioRecording.setOnClickListener {
-            if (audioArmed()) callbacks.openAnkiSettings()
-            else callbacks.requestAudioCaptureConsent()
+            when (audioRowState()) {
+                AudioRowState.DARK -> callbacks.requestAudioCaptureConsent()
+                AudioRowState.RECORDING -> callbacks.openAnkiSettings()
+                AudioRowState.FAILED -> callbacks.retryGameAudioRecording()
+            }
         }
 
         // The whole toolbar (title + Turn On/Off button together) fades in as
@@ -654,7 +665,7 @@ class SettingsRenderer(
         val showAudioRow = prefs.recordGameAudio && active
         rowAudioRecording.isVisible = showAudioRow
         dividerAudioRecording.isVisible = showAudioRow
-        if (showAudioRow) styleAudioRecordingRow(audioArmed())
+        if (showAudioRow) styleAudioRecordingRow(audioRowState())
         // The floating-icon footer is lit when the icon is actually on the
         // game screen, dim otherwise. That tracks `active` everywhere except
         // a11y dual-screen, where capture is always active but the Game
@@ -694,25 +705,48 @@ class SettingsRenderer(
         updateToolbarCrossfade(settingsScrollView.scrollY)
     }
 
-    /** Whether the session's audio is armed — [GameAudioGate.armed], the one
-     *  definition shared with the floating icon's glyph and the menu's repair
-     *  bar (its kdoc carries the gate-inputs-not-running rationale). */
-    private fun audioArmed(): Boolean = GameAudioGate.armed(
-        ctx, CaptureService.instance?.mediaProjectionControllerIfInitialized,
-    )
+    /** The audio row's three states. DARK: a permission gate is missing
+     *  ([GameAudioGate.armed] false) and the tap repairs it. RECORDING: armed
+     *  and the recorder is healthy ([GameAudioGate.recording]) — the only
+     *  state whose title is a status claim. FAILED: armed but the recorder
+     *  failed a wanted start ([com.playtranslate.capture.GameAudioRecorder
+     *  .startFailed]) — the tap retries. Same definitions the floating icon's
+     *  glyph and the menu's repair bar read. */
+    private enum class AudioRowState { DARK, RECORDING, FAILED }
 
-    /** Render the audio row for [armed]: the title tracks state — "Start
+    private fun audioRowState(): AudioRowState {
+        val svc = CaptureService.instance
+        val controller = svc?.mediaProjectionControllerIfInitialized
+        return when {
+            !GameAudioGate.armed(ctx, controller) -> AudioRowState.DARK
+            GameAudioGate.recording(ctx, controller, svc?.gameAudioRecorderIfInitialized) ->
+                AudioRowState.RECORDING
+            else -> AudioRowState.FAILED
+        }
+    }
+
+    /** Render the audio row for [state]: the title tracks it — "Start
      *  recording audio" (a verb; the tap IS the action) while dark,
-     *  "Recording audio" (a status claim, true only here) while armed — and
-     *  the trailing record glyph is the state light: ptTextHint (the
-     *  recessed "this is currently dark" step) vs ptAccent. */
-    private fun styleAudioRecordingRow(armed: Boolean) {
+     *  "Recording audio" (a status claim, true only there) while recording,
+     *  "Audio recording failed" (the tap retries) while failed — and the
+     *  trailing record glyph is the state light: ptTextHint (the recessed
+     *  "this is currently dark" step), ptAccent, ptDanger. */
+    private fun styleAudioRecordingRow(state: AudioRowState) {
         tvAudioRecordingTitle.setText(
-            if (armed) R.string.audio_recording_row_active
-            else R.string.audio_recording_row_start
+            when (state) {
+                AudioRowState.DARK -> R.string.audio_recording_row_start
+                AudioRowState.RECORDING -> R.string.audio_recording_row_active
+                AudioRowState.FAILED -> R.string.audio_recording_row_failed
+            }
         )
         ivAudioRecordingGlyph.imageTintList = ColorStateList.valueOf(
-            ctx.themeColor(if (armed) R.attr.ptAccent else R.attr.ptTextHint)
+            ctx.themeColor(
+                when (state) {
+                    AudioRowState.DARK -> R.attr.ptTextHint
+                    AudioRowState.RECORDING -> R.attr.ptAccent
+                    AudioRowState.FAILED -> R.attr.ptDanger
+                }
+            )
         )
     }
 

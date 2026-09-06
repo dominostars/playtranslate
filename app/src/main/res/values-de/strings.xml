@@ -392,6 +392,7 @@
     <string name="audio_recording_row_start">Audioaufnahme starten</string>
 
     <string name="audio_recording_row_active">Audio wird aufgenommen</string>
+    <string name="audio_recording_row_failed">Audioaufnahme fehlgeschlagen</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          MEDIAPROJECTION OVERLAY-PERMISSION DIALOG

@@ -384,6 +384,7 @@
     <string name="audio_recording_row_start">Ses kaydını başlat</string>
 
     <string name="audio_recording_row_active">Ses kaydediliyor</string>
+    <string name="audio_recording_row_failed">Ses kaydı başarısız oldu</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          MEDIAPROJECTION OVERLAY-PERMISSION DIALOG

@@ -101,7 +101,7 @@ class GameAudioGateTest {
         assertFalse(GameAudioGate.consentMissingButFixable(ctx, mp))
         assertEquals(
             Glyph.ARROW_FILLED,
-            GameAudioGate.iconGlyph(ctx, mp, CaptureBackendResolver.active()),
+            GameAudioGate.iconGlyph(ctx, mp, svc.gameAudioRecorderIfInitialized, CaptureBackendResolver.active()),
         )
     }
 
@@ -120,7 +120,7 @@ class GameAudioGateTest {
         )
         assertEquals(
             Glyph.ARROW_OUTLINED,
-            GameAudioGate.iconGlyph(ctx, mp, CaptureBackendResolver.active()),
+            GameAudioGate.iconGlyph(ctx, mp, svc.gameAudioRecorderIfInitialized, CaptureBackendResolver.active()),
         )
     }
 
@@ -139,7 +139,7 @@ class GameAudioGateTest {
         assertEquals(
             "the glyph still signals the unarmed state",
             Glyph.ARROW_OUTLINED,
-            GameAudioGate.iconGlyph(ctx, mp, CaptureBackendResolver.active()),
+            GameAudioGate.iconGlyph(ctx, mp, svc.gameAudioRecorderIfInitialized, CaptureBackendResolver.active()),
         )
     }
 
@@ -153,13 +153,13 @@ class GameAudioGateTest {
         assertEquals(
             "screen capture needs no token here and audio is off: nothing is missing",
             Glyph.ARROW_FILLED,
-            GameAudioGate.iconGlyph(ctx, mp, CaptureBackendResolver.active()),
+            GameAudioGate.iconGlyph(ctx, mp, svc.gameAudioRecorderIfInitialized, CaptureBackendResolver.active()),
         )
         grantConsent(svc)
         assertFalse(GameAudioGate.consentMissingButFixable(ctx, mp))
         assertEquals(
             Glyph.ARROW_FILLED,
-            GameAudioGate.iconGlyph(ctx, mp, CaptureBackendResolver.active()),
+            GameAudioGate.iconGlyph(ctx, mp, svc.gameAudioRecorderIfInitialized, CaptureBackendResolver.active()),
         )
     }
 
@@ -173,7 +173,7 @@ class GameAudioGateTest {
         assertEquals(
             "no token on the backend that IS the token: outlined",
             Glyph.ARROW_OUTLINED,
-            GameAudioGate.iconGlyph(ctx, mp, CaptureBackendResolver.active()),
+            GameAudioGate.iconGlyph(ctx, mp, svc.gameAudioRecorderIfInitialized, CaptureBackendResolver.active()),
         )
         grantConsent(svc)
         // Same audio inputs under accessibility read ARROW_OUTLINED (mic
@@ -181,7 +181,7 @@ class GameAudioGateTest {
         assertFalse(GameAudioGate.armed(ctx, mp))
         assertEquals(
             Glyph.ARROW_FILLED,
-            GameAudioGate.iconGlyph(ctx, mp, CaptureBackendResolver.active()),
+            GameAudioGate.iconGlyph(ctx, mp, svc.gameAudioRecorderIfInitialized, CaptureBackendResolver.active()),
         )
     }
 
@@ -192,7 +192,7 @@ class GameAudioGateTest {
         val svc = buildService()
         assertEquals(
             Glyph.ARROW_OUTLINED,
-            GameAudioGate.iconGlyph(ctx, svc.mediaProjectionController, CaptureBackendResolver.active()),
+            GameAudioGate.iconGlyph(ctx, svc.mediaProjectionController, svc.gameAudioRecorderIfInitialized, CaptureBackendResolver.active()),
         )
     }
 
@@ -266,6 +266,59 @@ class GameAudioGateTest {
     }
 
     @Test
+    fun recorderStartFailure_readsNotRecording_andClearsWhenNoLongerWanted() {
+        // Every gate passes and the session is active, so the reconcile
+        // attempts a start; the projection source yields nothing, the shape
+        // of a dead token or a dead audio path on a device: gates green,
+        // recorder not running.
+        useAccessibilityBackend()
+        Prefs(ctx).showOverlayIcon = true // session active
+        setMic(true)
+        val svc = buildService()
+        val recorder = svc.gameAudioRecorder
+        recorder.projectionSource = { null }
+        CaptureService.setRecordGameAudio(ctx, true)
+        val mp = grantConsent(svc)
+        assertTrue(GameAudioGate.armed(ctx, mp))
+        assertTrue("wanted, attempted, not running", recorder.startFailed)
+        assertFalse(GameAudioGate.recording(ctx, mp, recorder))
+        assertEquals(
+            "a dead recorder behind passing gates must not read as recording",
+            Glyph.ARROW_OUTLINED,
+            GameAudioGate.iconGlyph(ctx, mp, recorder, CaptureBackendResolver.active()),
+        )
+        // No longer wanted (session inactive) ⇒ healthy again: the failure
+        // bit tracks wanted-but-not-running, not history.
+        Prefs(ctx).showOverlayIcon = false
+        svc.reconcileGameAudio()
+        assertFalse(recorder.startFailed)
+        assertTrue(GameAudioGate.recording(ctx, mp, recorder))
+    }
+
+    @Test
+    fun recorderHealthListener_firesOnTransitionsOnly() {
+        useAccessibilityBackend()
+        Prefs(ctx).showOverlayIcon = true // session active
+        setMic(true)
+        val svc = buildService()
+        val recorder = svc.gameAudioRecorder
+        recorder.projectionSource = { null }
+        var fired = 0
+        recorder.addHealthListener { fired++ }
+        CaptureService.setRecordGameAudio(ctx, true)
+        grantConsent(svc) // wanted, attempted, not running ⇒ failed
+        assertTrue(recorder.startFailed)
+        assertEquals("healthy → failed is one transition", 1, fired)
+        svc.reconcileGameAudio() // still failing: no new transition
+        assertTrue(recorder.startFailed)
+        assertEquals("a repeated failure must not re-notify", 1, fired)
+        Prefs(ctx).showOverlayIcon = false
+        svc.reconcileGameAudio() // no longer wanted ⇒ healthy
+        assertFalse(recorder.startFailed)
+        assertEquals("failed → healthy is the second transition", 2, fired)
+    }
+
+    @Test
     fun unrealizedController_readsAsNoConsent() {
         useAccessibilityBackend()
         setMic(true)
@@ -274,7 +327,7 @@ class GameAudioGateTest {
         assertTrue(GameAudioGate.consentMissingButFixable(ctx, null))
         assertEquals(
             Glyph.ARROW_OUTLINED,
-            GameAudioGate.iconGlyph(ctx, null, CaptureBackendResolver.active()),
+            GameAudioGate.iconGlyph(ctx, null, null, CaptureBackendResolver.active()),
         )
     }
 }

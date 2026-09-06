@@ -403,6 +403,7 @@
     <string name="audio_recording_row_start">Démarrer l\'enregistrement audio</string>
 
     <string name="audio_recording_row_active">Enregistrement audio en cours</string>
+    <string name="audio_recording_row_failed">Échec de l\'enregistrement audio</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          MEDIAPROJECTION OVERLAY-PERMISSION DIALOG

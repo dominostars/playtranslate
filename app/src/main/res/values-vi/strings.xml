@@ -388,6 +388,7 @@
     <string name="audio_recording_row_start">Bắt đầu ghi âm</string>
 
     <string name="audio_recording_row_active">Đang ghi âm</string>
+    <string name="audio_recording_row_failed">Ghi âm không thành công</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          MEDIAPROJECTION OVERLAY-PERMISSION DIALOG

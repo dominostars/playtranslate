@@ -41,6 +41,23 @@ object GameAudioGate {
         controller?.hasConsent == true && micGranted(ctx)
 
     /**
+     * [armed] AND the recorder is healthy — it has not failed a start the
+     * gate wanted ([GameAudioRecorder.startFailed]). This is what a surface
+     * may CLAIM as "recording": the Settings row's status title and the
+     * icon's filled arrow on the accessibility backend. Still keyed on gate
+     * inputs plus that one health bit, never on `running`, so the deliberate
+     * card-flow pause and an inactive session read as armed-and-healthy, as
+     * before; what changes is that a dead recorder behind passing gates no
+     * longer reads as recording. An unrealized recorder has never been asked
+     * to run and reads healthy.
+     */
+    fun recording(
+        ctx: Context,
+        controller: MediaProjectionController?,
+        recorder: GameAudioRecorder?,
+    ): Boolean = armed(ctx, controller) && recorder?.startFailed != true
+
+    /**
      * The feature is on and consent is the ONLY missing gate — the one repair
      * an overlay surface can perform. The mic gate is part of the predicate,
      * not the action: a runtime-permission grant needs an Activity, so when
@@ -77,20 +94,22 @@ object GameAudioGate {
      *    capture re-prompts, and Settings' power cell says "on standby".
      *  - Accessibility backend: screen capture needs no token, so it matters
      *    only while the Anki game-audio feature is on; then outlined while not
-     *    [armed] (consent OR mic missing — either way the audio the user
-     *    switched on is not being captured), filled once it is. Feature off
-     *    reads filled: nothing is missing.
+     *    [recording] (consent OR mic missing, or the recorder failed a wanted
+     *    start — either way the audio the user switched on is not being
+     *    captured), filled once it is. Feature off reads filled: nothing is
+     *    missing.
      * User decision 2026-09-05, superseding the first cut (a plain chevron
      * outside the accessibility-plus-audio case).
      */
     fun iconGlyph(
         ctx: Context,
         controller: MediaProjectionController?,
+        recorder: GameAudioRecorder?,
         backend: CaptureBackend,
     ): FloatingOverlayIcon.Glyph {
         val outlined =
             if (!backend.requiresAccessibilityService) controller?.hasConsent != true
-            else Prefs(ctx).recordGameAudio && !armed(ctx, controller)
+            else Prefs(ctx).recordGameAudio && !recording(ctx, controller, recorder)
         return if (outlined) FloatingOverlayIcon.Glyph.ARROW_OUTLINED
         else FloatingOverlayIcon.Glyph.ARROW_FILLED
     }

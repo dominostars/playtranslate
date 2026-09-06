@@ -408,6 +408,7 @@
     <string name="audio_recording_row_start">Начать запись звука</string>
 
     <string name="audio_recording_row_active">Идёт запись звука</string>
+    <string name="audio_recording_row_failed">Ошибка записи звука</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          MEDIAPROJECTION OVERLAY-PERMISSION DIALOG
