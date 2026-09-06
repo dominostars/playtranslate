@@ -3524,6 +3524,11 @@
          OCR texts (menu items) are translated by the on-device engine instead of the
          online service. Debug-build-only surface. -->
     <string name="settings_debug_short_text_routing">Short-text offline routing</string>
+    <!-- Settings dialog, debug section: switch-row title. Forces the on-device
+         LLM to load its weights through the mmap (reclaimable) path that is
+         normally taken only below the model's memory floor, so that path can be
+         tested on a high-memory device. Debug-build-only surface. -->
+    <string name="settings_debug_force_mmap_weights">Force mmap weight loading (on-device LLM)</string>
     <string name="settings_debug_log_grouping">Log OCR grouping decisions</string>
     <!-- Settings dialog, debug section: switch-row title. Rollback switch:
          while ON, slanted-text detection uses the old 10-degree threshold

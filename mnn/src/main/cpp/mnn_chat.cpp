@@ -142,10 +142,12 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_prepare(
     // an external-weight offset across a chunk boundary. A single chunk large
     // enough to hold the whole model removes the boundary entirely — a structural
     // fix, not a device-specific workaround. Validated cold→warm with no crash
-    // across Gemma E2B (multimodal Omni), Hunyuan-MT and Qwen 3.5 (text-only) on
-    // an SD 8 Gen 2; warm reloads run ~0.2–0.3 s vs ~3–4 s cold. `use_cached_mmap:
-    // true` keeps the rearranged cache on disk so warm reloads reuse it;
-    // `kvcache_mmap` stays false (KV cache in RAM).
+    // across Gemma E2B, Hunyuan-MT and Qwen 3.5 on an SD 8 Gen 2 on 2026-06-05,
+    // i.e. at the bundles' `precision: low` (before the pin above) and with the
+    // multimodal encoders still being loaded — the combination the `is_visual`
+    // / `is_audio` note below retires. Warm reloads run ~0.2–0.3 s vs ~3–4 s
+    // cold. `use_cached_mmap: true` keeps the rearranged cache on disk so warm
+    // reloads reuse it; `kvcache_mmap` stays false (KV cache in RAM).
     //
     // Caveat: a native warm-restore crash can't fall through in-process, and the
     // cache persists across launches, so a regression would re-crash on the next
@@ -153,13 +155,40 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_prepare(
     // above) — re-validate warm loads on new SoC / precision classes before a
     // wide rollout.
     //
+    // is_visual=false / is_audio=false: never load the multimodal encoders.
+    //   The Gemma 4 E2B and Qwen 3.5 2B bundles are taobao's multimodal exports
+    //   (`llm_config.json` sets `is_visual` / `is_audio`; `visual.mnn` and, for
+    //   E2B, `audio.mnn` ship alongside), so `Llm::createLLM` builds an `Omni`
+    //   whose `load()` also loads the vision (and audio) encoders through a
+    //   SECOND RuntimeManager. Translation is text-only and those encoders never
+    //   run; on the anon path they only cost RAM (E2B: ~816 MB of encoder
+    //   weights, Qwen 3.5: ~196 MB), on the mmap path they are harmful. MNN keys
+    //   the weight cache solely by `<precision>_<memory>_<power>` (the model-UUID
+    //   part of the prefix is commented out upstream) and validates it by the
+    //   mere presence of a `sync.static` marker; the bundles' `mllm` block says
+    //   `precision: normal`, which the pin above makes the LLM's precision too,
+    //   so both runtimes opened the SAME `.static` chunk and shared the SAME
+    //   marker. A cold load had the encoders overwrite the LLM's cached weights
+    //   from offset 0 (MAP_SHARED); a warm load had the audio encoder trust the
+    //   LLM's marker, take MNN's cached-mmap path and hand raw externalized ops
+    //   to CPU creators that cannot cope — fp16 convs with the bias externalized
+    //   make `Convolution1x1Strassen` log "Alloc Bias" and bail, and
+    //   `CPUConvolutionDepthwiseCreator` dereferences the missing bias: the
+    //   SIGSEGV in `Omni::load` seen in the field on 3.1.1. With both flags
+    //   false `Omni::load` skips the encoder loads entirely; the processor
+    //   RuntimeManager it still creates opens no cache file (chunk files are
+    //   created on the first static allocation, which needs a loaded module).
+    //   Caches those versions left behind are retired by the layout stamp in
+    //   `MmapWeightCache` on the Kotlin side. `set_config` merges over
+    //   `llm_config.json` (scalars overwrite), so this override wins.
+    //
     // Built by concatenation; the object's closing brace is appended by the
     // `+= "}"` below, so the literal on the next line deliberately ends with an
-    // OPEN object (…"normal", no `}`) — the "normal" value IS closed. Final JSON:
-    //   no mmap: {"reuse_kv":true,"use_template":false,"sampler_type":"greedy","precision":"normal"}
+    // OPEN object (…false, no `}`) — every value IS closed. Final JSON:
+    //   no mmap: {"reuse_kv":true,"use_template":false,"sampler_type":"greedy","precision":"normal","is_visual":false,"is_audio":false}
     //   w/ mmap: {…,"use_mmap":true,"use_cached_mmap":true,"mmap_size":4096,"tmp_path":"<dir>"}
     std::string runtime_config =
-        R"({"reuse_kv": true, "use_template": false, "sampler_type": "greedy", "precision": "normal")";
+        R"({"reuse_kv": true, "use_template": false, "sampler_type": "greedy", "precision": "normal", "is_visual": false, "is_audio": false)";
     if (!mmap_dir.empty()) {
         runtime_config += R"(, "use_mmap": true, "use_cached_mmap": true, "mmap_size": 4096, "tmp_path": ")" + jsonEscapeString(mmap_dir) + R"(")";
     }

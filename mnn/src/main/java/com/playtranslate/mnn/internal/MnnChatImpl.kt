@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.playtranslate.mnn.InferenceEngine
 import com.playtranslate.mnn.MMAP_CACHE_DIR_NAME
+import com.playtranslate.mnn.MmapWeightCache
 import com.playtranslate.mnn.UnsupportedArchitectureException
 import dalvik.annotation.optimization.FastNative
 import kotlinx.coroutines.CancellationException
@@ -205,12 +206,19 @@ internal class MnnChatImpl private constructor(
      * recursively (so the cache can't leak), and a re-download/upgrade swaps the
      * whole dir — so a stale cache can never be served against changed weights.
      * That matters because MNN does NOT validate the cache against the model
-     * (its cache prefix omits the model UUID).
+     * (its cache prefix omits the model UUID). Nor does it validate the cache
+     * against the runtime config or the MNN build that wrote it; the app-side
+     * layout stamp in [MmapWeightCache] covers that, and a cache carrying a
+     * different stamp is deleted here before MNN can map it.
+     *
+     * Returns "" if the dir can't be created or stamped, or a stale cache can't
+     * be removed; [loadModel] then refuses the load rather than mapping stale
+     * bytes or downgrading to the anon path.
      */
     private fun resolveMmapDir(modelDir: String): String {
-        val cacheDir = File(modelDir, MMAP_CACHE_DIR_NAME)
-        if (!cacheDir.exists() && !cacheDir.mkdirs()) {
-            Log.w(TAG, "mmap cache dir mkdirs failed for $cacheDir; loading without mmap")
+        val cacheDir = MmapWeightCache.prepareDir(File(modelDir))
+        if (cacheDir == null) {
+            Log.w(TAG, "mmap cache dir unavailable under $modelDir; loading without mmap")
             return ""
         }
         return cacheDir.absolutePath

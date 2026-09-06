@@ -4,8 +4,10 @@ import android.app.ActivityManager
 import android.content.Context
 import android.os.StatFs
 import android.util.Log
+import com.playtranslate.Prefs
 import com.playtranslate.mnn.InferenceEngine
 import com.playtranslate.mnn.MMAP_CACHE_DIR_NAME
+import com.playtranslate.mnn.MmapWeightCache
 import com.playtranslate.mnn.MnnChat
 import com.playtranslate.mnn.isModelLoaded
 import com.playtranslate.translation.gemma.GemmaE2BChatTemplate
@@ -272,6 +274,17 @@ class MnnTranslator private constructor(private val context: Context) {
         // toward mmap on busy high-RAM devices: a safe, conservative default.)
         val useMmap = lowOnMemory(availMemFloorBytes)
 
+        // A cache written under an older app-side layout (3.0.x–3.1.1 let the
+        // multimodal encoders write into the LLM's cache file) must go before
+        // the warm/cold check below trusts its `sync.static` marker. If it
+        // can't be removed, refuse mmap the same way an unfittable cache is
+        // refused: fall through to a lighter backend rather than map it.
+        if (useMmap && !MmapWeightCache.dropStaleLayout(File(modelPath))) {
+            throw OnDeviceLlmTransientException(
+                "Low memory and a stale mmap weight cache that could not be removed; falling through to next backend"
+            )
+        }
+
         // Low memory means we need mmap (reclaimable weights). If its on-disk
         // cache can't fit, falling back to the anon path would load the full
         // weights into already-tight RAM and risk an OOM-kill — so instead fail
@@ -316,6 +329,12 @@ class MnnTranslator private constructor(private val context: Context) {
      *  loaded instance keeps whichever mode the conditions chose until it is
      *  reloaded. */
     private fun lowOnMemory(availMemFloorBytes: Long): Boolean {
+        // Debug row: exercise the mmap path on a device that would never
+        // pick it on its own (see Prefs.debugForceMmapWeights).
+        if (Prefs(context).debugForceMmapWeights) {
+            Log.i(TAG, "debugForceMmapWeights is on; taking the mmap weight path regardless of availMem")
+            return true
+        }
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val mi = ActivityManager.MemoryInfo()
         am.getMemoryInfo(mi)
