@@ -1277,9 +1277,14 @@ class OverlayUiController(
 
         val intro = SonarPingIntroView(displayCtx, edge, icon)
         // Touchable (no FLAG_NOT_TOUCHABLE): a touch on the intro resolves
-        // the animation early and the gesture is forwarded to the icon —
-        // a tap opens the floating menu, a hold or drag starts the
-        // magnifying search. See SonarPingIntroView.onTouchEvent.
+        // the animation early, and a touch on the carrier itself forwards
+        // its gesture to the icon — a tap opens the floating menu, a hold
+        // or drag starts the magnifying search. The window is far bigger
+        // than that target (it holds the rings); the view hit-tests the
+        // carrier rather than treating the whole ring field as a button,
+        // and it stays touchable because a pass-through overlay is
+        // opacity-capped on the MediaProjection backend. See
+        // SonarPingIntroView.onTouchEvent.
         val params = WindowManager.LayoutParams(
             windowWidth, windowHeight,
             overlayHost.windowType,

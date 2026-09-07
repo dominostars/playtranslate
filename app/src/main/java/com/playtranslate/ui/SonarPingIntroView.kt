@@ -20,6 +20,51 @@ import com.playtranslate.R
 import androidx.core.graphics.toColorInt
 import androidx.core.graphics.withClip
 import androidx.core.graphics.withTranslation
+import kotlin.math.max
+
+/**
+ * True when a press at ([touchX], [touchY]) landed on the sonar intro's
+ * carrier — the animating icon itself — rather than out in the ring field
+ * around it.
+ *
+ * The intro's window has to be big: the sonar rings sweep out to 3.7x the
+ * carrier radius, so it is sized (320 x 280 dp) to hold them. It also has
+ * to stay touchable — a pass-through TYPE_APPLICATION_OVERLAY is
+ * opacity-capped on the MediaProjection backend, which would dim the whole
+ * animation — and a touchable window owns every touch inside its bounds
+ * (an event its view leaves unhandled is dropped, never re-dispatched to
+ * the app below). So the grab target is shaped by hit-testing INSIDE the
+ * window rather than by shrinking or disarming it.
+ *
+ * [carrierRadiusPx] is the carrier's radius as currently DRAWN, floored at
+ * [dockedRadiusPx] so the target never shrinks below the docked icon's own
+ * while the carrier is springing in at 0.4x, plus [padPx] of grab padding.
+ *
+ * A carrier still fading up is not a target at all: below
+ * [minOpacityToGrab] nothing is meaningfully painted at [carrierCx] /
+ * [carrierCy], so a press there is aimed at the app underneath, not at us.
+ * The threshold belongs at the BOTTOM of the fade — opacity and scale ramp
+ * together, so a carrier half-way up is already plainly on screen, and a
+ * high bar would trade an invisible target that accepts presses for a
+ * visible one that ignores them, which is the worse of the two.
+ *
+ * Pure (no Android deps) so the hit math is unit-testable.
+ */
+internal fun sonarIntroCarrierGrab(
+    touchX: Float, touchY: Float,
+    carrierCx: Float, carrierCy: Float,
+    carrierRadiusPx: Float,
+    carrierOpacity: Float,
+    dockedRadiusPx: Float,
+    padPx: Float,
+    minOpacityToGrab: Float,
+): Boolean {
+    if (carrierOpacity < minOpacityToGrab) return false
+    val r = max(carrierRadiusPx, dockedRadiusPx) + padPx
+    val dx = touchX - carrierCx
+    val dy = touchY - carrierCy
+    return dx * dx + dy * dy <= r * r
+}
 
 /**
  * One-shot "sonar ping" intro animation that draws the user's eye to the
@@ -44,9 +89,11 @@ import androidx.core.graphics.withTranslation
  *  | Settled           | 3560+            | Same pose as [FloatingOverlayIcon]'s compact dock   |
  *
  *  Touches: a touch anywhere in the intro window resolves the animation
- *  early and the whole gesture is forwarded to the underlying
- *  [FloatingOverlayIcon] — a tap opens the floating menu, a hold or drag
- *  starts the magnifying search (see [onTouchEvent]).
+ *  early, but only a touch on the CARRIER — the animating icon itself —
+ *  forwards its gesture to the underlying [FloatingOverlayIcon] (a tap
+ *  opens the floating menu, a hold or drag starts the magnifying search).
+ *  The ring field around it is decoration, not a target: see
+ *  [onTouchEvent] and [sonarIntroCarrierGrab].
  *
  * The view is symmetric for [FloatingOverlayIcon.Edge.LEFT] and
  * [Edge.RIGHT] — the same keyframes are mirrored horizontally for LEFT.
@@ -59,8 +106,9 @@ class SonarPingIntroView(
      *  dimensions without rebuilding the view. */
     val edge: FloatingOverlayIcon.Edge,
     /** The real floating icon this intro plays over. A touch on the intro
-     *  resolves the animation early and is forwarded to this icon so the
-     *  gesture acts on it directly — see [onTouchEvent]. */
+     *  resolves the animation early, and a touch on the carrier is forwarded
+     *  to this icon so the gesture acts on it directly — see
+     *  [onTouchEvent]. */
     private val icon: FloatingOverlayIcon,
 ) : View(context) {
 
@@ -89,6 +137,19 @@ class SonarPingIntroView(
      *  the view is laid out. */
     private val anchorInsetPx: Float get() = circleRadiusPx
     private val anchorCenterY: Float get() = height / 2f
+    private val anchorCenterX: Float
+        get() = if (mirrored) anchorInsetPx else (width - anchorInsetPx)
+
+    /** LEFT-edge docks mirror the whole layout horizontally. */
+    private val mirrored: Boolean get() = edge == FloatingOverlayIcon.Edge.LEFT
+    /** Sign applied to every signed x offset — see [CarrierKeyframe]. */
+    private val signX: Float get() = if (mirrored) -1f else 1f
+
+    /** View-local x of the carrier's centre in [carrier]'s pose. Shared by
+     *  [onDraw] and the touch hit-test so the drawn carrier and the grab
+     *  target can't drift apart. */
+    private fun carrierCenterX(carrier: CarrierState): Float =
+        anchorCenterX + signX * carrier.translateXDp * density
 
     // ── Paints ───────────────────────────────────────────────────────────
 
@@ -168,21 +229,42 @@ class SonarPingIntroView(
         super.onDetachedFromWindow()
     }
 
-    /** A touch on the still-playing intro resolves it at once and hands the
-     *  whole gesture to the real [icon]: a tap opens the floating menu, a
-     *  hold or drag starts the magnifying search — exactly as if the user
-     *  had grabbed the docked icon at the screen edge.
+    /** Latched at ACTION_DOWN: true when the press landed on the carrier, so
+     *  the whole gesture forwards to the [icon]. A press out in the ring
+     *  field latches false — it dismisses the intro and does nothing else. */
+    private var forwardingGesture = false
+
+    /** A touch on the still-playing intro resolves it at once. A touch on
+     *  the CARRIER additionally hands the whole gesture to the real [icon]:
+     *  a tap opens the floating menu, a hold or drag starts the magnifying
+     *  search — exactly as if the user had grabbed the docked icon at the
+     *  screen edge. A touch anywhere else in the window — the ring field,
+     *  which is most of a 320 x 280 dp window, and the carrier's own spot
+     *  during the first frames of its fade-in, before there is anything
+     *  there to aim at — only dismisses; the rings are decoration, not a
+     *  320 dp-wide button (see [carrierGrabbed]).
+     *
+     *  Dismissing on a ring-field press rather than ignoring it is
+     *  deliberate: the window eats every touch inside its bounds for as
+     *  long as it exists and can't be made pass-through (see
+     *  [sonarIntroCarrierGrab]), so ending the intro on the first stray
+     *  press is what actually hands the region back, one press later.
      *
      *  The intro window captured ACTION_DOWN, so the OS keeps delivering the
      *  rest of the gesture here even once the finger leaves the window's
-     *  bounds; each event is forwarded straight to the icon's own
+     *  bounds; each forwarded event goes straight to the icon's own
      *  [FloatingOverlayIcon.onTouchEvent]. The icon reads screen-absolute
      *  `rawX`/`rawY` and acts on its own window, so forwarding the events
      *  verbatim drives it correctly. */
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (!resolved) resolveForTouch()
-        icon.onTouchEvent(event)
+        // Decided at press time, before resolving: once resolved the carrier
+        // stops drawing and its pose is no longer what the user is aiming at.
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            forwardingGesture = carrierGrabbed(event.x, event.y)
+        }
+        if (!resolved) resolveForTouch(forwardGesture = forwardingGesture)
+        if (forwardingGesture) icon.onTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 icon.holdStartsDrag = false
@@ -192,13 +274,34 @@ class SonarPingIntroView(
         return true
     }
 
+    /** Hit-test a press at view-local ([x], [y]) against the carrier's
+     *  current pose and opacity — the same [carrierAt] / [carrierOpacityAt]
+     *  frame [onDraw] is painting — with [TOUCH_PAD_DP] of grab padding, the
+     *  same the docked [FloatingOverlayIcon] grants itself around its own
+     *  circle. Reading the renderer's own functions is what keeps the target
+     *  and the pixels from drifting apart. */
+    private fun carrierGrabbed(x: Float, y: Float): Boolean {
+        val timeMs = progress * TOTAL_DURATION_MS
+        val carrier = carrierAt(timeMs)
+        return sonarIntroCarrierGrab(
+            touchX = x, touchY = y,
+            carrierCx = carrierCenterX(carrier),
+            carrierCy = anchorCenterY,
+            carrierRadiusPx = circleRadiusPx * max(carrier.scaleX, carrier.scaleY),
+            carrierOpacity = carrierOpacityAt(timeMs),
+            dockedRadiusPx = circleRadiusPx,
+            padPx = TOUCH_PAD_DP * density,
+            minOpacityToGrab = MIN_GRAB_OPACITY,
+        )
+    }
+
     /** Resolve the intro the instant it is touched: cancel the animation,
-     *  stop drawing the carrier, un-hide the real icon, and route a hold on
-     *  the forwarded gesture into the magnifying search. The intro window is
-     *  NOT removed here — it still owns the in-flight gesture and keeps
-     *  forwarding it; [onFinished] tears the window down on ACTION_UP /
-     *  ACTION_CANCEL. */
-    private fun resolveForTouch() {
+     *  stop drawing the carrier, un-hide the real icon, and — only when the
+     *  press landed on the carrier ([forwardGesture]) — route a hold on the
+     *  forwarded gesture into the magnifying search. The intro window is
+     *  NOT removed here — it still owns the in-flight gesture; [onFinished]
+     *  tears the window down on ACTION_UP / ACTION_CANCEL. */
+    private fun resolveForTouch(forwardGesture: Boolean) {
         resolved = true
         // Drop the end-listener before cancelling: ValueAnimator.cancel()
         // fires its onAnimationEnd listener synchronously, which would
@@ -208,7 +311,7 @@ class SonarPingIntroView(
         animator?.cancel()
         animator = null
         icon.alpha = 1f
-        icon.holdStartsDrag = true
+        if (forwardGesture) icon.holdStartsDrag = true
         invalidate()
     }
 
@@ -218,23 +321,21 @@ class SonarPingIntroView(
         // Resolved by a touch — the real icon now renders the carrier.
         if (resolved) return
         val timeMs = progress * TOTAL_DURATION_MS
-        val mirror = edge == FloatingOverlayIcon.Edge.LEFT
-        val anchorX = if (mirror) anchorInsetPx else (width - anchorInsetPx)
+        val mirror = mirrored
         val anchorY = anchorCenterY
-        val sign = if (mirror) -1f else 1f
 
         // Rings are anchored at the carrier's ENTRY position
         // (translate(-80dp, 0) from the anchor) and stay put as the carrier
         // moves on to dock. They're all faded out by the time the travel
         // phase starts so they never "follow".
-        val ringCenterX = anchorX + sign * (-ENTRY_OFFSET_DP * density)
+        val ringCenterX = anchorCenterX + signX * (-ENTRY_OFFSET_DP * density)
         for (spec in RING_SPECS) {
             drawRing(canvas, ringCenterX, anchorY, timeMs, spec)
         }
 
         // Carrier.
         val carrier = carrierAt(timeMs)
-        val carrierX = anchorX + sign * carrier.translateXDp * density
+        val carrierX = carrierCenterX(carrier)
         val carrierOpacity = carrierOpacityAt(timeMs)
         if (carrierOpacity <= 0f) return
 
@@ -451,6 +552,18 @@ class SonarPingIntroView(
         /** Entry offset — carrier pops in 80 dp inboard of the dock edge,
          *  per the spec. */
         private const val ENTRY_OFFSET_DP = 80f
+        /** Grab padding around the carrier's drawn circle, matching the
+         *  docked [FloatingOverlayIcon]'s own 12 dp touch padding. */
+        private const val TOUCH_PAD_DP = 12f
+        /** Minimum carrier opacity for a press to count as a grab — see
+         *  [sonarIntroCarrierGrab]. The carrier fades up over
+         *  [CARRIER_FADE_IN_END_MS] (240 ms) while the spring scales it
+         *  0.40 -> 1.40, so 0.25 cuts roughly the first four frames at
+         *  60 Hz — the only ones where the grab circle would sit over
+         *  nothing the user can see. Internal so SonarIntroCarrierGrabTest
+         *  exercises the shipped value: raising this bar past a carrier the
+         *  user can already see fails there, by design. */
+        internal const val MIN_GRAB_OPACITY = 0.25f
         /** Carrier's scale at the entry settle (= ~72 dp diameter from a
          *  56 dp circle). */
         private const val ENTRY_SETTLE_SCALE = 1.286f
