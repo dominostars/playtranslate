@@ -62,8 +62,10 @@ import kotlin.math.sign
  *  - A rounded card (16dp radius, BWI_PANEL #15181B, 1dp white-16% border)
  *    holds the zoom / loading / definitions body.
  *  - A coral pill (accent-themed) overhangs the card's top edge by half its
- *    height. It carries the word, a hairline divider, the reading, and a
- *    trailing chevron that signals "tap to drill into Details."
+ *    height. It carries the word, a hairline divider, and the reading. It
+ *    has no chevron of its own: the "tap to drill into Details" cue is a
+ *    chevron on each body cell — the lone word's body, or every section of
+ *    a split — so a plain word and a compound read the same way.
  *  - Two "calm" chip buttons (32dp visible disk, 48dp hit halo) flank the
  *    pill — Speak on the left, Anki on the right. They are no-ops in this
  *    commit; the wiring will land in a follow-up.
@@ -83,8 +85,9 @@ import kotlin.math.sign
  *
  * Tap routing:
  *  - In sticky mode, tapping anywhere on the card OR the pill fires
- *    [onOpenTap] (opens the detail page). The chevron is purely a visual
- *    cue.
+ *    [onOpenTap] (opens the detail page). The body's chevron is purely a
+ *    visual cue ([setDefinitions]' `opens` withholds it when the caller
+ *    has nothing to open into); it never routes taps itself.
  *  - Split mode ([setSplitDefinitions] — a tapped unit with a related
  *    unit: word + containing phrase on the space-delimited surfaces,
  *    fused expression + member word on JA): the body is two sections,
@@ -385,8 +388,13 @@ class MagnifierLens(
         lensView?.setLabel(word, reading)
     }
 
-    fun setDefinitions(data: WordDefinitionData?, label: String?) {
-        lensView?.setDefinitions(data, label)
+    /** Single-unit definitions body. [opens] draws the body's floating
+     *  chevron — the same open cue every split section carries — and is
+     *  false only when the caller has nothing to open into (no entry, so
+     *  no [onOpenTap]); it is a cue, not a gate, so tap routing is
+     *  unchanged either way. Pass null [data] to return to the zoom body. */
+    fun setDefinitions(data: WordDefinitionData?, label: String?, opens: Boolean = true) {
+        lensView?.setDefinitions(data, label, opens)
         // Re-fit when an already-interactive lens gets new content (the Anki
         // deck-badge back-fill re-binds after makeInteractive). Pre-release
         // and dwell-preview binds aren't interactive, so they stay at base
@@ -611,7 +619,7 @@ class MagnifierLens(
         p.flags = zoomWindowFlags()
         try { wm.updateViewLayout(root, p) } catch (_: Exception) {}
         view.detachInteractiveListeners()
-        view.setDefinitions(null, null)
+        view.setDefinitions(null, null, opens = false)
         view.setLabel(null, null)
         view.setSourceBitmap(null)
         view.setArrowVisible(false, 0)
@@ -1122,15 +1130,13 @@ class MagnifierLens(
         }
 
         // -----------------------------------------------------------------
-        // Pill: word | reading > (chevron)
+        // Pill: word | reading
         // -----------------------------------------------------------------
         private val pillPaddingLead = dp(18f)
         private val pillPaddingTrail = dp(14f)
         private val pillGap = dp(12f)
         private val pillDividerWidth = dp(2f)
         private val pillDividerHeight = dp(22f)
-        private val pillChevronSize = dp(13f)
-        private val pillChevronMarginStart = dp(4f)
         private val pillPlaceholderIconSize = dp(22f)
         private val pillPlaceholderGap = dp(8f)
         private val pillPlaceholderText = "Find a word"
@@ -1202,16 +1208,6 @@ class MagnifierLens(
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }
-        private val pillChevronView = ImageView(ctx).apply {
-            val d = AppCompatResources.getDrawable(ctx, R.drawable.ic_lens_chevron)?.mutate()
-            if (d != null) {
-                DrawableCompat.setTint(d, pillInkColor)
-                setImageDrawable(d)
-            }
-            val params = LinearLayout.LayoutParams(pillChevronSize, pillChevronSize)
-            params.marginStart = pillChevronMarginStart
-            layoutParams = params
-        }
         private val pillView = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1232,22 +1228,21 @@ class MagnifierLens(
             }
             // Placeholder children added first so they pack to the leading
             // edge when shown; they're GONE in word state, leaving the
-            // word/divider/reading/chevron to take their place.
+            // word/divider/reading to take their place.
             addView(pillPlaceholderIconView)
             addView(pillPlaceholderSpinnerView)
             addView(pillPlaceholderTextView)
             addView(pillWordView)
             addView(pillDividerView)
             addView(pillReadingView)
-            addView(pillChevronView)
             // Pill is hidden until [setLabel] applies a state (placeholder
             // or word) on the controller's first label call after show().
             visibility = GONE
         }
         // Manual sizing for the reading: shrink 1sp at a time down to 11sp
         // so a long reading still fits inside the pill, rather than
-        // ellipsizing or pushing the chevron off the pill. Word stays at
-        // 24sp because the spec considers the word the headline.
+        // ellipsizing or pushing the capsule past its width cap. Word
+        // stays at 24sp because the spec considers the word the headline.
         private val pillWordSizingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             typeface = Typeface.DEFAULT_BOLD
             letterSpacing = 0.0125f
@@ -1399,6 +1394,19 @@ class MagnifierLens(
          *  one place). Non-opening sections aren't listed. */
         private var splitSectionViews: List<View> = emptyList()
 
+        /** The open-cue chevron every body cell carries — trailing a split
+         *  section's header, or floating over a headerless body. */
+        private val sectionChevronSize = dp(13f)
+        /** The single-unit body's open cue: floats over the body's top-right
+         *  at the CONTENT edge (the flat and styled renderers share that
+         *  inset), level with the first row, the same placement the
+         *  headerless top section of a split uses — so a lone word's cell
+         *  reads exactly like a compound's. Shown by [setDefinitions] when
+         *  the unit opens; hidden for the zoom body and for a split, whose
+         *  sections carry their own. Kept painted over a styled swap-in
+         *  ([ensureStyledView] brings it back to the front). */
+        private val singleChevronView = buildSectionChevron().apply { visibility = GONE }
+
         /** The scroll's single child: the flat renderer plus the split
          *  container plus (lazily) the styled WebView renderer,
          *  visibility-swapped per bind. Keeping the ScrollView as the ONE
@@ -1411,6 +1419,18 @@ class MagnifierLens(
             addView(
                 splitContent,
                 LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT),
+            )
+            // Absolute RIGHT, matching the lens's canvas-aligned layout
+            // discipline (as the split sections' floating chevron).
+            addView(
+                singleChevronView,
+                LayoutParams(
+                    sectionChevronSize, sectionChevronSize,
+                    Gravity.TOP or Gravity.RIGHT,
+                ).apply {
+                    topMargin = dp(4f)
+                    rightMargin = bodyHPaddingPx + dp(2f)
+                },
             )
         }
         private val definitionsScroll = ScrollView(ctx).apply {
@@ -1540,6 +1560,8 @@ class MagnifierLens(
             // path, so a gesture crossing both regions can't double-fire.
             v.onBodyTap = { fireOpenTap() }
             bodyContainer.addView(v, LayoutParams(LayoutParams.MATCH_PARENT, 1))
+            // The single body's open cue must stay painted over the page.
+            singleChevronView.bringToFront()
             styledView = v
             return v
         }
@@ -2255,7 +2277,6 @@ class MagnifierLens(
             pillWordView.visibility = if (wordVisible) VISIBLE else GONE
             pillDividerView.visibility = if (wordVisible && showReading) VISIBLE else GONE
             pillReadingView.visibility = if (wordVisible && showReading) VISIBLE else GONE
-            pillChevronView.visibility = if (wordVisible) VISIBLE else GONE
         }
 
         /** Animate the pill's width from its current measured width to the
@@ -2331,7 +2352,6 @@ class MagnifierLens(
         private fun fitPillText(word: String, reading: String) {
             val showReading = reading.isNotEmpty()
             val fixedChrome = pillPaddingLead + pillPaddingTrail +
-                pillChevronSize + pillChevronMarginStart +
                 if (showReading) pillDividerWidth + 2 * pillGap else 0
             val textBudget = (pillMaxWidthPx - fixedChrome).coerceAtLeast(0).toFloat()
 
@@ -2366,11 +2386,12 @@ class MagnifierLens(
             pillReadingView.maxWidth = readingAllot
         }
 
-        fun setDefinitions(data: WordDefinitionData?, label: String?) {
+        fun setDefinitions(data: WordDefinitionData?, label: String?, opens: Boolean) {
             if (data == null) {
                 if (mode == Mode.ZOOM) return
                 mode = Mode.ZOOM
                 showFlatBody()
+                singleChevronView.visibility = GONE
                 definitionsScroll.visibility = GONE
                 leftChip.visibility = GONE
                 rightChip.visibility = GONE
@@ -2379,6 +2400,7 @@ class MagnifierLens(
             }
             mode = Mode.DEFINITIONS
             setLabel(data.word, data.reading, data.pitch)
+            singleChevronView.visibility = if (opens) VISIBLE else GONE
             // Drag lens keeps its compact layout — no misc line. The detail
             // sheet reached on tap-through still shows misc (it re-resolves).
             // The flat renderer binds UNCONDITIONALLY: it is the instant
@@ -2479,6 +2501,8 @@ class MagnifierLens(
             // Styled steps aside; any prior split is torn down for rebuild.
             showFlatBody()
             definitionsContent.visibility = GONE
+            // Sections carry their own open cues.
+            singleChevronView.visibility = GONE
             // The primary section rendering FIRST (the JA shape: expression
             // on top) drops its header — the pill directly above already
             // carries the same headword + reading, and repeating them costs
@@ -2572,7 +2596,7 @@ class MagnifierLens(
                     )
                     header.addView(
                         buildSectionChevron(),
-                        LinearLayout.LayoutParams(pillChevronSize, pillChevronSize)
+                        LinearLayout.LayoutParams(sectionChevronSize, sectionChevronSize)
                             .apply { marginStart = dp(8f) },
                     )
                 }
@@ -2602,15 +2626,17 @@ class MagnifierLens(
                 // chevron floats over the body's top-right at the CONTENT
                 // edge — the same column every header chevron ends at —
                 // level with the first row, no header row, no vertical
-                // cost. (A maximal-width first gloss line could reach under
-                // it; the usual first row is the left-packed meta chips.)
+                // cost; the single-unit body ([singleChevronView]) uses
+                // the same placement. (A maximal-width first gloss line
+                // could reach under it; the usual first row is the
+                // left-packed meta chips.)
                 // Absolute RIGHT, matching the lens's canvas-aligned layout
                 // discipline. Added LAST so it stays painted over a styled
                 // swap-in.
                 holder.addView(
                     buildSectionChevron(),
                     LayoutParams(
-                        pillChevronSize, pillChevronSize,
+                        sectionChevronSize, sectionChevronSize,
                         Gravity.TOP or Gravity.RIGHT,
                     ).apply {
                         topMargin = dp(4f)
@@ -2735,6 +2761,8 @@ class MagnifierLens(
             mode = Mode.LOADING
             setLabel(word, reading)
             showFlatBody()
+            // Nothing to open into yet; the bind that follows decides.
+            singleChevronView.visibility = GONE
             populateLoading()
             definitionsScroll.scrollTo(0, 0)
             definitionsScroll.visibility = VISIBLE

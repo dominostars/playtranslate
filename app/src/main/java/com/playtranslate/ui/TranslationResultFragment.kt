@@ -1315,10 +1315,13 @@ class TranslationResultFragment : Fragment() {
                         }
                     }
                 } else {
-                    wordLens?.setDefinitions(lensData, popupLabel)
+                    // The body's open cue follows the same entry-or-not
+                    // gate as onOpenTap above: no entry, nothing to open
+                    // into, no chevron.
+                    wordLens?.setDefinitions(lensData, popupLabel, opens = canOpen)
                     wordLens?.let { lens ->
                         maybeUpdateLensDecks(lens, lensData, word) { updated ->
-                            lens.setDefinitions(updated, popupLabel)
+                            lens.setDefinitions(updated, popupLabel, opens = canOpen)
                         }
                     }
                 }

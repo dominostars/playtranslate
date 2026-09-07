@@ -91,8 +91,8 @@ class MagnifierLensPillWidthTest {
     private val cap = computeMaxPillWidth(viewW, chipLane)
 
     /** Pill chrome with a reading shown: 18 + 14 padding, 2 divider, 2 × 12
-     *  gaps, 13 chevron + 4 margin. */
-    private val chrome = 75
+     *  gaps. (The pill carries no chevron; the open cue is on the body.) */
+    private val chrome = 58
 
     @Test
     fun capLeavesExactlyOneLanePerSide() {
@@ -153,7 +153,7 @@ class MagnifierLensPillWidthTest {
     @Test
     fun noReading_headlineTakesTheWholeBudget() {
         // Kana-only and reading-less pills: no divider/gaps in the chrome either.
-        val chromeNoReading = 49
+        val chromeNoReading = 32
         val (word, reading) = computePillTextAllotment(cap, chromeNoReading, readingWidth = 0)
         assertEquals(cap - chromeNoReading, word)
         assertEquals(0, reading)
