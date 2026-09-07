@@ -64,7 +64,7 @@ class WindowSheetHost(
     private var params: WindowManager.LayoutParams? = null
 
     /** System bars the game had hidden when the sheet attached
-     *  ([OverlayHost.hiddenSystemBars] mask). Latched ONCE, at attach, and
+     *  ([OverlayHost.hiddenSystemBarsOnDisplay] mask). Latched ONCE, at attach, and
      *  re-armed on every later flip to focusable — a fresh read at flip time
      *  would be poisoned in the unpark flow, where the helper Activity that
      *  parked us (bars visible) is still on top when the caller restores our
@@ -103,11 +103,9 @@ class WindowSheetHost(
     override fun setFocusPolicy(root: View, focusable: Boolean, wantsIme: Boolean) {
         val lp = params ?: return
         if (focusable) {
-            // Attach found no window to read from (first overlay up on this
-            // display): latch now. Our own root is registered and — still
-            // non-focusable, so not the bar owner — reflects the game's
-            // state; the host's read reaches it along with anything attached
-            // since, and skips any window that hasn't traversed yet.
+            // Attach's read was unknowable (the metrics query failed): retry
+            // now. Our own root is still non-focusable, so not the bar owner,
+            // and the host reads the display's state, not any window of ours.
             if (gameHiddenBars == null) gameHiddenBars = overlayHost.hiddenSystemBarsOnDisplay(displayId)
             // Arm before the flag change so the request is already recorded
             // when the focus grant makes this window the bar control target.

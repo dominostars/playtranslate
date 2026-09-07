@@ -370,12 +370,12 @@ class MagnifierLens(
     }
 
     /** The bars the app beneath keeps hidden, for [makeInteractive]'s focus
-     *  flip: the host's read across its attached windows (overlay hosting) or
-     *  the hosting activity's decor (activity-window hosting; [rawCtx] may
-     *  be a themed wrapper around the Activity — the capture sheet's is —
-     *  which the host read unwraps). Both answer from a window older than
-     *  ours, so the answer never depends on whether our own root has
-     *  traversed yet. Null pre-R, by [OverlayHost]'s policy. */
+     *  flip: the host's read of the display's own insets state (overlay
+     *  hosting) or the hosting activity's decor (activity-window hosting;
+     *  [rawCtx] may be a themed wrapper around the Activity — the capture
+     *  sheet's is — which the host read unwraps). Neither reads our own
+     *  root, so the answer never depends on whether it has traversed yet.
+     *  Null pre-R, by [OverlayHost]'s policy. */
     private fun gameHiddenBarsForFlip(): Int? =
         if (overlayHost != null) overlayHost.hiddenSystemBarsOnDisplay(displayId)
         else OverlayHost.hiddenSystemBarsOfActivity(rawCtx)

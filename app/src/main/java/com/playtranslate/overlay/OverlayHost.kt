@@ -15,9 +15,11 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import androidx.annotation.RequiresApi
 import androidx.core.view.doOnLayout
 import com.playtranslate.DrawRateProbe
 import com.playtranslate.displaySizePx
+import com.playtranslate.displayWindowMetrics
 
 /**
  * Owns every overlay window the app paints on a game display — the registry,
@@ -201,15 +203,33 @@ class OverlayHost(
 
     /**
      * Which system bars (status/navigation) the app under our overlays
-     * currently has hidden, as a [WindowInsets.Type] mask — read from the
-     * last insets dispatch any registered window on [displayId] received.
-     * Null when unknowable: no attached window to read from, or pre-R
-     * (per-type visibility only exists in the R insets model, and the
-     * legacy approximation reads a NO_LIMITS window's zero insets as
-     * "hidden", which would blanket-hide bars the game never hid). A
-     * registered window that hasn't traversed yet (added this frame) has
-     * no insets and is skipped, so this is safe to call in the same frame
-     * a window was added — unlike a read of that window's own root.
+     * currently has hidden on [displayId], as a [WindowInsets.Type] mask —
+     * read from the DISPLAY's insets state through a window-metrics query
+     * ([displayWindowMetrics]), never from one of our own windows' insets.
+     * Null when unknowable: pre-R (per-type visibility only exists in the R
+     * insets model, and the legacy approximation reads a NO_LIMITS window's
+     * zero insets as "hidden", which would blanket-hide bars the game never
+     * hid), or the metrics query failed. Safe to call in the same frame a
+     * window was added: nothing here waits on a traversal.
+     *
+     * Why not a registered window's [View.getRootWindowInsets] (the read
+     * this replaced): from Android 12 a window is dispatched only the insets
+     * sources of the windows ABOVE it in Z order (WindowState.mAboveInsetsState,
+     * filled by InsetsStateController.updateAboveInsetsState's top-down walk,
+     * which seeds the state with cutout + gesture types only and adds each
+     * window's provided sources after visiting it). TYPE_ACCESSIBILITY_OVERLAY
+     * (layer 31) sits above the status bar (15) and navigation bar (24), so on
+     * the accessibility backend the bar sources are absent from every window
+     * of ours, an absent type reads as not visible, and the mask came back
+     * 0x3 whatever the game requested — right by coincidence over an
+     * immersive game, and hiding both bars over everything else (the Thor
+     * "status bar disappears on capture" report, 2026-09-06). The
+     * window-metrics path is InsetsPolicy.getInsetsForWindowMetrics server
+     * side: the display's raw state with transiently-shown bars masked as
+     * hidden, i.e. exactly the request of whichever window holds the bar
+     * control. A display with no bar of a type (the Thor's second screen has
+     * no status bar) reads that type as hidden, and hiding a bar that does
+     * not exist is a no-op.
      *
      * Only meaningful as a picture of the GAME's state while no focusable
      * overlay of ours holds the bar control — but every focusable overlay we
@@ -219,11 +239,9 @@ class OverlayHost(
      */
     fun hiddenSystemBarsOnDisplay(displayId: Int): Int? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
-        for (handle in overlayWindows) {
-            if (handle.displayId != displayId) continue
-            return hiddenSystemBars(handle.view) ?: continue
-        }
-        return null
+        val insets = displayContextFor(displayId)?.displayWindowMetrics()?.windowInsets
+            ?: return null
+        return hiddenBarsMask(insets)
     }
 
     /**
@@ -479,17 +497,30 @@ class OverlayHost(
          * mode — only the DEFAULT case is upgraded.
          */
         /** Per-type mask of the system bars currently hidden, read from
-         *  [view]'s last-received window insets. [view] must be attached
-         *  AND have traversed once: between addView and the first traversal
-         *  a root has no attach info and reports null insets (there is no
-         *  parent fallback, unlike [View.getWindowInsetsController]), so a
-         *  same-frame self-read is null, not the game's state — read from
-         *  an older window ([hiddenSystemBarsOnDisplay], or an activity's
-         *  decor) for a window's own arming. Null pre-R; see
+         *  [view]'s last-received window insets. Private on purpose: valid
+         *  ONLY for a window that sits BELOW the system bars in Z order — an
+         *  Activity's decor, via [hiddenSystemBarsOfActivity] — because from
+         *  Android 12 a window's insets carry only the sources of the windows
+         *  above it (see [hiddenSystemBarsOnDisplay]); read from one of our
+         *  overlays it answers "both hidden" whatever the game does. [view]
+         *  must be attached AND have traversed once: between addView and the
+         *  first traversal a root has no attach info and reports null insets
+         *  (there is no parent fallback, unlike
+         *  [View.getWindowInsetsController]). Null pre-R; see
          *  [hiddenSystemBarsOnDisplay] for why pre-R stays null. */
-        fun hiddenSystemBars(view: View): Int? {
+        private fun hiddenSystemBars(view: View): Int? {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
             val insets = view.rootWindowInsets ?: return null
+            return hiddenBarsMask(insets)
+        }
+
+        /** [insets] → [WindowInsets.Type] mask of the bar types that are not
+         *  visible. A type with no source in [insets] reads as not visible
+         *  ([WindowInsets.isVisible] is false for an absent type): right for
+         *  a display that has no such bar, and the trap [hiddenSystemBars]
+         *  documents for a window layered above the bars. */
+        @RequiresApi(Build.VERSION_CODES.R)
+        fun hiddenBarsMask(insets: WindowInsets): Int {
             var hidden = 0
             if (!insets.isVisible(WindowInsets.Type.statusBars())) {
                 hidden = hidden or WindowInsets.Type.statusBars()
@@ -525,8 +556,8 @@ class OverlayHost(
 
         /**
          * Arm [view]'s window with the same system-bar visibility the app
-         * beneath maintains ([hiddenTypes], from [hiddenSystemBars] /
-         * [hiddenSystemBarsOnDisplay]) so the window can take input focus —
+         * beneath maintains ([hiddenTypes], from [hiddenSystemBarsOnDisplay] /
+         * [hiddenSystemBarsOfActivity]) so the window can take input focus —
          * and with it the bar control — without flashing the nav pill or
          * status bar over an immersive game. Call on an ATTACHED window,
          * BEFORE the focus grant lands (right after addView, or before the
