@@ -39,7 +39,9 @@ import com.playtranslate.tts.TtsVoiceLabels
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.core.view.isGone
@@ -1066,6 +1068,43 @@ fun applyAnkiSendResult(
             onRestore()
         }
         is AnkiSendResult.NeedsMapping -> onRestore()
+        // The user just declined the oversize prompt — restoring the save
+        // button silently IS the requested outcome; no alert re-explains it.
+        is AnkiSendResult.Declined -> onRestore()
     }
+}
+
+/**
+ * Suspend bridge for [Context.dispatchSendToAnki]'s `oversizePrompt`: an
+ * [OverlayAlert] asking whether to save the over-budget card with
+ * plain-text definitions. Returns true to send simplified, false to
+ * abort. [presentAlert] is the same host terminal [applyAnkiSendResult]
+ * uses (the sheet's dialog window, the workspace's modal layer), so the
+ * prompt layers wherever that host's failure alert would.
+ *
+ * Every non-confirm path — Cancel button, scrim tap, back press, and a
+ * host teardown ([OverlayAlert.DismissReason.LIFECYCLE_PAUSE]) — resolves
+ * false: a card the user never confirmed must not send. The isActive
+ * guard covers the teardown case, where the awaiting coroutine may
+ * already be cancelled when the alert's cancel handler fires.
+ */
+suspend fun awaitOversizeConsent(
+    ctx: Context,
+    presentAlert: (OverlayAlert.Builder) -> Unit,
+): Boolean = suspendCancellableCoroutine { cont ->
+    fun finish(proceed: Boolean) {
+        if (cont.isActive) cont.resume(proceed)
+    }
+    presentAlert(
+        OverlayAlert.Builder(ctx)
+            .setTitle(ctx.getString(R.string.anki_card_too_large_title))
+            .setMessage(ctx.getString(R.string.anki_card_too_large_prompt))
+            .addButton(
+                ctx.getString(R.string.anki_card_too_large_simplify),
+                ctx.themeColor(R.attr.ptAccent),
+                ctx.themeColor(R.attr.ptAccentOn),
+            ) { finish(true) }
+            .addCancelButton(ctx.getString(R.string.btn_cancel)) { finish(false) }
+    )
 }
 

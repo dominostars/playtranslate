@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import android.widget.Toast
 import androidx.annotation.StringRes
-import androidx.fragment.app.Fragment
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.R
@@ -20,11 +19,13 @@ private const val TAG = "AnkiSendDispatch"
  * against `Pair<Long, List<String>>` placeholders.
  */
 private sealed interface ModelTarget {
+    val model: AnkiManager.ModelInfo
+
     /** Default (PlayTranslate) — the mode's field-based PlayTranslate
      *  model ([PtModels.WORD] / [PtModels.SENTENCE]), resolved (and
      *  lazily created) at dispatch time. */
     data class Default(
-        val model: AnkiManager.ModelInfo,
+        override val model: AnkiManager.ModelInfo,
     ) : ModelTarget
     /**
      * Anki Basic shape ({Front, Back} or {Front, Back, Picture}).
@@ -32,11 +33,11 @@ private sealed interface ModelTarget {
      * from the current mode via [AnkiCardTypeMapper.assembleBasicNote].
      */
     data class Basic(
-        val model: AnkiManager.ModelInfo,
+        override val model: AnkiManager.ModelInfo,
     ) : ModelTarget
     /** Custom or mining-template card — uses the saved per-field mapping. */
     data class Structured(
-        val model: AnkiManager.ModelInfo,
+        override val model: AnkiManager.ModelInfo,
         val mapping: Map<String, ContentSource>,
     ) : ModelTarget
 }
@@ -79,11 +80,18 @@ sealed interface AnkiSendResult {
      *  [imageDropped] is true when a screenshot was requested (a non-null
      *  screenshotPath) and the target note had a field to hold it, but its
      *  media upload failed — the card landed with an empty Picture field.
-     *  Callers surface these flags via [Success.mediaShortfallRes]. */
+     *  [definitionsSimplified] is true when the assembled note blew the
+     *  binder parcel budget ([AnkiNoteSizeGuard]) and was re-assembled
+     *  with plain-text definitions (no structured glossaries, no inlined
+     *  dictionary CSS) — either with the user's consent (the sheets'
+     *  oversize prompt) or automatically (one-tap, which has no UI to
+     *  ask).
+     *  Callers surface these flags via [Success.shortfallRes]. */
     data class Success(
         val audioDropped: Boolean = false,
         val wordAudioDropped: Boolean = false,
         val imageDropped: Boolean = false,
+        val definitionsSimplified: Boolean = false,
     ) : AnkiSendResult
     /** The send failed — the caller shows the error and restores the
      *  save button. [messageRes] names the cause where the dispatcher
@@ -103,11 +111,48 @@ sealed interface AnkiSendResult {
      *  threading it through avoids a prefs-race if the user changes
      *  the card type between dispatch and follow-up. */
     data class NeedsMapping(val model: AnkiManager.ModelInfo) : AnkiSendResult
+    /** The user declined the oversize prompt (chose not to send a
+     *  simplified card). Nothing was uploaded or inserted — the probe
+     *  runs before the media pass — so callers just restore the save
+     *  button, silently: the user made this choice a moment ago and
+     *  needs no alert re-explaining it. */
+    data object Declined : AnkiSendResult
+}
+
+/**
+ * Binder budget for the AnkiDroid ContentProvider note insert. The whole
+ * `flds` payload crosses in ONE binder transaction, and Android hard-caps
+ * a transaction at ~1MB (shared with every other in-flight transaction in
+ * the process). A function-word-dense sentence card with styled Yomitan
+ * definitions was recorded failing at a 1,684,376-byte parcel — the
+ * insert dies in the kernel, ContentResolver.insert swallows the
+ * RemoteException as a null return, and without this guard the user was
+ * told "make sure AnkiDroid is running".
+ *
+ * Java Strings marshal as UTF-16, so the estimate is 2 bytes per char
+ * plus a small allowance for the ContentValues keys, the non-field
+ * values, and binder framing.
+ */
+internal object AnkiNoteSizeGuard {
+    /** Degrade threshold: above this, the dispatcher re-assembles with
+     *  plain-text definitions. Leaves ~25% headroom under the 1MB
+     *  transaction cap for concurrent binder traffic and estimate slack
+     *  (the probe omits media filenames, worth a few hundred bytes). */
+    const val BUDGET_BYTES = 750_000
+
+    /** Honest-failure backstop just under the real wall: a final field
+     *  set above this returns the too-large error instead of letting the
+     *  insert die in the binder as a misleading generic failure. With the
+     *  probe in front it should never fire. */
+    const val HARD_LIMIT_BYTES = 900_000
+
+    fun estimatedParcelBytes(fields: List<String>): Int =
+        fields.sumOf { it.length } * 2 + 4_096
 }
 
 /**
  * The message naming what this otherwise-successful send could not
- * attach, or null when the card landed complete. One resolver for every
+ * carry, or null when the card landed complete. One resolver for every
  * send surface so a partial send reads the same everywhere: the review
  * sheets (silent on a clean send) toast only when this is non-null,
  * while the one-tap surfaces fall back to their mode-named success
@@ -116,22 +161,26 @@ sealed interface AnkiSendResult {
  * Screenshot and audio each get their own message, plus a combined one:
  * whatever breaks AnkiDroid's media store tends to break it for every
  * upload in the pass, and naming only half of what's missing leaves the
- * user to find the rest in their deck later.
+ * user to find the rest in their deck later. A media loss outranks the
+ * simplified-definitions note: missing media is data the card will never
+ * have, while simplified definitions still carry every sense as text.
  */
 @StringRes
-fun AnkiSendResult.Success.mediaShortfallRes(): Int? {
+fun AnkiSendResult.Success.shortfallRes(): Int? {
     val audioMissing = audioDropped || wordAudioDropped
     return when {
         imageDropped && audioMissing -> R.string.anki_added_no_screenshot_or_audio
         imageDropped -> R.string.anki_added_no_screenshot
         audioMissing -> R.string.anki_added_no_audio
+        definitionsSimplified -> R.string.anki_added_simplified
         else -> null
     }
 }
 
 /**
  * Shared "send a card to AnkiDroid" pipeline used by the review sheets
- * (via the [Fragment.dispatchSendToAnki] wrapper) and the one-tap
+ * (via the Fragment-flavored sendSentenceCard / sendWordCard wrappers
+ * in AnkiSendPipeline) and the one-tap
  * helpers. Resolves the chosen card type, uploads media, builds the
  * field array (default PlayTranslate model / Basic / structured
  * per-mapping), and writes the note. Surface UX (mapping dialog open,
@@ -156,24 +205,33 @@ fun AnkiSendResult.Success.mediaShortfallRes(): Int? {
  *                         attach, or null.
  * @param ptNote           Lazy builder for the default PlayTranslate
  *                         note payload; receives the AnkiDroid-side
- *                         image and audio filenames.
+ *                         image and audio filenames, and the
+ *                         `simplified` flag (true = render plain-text
+ *                         definitions: no structured glossaries, no
+ *                         inlined dictionary CSS).
  * @param structured       Lazy builder for the structured outputs;
- *                         receives the AnkiDroid-side image and audio
- *                         filenames.
+ *                         same arguments as [ptNote].
  */
 suspend fun Context.dispatchSendToAnki(
     deckId: Long,
     mode: CardMode,
     screenshotPath: String?,
     audioPath: String?,
-    ptNote: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>) -> PtNote,
-    structured: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>) -> CardOutputs,
+    ptNote: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>, simplified: Boolean) -> PtNote,
+    structured: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>, simplified: Boolean) -> CardOutputs,
     /** Per-target-word audio paths keyed by word. Uploaded individually
      *  via [AnkiManager.addMediaFromFile] in the same media pass as the
      *  screenshot and sentence audio. The returned filename map is then
      *  threaded into [ptNote] / [structured] so each word's row in
      *  the words table can carry a `[sound:…]` tag. */
     wordAudioPaths: Map<String, String> = emptyMap(),
+    /** Asked when the fully-styled note would blow the binder budget but
+     *  a simplified one fits: return true to send simplified, false to
+     *  abort ([AnkiSendResult.Declined]). Null (one-tap and every other
+     *  surface with no UI to ask) auto-consents — a simplified card beats
+     *  no card on a flow the user isn't watching. Runs BEFORE the media
+     *  pass, so declining uploads nothing and orphans nothing. */
+    oversizePrompt: (suspend () -> Boolean)? = null,
 ): AnkiSendResult {
     val ctx = this
     val prefs = Prefs(ctx)
@@ -276,6 +334,58 @@ suspend fun Context.dispatchSendToAnki(
         }
     }
 
+    // Pure per-target field assembly, shared by the size probe below and
+    // the final post-upload build. The first-field guards and logging
+    // stay at the final build — the probe's null media filenames would
+    // false-trip a first field mapped to PICTURE.
+    fun assembleFields(
+        imageFilename: String?,
+        audioFilename: String?,
+        wordAudioFilenames: Map<String, String>,
+        simplified: Boolean,
+    ): List<String> = when (target) {
+        is ModelTarget.Default -> PtModels.assemble(
+            target.model.fieldNames,
+            ptNote(imageFilename, audioFilename, wordAudioFilenames, simplified),
+        )
+        is ModelTarget.Basic -> AnkiCardTypeMapper.assembleBasicNote(
+            target.model.fieldNames, mode,
+            structured(imageFilename, audioFilename, wordAudioFilenames, simplified),
+        )
+        is ModelTarget.Structured -> AnkiCardTypeMapper.assembleNote(
+            target.model.fieldNames, target.mapping,
+            structured(imageFilename, audioFilename, wordAudioFilenames, simplified),
+        )
+    }
+
+    // Size probe, BEFORE the media pass: the note insert is one binder
+    // transaction and dies past ~1MB (see [AnkiNoteSizeGuard]), so a note
+    // that can't fit must be simplified or abandoned while abandoning is
+    // still free — every media file uploaded for a send that then fails
+    // is an orphan in AnkiDroid's media store. Probed with null media
+    // filenames; the missing `[sound:]`/filename text is a few hundred
+    // bytes against the budget's headroom.
+    var simplified = false
+    val probeBytes = withContext(Dispatchers.Default) {
+        AnkiNoteSizeGuard.estimatedParcelBytes(
+            assembleFields(null, null, emptyMap(), simplified = false))
+    }
+    if (probeBytes > AnkiNoteSizeGuard.BUDGET_BYTES) {
+        val simplifiedBytes = withContext(Dispatchers.Default) {
+            AnkiNoteSizeGuard.estimatedParcelBytes(
+                assembleFields(null, null, emptyMap(), simplified = true))
+        }
+        Log.w(TAG, "note over binder budget: est=${probeBytes}B " +
+            "simplified=${simplifiedBytes}B budget=${AnkiNoteSizeGuard.BUDGET_BYTES}B")
+        if (simplifiedBytes > AnkiNoteSizeGuard.BUDGET_BYTES) {
+            // Even plain-text definitions don't fit. Fail honestly — the
+            // generic message would blame AnkiDroid not running.
+            return AnkiSendResult.Failed(R.string.anki_card_too_large_failed)
+        }
+        if (oversizePrompt?.invoke() == false) return AnkiSendResult.Declined
+        simplified = true
+    }
+
     // Target is resolved and every preflightable bail is past. Now
     // upload media — anything we upload from here has a real shot at
     // being attached to a successfully-inserted note. The residual
@@ -297,68 +407,57 @@ suspend fun Context.dispatchSendToAnki(
         }.toMap()
     }
 
-    val (modelId, fields) = when (target) {
-        is ModelTarget.Default -> {
-            val note = ptNote(imageFilename, audioFilename, wordAudioFilenames)
-            // Assemble against the model's ACTUAL field names (read back
-            // from AnkiDroid) so user-added or reordered fields on our
-            // note types keep working.
-            val flds = PtModels.assemble(target.model.fieldNames, note)
-            Log.d(TAG, "default send: model=${target.model.name} " +
-                "fields=${flds.size} non-empty=${flds.count { it.isNotEmpty() }}")
-            // Same first-field guard as the Structured branch below: a
-            // renamed first field (assemble maps it to "") or a reorder
-            // that put an empty-able field first would hit the
-            // provider's duplicate-csum rejection as a generic
-            // "Failed to add card" on every send after the first. Fail
-            // with the actionable message instead. No NeedsMapping —
-            // the field-mapping dialog doesn't apply to our own models;
-            // the remedy is renaming the field back in AnkiDroid.
-            if (flds.firstOrNull()?.isEmpty() == true) {
-                val fieldName = target.model.fieldNames.firstOrNull().orEmpty()
-                return AnkiSendResult.Failed(
-                    R.string.anki_send_failed_message,
-                    ctx.getString(R.string.anki_first_field_empty, fieldName),
-                )
-            }
-            target.model.id to flds
-        }
-        is ModelTarget.Basic -> {
-            val outputs = structured(imageFilename, audioFilename, wordAudioFilenames)
-            val flds = AnkiCardTypeMapper.assembleBasicNote(
-                target.model.fieldNames, mode, outputs)
-            Log.d(TAG, "basic send: model=${target.model.name} mode=$mode " +
-                "fields=${flds.size} non-empty=${flds.count { it.isNotEmpty() }}")
-            target.model.id to flds
-        }
-        is ModelTarget.Structured -> {
-            val outputs = structured(imageFilename, audioFilename, wordAudioFilenames)
-            val flds = AnkiCardTypeMapper.assembleNote(
-                target.model.fieldNames, target.mapping, outputs)
-            Log.d(TAG, "structured send: model=${target.model.name} " +
-                "fields=${flds.size} non-empty=${flds.count { it.isNotEmpty() }}")
-            // First-field guard, mapped-but-empty arm — the unmapped
-            // case bailed pre-upload in the target resolution block,
-            // which also carries the full csum rationale. Here the
-            // first field IS mapped, but its source produced no value
-            // for this card (e.g. a picture source with no screenshot).
-            // Only decidable post-assembly: the value can depend on
-            // the uploaded media filenames. The mapping dialog can't
-            // conjure missing data — fail with the full explanation
-            // instead of reopening it and telling the user to map what
-            // they already mapped.
-            if (flds.firstOrNull()?.isEmpty() == true) {
-                val fieldName = target.model.fieldNames.firstOrNull().orEmpty()
-                return AnkiSendResult.Failed(
-                    R.string.anki_send_failed_message,
-                    ctx.getString(R.string.anki_first_field_empty, fieldName),
-                )
-            }
-            target.model.id to flds
-        }
+    // Assemble against the model's ACTUAL field names (read back from
+    // AnkiDroid) so user-added or reordered fields on our note types keep
+    // working — assembleFields runs the same per-shape builders the log
+    // lines below name.
+    val fields = assembleFields(imageFilename, audioFilename, wordAudioFilenames, simplified)
+    val estBytes = AnkiNoteSizeGuard.estimatedParcelBytes(fields)
+    val shape = when (target) {
+        is ModelTarget.Default -> "default"
+        is ModelTarget.Basic -> "basic"
+        is ModelTarget.Structured -> "structured"
+    }
+    Log.d(TAG, "$shape send: model=${target.model.name} mode=$mode " +
+        "fields=${fields.size} non-empty=${fields.count { it.isNotEmpty() }} " +
+        "est=${estBytes}B simplified=$simplified")
+    // First-field guard: Anki's duplicate-detection checksum (`csum`) is
+    // computed from the note's FIRST field, so inserting with an empty
+    // first field gives every note the same csum and AnkiDroid rejects
+    // the second one onwards as a duplicate (null URI → generic "Failed
+    // to add card"). Two arms share this check:
+    //  - Default: a renamed first field (assemble maps it to "") or a
+    //    reorder that put an empty-able field first. No NeedsMapping —
+    //    the mapping dialog doesn't apply to our own models; the remedy
+    //    is renaming the field back in AnkiDroid.
+    //  - Structured, mapped-but-empty: the unmapped case bailed
+    //    pre-upload in the target resolution block (which carries the
+    //    full csum rationale); here the first field IS mapped but its
+    //    source produced no value for this card (e.g. a picture source
+    //    with no screenshot). Only decidable post-assembly — the value
+    //    can depend on the uploaded media filenames. The mapping dialog
+    //    can't conjure missing data, so fail with the explanation
+    //    instead of reopening it.
+    // Basic shapes skip it: Front derives from the send mode's core text
+    // and can't assemble empty.
+    if (target !is ModelTarget.Basic && fields.firstOrNull()?.isEmpty() == true) {
+        val fieldName = target.model.fieldNames.firstOrNull().orEmpty()
+        return AnkiSendResult.Failed(
+            R.string.anki_send_failed_message,
+            ctx.getString(R.string.anki_first_field_empty, fieldName),
+        )
+    }
+    // Backstop behind the probe: never hand the provider a payload that
+    // will die in the binder — that failure surfaces as the misleading
+    // "make sure AnkiDroid is running" message. Should be unreachable
+    // (the probe already bounded the size), hence Failed rather than a
+    // second prompt.
+    if (estBytes > AnkiNoteSizeGuard.HARD_LIMIT_BYTES) {
+        Log.e(TAG, "assembled note over binder hard limit: est=${estBytes}B")
+        return AnkiSendResult.Failed(R.string.anki_card_too_large_failed)
     }
 
-    val ok = withContext(Dispatchers.IO) { anki.addNote(modelId, deckId, fields) }
+    val ok = withContext(Dispatchers.IO) { anki.addNote(target.model.id, deckId, fields) }
     if (!ok) return AnkiSendResult.Failed(R.string.anki_send_failed_message)
     // The note was added. Flag any media that was requested but didn't
     // make it onto the card so callers can warn the user. The screenshot
@@ -370,42 +469,7 @@ suspend fun Context.dispatchSendToAnki(
         wordAudioDropped = wordAudioPaths.size > wordAudioFilenames.size,
         imageDropped = screenshotPath != null && imageFilename.isNullOrEmpty() &&
             target.holdsPicture,
+        definitionsSimplified = simplified,
     )
 }
 
-/**
- * Fragment-flavored wrapper around [Context.dispatchSendToAnki] that
- * also opens the field-mapping dialog when the dispatcher returns
- * [AnkiSendResult.NeedsMapping]. Existing review sheets call this so
- * the user gets the same "configure your mapping" UX they did before
- * the dispatcher was lifted to a Context extension. Overlay-context
- * callers call [Context.dispatchSendToAnki] directly and handle the
- * NeedsMapping result themselves (typically by re-launching the
- * review activity so the sheet's dialog is reachable).
- */
-suspend fun Fragment.dispatchSendToAnki(
-    deckId: Long,
-    mode: CardMode,
-    screenshotPath: String?,
-    audioPath: String?,
-    ptNote: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>) -> PtNote,
-    structured: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>) -> CardOutputs,
-    wordAudioPaths: Map<String, String> = emptyMap(),
-): AnkiSendResult {
-    val result = requireContext().dispatchSendToAnki(
-        deckId = deckId,
-        mode = mode,
-        screenshotPath = screenshotPath,
-        audioPath = audioPath,
-        ptNote = ptNote,
-        structured = structured,
-        wordAudioPaths = wordAudioPaths,
-    )
-    if (result is AnkiSendResult.NeedsMapping) {
-        // Use the model the dispatcher resolved at decision time — no
-        // re-read of prefs, so a card-type change between dispatch and
-        // dialog open can't redirect to the wrong model.
-        showAnkiCardTypeMappingDialog(result.model, mode) { _, _ -> }
-    }
-    return result
-}

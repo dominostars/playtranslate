@@ -1617,13 +1617,15 @@ class WordAnkiReviewBinder(
             inlineMoreExamplesHtml = inlineMoreExamplesHtml,
             inlineExamplesHtml = buildExamplesHtml(inlineStyler),
         )
-        val result = ctx.sendWordCard(input, deckId)
+        val result = ctx.sendWordCard(input, deckId, oversizePrompt = {
+            awaitOversizeConsent(ctx, host::presentAlert)
+        })
         // NeedsMapping presentation is the host's (the Fragment wrapper's
         // mapping dialog / the workspace's mapping page).
         if (result is AnkiSendResult.NeedsMapping) {
             host.openFieldMapping(result.model, CardMode.WORD)
         }
-        val shortfallRes = (result as? AnkiSendResult.Success)?.mediaShortfallRes()
+        val shortfallRes = (result as? AnkiSendResult.Success)?.shortfallRes()
         applyAnkiSendResult(
             ctx, result,
             presentAlert = host::presentAlert,
@@ -1713,11 +1715,13 @@ class WordAnkiReviewBinder(
             // structured outputs have no surrounding <style> block.
             examplesHtml = buildExamplesHtml(inlineStyler),
         )
-        val result = ctx.sendSentenceCard(input, deckId)
+        val result = ctx.sendSentenceCard(input, deckId, oversizePrompt = {
+            awaitOversizeConsent(ctx, host::presentAlert)
+        })
         if (result is AnkiSendResult.NeedsMapping) {
             host.openFieldMapping(result.model, CardMode.SENTENCE)
         }
-        val shortfallRes = (result as? AnkiSendResult.Success)?.mediaShortfallRes()
+        val shortfallRes = (result as? AnkiSendResult.Success)?.shortfallRes()
         applyAnkiSendResult(
             ctx, result,
             presentAlert = host::presentAlert,

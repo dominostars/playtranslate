@@ -603,7 +603,9 @@ class AnkiSentenceEditorPage(
             sentenceSelection = data.sentenceSelection,
             wordSelections = data.wordSelections,
         )
-        val result = ctx.sendSentenceCard(input, deckId)
+        val result = ctx.sendSentenceCard(input, deckId, oversizePrompt = {
+            awaitOversizeConsent(ctx) { it.showInParent(host.modalLayer) }
+        })
         if (result is AnkiSendResult.NeedsMapping) {
             host.push(
                 AnkiFieldMappingPage(
@@ -612,7 +614,7 @@ class AnkiSentenceEditorPage(
                 ) { _, _ -> host.pop() },
             )
         }
-        val shortfallRes = (result as? AnkiSendResult.Success)?.mediaShortfallRes()
+        val shortfallRes = (result as? AnkiSendResult.Success)?.shortfallRes()
         applyAnkiSendResult(
             ctx, result,
             presentAlert = { it.showInParent(host.modalLayer) },

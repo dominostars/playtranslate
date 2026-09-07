@@ -294,12 +294,14 @@ class AnkiReviewBottomSheet : DialogFragment() {
         )
         // Fragment receiver so NeedsMapping opens the mapping dialog
         // (Context.sendSentenceCard would skip it).
-        val result = sendSentenceCard(input, deckId)
+        val result = sendSentenceCard(input, deckId, oversizePrompt = {
+            awaitOversizeConsent(requireContext()) { it.showInDialog(requireDialog()) }
+        })
         // The pipeline folds local synth failures into Success.audioDropped
         // / wordAudioDropped, so one resolver covers synth-fail, audio
         // upload-fail, and a screenshot AnkiDroid wouldn't take. Null =
         // the card landed whole, and the sheet stays silent.
-        val shortfallRes = (result as? AnkiSendResult.Success)?.mediaShortfallRes()
+        val shortfallRes = (result as? AnkiSendResult.Success)?.shortfallRes()
         applyAnkiSendResult(
             result,
             onSuccess = {

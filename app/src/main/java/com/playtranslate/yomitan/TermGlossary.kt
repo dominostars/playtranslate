@@ -26,20 +26,34 @@ import com.playtranslate.dictionary.Deinflector
  * everything else (span, a, ol, table scaffolding) passes its content
  * through.
  *
+ * Sibling-node junctions concatenate BARE at ingest — the stored flat
+ * text is a long-standing contract (transport meaning strings, the flat
+ * render tiers, anything diffing against previously stored rows), so
+ * [parseGlossary]'s output stays byte-identical across imports. The cost
+ * is that chip-style sibling spans, whose visual spacing lives entirely
+ * in CSS, flatten fused ("nounsuruintransitiveno-adj"). The Anki
+ * simplified tier alone opts into junction spacing via
+ * [flattenRetainedGlossary] — a presentation-time re-flatten of the
+ * retained JSON, never stored — see that function's doc for the rule and
+ * its tradeoffs.
+ *
  * Pure JVM (Gson streaming only) for unit-testability. Like [FreqData],
  * every parse ALWAYS consumes exactly its element — malformed input never
  * corrupts the caller's stream position inside a 100MB bank.
  */
 internal object TermGlossary {
 
-    /** Parses the glossary array the [reader] is positioned at. */
-    fun parseGlossary(reader: JsonReader): List<String> {
+    /** Parses the glossary array the [reader] is positioned at.
+     *  [spaceJunctions] is the card-path presentation mode (see
+     *  [flattenRetainedGlossary]); ingest callers use the default so
+     *  stored flat text stays byte-identical across imports. */
+    fun parseGlossary(reader: JsonReader, spaceJunctions: Boolean = false): List<String> {
         val defs = mutableListOf<String>()
         reader.beginArray()
         while (reader.hasNext()) {
             when (reader.peek()) {
                 JsonToken.STRING -> clean(reader.nextString())?.let { defs.add(it) }
-                JsonToken.BEGIN_OBJECT -> parseItemObject(reader)?.let { defs.add(it) }
+                JsonToken.BEGIN_OBJECT -> parseItemObject(reader, spaceJunctions)?.let { defs.add(it) }
                 // Deinflection arrays (form C) and anything unexpected.
                 else -> reader.skipValue()
             }
@@ -51,7 +65,7 @@ internal object TermGlossary {
     /** `{type: text|image|structured-content}`. Key order is not assumed:
      *  `text`/`content` are collected as encountered and the `type` verdict
      *  (image → discard) applies at the end. */
-    private fun parseItemObject(reader: JsonReader): String? {
+    private fun parseItemObject(reader: JsonReader, spaceJunctions: Boolean): String? {
         var type: String? = null
         val text = StringBuilder()
         reader.beginObject()
@@ -61,9 +75,12 @@ internal object TermGlossary {
                     if (reader.peek() == JsonToken.STRING) type = reader.nextString()
                     else reader.skipValue()
                 "text" ->
-                    if (reader.peek() == JsonToken.STRING) text.append(reader.nextString())
-                    else reader.skipValue()
-                "content" -> text.append(walkNode(reader))
+                    if (reader.peek() == JsonToken.STRING) {
+                        appendFlat(text, reader.nextString(), spaceJunctions)
+                    } else {
+                        reader.skipValue()
+                    }
+                "content" -> appendFlat(text, walkNode(reader, spaceJunctions), spaceJunctions)
                 else -> reader.skipValue()
             }
         }
@@ -75,11 +92,11 @@ internal object TermGlossary {
      *  object. For tagged objects the content is collected first and the
      *  tag rule applied at the node's end, so tag-after-content key order
      *  parses identically. */
-    private fun walkNode(reader: JsonReader): String = when (reader.peek()) {
+    private fun walkNode(reader: JsonReader, spaceJunctions: Boolean): String = when (reader.peek()) {
         JsonToken.STRING -> reader.nextString()
         JsonToken.BEGIN_ARRAY -> buildString {
             reader.beginArray()
-            while (reader.hasNext()) append(walkNode(reader))
+            while (reader.hasNext()) appendFlat(this, walkNode(reader, spaceJunctions), spaceJunctions)
             reader.endArray()
         }
         JsonToken.BEGIN_OBJECT -> {
@@ -91,7 +108,7 @@ internal object TermGlossary {
                     "tag" ->
                         if (reader.peek() == JsonToken.STRING) tag = reader.nextString()
                         else reader.skipValue()
-                    "content" -> content.append(walkNode(reader))
+                    "content" -> appendFlat(content, walkNode(reader, spaceJunctions), spaceJunctions)
                     else -> reader.skipValue() // style, data, lang, href, path…
                 }
             }
@@ -118,6 +135,50 @@ internal object TermGlossary {
             reader.skipValue()
             ""
         }
+    }
+
+    /** Appends [piece] to [sb]. In [spaceJunctions] mode (the card-path
+     *  presentation flatten, see [flattenRetainedGlossary]) one space is
+     *  inserted when the junction would fuse two ASCII alphanumeric runs;
+     *  ingest mode appends bare, keeping stored flat text byte-identical.
+     *  Every sibling-level concatenation in the flatten goes through
+     *  here; junctions the composed strings create themselves ("\n…",
+     *  "… | ") never fuse alnum against alnum. */
+    private fun appendFlat(sb: StringBuilder, piece: String, spaceJunctions: Boolean) {
+        if (piece.isEmpty()) return
+        if (spaceJunctions && sb.isNotEmpty() &&
+            sb.last().isAsciiAlnum() && piece.first().isAsciiAlnum()
+        ) {
+            sb.append(' ')
+        }
+        sb.append(piece)
+    }
+
+    private fun Char.isAsciiAlnum(): Boolean =
+        this in 'a'..'z' || this in 'A'..'Z' || this in '0'..'9'
+
+    /**
+     * Re-flattens a RETAINED glossary-array JSON (a `term_sc` row, the
+     * exact serialized form [parseGlossary] saw at ingest) to plain-text
+     * lines for the Anki simplified tier — PRESENTATION ONLY, never
+     * stored. Unlike the ingest flatten it spaces sibling junctions that
+     * would fuse two ASCII alphanumeric runs: chip-style sibling spans
+     * (Jitendex POS tags) keep their visual spacing in CSS, so the bare
+     * concatenation the stored text carries reads
+     * "nounsuruintransitiveno-adj". The rule is ASCII-only — inline spans
+     * inside CJK prose must keep flowing unspaced — and fires only where
+     * no whitespace already separates the runs. Known cost: a fragment
+     * styled inside a single Latin word ("un<b>usual</b>") gains a
+     * spurious space on the card.
+     *
+     * Null when the JSON doesn't parse or flattens to nothing; callers
+     * keep the stored flat text.
+     */
+    fun flattenRetainedGlossary(json: String): List<String>? = try {
+        JsonReader(java.io.StringReader(json)).use { parseGlossary(it, spaceJunctions = true) }
+            .takeIf { it.isNotEmpty() }
+    } catch (_: Exception) {
+        null
     }
 
     /** Collapses the raw flattened text: per-line trim, drop blanks, strip

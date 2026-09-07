@@ -1156,6 +1156,30 @@
     <!-- Body of the same dialog. -->
     <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> didn\'t accept the card. Make sure <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> is running, then try again.</string>
 
+    <!-- Title of the oversize-card prompt AND of the too-large failure
+         alert: the note's field payload would blow Android's 1MB binder
+         transaction limit on the AnkiDroid ContentProvider insert. -->
+    <string name="anki_card_too_large_title">Card too large</string>
+
+    <!-- Body of the oversize-card prompt shown on the review sheets before
+         sending: the styled dictionary definitions (structured glossaries
+         plus each dictionary's stylesheet) are what blows the budget, and
+         "simplified" means plain text definitions without them. -->
+    <string name="anki_card_too_large_prompt">This card\'s dictionary definitions are too big to send to <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>. Save a simplified card with plain text definitions?</string>
+
+    <!-- Confirm button of the oversize-card prompt. -->
+    <string name="anki_card_too_large_simplify">Save simplified</string>
+
+    <!-- Failure message when the card exceeds the binder budget even with
+         plain text definitions. Shown instead of anki_send_failed_message,
+         which would wrongly blame AnkiDroid not running. -->
+    <string name="anki_card_too_large_failed">This card is too big for <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> to accept, even with simplified definitions. Try removing some words or shortening the sentence.</string>
+
+    <!-- Success toast for a card that was automatically simplified to fit
+         (one-tap sends have no UI to ask first). Same surface as the
+         media-shortfall toasts above. -->
+    <string name="anki_added_simplified">Added to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (definitions simplified to fit)</string>
+
     <!-- Mode chip on the Anki-card review sheet — sentence mode. -->
     <string name="anki_mode_sentence">Sentence</string>
 

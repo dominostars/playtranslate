@@ -670,7 +670,7 @@ class WordDetailBinder(
     ) {
         when (result) {
             is AnkiSendResult.Success -> {
-                val msgRes = result.mediaShortfallRes() ?: ankiAddedSuccessRes(mode)
+                val msgRes = result.shortfallRes() ?: ankiAddedSuccessRes(mode)
                 Toast.makeText(ctx, msgRes, Toast.LENGTH_SHORT).show()
                 pill.setLoading(false)
             }
@@ -693,6 +693,8 @@ class WordDetailBinder(
                 ui.openFieldMapping(result, mode, fallback)
                 pill.setLoading(false)
             }
+            // Unreachable: one-tap passes no oversizePrompt.
+            is AnkiSendResult.Declined -> pill.setLoading(false)
         }
     }
 

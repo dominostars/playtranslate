@@ -956,7 +956,7 @@ class TranslationResultFragment : Fragment() {
             presentResult = { sendResult ->
                 when (sendResult) {
                     is AnkiSendResult.Success -> {
-                        val msgRes = sendResult.mediaShortfallRes()
+                        val msgRes = sendResult.shortfallRes()
                             ?: ankiAddedSuccessRes(CardMode.SENTENCE)
                         Toast.makeText(appCtx, msgRes, Toast.LENGTH_SHORT).show()
                         refreshWordBadges()
@@ -978,6 +978,8 @@ class TranslationResultFragment : Fragment() {
                         // so the user can fix the unmapped card type.
                         showAnkiCardTypeMappingDialog(sendResult.model, CardMode.SENTENCE) { _, _ -> }
                     }
+                    // Unreachable: one-tap passes no oversizePrompt.
+                    is AnkiSendResult.Declined -> Unit
                 }
             },
         )
@@ -1073,7 +1075,7 @@ class TranslationResultFragment : Fragment() {
                         // audio (the target word may fail TTS or upload)
                         // or the screenshot; surface that the same way the
                         // other handlers do.
-                        val msgRes = result.mediaShortfallRes() ?: ankiAddedSuccessRes(mode)
+                        val msgRes = result.shortfallRes() ?: ankiAddedSuccessRes(mode)
                         Toast.makeText(appCtx, msgRes, Toast.LENGTH_SHORT).show()
                         refreshWordBadges()
                     }
@@ -1088,6 +1090,8 @@ class TranslationResultFragment : Fragment() {
                         // Fragment infrastructure).
                         launchWordAnki(activity, word, reading, entry)
                     }
+                    // Unreachable: one-tap passes no oversizePrompt.
+                    is AnkiSendResult.Declined -> Unit
                 }
             },
         )

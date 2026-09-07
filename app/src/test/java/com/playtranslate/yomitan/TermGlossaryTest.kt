@@ -56,6 +56,96 @@ class TermGlossaryTest {
     // ── Structured content ──────────────────────────────────────────────
 
     @Test
+    fun `ingest flatten keeps sibling junctions bare`() {
+        // CONTRACT: the ingest flatten's output is stored, and every
+        // stored-flat-text consumer (transport meaning strings, the flat
+        // render tiers, rows diffed against earlier imports) relies on it
+        // staying byte-identical across app versions. Chip-style sibling
+        // spans therefore flatten FUSED here — the junction-spacing rule
+        // is presentation-only and lives in flattenRetainedGlossary.
+        assertEquals(
+            listOf("nounsuru"),
+            parse(
+                """[{"type": "structured-content", "content":
+                    [{"tag": "span", "content": "noun"},
+                     {"tag": "span", "content": "suru"}]}]"""
+            ),
+        )
+    }
+
+    // ── Retained-glossary re-flatten (the Anki simplified tier) ─────────
+
+    @Test
+    fun `card re-flatten spaces sibling chips`() {
+        // Jitendex-style POS chips: sibling spans whose spacing lives in
+        // CSS. The stored bare concatenation reads
+        // "nounsuruintransitiveno-adj" — the 2026-09-06 simplified-card
+        // report — so the card-path re-flatten separates the runs.
+        assertEquals(
+            listOf("noun suru intransitive no-adj to consider"),
+            TermGlossary.flattenRetainedGlossary(
+                """[{"type": "structured-content", "content":
+                    [{"tag": "span", "content": "noun"},
+                     {"tag": "span", "content": "suru"},
+                     {"tag": "span", "content": "intransitive"},
+                     {"tag": "span", "content": "no-adj"},
+                     {"tag": "span", "content": " to consider"}]}]"""
+            ),
+        )
+    }
+
+    @Test
+    fun `card re-flatten keeps CJK flowing unspaced`() {
+        // The junction rule is ASCII-only: inline spans inside CJK prose
+        // (emphasis, references) must not gain spaces mid-sentence.
+        assertEquals(
+            listOf("よく考えること"),
+            TermGlossary.flattenRetainedGlossary(
+                """[{"type": "structured-content", "content":
+                    ["よく", {"tag": "span", "content": "考える"}, "こと"]}]"""
+            ),
+        )
+    }
+
+    @Test
+    fun `card re-flatten leaves whitespace and punctuation junctions alone`() {
+        assertEquals(
+            listOf("noun suru"),
+            TermGlossary.flattenRetainedGlossary(
+                """[{"type": "structured-content", "content":
+                    [{"tag": "span", "content": "noun "},
+                     {"tag": "span", "content": "suru"}]}]"""
+            ),
+        )
+        assertEquals(
+            listOf("(archaic)dated"),
+            TermGlossary.flattenRetainedGlossary(
+                """[{"type": "structured-content", "content":
+                    [{"tag": "span", "content": "(archaic)"},
+                     {"tag": "span", "content": "dated"}]}]"""
+            ),
+        )
+    }
+
+    @Test
+    fun `card re-flatten matches ingest when no junctions fuse`() {
+        val json = """[{"type": "structured-content", "content":
+            [{"tag": "span", "content": "first part"},
+             {"tag": "div", "content": "second line"}]}, "plain gloss"]"""
+        assertEquals(
+            parse(json),
+            TermGlossary.flattenRetainedGlossary(json),
+        )
+    }
+
+    @Test
+    fun `flattenRetainedGlossary is null on garbage or empty`() {
+        assertEquals(null, TermGlossary.flattenRetainedGlossary("not json"))
+        assertEquals(null, TermGlossary.flattenRetainedGlossary("[]"))
+        assertEquals(null, TermGlossary.flattenRetainedGlossary("""["  "]"""))
+    }
+
+    @Test
     fun `nested div and span flatten with line breaks`() {
         assertEquals(
             listOf("first part\nsecond line"),

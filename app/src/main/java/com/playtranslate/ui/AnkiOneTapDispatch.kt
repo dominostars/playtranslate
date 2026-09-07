@@ -156,7 +156,7 @@ fun oneTapResultToast(appCtx: Context, result: AnkiSendResult, mode: CardMode) {
     when (result) {
         is AnkiSendResult.Success -> Toast.makeText(
             appCtx,
-            result.mediaShortfallRes() ?: ankiAddedSuccessRes(mode),
+            result.shortfallRes() ?: ankiAddedSuccessRes(mode),
             Toast.LENGTH_SHORT,
         ).show()
         is AnkiSendResult.Failed -> Toast.makeText(
@@ -165,6 +165,9 @@ fun oneTapResultToast(appCtx: Context, result: AnkiSendResult, mode: CardMode) {
             Toast.LENGTH_LONG,
         ).show()
         is AnkiSendResult.NeedsMapping -> Unit
+        // Unreachable on one-tap: no oversizePrompt is passed, so the
+        // dispatcher auto-simplifies instead of asking.
+        is AnkiSendResult.Declined -> Unit
     }
 }
 
