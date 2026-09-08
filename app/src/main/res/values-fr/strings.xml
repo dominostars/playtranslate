@@ -503,6 +503,16 @@
 
     <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> n\'a pas accepté la carte. Assurez-vous que <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> est en cours d\'exécution, puis réessayez.</string>
 
+    <string name="anki_card_too_large_title">Carte trop volumineuse</string>
+
+    <string name="anki_card_too_large_prompt">Les définitions du dictionnaire de cette carte sont trop volumineuses pour être envoyées à <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>. Enregistrer une carte simplifiée avec des définitions en texte brut ?</string>
+
+    <string name="anki_card_too_large_simplify">Enregistrer en version simplifiée</string>
+
+    <string name="anki_card_too_large_failed">Cette carte est trop volumineuse pour <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>, même avec des définitions simplifiées. Essayez de retirer quelques mots ou de raccourcir la phrase.</string>
+
+    <string name="anki_added_simplified">Ajouté à <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (définitions simplifiées pour tenir)</string>
+
     <string name="anki_mode_sentence">Phrase</string>
 
     <string name="anki_mode_word">Mot</string>
@@ -1846,6 +1856,8 @@
     <string name="settings_debug_show_detection_log">Afficher le journal de détection</string>
     <string name="settings_debug_log_pinhole">Journaliser les métriques pinhole du mode en direct</string>
     <string name="settings_debug_save_ocr_seed">Enregistrer les captures OCR comme échantillons</string>
+    <string name="settings_debug_short_text_routing">Routage hors ligne des textes courts</string>
+    <string name="settings_debug_force_mmap_weights">Forcer le chargement des poids via mmap (LLM sur l\'appareil)</string>
     <string name="settings_debug_log_grouping">Journaliser les décisions de regroupement OCR</string>
     <string name="settings_debug_angle_gate">Seuil classique d\'angle (10°)</string>
     <string name="settings_debug_log_trace">Enregistrer la trace de l\'historique de traduction</string>

@@ -474,6 +474,16 @@
 
     <string name="anki_send_failed_message">لم يقبل <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> البطاقة. تأكد من أن <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> قيد التشغيل، ثم حاول مرة أخرى.</string>
 
+    <string name="anki_card_too_large_title">البطاقة كبيرة جدًا</string>
+
+    <string name="anki_card_too_large_prompt">تعريفات القاموس في هذه البطاقة أكبر من أن تُرسَل إلى <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>. حفظ بطاقة مبسّطة تعريفاتها بالنص العادي؟</string>
+
+    <string name="anki_card_too_large_simplify">حفظ بطاقة مبسّطة</string>
+
+    <string name="anki_card_too_large_failed">هذه البطاقة أكبر من أن يقبلها <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>، حتى بتعريفات مبسّطة. جرّب إزالة بعض الكلمات أو اختصار الجملة.</string>
+
+    <string name="anki_added_simplified">تمت الإضافة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (تم تبسيط التعريفات لتناسب الحجم)</string>
+
     <string name="anki_mode_sentence">جملة</string>
 
     <string name="anki_mode_word">كلمة</string>
@@ -1811,6 +1821,8 @@
     <string name="settings_debug_show_detection_log">إظهار سجل الاكتشاف</string>
     <string name="settings_debug_log_pinhole">تسجيل مقاييس pinhole للوضع المباشر</string>
     <string name="settings_debug_save_ocr_seed">حفظ التقاطات OCR كبذور</string>
+    <string name="settings_debug_short_text_routing">توجيه دون اتصال للنصوص القصيرة</string>
+    <string name="settings_debug_force_mmap_weights">فرض تحميل الأوزان عبر mmap (نموذج LLM على الجهاز)</string>
     <string name="settings_debug_log_grouping">تسجيل قرارات تجميع OCR</string>
     <string name="settings_debug_angle_gate">العتبة الكلاسيكية للزاوية (10°)</string>
     <string name="settings_debug_log_trace">تسجيل تتبُّع لسجل الترجمة</string>

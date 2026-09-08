@@ -417,3 +417,64 @@ from "None" — the row means *no restriction*, not *unset*, and not *the whole 
 **PASS after fix.** One ⚠️ from round 2, two 💬 from round 1. The ⚠️ was invisible to a
 string-by-string reading and only surfaced when the picker's rows were laid out in render
 order.
+
+## Delta review 2026-09-08 (7 keys: oversize-card guard + two debug rows)
+
+Mechanical layer verified programmatically across all 12 locales: all 7 delta names
+present, no extras, no duplicate `name=`; every `<xliff:g>` span byte-identical to EN
+(`id`, `example`, inner brand text); no `%n$s` in this delta; `<b>`, `\n`, `\{ \}`,
+`&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`; no em/en dashes. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing** (per the 2026-07-14 lesson): the prompt is an
+`OverlayAlert` capped at 280 dp with **full-width, vertically stacked** buttons
+(`OverlayAlert.kt` :306-341) and the debug rows are `settings_row_switch.xml` →
+`Text.PT.RowTitle`, 15 sp, **no `maxLines`, no `ellipsize`**. Nothing in this delta
+clips; long labels wrap. Accuracy was preferred over brevity throughout.
+
+**Source-side finding (EN, applies to all 12 locales) — ❌ fixed in this pass.** The
+comment on `anki_card_too_large_title` claimed the title serves "the oversize-card prompt
+AND the too-large failure alert". It does not: every failure path shows
+`anki_card_too_large_failed` either under `anki_send_failed_title` (`AnkiUiHelper.kt`
+:1060, `TranslationResultFragment.kt` :967, `WordDetailBinder.kt` :691) or with **no title
+at all** as a `LENGTH_LONG` Toast (`AnkiOneTapDispatch.kt` :162,
+`TranslationResultFragment.kt` :1082). The failure string therefore has to name its own
+subject, and was reviewed on that basis in every locale. The EN comment now says so.
+
+### Findings (delta)
+
+One ⚠️, applied.
+
+| name | severity | current (was) | applied | note |
+|---|---|---|---|---|
+| anki_card_too_large_failed | ⚠️ | 「定義を簡易版にしても」 | 「定義を簡略化しても」 | 簡易版 is a noun for the *card* ("the simplified version"), so 「定義を簡易版にする」 — making definitions into a version — is not something Japanese says. The operation on definitions is 簡略化, which is also what the toast already used, so the fix removes an awkward phrase and aligns the two strings that talk about simplifying *definitions*. The split now reads deliberately: 簡易版 = the card (prompt, button), 簡略化 = what is done to the definitions (failure, toast). |
+
+### Clean areas (delta) — checked, no findings
+
+**辞書定義 is the file's own compound**, not a fresh rendering: `anki_content_definition_desc`
+already writes 「強調表示した単語の辞書定義（HTML形式）」. プレーンテキスト likewise comes from
+`yomitan_styling_subtitle` 「常にプレーンテキストで表示します」.
+
+**The failure body reuses the sibling's verb.** 「AnkiDroidが受け付けられません」 is the potential
+form of `anki_send_failed_message`'s 「AnkiDroidがカードを受け付けませんでした」, and it closes with
+「お試しください」 exactly as that string does — so the two failures read as one voice whether
+the user meets them in the dialog or as a bare Toast.
+
+**単語 / 文** in the advice match `anki_mode_word` 「単語」 and `anki_mode_sentence` 「文」, so the
+suggestion names the same two units the card editor's own mode chips do.
+
+**Punctuation and register.** Full-width 。、（）？ throughout; digits and the Latin literals
+mmap / LLM stay half-width inside full-width parentheses, matching
+`settings_debug_angle_gate` 「従来の角度しきい値（10°）」. です/ます in both alert bodies, noun-form
+button 「簡易版を保存」, no あなた. 端末内 for on-device is taken from
+`llm_prompt_advisory_too_long` 「端末内のモデルでは」.
+
+**Debug rows.** 「…を強制」 matches `settings_debug_force_single_screen` 「シングル画面を強制」 and
+`settings_debug_force_crash_title` 「クラッシュを強制」. 振り分け was chosen for "routing" over a
+ルーティング loan because the surrounding rows are all native-vocabulary phrases.
+
+### Verdict
+
+**PASS after fix.** One ⚠️, corrected. No あなた, no calqued word order, no half-width
+punctuation inside Japanese runs.

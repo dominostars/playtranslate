@@ -419,3 +419,65 @@ from "None" — the row means *no restriction*, not *unset*, and not *the whole 
 
 **PASS after fixes.** One ⚠️ (round 2) and one 💬 (round 1). Apostrophe escaping and
 space-before-punctuation — the recurring French mechanical risks — were clean in both rounds.
+
+## Delta review 2026-09-08 (7 keys: oversize-card guard + two debug rows)
+
+Mechanical layer verified programmatically across all 12 locales: all 7 delta names
+present, no extras, no duplicate `name=`; every `<xliff:g>` span byte-identical to EN
+(`id`, `example`, inner brand text); no `%n$s` in this delta; `<b>`, `\n`, `\{ \}`,
+`&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`; no em/en dashes. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing** (per the 2026-07-14 lesson): the prompt is an
+`OverlayAlert` capped at 280 dp with **full-width, vertically stacked** buttons
+(`OverlayAlert.kt` :306-341) and the debug rows are `settings_row_switch.xml` →
+`Text.PT.RowTitle`, 15 sp, **no `maxLines`, no `ellipsize`**. Nothing in this delta
+clips; long labels wrap. Accuracy was preferred over brevity throughout.
+
+**Source-side finding (EN, applies to all 12 locales) — ❌ fixed in this pass.** The
+comment on `anki_card_too_large_title` claimed the title serves "the oversize-card prompt
+AND the too-large failure alert". It does not: every failure path shows
+`anki_card_too_large_failed` either under `anki_send_failed_title` (`AnkiUiHelper.kt`
+:1060, `TranslationResultFragment.kt` :967, `WordDetailBinder.kt` :691) or with **no title
+at all** as a `LENGTH_LONG` Toast (`AnkiOneTapDispatch.kt` :162,
+`TranslationResultFragment.kt` :1082). The failure string therefore has to name its own
+subject, and was reviewed on that basis in every locale. The EN comment now says so.
+
+### Findings (delta)
+
+None. No 🛑/❌/⚠️; one 💬 recorded as a decision rather than a defect.
+
+| name | severity | current | note |
+|---|---|---|---|
+| anki_card_too_large_simplify | 💬 | « Enregistrer en version simplifiée » | 33 characters on a dialog button. Kept rather than shortened: `OverlayAlert`'s buttons are `MATCH_PARENT` inside a 280 dp dialog with no `maxLines`, so a long label wraps instead of clipping — and the 2026-07-14 review lesson is explicitly not to trade accuracy for brevity against a constraint that turns out not to exist. The shorter « Enregistrer simplifié » would leave the adjective agreeing with nothing. |
+
+### Clean areas (delta) — checked, no findings
+
+**Apostrophes and spacing.** The one apostrophe in the delta is escaped — « LLM sur
+l\'appareil » — and the prompt's question mark carries the French space before it
+(« …en texte brut ? »), matching `onboarding_welcome_play_title` « Vous ne parlez pas la
+langue ? ».
+
+**vous throughout.** « Essayez de retirer quelques mots ou de raccourcir la phrase » is the
+same register as `anki_send_failed_message` « Assurez-vous que AnkiDroid est en cours
+d\'exécution, puis réessayez ». The prompt is an infinitive question, so it takes no person
+— as `llm_prompt_discard_title` does not.
+
+**Terminology.** carte (card), définitions, dictionnaire, « texte brut » for plain text —
+the last from `yomitan_styling_subtitle`'s « toujours utiliser du texte brut ». mots and
+phrase in the advice match `anki_mode_word` « Mot » and `anki_mode_sentence` « Phrase ».
+« sur l\'appareil » for on-device comes from `llm_prompt_row_system_subtitle` « en ligne
+comme sur l\'appareil ».
+
+**Modifier attachment.** « Routage hors ligne des textes courts » puts *hors ligne* directly
+on *routage*, so the row cannot be read as "routing of short texts that are offline" — the
+failure mode that hit four postposed-adjective locales at once on "Classic angle threshold"
+and was recorded in `l10n-updating-locales.md`.
+
+**volumineux, not grand.** Both size sentences use *trop volumineuse*, which is what French
+uses for data size; *trop grande* would read as physical dimensions.
+
+### Verdict
+
+**PASS.** No fixes required; one 💬 recorded as a deliberate length decision.

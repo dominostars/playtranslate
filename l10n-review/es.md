@@ -405,3 +405,66 @@ question or exclamation in the delta, so no ¿ / ¡ obligations. «aplicación»
 **PASS after fixes.** One ⚠️, one 💬, no ❌, no 🛑. The ⚠️ is the same class as the Korean
 one this round: the success and no-update alerts were written independently and collapsed
 onto the same wording, which the "now"/"already" distinction exists to prevent.
+
+## Delta review 2026-09-08 (7 keys: oversize-card guard + two debug rows)
+
+Mechanical layer verified programmatically across all 12 locales: all 7 delta names
+present, no extras, no duplicate `name=`; every `<xliff:g>` span byte-identical to EN
+(`id`, `example`, inner brand text); no `%n$s` in this delta; `<b>`, `\n`, `\{ \}`,
+`&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`; no em/en dashes. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing** (per the 2026-07-14 lesson): the prompt is an
+`OverlayAlert` capped at 280 dp with **full-width, vertically stacked** buttons
+(`OverlayAlert.kt` :306-341) and the debug rows are `settings_row_switch.xml` →
+`Text.PT.RowTitle`, 15 sp, **no `maxLines`, no `ellipsize`**. Nothing in this delta
+clips; long labels wrap. Accuracy was preferred over brevity throughout.
+
+**Source-side finding (EN, applies to all 12 locales) — ❌ fixed in this pass.** The
+comment on `anki_card_too_large_title` claimed the title serves "the oversize-card prompt
+AND the too-large failure alert". It does not: every failure path shows
+`anki_card_too_large_failed` either under `anki_send_failed_title` (`AnkiUiHelper.kt`
+:1060, `TranslationResultFragment.kt` :967, `WordDetailBinder.kt` :691) or with **no title
+at all** as a `LENGTH_LONG` Toast (`AnkiOneTapDispatch.kt` :162,
+`TranslationResultFragment.kt` :1082). The failure string therefore has to name its own
+subject, and was reviewed on that basis in every locale. The EN comment now says so.
+
+### Findings (delta)
+
+Two applied — one ⚠️, one 💬.
+
+| name | severity | current (was) | applied | note |
+|---|---|---|---|---|
+| anki_card_too_large_simplify | ⚠️ | «Guardar simplificada» | «Guardar versión simplificada» | The adjective agreed with an elided *tarjeta*, so the button read as a fragment — "Save simplified-[fem]" with nothing feminine in sight. Naming *versión* gives the adjective a noun and matches the French button's shape. It still fits one line on a full-width dialog button. |
+| settings_debug_short_text_routing | 💬 | «Enrutamiento sin conexión de textos cortos» | «Enrutamiento sin conexión para textos cortos» | The attachment was already correct — *sin conexión* directly follows *enrutamiento* — but two consecutive *de*-style complements invite a second-pass misread. *para* makes the beneficiary reading the only one available at no cost in length. |
+
+### Clean areas (delta) — checked, no findings
+
+**Inverted punctuation.** The one question in the delta opens with ¿ — «¿Guardar una tarjeta
+simplificada con definiciones en texto sin formato?» — consistent with the file's 31 other
+¿ occurrences. No exclamations in this delta.
+
+**tú, neutral international.** «Prueba a quitar algunas palabras o a acortar la frase»
+matches `anki_send_failed_message`'s «Asegúrate de que… e inténtalo de nuevo». No vosotros,
+no regionalisms; *añadir* rather than *agregar*, following the committed
+`anki_added_no_audio` «Añadido a Anki».
+
+**Terminology.** tarjeta (card), definiciones, diccionario, «texto sin formato» for plain
+text — the last from `yomitan_styling_subtitle`'s «desactívalo para usar siempre texto sin
+formato». palabras and frase in the advice match `anki_mode_word` «Palabra» and
+`anki_mode_sentence` «Frase». «en el dispositivo» for on-device comes from
+`llm_prompt_row_system_subtitle` «tanto en la nube como en el dispositivo».
+
+**Gender agreement around the brand names.** Both AnkiDroid references are objects of
+prepositions («para enviarlas a AnkiDroid», «demasiado grande para AnkiDroid») and agree
+with *tarjeta*, not with the brand, so nothing depends on the fill's gender.
+
+**Debug rows.** «Forzar la carga de pesos con mmap» matches
+`settings_debug_force_single_screen` «Forzar pantalla única» and
+`settings_debug_force_crash_title` «Forzar fallo».
+
+### Verdict
+
+**PASS after fixes.** One ⚠️ and one 💬, both applied. simplificad- is one stem across all
+four oversize strings.

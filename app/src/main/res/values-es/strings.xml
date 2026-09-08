@@ -491,6 +491,16 @@
 
     <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> no aceptó la tarjeta. Asegúrate de que <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> esté en ejecución e inténtalo de nuevo.</string>
 
+    <string name="anki_card_too_large_title">Tarjeta demasiado grande</string>
+
+    <string name="anki_card_too_large_prompt">Las definiciones del diccionario de esta tarjeta son demasiado grandes para enviarlas a <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>. ¿Guardar una tarjeta simplificada con definiciones en texto sin formato?</string>
+
+    <string name="anki_card_too_large_simplify">Guardar versión simplificada</string>
+
+    <string name="anki_card_too_large_failed">Esta tarjeta es demasiado grande para <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>, incluso con definiciones simplificadas. Prueba a quitar algunas palabras o a acortar la frase.</string>
+
+    <string name="anki_added_simplified">Añadido a <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (definiciones simplificadas para que quepan)</string>
+
     <string name="anki_mode_sentence">Frase</string>
 
     <string name="anki_mode_word">Palabra</string>
@@ -1879,6 +1889,8 @@
     <string name="settings_debug_show_detection_log">Mostrar registro de detección</string>
     <string name="settings_debug_log_pinhole">Registrar métricas de pinhole del modo en vivo</string>
     <string name="settings_debug_save_ocr_seed">Guardar capturas de OCR como semillas</string>
+    <string name="settings_debug_short_text_routing">Enrutamiento sin conexión para textos cortos</string>
+    <string name="settings_debug_force_mmap_weights">Forzar la carga de pesos con mmap (LLM en el dispositivo)</string>
     <string name="settings_debug_log_grouping">Registrar decisiones de agrupación de OCR</string>
     <string name="settings_debug_angle_gate">Umbral clásico de ángulo (10°)</string>
     <string name="settings_debug_log_trace">Registrar traza del historial de traducciones</string>

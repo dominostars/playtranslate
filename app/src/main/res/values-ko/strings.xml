@@ -489,6 +489,16 @@
 
     <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>가 카드를 수락하지 않았습니다. <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g>가 실행 중인지 확인한 후 다시 시도하세요.</string>
 
+    <string name="anki_card_too_large_title">카드가 너무 큼</string>
+
+    <string name="anki_card_too_large_prompt">이 카드의 사전 정의가 너무 커서 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>에 보낼 수 없습니다. 정의를 일반 텍스트로 바꾼 간소화된 카드를 저장하시겠습니까?</string>
+
+    <string name="anki_card_too_large_simplify">간소화하여 저장</string>
+
+    <string name="anki_card_too_large_failed">이 카드는 정의를 간소화해도 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>가 받아들이기에 너무 큽니다. 단어를 몇 개 줄이거나 문장을 짧게 해 보세요.</string>
+
+    <string name="anki_added_simplified"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>에 추가됨(크기에 맞게 정의 간소화)</string>
+
     <string name="anki_mode_sentence">문장</string>
 
     <string name="anki_mode_word">단어</string>
@@ -1856,6 +1866,8 @@
     <string name="settings_debug_show_detection_log">감지 로그 표시</string>
     <string name="settings_debug_log_pinhole">실시간 모드 핀홀 지표 로깅</string>
     <string name="settings_debug_save_ocr_seed">OCR 캡처를 시드로 저장</string>
+    <string name="settings_debug_short_text_routing">짧은 텍스트 오프라인 라우팅</string>
+    <string name="settings_debug_force_mmap_weights">mmap 가중치 로딩 강제(온디바이스 LLM)</string>
     <string name="settings_debug_log_grouping">OCR 그룹화 결정 로깅</string>
     <string name="settings_debug_angle_gate">기존 각도 임계값(10°)</string>
     <string name="settings_debug_log_trace">번역 로그 트레이스 기록</string>

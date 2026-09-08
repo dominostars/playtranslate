@@ -488,6 +488,16 @@
 
     <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> không chấp nhận thẻ. Hãy đảm bảo <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> đang chạy, rồi thử lại.</string>
 
+    <string name="anki_card_too_large_title">Thẻ quá lớn</string>
+
+    <string name="anki_card_too_large_prompt">Định nghĩa từ điển của thẻ này quá lớn để gửi tới <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>. Lưu thẻ rút gọn với định nghĩa ở dạng văn bản thuần túy?</string>
+
+    <string name="anki_card_too_large_simplify">Lưu bản rút gọn</string>
+
+    <string name="anki_card_too_large_failed">Thẻ này quá lớn để <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> chấp nhận, ngay cả với định nghĩa rút gọn. Hãy thử bớt vài từ hoặc rút ngắn câu.</string>
+
+    <string name="anki_added_simplified">Đã thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (đã rút gọn định nghĩa để vừa kích thước)</string>
+
     <string name="anki_mode_sentence">Câu</string>
 
     <string name="anki_mode_word">Từ</string>
@@ -1869,6 +1879,8 @@
     <string name="settings_debug_show_detection_log">Hiện nhật ký phát hiện</string>
     <string name="settings_debug_log_pinhole">Ghi nhật ký số liệu pinhole của chế độ trực tiếp</string>
     <string name="settings_debug_save_ocr_seed">Lưu các bản chụp OCR làm seed</string>
+    <string name="settings_debug_short_text_routing">Định tuyến ngoại tuyến cho văn bản ngắn</string>
+    <string name="settings_debug_force_mmap_weights">Buộc tải trọng số bằng mmap (LLM trên thiết bị)</string>
     <string name="settings_debug_log_grouping">Ghi nhật ký quyết định nhóm OCR</string>
     <string name="settings_debug_angle_gate">Ngưỡng góc kiểu cũ (10°)</string>
     <string name="settings_debug_log_trace">Ghi lại dấu vết nhật ký dịch</string>

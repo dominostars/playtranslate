@@ -600,3 +600,65 @@ from "None" to "Any".
 alerts were translated string-by-string rather than as a set, so the success alert lost the
 contrast with the no-op alert. Particle handling — the usual Korean risk here — was clean
 on the first pass.
+
+## Delta review 2026-09-08 (7 keys: oversize-card guard + two debug rows)
+
+Mechanical layer verified programmatically across all 12 locales: all 7 delta names
+present, no extras, no duplicate `name=`; every `<xliff:g>` span byte-identical to EN
+(`id`, `example`, inner brand text); no `%n$s` in this delta; `<b>`, `\n`, `\{ \}`,
+`&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`; no em/en dashes. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing** (per the 2026-07-14 lesson): the prompt is an
+`OverlayAlert` capped at 280 dp with **full-width, vertically stacked** buttons
+(`OverlayAlert.kt` :306-341) and the debug rows are `settings_row_switch.xml` →
+`Text.PT.RowTitle`, 15 sp, **no `maxLines`, no `ellipsize`**. Nothing in this delta
+clips; long labels wrap. Accuracy was preferred over brevity throughout.
+
+**Source-side finding (EN, applies to all 12 locales) — ❌ fixed in this pass.** The
+comment on `anki_card_too_large_title` claimed the title serves "the oversize-card prompt
+AND the too-large failure alert". It does not: every failure path shows
+`anki_card_too_large_failed` either under `anki_send_failed_title` (`AnkiUiHelper.kt`
+:1060, `TranslationResultFragment.kt` :967, `WordDetailBinder.kt` :691) or with **no title
+at all** as a `LENGTH_LONG` Toast (`AnkiOneTapDispatch.kt` :162,
+`TranslationResultFragment.kt` :1082). The failure string therefore has to name its own
+subject, and was reviewed on that basis in every locale. The EN comment now says so.
+
+### Findings (delta)
+
+None. No 🛑/❌/⚠️; one 💬 recorded as a decision rather than a defect.
+
+| name | severity | current | note |
+|---|---|---|---|
+| settings_debug_short_text_routing | 💬 | 「짧은 텍스트 오프라인 라우팅」 | A bare noun stack with no verb. Kept because the debug block already contains both shapes and the noun form is what the *mode* rows use — `settings_debug_angle_gate` 「기존 각도 임계값(10°)」 — while the verb form (「…표시」, 「…로깅」) belongs to rows that describe a repeated action. Short-text routing is a mode, so it takes the mode shape. |
+
+### Clean areas (delta) — checked, no findings
+
+**Particles after the brand token.** 「AnkiDroid에」 in the prompt and 「AnkiDroid가」 in the
+failure body. 에 is invariant, and 가 is safe here for the same reason the committed
+`anki_send_failed_message` already writes 「AnkiDroid가 카드를 수락하지 않았습니다」 — AnkiDroid
+is a fixed brand name, not a runtime fill, so the combined 이(가) form is not required and
+would read worse. No bare particle follows a variable anywhere in the delta.
+
+**Title register.** 「카드가 너무 큼」 uses the -ㅁ nominalisation that `anki_send_failed_title`
+「카드를 추가할 수 없음」 established for alert titles, rather than the 합니다체 that the bodies
+take. The two titles can appear minutes apart in the same flow and now read as one family.
+
+**Confirm question.** 「저장하시겠습니까?」 matches `llm_prompt_discard_title`
+「저장하지 않고 나가시겠습니까?」 and `bergamot_disable_title` 「…끄시겠습니까?」. ASCII `?` is the
+file's convention (33 occurrences, zero full-width).
+
+**Terminology.** 카드 / 사전 / 정의 / 「일반 텍스트」 — the last from
+`yomitan_styling_subtitle`'s 「항상 일반 텍스트로 표시합니다」. 단어 and 문장 in the failure body
+match `anki_mode_word` / `anki_mode_sentence`. 온디바이스 for on-device comes from
+`llm_prompt_advisory_too_long` 「온디바이스 모델은」 rather than a fresh 기기 내 coinage.
+
+**Toast shape.** 「Anki에 추가됨(크기에 맞게 정의 간소화)」 keeps the family's no-space-before-paren
+spacing from `anki_added_no_audio` 「Anki에 추가됨(오디오 없음)」.
+
+### Verdict
+
+**PASS.** No fixes required. 간소화 is one root across all four oversize strings, so the
+prompt, the button, the failure and the toast cannot drift apart on the delta's central
+term.

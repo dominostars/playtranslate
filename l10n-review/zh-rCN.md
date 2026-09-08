@@ -522,3 +522,64 @@ this round.
 **PASS.** No 🛑/❌/⚠️, one 💬 recorded as a decision. Chinese has no gender, case or
 agreement contact with the dictionary-title placeholder; the only real risk in this delta
 was pangu spacing around the Latin-script fills, and it holds throughout.
+
+## Delta review 2026-09-08 (7 keys: oversize-card guard + two debug rows)
+
+Mechanical layer verified programmatically across all 12 locales: all 7 delta names
+present, no extras, no duplicate `name=`; every `<xliff:g>` span byte-identical to EN
+(`id`, `example`, inner brand text); no `%n$s` in this delta; `<b>`, `\n`, `\{ \}`,
+`&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`; no em/en dashes. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing** (per the 2026-07-14 lesson): the prompt is an
+`OverlayAlert` capped at 280 dp with **full-width, vertically stacked** buttons
+(`OverlayAlert.kt` :306-341) and the debug rows are `settings_row_switch.xml` →
+`Text.PT.RowTitle`, 15 sp, **no `maxLines`, no `ellipsize`**. Nothing in this delta
+clips; long labels wrap. Accuracy was preferred over brevity throughout.
+
+**Source-side finding (EN, applies to all 12 locales) — ❌ fixed in this pass.** The
+comment on `anki_card_too_large_title` claimed the title serves "the oversize-card prompt
+AND the too-large failure alert". It does not: every failure path shows
+`anki_card_too_large_failed` either under `anki_send_failed_title` (`AnkiUiHelper.kt`
+:1060, `TranslationResultFragment.kt` :967, `WordDetailBinder.kt` :691) or with **no title
+at all** as a `LENGTH_LONG` Toast (`AnkiOneTapDispatch.kt` :162,
+`TranslationResultFragment.kt` :1082). The failure string therefore has to name its own
+subject, and was reviewed on that basis in every locale. The EN comment now says so.
+
+### Findings (delta)
+
+One 💬, applied.
+
+| name | severity | current (was) | applied | note |
+|---|---|---|---|---|
+| anki_added_simplified | 💬 | 「已添加到 Anki（已简化释义以适应大小）」 | 「已添加到 Anki（释义已简化以适应大小）」 | Two 已 in one short toast, the second immediately after the first clause's own. Moving 释义 to the front makes the parenthetical a topic-comment clause, which is how the sibling toasts read, and drops the stutter without changing meaning. |
+
+### Clean areas (delta) — checked, no findings
+
+**Pangu spacing holds in all four mixed strings.** A space before each Latin run
+(「发送到 AnkiDroid」, 「已添加到 Anki」, 「强制使用 mmap 加载权重」, 「设备端 LLM」), **no** space
+before full-width punctuation (「AnkiDroid。」, 「Anki（」), and **no** space where a Han run
+meets a Han run. In `anki_card_too_large_failed` the span is preceded by 「，」 with no space
+and followed by a space — matching `anki_send_failed_message`'s own 「AnkiDroid 未接受该卡片」.
+
+**释义 not 定义.** The Anki and word-detail surfaces both label this field 释义
+(`anki_group_definitions`, `word_detail_group_definitions`, `yomitan_single_dict_title`), so
+all four oversize strings use 释义. 纯文本 comes from `yomitan_styling_subtitle`'s
+「关闭后始终使用纯文本」.
+
+**单词 / 句子** in the advice match `anki_mode_word` and `anki_mode_sentence`.
+
+**Register.** Casual 你 register is not exercised (no second-person in this delta); 请 opens
+the advice sentence as it does in `anki_send_failed_message` 「请确保…」. Simplified
+characters only; full-width （）、。？ throughout.
+
+**Debug rows.** 「强制使用 mmap 加载权重」 follows `settings_debug_force_single_screen` 「强制单屏」;
+设备端 for on-device is `llm_prompt_row_system_subtitle`'s 「云端和设备端 LLM 翻译器」 rather than a
+新 coinage. 「短文本离线路由」 is a four-term noun stack, kept because the mode rows in this
+block are noun stacks too (「经典角度阈值（10°）」).
+
+### Verdict
+
+**PASS after fix.** One 💬, applied. The spacing rule — this locale's standing hazard —
+was verified character by character on every string that mixes scripts.

@@ -489,6 +489,16 @@
 
     <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 未接受该卡片。请确保 <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> 正在运行，然后重试。</string>
 
+    <string name="anki_card_too_large_title">卡片过大</string>
+
+    <string name="anki_card_too_large_prompt">这张卡片的词典释义过大，无法发送到 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>。是否保存使用纯文本释义的简化卡片？</string>
+
+    <string name="anki_card_too_large_simplify">保存简化版</string>
+
+    <string name="anki_card_too_large_failed">即使使用简化释义，这张卡片仍然过大，<xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 无法接受。请尝试删除部分单词或缩短句子。</string>
+
+    <string name="anki_added_simplified">已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>（释义已简化以适应大小）</string>
+
     <string name="anki_mode_sentence">句子</string>
 
     <string name="anki_mode_word">单词</string>
@@ -1914,6 +1924,8 @@
     <string name="settings_debug_show_detection_log">显示检测日志</string>
     <string name="settings_debug_log_pinhole">记录实时模式针孔指标</string>
     <string name="settings_debug_save_ocr_seed">将 OCR 截取保存为种子</string>
+    <string name="settings_debug_short_text_routing">短文本离线路由</string>
+    <string name="settings_debug_force_mmap_weights">强制使用 mmap 加载权重（设备端 LLM）</string>
     <string name="settings_debug_log_grouping">记录 OCR 分组决策</string>
     <string name="settings_debug_angle_gate">经典角度阈值（10°）</string>
     <string name="settings_debug_log_trace">记录翻译日志跟踪信息</string>

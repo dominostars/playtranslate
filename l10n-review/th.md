@@ -430,3 +430,64 @@ labels), so it is an English-source polish item only. The Title Case on the new
 family's existing alert titles (`yomitan_io_error_title` "Import Failed",
 `yomitan_duplicate_title` "Already Imported", `yomitan_downloading_title` "Downloading
 Dictionary", `yomitan_download_error_title` "Download Failed").
+
+## Delta review 2026-09-08 (7 keys: oversize-card guard + two debug rows)
+
+Mechanical layer verified programmatically across all 12 locales: all 7 delta names
+present, no extras, no duplicate `name=`; every `<xliff:g>` span byte-identical to EN
+(`id`, `example`, inner brand text); no `%n$s` in this delta; `<b>`, `\n`, `\{ \}`,
+`&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`; no em/en dashes. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing** (per the 2026-07-14 lesson): the prompt is an
+`OverlayAlert` capped at 280 dp with **full-width, vertically stacked** buttons
+(`OverlayAlert.kt` :306-341) and the debug rows are `settings_row_switch.xml` →
+`Text.PT.RowTitle`, 15 sp, **no `maxLines`, no `ellipsize`**. Nothing in this delta
+clips; long labels wrap. Accuracy was preferred over brevity throughout.
+
+**Source-side finding (EN, applies to all 12 locales) — ❌ fixed in this pass.** The
+comment on `anki_card_too_large_title` claimed the title serves "the oversize-card prompt
+AND the too-large failure alert". It does not: every failure path shows
+`anki_card_too_large_failed` either under `anki_send_failed_title` (`AnkiUiHelper.kt`
+:1060, `TranslationResultFragment.kt` :967, `WordDetailBinder.kt` :691) or with **no title
+at all** as a `LENGTH_LONG` Toast (`AnkiOneTapDispatch.kt` :162,
+`TranslationResultFragment.kt` :1082). The failure string therefore has to name its own
+subject, and was reviewed on that basis in every locale. The EN comment now says so.
+
+### Findings (delta)
+
+One ⚠️, applied.
+
+| name | severity | current (was) | applied | note |
+|---|---|---|---|---|
+| settings_debug_short_text_routing | ⚠️ | 「เส้นทางออฟไลน์สำหรับข้อความสั้น」 | 「การกำหนดเส้นทางออฟไลน์สำหรับข้อความสั้น」 | เส้นทาง alone is a physical route; the software sense of "routing" is การกำหนดเส้นทาง. The short form read as "an offline route for short text" rather than as a routing policy the toggle switches. The row's TextView has no `maxLines`, so the longer, correct term costs nothing but a wrap. |
+
+### Clean areas (delta) — checked, no findings
+
+**Spacing.** No space anywhere inside a Thai run. Spaces appear only where they border the
+Latin brand tokens (「ส่งไปยัง AnkiDroid บันทึก…」, 「ที่ AnkiDroid จะรับได้」, 「ด้วย mmap (LLM บนอุปกรณ์)」)
+and at clause boundaries — which is also the sentence break, exactly as the committed
+`anki_send_failed_message` does it (「ไม่ยอมรับการ์ด ตรวจสอบว่า…」). No ภาษา prefix is involved:
+this delta has no language-name fills.
+
+**Questions carry no `?`.** 「…หรือไม่」 closes the prompt, matching `llm_prompt_discard_title`
+「ละทิ้งการเปลี่ยนแปลงหรือไม่」, `bergamot_disable_title` and `tr_service_remove_title_fmt`. The
+file contains zero question marks and the delta does not add one.
+
+**Terminology.** การ์ด (card), คำจำกัดความ (definitions), พจนานุกรม (dictionary),
+「ข้อความธรรมดา」 for plain text — the last from `yomitan_styling_subtitle`'s
+「ปิดเพื่อใช้ข้อความธรรมดาเสมอ」. คำ and ประโยค in the advice match `anki_mode_word` and
+`anki_mode_sentence`. บนอุปกรณ์ for on-device comes from `llm_prompt_advisory_too_long`
+「โมเดลบนอุปกรณ์」.
+
+**ย่อ is one root** across the prompt (การ์ดแบบย่อ), the button (บันทึกแบบย่อ), the failure
+(คำจำกัดความแบบย่อ) and the toast (ย่อคำจำกัดความ).
+
+**Register.** Neutral-polite; no ครับ/ค่ะ particles. 「บังคับ…」 in the mmap row matches
+`settings_debug_force_single_screen` 「บังคับใช้หน้าจอเดียว」.
+
+### Verdict
+
+**PASS after fix.** One ⚠️, corrected. Thai word-spacing — the standing hazard for this
+locale — was checked on every string in the delta.

@@ -491,6 +491,16 @@
 
     <string name="anki_send_failed_message">O <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> não aceitou o cartão. Verifique se o <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> está em execução e tente novamente.</string>
 
+    <string name="anki_card_too_large_title">Cartão grande demais</string>
+
+    <string name="anki_card_too_large_prompt">As definições de dicionário deste cartão são grandes demais para enviar ao <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>. Salvar um cartão simplificado com definições em texto simples?</string>
+
+    <string name="anki_card_too_large_simplify">Salvar versão simplificada</string>
+
+    <string name="anki_card_too_large_failed">Este cartão é grande demais para o <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> aceitar, mesmo com definições simplificadas. Tente remover algumas palavras ou encurtar a frase.</string>
+
+    <string name="anki_added_simplified">Adicionado ao <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (definições simplificadas para caber)</string>
+
     <string name="anki_mode_sentence">Frase</string>
 
     <string name="anki_mode_word">Palavra</string>
@@ -1860,6 +1870,8 @@
     <string name="settings_debug_show_detection_log">Mostrar registro de detecção</string>
     <string name="settings_debug_log_pinhole">Registrar métricas de pinhole do modo ao vivo</string>
     <string name="settings_debug_save_ocr_seed">Salvar capturas de OCR como sementes</string>
+    <string name="settings_debug_short_text_routing">Roteamento offline para textos curtos</string>
+    <string name="settings_debug_force_mmap_weights">Forçar o carregamento de pesos via mmap (LLM no dispositivo)</string>
     <string name="settings_debug_log_grouping">Registrar decisões de agrupamento de OCR</string>
     <string name="settings_debug_angle_gate">Limiar clássico de ângulo (10°)</string>
     <string name="settings_debug_log_trace">Registrar trace do log de traduções</string>

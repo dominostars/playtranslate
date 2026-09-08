@@ -450,6 +450,16 @@
 
     <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> ไม่ยอมรับการ์ด ตรวจสอบว่า <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> กำลังทำงานอยู่ แล้วลองอีกครั้ง</string>
 
+    <string name="anki_card_too_large_title">การ์ดใหญ่เกินไป</string>
+
+    <string name="anki_card_too_large_prompt">คำจำกัดความในพจนานุกรมของการ์ดนี้ใหญ่เกินกว่าจะส่งไปยัง <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> บันทึกการ์ดแบบย่อที่ใช้คำจำกัดความเป็นข้อความธรรมดาหรือไม่</string>
+
+    <string name="anki_card_too_large_simplify">บันทึกแบบย่อ</string>
+
+    <string name="anki_card_too_large_failed">การ์ดนี้ใหญ่เกินกว่าที่ <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> จะรับได้ แม้จะใช้คำจำกัดความแบบย่อแล้ว ลองลบคำบางคำออกหรือทำให้ประโยคสั้นลง</string>
+
+    <string name="anki_added_simplified">เพิ่มไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แล้ว (ย่อคำจำกัดความเพื่อให้พอดี)</string>
+
     <string name="anki_mode_sentence">ประโยค</string>
 
     <string name="anki_mode_word">คำ</string>
@@ -1787,6 +1797,8 @@
     <string name="settings_debug_show_detection_log">แสดงบันทึกการตรวจจับ</string>
     <string name="settings_debug_log_pinhole">บันทึกเมตริก pinhole ของโหมดสด</string>
     <string name="settings_debug_save_ocr_seed">บันทึกภาพ OCR เป็นซีด</string>
+    <string name="settings_debug_short_text_routing">การกำหนดเส้นทางออฟไลน์สำหรับข้อความสั้น</string>
+    <string name="settings_debug_force_mmap_weights">บังคับโหลดน้ำหนักด้วย mmap (LLM บนอุปกรณ์)</string>
     <string name="settings_debug_log_grouping">บันทึกการตัดสินใจจัดกลุ่ม OCR</string>
     <string name="settings_debug_angle_gate">เกณฑ์มุมแบบเดิม (10°)</string>
     <string name="settings_debug_log_trace">เก็บ trace ของบันทึกการแปล</string>

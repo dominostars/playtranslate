@@ -493,3 +493,67 @@ case), and matches the Yomitan family's own convention anyway (`yomitan_io_error
 delta's hardest spot, an arbitrary Latin-script dictionary title dropped into four Arabic
 sentences, is handled by the القاموس head-noun construction and holds for any title.
 RTL rendering of the four mixed Arabic + Latin + digit strings still wants a device pass.
+
+## Delta review 2026-09-08 (7 keys: oversize-card guard + two debug rows)
+
+Mechanical layer verified programmatically across all 12 locales: all 7 delta names
+present, no extras, no duplicate `name=`; every `<xliff:g>` span byte-identical to EN
+(`id`, `example`, inner brand text); no `%n$s` in this delta; `<b>`, `\n`, `\{ \}`,
+`&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`; no em/en dashes. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing** (per the 2026-07-14 lesson): the prompt is an
+`OverlayAlert` capped at 280 dp with **full-width, vertically stacked** buttons
+(`OverlayAlert.kt` :306-341) and the debug rows are `settings_row_switch.xml` →
+`Text.PT.RowTitle`, 15 sp, **no `maxLines`, no `ellipsize`**. Nothing in this delta
+clips; long labels wrap. Accuracy was preferred over brevity throughout.
+
+**Source-side finding (EN, applies to all 12 locales) — ❌ fixed in this pass.** The
+comment on `anki_card_too_large_title` claimed the title serves "the oversize-card prompt
+AND the too-large failure alert". It does not: every failure path shows
+`anki_card_too_large_failed` either under `anki_send_failed_title` (`AnkiUiHelper.kt`
+:1060, `TranslationResultFragment.kt` :967, `WordDetailBinder.kt` :691) or with **no title
+at all** as a `LENGTH_LONG` Toast (`AnkiOneTapDispatch.kt` :162,
+`TranslationResultFragment.kt` :1082). The failure string therefore has to name its own
+subject, and was reviewed on that basis in every locale. The EN comment now says so.
+
+### Findings (delta)
+
+Three ⚠️, all applied.
+
+| name | severity | current (was) | applied | note |
+|---|---|---|---|---|
+| anki_card_too_large_prompt | ⚠️ | «بتعريفات نصية عادية» | «تعريفاتها بالنص العادي» | "plain text" is already owned by the file: `yomitan_styling_subtitle` ends «لاستخدام النص العادي دائمًا». The adjectival «نصية عادية» was a fresh coinage for a term that had a committed translation two rows away. The replacement is a nominal relative clause on an indefinite antecedent (no الذي — correct), so it also stops the sentence stacking three adjectives on بطاقة. |
+| anki_card_too_large_simplify | ⚠️ | «حفظ نسخة مبسّطة» | «حفظ بطاقة مبسّطة» | The button introduced a second noun for the object — نسخة (copy) — where the app's word throughout is بطاقة, and where the prompt body one line above already says «حفظ بطاقة مبسّطة». Now the button byte-matches the action its own body offers, which is what the translation contract asks for. |
+| settings_debug_short_text_routing | ⚠️ | «توجيه النصوص القصيرة دون اتصال» | «توجيه دون اتصال للنصوص القصيرة» | The postposed «دون اتصال» landed on النصوص القصيرة, so the row read "routing of short texts that are offline" rather than "offline routing of short texts". This is the exact multi-locale trap recorded in `l10n-updating-locales.md` after "Classic angle threshold" (es/fr/pt-BR/ar simultaneously) — same shape, two nouns and one modifier, and Arabic fell for it again. Moving the modifier next to توجيه fixes the attachment. |
+
+### Clean areas (delta) — checked, no findings
+
+**The failure body stands alone.** «هذه البطاقة أكبر من أن يقبلها AnkiDroid» names its own
+subject, so it survives being shown titleless as a Toast, and reads correctly under
+`anki_send_failed_title` «تعذّرت إضافة البطاقة» in the dialog path.
+
+**Elative construction, not a calque.** Both "too big to…" sentences use أكبر من أن +
+subjunctive («أكبر من أن تُرسَل», «أكبر من أن يقبلها») rather than a literal كبير جدًا لـ.
+The title keeps كبيرة جدًا, which is the idiomatic short form for a heading and matches the
+definite-subject/indefinite-predicate shape of `anki_send_failed_title`.
+
+**No sentence opens on a Latin token**, per the ar parameters: the prompt opens تعريفات,
+the failure هذه, the toast تمت, the mmap row فرض. AnkiDroid and Anki sit mid-sentence in
+all four, and mmap / LLM are trailing inside the debug row.
+
+**Terminology.** بطاقة (card), التعريفات (definitions), القاموس (dictionary),
+«على الجهاز» for on-device — the last taken from `llm_prompt_advisory_too_long`'s
+«النماذج العاملة على الجهاز» rather than coined. «تبسيط / مبسّطة» is one root across all
+four oversize strings.
+
+**Toast shape.** «تمت الإضافة إلى Anki (…)» is byte-identical in its opening to
+`anki_added_no_audio` / `_no_screenshot`, so the simplified toast joins that family
+instead of starting a second one.
+
+### Verdict
+
+**PASS after fixes.** Three ⚠️, all corrected; no ❌ in the Arabic itself. RTL rendering of
+the two strings that mix Arabic with Latin brand names, and of the mmap row's trailing
+`mmap` + `LLM` inside parentheses, still wants a device pass.

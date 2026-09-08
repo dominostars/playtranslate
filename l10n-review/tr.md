@@ -518,3 +518,66 @@ from "None" — the row means *no restriction*, not *unset*, and not *the whole 
 
 **PASS after fixes.** One ⚠️ (round 2) and one 💬 (round 1). The Turkish-specific hazard —
 a case suffix landing on a runtime value — remains absent from the whole delta.
+
+## Delta review 2026-09-08 (7 keys: oversize-card guard + two debug rows)
+
+Mechanical layer verified programmatically across all 12 locales: all 7 delta names
+present, no extras, no duplicate `name=`; every `<xliff:g>` span byte-identical to EN
+(`id`, `example`, inner brand text); no `%n$s` in this delta; `<b>`, `\n`, `\{ \}`,
+`&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`; no em/en dashes. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing** (per the 2026-07-14 lesson): the prompt is an
+`OverlayAlert` capped at 280 dp with **full-width, vertically stacked** buttons
+(`OverlayAlert.kt` :306-341) and the debug rows are `settings_row_switch.xml` →
+`Text.PT.RowTitle`, 15 sp, **no `maxLines`, no `ellipsize`**. Nothing in this delta
+clips; long labels wrap. Accuracy was preferred over brevity throughout.
+
+**Source-side finding (EN, applies to all 12 locales) — ❌ fixed in this pass.** The
+comment on `anki_card_too_large_title` claimed the title serves "the oversize-card prompt
+AND the too-large failure alert". It does not: every failure path shows
+`anki_card_too_large_failed` either under `anki_send_failed_title` (`AnkiUiHelper.kt`
+:1060, `TranslationResultFragment.kt` :967, `WordDetailBinder.kt` :691) or with **no title
+at all** as a `LENGTH_LONG` Toast (`AnkiOneTapDispatch.kt` :162,
+`TranslationResultFragment.kt` :1082). The failure string therefore has to name its own
+subject, and was reviewed on that basis in every locale. The EN comment now says so.
+
+### Findings (delta)
+
+One ⚠️, applied.
+
+| name | severity | current (was) | applied | note |
+|---|---|---|---|---|
+| settings_debug_force_mmap_weights | ⚠️ | 「mmap ile ağırlık yüklemeyi zorla…」 | 「Ağırlık yüklemeyi mmap ile zorla…」 | The row title opened on a lowercase Latin literal. Capitalising it to *Mmap* would be wrong — it is a C function name — so the fix reorders instead, putting the object first and leaving mmap mid-sentence where its case is unremarkable. Turkish word order (object · instrument · verb) is unchanged and idiomatic. |
+
+### Clean areas (delta) — checked, no findings
+
+**No suffix is attached to a placeholder.** Both AnkiDroid references take the head-noun
+construction — «AnkiDroid uygulamasına gönderilemeyecek», «AnkiDroid uygulamasının kabul
+edemeyeceği» — which is exactly what the committed `anki_send_failed_message` already does
+(«AnkiDroid uygulamasının çalıştığından emin olun»). The one brand suffix in the delta is
+on the fixed name in the toast and uses the escaped apostrophe: «Anki\'ye eklendi», byte-
+identical to `anki_added_no_audio`'s opening.
+
+**Passive confirm question.** «…kaydedilsin mi?» matches `llm_prompt_discard_title`
+«Değişiklikler atılsın mı?» and `bergamot_disable_title` «Firefox Translations kapatılsın
+mı?» — the file's established shape for a yes/no dialog.
+
+**Terminology.** kart (card), tanım (definitions), sözlük (dictionary), «düz metin» for
+plain text — the last from `yomitan_styling_subtitle`'s «her zaman düz metin kullanmak
+için». sözcük and cümle in the advice match `anki_mode_word` «Sözcük» and
+`anki_mode_sentence` «Cümle». «cihaz üzerindeki» for on-device comes from
+`llm_prompt_row_system_subtitle` «Bulut ve cihaz üzerindeki LLM çevirmenlerine».
+
+**Casing.** No word is pre-uppercased; ı/i are spelled correctly throughout (kısaltmayı,
+sığsın, Ağırlık, Kısa metinler). sadeleştir- is one stem across all four oversize strings.
+
+**Register.** siz-level imperatives in the advice («…deneyin»), matching
+`anki_send_failed_message` «…emin olun, ardından tekrar deneyin».
+
+### Verdict
+
+**PASS after fix.** One ⚠️, corrected. The locale's two standing hazards — suffixes on
+placeholders and i/İ casing — were both checked string by string and neither is
+present.

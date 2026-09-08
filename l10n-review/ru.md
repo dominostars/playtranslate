@@ -656,3 +656,70 @@ than clipping. No accuracy was traded for brevity.
 **PASS after fix.** One ⚠️ carrying three sub-issues, no ❌, no 🛑. The delta's hardest
 spot — four sentences built around an arbitrary, indeclinable dictionary title — is solved
 with the head-noun construction the file already uses, so no case ever has to be guessed.
+
+## Delta review 2026-09-08 (7 keys: oversize-card guard + two debug rows)
+
+Mechanical layer verified programmatically across all 12 locales: all 7 delta names
+present, no extras, no duplicate `name=`; every `<xliff:g>` span byte-identical to EN
+(`id`, `example`, inner brand text); no `%n$s` in this delta; `<b>`, `\n`, `\{ \}`,
+`&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`; no em/en dashes. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing** (per the 2026-07-14 lesson): the prompt is an
+`OverlayAlert` capped at 280 dp with **full-width, vertically stacked** buttons
+(`OverlayAlert.kt` :306-341) and the debug rows are `settings_row_switch.xml` →
+`Text.PT.RowTitle`, 15 sp, **no `maxLines`, no `ellipsize`**. Nothing in this delta
+clips; long labels wrap. Accuracy was preferred over brevity throughout.
+
+**Source-side finding (EN, applies to all 12 locales) — ❌ fixed in this pass.** The
+comment on `anki_card_too_large_title` claimed the title serves "the oversize-card prompt
+AND the too-large failure alert". It does not: every failure path shows
+`anki_card_too_large_failed` either under `anki_send_failed_title` (`AnkiUiHelper.kt`
+:1060, `TranslationResultFragment.kt` :967, `WordDetailBinder.kt` :691) or with **no title
+at all** as a `LENGTH_LONG` Toast (`AnkiOneTapDispatch.kt` :162,
+`TranslationResultFragment.kt` :1082). The failure string therefore has to name its own
+subject, and was reviewed on that basis in every locale. The EN comment now says so.
+
+### Findings (delta)
+
+None. No 🛑/❌/⚠️; one 💬 recorded as a decision rather than a defect.
+
+| name | severity | current | note |
+|---|---|---|---|
+| settings_debug_force_mmap_weights | 💬 | «(локальная LLM)» | LLM is inflected as feminine, agreeing with the elided модель. That follows the file's own «Локальные модели» (`llm_prompt_advisory_too_long`) and «облачным и локальным» (`llm_prompt_row_system_subtitle`), which is also why "on-device" is локальная here and not «на устройстве» — the app already picked a word for this concept. |
+
+### Clean areas (delta) — checked, no findings
+
+**Nothing needed case restructuring.** The only runtime fills in this delta are the fixed
+brand names AnkiDroid and Anki, and each sits where the nominative is what the grammar
+wants: «слишком велики для отправки в AnkiDroid», «слишком велика для AnkiDroid»,
+«Добавлено в Anki». No placeholder was put in an oblique slot, so the standing hazard for
+this locale does not arise.
+
+**Infinitive questions match the file.** «Сохранить упрощённую карточку…?» follows
+`llm_prompt_discard_title` «Не сохранять изменения?» and `bergamot_disable_title`
+«Выключить Firefox Translations?». The button «Сохранить в упрощённом виде» is a full
+prepositional phrase rather than a dangling «упрощённую», so nothing agrees with an absent
+noun.
+
+**Register and length.** Formal lowercase вы («Попробуйте убрать…»), matching
+`anki_send_failed_message` «Убедитесь, что… и повторите попытку». Russian runs ~30% long,
+so both debug rows were kept to a single noun phrase; neither row clips (the title
+TextView has no maxLines), and the alert body is comparable in length to the sibling it
+replaces.
+
+**Terminology.** карточка (card), определения (definitions), «простой текст» — the last
+from `yomitan_styling_subtitle`'s «всегда использовать простой текст», not re-coined.
+«слово» and «предложение» in the failure body match `anki_mode_word` / `anki_mode_sentence`
+exactly, so the advice names the same two things the card editor does.
+
+**Offline prefix.** «Офлайн-маршрутизация» keeps the hyphenated prefix the file already
+uses in `settings_header_offline_translations` «Офлайн-перевод» and
+`lang_section_offline_models_title` «Скачать офлайн-модели».
+
+### Verdict
+
+**PASS.** No fixes required — the highest-risk locale for this delta turned out to be its
+cleanest, because the delta carries no placeholders that could land in an oblique case and
+no plurals.

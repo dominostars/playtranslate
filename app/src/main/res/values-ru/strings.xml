@@ -508,6 +508,16 @@
 
     <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> не принял карточку. Убедитесь, что <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> запущен, и повторите попытку.</string>
 
+    <string name="anki_card_too_large_title">Карточка слишком большая</string>
+
+    <string name="anki_card_too_large_prompt">Словарные определения этой карточки слишком велики для отправки в <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>. Сохранить упрощённую карточку с определениями в виде простого текста?</string>
+
+    <string name="anki_card_too_large_simplify">Сохранить в упрощённом виде</string>
+
+    <string name="anki_card_too_large_failed">Эта карточка слишком велика для <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> даже с упрощёнными определениями. Попробуйте убрать несколько слов или сократить предложение.</string>
+
+    <string name="anki_added_simplified">Добавлено в <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (определения упрощены, чтобы поместиться)</string>
+
     <string name="anki_mode_sentence">Предложение</string>
 
     <string name="anki_mode_word">Слово</string>
@@ -1954,6 +1964,8 @@
     <string name="settings_debug_show_detection_log">Показывать журнал обнаружения</string>
     <string name="settings_debug_log_pinhole">Журналировать метрики pinhole режима реального времени</string>
     <string name="settings_debug_save_ocr_seed">Сохранять захваты OCR как образцы</string>
+    <string name="settings_debug_short_text_routing">Офлайн-маршрутизация коротких текстов</string>
+    <string name="settings_debug_force_mmap_weights">Принудительная загрузка весов через mmap (локальная LLM)</string>
     <string name="settings_debug_log_grouping">Журналировать решения группировки OCR</string>
     <string name="settings_debug_angle_gate">Классический порог угла (10°)</string>
     <string name="settings_debug_log_trace">Записывать трассировку журнала переводов</string>

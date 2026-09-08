@@ -344,3 +344,65 @@ nguồn»), and distinct from «Ngôn ngữ trò chơi» (`pack_upgrade_label_so
 
 **PASS after fix.** One ⚠️, no ❌, no 🛑. The delta's real hazard was the phiên dịch
 homograph, and it was avoided rather than stumbled into.
+
+## Delta review 2026-09-08 (7 keys: oversize-card guard + two debug rows)
+
+Mechanical layer verified programmatically across all 12 locales: all 7 delta names
+present, no extras, no duplicate `name=`; every `<xliff:g>` span byte-identical to EN
+(`id`, `example`, inner brand text); no `%n$s` in this delta; `<b>`, `\n`, `\{ \}`,
+`&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`; no em/en dashes. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing** (per the 2026-07-14 lesson): the prompt is an
+`OverlayAlert` capped at 280 dp with **full-width, vertically stacked** buttons
+(`OverlayAlert.kt` :306-341) and the debug rows are `settings_row_switch.xml` →
+`Text.PT.RowTitle`, 15 sp, **no `maxLines`, no `ellipsize`**. Nothing in this delta
+clips; long labels wrap. Accuracy was preferred over brevity throughout.
+
+**Source-side finding (EN, applies to all 12 locales) — ❌ fixed in this pass.** The
+comment on `anki_card_too_large_title` claimed the title serves "the oversize-card prompt
+AND the too-large failure alert". It does not: every failure path shows
+`anki_card_too_large_failed` either under `anki_send_failed_title` (`AnkiUiHelper.kt`
+:1060, `TranslationResultFragment.kt` :967, `WordDetailBinder.kt` :691) or with **no title
+at all** as a `LENGTH_LONG` Toast (`AnkiOneTapDispatch.kt` :162,
+`TranslationResultFragment.kt` :1082). The failure string therefore has to name its own
+subject, and was reviewed on that basis in every locale. The EN comment now says so.
+
+### Findings (delta)
+
+One 💬, applied.
+
+| name | severity | current (was) | applied | note |
+|---|---|---|---|---|
+| anki_added_simplified | 💬 | 「(đã rút gọn định nghĩa cho vừa)」 | 「(đã rút gọn định nghĩa để vừa kích thước)」 | «cho vừa» ends the clause on a bare adjective and reads as though a word were missing — fit *what*? Naming kích thước closes it. The toast stays comfortably inside the family's length. |
+
+### Clean areas (delta) — checked, no findings
+
+**Diacritics and syllable spacing.** Every syllable is separately spaced and fully marked
+(rút gọn, định nghĩa, thuần túy, ngoại tuyến, trọng số, thiết bị). No stripped ASCII
+anywhere in the delta.
+
+**The failure body reuses the sibling's verb.** «để AnkiDroid chấp nhận» takes chấp nhận
+straight from `anki_send_failed_message`'s «AnkiDroid không chấp nhận thẻ», so the two
+failure messages describe the same refusal with the same word.
+
+**Terminology.** thẻ (card), định nghĩa (definitions), từ điển (dictionary),
+«văn bản thuần túy» for plain text — the last from `yomitan_styling_subtitle`'s
+«luôn dùng văn bản thuần túy». từ and câu in the advice match `anki_mode_word` «Từ» and
+`anki_mode_sentence` «Câu». «trên thiết bị» for on-device comes from
+`llm_prompt_advisory_too_long` «Các mô hình trên thiết bị».
+
+**Register.** Polite bạn-level; the advice opens «Hãy thử…» as `anki_send_failed_message`
+opens «Hãy đảm bảo…». The bare-verb question «Lưu thẻ rút gọn…?» matches
+`bergamot_disable_title` «Tắt Firefox Translations?».
+
+**Debug rows.** «Định tuyến» is the standard Vietnamese technical term for routing;
+«Buộc…» matches `settings_debug_force_single_screen` «Buộc một màn hình» and
+`settings_debug_force_crash_title` «Buộc gặp sự cố». «trọng số» is the established ML term
+for weights.
+
+### Verdict
+
+**PASS after fix.** One 💬, applied. rút gọn is one root across all four oversize
+strings.

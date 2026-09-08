@@ -492,6 +492,16 @@
 
     <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> hat die Karte nicht akzeptiert. Stelle sicher, dass <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> läuft, und versuche es erneut.</string>
 
+    <string name="anki_card_too_large_title">Karte zu groß</string>
+
+    <string name="anki_card_too_large_prompt">Die Wörterbuchdefinitionen dieser Karte sind zu groß, um sie an <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> zu senden. Eine vereinfachte Karte mit Definitionen als reinem Text speichern?</string>
+
+    <string name="anki_card_too_large_simplify">Vereinfacht speichern</string>
+
+    <string name="anki_card_too_large_failed">Diese Karte ist selbst mit vereinfachten Definitionen zu groß für <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>. Entferne ein paar Wörter oder kürze den Satz.</string>
+
+    <string name="anki_added_simplified">Zu <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> hinzugefügt (Definitionen vereinfacht, damit sie passen)</string>
+
     <string name="anki_mode_sentence">Satz</string>
 
     <string name="anki_mode_word">Wort</string>
@@ -1882,6 +1892,8 @@
     <string name="settings_debug_show_detection_log">Erkennungsprotokoll anzeigen</string>
     <string name="settings_debug_log_pinhole">Pinhole-Metriken des Live-Modus protokollieren</string>
     <string name="settings_debug_save_ocr_seed">OCR-Aufnahmen als Seeds speichern</string>
+    <string name="settings_debug_short_text_routing">Offline-Routing für kurze Texte</string>
+    <string name="settings_debug_force_mmap_weights">Laden der Gewichte per mmap erzwingen (LLM auf dem Gerät)</string>
     <string name="settings_debug_log_grouping">OCR-Gruppierungsentscheidungen protokollieren</string>
     <string name="settings_debug_angle_gate">Klassischer Winkelschwellenwert (10°)</string>
     <string name="settings_debug_log_trace">Trace des Textverlaufs aufzeichnen</string>

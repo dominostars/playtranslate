@@ -484,6 +484,16 @@
 
     <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> kartı kabul etmedi. <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> uygulamasının çalıştığından emin olun, ardından tekrar deneyin.</string>
 
+    <string name="anki_card_too_large_title">Kart çok büyük</string>
+
+    <string name="anki_card_too_large_prompt">Bu kartın sözlük tanımları <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> uygulamasına gönderilemeyecek kadar büyük. Tanımları düz metin olan sadeleştirilmiş bir kart kaydedilsin mi?</string>
+
+    <string name="anki_card_too_large_simplify">Sadeleştirerek kaydet</string>
+
+    <string name="anki_card_too_large_failed">Bu kart, tanımlar sadeleştirilmiş olsa bile <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> uygulamasının kabul edemeyeceği kadar büyük. Birkaç sözcük çıkarmayı veya cümleyi kısaltmayı deneyin.</string>
+
+    <string name="anki_added_simplified"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye eklendi (tanımlar sığsın diye sadeleştirildi)</string>
+
     <string name="anki_mode_sentence">Cümle</string>
 
     <string name="anki_mode_word">Sözcük</string>
@@ -1818,6 +1828,8 @@
     <string name="settings_debug_show_detection_log">Algılama günlüğünü göster</string>
     <string name="settings_debug_log_pinhole">Canlı mod iğne deliği ölçümlerini günlüğe kaydet</string>
     <string name="settings_debug_save_ocr_seed">OCR yakalamalarını tohum olarak kaydet</string>
+    <string name="settings_debug_short_text_routing">Kısa metinler için çevrimdışı yönlendirme</string>
+    <string name="settings_debug_force_mmap_weights">Ağırlık yüklemeyi mmap ile zorla (cihaz üzerindeki LLM)</string>
     <string name="settings_debug_log_grouping">OCR gruplama kararlarını günlüğe kaydet</string>
     <string name="settings_debug_angle_gate">Klasik açı eşiği (10°)</string>
     <string name="settings_debug_log_trace">Çeviri günlüğü izini kaydet</string>

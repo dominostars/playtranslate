@@ -435,3 +435,63 @@ from "None" — the row means *no restriction*, not *unset*, and not *the whole 
 
 **PASS after fixes.** One ⚠️ (round 2) and one 💬 (round 1). German remains the least
 exposed locale for placeholder grammar in this delta; both findings were lexical.
+
+## Delta review 2026-09-08 (7 keys: oversize-card guard + two debug rows)
+
+Mechanical layer verified programmatically across all 12 locales: all 7 delta names
+present, no extras, no duplicate `name=`; every `<xliff:g>` span byte-identical to EN
+(`id`, `example`, inner brand text); no `%n$s` in this delta; `<b>`, `\n`, `\{ \}`,
+`&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`; no em/en dashes. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing** (per the 2026-07-14 lesson): the prompt is an
+`OverlayAlert` capped at 280 dp with **full-width, vertically stacked** buttons
+(`OverlayAlert.kt` :306-341) and the debug rows are `settings_row_switch.xml` →
+`Text.PT.RowTitle`, 15 sp, **no `maxLines`, no `ellipsize`**. Nothing in this delta
+clips; long labels wrap. Accuracy was preferred over brevity throughout.
+
+**Source-side finding (EN, applies to all 12 locales) — ❌ fixed in this pass.** The
+comment on `anki_card_too_large_title` claimed the title serves "the oversize-card prompt
+AND the too-large failure alert". It does not: every failure path shows
+`anki_card_too_large_failed` either under `anki_send_failed_title` (`AnkiUiHelper.kt`
+:1060, `TranslationResultFragment.kt` :967, `WordDetailBinder.kt` :691) or with **no title
+at all** as a `LENGTH_LONG` Toast (`AnkiOneTapDispatch.kt` :162,
+`TranslationResultFragment.kt` :1082). The failure string therefore has to name its own
+subject, and was reviewed on that basis in every locale. The EN comment now says so.
+
+### Findings (delta)
+
+None. No 🛑/❌/⚠️/💬.
+
+### Clean areas (delta) — checked, no findings
+
+**du throughout, never Sie.** The failure body's imperatives are „Entferne ein paar Wörter
+oder kürze den Satz" — the same person and tone as the committed
+`anki_send_failed_message` „Stelle sicher, dass AnkiDroid läuft, und versuche es erneut".
+The prompt and the toast carry no second person at all, so there is no mixing.
+
+**Infinitive question.** „Eine vereinfachte Karte mit Definitionen als reinem Text
+speichern?" matches `llm_prompt_discard_title` „Änderungen verwerfen?" and
+`bergamot_disable_title` „Firefox Translations deaktivieren?". The dative *reinem*
+agrees with *Definitionen* through *als*, which is the prescriptive form.
+
+**Terminology.** Karte (card), Definitionen, Wörterbuch, „reiner Text" for plain text — the
+last from `yomitan_styling_subtitle`'s „immer reinen Text zu verwenden". Wörter and Satz in
+the advice match `anki_mode_word` „Wort" and `anki_mode_sentence` „Satz". „auf dem Gerät"
+for on-device comes from `llm_prompt_row_system_subtitle` „in der Cloud und auf dem Gerät",
+deliberately not a Gerätemodell compound.
+
+**Compounds stay readable.** „Wörterbuchdefinitionen" is one compound and is the only long
+one; the mmap row was written „Laden der Gewichte per mmap erzwingen" rather than a
+Gewichtsladen compound, which would be opaque. „…erzwingen" matches
+`settings_debug_force_single_screen` „Einzelbildschirm erzwingen" and
+`settings_debug_force_crash_title` „Absturz erzwingen".
+
+**Length.** German runs long, and both debug rows plus the toast were measured against the
+render code before being accepted: `Text.PT.RowTitle` has no `maxLines` and the alert
+buttons are full-width and stacked, so nothing in this delta clips.
+
+### Verdict
+
+**PASS.** No fixes required. vereinfach- is one stem across all four oversize strings.

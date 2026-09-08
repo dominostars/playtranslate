@@ -1156,9 +1156,12 @@
     <!-- Body of the same dialog. -->
     <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> didn\'t accept the card. Make sure <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> is running, then try again.</string>
 
-    <!-- Title of the oversize-card prompt AND of the too-large failure
-         alert: the note's field payload would blow Android's 1MB binder
-         transaction limit on the AnkiDroid ContentProvider insert. -->
+    <!-- Title of the oversize-card prompt (the consent dialog only): the
+         note's field payload would blow Android's 1MB binder transaction
+         limit on the AnkiDroid ContentProvider insert. The too-large
+         FAILURE is reported under anki_send_failed_title, or with no title
+         at all as a long Toast, so anki_card_too_large_failed must stand on
+         its own. -->
     <string name="anki_card_too_large_title">Card too large</string>
 
     <!-- Body of the oversize-card prompt shown on the review sheets before

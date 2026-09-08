@@ -596,3 +596,68 @@ names the dictionary's declared language, not the capture language.
 
 **PASS after fix.** One ⚠️, no ❌, no 🛑. The only defect was in the debug row, where a
 term was being coined for the first time in this file and the wrong one was reached for.
+
+## Delta review 2026-09-08 (7 keys: oversize-card guard + two debug rows)
+
+Mechanical layer verified programmatically across all 12 locales: all 7 delta names
+present, no extras, no duplicate `name=`; every `<xliff:g>` span byte-identical to EN
+(`id`, `example`, inner brand text); no `%n$s` in this delta; `<b>`, `\n`, `\{ \}`,
+`&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`; no em/en dashes. Analyzer reports
+`missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. No
+`<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing** (per the 2026-07-14 lesson): the prompt is an
+`OverlayAlert` capped at 280 dp with **full-width, vertically stacked** buttons
+(`OverlayAlert.kt` :306-341) and the debug rows are `settings_row_switch.xml` →
+`Text.PT.RowTitle`, 15 sp, **no `maxLines`, no `ellipsize`**. Nothing in this delta
+clips; long labels wrap. Accuracy was preferred over brevity throughout.
+
+**Source-side finding (EN, applies to all 12 locales) — ❌ fixed in this pass.** The
+comment on `anki_card_too_large_title` claimed the title serves "the oversize-card prompt
+AND the too-large failure alert". It does not: every failure path shows
+`anki_card_too_large_failed` either under `anki_send_failed_title` (`AnkiUiHelper.kt`
+:1060, `TranslationResultFragment.kt` :967, `WordDetailBinder.kt` :691) or with **no title
+at all** as a `LENGTH_LONG` Toast (`AnkiOneTapDispatch.kt` :162,
+`TranslationResultFragment.kt` :1082). The failure string therefore has to name its own
+subject, and was reviewed on that basis in every locale. The EN comment now says so.
+
+### Findings (delta)
+
+Three applied — one ❌, one ⚠️, one 💬.
+
+| name | severity | current (was) | applied | note |
+|---|---|---|---|---|
+| anki_card_too_large_title | ❌ | «Cartão muito grande» | «Cartão grande demais» | *muito grande* is "very large"; the string means "too large", and the body of the very same dialog already said «grandes demais». The title and its own body disagreed on the claim, and the title is the half the user reads first. This is the "review a new alert family as a set" lesson from the 2026-08-19 sync producing a real catch: neither string is wrong read alone. |
+| anki_card_too_large_simplify | ⚠️ | «Salvar simplificado» | «Salvar versão simplificada» | Same elided-noun fragment as the Spanish button; naming *versão* gives the adjective something to agree with. |
+| settings_debug_short_text_routing | 💬 | «Roteamento offline de textos curtos» | «Roteamento offline para textos curtos» | Parallel to the Spanish change: the attachment was right, *para* removes the possible second reading. |
+
+### Clean areas (delta) — checked, no findings
+
+**Brazilian vocabulary only.** *Salvar* (never guardar), *cartão*, *tela* is not exercised
+here but *aplicativo*-family wording is avoided since the brand name carries it. *remover*
+and *encurtar* in the advice; no transferir / ecrã / eliminar / aplicação anywhere in the
+delta.
+
+**The definite article before the brand.** «para enviar ao AnkiDroid» and «para o AnkiDroid
+aceitar» keep the article that the committed `anki_send_failed_message` uses («O AnkiDroid
+não aceitou o cartão»), and the toast keeps «Adicionado ao Anki» byte-identical to
+`anki_added_no_audio`.
+
+**você register.** «Tente remover algumas palavras ou encurtar a frase» matches
+`anki_send_failed_message`'s «Verifique se… e tente novamente».
+
+**Terminology.** cartão (card), definições, dicionário, «texto simples» for plain text — the
+last from `yomitan_styling_subtitle`'s «desative para sempre usar texto simples». palavras
+and frase in the advice match `anki_mode_word` «Palavra» and `anki_mode_sentence` «Frase».
+«no dispositivo» for on-device comes from `llm_prompt_row_system_subtitle` «na nuvem e no
+dispositivo».
+
+**Debug rows.** «Forçar o carregamento de pesos via mmap» matches
+`settings_debug_force_single_screen` «Forçar tela única» and
+`settings_debug_force_crash_title` «Forçar travamento».
+
+### Verdict
+
+**PASS after fixes.** The delta's only ❌ across all twelve locales was here, and it was
+invisible string-by-string — it surfaced only when the title and its own body were read as
+one screen.
