@@ -2350,7 +2350,13 @@ class CaptureResultOverlay(
     }
 
     // Long-press = headless one-tap send of the captured sentence. Runs on a
-    // process-lived scope so dismissing the sheet can't cancel the card.
+    // process-lived scope so dismissing the sheet can't cancel the card —
+    // which is what lets the gesture ALSO close the sheet (see the exit at
+    // the end): the point of a one-tap is not having to look at the sheet
+    // again, and over the game it is a guest window sitting on the user's
+    // screen while a send they can't influence runs headless. Every outcome
+    // is already reported by Toast on the app context, so nothing is lost by
+    // being gone when the send lands.
     private fun oneTapSentenceFromOverlay() {
         val result = lastResult ?: return
         val sentence = result.originalText
@@ -2384,16 +2390,31 @@ class CaptureResultOverlay(
             )
             when (sendResult) {
                 // Reopening the review is the mapping recovery — but only
-                // while the panel is still up. Once the user has dismissed
-                // it, stealing the game's screen with an activity they
+                // while the panel is still up. Once it is going away,
+                // stealing the game's screen with an activity the user
                 // didn't ask for is worse than the dispatcher's explanatory
                 // NeedsMapping toast (already shown); match the fragment
                 // paths' degraded contract instead. Both this coroutine and
                 // dismiss() run on Main, so the read doesn't race.
-                is AnkiSendResult.NeedsMapping -> if (!dismissed) openSentenceAnkiReview()
+                // [animatingOut] counts as gone: the exit slide runs for
+                // EXIT_DURATION_MS before [dismissed] flips, and a send that
+                // resolves inside that window is the SAME situation — for
+                // the gesture below (which always starts the exit before the
+                // send can finish) it is the only reading that makes the
+                // outcome deterministic rather than a race with the slide.
+                is AnkiSendResult.NeedsMapping ->
+                    if (!dismissed && !animatingOut) openSentenceAnkiReview()
                 else -> oneTapResultToast(app, sendResult, CardMode.SENTENCE)
             }
         }
+        // The gesture's own exit: the card is on its way, so get off the
+        // user's screen. Gated on [dismissOnGesture] rather than run
+        // unconditionally — a host that refuses gesture dismissal refuses it
+        // because dismissing costs something it can't rebuild (the camera /
+        // import review would discard its frozen snapshot), and a headless
+        // send is no reason to spend that. Animated, like every other
+        // gesture dismissal of this sheet.
+        if (dismissOnGesture) animateOutAndDismiss()
     }
 
     /** Edit the source in place: flip the panel window focusable, show an inline
