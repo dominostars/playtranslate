@@ -6,6 +6,7 @@ import com.playtranslate.model.Headword
 import com.playtranslate.model.ImportedSense
 import com.playtranslate.model.ImportedSenseGroup
 import com.playtranslate.model.Sense
+import com.playtranslate.model.expressionFrom
 import com.playtranslate.model.kanaOnlyFrom
 import com.playtranslate.yomitan.YomitanDataStore
 import org.junit.Assert.assertEquals
@@ -219,6 +220,32 @@ class YomitanEnrichmentMergeTest {
         )!!
         assertTrue(merged.entries.first().senses.isEmpty())
         assertTrue(merged.entries.first().isKanaOnly)
+    }
+
+    @Test
+    fun `single-dictionary suppression keeps the pack entry's expression verdict`() {
+        // 秘密を漏らす on the Thor: the popup showed one body because the
+        // expression check was derived from the senses this strip empties,
+        // so the member split judged the entry a transparent compound and
+        // its を turned the whole offer off. Same carried-verdict contract
+        // as the kana-only pin above.
+        val expSense = Sense(
+            targetDefinitions = listOf("to betray a secret"),
+            partsOfSpeech = listOf("expressions (phrases, clauses, etc.)", "Godan verb with 'su' ending"),
+            tags = emptyList(), restrictions = emptyList(), info = emptyList(),
+        )
+        val leakASecret = DictionaryEntry(
+            slug = "秘密を漏らす", isCommon = null, tags = emptyList(), jlpt = emptyList(),
+            headwords = listOf(hw("秘密を漏らす", "ひみつをもらす")),
+            senses = listOf(expSense),
+            isExpression = expressionFrom(listOf(expSense)),
+        )
+        val merged = YomitanEnrichment.mergeImportedTerms(
+            DictionaryResponse(listOf(leakASecret)), "秘密を漏らす",
+            lookup(groups = listOf(group("Jitendex")), suppressesPackSenses = true), null,
+        )!!
+        assertTrue(merged.entries.first().senses.isEmpty())
+        assertTrue(merged.entries.first().isExpression)
     }
 
     // ── packWrittenForms: the kana-keyed retry's candidates ─────────────

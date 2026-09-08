@@ -12,6 +12,7 @@ import com.playtranslate.model.Example
 import com.playtranslate.model.Headword
 import com.playtranslate.model.PosVocabulary
 import com.playtranslate.model.Sense
+import com.playtranslate.model.expressionFrom
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -417,6 +418,7 @@ class WiktionaryDictionaryManager private constructor(
             jlpt = emptyList(),
             headwords = headwords,
             senses = senses,
+            isExpression = expressionFrom(senses),
             // DB stores 0-100 (fine-grained, used for ORDER BY). Normalize to
             // 0-5 for display consistency with JMdict's 0-5 star scale.
             freqScore = (freqScore * 5 / 100).coerceIn(0, 5),

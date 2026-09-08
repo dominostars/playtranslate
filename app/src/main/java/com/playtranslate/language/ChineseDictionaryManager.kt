@@ -12,6 +12,7 @@ import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.Headword
 import com.playtranslate.model.PosVocabulary
 import com.playtranslate.model.Sense
+import com.playtranslate.model.expressionFrom
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -299,6 +300,7 @@ class ChineseDictionaryManager private constructor(private val context: Context)
             jlpt = emptyList(),
             headwords = headwords,
             senses = senses,
+            isExpression = expressionFrom(senses),
             freqScore = (freqScore * 5 / 100).coerceIn(0, 5),
         )
     }

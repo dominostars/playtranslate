@@ -2,7 +2,9 @@ package com.playtranslate.model
 
 import com.playtranslate.model.PosVocabulary.PosCode
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -86,6 +88,47 @@ class PosVocabularyTest {
         )
         val unmapped = universal.filter { PosVocabulary.canonical(it) == null }
         assertEquals("These universal forms no longer map: $unmapped", emptyList<String>(), unmapped)
+    }
+
+    // ── expressionFrom: the carried expression-class verdict ────────────────
+
+    private fun sense(vararg pos: String) = Sense(
+        targetDefinitions = listOf("def"), partsOfSpeech = pos.toList(),
+        tags = emptyList(), restrictions = emptyList(), info = emptyList(),
+    )
+
+    @Test fun expressionFrom_jmdictExpressionTokenSurvivesItsCommas() {
+        // The stored pos field's comma-bearing token is what buildEntry parses
+        // out; 秘密を漏らす's whole sense list is this plus a verb class.
+        assertTrue(
+            expressionFrom(
+                listOf(sense("expressions (phrases, clauses, etc.)", "Godan verb with 'su' ending")),
+            ),
+        )
+    }
+
+    @Test fun expressionFrom_phraseAndProverbCount() {
+        assertTrue(expressionFrom(listOf(sense("phrase"))))
+        assertTrue(expressionFrom(listOf(sense("prep_phrase"))))
+        assertTrue(expressionFrom(listOf(sense("proverb"))))
+    }
+
+    @Test fun expressionFrom_ordinaryWordsAreNotExpressions() {
+        // 図書館's class: a transparent compound the member split must leave
+        // whole unless every unit is accounted for.
+        assertFalse(expressionFrom(listOf(sense("Noun"))))
+        assertFalse(expressionFrom(listOf(sense("Godan verb with 'su' ending", "transitive verb"))))
+    }
+
+    @Test fun expressionFrom_anySenseCarriesIt() {
+        assertTrue(expressionFrom(listOf(sense("Noun"), sense("expression"))))
+    }
+
+    @Test fun expressionFrom_noSensesIsFalse() {
+        // The single-dictionary strip and the synthesized imported-only entry
+        // both land here; the verdict must be carried, never re-derived from
+        // an emptied list (see YomitanEnrichmentMergeTest).
+        assertFalse(expressionFrom(emptyList()))
     }
 
     @Test fun canonical_japaneseClassesAndArchaicFallBackToEnglish() {

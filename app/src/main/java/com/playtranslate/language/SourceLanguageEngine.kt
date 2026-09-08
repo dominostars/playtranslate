@@ -158,7 +158,7 @@ interface SourceLanguageEngine {
      * [headword] isn't a multi-member unit or no member qualifies.
      *
      * [expressionClass] is the caller's POS verdict on the entry
-     * ([com.playtranslate.model.isExpressionEntry]; spaced headwords count
+     * ([com.playtranslate.model.DictionaryEntry.isExpression]; spaced headwords count
      * as expressions by form). Expressions get the loose per-member gate
      * (気になる → 気 — one char, load-bearing). Non-expression fused
      * entries — transparent compounds like 放送番組 and 国内向け — get

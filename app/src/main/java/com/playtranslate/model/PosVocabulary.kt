@@ -145,12 +145,22 @@ object PosVocabulary {
             .replace('’', '\'')   // right single quote
 }
 
-/** True when any sense marks this entry EXPRESSION-class (JMdict exp /
- *  phrase / proverb) rather than an ordinary word or compound. The gate
- *  deciding whether a no-whitespace fused span's member words are offered:
- *  気になる [exp,v5r] yes, 図書館 [n] no — Sudachi's short units plus the
- *  re-glob fuse BOTH, and only the entry's own POS separates them. */
-fun DictionaryEntry.isExpressionEntry(): Boolean = senses.any { sense ->
+/**
+ * The expression-class verdict carried as [DictionaryEntry.isExpression]:
+ * true when any sense's POS marks the entry EXPRESSION-class (JMdict exp /
+ * phrase / proverb) rather than an ordinary word or compound. Evaluated
+ * once, where the entry is built (DictionaryManager.buildEntry and the
+ * Wiktionary / Chinese builders); the property's doc says why it is carried
+ * instead of re-derived where it is read.
+ *
+ * The gate deciding whether a no-whitespace fused span's member words are
+ * offered: 気になる [exp,v5r] yes, 図書館 [n] no — Sudachi's short units
+ * plus the re-glob fuse BOTH, and only the entry's own POS separates them.
+ * ANY sense, not the first one alone (where [kanaOnlyFrom] takes the first):
+ * the class describes the join itself, so a headword listed as an expression
+ * in any of its senses still owes the reader its member words.
+ */
+fun expressionFrom(senses: List<Sense>): Boolean = senses.any { sense ->
     sense.partsOfSpeech.any {
         when (PosVocabulary.canonical(it)) {
             PosVocabulary.PosCode.EXPRESSION,

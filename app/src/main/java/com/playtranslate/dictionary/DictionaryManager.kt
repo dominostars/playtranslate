@@ -15,6 +15,7 @@ import com.playtranslate.model.Headword
 import com.playtranslate.model.PosVocabulary
 import com.playtranslate.model.KanjiDetail
 import com.playtranslate.model.Sense
+import com.playtranslate.model.expressionFrom
 import com.playtranslate.model.kanaOnlyFrom
 import com.playtranslate.model.preferDisplayable
 import kotlinx.coroutines.Dispatchers
@@ -892,6 +893,7 @@ class DictionaryManager private constructor(private val context: Context) {
             senses = senses,
             freqScore = freqScore,
             isKanaOnly = kanaOnlyFrom(senses),
+            isExpression = expressionFrom(senses),
         )
     }
 

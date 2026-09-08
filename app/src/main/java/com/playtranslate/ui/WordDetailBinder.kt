@@ -44,7 +44,6 @@ import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.HanziDetail
 import com.playtranslate.model.KanjiDetail
 import com.playtranslate.model.headwordDisplay
-import com.playtranslate.model.isExpressionEntry
 import com.playtranslate.model.orderedReadingRows
 import com.playtranslate.model.selectHeadword
 import com.playtranslate.model.unambiguousFallbackPos
@@ -1015,7 +1014,7 @@ class WordDetailBinder(
         // stay whole.
         val members = engine.memberWordsOf(
             displayed,
-            expressionClass = displayed.any(Char::isWhitespace) || primary.isExpressionEntry(),
+            expressionClass = displayed.any(Char::isWhitespace) || primary.isExpression,
         )
         if (members.isEmpty()) return
         val appCtx = ctx.applicationContext

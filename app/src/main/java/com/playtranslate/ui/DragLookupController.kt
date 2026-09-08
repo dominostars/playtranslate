@@ -29,7 +29,6 @@ import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.yomitan.YomitanDataStore
 import com.playtranslate.model.headwordDisplay
-import com.playtranslate.model.isExpressionEntry
 import com.playtranslate.model.selectHeadword
 import kotlinx.coroutines.*
 import java.io.File
@@ -1341,7 +1340,7 @@ class DragLookupController(
         // stays whole.
         val memberPopups: List<PopupData> = if (phraseKey == null && entry != null) {
             withContext(Dispatchers.IO) {
-                engine.memberWordsOf(popupData.word, expressionClass = entry.isExpressionEntry())
+                engine.memberWordsOf(popupData.word, expressionClass = entry.isExpression)
             }
                 .mapNotNull { m ->
                     relatedPopupData(

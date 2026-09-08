@@ -46,6 +46,18 @@ data class DictionaryEntry(
      *  uk (Thor, 2026-09-02). `copy` keeps it. Engines without the uk
      *  concept, and sense-less synthesized entries, leave the default. */
     val isKanaOnly: Boolean = false,
+    /** Whether the entry is EXPRESSION-class (JMdict exp / phrase / proverb)
+     *  rather than an ordinary word or compound — [expressionFrom] over the
+     *  source dictionary's POS, decided when the entry is BUILT and carried
+     *  from then on, for the same reason as [isKanaOnly]: Yomitan
+     *  single-dictionary mode strips the senses off the pack entry when an
+     *  imported group wins (YomitanEnrichment.mergeImportedTerms), and a
+     *  derived check saw the empty list, answered false, and withheld the
+     *  member-word split from every fused expression carrying a particle or
+     *  a one-character member — 秘密を漏らす showed one body instead of
+     *  秘密 and 漏らす (Thor, 2026-09-07). `copy` keeps it. Sense-less
+     *  synthesized entries leave the default, having no POS to judge. */
+    val isExpression: Boolean = false,
 )
 
 /** One imported term dictionary's definitions for a looked-up word.

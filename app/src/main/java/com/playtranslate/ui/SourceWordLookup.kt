@@ -12,7 +12,6 @@ import com.playtranslate.language.TokenSpan
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.headwordDisplay
-import com.playtranslate.model.isExpressionEntry
 import com.playtranslate.model.selectHeadword
 import com.playtranslate.translation.ChineseScriptConverter
 import kotlinx.coroutines.Dispatchers
@@ -185,7 +184,7 @@ object SourceWordLookup {
         val wordEntry = word.entry
         val memberSpans = if (phraseKey == null && wordEntry != null) {
             withContext(Dispatchers.IO) {
-                engine.memberWordsOf(word.word, expressionClass = wordEntry.isExpressionEntry())
+                engine.memberWordsOf(word.word, expressionClass = wordEntry.isExpression)
             }
         } else {
             emptyList()
