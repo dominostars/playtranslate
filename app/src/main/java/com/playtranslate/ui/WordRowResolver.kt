@@ -250,6 +250,7 @@ suspend fun resolveWordRows(
                                 reading = reading,
                                 meaning = meaning,
                                 senses = senses,
+                                importedGroups = entry.importedSenses,
                                 freqScore = freqScore,
                                 isCommon = entry.isCommon == true,
                                 surface = surface,

@@ -9,6 +9,7 @@ import com.playtranslate.language.InflectedForm
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TokenSpan
 import com.playtranslate.model.FrequencyTag
+import com.playtranslate.model.ImportedSenseGroup
 import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.PendingTranslation
 import com.playtranslate.model.ReadingRow
@@ -525,6 +526,12 @@ data class RowState(
     /** Structured senses (pos + gloss) driving the word cell's numbered,
      *  POS-grouped definitions. */
     val senses: List<SenseDisplay>,
+    /** The imported Yomitan groups BEHIND this row's flattened imported
+     *  senses — the structured form the styled (WebView) renderer needs.
+     *  Carried so a host that renders styled cells doesn't have to re-look-up
+     *  the entry; the flat hosts ignore it. In-process only, like
+     *  [WordDefinitionData.importedGroups]. */
+    val importedGroups: List<ImportedSenseGroup> = emptyList(),
     val freqScore: Int,
     val isCommon: Boolean,
     val surface: String,

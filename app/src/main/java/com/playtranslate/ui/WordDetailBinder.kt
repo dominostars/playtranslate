@@ -204,6 +204,11 @@ class WordDetailBinder(
      *  predecessor the same way). */
     private var styledImportedView: YomitanDefinitionsView? = null
 
+    /** Member cells of the Words section that own a styled renderer of their
+     *  own ([WordResultCell.releaseStyled]) — released with the page, and at
+     *  the start of every rebuild of that section. */
+    private val memberStyledCells = mutableListOf<WordResultCell>()
+
     /** Host teardown: cancel audio, destroy the WebView. Idempotent; the
      *  host must also cancel [scope]. */
     fun release() {
@@ -217,6 +222,13 @@ class WordDetailBinder(
         // renderer resources and the context graph alive until GC.
         styledImportedView?.destroy()
         styledImportedView = null
+        releaseMemberStyledCells()
+    }
+
+    /** Drop the Words section's per-cell styled renderers. */
+    private fun releaseMemberStyledCells() {
+        memberStyledCells.forEach { it.releaseStyled() }
+        memberStyledCells.clear()
     }
 
     /** Build the page into [root] (the inflated
@@ -1005,6 +1017,7 @@ class WordDetailBinder(
         targetLangCode: String,
         queriedWord: String,
     ) {
+        releaseMemberStyledCells()
         val displayed = primary.headwordDisplay(queriedWord).written
         // Spaced headwords are expressions by form; no-whitespace ones
         // carry their POS class into the engine's member policy —
@@ -1024,6 +1037,13 @@ class WordDetailBinder(
             members,
         ).rows
         if (!ui.isAlive || rows.isEmpty()) return
+        // Styled payloads for the members' imported groups, prefetched here
+        // like the page's own imported block — the cells own no coroutines.
+        // Null per row degrades that row to the flat tier, nothing else.
+        val styledByRow = rows.map {
+            fetchYomitanStyledData(appCtx, sourceLangId.yomitanConsumingLang(), it.importedGroups)
+        }
+        if (!ui.isAlive) return
 
         addGroupHeader(content, ctx.getString(R.string.section_words))
         val card = addGroupCard(content)
@@ -1040,6 +1060,8 @@ class WordDetailBinder(
                     pitch = row.pitch,
                     frequencies = row.frequencies,
                     readingRows = row.readingRows,
+                    importedGroups = row.importedGroups,
+                    styled = styledByRow[index],
                 ),
                 scale = WordResultCell.DEFAULT_SCALE,
                 inflectedForms = row.inflectedForms,
@@ -1069,7 +1091,12 @@ class WordDetailBinder(
                         )
                     }
                 },
+                // This section is a static handful of cells under a block
+                // that renders styled; the flat tier's unspaced tag runs read
+                // as a bug next to it. The recycling hosts stay flat.
+                styledImported = true,
             )
+            memberStyledCells += cell
             card.addView(cell)
         }
     }

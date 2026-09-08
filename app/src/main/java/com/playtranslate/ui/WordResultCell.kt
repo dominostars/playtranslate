@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -57,6 +59,19 @@ class WordResultCell @JvmOverloads constructor(
     private val speakButton: FrameLayout
     private val ankiButton: FrameLayout
     private val definitionsView = WordDefinitionsView(context)
+
+    /** Styled (WebView) renderer for the imported Yomitan groups, built only
+     *  for hosts that opt in through [bind]'s `styledImported` — today the
+     *  word detail page's Words section, a static handful of cells under a
+     *  block that renders styled, where the flat tier's tag runs read as a
+     *  bug. The LIST surfaces (search results, the words panel) stay flat on
+     *  purpose: they recycle, and a WebView per recycled row is not
+     *  affordable. Null whenever the styled path can't run. */
+    private var styledView: YomitanDefinitionsView? = null
+    private val styledContainer = FrameLayout(context).apply { isGone = true }
+    /** True while [styledView] holds the imported groups, so the flat body
+     *  must not render them a second time. */
+    private var styledActive = false
 
     /** Re-entrancy guard / spinner driver for this cell's speak action,
      *  owned by whoever launches the speak coroutine (the fragment). */
@@ -168,6 +183,10 @@ class WordResultCell @JvmOverloads constructor(
         // wraps in line with the Translation / Source cards, while the action
         // row above reaches the 4dp button column.
         addView(
+            styledContainer,
+            LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { marginEnd = dp(12f) },
+        )
+        addView(
             definitionsView,
             LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { marginEnd = dp(12f) },
         )
@@ -176,6 +195,12 @@ class WordResultCell @JvmOverloads constructor(
     /**
      * Bind [data] at [scale]. [onCellTap] opens Word Detail; [onSpeak] /
      * [onAnki] are the (propagation-stopping) action handlers.
+     *
+     * [styledImported] opts this cell into the styled renderer for
+     * [WordDefinitionData.importedGroups] (see [styledView]); it needs
+     * [WordDefinitionData.styled] prefetched by the host. Default off — a
+     * recycling list must not mint WebViews. Hosts that pass true MUST call
+     * [releaseStyled] when the page goes away.
      */
     fun bind(
         data: WordDefinitionData,
@@ -184,6 +209,7 @@ class WordResultCell @JvmOverloads constructor(
         onCellTap: () -> Unit,
         onSpeak: () -> Unit,
         onAnki: () -> Unit,
+        styledImported: Boolean = false,
     ) {
         boundData = data
         boundScale = scale
@@ -262,13 +288,178 @@ class WordResultCell @JvmOverloads constructor(
                 else lines
             ).joinToString("\n")
         }
-        definitionsView.bind(data, label = null, scale = scale)
-        (definitionsView.layoutParams as LayoutParams).topMargin = dp(10f * scale)
-        definitionsView.requestLayout()
+        // Styled body first: when it takes the imported groups, the flat body
+        // renders only what's left (the pack senses), exactly as the word
+        // detail page splits its imported block from its native rows.
+        styledActive = styledImported && bindStyledImported(data, scale)
+        bindFlatBody(if (styledActive) data.flatRemainder() else data, scale)
 
         setOnClickListener { onCellTap() }
         speakButton.setOnClickListener { onSpeak() }
         ankiButton.setOnClickListener { onAnki() }
+    }
+
+    /**
+     * Bind the native body and recompute whether it has anything to show. The
+     * styled path can legitimately leave it empty — an imported-only entry
+     * has no pack senses once the groups move into the WebView — and an empty
+     * view would contribute nothing but its top margin.
+     *
+     * EVERY flat bind goes through here. A raw `definitionsView.bind` call
+     * repopulates the view without touching visibility, so a later bind could
+     * fill a body an earlier one had hidden and show nothing: that is exactly
+     * how the renderer-death fallback silently rendered a blank cell for
+     * imported-only entries (both Codex passes, 2026-09-08).
+     */
+    private fun bindFlatBody(data: WordDefinitionData, scale: Float) {
+        definitionsView.bind(data, label = null, scale = scale)
+        definitionsView.isGone = definitionsView.childCount == 0
+        (definitionsView.layoutParams as LayoutParams).topMargin = dp(10f * scale)
+        definitionsView.requestLayout()
+    }
+
+    /** What the flat body renders while [styledView] is up: the pack's senses
+     *  alone. The imported rows move into the styled document, and so does the
+     *  meta row — the chips belong ABOVE the definitions, as they are on every
+     *  other surface, and the styled document draws them at its top
+     *  ([styledMetaChips]). Leaving them on the flat body would strand the
+     *  Common pill underneath the styled block. */
+    private fun WordDefinitionData.flatRemainder(): WordDefinitionData =
+        copy(
+            senses = senses.filterNot { it.imported },
+            isCommon = false,
+            freqScore = 0,
+            frequencies = emptyList(),
+            ankiDecks = emptyList(),
+        )
+
+    /**
+     * Hand the imported groups to a fresh styled renderer. False — and the
+     * flat body keeps them, unchanged — when there is no structured payload
+     * (styling toggle off, nothing retained at import) or no WebView provider
+     * on the device. The document carries the GROUPS only: senses stay empty
+     * so the pack's rows keep rendering natively below, the same split the
+     * word detail page makes for its own imported block.
+     */
+    private fun bindStyledImported(data: WordDefinitionData, scale: Float): Boolean {
+        releaseStyled()
+        val styled = data.styled
+        if (styled == null || styled.structured.isEmpty() || data.importedGroups.isEmpty()) return false
+        val v = YomitanDefinitionsView(context, styledTokens(scale))
+        if (!v.isUsable()) return false
+        v.setPadding(0, dp(4f * scale), 0, dp(2f * scale))
+        // The whole cell is one tap target (it opens the word's detail page),
+        // so the page must refuse the touch stream instead of swallowing taps
+        // that land on the definition text. Links inside are deliberately
+        // sacrificed to the row's click, the same trade the sentence sheet's
+        // word rows make.
+        v.passThroughTouches = true
+        v.onContentHeight = { h -> applyStyledHeight(h, scale) }
+        v.onRendererGone = {
+            // destroy() already ran inside the view; rebuild the flat body
+            // WITH its imported rows so the cell degrades to what every other
+            // host shows rather than to nothing.
+            styledView = null
+            styledActive = false
+            styledContainer.removeAllViews()
+            styledContainer.foreground = null
+            styledContainer.isGone = true
+            boundData?.let { bindFlatBody(it, boundScale) }
+        }
+        styledView = v
+        styledContainer.isGone = false
+        // Same gap under the title block the flat body takes.
+        (styledContainer.layoutParams as LayoutParams).topMargin = dp(10f * scale)
+        // 1px until the page reports its painted height — never GONE, which
+        // would leave the view unlaid-out and the page measuring against a
+        // zero-width viewport (the height-ratchet bug the lens documents).
+        styledContainer.addView(v, FrameLayout.LayoutParams(MATCH_PARENT, 1))
+        renderStyledContent(v, data)
+        return true
+    }
+
+    /**
+     * Draw [data]'s meta chips and imported groups into [v]. Chips first —
+     * the styled document owns the meta row on this cell (see
+     * [flatRemainder]) — then the groups; the pack's senses stay with the
+     * native renderer below, unclamped, exactly as they are on a flat cell.
+     */
+    private fun renderStyledContent(v: YomitanDefinitionsView, data: WordDefinitionData) {
+        val styled = data.styled ?: return
+        v.setContent(
+            DefinitionsDocument.contentHtml(
+                WordDefinitionData(
+                    word = "",
+                    reading = null,
+                    senses = emptyList(),
+                    freqScore = 0,
+                    isCommon = false,
+                    importedGroups = data.importedGroups,
+                ),
+                styled.structured,
+                localizePos = { context.localizePos(it) },
+                metaChips = styledMetaChips(context, data),
+            ),
+            styled.dictStyles,
+            styled.sourceLanguage,
+        )
+    }
+
+    /** Panel token is [R.attr.ptCard]: this cell's opt-in host lays it on a
+     *  card, and the page's own styled block uses the same ground. */
+    private fun styledTokens(scale: Float) = DefinitionsDocument.Tokens(
+        text = textColor,
+        textMuted = mutedColor,
+        textHint = hintColor,
+        accent = accentColor,
+        panel = context.themeColor(R.attr.ptCard),
+        // The flat gloss size, so a styled cell and a flat one read alike.
+        baseFontSizePx = 16.5f * scale,
+    )
+
+    /**
+     * Size the styled body to its painted height, capped at the compact
+     * surface's preview budget: this is a PREVIEW that taps through to the
+     * word's own detail page, and the flat tier clamps imported rows to four
+     * lines for exactly that reason. An uncapped WebView would let one
+     * member's monolingual entry out-size the word the section belongs to.
+     * Over-budget content keeps a bottom fade, so the cut reads as "more
+     * below" rather than as a broken render.
+     */
+    private fun applyStyledHeight(contentPx: Int, scale: Float) {
+        val v = styledView ?: return
+        val wanted = contentPx + v.paddingTop + v.paddingBottom
+        val max = dp(STYLED_PREVIEW_MAX_DP * scale)
+        val lp = v.layoutParams ?: FrameLayout.LayoutParams(MATCH_PARENT, 1)
+        lp.height = minOf(wanted, max)
+        v.layoutParams = lp
+        styledContainer.foreground = if (wanted > max) bottomFade(minOf(wanted, max)) else null
+    }
+
+    /** Transparent-to-card gradient over the last [FADE_DP] of a clipped
+     *  styled body. */
+    private fun bottomFade(heightPx: Int): Drawable {
+        val card = context.themeColor(R.attr.ptCard)
+        val gradient = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(card and 0x00FFFFFF, card),
+        )
+        return LayerDrawable(arrayOf(gradient)).apply {
+            setLayerInset(0, 0, (heightPx - dp(FADE_DP)).coerceAtLeast(0), 0, 0)
+        }
+    }
+
+    /** Destroy the styled renderer this cell owns, if any. Hosts that pass
+     *  `styledImported = true` MUST call this on teardown: a dropped but
+     *  undestroyed WebView keeps renderer resources and the context graph
+     *  alive until GC. Idempotent. */
+    fun releaseStyled() {
+        styledView?.destroy()
+        styledView = null
+        styledActive = false
+        styledContainer.removeAllViews()
+        styledContainer.foreground = null
+        styledContainer.isGone = true
     }
 
     /** Style a reading view: pitch contour + overline headroom when present;
@@ -314,7 +505,12 @@ class WordResultCell @JvmOverloads constructor(
         val data = boundData ?: return
         val next = data.copy(ankiDecks = decks)
         boundData = next
-        definitionsView.bind(next, label = null, scale = boundScale)
+        val v = styledView
+        if (styledActive && v != null) {
+            renderStyledContent(v, next)
+            return
+        }
+        bindFlatBody(next, boundScale)
     }
 
     /** Swap the speak icon for a spinner while a TTS request is in flight. */
@@ -352,5 +548,14 @@ class WordResultCell @JvmOverloads constructor(
         /** The dictionary handoff's "large" text-size factor — the default
          *  for the full-width result cell. */
         const val DEFAULT_SCALE = 1.12f
+
+        /** Preview budget for a styled imported body, in dp before [bind]'s
+         *  scale — roughly the flat tier's four clamped lines plus its group
+         *  header. Past it the body clips under a fade and the reader taps
+         *  through for the whole entry. */
+        private const val STYLED_PREVIEW_MAX_DP = 132f
+
+        /** Height of the fade over a clipped styled body. */
+        private const val FADE_DP = 28f
     }
 }
