@@ -46,7 +46,9 @@ internal class ShortTextOfflineRoute private constructor(
         private const val TAG = "ShortTextRoute"
 
         // GATED OFF BY DEFAULT — Prefs.debugShortTextRouting (debug-build
-        // Settings row) since the 2026-09-02 device-pass verdict: Bergamot's
+        // Settings row; the pref itself reads as OFF in release builds, so a
+        // value left on by a debug install cannot carry over) since the
+        // 2026-09-02 device-pass verdict: Bergamot's
         // output on real game shorts was bad a lot of the time, even for
         // ordinary short phrases (the 2★ tier's quality floor, not a routing
         // bug — the name veto had already pulled names out). The row exists

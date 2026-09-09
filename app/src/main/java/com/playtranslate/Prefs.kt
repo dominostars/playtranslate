@@ -94,7 +94,8 @@ class Prefs internal constructor(
      *  share an applicationId (and, here, a signing key), so a release install
      *  over a debug one inherits every pref the debug build wrote. An override
      *  that changes production behaviour must therefore read as OFF outside
-     *  debug builds regardless of what is stored; see [debugForceMmapWeights].
+     *  debug builds regardless of what is stored; see [debugForceMmapWeights],
+     *  [debugShortTextRouting] and [debugLogTrace].
      *  Seam for JVM tests; production always passes [BuildConfig.DEBUG]. */
     private val debugBuild: Boolean = BuildConfig.DEBUG,
 ) {
@@ -1359,9 +1360,14 @@ class Prefs internal constructor(
      *  see [com.playtranslate.translation.ShortTextOfflineRoute]). Default
      *  OFF per the 2026-09-02 device verdict: the 2★ tier's output on real
      *  game shorts was bad even for ordinary phrases. The row exists so the
-     *  routing can be A/B'd on device without a rebuild. */
+     *  routing can be A/B'd on device without a rebuild.
+     *
+     *  Reads as false outside debug builds even when the stored value is true
+     *  (see [debugBuild]): a stale `true` carried into a release install would
+     *  otherwise send every short text to the rejected 2★ tier, with no
+     *  Settings row to turn it off. */
     var debugShortTextRouting: Boolean
-        get() = sp.getBoolean(KEY_DEBUG_SHORT_TEXT_ROUTING, false)
+        get() = debugBuild && sp.getBoolean(KEY_DEBUG_SHORT_TEXT_ROUTING, false)
         set(v) = sp.edit { putBoolean(KEY_DEBUG_SHORT_TEXT_ROUTING, v) }
 
     /** Debug-only: forces the on-device LLM tier to load weights through the
@@ -1409,9 +1415,14 @@ class Prefs internal constructor(
      *  (post-TypewriterGate `toTranslate`) to a JSONL trace under
      *  external-files/log-traces/ — the offline feed for validating the
      *  translation-log write gate on real sessions. See
-     *  [com.playtranslate.translationlog.LogTraceRecorder]. */
+     *  [com.playtranslate.translationlog.LogTraceRecorder].
+     *
+     *  Reads as false outside debug builds even when the stored value is true
+     *  (see [debugBuild]): the trace carries OCR text, and a stale `true`
+     *  would keep writing one file per live session on a release install
+     *  with no Settings row to stop it. */
     var debugLogTrace: Boolean
-        get() = sp.getBoolean(KEY_DEBUG_LOG_TRACE, false)
+        get() = debugBuild && sp.getBoolean(KEY_DEBUG_LOG_TRACE, false)
         set(v) = sp.edit { putBoolean(KEY_DEBUG_LOG_TRACE, v) }
 
     /** Set to true after the user dismisses the target-pack migration dialog. */
