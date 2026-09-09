@@ -54,34 +54,66 @@ data class FarGroup(
 )
 
 /**
- * Vacancy memory for a content-match relocation: [bounds] (OCR-crop space,
- * same space as [TextBox.bounds] and OCR group bounds) held [text] until a
- * content match moved its box away, within the last
- * [PinholeCalibration.TOMBSTONE_LIFESPAN_LOOKS] full looks.
+ * Memory of a one-look inference that removed a box, so the same inference is
+ * not made twice on the same evidence. Two kinds, one per inference site,
+ * both aged by the caller over [PinholeCalibration.TOMBSTONE_LIFESPAN_LOOKS]
+ * full looks, and each barring ONLY the inference that wrote it.
  *
- * Content match's "same text elsewhere = the text moved" inference silently
- * assumes text is unique on screen, and the OCR blackout makes the box's own
- * region unreadable, so the inference can never be checked pixel-side (the
- * pinholes false-KEEP on exactly the low-contrast background movers content
- * match was built for). The two worlds — one moving text vs two static
- * duplicates — are observationally identical within a single cycle; the
+ * [Kind.RELOCATION] — content match's "same text elsewhere = the text moved"
+ * silently assumes text is unique on screen, and the OCR blackout makes the
+ * box's own region unreadable, so the inference can never be checked
+ * pixel-side (the pinholes false-KEEP on exactly the low-contrast background
+ * movers content match was built for). One moving text and two static
+ * duplicates are observationally identical within a single cycle; the
  * distinguishing evidence only exists ACROSS cycles: after relocating A→B,
- * the same text read AT A again is proof it never left. Without this memory
- * the relocation is symmetric and memoryless, so two duplicates ping-pong
- * one box between them forever (duplicate-text oscillation, 2026-07-30).
+ * the same text read AT A again is proof it never left. So every distant
+ * relocation leaves a stone at the vacated box rect ([bounds]), and a fresh
+ * group matching a live stone (fuzzy-same text, tight-same rect — see
+ * [PinholeCalibration.TOMBSTONE_MATCH_SLOP_PX] for why tight) is barred from
+ * content-matching: it falls through to proximity/far and spawns its own box.
+ * A true mover reads at some NEW position that matches no stone, so the
+ * single-box-follows behavior is untouched (duplicate-text oscillation,
+ * 2026-07-30).
  *
- * So every distant relocation leaves a tombstone at the vacated rect, and a
- * fresh group matching a live tombstone (fuzzy-same text, tight-same rect —
- * see [PinholeCalibration.TOMBSTONE_MATCH_SLOP_PX] for why tight) is barred
- * from content-matching: it falls through to the far path and spawns its own
- * box. A true mover reads at some NEW position that matches no tombstone, so
- * the single-box-follows behavior is untouched. Aging/expiry lives with the
- * caller ([PinholeOverlayMode]); classification stays pure.
+ * [Kind.STALE] — the proximity check's "fresh text adjacent to a box = the
+ * paragraph grew" removes the box and places nothing, betting that the next
+ * look reads the whole paragraph and merges it (step 3). Under the blackout a
+ * paragraph's next line and an independent row of a list are identical within
+ * one frame, the bet is never checked, and on a menu the same row re-reads on
+ * its own next look, beside a DIFFERENT box, and stales that one — the row
+ * placed this look is next look's blackout — period 2, forever (2026-09-01
+ * choice stack, 2026-09-08 location menu). So every adjacency stale leaves a
+ * note keyed on the group's RAW read rect ([bounds] = the union of its line
+ * rects, not its pinned group bounds — see [rawReadBounds]), and a fresh group
+ * matching a live note is barred from the continuation inference: it places
+ * itself. When the bet was right, the next read is a merged, different group,
+ * nothing matches, and behavior is identical to before. Costs one bounce, the
+ * removal the note records; the re-read that lands on the note ends the loop.
+ *
+ * Aging/expiry lives with the caller ([PinholeOverlayMode]); classification
+ * stays pure.
  */
 data class Tombstone(
     val text: String,
     val bounds: Rect,
-)
+    val kind: Kind = Kind.RELOCATION,
+) {
+    enum class Kind { RELOCATION, STALE }
+}
+
+/** The union of a group's own line rects: where the text was READ, before
+ *  any pin. A list row's [OcrManager.OcrGroup.bounds] is pinned to its
+ *  stack's edges, which move with whichever rows are visible under the
+ *  blackout (the 2026-09-08 trace read one row at R=286 and R=349 on
+ *  consecutive looks), so a note keyed on the pinned rect would miss its
+ *  own re-read. A lineless group falls back to its bounds. */
+private fun rawReadBounds(group: OcrManager.OcrGroup): Rect {
+    val lines = group.lines
+    if (lines.isEmpty()) return group.bounds
+    val r = Rect(lines[0].bounds)
+    for (i in 1 until lines.size) r.union(lines[i].bounds)
+    return r
+}
 
 /** Same on-screen region within OCR re-read jitter: every edge within
  *  [PinholeCalibration.TOMBSTONE_MATCH_SLOP_PX]. Used both to match a fresh
@@ -198,6 +230,15 @@ fun deferDyingBoxFragments(
  *   content-matching this pass (each fell through to proximity/far and
  *   spawned or staled normally). Telemetry for the transitions log — a
  *   nonzero count is the duplicate-spawn signature in a field trace.
+ * - [staled] — stale notes minted this pass ([Tombstone.Kind.STALE]): one per
+ *   OCR group that staled at least one box by ADJACENCY (block, inline or
+ *   the per-line probes). An overlap stale is a different inference and
+ *   mints nothing. The caller ages these with the tombstones and feeds the
+ *   live set back in as `tombstones`.
+ * - [staleNoteBlocks] — how many OCR groups matched a live stale note this
+ *   pass and were barred from the continuation inference (each went far,
+ *   or overlap-staled). Telemetry for the transitions log — nonzero is the
+ *   menu-loop-ended signature in a field trace.
  */
 data class ClassificationResult(
     val contentMatchRemovals: Set<Int>,
@@ -205,6 +246,8 @@ data class ClassificationResult(
     val farOcrGroups: List<FarGroup>,
     val vacated: List<Tombstone> = emptyList(),
     val tombstoneBlocks: Int = 0,
+    val staled: List<Tombstone> = emptyList(),
+    val staleNoteBlocks: Int = 0,
 )
 
 /**
@@ -219,7 +262,7 @@ data class ClassificationResult(
  *      is added to [ClassificationResult.contentMatchRemovals] and a fresh
  *      placeholder is queued into [ClassificationResult.farOcrGroups] at
  *      the OCR position. Barred entirely when the group matches a live
- *      [Tombstone] (see its kdoc — the group is a duplicate re-read at a
+ *      relocation [Tombstone] (see its kdoc — the group is a duplicate re-read at a
  *      just-vacated rect, not a move); a match at a genuinely new position
  *      mints a tombstone at the vacated rect into
  *      [ClassificationResult.vacated].
@@ -227,6 +270,11 @@ data class ClassificationResult(
  *      non-content-matched box: if its bitmap-space rect `wouldGroup` with
  *      the OCR group's bitmap-space rect, mark the box stale. A single OCR
  *      group can stale multiple boxes (they'll all be cascaded and removed).
+ *      Adjacency and the per-line probes are barred (substantial overlap
+ *      still stales) when the group matches a live [Tombstone.Kind.STALE]
+ *      note: it is the re-read of a group that already staled a neighbour
+ *      and whose merge never came, so it goes far and places itself. An
+ *      adjacency stale mints such a note into [ClassificationResult.staled].
  *   3. **Far** — if nothing overlapped, queue the OCR group as new text
  *      into [ClassificationResult.farOcrGroups].
  *
@@ -267,6 +315,8 @@ fun classifyOcrResults(
     val farOcrGroups = mutableListOf<FarGroup>()
     val vacated = mutableListOf<Tombstone>()
     var tombstoneBlocks = 0
+    val staled = mutableListOf<Tombstone>()
+    var staleNoteBlocks = 0
     // Indices in [farOcrGroups] that originated from a content-match
     // (i.e. paired FARs queued at step 1 below). The Far branch's
     // coalesce step at step 3 only considers these as eligible merge
@@ -286,7 +336,8 @@ fun classifyOcrResults(
         //    [Tombstone]). Barred from content-matching entirely; it falls
         //    through to proximity/far and spawns its own box.
         val tombstoned = tombstones.any { t ->
-            !OverlayToolkit.isSignificantChange(ocrText, t.text) &&
+            t.kind == Tombstone.Kind.RELOCATION &&
+                !OverlayToolkit.isSignificantChange(ocrText, t.text) &&
                 tombstoneSameRegion(t.bounds, ocrBound)
         }
         if (tombstoned) tombstoneBlocks++
@@ -333,6 +384,23 @@ fun classifyOcrResults(
         var nearExisting = false
         val orient = group.orientation
         val ocrLineCount = group.lines.size
+        // Stale note gate (see [Tombstone.Kind.STALE]): this exact read —
+        // same text within OCR jitter, same raw line rect — already staled
+        // a neighbour on a recent look, and the merge that stale deferred
+        // to never came; here it is again, on its own. The continuation
+        // inference is barred for it: adjacency and the per-line probes
+        // below are skipped and it goes far, placing itself. Substantial
+        // overlap still stales (the box's own region re-read is a
+        // different inference), and step 1 above was not consulted (a note
+        // bars only the inference that wrote it).
+        val rawBound = rawReadBounds(group)
+        val noted = tombstones.any { t ->
+            t.kind == Tombstone.Kind.STALE &&
+                !OverlayToolkit.isSignificantChange(ocrText, t.text) &&
+                tombstoneSameRegion(t.bounds, rawBound)
+        }
+        if (noted) staleNoteBlocks++
+        var staledByAdjacency = false
         for (boxIdx in boxes.indices) {
             if (boxIdx >= ocrBitmapRects.size) continue
             if (boxes[boxIdx].dirty) continue
@@ -384,7 +452,8 @@ fun classifyOcrResults(
             val growthDirection = orientMatch && ocrLineCount > boxLineCount
             val aLn = if (growthDirection) boxLineCount else 1
             val bLn = if (growthDirection) ocrLineCount else 1
-            val wholeBoxMatched = LayoutAnalyzer.wouldGroup(
+            val overlapMatched = LayoutAnalyzer.hasSubstantialOverlap(boxRect, ocrFullRect)
+            val wholeBoxMatched = if (noted) overlapMatched else LayoutAnalyzer.wouldGroup(
                 boxRect, ocrFullRect, orient,
                 mode = LayoutAnalyzer.GroupingMode.CROSS_FRAME_SAME_REGION,
                 aLineCount = aLn,
@@ -400,15 +469,16 @@ fun classifyOcrResults(
             // reading side only) and next row directly below (block,
             // downward only). Horizontal only; the vertical twins are
             // unobserved (deferred).
-            val lastLineMatched = !wholeBoxMatched && orientMatch &&
+            val lastLineMatched = !noted && !wholeBoxMatched && orientMatch &&
                 orient == TextOrientation.HORIZONTAL &&
                 boxLineCount > 1 && ocrLineCount == 1 &&
                 LayoutAnalyzer.inlineContinuesLastLine(boxRect, boxLineCount, ocrFullRect, rtl)
-            val belowLineMatched = !wholeBoxMatched && !lastLineMatched && orientMatch &&
+            val belowLineMatched = !noted && !wholeBoxMatched && !lastLineMatched && orientMatch &&
                 orient == TextOrientation.HORIZONTAL &&
                 boxLineCount > 1 && ocrLineCount == 1 &&
                 LayoutAnalyzer.blockContinuesBelow(boxRect, boxLineCount, ocrFullRect, rtl)
             val matched = wholeBoxMatched || lastLineMatched || belowLineMatched
+            if (matched && !overlapMatched) staledByAdjacency = true
             if (OcrManager.instance.debugLogGroupingEnabled) {
                 val decision = LayoutAnalyzer.groupDecision(
                     boxRect, ocrFullRect, orient,
@@ -418,6 +488,7 @@ fun classifyOcrResults(
                     rtl = rtl,
                 )
                 val verdict = when {
+                    noted && !matched && decision is LayoutAnalyzer.GroupDecision.Grouped -> "SKIP-note"
                     lastLineMatched -> "MATCH-lastline"
                     belowLineMatched -> "MATCH-belowline"
                     matched -> "MATCH"
@@ -436,6 +507,11 @@ fun classifyOcrResults(
                 nearExisting = true
                 staleOverlayIndices.add(boxIdx)
             }
+        }
+        // The bet is on record: if this same read comes back next look, it
+        // is not a continuation. Copied — Rect is mutable.
+        if (staledByAdjacency) {
+            staled.add(Tombstone(ocrText, Rect(rawBound), Tombstone.Kind.STALE))
         }
 
         // 3. Far: brand-new text with no nearby existing overlay.
@@ -603,6 +679,8 @@ fun classifyOcrResults(
         farOcrGroups = farOcrGroups,
         vacated = vacated,
         tombstoneBlocks = tombstoneBlocks,
+        staled = staled,
+        staleNoteBlocks = staleNoteBlocks,
     )
 }
 

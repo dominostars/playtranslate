@@ -197,7 +197,7 @@ object PinholeCalibration {
      *  reaching across a full menu row (~72px pitch at 1080p). */
     const val FRAGMENT_DEFER_ABUT_PX = 32
 
-    // ── Content-match relocation tombstones (classifyOcrResults) ─────────
+    // ── Inference memory: relocation stones and stale notes (classifyOcrResults) ──
 
     /** Positional slop for tombstone matching AND for the same-position
      *  test that decides whether a content match is a relocation at all:
@@ -212,7 +212,10 @@ object PinholeCalibration {
      *  less than the padding cannot have been read whole at its old spot.
      *  A generous overlap test here would make slow scrollers hit their
      *  own previous-cycle tombstones and leave a trail of spawned boxes —
-     *  the exact accumulation bug content match exists to prevent. */
+     *  the exact accumulation bug content match exists to prevent. Stale
+     *  notes ([Tombstone.Kind.STALE]) use the same tolerance against a
+     *  group's raw read rect: static re-read jitter is the same phenomenon
+     *  (the 2026-09-08 trace re-read one row within 6 px across looks). */
     const val TOMBSTONE_MATCH_SLOP_PX = 12
 
     /** How many full looks (cycles that reached classification) a
@@ -221,7 +224,9 @@ object PinholeCalibration {
      *  rect on N+1 — so 1 suffices for the crisp case; 2 covers a
      *  one-look delay (step-9b deferral of the spawn, a brief occlusion).
      *  Longer would start converting slow revisit-movers (a drifting
-     *  text returning to an old position) into spurious duplicates. */
+     *  text returning to an old position) into spurious duplicates. Stale
+     *  notes share it: their loop has the same period (stale on look N,
+     *  re-read on N+1 via the forced follow-up look). */
     const val TOMBSTONE_LIFESPAN_LOOKS = 2
 
     /** Game-input burst window (audit A4): after a tap/gamepad press, cycles

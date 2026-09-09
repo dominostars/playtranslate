@@ -1348,4 +1348,247 @@ class ClassificationTest {
         assertEquals(setOf(0, 1, 3, 4), result)
         assertFalse("isolated box 2 must not be pulled in", 2 in result)
     }
+
+    // ── stale notes (menu ping-pong, 2026-09-01 / 2026-09-08) ────────────
+
+    private fun note(text: String, raw: Rect) = Tombstone(text, raw, Tombstone.Kind.STALE)
+
+    private fun ocrResultOf(vararg groups: OcrManager.OcrGroup) =
+        OcrManager.OcrResult(fullText = "", segments = emptyList(), groups = groups.toList())
+
+    /** A group whose read rect (its line) differs from its pinned bounds,
+     *  the shape a list row takes when its stack's widest sibling is in view. */
+    private fun grpPinned(text: String, raw: Rect, pinned: Rect) = OcrManager.OcrGroup(
+        text = text, bounds = pinned,
+        lines = listOf(OcrManager.LineBox(text = text, bounds = raw, groupIndex = 0)),
+    )
+
+    // Thor trace 2026-09-08 17:17: an eight-row location menu, rows 33 px
+    // tall at a 60 px pitch (gaps of 27 to 29 px against a 29 px block
+    // threshold), list-pinned to L=96 R=349.
+    private val menuRows = listOf(
+        "タウンマップ" to Rect(96, 380, 349, 411),
+        "教室" to Rect(96, 440, 349, 471),
+        "1F職員室前廊下" to Rect(96, 500, 349, 532),
+        "1F実習室前廊下" to Rect(96, 560, 349, 593),
+        "2F教室前廊下" to Rect(96, 620, 349, 652),
+        "渡り廊下" to Rect(96, 680, 349, 713),
+        "運動場前廊下" to Rect(96, 740, 349, 773),
+        "正門前" to Rect(96, 801, 349, 831),
+    )
+    private val allMenuTexts = menuRows.map { it.first }.toSet()
+
+    private data class Aged(val stone: Tombstone, var looksLeft: Int)
+
+    /** One pinhole cycle over [menuRows]: the rows under no box are read (the
+     *  blackout hides the rest), classified against the live stones, cascaded
+     *  and placed; then the stones age and this pass's mints join them, in
+     *  the mode's order (classify, age, mint). [useStones] withheld = the
+     *  pre-fix mechanism. */
+    private fun menuCycle(
+        boxes: List<TextBox>,
+        stones: MutableList<Aged>,
+        useStones: Boolean = true,
+    ): Pair<List<TextBox>, ClassificationResult> {
+        val readable = menuRows.filter { (_, r) -> boxes.none { it.bounds == r } }
+        val ocr = ocrResult(*readable.toTypedArray())
+        val rects = boxes.map { identityCoords.ocrToBitmap(it.bounds) }
+        val res = classifyOcrResults(
+            ocr, boxes, rects, identityCoords,
+            tombstones = if (useStones) stones.map { it.stone } else emptyList(),
+        )
+        stones.forEach { it.looksLeft-- }
+        stones.removeAll { it.looksLeft <= 0 }
+        (res.vacated + res.staled).mapTo(stones) { Aged(it, PinholeCalibration.TOMBSTONE_LIFESPAN_LOOKS) }
+        val removals = cascadeStaleRemovals(res.staleOverlayIndices, boxes, rects) + res.contentMatchRemovals
+        val next = boxes.filterIndexed { i, _ -> i !in removals } +
+            res.farOcrGroups.map { box(it.bounds, it.text) }
+        return next to res
+    }
+
+    private fun texts(boxes: List<TextBox>) = boxes.map { it.sourceText }.toSet()
+
+    @Test
+    fun staleNote_adjacencyStale_mintsOneNoteOnTheRawReadRect() {
+        // Two boxes staled by one group: one note, keyed on the group's own
+        // line rect, not its pinned bounds.
+        val above = Rect(96, 500, 349, 532)
+        val below = Rect(96, 620, 349, 652)
+        val raw = Rect(99, 560, 286, 593)
+        val pinned = Rect(96, 560, 349, 593)
+        val boxes = listOf(box(above, "1F職員室前廊下"), box(below, "2F教室前廊下"))
+        val res = classifyOcrResults(
+            ocrResultOf(grpPinned("渡り廊下", raw, pinned)), boxes, listOf(above, below), identityCoords,
+        )
+        assertEquals(setOf(0, 1), res.staleOverlayIndices)
+        assertEquals(listOf(Tombstone("渡り廊下", raw, Tombstone.Kind.STALE)), res.staled)
+        assertEquals(0, res.staleNoteBlocks)
+        assertTrue(res.vacated.isEmpty())
+    }
+
+    @Test
+    fun staleNote_overlapStale_mintsNothing() {
+        val cached = Rect(96, 500, 349, 532)
+        val reread = Rect(120, 503, 349, 535)
+        val res = classifyOcrResults(
+            ocrResultOf(grp("教室", reread)), listOf(box(cached, "1F職員室前廊下")), listOf(cached), identityCoords,
+        )
+        assertEquals(setOf(0), res.staleOverlayIndices)
+        assertTrue("an overlap stale is a different inference", res.staled.isEmpty())
+    }
+
+    @Test
+    fun staleNote_notedGroup_adjacentBox_goesFar_andIsCounted() {
+        val above = Rect(96, 500, 349, 532)
+        val row = Rect(96, 560, 349, 593)
+        val res = classifyOcrResults(
+            ocrResultOf(grp("1F実習室前廊下", row)), listOf(box(above, "1F職員室前廊下")), listOf(above), identityCoords,
+            tombstones = listOf(note("1F実習室前廊下", row)),
+        )
+        assertTrue("the continuation inference is barred", res.staleOverlayIndices.isEmpty())
+        assertEquals(listOf("1F実習室前廊下"), res.farOcrGroups.map { it.text })
+        assertEquals(1, res.staleNoteBlocks)
+        assertTrue("no stale, no new note", res.staled.isEmpty())
+    }
+
+    @Test
+    fun staleNote_notedGroup_overlappingBox_stillStales() {
+        val cached = Rect(96, 500, 349, 532)
+        val reread = Rect(120, 503, 349, 535)
+        val res = classifyOcrResults(
+            ocrResultOf(grp("教室", reread)), listOf(box(cached, "1F職員室前廊下")), listOf(cached), identityCoords,
+            tombstones = listOf(note("教室", reread)),
+        )
+        assertEquals("overlap is the box's own region re-read", setOf(0), res.staleOverlayIndices)
+        assertTrue(res.farOcrGroups.isEmpty())
+        assertEquals(1, res.staleNoteBlocks)
+    }
+
+    @Test
+    fun staleNote_barsOnlyItsOwnInference_contentMatchStillRuns() {
+        // A same-text box elsewhere: content match is a different inference
+        // with its own memory (the relocation stone), untouched by a note.
+        val elsewhere = Rect(1200, 100, 1453, 132)
+        val row = Rect(96, 560, 349, 593)
+        val res = classifyOcrResults(
+            ocrResultOf(grp("1F実習室前廊下", row)), listOf(box(elsewhere, "1F実習室前廊下")), listOf(elsewhere), identityCoords,
+            tombstones = listOf(note("1F実習室前廊下", row)),
+        )
+        assertEquals(setOf(0), res.contentMatchRemovals)
+        assertTrue(res.farOcrGroups.single().paired)
+        assertEquals(1, res.vacated.size)
+    }
+
+    @Test
+    fun staleNote_relocationStone_doesNotBarTheStale() {
+        // The converse: a relocation stone at the row's rect bars content
+        // match only; the proximity check runs as before.
+        val above = Rect(96, 500, 349, 532)
+        val row = Rect(96, 560, 349, 593)
+        val res = classifyOcrResults(
+            ocrResultOf(grp("1F実習室前廊下", row)), listOf(box(above, "1F職員室前廊下")), listOf(above), identityCoords,
+            tombstones = listOf(Tombstone("1F実習室前廊下", row)),
+        )
+        assertEquals(setOf(0), res.staleOverlayIndices)
+        assertEquals(0, res.staleNoteBlocks)
+        assertEquals(1, res.staled.size)
+    }
+
+    @Test
+    fun staleNote_rectBeyondSlop_orDifferentText_doesNotMatch() {
+        val above = Rect(96, 500, 349, 532)
+        val row = Rect(96, 560, 349, 593)
+        val shifted = Rect(96 + PinholeCalibration.TOMBSTONE_MATCH_SLOP_PX + 8, 560, 349, 593)
+        for (stale in listOf(note("1F実習室前廊下", shifted), note("2F教室前廊下", row))) {
+            val res = classifyOcrResults(
+                ocrResultOf(grp("1F実習室前廊下", row)), listOf(box(above, "1F職員室前廊下")), listOf(above), identityCoords,
+                tombstones = listOf(stale),
+            )
+            assertEquals("$stale must not match", setOf(0), res.staleOverlayIndices)
+            assertEquals(0, res.staleNoteBlocks)
+        }
+    }
+
+    @Test
+    fun staleNote_pinnedBoundsShiftBetweenLooks_rawRectStillMatches() {
+        // The trace read 渡り廊下 pinned to R=349 with its wide siblings in
+        // view and at its own R=286 without them. The note keys on the line.
+        val raw = Rect(99, 680, 286, 713)
+        val wide = Rect(96, 680, 349, 713)
+        val above = Rect(96, 620, 349, 652)
+        val minted = classifyOcrResults(
+            ocrResultOf(grpPinned("渡り廊下", raw, wide)), listOf(box(above, "2F教室前廊下")), listOf(above), identityCoords,
+        )
+        assertEquals(raw, minted.staled.single().bounds)
+        val next = classifyOcrResults(
+            ocrResultOf(grpPinned("渡り廊下", raw, raw)), listOf(box(above, "2F教室前廊下")), listOf(above), identityCoords,
+            tombstones = minted.staled,
+        )
+        assertTrue("re-read at the same line rect is barred", next.staleOverlayIndices.isEmpty())
+        assertEquals(1, next.staleNoteBlocks)
+    }
+
+    @Test
+    fun staleNote_typewriter_mergedReread_matchesNothing_andPlacesMerged() {
+        // The bet that was right: line 2 stales the line-1 box, the next look
+        // reads both lines as one merged group. Different text, different
+        // rect: the note is inert and the merged paragraph places as one.
+        val line1 = Rect(200, 400, 900, 432)
+        val line2 = Rect(200, 440, 860, 472)
+        val first = classifyOcrResults(
+            ocrResultOf(grp("今日はいい天気なので", line2)), listOf(box(line1, "こんにちは。")), listOf(line1), identityCoords,
+        )
+        assertEquals(setOf(0), first.staleOverlayIndices)
+        val merged = Rect(200, 400, 900, 472)
+        val second = classifyOcrResults(
+            ocrResultOf(grp("こんにちは。今日はいい天気なので", merged, lineCount = 2)), emptyList(), emptyList(), identityCoords,
+            tombstones = first.staled,
+        )
+        assertEquals(0, second.staleNoteBlocks)
+        assertEquals(listOf("こんにちは。今日はいい天気なので"), second.farOcrGroups.map { it.text })
+    }
+
+    @Test
+    fun staleNote_menuTrace_notesWithheld_pinsThePeriodTwoLoop() {
+        // The mechanism the note exists for, on the trace's own geometry:
+        // row 4 stales row 5 below it, the cascade takes the rows under it,
+        // and next cycle row 4 stales row 3 ABOVE it: the box placed this
+        // cycle is next cycle's blackout, so the suppressed row alternates
+        // neighbours forever and is never boxed itself.
+        var boxes = menuRows.drop(4).map { (t, r) -> box(r, t) }
+        val stones = ArrayList<Aged>()
+        val history = ArrayList<Set<String>>()
+        repeat(9) {
+            val (next, res) = menuCycle(boxes, stones, useStones = false)
+            assertTrue("cycle $it stales a neighbour", res.staleOverlayIndices.isNotEmpty())
+            boxes = next
+            history += texts(boxes)
+        }
+        for (i in 1 until history.size - 2) assertEquals("period 2 at $i", history[i], history[i + 2])
+        assertFalse("row 4 never boxed", history.any { "1F実習室前廊下" in it })
+    }
+
+    @Test
+    fun staleNote_menuTrace_convergesWithinTwoBounces_fromBothStartStates() {
+        // Start state A (the trace's): rows 1-4 uncovered, 5-8 boxed. Start
+        // state B (its second phase): rows 4-7 uncovered, 1-3 and 8 boxed.
+        // Each stale is made once; its re-read lands on the note and places.
+        for (uncovered in listOf(0 until 4, 3 until 7)) {
+            var boxes = menuRows.filterIndexed { i, _ -> i !in uncovered }.map { (t, r) -> box(r, t) }
+            val stones = ArrayList<Aged>()
+            var bounces = 0
+            var settledAt = -1
+            for (cycle in 0 until 6) {
+                val (next, res) = menuCycle(boxes, stones)
+                if (res.staleOverlayIndices.isNotEmpty()) bounces++
+                boxes = next
+                if (texts(boxes) == allMenuTexts && res.staleOverlayIndices.isEmpty()) { settledAt = cycle; break }
+            }
+            assertTrue("start $uncovered settles", settledAt >= 0)
+            assertTrue("start $uncovered: at most two bounces, saw $bounces", bounces <= 2)
+            val (_, quiet) = menuCycle(boxes, stones)
+            assertTrue(quiet.staleOverlayIndices.isEmpty() && quiet.farOcrGroups.isEmpty())
+            assertEquals(8, boxes.size)
+        }
+    }
 }

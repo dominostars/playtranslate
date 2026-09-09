@@ -314,15 +314,16 @@ class PinholeOverlayMode(
     /** A live [Tombstone] plus its remaining lifespan in full looks. */
     private class AgedTombstone(val stone: Tombstone, var looksLeft: Int)
 
-    /** Vacancy memory for content-match relocations (see [Tombstone]):
-     *  minted by classification when a content match moves a box to a new
-     *  position, aged by full looks (cycles that actually classified — a
+    /** Inference memory, both kinds (see [Tombstone]): minted by
+     *  classification when a content match moves a box to a new position
+     *  (RELOCATION) or a fresh group stales a neighbour by adjacency
+     *  (STALE), aged by full looks (cycles that actually classified — a
      *  gate-skipped or no-pipeline cycle read nothing, so it proves
      *  nothing about the vacated rect), pruned after
      *  [PinholeCalibration.TOMBSTONE_LIFESPAN_LOOKS]. OCR-crop space, so
      *  every reset that voids that space must clear it alongside
      *  cachedBoxes. Naturally bounded: mints per look ≤ content matches
-     *  per look, lifespan 2 looks. */
+     *  plus staling groups per look, lifespan 2 looks. */
     private val tombstones = ArrayList<AgedTombstone>()
 
     // Removal hysteresis and the pinhole-side photometric fit were removed
@@ -791,10 +792,14 @@ class PinholeOverlayMode(
                 )
                 // Age BEFORE minting so a stone minted by THIS look doesn't
                 // lose a look to its own minting cycle — it must still be
-                // live when the vacated rect's re-read arrives next look.
+                // live when the re-read arrives next look (the vacated rect
+                // for a relocation stone, the staling group for a note).
                 tombstones.forEach { it.looksLeft-- }
                 tombstones.removeAll { it.looksLeft <= 0 }
                 classification.vacated.mapTo(tombstones) {
+                    AgedTombstone(it, PinholeCalibration.TOMBSTONE_LIFESPAN_LOOKS)
+                }
+                classification.staled.mapTo(tombstones) {
                     AgedTombstone(it, PinholeCalibration.TOMBSTONE_LIFESPAN_LOOKS)
                 }
             } else {
@@ -954,7 +959,11 @@ class PinholeOverlayMode(
                         "stale=${staleOverlayIndices.toSortedSet()}) " +
                         "far=${placeGroups.size}(+${farOutcome.held} held) " +
                         "tomb=${classification.tombstoneBlocks}blk/" +
-                        "${classification.vacated.size}mint/${tombstones.size}live " +
+                        "${classification.vacated.size}mint/" +
+                        "${tombstones.count { it.stone.kind == Tombstone.Kind.RELOCATION }}live " +
+                        "note=${classification.staleNoteBlocks}blk/" +
+                        "${classification.staled.size}mint/" +
+                        "${tombstones.count { it.stone.kind == Tombstone.Kind.STALE }}live " +
                         "boxesIn=${boxes.size} boxesOut=${nextBoxes.size}"
                 )
                 // Why classification picked stale/contentMatch/far: dump
