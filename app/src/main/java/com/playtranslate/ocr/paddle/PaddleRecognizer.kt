@@ -99,18 +99,22 @@ class PaddleRecognizer(private val session: PaddleOcrSession) : TextRecognizer {
         /**
          * Minimum recognizer confidence (mean max-prob over emitted CTC timesteps,
          * the statistic PaddleOCR's CTCLabelDecode reports) for a read to survive.
-         * PaddleOCR's `drop_score` default. Calibrated on Thor 2026-09-08, Fast tier,
-         * JA: DBNet fires on clusters of game sprites and the recognizer reads them
-         * as 1-7 chars in boxes hundreds of px tall — 16 such regions scored 0.08 to
-         * 0.48; real words and sentences (3+ chars) scored 0.86 to 1.00, dialogue
-         * 0.93+. Every 3+-char read under 0.75 was itself a misread of menu UI. Known
-         * cost, all in status menus: short stat labels and numbers (HP 0.48, "13"
-         * 0.25); TP/LV sat at 0.57-0.59 and survive. The detector's own box score
-         * does NOT separate (junk 0.60-0.95, median 0.75 vs legit 0.77), which is
-         * why the gate is on recognition, not detection. The DEBUG `OcrConf` trace
-         * in DetectThenRecognize + the drop line above keep this re-checkable.
+         * PaddleOCR's `drop_score` default is 0.5; this sits one notch above it.
+         * Calibrated on Thor 2026-09-08/09, Fast tier, JA, two sessions: DBNet fires
+         * on clusters of game sprites and the recognizer reads them as 1-7 chars in
+         * boxes hundreds of px tall — 34 such regions scored 0.08 to 0.56 (two at
+         * 0.56, 年日元日 and のEト, cleared the upstream 0.5 and were translated);
+         * real words and sentences (3+ chars) scored 0.79 to 1.00 (the 0.79 a
+         * mid-typewriter partial frame), dialogue 0.86+. Every 3+-char read under
+         * 0.75 was itself a misread of menu UI. Known cost, all in status menus:
+         * short stat labels and numbers (HP 0.48, TP/LV 0.57-0.59, "13" 0.25),
+         * none of them translatable content. The detector's own box score does NOT
+         * separate (junk 0.60-0.95, median 0.75 vs legit 0.77), which is why the
+         * gate is on recognition, not detection. The DEBUG `OcrConf` trace in
+         * DetectThenRecognize + the drop line above keep this re-checkable; a junk
+         * overlay that survives shows its score there.
          */
-        const val DROP_SCORE = 0.5f
+        const val DROP_SCORE = 0.6f
 
         /** The gate: keep iff [confidence] >= [DROP_SCORE]. Unit-pinned. */
         internal fun passesDropScore(confidence: Float): Boolean = confidence >= DROP_SCORE
