@@ -1018,16 +1018,20 @@ class WordDetailBinder(
         queriedWord: String,
     ) {
         releaseMemberStyledCells()
-        val displayed = primary.headwordDisplay(queriedWord).written
+        val display = primary.headwordDisplay(queriedWord)
+        val displayed = display.written
         // Spaced headwords are expressions by form; no-whitespace ones
-        // carry their POS class into the engine's member policy —
-        // expressions get the loose gate, transparent compounds
-        // (放送番組/ペース配分) need every unit accounted for (kanji words
-        // render, katakana words are excused), and 図書館-style compounds
-        // stay whole.
+        // carry their POS class into the engine's member policy — phrases
+        // (exp-tagged, or glue-bearing by the engine's own reading of them)
+        // get the loose gate: 気になる → 気, 瞬く間に → 瞬く and 間;
+        // transparent compounds (放送番組/ペース配分) need every unit
+        // accounted for (kanji words render, katakana words and particles
+        // are excused), and 図書館-style compounds stay whole. The display
+        // reading rides along so the members' hints align with it.
         val members = engine.memberWordsOf(
             displayed,
             expressionClass = displayed.any(Char::isWhitespace) || primary.isExpression,
+            headwordReading = display.reading,
         )
         if (members.isEmpty()) return
         val appCtx = ctx.applicationContext

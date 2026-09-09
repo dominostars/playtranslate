@@ -3,6 +3,8 @@ package com.playtranslate.language
 import android.content.Context
 import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.dictionary.DictionaryManager
+import com.playtranslate.dictionary.DictionaryManager.Companion.ReglobSpan
+import com.playtranslate.dictionary.JaToken
 import com.playtranslate.dictionary.SentenceAnnotator
 import com.playtranslate.dictionary.SudachiJapaneseTokenizer
 import com.playtranslate.model.selectHeadword
@@ -184,22 +186,37 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
             }
 
     /**
-     * Member words of a fused expression, at dictionary-WORD granularity:
-     * the [headword]'s Sudachi short units are re-globbed through the same
-     * JMdict-gated fusing the tokenizer uses — with the expression's own
-     * join excluded, so it can't fuse back into itself — which is what
-     * reassembles member compounds (やさしい日本語 → 日本語, not 日本+語).
-     * Tokens the re-glob's emission drops (it keeps content singles only —
-     * suffix-tagged members like 次第 in 手当たり次第 would vanish) are
-     * unioned back in when kanji-bearing: the KANJI gate, not the UniDic
-     * category, is the membership signal here — kana morphemes are where
-     * the grammar noise lives, and it's what keeps かもしれない member-free
-     * while idioms qualify. Callers pass the DISPLAYED headword form (`uk`
-     * entries in kana — かも知れない's 知れ must never see the gate).
-     * Unresolvable members are filtered downstream by the row/section
-     * resolution, not here.
+     * Member words of a fused headword, at WORD granularity: the
+     * [headword]'s Sudachi short units are re-globbed through the same
+     * JMdict-gated fusing the tokenizer uses, in MEMBER mode — the
+     * headword's own join excluded, and every expression-class join
+     * excluded too — so member WORDS reassemble (やさしい日本語 → 日本語,
+     * not 日本+語) while member PHRASES stay split (瞬く間に → 瞬く and 間,
+     * not 瞬く間, which is a JMdict entry but an exp one): a component is
+     * a word, and a phrase is not a word. Tokens the re-glob's emission
+     * drops (it keeps content singles only — suffix-tagged members like
+     * 次第 in 手当たり次第 would vanish) are unioned back in when
+     * kanji-bearing: the KANJI gate, not the UniDic category, is the
+     * membership signal here — kana morphemes are where the grammar noise
+     * lives, and it's what keeps かもしれない member-free while idioms
+     * qualify. The category is read for two other verdicts, both on the
+     * UNITS the re-glob produced ([memberUnits]): a standalone
+     * particle/auxiliary unit marks the headword a PHRASE (loose gate)
+     * whatever JMdict tagged it, and grammar units are excused in the
+     * compound accounting ([isAccountedCompoundUnit]). Members' reading
+     * hints come from aligning [headwordReading] against their dictionary
+     * readings ([alignMemberReadings]) — the tokenizer's per-token readings
+     * are guesses that miss lexicalized phrases — falling back to the
+     * tokenizer's when nothing aligns. Callers pass the DISPLAYED headword
+     * form (`uk` entries in kana — かも知れない's 知れ must never see the
+     * gate) and its reading. Unresolvable members are filtered downstream
+     * by the row/section resolution, not here.
      */
-    override suspend fun memberWordsOf(headword: String, expressionClass: Boolean): List<TokenSpan> {
+    override suspend fun memberWordsOf(
+        headword: String,
+        expressionClass: Boolean,
+        headwordReading: String?,
+    ): List<TokenSpan> {
         val tokens = withContext(Dispatchers.Default) {
             runCatching { SudachiJapaneseTokenizer.Provider.analyze(headword) }
                 .getOrNull().orEmpty()
@@ -207,44 +224,43 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
         if (tokens.size < 2) return emptyList()
         val spans = dict.reglobSpansForTokens(
             tokens, yomitan.phraseOracle(), excludePhrases = setOf(headword),
+            excludeExpressionJoins = true,
         ).orEmpty()
-        data class Member(val order: Int, val surface: String, val lookupForm: String, val reading: String?)
-        val members = mutableListOf<Member>()
-        val covered = BooleanArray(tokens.size)
-        for (s in spans) {
-            for (i in s.tokenStart until (s.tokenStart + s.tokenCount).coerceAtMost(tokens.size)) {
-                covered[i] = true
+        val ordered = memberUnits(tokens, spans, expressionClass)
+        if (ordered.isEmpty()) return emptyList()
+        val aligned = alignedReadingHints(ordered.map { it.surface to it.lookupForm }, headword, headwordReading)
+        return ordered
+            .mapIndexedNotNull { i, m ->
+                if (!hasKanji(m.surface) || m.lookupForm == headword || m.surface == headword) null
+                else TokenSpan(surface = m.surface, lookupForm = m.lookupForm, reading = aligned?.get(i) ?: m.reading)
             }
-            members += Member(s.tokenStart, s.surface, s.lookupForm, s.reading)
-        }
-        tokens.forEachIndexed { i, t ->
-            if (!covered[i]) {
-                members += Member(
-                    i, t.surface, t.dictionaryForm,
-                    t.reading?.let(Deinflector::katakanaToHiragana),
-                )
-            }
-        }
-        // Transparent compounds (non-expression fused entries — 放送番組,
-        // 国内向け) decompose only when EVERY unit is accounted for
-        // ([isAccountedCompoundUnit]): a ≥2-char kanji word, rendered as a
-        // member, or a ≥2-char katakana word, EXCUSED — katakana loanwords
-        // self-decode, so ペース配分 offers 配分 with no ペース row (the
-        // kanji-only emission below keeps excused units out, and an
-        // all-katakana compound emits no members at all). Any other unit
-        // still turns the whole offer off: a partial decomposition of
-        // OPAQUE units misleads (図書館 → 図書 alone implies 館 is nothing —
-        // and single characters are the kanji-breakdown section's job).
-        // Expressions keep the loose per-member gate — 気になる's 気 is one
-        // char and load-bearing.
-        if (!expressionClass && members.any { !isAccountedCompoundUnit(it.surface) }) {
-            return emptyList()
-        }
-        return members
-            .sortedBy { it.order }
-            .filter { hasKanji(it.surface) && it.lookupForm != headword && it.surface != headword }
-            .map { TokenSpan(surface = it.surface, lookupForm = it.lookupForm, reading = it.reading) }
             .distinctBy { it.lookupForm }
+    }
+
+    /** Reading hints for the member [units] (surface to lookupForm, in
+     *  headword order) by aligning the headword's own reading against the
+     *  units' dictionary readings — see [alignMemberReadings] for why the
+     *  tokenizer's hints can't be trusted inside a lexicalized phrase.
+     *  Kana units read as themselves; kanji units with no entry are
+     *  wildcards. Null (keep the tokenizer's hints) when there's no reading
+     *  to align against, the headword is kana, or nothing aligns. One
+     *  batched readings query, tap-time only. */
+    private suspend fun alignedReadingHints(
+        units: List<Pair<String, String>>,
+        headword: String,
+        headwordReading: String?,
+    ): List<String?>? {
+        if (headwordReading.isNullOrBlank() || !hasKanji(headword)) return null
+        val kanjiForms = units.filter { hasKanji(it.first) }.mapTo(mutableSetOf()) { it.second }
+        val readings = dict.readingsForForms(kanjiForms)
+        val alignUnits = units.map { (surface, lookupForm) ->
+            AlignUnit(
+                surface, lookupForm,
+                dictReadings = if (!hasKanji(surface)) setOf(Deinflector.katakanaToHiragana(surface))
+                else readings[lookupForm]?.takeIf { it.isNotEmpty() },
+            )
+        }
+        return alignMemberReadings(alignUnits, Deinflector.katakanaToHiragana(headwordReading))
     }
 
     /** Two-store resolution for one (lookupForm, occurrence-hint) pair.
@@ -332,18 +348,103 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
 private fun hasKanji(s: String): Boolean =
     s.any { c -> c.code in 0x4E00..0x9FFF || c.code in 0x3400..0x4DBF }
 
+/** One unit of a fused headword as [JapaneseEngine.memberWordsOf] sees it:
+ *  a re-glob span (a fused sub-word, or a content token with its
+ *  conjugation glue folded in) or a token the re-glob left uncovered. */
+internal data class MemberUnit(
+    val order: Int,
+    val surface: String,
+    val lookupForm: String,
+    /** The tokenizer's reading hint — replaced by the aligned reading
+     *  where the headword's own reading decomposes. */
+    val reading: String?,
+    /** Every token under this unit is a particle/auxiliary — grammar, which
+     *  marks the headword a phrase and is excused in the compound
+     *  accounting. A verb with its glue folded in (分からず, 見た) is NOT
+     *  grammar: that is inflection of one word, not phrase structure. */
+    val grammar: Boolean,
+)
+
+/**
+ * The pure core of [JapaneseEngine.memberWordsOf]: the headword's units in
+ * order, or empty when the class gate refuses the decomposition. Top-level
+ * + internal so the gate is unit-testable without Sudachi or a pack.
+ *
+ * Phrase class: the caller's POS verdict, OR a STANDALONE grammar unit —
+ * the structural sign of a phrase that JMdict's tagging misses (瞬く間に and
+ * 一斉に are adv; 世の中 is exp). Read off the units, not the raw tokens:
+ * glue folded into a verb is inflection, so 思いがけない and 分からず屋
+ * are compounds, and the adversarial review's finding — any auxiliary
+ * anywhere relaxing the completeness guard, so 思いがけない rendered 思う
+ * while silently dropping がけない — cannot recur. Phrases get the loose
+ * per-member gate: 気になる's 気 and 瞬く間に's 間 are one char and
+ * load-bearing. Transparent compounds (no standalone glue, not exp —
+ * 放送番組, 図書館) decompose only when EVERY unit is accounted for
+ * ([isAccountedCompoundUnit]): a ≥2-char kanji word, rendered as a member;
+ * a ≥2-char katakana word, EXCUSED — katakana loanwords self-decode, so
+ * ペース配分 offers 配分 with no ペース row; or a grammar unit, EXCUSED.
+ * The kanji-only emission in the caller keeps every excused unit out, and
+ * an all-katakana compound emits no members at all. Any other unit turns
+ * the whole offer off: a partial decomposition of OPAQUE units misleads
+ * (図書館 → 図書 alone implies 館 is nothing — and single characters are
+ * the kanji-breakdown section's job).
+ */
+internal fun memberUnits(
+    tokens: List<JaToken>,
+    spans: List<ReglobSpan>,
+    expressionClass: Boolean,
+): List<MemberUnit> {
+    val units = mutableListOf<MemberUnit>()
+    val covered = BooleanArray(tokens.size)
+    for (s in spans) {
+        val end = (s.tokenStart + s.tokenCount).coerceAtMost(tokens.size)
+        for (i in s.tokenStart until end) covered[i] = true
+        units += MemberUnit(
+            s.tokenStart, s.surface, s.lookupForm, s.reading,
+            grammar = isGrammarRun(tokens, s.tokenStart, end),
+        )
+    }
+    tokens.forEachIndexed { i, t ->
+        if (!covered[i]) {
+            units += MemberUnit(
+                i, t.surface, t.dictionaryForm,
+                t.reading?.let(Deinflector::katakanaToHiragana),
+                grammar = t.category.isConjugationGlue,
+            )
+        }
+    }
+    val phraseClass = expressionClass || units.any { it.grammar }
+    if (!phraseClass && units.any { !isAccountedCompoundUnit(it.surface, grammar = it.grammar) }) {
+        return emptyList()
+    }
+    return units.sortedBy { it.order }
+}
+
 /** [JapaneseEngine.memberWordsOf]'s transparent-compound unit accounting: a
  *  unit is accounted for when the member section leaves the reader either
- *  DEFINED or already able to read it — a ≥2-char kanji-bearing word
- *  (rendered as a member row) or a ≥2-char katakana word (excused, never
- *  rendered: katakana loanwords self-decode, so ペース in ペース配分 needs
- *  no row — the block check admits ー, and requiring one true katakana
- *  letter keeps mark-only strings out). Hiragana, single characters, and
+ *  DEFINED, already able to read it, or owed nothing — a ≥2-char
+ *  kanji-bearing word (rendered as a member row); a ≥2-char katakana word
+ *  (excused, never rendered: katakana loanwords self-decode, so ペース in
+ *  ペース配分 needs no row — the block check admits ー, and requiring one
+ *  true katakana letter keeps mark-only strings out); or a [grammar] unit
+ *  (excused: a particle/auxiliary run is not a word whose absence misleads
+ *  — the に of 瞬く間に, the も of 少しも — and the tokenizer's category,
+ *  not the unit's shape, says which units those are; shape alone would
+ *  veto them as hiragana). Hiragana CONTENT, single characters, and
  *  mixed-script units stay unaccounted — any one of those turns the whole
- *  compound offer off (図書館, 生ビール). Top-level + internal so the
+ *  compound offer off (図書館, 生ビール, 常に). Top-level + internal so the
  *  contract is unit-testable without a Sudachi instance. */
-internal fun isAccountedCompoundUnit(surface: String): Boolean =
-    surface.length >= 2 && (
-        hasKanji(surface) ||
-            (surface.all { it.code in 0x30A0..0x30FF } && surface.any { it.code in 0x30A1..0x30FA })
+internal fun isAccountedCompoundUnit(surface: String, grammar: Boolean = false): Boolean =
+    grammar || (
+        surface.length >= 2 && (
+            hasKanji(surface) ||
+                (surface.all { it.code in 0x30A0..0x30FF } && surface.any { it.code in 0x30A1..0x30FA })
+            )
         )
+
+/** Whether tokens[start until end] are ALL conjugation glue (particle /
+ *  auxiliary) — the [isAccountedCompoundUnit] `grammar` verdict for a
+ *  re-glob span. A content token folded with its glue (見+た) is not
+ *  grammar; a fused particle run (か+も) is. An empty range is not. */
+internal fun isGrammarRun(tokens: List<JaToken>, start: Int, end: Int): Boolean =
+    start < end && (start until end).all { tokens[it].category.isConjugationGlue }

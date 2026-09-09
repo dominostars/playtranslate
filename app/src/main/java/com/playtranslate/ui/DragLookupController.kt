@@ -1334,13 +1334,17 @@ class DragLookupController(
         // offer ALL its qualifying member words as secondary sections
         // (position-independent; an unresolvable member — 手当たり has no
         // JMdict entry — simply doesn't appear). The engine's policy sets
-        // the strictness by POS class: expressions loose, transparent
+        // the strictness by class: phrases (exp-tagged or glue-bearing)
+        // loose — 気になる → 気, 瞬く間に → 瞬く and 間; transparent
         // compounds (放送番組/ペース配分) need every unit accounted for —
-        // kanji words render, katakana words are excused — so 図書館
-        // stays whole.
+        // kanji words render, katakana words and particles are excused —
+        // so 図書館 stays whole. The display reading rides along so the
+        // members' hints align with it.
         val memberPopups: List<PopupData> = if (phraseKey == null && entry != null) {
             withContext(Dispatchers.IO) {
-                engine.memberWordsOf(popupData.word, expressionClass = entry.isExpression)
+                engine.memberWordsOf(
+                    popupData.word, expressionClass = entry.isExpression, headwordReading = popupData.reading,
+                )
             }
                 .mapNotNull { m ->
                     relatedPopupData(

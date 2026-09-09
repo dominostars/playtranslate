@@ -160,13 +160,17 @@ object PosVocabulary {
  * the class describes the join itself, so a headword listed as an expression
  * in any of its senses still owes the reader its member words.
  */
-fun expressionFrom(senses: List<Sense>): Boolean = senses.any { sense ->
-    sense.partsOfSpeech.any {
-        when (PosVocabulary.canonical(it)) {
-            PosVocabulary.PosCode.EXPRESSION,
-            PosVocabulary.PosCode.PHRASE,
-            PosVocabulary.PosCode.PROVERB -> true
-            else -> false
-        }
+fun expressionFrom(senses: List<Sense>): Boolean = senses.any { isExpressionPos(it.partsOfSpeech) }
+
+/** The expression-class test on ONE sense's parsed POS list — JMdict exp /
+ *  phrase / proverb. Shared by [expressionFrom] (built entries) and the
+ *  member re-glob's phrase exclusion, which reads raw sense rows
+ *  (DictionaryManager.expressionClassForms) so the two can't drift. */
+fun isExpressionPos(partsOfSpeech: List<String>): Boolean = partsOfSpeech.any {
+    when (PosVocabulary.canonical(it)) {
+        PosVocabulary.PosCode.EXPRESSION,
+        PosVocabulary.PosCode.PHRASE,
+        PosVocabulary.PosCode.PROVERB -> true
+        else -> false
     }
 }

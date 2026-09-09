@@ -13,6 +13,7 @@ import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.Example
 import com.playtranslate.model.Headword
 import com.playtranslate.model.PosVocabulary
+import com.playtranslate.model.isExpressionPos
 import com.playtranslate.model.KanjiDetail
 import com.playtranslate.model.Sense
 import com.playtranslate.model.expressionFrom
@@ -269,6 +270,15 @@ class DictionaryManager private constructor(private val context: Context) {
          *  candidacy, so shorter member-level joins (日本+語 → 日本語) still
          *  win their windows. */
         excludePhrases: Set<String> = emptySet(),
+        /** Member mode: joins whose entry is expression-class (JMdict exp /
+         *  phrase / proverb) must NOT fuse — a component is a WORD, and a
+         *  phrase is not one, so 瞬く+間 stays split inside 瞬く間に while
+         *  日本+語 still fuses to 日本語. The tokens look identical; only the
+         *  dictionary's class separates them. Dropped at candidacy, before
+         *  the oracle, so an imported dictionary that mirrors JMdict
+         *  (Jitendex lists 瞬く間 too) can't re-admit them as JMdict misses.
+         *  Oracle-only joins carry no POS and still fuse. */
+        excludeExpressionJoins: Boolean = false,
     ): List<ReglobSpan>? = withContext(Dispatchers.IO) {
         val database = ensureOpen() ?: return@withContext null
 
@@ -291,7 +301,8 @@ class DictionaryManager private constructor(private val context: Context) {
         // match any headword/reading — lookup ranking disambiguates those later.
         val known = database.withRefcount {
             val phraseStrings = candidates.mapTo(mutableSetOf()) { it.lookupForm }
-            batchCheckPhrases(database, phraseStrings) to batchCheckEntries(database, formCandidates)
+            batchCheckPhrases(database, phraseStrings, withExpressionClass = excludeExpressionJoins) to
+                batchCheckEntries(database, formCandidates)
         } ?: return@withContext null
         val (membership, knownForms) = known
 
@@ -302,7 +313,9 @@ class DictionaryManager private constructor(private val context: Context) {
         val admissible = admissiblePhraseCandidates(
             candidates, membership.headwords, membership.kanaNativeReadings,
             membership.priorityHeadwords,
-        )
+        ).let { adm ->
+            if (excludeExpressionJoins) adm.filter { it.lookupForm !in membership.expressionForms } else adm
+        }
         var knownPhrases = membership.headwords + membership.readings
 
         // Imported-dictionary gate for JMdict misses. Runs OUTSIDE withRefcount
@@ -585,7 +598,11 @@ class DictionaryManager private constructor(private val context: Context) {
      * [Suspicion.CONJUGATION_CUT] veto is structural and applies regardless
      * of pack schema.
      */
-    private fun batchCheckPhrases(db: SQLiteDatabase, candidates: Set<String>): PhraseMembership {
+    private fun batchCheckPhrases(
+        db: SQLiteDatabase,
+        candidates: Set<String>,
+        withExpressionClass: Boolean = false,
+    ): PhraseMembership {
         if (candidates.isEmpty()) return PhraseMembership(emptySet(), emptySet(), emptySet())
         val ranked = hasRankScore(db)
         val tiered = ranked && hasUkApplicable(db)
@@ -639,7 +656,58 @@ class DictionaryManager private constructor(private val context: Context) {
                 }
             }
         }
-        return PhraseMembership(headwords, readings, kanaNative, priorityHeadwords)
+        val expressionForms =
+            if (withExpressionClass) expressionClassForms(db, headwords + readings) else emptySet()
+        return PhraseMembership(headwords, readings, kanaNative, priorityHeadwords, expressionForms)
+    }
+
+    /** Subset of [forms] (written forms or readings) belonging to an entry
+     *  ANY of whose senses is expression-class — the same rule
+     *  [com.playtranslate.model.expressionFrom] applies to built entries,
+     *  read straight off the sense rows so the member re-glob can keep
+     *  phrases from fusing without building entries. A form shared by an
+     *  expression entry and a word entry counts as expression: the split
+     *  errs toward leaves. */
+    private fun expressionClassForms(db: SQLiteDatabase, forms: Set<String>): Set<String> {
+        if (forms.isEmpty()) return emptySet()
+        val out = mutableSetOf<String>()
+        for (chunk in forms.chunked(500)) {
+            val ph = chunk.joinToString(",") { "?" }
+            val args = chunk.toTypedArray()
+            for (sql in listOf(
+                "SELECT h.text, s.pos FROM headword h JOIN sense s ON s.entry_id = h.entry_id WHERE h.text IN ($ph)",
+                "SELECT r.text, s.pos FROM reading r JOIN sense s ON s.entry_id = r.entry_id WHERE r.text IN ($ph)",
+            )) {
+                db.rawQuery(sql, args).use { c ->
+                    while (c.moveToNext()) {
+                        if (isExpressionPos(PosVocabulary.parse(c.getString(1)))) out.add(c.getString(0))
+                    }
+                }
+            }
+        }
+        return out
+    }
+
+    /** Dictionary readings (hiragana, as stored) of every entry whose
+     *  written form is one of [forms] — the candidate set the member
+     *  reading alignment ([com.playtranslate.language.alignMemberReadings])
+     *  chooses from. One batched query; empty when the DB isn't ready. */
+    suspend fun readingsForForms(forms: Set<String>): Map<String, Set<String>> = withContext(Dispatchers.IO) {
+        if (forms.isEmpty()) return@withContext emptyMap()
+        val database = ensureOpen() ?: return@withContext emptyMap()
+        database.withRefcount {
+            val out = mutableMapOf<String, MutableSet<String>>()
+            for (chunk in forms.chunked(500)) {
+                val ph = chunk.joinToString(",") { "?" }
+                database.rawQuery(
+                    "SELECT h.text, r.text FROM headword h JOIN reading r ON r.entry_id = h.entry_id WHERE h.text IN ($ph)",
+                    chunk.toTypedArray(),
+                ).use { c ->
+                    while (c.moveToNext()) out.getOrPut(c.getString(0)) { mutableSetOf() }.add(c.getString(1))
+                }
+            }
+            out
+        } ?: emptyMap()
     }
 
     /** Query entries matching both a kanji form and a reading (narrowed
@@ -1033,6 +1101,11 @@ class DictionaryManager private constructor(private val context: Context) {
              *  only tier a [Suspicion.CONVERB_CUT] candidate may fuse
              *  from — see [admissiblePhraseCandidates]. */
             val priorityHeadwords: Set<String> = emptySet(),
+            /** Subset of [headwords] ∪ [readings] belonging to an entry with
+             *  an expression-class sense ([com.playtranslate.model.isExpressionPos]).
+             *  Populated only when asked for (member mode of the re-glob —
+             *  see reglobSpansForTokens' excludeExpressionJoins). */
+            val expressionForms: Set<String> = emptySet(),
         )
 
         /**

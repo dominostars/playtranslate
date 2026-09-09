@@ -159,15 +159,26 @@ interface SourceLanguageEngine {
      *
      * [expressionClass] is the caller's POS verdict on the entry
      * ([com.playtranslate.model.DictionaryEntry.isExpression]; spaced headwords count
-     * as expressions by form). Expressions get the loose per-member gate
-     * (気になる → 気 — one char, load-bearing). Non-expression fused
-     * entries — transparent compounds like 放送番組 and 国内向け — get
-     * members only when EVERY unit is accounted for: a ≥2-char
-     * kanji-bearing word (rendered) or a ≥2-char katakana word (excused —
-     * katakana self-decodes, so ペース配分 offers 配分 with no ペース row).
-     * Partial decompositions of OPAQUE units mislead (図書館 → 図書 alone
-     * implies 館 is nothing, and single characters are the kanji-breakdown
-     * section's job), so any other unit turns the whole offer off.
+     * as expressions by form). [JapaneseEngine] widens it structurally: a
+     * STANDALONE particle or auxiliary unit marks a phrase whatever JMdict
+     * tagged it (瞬く間に and 一斉に are adv); glue folded into a verb is
+     * inflection, not phrase structure (思いがけない, 分からず屋 are
+     * compounds). Phrases get the loose
+     * per-member gate (気になる → 気, 瞬く間に → 瞬く and 間 — one char,
+     * load-bearing). Non-phrase fused entries — transparent compounds like
+     * 放送番組 and 国内向け — get members only when EVERY unit is accounted
+     * for: a ≥2-char kanji-bearing word (rendered), a ≥2-char katakana
+     * word (excused — katakana self-decodes, so ペース配分 offers 配分 with
+     * no ペース row), or a grammar unit (excused). Partial decompositions
+     * of OPAQUE units mislead (図書館 → 図書 alone implies 館 is nothing,
+     * and single characters are the kanji-breakdown section's job), so any
+     * other unit turns the whole offer off. Members come out at WORD
+     * granularity: sub-words re-fuse (日本語), sub-phrases don't (瞬く間).
+     *
+     * [headwordReading] is the displayed headword's reading, used to pick
+     * each member's reading hint by alignment (瞬く reads またたく inside
+     * またたくまに, not the tokenizer's しばたたく); null keeps the
+     * tokenizer's hints.
      *
      * Callers must pass the DISPLAYED headword form: for JA `uk` entries
      * the kanji variant (かも知れない) would let 知れ through the
@@ -180,6 +191,7 @@ interface SourceLanguageEngine {
     suspend fun memberWordsOf(
         headword: String,
         expressionClass: Boolean = true,
+        headwordReading: String? = null,
     ): List<TokenSpan> = whitespaceMemberWords(headword)
 
     /** Character-level lookup. JA returns [com.playtranslate.model.KanjiDetail];
