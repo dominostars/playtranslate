@@ -72,7 +72,20 @@ class DetectThenRecognize(
         val recStart = System.nanoTime()
         for (region in detected) {
             coroutineContext.ensureActive()
-            recognizer.recognize(image, region)?.let { recognized += it }
+            val result = recognizer.recognize(image, region)
+            if (result != null) recognized += result
+            if (BuildConfig.DEBUG) {
+                // Per-region score trace for calibrating junk gates (detector box
+                // score vs recognizer confidence on non-text detections — sprite
+                // clusters read as 1-7 chars). -1 prints as "-"; a null result is
+                // a box the recognizer read as blank. DEBUG-only: the text is
+                // user content, same gate as OcrManager's "OCR raw" lines.
+                val b = region.box.bounds
+                Log.d("OcrConf", "det=${fmtConf(region.confidence)} rec=${fmtConf(result?.confidence ?: -1f)} " +
+                    "n=${result?.text?.count { !it.isWhitespace() } ?: 0} " +
+                    "box=(${b.left},${b.top},${b.right},${b.bottom}) " +
+                    (if (result == null) "blank" else "\"${result.text.take(40)}\""))
+            }
         }
         if (BuildConfig.DEBUG) {
             // Stage-split observability for the MNN engines (Meiki/Paddle); rec is
@@ -114,6 +127,9 @@ class DetectThenRecognize(
         recognizer.close()
     }
 }
+
+/** "0.83" for a known confidence, "-" for the -1 "unknown" sentinel. */
+private fun fmtConf(c: Float): String = if (c < 0f) "-" else "%.2f".format(java.util.Locale.US, c)
 
 /** True for source languages whose words are whitespace-separated (Latin,
  *  Cyrillic, Korean) — the scripts where PaddleOCR DBNet fragments a line into

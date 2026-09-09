@@ -56,8 +56,10 @@ internal object DbNet {
     private const val VERTICAL_ASPECT = 1.5
 
     /** A detected text region: [points] are the 4 corners in ORIGINAL-bitmap
-     *  coordinates; [aabb] is their axis-aligned bounding box. */
-    class Box(val points: Array<Point>, val aabb: Rect)
+     *  coordinates; [aabb] is their axis-aligned bounding box; [score] is the
+     *  detector's mean probability inside the contour (the value [BOX_THRESH]
+     *  gated on), carried so the region's confidence reports it instead of -1. */
+    class Box(val points: Array<Point>, val aabb: Rect, val score: Float)
 
     /**
      * @param prob   detector output, row-major [h*w], values 0..1
@@ -102,7 +104,7 @@ internal object DbNet {
             grown.points(pts)
             // map det-map coords → original coords
             val orig = Array(4) { Point(pts[it].x / scaleX, pts[it].y / scaleY) }
-            boxes += Box(orig, aabbOf(orig, origW, origH))
+            boxes += Box(orig, aabbOf(orig, origW, origH), score.toFloat())
             c2f.release()
         }
         probMat.release(); bin.release()

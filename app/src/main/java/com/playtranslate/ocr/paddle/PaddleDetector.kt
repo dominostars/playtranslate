@@ -54,7 +54,9 @@ class PaddleDetector(private val session: PaddleOcrSession) : TextDetector {
                 ),
                 quad = quad,
                 orientation = orientation,
-                confidence = -1f,
+                // DBNet's box score (mean probability inside the contour), the
+                // same value MeikiDetector reports; nothing gates on it yet.
+                confidence = box.score,
             )
         }
 
