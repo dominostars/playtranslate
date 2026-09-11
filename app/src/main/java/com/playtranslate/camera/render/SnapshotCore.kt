@@ -257,6 +257,7 @@ object SnapshotCore {
             angleDeg = group.angleDeg,
             orientedWidth = group.orientedWidth,
             orientedHeight = group.orientedHeight,
+            drawBounds = group.drawBounds,
         )
     }
 

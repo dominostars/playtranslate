@@ -115,6 +115,27 @@ class ScanlineReconcilerTest {
      * the drift is tallied in [ScanlineReconciler.Verdicts.repositioned].
      */
     @Test
+    fun sameText_drift_keptBoxCarriesItsFuriganaBandOntoTheNewBounds() {
+        // A kept box drawn over its furigana band drifts beyond hysteresis
+        // on a cycle whose read has no band (the reading went unread). The
+        // repositioned box carries the band onto the fresh bounds; a verbatim
+        // copy would have drawn the chip at the stale position.
+        val r = Rect(0, 20, 200, 70)
+        val moved = Rect(10, 30, 210, 80)
+        val displayed = box(r, "Scroll", translatedText = "T").copy(drawBounds = Rect(0, 0, 200, 70))
+
+        val v = ScanlineReconciler.reconcile(listOf(grp("Scroll", moved)), listOf(displayed))
+        assertEquals(1, v.repositioned)
+        assertEquals(moved, v.keptBoxes[0].bounds)
+        assertEquals("band rides the new bounds", Rect(10, 10, 210, 80), v.keptBoxes[0].drawBounds)
+
+        // The fresh read carrying a wider band than the box wins the union.
+        val wider = grp("Scroll", moved).copy(drawBounds = Rect(10, 4, 210, 80))
+        val v2 = ScanlineReconciler.reconcile(listOf(wider), listOf(displayed))
+        assertEquals(Rect(10, 4, 210, 80), v2.keptBoxes[0].drawBounds)
+    }
+
+    @Test
     fun sameText_boundsDriftedBeyondHysteresis_repositionsKeptBox() {
         val r = Rect(0, 0, 200, 50)
         val moved = Rect(10, 10, 210, 60) // +10px on every edge (> 5px hysteresis)

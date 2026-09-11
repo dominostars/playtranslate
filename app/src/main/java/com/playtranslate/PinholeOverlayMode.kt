@@ -1053,6 +1053,7 @@ class PinholeOverlayMode(
                 val placeholders = buildPlaceholderBoxes(
                     farTexts, farBounds, farLineCounts, raw, cropLeft, cropTop,
                     farOrientations, farAlignments, farSlants,
+                    drawBounds = placeGroups.map { it.drawBounds },
                 )
 
                 if (placeholders.isNotEmpty()) {
@@ -1603,6 +1604,8 @@ class PinholeOverlayMode(
         alignments: List<com.playtranslate.language.TextAlignment> = emptyList(),
         /** Per-box (angleDeg, orientedWidth, orientedHeight); zeros when upright. */
         slants: List<Triple<Float, Float, Float>> = emptyList(),
+        /** Per-box drawn rect ([TextBox.drawBounds]); the matched rect when absent. */
+        drawBounds: List<Rect> = emptyList(),
     ): List<TextBox> {
         val colorScale = 4
         val colorRef = raw.scale(raw.width / colorScale, raw.height / colorScale, false)
@@ -1619,7 +1622,8 @@ class PinholeOverlayMode(
             val (ang, ow, oh) = slants.getOrElse(idx) { Triple(0f, 0f, 0f) }
             TextBox("", rect, bg, tc, lineCounts.getOrElse(idx) { 1 },
                 sourceText = texts.getOrElse(idx) { "" }, orientation = orient, alignment = align,
-                angleDeg = ang, orientedWidth = ow, orientedHeight = oh)
+                angleDeg = ang, orientedWidth = ow, orientedHeight = oh,
+                drawBounds = drawBounds.getOrElse(idx) { rect })
         }
     }
 

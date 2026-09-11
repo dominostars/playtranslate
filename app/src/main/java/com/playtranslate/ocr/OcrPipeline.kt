@@ -188,8 +188,12 @@ object OcrPipeline {
                 } else {
                     null
                 }
+            // The demoted readings' pixels become part of their base
+            // group's DRAWN rect (never its matched rect) — see
+            // RubyFilter.extendBases for why both halves of that matter.
+            val finalGroups = refined?.groups ?: groups
             Output(
-                groups = refined?.groups ?: groups,
+                groups = if (ruby != null) RubyFilter.extendBases(finalGroups, ruby.demoted) else finalGroups,
                 scaleFactor = rec.scaleFactor,
                 backend = rec.backend,
                 mangaOcrUsed = (refined?.decodedBlocks ?: 0) > 0,

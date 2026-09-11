@@ -2438,4 +2438,9 @@ data class LayoutGroup(
     val angleDeg: Float = 0f,
     val orientedWidth: Float = 0f,
     val orientedHeight: Float = 0f,
+    /** Rect the overlay DRAWS at, same space as [bounds]. Equal to [bounds]
+     *  unless [RubyFilter.extendBases] folded a demoted furigana reading into
+     *  its base group. [bounds] itself stays the lines' own union: it is what
+     *  live mode matches between cycles, and ruby detection flickers. */
+    val drawBounds: Rect = bounds,
 )

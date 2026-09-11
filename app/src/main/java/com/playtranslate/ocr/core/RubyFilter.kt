@@ -249,6 +249,41 @@ object RubyFilter {
         return Result(kept, demoted, refused)
     }
 
+    /**
+     * Fold each demoted reading into its base's group as DRAWN extent
+     * ([LayoutGroup.drawBounds]), leaving [LayoutGroup.bounds] alone.
+     *
+     * Why: a demoted reading gets no overlay, so on the next capture of the
+     * same screen its pixels are still visible while its base line sits
+     * under the chip we drew (the capture masks our own windows). Read
+     * alone, with no kanji line to attach to, the reading comes back as new
+     * text, and in live mode as a new box every cycle. Drawing the base's
+     * chip over the reading's pixels closes that at the source, and the
+     * translation gets the ruby band's room, which the game reserved for
+     * ruby, so nothing else competes for it. Only the drawn rect grows:
+     * live mode decides "same text in place" by comparing group rects edge
+     * by edge within a few pixels, ruby detection flickers between cycles,
+     * and a matched rect that grew and shrank with it would read as the
+     * text moving. Slanted groups are left alone (no ruby participates in
+     * them). The base line is found by identity, falling back to its box,
+     * which survives manga-ocr refinement replacing the line's text.
+     */
+    fun extendBases(groups: List<LayoutGroup>, demoted: List<Demoted>): List<LayoutGroup> {
+        if (demoted.isEmpty()) return groups
+        val extents = HashMap<Int, Rect>()
+        for (d in demoted) {
+            val baseLine = d.base.lines.firstOrNull() ?: continue
+            val gi = groups.indexOfFirst { g ->
+                g.angleDeg == 0f &&
+                    g.lines.any { it === baseLine || it.box.bounds == baseLine.box.bounds }
+            }
+            if (gi < 0) continue
+            extents.getOrPut(gi) { Rect(groups[gi].drawBounds) }.union(d.region.box.bounds)
+        }
+        if (extents.isEmpty()) return groups
+        return groups.mapIndexed { i, g -> extents[i]?.let { g.copy(drawBounds = it) } ?: g }
+    }
+
     /** Line regions with an upright, non-degenerate box take part on either
      *  side of the rule; slanted and whole-region reads do not. */
     private fun isEligible(r: RecognizedRegion): Boolean =

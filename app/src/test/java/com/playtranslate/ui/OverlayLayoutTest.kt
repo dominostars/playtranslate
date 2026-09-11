@@ -659,6 +659,20 @@ class OverlayLayoutTest {
     }
 
     @Test
+    fun boxesMatchFuzzy_comparesTheMatchedRect_notTheDrawnOne() {
+        // A furigana band joining the chip changes drawBounds by 16 px with
+        // bounds untouched: still a fuzzy match here (the matched rect did
+        // not move), because the VIEW is what rebuilds on the drawn change.
+        val plain = box(Rect(100, 200, 600, 240))
+        val banded = plain.copy(drawBounds = Rect(100, 184, 600, 240))
+        assertTrue(OverlayLayout.boxesMatchFuzzy(listOf(plain), listOf(banded)))
+        // Conversely, a drawn rect that stayed put while the matched rect
+        // moved past tolerance does not rescue the match.
+        val moved = plain.copy(bounds = Rect(100, 230, 600, 270), drawBounds = Rect(100, 200, 600, 240))
+        assertTrue(!OverlayLayout.boxesMatchFuzzy(listOf(plain), listOf(moved)))
+    }
+
+    @Test
     fun boxesMatchFuzzy_angleChangeDefeatsFastPath() {
         // An upright↔slanted mode flip always defeats the fast path.
         val flat = box(Rect(300, 300, 493, 435))

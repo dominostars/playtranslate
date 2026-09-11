@@ -74,6 +74,98 @@ class ClassificationTest {
         groups = groups.mapIndexed { i, (text, bounds) -> grp(text, bounds, lineCounts?.getOrElse(i) { 1 } ?: 1) },
     )
 
+    // ── drawn rect (TextBox.drawBounds) through the three verdicts ───────
+
+    @Test
+    fun drawBounds_inPlaceContentMatch_neverShrinks() {
+        // A box drawn over its furigana band (drawBounds taller than bounds)
+        // is re-read in place by a cycle that failed to read the furigana:
+        // the group's drawBounds equals its bounds. The replacement keeps
+        // the union, so the chip stays over the reading's pixels.
+        val bounds = Rect(100, 200, 600, 240)
+        val drawn = Rect(100, 180, 600, 240)
+        val group = OcrManager.OcrGroup(text = "hello", bounds = bounds, lines = listOf(OcrManager.LineBox("hello", bounds, 0)))
+        val result = classifyOcrResults(
+            ocrResult = OcrManager.OcrResult(fullText = "", segments = emptyList(), groups = listOf(group)),
+            boxes = listOf(TextBox(translatedText = "", bounds = bounds, sourceText = "hello", drawBounds = drawn)),
+            ocrBitmapRects = listOf(bounds),
+            coords = identityCoords,
+        )
+        assertEquals(setOf(0), result.contentMatchRemovals)
+        assertEquals(bounds, result.farOcrGroups.single().bounds)
+        assertEquals(drawn, result.farOcrGroups.single().drawBounds)
+        assertTrue(result.vacated.isEmpty())
+    }
+
+    @Test
+    fun drawBounds_slowDrift_bandTravelsWithTheText_neverAccumulates() {
+        // Text scrolling 5 px per cycle stays "in place" (under the 12 px
+        // slop) on every cycle. The furigana band (20 px above) must ride
+        // along; the chip must NOT keep every position the text ever had
+        // (Codex adversarial review, 2026-09-10).
+        var bounds = Rect(100, 200, 600, 240)
+        var drawn = Rect(100, 180, 600, 240)
+        repeat(4) {
+            val next = Rect(bounds).apply { offset(0, 5) }
+            val group = OcrManager.OcrGroup(text = "hello", bounds = next, lines = listOf(OcrManager.LineBox("hello", next, 0)))
+            val result = classifyOcrResults(
+                ocrResult = OcrManager.OcrResult(fullText = "", segments = emptyList(), groups = listOf(group)),
+                boxes = listOf(TextBox(translatedText = "T", bounds = bounds, sourceText = "hello", drawBounds = drawn)),
+                ocrBitmapRects = listOf(bounds),
+                coords = identityCoords,
+            )
+            assertTrue(result.vacated.isEmpty())
+            val far = result.farOcrGroups.single()
+            assertEquals(next, far.bounds)
+            assertEquals("band carried, not accumulated", Rect(100, next.top - 20, 600, next.bottom), far.drawBounds)
+            bounds = far.bounds; drawn = far.drawBounds
+        }
+        assertEquals(Rect(100, 220, 600, 260), bounds)
+        assertEquals(Rect(100, 200, 600, 260), drawn)
+    }
+
+    @Test
+    fun drawBounds_inPlace_freshBandWiderThanCarried_takesTheWider() {
+        val bounds = Rect(100, 200, 600, 240)
+        val group = OcrManager.OcrGroup(text = "hello", bounds = bounds, drawBounds = Rect(100, 176, 600, 240), lines = listOf(OcrManager.LineBox("hello", bounds, 0)))
+        val result = classifyOcrResults(
+            ocrResult = OcrManager.OcrResult(fullText = "", segments = emptyList(), groups = listOf(group)),
+            boxes = listOf(TextBox(translatedText = "T", bounds = bounds, sourceText = "hello", drawBounds = Rect(100, 190, 600, 240))),
+            ocrBitmapRects = listOf(bounds),
+            coords = identityCoords,
+        )
+        assertEquals(Rect(100, 176, 600, 240), result.farOcrGroups.single().drawBounds)
+    }
+
+    @Test
+    fun drawBounds_relocation_takesTheNewGroupsRect() {
+        val oldBounds = Rect(0, 0, 100, 100)
+        val newBounds = Rect(500, 500, 600, 600)
+        val newDrawn = Rect(500, 480, 600, 600)
+        val group = OcrManager.OcrGroup(text = "hello", bounds = newBounds, drawBounds = newDrawn, lines = listOf(OcrManager.LineBox("hello", newBounds, 0)))
+        val result = classifyOcrResults(
+            ocrResult = OcrManager.OcrResult(fullText = "", segments = emptyList(), groups = listOf(group)),
+            boxes = listOf(TextBox(translatedText = "", bounds = oldBounds, sourceText = "hello", drawBounds = Rect(0, -20, 100, 100))),
+            ocrBitmapRects = listOf(oldBounds),
+            coords = identityCoords,
+        )
+        assertEquals(newDrawn, result.farOcrGroups.single().drawBounds)
+        assertEquals(1, result.vacated.size)
+    }
+
+    @Test
+    fun drawBounds_far_carriesTheGroupsRect() {
+        val bounds = Rect(100, 200, 600, 240)
+        val drawn = Rect(100, 180, 600, 240)
+        val group = OcrManager.OcrGroup(text = "hello", bounds = bounds, drawBounds = drawn, lines = listOf(OcrManager.LineBox("hello", bounds, 0)))
+        val result = classifyOcrResults(
+            ocrResult = OcrManager.OcrResult(fullText = "", segments = emptyList(), groups = listOf(group)),
+            boxes = emptyList(), ocrBitmapRects = emptyList(), coords = identityCoords,
+        )
+        assertEquals(drawn, result.farOcrGroups.single().drawBounds)
+        assertEquals(bounds, result.farOcrGroups.single().bounds)
+    }
+
     // ── classifyOcrResults: shape / empty-input cases ────────────────────
 
     @Test

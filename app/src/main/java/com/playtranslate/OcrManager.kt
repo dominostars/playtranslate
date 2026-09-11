@@ -213,6 +213,11 @@ class OcrManager private constructor() {
          *  [angleDeg] == 0. Ride with the angle — not re-derivable downstream. */
         val orientedWidth: Float = 0f,
         val orientedHeight: Float = 0f,
+        /** Rect the overlay chip is DRAWN at (original-bitmap coords). Equal to
+         *  [bounds] unless the furigana filter folded a demoted reading into
+         *  this group ([com.playtranslate.ocr.core.RubyFilter.extendBases]).
+         *  Never used to match groups between live cycles — [bounds] is. */
+        val drawBounds: Rect = bounds,
     )
 
     data class OcrResult(
@@ -376,6 +381,8 @@ class OcrManager private constructor() {
                 angleDeg = group.angleDeg,
                 orientedWidth = scaleDim(group.orientedWidth, scaleFactor),
                 orientedHeight = scaleDim(group.orientedHeight, scaleFactor),
+                drawBounds = if (group.drawBounds === group.bounds) scaleRect(group.bounds, scaleFactor)
+                             else scaleRect(group.drawBounds, scaleFactor),
             )
         }
 

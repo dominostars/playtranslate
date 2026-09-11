@@ -383,6 +383,14 @@ object ScanlineReconciler {
                         // a held slant (above), which rides the fresh bounds.
                         kept.add(box.copy(
                             bounds = g.bounds,
+                            // The drawn rect moves WITH the text: carry the
+                            // box's furigana band onto the fresh bounds (a
+                            // verbatim copy would leave the chip drawn at
+                            // the stale position while the matched rect
+                            // moved on).
+                            drawBounds = com.playtranslate.ui.carriedDrawBounds(
+                                box.bounds, box.drawBounds, g.bounds, g.drawBounds,
+                            ),
                             angleDeg = if (holdSlant) box.angleDeg else g.angleDeg,
                             orientedWidth = if (holdSlant) box.orientedWidth else g.orientedWidth,
                             orientedHeight = if (holdSlant) box.orientedHeight else g.orientedHeight,

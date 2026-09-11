@@ -3639,6 +3639,7 @@ class CaptureService : Service() {
                 "", g.bounds, bgColor, textColor, g.lines.size,
                 orientation = g.orientation, alignment = g.alignment,
                 angleDeg = g.angleDeg, orientedWidth = g.orientedWidth, orientedHeight = g.orientedHeight,
+                drawBounds = g.drawBounds,
             )
         }
         return OneShotOverlayData(boxes, cropLeft, cropTop, screenshotW, screenshotH)

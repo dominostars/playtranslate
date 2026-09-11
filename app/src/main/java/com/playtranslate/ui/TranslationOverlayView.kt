@@ -245,12 +245,20 @@ class TranslationOverlayView(
         // each cycle's delta is compared against the already-advanced list
         // (field bug 2026-07-10: furigana annotations frozen during small
         // pans, jumping only on large ones).
+        // One more field defeats the fast path: the DRAWN extension beyond the
+        // matched rect ([TextBox.drawBounds] minus [TextBox.bounds], per edge).
+        // Jitter moves both rects together, so the extension is stable under
+        // it; it steps only when a furigana band joins or leaves the chip, and
+        // a chip that kept its old geometry would leave the reading's pixels
+        // uncovered for the next capture — the case the band exists for
+        // (Codex adversarial review, 2026-09-10).
         if (!authoritativeBounds && cropSame && OverlayLayout.boxesMatchFuzzy(this.boxes, boxes)) {
             val visualChanged = this.boxes.size == boxes.size &&
                 this.boxes.zip(boxes).any { (a, b) ->
                     a.bgColor != b.bgColor ||
                         a.textColor != b.textColor ||
-                        a.lineCount != b.lineCount
+                        a.lineCount != b.lineCount ||
+                        !drawExtension(a).contentEquals(drawExtension(b))
                 }
             this.boxes = boxes
             if (visualChanged && width > 0 && height > 0) {
@@ -268,6 +276,16 @@ class TranslationOverlayView(
             rebuildChildren()
         }
     }
+
+    /** How far the drawn rect extends past the matched one on each edge
+     *  (left, top, right, bottom). Zero everywhere unless a furigana band
+     *  was folded into the chip. */
+    private fun drawExtension(b: TextBox): IntArray = intArrayOf(
+        b.bounds.left - b.drawBounds.left,
+        b.bounds.top - b.drawBounds.top,
+        b.drawBounds.right - b.bounds.right,
+        b.drawBounds.bottom - b.bounds.bottom,
+    )
 
     /** Remove specific boxes by content match (text + bounds). Removes only the
      *  corresponding child views — surviving children stay in place with no rebuild. */
@@ -554,7 +572,7 @@ class TranslationOverlayView(
                     } else {
                         // Defensive: no payload — pre-carve pin on the unpadded
                         // mapped bounds center at the box's own angle.
-                        val src = OverlayLayout.mapRect(box.bounds, cropOffsetX, cropOffsetY, scaleX, scaleY)
+                        val src = OverlayLayout.mapRect(box.drawBounds, cropOffsetX, cropOffsetY, scaleX, scaleY)
                         applyRotatedPin(child, src.centerX(), src.centerY(), angledW, angledH, box.angleDeg)
                     }
                 } else {

@@ -35,6 +35,7 @@ class TranslationPresenter(
             work.map { it.alignment },
             work.map { ReadingArbiter.scoreOf(it.group) },
             work.map { Triple(it.angleDeg, it.orientedWidth, it.orientedHeight) },
+            drawBounds = work.map { it.group?.drawBounds ?: it.bounds },
         )
         val partial = placeholders.mapIndexed { i, ph ->
             service.getCachedTranslation(texts[i])

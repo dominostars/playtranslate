@@ -51,6 +51,9 @@ data class FarGroup(
     val angleDeg: Float = 0f,
     val orientedWidth: Float = 0f,
     val orientedHeight: Float = 0f,
+    /** Rect the placeholder is DRAWN at; [bounds] is what it is matched on.
+     *  See [com.playtranslate.ui.TextBox.drawBounds]. */
+    val drawBounds: Rect = bounds,
 )
 
 /**
@@ -358,7 +361,8 @@ fun classifyOcrResults(
                     // within re-read jitter) mints a tombstone at the
                     // vacated rect. Copied: Rect is mutable and the box
                     // is about to be removed.
-                    if (!tombstoneSameRegion(box.bounds, ocrBound)) {
+                    val inPlace = tombstoneSameRegion(box.bounds, ocrBound)
+                    if (!inPlace) {
                         vacated.add(Tombstone(box.sourceText, Rect(box.bounds)))
                     }
                     // Record the about-to-be index so step 3's coalesce
@@ -371,6 +375,20 @@ fun classifyOcrResults(
                         angleDeg = group.angleDeg,
                         orientedWidth = group.orientedWidth,
                         orientedHeight = group.orientedHeight,
+                        // In place, the drawn rect never shrinks: a cycle
+                        // that fails to read a base line's furigana would
+                        // otherwise pull the chip off the reading's pixels,
+                        // and the next capture reads them as new text with
+                        // the base still hidden under the chip. The band is
+                        // carried as an EXTENSION onto the fresh rect, never
+                        // as an absolute union: sub-slop drift is "in place"
+                        // every cycle, and an absolute union would keep every
+                        // position the text ever had (see carriedDrawBounds).
+                        drawBounds = if (inPlace) {
+                            com.playtranslate.ui.carriedDrawBounds(box.bounds, box.drawBounds, ocrBound, group.drawBounds)
+                        } else {
+                            group.drawBounds
+                        },
                     ))
                     contentMatched = true
                     break
@@ -637,6 +655,7 @@ fun classifyOcrResults(
                         maxOf(existing.bounds.right, ocrBound.right),
                         maxOf(existing.bounds.bottom, ocrBound.bottom),
                     ),
+                    drawBounds = Rect(existing.drawBounds).apply { union(group.drawBounds) },
                     lineCount = mergedLineCount,
                     orientation = existing.orientation,
                     alignment = mergedAlign,
@@ -668,6 +687,7 @@ fun classifyOcrResults(
                     angleDeg = group.angleDeg,
                     orientedWidth = group.orientedWidth,
                     orientedHeight = group.orientedHeight,
+                    drawBounds = group.drawBounds,
                 ))
             }
         }

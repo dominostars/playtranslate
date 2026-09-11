@@ -128,9 +128,11 @@ internal object OverlayLayout {
         val dW = displayW.toFloat()
         val dH = displayH.toFloat()
 
-        // Map OCR bounds to screen coordinates; pad non-furigana boxes.
+        // Map the DRAWN rects to screen coordinates; pad non-furigana boxes.
+        // drawBounds, not bounds: a base line whose furigana was filtered
+        // draws over the reading's pixels too (TextBox.drawBounds).
         val finalRects = boxes.map { box ->
-            val r = mapRect(box.bounds, cropLeft, cropTop, scaleX, scaleY)
+            val r = mapRect(box.drawBounds, cropLeft, cropTop, scaleX, scaleY)
             if (box.isFurigana) {
                 RectF(r.left, r.top, r.right, r.bottom)
             } else {
@@ -153,7 +155,7 @@ internal object OverlayLayout {
         // left as-is deliberately: its carves feed the mode reclassification +
         // growIntoGaps machinery, and no uncovering instance has been observed
         // there — same-family watch item if vertical-text churn ever shows up.
-        val sourceRects = boxes.map { mapRect(it.bounds, cropLeft, cropTop, scaleX, scaleY) }
+        val sourceRects = boxes.map { mapRect(it.drawBounds, cropLeft, cropTop, scaleX, scaleY) }
 
         // SOURCE_ANGLE chips: padding lives in the DESKEWED frame — the drawn
         // chip is the oriented dims + padding, centered on the unpadded mapped
@@ -538,6 +540,10 @@ internal object OverlayLayout {
                     bb.bounds, bb.angleDeg, bb.orientedWidth, bb.orientedHeight,
                 ) > tolerance
             ) return false
+            // The MATCHED rect, which is the one that jitters per re-OCR. A
+            // change in the DRAWN extension beyond it (a furigana band joining
+            // or leaving the chip) is not jitter and is caught separately by
+            // TranslationOverlayView.setBoxes, which rebuilds on it.
             val ra = ba.bounds; val rb = bb.bounds
             if (Math.abs(ra.left - rb.left) > tolerance ||
                 Math.abs(ra.top - rb.top) > tolerance ||

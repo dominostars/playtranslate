@@ -663,6 +663,61 @@ class RubyFilterTest {
         assertEquals(2f / 40f, d.gapEm, 1e-4f)
     }
 
+    // ── extendBases: the demoted reading joins its base's DRAWN rect ────
+
+    private fun groupOf(vararg regions: RecognizedRegion, angleDeg: Float = 0f): LayoutGroup {
+        val lines = regions.flatMap { it.lines }
+        val b = Rect(lines[0].box.bounds)
+        for (l in lines.drop(1)) b.union(l.box.bounds)
+        return LayoutGroup(
+            text = regions.joinToString("") { it.text }, lines = lines, bounds = b,
+            orientation = regions[0].orientation, alignment = com.playtranslate.language.TextAlignment.LEFT,
+            angleDeg = angleDeg,
+        )
+    }
+
+    @Test
+    fun extendBases_horizontal_growsDrawnRectUpOverTheReading_matchedRectUntouched() {
+        val base = region("一緒に買うようにしてください。", 697, 738, 1188, 771)
+        val ruby = region("いっしょいか", 703, 713, 824, 728)
+        val res = RubyFilter.apply(listOf(base, ruby))
+        val out = RubyFilter.extendBases(listOf(groupOf(base)), res.demoted)
+        assertEquals(Rect(697, 738, 1188, 771), out.single().bounds)
+        assertEquals(Rect(697, 713, 1188, 771), out.single().drawBounds)
+    }
+
+    @Test
+    fun extendBases_vertical_growsDrawnRectRightOverTheReading() {
+        val base = region("田舎なのん?", 372, 731, 396, 874, TextOrientation.VERTICAL)
+        val ruby = region("いなか", 396, 760, 408, 800, TextOrientation.VERTICAL)
+        val res = RubyFilter.apply(listOf(base, ruby))
+        val out = RubyFilter.extendBases(listOf(groupOf(base)), res.demoted)
+        assertEquals(Rect(372, 731, 396, 874), out.single().bounds)
+        assertEquals(Rect(372, 731, 408, 874), out.single().drawBounds)
+    }
+
+    @Test
+    fun extendBases_severalReadingsOnOneParagraph_unionAll_otherGroupsUntouched() {
+        val line1 = region("昔々あるところに", 100, 100, 500, 140)
+        val ruby1 = region("むかしむかし", 100, 82, 250, 96)
+        val line2 = region("お爺さんがいました", 100, 172, 500, 212)
+        val ruby2 = region("おじい", 100, 150, 160, 168)
+        val other = region("次へ", 100, 400, 200, 440)
+        val res = RubyFilter.apply(listOf(line1, ruby1, line2, ruby2, other))
+        assertEquals(listOf("むかしむかし", "おじい"), res.demoted.map { it.region.text })
+        val out = RubyFilter.extendBases(listOf(groupOf(line1, line2), groupOf(other)), res.demoted)
+        assertEquals(Rect(100, 82, 500, 212), out[0].drawBounds)
+        assertEquals(Rect(100, 100, 500, 212), out[0].bounds)
+        assertEquals(out[1].bounds, out[1].drawBounds)
+    }
+
+    @Test
+    fun extendBases_noDemotions_returnsTheSameList() {
+        val g = groupOf(region("次へ", 100, 400, 200, 440))
+        val groups = listOf(g)
+        assertTrue(RubyFilter.extendBases(groups, emptyList()) === groups)
+    }
+
     @Test
     fun refused_reportsTheNeighbourWithoutHan() {
         val base = region("だがきぼうはまだうしなわれてはいない", 100, 200, 900, 248)

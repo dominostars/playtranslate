@@ -830,6 +830,8 @@ object OverlayToolkit {
         confidences: List<Pair<Float, Float>> = emptyList(),
         /** Per-box (angleDeg, orientedWidth, orientedHeight); zeros when upright. */
         slants: List<Triple<Float, Float, Float>> = emptyList(),
+        /** Per-box drawn rect ([TextBox.drawBounds]); the matched rect when absent. */
+        drawBounds: List<Rect> = emptyList(),
     ): List<TextBox> {
         val colorScale = 4
         val colorRef = raw.scale(raw.width / colorScale, raw.height / colorScale, false)
@@ -848,7 +850,8 @@ object OverlayToolkit {
             TextBox("", rect, bg, tc, lineCounts.getOrElse(idx) { 1 },
                 sourceText = texts.getOrElse(idx) { "" }, orientation = orient, alignment = align,
                 angleDeg = ang, orientedWidth = ow, orientedHeight = oh,
-                sourceConfMin = cMin, sourceConfMean = cMean)
+                sourceConfMin = cMin, sourceConfMean = cMean,
+                drawBounds = drawBounds.getOrElse(idx) { rect })
         }
     }
 

@@ -84,6 +84,15 @@ data class TextBox(
     /** Mean over the same best read's lines, −1 when unknown — the min's
      *  tie-break (one suspect line beats two). */
     var sourceConfMean: Float = -1f,
+    /** Rect the chip is DRAWN at, same space as [bounds]. Equal to [bounds]
+     *  except for a Japanese base line whose furigana was filtered: the
+     *  reading's pixels are folded in so the chip covers them (a later capture
+     *  would otherwise read the uncovered reading as new text, its base hidden
+     *  under this very chip) and the translation gets the ruby band's room.
+     *  Never used for matching between cycles — [bounds] is, and ruby
+     *  detection flickers; in place, a box's drawn rect only ever grows
+     *  (see the content-match branch of classifyOcrResults). */
+    val drawBounds: Rect = bounds,
 ) {
 
     /** Refresh the stored score with a fresh identical-text read: replace
@@ -100,4 +109,28 @@ data class TextBox(
             sourceConfMean = freshMean
         }
     }
+}
+
+/**
+ * The drawn rect for a box that is being re-placed on a fresh matched rect
+ * ([newBounds]) after living at [oldBounds] with [oldDraw]: carries the old
+ * drawn EXTENSION (how far the drawn rect reached past the matched one on each
+ * edge, the furigana band) onto the new position, then takes the union with
+ * the fresh read's own drawn rect ([newDraw]). Never unions the two absolute
+ * rects: text that drifts a few pixels per cycle stays "in place" on every
+ * cycle, and an absolute union would keep every position the text has ever
+ * had, growing the chip without bound (Codex adversarial review, 2026-09-10).
+ * The band never shrinks while the text stays in place, and it travels with
+ * the text. Extensions are clamped at zero: a drawn rect is a superset of its
+ * matched rect by construction, but a hand-built box need not be.
+ */
+fun carriedDrawBounds(oldBounds: Rect, oldDraw: Rect, newBounds: Rect, newDraw: Rect): Rect {
+    val r = Rect(
+        newBounds.left - (oldBounds.left - oldDraw.left).coerceAtLeast(0),
+        newBounds.top - (oldBounds.top - oldDraw.top).coerceAtLeast(0),
+        newBounds.right + (oldDraw.right - oldBounds.right).coerceAtLeast(0),
+        newBounds.bottom + (oldDraw.bottom - oldBounds.bottom).coerceAtLeast(0),
+    )
+    r.union(newDraw)
+    return r
 }

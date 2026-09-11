@@ -69,6 +69,7 @@ internal class TranslationOneShotProcessor(
                 "", g.bounds, bgColor, textColor, g.lines.size,
                 orientation = g.orientation, alignment = g.alignment,
                 angleDeg = g.angleDeg, orientedWidth = g.orientedWidth, orientedHeight = g.orientedHeight,
+                drawBounds = g.drawBounds,
             )
         }
         showOverlay(placeholders)
