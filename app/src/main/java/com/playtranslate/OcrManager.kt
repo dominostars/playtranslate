@@ -42,6 +42,15 @@ class OcrManager private constructor() {
      *  already-exercised code. */
     @Volatile var debugAngleGateDeg: Float? = null
 
+    /** Debug-only: drop furigana regions before grouping
+     *  ([com.playtranslate.ocr.core.RubyFilter]). Pushed from
+     *  [PlayTranslateApplication] on start (DEBUG block) and from the
+     *  SettingsRenderer toggle, like [debugLogGroupingEnabled]; read per
+     *  recognise() call, so a toggle takes effect on the next OCR pass.
+     *  Applied only to Japanese sources at the call sites — the filter's
+     *  script test is kana-based. */
+    @Volatile var debugFilterFuriganaEnabled: Boolean = false
+
     /** Mirrors [debugLogGroupingEnabled]'s wiring (boot + settings toggle).
      *  The setter injects/clears the AngleProbe sink — `ocr.core` cannot read
      *  Prefs itself, so the app layer owns the gate (same injection pattern as
@@ -136,7 +145,10 @@ class OcrManager private constructor() {
         /** Combined group bounding boxes (union of merged lines). */
         val groupBoxes: List<DebugBox>,
         /** Scale factor applied during OCR; divide box coords by this to get original coords. */
-        val scaleFactor: Float
+        val scaleFactor: Float,
+        /** Regions the furigana filter demoted before grouping (magenta in
+         *  the overlay). Empty unless [debugFilterFuriganaEnabled]. */
+        val rubyBoxes: List<DebugBox> = emptyList(),
     )
 
     /** A single OCR element's text and bounding box within a line. */
@@ -260,10 +272,12 @@ class OcrManager private constructor() {
             documentLayoutBias = documentLayoutBias,
             angleNoiseGateDeg = debugAngleGateDeg
                 ?: com.playtranslate.ocr.core.OcrBox.ANGLE_NOISE_GATE_DEG,
+            filterRuby = debugFilterFuriganaEnabled && sourceLang == "ja",
         ) ?: return null
 
         val result = buildOcrResult(
             output.groups, output.scaleFactor, collectDebugBoxes, output.backend, output.mangaOcrUsed,
+            rubyDemoted = output.rubyDemoted,
         )
         if (result.fullText.isBlank()) return null
 
@@ -302,6 +316,10 @@ class OcrManager private constructor() {
             refineWithMangaOcr = shouldRefineMangaOcr(sourceLang),
             angleNoiseGateDeg = debugAngleGateDeg
                 ?: com.playtranslate.ocr.core.OcrBox.ANGLE_NOISE_GATE_DEG,
+            // Same gate as recognise(): a drag over furigana pixels then
+            // resolves to nothing (or the base line if inside its box)
+            // rather than to the kana reading.
+            filterRuby = debugFilterFuriganaEnabled && sourceLang == "ja",
         ) ?: return null
 
         return buildOcrLines(output.groups, output.scaleFactor).ifEmpty { null }
@@ -327,6 +345,7 @@ class OcrManager private constructor() {
         collectDebugBoxes: Boolean,
         engineBackend: OcrBackend? = null,
         mangaOcrUsed: Boolean = false,
+        rubyDemoted: List<com.playtranslate.ocr.core.RubyFilter.Demoted> = emptyList(),
     ): OcrResult {
         val ocrGroups = groups.mapIndexed { gi, group ->
             OcrGroup(
@@ -372,7 +391,7 @@ class OcrManager private constructor() {
         val segments = TextSegments.ofGroupTexts(ocrGroups.map { it.text })
 
         val fullText = groups.joinToString(" ") { it.text }.trim()
-        val debugBoxes = if (collectDebugBoxes) buildDebugBoxes(groups, scaleFactor) else null
+        val debugBoxes = if (collectDebugBoxes) buildDebugBoxes(groups, scaleFactor, rubyDemoted) else null
         return OcrResult(
             fullText = fullText,
             segments = segments,
@@ -409,9 +428,15 @@ class OcrManager private constructor() {
      * Debug overlay boxes, projected from the grouped result. Boxes are in
      * engine-input (pre-scale) coordinates with [OcrDebugBoxes.scaleFactor] set,
      * matching the prior contract (consumers divide). The block tier is empty —
-     * the vendor-neutral model carries line/element/group levels only.
+     * the vendor-neutral model carries line/element/group levels only. The
+     * ruby tier is what the furigana filter removed before grouping, so the
+     * overlay shows the deletion rather than hiding it.
      */
-    private fun buildDebugBoxes(groups: List<LayoutGroup>, scaleFactor: Float): OcrDebugBoxes {
+    private fun buildDebugBoxes(
+        groups: List<LayoutGroup>,
+        scaleFactor: Float,
+        rubyDemoted: List<com.playtranslate.ocr.core.RubyFilter.Demoted> = emptyList(),
+    ): OcrDebugBoxes {
         val lineBoxes = mutableListOf<DebugBox>()
         val elementBoxes = mutableListOf<DebugBox>()
         val groupBoxes = mutableListOf<DebugBox>()
@@ -430,7 +455,15 @@ class OcrManager private constructor() {
                 for (el in line.elements) elementBoxes += DebugBox(el.box.bounds, text = el.text)
             }
         }
-        return OcrDebugBoxes(emptyList(), lineBoxes, elementBoxes, groupBoxes, scaleFactor)
+        val rubyBoxes = rubyDemoted.map { DebugBox(it.region.box.bounds, text = it.region.text) }
+        return OcrDebugBoxes(
+            blockBoxes = emptyList(),
+            lineBoxes = lineBoxes,
+            elementBoxes = elementBoxes,
+            groupBoxes = groupBoxes,
+            scaleFactor = scaleFactor,
+            rubyBoxes = rubyBoxes,
+        )
     }
 
     /**

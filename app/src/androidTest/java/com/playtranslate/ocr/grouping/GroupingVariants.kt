@@ -2,8 +2,12 @@ package com.playtranslate.ocr.grouping
 
 import com.playtranslate.ocr.core.DefaultGroupingStrategy
 import com.playtranslate.ocr.core.FlowGraphStrategy
+import com.playtranslate.ocr.core.GroupingContext
 import com.playtranslate.ocr.core.GroupingRecipe
 import com.playtranslate.ocr.core.GroupingStrategy
+import com.playtranslate.ocr.core.ProposedGroup
+import com.playtranslate.ocr.core.RecognizedRegion
+import com.playtranslate.ocr.core.RubyFilter
 
 /**
  * The grouping-configuration catalog for [OcrGroupingHarnessTest] — the
@@ -99,5 +103,27 @@ object GroupingVariants {
         Variant("flowgraph-ang3", FlowGraphStrategy(), angleToleranceDeg = 3f),
         Variant("flowgraph-ang6", FlowGraphStrategy(), angleToleranceDeg = 6f),
         Variant("flowgraph-ang8", FlowGraphStrategy(), angleToleranceDeg = 8f),
+        // Production grouping over furigana-filtered input — the app's
+        // "Filter furigana" debug row, as a column. Differs from `flowgraph`
+        // only on Japanese frames where RubyFilter demotes something, so the
+        // flip table against `flowgraph` IS the on-device population check:
+        // a stanza that breaks here is a body line the filter deleted. The
+        // host-side census that set the constants is scripts/ruby_census.py.
+        Variant("flowgraph-noruby", RubyFilteredStrategy(FlowGraphStrategy(), "flowgraph-noruby")),
     )
+}
+
+/**
+ * [inner] over [RubyFilter]-demoted input, with the same Japanese-only gate
+ * production applies in OcrManager (the filter's script test is kana-based).
+ * Harness-only: production runs the filter in OcrPipeline, before layout.
+ */
+class RubyFilteredStrategy(
+    private val inner: GroupingStrategy,
+    override val name: String,
+) : GroupingStrategy {
+    override fun group(regions: List<RecognizedRegion>, ctx: GroupingContext): List<ProposedGroup> {
+        val input = if (ctx.sourceLang == "ja") RubyFilter.apply(regions).kept else regions
+        return inner.group(input, ctx)
+    }
 }

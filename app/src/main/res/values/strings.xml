@@ -3615,6 +3615,12 @@
          instead of the current 3-degree default, so light diagonals render
          as straight text again. -->
     <string name="settings_debug_angle_gate">Classic angle threshold (10°)</string>
+    <!-- Settings dialog, debug section: switch-row title (debug builds only).
+         While ON, the small kana readings printed beside kanji (furigana) are
+         dropped from Japanese OCR before grouping, so they are neither
+         translated nor shown as overlays. "Furigana" is the Japanese term;
+         keep it as a loanword where the locale has no native one. -->
+    <string name="settings_debug_filter_furigana">Filter furigana from OCR</string>
     <!-- Toggle row title in Settings → Debug (debug builds only): records live-mode commits to a trace file for offline validation. -->
     <string name="settings_debug_log_trace">Record translation-log trace</string>
     <string name="settings_debug_force_crash_title">Force crash</string>

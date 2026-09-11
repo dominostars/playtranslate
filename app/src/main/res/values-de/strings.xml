@@ -1896,6 +1896,7 @@
     <string name="settings_debug_force_mmap_weights">Laden der Gewichte per mmap erzwingen (LLM auf dem Gerät)</string>
     <string name="settings_debug_log_grouping">OCR-Gruppierungsentscheidungen protokollieren</string>
     <string name="settings_debug_angle_gate">Klassischer Winkelschwellenwert (10°)</string>
+    <string name="settings_debug_filter_furigana">Furigana aus dem OCR-Ergebnis filtern</string>
     <string name="settings_debug_log_trace">Trace des Textverlaufs aufzeichnen</string>
     <string name="settings_debug_force_crash_title">Absturz erzwingen</string>
 

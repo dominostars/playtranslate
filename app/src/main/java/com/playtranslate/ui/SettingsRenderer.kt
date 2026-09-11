@@ -1582,6 +1582,20 @@ class SettingsRenderer(
         }
         rowAngleGate.setOnClickListener { switchAngleGate.toggle() }
 
+        // Drop furigana from Japanese OCR before grouping (RubyFilter). Read
+        // per OCR pass, so it takes effect on the next capture / live cycle;
+        // an overlay already on screen keeps its persistence until its pixels
+        // change.
+        val rowFilterFurigana = root.findViewById<View>(R.id.rowFilterFurigana)
+        val switchFilterFurigana = rowFilterFurigana.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        rowFilterFurigana.findViewById<TextView>(R.id.tvRowTitle).text = ctx.getString(R.string.settings_debug_filter_furigana)
+        switchFilterFurigana.isChecked = prefs.debugFilterFurigana
+        switchFilterFurigana.setOnCheckedChangeListener { _, checked ->
+            prefs.debugFilterFurigana = checked
+            OcrManager.instance.debugFilterFuriganaEnabled = checked
+        }
+        rowFilterFurigana.setOnClickListener { switchFilterFurigana.toggle() }
+
         // Record live-mode commit trace (translation-log validation feed)
         val rowLogTrace = root.findViewById<View>(R.id.rowLogTrace)
         val switchLogTrace = rowLogTrace.findViewById<MaterialSwitch>(R.id.switchRowToggle)

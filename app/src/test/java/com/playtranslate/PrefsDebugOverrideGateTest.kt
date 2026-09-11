@@ -39,6 +39,10 @@ class PrefsDebugOverrideGateTest {
             "debugLogTrace", "debug_log_trace",
             { debugLogTrace }, { debugLogTrace = it },
         ),
+        GatedOverride(
+            "debugFilterFurigana", "debug_filter_furigana",
+            { debugFilterFurigana }, { debugFilterFurigana = it },
+        ),
     )
 
     private val ctx: Context = ApplicationProvider.getApplicationContext()

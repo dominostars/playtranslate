@@ -1883,6 +1883,7 @@
     <string name="settings_debug_force_mmap_weights">Buộc tải trọng số bằng mmap (LLM trên thiết bị)</string>
     <string name="settings_debug_log_grouping">Ghi nhật ký quyết định nhóm OCR</string>
     <string name="settings_debug_angle_gate">Ngưỡng góc kiểu cũ (10°)</string>
+    <string name="settings_debug_filter_furigana">Lọc furigana khỏi kết quả OCR</string>
     <string name="settings_debug_log_trace">Ghi lại dấu vết nhật ký dịch</string>
     <string name="settings_debug_force_crash_title">Buộc gặp sự cố</string>
 

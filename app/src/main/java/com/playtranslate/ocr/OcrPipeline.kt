@@ -1,6 +1,8 @@
 package com.playtranslate.ocr
 
 import android.graphics.Bitmap
+import android.util.Log
+import com.playtranslate.BuildConfig
 import com.playtranslate.OcrPreprocessingRecipe
 import com.playtranslate.language.OcrBackend
 import com.playtranslate.ocr.core.LayoutAnalyzer
@@ -8,6 +10,7 @@ import com.playtranslate.ocr.core.LayoutGroup
 import com.playtranslate.ocr.core.OcrImage
 import com.playtranslate.ocr.core.RecognizedTextNormalizer
 import com.playtranslate.ocr.core.ResolvedOcr
+import com.playtranslate.ocr.core.RubyFilter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -34,12 +37,16 @@ object OcrPipeline {
      *  [backend] that actually ran (null = the no-OCR empty engine), so the caller
      *  can attribute the result to a specific OCR tool. [mangaOcrUsed] is true when
      *  the manga-ocr refiner decoded at least one block of this result — the caller
-     *  extends the attribution to "… + MangaOCR". */
+     *  extends the attribution to "… + MangaOCR". [rubyDemoted] is what the
+     *  furigana filter removed before grouping (empty unless [run]'s
+     *  `filterRuby` was on) — carried for the debug-box overlay only; nothing
+     *  downstream of the debug tier reads it. */
     data class Output(
         val groups: List<LayoutGroup>,
         val scaleFactor: Float,
         val backend: OcrBackend?,
         val mangaOcrUsed: Boolean = false,
+        val rubyDemoted: List<RubyFilter.Demoted> = emptyList(),
     )
 
     /** Pre-layout recognition result handed to [withRecognition]'s block:
@@ -111,6 +118,10 @@ object OcrPipeline {
         regionPreFilter: com.playtranslate.ocr.core.RegionPreFilter? = null,
         documentLayoutBias: Boolean = false,
         angleNoiseGateDeg: Float = com.playtranslate.ocr.core.OcrBox.ANGLE_NOISE_GATE_DEG,
+        /** Drop furigana regions ([RubyFilter]) between normalization and
+         *  layout. Debug-flag only; the caller also gates it on a Japanese
+         *  source, since the filter's script test is kana-based. */
+        filterRuby: Boolean = false,
     ): Output? =
         // The whole pass runs OFF the main thread (withRecognition dispatches
         // to Default): preprocessing, the engine's inference, and layout are
@@ -124,8 +135,43 @@ object OcrPipeline {
             darkBackgroundProvider, regionPreFilter, angleNoiseGateDeg,
         ) { rec ->
             if (rec.regions.isEmpty()) return@withRecognition null
+            // Furigana demotion sits here, AFTER text normalization (the
+            // script test reads cleaned text) and BEFORE layout (a demoted
+            // reading must never seed a group). Every demotion is logged
+            // under its own tag so the census that set the constants stays
+            // re-checkable on device; DEBUG-gated because the text is user
+            // content, the same gate as the OcrConf trace.
+            val ruby = if (filterRuby) RubyFilter.apply(rec.regions) else null
+            if (ruby != null && BuildConfig.DEBUG) {
+                for (d in ruby.demoted) {
+                    val vertical = d.base.orientation == com.playtranslate.language.TextOrientation.VERTICAL
+                    Log.d(
+                        "RubyFilter",
+                        "demote ratio=%.2f gap=%.2f pitch=%.2f pitchN=%.2f tight=%s runs=%d %s \"%s\" <- base \"%s\"".format(
+                            d.sizeRatio, d.gapEm, d.pitchRatio, d.pitchRatioByCount,
+                            if (d.glyphTight) "Y" else "N", d.runs, if (vertical) "V" else "H",
+                            d.region.text, d.base.text.take(24),
+                        ),
+                    )
+                }
+                // Refusals carry the same numbers, so a reading that leaks on
+                // device reads back to the term and value that let it through.
+                for (x in ruby.refused) {
+                    val vertical = x.base.orientation == com.playtranslate.language.TextOrientation.VERTICAL
+                    Log.d(
+                        "RubyFilter",
+                        "refuse[%s] ratio=%.2f gap=%.2f pitch=%.2f pitchN=%.2f tight=%s runs=%d %s \"%s\" <- \"%s\"".format(
+                            x.reason, x.sizeRatio, x.gapEm, x.pitchRatio, x.pitchRatioByCount,
+                            if (x.glyphTight) "Y" else "N", x.runs, if (vertical) "V" else "H",
+                            x.region.text, x.base.text.take(24),
+                        ),
+                    )
+                }
+            }
+            val regions = ruby?.kept ?: rec.regions
+            if (regions.isEmpty()) return@withRecognition null
             val groups = LayoutAnalyzer.analyze(
-                regions = rec.regions,
+                regions = regions,
                 sourceLang = sourceLang,
                 screenshotWidthInRegionSpace = screenshotWidth * rec.scaleFactor,
                 logDecisions = logGrouping,
@@ -147,6 +193,7 @@ object OcrPipeline {
                 scaleFactor = rec.scaleFactor,
                 backend = rec.backend,
                 mangaOcrUsed = (refined?.decodedBlocks ?: 0) > 0,
+                rubyDemoted = ruby?.demoted ?: emptyList(),
             )
         }
 }

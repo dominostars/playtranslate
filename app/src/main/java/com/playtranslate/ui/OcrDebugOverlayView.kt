@@ -15,7 +15,9 @@ import androidx.core.graphics.toColorInt
  * Currently shows:
  * - TextBlock boxes: thick red border
  * - Group boxes (combined TextBlocks): thick blue border
- * Line and element boxes are collected but not drawn (available for future use).
+ * - Line boxes: thin green border (oriented footprint for slanted lines)
+ * - Furigana the debug filter removed before grouping: thin magenta border
+ * Element boxes are collected but not drawn (available for future use).
  */
 class OcrDebugOverlayView(context: Context) : View(context) {
 
@@ -35,6 +37,12 @@ class OcrDebugOverlayView(context: Context) : View(context) {
 
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.GREEN
+        style = Paint.Style.STROKE
+        strokeWidth = 1.5f * dp
+    }
+
+    private val rubyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.MAGENTA
         style = Paint.Style.STROKE
         strokeWidth = 1.5f * dp
     }
@@ -121,6 +129,12 @@ class OcrDebugOverlayView(context: Context) : View(context) {
         // blue axis-aligned envelope.
         for (box in boxes.groupBoxes) {
             canvas.drawRect(mapRect(box.bounds, sf), groupPaint)
+        }
+
+        // Furigana the filter demoted (magenta): these have NO group, so this
+        // tier is the only place the deletion is visible on screen.
+        for (box in boxes.rubyBoxes) {
+            drawBox(canvas, box, sf, rubyPaint)
         }
     }
 }

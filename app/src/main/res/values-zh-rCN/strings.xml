@@ -1928,6 +1928,7 @@
     <string name="settings_debug_force_mmap_weights">强制使用 mmap 加载权重（设备端 LLM）</string>
     <string name="settings_debug_log_grouping">记录 OCR 分组决策</string>
     <string name="settings_debug_angle_gate">经典角度阈值（10°）</string>
+    <string name="settings_debug_filter_furigana">从 OCR 结果中过滤振假名</string>
     <string name="settings_debug_log_trace">记录翻译日志跟踪信息</string>
     <string name="settings_debug_force_crash_title">强制崩溃</string>
 

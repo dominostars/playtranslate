@@ -1801,6 +1801,7 @@
     <string name="settings_debug_force_mmap_weights">บังคับโหลดน้ำหนักด้วย mmap (LLM บนอุปกรณ์)</string>
     <string name="settings_debug_log_grouping">บันทึกการตัดสินใจจัดกลุ่ม OCR</string>
     <string name="settings_debug_angle_gate">เกณฑ์มุมแบบเดิม (10°)</string>
+    <string name="settings_debug_filter_furigana">กรองฟุริงานะออกจากผล OCR</string>
     <string name="settings_debug_log_trace">เก็บ trace ของบันทึกการแปล</string>
     <string name="settings_debug_force_crash_title">บังคับให้ขัดข้อง</string>
 

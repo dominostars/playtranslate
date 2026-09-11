@@ -1874,6 +1874,7 @@
     <string name="settings_debug_force_mmap_weights">Forçar o carregamento de pesos via mmap (LLM no dispositivo)</string>
     <string name="settings_debug_log_grouping">Registrar decisões de agrupamento de OCR</string>
     <string name="settings_debug_angle_gate">Limiar clássico de ângulo (10°)</string>
+    <string name="settings_debug_filter_furigana">Filtrar furigana do resultado do OCR</string>
     <string name="settings_debug_log_trace">Registrar trace do log de traduções</string>
     <string name="settings_debug_force_crash_title">Forçar travamento</string>
 

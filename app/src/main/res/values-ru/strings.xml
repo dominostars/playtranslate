@@ -1968,6 +1968,7 @@
     <string name="settings_debug_force_mmap_weights">Принудительная загрузка весов через mmap (локальная LLM)</string>
     <string name="settings_debug_log_grouping">Журналировать решения группировки OCR</string>
     <string name="settings_debug_angle_gate">Классический порог угла (10°)</string>
+    <string name="settings_debug_filter_furigana">Фильтровать фуригану из результата OCR</string>
     <string name="settings_debug_log_trace">Записывать трассировку журнала переводов</string>
     <string name="settings_debug_force_crash_title">Принудительный сбой</string>
 

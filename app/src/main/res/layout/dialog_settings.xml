@@ -603,6 +603,11 @@
                         <include layout="@layout/settings_row_divider" />
 
                         <include layout="@layout/settings_row_switch"
+                            android:id="@+id/rowFilterFurigana" />
+
+                        <include layout="@layout/settings_row_divider" />
+
+                        <include layout="@layout/settings_row_switch"
                             android:id="@+id/rowLogTrace" />
 
                         <include layout="@layout/settings_row_divider" />

@@ -1870,6 +1870,7 @@
     <string name="settings_debug_force_mmap_weights">mmap 가중치 로딩 강제(온디바이스 LLM)</string>
     <string name="settings_debug_log_grouping">OCR 그룹화 결정 로깅</string>
     <string name="settings_debug_angle_gate">기존 각도 임계값(10°)</string>
+    <string name="settings_debug_filter_furigana">OCR 결과에서 후리가나 제외</string>
     <string name="settings_debug_log_trace">번역 로그 트레이스 기록</string>
     <string name="settings_debug_force_crash_title">강제 충돌</string>
 

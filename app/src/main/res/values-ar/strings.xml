@@ -1825,6 +1825,7 @@
     <string name="settings_debug_force_mmap_weights">فرض تحميل الأوزان عبر mmap (نموذج LLM على الجهاز)</string>
     <string name="settings_debug_log_grouping">تسجيل قرارات تجميع OCR</string>
     <string name="settings_debug_angle_gate">العتبة الكلاسيكية للزاوية (10°)</string>
+    <string name="settings_debug_filter_furigana">تصفية الفوريغانا من نتيجة OCR</string>
     <string name="settings_debug_log_trace">تسجيل تتبُّع لسجل الترجمة</string>
     <string name="settings_debug_force_crash_title">فرض تعطّل</string>
 

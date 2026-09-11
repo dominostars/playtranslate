@@ -77,6 +77,9 @@ class PlayTranslateApplication : Application() {
                 OcrManager.instance.debugAngleGateDeg =
                     com.playtranslate.ocr.core.OcrBox.ANGLE_LEGACY_GATE_DEG
             }
+            // Furigana filter rides the same boot push (the pref's getter is
+            // already release-gated; this block just mirrors it into memory).
+            OcrManager.instance.debugFilterFuriganaEnabled = Prefs(this).debugFilterFurigana
         }
         // Push the "Use MangaOCR" toggle + installed-pack state into the OCR gate
         // (same Context-free reason as above — the refiner can't resolve the pack itself).

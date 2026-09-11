@@ -1942,6 +1942,7 @@
     <string name="settings_debug_force_mmap_weights">mmapによる重み読み込みを強制（端末内LLM）</string>
     <string name="settings_debug_log_grouping">OCRのグループ化判定をログ</string>
     <string name="settings_debug_angle_gate">従来の角度しきい値（10°）</string>
+    <string name="settings_debug_filter_furigana">OCR結果からふりがなを除外</string>
     <string name="settings_debug_log_trace">翻訳ログのトレースを記録</string>
     <string name="settings_debug_force_crash_title">クラッシュを強制</string>
 

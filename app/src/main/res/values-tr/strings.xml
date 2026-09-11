@@ -1832,6 +1832,7 @@
     <string name="settings_debug_force_mmap_weights">Ağırlık yüklemeyi mmap ile zorla (cihaz üzerindeki LLM)</string>
     <string name="settings_debug_log_grouping">OCR gruplama kararlarını günlüğe kaydet</string>
     <string name="settings_debug_angle_gate">Klasik açı eşiği (10°)</string>
+    <string name="settings_debug_filter_furigana">OCR sonucundaki furiganayı filtrele</string>
     <string name="settings_debug_log_trace">Çeviri günlüğü izini kaydet</string>
     <string name="settings_debug_force_crash_title">Çökmeyi zorla</string>
     <string name="dictionary_screen_title">Sözlük</string>
