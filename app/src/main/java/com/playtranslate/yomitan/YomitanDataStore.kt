@@ -3,6 +3,7 @@ package com.playtranslate.yomitan
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteStatement
+import androidx.annotation.VisibleForTesting
 import androidx.core.database.sqlite.transaction
 import android.util.Log
 import com.google.gson.JsonElement
@@ -14,6 +15,7 @@ import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.ImportedKanji
 import com.playtranslate.model.ImportedSenseGroup
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -124,6 +126,28 @@ object YomitanDataStore {
     @Volatile
     private var registrySnapshot: YomitanRegistry? = null
     private var splitsByDict: Map<String, Boolean> = emptyMap()
+
+    /** Ids whose rows [tryIngest] / [ingestCollectionDump] landed but whose
+     *  registry entry the caller has not committed yet, each mapped to the
+     *  ingesting coroutine's [Job]: the import/update flow's one block that
+     *  spans ingest and commit. [reconcileLocked] must not purge a live stage
+     *  as an orphan: a cold init between the ingest and the registry write (a
+     *  fresh process, or a snapshot nulled by an unrelated [invalidate])
+     *  reconciles against the on-disk registry, which does not list the new
+     *  id yet. A stage ends when a reconcile finds the id in the registry
+     *  (the commit landed), when [onDictDeleted] purges it (the abort path),
+     *  or when the owning job has completed without either (a cancelled or
+     *  failed flow, e.g. the import dialog's Cancel during the ingest): the
+     *  rows are orphans again and the next reconcile purges them. A null
+     *  owner (no Job in the caller's context) counts as completed. ONE owner
+     *  per id, accepted 2026-09-12 over an owner set: two flows ingesting
+     *  byte-identical content concurrently share the entry, so a later flow
+     *  abandoned before the earlier commits lets a reconcile purge rows the
+     *  earlier still needs, and it then commits a row-less entry, i.e. the
+     *  ordinary outdated state (warning row, auto-heal). Reachable only by
+     *  hand-importing the exact release an in-flight scan is fetching.
+     *  Guarded by [mutex]. */
+    private val staged = mutableMapOf<String, Job?>()
 
     private class CapabilityCache(
         /** PITCH_ACCENT section's dict ids, priority order. Empty → no pitch
@@ -613,15 +637,26 @@ object YomitanDataStore {
      *  [com.playtranslate.yomitan.YomitanDictionaryStore.applyUpdate]).
      *  [ingestLocked] is transactional, so a failure rolls back cleanly (no
      *  partial rows, not marked ingested). Caches are deliberately NOT cleared
-     *  here: the not-yet-registered new id would otherwise look like an orphan to
-     *  a [reconcileLocked] triggered between this and the registry commit; the
-     *  committer clears them ([invalidate] / onDictDeleted) once the registry is
-     *  consistent. */
-    suspend fun tryIngest(ctx: Context, dictionary: YomitanDictionary, source: File): Boolean =
-        withContext(Dispatchers.IO) {
+     *  here, so the rows don't go live before the registry lists them; the
+     *  committer clears them ([invalidate] / [onDictDeleted]) once the registry
+     *  is consistent. The id is [staged] on success, owned by the CALLER's
+     *  job: a [reconcileLocked] that runs between this and the registry
+     *  commit would otherwise purge the not-yet-registered id's rows as an
+     *  orphan (the cache guard alone does not cover a cold init, which
+     *  reconciles from disk). The owner must outlive the commit, which holds
+     *  for the import flows' single withContext block; once it completes
+     *  without the registry listing the id, the rows are purged as orphans,
+     *  so a cancelled or failed import leaves nothing behind. */
+    suspend fun tryIngest(ctx: Context, dictionary: YomitanDictionary, source: File): Boolean {
+        // The stage's owner is the CALLER's job, read before the dispatcher
+        // switch: inside withContext it would be the block's own job, which
+        // completes when this function returns.
+        val owner = coroutineContext[Job]
+        return withContext(Dispatchers.IO) {
             mutex.withLock {
                 try {
                     ingestLocked(openDb(ctx), dictionary, source)
+                    staged[dictionary.id] = owner
                     true
                 } catch (e: Exception) {
                     Log.w(TAG, "ingest failed for ${dictionary.id}", e)
@@ -629,8 +664,11 @@ object YomitanDataStore {
                 }
             }
         }
+    }
 
-    /** Purges a deleted dictionary's rows across all derived tables. */
+    /** Purges a deleted dictionary's rows across all derived tables. Also the
+     *  abort path's cleanup of a [staged] deck, so it ends the stage (on a
+     *  failed purge too: the next reconcile then retries as an orphan). */
     suspend fun onDictDeleted(ctx: Context, id: String) = withContext(Dispatchers.IO) {
         mutex.withLock {
             try {
@@ -638,6 +676,7 @@ object YomitanDataStore {
             } catch (e: Exception) {
                 Log.w(TAG, "purge failed for $id", e)
             }
+            staged.remove(id)
             registrySnapshot = null
             caches.clear()
         }
@@ -659,6 +698,19 @@ object YomitanDataStore {
     suspend fun invalidate() = mutex.withLock {
         registrySnapshot = null
         caches.clear()
+    }
+
+    /** Test-only: drops every process-scoped field (open DB, caches, registry
+     *  snapshot, [staged]) so the next call starts cold against a fresh
+     *  context. Also how a test simulates a process restart. */
+    @VisibleForTesting
+    internal suspend fun resetForTest() = mutex.withLock {
+        db?.close()
+        db = null
+        registrySnapshot = null
+        splitsByDict = emptyMap()
+        caches.clear()
+        staged.clear()
     }
 
     /**
@@ -894,18 +946,27 @@ object YomitanDataStore {
         return database
     }
 
-    /** Purges rows of dicts no longer in the registry, and — LEGACY-ONLY —
-     *  ingests registry dicts missing from `ingested_dicts` when their
-     *  pre-sweep retained zip still exists on disk. Post-sweep there is no
-     *  local source: such dicts stay un-ingested, which IS the "outdated"
-     *  state [outdatedDictIds] reports and the settings UI surfaces. */
+    /** Purges rows of dicts no longer in the registry, sparing ids a live
+     *  import has [staged] and not committed yet (their entry is on its way).
+     *  Stage bookkeeping happens here too: a staged id the registry DOES list
+     *  has landed, and one whose owning job has completed was abandoned
+     *  (cancelled or failed before its commit); both leave the map, the
+     *  latter to be purged as the orphan it now is. Also — LEGACY-ONLY —
+     *  ingests registry dicts missing from
+     *  `ingested_dicts` when their pre-sweep retained zip still exists on
+     *  disk. Post-sweep there is no local source: such dicts stay
+     *  un-ingested, which IS the "outdated" state [outdatedDictIds] reports
+     *  and the settings UI surfaces. */
     private fun reconcileLocked(ctx: Context, database: SQLiteDatabase, registry: YomitanRegistry) {
         val ingested = mutableSetOf<String>()
         database.rawQuery("SELECT dict_id FROM ingested_dicts", null).use { c ->
             while (c.moveToNext()) ingested += c.getString(0)
         }
         val registryIds = registry.dictionaries.map { it.id }.toSet()
-        for (orphan in ingested - registryIds) {
+        staged.entries.removeAll { (id, owner) ->
+            id in registryIds || owner == null || owner.isCompleted
+        }
+        for (orphan in ingested - registryIds - staged.keys) {
             Log.i(TAG, "reconcile: purging orphan $orphan")
             purgeLocked(database, orphan)
         }
@@ -1455,9 +1516,10 @@ object YomitanDataStore {
      *
      * All inserts run in ONE transaction: cancel or crash rolls everything
      * back (no rows, nothing marked ingested, and the caller never wrote
-     * registry entries — reconcile purges any orphans from a post-commit
-     * crash). Like [tryIngest], caches are deliberately NOT cleared here; the
-     * caller invalidates after its registry commit. Throws
+     * registry entries — a crash AFTER the commit leaves orphans the next
+     * process's reconcile purges). Like [tryIngest], caches are deliberately
+     * NOT cleared here and the imported ids are [staged] against the caller's
+     * job until its registry commit lands (see [tryIngest]). Throws
      * [DumpFormatException] on structural problems; Gson parse errors
      * propagate for the caller to map.
      *
@@ -1471,6 +1533,19 @@ object YomitanDataStore {
         sourceBytes: Long,
         existingByTitle: Map<String, YomitanDictionary>,
         open: () -> InputStream,
+    ): DumpIngestResult {
+        // Stage owner: the caller's job, read before the dispatcher switch
+        // (see tryIngest).
+        val owner = coroutineContext[Job]
+        return ingestCollectionDump(ctx, sourceBytes, existingByTitle, open, owner)
+    }
+
+    private suspend fun ingestCollectionDump(
+        ctx: Context,
+        sourceBytes: Long,
+        existingByTitle: Map<String, YomitanDictionary>,
+        open: () -> InputStream,
+        owner: Job?,
     ): DumpIngestResult = withContext(Dispatchers.IO) {
         mutex.withLock {
             val database = openDb(ctx)
@@ -1486,9 +1561,11 @@ object YomitanDataStore {
                 }
             }
             val now = System.currentTimeMillis()
+            // Same filter as the `ingested_dicts` marking in streamDumpTables.
+            val importedDicts = dicts.values.filter { !it.skip && it.categories.isNotEmpty() }
+            for (d in importedDicts) staged[d.id] = owner
             DumpIngestResult(
-                imported = dicts.values
-                    .filter { !it.skip && it.categories.isNotEmpty() }
+                imported = importedDicts
                     .map { d ->
                         YomitanDictionary(
                             id = d.id,

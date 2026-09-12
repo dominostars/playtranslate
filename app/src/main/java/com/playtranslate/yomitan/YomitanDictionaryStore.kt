@@ -543,6 +543,10 @@ object YomitanDictionaryStore {
         revisionOverride: String? = null,
         userInitiated: Boolean = false,
     ): YomitanImportResult = withContext(Dispatchers.IO) {
+        // One block spanning ingest AND commit: YomitanDataStore stages the
+        // ingested rows against this block's job (tryIngest reads its
+        // caller's job) and treats a completed owner as an abandoned import.
+        // Ending the block before the commit would end the stage.
         // Disk guard: the zip itself is NOT retained (only index.json is), but
         // the derived term rows from a flattened glossary can exceed the
         // compressed source — 2× leaves headroom. The temp copy already
@@ -593,7 +597,8 @@ object YomitanDictionaryStore {
      *  index.json + the registry entry. With no retained source, an ingest
      *  failure after a registry commit would be unretryable — a registry entry
      *  must never exist without its rows (rows without an entry are cleaned by
-     *  reconcile's orphan purge). Same-title handling: a HEALTHY existing
+     *  reconcile's orphan purge, which spares ids a still-running import has
+     *  staged). Same-title handling: a HEALTHY existing
      *  entry refuses as [YomitanImportResult.Duplicate]; an OUTDATED one is
      *  superseded (the tap-to-reimport heal), carrying the user's
      *  alias/accent/autoUpdate/source-language and priority slot. Matching is by EXACT title,
@@ -686,6 +691,8 @@ object YomitanDictionaryStore {
         temp: File,
         zipEntry: String?,
     ): YomitanImportResult = withContext(Dispatchers.IO) {
+        // One block spanning ingest AND commit, for the same reason as
+        // installZip: the staged rows are owned by this block's job.
         // Disk guard: uncompressed source size ×1 — media (the dump's bulk) is
         // skipped at ingest and flattened text is a subset of the structured
         // content, so derived rows land well under the source size.
