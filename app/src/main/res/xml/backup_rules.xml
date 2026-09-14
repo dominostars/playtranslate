@@ -4,19 +4,20 @@
     counterpart, which additionally covers device-to-device transfer, is
     res/xml/data_extraction_rules.xml — read that one first; it carries the reasoning.
 
-    Strictly speaking this file is belt-and-braces: android:allowBackup="false" already
-    turns backup off wholesale on API 29-30, and (unlike on 12+) there is no separate D2D
-    channel there for it to miss. It exists so the exclusions are stated on every API
-    level we ship, rather than resting on a single boolean — if allowBackup is ever
-    flipped to true, the user's API keys and translation history stay out of the backup
-    on 29-30 instead of silently starting to flow.
+    The same single include (files/vocab/, the hidden-words store's directory, so its
+    rollback journal rides along after a crash mid-write) and the same belt-and-braces
+    excludes as the 12+ file, so the policy is identical on every API level we ship. With android:allowBackup="true" this file is live on 29-30, not a
+    formality: it is what keeps the user's API keys and translation history out of the
+    backup there. BackupRulesTest pins its shape alongside the 12+ file's.
 
     Same syntax trap as the 12+ file: `path` is required, and `path="."` means the
     domain root and everything under it.
 -->
 <full-backup-content>
+    <include domain="file" path="vocab" />
+    <exclude domain="file" path="vad" />
+    <exclude domain="file" path="crashes" />
     <exclude domain="root" path="." />
-    <exclude domain="file" path="." />
     <exclude domain="database" path="." />
     <exclude domain="sharedpref" path="." />
     <exclude domain="external" path="." />

@@ -34,9 +34,12 @@ import kotlinx.coroutines.withContext
  *
  * Two deliberate departures from the History store:
  *  - The file lives under [Context.filesDir] ([BACKUP_PATH]), not
- *    noBackupFilesDir: the backup rules include exactly this path (the only
- *    app data that rides Auto Backup / device transfer). Renaming it means
- *    editing the rules; `BackupRulesTest` pins the pair.
+ *    noBackupFilesDir: the backup rules include its DIRECTORY ([BACKUP_DIR],
+ *    the only app data that rides Auto Backup / device transfer), so a
+ *    rollback journal left by a crash mid-write rides along and a restore
+ *    recovers it the way the next open here would. Nothing else may be
+ *    placed in that directory. Renaming either means editing the rules;
+ *    `BackupRulesTest` pins the pair.
  *  - No cached connection. Every disk operation opens, runs, and closes, so
  *    the file on disk is self-contained (rollback journal, no open handle)
  *    whenever Auto Backup copies it while the app is running. Reads never
@@ -54,10 +57,13 @@ object HiddenWordsStore {
     private const val TAG = "HiddenWords"
     private const val SCHEMA_VERSION = 1
 
-    /** Store file path relative to [Context.filesDir]; the backup rules
+    /** The store's directory relative to [Context.filesDir]; the backup rules
      *  (`res/xml/data_extraction_rules.xml`, `res/xml/backup_rules.xml`)
-     *  include this exact path. */
-    const val BACKUP_PATH = "vocab/hidden_words.sqlite"
+     *  include this directory, and nothing else lives in it. */
+    const val BACKUP_DIR = "vocab"
+
+    /** Store file path relative to [Context.filesDir], inside [BACKUP_DIR]. */
+    const val BACKUP_PATH = "$BACKUP_DIR/hidden_words.sqlite"
 
     /** `source` values — stored as TEXT, stable once shipped. A future deck
      *  import adds its own value; nothing here changes. */

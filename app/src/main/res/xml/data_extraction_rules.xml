@@ -3,21 +3,40 @@
     Backup / transfer policy for Android 12+ (API 31), referenced from
     android:dataExtractionRules in the manifest.
 
-    android:allowBackup="false" is still what governs API 29-30, and it still turns off
-    cloud backup everywhere. What it no longer governs, from Android 12, is device-to-
-    device transfer: per the Auto Backup docs, "on devices from some device
-    manufacturers, specifying android:allowBackup='false' disables cloud-based backup
-    and restore ... but doesn't disable device-to-device transfers for the app."
+    android:allowBackup is "true" (it was "false" from the first release until the
+    hidden-words store shipped). What that flag never governed, from Android 12, is device-
+    to-device transfer: per the Auto Backup docs, "on devices from some device manufacturers,
+    specifying android:allowBackup='false' disables cloud-based backup and restore ... but
+    doesn't disable device-to-device transfers for the app." So these rules, not the flag,
+    are the policy on every channel, and they are written to be safe under either flag value.
 
-    So without this file, migrating to a new phone could copy this app's private data
-    across — including shared_prefs/playtranslate_prefs.xml, which holds the user's
-    DeepL / OpenAI / Gemini / DeepSeek API keys, and the translation-history database,
-    which is a record of what the user has been reading.
+    ONE directory rides both channels: files/vocab/ (HiddenWordsStore.BACKUP_DIR), which
+    holds the hidden-words store, files/vocab/hidden_words.sqlite, and, only between a crash
+    mid-write and the store's next open, that store's SQLite rollback journal. The rule
+    names the DIRECTORY on purpose: a copy of the main file alone, taken while a hot journal
+    exists, would restore as a half-applied write with nothing to roll it back, whereas the
+    two files together restore as exactly the post-crash state SQLite is built to recover
+    from (the same pair the platform's database domain copies for every app). Nothing else
+    may be placed in vocab/. The store is user-curated primary data expected to reach
+    thousands of rows, with no other way to survive a reinstall or a new device until a
+    management screen with export exists. It is a vocabulary list: not secret, and far
+    weaker as a record of what the user reads than the translation-history database, which
+    stays excluded. BackupRulesTest pins the include to the store's constants and the rest
+    of this file's shape.
 
-    Every domain is therefore excluded from every channel. Nothing this app stores wants
-    to ride to another device silently: it is either secret (API keys), private (history),
-    or bulky and re-downloadable (LLM models, dictionary packs, OCR models) — and the
-    bulky half would blow the backup quota anyway.
+    Everything else stays out of every channel, as before: it is either secret (the API keys
+    in shared_prefs/playtranslate_prefs.xml), private (the translation-history database), or
+    bulky and re-downloadable (LLM models, dictionary packs, OCR models, which live under
+    no_backup and are never eligible anyway).
+
+    Belt and braces, on purpose. The presence of an <include> already makes backup
+    include-only (the docs: "If you specify an <include> element, the system no longer
+    includes any files by default"), so the excludes below are redundant while the include
+    parses. They are kept so the API-key guard does not rest on that one semantic: if the
+    include line were ever dropped or broken, the defaults would reopen every domain, and
+    the explicit excludes would still hold the sharedpref and database domains closed.
+    Under files/, the two other residents (vad/, the Silero VAD model copy; crashes/, crash
+    reports) are excluded by name for the same reason.
 
     Two syntax traps worth knowing before editing:
       * `path` is REQUIRED on a rule. A rule with no path is silently SKIPPED, so
@@ -47,8 +66,10 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
+        <include domain="file" path="vocab" />
+        <exclude domain="file" path="vad" />
+        <exclude domain="file" path="crashes" />
         <exclude domain="root" path="." />
-        <exclude domain="file" path="." />
         <exclude domain="database" path="." />
         <exclude domain="sharedpref" path="." />
         <exclude domain="external" path="." />
@@ -59,8 +80,10 @@
     </cloud-backup>
 
     <device-transfer>
+        <include domain="file" path="vocab" />
+        <exclude domain="file" path="vad" />
+        <exclude domain="file" path="crashes" />
         <exclude domain="root" path="." />
-        <exclude domain="file" path="." />
         <exclude domain="database" path="." />
         <exclude domain="sharedpref" path="." />
         <exclude domain="external" path="." />

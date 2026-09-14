@@ -52,7 +52,7 @@
          on a quirky ROM, this flag is the first suspect to strip. -->
     <application
         android:name=".PlayTranslateApplication"
-        android:allowBackup="false"
+        android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:allowAudioPlaybackCapture="false"
