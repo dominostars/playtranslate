@@ -152,7 +152,9 @@ class DictionaryLookupActivity : SettingsSubPageActivity() {
             inflectedForms = rowState.inflectedForms,
             onCellTap = { openWordDetail(rowState) },
             onSpeak = { speakFromCell(cell, rowState) },
-            onAnki = { launchAnki(rowState) },
+            // Dictionary results never stub or hide: the user searched for
+            // this word on purpose.
+            trailing = WordResultCell.TrailingAction.Anki { launchAnki(rowState) },
         )
     }
 

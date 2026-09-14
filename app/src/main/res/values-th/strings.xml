@@ -491,6 +491,9 @@
     <string name="anki_translation_error">ไม่สามารถแปลได้</string>
 
     <string name="anki_word_remove_content_description">ลบออกจากการ์ด</string>
+    <string name="hidden_word_hide_content_description">ซ่อนคำ</string>
+    <string name="hidden_word_show_content_description">แสดงคำ</string>
+    <string name="hidden_word_save_failed">บันทึกไม่ได้ กรุณาลองอีกครั้ง</string>
 
     <string name="anki_screenshot_remove_content_description">ลบภาพหน้าจอ</string>
 

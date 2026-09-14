@@ -29,6 +29,8 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.view.doOnLayout
 import androidx.core.widget.NestedScrollView
 import com.playtranslate.CaptureService
@@ -48,6 +50,7 @@ import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
 import com.playtranslate.tts.ttsTextForWord
+import com.playtranslate.vocab.HiddenWordsStore
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -130,9 +133,20 @@ class SentenceAnkiContentView(
 
     /** One styled renderer per structured word, cached across
      *  [rebuildWordRows] passes (target toggles rebuild the whole list —
-     *  WebViews must not churn per tap). Destroyed on removal (✕) and in
-     *  [release]. */
+     *  WebViews must not churn per tap). Destroyed when the word is hidden
+     *  (its stub has no body; [rebuildWordRows] frees it) and in [release]. */
     private val wordStyledViews = mutableMapOf<String, YomitanDefinitionsView>()
+
+    /** [HiddenWordsStore.revision] the word rows were last built against;
+     *  the collector in [buildInto] redraws only when it moves. */
+    private var appliedRevision = -1L
+
+    /** True once the current word LIST has been ordered hidden-last against
+     *  a loaded set. A fresh list ([buildInto], [applyWords]) resets it, and
+     *  [rebuildWordRows] orders once when the set is there; every later
+     *  rebuild (a toggle, a load for another reason) leaves the order alone,
+     *  so hiding or showing a word never moves its row. */
+    private var hiddenOrderApplied = false
 
     /** Render process died once — every row stays native for the sheet's
      *  life. */
@@ -699,6 +713,10 @@ class SentenceAnkiContentView(
             words.clear()
             words.addAll(sorted)
         }
+        // A fresh list: hidden words go last once the set is loaded
+        // (rebuildWordRows orders it; a late load re-orders through the
+        // revision collector below).
+        hiddenOrderApplied = false
 
         val translation = args.getString(ARG_TRANSLATION) ?: ""
         val screenshotPath = args.getString(ARG_SCREENSHOT_PATH)
@@ -709,6 +727,19 @@ class SentenceAnkiContentView(
         // re-run this from applyWords — a one-shot here would race the
         // empty list and stay flat for the dialog's life (Codex catch).
         refreshStyledPayload()
+
+        // Hidden-word changes from anywhere — this card's own eye taps, the
+        // results list on the other screen, a store load that lands after
+        // the rows were drawn — redraw the rows. appliedRevision (recorded
+        // in rebuildWordRows) skips the StateFlow's replay of the revision
+        // the rows were already built against.
+        scope.launch {
+            HiddenWordsStore.revision.collect { rev ->
+                if (rev != appliedRevision && host.isAlive && ::wordsCard.isInitialized) {
+                    rebuildWordRows()
+                }
+            }
+        }
 
         // Freeze the rolling game-audio buffer for THIS card the moment the
         // flow opens ("snapshot at card-open"). One-shot: never on restore,
@@ -1414,15 +1445,40 @@ class SentenceAnkiContentView(
         while (wordsCard.childCount > 2) {
             wordsCard.removeViewAt(wordsCard.childCount - 1)
         }
+        val lang = SourceLangId.fromCode(args.getString(ARG_SOURCE_LANG))
+            ?: SourceLangId.JA
+        // Revision BEFORE snapshot: the store swaps the set and THEN bumps
+        // the revision, so a change landing between these two reads leaves
+        // appliedRevision behind and the collector in buildInto redraws.
+        // The other order could record the new revision against the old
+        // set and never redraw.
+        appliedRevision = HiddenWordsStore.revision.value
+        // isLoaded BEFORE snapshot, for the same reason: true here means the
+        // snapshot taken next is the loaded set.
+        val loaded = HiddenWordsStore.isLoaded(lang)
+        val hidden = HiddenWordsStore.snapshot(ctx, lang)
+        if (loaded && !hiddenOrderApplied) {
+            // The list's one ordering pass: hidden words last, targets
+            // exempt (a lens target whose un-hide hasn't landed stays on
+            // top). Stable, so each group keeps its lookup order.
+            hiddenOrderApplied = true
+            val sorted = words.sortedBy { it.word in hidden && it.word !in selectedWords }
+            words.clear()
+            words.addAll(sorted)
+        }
         if (words.isEmpty() && wordsLoading) {
             wordsCard.addView(buildWordsLoadingRow())
         } else {
             val prefs = Prefs(ctx)
-            val lang = SourceLangId.fromCode(args.getString(ARG_SOURCE_LANG))
-                ?: SourceLangId.JA
             words.forEachIndexed { i, entry ->
                 if (i > 0) ankiInsetDivider(wordsCard, indentDp = 16)
-                wordsCard.addView(buildWordRow(entry))
+                // A TARGET is never a stub, hidden in the store or not: the
+                // user is making a card for it (a lens target, a row they
+                // tapped), the send funnel exempts it, and the send un-hides
+                // it once the card lands. Un-targeting a store-hidden word
+                // returns it to its stub.
+                val isHidden = entry.word in hidden && entry.word !in selectedWords
+                wordsCard.addView(buildWordRow(entry, isHidden))
                 // Per-target-word audio sub-row, only when the user has
                 // selected this word as a target. Inserted BEFORE the
                 // next inter-word divider (handled at the top of the
@@ -1465,8 +1521,16 @@ class SentenceAnkiContentView(
                 }
             }
         }
-        // Live count in the group header.
-        wordsHeaderTitle.text = ctx.getString(R.string.anki_group_words_count, words.size)
+        // A stubbed word's styled renderer sits on no row now; free it (it is
+        // re-created on demand if the word is shown again).
+        wordStyledViews.keys.filter { it in hidden && it !in selectedWords }
+            .forEach { wordStyledViews.remove(it)?.destroy() }
+        // Live count in the group header: the words that will be on the card.
+        wordsHeaderTitle.text = ctx
+            .getString(
+                R.string.anki_group_words_count,
+                words.count { it.word !in hidden || it.word in selectedWords },
+            )
             .uppercase(Locale.ROOT)
     }
 
@@ -1556,7 +1620,8 @@ class SentenceAnkiContentView(
         return v
     }
 
-    private fun buildWordRow(entry: SentenceAnkiHtmlBuilder.WordEntry): View {
+    private fun buildWordRow(entry: SentenceAnkiHtmlBuilder.WordEntry, hidden: Boolean): View {
+        if (hidden) return buildHiddenWordRow(entry)
         val density = ctx.resources.displayMetrics.density
         val isTarget = entry.word in selectedWords
         val row = LinearLayout(ctx).apply {
@@ -1657,50 +1722,128 @@ class SentenceAnkiContentView(
 
         row.addView(col)
 
-        val removeGlyph = TextView(ctx).apply {
-            text = "✕"
-            textSize = 16f
-            setTextColor(ctx.themeColor(R.attr.ptTextMuted))
-            isClickable = true
-            isFocusable = true
-            contentDescription = ctx.getString(R.string.anki_word_remove_content_description)
-            // Horizontal padding only. The vertical padding used to buy hit
-            // area — expandTouchTarget owns that now — and once top-aligned
-            // it would only push the glyph below the word title's line.
-            // Zeroed, the ✕'s line box starts at the same content top as the
-            // title's, and both being 16sp they land on one baseline (the
-            // pitch-overline rows nudge the title ~2dp lower; imperceptible).
-            setPadding((10 * density).toInt(), 0, (10 * density).toInt(), 0)
-            // TOP against the row's CENTER_VERTICAL default: a tall row (a
-            // styled definitions block, a wrapped meaning) would otherwise
-            // strand the ✕ halfway down, far from the word it removes.
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).also { it.gravity = Gravity.TOP }
-            setOnClickListener {
-                words.removeAll { it.word == entry.word }
-                selectedWords.remove(entry.word)
-                // The removed word's styled renderer dies with it.
-                wordStyledViews.remove(entry.word)?.destroy()
-                // Drop per-word audio state so the maps don't grow
-                // across remove/re-add cycles. rebuildWordRows would
-                // release the handle anyway, but the state slots need
-                // explicit cleanup. Note: untap-to-deselect (handled
-                // by the row's main click listener, not this ✕) leaves
-                // these entries in place — only a hard remove drops them.
-                wordAudioEnabled.remove(entry.word)
-                wordSelections.remove(entry.word)
-                rebuildWordRows()
+        // The eye that hides the word (where the per-card ✕ used to be:
+        // hiding is persisted across cards and sentences, and the row stays
+        // as a stub the user can tap back). TOP against the row's
+        // CENTER_VERTICAL default: a tall row (a styled definitions block, a
+        // wrapped meaning) would otherwise strand the eye halfway down, far
+        // from the word it hides.
+        val eye = hiddenToggleGlyph(
+            R.drawable.ic_visibility,
+            R.string.hidden_word_hide_content_description,
+            gravity = Gravity.TOP,
+        ) {
+            // Hiding un-targets: a hidden word is never highlighted on the
+            // card, and its audio state goes with the target. Untap-to-
+            // deselect (the row's main click listener) leaves the audio
+            // slots in place; only hiding drops them. Each removal is
+            // captured so a failed write can put the row back exactly as
+            // it was: the toast promises nothing changed, and that must
+            // hold for the card's own state, not only the store's.
+            val wasTarget = selectedWords.remove(entry.word)
+            val audioEnabled = wordAudioEnabled.remove(entry.word)
+            val audioSelection = wordSelections.remove(entry.word)
+            // Redraw now for the un-target. The store's revision redraws
+            // again when the write lands, but a word ALREADY hidden in the
+            // store (a target the sheet was showing in full) makes that
+            // write a no-op with no bump, so this rebuild is the only one.
+            rebuildWordRows()
+            val lang = SourceLangId.fromCode(args.getString(ARG_SOURCE_LANG)) ?: SourceLangId.JA
+            scope.launch {
+                if (!HiddenWordsStore.setHidden(ctx, lang, entry.word, entry.reading, hidden = true)) {
+                    if (wasTarget) selectedWords.add(entry.word)
+                    audioEnabled?.let { wordAudioEnabled[entry.word] = it }
+                    audioSelection?.let { wordSelections[entry.word] = it }
+                    if (host.isAlive && ::wordsCard.isInitialized) rebuildWordRows()
+                    toastHiddenWordSaveFailed()
+                }
             }
         }
-        row.addView(removeGlyph)
-        // Grow the tap area to the 48dp minimum around the unchanged 16sp
+        row.addView(eye)
+        // Grow the tap area to the 48dp minimum around the unchanged 20dp
         // glyph. A TouchDelegate rather than padding: padding would widen the
         // view, and the weight-1 word column would give that width back by
         // reflowing its meaning text.
-        expandTouchTarget(row, removeGlyph, (48 * density).toInt())
+        expandTouchTarget(row, eye, (48 * density).toInt())
         return row
+    }
+
+    /**
+     * The minimized row for a hidden word: the word alone in the muted
+     * colour over the [hiddenWordBandColor] band (the page background at
+     * 50%, so the row reads as sunk into the card), with an eye-off that
+     * shows it again. The body is inert (no target toggle: a hidden word is
+     * never highlighted on the card, and the send funnel strips a stale
+     * selection). Same side padding and glyph column as the full row, so
+     * toggling moves nothing sideways.
+     */
+    private fun buildHiddenWordRow(entry: SentenceAnkiHtmlBuilder.WordEntry): View {
+        val density = ctx.resources.displayMetrics.density
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(hiddenWordBandColor(ctx))
+            setPadding((16 * density).toInt(), (8 * density).toInt(),
+                (12 * density).toInt(), (8 * density).toInt())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        row.addView(TextView(ctx).apply {
+            text = entry.word
+            textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        val eye = hiddenToggleGlyph(
+            R.drawable.ic_visibility_off,
+            R.string.hidden_word_show_content_description,
+            gravity = Gravity.CENTER_VERTICAL,
+        ) {
+            val lang = SourceLangId.fromCode(args.getString(ARG_SOURCE_LANG)) ?: SourceLangId.JA
+            scope.launch {
+                if (!HiddenWordsStore.setHidden(ctx, lang, entry.word, entry.reading, hidden = false)) {
+                    toastHiddenWordSaveFailed()
+                }
+            }
+        }
+        row.addView(eye)
+        expandTouchTarget(row, eye, (48 * density).toInt())
+        return row
+    }
+
+    /** The store could not persist a hide/show tap (disk full, unopenable
+     *  file); the rows did not change, so the user must hear why. */
+    private fun toastHiddenWordSaveFailed() {
+        if (!host.isAlive) return
+        Toast.makeText(ctx, R.string.hidden_word_save_failed, Toast.LENGTH_SHORT).show()
+    }
+
+    /** The eye / eye-off glyph on a word row: a 20dp icon with 10dp side
+     *  padding (a 40x20 view). Like the ✕ it replaced, the 48dp hit area
+     *  comes from [expandTouchTarget], not padding, so the weight-1 word
+     *  column keeps its width. */
+    private fun hiddenToggleGlyph(
+        iconRes: Int,
+        contentDescriptionRes: Int,
+        gravity: Int,
+        onTap: () -> Unit,
+    ): ImageView {
+        val density = ctx.resources.displayMetrics.density
+        return ImageView(ctx).apply {
+            setImageDrawable(AppCompatResources.getDrawable(ctx, iconRes))
+            setColorFilter(ctx.themeColor(R.attr.ptTextMuted))
+            contentDescription = ctx.getString(contentDescriptionRes)
+            isClickable = true
+            isFocusable = true
+            setPadding((10 * density).toInt(), 0, (10 * density).toInt(), 0)
+            layoutParams = LinearLayout.LayoutParams(
+                (40 * density).toInt(), (20 * density).toInt(),
+            ).also { it.gravity = gravity }
+            setOnClickListener { onTap() }
+        }
     }
 
     /**
@@ -1849,6 +1992,8 @@ class SentenceAnkiContentView(
             words.clear()
             words.addAll(sorted)
         }
+        // A new list: it gets its hidden-last ordering in rebuildWordRows.
+        hiddenOrderApplied = false
         args.putStringArray(ARG_WORDS, words.map { it.word }.toTypedArray())
         args.putStringArray(ARG_READINGS, words.map { it.reading }.toTypedArray())
         args.putStringArray(ARG_MEANINGS, words.map { it.meaning }.toTypedArray())

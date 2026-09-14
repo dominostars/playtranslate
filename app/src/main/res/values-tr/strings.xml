@@ -527,6 +527,9 @@
     <string name="anki_translation_error">Çevrilemedi</string>
 
     <string name="anki_word_remove_content_description">Karttan çıkar</string>
+    <string name="hidden_word_hide_content_description">Sözcüğü gizle</string>
+    <string name="hidden_word_show_content_description">Sözcüğü göster</string>
+    <string name="hidden_word_save_failed">Kaydedilemedi. Tekrar deneyin</string>
 
     <string name="anki_screenshot_remove_content_description">Ekran görüntüsünü kaldır</string>
 

@@ -562,6 +562,14 @@ data class RowState(
 fun List<RowState>.toLegacyMap(): Map<String, Triple<String, String, Int>> =
     associate { it.displayWord to Triple(it.reading, it.meaning, it.freqScore) }
 
+/** A freshly rendered words list's order: visible words first, hidden words
+ *  after, each group in lookup order (stable sort). Applied only when a list
+ *  is rendered anew; a hide/show toggle re-stubs its cell in place and never
+ *  moves it. The same instance when nothing in the list is hidden. */
+fun List<RowState>.hiddenLast(hidden: Set<String>): List<RowState> =
+    if (hidden.isEmpty() || none { it.displayWord in hidden }) this
+    else sortedBy { it.displayWord in hidden }
+
 /** Surface-form map paired with [toLegacyMap]. Both extensions read
  *  the same in-memory [RowState] list, so callers that snapshot both
  *  in a single pass keep word→surface alignment intact — important

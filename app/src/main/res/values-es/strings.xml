@@ -534,6 +534,9 @@
     <string name="anki_translation_error">No se pudo traducir</string>
 
     <string name="anki_word_remove_content_description">Quitar de la tarjeta</string>
+    <string name="hidden_word_hide_content_description">Ocultar la palabra</string>
+    <string name="hidden_word_show_content_description">Mostrar la palabra</string>
+    <string name="hidden_word_save_failed">No se pudo guardar. Inténtalo de nuevo</string>
 
     <string name="anki_screenshot_remove_content_description">Quitar captura de pantalla</string>
 

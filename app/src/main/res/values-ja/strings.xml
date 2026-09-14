@@ -542,6 +542,9 @@
     <string name="anki_translation_error">翻訳できませんでした</string>
 
     <string name="anki_word_remove_content_description">カードから削除</string>
+    <string name="hidden_word_hide_content_description">単語を非表示</string>
+    <string name="hidden_word_show_content_description">単語を表示</string>
+    <string name="hidden_word_save_failed">保存できませんでした。もう一度お試しください</string>
 
     <string name="anki_screenshot_remove_content_description">スクリーンショットを削除</string>
 

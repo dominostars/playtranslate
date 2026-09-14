@@ -546,6 +546,9 @@
     <string name="anki_translation_error">Impossible de traduire</string>
 
     <string name="anki_word_remove_content_description">Retirer de la carte</string>
+    <string name="hidden_word_hide_content_description">Masquer le mot</string>
+    <string name="hidden_word_show_content_description">Afficher le mot</string>
+    <string name="hidden_word_save_failed">Impossible d\'enregistrer. Réessayez</string>
 
     <string name="anki_screenshot_remove_content_description">Retirer la capture d\'écran</string>
 

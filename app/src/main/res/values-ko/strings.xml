@@ -532,6 +532,9 @@
     <string name="anki_translation_error">번역할 수 없음</string>
 
     <string name="anki_word_remove_content_description">카드에서 제거</string>
+    <string name="hidden_word_hide_content_description">단어 숨기기</string>
+    <string name="hidden_word_show_content_description">단어 표시</string>
+    <string name="hidden_word_save_failed">저장하지 못했습니다. 다시 시도해 주세요</string>
 
     <string name="anki_screenshot_remove_content_description">스크린샷 제거</string>
 

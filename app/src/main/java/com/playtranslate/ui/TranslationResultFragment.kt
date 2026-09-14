@@ -32,6 +32,7 @@ import com.playtranslate.model.TranslationResult
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.selectHeadword
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.vocab.HiddenWordsStore
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.themeColor
@@ -369,6 +370,14 @@ class TranslationResultFragment : Fragment() {
                 // writes it (this toggle, or the Settings row on return).
                 launch {
                     prefs.observe(Prefs.KEY_HIDE_GAME_OVERLAYS).collect { refreshShowOnScreen() }
+                }
+                // Hidden-word changes from anywhere — this list's own eye
+                // taps, the sentence sheet on the other screen, the store's
+                // load landing after the rows were drawn — re-stub the
+                // rendered cells in place. The StateFlow replays on STARTED,
+                // which also covers returning from the sheet.
+                launch {
+                    HiddenWordsStore.revision.collect { applyHiddenState() }
                 }
             }
         }
@@ -828,9 +837,10 @@ class TranslationResultFragment : Fragment() {
     /** Build + launch the per-word Anki review Activity: the word's own fields plus
      *  the current Ready result's sentence context (source + translation +
      *  screenshot). Callers pre-compute the cleaned [reading] (blank when it equals
-     *  the word) and own their AnkiDroid-installed gate. Shared by [launchWordAnki]
-     *  (lens/popup, resolves an entry) and [launchWordAnkiFromRow] (result cell,
-     *  reads a RowState). */
+     *  the word) and own their AnkiDroid-installed gate. Used by [launchWordAnki]
+     *  (lens/popup, resolves an entry); the result cells no longer carry an
+     *  Anki button (their trailing slot is the hidden-words eye), so a word
+     *  card from the list goes through Word Detail. */
     private fun launchWordAnkiIntent(
         activity: Activity,
         word: String,
@@ -1474,8 +1484,16 @@ class TranslationResultFragment : Fragment() {
     private fun renderWordRows(rows: List<RowState>) {
         mainWordsContainer.removeAllViews()
         if (rows.isEmpty()) return
+        // A fresh list is ordered hidden-last. isLoaded BEFORE snapshot: true
+        // means the snapshot taken next is the loaded set and this ordering
+        // is final; false means it is provisional, and the load's revision
+        // bump re-renders (applyHiddenState) rather than re-stubbing in
+        // place, so the list's first real render is ordered like any other.
+        val lang = prefs.sourceLangId
+        hiddenOrderApplied = HiddenWordsStore.isLoaded(lang)
+        val ordered = rows.hiddenLast(HiddenWordsStore.snapshot(requireContext(), lang))
         val cellsByWord = HashMap<String, MutableList<WordResultCell>>()
-        rows.forEachIndexed { idx, rowState ->
+        ordered.forEachIndexed { idx, rowState ->
             if (idx > 0) mainWordsContainer.addView(inflateWordDivider())
             val cell = WordResultCell(requireContext())
             bindWordCell(cell, rowState)
@@ -1483,8 +1501,13 @@ class TranslationResultFragment : Fragment() {
             cellsByWord.getOrPut(rowState.displayWord) { mutableListOf() }.add(cell)
         }
         lastRenderedCells = cellsByWord
-        loadAnkiDeckBadges(rows.map { it.displayWord }, cellsByWord)
+        loadAnkiDeckBadges(ordered.map { it.displayWord }, cellsByWord)
     }
+
+    /** True once the rendered rows were ordered against a LOADED hidden set
+     *  (see [renderWordRows]); while false, the next revision re-renders
+     *  instead of re-stubbing in place. */
+    private var hiddenOrderApplied = false
 
     override fun onResume() {
         super.onResume()
@@ -1603,11 +1626,57 @@ class TranslationResultFragment : Fragment() {
                 )
             },
             onSpeak = { speakWordFromCell(cell, rowState) },
-            onAnki = {
-                host?.onInteraction()
-                launchWordAnkiFromRow(rowState)
-            },
+            // The hidden-words eye, keyed like every other word path in this
+            // fragment on prefs.sourceLangId. The tap writes the opposite of
+            // the state the cell was SHOWING (handed over by the cell), never
+            // a fresh store read: the two agree except for the frame between
+            // the store's cache swap and this list's re-stub, and the icon
+            // is what the user acted on. The cells re-stub from the store's
+            // revision (collector in onViewCreated), the same path a toggle
+            // from the sentence sheet takes.
+            trailing = WordResultCell.TrailingAction.Hide(
+                hidden = rowState.displayWord in
+                    HiddenWordsStore.snapshot(requireContext(), prefs.sourceLangId),
+                onToggle = { shownHidden ->
+                    host?.onInteraction()
+                    val app = requireContext().applicationContext
+                    val lang = prefs.sourceLangId
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        val saved = HiddenWordsStore.setHidden(
+                            app, lang, rowState.displayWord,
+                            rowState.reading.ifEmpty { null }, hidden = !shownHidden,
+                        )
+                        // Nothing changed on screen when the write failed
+                        // (the store leaves its cache alone), so say why.
+                        if (!saved) {
+                            Toast.makeText(app, R.string.hidden_word_save_failed, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+            ),
         )
+    }
+
+    /** Re-apply the hidden flag to every rendered word cell in place: no
+     *  list rebuild, no deck re-query, no reordering (a toggle never moves a
+     *  row). A cell whose flag is unchanged is a no-op inside
+     *  [WordResultCell.setHidden]. The one exception is a list drawn before
+     *  its language's set had loaded: that render was never ordered, so the
+     *  load's bump re-renders it as the fresh list it is. */
+    private fun applyHiddenState() {
+        if (lastRenderedCells.isEmpty()) return
+        val lang = prefs.sourceLangId
+        if (!hiddenOrderApplied && HiddenWordsStore.isLoaded(lang)) {
+            currentSettledRows()?.let { rows ->
+                renderWordRows(rows)
+                return
+            }
+        }
+        val hidden = HiddenWordsStore.snapshot(requireContext(), lang)
+        for ((word, cells) in lastRenderedCells) {
+            val flag = word in hidden
+            cells.forEach { it.setHidden(flag) }
+        }
     }
 
     /** Speak a result cell's word, driving that cell's own spinner. Each cell
@@ -1631,24 +1700,6 @@ class TranslationResultFragment : Fragment() {
                 cell.setSpeakLoading(false)
             }
         }
-    }
-
-    /** Per-word Anki add from a result cell. Mirrors [launchWordAnki] but
-     *  sources POS / definition straight from the [RowState] so the cell
-     *  needn't re-resolve the dictionary entry. Tap opens the editable review
-     *  sheet (the cell exposes no long-press one-tap shortcut). */
-    private fun launchWordAnkiFromRow(rowState: RowState) {
-        val activity = activity ?: return
-        val ankiManager = AnkiManager(activity)
-        if (!ankiManager.isAnkiDroidInstalled()) {
-            showAnkiNotInstalledDialog(activity)
-            return
-        }
-        launchWordAnkiIntent(
-            activity, rowState.displayWord,
-            reading = rowState.reading.takeIf { it.isNotEmpty() && it != rowState.displayWord } ?: "",
-            pos = rowState.ankiPos, definition = rowState.meaning, freqScore = rowState.freqScore,
-        )
     }
 
     /** Derive view-side word spans from the VM's per-occurrence

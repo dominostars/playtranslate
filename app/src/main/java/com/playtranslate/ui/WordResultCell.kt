@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
@@ -16,7 +17,9 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.annotation.VisibleForTesting
 import androidx.appcompat.content.res.AppCompatResources
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.isGone
 import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
@@ -29,18 +32,34 @@ import kotlinx.coroutines.Job
 
 /**
  * A translation-result word entry: a headword row (word · reading · read-aloud
- * · add-to-Anki · chevron) above the shared [WordDefinitionsView] body. The
- * whole cell is the tap target (opens Word Detail); the speak and Anki buttons
- * are nested actions whose taps don't fall through to the cell.
+ * · a trailing action · chevron) above the shared [WordDefinitionsView] body.
+ * The whole cell is the tap target (opens Word Detail); the speak and trailing
+ * buttons are nested actions whose taps don't fall through to the cell.
  *
- * The add-to-Anki button is **always plain** — it never reflects in-deck
- * state. Deck membership surfaces as the meta-row pill (via
- * [WordDefinitionData.ankiDecks]) instead.
+ * The trailing slot is the host's choice ([TrailingAction]): the add-to-Anki
+ * button on the dictionary and Word Detail surfaces, **always plain** — it
+ * never reflects in-deck state, deck membership surfaces as the meta-row pill
+ * (via [WordDefinitionData.ankiDecks]) instead — or the hidden-words eye on
+ * the results words list, where a hidden word draws the cell as a stub.
  */
 class WordResultCell @JvmOverloads constructor(
     context: Context,
     attrs: android.util.AttributeSet? = null,
 ) : LinearLayout(context, attrs) {
+
+    /** What the head row's second action slot does. [Anki]: the add-to-Anki
+     *  button (dictionary results, Word Detail's Words section). [Hide]: the
+     *  hidden-words eye (the results words list); [Hide.hidden] draws the
+     *  whole cell as a stub — the word alone, faded, eye-off — see
+     *  [setHidden]. [Hide.onToggle] receives the state the cell was SHOWING
+     *  when tapped, so a tap always means "flip what I see": the host writes
+     *  the opposite without re-reading the store, and a second tap on an
+     *  icon that has not changed yet asks for the same thing again rather
+     *  than reversing it. */
+    sealed class TrailingAction {
+        class Anki(val onTap: () -> Unit) : TrailingAction()
+        class Hide(val hidden: Boolean, val onToggle: (shownHidden: Boolean) -> Unit) : TrailingAction()
+    }
 
     private val density = resources.displayMetrics.density
     private fun dp(v: Float): Int = (v * density).toInt()
@@ -57,8 +76,25 @@ class WordResultCell @JvmOverloads constructor(
     private val speakIcon: ImageView
     private val speakSpinner: ProgressBar
     private val speakButton: FrameLayout
-    private val ankiButton: FrameLayout
+    private val trailingButton: FrameLayout
+    private val trailingIcon: ImageView
     private val definitionsView = WordDefinitionsView(context)
+
+    /** The drawable resource in the trailing slot; tests read it. */
+    @get:VisibleForTesting
+    var trailingIconRes: Int = R.drawable.ic_card_stack_add
+        private set
+
+    /** True while the cell is drawn as a hidden-word stub. */
+    private var stubbed = false
+
+    // The bind arguments, kept so [setHidden] can rebuild the full cell from
+    // the same inputs instead of patching a stub back.
+    private var boundInflectedForms: List<InflectedForm> = emptyList()
+    private var boundOnCellTap: () -> Unit = {}
+    private var boundOnSpeak: () -> Unit = {}
+    private var boundTrailing: TrailingAction = TrailingAction.Anki {}
+    private var boundStyledImported = false
 
     /** Styled (WebView) renderer for the imported Yomitan groups, built only
      *  for hosts that opt in through [bind]'s `styledImported` — today the
@@ -129,14 +165,17 @@ class WordResultCell @JvmOverloads constructor(
         }
         headRow.addView(speakButton)
 
-        // Add-to-Anki button — always plain.
-        ankiButton = actionSlot(clickable = true, marginStartDp = 16f).apply {
-            addView(iconView(R.drawable.ic_card_stack_add, mutedColor), centerParams(22f))
+        // Trailing action slot: add-to-Anki (always plain) or the hidden-words
+        // eye, decided per bind by the host's [TrailingAction].
+        trailingIcon = iconView(R.drawable.ic_card_stack_add, mutedColor)
+        trailingButton = actionSlot(clickable = true, marginStartDp = 16f).apply {
+            addView(trailingIcon, centerParams(22f))
         }
-        headRow.addView(ankiButton)
+        headRow.addView(trailingButton)
 
         // Chevron: a non-interactive "opens detail" affordance, in its own slot
-        // so it aligns with each section's rightmost header button.
+        // so it aligns with each section's rightmost header button. Stays on
+        // a hidden word's stub too: the stub still opens Word Detail.
         val chevron = actionSlot(clickable = false, marginStartDp = 16f).apply {
             addView(
                 iconView(R.drawable.ic_chevron_right, hintColor).apply {
@@ -193,8 +232,10 @@ class WordResultCell @JvmOverloads constructor(
     }
 
     /**
-     * Bind [data] at [scale]. [onCellTap] opens Word Detail; [onSpeak] /
-     * [onAnki] are the (propagation-stopping) action handlers.
+     * Bind [data] at [scale]. [onCellTap] opens Word Detail; [onSpeak] and
+     * [trailing] are the (propagation-stopping) action handlers, [trailing]
+     * also choosing the second slot's icon and, for a hidden word, the stub
+     * rendering.
      *
      * [styledImported] opts this cell into the styled renderer for
      * [WordDefinitionData.importedGroups] (see [styledView]); it needs
@@ -208,7 +249,7 @@ class WordResultCell @JvmOverloads constructor(
         inflectedForms: List<InflectedForm>,
         onCellTap: () -> Unit,
         onSpeak: () -> Unit,
-        onAnki: () -> Unit,
+        trailing: TrailingAction,
         styledImported: Boolean = false,
     ) {
         boundData = data
@@ -294,9 +335,102 @@ class WordResultCell @JvmOverloads constructor(
         styledActive = styledImported && bindStyledImported(data, scale)
         bindFlatBody(if (styledActive) data.flatRemainder() else data, scale)
 
+        boundInflectedForms = inflectedForms
+        boundOnCellTap = onCellTap
+        boundOnSpeak = onSpeak
+        boundTrailing = trailing
+        boundStyledImported = styledImported
         setOnClickListener { onCellTap() }
         speakButton.setOnClickListener { onSpeak() }
-        ankiButton.setOnClickListener { onAnki() }
+        applyTrailing(trailing)
+        applyStubMode(data, scale, stub = trailing is TrailingAction.Hide && trailing.hidden)
+    }
+
+    private fun applyTrailing(trailing: TrailingAction) {
+        val res: Int
+        val cd: String
+        when (trailing) {
+            is TrailingAction.Anki -> {
+                res = R.drawable.ic_card_stack_add
+                cd = context.getString(R.string.cd_add_to_anki)
+            }
+            is TrailingAction.Hide -> if (trailing.hidden) {
+                res = R.drawable.ic_visibility_off
+                cd = context.getString(R.string.hidden_word_show_content_description)
+            } else {
+                res = R.drawable.ic_visibility
+                cd = context.getString(R.string.hidden_word_hide_content_description)
+            }
+        }
+        if (res != trailingIconRes) {
+            trailingIcon.setImageResource(res)
+            trailingIconRes = res
+        }
+        trailingButton.contentDescription = cd
+        trailingButton.setOnClickListener {
+            when (trailing) {
+                is TrailingAction.Anki -> trailing.onTap()
+                is TrailingAction.Hide -> trailing.onToggle(trailing.hidden)
+            }
+        }
+    }
+
+    /**
+     * Stub mode for a hidden word: the word alone at [STUB_TEXT_FACTOR] of
+     * its size in the muted colour, the [hiddenWordBandColor] band drawn
+     * behind the cell (under the ripple, which stays: the stub is still a
+     * tap target), every body view gone, the speak slot INVISIBLE (not gone:
+     * the columns keep their places, so the eye does not jump when toggled),
+     * the chevron kept (the stub still opens Word Detail), tighter vertical
+     * padding. Runs after [bind] has set the full cell, so full mode only
+     * has to restore what the stub overrides beyond what [bind] sets: the
+     * title colour, the background, the speak slot, the cell padding.
+     */
+    private fun applyStubMode(data: WordDefinitionData, scale: Float, stub: Boolean) {
+        stubbed = stub
+        if (stub) {
+            wordView.text = data.word // no pitch overline on a stub
+            wordView.setPadding(0, 0, 0, 0)
+            wordView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 27f * scale * STUB_TEXT_FACTOR)
+            wordView.setTextColor(mutedColor)
+            canInlineSingleReading = false
+            readingView.isGone = true
+            readingsFlow.isGone = true
+            inflectionView.isGone = true
+            releaseStyled()
+            definitionsView.isGone = true
+            speakButton.isInvisible = true
+            background = LayerDrawable(
+                listOfNotNull(
+                    ColorDrawable(hiddenWordBandColor(context)),
+                    themedDrawable(android.R.attr.selectableItemBackground),
+                ).toTypedArray(),
+            )
+            setPadding(dp(16f), dp(8f), dp(4f), dp(8f))
+        } else {
+            wordView.setTextColor(textColor)
+            speakButton.isInvisible = false
+            background = themedDrawable(android.R.attr.selectableItemBackground)
+            setPadding(dp(16f), dp(14f), dp(4f), dp(14f))
+        }
+    }
+
+    /**
+     * Flip a [TrailingAction.Hide] cell between stub and full in place (the
+     * results list re-stubs its rendered cells from the hidden-words store's
+     * revision). Re-runs [bind] with the bound arguments, so the full cell is
+     * rebuilt from the same inputs rather than patched back — a stub cannot
+     * leak into the restored cell. No-op for a [TrailingAction.Anki] cell or
+     * when the flag is unchanged.
+     */
+    fun setHidden(hidden: Boolean) {
+        val trailing = boundTrailing as? TrailingAction.Hide ?: return
+        if (trailing.hidden == hidden) return
+        val data = boundData ?: return
+        bind(
+            data, boundScale, boundInflectedForms, boundOnCellTap, boundOnSpeak,
+            TrailingAction.Hide(hidden, trailing.onToggle), boundStyledImported,
+        )
     }
 
     /**
@@ -505,6 +639,9 @@ class WordResultCell @JvmOverloads constructor(
         val data = boundData ?: return
         val next = data.copy(ankiDecks = decks)
         boundData = next
+        // A stub shows no body: the decks stay on boundData and render when
+        // the cell is shown again (setHidden rebinds from it).
+        if (stubbed) return
         val v = styledView
         if (styledActive && v != null) {
             renderStyledContent(v, next)
@@ -557,5 +694,24 @@ class WordResultCell @JvmOverloads constructor(
 
         /** Height of the fade over a clipped styled body. */
         private const val FADE_DP = 28f
+
+        /** A hidden word's stub draws the headword at this fraction of the
+         *  full cell's size (tunable on device). */
+        private const val STUB_TEXT_FACTOR = 0.65f
     }
 }
+
+/** Alpha (of 255) of the page background drawn over a hidden word's row:
+ *  50%. Tunable on device; both list surfaces read it. */
+internal const val HIDDEN_WORD_BAND_ALPHA = 128
+
+/**
+ * The band drawn behind a hidden word's row on both list surfaces (this
+ * cell's stub, the sentence card's stub row): the page background
+ * ([R.attr.ptBg]) over the card at [HIDDEN_WORD_BAND_ALPHA], so the row reads
+ * as sunk into the page. A view alpha would not do this: it fades the row's
+ * content but the row's own background is transparent, so the card colour
+ * behind it shows through unchanged.
+ */
+internal fun hiddenWordBandColor(context: Context): Int =
+    ColorUtils.setAlphaComponent(context.themeColor(R.attr.ptBg), HIDDEN_WORD_BAND_ALPHA)

@@ -53,6 +53,11 @@ class PlayTranslateApplication : Application() {
         // History capture images orphaned by FIFO prune / row deletes /
         // process death mid-copy — reconciled against surviving rows.
         com.playtranslate.translationlog.HistoryImageStore.sweepAsync(this)
+        // Hidden words for the current source language: load off-main now so
+        // the first results list and sentence card draw their stubs on the
+        // first pass. Structural fallback for every other language (and a
+        // load that lands late): the hosts collect HiddenWordsStore.revision.
+        com.playtranslate.vocab.HiddenWordsStore.warm(this, Prefs(this).sourceLangId)
         // Push the persisted grouping-debug flag into the process-wide
         // OcrManager singleton before any OCR can run. The SettingsRenderer
         // toggle also writes this on change, so the in-memory copy stays in

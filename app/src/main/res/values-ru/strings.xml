@@ -551,6 +551,9 @@
     <string name="anki_translation_error">Не удалось перевести</string>
 
     <string name="anki_word_remove_content_description">Убрать с карточки</string>
+    <string name="hidden_word_hide_content_description">Скрыть слово</string>
+    <string name="hidden_word_show_content_description">Показать слово</string>
+    <string name="hidden_word_save_failed">Не удалось сохранить. Попробуйте ещё раз</string>
 
     <string name="anki_screenshot_remove_content_description">Убрать снимок экрана</string>
 

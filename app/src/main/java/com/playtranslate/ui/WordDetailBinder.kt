@@ -1073,7 +1073,9 @@ class WordDetailBinder(
                     ui.openWordDetail(row.displayWord, row.reading.ifEmpty { null })
                 },
                 onSpeak = { speakHeadword(row.displayWord, sourceLangId) },
-                onAnki = {
+                // Member words of an entry never stub or hide; the Anki
+                // button stays, as on the dictionary results.
+                trailing = WordResultCell.TrailingAction.Anki {
                     if (!AnkiManager(ctx).isAnkiDroidInstalled()) {
                         ui.showAnkiNotInstalled()
                     } else {

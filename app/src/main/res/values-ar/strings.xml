@@ -515,6 +515,9 @@
     <string name="anki_translation_error">تعذّرت الترجمة</string>
 
     <string name="anki_word_remove_content_description">إزالة من البطاقة</string>
+    <string name="hidden_word_hide_content_description">إخفاء الكلمة</string>
+    <string name="hidden_word_show_content_description">إظهار الكلمة</string>
+    <string name="hidden_word_save_failed">تعذّر الحفظ. حاول مرة أخرى</string>
 
     <string name="anki_screenshot_remove_content_description">إزالة لقطة الشاشة</string>
 

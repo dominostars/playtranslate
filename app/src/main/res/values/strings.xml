@@ -1234,9 +1234,24 @@
          translation failed. -->
     <string name="anki_translation_error">Couldn\'t translate</string>
 
-    <!-- contentDescription for the × button beside each word chip in
-         the words group. -->
+    <!-- contentDescription for the × on a removable sense or example row
+         in the word card editor. -->
     <string name="anki_word_remove_content_description">Remove from card</string>
+
+    <!-- contentDescription for the eye button on a word row (the results
+         page's words list, the Anki sentence card's words group). Tapping it
+         hides the word: the row minimizes to the word alone and the word is
+         left off sentence cards until it is shown again. -->
+    <string name="hidden_word_hide_content_description">Hide word</string>
+
+    <!-- contentDescription for the eye-off button on a minimized (hidden)
+         word row. Tapping it shows the word again. -->
+    <string name="hidden_word_show_content_description">Show word</string>
+
+    <!-- Toast after a hide/show tap on a word row when the change could not
+         be saved to storage (disk full, unreadable store); the row did not
+         change. Short, one line. -->
+    <string name="hidden_word_save_failed">Couldn\'t save. Try again.</string>
 
     <!-- contentDescription for the screenshot's remove button. -->
     <string name="anki_screenshot_remove_content_description">Remove screenshot</string>

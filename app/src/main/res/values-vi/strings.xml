@@ -531,6 +531,9 @@
     <string name="anki_translation_error">Không thể dịch</string>
 
     <string name="anki_word_remove_content_description">Xóa khỏi thẻ</string>
+    <string name="hidden_word_hide_content_description">Ẩn từ</string>
+    <string name="hidden_word_show_content_description">Hiện từ</string>
+    <string name="hidden_word_save_failed">Không lưu được. Hãy thử lại</string>
 
     <string name="anki_screenshot_remove_content_description">Xóa ảnh chụp màn hình</string>
 

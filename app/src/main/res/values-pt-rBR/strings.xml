@@ -534,6 +534,9 @@
     <string name="anki_translation_error">Não foi possível traduzir</string>
 
     <string name="anki_word_remove_content_description">Remover do cartão</string>
+    <string name="hidden_word_hide_content_description">Ocultar palavra</string>
+    <string name="hidden_word_show_content_description">Mostrar palavra</string>
+    <string name="hidden_word_save_failed">Não foi possível salvar. Tente novamente</string>
 
     <string name="anki_screenshot_remove_content_description">Remover captura de tela</string>
 

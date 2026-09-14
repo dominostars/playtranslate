@@ -8,6 +8,7 @@ import com.playtranslate.R
 import com.playtranslate.audio.Attribution
 import com.playtranslate.audio.AudioRequest
 import com.playtranslate.audio.AudioSelection
+import com.playtranslate.vocab.HiddenWordsStore
 import com.playtranslate.audio.AudioSelections
 import com.playtranslate.audio.ResolvedAudio
 import com.playtranslate.language.SourceLangId
@@ -126,7 +127,7 @@ data class WordSendInput(
  * via [AnkiSendResult] for the caller to handle.
  */
 suspend fun Context.sendSentenceCard(
-    input: SentenceSendInput,
+    raw: SentenceSendInput,
     deckId: Long,
     /** Consent hook for an over-budget card (see
      *  [Context.dispatchSendToAnki]): the review sheets pass an
@@ -135,6 +136,17 @@ suspend fun Context.sendSentenceCard(
     oversizePrompt: (suspend () -> Boolean)? = null,
 ): AnkiSendResult {
     val ctx = this
+    // Hidden words never reach a sentence card unless highlighted. This is
+    // the ONE place every sentence send passes through (review sheet,
+    // workspace editor page, the word card's sentence tab, one-tap), so the
+    // filter lives here and nowhere else: the sheets hand over ALL their
+    // words, including the minimized ones. A highlighted target is exempt —
+    // the user is making a card FOR it — and is un-hidden below once the
+    // send lands. Above the audio synthesis so no TTS is paid for a word
+    // that is about to be dropped, and above toCardData so the card front's
+    // tooltips and highlights (derived from the word list) drop too.
+    val hidden = HiddenWordsStore.loaded(ctx, raw.sourceLangId)
+    val input = raw.withoutHidden(hidden)
     // Pin the screenshot BEFORE the audio synthesis below: the capture
     // surfaces overwrite fixed cache filenames, and the seconds this
     // pipeline spends on audio + binder are exactly when a rapid re-capture
@@ -298,6 +310,15 @@ suspend fun Context.sendSentenceCard(
     // blown budget) never reach it because we pass null audioPath in
     // that case. Fold them in here so callers can read a single
     // "audio requested but missing" flag.
+    // A highlighted word rode onto the card on purpose: it is not a hidden
+    // word any more. Only on a landed send — never when an editor opens, so
+    // cancelling one leaves the store alone. A failed un-hide is logged by
+    // the store; the card is already in Anki either way.
+    if (result is AnkiSendResult.Success) {
+        for (word in raw.selectedWords) {
+            if (word in hidden) HiddenWordsStore.unhideForCard(ctx, raw.sourceLangId, word)
+        }
+    }
     return result.foldInLocalAudioMisses(
         sentenceMissing = input.includeSentenceAudio && audioFile == null,
         wordAudioMissing = input.targetWordAudioWords.isNotEmpty() &&
@@ -440,6 +461,11 @@ suspend fun Context.sendWordCard(
         if (wordResolved?.ephemeral != false) audioFile?.delete()
         AnkiScreenshotPin.release(ctx, pinnedScreenshotPath)
     }
+    // A word card landed for this word: not a hidden word any more (see the
+    // sentence funnel's note; same rule, same commit point).
+    if (result is AnkiSendResult.Success) {
+        HiddenWordsStore.unhideForCard(ctx, input.sourceLangId, input.word)
+    }
     return result.foldInLocalAudioMisses(
         sentenceMissing = input.includeWordAudio && audioFile == null,
         wordAudioMissing = false,
@@ -540,6 +566,25 @@ suspend fun Fragment.sendWordCard(
  *  pipeline input so the structured builder
  *  ([AnkiCardOutputBuilder.forSentence]) — which still takes the
  *  CardData type — keeps working unchanged. */
+/** The input with every word in [hidden] — except the highlighted targets in
+ *  [SentenceSendInput.selectedWords], which are the card's point — removed
+ *  from the word list, the word-audio set and the per-word audio selections.
+ *  Identity (the same instance) when nothing is dropped. Pure, so the
+ *  funnel's one rule is pinned by a plain JVM test. */
+internal fun SentenceSendInput.withoutHidden(hidden: Set<String>): SentenceSendInput {
+    if (hidden.isEmpty()) return this
+    val drop = hidden - selectedWords
+    if (drop.isEmpty()) return this
+    val touches = words.any { it.word in drop } ||
+        targetWordAudioWords.any { it in drop } || wordSelections.keys.any { it in drop }
+    if (!touches) return this
+    return copy(
+        words = words.filterNot { it.word in drop },
+        targetWordAudioWords = targetWordAudioWords - drop,
+        wordSelections = wordSelections.filterKeys { it !in drop },
+    )
+}
+
 private fun SentenceSendInput.toCardData(): SentenceAnkiContentView.CardData =
     SentenceAnkiContentView.CardData(
         source = original,

@@ -535,6 +535,9 @@
     <string name="anki_translation_error">Konnte nicht übersetzt werden</string>
 
     <string name="anki_word_remove_content_description">Von der Karte entfernen</string>
+    <string name="hidden_word_hide_content_description">Wort ausblenden</string>
+    <string name="hidden_word_show_content_description">Wort einblenden</string>
+    <string name="hidden_word_save_failed">Speichern fehlgeschlagen. Bitte erneut versuchen</string>
 
     <string name="anki_screenshot_remove_content_description">Screenshot entfernen</string>
 

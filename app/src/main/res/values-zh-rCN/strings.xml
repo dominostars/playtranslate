@@ -532,6 +532,9 @@
     <string name="anki_translation_error">无法翻译</string>
 
     <string name="anki_word_remove_content_description">从卡片中移除</string>
+    <string name="hidden_word_hide_content_description">隐藏单词</string>
+    <string name="hidden_word_show_content_description">显示单词</string>
+    <string name="hidden_word_save_failed">无法保存，请重试</string>
 
     <string name="anki_screenshot_remove_content_description">移除截图</string>
 
