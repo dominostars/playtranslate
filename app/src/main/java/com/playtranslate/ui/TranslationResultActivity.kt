@@ -4,12 +4,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.graphics.Typeface
 import android.graphics.BitmapFactory
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.IBinder
-import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageButton
@@ -35,16 +32,10 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
 import com.playtranslate.R
-import com.playtranslate.model.TextSegments
 import com.playtranslate.model.OcrProvenance
-import com.playtranslate.model.TranslationResult
-import com.playtranslate.themeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * Standalone activity that hosts [TranslationResultFragment] for showing
@@ -124,6 +115,27 @@ class TranslationResultActivity :
     private var intentSeededTranslation: String? = null
     private var intentSeededWordResults: Map<String, Triple<String, String, Int>>? = null
 
+    /** The sentence mode's translation: the shared deliberate-sentence flow
+     *  over [vm]. A History row tap pins the attach to EXACTLY that row
+     *  (pair-matched); a lookup attaches by key. The service binding is read
+     *  per call — [onServiceReady] is the first caller, so the pre-bind
+     *  window never reaches the backend. */
+    private val sentenceFlow by lazy {
+        SentenceTranslationFlow(
+            applicationContext, vm, lifecycleScope,
+            backend = { captureService?.sentenceTranslationBackend() },
+            historyRow = intent.getLongExtra(EXTRA_HISTORY_ENTRY_ID, -1L)
+                .takeIf { it >= 0 }
+                ?.let { id ->
+                    SentenceTranslationFlow.HistoryRow(
+                        id,
+                        intent.getStringExtra(EXTRA_HISTORY_SOURCE_LANG),
+                        intent.getStringExtra(EXTRA_HISTORY_TARGET_LANG),
+                    )
+                },
+        )
+    }
+
     private val resultFragment: TranslationResultFragment?
         get() = supportFragmentManager.findFragmentById(R.id.resultFragmentContainer) as? TranslationResultFragment
 
@@ -178,6 +190,14 @@ class TranslationResultActivity :
         val svc = captureService ?: return
         val ready = vm.result.value as? ResultState.Ready ?: return
         val pending = ready.result.pendingTranslation ?: return
+        // Deliberate sentence shape: single text + the exact-row History rules
+        // (EXTRA_HISTORY_ENTRY_ID), owned by the shared flow with its own
+        // in-flight dedup. Only the one-shot capture shape stays here: its
+        // batch translate + session-scoped History attach are the service's.
+        if (!pending.isCapture) {
+            sentenceFlow.completeDeferred()
+            return
+        }
         if (deferredCompletionJob?.isActive == true) {
             if (deferredCompletionPending == pending) return
             deferredCompletionJob?.cancel()
@@ -185,31 +205,14 @@ class TranslationResultActivity :
         deferredCompletionPending = pending
         deferredCompletionJob = lifecycleScope.launch {
             try {
-                if (pending.isCapture) {
-                    // One-shot capture shape: batch translate + session-scoped
-                    // History attach, both owned by the service.
-                    val perGroup = svc.completeDeferredTranslation(pending)
-                    val joined = perGroup.joinToString("\n\n") { it.text }
-                    vm.applyDeferredTranslation(
-                        pending,
-                        if (joined.isBlank()) "—" else joined,
-                        perGroup.mapNotNull { it.note }.firstOrNull(),
-                        perGroup.mapNotNull { it.backendDisplayName }.firstOrNull(),
-                    )
-                } else {
-                    // Deliberate sentence shape: single text, and the History
-                    // attach must keep the exact-row rules (EXTRA_HISTORY_ENTRY_ID).
-                    // The recorder gates every write per feature on the
-                    // pending's LOOKUP-time eligibility snapshot AND the
-                    // current pref — an opted-out lookup records/feeds
-                    // nothing even if a pref was enabled before the reveal.
-                    val gt = translateSentenceAttachingHistory(
-                        svc, pending.groupTexts.firstOrNull() ?: ready.result.originalText,
-                        historyEligible = pending.historyEligible,
-                        contextEligible = pending.contextEligible,
-                    )
-                    vm.applyDeferredTranslation(pending, gt.text.ifBlank { "—" }, gt.note, gt.backendDisplayName)
-                }
+                val perGroup = svc.completeDeferredTranslation(pending)
+                val joined = perGroup.joinToString("\n\n") { it.text }
+                vm.applyDeferredTranslation(
+                    pending,
+                    if (joined.isBlank()) "—" else joined,
+                    perGroup.mapNotNull { it.note }.firstOrNull(),
+                    perGroup.mapNotNull { it.backendDisplayName }.firstOrNull(),
+                )
             } catch (e: kotlinx.coroutines.CancellationException) {
                 // Superseded (or the activity is going away) — the newer job
                 // owns the state now; never land "—" for a cancelled run.
@@ -327,37 +330,16 @@ class TranslationResultActivity :
      *  time. Prefer the VM's settled values; fall back to launch-time
      *  intent extras during the loading window so a fast Anki tap still
      *  carries the prefetched sentence-word context. */
-    override fun currentSentenceContext(): SentenceContext {
-        // All three text fields read VM-then-fallback so they're
-        // symmetric. Without VM-first on `original`, the field would
-        // be null for region-capture launches even though the VM has
-        // a valid result — the embedded sheet's `?: args` chain would
-        // still recover, but keeping the read patterns aligned avoids
-        // future drift.
-        val ready = vm.result.value as? ResultState.Ready
-        // Snapshot the settled rows ONCE so the legacy map and the
-        // surface map are guaranteed to come from the same emission.
-        // Reading WordLookupsState twice would risk a fresh emission
-        // sliding in between, and reading surfaces from
-        // LastSentenceCache later (as oneTapSendSentence used to do)
-        // races against live-mode rotating the cache.
-        val settledRows = (vm.wordLookups.value as? WordLookupsState.Settled)?.rows
-        return SentenceContext(
-            original = ready?.result?.originalText
-                ?: intent.getStringExtra(EXTRA_SENTENCE_TEXT),
-            translation = ready?.result?.translatedText
-                ?: intentSeededTranslation,
-            wordResults = settledRows?.toLegacyMap() ?: intentSeededWordResults,
-            // Args fallback has no surfaces — pass null so the
-            // one-tap helper awaits LastSentenceCache, which is
-            // atomic per sentence.
-            surfaceForms = settledRows?.toSurfaceMap(),
-            wordEnrichment = settledRows?.toEnrichmentMap(),
-            // Rides the VM result only — a pending is meaningful solely
-            // alongside its own result's original text (no intent fallback).
-            pending = ready?.result?.pendingTranslation,
+    override fun currentSentenceContext(): SentenceContext =
+        // VM first, launch-time extras second (symmetric across the text
+        // fields — see TranslationResultViewModel.sentenceContext).
+        vm.sentenceContext(
+            SentenceContext(
+                original = intent.getStringExtra(EXTRA_SENTENCE_TEXT),
+                translation = intentSeededTranslation,
+                wordResults = intentSeededWordResults,
+            ),
         )
-    }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -483,22 +465,28 @@ class TranslationResultActivity :
         val sentenceContainer = findViewById<View>(R.id.resultFragmentContainer)
         val wordContainer = findViewById<FrameLayout>(R.id.wordDetailContainer)
 
-        // Pill toggle in the toolbar's center slot. Defaults to "Word" —
-        // the user tapped a specific word in the lens to get here, so the
-        // word definition is the reading they expect to see first.
-        sentenceContainer.visibility = View.GONE
-        wordContainer.visibility = View.VISIBLE
-        val toggleContainer = findViewById<FrameLayout>(R.id.segmentedTabContainer)
-        buildToolbarPillToggle(
-            container = toggleContainer,
-            options = listOf("Sentence" to Tab.SENTENCE, word to Tab.WORD),
-            initial = Tab.WORD,
-            onSelect = { tab ->
-                val showSentence = tab == Tab.SENTENCE
-                sentenceContainer.visibility = if (showSentence) View.VISIBLE else View.GONE
-                wordContainer.visibility = if (showSentence) View.GONE else View.VISIBLE
-            },
-        )
+        // The Anki editors' pill in the toolbar's centre slot, seeded from the
+        // persisted last choice (first-ever default: the word — the user
+        // tapped a specific word in the lens to get here) and writing every
+        // tap back; the floating workspace's lookup page shares the pref.
+        val prefs = Prefs(this)
+        fun show(view: LookupView) {
+            val showSentence = view == LookupView.SENTENCE
+            sentenceContainer.visibility = if (showSentence) View.VISIBLE else View.GONE
+            wordContainer.visibility = if (showSentence) View.GONE else View.VISIBLE
+        }
+        val initial = prefs.lookupPreferredView
+        show(initial)
+        buildAnkiModeToggle(
+            container = findViewById(R.id.segmentedTabContainer),
+            leftLabel = getString(R.string.anki_mode_sentence),
+            rightLabel = word,
+            leftActive = initial == LookupView.SENTENCE,
+        ) { leftSelected ->
+            val view = if (leftSelected) LookupView.SENTENCE else LookupView.WORD
+            prefs.lookupPreferredView = view
+            show(view)
+        }
 
         // Mount the embedded word detail fragment once. Sentence context
         // (original / translation / wordResults) is supplied by this
@@ -524,119 +512,6 @@ class TranslationResultActivity :
         }
     }
 
-    /** Two-segment pill toggle modeled on SettingsRenderer.buildPillToggle:
-     *  recessed [ptSurface] track, sliding [ptAccent] indicator, text
-     *  labels on top with active label in [ptSurface] color + bold. The
-     *  right segment (the word) ellipsizes if it overflows the slot. */
-    private fun <T> buildToolbarPillToggle(
-        container: FrameLayout,
-        options: List<Pair<String, T>>,
-        initial: T,
-        onSelect: (T) -> Unit,
-    ) {
-        container.removeAllViews()
-        val density = resources.displayMetrics.density
-        val trackRadius = 10 * density
-        val pillRadius = 8 * density
-        val trackPad = (3 * density).toInt()
-        val pillH = (32 * density).toInt()
-
-        val surfaceColor = themeColor(R.attr.ptSurface)
-        val accentColor = themeColor(R.attr.ptAccent)
-        val mutedColor = themeColor(R.attr.ptTextMuted)
-
-        val initialIdx = options.indexOfFirst { it.second == initial }.coerceAtLeast(0)
-
-        val track = FrameLayout(this).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER,
-            )
-            background = GradientDrawable().apply {
-                setColor(surfaceColor)
-                cornerRadius = trackRadius
-            }
-            setPadding(trackPad, trackPad, trackPad, trackPad)
-        }
-
-        val pillRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-            )
-        }
-
-        val indicator = View(this).apply {
-            background = GradientDrawable().apply {
-                setColor(accentColor)
-                cornerRadius = pillRadius
-            }
-            elevation = 2 * density
-        }
-        track.addView(indicator)
-        pillRow.elevation = 3 * density
-        track.addView(pillRow)
-
-        val pills = mutableListOf<TextView>()
-        var currentIdx = initialIdx
-
-        options.forEachIndexed { idx, (label, _) ->
-            val isActive = idx == initialIdx
-            val pill = TextView(this).apply {
-                text = label
-                textSize = 13f
-                typeface = Typeface.create(
-                    "sans-serif-medium",
-                    if (isActive) Typeface.BOLD else Typeface.NORMAL,
-                )
-                gravity = Gravity.CENTER
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                setTextColor(if (isActive) surfaceColor else mutedColor)
-                layoutParams = LinearLayout.LayoutParams(0, pillH, 1f)
-                setPadding((14 * density).toInt(), 0, (14 * density).toInt(), 0)
-                isClickable = true
-                isFocusable = true
-            }
-            pills.add(pill)
-            pillRow.addView(pill)
-        }
-
-        container.addView(track)
-
-        pillRow.post {
-            if (pills.isEmpty()) return@post
-            val pillW = pills[0].width
-            indicator.layoutParams = FrameLayout.LayoutParams(pillW, pillH)
-            indicator.translationX = (pillW * initialIdx).toFloat()
-            indicator.requestLayout()
-        }
-
-        pills.forEachIndexed { idx, pill ->
-            pill.setOnClickListener {
-                if (idx == currentIdx) return@setOnClickListener
-                currentIdx = idx
-                val pillW = pills[0].width
-                indicator.animate()
-                    .translationX((pillW * idx).toFloat())
-                    .setDuration(200)
-                    .setInterpolator(android.view.animation.DecelerateInterpolator())
-                    .start()
-                pills.forEachIndexed { i, p ->
-                    val active = i == idx
-                    p.setTextColor(if (active) surfaceColor else mutedColor)
-                    p.typeface = Typeface.create(
-                        "sans-serif-medium",
-                        if (active) Typeface.BOLD else Typeface.NORMAL,
-                    )
-                }
-                onSelect(options[idx].second)
-            }
-        }
-    }
-
     private fun onServiceReady() {
         val svc = captureService ?: return
         val prefs = Prefs(this)
@@ -644,7 +519,7 @@ class TranslationResultActivity :
         // Sentence mode: text passed directly from drag-to-lookup popup
         val sentenceText = intent.getStringExtra(EXTRA_SENTENCE_TEXT)
         if (sentenceText != null) {
-            handleSentenceMode(svc, sentenceText)
+            handleSentenceMode(sentenceText)
             return
         }
 
@@ -752,161 +627,19 @@ class TranslationResultActivity :
         }
     }
 
-    private fun handleSentenceMode(svc: CaptureService, sentenceText: String) {
+    private fun handleSentenceMode(sentenceText: String) {
         val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
-        val segments = TextSegments.ofText(sentenceText)
-
-        // Drag flow already produced this translation in the lens. Skip
-        // the redundant translateOnce so the sentence tab opens straight
-        // to the cached text — avoids a "Translating..." flash and any
-        // transient ML Kit reload that re-translation could fail on.
-        val cachedTranslation = intent.getStringExtra(EXTRA_DRAG_SENTENCE_TRANSLATION)
+        // Drag flow already produced this translation in the lens: bind it
+        // directly (no redundant backend call, no "Translating…" flash).
+        val cached = intent.getStringExtra(EXTRA_DRAG_SENTENCE_TRANSLATION)
             ?.takeIf { it.isNotEmpty() }
-        if (cachedTranslation != null) {
-            val cachedSource = intent.getStringExtra(EXTRA_DRAG_SENTENCE_TRANSLATION_SOURCE)
-                ?.takeIf { it.isNotEmpty() }
-            val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-            vm.displayResult(
-                TranslationResult(
-                    originalText       = sentenceText,
-                    segments           = segments,
-                    translatedText     = cachedTranslation,
-                    timestamp          = timestamp,
-                    screenshotPath     = screenshotPath,
-                    note               = null,
-                    backendDisplayName = cachedSource,
-                    langContext        = Prefs(applicationContext).langContext(),
-                ),
-                applicationContext,
-            )
-            return
-        }
-
-        // Translation-only path: translateOnce() self-heals language managers
-        // internally, so we don't touch configureSaved — doing so would
-        // overwrite the user's saved capture region with the full-screen
-        // default, which any concurrent capture (e.g. live mode still
-        // running) would then pick up.
-
-        // DEFERRED: with the translation section hidden there is no consumer
-        // for the backend call — land the Ready carrying a pending; revealing
-        // the section (or an Anki flow needing the sentence) completes it via
-        // completeDeferredTranslation, which keeps the exact-row History
-        // rules. The free source==target bypass never defers.
-        val sentencePrefs = Prefs(applicationContext)
-        val pendingSrcId = sentencePrefs.sourceLangId
-        if (sentencePrefs.hideTranslationSection &&
-            com.playtranslate.language.SourceLanguageProfiles[pendingSrcId].translationCode !=
-                sentencePrefs.targetLang
-        ) {
-            val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-            vm.displayResult(
-                TranslationResult(
-                    originalText       = sentenceText,
-                    segments           = segments,
-                    translatedText     = "",
-                    timestamp          = timestamp,
-                    screenshotPath     = screenshotPath,
-                    pendingTranslation = com.playtranslate.model.PendingTranslation(
-                        groupTexts = listOf(sentenceText),
-                        sourceLangId = pendingSrcId,
-                        targetLang = sentencePrefs.targetLang,
-                        // Logging eligibility at LOOKUP time — the completion
-                        // honors this snapshot, not reveal-time prefs.
-                        historyEligible = sentencePrefs.translationHistoryEnabled,
-                        contextEligible = sentencePrefs.llmContextEnabled,
-                    ),
-                    langContext        = Prefs(applicationContext).langContext(),
-                ),
-                applicationContext,
-            )
-            return
-        }
-
-        vm.showTranslatingPlaceholder(sentenceText, segments, applicationContext)
-
-        // TODO: route through LastSentenceCache.awaitOrStartTranslation so
-        //  this caller joins the drag→Anki sheet's in-flight job (and vice
-        //  versa) instead of double-firing translateOnce against the
-        //  backend. Coalescing only pays off when both call sites use the
-        //  cache helper.
-        lifecycleScope.launch {
-            try {
-                val groupTranslation = translateSentenceAttachingHistory(svc, sentenceText)
-                val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                val result = TranslationResult(
-                    originalText       = sentenceText,
-                    segments           = segments,
-                    translatedText     = groupTranslation.text,
-                    timestamp          = timestamp,
-                    screenshotPath     = screenshotPath,
-                    note               = groupTranslation.note,
-                    backendDisplayName = groupTranslation.backendDisplayName,
-                    langContext        = Prefs(applicationContext).langContext(),
-                )
-                vm.displayResult(result, applicationContext)
-            } catch (e: Exception) {
-                vm.showError(e.message ?: "Translation failed")
-            }
-        }
-    }
-
-    /** Translate [sentenceText] under the current pair and attach the outcome
-     *  to History — the EXACT row for a History tap (pair-matched), by-key
-     *  otherwise. Shared by the visible sentence flow (eligibility defaults:
-     *  lookup and translation are one moment) and the deferred-reveal
-     *  completion (which passes the pending's lookup-time eligibility
-     *  snapshot). The exact-row attach takes no history override — the
-     *  tapped row already exists, so its recording consent predates this. */
-    private suspend fun translateSentenceAttachingHistory(
-        svc: CaptureService,
-        sentenceText: String,
-        historyEligible: Boolean = true,
-        contextEligible: Boolean = true,
-    ): CaptureService.GroupTranslation {
-        // Pair captured BEFORE translateOnce, so the label matches
-        // the pair the translation is actually produced under even
-        // if prefs change mid-flight.
-        val logPrefs = Prefs(applicationContext)
-        val currentSource = com.playtranslate.language
-            .SourceLanguageProfiles[logPrefs.sourceLangId].translationCode
-        val currentTarget = logPrefs.targetLang
-        val groupTranslation = svc.translateOnce(sentenceText)
-        // Feed the translation back to the log: fills the entry this
-        // sentence came from (History tap / drag lookup) instead of
-        // leaving it translation-less forever.
-        if (groupTranslation.text.isNotEmpty()) {
-            val historyRowId = intent.getLongExtra(EXTRA_HISTORY_ENTRY_ID, -1L)
-            if (historyRowId >= 0) {
-                // History row tap: attach to EXACTLY that row (twin
-                // rows can share a key across sessions), and only
-                // when this translation's pair matches the row's
-                // stored pair — a cross-pair result stays display-
-                // only rather than corrupting a row that claims a
-                // different pair (translateOnce runs under current
-                // prefs; target-side overrides aren't plumbed).
-                val storedSource = intent.getStringExtra(EXTRA_HISTORY_SOURCE_LANG)
-                val storedTarget = intent.getStringExtra(EXTRA_HISTORY_TARGET_LANG)
-                if (storedSource == currentSource && storedTarget == currentTarget) {
-                    svc.translationLogRecorder.onHistoryEntryTranslated(
-                        historyRowId, sentenceText, groupTranslation.text,
-                        currentSource, currentTarget,
-                        groupTranslation.backendDisplayName,
-                        contextEligible = contextEligible,
-                    )
-                }
-            } else {
-                svc.translationLogRecorder.onDeliberateTranslation(
-                    sentenceText, groupTranslation.text,
-                    currentSource, currentTarget,
-                    com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_LOOKUP,
-                    groupTranslation.backendDisplayName,
-                    historyEligible = historyEligible,
-                    contextEligible = contextEligible,
+            ?.let { text ->
+                SentenceTranslationFlow.Cached(
+                    text,
+                    intent.getStringExtra(EXTRA_DRAG_SENTENCE_TRANSLATION_SOURCE)?.takeIf { it.isNotEmpty() },
                 )
             }
-        }
-        return groupTranslation
+        sentenceFlow.show(sentenceText, screenshotPath, cached)
     }
 
     private fun applyTheme() {
@@ -987,7 +720,6 @@ class TranslationResultActivity :
         }
     }
 
-    private enum class Tab { SENTENCE, WORD }
 
     companion object {
         /** See [CurrentActivityTracker]. [DragLookupController.openSentenceInApp]

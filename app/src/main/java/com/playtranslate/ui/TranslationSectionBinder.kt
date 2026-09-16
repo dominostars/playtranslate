@@ -224,11 +224,24 @@ class TranslationSectionBinder(
         sourceNoteRow.isClickable = canSwitch
     }
 
+    /** Whether this surface can edit the source (an Activity overlay, the
+     *  sheet's in-place IME). False hides the Edit button outright — a
+     *  surface with no editor never renders a dead control. */
+    var editAvailable: Boolean = true
+        set(value) {
+            field = value
+            applyOriginalVisibility()
+        }
+
     fun applyOriginalVisibility() {
         val hidden = prefs.hideOriginalSection
         cardOriginal.visibility = if (hidden) View.GONE else View.VISIBLE
         btnCopyOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
-        btnEditOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
+        btnEditOriginal.visibility = when {
+            !editAvailable -> View.GONE
+            hidden -> View.INVISIBLE
+            else -> View.VISIBLE
+        }
         btnSpeakOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
         val hasHintText = hintKind != HintTextKind.NONE
@@ -441,13 +454,45 @@ class TranslationSectionBinder(
 
     // ── Convenience for surfaces that bind a whole result at once (panel) ─
 
-    fun bindResult(result: TranslationResult) {
+    /** Bind a Ready result: source + attribution row + target + labels +
+     *  the persisted section visibilities. [canReOcr]: whether a switch of
+     *  OCR tool can act on this result (the host still holds the capture);
+     *  the panel's default is "a cached screenshot exists". */
+    fun bindResult(result: TranslationResult, canReOcr: Boolean = result.screenshotPath != null) {
         bindSource(result.segments)
-        bindSourceOcr(result.ocrProvenance, canReOcr = result.screenshotPath != null)
+        bindSourceOcr(result.ocrProvenance, canReOcr = canReOcr)
         bindTargetReady(result)
         updateLabels()
         applyOriginalVisibility()
         applyTranslationVisibility()
+    }
+
+    /** Bind a Translating placeholder (drag sentence / edit commit / a
+     *  capture whose OCR finished): the source is final now, the target
+     *  shows "Translating…". A capture placeholder carries OCR provenance —
+     *  "Scanned by …" shows with the source before the translation lands —
+     *  but its gear stays hidden: re-OCR can't act on a transient state, so
+     *  a gear here would be a dead control. */
+    fun bindTranslating(
+        segments: List<com.playtranslate.model.TextSegment>,
+        ocrProvenance: OcrProvenance? = null,
+    ) {
+        bindSource(segments)
+        bindSourceOcr(ocrProvenance, canReOcr = false)
+        setTargetTranslatingPlaceholder()
+        updateLabels()
+        applyOriginalVisibility()
+        applyTranslationVisibility()
+    }
+
+    /** The vertical results page's fit: each text tries to fit within half
+     *  of [viewportHeightPx] (the scroll viewport). The source is fitted to
+     *  its PLAIN text — ruby lands before the Ready fit and the scroll
+     *  absorbs its extra height, so measuring ruby would shrink the source
+     *  font the moment the translation lands (see [fitText]). */
+    fun fitToViewport(viewportHeightPx: Int) {
+        val half = viewportHeightPx / 2
+        fitText(translationTargetPx = half, sourceTargetPx = half, sourceMeasuresRuby = false)
     }
 
     // ── Buttons + text fitting ───────────────────────────────────────────

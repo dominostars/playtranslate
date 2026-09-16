@@ -13,6 +13,7 @@ import com.playtranslate.security.SecretCodec
 import com.playtranslate.ui.AccentColor
 import com.playtranslate.ui.CaptureResultGeometry
 import com.playtranslate.ui.CardMode
+import com.playtranslate.ui.LookupView
 import com.playtranslate.ui.ThemeMode
 import org.json.JSONArray
 import org.json.JSONObject
@@ -835,6 +836,19 @@ class Prefs internal constructor(
             ?: CardMode.SENTENCE
         set(v) = sp.edit { putString(KEY_ANKI_CARD_MODE, v.name) }
 
+    /** Which side of the lens detail's Sentence/word toggle opens first: the
+     *  looked-up word's detail page or the sentence's results page. Written
+     *  by every toggle tap on that surface (the floating workspace's lookup
+     *  page and the results activity's drag-word tabs), so the last choice is
+     *  the next default. Same last-used-state rule as [ankiPreferredCardMode];
+     *  deliberately no Settings UI. First-ever default is the word: the user
+     *  tapped a specific word to get there. */
+    var lookupPreferredView: LookupView
+        get() = sp.getString(KEY_LOOKUP_PREFERRED_VIEW, null)
+            ?.let { stored -> LookupView.entries.firstOrNull { it.name == stored } }
+            ?: LookupView.WORD
+        set(v) = sp.edit { putString(KEY_LOOKUP_PREFERRED_VIEW, v.name) }
+
     /** Opt-in: keep a rolling recording of the game's audio (AudioPlaybackCapture
      *  on the MediaProjection session) so sentence cards can attach the real
      *  voice line. Settings → Anki Flashcards → Audio. Recording itself also
@@ -1600,6 +1614,7 @@ class Prefs internal constructor(
         private const val KEY_ANKI_FIELD_MAPPINGS  = "anki_field_mappings"   // JSON
         private const val KEY_ANKI_WORD_AUDIO      = "anki_word_audio_enabled"
         private const val KEY_ANKI_CARD_MODE       = "anki_default_card_mode"
+        private const val KEY_LOOKUP_PREFERRED_VIEW = "lookup_preferred_view"
         private const val KEY_ANKI_SENTENCE_AUDIO  = "anki_sentence_audio_enabled"
         private const val KEY_ANKI_GAME_AUDIO      = "anki_game_audio_enabled"
         private const val KEY_ANKI_AUDIO_MAPPING_MIGRATED = "anki_audio_mapping_migrated"

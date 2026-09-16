@@ -17,8 +17,10 @@ import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,9 +39,21 @@ import kotlinx.coroutines.withContext
  * Activities mutate state through this VM's methods; the fragment
  * is a renderer + event emitter (no public mutator methods of its
  * own). [TranslationResultActivity] also uses VM state to feed the
- * embedded [WordDetailBottomSheet] via [SentenceContextProvider].
+ * embedded [WordDetailBottomSheet] via [SentenceContextProvider], and the
+ * floating workspace's lookup page feeds its word page the same way
+ * ([sentenceContext]).
+ *
+ * Two owners: the Activities get theirs from a ViewModelStore (the no-arg
+ * constructor; cleared with the store), and a workspace page constructs its
+ * own with the page's scope, so the lookup pipeline dies with the page.
+ * Either way [viewModelScope] IS the scope handed to the platform
+ * constructor, and it is cancelled when that owner ends.
  */
-class TranslationResultViewModel : ViewModel() {
+class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
+
+    /** Store-owned: the platform default scope, so a factory-created VM
+     *  behaves exactly as before. */
+    constructor() : this(CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate))
 
     private val _result = MutableStateFlow<ResultState>(ResultState.Idle)
     val result: StateFlow<ResultState> = _result.asStateFlow()
@@ -407,6 +421,32 @@ class TranslationResultViewModel : ViewModel() {
                 )
             }
         }
+    }
+
+    /**
+     * The sentence context an embedded word surface hands its Anki card:
+     * every text field reads the VM first and [fallback] second, so a host
+     * whose result hasn't settled yet (the results activity before its
+     * pipeline lands, the lookup page before its Sentence tab was ever
+     * opened) still supplies the launch-time sentence. The settled rows are
+     * snapshotted ONCE so the legacy map, the surfaces and the enrichment
+     * come from the same emission (a second read could straddle a fresh
+     * emission, and the process-global cache rotates under live mode). A
+     * fallback has no surfaces: null lets the one-tap helper await the
+     * per-sentence cache, which is atomic. The pending rides the VM result
+     * only: it is meaningful solely beside its own result's text.
+     */
+    fun sentenceContext(fallback: SentenceContext?): SentenceContext {
+        val ready = _result.value as? ResultState.Ready
+        val settledRows = (_wordLookups.value as? WordLookupsState.Settled)?.rows
+        return SentenceContext(
+            original = ready?.result?.originalText ?: fallback?.original,
+            translation = ready?.result?.translatedText ?: fallback?.translation,
+            wordResults = settledRows?.toLegacyMap() ?: fallback?.wordResults,
+            surfaceForms = settledRows?.toSurfaceMap() ?: fallback?.surfaceForms,
+            wordEnrichment = settledRows?.toEnrichmentMap() ?: fallback?.wordEnrichment,
+            pending = ready?.result?.pendingTranslation,
+        )
     }
 
     private suspend fun performLookups(

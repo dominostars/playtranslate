@@ -15,6 +15,7 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.Paint
+import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
@@ -457,11 +458,10 @@ class CaptureResultOverlay(
     // their chosen height instead of snapping back down to 50%.
     private var autoMaxPx = Int.MAX_VALUE
 
-    // Tap-a-word → definition lens: display + speak + (when a dict entry matches)
-    // the open-detail tap and Anki chip, shared with the drag flow via SourceLensActions.
-    private var wordSpans: List<Triple<IntRange, String, String>> = emptyList()
-    private var wordLens: MagnifierLens? = null
-    private var wordSpeakChip: LensSpeakChip? = null
+    // Tap-a-word → definition lens (the shared presenter): display + speak +
+    // (when a dict entry matches) the open-detail tap and Anki chip, shared
+    // with the drag flow via SourceLensActions. Built with the binder in show().
+    private var sourceLens: SourceTextLens? = null
 
     // In-place edit (the panel window goes focusable so the IME shows over the game).
     private var lastResult: TranslationResult? = null
@@ -786,6 +786,23 @@ class CaptureResultOverlay(
         }
         b.onChooseFontSize = { fontPopover?.toggle(b.fontSizeAnchor) }
         binder = b
+        sourceLens = SourceTextLens(
+            ctx, wm, displayId,
+            // Null host = the lens's activity-window mode (see
+            // [wordLensInActivity]); the camera panel's wm IS its Activity's
+            // WindowManager, so the lens window attaches to the activity
+            // token without any overlay permission.
+            overlayHost = if (wordLensInActivity) null else overlayHost,
+            scope = scope,
+            ttsAlertTarget = ttsAlertTarget ?: TtsAlertTarget.Overlay(ctx, overlayHost, wm, displayId),
+            binder = b,
+            screenSize = { Point(screenW, screenH) },
+            showAnkiChip = { it.word.entry != null },
+            // The open works entry-or-not — it opens the sentence view — so
+            // every section opens.
+            opensWithoutEntry = true,
+            wireActions = { lens, resolvedAt -> wireLensActions(lens, resolvedAt) },
+        )
         // Reflect any persisted hide prefs (shared with the results page) up front.
         applySideBySideCollapse()
 
@@ -1591,7 +1608,7 @@ class CaptureResultOverlay(
         // read can only ever see a same-source result, which is exactly
         // what lets a lens opened mid-translation pick up the finished
         // translation for its Anki context.
-        if (wordLens != null && lastResult?.originalText != result.originalText) {
+        if (sourceLens?.isShowing == true && lastResult?.originalText != result.originalText) {
             dismissWordLens()
         }
         lastResult = result
@@ -1966,7 +1983,7 @@ class CaptureResultOverlay(
         // wrong phrase, attached to the new capture's context). A tap in
         // the brief span-less window simply no-ops. (The in-app fragment
         // already clears on Loading; this is the overlay's parity.)
-        wordSpans = emptyList()
+        sourceLens?.wordSpans = emptyList()
         nav?.onWordSpansChanged()
         wordSpansJob = scope.launch {
             val engine = SourceLanguageEngines.get(ctx.applicationContext, prefs.sourceLangId)
@@ -1978,7 +1995,7 @@ class CaptureResultOverlay(
             }
             if (dismissed) return@launch
             val b = binder ?: return@launch
-            wordSpans = SourceWordLookup.computeTapSpans(
+            sourceLens?.wordSpans = SourceWordLookup.computeTapSpans(
                 b.displayedSourceText(), tokens, emptyMap(), phrases,
             )
             nav?.onWordSpansChanged()
@@ -1986,172 +2003,80 @@ class CaptureResultOverlay(
     }
 
     /** Resolve the tapped word and show a display+speak lens over the game,
-     *  anchored on the tapped line (no Anki / open-detail — see [showAnkiChip]).
-     *  [fromController] (the cursor's A press) pre-selects the lens pill so the
-     *  next A opens the detail screen; a touch tap leaves the lens unselected
-     *  until its first controller input. */
+     *  anchored on the tapped line (the Anki chip and the open-detail follow
+     *  the resolved entry). [fromController] (the cursor's A press)
+     *  pre-selects the lens pill so the next A opens the detail screen; a
+     *  touch tap leaves the lens unselected until its first controller
+     *  input. */
     private fun onSourceTapped(offset: Int, fromController: Boolean = false) {
         if (!wordLensEnabled) return
-        val span = wordSpans.firstOrNull { offset in it.first } ?: return
-        val b = binder ?: return
-        // Snapshot what the user actually tapped ON; the lookup below
-        // suspends, and a result/edit binding meanwhile must not let a
-        // stale span open a lens over the new text (with the new capture's
-        // sentence/screenshot riding into its actions).
-        val tappedText = b.displayedSourceText()
-        scope.launch {
-            try {
-                val resolvedAt = SourceWordLookup.resolveAt(
-                    ctx.applicationContext, tappedText, span.first.first, span.second, span.third,
-                )
-                val resolved = resolvedAt.word
-                val phrase = resolvedAt.phrase
-                val secondaries = phrase?.let { listOf(it) } ?: resolvedAt.members
-                if (dismissed) return@launch
-                if (binder?.displayedSourceText() != tappedText) return@launch
-                val wordRect = Rect()
-                if (!wordRectOnScreen(span.first, wordRect)) return@launch
-                val screenX = wordRect.centerX()
-                val anchorY = wordRect.top
-                val lineH = wordRect.height()
-                dismissWordLens()
-                // Null host = the lens's activity-window mode (see
-                // [wordLensInActivity]); the camera panel's wm IS its
-                // Activity's WindowManager, so the panel window attaches to
-                // the activity token without any overlay permission.
-                val lens = MagnifierLens(
-                    ctx, wm, displayId,
-                    overlayHost = if (wordLensInActivity) null else overlayHost,
-                    showAnkiChip = resolved.entry != null,
-                )
-                lens.onDismiss = {
-                    binder?.setWordHighlight(null)
-                    wordSpeakChip?.release()
-                    wordSpeakChip = null
-                    wordLens = null
+        sourceLens?.onTapAtOffset(offset, fromController)
+    }
+
+    /** Open-detail tap + Anki chip — same actions as the drag flow. The
+     *  resolved unit is this tap's word/entry; sentence + screenshot come
+     *  from the current capture result, read lazily at chip-tap time (the
+     *  bind guard in [bindResult] keeps that read same-source). */
+    private fun wireLensActions(lens: MagnifierLens, resolvedAt: SourceWordLookup.ResolvedAt) {
+        val resolved = resolvedAt.word
+        val phrase = resolvedAt.phrase
+        val secondaries = phrase?.let { listOf(it) } ?: resolvedAt.members
+        SourceLensActions(
+            ctx.applicationContext, displayId, overlayHost, lens,
+            // Anki review pushes a full screen → tear the sheet down. Open-detail
+            // stashes this result so the controller can re-show the sheet when the
+            // user backs out of the detail screen (falls back to dismiss when no
+            // controller / no bound result). In-activity hosts keep the sheet
+            // through launches instead — the launched screen stacks ON TOP of the
+            // hosting activity and the sheet restores on back
+            // (dismissOnActivityLaunch, same contract as the sentence-level Anki
+            // flow).
+            onLaunchedActivity = { kind ->
+                when (kind) {
+                    SourceLensActions.LaunchKind.Anki ->
+                        if (dismissOnActivityLaunch) dismiss()
+                    SourceLensActions.LaunchKind.Detail -> {
+                        val r = lastResult
+                        val nav = onNavigateToDetail
+                        if (r != null && nav != null) nav(r)
+                        else if (dismissOnActivityLaunch) dismiss()
+                    }
                 }
-                wordLens = lens
-                wordSpeakChip = LensSpeakChip(
-                    lens, scope,
-                    ttsAlertTarget ?: TtsAlertTarget.Overlay(ctx, overlayHost, wm, displayId),
-                ) { LensSpeakChip.Request(resolved.word, prefs.sourceLangId, reading = resolved.reading) }
-                // Open-detail tap + Anki chip — same actions as the drag flow. The captured
-                // [resolved] is this tap's word/entry; sentence + screenshot come from the
-                // current capture result.
-                SourceLensActions(
-                    ctx.applicationContext, displayId, overlayHost, lens,
-                    // Anki review pushes a full screen → tear the sheet down. Open-detail
-                    // stashes this result so the controller can re-show the sheet when the
-                    // user backs out of the detail screen (falls back to dismiss when no
-                    // controller / no bound result). In-activity hosts keep the sheet
-                    // through launches instead — the launched screen stacks ON TOP of the
-                    // hosting activity and the sheet restores on back
-                    // (dismissOnActivityLaunch, same contract as the sentence-level Anki
-                    // flow).
-                    onLaunchedActivity = { kind ->
-                        when (kind) {
-                            SourceLensActions.LaunchKind.Anki ->
-                                if (dismissOnActivityLaunch) dismiss()
-                            SourceLensActions.LaunchKind.Detail -> {
-                                val r = lastResult
-                                val nav = onNavigateToDetail
-                                if (r != null && nav != null) nav(r)
-                                else if (dismissOnActivityLaunch) dismiss()
-                            }
-                        }
-                    },
-                    tagDetailReturn = !wordLensInActivity,
-                    showAnkiNotInstalled = if (wordLensInActivity) showAnkiNotInstalled else null,
-                    workspaceRoute = !wordLensInActivity,
-                    // Secondary-section drill-in (containing phrase or member
-                    // words): same open-sentence route, with the secondary
-                    // unit as the word context.
-                    currentSecondary = if (secondaries.isEmpty()) null else { i ->
-                        secondaries.getOrNull(i)?.let { s ->
-                            LensActionContext(
-                                s.word,
-                                s.reading,
-                                s.entry,
-                                lastResult?.originalText,
-                                lastResult?.screenshotPath,
-                                audioAnchorMs = lastResult?.createdAtMs?.takeIf { it > 0 },
-                                entries = s.entries,
-                            )
-                        }
-                    },
-                ) {
+            },
+            tagDetailReturn = !wordLensInActivity,
+            showAnkiNotInstalled = if (wordLensInActivity) showAnkiNotInstalled else null,
+            route = if (wordLensInActivity) WorkspaceRoute.None else WorkspaceRoute.OpenNew(displayId),
+            // Secondary-section drill-in (containing phrase or member
+            // words): same open-sentence route, with the secondary
+            // unit as the word context.
+            currentSecondary = if (secondaries.isEmpty()) null else { i ->
+                secondaries.getOrNull(i)?.let { s ->
                     LensActionContext(
-                        resolved.word,
-                        resolved.reading,
-                        resolved.entry,
+                        s.word,
+                        s.reading,
+                        s.entry,
                         lastResult?.originalText,
                         lastResult?.screenshotPath,
                         audioAnchorMs = lastResult?.createdAtMs?.takeIf { it > 0 },
-                        entries = resolved.entries,
+                        entries = s.entries,
                     )
                 }
-                b.setWordHighlight(span.first)
-                lens.show(screenX, anchorY, screenW, screenH, anchorHeight = lineH)
-                if (secondaries.isNotEmpty()) {
-                    // Split body: tapped unit + the related units — phrase
-                    // above (Latin) or member words below (JA) — each
-                    // drilling into the detail screen (the open works
-                    // entry-or-not — it opens the sentence view — so every
-                    // section opens).
-                    lens.setSplitDefinitions(
-                        LensSection(resolved.data, resolved.label, opens = true),
-                        secondaries.map { LensSection(it.data, it.label, opens = true) },
-                        secondariesOnTop = phrase != null,
-                    )
-                } else {
-                    lens.setDefinitions(resolved.data, resolved.label)
-                }
-                lens.makeInteractive()
-                if (fromController) lens.focusPillForController()
-            } catch (_: Exception) {}
+            },
+        ) {
+            LensActionContext(
+                resolved.word,
+                resolved.reading,
+                resolved.entry,
+                lastResult?.originalText,
+                lastResult?.screenshotPath,
+                audioAnchorMs = lastResult?.createdAtMs?.takeIf { it > 0 },
+                entries = resolved.entries,
+            )
         }
     }
 
     private fun dismissWordLens() {
-        wordLens?.dismiss()
-    }
-
-    private val wordLocTmp = IntArray(2)
-
-    /** Screen rect of [span]'s FIRST line box inside tvOriginal, or false while
-     *  the text isn't laid out. The ONE word-geometry implementation, shared by
-     *  the lens anchor ([onSourceTapped]) and the controller cursor's ring, so
-     *  the two can never drift. A wrapped word rings/anchors on its first line. */
-    private fun wordRectOnScreen(span: IntRange, out: Rect): Boolean {
-        val tv = binder?.tvOriginal ?: return false
-        if (!tv.isShown) return false
-        val layout = tv.layout ?: return false
-        val endOffset = span.last + 1
-        if (span.first < 0 || endOffset > layout.text.length) return false
-        val lineStart = layout.getLineForOffset(span.first)
-        val xStart = layout.getPrimaryHorizontal(span.first)
-        // The offset just past the word can land on the NEXT line (the word
-        // ends a wrapped line) — getPrimaryHorizontal then returns that line's
-        // start (~0), collapsing the box to mid-screen and throwing off the
-        // lens/arrow for right-edge words. Fall back to the line's right edge.
-        val xEnd = if (layout.getLineForOffset(endOffset) == lineStart) {
-            layout.getPrimaryHorizontal(endOffset)
-        } else {
-            layout.getLineRight(lineStart)
-        }
-        // min/max, not start/end: an RTL run's primary horizontals arrive inverted.
-        var left = minOf(xStart, xEnd).toInt() + tv.paddingLeft
-        var right = maxOf(xStart, xEnd).toInt() + tv.paddingLeft
-        if (right <= left) right = left + 1
-        val top = layout.getLineTop(lineStart) - tv.scrollY + tv.paddingTop
-        val bottom = layout.getLineBottom(lineStart) - tv.scrollY + tv.paddingTop
-        if (bottom <= top) return false
-        tv.getLocationOnScreen(wordLocTmp)
-        out.set(
-            wordLocTmp[0] + left, wordLocTmp[1] + top,
-            wordLocTmp[0] + right, wordLocTmp[1] + bottom,
-        )
-        return true
+        sourceLens?.dismiss()
     }
 
     // ── OCR tool switcher ────────────────────────────────────────────────
@@ -2248,8 +2173,7 @@ class CaptureResultOverlay(
     // like the results page) — accepted simplification.
     private fun openSentenceAnkiReview() {
         val result = lastResult ?: return
-        val sentence = result.originalText
-        if (sentence.isBlank()) return
+        if (result.originalText.isBlank()) return
         val app = ctx.applicationContext
         // Gate like the word-lens path (SourceLensActions): AnkiDroid must be
         // installed, and the runtime permission is requested by the
@@ -2262,105 +2186,45 @@ class CaptureResultOverlay(
                 ?: showAnkiNotInstalledDialog(ctx, overlayHost, wm, displayId)
             return
         }
-        // Single-screen with the permission already held: the sentence editor
-        // opens as a floating-workspace page over the game, receiving the
-        // payload as OBJECTS — the size-gated intent-extras transport below
-        // is bypassed entirely on this path (the Activity fallback keeps it
-        // verbatim). The sheet stashes-for-reshow, so a USER dismissal of
-        // the workspace (or a completed save) brings it back — the detail
-        // round-trip's semantics. A missing permission stays on the
-        // trampoline, which owns the runtime request.
-        if (AnkiManager(app).hasPermission()) {
-            val snap = LastSentenceCache.snapshotFor(sentence)
-            val opened = CaptureBackendResolver.activeOverlayUi
-                ?.openWorkspace(displayId, result.screenshotPath) {
-                    AnkiSentenceEditorPage(
-                        original = sentence,
-                        translation = result.translatedText,
-                        wordResults = snap?.results ?: emptyMap(),
-                        surfaceForms = snap?.surfaces ?: emptyMap(),
-                        wordEnrichment = snap?.enrichment ?: emptyMap(),
-                        screenshotPath = result.screenshotPath,
-                        sourceLangId = prefs.sourceLangId,
-                        pendingTranslation = result.pendingTranslation,
-                        audioAnchorMs = result.createdAtMs.takeIf { it > 0 },
-                    )
-                } == true
-            if (opened) {
-                val nav = onNavigateToDetail
-                if (nav != null) nav(result) else if (dismissOnActivityLaunch) dismiss()
-                return
-            }
+        // Single-screen with the permission held: the editor opens as a
+        // floating-workspace page over the game (the sheet stashes-for-reshow,
+        // so a USER dismissal of the workspace, or a completed save, brings it
+        // back — the detail round-trip's semantics). The Activity fallback
+        // tears the sheet down under window hosting — it'd otherwise sit over
+        // the review/trampoline; in-app hosting keeps it (the host activity
+        // goes behind the review and restores as left).
+        val inWorkspace = presentSentenceAnkiReview(
+            ctx, displayId, WorkspaceRoute.OpenNew(displayId), sentenceAnkiArgs(result),
+        )
+        if (inWorkspace) {
+            val nav = onNavigateToDetail
+            if (nav != null) nav(result) else if (dismissOnActivityLaunch) dismiss()
+        } else if (dismissOnActivityLaunch) {
+            dismiss()
         }
-        // One locked snapshot for every word extra below. NOT gated direct
-        // field reads: the blank-meaning transport requires the meaning
-        // slots and EXTRA_ENRICHMENT to come from the SAME maps, and the
-        // singleton's fields can rotate between separate reads.
-        val words = LastSentenceCache.snapshotFor(sentence)
-        SentenceAnkiReviewActivity.finishCurrentIfAny()
-        AnkiPermissionActivity.finishCurrentIfAny()
-        val intent = Intent(app, AnkiPermissionActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
-            putExtra(AnkiPermissionActivity.EXTRA_FORWARD_TARGET, AnkiPermissionActivity.TARGET_SENTENCE)
-            putExtra(SentenceAnkiReviewActivity.EXTRA_SENTENCE, sentence)
-            putExtra(SentenceAnkiReviewActivity.EXTRA_TRANSLATION, result.translatedText)
-            // A deferred result's translation is blank — carry the pending so
-            // the sheet's lazy fill runs the deferred COMPLETION (History rows
-            // fill too). This panel dismisses on launch (its own funnel dies
-            // with its scope), so the sheet is the completion's only carrier.
-            result.pendingTranslation?.let {
-                putExtra(SentenceAnkiReviewActivity.EXTRA_PENDING_TRANSLATION, it)
-            }
-            result.screenshotPath?.let { putExtra(SentenceAnkiReviewActivity.EXTRA_SCREENSHOT_PATH, it) }
-            putExtra(SentenceAnkiReviewActivity.EXTRA_SOURCE_LANG, prefs.sourceLangId.code)
-            // Game-audio ring anchor: when this capture happened, so the trim
-            // view opens at the line's own moment instead of the buffer tail.
-            if (result.createdAtMs > 0) {
-                putExtra(SentenceAnkiReviewActivity.EXTRA_AUDIO_ANCHOR_MS, result.createdAtMs)
-            }
-            words?.let { snap ->
-                val keys = snap.results.keys.toTypedArray()
-                // Size-gated pair: normally senses ride EXTRA_ENRICHMENT and
-                // sense-bearing meaning slots are blanked (definition text
-                // crosses the binder once; meaningFromTransport re-derives on
-                // the sheet's read side). An oversized senses payload ships
-                // stripped enrichment + real flat meanings instead — see
-                // transportPayloadFor. Safe ONLY because every extra reads
-                // the same [snap]: a blank slot's senses are the senses that
-                // cross.
-                val transport = transportPayloadFor(keys, snap.results, snap.enrichment)
-                putExtra(SentenceAnkiReviewActivity.EXTRA_WORDS, keys)
-                putExtra(SentenceAnkiReviewActivity.EXTRA_READINGS,
-                    snap.results.values.map { it.first }.toTypedArray())
-                putExtra(SentenceAnkiReviewActivity.EXTRA_MEANINGS, transport.meanings)
-                putExtra(SentenceAnkiReviewActivity.EXTRA_FREQ_SCORES,
-                    snap.results.values.map { it.third }.toIntArray())
-                putExtra(SentenceAnkiReviewActivity.EXTRA_SURFACES,
-                    keys.map { snap.surfaces[it] ?: "" }.toTypedArray())
-                putExtra(SentenceAnkiReviewActivity.EXTRA_ENRICHMENT, transport.enrichment)
-            }
-        }
-        val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: displayId
-        val opts = android.app.ActivityOptions.makeBasic().setLaunchDisplayId(targetDisplay).toBundle()
-        app.startActivity(intent, opts)
-        // Window hosting: tear the sheet down — it'd otherwise sit over the
-        // review/trampoline. In-app hosting keeps it; the host activity goes
-        // behind the review and restores as left.
-        if (dismissOnActivityLaunch) dismiss()
     }
 
-    // Long-press = headless one-tap send of the captured sentence. Runs on a
-    // process-lived scope so dismissing the sheet can't cancel the card —
-    // which is what lets the gesture ALSO close the sheet (see the exit at
-    // the end): the point of a one-tap is not having to look at the sheet
-    // again, and over the game it is a guest window sitting on the user's
-    // screen while a send they can't influence runs headless. Every outcome
-    // is already reported by Toast on the app context, so nothing is lost by
-    // being gone when the send lands.
+    /** The bound result as a sentence-card payload, with the words as ONE
+     *  locked snapshot (see [SentenceAnkiArgs]). */
+    private fun sentenceAnkiArgs(result: TranslationResult) = SentenceAnkiArgs(
+        original = result.originalText,
+        translation = result.translatedText,
+        screenshotPath = result.screenshotPath,
+        sourceLangId = prefs.sourceLangId,
+        pendingTranslation = result.pendingTranslation,
+        audioAnchorMs = result.createdAtMs.takeIf { it > 0 },
+        words = LastSentenceCache.snapshotFor(result.originalText),
+    )
+
+    // Long-press = headless one-tap send of the captured sentence. The send
+    // runs on the process-lived scope (launchSentenceOneTap), which is what
+    // lets the gesture ALSO close the sheet (see the exit at the end): the
+    // point of a one-tap is not having to look at the sheet again, and over
+    // the game it is a guest window sitting on the user's screen while a
+    // send they can't influence runs headless.
     private fun oneTapSentenceFromOverlay() {
         val result = lastResult ?: return
-        val sentence = result.originalText
-        if (sentence.isBlank()) return
+        if (result.originalText.isBlank()) return
         val app = ctx.applicationContext
         val ankiManager = AnkiManager(app)
         if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission() || prefs.ankiDeckId < 0L) {
@@ -2368,44 +2232,19 @@ class CaptureResultOverlay(
             openSentenceAnkiReview()
             return
         }
-        // Locked snapshot — the hand-assembled payload from three separate
-        // field reads could pair one sentence's words with another's
-        // surfaces/enrichment across a mid-read rotation.
-        val payload = LastSentenceCache.snapshotFor(sentence)
-        val translation = result.translatedText.takeIf { it.isNotEmpty() }
-        val langId = prefs.sourceLangId
-        android.widget.Toast.makeText(app, R.string.anki_adding_in_progress, android.widget.Toast.LENGTH_SHORT).show()
-        // Process-lived scope, NOT [scope] — the overlay cancels [scope] on
-        // dismiss, which would silently kill an in-flight send (no card, no
-        // result toast). The toasts target the app context, so they still
-        // fire after the panel is gone.
-        ankiOneTapSendScope.launch {
-            val sendResult = app.oneTapSendSentence(
-                original = sentence, translation = translation, wordsPayload = payload,
-                screenshotPath = result.screenshotPath, sourceLangId = langId,
-                // Deferred result: the lazy translate runs the deferred
-                // COMPLETION (History rows fill too). This scope outlives the
-                // panel, so the attach survives a dismissal mid-send.
-                pendingTranslation = result.pendingTranslation,
-            )
-            when (sendResult) {
-                // Reopening the review is the mapping recovery — but only
-                // while the panel is still up. Once it is going away,
-                // stealing the game's screen with an activity the user
-                // didn't ask for is worse than the dispatcher's explanatory
-                // NeedsMapping toast (already shown); match the fragment
-                // paths' degraded contract instead. Both this coroutine and
-                // dismiss() run on Main, so the read doesn't race.
-                // [animatingOut] counts as gone: the exit slide runs for
-                // EXIT_DURATION_MS before [dismissed] flips, and a send that
-                // resolves inside that window is the SAME situation — for
-                // the gesture below (which always starts the exit before the
-                // send can finish) it is the only reading that makes the
-                // outcome deterministic rather than a race with the slide.
-                is AnkiSendResult.NeedsMapping ->
-                    if (!dismissed && !animatingOut) openSentenceAnkiReview()
-                else -> oneTapResultToast(app, sendResult, CardMode.SENTENCE)
-            }
+        launchSentenceOneTap(app, sentenceAnkiArgs(result)) {
+            // Reopening the review is the mapping recovery — but only while
+            // the panel is still up. Once it is going away, stealing the
+            // game's screen with an activity the user didn't ask for is worse
+            // than the dispatcher's explanatory NeedsMapping toast (already
+            // shown); match the fragment paths' degraded contract instead.
+            // [animatingOut] counts as gone: the exit slide runs for
+            // EXIT_DURATION_MS before [dismissed] flips, and a send that
+            // resolves inside that window is the SAME situation — for the
+            // gesture below (which always starts the exit before the send can
+            // finish) it is the only reading that makes the outcome
+            // deterministic rather than a race with the slide.
+            if (!dismissed && !animatingOut) openSentenceAnkiReview()
         }
         // The gesture's own exit: the card is on its way, so get off the
         // user's screen. Gated on [dismissOnGesture] rather than run
@@ -2556,7 +2395,7 @@ class CaptureResultOverlay(
         when {
             fontPopover?.isShowing == true -> fontPopover?.dismiss()
             editContainer.visibility == View.VISIBLE -> cancelEdit()
-            wordLens != null -> dismissWordLens()
+            sourceLens?.isShowing == true -> dismissWordLens()
             // One B, ringed or not: the sliver cursor is not a rung of this
             // ladder (see CaptureSheetControllerNav.handleKey).
             sliverMode -> dismissFromSliver()
@@ -2628,11 +2467,12 @@ class CaptureResultOverlay(
         override fun commitResize() = commitStickResize()
 
         override fun wordCount(): Int =
-            if (binder?.tvOriginal?.isShown == true) wordSpans.size else 0
+            if (binder?.tvOriginal?.isShown == true) sourceLens?.wordSpans?.size ?: 0 else 0
 
         override fun wordRect(index: Int, out: Rect): Boolean {
-            val span = wordSpans.getOrNull(index) ?: return false
-            return wordRectOnScreen(span.first, out)
+            val lens = sourceLens ?: return false
+            val span = lens.wordSpans.getOrNull(index) ?: return false
+            return lens.wordRectOnScreen(span.first, out)
         }
 
         override fun wordRunIsRtl(): Boolean {
@@ -2641,7 +2481,7 @@ class CaptureResultOverlay(
         }
 
         override fun activateWord(index: Int) {
-            val span = wordSpans.getOrNull(index) ?: return
+            val span = sourceLens?.wordSpans?.getOrNull(index) ?: return
             onSourceTapped(span.first.first, fromController = true)
         }
 

@@ -737,6 +737,10 @@ fun buildAnkiModeToggle(
             setTextColor(if (isActive) accentOnColor else mutedColor)
             layoutParams = LinearLayout.LayoutParams(0, pillH, 1f)
             setPadding((14 * density).toInt(), 0, (14 * density).toInt(), 0)
+            // One line, ellipsized: the lookup page's right segment is the
+            // looked-up word itself, which can outgrow a 220dp track.
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
             isClickable = true
             isFocusable = true
         }

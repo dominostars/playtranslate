@@ -38,6 +38,38 @@ data class LensActionContext(
 )
 
 /**
+ * What the lens's open-detail tap hands the workspace page it presents:
+ * the looked-up unit, the sentence it sits in, and the sentence context
+ * snapshot (cached translation + words, when the drag flow produced them)
+ * that seeds the page's Anki card before its own Sentence tab runs.
+ */
+data class LensDetailArgs(
+    val word: String,
+    /** The occurrence reading the lens displayed (when it adds information;
+     *  null when none or equal to the word). */
+    val reading: String?,
+    val sentence: String,
+    val screenshotPath: String?,
+    val audioAnchorMs: Long?,
+    val sentenceContext: SentenceContext,
+    /** The backend that produced [sentenceContext]'s translation, when the
+     *  drag flow cached one — the "Translated by …" label the Sentence page
+     *  binds beside it. */
+    val cachedTranslationSource: String? = null,
+)
+
+/** The word page alone, seeded with the snapshot — the default detail
+ *  presentation (the capture sheet's lens, nested drill-ins). */
+fun WorkspaceWordDetailPage(args: LensDetailArgs): WorkspaceWordDetailPage =
+    WorkspaceWordDetailPage(
+        word = args.word,
+        reading = args.reading,
+        screenshotPath = args.screenshotPath,
+        audioAnchorMs = args.audioAnchorMs,
+        sentenceContext = { args.sentenceContext },
+    )
+
+/**
  * The magnifying-lens "open detail" tap + Anki chip actions, shared by the
  * floating-icon drag flow ([DragLookupController]) and the over-game capture
  * overlay ([CaptureResultOverlay]). Constructing it wires the lens's
@@ -62,11 +94,18 @@ class SourceLensActions(
      *  not installed" dialog through their own presenter — the default
      *  overlay window needs a permission an activity flow may not have. */
     private val showAnkiNotInstalled: (() -> Unit)? = null,
-    /** The open-detail tap prefers the floating workspace's word-detail page
-     *  over the game (single-screen, word context present) before falling
-     *  back to the [TranslationResultActivity] launch. False for in-activity
-     *  hosts (camera / import), whose lens actions stay activity-routed. */
-    private val workspaceRoute: Boolean = true,
+    /** How the open-detail tap and the Anki chip reach the floating
+     *  workspace (single-screen, word context present) before falling back
+     *  to their Activity launches: a fresh workspace from a non-workspace
+     *  surface, a push from a workspace page's own lens, or never for the
+     *  in-activity hosts (camera / import), whose lens actions stay
+     *  activity-routed. */
+    private val route: WorkspaceRoute,
+    /** The page the open-detail tap presents in the workspace. Default: the
+     *  word-detail page alone (the capture sheet already shows the sentence;
+     *  a page's own lens drills into a nested word). The floating-icon drag
+     *  flow substitutes its Sentence/word lookup page. */
+    private val detailPage: (LensDetailArgs) -> WorkspacePage = { WorkspaceWordDetailPage(it) },
     /** Context for the lens's split-body SECONDARY sections by index — the
      *  containing phrase (space-delimited surfaces) or a fused expression's
      *  member words (JA) — same sentence/screenshot as [current], with the
@@ -81,9 +120,10 @@ class SourceLensActions(
     enum class LaunchKind { Detail, Anki }
 
     init {
-        // "Open in detail view" always goes to TranslationResultActivity —
-        // sentence + segmented Sentence/Word toggle. Anki chip: tap opens the
-        // editable review sheet; long-press is the headless one-tap shortcut.
+        // "Open in detail view": the workspace detail page over the game when
+        // the route can present it, else TranslationResultActivity (sentence +
+        // its Sentence/Word toggle). Anki chip: tap opens the editable
+        // review; long-press is the headless one-tap shortcut.
         lens.onOpenTap = { openSentenceInApp(current()) }
         lens.onAnkiTap = { openAnkiReviewForLens() }
         lens.onAnkiLongPress = { oneTapFromLens() }
@@ -131,15 +171,16 @@ class SourceLensActions(
         // The workspace page's Anki flow wants the ATOMIC words payload
         // (results + surfaces + enrichment) — snapshotted here for the same
         // stomp reason as the fields above.
-        val wordsPayload = if (workspaceRoute) LastSentenceCache.snapshotFor(sentence) else null
+        val wordsPayload = if (route !is WorkspaceRoute.None) LastSentenceCache.snapshotFor(sentence) else null
         CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
         lens.dismiss()
-        // Single-screen: the word-detail page opens in the floating workspace
-        // over the game instead of leaving it. Deliberately the WORD page —
-        // the sentence is already rendered by the surface the tap came from;
-        // its context still travels for the Anki card. openWorkspace()
-        // returning false (dual-screen) falls through to the Activity launch.
-        if (workspaceRoute && word != null) {
+        // Single-screen: the detail page opens in the floating workspace over
+        // the game instead of leaving it — [detailPage] decides its shape
+        // (the word page alone, or the drag flow's Sentence/word lookup
+        // page); the sentence context travels either way for the Anki card.
+        // A route that can't present (dual-screen coordinator posture) falls
+        // through to the Activity launch.
+        if (word != null) {
             val snapshot = SentenceContext(
                 original = sentence,
                 translation = cachedTranslation,
@@ -147,16 +188,16 @@ class SourceLensActions(
                 surfaceForms = wordsPayload?.surfaces,
                 wordEnrichment = wordsPayload?.enrichment,
             )
-            val opened = CaptureBackendResolver.activeOverlayUi
-                ?.openWorkspace(displayId, cur.screenshotPath) {
-                    WorkspaceWordDetailPage(
-                        word = word,
-                        reading = reading,
-                        screenshotPath = cur.screenshotPath,
-                        audioAnchorMs = cur.audioAnchorMs,
-                        sentenceContext = { snapshot },
-                    )
-                } == true
+            val args = LensDetailArgs(
+                word = word,
+                reading = reading,
+                sentence = sentence,
+                screenshotPath = cur.screenshotPath,
+                audioAnchorMs = cur.audioAnchorMs,
+                sentenceContext = snapshot,
+                cachedTranslationSource = cachedTranslationSource,
+            )
+            val opened = route.present(cur.screenshotPath) { detailPage(args) }
             if (opened) {
                 // The capture sheet maps Detail to its stash-for-reshow, so a
                 // USER dismissal of the workspace brings the sheet back.
@@ -203,6 +244,7 @@ class SourceLensActions(
         val opts = android.app.ActivityOptions.makeBasic()
             .setLaunchDisplayId(targetDisplay)
             .toBundle()
+        route.prepareActivityLaunch()
         context.startActivity(intent, opts)
         onLaunchedActivity(LaunchKind.Detail)
     }
@@ -229,10 +271,8 @@ class SourceLensActions(
      *  in-activity host, permission missing) leaves the caller on the
      *  Activity trampoline — which owns the runtime permission request. */
     private fun openAnkiEditorWorkspace(snap: LensAnkiSnapshot): Boolean {
-        if (!workspaceRoute) return false
         if (!AnkiManager(context).hasPermission()) return false
-        val opened = CaptureBackendResolver.activeOverlayUi
-            ?.openWorkspace(displayId, snap.screenshotPath) {
+        val opened = route.present(snap.screenshotPath) {
                 AnkiEditorPage(
                     WordAnkiReviewBinder.buildArgs(
                         word = snap.word,
@@ -248,7 +288,7 @@ class SourceLensActions(
                         audioAnchorMs = snap.audioAnchorMs,
                     ),
                 )
-            } == true
+            }
         if (opened) {
             // The capture sheet maps Anki to its dismiss — same as the
             // activity launch it replaces.
@@ -393,6 +433,7 @@ class SourceLensActions(
         val opts = android.app.ActivityOptions.makeBasic()
             .setLaunchDisplayId(targetDisplay)
             .toBundle()
+        route.prepareActivityLaunch()
         context.startActivity(intent, opts)
         onLaunchedActivity(LaunchKind.Anki)
     }

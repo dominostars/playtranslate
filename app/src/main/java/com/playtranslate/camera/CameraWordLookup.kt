@@ -14,6 +14,7 @@ import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.ui.DragLookupController
 import com.playtranslate.ui.MagnifierLens
 import com.playtranslate.ui.TtsAlertTarget
+import com.playtranslate.ui.WorkspaceRoute
 import com.playtranslate.ui.WordLookupPopup
 import com.playtranslate.ui.showAnkiNotInstalledDialog
 import kotlin.math.abs
@@ -86,7 +87,7 @@ class CameraWordLookup(
         overlayHost = OverlayHost(activity, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY),
         ttsAlertTarget = TtsAlertTarget.InActivity(activity),
         showAnkiNotInstalled = { showAnkiNotInstalledDialog(activity) },
-        workspaceRoute = false,
+        route = WorkspaceRoute.None,
     )
 
     private val handler = Handler(Looper.getMainLooper())

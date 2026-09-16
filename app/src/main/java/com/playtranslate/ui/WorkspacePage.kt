@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
+import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.overlay.OverlayHost
 import kotlinx.coroutines.CoroutineScope
 
@@ -121,4 +122,55 @@ interface WorkspaceHost {
 
     /** Re-target the controller cursor after a layout-changing activation. */
     fun invalidateNav()
+}
+
+/**
+ * How a flow reaches the floating workspace from wherever it started —
+ * the one decision every over-game entry (the lens's open/Anki chips, the
+ * sheet's sentence Anki) used to make inline as a Boolean plus an
+ * `openWorkspace` call. [present] returns false when the workspace is not
+ * available on this route (an Activity-routed host, or the coordinator
+ * posture: dual-screen with the app foregrounded), and every caller falls
+ * back to its Activity launch on false.
+ */
+sealed interface WorkspaceRoute {
+    /** Show [page] in the workspace; false = not available here. */
+    fun present(screenshotPath: String?, page: (WorkspaceHost) -> WorkspacePage): Boolean
+
+    /** Called right before a flow on this route launches an Activity
+     *  instead (the permission trampolines, the results activity): a
+     *  workspace page's surface must get out of the way — its overlay window
+     *  would otherwise sit above the launched activity — and it must do so
+     *  PROGRAMMATICALLY, so no stashed capture sheet re-shows underneath
+     *  (the word page's trampoline precedent). No-op elsewhere. */
+    fun prepareActivityLaunch() {}
+
+    /** Activity-routed hosts (the camera, the image import): never the
+     *  workspace. */
+    data object None : WorkspaceRoute {
+        override fun present(screenshotPath: String?, page: (WorkspaceHost) -> WorkspacePage) = false
+    }
+
+    /** A fresh workspace over the game on [displayId], replacing any showing
+     *  one — the entry from a surface that is not itself a workspace page
+     *  (the drag lens, the capture sheet). False under the coordinator
+     *  posture (see [com.playtranslate.OverlayUiController.openWorkspace]). */
+    data class OpenNew(val displayId: Int) : WorkspaceRoute {
+        override fun present(screenshotPath: String?, page: (WorkspaceHost) -> WorkspacePage): Boolean =
+            CaptureBackendResolver.activeOverlayUi?.openWorkspace(displayId, screenshotPath, page) == true
+    }
+
+    /** The workspace hosting the caller (a page's own lens or Anki entry):
+     *  push onto its back stack, so back returns to the page. The
+     *  screenshot is ignored — the card's ground was frosted at open. */
+    class PushInto(private val host: WorkspaceHost) : WorkspaceRoute {
+        override fun present(screenshotPath: String?, page: (WorkspaceHost) -> WorkspacePage): Boolean {
+            host.push(page(host))
+            return true
+        }
+
+        override fun prepareActivityLaunch() {
+            CaptureBackendResolver.activeOverlayUi?.dismissWorkspace()
+        }
+    }
 }

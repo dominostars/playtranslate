@@ -12,7 +12,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.ScrollView
@@ -32,18 +31,14 @@ import com.playtranslate.model.TranslationResult
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.selectHeadword
 import com.playtranslate.language.SourceLangId
-import com.playtranslate.vocab.HiddenWordsStore
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.themeColor
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.drop
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.isVisible
 import androidx.core.view.isGone
-import androidx.core.view.isEmpty
 
 /**
  * Reset [ScrollView] scroll to (0, 0) without firing the registered
@@ -220,35 +215,23 @@ class TranslationResultFragment : Fragment() {
     private lateinit var statusContainer: View
     private lateinit var resultsContent: ScrollView
     private lateinit var tvOriginal: ClickableTextView
-    private lateinit var tvMainWordsLoading: TextView
-    private lateinit var mainWordsContainer: LinearLayout
 
     /** Renders the source + target sections (shared with the over-game capture
      *  panel): inline furigana, the word highlight, section visibility, copy, and
      *  the source speak button. */
     private lateinit var binder: TranslationSectionBinder
 
+    /** The Words card (rows, deck badges, hidden-words ordering + eye) and
+     *  the tap-a-word lens — both shared with the over-game surfaces. */
+    private lateinit var wordRows: WordRowsBinder
+    private lateinit var sourceLens: SourceTextLens
+
     /** Text-size range picker, hosted in this fragment's root FrameLayout. */
     private var fontPopover: FontSizeRangePopover? = null
 
-    /** Session cache of headword → Anki deck names, shared by the words list
-     *  and the in-app word lens so re-renders / re-taps don't re-query. */
-    private val ankiDecksByWord = HashMap<String, List<String>>()
-    /** Word cells from the last word-list render, so onResume / a successful
-     *  in-app send can refresh the deck badges in place (no row rebuild). */
-    private var lastRenderedCells: Map<String, List<WordResultCell>> = emptyMap()
-    private lateinit var btnToggleWords: ImageButton
-    private lateinit var wordsContent: LinearLayout
-    private lateinit var cardWords: com.google.android.material.card.MaterialCardView
-    private lateinit var tvNoWords: TextView
     private lateinit var resultActionButtons: View
     private lateinit var btnResultClear: View
 
-    /** Maps character ranges in original text to (displayWord, reading).
-     *  Recomputed in [renderWordLookups] Settled branch from the VM's
-     *  tokenSpans on each Settled emission, so it tracks the displayed
-     *  text (which has OCR newlines). */
-    private var wordSpans = mutableListOf<Triple<IntRange, String, String>>()
     private var furiganaPopup: PopupWindow? = null
 
     /** Bumped on every [renderResult] call. The results reveal is async (hide →
@@ -332,13 +315,56 @@ class TranslationResultFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         bindViews(view)
+        val activity = requireActivity()
+        val alertTarget = TtsAlertTarget.InActivity(activity)
         binder = TranslationSectionBinder(
             view,
             requireContext(),
             prefs,
             viewLifecycleOwner.lifecycleScope,
-            TtsAlertTarget.InActivity(requireActivity()),
+            alertTarget,
         )
+        wordRows = WordRowsBinder(
+            view, requireContext(), prefs,
+            object : WordRowsBinder.Host {
+                override val isAlive: Boolean get() = isAdded && this@TranslationResultFragment.view != null
+                override val scope: CoroutineScope get() = viewLifecycleOwner.lifecycleScope
+                override val ttsAlertTarget: TtsAlertTarget get() = alertTarget
+                override fun onInteraction() {
+                    host?.onInteraction()
+                }
+                override fun onWordTapped(row: RowState) {
+                    val ready = currentReady()
+                    host?.onWordTapped(
+                        row.displayWord,
+                        row.reading.ifEmpty { null },
+                        ready?.screenshotPath,
+                        ready?.originalText,
+                        ready?.translatedText,
+                        currentSettledRows()?.toLegacyMap() ?: emptyMap(),
+                    )
+                }
+            },
+        )
+        // The in-app lens lives in the activity window (no overlay host);
+        // its chips route through this fragment's host + Anki launchers.
+        sourceLens = SourceTextLens(
+            activity, activity.windowManager, android.view.Display.DEFAULT_DISPLAY,
+            overlayHost = null,
+            scope = viewLifecycleOwner.lifecycleScope,
+            ttsAlertTarget = alertTarget,
+            binder = binder,
+            screenSize = {
+                val dm = resources.displayMetrics
+                android.graphics.Point(dm.widthPixels, dm.heightPixels)
+            },
+            showAnkiChip = { true },
+            // No entry, nothing to open into, no chevron.
+            opensWithoutEntry = false,
+            decks = wordRows.deckSource,
+            wireActions = { lens, resolvedAt -> wireLensActions(lens, resolvedAt) },
+        )
+        tvOriginal.onTapAtOffset = { offset -> sourceLens.onTapAtOffset(offset) }
         // The layout root is a FrameLayout, so the popover floats over the
         // results scroll without a wrapper. Its scrim covers this fragment
         // only — a tap on surrounding activity chrome won't dismiss it.
@@ -358,26 +384,18 @@ class TranslationResultFragment : Fragment() {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { vm.result.collect { renderResult(it) } }
                 launch { vm.wordLookups.collect { renderWordLookups(it) } }
-                // Refresh deck badges when a card is added anywhere in the app
-                // (word detail, review sheet, one-tap). Fires while those
-                // dialogs are on top — this fragment stays STARTED beneath them,
-                // which an onResume hook would miss.
-                launch {
-                    AnkiManager.noteAddedTick.drop(1).collect { refreshWordBadges() }
-                }
+                // Deck badges on any card added anywhere in the app, and
+                // hidden-word changes from anywhere — both fire while dialogs
+                // are on top (this fragment stays STARTED beneath them, which
+                // an onResume hook would miss), and the store's StateFlow
+                // replays on STARTED, which also covers returning from the
+                // sheet.
+                wordRows.attachCollectors(this)
                 // Keep the live-mode "show on screen" pill in lockstep with
                 // the hide-overlays-during-auto setting, whichever surface
                 // writes it (this toggle, or the Settings row on return).
                 launch {
                     prefs.observe(Prefs.KEY_HIDE_GAME_OVERLAYS).collect { refreshShowOnScreen() }
-                }
-                // Hidden-word changes from anywhere — this list's own eye
-                // taps, the sentence sheet on the other screen, the store's
-                // load landing after the rows were drawn — re-stub the
-                // rendered cells in place. The StateFlow replays on STARTED,
-                // which also covers returning from the sheet.
-                launch {
-                    HiddenWordsStore.revision.collect { applyHiddenState() }
                 }
             }
         }
@@ -399,12 +417,6 @@ class TranslationResultFragment : Fragment() {
         statusContainer      = view.findViewById(R.id.statusContainer)
         resultsContent       = view.findViewById(R.id.resultsContent)
         tvOriginal           = view.findViewById(R.id.tvOriginal)
-        tvMainWordsLoading   = view.findViewById(R.id.tvMainWordsLoading)
-        mainWordsContainer   = view.findViewById(R.id.mainWordsContainer)
-        btnToggleWords       = view.findViewById(R.id.btnToggleWords)
-        wordsContent         = view.findViewById(R.id.wordsContent)
-        cardWords            = view.findViewById(R.id.cardWords)
-        tvNoWords            = view.findViewById(R.id.tvNoWords)
         resultActionButtons  = view.findViewById(R.id.resultActionButtons)
         btnResultClear       = view.findViewById(R.id.btnResultClear)
     }
@@ -434,10 +446,6 @@ class TranslationResultFragment : Fragment() {
         // the translation that was skipped while it was hidden.
         binder.onSectionVisibilityChanged = { maybeRequestDeferredCompletion() }
         resultsContent.setOnScrollChangeListener(scrollListener)
-        btnToggleWords.setOnClickListener {
-            prefs.hideWordsSection = !prefs.hideWordsSection
-            applyWordsVisibility()
-        }
         btnResultClear.setOnClickListener {
             // Pure state action — no host context needed. Reset directly
             // to idle status; the fragment will re-render from the VM.
@@ -465,12 +473,6 @@ class TranslationResultFragment : Fragment() {
                 startActivity(CaptureOverlaySettingsActivity.downloadIntent(ctx, id, backend.selectionToken))
             },
         ).show()
-    }
-
-    private fun applyWordsVisibility() {
-        val hidden = prefs.hideWordsSection
-        cardWords.visibility = if (hidden) View.GONE else View.VISIBLE
-        btnToggleWords.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
     }
 
     // ── Result render (driven by vm.result observation) ──────────────────
@@ -506,19 +508,8 @@ class TranslationResultFragment : Fragment() {
                 // sentence / edit commit), so reset to top; record the source
                 // so the matching Ready promotion preserves the user's scroll.
                 lastRenderedSourceText = state.originalText
-                binder.bindSource(state.segments)
-                tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
-                // Capture placeholders carry OCR provenance — show "Scanned by …" with
-                // the source as soon as OCR finishes, before the translation lands.
-                // Drag/edit placeholders carry null, which hides the row. The gear
-                // stays hidden until the result settles (Ready/Status): re-OCR can't
-                // act on a transient Translating state, so a gear here is a dead control.
-                binder.bindSourceOcr(state.ocrProvenance, canReOcr = false)
-                binder.setTargetTranslatingPlaceholder()
-                binder.applyTranslationVisibility()
-                binder.applyOriginalVisibility()
-                applyWordsVisibility()
-                binder.updateLabels()
+                binder.bindTranslating(state.segments, state.ocrProvenance)
+                wordRows.applyWordsVisibility()
                 statusContainer.isGone = true
                 resultActionButtons.isVisible = showsClearAction
                 // The source text is final the instant the placeholder shows, so
@@ -538,19 +529,12 @@ class TranslationResultFragment : Fragment() {
                 val preserveScroll = result.originalText == lastRenderedSourceText
                 val scrollAnchor = if (preserveScroll) captureScrollAnchor() else null
                 lastRenderedSourceText = result.originalText
-                binder.bindSource(result.segments)
-                binder.bindSourceOcr(result.ocrProvenance, canReOcr = host?.canReOcr() == true)
-                tvOriginal.onTapAtOffset = { offset -> onOriginalTapped(offset) }
                 // A blank translation on a Ready result means a re-translate is
-                // in flight: the edit-overlay commit clears the old translation
-                // (updateOriginalText) before the new one lands (updateTranslation).
-                // The binder shows the same "Translating…" placeholder instead of
-                // an empty card and suppresses the now-stale backend label.
-                binder.bindTargetReady(result)
-                binder.applyTranslationVisibility()
-                binder.applyOriginalVisibility()
-                applyWordsVisibility()
-                binder.updateLabels()
+                // in flight (the edit-overlay commit clears the old translation
+                // before the new one lands); the binder shows the "Translating…"
+                // placeholder instead of an empty card.
+                binder.bindResult(result, canReOcr = host?.canReOcr() == true)
+                wordRows.applyWordsVisibility()
                 statusContainer.isGone = true
                 resultActionButtons.isVisible = showsClearAction
                 revealResultsContentFitted(generation) {
@@ -698,30 +682,6 @@ class TranslationResultFragment : Fragment() {
         host?.completeDeferredTranslation()
     }
 
-    private companion object {
-        const val WORD_DIVIDER_TAG = "pt_word_divider"
-        /** Word-cell text-size factor for the results list — a notch below
-         *  [WordResultCell.DEFAULT_SCALE] (the "large" factor reserved for the
-         *  full-screen dictionary results page) so the rows read denser here. */
-        const val WORD_CELL_SCALE = 1.0f
-    }
-
-    /** 1dp ptDivider line inset from the start by pt_row_h_padding, matching
-     *  `settings_row_divider` for word rows inside the Words card. */
-    private fun inflateWordDivider(): View {
-        val ctx = requireContext()
-        val dp1 = ctx.resources.displayMetrics.density.toInt().coerceAtLeast(1)
-        return View(ctx).apply {
-            tag = WORD_DIVIDER_TAG
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp1
-            ).apply {
-                marginStart = ctx.resources.getDimensionPixelSize(R.dimen.pt_row_h_padding)
-            }
-            setBackgroundColor(ctx.themeColor(R.attr.ptDivider))
-        }
-    }
-
     /**
      * Shrink translation and original text so each tries to fit within half the
      * visible scroll area (the binder owns the per-view shrink).
@@ -798,7 +758,8 @@ class TranslationResultFragment : Fragment() {
             }
         }
         for (i in 0 until content.childCount) consider(content.getChildAt(i))
-        for (i in 0 until mainWordsContainer.childCount) consider(mainWordsContainer.getChildAt(i))
+        val rows = wordRows.container
+        for (i in 0 until rows.childCount) consider(rows.getChildAt(i))
         val anchor = straddler ?: firstBelow ?: return null
         return ScrollAnchor(anchor, resultsContent.contentTopOf(anchor) - scrollY)
     }
@@ -969,7 +930,7 @@ class TranslationResultFragment : Fragment() {
                         val msgRes = sendResult.shortfallRes()
                             ?: ankiAddedSuccessRes(CardMode.SENTENCE)
                         Toast.makeText(appCtx, msgRes, Toast.LENGTH_SHORT).show()
-                        refreshWordBadges()
+                        wordRows.refreshWordBadges()
                     }
                     is AnkiSendResult.Failed -> {
                         val ctx = requireContext()
@@ -1087,7 +1048,7 @@ class TranslationResultFragment : Fragment() {
                         // other handlers do.
                         val msgRes = result.shortfallRes() ?: ankiAddedSuccessRes(mode)
                         Toast.makeText(appCtx, msgRes, Toast.LENGTH_SHORT).show()
-                        refreshWordBadges()
+                        wordRows.refreshWordBadges()
                     }
                     is AnkiSendResult.Failed -> {
                         Toast.makeText(appCtx,
@@ -1171,186 +1132,55 @@ class TranslationResultFragment : Fragment() {
         }
     }
 
-    private fun onOriginalTapped(offset: Int) {
-        dismissFurigana()
-        // Find which word span the tap falls in
-        val span = wordSpans.firstOrNull { offset in it.first } ?: return
-        val lookupForm = span.second
-        val reading = span.third
-
-        // Look up in dictionary and show the floating popup
-        val ctx = context ?: return
+    /** The in-app lens's chips: the open chevron (only into a matched
+     *  entry) and the secondary sections route through the host's word-tap
+     *  (the detail sheet); the Anki chip's tap opens the editable review,
+     *  its long-press is the headless one-tap shortcut (the pro-tip footer
+     *  in Settings). */
+    private fun wireLensActions(lens: MagnifierLens, resolvedAt: SourceWordLookup.ResolvedAt) {
         val activity = activity ?: return
-        // Snapshot what the user actually tapped ON; the lookup below
-        // suspends, and a new result rendering meanwhile must not let a
-        // stale span position a lens over the new text.
-        val tappedText = tvOriginal.text?.toString().orEmpty()
-        viewLifecycleOwner.lifecycleScope.launch {
-            try {
-                val appCtx = ctx.applicationContext
-                // Shared phrase-aware resolution + tier branching (parity with
-                // the over-game capture panel — both surfaces resolve
-                // identically here). The popup is the tapped unit's; the
-                // related units — a containing multi-word expression (Latin)
-                // or a fused expression's member words (JA) — ride along as
-                // the lens's secondary sections.
-                val resolvedAt = SourceWordLookup.resolveAt(
-                    appCtx, tappedText, span.first.first, lookupForm, reading,
-                )
-                if (tvOriginal.text?.toString().orEmpty() != tappedText) return@launch
-                val resolved = resolvedAt.word
-                val phrase = resolvedAt.phrase
-                val secondaries = phrase?.let { listOf(it) } ?: resolvedAt.members
-                val word = resolved.word
-                val popupReading = resolved.reading
-                val popupLabel = resolved.label
-                val lensData = resolved.data
-                val entry = resolved.entry
-
-                // Calculate position: center on the tapped word, above it
-                val layout = tvOriginal.layout ?: return@launch
-                val lineStart = layout.getLineForOffset(span.first.first)
-                val xStart = layout.getPrimaryHorizontal(span.first.first)
-                val xEnd = layout.getPrimaryHorizontal(span.first.last + 1)
-                val wordCenterX = ((xStart + xEnd) / 2).toInt() + tvOriginal.paddingLeft
-                val lineTop = layout.getLineTop(lineStart) - tvOriginal.scrollY + tvOriginal.paddingTop
-                val lineH = layout.getLineBottom(lineStart) - layout.getLineTop(lineStart)
-
-                val loc = IntArray(2)
-                tvOriginal.getLocationOnScreen(loc)
-                val screenX = loc[0] + wordCenterX
-
-                val dm = resources.displayMetrics
-                // Anchor on the tapped line's top edge — paired with
-                // [anchorHeight] = lineH, the lens lands cleanly above
-                // the line when there's room and cleanly below the
-                // line when it has to flip. Passing center + height=0
-                // (the drag-flow default) lands the flipped lens on
-                // top of the line itself.
-                val anchorY = loc[1] + lineTop
-                dismissWordPopup()
-                val canOpen = entry != null
-                val displayEntry = entry
-                val displayEntries = resolved.entries
-                wordLens = MagnifierLens(
-                    activity,
-                    activity.windowManager,
-                    android.view.Display.DEFAULT_DISPLAY,
-                ).apply {
-                    if (canOpen) {
-                        onOpenTap = {
-                            dismissWordPopup()
-                            host?.onInteraction()
-                            val ready = currentReady()
-                            val wr = currentSettledRows()?.toLegacyMap() ?: emptyMap()
-                            host?.onWordTapped(
-                                word, popupReading,
-                                ready?.screenshotPath,
-                                ready?.originalText,
-                                ready?.translatedText,
-                                wr,
-                            )
-                        }
-                    }
-                    if (secondaries.isNotEmpty()) {
-                        // Secondary-section drill-in (containing phrase or
-                        // member words): same detail route as the tapped
-                        // unit — the sheet re-looks the string up, and a
-                        // multi-word key round-trips it unchanged.
-                        onSecondaryOpenTap = { i ->
-                            secondaries.getOrNull(i)?.let { sec ->
-                                dismissWordPopup()
-                                host?.onInteraction()
-                                val ready = currentReady()
-                                val wr = currentSettledRows()?.toLegacyMap() ?: emptyMap()
-                                host?.onWordTapped(
-                                    sec.word, sec.reading,
-                                    ready?.screenshotPath,
-                                    ready?.originalText,
-                                    ready?.translatedText,
-                                    wr,
-                                )
-                            }
-                        }
-                    }
-                    // Tap opens the editable review sheet (default).
-                    // Long-press is the headless one-tap shortcut —
-                    // documented by the pro-tip footer in Settings.
-                    onAnkiTap = {
-                        host?.onInteraction()
-                        launchWordAnki(activity, word, popupReading, displayEntry)
-                    }
-                    onAnkiLongPress = {
-                        host?.onInteraction()
-                        oneTapWordFromPopup(activity, word, popupReading, displayEntry, displayEntries)
-                    }
-                    // onDismiss is the single funnel for every teardown path
-                    // (tap-outside, LensSpeakChip's no-engine action,
-                    // dismissWordPopup), so speak-chip + lens cleanup lives
-                    // here, not only in dismissWordPopup.
-                    onDismiss = {
-                        binder.setWordHighlight(null)
-                        wordSpeakChip?.release()
-                        wordSpeakChip = null
-                        wordLens = null
-                    }
-                }
-                wordSpeakChip = wordLens?.let { lens ->
-                    LensSpeakChip(
-                        lens,
-                        viewLifecycleOwner.lifecycleScope,
-                        TtsAlertTarget.InActivity(activity),
-                    ) { LensSpeakChip.Request(word, prefs.sourceLangId, reading = popupReading) }
-                }
-                binder.setWordHighlight(span.first)
-                wordLens?.show(
-                    screenX, anchorY,
-                    dm.widthPixels, dm.heightPixels,
-                    anchorHeight = lineH,
-                )
-                if (secondaries.isNotEmpty()) {
-                    // Split body: tapped unit (pill identity) + the related
-                    // units — containing phrase above it (Latin) or member
-                    // words below it (JA) — each with its own drill-in. The
-                    // deck back-fill rebinds the SPLIT shape so it can't
-                    // collapse the secondary sections.
-                    val secondarySections = secondaries.map { LensSection(it.data, it.label, opens = true) }
-                    val secondariesOnTop = phrase != null
-                    wordLens?.setSplitDefinitions(
-                        LensSection(lensData, popupLabel, opens = canOpen),
-                        secondarySections, secondariesOnTop,
-                    )
-                    wordLens?.let { lens ->
-                        maybeUpdateLensDecks(lens, lensData, word) { updated ->
-                            lens.setSplitDefinitions(
-                                LensSection(updated, popupLabel, opens = canOpen),
-                                secondarySections, secondariesOnTop,
-                            )
-                        }
-                    }
-                } else {
-                    // The body's open cue follows the same entry-or-not
-                    // gate as onOpenTap above: no entry, nothing to open
-                    // into, no chevron.
-                    wordLens?.setDefinitions(lensData, popupLabel, opens = canOpen)
-                    wordLens?.let { lens ->
-                        maybeUpdateLensDecks(lens, lensData, word) { updated ->
-                            lens.setDefinitions(updated, popupLabel, opens = canOpen)
-                        }
-                    }
-                }
-                wordLens?.makeInteractive()
-            } catch (_: Exception) {}
+        val resolved = resolvedAt.word
+        val phrase = resolvedAt.phrase
+        val secondaries = phrase?.let { listOf(it) } ?: resolvedAt.members
+        val word = resolved.word
+        val popupReading = resolved.reading
+        val displayEntry = resolved.entry
+        val displayEntries = resolved.entries
+        fun openDetail(w: String, reading: String?) {
+            dismissWordPopup()
+            host?.onInteraction()
+            val ready = currentReady()
+            host?.onWordTapped(
+                w, reading,
+                ready?.screenshotPath,
+                ready?.originalText,
+                ready?.translatedText,
+                currentSettledRows()?.toLegacyMap() ?: emptyMap(),
+            )
+        }
+        if (displayEntry != null) {
+            lens.onOpenTap = { openDetail(word, popupReading) }
+        }
+        if (secondaries.isNotEmpty()) {
+            // Secondary-section drill-in (containing phrase or member words):
+            // same detail route as the tapped unit — the sheet re-looks the
+            // string up, and a multi-word key round-trips it unchanged.
+            lens.onSecondaryOpenTap = { i ->
+                secondaries.getOrNull(i)?.let { sec -> openDetail(sec.word, sec.reading) }
+            }
+        }
+        lens.onAnkiTap = {
+            host?.onInteraction()
+            launchWordAnki(activity, word, popupReading, displayEntry)
+        }
+        lens.onAnkiLongPress = {
+            host?.onInteraction()
+            oneTapWordFromPopup(activity, word, popupReading, displayEntry, displayEntries)
         }
     }
 
-    private var wordLens: MagnifierLens? = null
-    private var wordSpeakChip: LensSpeakChip? = null
-
     private fun dismissWordPopup() {
-        // dismiss() fires the lens's onDismiss, which releases the speak chip
-        // and clears wordLens / wordSpeakChip.
-        wordLens?.dismiss()
+        sourceLens.dismiss()
     }
 
     private fun showFurigana(range: IntRange, reading: String) {
@@ -1449,257 +1279,34 @@ class TranslationResultFragment : Fragment() {
 
     /** Observation-driven render of [vm.wordLookups]. The pipeline
      *  itself runs on [viewModelScope] inside the VM so rotation
-     *  mid-lookup preserves progress; this method just mirrors the
-     *  current state into the views. */
+     *  mid-lookup preserves progress; the shared [WordRowsBinder] mirrors
+     *  the state into the card, and this only keeps the tap spans and the
+     *  lens in step with it. */
     private fun renderWordLookups(state: WordLookupsState) {
         if (view == null) return
         when (state) {
-            is WordLookupsState.Idle -> {
-                tvMainWordsLoading.isGone = true
-                tvNoWords.isGone = true
-                mainWordsContainer.removeAllViews()
-                wordSpans.clear()
-            }
+            is WordLookupsState.Idle -> sourceLens.wordSpans = emptyList()
             is WordLookupsState.Loading -> {
                 dismissFurigana()
                 dismissWordPopup()
-                mainWordsContainer.removeAllViews()
-                wordSpans.clear()
-                tvMainWordsLoading.isVisible = true
-                tvMainWordsLoading.text = getString(R.string.words_loading)
-                tvNoWords.isGone = true
+                sourceLens.wordSpans = emptyList()
             }
             is WordLookupsState.Settled -> {
-                renderWordRows(state.rows)
                 recomputeWordSpans(state.tokenSpans, state.lookupToReading, state.phrases)
                 // Furigana is NOT applied here: it's driven by bindSource in
                 // renderResult, so it paints with the source text (during the
                 // Translating placeholder), not after this heavier lookup settles.
-                tvMainWordsLoading.isGone = true
-                tvNoWords.visibility = if (state.rows.isEmpty()) View.VISIBLE else View.GONE
             }
         }
+        wordRows.render(state)
     }
-
-    private fun renderWordRows(rows: List<RowState>) {
-        mainWordsContainer.removeAllViews()
-        if (rows.isEmpty()) return
-        // A fresh list is ordered hidden-last. isLoaded BEFORE snapshot: true
-        // means the snapshot taken next is the loaded set and this ordering
-        // is final; false means it is provisional, and the load's revision
-        // bump re-renders (applyHiddenState) rather than re-stubbing in
-        // place, so the list's first real render is ordered like any other.
-        val lang = prefs.sourceLangId
-        hiddenOrderApplied = HiddenWordsStore.isLoaded(lang)
-        val ordered = rows.hiddenLast(HiddenWordsStore.snapshot(requireContext(), lang))
-        val cellsByWord = HashMap<String, MutableList<WordResultCell>>()
-        ordered.forEachIndexed { idx, rowState ->
-            if (idx > 0) mainWordsContainer.addView(inflateWordDivider())
-            val cell = WordResultCell(requireContext())
-            bindWordCell(cell, rowState)
-            mainWordsContainer.addView(cell)
-            cellsByWord.getOrPut(rowState.displayWord) { mutableListOf() }.add(cell)
-        }
-        lastRenderedCells = cellsByWord
-        loadAnkiDeckBadges(ordered.map { it.displayWord }, cellsByWord)
-    }
-
-    /** True once the rendered rows were ordered against a LOADED hidden set
-     *  (see [renderWordRows]); while false, the next revision re-renders
-     *  instead of re-stubbing in place. */
-    private var hiddenOrderApplied = false
 
     override fun onResume() {
         super.onResume()
         // Deck membership can change while we're away (a card added here, in the
         // review sheet, or in AnkiDroid). Re-evaluate so badges aren't stuck on
         // the cached pre-add state.
-        refreshWordBadges()
-    }
-
-    /** Clears the per-word cache and re-queries deck membership for the
-     *  currently-rendered rows, updating each badge in place. No-op until the
-     *  list is built. */
-    private fun refreshWordBadges() {
-        if (!this::mainWordsContainer.isInitialized || mainWordsContainer.isEmpty()) return
-        val cells = lastRenderedCells
-        if (cells.isEmpty()) return
-        ankiDecksByWord.clear()
-        val anki = AnkiManager(requireContext())
-        if (!anki.isAnkiDroidInstalled() || !anki.hasPermission()) {
-            cells.values.flatten().forEach { it.updateAnkiDecks(emptyList()) }
-            return
-        }
-        val words = cells.keys.toList()
-        viewLifecycleOwner.lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) { anki.decksByWord(words) }
-            if (!isAdded) return@launch
-            for ((word, list) in cells) {
-                val decks = result[word].orEmpty()
-                ankiDecksByWord[word] = decks
-                list.forEach { it.updateAnkiDecks(decks) }
-            }
-        }
-    }
-
-    /** Batched "already in Anki" lookup for the words list. Caches results
-     *  (shared with the in-app lens) and re-renders each matching cell's body
-     *  so its meta row carries the deck pill. Gated + silent; words already in
-     *  [ankiDecksByWord] were applied during bind, so only the rest queried. */
-    private fun loadAnkiDeckBadges(
-        words: List<String>,
-        cellsByWord: Map<String, List<WordResultCell>>,
-    ) {
-        val anki = AnkiManager(requireContext())
-        if (!anki.isAnkiDroidInstalled() || !anki.hasPermission()) return
-        val uncached = words.distinct().filter { it !in ankiDecksByWord }
-        if (uncached.isEmpty()) return
-        viewLifecycleOwner.lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) { anki.decksByWord(uncached) }
-            if (!isAdded) return@launch
-            for (w in uncached) {
-                val decks = result[w].orEmpty()
-                ankiDecksByWord[w] = decks
-                if (decks.isEmpty()) continue
-                cellsByWord[w]?.forEach { it.updateAnkiDecks(decks) }
-            }
-        }
-    }
-
-    /** In-app word lens counterpart: once decks are known, re-render the lens
-     *  body so its meta row carries the same deck pill. Reuses the words-list
-     *  cache and no-ops when the lens has since been dismissed/replaced. */
-    private fun maybeUpdateLensDecks(
-        lens: MagnifierLens,
-        base: WordDefinitionData,
-        word: String,
-        // The caller owns the rebind shape — single vs split body — so the
-        // deck back-fill can't collapse a split lens to a single section.
-        rebind: (WordDefinitionData) -> Unit,
-    ) {
-        ankiDecksByWord[word]?.let { cached ->
-            if (cached.isNotEmpty()) rebind(base.copy(ankiDecks = cached))
-            return
-        }
-        val anki = AnkiManager(requireContext())
-        if (!anki.isAnkiDroidInstalled() || !anki.hasPermission()) return
-        viewLifecycleOwner.lifecycleScope.launch {
-            val decks = withContext(Dispatchers.IO) {
-                anki.decksByWord(listOf(word))[word].orEmpty()
-            }
-            if (!isAdded) return@launch
-            ankiDecksByWord[word] = decks
-            if (decks.isEmpty() || wordLens !== lens) return@launch
-            rebind(base.copy(ankiDecks = decks))
-        }
-    }
-
-    private fun bindWordCell(cell: WordResultCell, rowState: RowState) {
-        // Any already-known Anki decks (cache / re-render) render immediately;
-        // uncached words are filled in by renderWordRows' batched query.
-        val data = WordDefinitionData(
-            word = rowState.displayWord,
-            reading = rowState.reading.ifEmpty { null },
-            senses = rowState.senses,
-            freqScore = rowState.freqScore,
-            isCommon = rowState.isCommon,
-            ankiDecks = ankiDecksByWord[rowState.displayWord].orEmpty(),
-            pitch = rowState.pitch,
-            frequencies = rowState.frequencies,
-            readingRows = rowState.readingRows,
-        )
-        cell.bind(
-            data = data,
-            scale = WORD_CELL_SCALE,
-            inflectedForms = rowState.inflectedForms,
-            onCellTap = {
-                host?.onInteraction()
-                val ready = currentReady()
-                val wr = currentSettledRows()?.toLegacyMap() ?: emptyMap()
-                host?.onWordTapped(
-                    rowState.displayWord,
-                    rowState.reading.ifEmpty { null },
-                    ready?.screenshotPath,
-                    ready?.originalText,
-                    ready?.translatedText,
-                    wr,
-                )
-            },
-            onSpeak = { speakWordFromCell(cell, rowState) },
-            // The hidden-words eye, keyed like every other word path in this
-            // fragment on prefs.sourceLangId. The tap writes the opposite of
-            // the state the cell was SHOWING (handed over by the cell), never
-            // a fresh store read: the two agree except for the frame between
-            // the store's cache swap and this list's re-stub, and the icon
-            // is what the user acted on. The cells re-stub from the store's
-            // revision (collector in onViewCreated), the same path a toggle
-            // from the sentence sheet takes.
-            trailing = WordResultCell.TrailingAction.Hide(
-                hidden = rowState.displayWord in
-                    HiddenWordsStore.snapshot(requireContext(), prefs.sourceLangId),
-                onToggle = { shownHidden ->
-                    host?.onInteraction()
-                    val app = requireContext().applicationContext
-                    val lang = prefs.sourceLangId
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        val saved = HiddenWordsStore.setHidden(
-                            app, lang, rowState.displayWord,
-                            rowState.reading.ifEmpty { null }, hidden = !shownHidden,
-                        )
-                        // Nothing changed on screen when the write failed
-                        // (the store leaves its cache alone), so say why.
-                        if (!saved) {
-                            Toast.makeText(app, R.string.hidden_word_save_failed, Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                },
-            ),
-        )
-    }
-
-    /** Re-apply the hidden flag to every rendered word cell in place: no
-     *  list rebuild, no deck re-query, no reordering (a toggle never moves a
-     *  row). A cell whose flag is unchanged is a no-op inside
-     *  [WordResultCell.setHidden]. The one exception is a list drawn before
-     *  its language's set had loaded: that render was never ordered, so the
-     *  load's bump re-renders it as the fresh list it is. */
-    private fun applyHiddenState() {
-        if (lastRenderedCells.isEmpty()) return
-        val lang = prefs.sourceLangId
-        if (!hiddenOrderApplied && HiddenWordsStore.isLoaded(lang)) {
-            currentSettledRows()?.let { rows ->
-                renderWordRows(rows)
-                return
-            }
-        }
-        val hidden = HiddenWordsStore.snapshot(requireContext(), lang)
-        for ((word, cells) in lastRenderedCells) {
-            val flag = word in hidden
-            cells.forEach { it.setHidden(flag) }
-        }
-    }
-
-    /** Speak a result cell's word, driving that cell's own spinner. Each cell
-     *  owns its in-flight [WordResultCell.speakJob] so concurrent taps on
-     *  different rows don't clobber one another. */
-    private fun speakWordFromCell(cell: WordResultCell, rowState: RowState) {
-        if (cell.speakJob?.isActive == true) return
-        val activity = activity ?: return
-        cell.speakJob = viewLifecycleOwner.lifecycleScope.launch {
-            cell.setSpeakLoading(true)
-            try {
-                speakWord(
-                    TtsAlertTarget.InActivity(activity),
-                    LensSpeakChip.Request(
-                        rowState.displayWord,
-                        prefs.sourceLangId,
-                        reading = rowState.reading.ifEmpty { null },
-                    ),
-                )
-            } finally {
-                cell.setSpeakLoading(false)
-            }
-        }
+        wordRows.refreshWordBadges()
     }
 
     /** Derive view-side word spans from the VM's per-occurrence
@@ -1714,11 +1321,9 @@ class TranslationResultFragment : Fragment() {
         lookupToReading: Map<String, String>,
         phrases: List<com.playtranslate.language.PhraseOccurrence>,
     ) {
-        wordSpans.clear()
-        val displayedText = tvOriginal.text?.toString() ?: return
-        wordSpans.addAll(
-            SourceWordLookup.computeTapSpans(displayedText, tokenSpans, lookupToReading, phrases),
-        )
+        val displayedText = tvOriginal.text?.toString()
+        sourceLens.wordSpans = if (displayedText == null) emptyList()
+        else SourceWordLookup.computeTapSpans(displayedText, tokenSpans, lookupToReading, phrases)
     }
 
 }

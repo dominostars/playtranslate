@@ -56,10 +56,11 @@ class DragLookupController(
      *  activity flow may not hold. Null = the over-game defaults. */
     private val ttsAlertTarget: TtsAlertTarget? = null,
     private val showAnkiNotInstalled: (() -> Unit)? = null,
-    /** The lens's open-detail tap prefers the floating workspace over the
-     *  game (see [SourceLensActions]); false keeps in-activity hosts (the
-     *  camera's frozen-frame lookup) on their Activity routing. */
-    private val workspaceRoute: Boolean = true,
+    /** How the lens's open/Anki actions reach the floating workspace (see
+     *  [SourceLensActions]): a fresh workspace over the game by default;
+     *  [WorkspaceRoute.None] keeps in-activity hosts (the camera's
+     *  frozen-frame lookup) on their Activity routing. */
+    private val route: WorkspaceRoute = WorkspaceRoute.OpenNew(displayId),
 ) {
     /** Fires once per drag, on the main thread, when no popup will surface
      *  from this drag (release with no OCR / no hit / async lookup miss) or
@@ -118,7 +119,12 @@ class DragLookupController(
     private val lensActions = SourceLensActions(
         context, displayId, overlayHost, magnifier,
         showAnkiNotInstalled = showAnkiNotInstalled,
-        workspaceRoute = workspaceRoute,
+        route = route,
+        // The drag flow's detail is the Sentence/word lookup page: over the
+        // game, nothing else shows the sentence the word came from (the
+        // capture sheet's lens keeps the word page alone — its sheet already
+        // does).
+        detailPage = { WorkspaceLookupPage(it) },
         // Secondary-section drill-in: same open-sentence route with the
         // related unit as the word context. An out-of-range index (stale
         // lens) is a no-op.
