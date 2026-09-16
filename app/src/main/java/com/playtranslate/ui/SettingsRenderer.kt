@@ -9,9 +9,7 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.capture.GameAudioGate
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -25,7 +23,6 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextWatcher
 import android.text.style.ForegroundColorSpan
-import android.text.style.ImageSpan
 import android.text.style.StyleSpan
 import android.view.Gravity
 import android.view.KeyEvent
@@ -42,7 +39,6 @@ import androidx.annotation.AttrRes
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
-import androidx.core.content.ContextCompat
 import androidx.core.widget.ImageViewCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
@@ -91,7 +87,6 @@ import java.util.Date
 import androidx.core.view.isVisible
 import androidx.core.net.toUri
 import androidx.core.view.isGone
-import androidx.core.graphics.withTranslation
 
 /** Which accessibility-gated Settings action raised the "accessibility
  *  required" alert — selects the alert's explanatory copy. */
@@ -108,56 +103,6 @@ internal fun ttsTapFor(state: RootSettingsViewModel.TtsCell): TtsTap? = when (st
     RootSettingsViewModel.TtsCell.Loading -> null
     is RootSettingsViewModel.TtsCell.Available -> TtsTap.OPEN_PICKER
     RootSettingsViewModel.TtsCell.NoEngine -> TtsTap.OPEN_SETUP
-}
-
-/** An [ImageSpan] anchored to the BASELINE's font metrics, drawn [dyPx]
- *  higher than the font bottom so an inline icon optically centers with the
- *  surrounding text. Deliberately not anchored to the framework's line-bottom
- *  (super.draw's `bottom`): on a WRAPPED line that includes line spacing,
- *  which drags the icon visibly low — the Yomitan outdated-row subtitle wraps
- *  to two lines and showed exactly that. Baseline + font metrics render
- *  identically on one line and many. */
-private class OffsetImageSpan(drawable: Drawable, private val dyPx: Int) :
-    ImageSpan(drawable, ALIGN_BOTTOM) {
-    override fun draw(
-        canvas: Canvas,
-        text: CharSequence?,
-        start: Int,
-        end: Int,
-        x: Float,
-        top: Int,
-        y: Int,
-        bottom: Int,
-        paint: Paint,
-    ) {
-        // Icon bottom at (baseline + font bottom - lift): matches the old
-        // single-line ALIGN_BOTTOM placement, independent of line spacing.
-        val transY = y + paint.fontMetricsInt.bottom - drawable.bounds.bottom - dyPx
-        canvas.withTranslation(x = x, y = transY.toFloat()) {
-            drawable.draw(this)
-        }
-    }
-}
-
-/** Appends an optically-centered inline icon tinted [tint] to [sb] — shared
- *  by the renderer's summary digests and warning subtitles elsewhere in
- *  settings (e.g. the Yomitan outdated rows). */
-internal fun appendInlineIcon(
-    ctx: Context,
-    sb: SpannableStringBuilder,
-    @DrawableRes iconRes: Int,
-    @AttrRes tint: Int = R.attr.ptTextMuted,
-) {
-    val px = (14 * ctx.resources.displayMetrics.density).toInt()
-    val drawable = ContextCompat.getDrawable(ctx, iconRes)?.mutate() ?: return
-    drawable.setTint(ctx.themeColor(tint))
-    drawable.setBounds(0, 0, px, px)
-    val start = sb.length
-    sb.append(" ")
-    // Lift 1.5dp above ALIGN_BOTTOM to optically center; at 2dp the icons
-    // read slightly high, so 1.5dp drops them ~0.5dp.
-    val dy = (1.5f * ctx.resources.displayMetrics.density).toInt()
-    sb.setSpan(OffsetImageSpan(drawable, dy), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
 }
 
 /** A warning-triangle icon + [label], the whole run in `ptWarning` — the

@@ -1226,9 +1226,11 @@
     <!-- Group header — screenshot group. -->
     <string name="anki_group_screenshot">Screenshot</string>
 
-    <!-- Helper line under the Words group explaining the tap targets.
-         × is a literal multiplication-sign glyph; preserve it. -->
-    <string name="anki_words_helper">These words will be included in the <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> card. Tap a word to highlight them in the card. Tap × to remove it from the card.</string>
+    <!-- Helper line under the Words group of the sentence card editor
+         explaining the tap targets. %1$s is drawn at runtime as the inline
+         eye icon (the same glyph as on each word row) that hides a word;
+         keep the placeholder where the language names the icon. -->
+    <string name="anki_words_helper_hide">These words will be included in the <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> card. Tap a word to highlight it. Tap <xliff:g id="hide_icon" example="👁">%1$s</xliff:g> to exclude it from the card.</string>
 
     <!-- Fallback label shown on the Translation row when the
          translation failed. -->

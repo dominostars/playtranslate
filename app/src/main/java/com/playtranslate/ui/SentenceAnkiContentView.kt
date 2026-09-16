@@ -1360,7 +1360,7 @@ class SentenceAnkiContentView(
     private fun addWordsHelperRow(card: LinearLayout) {
         val density = ctx.resources.displayMetrics.density
         card.addView(TextView(ctx).apply {
-            text = ctx.getString(R.string.anki_words_helper)
+            text = inlineIconString(ctx, R.string.anki_words_helper_hide, R.drawable.ic_visibility)
             textSize = 12f
             setTextColor(ctx.themeColor(R.attr.ptTextMuted))
             setBackgroundColor(ctx.themeColor(R.attr.ptSurface))
