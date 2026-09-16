@@ -60,11 +60,20 @@ class BackupRulesTest {
         assertTrue(Triple("exclude", "file", "vad") in r)
         assertTrue(Triple("exclude", "file", "crashes") in r)
         // The secrets and private-data guards do not rest on include-only
-        // semantics alone.
-        for (domain in listOf("sharedpref", "database", "root", "external",
+        // semantics alone. Every one of these domains is a SIBLING of files/.
+        for (domain in listOf("sharedpref", "database", "external",
             "device_root", "device_file", "device_database", "device_sharedpref")) {
             assertTrue("$name: $domain root excluded", Triple("exclude", domain, ".") in r)
         }
+        // Never the root domain: it is the whole data directory, an ANCESTOR of
+        // files/, and the platform matches directory excludes by path prefix on
+        // restore (before the includes), so a root exclude silently rejects every
+        // restored file. Caught on Thor: backup logged the store file, restore
+        // wrote nothing.
+        assertFalse(
+            "$name: the root domain must never be excluded (it swallows every restore)",
+            r.any { it.first == "exclude" && it.second == "root" },
+        )
     }
 
     private fun parse(relative: String): Element =

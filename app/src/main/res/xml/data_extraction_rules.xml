@@ -38,6 +38,18 @@
     Under files/, the two other residents (vad/, the Silero VAD model copy; crashes/, crash
     reports) are excluded by name for the same reason.
 
+    The ONE exclude that must NOT be here: <exclude domain="root" path="." />. The root
+    domain is the app's whole data directory, and the platform matches excludes
+    asymmetrically: on backup by exact path (BackupAgent.manifestExcludesContainFilePath),
+    so a root exclude never touched files/vocab and the file went out; on restore by path
+    PREFIX for any exclude that names a directory (BackupUtils.isFileSpecifiedInPathList,
+    checked before the includes), so a root exclude silently rejects every restored file,
+    ours included. Caught on Thor: a backup pass that logged the store file, then three
+    restores that connected the agent and wrote nothing. BackupRulesTest pins its absence.
+    Every other domain here (databases/, shared_prefs/, external files, the
+    device-protected tree) is a sibling of files/, not an ancestor, so those excludes are
+    safe on restore.
+
     Two syntax traps worth knowing before editing:
       * `path` is REQUIRED on a rule. A rule with no path is silently SKIPPED, so
         `<exclude domain="root" />` would look like an opt-out and do nothing.
@@ -69,7 +81,6 @@
         <include domain="file" path="vocab" />
         <exclude domain="file" path="vad" />
         <exclude domain="file" path="crashes" />
-        <exclude domain="root" path="." />
         <exclude domain="database" path="." />
         <exclude domain="sharedpref" path="." />
         <exclude domain="external" path="." />
@@ -83,7 +94,6 @@
         <include domain="file" path="vocab" />
         <exclude domain="file" path="vad" />
         <exclude domain="file" path="crashes" />
-        <exclude domain="root" path="." />
         <exclude domain="database" path="." />
         <exclude domain="sharedpref" path="." />
         <exclude domain="external" path="." />

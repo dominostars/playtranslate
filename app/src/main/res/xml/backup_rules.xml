@@ -11,13 +11,13 @@
     backup there. BackupRulesTest pins its shape alongside the 12+ file's.
 
     Same syntax trap as the 12+ file: `path` is required, and `path="."` means the
-    domain root and everything under it.
+    domain root and everything under it. And the same rule: never exclude the root
+    domain; on restore that is matched by prefix and rejects every file (see the 12+ file).
 -->
 <full-backup-content>
     <include domain="file" path="vocab" />
     <exclude domain="file" path="vad" />
     <exclude domain="file" path="crashes" />
-    <exclude domain="root" path="." />
     <exclude domain="database" path="." />
     <exclude domain="sharedpref" path="." />
     <exclude domain="external" path="." />
