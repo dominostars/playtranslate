@@ -1,21 +1,14 @@
 package com.playtranslate.ui
 
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
-import android.graphics.Color
-import android.graphics.Rect
 import android.os.Bundle
-import android.util.TypedValue
-import android.view.Gravity
+import com.playtranslate.overlay.OverlayHost
+import android.view.WindowManager
+import android.graphics.Point
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
-import android.widget.LinearLayout
-import android.widget.PopupWindow
-import android.widget.ScrollView
-import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -31,56 +24,10 @@ import com.playtranslate.model.TranslationResult
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.selectHeadword
 import com.playtranslate.language.SourceLangId
-import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.themeColor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import androidx.core.graphics.drawable.toDrawable
-import androidx.core.view.isVisible
-import androidx.core.view.isGone
-
-/**
- * Reset [ScrollView] scroll to (0, 0) without firing the registered
- * scroll listener — i.e. without making a programmatic reset look like
- * user intent. Detach → scrollTo (synchronous, fires onScrollChanged
- * inline on the main thread, sees no listener) → reattach.
- *
- * Only safe with the synchronous [ScrollView.scrollTo]; do not use with
- * [ScrollView.smoothScrollTo] which dispatches asynchronously and would
- * fire onScrollChanged after the reattach.
- */
-private fun ScrollView.scrollToTopSilently(listener: View.OnScrollChangeListener) {
-    setOnScrollChangeListener(null)
-    scrollTo(0, 0)
-    setOnScrollChangeListener(listener)
-}
-
-/**
- * Restore a saved scroll [y] without firing the registered listener — the
- * preserve-position counterpart to [scrollToTopSilently], used when only the
- * translation changed (so the user's place in the result shouldn't jump).
- * [ScrollView.scrollTo] clamps [y] to the current content range, so an offset
- * that outran a now-shorter result lands at the bottom rather than in empty
- * space. Same synchronous-scrollTo caveat as [scrollToTopSilently].
- */
-private fun ScrollView.restoreScrollSilently(y: Int, listener: View.OnScrollChangeListener) {
-    setOnScrollChangeListener(null)
-    scrollTo(0, y)
-    setOnScrollChangeListener(listener)
-}
-
-/**
- * Top of [descendant] in this ScrollView's content coordinate space —
- * i.e. independent of the current scroll offset (offsetDescendantRectToMyCoords
- * stops at this view, so it never subtracts our own scrollY). Subtract
- * [ScrollView.getScrollY] to get the view's offset from the viewport top.
- */
-private fun ScrollView.contentTopOf(descendant: View): Int {
-    val r = Rect(0, 0, descendant.width, descendant.height)
-    offsetDescendantRectToMyCoords(descendant, r)
-    return r.top
-}
 
 /**
  * Shared fragment that displays translation results: original text, translation,
@@ -208,63 +155,11 @@ class TranslationResultFragment : Fragment() {
         fun setLiveShowOnScreen(on: Boolean)
     }
 
-    // ── Views ─────────────────────────────────────────────────────────────
-    private lateinit var tvStatus: TextView
-    private lateinit var tvStatusHint: TextView
-    private lateinit var tvLiveHint: TextView
-    private lateinit var statusContainer: View
-    private lateinit var resultsContent: ScrollView
-    private lateinit var tvOriginal: ClickableTextView
-
-    /** Renders the source + target sections (shared with the over-game capture
-     *  panel): inline furigana, the word highlight, section visibility, copy, and
-     *  the source speak button. */
-    private lateinit var binder: TranslationSectionBinder
-
-    /** The Words card (rows, deck badges, hidden-words ordering + eye) and
-     *  the tap-a-word lens — both shared with the over-game surfaces. */
-    private lateinit var wordRows: WordRowsBinder
-    private lateinit var sourceLens: SourceTextLens
-
-    /** Text-size range picker, hosted in this fragment's root FrameLayout. */
-    private var fontPopover: FontSizeRangePopover? = null
-
-    private lateinit var resultActionButtons: View
-    private lateinit var btnResultClear: View
-
-    private var furiganaPopup: PopupWindow? = null
-
-    /** Bumped on every [renderResult] call. The results reveal is async (hide →
-     *  fit → show across two posts), so a fast Translating→Status/Error/Idle
-     *  transition could otherwise let a queued reveal re-show stale results over
-     *  the status screen. Each posted step bails if the generation moved on. */
-    private var renderGeneration = 0
-
-    /** Source text of the last Translating/Ready render, used to decide
-     *  whether a new Ready emission should keep the user's scroll position
-     *  (same source → only the translation changed, e.g. a Translating→Ready
-     *  promotion or a backend re-translate) or reset to the top (source
-     *  changed → a fresh capture or an edit-overlay commit, where the old
-     *  offset is meaningless). Cleared to null on status/idle/error so the
-     *  next translation always starts at the top. */
-    private var lastRenderedSourceText: String? = null
-
-    /** Reified scroll listener so [scrollToTopSilently] can detach + reattach
-     *  it around programmatic scrolls — otherwise the framework's
-     *  onScrollChanged callback for our own [resultsContent.scrollTo] would
-     *  be misread as user intent and pause live mode the instant a fresh
-     *  result lands. */
-    private val scrollListener = View.OnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
-        if (scrollY != oldScrollY) {
-            dismissFurigana()
-            dismissWordPopup()
-            // NOT the font popover: its scrim makes the scroll untouchable
-            // while it's open, so any scroll seen here is our OWN re-fit
-            // reflowing the cards — dismissing on it would close the popover
-            // out from under the drag that caused it.
-            host?.onUserScrolled()
-        }
-    }
+    /** The page content — sections, Words card, lens, text-size popover
+     *  and the render funnel — shared with the workspace's Sentence page
+     *  ([TranslationResultContent]); this fragment is its in-app shell,
+     *  supplying what only the Activity side knows through [ContentHost]. */
+    private lateinit var content: TranslationResultContent
 
     /** Activity-scoped source of truth for the result + lookup state.
      *  Activities mutate via VM methods; this fragment observes
@@ -314,83 +209,18 @@ class TranslationResultFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        bindViews(view)
-        val activity = requireActivity()
-        val alertTarget = TtsAlertTarget.InActivity(activity)
-        binder = TranslationSectionBinder(
-            view,
-            requireContext(),
-            prefs,
-            viewLifecycleOwner.lifecycleScope,
-            alertTarget,
-        )
-        wordRows = WordRowsBinder(
-            view, requireContext(), prefs,
-            object : WordRowsBinder.Host {
-                override val isAlive: Boolean get() = isAdded && this@TranslationResultFragment.view != null
-                override val scope: CoroutineScope get() = viewLifecycleOwner.lifecycleScope
-                override val ttsAlertTarget: TtsAlertTarget get() = alertTarget
-                override fun onInteraction() {
-                    host?.onInteraction()
-                }
-                override fun onWordTapped(row: RowState) {
-                    val ready = currentReady()
-                    host?.onWordTapped(
-                        row.displayWord,
-                        row.reading.ifEmpty { null },
-                        ready?.screenshotPath,
-                        ready?.originalText,
-                        ready?.translatedText,
-                        currentSettledRows()?.toLegacyMap() ?: emptyMap(),
-                    )
-                }
-            },
-        )
-        // The in-app lens lives in the activity window (no overlay host);
-        // its chips route through this fragment's host + Anki launchers.
-        sourceLens = SourceTextLens(
-            activity, activity.windowManager, android.view.Display.DEFAULT_DISPLAY,
-            overlayHost = null,
-            scope = viewLifecycleOwner.lifecycleScope,
-            ttsAlertTarget = alertTarget,
-            binder = binder,
-            screenSize = {
-                val dm = resources.displayMetrics
-                android.graphics.Point(dm.widthPixels, dm.heightPixels)
-            },
-            showAnkiChip = { true },
-            // No entry, nothing to open into, no chevron.
-            opensWithoutEntry = false,
-            decks = wordRows.deckSource,
-            wireActions = { lens, resolvedAt -> wireLensActions(lens, resolvedAt) },
-        )
-        tvOriginal.onTapAtOffset = { offset -> sourceLens.onTapAtOffset(offset) }
-        // The layout root is a FrameLayout, so the popover floats over the
-        // results scroll without a wrapper. Its scrim covers this fragment
-        // only — a tap on surrounding activity chrome won't dismiss it.
-        fontPopover = FontSizeRangePopover(requireContext(), view as FrameLayout, prefs).apply {
-            // fitTextSizes fits each section to half the (unchanged) scroll
-            // height, so the sections resize in place and the anchor button —
-            // topmost in the scroll — never moves under the user's finger.
-            onRangeChanged = { fitTextSizes() }
-        }
-        setupButtons()
-        // Observe activity-scoped VM state. Both flows are activity-scoped
-        // (survive fragment view recreation), so a rotation re-renders the
-        // last state without re-running the pipeline. The collectors run
-        // only while the fragment is STARTED, so they cleanly stop when
-        // the view is destroyed and resume when recreated.
+        content = TranslationResultContent(view, requireContext(), prefs, vm, ContentHost(requireActivity()))
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                launch { vm.result.collect { renderResult(it) } }
-                launch { vm.wordLookups.collect { renderWordLookups(it) } }
+                launch { vm.result.collect { content.render(it) } }
+                launch { vm.wordLookups.collect { content.renderWordLookups(it) } }
                 // Deck badges on any card added anywhere in the app, and
                 // hidden-word changes from anywhere — both fire while dialogs
                 // are on top (this fragment stays STARTED beneath them, which
                 // an onResume hook would miss), and the store's StateFlow
                 // replays on STARTED, which also covers returning from the
                 // sheet.
-                wordRows.attachCollectors(this)
+                content.wordRows.attachCollectors(this)
                 // Keep the live-mode "show on screen" pill in lockstep with
                 // the hide-overlays-during-auto setting, whichever surface
                 // writes it (this toggle, or the Settings row on return).
@@ -402,58 +232,8 @@ class TranslationResultFragment : Fragment() {
     }
 
     override fun onDestroyView() {
-        dismissFurigana()
-        dismissWordPopup()
-        fontPopover?.dismiss()
-        fontPopover = null
-        binder.release()
+        content.release()
         super.onDestroyView()
-    }
-
-    private fun bindViews(view: View) {
-        tvStatus             = view.findViewById(R.id.tvStatus)
-        tvStatusHint         = view.findViewById(R.id.tvStatusHint)
-        tvLiveHint           = view.findViewById(R.id.tvLiveHint)
-        statusContainer      = view.findViewById(R.id.statusContainer)
-        resultsContent       = view.findViewById(R.id.resultsContent)
-        tvOriginal           = view.findViewById(R.id.tvOriginal)
-        resultActionButtons  = view.findViewById(R.id.resultActionButtons)
-        btnResultClear       = view.findViewById(R.id.btnResultClear)
-    }
-
-    private fun setupButtons() {
-        // Copy / show-hide / furigana toggle / speak live in the shared binder.
-        // Editing is surface-specific: in-app it opens the host's edit overlay.
-        binder.setupSectionButtons(
-            onEdit = {
-                dismissFurigana()
-                dismissWordPopup()
-                host?.onEditOriginalRequested()
-            },
-            onAddToAnki = { onAnkiClicked() },
-            onAnkiOneTap = { oneTapSentenceFromResult() },
-        )
-        binder.onChooseFontSize = {
-            fontPopover?.toggle(binder.fontSizeAnchor)
-        }
-        binder.onChooseOcr = {
-            currentReady()?.ocrProvenance?.let { showOcrPicker(it.sourceLangId, it.engineToken) }
-        }
-        binder.onChooseLanguage = { isSource -> host?.onChangeLanguageRequested(isSource) }
-        binder.setShowOnScreenAction { onShowOnScreenTapped() }
-        // This vertical page just reflows on an eye toggle (no re-layout work),
-        // but REVEALING the translation section on a deferred result must run
-        // the translation that was skipped while it was hidden.
-        binder.onSectionVisibilityChanged = { maybeRequestDeferredCompletion() }
-        resultsContent.setOnScrollChangeListener(scrollListener)
-        btnResultClear.setOnClickListener {
-            // Pure state action — no host context needed. Reset directly
-            // to idle status; the fragment will re-render from the VM.
-            vm.showStatus(getString(R.string.status_idle), showHint = true)
-        }
-        // The Anki action now lives on the source/target section headers
-        // (tap = review sheet, long-press = one-tap), wired via the binder's
-        // setupSectionButtons above.
     }
 
     /** Open the "Choose OCR tool" picker for source language [id], highlighting
@@ -475,129 +255,10 @@ class TranslationResultFragment : Fragment() {
         ).show()
     }
 
-    // ── Result render (driven by vm.result observation) ──────────────────
-
-    private fun renderResult(state: ResultState) {
-        if (view == null) return
-        // Every render supersedes any pending async reveal from a prior one —
-        // see [renderGeneration]. Captured by [revealResultsContentFitted].
-        val generation = ++renderGeneration
-        // Reconcile the on-screen boxes BEFORE rendering: any state that
-        // doesn't carry boxes (a new capture's InProgress status, Clear, a
-        // live result, an edit commit) dismisses them and disables the toggle
-        // — the single funnel for "new content ends the presentation".
-        syncOnScreenBoxes(
-            when (state) {
-                is ResultState.Translating -> state.onScreenBoxes
-                is ResultState.Ready -> state.onScreenBoxes
-                else -> null
-            }
-        )
-        when (state) {
-            is ResultState.Idle -> {
-                showStatusUi(getString(R.string.status_idle), showHint = true)
-            }
-            is ResultState.Status -> {
-                showStatusUi(state.message, state.showHint, state.ocrProvenance)
-            }
-            is ResultState.Error -> {
-                showStatusUi(getString(R.string.status_error, state.message), showHint = false)
-            }
-            is ResultState.Translating -> {
-                // A placeholder is always a freshly-started translation (drag
-                // sentence / edit commit), so reset to top; record the source
-                // so the matching Ready promotion preserves the user's scroll.
-                lastRenderedSourceText = state.originalText
-                binder.bindTranslating(state.segments, state.ocrProvenance)
-                wordRows.applyWordsVisibility()
-                statusContainer.isGone = true
-                resultActionButtons.isVisible = showsClearAction
-                // The source text is final the instant the placeholder shows, so
-                // fit it now — not when the translation later lands, which would
-                // make it visibly resize. revealResultsContentFitted is the shared
-                // hide→fit→show both states run, so the two can't drift on sizing.
-                revealResultsContentFitted(generation) { scrollToFreshResultStart() }
-            }
-            is ResultState.Ready -> {
-                val result = state.result
-                // Keep the user's place when only the translation changed
-                // (Translating→Ready promotion, backend re-translate); reset to
-                // top only when the source text itself changed — a fresh capture
-                // or an edit-overlay commit — where the old offset is meaningless.
-                // The anchor is captured before the binder mutates content, so it
-                // reflects what the user was looking at. See [lastRenderedSourceText].
-                val preserveScroll = result.originalText == lastRenderedSourceText
-                val scrollAnchor = if (preserveScroll) captureScrollAnchor() else null
-                lastRenderedSourceText = result.originalText
-                // A blank translation on a Ready result means a re-translate is
-                // in flight (the edit-overlay commit clears the old translation
-                // before the new one lands); the binder shows the "Translating…"
-                // placeholder instead of an empty card.
-                binder.bindResult(result, canReOcr = host?.canReOcr() == true)
-                wordRows.applyWordsVisibility()
-                statusContainer.isGone = true
-                resultActionButtons.isVisible = showsClearAction
-                revealResultsContentFitted(generation) {
-                    if (scrollAnchor != null) restoreScrollAnchor(scrollAnchor)
-                    else scrollToFreshResultStart()
-                }
-                // A deferred result bound while the section is visible (revealed
-                // on another surface — the pref is global and nothing listens
-                // for flips) must run its skipped translation now. No-op for
-                // results without a pending, so safe on every Ready render.
-                maybeRequestDeferredCompletion()
-            }
-        }
-    }
-
-    /** Fresh-result scroll reset: always the top.
-     *
-     *  Deliberately NOT the hidden-section park that [CaptureResultOverlay]
-     *  does (scrolling the collapsed translation header off the top when its
-     *  eye is closed). That park belongs to the panels that sit over the game,
-     *  where the panel is a transient sheet and every pixel is borrowed from
-     *  the game. The in-app results page is a page: it starts at its top, its
-     *  own top bar stays put, and a self-inflicted scroll here reads as user
-     *  intent — in dual-screen live mode it tripped [scrollListener] →
-     *  host.onUserScrolled() → pauseLiveMode on every incoming result. */
-    private fun scrollToFreshResultStart() {
-        resultsContent.scrollToTopSilently(scrollListener)
-    }
-
-    /** Shared status / error / idle layout — single status container,
-     *  results hidden, Anki gone. [showHint] gates the
-     *  "press X to start" hint line under the message. */
-    private fun showStatusUi(
-        message: String,
-        showHint: Boolean,
-        ocrProvenance: OcrProvenance? = null,
-    ) {
-        // Leaving the results view drops the scroll anchor: the next translation
-        // is unrelated content and should land at the top.
-        lastRenderedSourceText = null
-        // No-text status affordances, each its own tappable span (so tapping one can't
-        // trigger the other): the source-language name is accent-colored → source picker
-        // (same as the source header); the gear → OCR picker, shown when the switch will
-        // actually be acted on (a pinned frame to re-OCR, or a live loop that will look
-        // again — the host owns that fact) AND there's >1 OCR tool for the language.
-        val showGear = ocrProvenance != null && host?.canReOcr() == true &&
-            OcrModelManager.availableBackends(requireContext(), ocrProvenance.sourceLangId).size > 1
-        tvStatus.setNoTextStatus(
-            message,
-            showGear,
-            onLanguageTap = { host?.onChangeLanguageRequested(true) },
-            onGearTap = { ocrProvenance?.let { showOcrPicker(it.sourceLangId, it.engineToken) } },
-        )
-        tvStatusHint.visibility = if (showHint) View.VISIBLE else View.GONE
-        tvLiveHint.isGone = true
-        statusContainer.isVisible = true
-        resultsContent.isGone = true
-    }
-
     /** True iff the activity is currently showing a translation result
      *  (vs status/error/translating). View-state helper for the host. */
     val isShowingResults: Boolean
-        get() = view != null && vm.result.value is ResultState.Ready
+        get() = view != null && content.isShowingResults
 
     // ── "Show on screen" toggle (dual-screen) ─────────────────────────────
 
@@ -638,13 +299,13 @@ class TranslationResultFragment : Fragment() {
         val liveState = host?.liveShowOnScreenState()
         if (liveState != null) {
             // Live semantics: the pill mirrors the setting, no boxes needed.
-            binder.setShowOnScreenAvailable(true)
-            binder.setShowOnScreenToggled(liveState)
+            content.binder.setShowOnScreenAvailable(true)
+            content.binder.setShowOnScreenToggled(liveState)
         } else {
-            binder.setShowOnScreenAvailable(
+            content.binder.setShowOnScreenAvailable(
                 currentOnScreenBoxes != null && host?.supportsShowOnScreen() == true
             )
-            binder.setShowOnScreenToggled(host?.isResultBoxesShownOnScreen() == true)
+            content.binder.setShowOnScreenToggled(host?.isResultBoxesShownOnScreen() == true)
         }
     }
 
@@ -662,118 +323,11 @@ class TranslationResultFragment : Fragment() {
             currentOnScreenBoxes?.let { host?.showResultBoxesOnScreen(it) }
             // Boxes on a deferred result go up as skeletons — run the skipped
             // translation; its completion swaps the filled boxes in.
-            maybeRequestDeferredCompletion(force = true)
+            content.requestDeferredCompletion(force = true)
         }
         // Ownership flipped synchronously (or the show was refused); the
         // refresh reads whichever reality landed.
         refreshShowOnScreen()
-    }
-
-    /** Deferred-translation trigger funnel (mirror of the over-game panel's
-     *  maybeCompleteDeferred): ask the host to run the skipped translation
-     *  when the bound Ready result still carries a pending AND either the
-     *  translation section is visible or [force] — a consumer needs the
-     *  translation regardless of the section's visibility (on-screen boxes,
-     *  an Anki flow). The host is the single completion owner and guards
-     *  against duplicate triggers. */
-    private fun maybeRequestDeferredCompletion(force: Boolean = false) {
-        if (currentReady()?.pendingTranslation == null) return
-        if (prefs.hideTranslationSection && !force) return
-        host?.completeDeferredTranslation()
-    }
-
-    /**
-     * Shrink translation and original text so each tries to fit within half the
-     * visible scroll area (the binder owns the per-view shrink).
-     */
-    private fun fitTextSizes() {
-        val scrollHeight = resultsContent.height.takeIf { it > 0 } ?: return
-        val halfHeight = scrollHeight / 2
-        // Fit the source to its PLAIN text: ruby lands before the Ready fit, and the
-        // scroll absorbs its extra height, so measuring ruby here would shrink the
-        // source font the moment the translation lands (it must stay put). See
-        // [TranslationSectionBinder.fitText].
-        binder.fitText(translationTargetPx = halfHeight, sourceTargetPx = halfHeight, sourceMeasuresRuby = false)
-    }
-
-    /**
-     * Reveal the results card with its text already sized: hide it, fit the
-     * source + translation to their halves once laid out, then position the
-     * scroll and show. Fitting BEFORE the first paint is why the source doesn't
-     * visibly resize when the translation later lands — Translating and Ready
-     * both size it through this one path, so they can't drift apart.
-     *
-     * [positionScroll] runs in a nested post so it measures the *post-fit*
-     * layout (fitText's shrink is a relayout deferred behind the traversal's
-     * sync barrier): the Ready anchor restore needs settled geometry, and a
-     * scroll-to-top is harmless to defer.
-     */
-    private fun revealResultsContentFitted(generation: Int, positionScroll: () -> Unit) {
-        resultsContent.visibility = View.INVISIBLE
-        resultsContent.post {
-            // A newer render (a result update, or a switch to status/error/idle
-            // that already hid the results) supersedes this reveal — bail so we
-            // don't resurrect stale content over the status screen. The newer
-            // render owns visibility from here.
-            if (view == null || generation != renderGeneration) return@post
-            fitTextSizes()
-            resultsContent.post {
-                if (view == null || generation != renderGeneration) return@post
-                positionScroll()
-                resultsContent.isVisible = true
-            }
-        }
-    }
-
-    /** A view to keep visually pinned across a result re-render, plus its
-     *  pixel offset from the top of the scroll viewport when captured. */
-    private class ScrollAnchor(val view: View, val offsetFromViewportTop: Int)
-
-    /**
-     * Snapshot the view sitting at the top of the results viewport so a
-     * re-render that changes the height of the translation/source cards
-     * restores the user to the same *content*, not the same raw pixel offset
-     * (which would drift as the growing translation card pushes rows down).
-     *
-     * Candidates run top-to-bottom: each result block, plus every word row so a
-     * deep scroll into the list anchors on the right row. The most specific
-     * (largest top) block straddling the viewport top wins; if the top sits in
-     * a gap, the first block below it is used. Null when there's nothing to
-     * anchor on.
-     */
-    private fun captureScrollAnchor(): ScrollAnchor? {
-        val content = resultsContent.getChildAt(0) as? ViewGroup ?: return null
-        val scrollY = resultsContent.scrollY
-        var straddler: View? = null
-        var straddlerTop = Int.MIN_VALUE
-        var firstBelow: View? = null
-        var firstBelowTop = Int.MAX_VALUE
-        fun consider(v: View) {
-            if (!v.isVisible || v.height == 0) return
-            val top = resultsContent.contentTopOf(v)
-            if (top <= scrollY && scrollY < top + v.height) {
-                if (top > straddlerTop) { straddler = v; straddlerTop = top }
-            } else if (top >= scrollY && top < firstBelowTop) {
-                firstBelow = v; firstBelowTop = top
-            }
-        }
-        for (i in 0 until content.childCount) consider(content.getChildAt(i))
-        val rows = wordRows.container
-        for (i in 0 until rows.childCount) consider(rows.getChildAt(i))
-        val anchor = straddler ?: firstBelow ?: return null
-        return ScrollAnchor(anchor, resultsContent.contentTopOf(anchor) - scrollY)
-    }
-
-    /** Re-scroll so [anchor]'s view returns to the viewport offset it had when
-     *  captured, measured against the now-settled layout. No-op if the anchored
-     *  view was detached by the re-render. */
-    private fun restoreScrollAnchor(anchor: ScrollAnchor) {
-        if (anchor.view.parent == null) {
-            resultsContent.scrollToTopSilently(scrollListener)
-            return
-        }
-        val target = resultsContent.contentTopOf(anchor.view) - anchor.offsetFromViewportTop
-        resultsContent.restoreScrollSilently(target, scrollListener)
     }
 
     /** Game-audio ring anchor for an Anki launch from this page: a
@@ -875,7 +429,7 @@ class TranslationResultFragment : Fragment() {
         // would leave the capture's null rows unfilled and the pending set.
         // The dispatch's fill still covers the card if it runs first; at
         // worst this flow costs one duplicate backend call.
-        maybeRequestDeferredCompletion(force = true)
+        content.requestDeferredCompletion(force = true)
         val activity = activity ?: return
         val ankiManager = AnkiManager(activity)
         if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) {
@@ -930,7 +484,7 @@ class TranslationResultFragment : Fragment() {
                         val msgRes = sendResult.shortfallRes()
                             ?: ankiAddedSuccessRes(CardMode.SENTENCE)
                         Toast.makeText(appCtx, msgRes, Toast.LENGTH_SHORT).show()
-                        wordRows.refreshWordBadges()
+                        content.wordRows.refreshWordBadges()
                     }
                     is AnkiSendResult.Failed -> {
                         val ctx = requireContext()
@@ -1048,7 +602,7 @@ class TranslationResultFragment : Fragment() {
                         // other handlers do.
                         val msgRes = result.shortfallRes() ?: ankiAddedSuccessRes(mode)
                         Toast.makeText(appCtx, msgRes, Toast.LENGTH_SHORT).show()
-                        wordRows.refreshWordBadges()
+                        content.wordRows.refreshWordBadges()
                     }
                     is AnkiSendResult.Failed -> {
                         Toast.makeText(appCtx,
@@ -1080,7 +634,7 @@ class TranslationResultFragment : Fragment() {
         // sheet's fill still covers the card if it opens before the
         // completion lands; at worst this flow costs one duplicate backend
         // call.
-        maybeRequestDeferredCompletion(force = true)
+        content.requestDeferredCompletion(force = true)
         val activity = activity ?: return
         val ankiManager = AnkiManager(activity)
         // Snapshot the settled rows ONCE so wordResults + surfaces + enrichment
@@ -1180,150 +734,114 @@ class TranslationResultFragment : Fragment() {
     }
 
     private fun dismissWordPopup() {
-        sourceLens.dismiss()
-    }
-
-    private fun showFurigana(range: IntRange, reading: String) {
-        val ctx = context ?: return
-        val layout = tvOriginal.layout ?: return
-        val textLen = tvOriginal.text?.length ?: return
-        val dm = resources.displayMetrics
-        fun dp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, dm).toInt()
-
-        val bgColor = ctx.themeColor(R.attr.ptCard)
-        val arrowW = dp(12f)
-        val arrowH = dp(6f)
-
-        val cornerR = dp(6f).toFloat()
-        val tv = TextView(ctx).apply {
-            text = reading
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            setTextColor(ctx.themeColor(R.attr.ptText))
-            setPadding(dp(10f), dp(5f), dp(10f), dp(5f))
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(bgColor)
-                cornerRadius = cornerR
-            }
-            elevation = dp(4f).toFloat()
-        }
-
-        // Small triangle arrow pointing down
-        val arrowView = object : View(ctx) {
-            private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = bgColor }
-            private val path = android.graphics.Path()
-            override fun onDraw(canvas: android.graphics.Canvas) {
-                path.rewind()
-                path.moveTo(0f, 0f)
-                path.lineTo(width.toFloat(), 0f)
-                path.lineTo(width / 2f, height.toFloat())
-                path.close()
-                canvas.drawPath(path, paint)
-            }
-        }
-
-        val container = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            clipChildren = false
-            clipToPadding = false
-            addView(tv, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ))
-            addView(arrowView, LinearLayout.LayoutParams(arrowW, arrowH).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-            })
-        }
-
-        val popup = PopupWindow(container, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
-            isOutsideTouchable = true
-            setOnDismissListener { furiganaPopup = null }
-        }
-        furiganaPopup = popup
-
-        // Position above the tapped word, centered horizontally
-        val safeEnd = (range.last + 1).coerceAtMost(textLen)
-        val startLine = layout.getLineForOffset(range.first)
-        val startX = layout.getPrimaryHorizontal(range.first)
-        val endX = layout.getPrimaryHorizontal(safeEnd)
-        val midX = ((startX + endX) / 2).toInt()
-        val lineTop = layout.getLineTop(startLine)
-
-        // Measure popup to center it
-        container.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
-        val popupW = container.measuredWidth
-        val popupH = container.measuredHeight
-
-        val loc = IntArray(2)
-        tvOriginal.getLocationOnScreen(loc)
-        val anchorX = loc[0] + tvOriginal.totalPaddingLeft + midX - popupW / 2
-        val anchorY = loc[1] + tvOriginal.totalPaddingTop + lineTop - tvOriginal.scrollY - popupH
-
-        popup.showAtLocation(tvOriginal, Gravity.NO_GRAVITY, anchorX.coerceAtLeast(0), anchorY.coerceAtLeast(0))
-    }
-
-    private fun dismissFurigana() {
-        furiganaPopup?.dismiss()
-        furiganaPopup = null
+        content.dismissLens()
     }
 
     fun setLiveHintText(text: CharSequence) {
-        if (view != null) tvLiveHint.text = text
+        if (view != null) content.setLiveHintText(text)
     }
 
     /** Returns the displayed original text (with OCR line breaks preserved). */
     fun getDisplayedOriginalText(): String =
-        if (view != null) tvOriginal.text?.toString() ?: "" else ""
-
-    // ── Word lookups (rendering only — pipeline lives in VM) ─────────────
-
-    /** Observation-driven render of [vm.wordLookups]. The pipeline
-     *  itself runs on [viewModelScope] inside the VM so rotation
-     *  mid-lookup preserves progress; the shared [WordRowsBinder] mirrors
-     *  the state into the card, and this only keeps the tap spans and the
-     *  lens in step with it. */
-    private fun renderWordLookups(state: WordLookupsState) {
-        if (view == null) return
-        when (state) {
-            is WordLookupsState.Idle -> sourceLens.wordSpans = emptyList()
-            is WordLookupsState.Loading -> {
-                dismissFurigana()
-                dismissWordPopup()
-                sourceLens.wordSpans = emptyList()
-            }
-            is WordLookupsState.Settled -> {
-                recomputeWordSpans(state.tokenSpans, state.lookupToReading, state.phrases)
-                // Furigana is NOT applied here: it's driven by bindSource in
-                // renderResult, so it paints with the source text (during the
-                // Translating placeholder), not after this heavier lookup settles.
-            }
-        }
-        wordRows.render(state)
-    }
+        if (view != null) content.displayedOriginalText() else ""
 
     override fun onResume() {
         super.onResume()
         // Deck membership can change while we're away (a card added here, in the
         // review sheet, or in AnkiDroid). Re-evaluate so badges aren't stuck on
         // the cached pre-add state.
-        wordRows.refreshWordBadges()
+        content.wordRows.refreshWordBadges()
     }
 
-    /** Derive view-side word spans from the VM's per-occurrence
-     *  tokenSpans plus the displayed text (which may have OCR
-     *  newlines inserted that aren't in [TranslationResult.originalText]).
-     *  The JMdict-resolved reading wins, then surface-keyed reading,
-     *  then the tokenizer's own reading (Kuromoji) as a last fallback
-     *  so out-of-dictionary tokens still carry a reading into the
-     *  word-tap popup. */
-    private fun recomputeWordSpans(
-        tokenSpans: List<com.playtranslate.language.TokenSpan>,
-        lookupToReading: Map<String, String>,
-        phrases: List<com.playtranslate.language.PhraseOccurrence>,
-    ) {
-        val displayedText = tvOriginal.text?.toString()
-        sourceLens.wordSpans = if (displayedText == null) emptyList()
-        else SourceWordLookup.computeTapSpans(displayedText, tokenSpans, lookupToReading, phrases)
-    }
+    /** The in-app side of the content seam: the lens lives in the activity
+     *  window and its chips route through this fragment's host + Anki
+     *  launchers; a word tap opens the host's detail sheet; editing, the
+     *  OCR and language pickers, Clear and the show-on-screen toggle are
+     *  this page's; the render hook reconciles the on-screen boxes; the
+     *  host activity completes deferred translations. */
+    private inner class ContentHost(private val activity: Activity) : TranslationResultContent.Host {
+        override val isAlive: Boolean get() = isAdded && view != null
+        override val scope: CoroutineScope get() = viewLifecycleOwner.lifecycleScope
+        override val ttsAlertTarget: TtsAlertTarget = TtsAlertTarget.InActivity(activity)
+        override val lensOverlayHost: OverlayHost? get() = null
+        override val lensWindowManager: WindowManager get() = activity.windowManager
+        override val lensDisplayId: Int get() = android.view.Display.DEFAULT_DISPLAY
+        override fun screenSize(): Point {
+            val dm = resources.displayMetrics
+            return Point(dm.widthPixels, dm.heightPixels)
+        }
 
+        /** No entry, nothing to open into, no chevron. */
+        override val opensWithoutEntry: Boolean get() = false
+
+        override fun wireLensActions(lens: MagnifierLens, resolved: SourceWordLookup.ResolvedAt) =
+            this@TranslationResultFragment.wireLensActions(lens, resolved)
+
+        override fun onWordTapped(word: String, reading: String?) {
+            val ready = currentReady()
+            host?.onWordTapped(
+                word, reading,
+                ready?.screenshotPath,
+                ready?.originalText,
+                ready?.translatedText,
+                currentSettledRows()?.toLegacyMap() ?: emptyMap(),
+            )
+        }
+
+        override fun onInteraction() {
+            host?.onInteraction()
+        }
+
+        override fun onUserScrolled() {
+            host?.onUserScrolled()
+        }
+
+        /** Reconcile the on-screen boxes BEFORE rendering: any state that
+         *  doesn't carry boxes (a new capture's InProgress status, Clear, a
+         *  live result, an edit commit) dismisses them and disables the
+         *  toggle — the single funnel for "new content ends the
+         *  presentation". */
+        override fun onRender(state: ResultState) {
+            syncOnScreenBoxes(
+                when (state) {
+                    is ResultState.Translating -> state.onScreenBoxes
+                    is ResultState.Ready -> state.onScreenBoxes
+                    else -> null
+                },
+            )
+        }
+
+        override fun canReOcr(): Boolean = host?.canReOcr() == true
+
+        override val showsClearAction: Boolean get() = this@TranslationResultFragment.showsClearAction
+
+        /** Pure state action — reset directly to idle status; the fragment
+         *  re-renders from the VM. */
+        override fun onClear() {
+            vm.showStatus(getString(R.string.status_idle), showHint = true)
+        }
+
+        override val showsStartHint: Boolean get() = true
+
+        /** Editing is surface-specific: in-app it opens the host's edit overlay. */
+        override val editAvailable: Boolean get() = true
+        override fun onEditRequested() {
+            host?.onEditOriginalRequested()
+        }
+
+        override fun onChooseOcr(provenance: OcrProvenance) =
+            showOcrPicker(provenance.sourceLangId, provenance.engineToken)
+
+        override fun onChangeLanguage(isSource: Boolean) {
+            host?.onChangeLanguageRequested(isSource)
+        }
+
+        override fun onAddToAnki() = onAnkiClicked()
+        override fun onAnkiOneTap() = oneTapSentenceFromResult()
+        override fun onShowOnScreenTapped() = this@TranslationResultFragment.onShowOnScreenTapped()
+
+        override fun completeDeferredTranslation() {
+            host?.completeDeferredTranslation()
+        }
+    }
 }
