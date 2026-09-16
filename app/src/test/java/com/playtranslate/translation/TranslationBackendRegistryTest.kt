@@ -392,6 +392,48 @@ class TranslationBackendRegistryTest {
         assertEquals(0, healthy.translateCalls.get())
     }
 
+    @Test fun `a batch shape failure retries per-text on the same backend`() = runBlocking {
+        // BatchParseException is the LLM backends' and DeepL's signal
+        // that the BATCH request failed (malformed JSON envelope, the
+        // 50-string cap) while the per-text request, a different one,
+        // is expected to work: every text is retried here before any
+        // fallback is consulted.
+        val llm = FakeFailingBatchBackend(
+            id = "llm", priority = 10,
+            batchException = BatchParseException("envelope malformed"),
+        )
+        val fallback = FakeOnlineBackend(id = "fallback", priority = 20)
+        TranslationBackendRegistry.init(listOf(llm, fallback))
+
+        val results = TranslationBackendRegistry.translateBatch(listOf("a", "b", "c"), "ja", "en")
+
+        assertEquals(1, llm.batchCalls.get())
+        assertEquals(3, llm.translateCalls.get())
+        assertEquals(0, fallback.translateCalls.get())
+        assertTrue(results.all { it.backend === llm })
+    }
+
+    @Test fun `a structural batch failure makes no per-text requests and moves the full list on`() = runBlocking {
+        // Lingva's shape failures: its per-text path hits the same
+        // endpoint with the same parser, so a per-text retry would be N
+        // identical failures against the per-IP limiter. The registry
+        // must send nothing more to that backend and hand every text to
+        // the next one.
+        val lingva = FakeFailingBatchBackend(
+            id = "lingva", priority = 10,
+            batchException = StructuralFailureException("Lingva batch: chunk at index 0: top length 1 != q count 3"),
+        )
+        val fallback = FakeOnlineBackend(id = "fallback", priority = 20)
+        TranslationBackendRegistry.init(listOf(lingva, fallback))
+
+        val results = TranslationBackendRegistry.translateBatch(listOf("a", "b", "c"), "ja", "en")
+
+        assertEquals(1, lingva.batchCalls.get())
+        assertEquals("no per-text retry on the failing backend", 0, lingva.translateCalls.get())
+        assertEquals(3, fallback.translateCalls.get())
+        assertTrue(results.all { it.backend === fallback })
+    }
+
     @Test fun `per-text fan-out with mixed results preserves cooldown set by failing sibling`() = runBlocking {
         // Regression for Codex finding: when a per-text fan-out has 1+
         // success and 1+ failure-that-records-a-cooldown, we must NOT

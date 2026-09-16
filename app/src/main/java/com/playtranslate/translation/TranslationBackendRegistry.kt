@@ -334,17 +334,22 @@ object TranslationBackendRegistry {
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: BatchParseException) {
-                    // The provider responded but the shape didn't match —
-                    // size mismatch, malformed JSON, undocumented endpoint
-                    // changed (relevant for Lingva's gtx multi-q path).
-                    // The backend's per-text translate() path is unrelated
-                    // to the batch parse and usually still works, so fall
+                    // The provider responded but the batch shape didn't
+                    // match — the LLM backends' JSON envelope malformed or
+                    // short, DeepL's 50-string cap. For those the per-text
+                    // translate() path is a different request (another
+                    // prompt, one string) and usually still works, so fall
                     // through to the per-text branch below on THIS backend
                     // (no `continue`) instead of skipping to a degraded
-                    // fallback like ML Kit. The no-thrashing rule for
-                    // rate limits still holds — those throw typed
-                    // *RateLimitException, not BatchParseException, and
-                    // are caught by the broader Exception branch.
+                    // fallback like ML Kit. A backend whose per-text path
+                    // shares the batch endpoint and parser (Lingva) must
+                    // NOT throw this: its shape failures are
+                    // StructuralFailureException, caught below, so one
+                    // unusable response is not followed by N identical
+                    // ones. The no-thrashing rule for rate limits still
+                    // holds — those throw typed *RateLimitException, not
+                    // BatchParseException, and are caught by the broader
+                    // Exception branch.
                     Log.w(
                         TAG,
                         "Backend ${backend.id} batch parse failed (${e.message}), retrying per-text on same backend"

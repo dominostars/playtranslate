@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Cooldown participation for [LingvaBackend] — the field failure this
- * guards against is gtx's per-IP 429 under live-mode cadence: without a
+ * guards against is Google's per-IP 429 under live-mode cadence: without a
  * cooldown the waterfall re-hit the limited endpoint every capture
  * cycle, keeping the limiter hot indefinitely (users could only recover
  * by stopping the app long enough for the window to cool — "restarting
@@ -124,7 +124,7 @@ class LingvaBackendCooldownTest {
         // matter how its body handling fails.)
         val backend = lingvaWith(
             cooldown,
-            cannedClient(200, """[[["","こんにちは"]],null,"ja"]"""),
+            cannedClient(200, """[""]"""),
         )
 
         runCatching { backend.translate("こんにちは", "ja", "en") }
@@ -160,19 +160,19 @@ class LingvaBackendCooldownTest {
         assertEquals(clock.get() + 60_000L, cooldown.unavailableUntil())
     }
 
-    @Test fun `batch shape drift is BatchParseException and does not cool down`() = runBlocking {
+    @Test fun `batch shape drift is StructuralFailureException and does not cool down`() = runBlocking {
         val clock = AtomicLong(1_000_000L)
         val cooldown = newCooldown(clock)
         // 200 with an empty top-level array for a 2-text batch: the
-        // size check throws BatchParseException (an IOException subclass)
-        // which must NOT be mistaken for a connection failure.
+        // size check throws StructuralFailureException (an IOException
+        // subclass) which must NOT be mistaken for a connection failure.
         val backend = lingvaWith(cooldown, cannedClient(200, "[]"))
 
         val thrown = runCatching {
             backend.translateBatch(listOf("hello", "world"), "ja", "en")
         }.exceptionOrNull()
-        assertTrue("expected BatchParseException, got $thrown",
-            thrown is BatchParseException)
+        assertTrue("expected StructuralFailureException, got $thrown",
+            thrown is StructuralFailureException)
         runCatching { backend.translateBatch(listOf("hello", "world"), "ja", "en") }
         assertNull(cooldown.unavailableUntil())
     }
@@ -181,7 +181,7 @@ class LingvaBackendCooldownTest {
         // Legacy/test constructor path: failures must neither NPE nor
         // surface a cooldown. (The 200 success path can't be asserted
         // here — unit tests get the stubbed android org.json, so the
-        // gtx body parse isn't exercisable off-device.)
+        // response-body parse isn't exercisable off-device.)
         val limited = lingvaWith(cooldown = null, client = cannedClient(429, "rate limited"))
         val thrown = runCatching { limited.translate("こんにちは", "ja", "en") }.exceptionOrNull()
         assertTrue(thrown is LingvaRateLimitException)

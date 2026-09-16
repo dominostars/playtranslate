@@ -67,6 +67,32 @@ internal class FakeDegradedBackend(
     }
 }
 
+/** Online [BatchTranslator] whose batch call throws [batchException]
+ *  and whose per-text call succeeds, for pinning what the registry does
+ *  after a failed batch: retry per-text on this backend, or move on. */
+internal class FakeFailingBatchBackend(
+    override val id: BackendId,
+    override val priority: Int,
+    private val batchException: Exception,
+    override val displayName: String = "fake-batch-$id",
+    override val status: BackendStatus = BackendStatus.Hidden,
+) : TranslationBackend, BatchTranslator {
+    override val requiresInternet: Boolean = true
+    override val isDegradedFallback: Boolean = false
+    val batchCalls = AtomicInteger(0)
+    val translateCalls = AtomicInteger(0)
+
+    override fun isUsable(source: String, target: String): Boolean = true
+    override suspend fun translateBatch(texts: List<String>, source: String, target: String): List<String> {
+        batchCalls.incrementAndGet()
+        throw batchException
+    }
+    override suspend fun translate(text: String, source: String, target: String): String {
+        translateCalls.incrementAndGet()
+        return "translated-by-$id"
+    }
+}
+
 /** Offline backend (Bergamot / on-device LLM / ML Kit stand-in) with a
  *  controllable [usable], so offline-readiness tests can model enabled/disabled +
  *  installed state. [requiresInternet] is false — it's the offline tier. */

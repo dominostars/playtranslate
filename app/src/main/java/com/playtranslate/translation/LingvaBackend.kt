@@ -13,7 +13,7 @@ import java.io.IOException
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
-/** Thrown when the gtx endpoint rate-limits or blocks the caller
+/** Thrown when Google's endpoint rate-limits or blocks the caller
  *  (HTTP 429 / 403). The cooldown is recorded at the throw site; the
  *  registry treats the throw as "this backend failed", same as
  *  [GeminiRateLimitException]. [httpCode] rides along so the registry's
@@ -22,18 +22,36 @@ class LingvaRateLimitException(val httpCode: Int) : IOException("Lingva rate lim
 
 /**
  * "Lingva" backend — historically a Lingva-proxy translator, currently
- * pointed at Google's `translate.googleapis.com/translate_a/single`
- * endpoint with `client=gtx` directly for lower latency. The class
- * name intentionally matches the user-facing brand and the future
- * intent (we may switch back to a real Lingva instance), even though
- * today the implementation hits the gtx endpoint.
+ * pointed at Google's undocumented `translate.googleapis.com/translate_a/t`
+ * endpoint directly for lower latency. The class name intentionally
+ * matches the user-facing brand and the future intent (we may switch
+ * back to a real Lingva instance), even though today the implementation
+ * hits Google.
  *
  * No API key required.
+ *
+ * Endpoint choice (probed against Google 2026-09-16):
+ *  - `translate_a/t` answers a request with a JSON array of strings, one
+ *    per `q=` param in request order, so one GET carries a whole page.
+ *    `translate_a/single`, the previous endpoint, translates only the
+ *    FIRST of several `q=` params whatever the client id, so the batch
+ *    convention this class used to parse is not honoured; every
+ *    multi-text page fell through to the registry's per-text retry.
+ *  - `client=dict-chrome-ex` (the Google Translate Chrome extension's
+ *    id) replaces `client=gtx`, the id every scraper library sends and
+ *    the first one Google's abuse scoring refuses: since 2026-09-14
+ *    networks trip a per-IP HTML "Sorry" 429 on gtx while the other
+ *    ids answer from the same address. The two ids returned identical
+ *    translations on every probe.
+ *  - The path+query cap is 16384 bytes (measured to the byte: 16384
+ *    answers, 16385 is a 400). POST with the `q=` params as a form body
+ *    lifts it (63 KB of body answered) but the fixed params must stay in
+ *    the query, and a page never approaches the GET cap, so GET stays.
  *
  * [enabledProvider] reflects the user's explicit on/off state from
  * Settings — the registry's waterfall skips this backend when disabled.
  *
- * Cooldown: gtx rate-limits per IP with plain 429s (observed in the
+ * Cooldown: Google rate-limits per IP with plain 429s (observed in the
  * field: sustained live-mode cadence trips it, and continued retries
  * every capture cycle keep the limiter hot indefinitely). [Cooldownable]
  * participation means the waterfall stops hammering a limited endpoint
@@ -84,9 +102,12 @@ class LingvaBackend(
     override suspend fun translate(text: String, source: String, target: String): String =
         withContext(Dispatchers.IO) {
             try {
-                val url = buildUrl(listOf(text), source, target)
-                val body = fetchBody(url)
-                val result = parseSingleBody(body)
+                val body = fetchBody(urlPrefix(source, target) + "&" + encodeQ(text))
+                val result = try {
+                    parseStrings(body, expected = 1)[0]
+                } catch (e: JSONException) {
+                    throw StructuralFailureException("Lingva: unexpected response shape", e)
+                }
                 if (result.isBlank()) throw StructuralFailureException("Blank translation in response")
                 result
             } catch (e: LingvaRateLimitException) { throw e }
@@ -109,14 +130,14 @@ class LingvaBackend(
     ): List<String> = withContext(Dispatchers.IO) {
         try {
             translateBatchInner(texts, source, target)
-        } catch (e: BatchParseException) {
-            // Structural (response shape drift) — the registry retries
-            // per-text on this same backend, so the provider isn't
-            // unhealthy and nothing is recorded. Must be rethrown before
-            // the IOException catch below: it IS an IOException subclass.
-            throw e
         } catch (e: LingvaRateLimitException) { throw e }
-        catch (e: StructuralFailureException) { throw e }
+        catch (e: StructuralFailureException) {
+            // A response that arrived but could not be used (shape drift,
+            // a blank entry, a 4xx): categorized at the throw site,
+            // nothing recorded. Must be rethrown before the IOException
+            // catch below: it IS an IOException subclass.
+            throw e
+        }
         catch (e: IOException) {
             cooldownState?.recordNetworkFailure("Connection failed")
             throw e
@@ -128,25 +149,29 @@ class LingvaBackend(
         source: String,
         target: String,
     ): List<String> {
-        // gtx is undocumented; the multi-q convention used by tools like
-        // translate-shell and LunaTranslator is to repeat &q= per input
-        // and treat the top-level array as a list of per-q results, each
-        // shaped like the single-q response. If Google ever changes that
-        // shape, the size / JSONException checks in parseBatchBody throw
-        // BatchParseException so the registry falls through to per-text
-        // fan-out within the same backend turn — Lingva keeps working
-        // either way, just loses the batching speedup.
+        // One `&q=` per input; the endpoint answers with one string per
+        // q in request order (a lone q gets a one-element array, so a
+        // one-text chunk parses like any other). If Google ever changes
+        // that shape, the size / type checks in parseStrings throw
+        // StructuralFailureException, NOT BatchParseException: the
+        // registry answers the latter with a per-text retry on the same
+        // backend, which is right for the LLM backends (a batch prompt's
+        // JSON can be malformed while the per-text prompt is a different
+        // request) but wrong here, where translate() hits the same
+        // endpoint with the same parser and would fail N more times the
+        // same way. A structural throw moves the FULL pending list to
+        // the next backend at the cost of the one request already sent.
         //
-        // URL length is a packing boundary, not a failure. Many HTTP
-        // servers / intermediaries cap request URIs around 8 KiB, and a
-        // percent-encoded CJK character costs nine URL bytes, so a
-        // text-heavy Japanese screen overruns MAX_BATCH_URL_LENGTH
-        // easily. The old preflight threw BatchParseException here and
-        // the registry's per-text retry then fanned the whole page out
-        // as N parallel requests against the same per-IP limiter the
-        // batching exists to protect. Now the pending texts are packed
-        // greedily into the fewest chunks that each fit, and the page
-        // costs ceil(bytes / cap) requests instead of N.
+        // URL length is a packing boundary, not a failure. Google's
+        // front end caps path+query at 16 KiB (measured), and a
+        // percent-encoded CJK character costs nine URL bytes, so a very
+        // text-heavy page can overrun MAX_BATCH_URL_LENGTH. The old
+        // preflight threw BatchParseException here and the registry's
+        // per-text retry then fanned the whole page out as N parallel
+        // requests against the same per-IP limiter the batching exists
+        // to protect. Instead the pending texts are packed greedily into
+        // the fewest chunks that each fit, and the page costs
+        // ceil(bytes / cap) requests instead of N.
         //
         // Chunks go out SEQUENTIALLY and the first failure ends the
         // sequence: a 429 on chunk one must not be followed by chunk two
@@ -161,15 +186,6 @@ class LingvaBackend(
         // off Lingva anyway. A text that alone overruns the cap is sent
         // as its own single-q chunk — the identical URL the per-text
         // path would build for it — and the server decides.
-        //
-        // A one-text chunk (that lone oversize text, or a one-item
-        // remainder after packing) carries a single q, and gtx answers
-        // a single q with the SINGLE-q shape, not a one-element per-q
-        // list: it is parsed by translate()'s parser, with its failures
-        // classed the way this batch path classes them. A Codex native
-        // review caught the multi-q parse being applied to it, which
-        // would have turned every such page into the per-text retry
-        // this change exists to remove.
         val prefix = urlPrefix(source, target)
         val params = texts.map { encodeQ(it) }
         val chunks = packChunks(prefix.length, params.map { it.length }, MAX_BATCH_URL_LENGTH)
@@ -184,88 +200,64 @@ class LingvaBackend(
             if (k > 0) currentCoroutineContext().ensureActive()
             val url = prefix + "&" + params.subList(range.first, range.last + 1).joinToString("&")
             val body = fetchBody(url)
-            val size = range.last - range.first + 1
-            out += if (size == 1) parseSingleChunk(body, offset = range.first)
-            else parseBatchBody(body, expected = size, offset = range.first)
+            out += parseChunk(body, expected = range.last - range.first + 1, offset = range.first)
         }
         return out
     }
 
-    /** Single-q response shape: `[[["translated","original",...], ...], null, "ja", ...]`
-     *  — the chunks array sits at index 0 of the top-level array, which
-     *  is NOT a per-q list. May be blank; the caller decides what a
-     *  blank means ([translate] makes it structural, the batch path a
-     *  parse failure), and a JSONException is left to the caller for
-     *  the same reason. */
-    private fun parseSingleBody(body: String): String =
-        reassembleChunks(JSONArray(body).getJSONArray(0))
-
-    /** A one-text chunk of the batched path: the single-q shape, with
-     *  failures classed as the batch classes them ([BatchParseException]
-     *  so the registry retries per-text on this backend). [offset] is
-     *  the text's page index. */
-    private fun parseSingleChunk(body: String, offset: Int): List<String> {
-        val s = try {
-            parseSingleBody(body)
-        } catch (e: JSONException) {
-            throw BatchParseException("Lingva batch: single-q[$offset] parse failed", e)
-        }
-        if (s.isBlank()) throw BatchParseException("Lingva batch: blank result at index $offset")
-        return listOf(s)
-    }
-
-    /** Parse one multi-q response body into exactly [expected] strings.
-     *  [offset] is the global index of this chunk's first text, so a
+    /** Parse one chunk's body into exactly [expected] non-blank strings.
+     *  A shape failure or a blank entry is [StructuralFailureException]
+     *  (see [translateBatchInner] for why not [BatchParseException]).
+     *  [offset] is the page index of the chunk's first text, so a
      *  diagnostic names the page position rather than the chunk-local
      *  one. */
-    private fun parseBatchBody(body: String, expected: Int, offset: Int): List<String> {
-        val top = try {
-            JSONArray(body)
+    private fun parseChunk(body: String, expected: Int, offset: Int): List<String> {
+        val strings = try {
+            parseStrings(body, expected)
         } catch (e: JSONException) {
-            throw BatchParseException("Lingva batch: top-level JSON parse failed", e)
+            throw StructuralFailureException("Lingva batch: chunk at index $offset: ${e.message}", e)
         }
+        strings.forEachIndexed { i, s ->
+            if (s.isBlank()) throw StructuralFailureException("Lingva batch: blank result at index ${offset + i}")
+        }
+        return strings
+    }
+
+    /** The `translate_a/t` response shape: a JSON array of exactly one
+     *  string per `q=` param, in request order (`["Hello","world"]`).
+     *  Anything else — a different length, a non-string entry (the
+     *  `[text, detectedLang]` pairs `sl=auto` would produce, which this
+     *  class never sends), or a non-array — is a [JSONException] for the
+     *  caller to class. Blank entries are returned as-is; the caller
+     *  decides what a blank means. */
+    private fun parseStrings(body: String, expected: Int): List<String> {
+        val top = JSONArray(body)
         if (top.length() != expected) {
-            throw BatchParseException(
-                "Lingva batch: top length ${top.length()} != input size $expected"
-            )
+            throw JSONException("top length ${top.length()} != q count $expected")
         }
-        return (0 until top.length()).map { i ->
-            val perQ = try {
-                top.getJSONArray(i)
-            } catch (e: JSONException) {
-                throw BatchParseException("Lingva batch: per-q[${offset + i}] not array", e)
-            }
-            val chunks = try {
-                perQ.getJSONArray(0)
-            } catch (e: JSONException) {
-                throw BatchParseException("Lingva batch: per-q[${offset + i}] missing chunks", e)
-            }
-            val s = reassembleChunks(chunks)
-            if (s.isBlank()) throw BatchParseException("Lingva batch: blank result at index ${offset + i}")
-            s
+        return List(expected) { i ->
+            top.get(i) as? String ?: throw JSONException("entry $i is not a string")
         }
     }
 
-    /** Build the gtx URL with one or more URL-encoded `&q=` params.
-     *  Single-text path; the batched path packs [encodeQ] params itself. */
-    private fun buildUrl(texts: List<String>, source: String, target: String): String =
-        urlPrefix(source, target) + "&" + texts.joinToString(separator = "&") { encodeQ(it) }
-
+    /** Everything before the `&q=` params. Callers append one [encodeQ]
+     *  per text. */
     private fun urlPrefix(source: String, target: String): String =
-        "https://translate.googleapis.com/translate_a/single" +
-            "?client=gtx&sl=$source&tl=$target&dt=t"
+        "https://translate.googleapis.com/translate_a/t" +
+            "?client=dict-chrome-ex&sl=$source&tl=$target"
 
     private fun encodeQ(text: String): String = "q=" + URLEncoder.encode(text, "UTF-8")
 
     internal companion object {
-        /** Conservative cap below the typical 8 KiB server URI limit.
-         *  Leaves headroom for headers + the fixed query prefix. The
-         *  batched path packs its `&q=` params so each request's URL
-         *  stays at or under this; a lone param that can't fit is sent
-         *  alone. Never measured against Google's own front end — that
-         *  probe is still owed, and a higher measured limit would simply
-         *  make chunking rarer. */
-        const val MAX_BATCH_URL_LENGTH = 6 * 1024
+        /** Cap on a batched request's full URL. Google's front end
+         *  accepts a path+query of exactly 16384 bytes and answers 400 one
+         *  byte past it (measured 2026-09-16; the count is independent of
+         *  how many `q=` params make it up). 12 KiB leaves a quarter of
+         *  that in hand while holding ~1,300 percent-encoded CJK
+         *  characters, more than a screen. The batched path packs its
+         *  `&q=` params so each request's URL stays at or under this; a
+         *  lone param that can't fit is sent alone. */
+        const val MAX_BATCH_URL_LENGTH = 12 * 1024
 
         /**
          * Greedy first-fit packing of pre-encoded `q=` params into the
@@ -306,10 +298,11 @@ class LingvaBackend(
         val request = Request.Builder().url(url).build()
         client.newCall(request).execute().use { response ->
             when {
-                // 403 rides with 429: gtx is keyless, so an auth-flavored
-                // status can't mean "fix your credentials" — Google's
-                // harder abuse blocks are the only thing it can be, and
-                // those want the same back-off, not a retry per cycle.
+                // 403 rides with 429: the endpoint is keyless, so an
+                // auth-flavored status can't mean "fix your credentials"
+                // — Google's harder abuse blocks are the only thing it
+                // can be, and those want the same back-off, not a retry
+                // per cycle.
                 response.code == 429 || response.code == 403 -> {
                     val retryAfter = response.header("Retry-After")
                     logHttpFailure(response.code, retryAfter, response)
@@ -325,16 +318,17 @@ class LingvaBackend(
                     throw StructuralFailureException("Lingva error ${response.code}")
                 }
                 !response.isSuccessful ->
-                    // Remaining 4xx (bad params, 414 the preflight missed):
-                    // deterministic rejection, not provider health — no
-                    // cooldown, mirroring the other backends' structural path.
+                    // Remaining 4xx (bad params; the 400 Google answers
+                    // for a URL past its cap): deterministic rejection,
+                    // not provider health — no cooldown, mirroring the
+                    // other backends' structural path.
                     throw StructuralFailureException("Lingva error ${response.code}")
             }
             return response.body.string()
         }
     }
 
-    /** Header-level detail on a gtx refusal. PRIVACY: never log the URL
+    /** Header-level detail on a refusal. PRIVACY: never log the URL
      *  (its `q=` params carry the captured text) or any body content
      *  (Google's 403 block page echoes the full request URL, text
      *  included). Content-Type + declared length still distinguish a
@@ -343,21 +337,10 @@ class LingvaBackend(
     private fun logHttpFailure(code: Int, retryAfter: String?, response: okhttp3.Response) {
         android.util.Log.w(
             "Lingva",
-            "gtx $code: retryAfter=${retryAfter ?: "none"}" +
+            "translate_a/t $code: retryAfter=${retryAfter ?: "none"}" +
                 " contentType=${response.header("Content-Type") ?: "?"}" +
                 " contentLength=${response.body.contentLength()}"
         )
-    }
-
-    /** Reassemble the per-q chunks array (`[[translated, original, ...], ...]`)
-     *  into a single string. Mirrors the original single-q loop exactly. */
-    private fun reassembleChunks(chunks: JSONArray): String {
-        val sb = StringBuilder()
-        for (i in 0 until chunks.length()) {
-            val chunk = chunks.optJSONArray(i)
-            if (chunk != null) sb.append(chunk.optString(0))
-        }
-        return sb.toString()
     }
 
     override fun close() {

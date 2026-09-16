@@ -36,7 +36,7 @@ data class QuotaStatus(
 
 /**
  * Backends with a queryable quota / rate limit. Today only DeepL
- * implements this; ML Kit (offline) and Google's gtx endpoint
+ * implements this; ML Kit (offline) and Google's keyless endpoint
  * have no quota concept exposed to clients.
  */
 interface QuotaAware {

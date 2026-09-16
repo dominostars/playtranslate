@@ -6,7 +6,7 @@ import org.junit.Test
 
 /**
  * [LingvaBackend.packChunks] — the greedy first-fit packer that turns the
- * gtx URL cap into a chunk boundary. The field problem it replaces: the
+ * Google URL cap into a chunk boundary. The field problem it replaces: the
  * cap used to be a preflight throw, and the registry's per-text retry
  * then fanned a text-heavy page out as N parallel requests against the
  * same per-IP limiter batching exists to protect. Pure index math, so

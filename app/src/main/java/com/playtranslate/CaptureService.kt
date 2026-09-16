@@ -105,7 +105,7 @@ private const val CHANNEL_ID = "playtranslate_capture"
  * The default waterfall order is:
  *
  *  1. DeepL      — if an API key is configured in Settings
- *  2. Google gtx — free `translate.googleapis.com/translate_a/single` endpoint
+ *  2. Google      — free `translate.googleapis.com/translate_a/t` endpoint ("Lingva")
  *  3. ML Kit     — offline fallback when both online options are unavailable
  *
  * Notes are shown inline with the result only when the chosen backend
