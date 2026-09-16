@@ -41,7 +41,10 @@ import org.robolectric.Shadows.shadowOf
  * with the pending's eligibility, refuses a capture-shaped pending, and
  * keeps a pending without a backend; a History row tap attaches to the
  * exact row only when the pair matches. A superseded outcome still
- * attaches to its own sentence's row (only its display is dropped).
+ * attaches to its own sentence's row (only its display is dropped). The
+ * recording opt-ins are snapshotted at lookup time on the visible path too:
+ * a feature enabled while the call is in flight does not record that
+ * lookup.
  */
 @RunWith(RobolectricTestRunner::class)
 class SentenceTranslationFlowTest {
@@ -98,6 +101,10 @@ class SentenceTranslationFlowTest {
         clearPrefs()
         prefs.targetLang = "en"
         prefs.hideTranslationSection = false
+        // Both recording opt-ins ON unless a cell says otherwise: the attach
+        // cells assert the lookup-time snapshot rides through as true.
+        prefs.translationHistoryEnabled = true
+        prefs.llmContextEnabled = true
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         vm = TranslationResultViewModel(scope)
     }
@@ -201,6 +208,30 @@ class SentenceTranslationFlowTest {
             b.lookups.single().let { listOf(it[2], it[3]) })
         assertEquals("the result keeps the context it was translated under", "en", r.langContext.targetLang)
         assertEquals(lookupSourceId, r.langContext.sourceLangId)
+    }
+
+    @Test
+    fun `the visible path attaches under the lookup-time opt-ins, not the completion-time prefs`() {
+        prefs.translationHistoryEnabled = false
+        prefs.llmContextEnabled = false
+        val b = FakeBackend()
+        val gate = b.gate()
+        flow(b).show("こんにちは", null)
+        // Both features enabled while the (slow, online) call is in flight.
+        prefs.translationHistoryEnabled = true
+        prefs.llmContextEnabled = true
+        gate.complete(SentenceTranslationFlow.Outcome("Hello", null, "DeepL"))
+        idle()
+        assertEquals("Hello", ready().translatedText)
+        assertEquals(listOf(false, false), b.lookups.single().let { listOf(it[5], it[6]) })
+
+        // And the other way round: opted in at lookup, the flags ride as true
+        // (the recorder ANDs them with the prefs at attach time).
+        val b2 = FakeBackend()
+        b2.ready("Hallo")
+        flow(b2).show("こんばんは", null)
+        idle()
+        assertEquals(listOf(true, true), b2.lookups.single().let { listOf(it[5], it[6]) })
     }
 
     @Test

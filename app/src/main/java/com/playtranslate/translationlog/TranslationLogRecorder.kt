@@ -419,12 +419,14 @@ class TranslationLogRecorder(
      *  own source-only entry. Falls back to a normal deliberate offer when
      *  the row is unknown (recorder recreated, map evicted).
      *
-     *  [historyEligible] / [contextEligible] are the LOOKUP-time opt-in
-     *  overrides for DEFERRED completions: each feature writes only when its
-     *  pref was on when the text was looked up AND is still on now — a
-     *  hidden-section lookup revealed after enabling a feature must not
-     *  retroactively record into it. Visible flows keep the defaults (their
-     *  lookup and translation are effectively one moment). Main only. */
+     *  [historyEligible] / [contextEligible] are the LOOKUP-time opt-ins:
+     *  each feature writes only when its pref was on when the text was
+     *  looked up AND is still on now — a hidden-section lookup revealed
+     *  after enabling a feature, or a visible lookup whose online
+     *  translation outlives a toggle, must not retroactively record into
+     *  it. The sentence flow passes its lookup-time snapshot on every path
+     *  ([com.playtranslate.ui.SentenceTranslationFlow]); the defaults are
+     *  for callers whose lookup and translation are one moment. Main only. */
     fun onDeliberateTranslation(
         source: String,
         translation: String,

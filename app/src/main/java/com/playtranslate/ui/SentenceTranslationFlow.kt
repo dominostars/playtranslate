@@ -46,19 +46,24 @@ import java.util.Locale
  * cross-pair result stays display-only rather than corrupting a row that
  * claims a different pair).
  *
- * ONE language-pair snapshot per translation: [show] reads the
- * [TranslationLangContext] once, before the backend call, and that same
- * snapshot is what the backend translates under ([Backend.translate] takes
- * the pair explicitly), what the History attach records under, and what the
- * displayed [TranslationResult.langContext] claims — a mid-flight language
- * change can neither relabel the attach nor leave a result displayed under
- * a pair it was not translated for (the surfaces' staleness sweeps compare
- * that context to the current prefs). A deferred completion runs under the
- * pair the [PendingTranslation] stored at lookup time (the result's own
- * context, variant included) and honors the pending's LOOKUP-time
- * eligibility snapshot, never reveal-time prefs — so the reveal fills the
- * rows recorded under that pair, and never silently replaces an old-pair
- * result with a new-pair translation.
+ * ONE snapshot per translation: [show] reads the [TranslationLangContext]
+ * and the two recording opt-ins (History, LLM context) once, before the
+ * backend call, and that snapshot is what the backend translates under
+ * ([Backend.translate] takes the pair explicitly), what the History attach
+ * records under and is gated by, and what the displayed
+ * [TranslationResult.langContext] claims. A mid-flight change can then
+ * neither relabel the attach, nor leave a result displayed under a pair it
+ * was not translated for (the surfaces' staleness sweeps compare that
+ * context to the current prefs), nor record a lookup the user had opted
+ * out of when they made it — a feature enabled during a slow online call
+ * takes effect from the next lookup (the recorder still ANDs the snapshot
+ * with the current pref, so a feature disabled mid-flight is respected
+ * either way). A deferred completion runs under the pair the
+ * [PendingTranslation] stored at lookup time (the result's own context,
+ * variant included) and the pending's eligibility snapshot, never
+ * reveal-time prefs — so the reveal fills the rows recorded under that
+ * pair, and never silently replaces an old-pair result with a new-pair
+ * translation.
  *
  * Failure lands "—" on the bound result (the same terminal the in-place
  * edit and every deferred completion use): a visible blank would render a
@@ -148,8 +153,11 @@ class SentenceTranslationFlow(
         val generation = ++showGeneration
         val segments = TextSegments.ofText(sentence)
         val prefs = Prefs(appCtx)
-        // The one pair snapshot for this show (see the class doc).
+        // The one snapshot for this show (see the class doc): the pair, and
+        // the recording opt-ins at LOOKUP time.
         val langContext = prefs.langContext()
+        val historyEligible = prefs.translationHistoryEnabled
+        val contextEligible = prefs.llmContextEnabled
 
         if (cached != null) {
             vm.displayResult(
@@ -185,8 +193,8 @@ class SentenceTranslationFlow(
                         targetLang = langContext.targetLang,
                         // Logging eligibility at LOOKUP time — the completion
                         // honors this snapshot, not reveal-time prefs.
-                        historyEligible = prefs.translationHistoryEnabled,
-                        contextEligible = prefs.llmContextEnabled,
+                        historyEligible = historyEligible,
+                        contextEligible = contextEligible,
                     ),
                     langContext = langContext,
                 ),
@@ -203,7 +211,11 @@ class SentenceTranslationFlow(
         }
         translateJob = scope.launch {
             val outcome = try {
-                translateAttachingHistory(b, sentence, langContext)
+                translateAttachingHistory(
+                    b, sentence, langContext,
+                    historyEligible = historyEligible,
+                    contextEligible = contextEligible,
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -289,8 +301,8 @@ class SentenceTranslationFlow(
         b: Backend,
         text: String,
         langContext: TranslationLangContext,
-        historyEligible: Boolean = true,
-        contextEligible: Boolean = true,
+        historyEligible: Boolean,
+        contextEligible: Boolean,
     ): Outcome {
         // The caller's snapshot is the pair the backend translates under AND
         // the pair the attach records under — never prefs read here.
