@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import androidx.core.view.updatePadding
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
@@ -64,6 +65,13 @@ class WorkspaceSentencePage(
         pageScope = scope
         val view = LayoutInflater.from(ctx).inflate(R.layout.fragment_translation_result, parent, false)
         pageView = view
+        // The scroll's 8dp end padding was sized for the Activities' square
+        // window edge; the workspace card's rounded bottom crowds it, so the
+        // Words card gets another 8dp of clearance from the corner here.
+        view.findViewById<View>(R.id.resultsScrollContent).let {
+            val extra = (EXTRA_BOTTOM_PAD_DP * ctx.resources.displayMetrics.density).toInt()
+            it.updatePadding(bottom = it.paddingBottom + extra)
+        }
         val c = TranslationResultContent(view, ctx, Prefs(ctx), vm, PageHost(ctx, host, scope))
         content = c
         c.binder.setShowOnScreenAvailable(false)
@@ -264,5 +272,10 @@ class WorkspaceSentencePage(
         pageScope = null
         pageView = null
         hostRef = null
+    }
+
+    private companion object {
+        /** Added to the results scroll's own end padding on this host. */
+        const val EXTRA_BOTTOM_PAD_DP = 8f
     }
 }
