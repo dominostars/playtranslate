@@ -3,9 +3,11 @@ package com.playtranslate.ui
 import android.content.Context
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.model.PendingTranslation
 import com.playtranslate.model.TextSegments
+import com.playtranslate.model.TranslationLangContext
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.translationlog.TranslationHistoryStore
 import kotlinx.coroutines.CancellationException
@@ -42,9 +44,21 @@ import java.util.Locale
  * to EXACTLY the tapped row for a History tap ([historyRow]), and only when
  * the pair the translation ran under matches the row's stored pair (a
  * cross-pair result stays display-only rather than corrupting a row that
- * claims a different pair). The pair is captured BEFORE the backend call so
- * a mid-flight language change can't relabel. A deferred completion honors
- * the pending's LOOKUP-time eligibility snapshot, never reveal-time prefs.
+ * claims a different pair).
+ *
+ * ONE language-pair snapshot per translation: [show] reads the
+ * [TranslationLangContext] once, before the backend call, and that same
+ * snapshot is what the backend translates under ([Backend.translate] takes
+ * the pair explicitly), what the History attach records under, and what the
+ * displayed [TranslationResult.langContext] claims — a mid-flight language
+ * change can neither relabel the attach nor leave a result displayed under
+ * a pair it was not translated for (the surfaces' staleness sweeps compare
+ * that context to the current prefs). A deferred completion runs under the
+ * pair the [PendingTranslation] stored at lookup time (the result's own
+ * context, variant included) and honors the pending's LOOKUP-time
+ * eligibility snapshot, never reveal-time prefs — so the reveal fills the
+ * rows recorded under that pair, and never silently replaces an old-pair
+ * result with a new-pair translation.
  *
  * Failure lands "—" on the bound result (the same terminal the in-place
  * edit and every deferred completion use): a visible blank would render a
@@ -79,7 +93,9 @@ class SentenceTranslationFlow(
     /** The translator + History seam. [CaptureService.sentenceTranslationBackend]
      *  is the production implementation; tests hand in a stub. */
     interface Backend {
-        suspend fun translate(text: String): Outcome
+        /** Translate [text] under EXACTLY this pair (never the prefs at call
+         *  time). */
+        suspend fun translate(text: String, sourceLangId: SourceLangId, targetLang: String): Outcome
 
         /** By-key attach to the translation-less lookup entry (or a fresh
          *  record when the row is unknown). */
@@ -132,6 +148,8 @@ class SentenceTranslationFlow(
         val generation = ++showGeneration
         val segments = TextSegments.ofText(sentence)
         val prefs = Prefs(appCtx)
+        // The one pair snapshot for this show (see the class doc).
+        val langContext = prefs.langContext()
 
         if (cached != null) {
             vm.displayResult(
@@ -143,16 +161,16 @@ class SentenceTranslationFlow(
                     screenshotPath = screenshotPath,
                     note = null,
                     backendDisplayName = cached.backendDisplayName,
-                    langContext = prefs.langContext(),
+                    langContext = langContext,
                 ),
                 appCtx,
             )
             return
         }
 
-        val sourceId = prefs.sourceLangId
+        val sourceId = langContext.sourceLangId
         if (prefs.hideTranslationSection &&
-            SourceLanguageProfiles[sourceId].translationCode != prefs.targetLang
+            SourceLanguageProfiles[sourceId].translationCode != langContext.targetLang
         ) {
             vm.displayResult(
                 TranslationResult(
@@ -164,13 +182,13 @@ class SentenceTranslationFlow(
                     pendingTranslation = PendingTranslation(
                         groupTexts = listOf(sentence),
                         sourceLangId = sourceId,
-                        targetLang = prefs.targetLang,
+                        targetLang = langContext.targetLang,
                         // Logging eligibility at LOOKUP time — the completion
                         // honors this snapshot, not reveal-time prefs.
                         historyEligible = prefs.translationHistoryEnabled,
                         contextEligible = prefs.llmContextEnabled,
                     ),
-                    langContext = prefs.langContext(),
+                    langContext = langContext,
                 ),
                 appCtx,
             )
@@ -185,7 +203,7 @@ class SentenceTranslationFlow(
         }
         translateJob = scope.launch {
             val outcome = try {
-                translateAttachingHistory(b, sentence)
+                translateAttachingHistory(b, sentence, langContext)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -205,7 +223,7 @@ class SentenceTranslationFlow(
                     screenshotPath = screenshotPath,
                     note = outcome.note,
                     backendDisplayName = outcome.backendDisplayName,
-                    langContext = Prefs(appCtx).langContext(),
+                    langContext = langContext,
                 ),
                 appCtx,
             )
@@ -233,11 +251,17 @@ class SentenceTranslationFlow(
             completionJob?.cancel()
         }
         completionPending = pending
+        // The pair the pending stored at lookup time; the variant rides the
+        // result's own context (built from the same prefs read).
+        val langContext = TranslationLangContext(
+            pending.sourceLangId, pending.targetLang, ready.result.langContext.chineseVariant,
+        )
         completionJob = scope.launch {
             try {
                 val outcome = translateAttachingHistory(
                     b,
                     pending.groupTexts.firstOrNull() ?: ready.result.originalText,
+                    langContext,
                     historyEligible = pending.historyEligible,
                     contextEligible = pending.contextEligible,
                 )
@@ -264,16 +288,15 @@ class SentenceTranslationFlow(
     private suspend fun translateAttachingHistory(
         b: Backend,
         text: String,
+        langContext: TranslationLangContext,
         historyEligible: Boolean = true,
         contextEligible: Boolean = true,
     ): Outcome {
-        // Pair captured BEFORE the backend call, so the label matches the
-        // pair the translation is actually produced under even if prefs
-        // change mid-flight.
-        val prefs = Prefs(appCtx)
-        val sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode
-        val targetLang = prefs.targetLang
-        val outcome = b.translate(text)
+        // The caller's snapshot is the pair the backend translates under AND
+        // the pair the attach records under — never prefs read here.
+        val sourceLang = SourceLanguageProfiles[langContext.sourceLangId].translationCode
+        val targetLang = langContext.targetLang
+        val outcome = b.translate(text, langContext.sourceLangId, targetLang)
         if (outcome.text.isNotEmpty()) {
             val row = historyRow
             if (row != null) {
@@ -310,8 +333,12 @@ class SentenceTranslationFlow(
  *  display/region configuration) plus its History recorder. */
 fun CaptureService.sentenceTranslationBackend(): SentenceTranslationFlow.Backend =
     object : SentenceTranslationFlow.Backend {
-        override suspend fun translate(text: String): SentenceTranslationFlow.Outcome {
-            val gt = translateOnce(text)
+        override suspend fun translate(
+            text: String,
+            sourceLangId: SourceLangId,
+            targetLang: String,
+        ): SentenceTranslationFlow.Outcome {
+            val gt = translateOnce(text, sourceLangId, targetLang)
             return SentenceTranslationFlow.Outcome(gt.text, gt.note, gt.backendDisplayName)
         }
 

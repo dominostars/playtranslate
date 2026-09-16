@@ -3646,8 +3646,22 @@ class CaptureService : Service() {
     }
 
     /** On-demand translation for a single text string (used by edit overlay, drag-sentence, etc.). */
-    internal suspend fun translateOnce(text: String): GroupTranslation {
-        val target = snapshotTranslationTarget()
+    internal suspend fun translateOnce(text: String): GroupTranslation =
+        translateOnce(text, snapshotTranslationTarget())
+
+    /** [translateOnce] under an EXPLICIT pair — the caller's snapshot, not
+     *  the prefs at call time — so a deliberate sentence translated after a
+     *  language change (a deferred reveal, a call that outlived a switch)
+     *  runs, records and displays under the one pair its result claims.
+     *  The script variant and the DeepL key still come from prefs. */
+    internal suspend fun translateOnce(
+        text: String,
+        sourceLangId: SourceLangId,
+        targetLang: String,
+    ): GroupTranslation =
+        translateOnce(text, snapshotTranslationTarget(sourceLangId).copy(target = targetLang))
+
+    private suspend fun translateOnce(text: String, target: TranslationTarget): GroupTranslation {
         val outcome = translate(text, target)
         setDegraded(outcome.kind)
         return GroupTranslation(target.localize(outcome.text), outcome.note, outcome.backendDisplayName)

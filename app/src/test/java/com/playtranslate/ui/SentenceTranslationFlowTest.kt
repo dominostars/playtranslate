@@ -55,6 +55,8 @@ class SentenceTranslationFlowTest {
          *  time returns immediately. */
         val gates = ArrayDeque<CompletableDeferred<SentenceTranslationFlow.Outcome>>()
         val calls = mutableListOf<String>()
+        /** The pair each call was asked to translate under. */
+        val pairs = mutableListOf<Pair<SourceLangId, String>>()
         val lookups = mutableListOf<List<Any?>>()
         val rows = mutableListOf<List<Any?>>()
 
@@ -64,8 +66,11 @@ class SentenceTranslationFlowTest {
         fun ready(text: String, note: String? = null, backend: String? = "DeepL") =
             gate().also { it.complete(SentenceTranslationFlow.Outcome(text, note, backend)) }
 
-        override suspend fun translate(text: String): SentenceTranslationFlow.Outcome {
+        override suspend fun translate(
+            text: String, sourceLangId: SourceLangId, targetLang: String,
+        ): SentenceTranslationFlow.Outcome {
             calls += text
+            pairs += sourceLangId to targetLang
             val g = gates.removeFirstOrNull() ?: error("no gate queued for '$text'")
             return g.await()
         }
@@ -153,9 +158,10 @@ class SentenceTranslationFlowTest {
         flow(b).show("こんにちは", null)
         assertTrue(vm.result.value is ResultState.Translating)
         assertEquals(listOf("こんにちは"), b.calls)
-        // The pair is captured before the call: a target change mid-flight
-        // must not relabel the attach.
+        // ONE pair snapshot: a target change mid-flight relabels neither the
+        // backend call, nor the attach, nor the displayed result's context.
         val capturedSource = sourceCode
+        val capturedSourceId = prefs.sourceLangId
         prefs.targetLang = "de"
         gate.complete(SentenceTranslationFlow.Outcome("Hello", "note", "DeepL"))
         idle()
@@ -163,7 +169,38 @@ class SentenceTranslationFlowTest {
         assertEquals("Hello", r.translatedText)
         assertEquals("note", r.note)
         assertEquals("DeepL", r.backendDisplayName)
+        assertEquals(listOf(capturedSourceId to "en"), b.pairs)
         assertEquals(listOf(listOf<Any?>("こんにちは", "Hello", capturedSource, "en", "DeepL", true, true)), b.lookups)
+        assertEquals("the result claims the pair it was translated under", "en", r.langContext.targetLang)
+        assertEquals(capturedSourceId, r.langContext.sourceLangId)
+    }
+
+    @Test
+    fun `completeDeferred runs and attaches under the pending's pair, not the reveal-time prefs`() {
+        prefs.hideTranslationSection = true
+        val b = FakeBackend()
+        val f = flow(b)
+        f.show("こんにちは", null)
+        idle()
+        val deferred = ready()
+        val lookupSourceId = deferred.langContext.sourceLangId
+        val lookupSource = SourceLanguageProfiles[lookupSourceId].translationCode
+        // Both sides of the pair change between the deferral and the reveal.
+        prefs.targetLang = "de"
+        prefs.sourceLang = SourceLangId.entries.first { it != lookupSourceId }.code
+        prefs.hideTranslationSection = false
+        val gate = b.gate()
+        assertTrue(f.completeDeferred())
+        assertEquals(listOf(lookupSourceId to "en"), b.pairs)
+        gate.complete(SentenceTranslationFlow.Outcome("Hello", null, "DeepL"))
+        idle()
+        val r = ready()
+        assertEquals("Hello", r.translatedText)
+        assertNull(r.pendingTranslation)
+        assertEquals("the attach records under the lookup-time pair", listOf(lookupSource, "en"),
+            b.lookups.single().let { listOf(it[2], it[3]) })
+        assertEquals("the result keeps the context it was translated under", "en", r.langContext.targetLang)
+        assertEquals(lookupSourceId, r.langContext.sourceLangId)
     }
 
     @Test
