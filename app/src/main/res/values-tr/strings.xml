@@ -396,16 +396,6 @@
 
     <string name="mp_overlay_permission_button">Ayarları aç</string>
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         FLOATING-ICON GESTURE HINTS
-         ═══════════════════════════════════════════════════════════════ -->
-
-    <string name="overlay_icon_gesture_drag">Hızlı tanımlar için sözcüklerin üzerine <b>sürükleyin</b></string>
-
-    <string name="overlay_icon_gesture_hold">Çevirilerin önizlemesi için <b>basılı tutun</b></string>
-
-    <string name="overlay_icon_gesture_tap">Hızlı menüyü açmak için <b>dokunun</b></string>
-
     <string name="overlay_icon_a11y_required_title">Erişilebilirlik gerekli</string>
 
     <string name="overlay_icon_a11y_required_message">Kayan yer paylaşımı simgesi, oyun ekranına çizim yapmak için Erişilebilirlik iznine ihtiyaç duyar.\n\nAyarlar → Erişilebilirlik → İndirilen uygulamalar → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Etkinleştir yolunu izleyin.</string>

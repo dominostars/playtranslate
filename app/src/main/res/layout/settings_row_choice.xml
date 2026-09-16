@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Row for the TTS voice picker: voice name + API info on the left, a
-     trailing accent checkmark on the currently-selected voice.
+<!-- Single-choice row: title + optional subtitle on the left, a trailing
+     accent checkmark on the selected row (ivCheck, GONE otherwise). Used by
+     the TTS voice picker, the audio-source picker and the floating-icon
+     gesture picker; the caller hides tvRowSubtitle when it has none.
      android:background is the ripple state-list, not a static fill —
      see settings_row_hotkey for the full Overdraw note. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"

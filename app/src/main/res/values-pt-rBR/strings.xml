@@ -403,16 +403,6 @@
 
     <string name="mp_overlay_permission_button">Abrir configurações</string>
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         FLOATING-ICON GESTURE HINTS
-         ═══════════════════════════════════════════════════════════════ -->
-
-    <string name="overlay_icon_gesture_drag"><b>Arraste</b> sobre as palavras para definições rápidas</string>
-
-    <string name="overlay_icon_gesture_hold"><b>Mantenha pressionado</b> para visualizar as traduções</string>
-
-    <string name="overlay_icon_gesture_tap"><b>Toque</b> para abrir o menu rápido</string>
-
     <string name="overlay_icon_a11y_required_title">Acessibilidade necessária</string>
 
     <string name="overlay_icon_a11y_required_message">O ícone flutuante precisa da permissão de Acessibilidade para desenhar na tela do jogo.\n\nAcesse Configurações → Acessibilidade → Apps baixados → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Ativar.</string>

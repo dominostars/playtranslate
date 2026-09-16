@@ -10,7 +10,6 @@ import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.capture.GameAudioGate
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -23,7 +22,6 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextWatcher
 import android.text.style.ForegroundColorSpan
-import android.text.style.StyleSpan
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -50,6 +48,7 @@ import com.playtranslate.ocr.core.OcrBox
 import com.playtranslate.OverlayMode
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.PlayTranslateTileService
+import com.playtranslate.IconAction
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.UpdateChecker
@@ -139,6 +138,9 @@ class SettingsRenderer(
         fun openAppearanceSettings()
         /** Tap on the Hotkeys CONFIGURE cell — open [HotkeysSettingsActivity]. */
         fun openHotkeysSettings()
+        /** Tap on the "On the floating icon" footer — open the gesture
+         *  picker ([IconGesturesSettingsActivity]). */
+        fun openIconGesturesSettings()
         /** Tap on the Capture & overlay CONFIGURE cell — open [CaptureOverlaySettingsActivity]. */
         fun openCaptureOverlaySettings()
         /** Tap on the Yomitan CONFIGURE cell — open [YomitanSettingsActivity]. */
@@ -238,15 +240,24 @@ class SettingsRenderer(
     private var overlayIconPreview: FloatingOverlayIcon? = null
     // "On the floating icon" cell — text + icon tints are driven by the
     // capture lifecycle. Active: title = ptTextMuted (GroupHeader default),
-    // gesture text + icons = ptText. Disabled: everything shifts down to
-    // ptTextHint so the whole cell reads as a single recessed group.
+    // gesture word + icon = ptAccent, bound action = ptText. Disabled:
+    // everything shifts down to ptTextHint so the whole cell reads as a
+    // single recessed group.
     private val tvOverlayIconTitle: TextView = rowOverlayIcon.findViewById(R.id.tvRowTitle)
-    private val tvGestureDrag: TextView = rowOverlayIcon.findViewById(R.id.tvGestureDrag)
-    private val tvGestureHold: TextView = rowOverlayIcon.findViewById(R.id.tvGestureHold)
-    private val tvGestureTap: TextView = rowOverlayIcon.findViewById(R.id.tvGestureTap)
-    private val iconGestureDrag: ImageView = rowOverlayIcon.findViewById(R.id.iconGestureDrag)
-    private val iconGestureHold: ImageView = rowOverlayIcon.findViewById(R.id.iconGestureHold)
-    private val iconGestureTap: ImageView = rowOverlayIcon.findViewById(R.id.iconGestureTap)
+    private val ivOverlayIconChevron: ImageView = rowOverlayIcon.findViewById(R.id.ivOverlayIconChevron)
+
+    /** One line of the cell: gesture icon, gesture word, bound action title. */
+    private class GestureLine(val icon: ImageView, val tvGesture: TextView, val tvAction: TextView)
+
+    private fun gestureLine(iconId: Int, gestureId: Int, actionId: Int) = GestureLine(
+        rowOverlayIcon.findViewById(iconId),
+        rowOverlayIcon.findViewById(gestureId),
+        rowOverlayIcon.findViewById(actionId),
+    )
+
+    private val lineDrag = gestureLine(R.id.iconGestureDrag, R.id.tvGestureDrag, R.id.tvActionDrag)
+    private val lineHold = gestureLine(R.id.iconGestureHold, R.id.tvGestureHold, R.id.tvActionHold)
+    private val lineTap = gestureLine(R.id.iconGestureTap, R.id.tvGestureTap, R.id.tvActionTap)
 
     private val btnCaptureLifecycle: ShimmerButton = root.findViewById(R.id.btnCaptureLifecycle)
 
@@ -436,43 +447,24 @@ class SettingsRenderer(
     // ── On-screen controls ───────────────────────────────────────────────
 
     private fun setupOnScreenControls() {
-        // "On the floating icon" — informational cell. No toggle, no click
-        // handler. The floating icon's visibility is driven by the capture
-        // lifecycle (and the Quick Settings tile via Prefs.showOverlayIcon)
-        // — this row just teaches the user about the icon and its gestures.
-        // Gesture text + icon tints come from refreshCaptureLifecycleButton().
+        // "On the floating icon" — the icon's gestures and what each is bound
+        // to; the row opens the picker page. No toggle: the floating icon's
+        // visibility is driven by the capture lifecycle (and the Quick
+        // Settings tile via Prefs.showOverlayIcon). The bound action titles +
+        // the tints come from refreshCaptureLifecycleButton().
         tvOverlayIconTitle.setText(R.string.settings_show_overlay_icon)
+        rowOverlayIcon.setOnClickListener { callbacks.openIconGesturesSettings() }
         overlayIconPreviewSlot.isVisible = true
         buildOverlayIconPreview()
     }
 
-
-    /** Pulls the gesture string [stringRes] (which carries an inline `<b>`
-     *  on the leading verb word), copies it into a SpannableStringBuilder,
-     *  and overlays a [ForegroundColorSpan] of [color] across the same
-     *  range as the inline BOLD — so the verb word gets the accent (or
-     *  the disabled hint) colour without needing to hardcode verb-word
-     *  lengths in code or duplicate the string.
-     *
-     *  Returns a fresh SpannableStringBuilder each call — cheap (one
-     *  StyleSpan lookup, one ForegroundColorSpan applied) and avoids the
-     *  resource cache reusing the same Spanned instance across refreshes
-     *  with stale colours layered on. */
-    private fun withVerbColored(stringRes: Int, color: Int): SpannableStringBuilder {
-        val text = ctx.getText(stringRes)
-        val sb = SpannableStringBuilder(text)
-        val boldSpan = sb.getSpans(0, sb.length, StyleSpan::class.java)
-            .firstOrNull { it.style == Typeface.BOLD }
-        if (boldSpan != null) {
-            val start = sb.getSpanStart(boldSpan)
-            val end = sb.getSpanEnd(boldSpan)
-            sb.setSpan(
-                ForegroundColorSpan(color),
-                start, end,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-            )
-        }
-        return sb
+    /** Bind one gesture line: the icon + gesture word in [verbColor], the
+     *  bound [action]'s title in [baseColor]. */
+    private fun bindGestureLine(line: GestureLine, action: IconAction, verbColor: Int, baseColor: Int) {
+        line.icon.imageTintList = ColorStateList.valueOf(verbColor)
+        line.tvGesture.setTextColor(verbColor)
+        line.tvAction.setText(action.titleRes)
+        line.tvAction.setTextColor(baseColor)
     }
 
 
@@ -620,27 +612,26 @@ class SettingsRenderer(
         val titleColor = ctx.themeColor(
             if (iconLit) R.attr.ptTextMuted else R.attr.ptTextHint
         )
-        // Gesture line has two colour zones: the rest of the line (baseColor)
-        // and the leading bold verb (verbColor). Lit accents the verb +
-        // matching icon; dim flattens both into the same muted hint colour as
-        // the rest of the line.
+        // Gesture line has two colour zones: the bound action title
+        // (baseColor) and the leading bold gesture word (verbColor). Lit
+        // accents the word + matching icon; dim flattens both into the same
+        // muted hint colour as the rest of the line.
         val baseColor = ctx.themeColor(
             if (iconLit) R.attr.ptText else R.attr.ptTextHint
         )
         val verbColor = ctx.themeColor(
             if (iconLit) R.attr.ptAccent else R.attr.ptTextHint
         )
-        val iconTint = ColorStateList.valueOf(verbColor)
         tvOverlayIconTitle.setTextColor(titleColor)
-        tvGestureDrag.text = withVerbColored(R.string.overlay_icon_gesture_drag, verbColor)
-        tvGestureHold.text = withVerbColored(R.string.overlay_icon_gesture_hold, verbColor)
-        tvGestureTap.text  = withVerbColored(R.string.overlay_icon_gesture_tap,  verbColor)
-        tvGestureDrag.setTextColor(baseColor)
-        tvGestureHold.setTextColor(baseColor)
-        tvGestureTap.setTextColor(baseColor)
-        iconGestureDrag.imageTintList = iconTint
-        iconGestureHold.imageTintList = iconTint
-        iconGestureTap.imageTintList = iconTint
+        ivOverlayIconChevron.imageTintList = ColorStateList.valueOf(titleColor)
+        // The bindings are re-read here rather than observed: the picker page
+        // is its own Activity, so the sheet's resume, which already funnels
+        // into this refresh, is the catch-up point, the same contract as the
+        // rest of the lifecycle-driven cell.
+        val bindings = prefs.iconGestureBindings()
+        bindGestureLine(lineDrag, bindings.drag, verbColor, baseColor)
+        bindGestureLine(lineHold, bindings.hold, verbColor, baseColor)
+        bindGestureLine(lineTap, bindings.tap, verbColor, baseColor)
         overlayIconPreviewSlot.alpha = if (iconLit) 1f else 0.5f
         if (!showPowerCell) return
         styleCaptureButton(btnCaptureLifecycle, active)

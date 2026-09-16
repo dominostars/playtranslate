@@ -143,6 +143,13 @@ class Prefs internal constructor(
         awaitClose { sp.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
+    /** Read an enum stored under [key] by [Enum.name]; unset or unknown reads
+     *  as [default], so a constant retired in a later build degrades to the
+     *  default rather than a crash. */
+    private fun <E : Enum<E>> enumPref(key: String, entries: List<E>, default: E): E =
+        sp.getString(key, null)?.let { stored -> entries.firstOrNull { it.name == stored } }
+            ?: default
+
     var sourceLang: String
         get() = sp.getString(KEY_SOURCE_LANG, TranslateLanguage.JAPANESE) ?: TranslateLanguage.JAPANESE
         set(v) = sp.edit { putString(KEY_SOURCE_LANG, v) }
@@ -831,9 +838,7 @@ class Prefs internal constructor(
      *  behavior; deliberately no Settings UI. Word-only contexts (no
      *  meaningful sentence) ignore it and stay word. */
     var ankiPreferredCardMode: CardMode
-        get() = sp.getString(KEY_ANKI_CARD_MODE, null)
-            ?.let { stored -> CardMode.entries.firstOrNull { it.name == stored } }
-            ?: CardMode.SENTENCE
+        get() = enumPref(KEY_ANKI_CARD_MODE, CardMode.entries, CardMode.SENTENCE)
         set(v) = sp.edit { putString(KEY_ANKI_CARD_MODE, v.name) }
 
     /** Which side of the lens detail's Sentence/word toggle opens first: the
@@ -844,9 +849,7 @@ class Prefs internal constructor(
      *  deliberately no Settings UI. First-ever default is the word: the user
      *  tapped a specific word to get there. */
     var lookupPreferredView: LookupView
-        get() = sp.getString(KEY_LOOKUP_PREFERRED_VIEW, null)
-            ?.let { stored -> LookupView.entries.firstOrNull { it.name == stored } }
-            ?: LookupView.WORD
+        get() = enumPref(KEY_LOOKUP_PREFERRED_VIEW, LookupView.entries, LookupView.WORD)
         set(v) = sp.edit { putString(KEY_LOOKUP_PREFERRED_VIEW, v.name) }
 
     /** Opt-in: keep a rolling recording of the game's audio (AudioPlaybackCapture
@@ -1341,6 +1344,30 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_SHOW_OVERLAY_ICON, true)
         set(v) = sp.edit { putBoolean(KEY_SHOW_OVERLAY_ICON, v) }
 
+    // ── Floating icon gesture bindings ────────────────────────────────
+
+    /** What the icon's drag / hold / tap gestures do; see [IconGestureBindings].
+     *  Each is stored by enum name and reads as its gesture's default when
+     *  unset or unknown. The icon's dispatch reads these per gesture, so a
+     *  change on the picker page applies to the next touch of the icon
+     *  already on screen; the Settings cell reads them on resume. */
+    var iconDragAction: DragAction
+        get() = enumPref(KEY_ICON_DRAG_ACTION, DragAction.entries, DragAction.DEFAULT)
+        set(v) = sp.edit { putString(KEY_ICON_DRAG_ACTION, v.name) }
+
+    var iconHoldAction: HoldAction
+        get() = enumPref(KEY_ICON_HOLD_ACTION, HoldAction.entries, HoldAction.DEFAULT)
+        set(v) = sp.edit { putString(KEY_ICON_HOLD_ACTION, v.name) }
+
+    var iconTapAction: TapAction
+        get() = enumPref(KEY_ICON_TAP_ACTION, TapAction.entries, TapAction.DEFAULT)
+        set(v) = sp.edit { putString(KEY_ICON_TAP_ACTION, v.name) }
+
+    /** The three bindings as one snapshot: what the Settings cell and the
+     *  picker page render, and where the quick-menu reachability check lives. */
+    fun iconGestureBindings(): IconGestureBindings =
+        IconGestureBindings(iconDragAction, iconHoldAction, iconTapAction)
+
     /** Set to true once StatusBarManager.requestAddTileService reports the
      *  PlayTranslate tile is added (or already added). Drives whether the
      *  Settings "Add Quick Settings tile" row is offered. */
@@ -1709,6 +1736,12 @@ class Prefs internal constructor(
         private const val KEY_OVERLAY_MODE               = "overlay_mode"
         private const val KEY_SETTINGS_SCROLL_Y        = "settings_scroll_y"
         const val KEY_SHOW_OVERLAY_ICON       = "show_overlay_icon"
+        const val KEY_ICON_DRAG_ACTION        = "icon_drag_action"
+        const val KEY_ICON_HOLD_ACTION        = "icon_hold_action"
+        const val KEY_ICON_TAP_ACTION         = "icon_tap_action"
+        /** The three binding keys together, for [observe]. */
+        val KEYS_ICON_GESTURE_ACTIONS =
+            arrayOf(KEY_ICON_DRAG_ACTION, KEY_ICON_HOLD_ACTION, KEY_ICON_TAP_ACTION)
         private const val KEY_OVERLAY_ICON_EDGE      = "overlay_icon_edge"
         private const val KEY_OVERLAY_ICON_FRACTION  = "overlay_icon_fraction"
         private const val KEY_SUPPRESS_TRANSITION            = "suppress_next_transition"

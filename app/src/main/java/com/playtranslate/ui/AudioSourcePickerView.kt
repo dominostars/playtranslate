@@ -247,7 +247,7 @@ class AudioSourcePickerView(
         val inflater = LayoutInflater.from(ctx)
         candidates.forEachIndexed { i, c ->
             if (i > 0) host.addView(inflater.inflate(R.layout.settings_row_divider, host, false))
-            val row = inflater.inflate(R.layout.tts_voice_row, host, false)
+            val row = inflater.inflate(R.layout.settings_row_choice, host, false)
             row.findViewById<TextView>(R.id.tvRowTitle).text = c.title.resolve(ctx)
             row.findViewById<TextView>(R.id.tvRowSubtitle).apply {
                 val sub = c.subtitle?.resolve(ctx)
@@ -275,7 +275,7 @@ class AudioSourcePickerView(
 
     private fun renderStatus(host: LinearLayout, text: String) {
         host.removeAllViews()
-        val row = LayoutInflater.from(ctx).inflate(R.layout.tts_voice_row, host, false)
+        val row = LayoutInflater.from(ctx).inflate(R.layout.settings_row_choice, host, false)
         row.findViewById<TextView>(R.id.tvRowTitle).text = text
         row.findViewById<TextView>(R.id.tvRowSubtitle).visibility = View.GONE
         row.findViewById<ImageView>(R.id.ivCheck).visibility = View.GONE

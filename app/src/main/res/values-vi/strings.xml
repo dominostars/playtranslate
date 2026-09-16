@@ -400,16 +400,6 @@
 
     <string name="mp_overlay_permission_button">Mở Cài đặt</string>
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         FLOATING-ICON GESTURE HINTS
-         ═══════════════════════════════════════════════════════════════ -->
-
-    <string name="overlay_icon_gesture_drag"><b>Kéo</b> qua các từ để xem định nghĩa nhanh</string>
-
-    <string name="overlay_icon_gesture_hold"><b>Giữ</b> để xem trước bản dịch</string>
-
-    <string name="overlay_icon_gesture_tap"><b>Nhấn</b> để mở menu nhanh</string>
-
     <string name="overlay_icon_a11y_required_title">Cần quyền Hỗ trợ tiếp cận</string>
 
     <string name="overlay_icon_a11y_required_message">Biểu tượng nổi cần quyền Hỗ trợ tiếp cận để vẽ lên màn hình trò chơi.\n\nVào Cài đặt → Hỗ trợ tiếp cận → Ứng dụng đã tải xuống → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Bật.</string>

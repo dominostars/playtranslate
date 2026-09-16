@@ -401,16 +401,6 @@
 
     <string name="mp_overlay_permission_button">打开设置</string>
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         FLOATING-ICON GESTURE HINTS
-         ═══════════════════════════════════════════════════════════════ -->
-
-    <string name="overlay_icon_gesture_drag">在单词上<b>拖动</b>可快速查看释义</string>
-
-    <string name="overlay_icon_gesture_hold"><b>长按</b>可预览翻译</string>
-
-    <string name="overlay_icon_gesture_tap"><b>点按</b>可打开快捷菜单</string>
-
     <string name="overlay_icon_a11y_required_title">需要无障碍权限</string>
 
     <string name="overlay_icon_a11y_required_message">悬浮图标需要无障碍权限才能在游戏画面上绘制。\n\n依次前往：设置 → 无障碍 → 已下载的应用 → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → 启用。</string>

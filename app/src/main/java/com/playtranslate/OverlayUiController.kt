@@ -1176,27 +1176,78 @@ class OverlayUiController(
             icon.onPositionChanged = { edge, fraction ->
                 prefs.setIconPositionForDisplay(displayId, IconPosition(edge, fraction))
             }
+            // Gesture → action, from the "On the floating icon" bindings
+            // (IconGestureBindings.kt). Read at each gesture rather than at
+            // install, so a change on the picker page applies to the next
+            // touch of this same icon; each `when` is exhaustive over its
+            // gesture's candidates, so a new one cannot compile until it is
+            // wired here.
             icon.onTap = {
-                showFloatingMenu(display, icon)
+                when (prefs.iconTapAction) {
+                    TapAction.OPEN_QUICK_MENU -> showFloatingMenu(display, icon)
+                    // The quick menu's Capture button without the menu: a
+                    // fresh one-shot every tap, replacing any showing result.
+                    TapAction.CAPTURE_SCREEN -> captureCurrentRegionForDisplay(displayId)
+                }
             }
             icon.onDragStart = {
-                // Hide region preview so the user can see game text while dragging
-                if (regionController.hideIndicatorForDrag()) {
-                    overlayHiddenForDrag = true
+                when (prefs.iconDragAction) {
+                    DragAction.LOOKUP_WORDS -> {
+                        // Hide region preview so the user can see game text while dragging
+                        if (regionController.hideIndicatorForDrag()) {
+                            overlayHiddenForDrag = true
+                        }
+                        // Pause live mode while dragging for definitions
+                        if (CaptureService.instance?.isLive == true) {
+                            liveWasPausedForPopup = true
+                            stopLiveRouted()
+                        }
+                        controller.onDragStart()
+                    }
                 }
-                // Pause live mode while dragging for definitions
-                if (CaptureService.instance?.isLive == true) {
-                    liveWasPausedForPopup = true
-                    stopLiveRouted()
-                }
-                controller.onDragStart()
             }
+            // The move / end / cancel legs route to the lens unconditionally:
+            // it is the only drag candidate (see DragAction).
             icon.onDragMove = { rawX, rawY -> controller.onDragMove(rawX, rawY) }
             icon.onDragEnd = { controller.onDragEnd() }
             icon.onDragCancel = { controller.cancelDrag() }
-            icon.onHoldCancel = { CaptureService.instance?.holdCancel() }
-            icon.onHoldStart  = { CaptureService.instance?.holdStart(displayId) }
-            icon.onHoldEnd    = { CaptureService.instance?.holdEnd() }
+            // A hold's action is latched at its start so the end and cancel
+            // legs unwind the action that actually began, whatever the pref
+            // says by then (dual-screen: the picker page can be open on the
+            // other display). A lift that arrives with no start latched (the
+            // hold runnable starved by a busy main thread; see
+            // FloatingOverlayIcon.onTouchEvent) reads the current binding, as
+            // the pre-binding wiring always ended a hold on lift.
+            var heldAction: HoldAction? = null
+            icon.onHoldStart = {
+                val action = prefs.iconHoldAction
+                heldAction = action
+                when (action) {
+                    HoldAction.SHOW_TRANSLATIONS -> CaptureService.instance?.holdStart(displayId)
+                    HoldAction.OPEN_QUICK_MENU -> showFloatingMenu(display, icon)
+                }
+            }
+            icon.onHoldEnd = {
+                when (heldAction ?: prefs.iconHoldAction) {
+                    HoldAction.SHOW_TRANSLATIONS -> CaptureService.instance?.holdEnd()
+                    // The menu opened at the hold threshold and stays up; the
+                    // lift ends the gesture, not the menu.
+                    HoldAction.OPEN_QUICK_MENU -> Unit
+                }
+                heldAction = null
+            }
+            icon.onHoldCancel = {
+                when (heldAction ?: prefs.iconHoldAction) {
+                    HoldAction.SHOW_TRANSLATIONS -> CaptureService.instance?.holdCancel()
+                    // The finger slid past the drag threshold with the menu up:
+                    // the drag lens is about to open, and the menu's full-screen
+                    // window would stay up alongside it (the icon owns this
+                    // touch stream, so the menu's tap-outside dismissal never
+                    // saw it). Close the menu first.
+                    HoldAction.OPEN_QUICK_MENU -> dismissFloatingMenu()
+                }
+                heldAction = null
+            }
             icon.onAnyTouch   = {
                 CaptureService.instance?.lastInteractedDisplayId = displayId
                 DimController.notifyInteraction()

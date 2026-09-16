@@ -411,16 +411,6 @@
 
     <string name="mp_overlay_permission_button">設定を開く</string>
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         FLOATING-ICON GESTURE HINTS
-         ═══════════════════════════════════════════════════════════════ -->
-
-    <string name="overlay_icon_gesture_drag">単語の上で<b>ドラッグ</b>すると簡易定義を表示</string>
-
-    <string name="overlay_icon_gesture_hold"><b>長押し</b>で翻訳をプレビュー</string>
-
-    <string name="overlay_icon_gesture_tap"><b>タップ</b>でクイックメニューを開く</string>
-
     <string name="overlay_icon_a11y_required_title">ユーザー補助が必要です</string>
 
     <string name="overlay_icon_a11y_required_message">フローティングアイコンをゲーム画面に表示するには、ユーザー補助の権限が必要です。\n\n設定 → ユーザー補助 → ダウンロードしたアプリ → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → オンにする の順に進んでください。</string>

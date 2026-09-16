@@ -420,16 +420,6 @@
 
     <string name="mp_overlay_permission_button">Открыть настройки</string>
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         FLOATING-ICON GESTURE HINTS
-         ═══════════════════════════════════════════════════════════════ -->
-
-    <string name="overlay_icon_gesture_drag"><b>Проведите</b> по словам для быстрых определений</string>
-
-    <string name="overlay_icon_gesture_hold"><b>Удерживайте</b> для предпросмотра перевода</string>
-
-    <string name="overlay_icon_gesture_tap"><b>Нажмите</b>, чтобы открыть быстрое меню</string>
-
     <string name="overlay_icon_a11y_required_title">Требуются специальные возможности</string>
 
     <string name="overlay_icon_a11y_required_message">Плавающему значку требуется разрешение на специальные возможности, чтобы рисовать поверх экрана игры.\n\nПерейдите в Настройки → Специальные возможности → Скачанные приложения → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Включить.</string>

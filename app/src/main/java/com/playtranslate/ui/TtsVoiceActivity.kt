@@ -167,7 +167,7 @@ class TtsVoiceActivity : AppCompatActivity() {
                 inflater.inflate(R.layout.settings_row_divider, voiceRows, false)
             )
         }
-        val row = inflater.inflate(R.layout.tts_voice_row, voiceRows, false)
+        val row = inflater.inflate(R.layout.settings_row_choice, voiceRows, false)
         row.findViewById<TextView>(R.id.tvRowTitle).text = title
         row.findViewById<TextView>(R.id.tvRowSubtitle).text = subtitle
         row.findViewById<ImageView>(R.id.ivCheck).visibility =

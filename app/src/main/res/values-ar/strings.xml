@@ -394,14 +394,6 @@
 
     <string name="mp_overlay_permission_button">فتح الإعدادات</string>
 
-    <!-- ═══ FLOATING-ICON GESTURE HINTS ═══ -->
-
-    <string name="overlay_icon_gesture_drag"><b>اسحب</b> فوق الكلمات للحصول على تعريفات سريعة</string>
-
-    <string name="overlay_icon_gesture_hold"><b>اضغط مطولاً</b> لمعاينة الترجمات</string>
-
-    <string name="overlay_icon_gesture_tap"><b>اضغط</b> لفتح القائمة السريعة</string>
-
     <string name="overlay_icon_a11y_required_title">إمكانية الوصول مطلوبة</string>
 
     <string name="overlay_icon_a11y_required_message">تحتاج الأيقونة العائمة إلى إذن إمكانية الوصول للرسم فوق شاشة اللعبة.\n\nانتقل إلى الإعدادات ← إمكانية الوصول ← التطبيقات التي تم تنزيلها ← <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ← تفعيل.</string>

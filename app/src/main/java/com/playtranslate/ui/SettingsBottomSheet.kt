@@ -318,6 +318,11 @@ class SettingsBottomSheet : DialogFragment() {
                         android.content.Intent(requireContext(), HotkeysSettingsActivity::class.java)
                     )
                 }
+                override fun openIconGesturesSettings() {
+                    startActivity(
+                        android.content.Intent(requireContext(), IconGesturesSettingsActivity::class.java)
+                    )
+                }
                 override fun openCaptureOverlaySettings() {
                     startActivity(
                         android.content.Intent(requireContext(), CaptureOverlaySettingsActivity::class.java)

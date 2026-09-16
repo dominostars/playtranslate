@@ -501,8 +501,9 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
     /** TalkBack double-tap path. Maps to the same callback a short tap
      *  fires through the gesture machinery in [onTouchEvent] — drag/hold
-     *  aren't reachable without continuous motion, so [onTap] is the only
-     *  sensible accessibility-click action on a floating icon. */
+     *  aren't reachable without continuous motion, so [onTap] (whatever the
+     *  tap binding in IconGestureBindings.kt does) is the only sensible
+     *  accessibility-click action on a floating icon. */
     override fun performClick(): Boolean {
         super.performClick()
         onTap?.invoke()

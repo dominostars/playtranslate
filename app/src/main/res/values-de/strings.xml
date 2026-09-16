@@ -404,16 +404,6 @@
 
     <string name="mp_overlay_permission_button">Einstellungen öffnen</string>
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         FLOATING-ICON GESTURE HINTS
-         ═══════════════════════════════════════════════════════════════ -->
-
-    <string name="overlay_icon_gesture_drag"><b>Ziehe</b> über Wörter für schnelle Definitionen</string>
-
-    <string name="overlay_icon_gesture_hold"><b>Halte</b> gedrückt, um Übersetzungen vorab anzuzeigen</string>
-
-    <string name="overlay_icon_gesture_tap"><b>Tippe</b>, um das Schnellmenü zu öffnen</string>
-
     <string name="overlay_icon_a11y_required_title">Bedienungshilfen erforderlich</string>
 
     <string name="overlay_icon_a11y_required_message">Das schwebende Symbol benötigt die Berechtigung für Bedienungshilfen, um auf dem Spielbildschirm zu zeichnen.\n\nGehe zu Einstellungen → Bedienungshilfen → Heruntergeladene Apps → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Aktivieren.</string>

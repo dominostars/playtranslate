@@ -370,14 +370,6 @@
 
     <string name="mp_overlay_permission_button">เปิดการตั้งค่า</string>
 
-    <!-- ═══ FLOATING-ICON GESTURE HINTS ═══ -->
-
-    <string name="overlay_icon_gesture_drag"><b>ลาก</b>บนคำเพื่อดูคำจำกัดความอย่างรวดเร็ว</string>
-
-    <string name="overlay_icon_gesture_hold"><b>กดค้าง</b>เพื่อดูตัวอย่างคำแปล</string>
-
-    <string name="overlay_icon_gesture_tap"><b>แตะ</b>เพื่อเปิดเมนูด่วน</string>
-
     <string name="overlay_icon_a11y_required_title">ต้องมีการช่วยเหลือพิเศษ</string>
 
     <string name="overlay_icon_a11y_required_message">ไอคอนลอยต้องใช้สิทธิ์การช่วยเหลือพิเศษเพื่อวาดบนหน้าจอเกม\n\nไปที่ การตั้งค่า → การช่วยเหลือพิเศษ → แอปที่ดาวน์โหลด → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → เปิดใช้งาน</string>

@@ -984,21 +984,38 @@
     <string name="mp_overlay_permission_button">Open settings</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
-         FLOATING-ICON GESTURE HINTS
-         Each string is a short verb + em-dash + explanation, rendered
-         in the "On the floating icon" cell with a leading Material
-         Symbol from the layout.  <b> is rendered as bold via HtmlCompat;
-         preserve the markup.
+         FLOATING-ICON GESTURES
+         The "On the floating icon" cell lists each gesture with the
+         action bound to it, as (icon) (gesture word) (action title), and
+         opens a picker page with one section per gesture. The gesture
+         words are that page's section headers too (rendered ALL CAPS
+         there by Text.PT.GroupHeader; keep normal case).
          ═══════════════════════════════════════════════════════════════ -->
 
-    <!-- Drag gesture hint. -->
-    <string name="overlay_icon_gesture_drag"><b>Drag</b> over words for quick definitions</string>
+    <!-- Gesture names: short imperative verbs, shown bold beside the
+         gesture icon. -->
+    <string name="icon_gesture_drag">Drag</string>
+    <string name="icon_gesture_hold">Hold</string>
+    <string name="icon_gesture_tap">Tap</string>
 
-    <!-- Hold gesture hint. -->
-    <string name="overlay_icon_gesture_hold"><b>Hold</b> to preview translations</string>
+    <!-- Action titles, sentence case, no period. Each is both a picker
+         row and the cell's third column, e.g. "Hold  Open the quick menu". -->
+    <!-- Drag: the magnifier lens over game text. -->
+    <string name="icon_action_lookup_words">Hover over a word for its definition</string>
+    <!-- Hold: the hold-to-preview one-shot on the game screen. -->
+    <string name="icon_action_show_translations">Show translations on screen</string>
+    <!-- Hold or Tap: open the floating icon's menu. "Quick menu" is the
+         term the icon's tap hint has always used. -->
+    <string name="icon_action_open_quick_menu">Open the quick menu</string>
+    <!-- Tap: the one-shot capture the quick menu's Capture button runs. -->
+    <string name="icon_action_capture_screen">Capture screen</string>
 
-    <!-- Tap gesture hint. -->
-    <string name="overlay_icon_gesture_tap"><b>Tap</b> to open the quick menu</string>
+    <!-- Alert shown on leaving the picker page while no gesture is bound
+         to "Open the quick menu". The confirm button leaves with the
+         choices as they are; Cancel stays on the page. -->
+    <string name="icon_gestures_no_menu_title">No gesture opens the quick menu</string>
+    <string name="icon_gestures_no_menu_message">The quick menu won\'t be reachable from the floating icon. Bind \"Open the quick menu\" to Hold or Tap to keep it available.</string>
+    <string name="icon_gestures_no_menu_confirm">I understand</string>
 
     <!-- Title of the alert shown when the floating icon is enabled but
          accessibility has been turned off externally. -->
