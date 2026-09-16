@@ -12,6 +12,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.model.ImportedSense
+import com.playtranslate.model.ImportedSenseGroup
 import com.playtranslate.vocab.HiddenWordsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -78,16 +80,21 @@ class WordRowsBinderTest {
         controller = Robolectric.buildActivity(Host::class.java).setup()
         activity = controller.get()
         root = LayoutInflater.from(activity).inflate(R.layout.fragment_translation_result, null)
-        binder = WordRowsBinder(
-            root, activity, Prefs(activity),
-            object : WordRowsBinder.Host {
-                override val isAlive: Boolean get() = true
-                override val scope: CoroutineScope get() = this@WordRowsBinderTest.scope
-                override val ttsAlertTarget: TtsAlertTarget get() = TtsAlertTarget.InActivity(activity)
-                override fun onWordTapped(row: RowState) { tapped += row.displayWord }
-            },
-        )
+        binder = newBinder()
     }
+
+    /** A binder over the inflated root; the styled tests re-point [binder]
+     *  at one with their own cap. */
+    private fun newBinder(styledRowCap: Int = STYLED_WORD_ROW_CAP) = WordRowsBinder(
+        root, activity, Prefs(activity),
+        object : WordRowsBinder.Host {
+            override val isAlive: Boolean get() = true
+            override val scope: CoroutineScope get() = this@WordRowsBinderTest.scope
+            override val ttsAlertTarget: TtsAlertTarget get() = TtsAlertTarget.InActivity(activity)
+            override fun onWordTapped(row: RowState) { tapped += row.displayWord }
+        },
+        styledRowCap = styledRowCap,
+    )
 
     @After
     fun tearDown(): Unit = runBlocking {
@@ -160,6 +167,76 @@ class WordRowsBinderTest {
         HiddenWordsStore.setHidden(app, SourceLangId.JA, "魚", "さかな", hidden = true)
         binder.applyHiddenState()
         assertEquals(listOf("食べる", "魚", "猫"), order())
+    }
+
+    private fun structuredRow(word: String, reading: String, meaning: String, rowid: Long) =
+        row(word, reading, meaning).copy(
+            importedGroups = listOf(
+                ImportedSenseGroup("Jitendex", listOf(ImportedSense(meaning, scRowid = rowid)), dictId = "jt"),
+            ),
+        )
+
+    private fun renderersUnder(word: String): List<YomitanDefinitionsView> = cells()
+        .first { it.descendants().filterIsInstance<TextView>().first().text.toString() == word }
+        .descendants().filterIsInstance<YomitanDefinitionsView>().toList()
+
+    private fun allRenderers(): List<YomitanDefinitionsView> =
+        cells().flatMap { it.descendants().filterIsInstance<YomitanDefinitionsView>().toList() }
+
+    @Test
+    fun `styled renderers are capped in list order, pooled across rebuilds, and destroyed by release`() {
+        val payload = YomitanStyledData(
+            mapOf(1L to "{}", 2L to "{}", 3L to "{}"), mapOf("jt" to ".x{}"), "ja",
+        )
+        // Imported, but nothing structured retained: the flat tier, never a WebView.
+        val flat = row("魚", "さかな", "fish").copy(
+            importedGroups = listOf(ImportedSenseGroup("JMdict", listOf(ImportedSense("fish")), dictId = "jm")),
+        )
+        val settled = WordLookupsState.Settled(
+            listOf(
+                structuredRow("猫", "ねこ", "cat", 1L), flat,
+                structuredRow("犬", "いぬ", "dog", 2L), structuredRow("鳥", "とり", "bird", 3L),
+            ),
+            emptyList(), emptyMap(), styled = payload,
+        )
+        binder = newBinder(styledRowCap = 2)
+        binder.render(settled)
+        assertEquals(1, renderersUnder("猫").size)
+        assertEquals(0, renderersUnder("魚").size)
+        assertEquals(1, renderersUnder("犬").size)
+        // Third structured row, past the cap: flat.
+        assertEquals(0, renderersUnder("鳥").size)
+        val first = allRenderers()
+        assertEquals(2, first.size)
+
+        // A rebuild (a capture in live mode) reuses the same two renderers:
+        // no re-mint, and none on screen in between.
+        binder.render(WordLookupsState.Loading)
+        assertTrue(allRenderers().isEmpty())
+        binder.render(settled)
+        assertEquals(first.toSet(), allRenderers().toSet())
+
+        // Teardown is terminal and idempotent: nothing on screen, and a
+        // render after it binds every row flat.
+        binder.release()
+        assertTrue(allRenderers().isEmpty())
+        binder.release()
+        binder.render(settled)
+        assertEquals(4, cells().size)
+        assertTrue(allRenderers().isEmpty())
+    }
+
+    @Test
+    fun `a cap of zero binds every row flat`() {
+        val payload = YomitanStyledData(mapOf(1L to "{}"), mapOf("jt" to ".x{}"), "ja")
+        binder = newBinder(styledRowCap = 0)
+        binder.render(
+            WordLookupsState.Settled(
+                listOf(structuredRow("猫", "ねこ", "cat", 1L)), emptyList(), emptyMap(), styled = payload,
+            ),
+        )
+        assertEquals(1, cells().size)
+        assertTrue(allRenderers().isEmpty())
     }
 
     @Test

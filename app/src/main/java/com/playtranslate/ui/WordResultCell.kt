@@ -10,6 +10,7 @@ import android.graphics.drawable.LayerDrawable
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.FrameLayout
@@ -94,16 +95,21 @@ class WordResultCell @JvmOverloads constructor(
     private var boundOnCellTap: () -> Unit = {}
     private var boundOnSpeak: () -> Unit = {}
     private var boundTrailing: TrailingAction = TrailingAction.Anki {}
-    private var boundStyledImported = false
+    private var boundStyledSource: StyledRendererSource? = null
 
-    /** Styled (WebView) renderer for the imported Yomitan groups, built only
-     *  for hosts that opt in through [bind]'s `styledImported` — today the
-     *  word detail page's Words section, a static handful of cells under a
-     *  block that renders styled, where the flat tier's tag runs read as a
-     *  bug. The LIST surfaces (search results, the words panel) stay flat on
-     *  purpose: they recycle, and a WebView per recycled row is not
-     *  affordable. Null whenever the styled path can't run. */
+    /** Styled (WebView) renderer for the imported Yomitan groups, held only
+     *  for hosts that opt in through [bind]'s `styledRenderers`: the word
+     *  detail page's Words section (one renderer per cell, [StyledRendererSource.Own])
+     *  and the results page's Words card ([WordRowsBinder]: the in-app page
+     *  and the workspace's sentence page, a capped pool shared by the rows).
+     *  The dictionary search results stay flat on purpose: that list
+     *  recycles, and a WebView per recycled row is not affordable. Null
+     *  whenever the styled path can't run. */
     private var styledView: YomitanDefinitionsView? = null
+
+    /** The source [styledView] came from; it takes the view back in
+     *  [releaseStyled]. Null exactly when [styledView] is. */
+    private var styledSource: StyledRendererSource? = null
     private val styledContainer = FrameLayout(context).apply { isGone = true }
     /** True while [styledView] holds the imported groups, so the flat body
      *  must not render them a second time. */
@@ -237,20 +243,21 @@ class WordResultCell @JvmOverloads constructor(
      * also choosing the second slot's icon and, for a hidden word, the stub
      * rendering.
      *
-     * [styledImported] opts this cell into the styled renderer for
-     * [WordDefinitionData.importedGroups] (see [styledView]); it needs
-     * [WordDefinitionData.styled] prefetched by the host. Default off — a
-     * recycling list must not mint WebViews. Hosts that pass true MUST call
-     * [releaseStyled] when the page goes away.
+     * [styledRenderers] opts this cell into the styled renderer for
+     * [WordDefinitionData.importedGroups] (see [styledView]) and says where
+     * the renderer comes from; it needs [WordDefinitionData.styled]
+     * prefetched by the host. Default null — a recycling list must not mint
+     * WebViews. Hosts that pass a source MUST call [releaseStyled] when the
+     * page goes away.
      */
-    fun bind(
+    internal fun bind(
         data: WordDefinitionData,
         scale: Float,
         inflectedForms: List<InflectedForm>,
         onCellTap: () -> Unit,
         onSpeak: () -> Unit,
         trailing: TrailingAction,
-        styledImported: Boolean = false,
+        styledRenderers: StyledRendererSource? = null,
     ) {
         boundData = data
         boundScale = scale
@@ -332,14 +339,14 @@ class WordResultCell @JvmOverloads constructor(
         // Styled body first: when it takes the imported groups, the flat body
         // renders only what's left (the pack senses), exactly as the word
         // detail page splits its imported block from its native rows.
-        styledActive = styledImported && bindStyledImported(data, scale)
+        styledActive = styledRenderers != null && bindStyledImported(data, scale, styledRenderers)
         bindFlatBody(if (styledActive) data.flatRemainder() else data, scale)
 
         boundInflectedForms = inflectedForms
         boundOnCellTap = onCellTap
         boundOnSpeak = onSpeak
         boundTrailing = trailing
-        boundStyledImported = styledImported
+        boundStyledSource = styledRenderers
         setOnClickListener { onCellTap() }
         speakButton.setOnClickListener { onSpeak() }
         applyTrailing(trailing)
@@ -429,7 +436,7 @@ class WordResultCell @JvmOverloads constructor(
         val data = boundData ?: return
         bind(
             data, boundScale, boundInflectedForms, boundOnCellTap, boundOnSpeak,
-            TrailingAction.Hide(hidden, trailing.onToggle), boundStyledImported,
+            TrailingAction.Hide(hidden, trailing.onToggle), boundStyledSource,
         )
     }
 
@@ -468,19 +475,26 @@ class WordResultCell @JvmOverloads constructor(
         )
 
     /**
-     * Hand the imported groups to a fresh styled renderer. False — and the
-     * flat body keeps them, unchanged — when there is no structured payload
-     * (styling toggle off, nothing retained at import) or no WebView provider
-     * on the device. The document carries the GROUPS only: senses stay empty
-     * so the pack's rows keep rendering natively below, the same split the
-     * word detail page makes for its own imported block.
+     * Hand the imported groups to a styled renderer from [source]. False —
+     * and the flat body keeps them, unchanged — when there is no structured
+     * payload (styling toggle off, nothing retained at import), when the
+     * source has none to give (its cap is reached, its renderer died) or
+     * when there is no WebView provider on the device. The document carries
+     * the GROUPS only: senses stay empty so the pack's rows keep rendering
+     * natively below, the same split the word detail page makes for its own
+     * imported block. A reused renderer arrives with its last content: it
+     * sits at 1px until this cell's swap paints, so nothing stale shows.
      */
-    private fun bindStyledImported(data: WordDefinitionData, scale: Float): Boolean {
+    private fun bindStyledImported(
+        data: WordDefinitionData,
+        scale: Float,
+        source: StyledRendererSource,
+    ): Boolean {
         releaseStyled()
         val styled = data.styled
         if (styled == null || styled.structured.isEmpty() || data.importedGroups.isEmpty()) return false
-        val v = YomitanDefinitionsView(context, styledTokens(scale))
-        if (!v.isUsable()) return false
+        val v = source.acquire { YomitanDefinitionsView(context, styledTokens(scale)) } ?: return false
+        (v.parent as? ViewGroup)?.removeView(v)
         v.setPadding(0, dp(4f * scale), 0, dp(2f * scale))
         // The whole cell is one tap target (it opens the word's detail page),
         // so the page must refuse the touch stream instead of swallowing taps
@@ -490,17 +504,25 @@ class WordResultCell @JvmOverloads constructor(
         v.passThroughTouches = true
         v.onContentHeight = { h -> applyStyledHeight(h, scale) }
         v.onRendererGone = {
-            // destroy() already ran inside the view; rebuild the flat body
-            // WITH its imported rows so the cell degrades to what every other
-            // host shows rather than to nothing.
-            styledView = null
-            styledActive = false
-            styledContainer.removeAllViews()
-            styledContainer.foreground = null
-            styledContainer.isGone = true
-            boundData?.let { bindFlatBody(it, boundScale) }
+            // destroy() already ran inside the view. Only while this cell
+            // still holds it (a pooled renderer may have moved on, and the
+            // pool clears this hook on release anyway): hand the dead view
+            // back and rebuild the flat body WITH its imported rows, so the
+            // cell degrades to what every other host shows rather than to
+            // nothing.
+            if (styledView === v) {
+                styledView = null
+                styledActive = false
+                styledContainer.removeAllViews()
+                styledContainer.foreground = null
+                styledContainer.isGone = true
+                styledSource?.release(v)
+                styledSource = null
+                boundData?.let { bindFlatBody(it, boundScale) }
+            }
         }
         styledView = v
+        styledSource = source
         styledContainer.isGone = false
         // Same gap under the title block the flat body takes.
         (styledContainer.layoutParams as LayoutParams).topMargin = dp(10f * scale)
@@ -583,17 +605,51 @@ class WordResultCell @JvmOverloads constructor(
         }
     }
 
-    /** Destroy the styled renderer this cell owns, if any. Hosts that pass
-     *  `styledImported = true` MUST call this on teardown: a dropped but
-     *  undestroyed WebView keeps renderer resources and the context graph
-     *  alive until GC. Idempotent. */
+    /** Hand the styled renderer this cell holds, if any, back to its source
+     *  (which destroys or pools it). Hosts that pass a `styledRenderers`
+     *  source MUST call this on teardown: a dropped but undestroyed WebView
+     *  keeps renderer resources and the context graph alive until GC.
+     *  Idempotent. */
     fun releaseStyled() {
-        styledView?.destroy()
+        val v = styledView
+        val source = styledSource
         styledView = null
+        styledSource = null
         styledActive = false
         styledContainer.removeAllViews()
         styledContainer.foreground = null
         styledContainer.isGone = true
+        if (v != null) source?.release(v) ?: v.destroy()
+    }
+
+    /**
+     * Where a cell's styled renderer comes from — the host's choice, made in
+     * [bind]. [Own] mints one per cell and destroys it on release (the word
+     * detail page's Words section: a static handful of cells); a pooling
+     * source caps how many exist and reuses them across rebuilds (the
+     * results page's Words card, [StyledRendererPool]). Null in [bind] is the
+     * flat tier: a recycling list must not mint WebViews.
+     */
+    internal interface StyledRendererSource {
+        /** A usable renderer for this cell, or null to render flat. [create]
+         *  builds a fresh one with this cell's document tokens; a source
+         *  calls it only when it has room. The cell detaches the view from
+         *  any previous parent itself. */
+        fun acquire(create: () -> YomitanDefinitionsView): YomitanDefinitionsView?
+
+        /** The cell is done with [v]: a rebuild, a stub, teardown, or the
+         *  renderer's death (then [v] has already destroyed itself and
+         *  [YomitanDefinitionsView.isUsable] is false). [v] is already out
+         *  of the cell's tree. */
+        fun release(v: YomitanDefinitionsView)
+
+        /** One renderer per cell, destroyed when the cell lets go. */
+        object Own : StyledRendererSource {
+            override fun acquire(create: () -> YomitanDefinitionsView): YomitanDefinitionsView? =
+                create().takeIf { it.isUsable() }
+
+            override fun release(v: YomitanDefinitionsView) = v.destroy()
+        }
     }
 
     /** Style a reading view: pitch contour + overline headroom when present;

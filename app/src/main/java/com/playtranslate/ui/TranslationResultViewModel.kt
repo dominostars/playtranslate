@@ -392,13 +392,14 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
         _wordLookups.value = WordLookupsState.Loading
         lookupJob = viewModelScope.launch {
             try {
-                val (data, annotation, phrases) = performLookups(appCtx, text)
+                val (data, annotation, phrases, styled) = performLookups(appCtx, text)
                 _wordLookups.value = WordLookupsState.Settled(
                     rows = data.rows,
                     tokenSpans = data.tokenSpans,
                     lookupToReading = data.lookupToReading,
                     annotation = annotation,
                     phrases = phrases,
+                    styled = styled,
                 )
                 // Pair the settled lookup with its source text and (re)write the
                 // cache. If the translation has already landed (Ready, same text),
@@ -449,16 +450,23 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
         )
     }
 
-    private suspend fun performLookups(
-        appCtx: Context,
-        text: String,
-    ): Triple<LookupData, com.playtranslate.language.SentenceAnnotation,
-        List<com.playtranslate.language.PhraseOccurrence>> {
+    /** What one lookup pass produces: the rows, the analysis they were
+     *  projected from, the phrase occurrences, and the Words card's styled
+     *  payload (see [WordLookupsState.Settled.styled]). */
+    private data class Lookups(
+        val data: LookupData,
+        val annotation: com.playtranslate.language.SentenceAnnotation,
+        val phrases: List<com.playtranslate.language.PhraseOccurrence>,
+        val styled: YomitanStyledData?,
+    )
+
+    private suspend fun performLookups(appCtx: Context, text: String): Lookups {
         // Snapshot source/target prefs ONCE, before analyzing, so the whole
         // lookup runs against one consistent language pair even if the user
         // changes settings mid-flight (see [WordLookupContext]).
         val prefs = Prefs(appCtx)
-        val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
+        val sourceLang = prefs.sourceLangId
+        val engine = SourceLanguageEngines.get(appCtx, sourceLang)
         val context = WordLookupContext(engine, prefs.targetLang, prefs.targetChineseVariant)
         // ONE analysis: the same FULL-depth annotation the furigana display
         // renders — its spans project the per-occurrence tokens the shared
@@ -472,11 +480,26 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
         // by construction.
         val t = phraseAwareRowTokens(engine, text, annotation)
         val data = resolveWordRows(appCtx, context, t.rowTokens)
+        // The Words card's styled payload, fetched HERE beside the rows and
+        // under the same language snapshot: one query (the sentence sheet's
+        // shape, not the detail page's one-per-row), so the card binds
+        // styled-or-flat in a single pass and no view launches a fetch of
+        // its own. Covers only the rows the card can style — the first
+        // styledWordRowCap structured rows, the same cap its renderer pool
+        // is built with — so a long list never inflates glossaries for
+        // rows that bind flat. Free when styling is off or nothing is
+        // structured (no rowids, no query), skipped outright where the card
+        // can hold no renderer (a low-RAM device: cap 0); a datastore
+        // failure costs the styling, never the rows.
+        val styledCap = styledWordRowCap(appCtx)
+        val styled = if (styledCap == 0) null else fetchYomitanStyledData(
+            appCtx, sourceLang.yomitanConsumingLang(), styledCandidateGroups(data.rows, styledCap),
+        )
         // Tap spans project from the word tokens; the phrase occurrences
         // ride to the fragment so its span computation can add tap targets
         // for single-letter phrase members ("a" in "a great deal") anchored
         // by the PHRASE's displayed range (SourceWordLookup.computeTapSpans).
-        return Triple(data.copy(tokenSpans = t.wordTokens), annotation, t.phrases)
+        return Lookups(data.copy(tokenSpans = t.wordTokens), annotation, t.phrases, styled)
     }
 }
 
@@ -552,6 +575,13 @@ sealed class WordLookupsState {
          *  computation anchors single-letter phrase members' tap targets on
          *  these ([SourceWordLookup.computeTapSpans]). */
         val phrases: List<com.playtranslate.language.PhraseOccurrence> = emptyList(),
+        /** One styled payload (structured glossaries + dictionary CSS) for
+         *  every row's [RowState.importedGroups], fetched with the rows so
+         *  the Words card binds styled-or-flat in one pass and the cells own
+         *  no coroutines; each takes its share via
+         *  [YomitanStyledData.forGroups]. Null = the flat tier throughout
+         *  (styling off, nothing structured retained). In-process only. */
+        val styled: YomitanStyledData? = null,
     ) : WordLookupsState()
 }
 

@@ -1099,8 +1099,9 @@ class WordDetailBinder(
                 },
                 // This section is a static handful of cells under a block
                 // that renders styled; the flat tier's unspaced tag runs read
-                // as a bug next to it. The recycling hosts stay flat.
-                styledImported = true,
+                // as a bug next to it. One renderer per cell, the members
+                // being two or three; the recycling search list stays flat.
+                styledRenderers = WordResultCell.StyledRendererSource.Own,
             )
             memberStyledCells += cell
             card.addView(cell)

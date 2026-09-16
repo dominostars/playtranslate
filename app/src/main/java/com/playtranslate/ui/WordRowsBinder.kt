@@ -32,6 +32,18 @@ import kotlinx.coroutines.withContext
  * drift between the two surfaces. Views are found from [root]
  * (`fragment_translation_result.xml`'s Words card ids).
  *
+ * Imported Yomitan dictionaries render styled on the first
+ * [STYLED_WORD_ROW_CAP] rows that retained structured content (in list
+ * order; the rest bind flat), through [WordResultCell]'s `styledRenderers`
+ * path over a [StyledRendererPool] this binder owns for the page's life:
+ * the VM fetches ONE payload for the whole list beside the rows
+ * ([WordLookupsState.Settled.styled]), each cell takes its own share
+ * ([YomitanStyledData.forGroups]) and borrows a pooled renderer, and every
+ * rebuild hands the renderers back before the rows are rebuilt, so a
+ * capture in live mode costs content swaps, not shell loads. [release]
+ * destroys the pool; a dropped but undestroyed WebView holds renderer
+ * resources until GC.
+ *
  * Hidden words, the rules pinned by the store's tests: a fresh list draws
  * visible words first and hidden words last, each group in lookup order,
  * and only when the language's set had LOADED before the render
@@ -47,6 +59,9 @@ class WordRowsBinder(
     private val ctx: Context,
     private val prefs: Prefs,
     private val host: Host,
+    /** How many rows may hold a styled renderer at once; see
+     *  [styledWordRowCap] (0 on low-RAM devices). */
+    styledRowCap: Int = styledWordRowCap(ctx),
 ) {
     interface Host {
         /** The host view tree is still live — guards every async re-entry. */
@@ -75,8 +90,15 @@ class WordRowsBinder(
     private val ankiDecksByWord = HashMap<String, List<String>>()
     private var lastRenderedCells: Map<String, List<WordResultCell>> = emptyMap()
 
+    /** The rows' styled renderers, capped and reused across rebuilds. */
+    private val styledPool = StyledRendererPool(styledRowCap)
+
     /** The rows of the last Settled render, for the late-load re-render. */
     private var lastRows: List<RowState> = emptyList()
+
+    /** The styled payload those rows were rendered with, re-applied by the
+     *  late-load re-render. */
+    private var lastStyled: YomitanStyledData? = null
 
     /** True once the rendered rows were ordered against a LOADED hidden set
      *  (see [renderRows]); while false, the next revision re-renders
@@ -119,7 +141,7 @@ class WordRowsBinder(
                 noWordsText.isGone = true
             }
             is WordLookupsState.Settled -> {
-                renderRows(state.rows)
+                renderRows(state.rows, state.styled)
                 loadingText.isGone = true
                 noWordsText.visibility = if (state.rows.isEmpty()) View.VISIBLE else View.GONE
             }
@@ -127,14 +149,34 @@ class WordRowsBinder(
     }
 
     private fun clearRows() {
+        releaseStyledCells()
         container.removeAllViews()
         lastRenderedCells = emptyMap()
         lastRows = emptyList()
+        lastStyled = null
     }
 
-    private fun renderRows(rows: List<RowState>) {
+    /** Host teardown: the cells hand their styled renderers back and the
+     *  pool destroys them. Must be called when the view tree goes away
+     *  ([TranslationResultContent.release]); terminal and idempotent — a
+     *  render after it binds flat. */
+    fun release() {
+        releaseStyledCells()
+        styledPool.destroyAll()
+    }
+
+    /** Every rendered cell hands its styled renderer back to the pool, if
+     *  it holds one; the cells themselves stay until the container is
+     *  rebuilt. */
+    private fun releaseStyledCells() {
+        lastRenderedCells.values.forEach { cells -> cells.forEach { it.releaseStyled() } }
+    }
+
+    private fun renderRows(rows: List<RowState>, styled: YomitanStyledData?) {
+        releaseStyledCells()
         container.removeAllViews()
         lastRows = rows
+        lastStyled = styled
         if (rows.isEmpty()) {
             lastRenderedCells = emptyMap()
             return
@@ -151,7 +193,7 @@ class WordRowsBinder(
         ordered.forEachIndexed { idx, row ->
             if (idx > 0) container.addView(inflateDivider())
             val cell = WordResultCell(ctx)
-            bindCell(cell, row)
+            bindCell(cell, row, styled)
             container.addView(cell)
             cellsByWord.getOrPut(row.displayWord) { mutableListOf() }.add(cell)
         }
@@ -159,7 +201,7 @@ class WordRowsBinder(
         loadDeckBadges(ordered.map { it.displayWord }, cellsByWord)
     }
 
-    private fun bindCell(cell: WordResultCell, row: RowState) {
+    private fun bindCell(cell: WordResultCell, row: RowState, styled: YomitanStyledData?) {
         // Any already-known Anki decks (cache / re-render) render immediately;
         // uncached words are filled in by renderRows' batched query.
         val data = WordDefinitionData(
@@ -172,6 +214,11 @@ class WordRowsBinder(
             pitch = row.pitch,
             frequencies = row.frequencies,
             readingRows = row.readingRows,
+            importedGroups = row.importedGroups,
+            // This row's share of the list's payload: null (the flat tier)
+            // for a row whose imported dictionaries retained nothing
+            // structured, so it mints no renderer.
+            styled = styled?.forGroups(row.importedGroups),
         )
         cell.bind(
             data = data,
@@ -205,6 +252,10 @@ class WordRowsBinder(
                     }
                 },
             ),
+            // The cell borrows its styled renderer from the pool (see the
+            // class doc); a null payload above, or an exhausted pool, keeps
+            // it flat.
+            styledRenderers = styledPool,
         )
     }
 
@@ -218,7 +269,7 @@ class WordRowsBinder(
         if (lastRenderedCells.isEmpty()) return
         val lang = prefs.sourceLangId
         if (!hiddenOrderApplied && HiddenWordsStore.isLoaded(lang)) {
-            renderRows(lastRows)
+            renderRows(lastRows, lastStyled)
             return
         }
         val hidden = HiddenWordsStore.snapshot(ctx, lang)

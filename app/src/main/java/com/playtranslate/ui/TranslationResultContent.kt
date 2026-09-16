@@ -468,12 +468,14 @@ class TranslationResultContent(
         scrollView.restoreScrollSilently(target, scrollListener)
     }
 
-    /** Tear down: the lens, the popover, the sections' speak job. Idempotent. */
+    /** Tear down: the lens, the popover, the sections' speak job, the Words
+     *  card's styled renderers. Idempotent. */
     fun release() {
         sourceLens.dismiss()
         fontPopover?.dismiss()
         fontPopover = null
         binder.release()
+        wordRows.release()
     }
 }
 
