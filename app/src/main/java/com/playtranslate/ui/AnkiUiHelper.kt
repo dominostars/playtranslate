@@ -661,9 +661,15 @@ fun Fragment.showAnkiCardTypeMappingDialog(
 
 /**
  * Builds a two-up pill segmented toggle inside [container] (a FrameLayout).
- * Mirrors the [SettingsRenderer]'s buildPillToggle pattern: surface-tinted
- * track, sliding accent indicator, transparent labels on top. Used in the
- * Anki review toolbar to switch between Sentence and Word card flows.
+ * Mirrors the [SettingsRenderer]'s buildPillToggle pattern (sliding accent
+ * indicator, transparent labels on top) with the track one step further off
+ * its ground: every host draws it on the ptBg window ground (the overlay
+ * workspace card, the results activity's toolbar, the Anki review sheet),
+ * where buildPillToggle's ptSurface track all but vanishes (dark: #141719 on
+ * #0B0D0E), so the track is ptElevated, the fill the capture panel's header
+ * toggle uses on the same ground. Used in the Anki review toolbar to switch
+ * between Sentence and Word card flows, and by the lookup page's
+ * Sentence | word pill.
  *
  * @param leftLabel  Label for the left segment (e.g. "Sentence").
  * @param rightLabel Label for the right segment (e.g. "Word").
@@ -686,7 +692,7 @@ fun buildAnkiModeToggle(
     val trackPad = (3 * density).toInt()
     val pillH = (30 * density).toInt()
 
-    val surfaceColor = ctx.themeColor(R.attr.ptSurface)
+    val trackColor = ctx.themeColor(R.attr.ptElevated)
     val accentColor = ctx.themeColor(R.attr.ptAccent)
     val accentOnColor = ctx.themeColor(R.attr.ptAccentOn)
     val mutedColor = ctx.themeColor(R.attr.ptTextMuted)
@@ -697,7 +703,7 @@ fun buildAnkiModeToggle(
             FrameLayout.LayoutParams.WRAP_CONTENT
         )
         background = GradientDrawable().apply {
-            setColor(surfaceColor)
+            setColor(trackColor)
             cornerRadius = trackRadius
         }
         setPadding(trackPad, trackPad, trackPad, trackPad)
