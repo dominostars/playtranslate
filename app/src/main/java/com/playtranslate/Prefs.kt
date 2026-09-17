@@ -947,6 +947,15 @@ class Prefs internal constructor(
         get() = sp.getBoolean("capture_boxes_enabled", true)
         set(v) = sp.edit { putBoolean("capture_boxes_enabled", v) }
 
+    /** The accent glow around the display edges while the result panel is up
+     *  or parked in its sliver ([com.playtranslate.ui.EdgeIndicatorView]);
+     *  the camera and image-import review panels share it. Default ON. A
+     *  showing panel watches [KEY_EDGE_INDICATOR_ENABLED] through [observe],
+     *  so a flip lands on it live. */
+    var edgeIndicatorEnabled: Boolean
+        get() = sp.getBoolean(KEY_EDGE_INDICATOR_ENABLED, true)
+        set(v) = sp.edit { putBoolean(KEY_EDGE_INDICATOR_ENABLED, v) }
+
     /** Over-game capture: the panel posture the last dismissal left behind, so
      *  the next capture opens there. */
     var capturePanelPosture: Float
@@ -1772,6 +1781,8 @@ class Prefs internal constructor(
         /** Public so the in-app result header's "Show on screen" toggle can
          *  [observe] it and stay in sync with the Settings row. */
         const val KEY_HIDE_GAME_OVERLAYS                   = "hide_game_overlays"
+        /** Public so a showing result panel can [observe] it. */
+        const val KEY_EDGE_INDICATOR_ENABLED               = "edge_indicator_enabled"
         private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"
         private const val KEY_LAST_YOMITAN_UPDATE_CHECK    = "last_yomitan_update_check"
         private const val KEY_YOMITAN_UPDATE_BACKFILL_DONE = "yomitan_update_backfill_done"

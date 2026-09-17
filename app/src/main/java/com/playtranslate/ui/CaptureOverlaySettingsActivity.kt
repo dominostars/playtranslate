@@ -96,6 +96,10 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private lateinit var rowVerticalGrow: View
     private lateinit var switchVerticalGrow: MaterialSwitch
 
+    // ── Result-panel refs ─────────────────────────────────────────────────
+    private lateinit var rowEdgeIndicator: View
+    private lateinit var switchEdgeIndicator: MaterialSwitch
+
     // ── Capture-display refs + state ──────────────────────────────────────
     private lateinit var captureDisplaySection: View
     private lateinit var llDisplayOptions: LinearLayout
@@ -121,13 +125,17 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         switchTouchesRefresh = rowTouchesRefresh.findViewById(R.id.switchRowToggle)
         rowVerticalGrow = findViewById(R.id.rowVerticalGrow)
         switchVerticalGrow = rowVerticalGrow.findViewById(R.id.switchRowToggle)
+        rowEdgeIndicator = findViewById(R.id.rowEdgeIndicator)
+        switchEdgeIndicator = rowEdgeIndicator.findViewById(R.id.switchRowToggle)
         captureDisplaySection = findViewById(R.id.captureDisplaySection)
         llDisplayOptions = findViewById(R.id.llDisplayOptions)
 
         setGroupHeader(R.id.headerAutoTranslate, R.string.settings_header_auto_translate)
         setGroupHeader(R.id.headerCaptureDisplay, R.string.settings_header_capture_display)
+        setGroupHeader(R.id.headerResultPanel, R.string.settings_header_result_panel)
 
         setupAutoTranslateSection()
+        setupResultPanelSection()
         setupCaptureDisplaySection()
         setupOcrSection()
         setupDisplays()
@@ -281,6 +289,23 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         rowVerticalGrow.setOnClickListener { switchVerticalGrow.toggle() }
 
         setupCaptureInterval()
+    }
+
+    private fun setupResultPanelSection() {
+        // -- Edge indicator toggle (always shown) --
+        // A showing result panel observes the pref (CaptureResultOverlay), so
+        // the flip lands on it live: just persist.
+        rowEdgeIndicator.findViewById<TextView>(R.id.tvRowTitle).text =
+            getString(R.string.settings_edge_indicator_title)
+        rowEdgeIndicator.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            text = getString(R.string.settings_edge_indicator_subtitle)
+            isVisible = true
+        }
+        switchEdgeIndicator.isChecked = prefs.edgeIndicatorEnabled
+        switchEdgeIndicator.setOnCheckedChangeListener { _, checked ->
+            prefs.edgeIndicatorEnabled = checked
+        }
+        rowEdgeIndicator.setOnClickListener { switchEdgeIndicator.toggle() }
     }
 
     private fun setupCaptureInterval() {

@@ -46,6 +46,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.view.isVisible
 import androidx.core.widget.NestedScrollView
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
@@ -324,8 +325,15 @@ class CaptureResultOverlay(
     /** The message of the status currently in [statusText], or null when a
      *  result (not a status) is bound. Drives the sliver's loading mode:
      *  [statusText] itself is faded to nothing by the collapse crossfade, so
-     *  its text can't be read off the screen while parked. */
+     *  its text can't be read off the screen while parked. The same fact is
+     *  the edge indicator's working state, fanned out from the setter so the
+     *  two readers can't disagree. */
     private var statusMessage: String? = null
+        set(value) {
+            field = value
+            updateSliverHint()
+            edgeIndicator.working = value != null
+        }
 
     /** The panel height when the sliver collapse started, so a tap-expand can
      *  return to it (the sliver itself parks the height at [sliverHeightPx]). */
@@ -398,6 +406,15 @@ class CaptureResultOverlay(
     }
     private val contentRow = LinearLayout(ctx)
     private val handle = HandleView(ctx)
+    // The "an overlay is up" signal for as long as this sheet is up, sliver
+    // included (see [EdgeIndicator]): a frame around the display edges
+    // (bottom-most child of the root, beneath the on-frame boxes) and a lit
+    // rail on the sheet's top edge (just beneath the panel, over the edge
+    // shadow, positioned by [syncSheetEdge]). Shown while the
+    // [Prefs.edgeIndicatorEnabled] setting is on, observed live for the
+    // sheet's lifetime from [show], which also pulses it once as the sheet
+    // appears (a later collapse to the sliver does not re-flash).
+    private val edgeIndicator = EdgeIndicator(ctx, ctx.themeColor(R.attr.ptAccent), cornerRadiusPx)
     // A soft drop shadow cast above the sheet's top edge. The blur is BAKED ONCE
     // into [shadowBitmap]; the view only blits it and is repositioned via
     // translationY as the sheet grows/slides — never re-blurred (see [bakeEdgeShadow]).
@@ -407,10 +424,10 @@ class CaptureResultOverlay(
     // word spans alike without fighting any child clipping.
     private val focusRing = FocusRingView(ctx)
     private var shadowBitmap: Bitmap? = null
-    // The shadow tracks the sheet through a single pre-draw hook (see [syncShadow])
+    // The shadow (and the edge rail) track the sheet through a single pre-draw hook (see [syncSheetEdge])
     // rather than per-mover wiring — so no drag/animation path can move the sheet
     // and leave the shadow behind.
-    private var shadowSync: ViewTreeObserver.OnPreDrawListener? = null
+    private var edgeSync: ViewTreeObserver.OnPreDrawListener? = null
     // Frosted backdrop: the captured screenshot blurred ONCE (a cheap downscale),
     // drawn at full-screen scale UNDER the translucent sheet fill and clipped to
     // the rounded body. Static — no live re-blur.
@@ -422,7 +439,7 @@ class CaptureResultOverlay(
     private val backdropPaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val backdropDst = Rect()
     /** Frost offset the body's display list was last recorded with — the
-     *  pre-draw hook re-invalidates the body when it drifts (see syncShadow). */
+     *  pre-draw hook re-invalidates the body when it drifts (see syncSheetEdge). */
     private var lastFrostOff = Int.MIN_VALUE
 
     private var binder: TranslationSectionBinder? = null
@@ -633,9 +650,20 @@ class CaptureResultOverlay(
             addView(handle, LinearLayout.LayoutParams(MATCH, dp(HANDLE_HEIGHT_DP)))
             addView(body, LinearLayout.LayoutParams(MATCH, 0, 1f))
         }
-        // Shadow first → behind the panel, so the opaque sheet covers all but the
+        // The edge ring first → beneath everything else here: the on-frame
+        // boxes ([showChips] inserts them right above it) and the panel, so the
+        // bloom never tints a chip or the sheet.
+        root.addView(edgeIndicator.ring, FrameLayout.LayoutParams(MATCH, MATCH))
+        // Shadow next → behind the panel, so the opaque sheet covers all but the
         // soft fade cast above its top edge.
         root.addView(edgeShadow, FrameLayout.LayoutParams(MATCH, shadowHeightPx, Gravity.TOP))
+        // The rail over the shadow (its glow lights the shadow's dark halo,
+        // which gives the accent contrast on a bright scene) and beneath the
+        // panel, which covers everything below the sheet edge.
+        root.addView(
+            edgeIndicator.rail,
+            FrameLayout.LayoutParams(MATCH, edgeIndicator.rail.heightPx, Gravity.TOP),
+        )
         root.addView(panel, FrameLayout.LayoutParams(MATCH, 0, Gravity.BOTTOM))
         // After the panel so the ring draws over the sheet; a plain non-clickable
         // View, so in-panel touches fall through it to the panel below.
@@ -867,6 +895,20 @@ class CaptureResultOverlay(
         // focusable-overlay paper trail on add.
         val navActive = controllerNavEnabled && hasNavInputDevice(ctx)
         sheetHost.attach(root, screenW, screenH, focusable = navActive)
+        // The edge indicator follows its setting for the sheet's lifetime
+        // (observe seeds the current value now and fires on every change; the
+        // collector dies with [scope] in dismiss): the camera flow's OCR
+        // download deep link lands on that setting's screen with the review
+        // still up, so a flip has to reach a showing sheet.
+        scope.launch {
+            prefs.observe(Prefs.KEY_EDGE_INDICATOR_ENABLED).collect {
+                edgeIndicator.isVisible = prefs.edgeIndicatorEnabled
+            }
+        }
+        edgeIndicator.fadeIn()
+        // One flash as the sheet appears (played once the window is shown;
+        // an activity host attaches synchronously and plays it now).
+        edgeIndicator.pulse()
         if (navActive) {
             // The root holds VIEW focus so the framework's restoreDefaultFocus
             // can't wander into an ImageButton on window-focus gain and paint a
@@ -883,7 +925,7 @@ class CaptureResultOverlay(
         // through any move (handle drag, body swipe/fling, resize, entrance/exit)
         // with no per-mover wiring to forget. The controller focus ring rides the
         // same hook for the same reason.
-        shadowSync = ViewTreeObserver.OnPreDrawListener { syncShadow(); nav?.syncRing(); true }.also {
+        edgeSync = ViewTreeObserver.OnPreDrawListener { syncSheetEdge(); nav?.syncRing(); true }.also {
             root.viewTreeObserver.addOnPreDrawListener(it)
         }
         // Ease in from the bottom — a plain decelerate, no overshoot/bounce.
@@ -1107,8 +1149,8 @@ class CaptureResultOverlay(
         binder?.release()
         nav?.release()
         nav = null
-        shadowSync?.let { root.viewTreeObserver.removeOnPreDrawListener(it) }
-        shadowSync = null
+        edgeSync?.let { root.viewTreeObserver.removeOnPreDrawListener(it) }
+        edgeSync = null
         // Orphaned-UP guard: a key that went down on this focused window is
         // still held (the Anki one-tap long-press fires at the timeout, and
         // its no-permission / no-deck fallback dismisses mid-press) — the
@@ -1140,6 +1182,7 @@ class CaptureResultOverlay(
         dismissWordLens()
         fontPopover?.dismiss()
         nav?.clearCursor()   // no ring riding the exit slide
+        edgeIndicator.fadeOut(EXIT_DURATION_MS)
         panel.animate()
             .translationY(panelHeightPx.toFloat())
             .setDuration(EXIT_DURATION_MS)
@@ -1150,8 +1193,9 @@ class CaptureResultOverlay(
 
     // ── Sliver state (result shown as on-screen boxes) ───────────────────
 
-    /** Paint [data]'s boxes over the game (bottom-most child of this window),
-     *  or hand them to the host's [boxPresenter] (the camera's warp overlays).
+    /** Paint [data]'s boxes over the game (a child of this window just above
+     *  the edge ring, beneath the panel), or hand them to the host's
+     *  [boxPresenter] (the camera's warp overlays).
      *  False when the surface isn't ours to draw on (live mode). */
     private fun showChips(data: OneShotOverlayData): Boolean {
         boxPresenter?.let {
@@ -1170,7 +1214,7 @@ class CaptureResultOverlay(
             verticalGrowEnabled = prefs.verticalTextGrow,
         ).also {
             chipsView = it
-            root.addView(it, 0, FrameLayout.LayoutParams(MATCH, MATCH))
+            root.addView(it, root.indexOfChild(edgeIndicator.ring) + 1, FrameLayout.LayoutParams(MATCH, MATCH))
         }
         v.animate().cancel()
         v.alpha = 1f
@@ -1551,7 +1595,6 @@ class CaptureResultOverlay(
         // Terminal statuses are excluded: they expand out of the park anyway,
         // and a spinner beside "no text found" claims work that has stopped.
         statusMessage = message.takeIf { loading }
-        updateSliverHint()
         updateShowOnScreenAction()
         // The proportional loading floor (20% of screen height) is SHORTER than
         // the status block itself on a landscape screen — "Recognizing text"
@@ -1620,7 +1663,6 @@ class CaptureResultOverlay(
         // take over as the on-screen sign of work in flight. The sliver goes
         // back to advertising its tap.
         statusMessage = null
-        updateSliverHint()
         updateShowOnScreenAction()
         // Fresh result with the translation section hidden: park its collapsed
         // header above the scroll fold once the fit lays out (see hiddenTopPx).
@@ -2918,7 +2960,7 @@ class CaptureResultOverlay(
      *  registered in [show], so it tracks the sheet through ANY move — handle drag,
      *  body swipe/fling, resize, entrance/exit — with no per-mover wiring to miss.
      *  Cheap + idempotent: a single translationY, a no-op when nothing moved. */
-    private fun syncShadow() {
+    private fun syncSheetEdge() {
         // Land the bitmap's contour line (y=cornerRadius, the sheet's straight
         // bottom edge) exactly on the sheet's bottom; the corner arcs above it sit
         // behind the rounded sheet, the cast blur below shows.
@@ -2927,6 +2969,8 @@ class CaptureResultOverlay(
         // The bitmap's contour line (its silhouette's straight top edge) sits at
         // shadowHeight - cornerRadius; land it exactly on the sheet's top.
         edgeShadow.translationY = sheetTop - shadowHeightPx + cornerRadiusPx
+        // The edge rail hugs the same edge.
+        edgeIndicator.setSheetTop(sheetTop)
         // The frost dst depends on the panel's LIVE position, but draw() only
         // re-executes on invalidation — translationY animates on the render
         // thread without re-recording, so a moved panel keeps the frost slice
@@ -2970,7 +3014,7 @@ class CaptureResultOverlay(
     // ── Custom views ─────────────────────────────────────────────────────
 
     /** Blits the pre-baked [shadowBitmap] (never re-blurs); positioned via
-     *  [syncShadow]'s translationY. */
+     *  [syncSheetEdge]'s translationY. */
     private inner class EdgeShadowView(c: Context) : View(c) {
         // A backgroundless View has WILL_NOT_DRAW set → onDraw is skipped. Clear it
         // (same as HandleView) or the baked shadow never blits.

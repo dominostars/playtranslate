@@ -387,6 +387,36 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- RESULT PANEL                                          -->
+            <!-- ══════════════════════════════════════════════════════ -->
+
+            <include layout="@layout/settings_group_header"
+                android:id="@+id/headerResultPanel" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <!-- Edge indicator toggle (always shown). Title/subtitle +
+                         checked state wired in
+                         CaptureOverlaySettingsActivity.setupResultPanelSection. -->
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowEdgeIndicator" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 

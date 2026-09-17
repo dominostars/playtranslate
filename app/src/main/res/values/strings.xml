@@ -2597,6 +2597,17 @@
     <!-- Subtitle under the "widen vertical text" switch row in Capture/Overlay settings. -->
     <string name="settings_vertical_grow_subtitle">Grow narrow vertical-text boxes so the translation reads horizontally. May cover nearby content.</string>
 
+    <!-- Group header (rendered UPPERCASE) above the result-panel settings on the
+         Capture and overlay screen. The result panel is the bottom sheet that shows a
+         capture's text and translation over the game (and the camera / import review). -->
+    <string name="settings_header_result_panel">Result panel</string>
+    <!-- Title of the "edge indicator" switch row: the soft accent-colored glow drawn
+         around the edges of the screen while the result panel is showing, so a panel
+         collapsed to its bottom strip is not mistaken for no overlay at all. -->
+    <string name="settings_edge_indicator_title">Edge indicator</string>
+    <!-- Subtitle under the "edge indicator" switch row, explaining the glow. -->
+    <string name="settings_edge_indicator_subtitle">Show a soft glow around the screen while the overlay is on screen.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
          ═══════════════════════════════════════════════════════════════ -->
