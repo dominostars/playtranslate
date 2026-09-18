@@ -9,6 +9,7 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.os.Build
@@ -93,6 +94,10 @@ class EdgeIndicator(
         rail.translationY = yPx - rail.edgeOffsetPx
     }
 
+    /** Outline a capture region instead of the display edges: [rect] in the
+     *  sheet root's coordinates, or null for the whole display. */
+    fun setRegion(rect: RectF?) = ring.setRegion(rect)
+
     private fun View.fadeTo(alpha: Float, durationMs: Long, from: Float? = null) {
         animate().cancel()
         if (from != null) this.alpha = from
@@ -118,6 +123,15 @@ class EdgeIndicator(
  *    property (recorded once per size, never re-drawn per frame);
  *  - [burst]: a wider, brighter bloom held at alpha 0 and flashed by
  *    [pulse].
+ *
+ * With a capture region ([setRegion]) the same layers outline THAT rectangle
+ * instead, and nothing is drawn inside it (that is the area being read):
+ * the scrim sits just outside the region's boundary, the frame outside the
+ * scrim (so the scrim is on the far side from the glow, as on the display),
+ * and the bloom and burst fade outward from the frame into the rest of the
+ * screen, so the region reads as the lit thing and the surroundings as what
+ * the capture left out. Region corners are square; the display's corner
+ * radii apply only to the display frame.
  *
  * Shape: the scrim and frame follow the display's real rounded corners when
  * the platform reports them ([WindowInsets.getRoundedCorner], API 31+,
@@ -160,6 +174,10 @@ class EdgeRingView(
     private val outerRadii = FloatArray(8)
     private val innerRadii = FloatArray(8)
 
+    /** The capture region to outline instead of the display, in this view's
+     *  coordinates, with its rings precomputed; null = the display edges. */
+    private var regionRings: EdgeGeometry.RegionRings? = null
+
     private val bloom = EdgeBands(context, dp(BLOOM_DP), dp(BLOOM_KNEE_DP), ALPHA_BLOOM_EDGE, ALPHA_BLOOM_KNEE)
     private val burst = EdgeBands(context, dp(BURST_DP), dp(BURST_DP) / 2f, ALPHA_BURST_EDGE, ALPHA_BURST_EDGE / 2)
 
@@ -183,6 +201,21 @@ class EdgeRingView(
     /** The corner radii in use, [Canvas.drawDoubleRoundRect] corner order. */
     @VisibleForTesting
     internal fun cornerRadiiForTest(): FloatArray = cornerRadii.copyOf()
+
+    /** The region being outlined, or null for the display edges. */
+    @VisibleForTesting
+    internal fun regionForTest(): RectF? = regionRings?.scrimInner?.let { RectF(it) }
+
+    /** Outline [rect] (this view's coordinates) instead of the display, or
+     *  the display again with null. The bloom and burst fade outward from
+     *  the frame's outer edge. */
+    fun setRegion(rect: RectF?) {
+        val rings = rect?.let { EdgeGeometry.regionRings(it, framePx, scrimPx) }
+        regionRings = rings
+        bloom.setEdge(rings?.frameOuter)
+        burst.setEdge(rings?.frameOuter)
+        invalidate()
+    }
 
     init {
         setWillNotDraw(false)
@@ -239,6 +272,14 @@ class EdgeRingView(
 
     override fun onDraw(canvas: Canvas) {
         if (width <= 0 || height <= 0) return
+        val rings = regionRings
+        if (rings != null) {
+            // The region: scrim just outside its boundary, frame outside that;
+            // nothing inside the region itself.
+            canvas.drawDoubleRoundRect(rings.scrimOuter, ZERO_RADII, rings.scrimInner, ZERO_RADII, scrimPaint)
+            canvas.drawDoubleRoundRect(rings.frameOuter, ZERO_RADII, rings.frameInner, ZERO_RADII, framePaint)
+            return
+        }
         // Outermost pixels: the black scrim, then the solid accent frame
         // just inside it.
         fillRing(canvas, 0f, scrimPx, scrimPaint)
@@ -305,12 +346,13 @@ class EdgeRingView(
     private fun fillPaint(@ColorInt color: Int): Paint =
         Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color }
 
-    /** Four gradient bands, [depthPx] inward from every edge: [edgeAlpha]
-     *  at the edge, [kneeAlpha] at [kneePx], nothing at [depthPx]. Declares
-     *  no overlapping rendering so an animated alpha multiplies into the
+    /** Gradient bands, [depthPx] deep: [edgeAlpha] at the edge line,
+     *  [kneeAlpha] at [kneePx], nothing at [depthPx]. Inward from the view's
+     *  own edges by default; outward from a rectangle after [setEdge], with
+     *  quarter-radial corners (see [EdgeGeometry.bands]). Declares no
+     *  overlapping rendering so an animated alpha multiplies into the
      *  gradients directly instead of rendering through a full-screen
-     *  offscreen layer every frame. The bands overlap at the corners; that
-     *  sum is intended. */
+     *  offscreen layer every frame. */
     private inner class EdgeBands(
         c: Context,
         private val depthPx: Float,
@@ -318,36 +360,48 @@ class EdgeRingView(
         private val edgeAlpha: Int,
         private val kneeAlpha: Int,
     ) : View(c) {
-        private val left = Paint()
-        private val right = Paint()
-        private val top = Paint()
-        private val bottom = Paint()
+        private val paints = Array(EdgeGeometry.MAX_BANDS) { Paint() }
+        private var bands: List<EdgeGeometry.Band> = emptyList()
+        private var edge: RectF? = null
 
         override fun hasOverlappingRendering(): Boolean = false
 
+        /** Fade outward from [rect] instead of inward from the view, or
+         *  back to the view's edges with null. */
+        fun setEdge(rect: RectF?) {
+            edge = rect?.let { RectF(it) }
+            rebuild()
+            invalidate()
+        }
+
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
             super.onSizeChanged(w, h, oldw, oldh)
-            if (w <= 0 || h <= 0) return
+            rebuild()
+        }
+
+        private fun rebuild() {
+            if (width <= 0 || height <= 0) {
+                bands = emptyList()
+                return
+            }
             val colors = intArrayOf(
                 EdgeIndicator.withAlpha(accent, edgeAlpha),
                 EdgeIndicator.withAlpha(accent, kneeAlpha),
                 Color.TRANSPARENT,
             )
             val stops = floatArrayOf(0f, kneePx / depthPx, 1f)
-            left.shader = LinearGradient(0f, 0f, depthPx, 0f, colors, stops, Shader.TileMode.CLAMP)
-            right.shader = LinearGradient(w.toFloat(), 0f, w - depthPx, 0f, colors, stops, Shader.TileMode.CLAMP)
-            top.shader = LinearGradient(0f, 0f, 0f, depthPx, colors, stops, Shader.TileMode.CLAMP)
-            bottom.shader = LinearGradient(0f, h.toFloat(), 0f, h - depthPx, colors, stops, Shader.TileMode.CLAMP)
+            bands = EdgeGeometry.bands(width.toFloat(), height.toFloat(), edge, depthPx)
+            bands.forEachIndexed { i, b ->
+                paints[i].shader = if (b.radial) {
+                    RadialGradient(b.x0, b.y0, depthPx, colors, stops, Shader.TileMode.CLAMP)
+                } else {
+                    LinearGradient(b.x0, b.y0, b.x1, b.y1, colors, stops, Shader.TileMode.CLAMP)
+                }
+            }
         }
 
         override fun onDraw(canvas: Canvas) {
-            val w = width.toFloat()
-            val h = height.toFloat()
-            if (w <= 0f || h <= 0f) return
-            canvas.drawRect(0f, 0f, depthPx, h, left)
-            canvas.drawRect(w - depthPx, 0f, w, h, right)
-            canvas.drawRect(0f, 0f, w, depthPx, top)
-            canvas.drawRect(0f, h - depthPx, w, h, bottom)
+            bands.forEachIndexed { i, b -> canvas.drawRect(b.rect, paints[i]) }
         }
     }
 
@@ -359,6 +413,8 @@ class EdgeRingView(
         const val BLOOM_KNEE_DP = 24f
         /** The pulse flash: a wider, brighter bloom that settles to nothing. */
         const val BURST_DP = 64f
+
+        val ZERO_RADII = FloatArray(8)
 
         const val ALPHA_SCRIM = 0x66       // 40%
         const val ALPHA_FRAME = 0x91       // 57%, two thirds of the 85% first tried
@@ -554,5 +610,84 @@ class EdgeRailView(
         const val ALPHA_LINE_SWEEPING = 0x42  // 26%
         const val SHIMMER_WIDTH_DP = 120f
         const val SWEEP_MS = 1900L
+    }
+}
+
+
+/**
+ * Pure geometry for the ring's gradient bands and a region's rings, in px,
+ * so the inward-from-the-display / outward-from-a-region rule is pinned by
+ * a test without rasterizing.
+ */
+internal object EdgeGeometry {
+    /** One gradient band: [rect] to fill, and its gradient. Linear: the
+     *  axis from the edge line at ([x0], [y0]), full strength, to the fade
+     *  end at ([x1], [y1]). [radial]: centred at ([x0], [y0]), full
+     *  strength there, fading to nothing at the band depth (a quarter of
+     *  the disc shows inside [rect]). */
+    data class Band(
+        val rect: RectF,
+        val x0: Float,
+        val y0: Float,
+        val x1: Float,
+        val y1: Float,
+        val radial: Boolean = false,
+    )
+
+    const val MAX_BANDS = 8
+
+    /** The bands, [depth] deep. With [edge] null, four bands inward from a
+     *  [w] x [h] view's own edges (left, right, top, bottom); they overlap
+     *  in the corner squares, and at a display's corners that sum is
+     *  accepted. With [edge], the exact outer glow of that rectangle: four
+     *  side bands no longer than their sides (same order) and four radial
+     *  corners (top-left, top-right, bottom-right, bottom-left), so the
+     *  glow's strength is a function of distance to the rectangle
+     *  everywhere and the joins are seamless. */
+    fun bands(w: Float, h: Float, edge: RectF?, depth: Float): List<Band> {
+        if (edge == null) {
+            return listOf(
+                Band(RectF(0f, 0f, depth, h), 0f, 0f, depth, 0f),
+                Band(RectF(w - depth, 0f, w, h), w, 0f, w - depth, 0f),
+                Band(RectF(0f, 0f, w, depth), 0f, 0f, 0f, depth),
+                Band(RectF(0f, h - depth, w, h), 0f, h, 0f, h - depth),
+            )
+        }
+        val e = edge
+        return listOf(
+            Band(RectF(e.left - depth, e.top, e.left, e.bottom), e.left, 0f, e.left - depth, 0f),
+            Band(RectF(e.right, e.top, e.right + depth, e.bottom), e.right, 0f, e.right + depth, 0f),
+            Band(RectF(e.left, e.top - depth, e.right, e.top), 0f, e.top, 0f, e.top - depth),
+            Band(RectF(e.left, e.bottom, e.right, e.bottom + depth), 0f, e.bottom, 0f, e.bottom + depth),
+            Band(RectF(e.left - depth, e.top - depth, e.left, e.top), e.left, e.top, e.left - depth, e.top - depth, radial = true),
+            Band(RectF(e.right, e.top - depth, e.right + depth, e.top), e.right, e.top, e.right + depth, e.top - depth, radial = true),
+            Band(RectF(e.right, e.bottom, e.right + depth, e.bottom + depth), e.right, e.bottom, e.right + depth, e.bottom + depth, radial = true),
+            Band(RectF(e.left - depth, e.bottom, e.left, e.bottom + depth), e.left, e.bottom, e.left - depth, e.bottom + depth, radial = true),
+        )
+    }
+
+    /** A region's outline, entirely OUTSIDE the region so nothing is drawn
+     *  over the area being read: the scrim ring on the boundary
+     *  ([scrimInner] is the region itself), the frame ring outside it. Each
+     *  ring is the area between its outer and inner rect. The bands then
+     *  fade outward from [frameOuter]. */
+    data class RegionRings(
+        val frameOuter: RectF,
+        val frameInner: RectF,
+        val scrimOuter: RectF,
+        val scrimInner: RectF,
+    )
+
+    fun regionRings(region: RectF, framePx: Float, scrimPx: Float): RegionRings {
+        val scrimOuter = RectF(region.left - scrimPx, region.top - scrimPx, region.right + scrimPx, region.bottom + scrimPx)
+        val frameOuter = RectF(
+            scrimOuter.left - framePx, scrimOuter.top - framePx, scrimOuter.right + framePx, scrimOuter.bottom + framePx,
+        )
+        return RegionRings(
+            frameOuter = frameOuter,
+            frameInner = RectF(scrimOuter),
+            scrimOuter = scrimOuter,
+            scrimInner = RectF(region),
+        )
     }
 }

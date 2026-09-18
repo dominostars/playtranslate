@@ -58,6 +58,7 @@ import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.fillOneShotOverlayData
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.RegionEntry
 import com.playtranslate.language.OcrBackend
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
@@ -122,6 +123,13 @@ class CaptureResultOverlay(
 
     /** Invoked once, on any dismissal path. */
     var onDismiss: (() -> Unit)? = null
+
+    /** The region this capture was limited to, set by the over-game
+     *  controller before [show]. A custom region makes the edge indicator
+     *  outline that region (its glow fading outward from it) instead of the
+     *  display edges; null or the full-screen region keeps the display
+     *  frame. Fractions of the display, like the capture crop. */
+    var captureRegion: RegionEntry? = null
 
     /** Invoked when the word lens opens the in-app detail screen, carrying the
      *  currently-bound result so the controller can stash it and re-show this sheet
@@ -905,6 +913,14 @@ class CaptureResultOverlay(
                 edgeIndicator.isVisible = prefs.edgeIndicatorEnabled
             }
         }
+        // A capture limited to a custom region outlines that region; the
+        // root covers the display, so the crop's fractions map straight to
+        // its pixels.
+        edgeIndicator.setRegion(
+            captureRegion?.takeUnless { it.isFullScreen }?.let {
+                RectF(it.left * screenW, it.top * screenH, it.right * screenW, it.bottom * screenH)
+            },
+        )
         edgeIndicator.fadeIn()
         // One flash as the sheet appears (played once the window is shown;
         // an activity host attaches synchronously and plays it now).

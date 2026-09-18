@@ -127,6 +127,9 @@ class OverlayUiController(
     private data class PendingReshow(
         val displayId: Int,
         val result: com.playtranslate.model.TranslationResult,
+        /** The region the result was captured with, so the re-shown panel
+         *  outlines the same region. */
+        val region: RegionEntry,
         val stashedAtMs: Long,
     )
 
@@ -2172,9 +2175,10 @@ class OverlayUiController(
             captureGeometry = launchGeometry
             val overlay = com.playtranslate.ui.CaptureResultOverlay(displayCtx, wm, displayId, overlayHost)
             overlay.onDismiss = { if (captureResultOverlay === overlay) captureResultOverlay = null }
-            overlay.onNavigateToDetail = { result -> stashCaptureOverlayForReshow(displayId, result) }
+            overlay.onNavigateToDetail = { result -> stashCaptureOverlayForReshow(displayId, result, region) }
             // Over-game sheet: B/dpad/stick drive it while a controller is attached.
             overlay.controllerNavEnabled = true
+            overlay.captureRegion = region
             captureResultOverlay = overlay
             // Pass the clean shot for the frosted backdrop — show() downscales it
             // synchronously here, before processScreenshot (below) recycles it.
@@ -2285,9 +2289,13 @@ class OverlayUiController(
     /** Stash the overlay's current result and tear the live panel down when its
      *  word lens opens the in-app detail screen, so a user-initiated back from that
      *  screen ([onCaptureDetailBackPressed]) can re-show the panel. */
-    fun stashCaptureOverlayForReshow(displayId: Int, result: com.playtranslate.model.TranslationResult) {
+    fun stashCaptureOverlayForReshow(
+        displayId: Int,
+        result: com.playtranslate.model.TranslationResult,
+        region: RegionEntry,
+    ) {
         dismissCaptureResultOverlay()
-        pendingReshow = PendingReshow(displayId, result, android.os.SystemClock.elapsedRealtime())
+        pendingReshow = PendingReshow(displayId, result, region, android.os.SystemClock.elapsedRealtime())
     }
 
     /** Called by [com.playtranslate.ui.TranslationResultActivity] when the user backs
@@ -2299,11 +2307,15 @@ class OverlayUiController(
         pendingReshow = null
         if (pending.displayId != displayId) return
         if (android.os.SystemClock.elapsedRealtime() - pending.stashedAtMs > reshowStalenessMs) return
-        reshowCaptureOverlay(displayId, pending.result)
+        reshowCaptureOverlay(displayId, pending.result, pending.region)
     }
 
     /** Re-create the over-game panel and bind a stashed result (no re-capture). */
-    private fun reshowCaptureOverlay(displayId: Int, result: com.playtranslate.model.TranslationResult) {
+    private fun reshowCaptureOverlay(
+        displayId: Int,
+        result: com.playtranslate.model.TranslationResult,
+        region: RegionEntry,
+    ) {
         dismissCaptureResultOverlay()
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val display = dm.getDisplay(displayId) ?: return
@@ -2314,10 +2326,11 @@ class OverlayUiController(
         captureGeometry = DisplayGeometry(size.x, size.y, display.rotation)
         val overlay = com.playtranslate.ui.CaptureResultOverlay(displayCtx, wm, displayId, overlayHost)
         overlay.onDismiss = { if (captureResultOverlay === overlay) captureResultOverlay = null }
-        overlay.onNavigateToDetail = { r -> stashCaptureOverlayForReshow(displayId, r) }
+        overlay.onNavigateToDetail = { r -> stashCaptureOverlayForReshow(displayId, r, region) }
         // Same controller-nav opt-in as the fresh-capture path, or the sheet
         // would come back keyless after a detail round-trip.
         overlay.controllerNavEnabled = true
+        overlay.captureRegion = region
         captureResultOverlay = overlay
         // The frosted backdrop is rebuilt from the result's clean capture
         // (the same image the fresh path blurred): decoded here, blurred by

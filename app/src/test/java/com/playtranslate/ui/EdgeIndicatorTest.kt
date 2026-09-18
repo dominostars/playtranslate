@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Color
+import android.graphics.RectF
 import android.view.RoundedCorner
 import android.view.View
 import android.view.WindowInsets
@@ -129,6 +130,70 @@ class EdgeIndicatorTest {
         ind.isVisible = true
         assertEquals(View.VISIBLE, ind.ring.visibility)
         assertEquals(View.VISIBLE, ind.rail.visibility)
+    }
+
+    @Test
+    fun `bands fade inward from the display and outward from a region`() {
+        // Display: each band hugs the view's own edge and fades toward the middle.
+        val display = EdgeGeometry.bands(300f, 200f, edge = null, depth = 48f)
+        assertEquals(RectF(0f, 0f, 48f, 200f), display[0].rect)
+        assertEquals(0f, display[0].x0, 0f)
+        assertEquals(48f, display[0].x1, 0f)
+        assertEquals(RectF(0f, 152f, 300f, 200f), display[3].rect)
+        assertEquals(200f, display[3].y0, 0f)
+        assertEquals(152f, display[3].y1, 0f)
+
+        // Region: each side band sits OUTSIDE the rectangle, full strength on
+        // the rectangle's edge, fading away from it, and runs exactly its
+        // side; the corners are quarter-radials centred on the rectangle's
+        // corners, so no two bands overlap and the joins are seamless.
+        val r = RectF(100f, 50f, 250f, 150f)
+        val region = EdgeGeometry.bands(300f, 200f, edge = r, depth = 48f)
+        assertEquals(8, region.size)
+        assertEquals(RectF(52f, 50f, 100f, 150f), region[0].rect)   // left
+        assertEquals(100f, region[0].x0, 0f)
+        assertEquals(52f, region[0].x1, 0f)
+        assertFalse(region[0].radial)
+        assertEquals(RectF(250f, 50f, 298f, 150f), region[1].rect)  // right
+        assertEquals(RectF(100f, 2f, 250f, 50f), region[2].rect)    // top
+        assertEquals(50f, region[2].y0, 0f)
+        assertEquals(2f, region[2].y1, 0f)
+        assertEquals(RectF(100f, 150f, 250f, 198f), region[3].rect) // bottom
+        assertEquals(150f, region[3].y0, 0f)
+        assertEquals(198f, region[3].y1, 0f)
+        // Corners: the square outside each corner, centred on that corner.
+        assertEquals(RectF(52f, 2f, 100f, 50f), region[4].rect)     // top-left
+        assertTrue(region[4].radial)
+        assertEquals(100f, region[4].x0, 0f)
+        assertEquals(50f, region[4].y0, 0f)
+        assertEquals(RectF(250f, 2f, 298f, 50f), region[5].rect)    // top-right
+        assertEquals(RectF(250f, 150f, 298f, 198f), region[6].rect) // bottom-right
+        assertEquals(RectF(52f, 150f, 100f, 198f), region[7].rect)  // bottom-left
+        assertEquals(100f, region[7].x0, 0f)
+        assertEquals(150f, region[7].y0, 0f)
+        // No band's rect overlaps another's.
+        for (i in region.indices) for (j in region.indices) if (i != j) {
+            assertFalse("bands $i and $j overlap", RectF.intersects(region[i].rect, region[j].rect))
+        }
+    }
+
+    @Test
+    fun `region outline sits entirely outside the region, scrim then frame`() {
+        val r = RectF(100f, 50f, 250f, 150f)
+        val rings = EdgeGeometry.regionRings(r, framePx = 4f, scrimPx = 2f)
+        // Nothing inside the region: the scrim's inner edge IS the region.
+        assertEquals(r, rings.scrimInner)
+        assertEquals(RectF(98f, 48f, 252f, 152f), rings.scrimOuter)
+        // The frame continues outward from the scrim.
+        assertEquals(rings.scrimOuter, rings.frameInner)
+        assertEquals(RectF(94f, 44f, 256f, 156f), rings.frameOuter)
+        // The view hands the bands the frame's outer edge, so the glow
+        // touches the frame rather than the region.
+        val ring = indicator().ring
+        ring.setRegion(r)
+        assertEquals(r, ring.regionForTest())
+        ring.setRegion(null)
+        assertEquals(null, ring.regionForTest())
     }
 
     @Test
