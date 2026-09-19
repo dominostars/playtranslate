@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -125,6 +126,87 @@ object CaptureResultGeometry {
         if (panelWidthPx <= 0) return false
         val perSection = (panelWidthPx - dividerPx) / 2
         return perSection >= perSectionMinPx
+    }
+
+    // ── Parked hint placement ───────────────────────────────────────────
+    // While the sheet rests in its sliver the on-frame boxes draw OVER the
+    // strip (CaptureResultOverlay.chipsOverSheet). The hint row stays put at
+    // the centre as long as no box would draw over it; when one would, the
+    // row moves into the widest stretch of the strip no box covers, and
+    // drops to its glyph alone when even that stretch can't seat the text.
+
+    /** Where the parked hint row goes: its centre x (px), and whether the
+     *  full row (glyph + text) fits there or only the glyph does. */
+    data class ParkedHintPlacement(val centerX: Int, val textFits: Boolean)
+
+    /**
+     * Place the parked hint row against the boxes covering the strip.
+     * [coveredSpans] are the horizontal extents (px, half-open, any order,
+     * overlaps allowed) of the boxes that reach into the strip. The row
+     * keeps its place — centred on the screen, text shown — while every box
+     * stays clear of the centred full row plus [clearancePx] on each side:
+     * a box elsewhere in the strip never moves it. Only a box that would
+     * draw over that area moves the row, into the widest uncovered stretch
+     * of the strip inside [edgePadPx] of the screen edges (ties go to the
+     * stretch nearest the screen's centre, then the leftmost), showing its
+     * text only when that stretch seats the full [fullRowWidthPx] with the
+     * clearance to spare on both sides; a strip covered end to end keeps the
+     * glyph at the screen's centre. The centre is clamped so the shown row —
+     * full, or [glyphWidthPx] wide — stays inside the edge pad.
+     */
+    fun placeParkedHint(
+        coveredSpans: List<IntRange>,
+        screenWidthPx: Int,
+        fullRowWidthPx: Int,
+        glyphWidthPx: Int,
+        edgePadPx: Int,
+        clearancePx: Int,
+    ): ParkedHintPlacement {
+        val mid = screenWidthPx / 2
+        // Unmoved while the centred row's own area (clearance included) is
+        // clear — the row only ever moves out of a box's way.
+        val labelStart = mid - fullRowWidthPx / 2 - clearancePx
+        val labelEnd = mid + fullRowWidthPx / 2 + clearancePx
+        if (coveredSpans.none { it.first < labelEnd && it.last + 1 > labelStart }) {
+            return ParkedHintPlacement(mid, true)
+        }
+        val usableStart = edgePadPx
+        val usableEnd = screenWidthPx - edgePadPx
+        if (usableEnd <= usableStart) return ParkedHintPlacement(mid, false)
+        // Merge the covered spans, clamped to the usable width, into
+        // disjoint [start, end) runs in x order.
+        val merged = mutableListOf<IntArray>()
+        for (span in coveredSpans.sortedBy { it.first }) {
+            val a = span.first.coerceIn(usableStart, usableEnd)
+            val b = (span.last + 1).coerceIn(usableStart, usableEnd)
+            if (b <= a) continue
+            val last = merged.lastOrNull()
+            if (last != null && a <= last[1]) last[1] = maxOf(last[1], b) else merged += intArrayOf(a, b)
+        }
+        // The uncovered stretches between them, the strip's ends included.
+        var best: IntArray? = null
+        fun offer(start: Int, end: Int) {
+            if (end <= start) return
+            val cur = best
+            val width = end - start
+            val curWidth = cur?.let { it[1] - it[0] } ?: -1
+            val nearer = cur != null && width == curWidth &&
+                abs((start + end) / 2 - mid) < abs((cur[0] + cur[1]) / 2 - mid)
+            if (width > curWidth || nearer) best = intArrayOf(start, end)
+        }
+        var cursor = usableStart
+        for (run in merged) {
+            offer(cursor, run[0])
+            cursor = run[1]
+        }
+        offer(cursor, usableEnd)
+        val gap = best ?: return ParkedHintPlacement(mid, false)
+        val textFits = gap[1] - gap[0] >= fullRowWidthPx + 2 * clearancePx
+        val shownWidth = if (textFits) fullRowWidthPx else glyphWidthPx
+        val lo = usableStart + shownWidth / 2
+        val hi = usableEnd - shownWidth / 2
+        val center = (gap[0] + gap[1]) / 2
+        return ParkedHintPlacement(if (lo > hi) mid else center.coerceIn(lo, hi), textFits)
     }
 
     /**

@@ -82,6 +82,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
+import kotlin.math.ceil
 
 /**
  * The over-game capture result panel: a bottom-anchored sheet (default 40% of
@@ -289,12 +290,30 @@ class CaptureResultOverlay(
      *  re-show, no-text, post-edit) — null keeps the switch pill hidden. */
     private var overlayData: OneShotOverlayData? = null
 
-    /** The in-place boxes, rendered INSIDE this window (bottom-most root child).
-     *  Same window ⇒ the window stays touchable, so MediaProjection's QTI clamp
-     *  never dims the boxes, they can never draw over the sliver, and teardown
-     *  is the window's own. Created on first show, then faded/re-fed via
-     *  [TranslationOverlayView.setBoxes] (skeleton → translated). */
+    /** The in-place boxes, rendered INSIDE this window (a root child just
+     *  above the edge ring, or just above the panel while it is parked — see
+     *  [chipsOverSheet]). Same window ⇒ the window stays touchable, so
+     *  MediaProjection's QTI clamp never dims the boxes, their place against
+     *  the sheet is a child-order fact rather than a window race, and
+     *  teardown is the window's own. Created on first show, then faded/re-fed
+     *  via [TranslationOverlayView.setBoxes] (skeleton → translated). */
     private var chipsView: TranslationOverlayView? = null
+
+    /** Where the boxes sit against the sheet: above it while the sheet rests
+     *  in its sliver, beneath it otherwise. The parked strip is exactly the
+     *  bottom band a bottom-anchored dialogue's translation lands in, so a
+     *  box that reaches into it is drawn over the strip rather than cut off
+     *  by it; a box that would draw over the hint row moves the row into the
+     *  widest stretch the boxes leave uncovered, or drops it to its glyph
+     *  ([placeSliverHint]), and a strip covered end to end hides even that
+     *  but not the tap (the root claims
+     *  every touch in the band before any child sees it, and the edge ring
+     *  still says an overlay is up). The moment the sheet
+     *  starts growing the boxes go back beneath it, so a sheet being read
+     *  never has a box over its content. Driven from [applyCollapseCrossfade]
+     *  — the parked look and this order are one state, decided in one
+     *  place for every height path (see [syncChipsOrder]). */
+    private var chipsOverSheet = false
 
     /** True from the moment the panel starts collapsing to its bottom-edge
      *  sliver until it starts expanding back. Root touch handling swaps to
@@ -322,13 +341,32 @@ class CaptureResultOverlay(
      *  stops its animation: nothing spins over the game once a result lands. */
     private val sliverSpinner = ProgressBar(ctx, null, android.R.attr.progressBarStyleSmall)
 
-    /** [sliverSpinner] + [sliverHint] as one centered row — the unit the
-     *  collapse crossfade drives (see [applyCollapseCrossfade]). */
+    /** [sliverSpinner] + [sliverHint] as one row — the unit the collapse
+     *  crossfade drives (see [applyCollapseCrossfade]). Laid out centred and
+     *  slid by translationX to wherever [placeSliverHint] puts it beside the
+     *  on-frame boxes. */
     private val sliverRow = LinearLayout(ctx)
 
     /** The idle hint's leading glyph, held so [updateSliverHint] can take it
      *  away for the loading mode (where the spinner leads instead). */
     private var touchAppHintIcon: Drawable? = null
+
+    /** Whether the hint row shows its text or only its leading glyph (or
+     *  spinner) — [placeSliverHint]'s verdict: false when a box would draw
+     *  over the centred row and the widest stretch of the parked strip the
+     *  boxes leave uncovered can't seat the text. Read by [updateSliverHint]. */
+    private var hintTextShown = true
+
+    /** What [updateSliverHint] last applied (the loading text or null, and
+     *  [hintTextShown]), so the re-placements that follow every chip layout
+     *  don't re-set the same text and relayout the row for nothing. */
+    private var appliedHintKey: Pair<String?, Boolean>? = null
+
+    /** The hint row's horizontal slide between placements. A plain
+     *  ValueAnimator: the collapse crossfade cancels the row's
+     *  ViewPropertyAnimator every frame, which must not kill a slide. */
+    private var hintSlideAnimator: ValueAnimator? = null
+    private val rootLoc = IntArray(2)
 
     /** The message of the status currently in [statusText], or null when a
      *  result (not a status) is bound. Drives the sliver's loading mode:
@@ -339,7 +377,7 @@ class CaptureResultOverlay(
     private var statusMessage: String? = null
         set(value) {
             field = value
-            updateSliverHint()
+            placeSliverHint()
             edgeIndicator.working = value != null
         }
 
@@ -527,7 +565,7 @@ class CaptureResultOverlay(
             // sheet. (The idle hint is authored to fit — this only ever bites
             // the borrowed loading text.)
             ellipsize = android.text.TextUtils.TruncateAt.END
-            compoundDrawablePadding = dp(4)
+            compoundDrawablePadding = dp(GLYPH_GAP_DP)
         }
         sliverSpinner.apply {
             isIndeterminate = true
@@ -540,7 +578,7 @@ class CaptureResultOverlay(
             addView(
                 sliverSpinner,
                 LinearLayout.LayoutParams(dp(HINT_GLYPH_DP), dp(HINT_GLYPH_DP)).apply {
-                    marginEnd = dp(6)
+                    marginEnd = dp(SPINNER_GAP_DP)
                 },
             )
             addView(sliverHint, LinearLayout.LayoutParams(WRAP, WRAP))
@@ -659,8 +697,9 @@ class CaptureResultOverlay(
             addView(body, LinearLayout.LayoutParams(MATCH, 0, 1f))
         }
         // The edge ring first → beneath everything else here: the on-frame
-        // boxes ([showChips] inserts them right above it) and the panel, so the
-        // bloom never tints a chip or the sheet.
+        // boxes ([showChips] inserts them right above it, and [syncChipsOrder]
+        // lifts them above the panel only while it is parked) and the panel,
+        // so the bloom never tints a chip or the sheet.
         root.addView(edgeIndicator.ring, FrameLayout.LayoutParams(MATCH, MATCH))
         // Shadow next → behind the panel, so the opaque sheet covers all but the
         // soft fade cast above its top edge.
@@ -883,6 +922,7 @@ class CaptureResultOverlay(
                 // the sliver / re-fit the content to the new inner height.
                 if (sliverMode) {
                     setPanelHeight(sliverHeightPx())
+                    placeSliverHint()   // the strip's band moved with the buffer
                 } else if (lastResult != null) {
                     autoSizeAndFit()
                 }
@@ -1209,9 +1249,9 @@ class CaptureResultOverlay(
 
     // ── Sliver state (result shown as on-screen boxes) ───────────────────
 
-    /** Paint [data]'s boxes over the game (a child of this window just above
-     *  the edge ring, beneath the panel), or hand them to the host's
-     *  [boxPresenter] (the camera's warp overlays).
+    /** Paint [data]'s boxes over the game (a child of this window, placed by
+     *  [syncChipsOrder]), or hand them to the host's [boxPresenter] (the
+     *  camera's warp overlays).
      *  False when the surface isn't ours to draw on (live mode). */
     private fun showChips(data: OneShotOverlayData): Boolean {
         boxPresenter?.let {
@@ -1230,13 +1270,35 @@ class CaptureResultOverlay(
             verticalGrowEnabled = prefs.verticalTextGrow,
         ).also {
             chipsView = it
-            root.addView(it, root.indexOfChild(edgeIndicator.ring) + 1, FrameLayout.LayoutParams(MATCH, MATCH))
+            // Every chip layout (each rebuild: the skeletons, the translated
+            // promotion) re-places the parked hint against the drawn boxes.
+            it.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> placeSliverHint() }
+            root.addView(it, root.indexOfChild(chipsAnchor()) + 1, FrameLayout.LayoutParams(MATCH, MATCH))
         }
+        syncChipsOrder()
         v.animate().cancel()
         v.alpha = 1f
         v.setBoxes(data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH)
         boxesShown = true
         return true
+    }
+
+    /** The root child the boxes sit directly above for the current
+     *  [chipsOverSheet]: the panel while parked, else the edge ring (so the
+     *  bloom never tints a box, and the shadow, rail and panel cover them). */
+    private fun chipsAnchor(): View = if (chipsOverSheet) panel else edgeIndicator.ring
+
+    /** Put the boxes where [chipsOverSheet] says, if they exist and aren't
+     *  there already. A move is a same-window child re-add — no window
+     *  traffic — and the focus ring, added after the panel, stays above
+     *  them either way. Idempotent, so the per-frame height funnel can call
+     *  it freely. */
+    private fun syncChipsOrder() {
+        val v = chipsView ?: return
+        val anchor = chipsAnchor()
+        if (root.indexOfChild(v) == root.indexOfChild(anchor) + 1) return
+        root.removeView(v)
+        root.addView(v, root.indexOfChild(anchor) + 1)
     }
 
     /** Swap the boxes in place — the skeleton → translated promotion when Done
@@ -1255,6 +1317,7 @@ class CaptureResultOverlay(
      *  it dies with the window. */
     private fun hideChips() {
         boxesShown = false
+        placeSliverHint()   // nothing covers the strip any more: the row re-centres
         boxPresenter?.let {
             it.hide()
             return
@@ -1495,6 +1558,10 @@ class CaptureResultOverlay(
         }
         scroll.alpha = f
         statusText.alpha = f
+        // Entering the collapse band: place the row against the boxes while
+        // it is still gone, so it fades in where it belongs instead of
+        // sliding there.
+        if (sliverRow.visibility == View.GONE && f < 1f) placeSliverHint()
         sliverRow.animate().cancel()
         sliverRow.alpha = 1f - f
         // GONE above the band also stops the loading spinner: a parent that
@@ -1509,6 +1576,13 @@ class CaptureResultOverlay(
         // it, and the band it starts from reaches well above the gesture zone;
         // it just isn't advertised any more.)
         handle.alpha = f
+        // The on-frame boxes draw over the strip only once the sheet has
+        // fully parked (the collapse's last frame, a collapsed start, an
+        // inset re-park) and drop back beneath it on the first frame it
+        // grows — a tap-expand, the sliver drag, the stick — so the boxes
+        // are never over content that is fading in.
+        chipsOverSheet = f <= 0f
+        syncChipsOrder()
     }
 
     /** The sliver strip's two modes, switched by [statusMessage].
@@ -1527,14 +1601,103 @@ class CaptureResultOverlay(
      *  anyway (tapping is what the whole band does, loading or not). */
     private fun updateSliverHint() {
         val loading = statusMessage
+        val key = Pair(loading, hintTextShown)
+        if (key == appliedHintKey) return
+        appliedHintKey = key
         if (loading != null) {
-            sliverHint.text = loading
+            sliverHint.text = if (hintTextShown) loading else ""
             sliverHint.setCompoundDrawablesRelative(null, null, null, null)
             sliverSpinner.visibility = View.VISIBLE
+            // The gap to the text goes with the text, so the glyph-only row
+            // is exactly the glyph and centres as one.
+            (sliverSpinner.layoutParams as LinearLayout.LayoutParams).marginEnd =
+                if (hintTextShown) dp(SPINNER_GAP_DP) else 0
+            sliverSpinner.requestLayout()
         } else {
-            sliverHint.setText(R.string.capture_sliver_expand_hint)
+            sliverHint.text =
+                if (hintTextShown) ctx.getText(R.string.capture_sliver_expand_hint) else ""
             sliverHint.setCompoundDrawablesRelative(touchAppHintIcon, null, null, null)
+            sliverHint.compoundDrawablePadding = if (hintTextShown) dp(GLYPH_GAP_DP) else 0
             sliverSpinner.visibility = View.GONE
+        }
+    }
+
+    /** Re-place the hint row for the strip as it is once parked: left
+     *  centred while the on-frame boxes stay clear of it, else centred in
+     *  the widest stretch they leave uncovered, with its text or its glyph
+     *  alone ([CaptureResultGeometry.placeParkedHint]). Runs
+     *  after every chip layout, when the boxes hide, on each status change
+     *  and as the row first shows, so the row is right before it fades in
+     *  and slides if the boxes change under it. Before [show] there is no
+     *  geometry: the mode is applied and that's all. */
+    private fun placeSliverHint() {
+        if (screenW <= 0) {
+            updateSliverHint()
+            return
+        }
+        val placement = CaptureResultGeometry.placeParkedHint(
+            coveredSpans = coveredHintSpans(),
+            screenWidthPx = screenW,
+            fullRowWidthPx = fullHintRowWidthPx(),
+            glyphWidthPx = dp(HINT_GLYPH_DP),
+            edgePadPx = dp(SLIVER_HINT_SIDE_PAD_DP),
+            clearancePx = dp(HINT_CLEARANCE_DP),
+        )
+        hintTextShown = placement.textFits
+        updateSliverHint()
+        slideHintTo(placement.centerX - screenW / 2f)
+    }
+
+    /** The full row's width: the leading glyph (or spinner), its gap and the
+     *  text the current mode would show, ellipsized at the row's bound —
+     *  measured off the paint, not the live view, so a placement pass never
+     *  touches the text it is deciding about. */
+    private fun fullHintRowWidthPx(): Int {
+        val loading = statusMessage
+        val text = loading ?: ctx.getString(R.string.capture_sliver_expand_hint)
+        val textW = ceil(sliverHint.paint.measureText(text)).toInt().coerceAtMost(sliverHint.maxWidth)
+        val gap = if (loading != null) dp(SPINNER_GAP_DP) else dp(GLYPH_GAP_DP)
+        return dp(HINT_GLYPH_DP) + gap + textW
+    }
+
+    /** Horizontal extents (root px, half-open) of the on-frame boxes reaching
+     *  into the strip the parked sheet shows — its top edge down to the
+     *  nav-bar buffer — taken from the chips' DRAWN footprints, which is
+     *  what covers the strip (a chip can grow past its OCR box). Empty while
+     *  the boxes are hidden, and for hosts that paint boxes through their
+     *  own presenter, whose geometry is not this window's. */
+    private fun coveredHintSpans(): List<IntRange> {
+        val v = chipsView ?: return emptyList()
+        if (!boxesShown) return emptyList()
+        val stripTop = screenH - sliverHeightPx() + dp(HANDLE_HEIGHT_DP)
+        val stripBottom = screenH - bottomInsetPx
+        root.getLocationOnScreen(rootLoc)
+        return v.getChildScreenRects().mapNotNull { r ->
+            r.offset(-rootLoc[0], -rootLoc[1])
+            if (r.bottom <= stripTop || r.top >= stripBottom || r.right <= r.left) null
+            else r.left until r.right
+        }
+    }
+
+    /** Slide the row to [tx] (translationX from its centred layout):
+     *  animated while it is on screen, set outright while it is gone or
+     *  faded out (and with animations off), so the next park finds it in
+     *  place. */
+    private fun slideHintTo(tx: Float) {
+        hintSlideAnimator?.cancel()
+        hintSlideAnimator = null
+        if (sliverRow.translationX == tx) return
+        if (sliverRow.visibility != View.VISIBLE || sliverRow.alpha <= 0f ||
+            !ValueAnimator.areAnimatorsEnabled()
+        ) {
+            sliverRow.translationX = tx
+            return
+        }
+        hintSlideAnimator = ValueAnimator.ofFloat(sliverRow.translationX, tx).apply {
+            duration = SLIVER_FADE_MS
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener { sliverRow.translationX = it.animatedValue as Float }
+            start()
         }
     }
 
@@ -3323,8 +3486,16 @@ class CaptureResultOverlay(
          *  [SLIVER_SHEET_DP]. */
         const val HINT_GLYPH_DP = 16
         /** Breathing room kept either side of the sliver hint row when its
-         *  text is bounded (see show()'s maxWidth). */
+         *  text is bounded (see show()'s maxWidth), and the keep-out from the
+         *  screen edges when [placeSliverHint] moves the row. */
         const val SLIVER_HINT_SIDE_PAD_DP = 20
+        /** Room the hint row keeps between itself and an on-frame box on each
+         *  side before its text counts as fitting the stretch between boxes. */
+        const val HINT_CLEARANCE_DP = 12
+        /** Gap between the idle hint's leading glyph and its text. */
+        const val GLYPH_GAP_DP = 4
+        /** Gap between the loading spinner and its status text. */
+        const val SPINNER_GAP_DP = 6
         /** Duration of the collapse-to-sliver / expand-from-sliver slide. */
         const val SLIVER_DURATION_MS = 220L
         /** Duration of the section fade that rides the sliver transitions. */

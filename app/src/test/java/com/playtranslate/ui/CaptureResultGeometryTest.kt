@@ -170,4 +170,99 @@ class CaptureResultGeometryTest {
         assertFalse(CaptureResultGeometry.shouldDismissFromDrag(0f, 9000f, 150f, 60f, 1600f))
         assertFalse(CaptureResultGeometry.shouldDismissFromDrag(-120f, -800f, 150f, 60f, 1600f))
     }
+
+    // ─── placeParkedHint ────────────────────────────────────────────────
+    // A 1000px strip; the full row is 200px, the glyph 30px, 20px of
+    // clearance beside a box unless a case says otherwise.
+
+    private fun place(
+        vararg covered: IntRange,
+        screen: Int = 1000,
+        row: Int = 200,
+        glyph: Int = 30,
+        edgePad: Int = 0,
+        clearance: Int = 20,
+    ) = CaptureResultGeometry.placeParkedHint(covered.toList(), screen, row, glyph, edgePad, clearance)
+
+    @Test fun `placeParkedHint centres the full row when nothing covers the strip`() {
+        assertEquals(CaptureResultGeometry.ParkedHintPlacement(500, true), place())
+    }
+
+    @Test fun `placeParkedHint leaves the row centred while the boxes stay clear of it`() {
+        // The centred row plus clearance spans [380, 620): boxes outside it,
+        // however much of the strip they take, never move the row — even
+        // one ending exactly at the clearance line.
+        assertEquals(CaptureResultGeometry.ParkedHintPlacement(500, true), place(0 until 300, 700 until 1000))
+        assertEquals(CaptureResultGeometry.ParkedHintPlacement(500, true), place(620 until 1000))
+        assertEquals(CaptureResultGeometry.ParkedHintPlacement(500, true), place(0 until 380))
+    }
+
+    @Test fun `placeParkedHint moves the row once a box reaches into its clearance`() {
+        // [610, 700) overlaps the clearance band: the row leaves for the
+        // widest clear stretch, [0, 610), centred at 305.
+        assertEquals(CaptureResultGeometry.ParkedHintPlacement(305, true), place(610 until 700))
+    }
+
+    @Test fun `placeParkedHint centres the row in the widest uncovered stretch`() {
+        // [0, 250) is 250 wide, [700, 1000) is 300: the row (200 + 2 × 20)
+        // seats in the wider one, centred at 850.
+        assertEquals(CaptureResultGeometry.ParkedHintPlacement(850, true), place(250 until 700))
+    }
+
+    @Test fun `placeParkedHint drops to the glyph when the widest stretch cannot seat the text`() {
+        // 100px either side: the 240px the text needs fits nowhere, so the
+        // glyph alone sits at the centre of the first of the two equal
+        // stretches (both 100 wide, both 450 from the centre).
+        assertEquals(CaptureResultGeometry.ParkedHintPlacement(50, false), place(100 until 900))
+    }
+
+    @Test fun `placeParkedHint keeps the glyph at the screen centre when the strip is covered end to end`() {
+        assertEquals(CaptureResultGeometry.ParkedHintPlacement(500, false), place(0 until 1000))
+        // Two boxes that between them cover everything read the same way.
+        assertEquals(CaptureResultGeometry.ParkedHintPlacement(500, false), place(400 until 1000, 0 until 500))
+    }
+
+    @Test fun `placeParkedHint merges overlapping boxes before looking for a stretch`() {
+        // Three boxes chain into [100, 800); the 200px tail seats a 150px row.
+        assertEquals(
+            CaptureResultGeometry.ParkedHintPlacement(900, true),
+            place(550 until 800, 100 until 400, 300 until 600, row = 150),
+        )
+    }
+
+    @Test fun `placeParkedHint breaks a tie by the stretch nearest the screen centre`() {
+        // [200, 500) and [600, 900) are both 300 wide; the first's centre
+        // (350) is nearer 500 than the second's (750).
+        assertEquals(
+            CaptureResultGeometry.ParkedHintPlacement(350, true),
+            place(0 until 200, 500 until 600, 900 until 1000),
+        )
+    }
+
+    @Test fun `placeParkedHint keeps the shown row inside the edge pad`() {
+        // Usable [20, 980); the box leaves [960, 980), a 20px sliver whose
+        // centre (970) would hang a 100px glyph past the pad: clamped to 930.
+        assertEquals(
+            CaptureResultGeometry.ParkedHintPlacement(930, false),
+            place(0 until 960, glyph = 100, edgePad = 20),
+        )
+        // A box entirely outside the usable width covers nothing — and one
+        // that reaches the row's area is measured against the usable width
+        // when the row moves: the clear stretch is [400, 980), centred at 690.
+        assertEquals(
+            CaptureResultGeometry.ParkedHintPlacement(500, true),
+            place(0 until 10, 990 until 1000, edgePad = 20),
+        )
+        assertEquals(
+            CaptureResultGeometry.ParkedHintPlacement(690, true),
+            place(0 until 400, edgePad = 20),
+        )
+    }
+
+    @Test fun `placeParkedHint on a screen narrower than the shown row falls back to the centre`() {
+        assertEquals(
+            CaptureResultGeometry.ParkedHintPlacement(50, false),
+            place(0 until 40, screen = 100, glyph = 120),
+        )
+    }
 }
