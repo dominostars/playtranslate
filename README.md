@@ -211,10 +211,10 @@ Work we reimplemented rather than linked. No source was copied verbatim.
 
 ### (Optional) Downloadable Offline Models
 
-- TranslateGemma 4B (Google): translation-tuned Gemma 3, downloadable as an optional offline pack (Gemma terms of use)
-- Qwen 2.5 1.5B Instruct (Alibaba): downloadable as an optional offline pack (Apache 2.0)
-- Gemma 4 E2B (Google): downloadable as an optional offline pack (Gemma terms of use)
-- Hunyuan-MT 1.5 1.8B (Tencent): translation-specialised model, downloadable as an optional offline pack (Tencent HY Community License; not available in the EU, UK, or South Korea)
+- Gemma 4 E2B (Google): downloadable as an optional offline pack, MNN conversion by [taobao-mnn](https://huggingface.co/taobao-mnn/gemma-4-E2B-it-MNN) (Apache 2.0)
+- Hy-MT2 1.8B (Tencent): translation-specialised model, downloadable as an optional offline pack, MNN conversion by [@starsharp06sharp](https://huggingface.co/starsharp06sharp/Hy-MT2-1.8B-MNN) (Apache 2.0)
+- Qwen 3.5 2B (Alibaba): downloadable as an optional offline pack, MNN conversion by [taobao-mnn](https://huggingface.co/taobao-mnn/Qwen3.5-2B-MNN) (Apache 2.0)
+- Retired packs, still recognised while installed: Qwen 2.5 1.5B Instruct (Apache 2.0) and Hunyuan-MT 1.5 1.8B (Tencent HY Community License; not available in the EU, UK, or South Korea)
 - [PaddleOCR PP-OCRv5+v6 recognizers](https://github.com/PaddlePaddle/PaddleOCR): optional per-script OCR recognizer packs for additional scripts (e.g. Korean, Arabic, Cyrillic, Thai), downloadable per source language (Apache 2.0)
 - [Meiki](https://github.com/rtr46/meikiocr): high-accuracy Japanese OCR model (D-FINE), downloadable as an optional offline pack (LGPL 3.0)
 - [MangaOCR](https://huggingface.co/jzhang533/manga-ocr-base-2025): Japanese OCR refinement for stylized and vertical text, downloadable as an optional offline pack. `manga-ocr-base-2025` by jzhang533, based on [manga-ocr](https://github.com/kha-white/manga-ocr) by kha-white (Maciej Budyś), both Apache 2.0, converted to fp16 MNN for on-device use. The manga-ocr model family is trained using the [Manga109-s](https://manga109.github.io/manga109-project-website/en/index.html) dataset, whose use is acknowledged per its terms

@@ -299,8 +299,8 @@
       "licenses": [
         {
           "component": "Gemma 4 E2B Instruct (MNN format)",
-          "license": "Gemma Terms of Use",
-          "attribution": "© Google. Gemma model weights are governed by the Gemma Terms of Use (https://ai.google.dev/gemma/terms). MNN conversion by taobao-mnn (https://huggingface.co/taobao-mnn/gemma-4-E2B-it-MNN), Apache 2.0."
+          "license": "Apache-2.0",
+          "attribution": "© Google. Gemma 4 model weights are released under the Apache License 2.0 (https://ai.google.dev/gemma/docs/gemma_4_license); unlike Gemma 3, this generation carries no Gemma Terms of Use. MNN conversion by taobao-mnn (https://huggingface.co/taobao-mnn/gemma-4-E2B-it-MNN), Apache 2.0."
         },
         {
           "component": "MNN runtime (libMNN.so / libllm.so / libMNN_Express.so)",
