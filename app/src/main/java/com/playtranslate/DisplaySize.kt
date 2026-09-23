@@ -1,6 +1,7 @@
 package com.playtranslate
 
 import android.content.Context
+import com.playtranslate.overlay.OwnWindows
 import android.graphics.Point
 import android.os.Build
 import android.util.Log
@@ -43,9 +44,9 @@ fun Context.displayWindowMetrics(): WindowMetrics? {
     // [displaySizePx] / [statusBarHeightPx]).
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
     return try {
-        createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
-            .getSystemService(WindowManager::class.java)
-            ?.currentWindowMetrics
+        OwnWindows.manager(
+            createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+        )?.currentWindowMetrics
     } catch (e: RuntimeException) {
         Log.w("DisplaySize", "windowMetrics query failed; using fallback metrics", e)
         null
@@ -62,7 +63,7 @@ fun Context.displaySizePx(): Point {
         // default display reports the correct post-rotation panel size here
         // (verified on-device: matches the window-context value), keeping the
         // capture bitmap and overlay coordinate spaces 1:1 so OCR boxes align.
-        val wm = getSystemService(WindowManager::class.java)
+        val wm = OwnWindows.manager(this)
         if (wm != null) {
             val p = Point()
             @Suppress("DEPRECATION") wm.defaultDisplay.getRealSize(p)

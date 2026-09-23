@@ -20,6 +20,7 @@ import androidx.core.view.doOnLayout
 import com.playtranslate.DrawRateProbe
 import com.playtranslate.displaySizePx
 import com.playtranslate.displayWindowMetrics
+import com.playtranslate.overlay.OwnWindows
 
 /**
  * Owns every overlay window the app paints on a game display — the registry,
@@ -151,7 +152,6 @@ class OverlayHost(
         val hiddenBars = if (focusable) hiddenSystemBarsOnDisplay(displayId) else null
         return try {
             wm.addView(view, params)
-            WindowChurnGate.noteWindowAdded()
             if (focusable) mirrorSystemBars(view, hiddenBars)
             overlayWindows += OverlayHandle(view, wm, params, displayId)
             logOverlayGeometry(view, params, displayId, fullScreen)
@@ -358,7 +358,7 @@ class OverlayHost(
         val display = context.getSystemService(DisplayManager::class.java)
             ?.getDisplay(displayId) ?: return
         val displayContext = context.createDisplayContext(display)
-        val wm = displayContext.getSystemService(WindowManager::class.java) ?: return
+        val wm = OwnWindows.manager(displayContext) ?: return
         val view = View(displayContext)
         view.setOnTouchListener { _, event ->
             if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) onOutsideTouch()

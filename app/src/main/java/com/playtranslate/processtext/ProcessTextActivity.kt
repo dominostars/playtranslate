@@ -21,6 +21,7 @@ import com.playtranslate.ui.CaptureResultOverlay
 import com.playtranslate.ui.LanguageSetupActivity
 import com.playtranslate.ui.TtsAlertTarget
 import com.playtranslate.ui.showAnkiNotInstalledDialog
+import com.playtranslate.overlay.OwnWindows
 
 /**
  * ACTION_PROCESS_TEXT entry point: the system text-selection toolbar hands us
@@ -79,7 +80,7 @@ class ProcessTextActivity : AppCompatActivity() {
         if (isFinishing || overlay != null) return
         val o = CaptureResultOverlay(
             this,
-            windowManager,
+            OwnWindows.managerOf(this),
             Display.DEFAULT_DISPLAY,
             // Dead parameter in this configuration: every path that would
             // spawn an overlay window is overridden below. Constructed only

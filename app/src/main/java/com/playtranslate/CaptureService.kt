@@ -92,6 +92,7 @@ import com.playtranslate.translation.shouldBypassForLlm
 import com.playtranslate.ui.DegradedWarningKind
 import com.playtranslate.ui.TextBox
 import com.playtranslate.ui.noTextStatusMessage
+import com.playtranslate.overlay.OwnWindows
 
 private const val TAG = "CaptureService"
 private const val NOTIF_ID = 1001
@@ -1737,7 +1738,7 @@ class CaptureService : Service() {
         val display = dm.getDisplay(slowDisplayId)
             ?: dm.getDisplay(Display.DEFAULT_DISPLAY) ?: return
         val displayCtx = createDisplayContext(display)
-        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
+        val wm = OwnWindows.manager(displayCtx) ?: return
         val themed = overlayThemedContext(displayCtx)
 
         liveFeedback?.setChipVisible(false)
@@ -1859,7 +1860,7 @@ class CaptureService : Service() {
         val display = getSystemService(DisplayManager::class.java)
             ?.getDisplay(Display.DEFAULT_DISPLAY) ?: return null
         val displayCtx = createDisplayContext(display)
-        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return null
+        val wm = OwnWindows.manager(displayCtx) ?: return null
         val themed = overlayThemedContext(displayCtx)
         return suspendCancellableCoroutine { cont ->
             fun answer(kind: StreamKind?) {

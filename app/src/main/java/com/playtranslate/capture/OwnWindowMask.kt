@@ -14,6 +14,7 @@ import androidx.annotation.VisibleForTesting
 import com.playtranslate.DetectionLog
 import com.playtranslate.OverlayToolkit
 import com.playtranslate.displaySizePx
+import com.playtranslate.overlay.OwnWindows
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -206,7 +207,7 @@ object OwnWindowMask {
             activity.display?.displayId ?: return null
         } else {
             @Suppress("DEPRECATION")
-            activity.windowManager.defaultDisplay.displayId
+            OwnWindows.managerOf(activity).defaultDisplay.displayId
         }
         val bounds = windowMetricsBounds(activity) ?: decorBounds(activity) ?: return null
         return Geometry(displayId, bounds)
@@ -220,7 +221,7 @@ object OwnWindowMask {
     private fun windowMetricsBounds(activity: Activity): Rect? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
         return try {
-            Rect(activity.windowManager.currentWindowMetrics.bounds)
+            Rect(OwnWindows.managerOf(activity).currentWindowMetrics.bounds)
         } catch (e: RuntimeException) {
             Log.w(TAG, "currentWindowMetrics failed for ${activity.javaClass.simpleName}; using decor bounds", e)
             null

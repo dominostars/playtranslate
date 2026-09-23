@@ -11,6 +11,7 @@ import android.view.View
 import android.view.WindowManager
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.ui.RegionDragView
+import com.playtranslate.overlay.OwnWindows
 
 /**
  * Owns the game-screen region overlays: the region picker preview, the brief
@@ -101,7 +102,7 @@ class RegionOverlayController(
         if (region.isFullScreen) return
 
         val ctx = context.createDisplayContext(display)
-        val wm = ctx.getSystemService(WindowManager::class.java) ?: return
+        val wm = OwnWindows.manager(ctx) ?: return
         val dp = ctx.resources.displayMetrics.density
         val displayLabel = region.displayName(ctx)
 
@@ -290,7 +291,7 @@ class RegionOverlayController(
         onRegionChanged: (RegionEntry) -> Unit
     ) {
         hideRegionDragOverlay()
-        val wm = context.createDisplayContext(display).getSystemService(WindowManager::class.java) ?: return
+        val wm = OwnWindows.manager(context.createDisplayContext(display)) ?: return
         val view = RegionDragView(context.createDisplayContext(display)).apply {
             setRegion(initRegion.top, initRegion.bottom, initRegion.left, initRegion.right)
             this.onRegionChanged = onRegionChanged
@@ -340,7 +341,7 @@ class RegionOverlayController(
         }
 
         val ctx = context.createDisplayContext(display)
-        val wm = ctx.getSystemService(WindowManager::class.java) ?: return
+        val wm = OwnWindows.manager(ctx) ?: return
         val dp = ctx.resources.displayMetrics.density
         val btnSize = (48 * dp).toInt()
         val barPad = (12 * dp).toInt()

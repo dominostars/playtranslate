@@ -41,6 +41,7 @@ import com.playtranslate.ui.OcrDebugOverlayView
 import com.playtranslate.ui.RegionDragView
 import com.playtranslate.ui.TranslationOverlayView
 import com.playtranslate.ui.WordLookupPopup
+import com.playtranslate.overlay.OwnWindows
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -414,7 +415,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         screenshotW: Int, screenshotH: Int
     ) {
         hideDebugOverlay()
-        val wm = createDisplayContext(display).getSystemService(WindowManager::class.java) ?: return
+        val wm = OwnWindows.manager(createDisplayContext(display)) ?: return
         val view = OcrDebugOverlayView(this).apply {
             setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
         }
@@ -911,7 +912,6 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             params.flags = params.flags or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
             return try {
                 wm.addView(view, params)
-                WindowChurnGate.noteWindowAdded()
                 true
             } catch (_: Exception) { false }
         }

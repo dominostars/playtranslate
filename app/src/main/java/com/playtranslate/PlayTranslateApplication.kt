@@ -21,6 +21,7 @@ import com.playtranslate.translation.QwenMnnBackend
 import com.playtranslate.translation.Qwen35Mnn2bBackend
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.translation.mnn.MnnTranslator
+import com.playtranslate.overlay.OwnWindows
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -238,6 +239,11 @@ class PlayTranslateApplication : Application() {
         // FLAG_SECURE replacement) — tracks started opaque activities so the
         // capture sources can mask them at serve time.
         com.playtranslate.capture.OwnWindowMask.install(this)
+        // Timestamp every window event of ours (activity transitions here;
+        // overlay adds, removes and blanks at their funnels) so the
+        // MediaProjection session creates its VirtualDisplay only in a
+        // window-quiet moment — the Thor display-service deadlock guard.
+        com.playtranslate.overlay.OwnWindowClock.install(this)
     }
 
     companion object {
@@ -264,7 +270,7 @@ class PlayTranslateApplication : Application() {
         fun foregroundDisplayId(): Int? {
             val act = resumedActivity?.get() ?: return null
             return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) act.display?.displayId
-            else @Suppress("DEPRECATION") act.windowManager.defaultDisplay.displayId
+            else @Suppress("DEPRECATION") OwnWindows.managerOf(act).defaultDisplay.displayId
         }
 
         /** Simple class name of the currently-resumed PlayTranslate activity,

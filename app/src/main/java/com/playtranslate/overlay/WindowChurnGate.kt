@@ -145,10 +145,14 @@ object WindowChurnGate {
     private val handler = Handler(Looper.getMainLooper())
     private val destroyDueRunnable = Runnable { destroyDue() }
 
-    /** Record one of our window creations. Call after every successful
-     *  [WindowManager.addView] this app performs, whichever path adds it. */
-    fun noteWindowAdded() {
+    /** Record one of our window creations: the app's only WindowManager
+     *  ([TickingWindowManager]) calls this after every successful
+     *  [WindowManager.addView], so no add path can forget it. Ticks
+     *  [OwnWindowClock] and hands the window to [OwnWindowClock.track]. */
+    fun noteWindowAdded(view: View) {
         lastAddUptime = SystemClock.uptimeMillis()
+        OwnWindowClock.tick()
+        OwnWindowClock.track(view)
         if (pending.isNotEmpty()) reschedule()
     }
 

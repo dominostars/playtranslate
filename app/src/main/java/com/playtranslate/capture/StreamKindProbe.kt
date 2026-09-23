@@ -15,6 +15,7 @@ import androidx.core.view.doOnLayout
 import com.playtranslate.DetectionLog
 import com.playtranslate.displaySizePx
 import com.playtranslate.overlay.WindowChurnGate
+import com.playtranslate.overlay.OwnWindows
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -137,7 +138,7 @@ object StreamKindProbe {
 
         var ephemeral: EphemeralProbeSurface? = null
         val surface: ProbeSurface = external ?: run {
-            val wm = displayContext.getSystemService(WindowManager::class.java)
+            val wm = OwnWindows.manager(displayContext)
                 ?: return aborted("no WindowManager")
             EphemeralProbeSurface(displayContext, host.windowType, wm, controller.projectedDisplayId)
                 .also { ephemeral = it }
@@ -601,7 +602,6 @@ object StreamKindProbe {
             patternAddedSeq = controller.deliverySeqNow
             return try {
                 wm.addView(view, params)
-                WindowChurnGate.noteWindowAdded()
                 null
             } catch (e: Exception) {
                 "probe window add failed: ${e.message}"
