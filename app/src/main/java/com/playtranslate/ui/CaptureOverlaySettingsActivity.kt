@@ -57,6 +57,7 @@ import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.themeColor
 import com.playtranslate.translation.llm.OnDeviceLlmDownloader
 import com.playtranslate.translation.llm.humanSize
+import com.playtranslate.overlay.OwnWindows
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -507,7 +508,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         val myDisplayId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             display?.displayId ?: Display.DEFAULT_DISPLAY
         } else {
-            @Suppress("DEPRECATION") windowManager.defaultDisplay.displayId
+            @Suppress("DEPRECATION") OwnWindows.managerOf(this).defaultDisplay.displayId
         }
         val backend = CaptureBackendResolver.active()
         val mgr = backend.captureSource?.takeIf { backend.canCaptureWithoutPrompting }

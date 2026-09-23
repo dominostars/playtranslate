@@ -26,6 +26,7 @@ import com.playtranslate.model.selectHeadword
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.themeColor
+import com.playtranslate.overlay.OwnWindows
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -764,7 +765,7 @@ class TranslationResultFragment : Fragment() {
         override val scope: CoroutineScope get() = viewLifecycleOwner.lifecycleScope
         override val ttsAlertTarget: TtsAlertTarget = TtsAlertTarget.InActivity(activity)
         override val lensOverlayHost: OverlayHost? get() = null
-        override val lensWindowManager: WindowManager get() = activity.windowManager
+        override val lensWindowManager: WindowManager get() = OwnWindows.managerOf(activity)
         override val lensDisplayId: Int get() = android.view.Display.DEFAULT_DISPLAY
         override fun screenSize(): Point {
             val dm = resources.displayMetrics

@@ -91,6 +91,7 @@ import com.playtranslate.ui.SettingsBottomSheet
 import com.playtranslate.ui.LastSentenceCache
 import com.playtranslate.ui.TranslationResultFragment
 import com.playtranslate.ui.WordDetailBottomSheet
+import com.playtranslate.overlay.OwnWindows
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -332,7 +333,7 @@ class MainActivity :
             val displays = dm.displays
             val presentation = dm.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
             val winBounds = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-                windowManager.currentWindowMetrics.bounds else android.graphics.Rect()
+                OwnWindows.managerOf(this).currentWindowMetrics.bounds else android.graphics.Rect()
             android.util.Log.i(TAG_DISPLAY_DUMP,
                 "[$reason] displays=${displays.size} presentation=${presentation.size} " +
                     "multiWindow=$isInMultiWindowMode " +
@@ -2518,7 +2519,7 @@ class MainActivity :
             display?.displayId ?: Display.DEFAULT_DISPLAY
         } else {
             @Suppress("DEPRECATION")
-            windowManager.defaultDisplay.displayId
+            OwnWindows.managerOf(this).defaultDisplay.displayId
         }
 
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager

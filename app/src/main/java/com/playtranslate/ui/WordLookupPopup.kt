@@ -231,7 +231,6 @@ class WordLookupPopup(
             // keeps hidden.
             val activityHiddenBars = OverlayHost.hiddenSystemBarsOfActivity(ctx)
             try { wm.addView(container, popupParams) } catch (_: Exception) { return false }
-            WindowChurnGate.noteWindowAdded()
             OverlayHost.mirrorSystemBars(container, activityHiddenBars)
         }
         // Request window focus so onGenericMotionListener receives joystick

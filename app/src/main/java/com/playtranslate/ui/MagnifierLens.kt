@@ -837,7 +837,6 @@ class MagnifierLens(
         } else {
             try {
                 wm.addView(root, lp)
-                WindowChurnGate.noteWindowAdded()
                 true
             } catch (_: Exception) { false }
         }

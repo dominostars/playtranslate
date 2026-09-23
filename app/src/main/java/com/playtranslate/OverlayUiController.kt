@@ -46,6 +46,7 @@ import com.playtranslate.ui.SonarPingIntroView
 import com.playtranslate.ui.TextBox
 import com.playtranslate.ui.TranslationOverlayView
 import com.playtranslate.ui.WordLookupPopup
+import com.playtranslate.overlay.OwnWindows
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -469,7 +470,7 @@ class OverlayUiController(
         hideNoTextPill()
 
         val ctx = context.createDisplayContext(display)
-        val wm = ctx.getSystemService(WindowManager::class.java) ?: return
+        val wm = OwnWindows.manager(ctx) ?: return
         val dp = ctx.resources.displayMetrics.density
         val icon = ctx.packageManager.getApplicationIcon(ctx.applicationInfo)
 
@@ -629,7 +630,7 @@ class OverlayUiController(
 
         val displayCtx = context.createDisplayContext(display)
         val themedCtx = android.view.ContextThemeWrapper(displayCtx, android.R.style.Theme_DeviceDefault)
-        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
+        val wm = OwnWindows.manager(displayCtx) ?: return
 
         val isMediaProjection = overlayHost.windowType ==
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -823,7 +824,7 @@ class OverlayUiController(
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val display = dm.getDisplay(displayId) ?: return false
         val displayCtx = context.createDisplayContext(display)
-        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return false
+        val wm = OwnWindows.manager(displayCtx) ?: return false
         val prefs = Prefs(context)
         val view = TranslationOverlayView(
             android.view.ContextThemeWrapper(displayCtx, android.R.style.Theme_DeviceDefault),
@@ -1109,7 +1110,7 @@ class OverlayUiController(
         hideFloatingIconForDisplay(displayId, "recreating")
 
         val displayCtx = context.createDisplayContext(display)
-        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return false
+        val wm = OwnWindows.manager(displayCtx) ?: return false
 
         // Drag-to-lookup: independent controller per display so the popup +
         // magnifier render against the correct display context.
@@ -1586,7 +1587,7 @@ class OverlayUiController(
 
     private fun showFloatingMenu(display: Display, icon: FloatingOverlayIcon) {
         dismissFloatingMenu()
-        val wm = context.createDisplayContext(display).getSystemService(WindowManager::class.java) ?: return
+        val wm = OwnWindows.manager(context.createDisplayContext(display)) ?: return
         val screenSize = getDisplaySize(display)
         val themeRes = baseActivityTheme(context)
         val themedCtx = android.view.ContextThemeWrapper(context.createDisplayContext(display), themeRes)
@@ -1811,7 +1812,7 @@ class OverlayUiController(
      *  leaves the menu open underneath. */
     private fun showOcrPicker(display: Display, id: SourceLangId) {
         val displayCtx = context.createDisplayContext(display)
-        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
+        val wm = OwnWindows.manager(displayCtx) ?: return
         val themed = overlayThemedContext(displayCtx)
         OcrPicker.populate(
             OverlayAlert.Builder(themed, overlayHost, wm, display.displayId),
@@ -1875,7 +1876,7 @@ class OverlayUiController(
      *  service up first. */
     private fun showHideConfirmAlert(display: Display) {
         val displayCtx = context.createDisplayContext(display)
-        val overlayWm = displayCtx.getSystemService(WindowManager::class.java) ?: return
+        val overlayWm = OwnWindows.manager(displayCtx) ?: return
         val themed = overlayThemedContext(displayCtx)
         val accentColor = themed.themeColor(R.attr.ptAccent)
         val dividerColor = themed.themeColor(R.attr.ptDivider)
@@ -2141,7 +2142,7 @@ class OverlayUiController(
             return
         }
         val displayCtx = context.createDisplayContext(display)
-        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: run {
+        val wm = OwnWindows.manager(displayCtx) ?: run {
             launchResultActivity(displayId, region)
             return
         }
@@ -2320,7 +2321,7 @@ class OverlayUiController(
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val display = dm.getDisplay(displayId) ?: return
         val displayCtx = context.createDisplayContext(display)
-        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return
+        val wm = OwnWindows.manager(displayCtx) ?: return
         val size = getDisplaySize(display)
         captureDisplayId = displayId
         captureGeometry = DisplayGeometry(size.x, size.y, display.rotation)
@@ -2374,7 +2375,7 @@ class OverlayUiController(
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager ?: return false
         val display = dm.getDisplay(displayId) ?: return false
         val displayCtx = context.createDisplayContext(display)
-        val wm = displayCtx.getSystemService(WindowManager::class.java) ?: return false
+        val wm = OwnWindows.manager(displayCtx) ?: return false
         dismissWorkspace()
         val size = getDisplaySize(display)
         val ws = OverlayWorkspace(displayCtx, wm, displayId, overlayHost)

@@ -49,6 +49,7 @@ import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.themeColor
 import com.playtranslate.ui.DismissReason
 import com.playtranslate.ui.OverlayAlert
+import com.playtranslate.overlay.OwnWindows
 import kotlinx.coroutines.launch
 
 /**
@@ -404,7 +405,7 @@ class CameraActivity : AppCompatActivity() {
         val rotation = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
             display?.rotation ?: android.view.Surface.ROTATION_0
         } else {
-            @Suppress("DEPRECATION") windowManager.defaultDisplay.rotation
+            @Suppress("DEPRECATION") OwnWindows.managerOf(this).defaultDisplay.rotation
         }
         when (rotation) {
             android.view.Surface.ROTATION_90 -> {

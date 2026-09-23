@@ -21,6 +21,7 @@ import com.playtranslate.ui.OcrPicker
 import com.playtranslate.ui.OverlayAlert
 import com.playtranslate.ui.TtsAlertTarget
 import com.playtranslate.ui.showAnkiNotInstalledDialog
+import com.playtranslate.overlay.OwnWindows
 
 /** Re-raster hysteresis for the review zoom (the live path's
  *  RASTER_SCALE_DRIFT): pinching around a midpoint must not re-bake the
@@ -247,7 +248,7 @@ class FrozenReviewPanel(
     fun startReview(frame: Bitmap) {
         val o = CaptureResultOverlay(
             activity,
-            activity.windowManager,
+            OwnWindows.managerOf(activity),
             Display.DEFAULT_DISPLAY,
             // Dead parameter in this configuration: every path that would
             // spawn an overlay window is overridden below. Constructed only

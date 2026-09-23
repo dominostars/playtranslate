@@ -16,6 +16,7 @@ import com.playtranslate.R
 import com.playtranslate.overlay.WindowChurnGate
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
+import com.playtranslate.overlay.OwnWindows
 
 /**
  * The live-start status card: one centered window spanning the whole startup
@@ -183,7 +184,7 @@ internal class StartupChip private constructor(
             val displayContext = host.displayContextFor(controller.projectedDisplayId)
                 ?.let { overlayThemedContext(it) }
                 ?: return null
-            val wm = displayContext.getSystemService(WindowManager::class.java) ?: return null
+            val wm = OwnWindows.manager(displayContext) ?: return null
             val dp = displayContext.resources.displayMetrics.density
 
             val pattern = StreamKindProbe.PatternView(displayContext).apply {
@@ -270,7 +271,6 @@ internal class StartupChip private constructor(
             chip.patternAddedSeq = controller.deliverySeqNow
             return try {
                 wm.addView(card, params)
-                WindowChurnGate.noteWindowAdded()
                 chip
             } catch (_: Exception) {
                 null
