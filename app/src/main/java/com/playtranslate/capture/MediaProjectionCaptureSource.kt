@@ -163,6 +163,18 @@ class MediaProjectionCaptureSource(
             warnIfNotProjected(displayId)
             return controller.captureFrameUngated()
         }
+        // Establish the projection and VirtualDisplay BEFORE any window of
+        // ours changes. The blank below drops our overlays out of the
+        // accessibility window observer's visible set, and the observer runs
+        // its display-size query immediately; a createVirtualDisplay trailing
+        // that by tens of milliseconds is the Thor display-service deadlock
+        // (field trace 2026-09-20: blank → two vsyncs → foreground promotion
+        // → create → watchdog kill). Creation also holds for own-window
+        // quiet; this order is what keeps the blank from being the last
+        // event before it. A no-op once the session exists, and on every
+        // device but the affected firmware (DisplayServiceGuard), where the
+        // capture below builds the session lazily as it always did.
+        if (!controller.ensureSession()) return null
         val host = CaptureBackendResolver.active().overlayHost
         // Anchor BEFORE the blank. The blank's own repaint must satisfy the
         // freshness predicate — anchoring after the blank was submitted let
@@ -289,7 +301,27 @@ class MediaProjectionCaptureSource(
                         DetectionLog.log("MP Loop[$displayId]: consent lost, loop exiting")
                         break
                     }
-                    else -> DetectionLog.log("MP Loop[$displayId]: capture failed (transient), skipping frame")
+                    else -> {
+                        // On the guarded firmware a clean attempt that failed
+                        // while the session was not READY — no display yet,
+                        // a refused hold, or a display whose mirror has not
+                        // delivered its first frame — never blanked anything
+                        // (ensureSession runs before the blank), so re-arming
+                        // costs no flicker and the loop keeps waiting for its
+                        // clean baseline instead of falling to raw frames
+                        // with our overlays in them. A failure with a READY
+                        // session (a freshness-budget miss on a resting
+                        // screen) keeps the raw fallback, so a static screen
+                        // never blanks and restores on every poll. Off the
+                        // guarded firmware there is no re-arm: a failed clean
+                        // attempt there has already blanked and restored.
+                        val rearm = isClean && DisplayServiceGuard.applies && !controller.sessionReady
+                        if (rearm) loop.cleanRequested = true
+                        DetectionLog.log(
+                            "MP Loop[$displayId]: capture failed (transient), skipping frame" +
+                                if (rearm) "; clean re-armed (no session yet)" else ""
+                        )
+                    }
                 }
             }
         }

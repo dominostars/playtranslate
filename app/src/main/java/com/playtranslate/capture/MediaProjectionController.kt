@@ -22,13 +22,18 @@ import com.playtranslate.DetectionLog
 import com.playtranslate.PlayTranslateTileService
 import com.playtranslate.Prefs
 import com.playtranslate.displaySizePx
+import com.playtranslate.overlay.OwnWindowClock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -169,6 +174,22 @@ class MediaProjectionController(private val service: CaptureService) {
      *  re-checks its world instead of sleeping on a dead stream. */
     private val deliverySeq = MutableStateFlow(0L)
 
+    /** The reader whose surface the VirtualDisplay is wired — or about to
+     *  be wired — to, with the count of frames IT has delivered. One value,
+     *  swapped atomically: the reader identity and the count travel
+     *  together, so the frame listener's check-and-count is a single CAS
+     *  against the same state [buildReaderLocked] replaces. That is what
+     *  makes the handoff race-free: a listener that read the old state and
+     *  was paused across the switch either commits its increment to the
+     *  OLD state, which the switch then discards, or retries against the
+     *  new state and finds its reader is not the one counted (Codex native
+     *  review #3, 2026-09-22 — a separate identity field plus a shared
+     *  counter let an old frame count after the switch). [deliverySeq]
+     *  counts every reader's frames for the freshness proofs; this is the
+     *  clock [SessionReadiness] is fed from. */
+    private class ReaderDeliveries(val reader: ImageReader?, val count: Long)
+    private val currentReaderDeliveries = MutableStateFlow(ReaderDeliveries(null, 0L))
+
     /** Seq of the frame most recently served to a RAW capture caller. Clean
      *  captures deliberately don't advance this — see [DeliverySignal]. */
     @Volatile private var lastServedSeq = 0L
@@ -214,6 +235,9 @@ class MediaProjectionController(private val service: CaptureService) {
             null
         } ?: return@OnImageAvailableListener
         val seq = deliverySeq.updateAndGet { it + 1 }
+        currentReaderDeliveries.update { s ->
+            if (s.reader === reader) ReaderDeliveries(s.reader, s.count + 1) else s
+        }
         deliveredTotal++
         latch.getAndSet(LatchedFrame(img, seq))?.release()
     }
@@ -256,6 +280,17 @@ class MediaProjectionController(private val service: CaptureService) {
 
     /** True once the user has granted a token still valid for this process. */
     val hasConsent: Boolean get() = resultData != null
+
+    /** First-frame readiness of the mirror since its VirtualDisplay was
+     *  created — what the guarded clean-capture order anchors on. */
+    private val readiness = SessionReadiness()
+
+    /** Whether the session can anchor a clean capture: its VirtualDisplay
+     *  exists AND the mirror has delivered a frame since that display was
+     *  created ([SessionReadiness]). The live loop's re-arm test on the
+     *  guarded firmware: a clean attempt that failed while this was false
+     *  never blanked anything, so asking for clean again costs no flicker. */
+    val sessionReady: Boolean get() = virtualDisplay != null && readiness.isReady
 
     /** The display this backend can capture. MediaProjection's
      *  `createScreenCaptureIntent()` only ever projects the default display,
@@ -327,6 +362,16 @@ class MediaProjectionController(private val service: CaptureService) {
             this.resultData = data
             if (!CaptureBackendResolver.active().requiresAccessibilityService) {
                 service.mediaProjectionActivated = true
+                // On the guarded firmware, build the session NOW, in the
+                // quiet gap after the consent flow, so no later gesture has
+                // to hold for it (a drag never goes quiet — see
+                // startEagerSession). MP backend only: here every grant IS a
+                // screen-capture session. On the accessibility backend a
+                // grant is either the game-audio recorder's — MediaProjection
+                // as an audio source, no display wanted — or live mode's
+                // stream borrow, whose loop builds the display lazily under
+                // the hold (a live start is no drag; nothing keeps churning).
+                startEagerSession()
             }
         }
         val gate = consentGate
@@ -420,7 +465,7 @@ class MediaProjectionController(private val service: CaptureService) {
         if (!ensureProjection()) return noteFailure(clean, "no projection (consent lost?)")
         val (w, h) = captureSize(projectedDisplayId)
             ?: return noteFailure(clean, "display size unavailable")
-        ensureVirtualDisplay(w, h) ?: return noteFailure(clean, "virtual display unavailable")
+        ensureVirtualDisplay(w, h, clean) ?: return null
         lastPeekRefusal = null
 
         // Deadline-as-decision, not deadline-as-abort: each pass serves the
@@ -710,6 +755,12 @@ class MediaProjectionController(private val service: CaptureService) {
         return streamKindMutex.withLock {
             streamKind.takeIf { it != StreamKind.UNKNOWN }?.let { return@withLock it }
             if (!hasConsent) return@withLock StreamKind.UNKNOWN
+            // The probe adds a window and reads the mirror through it: build
+            // the mirror FIRST, so the session's one createVirtualDisplay
+            // never trails the probe window's add (the Thor display-service
+            // deadlock guard — see [ensureSession]). A session that can't be
+            // built can't be measured either; UNKNOWN stays uncached.
+            if (!ensureSession()) return@withLock StreamKind.UNKNOWN
             var kind = StreamKindProbe.measure(this, probeSurface)
             if (kind == StreamKind.UNKNOWN && hasConsent) {
                 // One retry: the probe is the SOLE classifier, so a transient
@@ -821,9 +872,184 @@ class MediaProjectionController(private val service: CaptureService) {
         return gate.await()
     }
 
-    private fun ensureVirtualDisplay(w: Int, h: Int): ImageReader? {
-        val proj = projection ?: return null
+    /**
+     * Establish the session's pixel source — the projection plus a
+     * VirtualDisplay at the projected display's current size — WITHOUT
+     * capturing. The clean-capture path calls this BEFORE it blanks any
+     * overlay and [resolveStreamKind] before the probe adds its window, so
+     * the one `createVirtualDisplay` per consent never trails one of our
+     * own window changes: on the AYN Thor a display-info query that lands
+     * inside that call deadlocks system_server, and the accessibility
+     * window observer issues exactly that query the moment our blank drops
+     * a window from its visible set (field trace 2026-09-20, see
+     * [OwnWindowClock]). Creation additionally holds for own-window quiet;
+     * the order here is what keeps the blank from being the last event
+     * before it. Consent must already be held — never prompts. Returns
+     * false with the failure noted like a clean capture's; a no-op once the
+     * session exists.
+     */
+    suspend fun ensureSession(clean: Boolean? = true): Boolean {
+        // Off the affected firmware this is a no-op: the capture builds the
+        // session lazily, in the field-proven order (blank first), and pays
+        // none of the hold — see DisplayServiceGuard.
+        if (!DisplayServiceGuard.applies) return true
+        if (!ensureProjection()) {
+            noteSessionFailure(clean, "no projection (consent lost?)")
+            return false
+        }
+        val (w, h) = captureSize(projectedDisplayId) ?: run {
+            noteSessionFailure(clean, "display size unavailable")
+            return false
+        }
+        if (ensureVirtualDisplay(w, h, clean) == null) return false
+        if (!readiness.isReady) {
+            // A display created here composes its first frame from whatever
+            // layer state SurfaceFlinger holds a frame or two later, so a
+            // blank the caller submits right after this return can miss that
+            // frame — which would then satisfy an anchor the caller read
+            // before blanking (the lazy-create order made the first frame
+            // post-blank by construction; this order does not). Wait for the
+            // first delivery FROM THE NEW READER, so the caller anchors on a
+            // live stream: the pipeline state every later capture sees,
+            // take-newest tolerance included. Deadline-as-decision — returns
+            // the instant the frame lands; on timeout the session is NOT
+            // ready and this FAILS rather than proceeds (Codex adversarial
+            // round 2). Readiness persists, so a retry waits again instead of
+            // letting a never-warmed display through, and the display is
+            // kept: releasing it would mean another createVirtualDisplay,
+            // another ticket in the lottery this guard exists to avoid.
+            withTimeoutOrNull(FIRST_FRAME_WARMUP_MS) {
+                // Only the installed reader's own count can satisfy this: a
+                // newer build swaps the state to another reader, and this
+                // waiter then times out and fails rather than anchoring on
+                // a surface it did not wait for.
+                currentReaderDeliveries.first { it.reader === imageReader && readiness.observe(it.count) }
+            }
+            if (!readiness.isReady) {
+                noteSessionFailure(
+                    clean,
+                    "mirror not warmed (no delivery within ${FIRST_FRAME_WARMUP_MS}ms of creation)"
+                )
+                return false
+            }
+        }
+        return true
+    }
+
+    /** A session-setup failure: counted against the capture that needed it
+     *  ([clean] true or false), or merely logged when the EAGER task hit it
+     *  ([clean] null) — that task is not a capture, and its refusals must
+     *  not inflate the capture failure counters or overwrite the last
+     *  capture failure reason. */
+    private fun noteSessionFailure(clean: Boolean?, reason: String): Nothing? {
+        if (clean == null) {
+            Log.i(TAG, "eager session: $reason")
+            return null
+        }
+        return noteFailure(clean, reason)
+    }
+
+    /** The eager session builder, alive from a consent grant until the
+     *  session is ready or the consent dies. */
+    private var eagerSession: Job? = null
+
+    /**
+     * On the guarded firmware, build the session right after consent instead
+     * of on the first capture. The consent flow ends in a natural quiet gap
+     * — the icons are added at the grant, the trampoline closes ~100 ms
+     * later, and then nothing of ours moves — so the one createVirtualDisplay
+     * per consent lands there, before the user can gesture. Tying creation
+     * to the first capture made every first capture pay the hold and made
+     * a capture started DURING window churn impossible: drag-lookup captures
+     * at drag start, the finger keeps the icon moving, the hold never sees
+     * quiet and refuses, and the next drag starts the same way. With the
+     * session normally ready before any gesture, the hold in
+     * [ensureVirtualDisplay] is only the fallback for a capture that arrives
+     * inside that first second, and a refusal there fails that one capture
+     * loudly rather than deadlocking the display service.
+     *
+     * Retries after a refusal or a warm-up timeout (the user may be dragging
+     * through the first second) until the session is ready or the consent is
+     * gone; [teardown] cancels it. Runs on the service's main-thread scope,
+     * the same thread every capture path uses, and serializes with them on
+     * [sessionMutex]. Not a capture: its failures are logged, not counted.
+     *
+     * Visible consequence: the projection (and with it the system's
+     * screen-recording indicator, which Android starts inside
+     * getMediaProjection) now begins at Turn On on these devices rather than
+     * at the first capture. It still ends at Turn Off, as before.
+     */
+    private fun startEagerSession() {
+        if (!DisplayServiceGuard.applies) return
+        eagerSession?.cancel()
+        eagerSession = service.serviceScope.launch {
+            while (hasConsent && !sessionReady) {
+                if (ensureSession(clean = null)) break
+                delay(EAGER_SESSION_RETRY_MS)
+            }
+        }
+    }
+
+    /** Serializes VirtualDisplay creation. The quiet hold in
+     *  [ensureVirtualDisplay] suspends, and two callers each seeing no
+     *  display would otherwise both create one — on API 34+ the second
+     *  throws and its catch tears the good session down. Held only across
+     *  that method, never across a capture. */
+    private val sessionMutex = Mutex()
+
+    /** The reader for a [w]×[h] capture, building the VirtualDisplay on
+     *  first use. Notes every failure itself ([clean] picks the counter),
+     *  so callers just return null. */
+    private suspend fun ensureVirtualDisplay(w: Int, h: Int, clean: Boolean?): ImageReader? {
+        if (projection == null) return noteSessionFailure(clean, "virtual display unavailable (no projection)")
         imageReader?.let { if (readerW == w && readerH == h) return it }
+        return sessionMutex.withLock {
+            // Re-check under the lock: the caller that held it may have
+            // built exactly this reader.
+            imageReader?.let { if (readerW == w && readerH == h) return@withLock it }
+            if (virtualDisplay == null) {
+                var heldMs = 0L
+                if (DisplayServiceGuard.applies) {
+                    // The session's one createVirtualDisplay runs only once
+                    // nothing of ours has changed a window for a while — the
+                    // Thor display-service deadlock guard (see OwnWindowClock).
+                    val hold = OwnWindowClock.awaitQuiet()
+                    if (!hold.quiet) {
+                        // Churn outlasted the cap. Creating now would land the
+                        // call right after an event — the overlap the hold
+                        // exists to avoid — so the capture fails instead: the
+                        // live loop re-arms its clean request, one-shots
+                        // surface the failure and the user retries. A
+                        // persistent refusal means OUR windows never rest,
+                        // a bug to find, not a firmware kill to survive.
+                        return@withLock noteSessionFailure(
+                            clean,
+                            "own windows never quiet (held ${hold.heldMs}ms; last event " +
+                                "${OwnWindowClock.sinceLastEventMs()}ms ago)"
+                        )
+                    }
+                    heldMs = hold.heldMs
+                }
+                val since = OwnWindowClock.sinceLastEventMs()
+                val line = "MP: creating VirtualDisplay (held ${heldMs}ms; own windows quiet " +
+                    (since?.let { "${it}ms" } ?: "since launch") +
+                    (if (DisplayServiceGuard.applies) "; guarded)" else "; unguarded)")
+                Log.i(TAG, line)
+                DetectionLog.log(line)
+            }
+            // The hold suspended: the session may have died meanwhile (Turn
+            // Off, a revoke) — teardown nulls the projection.
+            val proj = projection
+                ?: return@withLock noteSessionFailure(clean, "virtual display unavailable (session died)")
+            buildReaderLocked(proj, w, h)
+                ?: noteSessionFailure(clean, "virtual display creation failed")
+        }
+    }
+
+    /** The synchronous build under [sessionMutex]: a reader at [w]×[h]
+     *  wired into a new VirtualDisplay, or into the existing one through
+     *  resize + setSurface. */
+    private fun buildReaderLocked(proj: MediaProjection, w: Int, h: Int): ImageReader? {
         val dpi = service.resources.displayMetrics.densityDpi
         // maxImages = 3: one latched + one claimed in-flight by a capture +
         // one for the listener's acquireLatestImage swap moment. At 2 the
@@ -834,7 +1060,15 @@ class MediaProjectionController(private val service: CaptureService) {
         // into the VirtualDisplay so the very first composited frame is
         // latched rather than lost.
         newReader.setOnImageAvailableListener(frameListener, ensureFrameHandler())
+        // Readiness is per OUTPUT SURFACE — a fresh display, or a resize's
+        // replacement reader, whose first composition is just as dirty and
+        // just as late — and counts only THIS reader's deliveries. Swap the
+        // counted reader (and a zero count) in ONE state write before the
+        // surface is wired: from here no old-reader frame can enter the
+        // count (the listener's CAS sees the new reader), and no new-reader
+        // frame can precede the zero.
         val oldReader = imageReader
+        currentReaderDeliveries.value = ReaderDeliveries(newReader, 0L)
         val vd = virtualDisplay
         // Android 15 (targetSdk ≥ 35) enforces stricter MediaProjection token
         // staleness — a token that getMediaProjection succeeded on can still
@@ -868,6 +1102,7 @@ class MediaProjectionController(private val service: CaptureService) {
             Log.e(TAG, "VirtualDisplay creation/update failed: ${e.message}")
             // newReader was allocated before the try block and never installed
             // — close it explicitly so a failed setup doesn't leak the reader.
+            currentReaderDeliveries.value = ReaderDeliveries(oldReader, 0L)
             newReader.close()
             onProjectionLost()
             return null
@@ -883,6 +1118,7 @@ class MediaProjectionController(private val service: CaptureService) {
         oldReader?.setOnImageAvailableListener(null, null)
         closeReaderSafely(oldReader)
         latch.getAndSet(null)?.release()
+        readiness.onCreated(0L)
         return newReader
     }
 
@@ -924,11 +1160,14 @@ class MediaProjectionController(private val service: CaptureService) {
 
     private fun teardown() {
         val hadConsent = resultData != null
+        eagerSession?.cancel()
+        eagerSession = null
         virtualDisplay?.release()
         virtualDisplay = null
         imageReader?.setOnImageAvailableListener(null, null)
         closeReaderSafely(imageReader)
         imageReader = null
+        currentReaderDeliveries.value = ReaderDeliveries(null, 0L)
         readerW = 0
         readerH = 0
         // Latch cleanup AFTER the reader closes: a listener invocation racing
@@ -941,6 +1180,9 @@ class MediaProjectionController(private val service: CaptureService) {
         // re-checks its capture source, and discovers the session is gone —
         // instead of sleeping forever on a stream that will never deliver.
         deliverySeq.updateAndGet { it + 1 }
+        // After the bump: a warm-up suspended on the seq wakes into a dead
+        // session and must find nothing created, not a false ready.
+        readiness.reset()
         frameThread?.quitSafely()
         frameThread = null
         frameHandler = null
@@ -1035,6 +1277,22 @@ class MediaProjectionController(private val service: CaptureService) {
          *  collapse quantizes composition to ~100ms ticks — so the budget must
          *  clear a worst-case idle tick plus scheduling margin. */
         const val FRESHNESS_BUDGET_MS = 250L
+
+        /** Bound on [ensureSession]'s wait for a fresh VirtualDisplay's first
+         *  delivery: a WindowManager traversal round trip plus the mirror's
+         *  first composition (a new display is fully dirty, so it composes
+         *  once even over resting content), which the idle-refresh collapse
+         *  can quantize to ~100 ms ticks and a game's scheduler load can
+         *  stretch — the frame thread runs at default priority. A timeout
+         *  now FAILS the capture rather than silently lowering its
+         *  cleanliness, so the bound errs long: normally the frame lands in
+         *  a couple of frames, and the full second is paid only on failure. */
+        const val FIRST_FRAME_WARMUP_MS = 1_000L
+
+        /** Pause between eager-session attempts after a refusal or a warm-up
+         *  timeout ([startEagerSession]); each attempt already holds up to
+         *  [OwnWindowClock.MAX_WAIT_MS] and warms up to [FIRST_FRAME_WARMUP_MS]. */
+        const val EAGER_SESSION_RETRY_MS = 500L
 
         /** Cadence of the debug delivery-rate summary. */
         const val SUMMARY_INTERVAL_MS = 5_000L
