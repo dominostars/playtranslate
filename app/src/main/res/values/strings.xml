@@ -1283,6 +1283,14 @@
     <!-- contentDescription for the audio-preview play button. -->
     <string name="anki_audio_preview_content_description">Preview audio</string>
 
+    <!-- Title of the switch row inside a highlighted word's cell in the
+         sentence card editor's Words group, between the word's own title
+         line and its definition. Turning the switch on adds that word's
+         pronunciation audio to the Anki card. The row also holds a play
+         button and a pill naming the audio source, so keep it short: one
+         line beside them. -->
+    <string name="anki_word_audio_row_title">Include audio</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          GAME-AUDIO RECORDING (Settings → Anki → Audio; trim editor).
          ═══════════════════════════════════════════════════════════════ -->

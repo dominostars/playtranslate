@@ -527,6 +527,8 @@
 
     <string name="anki_audio_preview_content_description">Sesi önizle</string>
 
+    <string name="anki_word_audio_row_title">Sesi dahil et</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          GAME-AUDIO RECORDING
          ═══════════════════════════════════════════════════════════════ -->

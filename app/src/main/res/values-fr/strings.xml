@@ -546,6 +546,8 @@
 
     <string name="anki_audio_preview_content_description">Écouter l\'audio</string>
 
+    <string name="anki_word_audio_row_title">Inclure l\'audio</string>
+
     <string name="anki_game_audio_row_title">Enregistrer l\'audio du jeu</string>
 
     <string name="anki_game_audio_row_subtitle">Conserve les dernières minutes de l\'audio du jeu afin que les nouvelles cartes de phrase puissent utiliser la véritable réplique</string>

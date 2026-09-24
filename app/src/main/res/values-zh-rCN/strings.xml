@@ -532,6 +532,8 @@
 
     <string name="anki_audio_preview_content_description">预览音频</string>
 
+    <string name="anki_word_audio_row_title">包含音频</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          GAME-AUDIO RECORDING (Settings → Anki → Audio; trim editor)
          ═══════════════════════════════════════════════════════════════ -->

@@ -534,6 +534,8 @@
 
     <string name="anki_audio_preview_content_description">Escuchar el audio</string>
 
+    <string name="anki_word_audio_row_title">Incluir el audio</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          GAME-AUDIO RECORDING (Settings → Anki → Audio; trim editor)
          ═══════════════════════════════════════════════════════════════ -->
