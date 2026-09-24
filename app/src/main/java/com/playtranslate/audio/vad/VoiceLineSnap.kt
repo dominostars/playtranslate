@@ -45,11 +45,10 @@ internal object VoiceLineSnap {
         anchorOffsetMs: Long,
         durationMs: Long,
     ): Result? = withContext(Dispatchers.Default) {
-        // arm64-only (the :mnn .so) — the same gate every MNN-backed tier
-        // applies (OnDeviceLlmBackend.supportsRequiredAbi; Bergamot adds a
-        // binary-translation check on top, BergamotBackend.supportsNativeRuntime).
-        // On the app's 32-bit slice loadLibrary throws UnsatisfiedLinkError,
-        // and best-effort decoration must skip, not crash.
+        // arm64-only (the :mnn .so) — the same gate every native tier applies
+        // (OnDeviceLlmBackend.supportsRequiredAbi, BergamotBackend
+        // .supportsNativeRuntime). On the app's 32-bit slice loadLibrary throws
+        // UnsatisfiedLinkError, and best-effort decoration must skip, not crash.
         if (!android.os.Process.is64Bit()) return@withContext null
         try {
             val winStart = (anchorOffsetMs - WINDOW_PRE_MS).coerceAtLeast(0)

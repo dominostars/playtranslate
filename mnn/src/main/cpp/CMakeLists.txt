@@ -58,6 +58,21 @@ set(MNN_KLEIDIAI                OFF CACHE BOOL "")
 set(MNN_BUILD_SHARED_LIBS       ON  CACHE BOOL "")
 set(MNN_SEP_BUILD               ON  CACHE BOOL "")
 
+# Emulated TLS: every thread_local compiles to a pthread-key lookup
+# (__emutls_get_address) instead of an ELF TLS descriptor. x86 hosts run this
+# arm64 slice through a binary translator, and translators resolve the TLS
+# descriptors of a dlopen'ed library to a null address: on BlueStacks
+# (Houdini 11) the first ExecutorScope access in MNN_Express SIGSEGVs, which
+# takes down every LLM tier and Silero VAD on first use (reproduced
+# 2026-09-22; MNN's session-API OCR has no thread_locals and was unaffected).
+# Emulated TLS is what the NDK generates for any app whose minSdk is below 29,
+# so it runs on every Android version; the cost is one call per access, and
+# MNN reads its thread_locals only while setting up Express graphs and
+# modules, never inside a kernel. app/build.gradle.kts refuses to package an
+# ARM library that still defines ELF thread-locals, so an MNN update can't
+# bring descriptors back unnoticed.
+add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-femulated-tls>)
+
 add_subdirectory(${MNN_SRC} build-mnn)
 
 # --------------------------------------------------------------------------

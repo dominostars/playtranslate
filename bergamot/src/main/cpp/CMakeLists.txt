@@ -32,6 +32,17 @@ set(BUILD_SHARED              OFF CACHE BOOL "")
 set(BUILD_JNI                 OFF CACHE BOOL "")
 set(WITH_TESTS                OFF CACHE BOOL "")
 
+# Emulated TLS for slimt and everything built under it (sentencepiece, the
+# JNI wrapper): thread_locals become pthread-key lookups instead of ELF TLS
+# descriptors, which ARM translators on x86 hosts resolve to a null address
+# for a dlopen'ed library. The first access, slimt's `thread_local static
+# Match m(r)` in SentenceStream, SIGSEGVs the process on MuMu's Android 12
+# image (2026-08-19) and on BlueStacks (2026-09-23), where the same bug also
+# took down MNN_Express. Same rationale and cost as :mnn's
+# (mnn/src/main/cpp/CMakeLists.txt), and the same app/build.gradle.kts check
+# keeps descriptors out.
+add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-femulated-tls>)
+
 add_subdirectory(${SLIMT_SRC} build-slimt)
 
 # --------------------------------------------------------------------------
