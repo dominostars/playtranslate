@@ -2607,10 +2607,13 @@
     <!-- Subtitle under the "widen vertical text" switch row in Capture/Overlay settings. -->
     <string name="settings_vertical_grow_subtitle">Grow narrow vertical-text boxes so the translation reads horizontally. May cover nearby content.</string>
 
-    <!-- Group header (rendered UPPERCASE) above the result-panel settings on the
-         Capture and overlay screen. The result panel is the bottom sheet that shows a
-         capture's text and translation over the game (and the camera / import review). -->
-    <string name="settings_header_result_panel">Result panel</string>
+    <!-- Group header (rendered UPPERCASE) above the overlay settings on the Capture
+         and overlay screen: the Overlay Mode chooser, the "widen vertical text" switch
+         and the "edge indicator" switch. "Overlay" is what the app draws over the game
+         (the translation boxes on the game's text, and the result panel), so use the
+         same word as the screen title (settings_cell_capture_overlay) and the Overlay
+         Mode row (settings_overlay_mode_title). -->
+    <string name="settings_header_overlay">Overlay</string>
     <!-- Title of the "edge indicator" switch row: the soft accent-colored glow drawn
          around the edges of the screen while the result panel is showing, so a panel
          collapsed to its bottom strip is not mistaken for no overlay at all. -->

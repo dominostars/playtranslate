@@ -65,8 +65,9 @@ import kotlinx.coroutines.withContext
 
 /**
  * Capture & overlay sub-page: OCR engine choice, the multi-display capture
- * picker, and the auto-translate controls (enhanced auto-translate, overlay
- * mode, hide-overlays, capture interval).
+ * picker, the auto-translate controls (enhanced auto-translate, hide-overlays,
+ * touches-refresh, capture interval) and the overlay controls (overlay mode,
+ * widen vertical text, edge indicator).
  *
  * Unlike the toggle-only Appearance / Hotkeys pages, this screen renders mostly
  * *live system state* — connected displays + window thumbnails, OCR pack
@@ -88,16 +89,16 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private lateinit var tvEnhancedAutoTranslateSubtitle: TextView
     private lateinit var switchEnhancedAutoTranslate: MaterialSwitch
     private lateinit var checkEnhancedAutoTranslate: ImageView
-    private lateinit var overlayModeSection: View
-    private lateinit var overlayModeToggleContainer: FrameLayout
     private lateinit var rowHideOverlays: View
     private lateinit var switchHideOverlays: MaterialSwitch
     private lateinit var rowTouchesRefresh: View
     private lateinit var switchTouchesRefresh: MaterialSwitch
+
+    // ── Overlay refs ──────────────────────────────────────────────────────
+    private lateinit var overlayModeSection: View
+    private lateinit var overlayModeToggleContainer: FrameLayout
     private lateinit var rowVerticalGrow: View
     private lateinit var switchVerticalGrow: MaterialSwitch
-
-    // ── Result-panel refs ─────────────────────────────────────────────────
     private lateinit var rowEdgeIndicator: View
     private lateinit var switchEdgeIndicator: MaterialSwitch
 
@@ -133,10 +134,10 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
 
         setGroupHeader(R.id.headerAutoTranslate, R.string.settings_header_auto_translate)
         setGroupHeader(R.id.headerCaptureDisplay, R.string.settings_header_capture_display)
-        setGroupHeader(R.id.headerResultPanel, R.string.settings_header_result_panel)
+        setGroupHeader(R.id.headerOverlay, R.string.settings_header_overlay)
 
         setupAutoTranslateSection()
-        setupResultPanelSection()
+        setupOverlaySection()
         setupCaptureDisplaySection()
         setupOcrSection()
         setupDisplays()
@@ -200,43 +201,11 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private fun setupAutoTranslateSection() {
         setupEnhancedAutoTranslateRow()
 
-        val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
-        val hasHintText = hintKind != HintTextKind.NONE
-
-        // -- Overlay mode toggle (Translation / Furigana-Pinyin) --
-        if (hasHintText) {
-            overlayModeSection.isVisible = true
-            val hintLabel = when (hintKind) {
-                HintTextKind.PINYIN -> getString(R.string.overlay_mode_option_pinyin)
-                else -> getString(R.string.overlay_mode_option_furigana)
-            }
-            buildPillToggle(
-                container = overlayModeToggleContainer,
-                options = listOf(
-                    getString(R.string.overlay_mode_option_translation) to OverlayMode.TRANSLATION,
-                    hintLabel to OverlayMode.FURIGANA,
-                ),
-                selected = prefs.overlayMode,
-                onSelect = { mode ->
-                    prefs.overlayMode = mode
-                    if (CaptureService.instance?.isLive == true) {
-                        CaptureService.instance?.stopLive()
-                    }
-                },
-            )
-            findViewById<View>(R.id.dividerOverlayMode)?.visibility = View.VISIBLE
-        } else {
-            overlayModeSection.isGone = true
-            findViewById<View>(R.id.dividerOverlayMode)?.visibility = View.GONE
-            if (prefs.overlayMode == OverlayMode.FURIGANA) {
-                prefs.overlayMode = OverlayMode.TRANSLATION
-            }
-        }
-
         // -- Hide game screen overlays toggle (multi-screen only) --
         val isSingle = Prefs.isSingleScreen(this)
         if (!isSingle) {
             rowHideOverlays.isVisible = true
+            findViewById<View>(R.id.dividerHideOverlays)?.visibility = View.VISIBLE
             rowHideOverlays.findViewById<TextView>(R.id.tvRowTitle).text =
                 getString(R.string.settings_hide_overlays_during_auto_mode)
             val subtitleHide = rowHideOverlays.findViewById<TextView>(R.id.tvRowSubtitle)
@@ -261,7 +230,8 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         // -- Touches refresh translation toggle (always shown) --
         // The capture backends' touch sentinels read this pref at touch-time,
         // so flipping it takes effect immediately — no live-mode restart, just
-        // persist (unlike the overlay-mode / hide-overlays toggles above).
+        // persist (unlike the hide-overlays toggle above, or the overlay-mode
+        // and widen-vertical-text toggles in the overlay section).
         rowTouchesRefresh.findViewById<TextView>(R.id.tvRowTitle).text =
             getString(R.string.settings_touches_refresh_title)
         switchTouchesRefresh.isChecked = prefs.touchesRefreshTranslation
@@ -270,43 +240,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         }
         rowTouchesRefresh.setOnClickListener { switchTouchesRefresh.toggle() }
 
-        // -- Widen vertical text toggle (always shown) --
-        // Read when the overlay view is built (selects the per-box render path), so a flip
-        // restarts live mode to take effect — like hide-overlays, unlike touches-refresh
-        // which is read at touch-time.
-        rowVerticalGrow.findViewById<TextView>(R.id.tvRowTitle).text =
-            getString(R.string.settings_vertical_grow_title)
-        rowVerticalGrow.findViewById<TextView>(R.id.tvRowSubtitle).apply {
-            text = getString(R.string.settings_vertical_grow_subtitle)
-            isVisible = true
-        }
-        switchVerticalGrow.isChecked = prefs.verticalTextGrow
-        switchVerticalGrow.setOnCheckedChangeListener { _, checked ->
-            prefs.verticalTextGrow = checked
-            if (CaptureService.instance?.isLive == true) {
-                CaptureService.instance?.stopLive()
-            }
-        }
-        rowVerticalGrow.setOnClickListener { switchVerticalGrow.toggle() }
-
         setupCaptureInterval()
-    }
-
-    private fun setupResultPanelSection() {
-        // -- Edge indicator toggle (always shown) --
-        // A showing result panel observes the pref (CaptureResultOverlay), so
-        // the flip lands on it live: just persist.
-        rowEdgeIndicator.findViewById<TextView>(R.id.tvRowTitle).text =
-            getString(R.string.settings_edge_indicator_title)
-        rowEdgeIndicator.findViewById<TextView>(R.id.tvRowSubtitle).apply {
-            text = getString(R.string.settings_edge_indicator_subtitle)
-            isVisible = true
-        }
-        switchEdgeIndicator.isChecked = prefs.edgeIndicatorEnabled
-        switchEdgeIndicator.setOnCheckedChangeListener { _, checked ->
-            prefs.edgeIndicatorEnabled = checked
-        }
-        rowEdgeIndicator.setOnClickListener { switchEdgeIndicator.toggle() }
     }
 
     private fun setupCaptureInterval() {
@@ -346,6 +280,77 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
                 as android.view.inputmethod.InputMethodManager
             imm.showSoftInput(etCaptureInterval, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         }
+    }
+
+    // ── Overlay ────────────────────────────────────────────────────────────
+
+    private fun setupOverlaySection() {
+        val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
+        val hasHintText = hintKind != HintTextKind.NONE
+
+        // -- Overlay mode toggle (Translation / Furigana-Pinyin) --
+        if (hasHintText) {
+            overlayModeSection.isVisible = true
+            val hintLabel = when (hintKind) {
+                HintTextKind.PINYIN -> getString(R.string.overlay_mode_option_pinyin)
+                else -> getString(R.string.overlay_mode_option_furigana)
+            }
+            buildPillToggle(
+                container = overlayModeToggleContainer,
+                options = listOf(
+                    getString(R.string.overlay_mode_option_translation) to OverlayMode.TRANSLATION,
+                    hintLabel to OverlayMode.FURIGANA,
+                ),
+                selected = prefs.overlayMode,
+                onSelect = { mode ->
+                    prefs.overlayMode = mode
+                    if (CaptureService.instance?.isLive == true) {
+                        CaptureService.instance?.stopLive()
+                    }
+                },
+            )
+            findViewById<View>(R.id.dividerOverlayMode)?.visibility = View.VISIBLE
+        } else {
+            overlayModeSection.isGone = true
+            findViewById<View>(R.id.dividerOverlayMode)?.visibility = View.GONE
+            if (prefs.overlayMode == OverlayMode.FURIGANA) {
+                prefs.overlayMode = OverlayMode.TRANSLATION
+            }
+        }
+
+        // -- Widen vertical text toggle (always shown) --
+        // Read when the overlay view is built (selects the per-box render path), so a flip
+        // restarts live mode to take effect — like overlay mode and hide-overlays, unlike
+        // touches-refresh which is read at touch-time.
+        rowVerticalGrow.findViewById<TextView>(R.id.tvRowTitle).text =
+            getString(R.string.settings_vertical_grow_title)
+        rowVerticalGrow.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            text = getString(R.string.settings_vertical_grow_subtitle)
+            isVisible = true
+        }
+        switchVerticalGrow.isChecked = prefs.verticalTextGrow
+        switchVerticalGrow.setOnCheckedChangeListener { _, checked ->
+            prefs.verticalTextGrow = checked
+            if (CaptureService.instance?.isLive == true) {
+                CaptureService.instance?.stopLive()
+            }
+        }
+        rowVerticalGrow.setOnClickListener { switchVerticalGrow.toggle() }
+
+        // -- Edge indicator toggle (always shown) --
+        // A showing result panel observes the pref (CaptureResultOverlay), so
+        // the flip lands on it live: just persist.
+        rowEdgeIndicator.findViewById<TextView>(R.id.tvRowTitle).text =
+            getString(R.string.settings_edge_indicator_title)
+        rowEdgeIndicator.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            text = getString(R.string.settings_edge_indicator_subtitle)
+            isVisible = true
+        }
+        switchEdgeIndicator.isChecked = prefs.edgeIndicatorEnabled
+        switchEdgeIndicator.setOnCheckedChangeListener { _, checked ->
+            prefs.edgeIndicatorEnabled = checked
+        }
+        rowEdgeIndicator.setOnClickListener { switchEdgeIndicator.toggle() }
     }
 
     // ── Capture display ────────────────────────────────────────────────────
