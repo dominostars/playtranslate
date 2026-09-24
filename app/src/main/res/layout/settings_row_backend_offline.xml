@@ -135,6 +135,10 @@
                 android:indeterminateTint="?attr/ptTextMuted" />
         </FrameLayout>
 
+        <!-- saveEnabled="false": every offline backend row uses the id
+             switchOfflineToggle, so a restore would give each switch the
+             state of whichever row saved last; see settings_row_switch.xml.
+             The binder sets it from the backend's state on every refresh. -->
         <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/switchOfflineToggle"
             android:layout_width="wrap_content"
@@ -142,6 +146,7 @@
             android:layout_marginStart="10dp"
             android:clickable="false"
             android:focusable="false"
+            android:saveEnabled="false"
             app:materialThemeOverlay="@style/Widget.PlayTranslate.MaterialSwitch" />
     </LinearLayout>
 

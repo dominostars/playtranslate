@@ -1,17 +1,25 @@
 package com.playtranslate.ui
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.CompoundButton
 import android.widget.LinearLayout
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.test.core.app.ApplicationProvider
+import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.audio.AudioSelection
 import com.playtranslate.capture.GameAudioSnapshot
+import com.playtranslate.language.SourceLangId
+import com.playtranslate.vocab.HiddenWordsStore
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -21,6 +29,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import java.io.File
 
 /**
@@ -39,6 +48,12 @@ import java.io.File
  * fragment shell exercising the SAME prod pieces the review sheets use:
  * buildInto/saveState/restore, and release(deleteSnapshotFile =
  * isFinalMediaTeardown()).
+ *
+ * The same restore also keeps each audio switch on its own setting: every
+ * audio row is a settings_row_switch copy, so the sentence's switch and each
+ * target word's share one view id, and restored by id the sentence switch
+ * took the word switch's state and wrote it into the sentence-audio default
+ * ([SwitchRowSaveStateTest] guards the layouts).
  */
 @RunWith(RobolectricTestRunner::class)
 class SentenceAnkiSnapshotLifecycleTest {
@@ -147,6 +162,51 @@ class SentenceAnkiSnapshotLifecycleTest {
     }
 
     @Test
+    fun savedStateRestore_keepsEachAudioSwitchOnItsOwnSetting(): Unit = runBlocking {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        HiddenWordsStore.resetForTest(ctx)
+        val prefs = Prefs(ctx)
+        prefs.ankiSentenceAudioEnabled = true
+        prefs.ankiWordAudioEnabled = true
+        try {
+            val controller = Robolectric.buildActivity(Host::class.java).setup()
+            val fragment = addFragment(
+                controller.get(),
+                SentenceAnkiContentView.buildArgs(
+                    "猫が食べる。", "The cat eats.",
+                    listOf(
+                        SentenceAnkiHtmlBuilder.WordEntry("食べる", "たべる", "to eat", 3),
+                        SentenceAnkiHtmlBuilder.WordEntry("猫", "ねこ", "cat", 5),
+                    ),
+                    screenshotPath = null, targetWord = "猫", sourceLangId = SourceLangId.JA,
+                ),
+            )
+            settle(ctx)
+            // Sentence audio stays on; the target word's audio goes off.
+            audioSwitches(fragment).last().performClick()
+            assertEquals(listOf(true, false), audioSwitches(fragment).map { it.isChecked })
+
+            val state = Bundle()
+            controller.pause().saveInstanceState(state).stop().destroy()
+            val restored = Robolectric.buildActivity(Host::class.java).setup(state)
+            settle(ctx)
+            val restoredFragment = restored.get().supportFragmentManager
+                .findFragmentByTag(TAG) as ContentHostFragment
+
+            assertEquals(listOf(true, false), audioSwitches(restoredFragment).map { it.isChecked })
+            assertTrue(restoredFragment.content!!.sentenceAudioEnabled)
+            assertTrue(prefs.ankiSentenceAudioEnabled)
+            assertFalse(prefs.ankiWordAudioEnabled)
+            restored.pause().stop().destroy()
+        } finally {
+            shadowOf(Looper.getMainLooper()).idle()
+            HiddenWordsStore.resetForTest(ctx)
+            ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
+                .edit().clear().commit()
+        }
+    }
+
+    @Test
     fun resumedDismissal_deletesSnapshot() {
         val controller = Robolectric.buildActivity(Host::class.java).setup()
         val activity = controller.get()
@@ -163,12 +223,31 @@ class SentenceAnkiSnapshotLifecycleTest {
         assertNull(GameAudioSnapshot.active)
     }
 
-    private fun addFragment(activity: FragmentActivity): ContentHostFragment {
-        val fragment = ContentHostFragment()
+    private fun addFragment(activity: FragmentActivity, args: Bundle? = null): ContentHostFragment {
+        val fragment = ContentHostFragment().apply { arguments = args }
         activity.supportFragmentManager.beginTransaction()
             .add(android.R.id.content, fragment, TAG)
             .commitNow()
         return fragment
+    }
+
+    /** The card's audio switches in order: the sentence's (Original group),
+     *  then each target word's. */
+    private fun audioSwitches(fragment: ContentHostFragment): List<CompoundButton> {
+        fun walk(v: View): List<View> =
+            listOf(v) + ((v as? ViewGroup)?.let { g -> (0 until g.childCount).flatMap { walk(g.getChildAt(it)) } } ?: emptyList())
+        return walk(fragment.requireView()).filterIsInstance<CompoundButton>()
+            .filter { it.id == R.id.switchRowToggle }
+    }
+
+    /** Main-thread work plus the hidden-words load the word rows trigger,
+     *  whose revision bump rebuilds them. */
+    private fun settle(ctx: Context) {
+        repeat(3) {
+            shadowOf(Looper.getMainLooper()).idle()
+            runBlocking { HiddenWordsStore.loaded(ctx, SourceLangId.JA) }
+        }
+        shadowOf(Looper.getMainLooper()).idle()
     }
 
     /** A snapshot with a real PCM payload per [GameAudioSnapshot.isUsable]
