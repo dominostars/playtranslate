@@ -9,7 +9,13 @@
     xmlns:tools="http://schemas.android.com/tools"
     tools:parentTag="android.widget.LinearLayout">
 
-    <LinearLayout
+    <!-- The header: the language name, then the section's actions, which
+         SectionHeaderRow builds from TranslationSectionBinder's HeaderActions
+         and folds behind a ⋯ menu when they don't fit (the eye never folds).
+         It must stay this merge's FIRST child: the capture panel re-pads it
+         through getChildAt(0). -->
+    <com.playtranslate.ui.SectionHeaderRow
+        android:id="@+id/sourceHeaderRow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -20,75 +26,24 @@
         android:paddingEnd="4dp">
 
         <!-- Tappable area hugs the label text (wrap_content) but fills the row's full
-             height (match_parent) so it matches the inline action buttons; the Space
-             below keeps those buttons right-aligned where the weighted label used to. -->
+             height (match_parent) so it matches the inline action buttons. One line:
+             the row cuts it with an ellipsis only when the name alone leaves no room
+             for ⋯ and the eye, so the header's height never changes. -->
         <TextView
             android:id="@+id/labelOriginal"
             style="@style/Text.PT.GroupHeader"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:gravity="center_vertical"
+            android:maxLines="1"
+            android:ellipsize="end"
             android:background="?attr/selectableItemBackground"
             android:clickable="true"
             android:focusable="true"
             android:contentDescription="@string/cd_change_source_language"
             android:text="@string/section_original" />
 
-        <Space
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1" />
-
-        <ImageButton
-            android:id="@+id/btnToggleFurigana"
-            android:layout_width="36dp"
-            android:layout_height="32dp"
-            android:layout_marginEnd="16dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/cd_toggle_inline_furigana"
-            android:src="@drawable/ic_furigana"
-            app:tint="?attr/ptTextMuted" />
-
-        <ImageButton
-            android:id="@+id/btnSpeakOriginal"
-            android:layout_width="36dp"
-            android:layout_height="32dp"
-            android:layout_marginEnd="16dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/cd_read_original_aloud"
-            android:src="@drawable/ic_lens_speak"
-            app:tint="?attr/ptTextMuted" />
-
-        <ImageButton
-            android:id="@+id/btnEditOriginal"
-            android:layout_width="36dp"
-            android:layout_height="32dp"
-            android:layout_marginEnd="16dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/cd_edit_original"
-            android:src="@drawable/ic_edit"
-            app:tint="?attr/ptTextMuted" />
-
-        <ImageButton
-            android:id="@+id/btnCopyOriginal"
-            android:layout_width="36dp"
-            android:layout_height="32dp"
-            android:layout_marginEnd="16dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/cd_copy_original"
-            android:src="@drawable/ic_copy"
-            app:tint="?attr/ptTextMuted" />
-
-        <ImageButton
-            android:id="@+id/btnToggleOriginal"
-            android:layout_width="36dp"
-            android:layout_height="32dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/cd_toggle_original_visibility"
-            android:src="@drawable/ic_visibility"
-            app:tint="?attr/ptTextMuted" />
-
-    </LinearLayout>
+    </com.playtranslate.ui.SectionHeaderRow>
 
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/cardOriginal"

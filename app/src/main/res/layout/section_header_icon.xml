@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One icon action in a results section header (and the header's ⋯
+     button). SectionHeaderRow inflates one per HeaderAction and owns
+     everything else about it in code: id, icon, tint (no app:tint here: the
+     over-game panel's plain inflater drops it), content description, margins
+     and visibility. Inflating rather than constructing keeps these the exact
+     attributes the header's buttons always had, on both inflaters. -->
+<ImageButton xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="36dp"
+    android:layout_height="32dp"
+    android:background="?attr/selectableItemBackgroundBorderless" />

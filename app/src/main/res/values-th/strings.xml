@@ -1160,11 +1160,11 @@
 
     <string name="cd_translation_result_back">กลับ</string>
 
-    <string name="cd_copy_translation">คัดลอกคำแปล</string>
-
     <string name="cd_toggle_translation_visibility">สลับการแสดงคำแปล</string>
 
     <string name="cd_toggle_inline_furigana">สลับฟุริงานะแบบอินไลน์</string>
+
+    <string name="cd_toggle_inline_pinyin">สลับพินอินแบบอินไลน์</string>
 
     <string name="cd_text_size">ขนาดตัวอักษร</string>
 
@@ -1172,9 +1172,17 @@
 
     <string name="cd_edit_original">แก้ไขข้อความต้นฉบับ</string>
 
-    <string name="cd_copy_original">คัดลอกต้นฉบับ</string>
-
     <string name="cd_add_to_anki">เพิ่มไปยัง <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="cd_more_actions">การดำเนินการเพิ่มเติม</string>
+
+    <string name="header_action_furigana">ฟุริงานะ</string>
+
+    <string name="header_action_pinyin">พินอิน</string>
+
+    <string name="header_action_read_aloud">อ่านออกเสียง</string>
+
+    <string name="header_action_edit">แก้ไขข้อความ</string>
 
     <string name="cd_toggle_original_visibility">สลับการแสดงต้นฉบับ</string>
 

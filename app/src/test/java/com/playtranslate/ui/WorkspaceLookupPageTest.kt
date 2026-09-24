@@ -103,7 +103,7 @@ class WorkspaceLookupPageTest {
         override fun showProgress(title: String, onDismiss: (DismissReason) -> Unit): OverlayProgress =
             error("unused")
         override fun alert(): OverlayAlert.Builder = OverlayAlert.Builder(ctx)
-        override fun invalidateNav() { navInvalidations++ }
+        override fun invalidateNav(prefer: View?) { navInvalidations++ }
     }
 
     private lateinit var controller: ActivityController<Host>

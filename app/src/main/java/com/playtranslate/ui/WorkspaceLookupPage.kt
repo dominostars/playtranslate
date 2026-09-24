@@ -122,6 +122,10 @@ class WorkspaceLookupPage internal constructor(
         val c = container ?: return
         val host = childHost ?: return
         val vm = vm ?: return
+        // The header toggle sits outside a page's popover scrim, so a tab can
+        // be switched away with its popover still open: close it rather than
+        // leave it stranded in the hidden tab.
+        if (selected != view) shownTab?.page?.dismissPopovers()
         val tab = tabs[view] ?: run {
             val page = when (view) {
                 LookupView.WORD -> wordPage(vm)
@@ -151,6 +155,12 @@ class WorkspaceLookupPage internal constructor(
     override fun scrollView(): ViewGroup? = shownTab?.page?.scrollView()
 
     override fun onBack(): Boolean = shownTab?.page?.onBack() == true
+
+    override val isPopoverOpen: Boolean get() = shownTab?.page?.isPopoverOpen == true
+
+    override fun dismissPopovers() {
+        shownTab?.page?.dismissPopovers()
+    }
 
     override fun onDestroy() {
         for (t in tabs.values) t.page.onDestroy()

@@ -24,7 +24,8 @@ import kotlinx.coroutines.launch
  * a [TranslationResultViewModel] — as a host-agnostic renderer: the status
  * screen, the source + target sections ([TranslationSectionBinder]), the
  * Words card ([WordRowsBinder]), the tap-a-word lens ([SourceTextLens]),
- * the text-size popover, and the render funnel that ties them to the VM's
+ * the in-window popovers ([popovers]: the text-size picker, the section
+ * headers' ⋯ menus), and the render funnel that ties them to the VM's
  * states (fit-before-reveal, scroll preservation across a translation
  * update, the deferred-translation request). The in-app
  * [TranslationResultFragment] and the floating workspace's
@@ -140,11 +141,16 @@ class TranslationResultContent(
     private val liveHint: TextView = root.findViewById(R.id.tvLiveHint)
     private val actionButtons: View = root.findViewById(R.id.resultActionButtons)
 
+    /** The page's one in-window popover (the text-size picker, a header's
+     *  ⋯ menu), floating over the results inside the layout's root
+     *  FrameLayout — a child of the surface, never a sibling window. Shells
+     *  route back / B to it first. */
+    val popovers = PopoverHost(root as FrameLayout)
+
     val binder: TranslationSectionBinder =
-        TranslationSectionBinder(root, ctx, prefs, host.scope, host.ttsAlertTarget)
+        TranslationSectionBinder(root, ctx, prefs, host.scope, host.ttsAlertTarget, popovers)
     val wordRows: WordRowsBinder
     val sourceLens: SourceTextLens
-    private var fontPopover: FontSizeRangePopover? = null
 
     /** Bumped on every [render]; see the class doc's reveal rule. */
     private var renderGeneration = 0
@@ -163,10 +169,11 @@ class TranslationResultContent(
     private val scrollListener = View.OnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
         if (scrollY != oldScrollY) {
             sourceLens.dismiss()
-            // NOT the font popover: its scrim makes the scroll untouchable
-            // while it's open, so any scroll seen here is our OWN re-fit
-            // reflowing the cards — dismissing on it would close the popover
-            // out from under the drag that caused it.
+            // NOT the popovers: their scrim makes the scroll untouchable
+            // while one is open, so a scroll seen here is our OWN re-fit
+            // reflowing the cards (or a stick scroll) — dismissing on it
+            // would close the size picker out from under the drag that
+            // caused it.
             host.onUserScrolled()
         }
     }
@@ -207,15 +214,14 @@ class TranslationResultContent(
             onAddToAnki = { host.onAddToAnki() },
             onAnkiOneTap = { host.onAnkiOneTap() },
         )
-        // The popover floats over the results scroll inside the layout's
-        // root FrameLayout — a child of the surface, never a sibling window.
-        fontPopover = FontSizeRangePopover(ctx, root as FrameLayout, prefs).apply {
+        val fontPicker = FontSizeRangePopover(ctx, prefs).apply {
             // fitTextSizes fits each section to half the (unchanged) scroll
-            // height, so the sections resize in place and the anchor button —
-            // topmost in the scroll — never moves under the user's finger.
+            // height, so the sections resize in place and the anchor — the
+            // target header's button or ⋯, topmost in the scroll — never
+            // moves under the user's finger.
             onRangeChanged = { fitTextSizes() }
         }
-        binder.onChooseFontSize = { fontPopover?.toggle(binder.fontSizeAnchor) }
+        binder.onChooseFontSize = { anchor -> popovers.toggle(fontPicker, anchor) }
         binder.onChooseOcr = {
             currentReady()?.ocrProvenance?.let { host.onChooseOcr(it) }
         }
@@ -242,9 +248,6 @@ class TranslationResultContent(
 
     /** The displayed source text (OCR line breaks preserved). */
     fun displayedOriginalText(): String = binder.displayedSourceText()
-
-    val isFontPopoverShowing: Boolean get() = fontPopover?.isShowing == true
-    fun dismissFontPopover() = fontPopover?.dismiss() ?: Unit
 
     fun dismissLens() = sourceLens.dismiss()
 
@@ -468,12 +471,11 @@ class TranslationResultContent(
         scrollView.restoreScrollSilently(target, scrollListener)
     }
 
-    /** Tear down: the lens, the popover, the sections' speak job, the Words
+    /** Tear down: the lens, the popovers, the sections' speak job, the Words
      *  card's styled renderers. Idempotent. */
     fun release() {
         sourceLens.dismiss()
-        fontPopover?.dismiss()
-        fontPopover = null
+        popovers.release()
         binder.release()
         wordRows.release()
     }

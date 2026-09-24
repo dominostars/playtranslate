@@ -25,6 +25,7 @@ import kotlinx.coroutines.cancel
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -33,6 +34,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
+import org.robolectric.annotation.Config
 
 /**
  * Pins [TranslationResultContent]'s shell contract — what the in-app
@@ -45,8 +47,10 @@ import org.robolectric.android.controller.ActivityController
  * pending is bound AND the translation section is visible or the request
  * is forced; the section headers' Anki button, the language headers, the
  * Clear button and a word row's tap route to the host; a hidden Edit
- * button when the host has no editor; and a settled word list builds after
- * the host's enter-settle gate.
+ * button when the host has no editor; a settled word list builds after
+ * the host's enter-settle gate; and on a narrow page both headers fold
+ * behind ⋯, whose menu runs the same actions (Add to Anki reaches the
+ * host, Text size opens the size picker anchored on the target's ⋯).
  */
 @RunWith(RobolectricTestRunner::class)
 class TranslationResultContentTest {
@@ -202,8 +206,8 @@ class TranslationResultContentTest {
         content.render(ResultState.Ready(result("猫が食べる。", "The cat eats.")))
         idle()
         assertEquals("no editor: the Edit button is hidden", View.GONE, view(R.id.btnEditOriginal).visibility)
-        view(R.id.btnCopyOriginal).performClick()
-        assertEquals("the header's copy slot is the Anki button", 1, host.ankiTaps)
+        view(R.id.btnAnkiOriginal).performClick()
+        assertEquals("the header's Anki button routes to the host", 1, host.ankiTaps)
         view(R.id.labelOriginal).performClick()
         view(R.id.labelTranslation).performClick()
         assertEquals(listOf(true, false), host.languageTaps)
@@ -230,6 +234,71 @@ class TranslationResultContentTest {
         assertEquals(listOf("猫" to "ねこ"), host.tappedWords)
         content.renderWordLookups(WordLookupsState.Loading)
         assertTrue(content.wordRows.isEmpty)
+    }
+
+    /** One traversal of the page at the display's size. */
+    private fun layoutPage() {
+        val dm = activity.resources.displayMetrics
+        root.measure(
+            View.MeasureSpec.makeMeasureSpec(dm.widthPixels, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(dm.heightPixels, View.MeasureSpec.EXACTLY),
+        )
+        root.layout(0, 0, dm.widthPixels, dm.heightPixels)
+    }
+
+    private fun menuRow(name: String): View =
+        content.popovers.navActions().orEmpty().map { it.view }.single {
+            it.findViewById<TextView>(R.id.overflowRowLabel).text.toString() == name
+        }
+
+    @Test
+    @Config(qualifiers = "w160dp-h640dp")
+    fun `a narrow source header folds, and its menu runs what the inline button would`() {
+        content.render(ResultState.Ready(result("猫が食べる。", "The cat eats.")))
+        idle()
+        layoutPage()
+        val more = view(R.id.btnMoreOriginal)
+        assertEquals("the header ran out of room", View.VISIBLE, more.visibility)
+        assertEquals(View.GONE, view(R.id.btnAnkiOriginal).visibility)
+        more.performClick()
+        assertTrue(content.popovers.isShowing)
+        menuRow(activity.getString(R.string.cd_add_to_anki)).performClick()
+        assertFalse(content.popovers.isShowing)
+        assertEquals(1, host.ankiTaps)
+    }
+
+    @Test
+    @Config(qualifiers = "w160dp-h640dp")
+    fun `the menu's Text size opens the size picker on the target header's more`() {
+        content.render(ResultState.Ready(result("猫が食べる。", "The cat eats.")))
+        idle()
+        layoutPage()
+        val more = view(R.id.btnMoreTranslation)
+        assertEquals(View.VISIBLE, more.visibility)
+        more.performClick()
+        menuRow(activity.getString(R.string.cd_text_size)).performClick()
+        assertTrue(content.popovers.content is FontSizeRangePopover)
+        assertSame(more, content.popovers.anchor)
+    }
+
+    @Test
+    fun `a re-render keeps an open popover, though the reveal hides the results to fit`() {
+        content.render(ResultState.Ready(result("猫が食べる。", "The cat eats.")))
+        idle()
+        layoutPage()
+        view(R.id.btnFontSize).performClick()
+        assertTrue(content.popovers.isShowing)
+        // A live result: the funnel hides the scroll (INVISIBLE) for the fit.
+        content.render(ResultState.Ready(result("猫が食べる。", "The cat eats!")))
+        assertEquals(View.INVISIBLE, view(R.id.resultsContent).visibility)
+        root.viewTreeObserver.dispatchOnPreDraw()
+        idle()
+        assertTrue("the size picker survives the update", content.popovers.isShowing)
+        // A status takeover replaces the results (GONE): that closes it.
+        content.render(ResultState.Status("Capturing", showHint = false))
+        root.viewTreeObserver.dispatchOnPreDraw()
+        idle()
+        assertFalse(content.popovers.isShowing)
     }
 
     private fun clearPrefs() {

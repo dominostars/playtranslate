@@ -9,7 +9,17 @@
     xmlns:tools="http://schemas.android.com/tools"
     tools:parentTag="android.widget.LinearLayout">
 
-    <LinearLayout
+    <!-- The header: the language name, then the section's actions (the
+         "Show on screen" pill, Add to Anki, Text size, and the pinned eye),
+         which SectionHeaderRow builds from TranslationSectionBinder's
+         HeaderActions and folds behind a ⋯ menu when they don't fit. Text
+         size lives in THIS header, not the source's, because this row is the
+         topmost one in both stacked layouts: re-fitting the text never moves
+         it, so the size popover stays glued to its anchor (the button, or ⋯)
+         while the user drags. It must stay this merge's FIRST child: the
+         capture panel re-pads it through getChildAt(0). -->
+    <com.playtranslate.ui.SectionHeaderRow
+        android:id="@+id/targetHeaderRow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -20,84 +30,24 @@
         android:paddingEnd="4dp">
 
         <!-- Tappable area hugs the label text (wrap_content) but fills the row's full
-             height (match_parent) so it matches the inline action buttons; the Space
-             below keeps those buttons right-aligned where the weighted label used to. -->
+             height (match_parent) so it matches the inline action buttons. One line:
+             the row cuts it with an ellipsis only when the name alone leaves no room
+             for ⋯ and the eye, so the header's height never changes. -->
         <TextView
             android:id="@+id/labelTranslation"
             style="@style/Text.PT.GroupHeader"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:gravity="center_vertical"
+            android:maxLines="1"
+            android:ellipsize="end"
             android:background="?attr/selectableItemBackground"
             android:clickable="true"
             android:focusable="true"
             android:contentDescription="@string/cd_change_target_language"
             android:text="@string/section_translation" />
 
-        <Space
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1" />
-
-        <!-- "Show on screen" toggle. Over-game capture panel: collapses the
-             panel to its sliver and paints the translations over the game.
-             In-app results page (dual-screen): paints the one-shot boxes over
-             the game display, or — in live mode — flips the hide-overlays-
-             during-auto setting. GONE by default; each host decides
-             availability (TranslationSectionBinder.setShowOnScreenAvailable).
-             A worded button, not an icon: no common glyph reads as "move
-             these onto the screen". -->
-        <TextView
-            android:id="@+id/btnShowOnScreen"
-            style="@style/Text.PT.GroupHeader"
-            android:layout_width="wrap_content"
-            android:layout_height="32dp"
-            android:layout_marginEnd="16dp"
-            android:paddingHorizontal="12dp"
-            android:gravity="center"
-            android:background="@drawable/bg_toggle_text_button"
-            android:clickable="true"
-            android:focusable="true"
-            android:textSize="9sp"
-            android:text="@string/capture_show_on_screen"
-            android:visibility="gone" />
-
-        <!-- Opens the text-size range popover. Lives in the TARGET header (not
-             the source) because this row is the topmost one in both stacked
-             layouts: re-fitting the text never moves it, so the popover stays
-             glued to its anchor while the user drags. GONE until a surface sets
-             TranslationSectionBinder.onChooseFontSize. -->
-        <ImageButton
-            android:id="@+id/btnFontSize"
-            android:layout_width="36dp"
-            android:layout_height="32dp"
-            android:layout_marginEnd="16dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/cd_text_size"
-            android:src="@drawable/ic_format_size"
-            android:visibility="gone"
-            app:tint="?attr/ptTextMuted" />
-
-        <ImageButton
-            android:id="@+id/btnCopyTranslation"
-            android:layout_width="36dp"
-            android:layout_height="32dp"
-            android:layout_marginEnd="16dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/cd_copy_translation"
-            android:src="@drawable/ic_copy"
-            app:tint="?attr/ptTextMuted" />
-
-        <ImageButton
-            android:id="@+id/btnToggleTranslation"
-            android:layout_width="36dp"
-            android:layout_height="32dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/cd_toggle_translation_visibility"
-            android:src="@drawable/ic_visibility"
-            app:tint="?attr/ptTextMuted" />
-
-    </LinearLayout>
+    </com.playtranslate.ui.SectionHeaderRow>
 
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/cardTranslation"

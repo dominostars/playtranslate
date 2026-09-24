@@ -1263,11 +1263,11 @@
 
     <string name="cd_translation_result_back">返回</string>
 
-    <string name="cd_copy_translation">复制译文</string>
-
     <string name="cd_toggle_translation_visibility">切换译文可见性</string>
 
     <string name="cd_toggle_inline_furigana">切换内嵌假名注音</string>
+
+    <string name="cd_toggle_inline_pinyin">切换内嵌拼音</string>
 
     <string name="cd_text_size">文字大小</string>
 
@@ -1275,9 +1275,17 @@
 
     <string name="cd_edit_original">编辑原文</string>
 
-    <string name="cd_copy_original">复制原文</string>
-
     <string name="cd_add_to_anki">添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="cd_more_actions">更多操作</string>
+
+    <string name="header_action_furigana">假名注音</string>
+
+    <string name="header_action_pinyin">拼音</string>
+
+    <string name="header_action_read_aloud">朗读</string>
+
+    <string name="header_action_edit">编辑文字</string>
 
     <string name="cd_toggle_original_visibility">切换原文可见性</string>
 

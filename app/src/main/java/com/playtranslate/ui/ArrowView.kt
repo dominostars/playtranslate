@@ -13,7 +13,7 @@ import android.view.View
  * the popup's edge (overlapping any stroke) so the two read as one shape.
  *
  * Shared by [WordLookupPopup] (points at the looked-up word) and
- * [FontSizeRangePopover] (points at the header button that opened it).
+ * [PopoverHost] (points at the header button that opened the popover).
  */
 internal class ArrowView(
     ctx: Context,

@@ -1225,11 +1225,11 @@
 
     <string name="cd_translation_result_back">Quay lại</string>
 
-    <string name="cd_copy_translation">Sao chép bản dịch</string>
-
     <string name="cd_toggle_translation_visibility">Bật/tắt hiển thị bản dịch</string>
 
     <string name="cd_toggle_inline_furigana">Bật/tắt furigana nội dòng</string>
+
+    <string name="cd_toggle_inline_pinyin">Bật/tắt pinyin nội dòng</string>
 
     <string name="cd_text_size">Cỡ chữ</string>
 
@@ -1237,9 +1237,17 @@
 
     <string name="cd_edit_original">Chỉnh sửa văn bản gốc</string>
 
-    <string name="cd_copy_original">Sao chép văn bản gốc</string>
-
     <string name="cd_add_to_anki">Thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="cd_more_actions">Thao tác khác</string>
+
+    <string name="header_action_furigana">Furigana</string>
+
+    <string name="header_action_pinyin">Pinyin</string>
+
+    <string name="header_action_read_aloud">Đọc to</string>
+
+    <string name="header_action_edit">Chỉnh sửa văn bản</string>
 
     <string name="cd_toggle_original_visibility">Bật/tắt hiển thị văn bản gốc</string>
 

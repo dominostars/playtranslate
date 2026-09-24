@@ -17,6 +17,11 @@ interface WorkspaceNavHost {
      *  its own — only B (edit-cancel) is handled here. */
     val isEditing: Boolean
 
+    /** The top page has a popover open ([WorkspacePage.isPopoverOpen]): its
+     *  [navActions] are the popover's alone, the header is out of reach,
+     *  and the right stick doesn't scroll the page under it. */
+    val isPopoverOpen: Boolean
+
     /** B / system back, in workspace precedence order — the host owns the
      *  ladder (modal → page.onBack → pop → dismiss). */
     fun onControllerBack()
@@ -74,7 +79,7 @@ class WorkspaceControllerNav(
     private val stick = StickScrollDrive(
         ctx,
         onStep = host::scrollBy,
-        suspendWhen = { host.isModalUp || host.isEditing },
+        suspendWhen = { host.isModalUp || host.isEditing || host.isPopoverOpen },
     )
 
     // ── Keys ─────────────────────────────────────────────────────────────
@@ -189,7 +194,11 @@ class WorkspaceControllerNav(
     private fun setCursor(view: View, rectOnScreen: Rect) {
         cursorView = view
         lastItemRect.set(rectOnScreen)
+        // Page content scrolls through the page's viewport; anything else
+        // (fixed chrome, a popover's rows) at most within its own scrolling
+        // parent — a ⋯ menu the host capped scrolls its rows.
         if (host.viewInScrollViewport(view)) host.ensureVisible(rectOnScreen)
+        else view.revealInScrollingAncestor()
         syncRing()
     }
 
@@ -303,14 +312,20 @@ class WorkspaceControllerNav(
     }
 
     /** After a layout-changing activation: if the cursor's item left the
-     *  screen, retarget to whatever now sits nearest where the ring last was
-     *  — among the PAGE's items (the header is never an automatic landing). */
-    fun revalidateCursor() {
+     *  screen (or reach: a popover opened over it), retarget to [prefer] when
+     *  that is a current target, else to whatever now sits nearest where the
+     *  ring last was — among the PAGE's items (the header is never an
+     *  automatic landing). */
+    fun revalidateCursor(prefer: View? = null) {
         val cur = cursorView ?: return
         if (cur.isShown &&
             (host.navActions() + host.headerNavActions()).any { it.view === cur }
         ) return
         val cands = candidates()
+        cands.firstOrNull { prefer != null && it.first === prefer }?.let {
+            setCursor(it.first, it.second)
+            return
+        }
         if (cands.isEmpty()) {
             clearCursor()
             return

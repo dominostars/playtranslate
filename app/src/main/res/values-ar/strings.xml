@@ -1159,11 +1159,11 @@
 
     <string name="cd_translation_result_back">رجوع</string>
 
-    <string name="cd_copy_translation">نسخ الترجمة</string>
-
     <string name="cd_toggle_translation_visibility">إظهار/إخفاء الترجمة</string>
 
     <string name="cd_toggle_inline_furigana">تبديل فوريغانا المضمّنة</string>
+
+    <string name="cd_toggle_inline_pinyin">تبديل بينيين المضمّن</string>
 
     <string name="cd_text_size">حجم النص</string>
 
@@ -1171,9 +1171,17 @@
 
     <string name="cd_edit_original">تعديل النص الأصلي</string>
 
-    <string name="cd_copy_original">نسخ النص الأصلي</string>
-
     <string name="cd_add_to_anki">إضافة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="cd_more_actions">مزيد من الإجراءات</string>
+
+    <string name="header_action_furigana">فوريغانا</string>
+
+    <string name="header_action_pinyin">بينيين</string>
+
+    <string name="header_action_read_aloud">قراءة بصوت عالٍ</string>
+
+    <string name="header_action_edit">تعديل النص</string>
 
     <string name="cd_toggle_original_visibility">إظهار/إخفاء النص الأصلي</string>
 

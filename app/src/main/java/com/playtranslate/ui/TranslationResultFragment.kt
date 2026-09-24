@@ -10,6 +10,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -156,8 +157,8 @@ class TranslationResultFragment : Fragment() {
         fun setLiveShowOnScreen(on: Boolean)
     }
 
-    /** The page content — sections, Words card, lens, text-size popover
-     *  and the render funnel — shared with the workspace's Sentence page
+    /** The page content — sections, Words card, lens, popovers and the
+     *  render funnel — shared with the workspace's Sentence page
      *  ([TranslationResultContent]); this fragment is its in-app shell,
      *  supplying what only the Activity side knows through [ContentHost]. */
     private lateinit var content: TranslationResultContent
@@ -210,7 +211,24 @@ class TranslationResultFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        content = TranslationResultContent(view, requireContext(), prefs, vm, ContentHost(requireActivity()))
+        val c = TranslationResultContent(view, requireContext(), prefs, vm, ContentHost(requireActivity()))
+        content = c
+        // Back closes an open popover (the size picker, a header's ⋯ menu)
+        // before it can leave the page. Enabled exactly while one is up (the
+        // open/close event is synchronous with the state); added with the
+        // view's lifecycle, so it outranks the activities' own callbacks
+        // (TranslationResultActivity registers one in onCreate).
+        val closePopover = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                c.popovers.dismiss()
+            }
+        }
+        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, closePopover)
+        c.popovers.addListener(object : PopoverHost.Listener {
+            override fun onPopoverChanged(open: Boolean, content: PopoverContent, anchor: View) {
+                closePopover.isEnabled = c.popovers.isShowing
+            }
+        })
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { vm.result.collect { content.render(it) } }

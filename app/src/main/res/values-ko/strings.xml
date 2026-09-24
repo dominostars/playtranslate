@@ -1225,11 +1225,11 @@
 
     <string name="cd_translation_result_back">뒤로</string>
 
-    <string name="cd_copy_translation">번역 복사</string>
-
     <string name="cd_toggle_translation_visibility">번역 표시 전환</string>
 
     <string name="cd_toggle_inline_furigana">인라인 후리가나 전환</string>
+
+    <string name="cd_toggle_inline_pinyin">인라인 병음 전환</string>
 
     <string name="cd_text_size">글자 크기</string>
 
@@ -1237,9 +1237,17 @@
 
     <string name="cd_edit_original">원문 편집</string>
 
-    <string name="cd_copy_original">원문 복사</string>
-
     <string name="cd_add_to_anki"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>에 추가</string>
+
+    <string name="cd_more_actions">작업 더보기</string>
+
+    <string name="header_action_furigana">후리가나</string>
+
+    <string name="header_action_pinyin">병음</string>
+
+    <string name="header_action_read_aloud">소리 내어 읽기</string>
+
+    <string name="header_action_edit">텍스트 편집</string>
 
     <string name="cd_toggle_original_visibility">원문 표시 전환</string>
 

@@ -43,6 +43,16 @@ interface WorkspacePage {
      *  the workspace pop (or dismiss at depth 1). */
     fun onBack(): Boolean = false
 
+    /** An in-page popover is open ([PopoverHost]: the results' text-size
+     *  picker or a header's ⋯ menu). While one is, the page's [navActions]
+     *  are the popover's alone, and the workspace keeps the controller out
+     *  of its own header and stops the right stick scrolling under it. */
+    val isPopoverOpen: Boolean get() = false
+
+    /** Close any in-page popover (the page is being hidden without being
+     *  destroyed, e.g. a tab switch). */
+    fun dismissPopovers() {}
+
     /** The page's view left the container (pop or workspace dismissal) —
      *  release WebViews, players, collectors. Must be idempotent. */
     fun onDestroy() {}
@@ -120,8 +130,11 @@ interface WorkspaceHost {
      *  `.showInParent(host.modalLayer)`. B dismisses it like a scrim tap. */
     fun alert(): OverlayAlert.Builder
 
-    /** Re-target the controller cursor after a layout-changing activation. */
-    fun invalidateNav()
+    /** Re-target the controller cursor after a layout-changing activation.
+     *  If the cursor's item is out of reach, it moves to [prefer] when that
+     *  is a current target (a popover's first row as it opens, its anchor as
+     *  it closes), else to whatever sits nearest. */
+    fun invalidateNav(prefer: View? = null)
 }
 
 /**
