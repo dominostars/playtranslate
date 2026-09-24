@@ -291,16 +291,10 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         // -- Overlay mode toggle (Translation / Furigana-Pinyin) --
         if (hasHintText) {
             overlayModeSection.isVisible = true
-            val hintLabel = when (hintKind) {
-                HintTextKind.PINYIN -> getString(R.string.overlay_mode_option_pinyin)
-                else -> getString(R.string.overlay_mode_option_furigana)
-            }
             buildPillToggle(
                 container = overlayModeToggleContainer,
-                options = listOf(
-                    getString(R.string.overlay_mode_option_translation) to OverlayMode.TRANSLATION,
-                    hintLabel to OverlayMode.FURIGANA,
-                ),
+                options = listOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA)
+                    .map { getString(it.labelRes(hintKind)) to it },
                 selected = prefs.overlayMode,
                 onSelect = { mode ->
                     prefs.overlayMode = mode

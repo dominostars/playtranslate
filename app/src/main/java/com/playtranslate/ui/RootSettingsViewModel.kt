@@ -72,12 +72,7 @@ private fun TranslationBackend.isCoolingDown(now: Long): Boolean {
  *  it reads "Translation". Pure → unit-testable. */
 @StringRes
 internal fun overlayModeLabelRes(mode: OverlayMode, hintKind: HintTextKind): Int =
-    if (mode == OverlayMode.FURIGANA && hintKind != HintTextKind.NONE) {
-        if (hintKind == HintTextKind.PINYIN) R.string.overlay_mode_option_pinyin
-        else R.string.overlay_mode_option_furigana
-    } else {
-        R.string.overlay_mode_option_translation
-    }
+    (if (hintKind == HintTextKind.NONE) OverlayMode.TRANSLATION else mode).labelRes(hintKind)
 
 /**
  * Root Settings drill-down state, projected from [Prefs] + live system state.

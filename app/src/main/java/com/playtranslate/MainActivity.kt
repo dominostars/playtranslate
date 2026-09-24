@@ -2655,6 +2655,7 @@ class MainActivity :
         dismissDropdown()
         val currentMode = prefs.overlayMode
         val modes = listOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA)
+        val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
 
         // Current mode at bottom, others above
         val ordered = modes.filter { it != currentMode } + currentMode
@@ -2669,7 +2670,7 @@ class MainActivity :
         }
         val rows = mutableListOf<View>()
         ordered.forEach { mode ->
-            val row = buildDropdownRow(getString(mode.displayNameRes), mode == currentMode)
+            val row = buildDropdownRow(getString(mode.labelRes(hintKind)), mode == currentMode)
             container.addView(row)
             rows.add(row)
         }

@@ -19,11 +19,11 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.playtranslate.OverlayMode
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.PlayTranslateTileService
 import com.playtranslate.R
 import com.playtranslate.themeColor
-import com.playtranslate.language.HintTextKind
 import kotlinx.coroutines.launch
 
 /**
@@ -108,10 +108,7 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
 
         sectionFurigana.isVisible = state.showFuriganaSection
         if (state.showFuriganaSection) {
-            val hintLabel = when (state.hintKind) {
-                HintTextKind.PINYIN -> getString(R.string.overlay_mode_option_pinyin)
-                else -> getString(R.string.overlay_mode_option_furigana)
-            }
+            val hintLabel = getString(OverlayMode.FURIGANA.labelRes(state.hintKind))
             headerFurigana.findViewById<TextView>(R.id.tvGroupTitle).text = hintLabel
             renderHotkeyRow(
                 row = rowHotkeyFurigana,

@@ -248,17 +248,9 @@ class CameraGearMenu(
         }
     }
 
-    /** User-facing name of the hosting tool's current overlay flavor,
-     *  mirroring the floating panel's labeling (the reading mode reads
-     *  Pinyin for Pinyin languages, Furigana otherwise). */
+    /** User-facing name of the hosting tool's current overlay flavor. */
     private fun overlayModeLabel(hintKind: HintTextKind): String =
-        when {
-            overlayMode() == OverlayMode.TRANSLATION ->
-                activity.getString(R.string.overlay_mode_option_translation)
-            hintKind == HintTextKind.PINYIN ->
-                activity.getString(R.string.overlay_mode_option_pinyin)
-            else -> activity.getString(R.string.overlay_mode_option_furigana)
-        }
+        activity.getString(overlayMode().labelRes(hintKind))
 
     /** The floating panel's value-row shape, recolored for white-on-scrim. */
     private fun addRow(

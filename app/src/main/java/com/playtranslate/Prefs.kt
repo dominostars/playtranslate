@@ -6,6 +6,7 @@ import android.hardware.display.DisplayManager
 import com.playtranslate.BuildConfig
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.playtranslate.language.ChineseScriptVariant
+import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.TranslationLangContext
 import com.playtranslate.security.SecretCipher
@@ -17,6 +18,7 @@ import com.playtranslate.ui.LookupView
 import com.playtranslate.ui.ThemeMode
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.annotation.StringRes
 import androidx.annotation.VisibleForTesting
 import androidx.core.content.edit
 import kotlinx.coroutines.channels.awaitClose
@@ -30,9 +32,20 @@ import kotlinx.coroutines.flow.callbackFlow
  * the old ordinal-based `auto_translation_mode` pref is handled in
  * [Prefs.migrateLegacyPrefs].
  */
-enum class OverlayMode(@androidx.annotation.StringRes val displayNameRes: Int) {
-    TRANSLATION(R.string.overlay_mode_option_translation),
-    FURIGANA(R.string.overlay_mode_option_furigana);
+enum class OverlayMode {
+    TRANSLATION,
+    FURIGANA;
+
+    /** This mode's name on a source language whose reading hint is [hint]. The
+     *  hint mode draws whichever hint the language has, so it has no name of its
+     *  own: Pinyin on a Pinyin language, Furigana on every other kind. */
+    @StringRes
+    fun labelRes(hint: HintTextKind): Int = when (this) {
+        TRANSLATION -> R.string.overlay_mode_option_translation
+        FURIGANA ->
+            if (hint == HintTextKind.PINYIN) R.string.overlay_mode_option_pinyin
+            else R.string.overlay_mode_option_furigana
+    }
 
     companion object {
         fun fromStorageName(name: String?): OverlayMode =

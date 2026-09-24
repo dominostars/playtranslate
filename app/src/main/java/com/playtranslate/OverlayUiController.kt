@@ -1786,15 +1786,9 @@ class OverlayUiController(
             listOf(OverlayMode.TRANSLATION)
         else listOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA)
 
-    /** User-facing name for an overlay [mode]; the reading-hint mode reads
-     *  "Pinyin" for Pinyin languages and "Furigana" otherwise. */
-    private fun overlayModeLabel(mode: OverlayMode, hintKind: HintTextKind): String = when (mode) {
-        OverlayMode.TRANSLATION -> context.getString(R.string.overlay_mode_option_translation)
-        OverlayMode.FURIGANA -> context.getString(
-            if (hintKind == HintTextKind.PINYIN) R.string.overlay_mode_option_pinyin
-            else R.string.overlay_mode_option_furigana
-        )
-    }
+    /** User-facing name for an overlay [mode]. */
+    private fun overlayModeLabel(mode: OverlayMode, hintKind: HintTextKind): String =
+        context.getString(mode.labelRes(hintKind))
 
     /** Reading-hint label for the auto-translate button ("Auto Furigana" /
      *  "Auto Pinyin") while the hint overlay mode is active; null otherwise (the
