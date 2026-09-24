@@ -517,6 +517,8 @@
 
     <string name="anki_audio_preview_content_description">معاينة الصوت</string>
 
+    <string name="anki_word_audio_row_title">تضمين الصوت</string>
+
     <!-- ═══ GAME-AUDIO RECORDING (Settings → Anki → Audio; trim editor) ═══ -->
 
     <string name="anki_game_audio_row_title">تسجيل صوت اللعبة</string>

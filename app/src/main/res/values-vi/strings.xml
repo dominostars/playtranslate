@@ -531,6 +531,8 @@
 
     <string name="anki_audio_preview_content_description">Nghe thử âm thanh</string>
 
+    <string name="anki_word_audio_row_title">Kèm âm thanh</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          GAME-AUDIO RECORDING (Settings → Anki → Audio; trim editor)
          ═══════════════════════════════════════════════════════════════ -->

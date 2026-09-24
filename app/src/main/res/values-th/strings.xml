@@ -493,6 +493,8 @@
 
     <string name="anki_audio_preview_content_description">ฟังตัวอย่างเสียง</string>
 
+    <string name="anki_word_audio_row_title">รวมเสียงไว้ในการ์ด</string>
+
     <!-- ═══ GAME-AUDIO RECORDING ═══ -->
 
     <string name="anki_game_audio_row_title">บันทึกเสียงเกม</string>

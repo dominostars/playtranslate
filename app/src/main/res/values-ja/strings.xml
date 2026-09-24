@@ -542,6 +542,8 @@
 
     <string name="anki_audio_preview_content_description">音声をプレビュー</string>
 
+    <string name="anki_word_audio_row_title">音声を含める</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          GAME-AUDIO RECORDING (Settings → Anki → Audio; trim editor)
          ═══════════════════════════════════════════════════════════════ -->

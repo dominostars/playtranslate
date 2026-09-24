@@ -491,10 +491,11 @@ fun addAnkiAudioSection(
  * Inflates a single 44dp audio row — preview chip, [label], and an
  * include-on-card switch — into [parent] without wrapping it in its own
  * group card or header. Used by the sentence-card flow to inline the
- * sentence audio toggle inside the Original group and to attach
- * per-target-word audio toggles directly beneath their word rows.
- * [label] is the text being spoken (the word or sentence); the switch
- * itself conveys the "include on card" action.
+ * sentence audio toggle inside the Original group and to put each
+ * target word's audio toggle inside that word's row, between its title
+ * line and its definition. [label] is the row's title: the sentence being
+ * spoken in the Original group, "Include audio" in a word's row (whose
+ * title line already names the word).
  *
  * Stripped-down sibling of [addAnkiAudioSection]: no Voice sub-row
  * (Voice lives in the top Anki section now via [addAnkiSection]'s
