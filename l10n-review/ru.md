@@ -723,3 +723,45 @@ uses in `settings_header_offline_translations` «Офлайн-перевод» a
 **PASS.** No fixes required — the highest-risk locale for this delta turned out to be its
 cleanest, because the delta carries no placeholders that could land in an oblique case and
 no plurals.
+
+## Delta review 2026-09-23 (6 keys: the results headers' ⋯ overflow menu)
+
+Mechanical layer verified programmatically across all 12 locales: all 6 delta names
+present once, no extras; no `<xliff:g>`, placeholders, `<plurals>`, quotes or
+apostrophes, and no em/en dashes in this delta. The two orphans `cd_copy_original` /
+`cd_copy_translation` (the headers' copy buttons, removed with this change) are deleted.
+For this delta's keys the analyzer reports nothing missing and nothing orphaned; the
+remaining `missing=14 orphan=1` belong to other, not-yet-synced features (icon gestures,
+edge indicator, the Anki words helper). `:app:processDebugResources` BUILD SUCCESSFUL.
+**No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.** The four `header_action_*` names, like the reused
+`cd_add_to_anki`, `cd_text_size` and `capture_show_on_screen`, are the rows of
+`ActionOverflowMenu`: 15 sp medium, `maxLines=1` + `ellipsize=end`, in a card 160 to 280
+dp wide less 72 dp of icon and padding, so up to about 208 dp of label. `cd_more_actions`
+is spoken only (the ⋯ button's description and the menu's pane title);
+`cd_toggle_inline_pinyin` is the furigana button's spoken name when the source is Chinese
+(it replaces a hardcoded English "Toggle inline pinyin").
+
+### Findings (delta)
+
+None.
+
+### Clean areas (delta) — checked, no findings
+
+**Siblings, one term swapped.** «Включить или выключить встроенный пиньинь» keeps the
+furigana string's structure, with the adjective agreeing with masculine пиньинь (inanimate
+accusative = nominative).
+
+**The ⋯ names what the parked sheet's hint names.** «Другие действия» is the noun
+`capture_sliver_expand_hint` already uses («Нажмите для других действий»).
+
+**Row names.** «Фуригана» «Пиньинь» are `overlay_mode_option_*`; «Прочитать вслух» is
+`cd_read_original_aloud` without its object; «Изменить текст» uses `label_edit`'s verb.
+Longest row: the reused «Показать на экране», 18 characters, fits.
+
+### Verdict
+
+**PASS.** Every delta string reuses the locale's own committed wording for its sibling
+(the furigana toggle, the read-aloud and edit descriptions, the parked sheet's "more"
+hint), so the menu reads in the same voice as the buttons it replaces.

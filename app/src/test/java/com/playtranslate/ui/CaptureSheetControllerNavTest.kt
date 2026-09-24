@@ -44,6 +44,7 @@ class CaptureSheetControllerNavTest {
 
         override val isEditing = false
         override val isPopoverOpen = false
+        override fun popoverNavActions(): List<NavAction>? = null
         override val inSliver: Boolean get() = slivered
         override fun onControllerBack() { backCalls++ }
         override fun expandFromSliver() { expandCalls++; onExpand?.invoke() }

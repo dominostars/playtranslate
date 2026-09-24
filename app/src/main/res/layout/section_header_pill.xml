@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A worded action in a results section header: the target header's
+     "Show on screen" toggle. A worded button, not an icon: no common glyph
+     reads as "move these onto the screen" (its ⋯ menu row uses the
+     subtitles icon). SectionHeaderRow inflates it and sets the id, text,
+     toggle look (TranslationSectionBinder's active state) and visibility in
+     code. One line, so the header never grows and the fit can measure it. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/Text.PT.GroupHeader"
+    android:layout_width="wrap_content"
+    android:layout_height="32dp"
+    android:paddingHorizontal="12dp"
+    android:gravity="center"
+    android:background="@drawable/bg_toggle_text_button"
+    android:clickable="true"
+    android:focusable="true"
+    android:maxLines="1"
+    android:textSize="9sp" />

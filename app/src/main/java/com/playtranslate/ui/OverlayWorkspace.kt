@@ -495,8 +495,8 @@ class OverlayWorkspace(
 
         override fun alert(): OverlayAlert.Builder = OverlayAlert.Builder(ctx)
 
-        override fun invalidateNav() {
-            nav?.revalidateCursor()
+        override fun invalidateNav(prefer: View?) {
+            nav?.revalidateCursor(prefer)
         }
     }
 
@@ -509,14 +509,18 @@ class OverlayWorkspace(
     private val navHost = object : WorkspaceNavHost {
         override val isModalUp: Boolean get() = hasModal
         override val isEditing: Boolean get() = imeMode
+        override val isPopoverOpen: Boolean get() = stack.lastOrNull()?.page?.isPopoverOpen == true
 
         override fun onControllerBack() = onBackPressed()
 
         override fun navActions(): List<NavAction> =
             stack.lastOrNull()?.page?.navActions() ?: emptyList()
 
+        // An open page popover is modal: UP off its top row must not escape
+        // into the header (the Sentence/Word toggle), nor may the empty-page
+        // fallback land a fresh cursor there.
         override fun headerNavActions(): List<NavAction> =
-            collectWorkspaceNavActions(currentHeaderView)
+            if (isPopoverOpen) emptyList() else collectWorkspaceNavActions(currentHeaderView)
 
         override fun viewInScrollViewport(v: View): Boolean {
             val sv = stack.lastOrNull()?.page?.scrollView() ?: return false

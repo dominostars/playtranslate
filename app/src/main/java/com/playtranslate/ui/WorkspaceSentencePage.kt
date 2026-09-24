@@ -75,6 +75,19 @@ class WorkspaceSentencePage(
         val c = TranslationResultContent(view, ctx, Prefs(ctx), vm, PageHost(ctx, host, scope))
         content = c
         c.binder.setShowOnScreenAvailable(false)
+        // A controller cursor follows a ⋯ menu: onto its first row once the
+        // rows have laid out, back onto ⋯ as it closes. The size picker has
+        // no rows, so its opening leaves the cursor where it is (on the
+        // button, under the scrim) for B to close it back onto.
+        c.popovers.addListener(object : PopoverHost.Listener {
+            override fun onPopoverChanged(open: Boolean, content: PopoverContent, anchor: View) {
+                if (!open) hostRef?.invalidateNav(prefer = anchor)
+            }
+
+            override fun onPopoverLaidOut(content: PopoverContent, anchor: View) {
+                c.popovers.navActions()?.firstOrNull()?.let { hostRef?.invalidateNav(prefer = it.view) }
+            }
+        })
         flow = SentenceTranslationFlow(
             ctx.applicationContext, vm, scope,
             backend = { CaptureService.instance?.sentenceTranslationBackend() },
@@ -247,16 +260,22 @@ class WorkspaceSentencePage(
 
     // ── Workspace contract ───────────────────────────────────────────────
 
-    override fun navActions(): List<NavAction> = collectWorkspaceNavActions(pageView)
+    /** The page's clickables, or an open popover's targets alone (none for
+     *  the size picker: B closes it). */
+    override fun navActions(): List<NavAction> =
+        content?.popovers?.navActions() ?: collectWorkspaceNavActions(pageView)
 
     override fun scrollView(): ViewGroup? = content?.scrollView
 
+    override val isPopoverOpen: Boolean get() = content?.popovers?.isShowing == true
+
+    override fun dismissPopovers() {
+        content?.popovers?.dismiss()
+    }
+
     override fun onBack(): Boolean {
         val c = content ?: return false
-        if (c.isFontPopoverShowing) {
-            c.dismissFontPopover()
-            return true
-        }
+        if (c.popovers.dismiss()) return true
         if (c.sourceLens.isShowing) {
             c.dismissLens()
             return true

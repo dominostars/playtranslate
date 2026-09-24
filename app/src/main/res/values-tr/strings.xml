@@ -1252,11 +1252,11 @@
 
     <string name="cd_translation_result_back">Geri</string>
 
-    <string name="cd_copy_translation">Çeviriyi kopyala</string>
-
     <string name="cd_toggle_translation_visibility">Çeviri görünürlüğünü değiştir</string>
 
     <string name="cd_toggle_inline_furigana">Satır içi furiganayı aç/kapat</string>
+
+    <string name="cd_toggle_inline_pinyin">Satır içi pinyini aç/kapat</string>
 
     <string name="cd_text_size">Metin boyutu</string>
 
@@ -1264,9 +1264,17 @@
 
     <string name="cd_edit_original">Orijinal metni düzenle</string>
 
-    <string name="cd_copy_original">Orijinali kopyala</string>
-
     <string name="cd_add_to_anki"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye ekle</string>
+
+    <string name="cd_more_actions">Diğer işlemler</string>
+
+    <string name="header_action_furigana">Furigana</string>
+
+    <string name="header_action_pinyin">Pinyin</string>
+
+    <string name="header_action_read_aloud">Sesli oku</string>
+
+    <string name="header_action_edit">Metni düzenle</string>
 
     <string name="cd_toggle_original_visibility">Orijinal görünürlüğünü değiştir</string>
 

@@ -1282,11 +1282,11 @@
 
     <string name="cd_translation_result_back">Назад</string>
 
-    <string name="cd_copy_translation">Копировать перевод</string>
-
     <string name="cd_toggle_translation_visibility">Показать или скрыть перевод</string>
 
     <string name="cd_toggle_inline_furigana">Включить или выключить встроенную фуригану</string>
+
+    <string name="cd_toggle_inline_pinyin">Включить или выключить встроенный пиньинь</string>
 
     <string name="cd_text_size">Размер текста</string>
 
@@ -1294,9 +1294,17 @@
 
     <string name="cd_edit_original">Изменить исходный текст</string>
 
-    <string name="cd_copy_original">Копировать оригинал</string>
-
     <string name="cd_add_to_anki">Добавить в <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="cd_more_actions">Другие действия</string>
+
+    <string name="header_action_furigana">Фуригана</string>
+
+    <string name="header_action_pinyin">Пиньинь</string>
+
+    <string name="header_action_read_aloud">Прочитать вслух</string>
+
+    <string name="header_action_edit">Изменить текст</string>
 
     <string name="cd_toggle_original_visibility">Показать или скрыть оригинал</string>
 

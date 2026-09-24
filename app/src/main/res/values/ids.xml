@@ -10,4 +10,23 @@
          text across process death. -->
     <item name="etAnkiOriginal" type="id" />
     <item name="etAnkiTranslation" type="id" />
+
+    <!-- The results section headers' action views. SectionHeaderRow builds
+         them in code from TranslationSectionBinder's HeaderActions, so their
+         ids live here rather than in section_source.xml / section_target.xml;
+         tests and lookups find them as they found the old XML buttons. -->
+    <item name="btnToggleFurigana" type="id" />
+    <item name="btnSpeakOriginal" type="id" />
+    <item name="btnEditOriginal" type="id" />
+    <item name="btnAnkiOriginal" type="id" />
+    <item name="btnToggleOriginal" type="id" />
+    <item name="btnMoreOriginal" type="id" />
+    <item name="btnShowOnScreen" type="id" />
+    <item name="btnAnkiTranslation" type="id" />
+    <item name="btnFontSize" type="id" />
+    <item name="btnToggleTranslation" type="id" />
+    <item name="btnMoreTranslation" type="id" />
+    <!-- An ActionOverflowMenu row's parts. -->
+    <item name="overflowRowIcon" type="id" />
+    <item name="overflowRowLabel" type="id" />
 </resources>

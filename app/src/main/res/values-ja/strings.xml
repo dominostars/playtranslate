@@ -1277,11 +1277,11 @@
 
     <string name="cd_translation_result_back">戻る</string>
 
-    <string name="cd_copy_translation">翻訳をコピー</string>
-
     <string name="cd_toggle_translation_visibility">翻訳の表示・非表示を切り替え</string>
 
     <string name="cd_toggle_inline_furigana">インラインふりがなの切り替え</string>
+
+    <string name="cd_toggle_inline_pinyin">インラインピンインの切り替え</string>
 
     <string name="cd_text_size">文字サイズ</string>
 
@@ -1289,9 +1289,17 @@
 
     <string name="cd_edit_original">原文を編集</string>
 
-    <string name="cd_copy_original">原文をコピー</string>
-
     <string name="cd_add_to_anki"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加</string>
+
+    <string name="cd_more_actions">その他の操作</string>
+
+    <string name="header_action_furigana">ふりがな</string>
+
+    <string name="header_action_pinyin">ピンイン</string>
+
+    <string name="header_action_read_aloud">読み上げ</string>
+
+    <string name="header_action_edit">テキストを編集</string>
 
     <string name="cd_toggle_original_visibility">原文の表示・非表示を切り替え</string>
 

@@ -1225,11 +1225,11 @@
 
     <string name="cd_translation_result_back">Voltar</string>
 
-    <string name="cd_copy_translation">Copiar tradução</string>
-
     <string name="cd_toggle_translation_visibility">Mostrar/ocultar tradução</string>
 
     <string name="cd_toggle_inline_furigana">Ativar/desativar furigana inline</string>
+
+    <string name="cd_toggle_inline_pinyin">Ativar/desativar pinyin inline</string>
 
     <string name="cd_text_size">Tamanho do texto</string>
 
@@ -1237,9 +1237,17 @@
 
     <string name="cd_edit_original">Editar o texto original</string>
 
-    <string name="cd_copy_original">Copiar original</string>
-
     <string name="cd_add_to_anki">Adicionar ao <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="cd_more_actions">Mais ações</string>
+
+    <string name="header_action_furigana">Furigana</string>
+
+    <string name="header_action_pinyin">Pinyin</string>
+
+    <string name="header_action_read_aloud">Ler em voz alta</string>
+
+    <string name="header_action_edit">Editar texto</string>
 
     <string name="cd_toggle_original_visibility">Mostrar/ocultar original</string>
 

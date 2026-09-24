@@ -8,7 +8,7 @@ package com.playtranslate.audio
  *
  * The two `Tts*` cases are the exception: TTS is the always-on floor, so its
  * engine-availability is a system-level terminal outcome that callers like
- * `OriginalSpeakButton` surface as alerts. They map 1:1 from `SpeakResult`.
+ * `OriginalSpeaker` surface as alerts. They map 1:1 from `SpeakResult`.
  */
 sealed interface PlayOutcome {
     /** Audio started (or completed, when awaited) successfully. */

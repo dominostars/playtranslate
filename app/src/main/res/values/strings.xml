@@ -115,8 +115,10 @@
     <!-- Label of the small outlined text button in the capture-result panel's
          Translation header. Tapping it collapses the panel to a sliver and
          paints the translations in place over the game text instead. Keep it
-         short: the button wraps this label at caption size in a row of
-         32dp icon buttons. -->
+         short: the button shows this label on ONE line at caption size in a
+         row of 32dp icon buttons, and when the row runs out of room the
+         button moves into the header's "More actions" menu, where this is
+         its row's name. -->
     <string name="capture_show_on_screen">Show on screen</string>
 
     <!-- Shown when OCR returns no source-language text. %1$s = source
@@ -2646,9 +2648,6 @@
          translation-result activity. -->
     <string name="cd_translation_result_back">Back</string>
 
-    <!-- contentDescription for the "copy translation" icon button. -->
-    <string name="cd_copy_translation">Copy translation</string>
-
     <!-- contentDescription for the eye-toggle that hides / shows the
          translated text. -->
     <string name="cd_toggle_translation_visibility">Toggle translation visibility</string>
@@ -2657,8 +2656,16 @@
          on / off above the source text. -->
     <string name="cd_toggle_inline_furigana">Toggle inline furigana</string>
 
+    <!-- contentDescription for the same toggle when the source is Chinese:
+         it turns inline pinyin (the romanized readings shown above the
+         Chinese text) on / off. -->
+    <string name="cd_toggle_inline_pinyin">Toggle inline pinyin</string>
+
     <!-- contentDescription for the button that opens the text-size range
-         slider for the original and translation text. -->
+         slider for the original and translation text. Also the name of
+         that action's row in the header's "More actions" menu (the row
+         list a section header shows for actions that don't fit), so keep
+         it short. -->
     <string name="cd_text_size">Text size</string>
 
     <!-- contentDescription for the speaker button that reads the
@@ -2669,12 +2676,39 @@
          edit-original sheet. -->
     <string name="cd_edit_original">Edit original text</string>
 
-    <!-- contentDescription for the "copy original" icon button. -->
-    <string name="cd_copy_original">Copy original</string>
-
     <!-- contentDescription for the section-header button that adds the
-         current text to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>. -->
+         current text to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>. Also the
+         name of that action's row in the header's "More actions" menu. -->
     <string name="cd_add_to_anki">Add to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <!-- contentDescription for the three-dots button a section header of the
+         results (the row above the original text, or above the translation)
+         shows when its action buttons don't all fit beside the language
+         name. Tapping it opens a small menu listing the actions that didn't
+         fit, and this text is also that menu's spoken title. -->
+    <string name="cd_more_actions">More actions</string>
+
+    <!-- Name of the furigana toggle's row in a section header's "More
+         actions" menu (shown when the header runs out of room). Each row is
+         an icon plus this short name; tapping it turns the small reading
+         hints above the Japanese text on or off. Keep it to the one word. -->
+    <string name="header_action_furigana">Furigana</string>
+
+    <!-- The same menu row when the source is Chinese: tapping it turns the
+         romanized pinyin readings above the Chinese text on or off. Keep it
+         to the one word. -->
+    <string name="header_action_pinyin">Pinyin</string>
+
+    <!-- Name of the speaker action's row in a section header's "More
+         actions" menu: tapping it reads the original (game) text aloud, and
+         tapping it again while it reads stops it. A short command. -->
+    <string name="header_action_read_aloud">Read aloud</string>
+
+    <!-- Name of the pencil action's row in a section header's "More
+         actions" menu: tapping it opens the original (game) text for
+         editing, to fix what the text recognition misread. A short
+         command. -->
+    <string name="header_action_edit">Edit text</string>
 
     <!-- contentDescription for the eye-toggle on the original-text
          row. -->
@@ -2684,7 +2718,9 @@
     <string name="cd_toggle_words_visibility">Toggle words visibility</string>
 
     <!-- contentDescription for the × close button on the word-detail
-         bottom sheet. -->
+         bottom sheet, and for the invisible area around a results popover
+         (the text-size slider, the "More actions" menu) whose tap closes
+         it. -->
     <string name="cd_close">Close</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

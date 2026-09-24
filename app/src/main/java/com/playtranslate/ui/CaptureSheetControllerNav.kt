@@ -23,7 +23,17 @@ data class NavAction(val view: View, val holdActivates: Boolean = false)
  *  inner class in its own file. All rects are SCREEN coordinates. */
 interface CaptureSheetNavHost {
     val isEditing: Boolean
+
+    /** A popover is open over the sheet (the text-size picker, a header's
+     *  ⋯ menu): the sticks stand down while it is. */
     val isPopoverOpen: Boolean
+
+    /** The open popover's targets (a ⋯ menu's rows), or null when none is
+     *  open. While non-null they are the ONLY candidates; empty means the
+     *  popover can't be driven (the size slider), so dpad and A are
+     *  swallowed and B, as always, closes it. */
+    fun popoverNavActions(): List<NavAction>?
+
     val inSliver: Boolean
 
     /** B / system back, in every sheet state — the host owns the precedence
@@ -80,7 +90,9 @@ interface CaptureSheetNavHost {
  * buttons, and source words, A activates (the pill parks to the sliver; on the
  * parked sheet a first A rings the strip and a second expands it), the
  * right stick scrolls, and the left stick drags the sheet's edge like the
- * grabber. Virtual — no Android view ever gains
+ * grabber. An open popover is modal: a header's ⋯ menu makes its rows the
+ * only targets, the size slider takes none (B closes either). Virtual — no
+ * Android view ever gains
  * focus — because words aren't views, the ring is custom anyway, and real
  * focus would paint stock highlights next to it. Created only while the sheet
  * window is focusable (controller attached); all input arrives through the
@@ -91,7 +103,13 @@ class CaptureSheetControllerNav(
     private val host: CaptureSheetNavHost,
 ) {
     sealed interface Item {
-        data class Button(val view: View, val holdActivates: Boolean) : Item
+        /** [floating]: a popover's row, which lives outside the scroller, so
+         *  it rings unclipped and scrolls, if at all, within its own menu. */
+        data class Button(
+            val view: View,
+            val holdActivates: Boolean,
+            val floating: Boolean = false,
+        ) : Item
         data class Word(val index: Int) : Item
         /** The grabber pill above the sheet — A parks the sheet to its sliver. */
         object Handle : Item
@@ -154,10 +172,12 @@ class CaptureSheetControllerNav(
             host.inSliver -> if (ev.repeatCount == 0) {
                 if (dir != null || cursor == Item.Sliver) host.expandFromSliver() else selectSliver()
             }
-            // Popover up: swallow nav keys so framework focus search can't
-            // wander into a button and paint a stock highlight, but act on
-            // none of them (B above closes the popover).
-            host.isPopoverOpen -> Unit
+            // A popover with nothing to drive (the size slider): swallow nav
+            // keys so framework focus search can't wander into a button and
+            // paint a stock highlight, but act on none of them (B above
+            // closes the popover). A ⋯ menu falls through: its rows are the
+            // only candidates while it's open.
+            host.isPopoverOpen && host.popoverNavActions().isNullOrEmpty() -> Unit
             dir != null -> {
                 cancelHold()
                 if (cursor == null) selectFirst() else moveCursor(dir)
@@ -233,9 +253,17 @@ class CaptureSheetControllerNav(
         return true
     }
 
-    /** Collected lazily per keypress — no registry to go stale. */
+    /** Collected lazily per keypress — no registry to go stale. An open
+     *  popover is modal: its rows are the whole set. */
     private fun candidates(): List<Pair<Item, Rect>> {
         val out = ArrayList<Pair<Item, Rect>>()
+        host.popoverNavActions()?.let { rows ->
+            for (a in rows) {
+                val r = Rect()
+                if (viewRectOnScreen(a.view, r)) out.add(Item.Button(a.view, a.holdActivates, floating = true) to r)
+            }
+            return out
+        }
         run {
             val r = Rect()
             if (host.handleRect(r)) out.add(Item.Handle to r)
@@ -254,8 +282,13 @@ class CaptureSheetControllerNav(
     private fun setCursor(item: Item, rectOnScreen: Rect) {
         cursor = item
         lastItemRect.set(rectOnScreen)
-        // The pill lives above the scroller — scrolling to it is meaningless.
-        if (item != Item.Handle) host.ensureVisible(rectOnScreen)
+        // The pill and a popover's rows live outside the scroller, which can't
+        // bring them into view. A row scrolls within its own menu instead (a
+        // short host caps the card and makes it scroll).
+        when {
+            item is Item.Button && item.floating -> item.view.revealInScrollingAncestor()
+            item != Item.Handle -> host.ensureVisible(rectOnScreen)
+        }
         syncRing()
     }
 
@@ -310,8 +343,8 @@ class CaptureSheetControllerNav(
 
     /** Per-frame from the sheet's pre-draw hook: re-read the item's live rect
      *  (scroll, resize, entrance/exit all move it) and re-clip to the viewport.
-     *  The pill and the parked strip sit OUTSIDE the scroller and ring
-     *  unclipped. */
+     *  The pill, the parked strip and a popover's rows sit OUTSIDE the
+     *  scroller and ring unclipped. */
     fun syncRing() {
         val cur = cursor ?: run {
             host.setRing(null, null)
@@ -327,7 +360,7 @@ class CaptureSheetControllerNav(
             host.setRing(null, null)
             return
         }
-        val clip = if (cur == Item.Handle || cur == Item.Sliver) {
+        val clip = if (cur == Item.Handle || cur == Item.Sliver || (cur is Item.Button && cur.floating)) {
             null
         } else if (host.scrollViewportOnScreen(clipRect)) {
             clipRect
@@ -359,11 +392,16 @@ class CaptureSheetControllerNav(
      *  column-collapse case, the strip's eye. */
     fun revalidateCursor() {
         val cur = cursor ?: return
-        val stillValid = when (cur) {
-            is Item.Button -> cur.view.isShown
-            is Item.Word -> cur.index < host.wordCount() && host.wordRect(cur.index, tmpRect)
-            Item.Handle -> host.handleRect(tmpRect)
-            Item.Sliver -> host.inSliver
+        val stillValid = when {
+            // A button — and anything at all while a popover is open — is
+            // valid only among the current candidates: shown is not enough
+            // (a header button under a popover's scrim is shown but out of
+            // reach, a popover row that closed is gone).
+            cur is Item.Button || host.popoverNavActions() != null ->
+                candidates().any { it.first == cur }
+            cur is Item.Word -> cur.index < host.wordCount() && host.wordRect(cur.index, tmpRect)
+            cur == Item.Handle -> host.handleRect(tmpRect)
+            else -> host.inSliver   // Item.Sliver
         }
         if (stillValid) return
         val cands = candidates()
@@ -384,6 +422,25 @@ class CaptureSheetControllerNav(
             }
         }
         setCursor(cands[best].first, cands[best].second)
+    }
+
+    /** A popover opened (after its first layout) or closed over the sheet.
+     *  A live cursor follows it — into a ⋯ menu's first row as it opens,
+     *  back onto [anchor], what opened it, as it closes — while no cursor
+     *  stays no cursor (the next press starts one, among the rows if a menu
+     *  is up). A hold in flight ends here without firing: its row may be the
+     *  one whose long-press just closed the menu. */
+    fun onPopoverChanged(open: Boolean, anchor: View) {
+        cancelHold()
+        val cur = cursor ?: return
+        if (open) {
+            if (!host.popoverNavActions().isNullOrEmpty()) selectFirst()
+            return
+        }
+        if (cur is Item.Button && cur.floating) {
+            val back = candidates().firstOrNull { (it.first as? Item.Button)?.view === anchor }
+            if (back != null) setCursor(back.first, back.second) else revalidateCursor()
+        }
     }
 
     // ── Sticks: left is the virtual grabber drag, right scrolls ──────────

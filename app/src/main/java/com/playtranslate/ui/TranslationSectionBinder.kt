@@ -11,7 +11,6 @@ import android.text.StaticLayout
 import android.text.style.BackgroundColorSpan
 import android.util.TypedValue
 import android.view.View
-import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -39,11 +38,18 @@ import java.util.Locale
  * ([CaptureResultOverlay]) so the section look + behavior can't drift.
  *
  * The only surface-specific inputs are the [scope] for async furigana + TTS, the
- * [alertTarget] (an Activity vs a capture overlay), and the [ctx] for resources.
- * The word-lookup tap is NOT here — it's surface-parameterized separately — but
- * the inline word highlight IS, because [applyFurigana] must re-attach it after
- * every text swap (toggling furigana would otherwise drop the highlight; that is
- * the latent regression this shared owner prevents).
+ * [alertTarget] (an Activity vs a capture overlay), the [ctx] for resources, and
+ * the surface's [popovers] (the headers' ⋯ menu shows there). The word-lookup
+ * tap is NOT here — it's surface-parameterized separately — but the inline word
+ * highlight IS, because [applyFurigana] must re-attach it after every text swap
+ * (toggling furigana would otherwise drop the highlight; that is the latent
+ * regression this shared owner prevents).
+ *
+ * The section headers' actions are [HeaderAction] models rendered by the two
+ * [SectionHeaderRow]s: this binder only ever writes the models (availability,
+ * icon, accent, handlers), never an action view, so each action behaves the
+ * same inline and in its header's ⋯ menu. List order is fold priority (the
+ * tail folds first); the eyes are pinned and never fold.
  *
  * Views are found from [root]; ids are shared with both layouts.
  */
@@ -53,6 +59,7 @@ class TranslationSectionBinder(
     private val prefs: Prefs,
     private val scope: CoroutineScope,
     private val alertTarget: TtsAlertTarget,
+    private val popovers: PopoverHost,
 ) {
     // ── Section views (shared ids across both surfaces) ──────────────────
     val tvOriginal: ClickableTextView = root.findViewById(R.id.tvOriginal)
@@ -60,6 +67,8 @@ class TranslationSectionBinder(
     private val tvTranslationNote: TextView = root.findViewById(R.id.tvTranslationNote)
     private val labelOriginal: TextView = root.findViewById(R.id.labelOriginal)
     private val labelTranslation: TextView = root.findViewById(R.id.labelTranslation)
+    private val sourceRow: SectionHeaderRow = root.findViewById(R.id.sourceHeaderRow)
+    private val targetRow: SectionHeaderRow = root.findViewById(R.id.targetHeaderRow)
     private val cardOriginal: MaterialCardView = root.findViewById(R.id.cardOriginal)
     private val cardTranslation: MaterialCardView = root.findViewById(R.id.cardTranslation)
     // The card's inner content holder (wraps the text + the translation note row),
@@ -67,58 +76,86 @@ class TranslationSectionBinder(
     // independent of whether the card itself is pinned to a fill height.
     private val originalContent: View = root.findViewById(R.id.originalContent)
     private val translationContent: View = root.findViewById(R.id.translationContent)
-    private val btnCopyOriginal: ImageButton = root.findViewById(R.id.btnCopyOriginal)
-    private val btnCopyTranslation: ImageButton = root.findViewById(R.id.btnCopyTranslation)
-    private val btnShowOnScreen: TextView = root.findViewById(R.id.btnShowOnScreen)
-    private val btnEditOriginal: ImageButton = root.findViewById(R.id.btnEditOriginal)
-    private val btnSpeakOriginal: ImageButton = root.findViewById(R.id.btnSpeakOriginal)
-    private val btnToggleTranslation: ImageButton = root.findViewById(R.id.btnToggleTranslation)
-    private val btnToggleOriginal: ImageButton = root.findViewById(R.id.btnToggleOriginal)
-    private val btnToggleFurigana: ImageButton = root.findViewById(R.id.btnToggleFurigana)
-    private val btnFontSize: ImageButton = root.findViewById(R.id.btnFontSize)
     // "Scanned by <engine>" + gear, under the source text (mirror of tvTranslationNote).
     private val sourceNoteRow: View = root.findViewById(R.id.sourceNoteRow)
     private val tvSourceNote: TextView = root.findViewById(R.id.tvSourceNote)
     private val btnSourceOcr: ImageView = root.findViewById(R.id.btnSourceOcr)
 
+    // ── Header actions (fold priority order; eyes pinned) ────────────────
+
+    private val furigana = HeaderAction(
+        R.id.btnToggleFurigana, R.drawable.ic_furigana,
+        ctx.getString(R.string.header_action_furigana),
+        ctx.getString(R.string.cd_toggle_inline_furigana),
+    )
+    private val speak = HeaderAction(
+        R.id.btnSpeakOriginal, R.drawable.ic_lens_speak,
+        ctx.getString(R.string.header_action_read_aloud),
+        ctx.getString(R.string.cd_read_original_aloud),
+    )
+    private val edit = HeaderAction(
+        R.id.btnEditOriginal, R.drawable.ic_edit,
+        ctx.getString(R.string.header_action_edit),
+        ctx.getString(R.string.cd_edit_original),
+    )
+    private val sourceAnki = HeaderAction(
+        R.id.btnAnkiOriginal, R.drawable.ic_card_stack_add, ctx.getString(R.string.cd_add_to_anki),
+    )
+    private val sourceEye = HeaderAction(
+        R.id.btnToggleOriginal, R.drawable.ic_visibility,
+        ctx.getString(R.string.cd_toggle_original_visibility), pinned = true,
+    )
+    private val showOnScreen = HeaderAction(
+        R.id.btnShowOnScreen, R.drawable.ic_subtitles, ctx.getString(R.string.capture_show_on_screen),
+        presentation = HeaderAction.Presentation.TEXT_PILL,
+    )
+    private val targetAnki = HeaderAction(
+        R.id.btnAnkiTranslation, R.drawable.ic_card_stack_add, ctx.getString(R.string.cd_add_to_anki),
+    )
+    private val textSize = HeaderAction(
+        R.id.btnFontSize, R.drawable.ic_format_size, ctx.getString(R.string.cd_text_size),
+    )
+    private val targetEye = HeaderAction(
+        R.id.btnToggleTranslation, R.drawable.ic_visibility,
+        ctx.getString(R.string.cd_toggle_translation_visibility), pinned = true,
+    )
+
     init {
-        // The layouts declare app:tint on these icons, but that attribute is
-        // applied by AppCompat's layout inflater — which the in-app results
-        // screen has and the capture overlay does not. Tint explicitly so both
-        // surfaces render the results-screen style (muted icons, hint-toned
-        // gear). The speak button re-tints itself per state (accent while
-        // speaking, muted when idle) on top of this base.
-        val muted = ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextMuted))
-        for (btn in listOf(
-            btnCopyOriginal, btnCopyTranslation, btnEditOriginal, btnSpeakOriginal,
-            btnToggleTranslation, btnToggleOriginal, btnToggleFurigana, btnFontSize,
-        )) {
-            btn.imageTintList = muted
-        }
+        // The gear is tinted in CODE, not via XML app:tint: the over-game overlay
+        // inflates these views with a plain (non-AppCompat) LayoutInflater, which
+        // silently drops app:tint, so the white ic_settings would render white
+        // there while the in-app (AppCompat) surface tints it. imageTintList works
+        // on a plain ImageView too, so both surfaces match. (The header actions
+        // are tinted by their row for the same reason.)
         btnSourceOcr.imageTintList =
             ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextHint))
+        // Both until a host says otherwise: show-on-screen via
+        // setShowOnScreenAvailable, text size via onChooseFontSize.
+        showOnScreen.available = false
+        textSize.available = false
+        sourceRow.setActions(listOf(furigana, speak, edit, sourceAnki, sourceEye), R.id.btnMoreOriginal)
+        targetRow.setActions(listOf(showOnScreen, targetAnki, textSize, targetEye), R.id.btnMoreTranslation)
+        sourceRow.onMoreClick = ::toggleOverflow
+        targetRow.onMoreClick = ::toggleOverflow
     }
 
-    private var speakButton: OriginalSpeakButton? = null
+    private var speaker: OriginalSpeaker? = null
 
-    /** True once [setupSectionButtons] repurposed the copy buttons to Anki with
-     *  a one-tap long-press — the controller then maps hold-A to it. */
-    private var ankiOneTapOnCopy = false
+    /** The header actions the controller cursor can reach, filtered to what's
+     *  currently on screen: each header's inline actions, its ⋯ while
+     *  anything is folded, and its eye. Deliberately excludes the language
+     *  labels and the OCR row — both open picker windows the controller
+     *  can't drive (and the language path dismisses the sheet). */
+    fun navigableActions(): List<NavAction> = sourceRow.navActions() + targetRow.navActions()
 
-    /** The header action buttons the controller cursor can reach, in render
-     *  order, filtered to what's currently on screen. Deliberately excludes the
-     *  language labels and the OCR row — both open picker windows the
-     *  controller can't drive (and the language path dismisses the sheet). */
-    fun navigableActions(): List<NavAction> = buildList {
-        for (v in listOf(
-            btnToggleFurigana, btnSpeakOriginal, btnEditOriginal, btnCopyOriginal,
-            btnToggleOriginal,
-            btnFontSize, btnCopyTranslation, btnShowOnScreen, btnToggleTranslation,
-        )) {
-            if (!v.isShown || !v.isEnabled) continue
-            val hold = ankiOneTapOnCopy && (v === btnCopyOriginal || v === btnCopyTranslation)
-            add(NavAction(v, holdActivates = hold))
+    /** ⋯: open the header's menu of folded actions, or close the popover
+     *  that's up (the scrim makes that a keyboard-focus-only path). */
+    private fun toggleOverflow(row: SectionHeaderRow) {
+        if (popovers.isShowing) {
+            popovers.dismiss()
+            return
         }
+        popovers.show(ActionOverflowMenu(row), row.moreButton)
     }
 
     /** Char range currently highlighted (a word-lookup popup is active), or null.
@@ -150,31 +187,22 @@ class TranslationSectionBinder(
      *  opens the language picker for that side. Null → the headers are inert. */
     var onChooseLanguage: ((isSource: Boolean) -> Unit)? = null
 
-    /** Invoked when the user taps the text-size button in the target header. Each
-     *  surface shows [FontSizeRangePopover] in its own host view (the popover must
-     *  be a CHILD of the surface, not a new window — see the class doc there), then
-     *  re-fits on change. Null (the default) → the button stays GONE, so a surface
+    /** Invoked with the view presenting the target header's Text size action
+     *  (its button, or the header's ⋯ when folded). Each surface shows
+     *  [FontSizeRangePopover] on its [PopoverHost] anchored there, then re-fits
+     *  on change. Null (the default) → the action is unavailable, so a surface
      *  that can't host the popover never renders a dead control. */
-    var onChooseFontSize: (() -> Unit)? = null
+    var onChooseFontSize: ((anchor: View) -> Unit)? = null
         set(value) {
             field = value
-            btnFontSize.visibility = if (value == null) View.GONE else View.VISIBLE
+            textSize.available = value != null
         }
-
-    /** The text-size button, for surfaces to anchor their popover on. */
-    val fontSizeAnchor: View get() = btnFontSize
 
     init {
         sourceNoteRow.setOnClickListener { onChooseOcr?.invoke() }
         labelOriginal.setOnClickListener { onChooseLanguage?.invoke(true) }
         labelTranslation.setOnClickListener { onChooseLanguage?.invoke(false) }
-        btnFontSize.setOnClickListener { onChooseFontSize?.invoke() }
-        // Tint the gear in CODE, not via XML app:tint: the over-game overlay inflates
-        // these views with a plain (non-AppCompat) LayoutInflater, which silently drops
-        // app:tint, so the white ic_settings would render white there while the in-app
-        // (AppCompat) surface tints it. Setting imageTintList works on a plain ImageView
-        // too, so both surfaces match. (Same reason the Anki button is tinted in code.)
-        btnSourceOcr.imageTintList = ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextHint))
+        textSize.onClick = { anchor -> onChooseFontSize?.invoke(anchor) }
     }
 
     // ── Source section ───────────────────────────────────────────────────
@@ -225,44 +253,43 @@ class TranslationSectionBinder(
     }
 
     /** Whether this surface can edit the source (an Activity overlay, the
-     *  sheet's in-place IME). False hides the Edit button outright — a
-     *  surface with no editor never renders a dead control. */
+     *  sheet's in-place IME). False removes the Edit action outright, inline
+     *  and from the ⋯ menu — a surface with no editor never renders a dead
+     *  control. */
     var editAvailable: Boolean = true
         set(value) {
             field = value
             applyOriginalVisibility()
         }
 
+    /** A hidden source takes its text actions with it (the eye stays, pinned
+     *  at the end, so it never moves under the finger that just hid it).
+     *  Unavailable is GONE: the space goes back to the fit. */
     fun applyOriginalVisibility() {
         val hidden = prefs.hideOriginalSection
         cardOriginal.visibility = if (hidden) View.GONE else View.VISIBLE
-        btnCopyOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
-        btnEditOriginal.visibility = when {
-            !editAvailable -> View.GONE
-            hidden -> View.INVISIBLE
-            else -> View.VISIBLE
-        }
-        btnSpeakOriginal.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
+        sourceAnki.available = !hidden
+        edit.available = editAvailable && !hidden
+        speak.available = !hidden
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
         val hasHintText = hintKind != HintTextKind.NONE
-        btnToggleFurigana.visibility = if (hidden || !hasHintText) View.GONE else View.VISIBLE
+        furigana.available = !hidden && hasHintText
         if (hasHintText) {
-            val label = when (hintKind) { HintTextKind.PINYIN -> "pinyin"; else -> "furigana" }
-            btnToggleFurigana.contentDescription = "Toggle inline $label"
-            btnToggleFurigana.setImageResource(
-                if (hintKind == HintTextKind.PINYIN) R.drawable.ic_pinyin else R.drawable.ic_furigana
+            val pinyin = hintKind == HintTextKind.PINYIN
+            furigana.icon = if (pinyin) R.drawable.ic_pinyin else R.drawable.ic_furigana
+            furigana.label = ctx.getString(
+                if (pinyin) R.string.header_action_pinyin else R.string.header_action_furigana,
+            )
+            furigana.contentDescription = ctx.getString(
+                if (pinyin) R.string.cd_toggle_inline_pinyin else R.string.cd_toggle_inline_furigana,
             )
         }
-        btnToggleOriginal.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
+        sourceEye.icon = if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility
     }
 
     fun applyFurigana() {
         val active = prefs.showFuriganaInline
-        val accentColor = ctx.themeColor(R.attr.ptAccent)
-        val secondaryColor = ctx.themeColor(R.attr.ptTextMuted)
-        btnToggleFurigana.imageTintList = ColorStateList.valueOf(
-            if (active) accentColor else secondaryColor
-        )
+        furigana.active = active
 
         // Every call represents the latest desired furigana state; bump the token
         // so any async render still in flight from a prior call bails out.
@@ -349,53 +376,40 @@ class TranslationSectionBinder(
     fun applyTranslationVisibility() {
         val hidden = prefs.hideTranslationSection
         cardTranslation.visibility = if (hidden) View.GONE else View.VISIBLE
-        // GONE, not INVISIBLE: the header's weighted Space right-aligns this
-        // button group, so collapsing the add-to-Anki slot slides the text-size
-        // and show-on-screen buttons RIGHT into the freed width instead of
-        // leaving a hole. The eye stays put either way — it's the last child, so
-        // the expanding Space keeps it pinned to the end. Direction-agnostic:
-        // the reflow mirrors itself under RTL.
-        btnCopyTranslation.visibility = if (hidden) View.GONE else View.VISIBLE
-        // btnFontSize deliberately survives the hide: the size range it edits
+        // The add-to-Anki action goes with the card; its space returns to the
+        // fit, and the eye stays put either way (pinned at the end).
+        targetAnki.available = !hidden
+        // Text size deliberately survives the hide: the size range it edits
         // governs the SOURCE text too, so it stays usable with this card closed.
-        btnToggleTranslation.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
+        targetEye.icon = if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility
     }
 
     /** Wire the "show on screen" toggle into the target header. The over-game
      *  capture panel paints its in-window boxes; the in-app results page
      *  (dual-screen) paints a standalone game-display window, or flips the
      *  hide-overlays-during-auto setting while live. Each host gates
-     *  visibility via [setShowOnScreenAvailable]. */
+     *  availability via [setShowOnScreenAvailable]. */
     fun setShowOnScreenAction(onClick: () -> Unit) {
-        btnShowOnScreen.setOnClickListener { onClick() }
+        showOnScreen.onClick = { onClick() }
     }
 
     /** Whether the show-on-screen toggle currently has something to show
-     *  (overlay boxes exist for the bound result). GONE when not, so surfaces
-     *  that never enable it lose no header space. Deliberately independent of
-     *  the section's hidden state — the toggle presents the whole result over
-     *  the game, not this card, and hiding the card while reading the boxes in
-     *  place is a legitimate combination. ACCEPTED gap (2026-07-15): in
-     *  SIDE-BY-SIDE mode, hiding the translation collapses the whole column —
-     *  header and this button included — so that combo has no manual switch;
-     *  the boxes keep whatever state the toggle last set. */
+     *  (overlay boxes exist for the bound result). Unavailable when not, so
+     *  surfaces that never enable it lose no header space. Deliberately
+     *  independent of the section's hidden state — the toggle presents the
+     *  whole result over the game, not this card, and hiding the card while
+     *  reading the boxes in place is a legitimate combination. ACCEPTED gap
+     *  (2026-07-15): in SIDE-BY-SIDE mode, hiding the translation collapses the
+     *  whole column — header and this toggle included — so that combo has no
+     *  manual switch; the boxes keep whatever state the toggle last set. */
     fun setShowOnScreenAvailable(available: Boolean) {
-        btnShowOnScreen.visibility = if (available) View.VISIBLE else View.GONE
+        showOnScreen.available = available
     }
 
-    /** The show-on-screen toggle's visual state: a filled accent pill with
-     *  on-accent text while the boxes are ON; the drawable's stock look
-     *  (card-colored fill, muted text) while OFF. Tinting recolors the
-     *  drawable's solid fill, so one drawable serves both states. */
+    /** The show-on-screen toggle's state: while the boxes are ON the inline
+     *  pill fills with the accent (and its ⋯ menu row's icon turns accent). */
     fun setShowOnScreenToggled(on: Boolean) {
-        if (on) {
-            btnShowOnScreen.setTextColor(ctx.themeColor(R.attr.ptAccentOn))
-            btnShowOnScreen.backgroundTintList =
-                ColorStateList.valueOf(ctx.themeColor(R.attr.ptAccent))
-        } else {
-            btnShowOnScreen.setTextColor(ctx.themeColor(R.attr.ptTextMuted))
-            btnShowOnScreen.backgroundTintList = null
-        }
+        showOnScreen.active = on
     }
 
     /** Flip a section's hidden pref, re-apply its visibility, and notify the host
@@ -497,62 +511,45 @@ class TranslationSectionBinder(
 
     // ── Buttons + text fitting ───────────────────────────────────────────
 
-    /** Wire copy / show-hide / furigana toggle / speak. [onEdit] is invoked by the
-     *  source Edit button — the surface decides what editing means (an Activity
-     *  overlay in-app, an in-place IME over the game). */
+    /** Wire the header actions: Add to Anki (tap = review, long-press =
+     *  one-tap) on both headers, Edit, the eyes, the furigana toggle and speak.
+     *  [onEdit] is what the source's Edit action does — the surface decides
+     *  what editing means (an Activity overlay in-app, an in-place IME over
+     *  the game). Copying lives on a long-press of each text. */
     fun setupSectionButtons(
         onEdit: () -> Unit,
-        onAddToAnki: (() -> Unit)? = null,
-        onAnkiOneTap: (() -> Unit)? = null,
+        onAddToAnki: () -> Unit,
+        onAnkiOneTap: () -> Unit,
     ) {
-        if (onAddToAnki != null) {
-            // Results page (and later the capture overlay): the copy button becomes
-            // "add to Anki"; copy moves to a long-press on the text itself. The
-            // muted tint from init survives setImageResource.
-            for (btn in listOf(btnCopyOriginal, btnCopyTranslation)) {
-                btn.setImageResource(R.drawable.ic_card_stack_add)
-                btn.contentDescription = ctx.getString(R.string.cd_add_to_anki)
-                btn.setOnClickListener { onAddToAnki() }
-                if (onAnkiOneTap != null) {
-                    btn.setOnLongClickListener { onAnkiOneTap(); true }
-                }
-            }
-            ankiOneTapOnCopy = onAnkiOneTap != null
-            // TODO(device): tvOriginal is a ClickableTextView whose onTouchEvent
-            // routes through a GestureDetector and always consumes the event. Long-
-            // press copy relies on View.onTouchEvent's own long-press timer firing
-            // via super.onTouchEvent; verify on-device that the word-tap path doesn't
-            // suppress this long-click. Do NOT remove the word-tap handling.
-            tvOriginal.setOnLongClickListener {
-                copyToClipboard(tvOriginal.text?.toString() ?: return@setOnLongClickListener true); true
-            }
-            tvTranslation.setOnLongClickListener {
-                copyToClipboard(tvTranslation.text?.toString() ?: return@setOnLongClickListener true); true
-            }
-        } else {
-            btnCopyOriginal.setOnClickListener {
-                copyToClipboard(tvOriginal.text?.toString() ?: return@setOnClickListener)
-            }
-            btnCopyTranslation.setOnClickListener {
-                copyToClipboard(tvTranslation.text?.toString() ?: return@setOnClickListener)
-            }
+        for (anki in listOf(sourceAnki, targetAnki)) {
+            anki.onClick = { onAddToAnki() }
+            anki.onLongClick = { onAnkiOneTap() }
         }
-        btnEditOriginal.setOnClickListener { onEdit() }
-        btnToggleTranslation.setOnClickListener { toggleTranslationHidden() }
-        btnToggleOriginal.setOnClickListener { toggleOriginalHidden() }
-        btnToggleFurigana.setOnClickListener {
+        // TODO(device): tvOriginal is a ClickableTextView whose onTouchEvent
+        // routes through a GestureDetector and always consumes the event. Long-
+        // press copy relies on View.onTouchEvent's own long-press timer firing
+        // via super.onTouchEvent; verify on-device that the word-tap path doesn't
+        // suppress this long-click. Do NOT remove the word-tap handling.
+        tvOriginal.setOnLongClickListener {
+            copyToClipboard(tvOriginal.text?.toString() ?: return@setOnLongClickListener true); true
+        }
+        tvTranslation.setOnLongClickListener {
+            copyToClipboard(tvTranslation.text?.toString() ?: return@setOnLongClickListener true); true
+        }
+        edit.onClick = { onEdit() }
+        targetEye.onClick = { toggleTranslationHidden() }
+        sourceEye.onClick = { toggleOriginalHidden() }
+        furigana.onClick = {
             prefs.showFuriganaInline = !prefs.showFuriganaInline
             applyFurigana()
         }
-        speakButton = OriginalSpeakButton(
-            btnSpeakOriginal,
-            scope,
-            alertTarget,
-        ) {
+        val s = OriginalSpeaker(scope, alertTarget, onSpeakingChanged = { speak.active = it }) {
             val text = displayedSourceText()
             if (text.isBlank()) null
-            else OriginalSpeakButton.Request(text, prefs.sourceLangId)
+            else OriginalSpeaker.Request(text, prefs.sourceLangId)
         }
+        speaker = s
+        speak.onClick = { s.toggle() }
     }
 
     /** Side-by-side / results-page: fit each text to its own target height with a
@@ -589,8 +586,8 @@ class TranslationSectionBinder(
     fun sourceTextHeightAtMax(): Int = textHeightAt(tvOriginal, fitMaxSp)
     fun targetTextHeightAtMax(): Int = textHeightAt(tvTranslation, fitMaxSp)
 
-    fun sourceHeaderHeight(): Int = (labelOriginal.parent as? View)?.height ?: 0
-    fun targetHeaderHeight(): Int = (labelTranslation.parent as? View)?.height ?: 0
+    fun sourceHeaderHeight(): Int = sourceRow.height
+    fun targetHeaderHeight(): Int = targetRow.height
 
     // The card's non-text vertical space splits into two parts the panel sums:
     //  • contentOverhead — the content holder's height minus the MAIN text:
@@ -720,8 +717,8 @@ class TranslationSectionBinder(
     }
 
     fun release() {
-        speakButton?.release()
-        speakButton = null
+        speaker?.release()
+        speaker = null
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────

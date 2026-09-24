@@ -661,3 +661,41 @@ dispositivo».
 **PASS after fixes.** The delta's only ❌ across all twelve locales was here, and it was
 invisible string-by-string — it surfaced only when the title and its own body were read as
 one screen.
+
+## Delta review 2026-09-23 (6 keys: the results headers' ⋯ overflow menu)
+
+Mechanical layer verified programmatically across all 12 locales: all 6 delta names
+present once, no extras; no `<xliff:g>`, placeholders, `<plurals>`, quotes or
+apostrophes, and no em/en dashes in this delta. The two orphans `cd_copy_original` /
+`cd_copy_translation` (the headers' copy buttons, removed with this change) are deleted.
+For this delta's keys the analyzer reports nothing missing and nothing orphaned; the
+remaining `missing=14 orphan=1` belong to other, not-yet-synced features (icon gestures,
+edge indicator, the Anki words helper). `:app:processDebugResources` BUILD SUCCESSFUL.
+**No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.** The four `header_action_*` names, like the reused
+`cd_add_to_anki`, `cd_text_size` and `capture_show_on_screen`, are the rows of
+`ActionOverflowMenu`: 15 sp medium, `maxLines=1` + `ellipsize=end`, in a card 160 to 280
+dp wide less 72 dp of icon and padding, so up to about 208 dp of label. `cd_more_actions`
+is spoken only (the ⋯ button's description and the menu's pane title);
+`cd_toggle_inline_pinyin` is the furigana button's spoken name when the source is Chinese
+(it replaces a hardcoded English "Toggle inline pinyin").
+
+### Findings (delta)
+
+None.
+
+### Clean areas (delta) — checked, no findings
+
+**Siblings, one term swapped.** «Ativar/desativar pinyin inline» mirrors the furigana
+string.
+
+**The ⋯.** «Mais ações» parallels «Toque para ver mais opções».
+
+**Row names.** «Ler em voz alta» and «Editar texto»; Brazilian vocabulary throughout.
+
+### Verdict
+
+**PASS.** Every delta string reuses the locale's own committed wording for its sibling
+(the furigana toggle, the read-aloud and edit descriptions, the parked sheet's "more"
+hint), so the menu reads in the same voice as the buttons it replaces.

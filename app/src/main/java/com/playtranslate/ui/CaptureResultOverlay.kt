@@ -466,8 +466,9 @@ class CaptureResultOverlay(
     // translationY as the sheet grows/slides — never re-blurred (see [bakeEdgeShadow]).
     private val edgeShadow = EdgeShadowView(ctx)
     // The controller cursor's accent ring, drawn at ROOT level (over the panel,
-    // under the font popover's late-added scrim) so it can outline buttons and
-    // word spans alike without fighting any child clipping.
+    // and over any popover: [popovers] inserts its views beneath it) so it can
+    // outline buttons, word spans and a ⋯ menu's rows alike without fighting
+    // any child clipping.
     private val focusRing = FocusRingView(ctx)
     private var shadowBitmap: Bitmap? = null
     // The shadow (and the edge rail) track the sheet through a single pre-draw hook (see [syncSheetEdge])
@@ -490,11 +491,14 @@ class CaptureResultOverlay(
 
     private var binder: TranslationSectionBinder? = null
 
-    /** Text-size range picker. Hosted in [root] — the sheet's own full-screen
-     *  window — so it can float above the sheet's top edge over the game while
-     *  staying an IN-WINDOW child (a sibling overlay window would dim under
-     *  MediaProjection's QTI clamp and eat the panel's taps). */
-    private var fontPopover: FontSizeRangePopover? = null
+    /** The sheet's one in-window popover: the text-size picker, or a section
+     *  header's ⋯ menu. Hosted in [root] — the sheet's own full-screen
+     *  window — so it can float above the sheet's top edge over the game
+     *  while staying an IN-WINDOW child (a sibling overlay window would dim
+     *  under MediaProjection's QTI clamp and eat the panel's taps), and kept
+     *  under [focusRing] so the controller ring can outline the menu's rows.
+     *  Every "is a popover up" rule here (touch, B, nav) asks it. */
+    private val popovers = PopoverHost(root, below = focusRing)
 
     // Side-by-side column collapse: hiding a section shrinks it to a button-wide
     // strip (rotated label) and the other section fills the freed width.
@@ -807,6 +811,7 @@ class CaptureResultOverlay(
         val b = TranslationSectionBinder(
             panel, ctx, prefs, scope,
             ttsAlertTarget ?: TtsAlertTarget.Overlay(ctx, overlayHost, wm, displayId),
+            popovers,
         )
         b.setupSectionButtons(
             onEdit = { startInPlaceEdit() },
@@ -856,10 +861,21 @@ class CaptureResultOverlay(
             if (p != null && sp != null) showOcrPicker(p, sp)
         }
         b.onChooseLanguage = { isSource -> changeLanguage(isSource) }
-        fontPopover = FontSizeRangePopover(ctx, root, prefs).apply {
+        val fontPicker = FontSizeRangePopover(ctx, prefs).apply {
             onRangeChanged = { refitForFontRange() }
         }
-        b.onChooseFontSize = { fontPopover?.toggle(b.fontSizeAnchor) }
+        b.onChooseFontSize = { anchor -> popovers.toggle(fontPicker, anchor) }
+        // A controller cursor follows a popover: into a ⋯ menu's rows once
+        // they have laid out, back onto what opened it as it closes.
+        popovers.addListener(object : PopoverHost.Listener {
+            override fun onPopoverChanged(open: Boolean, content: PopoverContent, anchor: View) {
+                if (!open) nav?.onPopoverChanged(open = false, anchor = anchor)
+            }
+
+            override fun onPopoverLaidOut(content: PopoverContent, anchor: View) {
+                nav?.onPopoverChanged(open = true, anchor = anchor)
+            }
+        })
         binder = b
         sourceLens = SourceTextLens(
             ctx, wm, displayId,
@@ -1195,8 +1211,7 @@ class CaptureResultOverlay(
         recordPosture()
         heightAnimator?.cancel()
         dismissWordLens()
-        fontPopover?.dismiss()
-        fontPopover = null
+        popovers.release()
         sessionJob?.cancel()
         // Cancel the service-side one-shot job too (not just our collector), so
         // OCR/translation doesn't keep running headless after the panel is gone.
@@ -1236,7 +1251,7 @@ class CaptureResultOverlay(
         if (dismissed || animatingOut) return
         animatingOut = true
         dismissWordLens()
-        fontPopover?.dismiss()
+        popovers.dismiss()
         nav?.clearCursor()   // no ring riding the exit slide
         edgeIndicator.fadeOut(EXIT_DURATION_MS)
         panel.animate()
@@ -1363,8 +1378,8 @@ class CaptureResultOverlay(
         userStatedPosture = false
         loadingPeekExpand = false
         dismissWordLens()
-        // The sections it edits are about to fade out under the collapse.
-        fontPopover?.dismiss()
+        // The sections they act on are about to fade out under the collapse.
+        popovers.dismiss()
         nav?.clearCursor()   // the cursor's targets are fading out
         preSliverHeightPx = panelHeightPx
         animateSliverHeight(sliverHeightPx())
@@ -2484,8 +2499,8 @@ class CaptureResultOverlay(
         if (editContainer.visibility == View.VISIBLE) return
         val current = lastResult?.originalText ?: binder?.displayedSourceText() ?: return
         dismissWordLens()
-        // The editor covers the sections the popover sizes.
-        fontPopover?.dismiss()
+        // The editor covers the sections the popovers act on.
+        popovers.dismiss()
         nav?.clearCursor()             // the editor covers the cursor's targets
         editText.setText(current)
         editText.setSelection(editText.text.length)
@@ -2614,7 +2629,7 @@ class CaptureResultOverlay(
      *  no-controller non-focusable mode. */
     private fun onControllerBack() {
         when {
-            fontPopover?.isShowing == true -> fontPopover?.dismiss()
+            popovers.isShowing -> popovers.dismiss()
             editContainer.visibility == View.VISIBLE -> cancelEdit()
             sourceLens?.isShowing == true -> dismissWordLens()
             // One B, ringed or not: the sliver cursor is not a rung of this
@@ -2627,7 +2642,8 @@ class CaptureResultOverlay(
     /** The sheet's side of the controller-navigation seam ([nav] drives it). */
     private val navHost = object : CaptureSheetNavHost {
         override val isEditing: Boolean get() = editContainer.visibility == View.VISIBLE
-        override val isPopoverOpen: Boolean get() = fontPopover?.isShowing == true
+        override val isPopoverOpen: Boolean get() = popovers.isShowing
+        override fun popoverNavActions(): List<NavAction>? = popovers.navActions()
         override val inSliver: Boolean get() = sliverMode
 
         override fun onControllerBack() = this@CaptureResultOverlay.onControllerBack()
@@ -3084,7 +3100,7 @@ class CaptureResultOverlay(
             userStatedPosture = false   // parking hands the wheel to the pref
             loadingPeekExpand = false
             dismissWordLens()
-            fontPopover?.dismiss()
+            popovers.dismiss()
             nav?.clearCursor()   // every sliver entry drops the cursor
             preSliverHeightPx = stickResizeStartHeight
             animateSliverHeight(sliverHeightPx())
@@ -3284,13 +3300,14 @@ class CaptureResultOverlay(
             nav?.handleGenericMotion(ev) == true || super.onGenericMotionEvent(ev)
 
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-            // The text-size popover is a child of this root, and it can sit
-            // ABOVE the sheet's top edge — right where the rules below claim
-            // every DOWN for the resize grab or an outside-tap dismiss. Stand
-            // them all down while it's open and let normal child dispatch run:
-            // the popover's own scrim (drawn over everything but its card)
-            // handles outside taps by dismissing itself.
-            if (fontPopover?.isShowing == true) return super.dispatchTouchEvent(ev)
+            // A popover (the text-size picker, a ⋯ menu) is a child of this
+            // root, and it can sit ABOVE the sheet's top edge — right where the
+            // rules below claim every DOWN for the resize grab or an
+            // outside-tap dismiss. Stand them all down while one is open and
+            // let normal child dispatch run: the popover's own scrim (drawn
+            // over everything but its card) handles outside taps by
+            // dismissing it.
+            if (popovers.isShowing) return super.dispatchTouchEvent(ev)
             if (routeOutsideFollowUp(ev)) return true
             if (sliverMode) {
                 when (ev.actionMasked) {
