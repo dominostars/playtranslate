@@ -137,6 +137,7 @@ object OnlineBackendFactory {
         OpenAiPreset.MISTRAL -> OnlineServiceStore.MISTRAL_BASE_URL
         OpenAiPreset.GROQ -> OnlineServiceStore.GROQ_BASE_URL
         OpenAiPreset.OPENROUTER -> OnlineServiceStore.OPENROUTER_BASE_URL
+        OpenAiPreset.REQUESTY -> OnlineServiceStore.REQUESTY_BASE_URL
         OpenAiPreset.CLAUDE -> OnlineServiceStore.CLAUDE_BASE_URL
         OpenAiPreset.CUSTOM -> instance.baseUrl.ifBlank { Prefs.DEFAULT_OPENAI_BASE_URL }
     }
@@ -148,6 +149,7 @@ object OnlineBackendFactory {
             OpenAiPreset.MISTRAL -> Prefs.DEFAULT_MISTRAL_MODEL
             OpenAiPreset.GROQ -> Prefs.DEFAULT_GROQ_MODEL
             OpenAiPreset.OPENROUTER -> Prefs.DEFAULT_OPENROUTER_MODEL
+            OpenAiPreset.REQUESTY -> Prefs.DEFAULT_REQUESTY_MODEL
             OpenAiPreset.CLAUDE -> Prefs.DEFAULT_CLAUDE_MODEL
             OpenAiPreset.OPENAI, OpenAiPreset.CUSTOM -> Prefs.DEFAULT_OPENAI_MODEL
         }
@@ -226,6 +228,7 @@ object OnlineBackendFactory {
         OpenAiPreset.MISTRAL -> context.getString(R.string.mistral_display_name)
         OpenAiPreset.GROQ -> context.getString(R.string.groq_display_name)
         OpenAiPreset.OPENROUTER -> context.getString(R.string.openrouter_display_name)
+        OpenAiPreset.REQUESTY -> context.getString(R.string.requesty_display_name)
         OpenAiPreset.CLAUDE -> context.getString(R.string.claude_display_name)
         OpenAiPreset.CUSTOM -> context.getString(R.string.llm_backend_preset_custom)
     }

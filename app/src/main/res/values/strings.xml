@@ -1617,6 +1617,7 @@
     <string name="mistral_display_name" translatable="false">Mistral</string>
     <string name="groq_display_name" translatable="false">Groq</string>
     <string name="openrouter_display_name" translatable="false">OpenRouter</string>
+    <string name="requesty_display_name" translatable="false">Requesty</string>
     <string name="claude_display_name" translatable="false">Claude</string>
     <string name="deepl_display_name" translatable="false">DeepL</string>
     <!-- Cell title + provider-preset pill label for an OpenAI-compatible

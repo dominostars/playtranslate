@@ -66,6 +66,14 @@ object OnlineServiceStore {
     const val OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
     const val OPENROUTER_KEY_PROBE_PATH = "/key"
 
+    /** Requesty's /models is public too, but unlike OpenRouter's it checks
+     *  a key when one is sent: a bad key gets 403, so the default /models
+     *  probe still rejects it. A good key answers 200 like no key does, so
+     *  it saves as unverified rather than Ok. There is no key endpoint to
+     *  probe instead. EU users can pick router.eu.requesty.ai/v1 through
+     *  the Custom preset. */
+    const val REQUESTY_BASE_URL = "https://router.requesty.ai/v1"
+
     /** Anthropic's OpenAI-compatible layer shares the /v1 prefix with the
      *  native API: `/v1/chat/completions` takes the Claude key as a Bearer
      *  token, but there is no compatible `/v1/models`. That path is the

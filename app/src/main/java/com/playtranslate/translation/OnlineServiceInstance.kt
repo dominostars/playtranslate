@@ -77,7 +77,7 @@ enum class ServiceType(
  *  chat-completions only: its /models is the native endpoint with its own
  *  auth headers ([OnlineBackendFactory.modelsAuthHeadersFor]). */
 @Serializable
-enum class OpenAiPreset { OPENAI, DEEPSEEK, MISTRAL, GROQ, OPENROUTER, CLAUDE, CUSTOM }
+enum class OpenAiPreset { OPENAI, DEEPSEEK, MISTRAL, GROQ, OPENROUTER, REQUESTY, CLAUDE, CUSTOM }
 
 /**
  * One user-configured online translation service. Users can hold any

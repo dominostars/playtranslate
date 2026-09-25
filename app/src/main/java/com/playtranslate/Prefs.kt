@@ -1730,6 +1730,9 @@ class Prefs internal constructor(
         // same small/fast/cheap tier we default to on Gemini, and holds up
         // on CJK short text far better than the cheaper open models.
         const val DEFAULT_OPENROUTER_MODEL = "google/gemini-2.5-flash-lite"
+        // Requesty ids are provider-namespaced the same way, so this takes
+        // the same model as OpenRouter's default above.
+        const val DEFAULT_REQUESTY_MODEL  = "google/gemini-2.5-flash-lite"
         /** Claude's fast tier, matching every other preset's default (flash,
          *  small, lite). Haiku 4.5 needs no thinking switch and did the Thor's
          *  test screens in 1.9-3.1 s where Sonnet 5 with thinking took 5-23 s
