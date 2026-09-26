@@ -2628,7 +2628,7 @@
          color: a grown overlay covers more of the game, so with auto-translate on,
          animation under it can make the overlay be removed when the text has not
          changed. -->
-    <string name="settings_overlay_min_text_warning">Changing this value could cause auto-translate overlays to be incorrectly removed while playing games with a lot of animation.</string>
+    <string name="settings_overlay_min_text_warning">EXPERIMENTAL. May cause auto-translate overlays to get removed more frequently, especially while playing games with a lot of animations</string>
     <!-- Sample drawn under the "minimum text size" slider at the chosen size (bold,
          like the overlays) so the user can judge the size; hidden at the lowest value. -->
     <string name="settings_overlay_min_text_example">Example text</string>
