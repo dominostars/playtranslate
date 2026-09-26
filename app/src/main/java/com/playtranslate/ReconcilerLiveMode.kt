@@ -1,6 +1,7 @@
 package com.playtranslate
 
 import android.graphics.Bitmap
+import android.graphics.Rect
 import android.os.SystemClock
 import android.util.Log
 import com.playtranslate.capture.CaptureBackendResolver
@@ -8,6 +9,7 @@ import com.playtranslate.capture.LiveCaptureSource
 import com.playtranslate.capture.StreamKind
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextDirection
+import com.playtranslate.ui.GrowthLimits
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -108,6 +110,16 @@ class ReconcilerLiveMode(
     private var cropTop = 0
     private var screenshotW = 0
     private var screenshotH = 0
+    /** The OCR crop's size: the region boxes may grow inside (see
+     *  [GrowthLimits]); 0 until a placement-capable cycle sets it, and kept
+     *  current by every one after (a region can change size in place). */
+    private var cropWidth = 0
+    private var cropHeight = 0
+    /** Whether the limits the overlay was last shown with named unboxed text
+     *  ([showBoxes]). Held text that vanishes before it dispatches changes no
+     *  box, so nothing else would re-show; one re-show after it goes lets the
+     *  view drop it from its limits, and a neighbour's growth take the room. */
+    private var shownUnboxedText = false
     private var cycleNum = 0
 
     private val typewriterGate = TypewriterGate()
@@ -248,6 +260,9 @@ class ReconcilerLiveMode(
         cropTop = 0
         screenshotW = 0
         screenshotH = 0
+        cropWidth = 0
+        cropHeight = 0
+        shownUnboxedText = false
         engine.forceNext()
     }
 
@@ -418,6 +433,7 @@ class ReconcilerLiveMode(
                     clearDisplayed()
                     return prefs.captureIntervalMs
                 }
+                cropWidth = pipeline.cropWidth; cropHeight = pipeline.cropHeight
             }
 
             val groups = pipeline?.ocrResult?.groups ?: emptyList()
@@ -486,8 +502,14 @@ class ReconcilerLiveMode(
                 // Steady state: what's displayed is already exactly right
                 // (kept verbatim + held verbatim) — but if the WINDOW was
                 // hidden by a visibility park, "already right" content still
-                // needs an explicit re-show (all-KEEP never repaints).
-                if (overlayHidden) showBoxes(kept)
+                // needs an explicit re-show (all-KEEP never repaints). And
+                // text with no box on it (a line typing out under a hold)
+                // limits the boxes' minimum-text-size growth and comes and
+                // goes without any box changing: re-show while it is there
+                // and once after it goes, and the view relayouts only if the
+                // limits it drew with changed.
+                val unboxed = GrowthLimits.unboxedText(groups.map { it.drawBounds }, kept).isNotEmpty()
+                if (overlayHidden || unboxed || shownUnboxedText) showBoxes(kept, groups)
                 return pacing(prefs)
             }
 
@@ -508,7 +530,7 @@ class ReconcilerLiveMode(
                         presenter.emitNoText()
                     }
                 } else {
-                    showBoxes(kept)
+                    showBoxes(kept, groups)
                     presenter.emitApplied(
                         kept, pipeline?.ocrResult,
                         frame.includesSystemUi, frame.includesOwnOverlays,
@@ -535,7 +557,7 @@ class ReconcilerLiveMode(
                 toTranslate, frame, cropLeft, cropTop,
                 onPartial = { partial ->
                     cachedBoxes = kept + partial
-                    showBoxes(kept + partial)
+                    showBoxes(kept + partial, groups)
                 },
             )
             // Recording backend (Text History / LLM context): the presenter
@@ -553,7 +575,7 @@ class ReconcilerLiveMode(
                 }
             }
             cachedBoxes = kept + finalAnchors
-            showBoxes(kept + finalAnchors)
+            showBoxes(kept + finalAnchors, groups)
             presenter.emitApplied(
                 kept + finalAnchors, pipeline?.ocrResult,
                 frame.includesSystemUi, frame.includesOwnOverlays,
@@ -584,10 +606,15 @@ class ReconcilerLiveMode(
 
     /** Render the anchors' DISPLAY boxes (identity for most presenters;
      *  furigana maps anchors to annotation boxes). Panel-only presenters
-     *  paint nothing — anchors still back hold-to-preview. */
-    private fun showBoxes(anchors: List<TextBox>) {
+     *  paint nothing — anchors still back hold-to-preview. [groups] is what
+     *  this look read: the minimum-text-size growth stays inside the crop
+     *  and clear of the text no anchor covers (the anchors, not the display
+     *  boxes: a furigana band never covers its line, and never grows). */
+    private fun showBoxes(anchors: List<TextBox>, groups: List<OcrManager.OcrGroup>) {
         overlayHidden = false
         if (!presenter.rendersOverlays) return
+        val avoid = GrowthLimits.unboxedText(groups.map { it.drawBounds }, anchors)
+        shownUnboxedText = avoid.isNotEmpty()
         service.showLiveOverlay(
             anchors.flatMap { presenter.displayBoxesFor(it) },
             cropLeft, cropTop, screenshotW, screenshotH,
@@ -595,6 +622,10 @@ class ReconcilerLiveMode(
             // Reconciler-tier bounds are hysteresis-filtered upstream — the
             // view must not fuzzy-hold children in place (drift lag bug).
             authoritativeBounds = true,
+            growthLimits = GrowthLimits(
+                bounds = if (cropWidth > 0 && cropHeight > 0) Rect(0, 0, cropWidth, cropHeight) else null,
+                avoid = avoid,
+            ),
         )
     }
 

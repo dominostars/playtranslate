@@ -2608,12 +2608,30 @@
     <string name="settings_vertical_grow_subtitle">Grow narrow vertical-text boxes so the translation reads horizontally. May cover nearby content.</string>
 
     <!-- Group header (rendered UPPERCASE) above the overlay settings on the Capture
-         and overlay screen: the Overlay Mode chooser, the "widen vertical text" switch
-         and the "edge indicator" switch. "Overlay" is what the app draws over the game
+         and overlay screen: the Overlay Mode chooser, the "minimum text size" slider,
+         the "widen vertical text" switch and the "edge indicator" switch. "Overlay" is
+         what the app draws over the game
          (the translation boxes on the game's text, and the result panel), so use the
          same word as the screen title (settings_cell_capture_overlay) and the Overlay
          Mode row (settings_overlay_mode_title). -->
     <string name="settings_header_overlay">Overlay</string>
+    <!-- Title of the "minimum text size" slider row on the Capture and overlay screen,
+         under the Overlay Mode chooser: the smallest size the translation text drawn
+         over the game aims for. "Text size" is the results screen's term for the same
+         thing (cd_text_size). -->
+    <string name="settings_overlay_min_text_title">Minimum text size</string>
+    <!-- Subtitle under the "minimum text size" slider: above the lowest value, a
+         translation box grows into free space around it so its text can reach the
+         chosen size, so it can end up bigger than the game text it covers. -->
+    <string name="settings_overlay_min_text_subtitle">Changing this value may make overlays larger than the original text.</string>
+    <!-- Warning line under the "minimum text size" subtitle, shown in the warning
+         color: a grown overlay covers more of the game, so with auto-translate on,
+         animation under it can make the overlay be removed when the text has not
+         changed. -->
+    <string name="settings_overlay_min_text_warning">Changing this value could cause auto-translate overlays to be incorrectly removed while playing games with a lot of animation.</string>
+    <!-- Sample drawn under the "minimum text size" slider at the chosen size (bold,
+         like the overlays) so the user can judge the size; hidden at the lowest value. -->
+    <string name="settings_overlay_min_text_example">Example text</string>
     <!-- Title of the "edge indicator" switch row: the soft accent-colored glow drawn
          around the edges of the screen while the result panel is showing, so a panel
          collapsed to its bottom strip is not mistaken for no overlay at all. -->

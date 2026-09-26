@@ -22,8 +22,6 @@ import com.playtranslate.capture.GameAudioGate
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
-import com.playtranslate.language.stackableTargetScript
-import com.playtranslate.language.targetSupportsVerticalText
 import com.playtranslate.ocr.mangaocr.MangaOcrProvisioning
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.ocrLabel
@@ -33,11 +31,13 @@ import com.playtranslate.ui.CaptureOverlaySettingsActivity
 import com.playtranslate.ui.DimController
 import com.playtranslate.ui.DragLookupController
 import com.playtranslate.ui.FloatingIconMenu
+import com.playtranslate.ui.GrowthLimits
 import com.playtranslate.ui.LanguageSetupActivity
 import com.playtranslate.ui.OcrPicker
 import com.playtranslate.ui.FloatingOverlayIcon
 import com.playtranslate.ui.MagnifierLens
 import com.playtranslate.ui.OverlayAlert
+import com.playtranslate.ui.OverlayRenderConfig
 import com.playtranslate.ui.OverlayWorkspace
 import com.playtranslate.ui.SourceListPage
 import com.playtranslate.ui.WorkspaceHost
@@ -587,10 +587,9 @@ class OverlayUiController(
         screenshotW: Int, screenshotH: Int,
         pinholeMode: Boolean = false,
         oneShot: Boolean = false,
-        verticalTextTarget: Boolean = false,
-        verticalTextStackable: Boolean = false,
-        verticalGrowEnabled: Boolean = false,
+        renderConfig: OverlayRenderConfig = OverlayRenderConfig.DEFAULT,
         authoritativeBounds: Boolean = false,
+        growthLimits: GrowthLimits = GrowthLimits.NONE,
     ) {
         // Overlay is appearing — dismiss the loading spinner across all icons.
         // Through the service rather than straight at the icons: the service
@@ -602,27 +601,26 @@ class OverlayUiController(
 
         val displayId = display.displayId
         // Reuse the existing view only if its pinhole mode, oneShot flag, AND
-        // verticalTextTarget all match. The first two differing means the
-        // window flags (FLAG_NOT_TOUCHABLE), params.alpha, mask alpha, or
+        // render config all match. The first two differing means the window
+        // flags (FLAG_NOT_TOUCHABLE), params.alpha, mask alpha, or
         // tap-to-dismiss listener would need to change — those are fixed at
-        // construction and at addOverlayWindow time. verticalTextTarget is also
-        // a constructor val (it selects the per-box render path) and derives
-        // from the user-mutable target-language pref, so a mid-session target
-        // switch must force a fresh view rather than silently reuse the stale
-        // render mode. The same applies to verticalTextStackable (target script)
-        // and verticalGrowEnabled (grow pref) — both are ctor vals that select the
-        // render path. In the current call flow none of these transitions hit this
-        // reuse path (beginHoldPreview/endHoldPreview teardown ensures a fresh
-        // create, and the grow toggle restarts live mode), but the guard prevents a
+        // construction and at addOverlayWindow time. The render config is also
+        // a constructor val (it selects the per-box render path and layout)
+        // and derives from user-mutable prefs (target language, grow, minimum
+        // text size), so a mid-session change must force a fresh view rather
+        // than silently reuse the stale layout; comparing it whole means a
+        // setting added to it is guarded without touching this line. In the
+        // current call flow none of these transitions hit this reuse path
+        // (beginHoldPreview/endHoldPreview teardown ensures a fresh create,
+        // and the settings rows stop live mode), but the guard prevents a
         // future caller from silently inheriting a stale view.
         val existing = translationOverlayHandles[displayId]
         if (existing != null && existing.pinholeMode == pinholeMode && existing.oneShot == oneShot &&
-            existing.verticalTextTarget == verticalTextTarget &&
-            existing.verticalTextStackable == verticalTextStackable &&
-            existing.verticalGrowEnabled == verticalGrowEnabled
+            existing.renderConfig == renderConfig
         ) {
             existing.setBoxes(
                 boxes, cropLeft, cropTop, screenshotW, screenshotH, authoritativeBounds,
+                growthLimits = growthLimits,
             )
             return
         }
@@ -691,14 +689,12 @@ class OverlayUiController(
             maskAlpha = mainMaskAlpha,
             oneShot = oneShot,
             boostContrast = mainBoostContrast,
-            verticalTextTarget = verticalTextTarget,
-            verticalTextStackable = verticalTextStackable,
-            verticalGrowEnabled = verticalGrowEnabled,
+            renderConfig = renderConfig,
             onDismiss = if (mainTouchable) {
                 { CaptureService.instance?.dismissLiveOverlay(displayId) }
             } else null,
         ).apply {
-            setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH)
+            setBoxes(boxes, cropLeft, cropTop, screenshotW, screenshotH, growthLimits = growthLimits)
         }
         val mainParams = buildOverlayLayoutParams(
             touchable = mainTouchable,
@@ -825,16 +821,16 @@ class OverlayUiController(
         val display = dm.getDisplay(displayId) ?: return false
         val displayCtx = context.createDisplayContext(display)
         val wm = OwnWindows.manager(displayCtx) ?: return false
-        val prefs = Prefs(context)
         val view = TranslationOverlayView(
             android.view.ContextThemeWrapper(displayCtx, android.R.style.Theme_DeviceDefault),
             oneShot = true,
-            verticalTextTarget = targetSupportsVerticalText(prefs.targetLang),
-            verticalTextStackable = stackableTargetScript(prefs.targetLang),
-            verticalGrowEnabled = prefs.verticalTextGrow,
+            renderConfig = OverlayRenderConfig.from(Prefs(context)),
             onDismiss = { hideAppBoxes() },
         ).apply {
-            setBoxes(data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH)
+            setBoxes(
+                data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH,
+                growthLimits = data.growthLimits,
+            )
         }
         // Backstop notification for removal paths that bypass hideAppBoxes
         // (the overlayHost.removeAll sweep, display death): if this view still
@@ -868,12 +864,31 @@ class OverlayUiController(
         return true
     }
 
-    /** Swap the app boxes in place — the skeleton → translated promotion when
-     *  a Done lands while they're up. No-op when they aren't. */
+    /** Swap the app boxes in place: the skeleton → translated promotion when
+     *  a Done lands while they're up. No-op when they aren't. The view's
+     *  render config is fixed at construction, so a render setting changed
+     *  since they went up replaces the window through [showAppBoxes]. The old
+     *  one is disowned silently first (not [hideAppBoxes], whose onDismissed
+     *  would flip the caller's toggle off for boxes that stay up); the
+     *  callback carries over, and fires only if the new window can't show. */
     fun updateAppBoxes(data: OneShotOverlayData) {
-        appBoxesView?.setBoxes(
-            data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH,
-        )
+        val view = appBoxesView ?: return
+        if (view.renderConfig == OverlayRenderConfig.from(Prefs(context))) {
+            view.setBoxes(
+                data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH,
+                growthLimits = data.growthLimits,
+            )
+            return
+        }
+        val displayId = appBoxesDisplayId
+        val onDismissed = appBoxesOnDismissed ?: {}
+        // Nulled before the removal, so the old view's detach backstop (its
+        // identity guard) stays silent.
+        appBoxesView = null
+        appBoxesDisplayId = -1
+        appBoxesOnDismissed = null
+        overlayHost.removeOverlayWindow(view)
+        if (!showAppBoxes(displayId, data, onDismissed)) onDismissed()
     }
 
     /** Tear the app boxes down. Idempotent. Disowns the window and fires its

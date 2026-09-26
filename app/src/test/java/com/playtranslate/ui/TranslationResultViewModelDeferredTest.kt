@@ -51,7 +51,7 @@ class TranslationResultViewModelDeferredTest {
         langContext = TranslationLangContext(SourceLangId.JA, "en", ChineseScriptVariant.SIMPLIFIED),
     )
 
-    private fun boxes() = OnScreenBoxes(OneShotOverlayData(emptyList(), 0, 0, 100, 100), displayId = 0)
+    private fun boxes() = OnScreenBoxes(OneShotOverlayData(emptyList(), 0, 0, 100, 100, 100, 100, emptyList()), displayId = 0)
 
     @Test
     fun `applyDeferredTranslation patches Ready in place and clears the pending`() {

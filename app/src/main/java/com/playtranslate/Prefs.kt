@@ -1065,6 +1065,20 @@ class Prefs internal constructor(
         get() = sp.getBoolean("vertical_text_grow", true)
         set(v) = sp.edit { putBoolean("vertical_text_grow", v) }
 
+    /** Smallest size, in sp, an on-screen translation overlay aims its text
+     *  at. The default reproduces the renderer's historical autosize floor, so
+     *  an untouched install lays overlays out exactly as before; above it, a
+     *  box whose text doesn't fit grows into free space inside the capture
+     *  region, and shrinks below the value only when there's no room left.
+     *  Read when the overlay view is created, so the settings row stops live
+     *  mode to apply it. */
+    var overlayMinTextSp: Int
+        get() = sp.getInt(KEY_OVERLAY_MIN_TEXT_SP, OVERLAY_MIN_TEXT_SP_DEFAULT)
+            .coerceIn(OVERLAY_MIN_TEXT_SP_DEFAULT, OVERLAY_MIN_TEXT_SP_MAX)
+        set(v) = sp.edit {
+            putInt(KEY_OVERLAY_MIN_TEXT_SP, v.coerceIn(OVERLAY_MIN_TEXT_SP_DEFAULT, OVERLAY_MIN_TEXT_SP_MAX))
+        }
+
     /** Opt-in manga-ocr refinement for Japanese OCR — high quality, slow; OFF by
      *  default. Runtime-gated further to Japanese + arm64 + installed pack; the value
      *  is pushed to [OcrManager.mangaOcrEnabled] via
@@ -1637,6 +1651,12 @@ class Prefs internal constructor(
         const val DEFAULT_RESULTS_FONT_MIN_SP = 16
         const val DEFAULT_RESULTS_FONT_MAX_SP = 24
 
+        /** Selectable bounds of [overlayMinTextSp], in sp. The default is also
+         *  the range's low end: it is the overlay autosize floor, so the
+         *  slider's resting position means "overlays as they always were". */
+        const val OVERLAY_MIN_TEXT_SP_DEFAULT = 6
+        const val OVERLAY_MIN_TEXT_SP_MAX = 20
+
         const val KEY_SOURCE_LANG    = "source_lang"
         const val KEY_TARGET_LANG    = "target_lang"
         const val KEY_TARGET_CHINESE_VARIANT = "target_chinese_variant"
@@ -1796,6 +1816,7 @@ class Prefs internal constructor(
         const val KEY_HIDE_GAME_OVERLAYS                   = "hide_game_overlays"
         /** Public so a showing result panel can [observe] it. */
         const val KEY_EDGE_INDICATOR_ENABLED               = "edge_indicator_enabled"
+        private const val KEY_OVERLAY_MIN_TEXT_SP          = "overlay_min_text_sp"
         private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"
         private const val KEY_LAST_YOMITAN_UPDATE_CHECK    = "last_yomitan_update_check"
         private const val KEY_YOMITAN_UPDATE_BACKFILL_DONE = "yomitan_update_backfill_done"

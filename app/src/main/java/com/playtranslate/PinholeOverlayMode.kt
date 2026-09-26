@@ -13,6 +13,7 @@ import android.view.Choreographer
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextDirection
 import com.playtranslate.model.OcrProvenance
+import com.playtranslate.ui.GrowthLimits
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -68,6 +69,11 @@ class PinholeOverlayMode(
     private var cropTop = 0
     private var screenshotW = 0
     private var screenshotH = 0
+    /** The OCR crop's size: the region boxes may grow inside (see
+     *  [GrowthLimits]); set with the crop origin, kept current by every full
+     *  look after (a region can change size in place). */
+    private var cropWidth = 0
+    private var cropHeight = 0
     /** Most-recent OCR provenance for panel emissions ([sendFullStateToPanel]):
      *  refreshed on every full look whose runOcr returned a result. Removal-only
      *  and sweep emissions (runOcr null — no text found) reuse the last pass's
@@ -751,6 +757,10 @@ class PinholeOverlayMode(
                     return prefs.captureIntervalMs
                 }
             }
+            if (pipeline != null) {
+                cropWidth = pipeline.cropWidth
+                cropHeight = pipeline.cropHeight
+            }
 
             val boxes = cachedBoxes ?: emptyList()
 
@@ -950,6 +960,15 @@ class PinholeOverlayMode(
                 )
             }
 
+            // Limits for this look's commits (minimum text size): the crop,
+            // and the text of this look that no committed box covers, so
+            // growth never covers text that has no box yet.
+            val lookGroups = pipeline?.ocrResult?.groups ?: emptyList()
+            fun growthLimitsFor(committed: List<TextBox>) = GrowthLimits(
+                bounds = if (cropWidth > 0 && cropHeight > 0) Rect(0, 0, cropWidth, cropHeight) else null,
+                avoid = GrowthLimits.unboxedText(lookGroups.map { it.drawBounds }, committed),
+            )
+
             if (debug && (anyChanged || farOcrGroups.isNotEmpty())) {
                 DetectionLog.log(
                     "D$displayId c$cycleNum transitions: " +
@@ -1000,7 +1019,9 @@ class PinholeOverlayMode(
             if (anyChanged) {
                 anyRemoved = allRemovals.isNotEmpty()
                 if (nextBoxes.isNotEmpty()) {
-                    showOverlayAndCapture(nextBoxes, cropLeft, cropTop, screenshotW, screenshotH)
+                    showOverlayAndCapture(
+                        nextBoxes, cropLeft, cropTop, screenshotW, screenshotH, growthLimitsFor(nextBoxes),
+                    )
                 } else if (placeGroups.isEmpty()) {
                     // No surviving boxes AND no replacement coming — empty
                     // the main overlay so stale boxes don't linger.
@@ -1070,7 +1091,9 @@ class PinholeOverlayMode(
 
                     val merged = (cachedBoxes ?: emptyList()) + partial
                     cachedBoxes = merged
-                    showOverlayAndCapture(merged, cropLeft, cropTop, screenshotW, screenshotH)
+                    showOverlayAndCapture(
+                        merged, cropLeft, cropTop, screenshotW, screenshotH, growthLimitsFor(merged),
+                    )
 
                     // Recording backend: cache-hits are shown right here and
                     // never reach translatePlaceholders — record them now.
@@ -1083,7 +1106,9 @@ class PinholeOverlayMode(
                         val existing = cachedBoxes?.dropLast(placeholders.size) ?: emptyList()
                         val mergedFinal = existing + translated
                         cachedBoxes = mergedFinal
-                        showOverlayAndCapture(mergedFinal, cropLeft, cropTop, screenshotW, screenshotH)
+                        showOverlayAndCapture(
+                            mergedFinal, cropLeft, cropTop, screenshotW, screenshotH, growthLimitsFor(mergedFinal),
+                        )
                         // Freshly translated boxes only — the cache-hits above
                         // already recorded (gate dedupe would absorb a double,
                         // but don't lean on it).
@@ -1169,9 +1194,14 @@ class PinholeOverlayMode(
      *  between flipping a mutable flag and [TranslationOverlayView.rebuildChildren]. */
     private suspend fun showOverlayAndCapture(
         boxes: List<TextBox>,
-        left: Int, top: Int, sw: Int, sh: Int
+        left: Int, top: Int, sw: Int, sh: Int,
+        /** Where the minimum text size may grow [boxes] (see [GrowthLimits]). */
+        growthLimits: GrowthLimits,
     ) {
-        service.showLiveOverlay(boxes, left, top, sw, sh, pinholeMode = true, displayId = displayId)
+        service.showLiveOverlay(
+            boxes, left, top, sw, sh, pinholeMode = true, displayId = displayId,
+            growthLimits = growthLimits,
+        )
         // Wait for children to be laid out before snapshotting. addOverlayWindow
         // is async; onSizeChanged posts rebuildChildren; rebuildChildren adds
         // children that themselves need a layout pass. Until that completes,

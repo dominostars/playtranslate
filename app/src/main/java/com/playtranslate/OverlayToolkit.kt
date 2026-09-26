@@ -619,8 +619,15 @@ object OverlayToolkit {
         val ocrResult: OcrManager.OcrResult,
         val dedupKey: String,
         val cropLeft: Int, val cropTop: Int,
-        val screenshotW: Int, val screenshotH: Int
-    )
+        val screenshotW: Int, val screenshotH: Int,
+        /** The OCR crop's size ([computeOcrCrop]), so an overlay can keep its
+         *  boxes' growth inside the region that was read. Appended after the
+         *  fields callers destructure positionally. */
+        val cropWidth: Int, val cropHeight: Int,
+    ) {
+        /** The capture region in the boxes' own (crop) coordinates. */
+        val cropBounds: android.graphics.Rect get() = android.graphics.Rect(0, 0, cropWidth, cropHeight)
+    }
 
     /**
      * Compute the OCR input crop bounds for a raw screenshot. Single source of
@@ -725,7 +732,10 @@ object OverlayToolkit {
         val dedupKey = ocrResult.fullText.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
         if (dedupKey.isEmpty()) return null
 
-        return OcrPipelineResult(ocrResult, dedupKey, crop.left, crop.top, raw.width, raw.height)
+        return OcrPipelineResult(
+            ocrResult, dedupKey, crop.left, crop.top, raw.width, raw.height,
+            cropWidth = crop.width(), cropHeight = crop.height(),
+        )
     }
 
     /** Opaque fill for the floating icon's window rect in OCR input — a

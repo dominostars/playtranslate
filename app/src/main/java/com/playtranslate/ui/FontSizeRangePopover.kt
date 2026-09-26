@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.RectF
 import android.graphics.Typeface
 import android.util.TypedValue
 import android.view.MotionEvent
@@ -15,7 +14,6 @@ import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.themeColor
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 /**
  * The results text-size picker: a two-handle pill slider that edits
@@ -62,27 +60,16 @@ class FontSizeRangePopover(
      * printed above it. Values are whole sp only — this control picks a range
      * to read, not a typographic measurement.
      *
-     * Each handle carries a [TOUCH_BOX_DP]-square grab area centred on its (much
+     * Each handle carries a [SliderTrackPainter.TOUCH_BOX_DP]-square grab area centred on its (much
      * smaller) painted circle. The row is sized, and the track inset, so that box
      * always lies inside this view — a parent won't dispatch a touch that misses
      * the child's bounds, so a box hanging off the edge would silently shrink.
      */
     @SuppressLint("ClickableViewAccessibility")
     private inner class RangeTrackView(c: Context) : View(c) {
-        private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = ctx.themeColor(R.attr.ptSurface)
-        }
-        private val activePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = ctx.themeColor(R.attr.ptAccent)
-        }
-        private val handleFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = ctx.themeColor(R.attr.ptCard)
-        }
-        private val handleRing = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = ctx.themeColor(R.attr.ptAccent)
-            style = Paint.Style.STROKE
-            strokeWidth = dp(2f)
-        }
+        /** Track, handles and value axis, shared with [SizeSliderView]. */
+        private val painter = SliderTrackPainter(ctx)
+        private val accent = ctx.themeColor(R.attr.ptAccent)
         private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = ctx.themeColor(R.attr.ptText)
             textSize = TypedValue.applyDimension(
@@ -92,10 +79,7 @@ class FontSizeRangePopover(
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         }
 
-        private val trackRect = RectF()
-        private val handleRadius = dp(HANDLE_RADIUS_DP)
-        private val trackHalf = dp(TRACK_H_DP) / 2f
-        private val touchHalf = dp(TOUCH_BOX_DP) / 2f
+        private val touchHalf = painter.touchHalf
         private val touchSlop = ViewConfiguration.get(ctx).scaledTouchSlop
 
         /** Which handle the in-flight gesture owns. */
@@ -113,24 +97,16 @@ class FontSizeRangePopover(
         private var grabOffset = 0f
 
         /** Half the touch box, so an end handle's whole grab area is inside this
-         *  view's bounds. The painted circle is [handleRadius] — much smaller —
-         *  so the track simply starts further in. */
+         *  view's bounds. The painted circle is much smaller, so the track
+         *  simply starts further in. */
         private val edgeInset: Float get() = touchHalf
-        private val spanPx: Float get() = (width - edgeInset * 2).coerceAtLeast(1f)
         private val trackCenterY: Float get() = dp(LABEL_BAND_DP) + touchHalf
 
-        private fun xFor(value: Int): Float {
-            val t = (value - Prefs.FONT_SP_FLOOR).toFloat() /
-                (Prefs.FONT_SP_CEIL - Prefs.FONT_SP_FLOOR)
-            return edgeInset + t * spanPx
-        }
+        private fun xFor(value: Int): Float =
+            painter.xFor(value, Prefs.FONT_SP_FLOOR, Prefs.FONT_SP_CEIL, width)
 
-        private fun valueFor(x: Float): Int {
-            val t = ((x - edgeInset) / spanPx).coerceIn(0f, 1f)
-            val raw = Prefs.FONT_SP_FLOOR +
-                t * (Prefs.FONT_SP_CEIL - Prefs.FONT_SP_FLOOR)
-            return raw.roundToInt().coerceIn(Prefs.FONT_SP_FLOOR, Prefs.FONT_SP_CEIL)
-        }
+        private fun valueFor(x: Float): Int =
+            painter.valueFor(x, Prefs.FONT_SP_FLOOR, Prefs.FONT_SP_CEIL, width)
 
         private fun xForHandle(which: Int): Float =
             xFor(if (which == MIN) prefs.resultsFontMinSp else prefs.resultsFontMaxSp)
@@ -142,15 +118,10 @@ class FontSizeRangePopover(
 
             // Plain pill across the full span, then the accent stretch between
             // the handles painted over it.
-            trackRect.set(edgeInset, cy - trackHalf, width - edgeInset, cy + trackHalf)
-            canvas.drawRoundRect(trackRect, trackHalf, trackHalf, trackPaint)
-            trackRect.set(minX, cy - trackHalf, maxX, cy + trackHalf)
-            canvas.drawRoundRect(trackRect, trackHalf, trackHalf, activePaint)
+            painter.drawTrack(canvas, edgeInset, width - edgeInset, cy)
+            painter.drawStretch(canvas, minX, maxX, cy, accent)
 
-            for (x in listOf(minX, maxX)) {
-                canvas.drawCircle(x, cy, handleRadius, handleFill)
-                canvas.drawCircle(x, cy, handleRadius - handleRing.strokeWidth / 2f, handleRing)
-            }
+            for (x in listOf(minX, maxX)) painter.drawHandle(canvas, x, cy, accent)
 
             // Labels ride above their handle. Two nudges: apart from each other
             // when the handles close to within a label's width (adjacent values
@@ -285,13 +256,10 @@ class FontSizeRangePopover(
         const val CARD_W_DP = 220f
         const val CARD_V_PAD_DP = 6f
 
-        /** Label band above the handles, plus the handles' own [TOUCH_BOX_DP]
+        /** Label band above the handles, plus the handles' own touch-box
          *  band — together the row height, so a 48dp box fits vertically. */
         const val LABEL_BAND_DP = 18f
-        const val TOUCH_BOX_DP = 48f
-        const val TRACK_ROW_H_DP = LABEL_BAND_DP + TOUCH_BOX_DP
-        const val TRACK_H_DP = 10f
-        const val HANDLE_RADIUS_DP = 9f
+        const val TRACK_ROW_H_DP = LABEL_BAND_DP + SliderTrackPainter.TOUCH_BOX_DP
         const val LABEL_SP = 13f
 
         /** Below this separation the two handles' grab boxes overlap so heavily

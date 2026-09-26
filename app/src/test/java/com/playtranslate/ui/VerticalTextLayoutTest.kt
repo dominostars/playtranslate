@@ -18,6 +18,39 @@ class VerticalTextLayoutTest {
     // ── compute ──────────────────────────────────────────────────────────
 
     @Test
+    fun compute_widthBoundFit_drawsEveryColumnItCounted() {
+        // Width is the binding constraint here: the bisection settles right on
+        // the fit boundary, where a separate floor(availW / colStep) recount
+        // came out one column short and dropped the third cell.
+        val l = VerticalTextLayout.compute(
+            graphemeCount = 3, width = 89f, height = 32f, pad = 3f, minPx = 6f, maxPx = 200f,
+        )
+        assertTrue("cell ${l.cellSize}", l.cellSize > 6f)
+        assertTrue("placed ${l.rows} x ${l.cols}", l.rows * l.cols >= 3)
+    }
+
+    @Test
+    fun compute_whenTheTextFits_everyCellIsPlaced() {
+        val rnd = kotlin.random.Random(7)
+        repeat(20_000) {
+            val g = 1 + rnd.nextInt(40)
+            val w = 10f + rnd.nextInt(400)
+            val h = 10f + rnd.nextInt(800)
+            val pad = 8.25f
+            val minPx = 16.5f
+            val l = VerticalTextLayout.compute(g, w, h, pad, minPx = minPx, maxPx = 550f)
+            if (l.cellSize > minPx) {
+                // Above the floor means the text fit at the chosen size.
+                assertTrue("g=$g w=$w h=$h placed ${l.rows} x ${l.cols}", l.rows * l.cols >= g)
+                assertTrue(
+                    "g=$g w=$w h=$h draws past the box",
+                    l.cols * l.colStep <= (w - 2 * pad) + 1e-3f,
+                )
+            }
+        }
+    }
+
+    @Test
     fun compute_shortText_singleColumn_sizedToWidth() {
         // 4 cells in a tall narrow box: one column, cell size limited by the
         // 100px width (not the ample 400px height).

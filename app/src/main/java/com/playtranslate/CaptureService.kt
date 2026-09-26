@@ -80,8 +80,6 @@ import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.translation.ChineseScriptConverter
-import com.playtranslate.language.targetSupportsVerticalText
-import com.playtranslate.language.stackableTargetScript
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.language.ShortTextTokenCounters
 import com.playtranslate.language.isShortText
@@ -90,6 +88,8 @@ import com.playtranslate.translation.ShortTextOfflineRoute
 import com.playtranslate.translation.dispatchPartitioned
 import com.playtranslate.translation.shouldBypassForLlm
 import com.playtranslate.ui.DegradedWarningKind
+import com.playtranslate.ui.GrowthLimits
+import com.playtranslate.ui.OverlayRenderConfig
 import com.playtranslate.ui.TextBox
 import com.playtranslate.ui.noTextStatusMessage
 import com.playtranslate.overlay.OwnWindows
@@ -1068,7 +1068,10 @@ class CaptureService : Service() {
             // Reveal the page on OCR: show the source now, translate in the section.
             // The skeleton boxes ride along so a chips-preferred panel can collapse
             // NOW and show pulsing placeholders over the game while we translate.
-            val skeletonData = buildOneShotOverlayData(ocrResult, colorRef, left, top, rawW, rawH)
+            val skeletonData = buildOneShotOverlayData(
+                ocrResult, colorRef, left, top, rawW, rawH,
+                cropWidth = right - left, cropHeight = bottom - top,
+            )
             state.value = CaptureState.Translating(
                 ocrResult.fullText, ocrResult.segments,
                 ocrProvenanceFor(
@@ -2927,6 +2930,8 @@ class CaptureService : Service() {
         oneShot: Boolean = false,
         displayId: Int = primaryGameDisplayId(),
         authoritativeBounds: Boolean = false,
+        /** Where the minimum text size may grow the boxes (see [GrowthLimits]). */
+        growthLimits: GrowthLimits = GrowthLimits.NONE,
     ) {
         // livePaused, not just holdActive: no live overlay may render under
         // the rescue alert either — the backstop that keeps ANY live mode,
@@ -2939,14 +2944,12 @@ class CaptureService : Service() {
         val display = dm.getDisplay(displayId)
         if (display == null) { Log.w("FuriganaDbg", "showLiveOverlay BLOCKED: display=null for id=$displayId"); return }
         Log.d("FuriganaDbg", "showLiveOverlay: ${boxes.size} boxes, crop=($cropLeft,$cropTop), screen=${screenshotW}x$screenshotH on display $displayId")
-        val prefs = Prefs(this)
-        val verticalTextTarget = targetSupportsVerticalText(prefs.targetLang)
         ui.showTranslationOverlay(
             display, boxes, cropLeft, cropTop, screenshotW, screenshotH,
-            pinholeMode, oneShot, verticalTextTarget,
-            verticalTextStackable = stackableTargetScript(prefs.targetLang),
-            verticalGrowEnabled = prefs.verticalTextGrow,
+            pinholeMode, oneShot,
+            renderConfig = OverlayRenderConfig.from(Prefs(this)),
             authoritativeBounds = authoritativeBounds,
+            growthLimits = growthLimits,
         )
     }
 
@@ -3243,7 +3246,10 @@ class CaptureService : Service() {
             // OCR is in — surface the source now so the page can reveal before the
             // (slower) translation runs. The skeleton boxes ride along for the
             // chips-preferred collapse-with-placeholders flow.
-            val skeletonData = buildOneShotOverlayData(ocrResult, colorRef, left, top, rawW, rawH)
+            val skeletonData = buildOneShotOverlayData(
+                ocrResult, colorRef, left, top, rawW, rawH,
+                cropWidth = right - left, cropHeight = bottom - top,
+            )
             onOcrReady?.invoke(
                 ocrResult.fullText, ocrResult.segments,
                 ocrProvenanceFor(
@@ -3627,6 +3633,7 @@ class CaptureService : Service() {
         colorRef: Bitmap?,
         cropLeft: Int, cropTop: Int,
         screenshotW: Int, screenshotH: Int,
+        cropWidth: Int, cropHeight: Int,
     ): OneShotOverlayData? {
         if (colorRef == null || ocrResult.groups.isEmpty()) return null
         val colors = OverlayToolkit.sampleGroupColors(
@@ -3643,7 +3650,10 @@ class CaptureService : Service() {
                 drawBounds = g.drawBounds,
             )
         }
-        return OneShotOverlayData(boxes, cropLeft, cropTop, screenshotW, screenshotH)
+        return OneShotOverlayData(
+            boxes, cropLeft, cropTop, screenshotW, screenshotH, cropWidth, cropHeight,
+            text = ocrResult.groups.map { it.drawBounds },
+        )
     }
 
     /** On-demand translation for a single text string (used by edit overlay, drag-sentence, etc.). */

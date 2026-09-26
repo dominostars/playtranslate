@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.ui.GrowthLimits
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -192,7 +193,11 @@ class OneShotManager(private val service: CaptureService) {
                 // Shimmer placeholder callback. Gen-check so a superseded
                 // cycle can't paint over the new generation's overlay.
                 if (cycle.generation == currentGeneration) {
-                    service.showLiveOverlay(intermediate, cropLeft, cropTop, screenshotW, screenshotH, force = true, oneShot = true, displayId = displayId)
+                    service.showLiveOverlay(
+                        intermediate, cropLeft, cropTop, screenshotW, screenshotH,
+                        force = true, oneShot = true, displayId = displayId,
+                        growthLimits = GrowthLimits(bounds = pipeline.cropBounds),
+                    )
                 }
             }
 
@@ -200,7 +205,11 @@ class OneShotManager(private val service: CaptureService) {
 
             // 6. Show final overlay
             if (boxes.isNotEmpty()) {
-                service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH, force = true, oneShot = true, displayId = displayId)
+                service.showLiveOverlay(
+                    boxes, cropLeft, cropTop, screenshotW, screenshotH,
+                    force = true, oneShot = true, displayId = displayId,
+                    growthLimits = GrowthLimits(bounds = pipeline.cropBounds),
+                )
             }
 
             // Deliberate capture → recording backend, one capture session

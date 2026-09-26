@@ -13,6 +13,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.TypedValue
 import android.view.Display
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -97,6 +98,9 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     // ── Overlay refs ──────────────────────────────────────────────────────
     private lateinit var overlayModeSection: View
     private lateinit var overlayModeToggleContainer: FrameLayout
+    private lateinit var sliderOverlayMinText: SizeSliderView
+    private lateinit var tvOverlayMinTextValue: TextView
+    private lateinit var tvOverlayMinTextExample: TextView
     private lateinit var rowVerticalGrow: View
     private lateinit var switchVerticalGrow: MaterialSwitch
     private lateinit var rowEdgeIndicator: View
@@ -121,6 +125,9 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             rowEnhancedAutoTranslate.findViewById(R.id.checkEnhancedAutoTranslate)
         overlayModeSection = findViewById(R.id.overlayModeSection)
         overlayModeToggleContainer = findViewById(R.id.overlayModeToggleContainer)
+        sliderOverlayMinText = findViewById(R.id.sliderOverlayMinText)
+        tvOverlayMinTextValue = findViewById(R.id.tvOverlayMinTextValue)
+        tvOverlayMinTextExample = findViewById(R.id.tvOverlayMinTextExample)
         rowHideOverlays = findViewById(R.id.rowHideOverlays)
         switchHideOverlays = rowHideOverlays.findViewById(R.id.switchRowToggle)
         rowTouchesRefresh = findViewById(R.id.rowTouchesRefresh)
@@ -309,6 +316,30 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             findViewById<View>(R.id.dividerOverlayMode)?.visibility = View.GONE
             if (prefs.overlayMode == OverlayMode.FURIGANA) {
                 prefs.overlayMode = OverlayMode.TRANSLATION
+            }
+        }
+
+        // -- Minimum text size slider (always shown) --
+        // Read when the overlay view is built (it shapes the layout), so a
+        // change stops live mode, like the toggles around it. At the lowest
+        // value, where the overlays behave exactly as they always have, the
+        // value cell reads "-" and the example is hidden; above it the cell
+        // shows the number and the example shows the chosen size.
+        fun showOverlayMinText(sp: Int) {
+            val raised = sp > Prefs.OVERLAY_MIN_TEXT_SP_DEFAULT
+            tvOverlayMinTextValue.text = if (raised) sp.toString() else "-"
+            tvOverlayMinTextExample.isVisible = raised
+            if (raised) tvOverlayMinTextExample.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp.toFloat())
+        }
+        sliderOverlayMinText.setRange(Prefs.OVERLAY_MIN_TEXT_SP_DEFAULT, Prefs.OVERLAY_MIN_TEXT_SP_MAX)
+        sliderOverlayMinText.value = prefs.overlayMinTextSp
+        sliderOverlayMinText.contentDescription = getString(R.string.settings_overlay_min_text_title)
+        showOverlayMinText(sliderOverlayMinText.value)
+        sliderOverlayMinText.onValueChange = { sp ->
+            prefs.overlayMinTextSp = sp
+            showOverlayMinText(sp)
+            if (CaptureService.instance?.isLive == true) {
+                CaptureService.instance?.stopLive()
             }
         }
 

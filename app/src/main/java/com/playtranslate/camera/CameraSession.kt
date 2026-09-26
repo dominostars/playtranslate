@@ -39,8 +39,7 @@ import com.playtranslate.camera.tracker.TrackerConfig
 import com.playtranslate.camera.tracker.TrackerEngine
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
-import com.playtranslate.language.stackableTargetScript
-import com.playtranslate.language.targetSupportsVerticalText
+import com.playtranslate.ui.OverlayRenderConfig
 import com.playtranslate.ui.TextBox
 import com.playtranslate.ui.noTextStatusMessage
 import java.util.concurrent.Executors
@@ -1145,12 +1144,7 @@ class CameraSession(
     ) {
         withContext(Dispatchers.Main) {
             if (!displayEpoch.isCurrent(epoch)) return@withContext
-            val rasterizer = OverlayRasterizer(
-                context,
-                verticalTextTarget = targetSupportsVerticalText(prefs.targetLang),
-                verticalTextStackable = stackableTargetScript(prefs.targetLang),
-                verticalGrowEnabled = prefs.verticalTextGrow,
-            )
+            val rasterizer = OverlayRasterizer(context, OverlayRenderConfig.from(prefs))
             // frozenRenderBoost: the review zoom's crispness factor — 1f in
             // every live mode (gestures only exist while FROZEN; unfreeze
             // resets it), so the live path's raster scale is untouched.
@@ -1176,6 +1170,8 @@ class CameraSession(
      *  the swap). Main thread. */
     private fun maybeRerasterForScale(trackedScale: Float) {
         if (rerasterPending) return
+        // Hidden boxes (hideFrozenOverlays keeps lastShownBoxes) must not come back on a zoom.
+        if (warpView?.hasVisibleRegions != true) return
         val boxes = lastShownBoxes ?: return
         // Desired raster resolution = the tracked zoom relative to the anchor
         // TIMES the base view scale (rasters are view-resolution now, not
@@ -1194,12 +1190,7 @@ class CameraSession(
         scope.launch(Dispatchers.Main) {
             try {
                 if (!displayEpoch.isCurrent(epoch) || lastShownBoxes !== boxes) return@launch
-                val rasterizer = OverlayRasterizer(
-                    context,
-                    verticalTextTarget = targetSupportsVerticalText(prefs.targetLang),
-                    verticalTextStackable = stackableTargetScript(prefs.targetLang),
-                    verticalGrowEnabled = prefs.verticalTextGrow,
-                )
+                val rasterizer = OverlayRasterizer(context, OverlayRenderConfig.from(prefs))
                 val regions = rasterizer.rasterize(boxes, auW, auH, keys, renderScale = targetScale)
                 ensureWarpView().setRegions(regions, auW, auH)
                 lastShownRegions = regions
@@ -1633,7 +1624,7 @@ class CameraSession(
         // Non-empty overlayData lights the panel's "Show on screen" action;
         // the camera's BoxPresenter ignores the boxes themselves and paints
         // through the warp path ([showFrozenOverlays]) instead.
-        val overlayData = OneShotOverlayData(emptyList(), 0, 0, auW, auH)
+        val overlayData = OneShotOverlayData(emptyList(), 0, 0, auW, auH, auW, auH, emptyList())
         state.value = CaptureState.Translating(originalText, segments, provenance, overlayData)
 
         // Recording pair captured BEFORE the translate call — a mid-flight

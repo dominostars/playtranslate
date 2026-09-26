@@ -34,6 +34,7 @@ import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.themeColor
 import com.playtranslate.ui.DismissReason
 import com.playtranslate.ui.OverlayAlert
+import com.playtranslate.ui.OverlayRenderConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -81,6 +82,11 @@ class ImageImportActivity : AppCompatActivity() {
      *  download screen persists the import token while this activity is
      *  paused. */
     private var sessionLangKey: String? = null
+
+    /** The overlay render settings the review last drew with: Capture and
+     *  overlay settings (minimum text size, Widen vertical text) can change
+     *  them while we're paused, and boxes on screen must redraw. */
+    private var sessionRenderConfig: OverlayRenderConfig? = null
 
     // Multi-select on both pickers: N picks review as an N-page document
     // (selection order = page order); a single pick keeps the full
@@ -184,6 +190,7 @@ class ImageImportActivity : AppCompatActivity() {
             overlayMode = { prefs.importOverlayMode },
         )
         sessionLangKey = langKey()
+        sessionRenderConfig = OverlayRenderConfig.from(prefs)
 
         onBackPressedDispatcher.addCallback(this) {
             when {
@@ -303,8 +310,15 @@ class ImageImportActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         controller.syncControls()
+        val renderConfig = OverlayRenderConfig.from(prefs)
+        val renderChanged = sessionRenderConfig != null && sessionRenderConfig != renderConfig
+        sessionRenderConfig = renderConfig
         if (sessionLangKey != null && sessionLangKey != langKey()) {
+            // Re-reads, and draws under the current render settings too.
             refreshAfterReadSettingsChange()
+        } else if (renderChanged && controller.isReviewing && session.hasVisibleOverlays()) {
+            // Gated like the flavor cycle: never resurrect boxes the user hid.
+            session.showOverlays()
         }
     }
 

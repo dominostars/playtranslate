@@ -399,6 +399,86 @@
                         android:background="?attr/ptDivider"
                         android:visibility="gone" />
 
+                    <!-- Minimum text size (always shown): title, subtitle, the
+                         value and its slider, and an example drawn at the value,
+                         shown only above the lowest value. Wired in
+                         CaptureOverlaySettingsActivity.setupOverlaySection. -->
+                    <LinearLayout
+                        android:id="@+id/rowOverlayMinText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="@dimen/pt_row_v_padding">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/settings_overlay_min_text_title"
+                            style="@style/Text.PT.RowTitle" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="@string/settings_overlay_min_text_subtitle"
+                            style="@style/Text.PT.RowSubtitle" />
+
+                        <!-- Warning line, styled like the offline backend
+                             row's tvOfflineWarningLine. Always shown. -->
+                        <TextView
+                            android:id="@+id/tvOverlayMinTextWarning"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="@string/settings_overlay_min_text_warning"
+                            android:textSize="12sp"
+                            android:fontFamily="sans-serif-medium"
+                            android:textColor="?attr/ptWarning" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <!-- Fixed width that fits "20", so the slider never
+                                 shifts as the value changes. -->
+                            <TextView
+                                android:id="@+id/tvOverlayMinTextValue"
+                                android:layout_width="28dp"
+                                android:layout_height="wrap_content"
+                                android:gravity="center"
+                                android:importantForAccessibility="no"
+                                style="@style/Text.PT.RowTitle" />
+
+                            <com.playtranslate.ui.SizeSliderView
+                                android:id="@+id/sliderOverlayMinText"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/tvOverlayMinTextExample"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:gravity="center"
+                            android:text="@string/settings_overlay_min_text_example"
+                            android:textColor="?attr/ptText"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
+                    <View
+                        android:id="@+id/dividerOverlayMinText"
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider" />
+
                     <!-- Vertical-text grow toggle (always shown). Title/subtitle +
                          checked state wired in CaptureOverlaySettingsActivity. -->
                     <include layout="@layout/settings_row_switch"

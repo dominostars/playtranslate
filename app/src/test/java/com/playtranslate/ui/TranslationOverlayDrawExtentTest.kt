@@ -23,7 +23,7 @@ class TranslationOverlayDrawExtentTest {
     private fun laidOutOverlay(): TranslationOverlayView {
         val ctx: Context = RuntimeEnvironment.getApplication()
         ctx.setTheme(androidx.appcompat.R.style.Theme_AppCompat_Light)
-        val v = TranslationOverlayView(ctx, verticalTextTarget = false)
+        val v = TranslationOverlayView(ctx)
         v.measure(
             MeasureSpec.makeMeasureSpec(1000, MeasureSpec.EXACTLY),
             MeasureSpec.makeMeasureSpec(1000, MeasureSpec.EXACTLY),

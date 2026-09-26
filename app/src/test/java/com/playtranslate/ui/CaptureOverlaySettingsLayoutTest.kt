@@ -71,6 +71,7 @@ class CaptureOverlaySettingsLayoutTest {
             listOfNotNull(
                 "overlayModeSection".takeIf { hint },
                 "dividerOverlayMode".takeIf { hint },
+                "rowOverlayMinText", "dividerOverlayMinText",
                 "rowVerticalGrow", "dividerVerticalGrow",
                 "rowEdgeIndicator",
             ),

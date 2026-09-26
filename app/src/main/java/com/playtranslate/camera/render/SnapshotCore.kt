@@ -384,7 +384,7 @@ object SnapshotCore {
             // Non-empty overlayData lights the panel's "Show on screen"
             // action; both flows' presenters ignore the boxes themselves and
             // paint through their own warp path.
-            OneShotOverlayData(emptyList(), 0, 0, auW, auH),
+            OneShotOverlayData(emptyList(), 0, 0, auW, auH, auW, auH, emptyList()),
         )
     }
 

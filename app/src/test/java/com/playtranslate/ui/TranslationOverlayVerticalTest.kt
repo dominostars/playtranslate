@@ -46,7 +46,7 @@ class TranslationOverlayVerticalTest {
     private fun laidOutOverlay(verticalTextTarget: Boolean): TranslationOverlayView {
         val ctx: Context = RuntimeEnvironment.getApplication()
         ctx.setTheme(androidx.appcompat.R.style.Theme_AppCompat_Light)
-        val v = TranslationOverlayView(ctx, verticalTextTarget = verticalTextTarget)
+        val v = TranslationOverlayView(ctx, renderConfig = OverlayRenderConfig(verticalTextTarget = verticalTextTarget))
         v.measure(
             MeasureSpec.makeMeasureSpec(1080, MeasureSpec.EXACTLY),
             MeasureSpec.makeMeasureSpec(1920, MeasureSpec.EXACTLY),

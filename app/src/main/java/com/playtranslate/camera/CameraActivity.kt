@@ -49,6 +49,7 @@ import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.themeColor
 import com.playtranslate.ui.DismissReason
 import com.playtranslate.ui.OverlayAlert
+import com.playtranslate.ui.OverlayRenderConfig
 import com.playtranslate.overlay.OwnWindows
 import kotlinx.coroutines.launch
 
@@ -79,6 +80,11 @@ class CameraActivity : AppCompatActivity() {
     /** Language config the session was last built/reset against — a change
      *  made in settings while we're paused must drop the cached OCR state. */
     private var sessionLangKey: String? = null
+
+    /** The overlay render settings the session last drew with: Capture and
+     *  overlay settings (minimum text size, Widen vertical text) can change
+     *  them while we're paused, and what's on screen must redraw. */
+    private var sessionRenderConfig: OverlayRenderConfig? = null
 
     private lateinit var previewView: PreviewView
     private lateinit var permissionGate: android.view.View
@@ -149,6 +155,7 @@ class CameraActivity : AppCompatActivity() {
             onSlowOcr = { maybeShowSlowOcrPrompt() },
         )
         sessionLangKey = langKey()
+        sessionRenderConfig = OverlayRenderConfig.from(prefs)
         // Collect snapshot frames orphaned by a crash/process death (their
         // cycle's guarded delete never ran). No restore target to keep —
         // the camera doesn't restore snapshots across process death. Also
@@ -268,8 +275,20 @@ class CameraActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         snapshotController?.syncControls()
+        val renderConfig = OverlayRenderConfig.from(prefs)
+        val renderChanged = sessionRenderConfig != null && sessionRenderConfig != renderConfig
+        sessionRenderConfig = renderConfig
         if (sessionLangKey != null && sessionLangKey != langKey()) {
+            // Re-reads, and draws under the current render settings too.
             refreshAfterReadSettingsChange()
+        } else if (renderChanged && snapshotController?.isFrozen == true &&
+            session?.hasLiveOverlays() == true
+        ) {
+            // Gated like the flavor cycle: never resurrect boxes the user hid.
+            // Rebuilds from the cached OCR and translations with a rasterizer
+            // reading the current prefs. The live (non-frozen) camera
+            // re-rasters every frame from fresh prefs, so it needs nothing.
+            session?.showFrozenOverlays()
         }
         if (hasCameraPermission()) {
             showCamera()

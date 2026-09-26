@@ -7,6 +7,7 @@ import android.graphics.Rect
 import android.util.Log
 import android.view.View
 import com.playtranslate.BuildConfig
+import com.playtranslate.ui.OverlayRenderConfig
 import com.playtranslate.ui.TextBox
 import com.playtranslate.ui.TranslationOverlayView
 
@@ -24,6 +25,10 @@ class RasterRegion(
     val pixelsPerAu: Float = 1f,
     /** The box this raster was rendered from — the dirty-diff identity. */
     val sourceBox: TextBox? = null,
+    /** The settings it was rendered with: part of the dirty-diff identity,
+     *  since they change how the same box at the same rect is drawn (the
+     *  minimum text size's autosize range, Widen vertical text). */
+    val renderConfig: OverlayRenderConfig? = null,
 ) {
     /** A skeleton placeholder (source text awaiting its translation). The
      *  live overlay animates its bars, but rasterizing bakes that view
@@ -50,9 +55,7 @@ class RasterRegion(
  */
 class OverlayRasterizer(
     private val context: Context,
-    private val verticalTextTarget: Boolean,
-    private val verticalTextStackable: Boolean,
-    private val verticalGrowEnabled: Boolean,
+    private val renderConfig: OverlayRenderConfig,
 ) {
     /**
      * Render [boxes] (AU coords) for a keyframe of [auWidth]×[auHeight].
@@ -76,23 +79,13 @@ class OverlayRasterizer(
     ): List<RasterRegion> {
         if (boxes.isEmpty()) return emptyList()
         val s = renderScale.coerceIn(0.5f, 2.5f)
-        val renderBoxes = if (s == 1f) boxes else boxes.map { b ->
-            b.copy(
-                bounds = Rect(
-                    (b.bounds.left * s).toInt(), (b.bounds.top * s).toInt(),
-                    (b.bounds.right * s).toInt(), (b.bounds.bottom * s).toInt(),
-                ),
-                minWidthPx = (b.minWidthPx * s).toInt(),
-            )
-        }
+        val renderBoxes = if (s == 1f) boxes else boxes.map { scaledForRender(it, s) }
         val vw = (auWidth * s).toInt()
         val vh = (auHeight * s).toInt()
         val view = TranslationOverlayView(
             context,
             pinholeMode = false,
-            verticalTextTarget = verticalTextTarget,
-            verticalTextStackable = verticalTextStackable,
-            verticalGrowEnabled = verticalGrowEnabled,
+            renderConfig = renderConfig,
         )
         val wSpec = View.MeasureSpec.makeMeasureSpec(vw, View.MeasureSpec.EXACTLY)
         val hSpec = View.MeasureSpec.makeMeasureSpec(vh, View.MeasureSpec.EXACTLY)
@@ -146,14 +139,19 @@ class OverlayRasterizer(
                 ((fpLeft + bmpW) / s).toInt(), ((fpTop + bmpH) / s).toInt(),
             )
             val box = boxes.getOrNull(i)
-            // Dirty diff: same box content, same geometry, same scale →
-            // the previous bitmap is still exactly right.
+            // Dirty diff: same box content, same geometry, same scale, same
+            // settings → the previous bitmap is still right. Not keyed: what
+            // a changed neighbour can alter while this rect stays put (the
+            // render mode passes 1-3 chose, the size pass 4 certified), a
+            // rare gap whose mode half predates the settings.
             val reusable = previous?.firstOrNull { p ->
                 p.sourceBox == box && p.auRect == auRect && p.pixelsPerAu == s &&
-                    !p.bitmap.isRecycled
+                    p.renderConfig == renderConfig && !p.bitmap.isRecycled
             }
             if (reusable != null) {
-                regions.add(RasterRegion(reusable.bitmap, auRect, trackKeys.getOrElse(i) { -1 }, s, box))
+                regions.add(
+                    RasterRegion(reusable.bitmap, auRect, trackKeys.getOrElse(i) { -1 }, s, box, renderConfig),
+                )
                 continue
             }
             val bmp = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.ARGB_8888)
@@ -168,9 +166,28 @@ class OverlayRasterizer(
                     trackKey = trackKeys.getOrElse(i) { -1 },
                     pixelsPerAu = s,
                     sourceBox = box,
+                    renderConfig = renderConfig,
                 )
             )
         }
         return regions
     }
 }
+
+/** [b] in render px, [s] view px per AU px. Every geometry field the layout
+ *  reads must ride the scale: the resolver maps [TextBox.drawBounds] (not
+ *  `bounds`) and sizes slanted chips from the oriented dims, so scaling
+ *  `bounds` alone drew every chip at 1/s of its source whenever the render
+ *  scale wasn't 1. `angleDeg` is scale-invariant. */
+internal fun scaledForRender(b: TextBox, s: Float): TextBox = b.copy(
+    bounds = scaledRect(b.bounds, s),
+    drawBounds = scaledRect(b.drawBounds, s),
+    orientedWidth = b.orientedWidth * s,
+    orientedHeight = b.orientedHeight * s,
+    minWidthPx = (b.minWidthPx * s).toInt(),
+)
+
+private fun scaledRect(r: Rect, s: Float) = Rect(
+    (r.left * s).toInt(), (r.top * s).toInt(),
+    (r.right * s).toInt(), (r.bottom * s).toInt(),
+)

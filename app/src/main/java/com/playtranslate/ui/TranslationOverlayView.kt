@@ -23,11 +23,13 @@ import androidx.core.view.isVisible
 import androidx.core.widget.TextViewCompat
 import com.playtranslate.OcrManager
 import com.playtranslate.PinholeCalibration
+import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import androidx.core.graphics.createBitmap
 import java.text.BreakIterator
+import kotlin.math.roundToInt
 
 /**
  * The substrings of [text] between consecutive legal line-break opportunities, per
@@ -103,25 +105,12 @@ class TranslationOverlayView(
      *  actually renders) and in any cell where the overlay composites at
      *  full opacity. */
     private val boostContrast: Boolean = false,
-    /** True when the session's TARGET language is written vertically (ja/zh/ko
-     *  — see [com.playtranslate.language.targetSupportsVerticalText]); vertical
-     *  OCR boxes then render as upright top-to-bottom RTL columns
-     *  ([VerticalTextView]) instead of a 90°-rotated horizontal line. Public so
-     *  [OverlayUiController]'s view-reuse guard can compare it — it derives from
-     *  a user-mutable pref, so a target switch must force a fresh view (a ctor
-     *  val can't be refreshed by [setBoxes]). */
-    val verticalTextTarget: Boolean = false,
-    /** True when the session's TARGET script can render as upright stacked cells
-     *  (Latin/Cyrillic/Greek + CJK — see
-     *  [com.playtranslate.language.stackableTargetScript]). Gates STACK_UPRIGHT for
-     *  non-CJK targets. Public so [OverlayUiController]'s reuse guard can compare it;
-     *  derives from the target-language pref, so a switch must force a fresh view. */
-    val verticalTextStackable: Boolean = false,
-    /** The grow-narrow-vertical-boxes pref ([com.playtranslate.Prefs.verticalTextGrow]).
-     *  When off, a narrow non-stackable box rotates in place instead of growing. Public
-     *  for the reuse guard; the settings toggle restarts live mode so a flip re-creates
-     *  the view. */
-    val verticalGrowEnabled: Boolean = false,
+    /** The user settings this view renders with (target script, the grow
+     *  pref, the minimum text size). Public so [OverlayUiController]'s
+     *  view-reuse guard can compare it: it derives from user-mutable prefs, so
+     *  a change must force a fresh view (a ctor val can't be refreshed by
+     *  [setBoxes]). */
+    val renderConfig: OverlayRenderConfig = OverlayRenderConfig.DEFAULT,
     /** When non-null, this overlay handles its own dismissal. ACTION_DOWN
      *  touches dismiss immediately (race-safe against the hold-release
      *  callback and second-finger taps during a hold), and TalkBack's
@@ -180,7 +169,9 @@ class TranslationOverlayView(
 
     private val dp = context.resources.displayMetrics.density
 
-    private val minTextSizeSp = 6
+    /** The autosize floor. It IS the minimum text size's default, so the
+     *  setting's resting value means "overlays as they always were". */
+    private val minTextSizeSp = Prefs.OVERLAY_MIN_TEXT_SP_DEFAULT
     private val maxTextSizeSp = 200
     /** Capped autosize ceiling (sp) for GROW boxes — keeps the translation a small, centred
      *  block in the tall on-source background instead of ballooning to fill the column height. */
@@ -198,6 +189,51 @@ class TranslationOverlayView(
     private val skeletonBarHeight = (8f * dp).toInt()
     private val skeletonCornerRadius = 3f * dp
 
+    /** The layout-bearing configuration every translation text child gets, in
+     *  one place: pass 4's measurer builds its template through here too, so
+     *  what the layout certifies is what the child's autosize lays out. */
+    private fun configureTranslationText(tv: android.widget.TextView) {
+        tv.typeface = Typeface.DEFAULT_BOLD
+        tv.setPadding(textMargin, textMargin, textMargin, textMargin)
+    }
+
+    private fun spToPx(sp: Float): Float =
+        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, context.resources.displayMetrics)
+
+    /** Whether the minimum text size is above the autosize floor: only then
+     *  does pass 4 run, and only then do [growthLimits] shape the layout. */
+    private val minTextRaised: Boolean
+        get() = renderConfig.minTextSp > Prefs.OVERLAY_MIN_TEXT_SP_DEFAULT
+
+    /** Pass 4's measurer: a template child built like this view's translation
+     *  children, so what it certifies is what their autosize lays out. Built
+     *  once, under the configuration (locale, bold text) current then, and
+     *  kept for the view's life: its memo is what makes a live rebuild cheap. */
+    private val minTextMeasurer: OverlayTextMeasurer by lazy {
+        OverlayTextMeasurer(
+            OutlinedTextView(context).also(::configureTranslationText),
+            stackPadPx = 3f * dp,
+            multiColumnStacks = renderConfig.verticalTextTarget,
+        )
+    }
+
+    /** Pass 4's inputs for this view, or null at the default minimum (the
+     *  layout then stays exactly the historical one). Sizes are the px a
+     *  `setTextSize(SP, n)` gives, rounded up, so the settings preview and
+     *  the overlay agree. */
+    private fun minTextGrowth(): MinTextGrowth? {
+        if (!minTextRaised) return null
+        return MinTextGrowth(
+            targetPx = kotlin.math.ceil(spToPx(renderConfig.minTextSp.toFloat())).toInt(),
+            floorPx = kotlin.math.ceil(spToPx(minTextSizeSp.toFloat())).toInt(),
+            measurer = minTextMeasurer,
+            limits = growthLimits,
+        )
+    }
+
+    /** The caller's latest [GrowthLimits] (see [setBoxes]). */
+    private var growthLimits: GrowthLimits = GrowthLimits.NONE
+
     private var boxes: List<TextBox> = emptyList()
     private var cropOffsetX = 0
     private var cropOffsetY = 0
@@ -214,15 +250,30 @@ class TranslationOverlayView(
         xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
     }
 
+    /**
+     * Show [boxes] (OCR-crop coords, offset by [cropLeft]/[cropTop] into a
+     * [screenshotW] x [screenshotH] frame). [growthLimits] bounds where the
+     * minimum-text-size pass may grow them. With a raised minimum they are
+     * part of the content: new limits on the same boxes rebuild the layout
+     * (text the game shows with no box on it, typing out where a neighbour
+     * grew, pulls that growth back), and a rebuild that draws the same thing
+     * is the cheap case. At the default minimum nothing grows and they are
+     * ignored.
+     */
     fun setBoxes(
         boxes: List<TextBox>,
         cropLeft: Int, cropTop: Int,
         screenshotW: Int, screenshotH: Int,
         authoritativeBounds: Boolean = false,
+        growthLimits: GrowthLimits = GrowthLimits.NONE,
     ) {
+        val limitsChanged = minTextRaised && growthLimits != this.growthLimits
+        this.growthLimits = growthLimits
+
         // Skip everything if content is identical (avoids flash on false-positive recaptures)
-        if (this.boxes == boxes && cropOffsetX == cropLeft && cropOffsetY == cropTop
-            && this.screenshotW == screenshotW && this.screenshotH == screenshotH) return
+        if (!limitsChanged && this.boxes == boxes && cropOffsetX == cropLeft && cropOffsetY == cropTop
+            && this.screenshotW == screenshotW && this.screenshotH == screenshotH
+        ) return
 
         val cropSame = cropOffsetX == cropLeft && cropOffsetY == cropTop
             && this.screenshotW == screenshotW && this.screenshotH == screenshotH
@@ -261,7 +312,7 @@ class TranslationOverlayView(
                         !drawExtension(a).contentEquals(drawExtension(b))
                 }
             this.boxes = boxes
-            if (visualChanged && width > 0 && height > 0) {
+            if ((visualChanged || limitsChanged) && width > 0 && height > 0) {
                 rebuildChildren()
             }
             return
@@ -349,9 +400,10 @@ class TranslationOverlayView(
 
         val resolved = OverlayLayout.resolveScreenRects(
             measured, cropOffsetX, cropOffsetY, screenshotW, screenshotH, width, height, dp,
-            targetIsVerticalScript = verticalTextTarget,
-            targetStackable = verticalTextStackable,
-            growEnabled = verticalGrowEnabled,
+            targetIsVerticalScript = renderConfig.verticalTextTarget,
+            targetStackable = renderConfig.verticalTextStackable,
+            growEnabled = renderConfig.verticalGrowEnabled,
+            minText = minTextGrowth(),
         )
 
         val hasPlaceholders = boxes.any { it.translatedText.isEmpty() }
@@ -522,7 +574,7 @@ class TranslationOverlayView(
                         setTextColor(box.textColor)
                         outlineColor = box.textColor xor 0x00FFFFFF  // invert RGB, keep alpha
                         outlineWidth = 1f * dp
-                        typeface = Typeface.DEFAULT_BOLD
+                        configureTranslationText(this)
                         // GROW centres the block in its tall background; otherwise keep the
                         // source group's alignment (vertical boxes classify LEFT in OcrManager,
                         // and on the ROTATE path the inner alignment maps to screen-horizontal
@@ -531,11 +583,27 @@ class TranslationOverlayView(
                             Gravity.CENTER
                         else
                             Gravity.CENTER_VERTICAL
-                        setPadding(textMargin, textMargin, textMargin, textMargin)
                         setBackgroundColor(fillColor)
-                        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                            this, minTextSizeSp, autoMax, 1, TypedValue.COMPLEX_UNIT_SP
-                        )
+                        val floorPx = resolvedBox.floorPx
+                        if (floorPx == null) {
+                            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                                this, minTextSizeSp, autoMax, 1, TypedValue.COMPLEX_UNIT_SP
+                            )
+                        } else {
+                            // Pass 4 sized this rect for floorPx. A 1px ladder contains
+                            // floorPx exactly (the sp ladder need not, under Android 14's
+                            // non-linear font scaling); the caps are lifted to it, since
+                            // the certified rect already fits the widest run there; the
+                            // bottom stays the historical floor, so a boxed-in box's text
+                            // shrinks only as far as it must.
+                            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                                this,
+                                spToPx(minTextSizeSp.toFloat()).roundToInt(),
+                                maxOf(spToPx(autoMax.toFloat()).roundToInt(), floorPx),
+                                1,
+                                TypedValue.COMPLEX_UNIT_PX,
+                            )
+                        }
                     }
                 }
 
@@ -635,7 +703,9 @@ class TranslationOverlayView(
                 "DetectionLog",
                 "[layout] box[$i] ${resolved[i].mode} ${box.orientation.name[0]} " +
                     "minW=${box.minWidthPx} ang=${box.angleDeg} " +
-                    "\"$src\"->\"$tr\" rect=${rs(resolved[i].rect)}",
+                    "\"$src\"->\"$tr\" rect=${rs(resolved[i].rect)}" +
+                    (resolved[i].floorPx?.let { " floor=${it}px" } ?: "") +
+                    (resolved[i].grownFrom?.let { " grownFrom=${rs(it)}" } ?: ""),
             )
         }
         val idx = boxes.indices.filter { !boxes[it].isFurigana }

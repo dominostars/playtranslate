@@ -96,7 +96,23 @@ data class OneShotOverlayData(
     val cropTop: Int,
     val screenshotW: Int,
     val screenshotH: Int,
-)
+    /** The OCR crop's size: the capture region the boxes came from, which
+     *  their minimum-text-size growth stays inside. */
+    val cropWidth: Int,
+    val cropHeight: Int,
+    /** The drawn rects of every OCR group the capture read, boxed or not, in
+     *  the boxes' crop coordinates, so growth stays clear of text whose box
+     *  was dropped (a blank translation, [fillOneShotOverlayData]). */
+    val text: List<android.graphics.Rect>,
+) {
+    /** Growth limits for painting these boxes: the capture region, in the
+     *  boxes' own crop coordinates, and clear of the read text no box covers. */
+    val growthLimits: com.playtranslate.ui.GrowthLimits
+        get() = com.playtranslate.ui.GrowthLimits(
+            bounds = android.graphics.Rect(0, 0, cropWidth, cropHeight),
+            avoid = com.playtranslate.ui.GrowthLimits.unboxedText(text, boxes),
+        )
+}
 
 /** Zip per-group translated [texts] into [skeleton]'s index-aligned boxes and
  *  drop the ones that came back blank. Null when nothing survives (null/absent

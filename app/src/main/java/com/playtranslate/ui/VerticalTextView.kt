@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.util.TypedValue
 import android.view.View
+import com.playtranslate.Prefs
 import java.text.BreakIterator
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -76,9 +77,12 @@ internal object VerticalTextLayout {
      * oversight. It is very rare (multi-column wrap already uses the full box
      * width, and 6sp cells are tiny) and mirrors the horizontal path's own
      * degradation at the same 6sp floor. An overflow marker (vertical ellipsis)
-     * and box expansion were both considered and intentionally declined
+     * and box expansion were both considered and intentionally declined here
      * (2026-06-06): expansion is inconsistent with the shrink-to-fit horizontal
-     * boxes and would overrun neighbours/screen edges.
+     * boxes and would overrun neighbours/screen edges. Growth that avoids both
+     * does exist upstream now: with a raised minimum text size the overlay
+     * layout ([MinTextLayout]) grows a stack into free space before it gets
+     * here; this function still only packs the box it is given.
      */
     fun compute(
         graphemeCount: Int,
@@ -119,13 +123,20 @@ internal object VerticalTextLayout {
         val rows = rowsAt(size)
         val colStep = size * colSpacing
         // Drawn columns: what's needed, but never more than the width holds.
-        // Equal to neededCols whenever the text fits; smaller in the forced-min
-        // overflow case (trailing cells dropped); and 0 when the box is too
+        // Whenever the text fits at `size` that is exactly neededCols, taken
+        // from the same predicate that chose the size: recounting the width
+        // with a separate division can land one short at the fit boundary
+        // (where the bisection converges) and silently drop the last column
+        // (about 3% of random fitting layouts in a probe). Otherwise (the forced-min
+        // overflow case) trailing cells are dropped, and 0 when the box is too
         // narrow for even one column (availW < colStep) — intentionally NOT
         // coerced up to 1, so a degenerate sub-cell-width box renders only its
         // background instead of a glyph spilling past the tracked child bounds.
-        val maxCols = floor(availW / colStep).toInt()
-        val cols = ceil(g.toDouble() / rows).toInt().coerceAtMost(maxCols)
+        val cols = if (fitsWidth(size)) {
+            neededCols(size)
+        } else {
+            ceil(g.toDouble() / rows).toInt().coerceAtMost(floor(availW / colStep).toInt())
+        }
         return Layout(size, rows, cols, rowStep, colStep)
     }
 
@@ -188,8 +199,13 @@ internal class VerticalTextView(context: Context) : View(context) {
     /** Inset between the filled background edge and the glyph cells (matches
      *  the horizontal path's `textMargin`). */
     private val pad = 3f * density
-    private val minTextPx =
-        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 6f, context.resources.displayMetrics)
+    /** The overlay's render floor ([Prefs.OVERLAY_MIN_TEXT_SP_DEFAULT]), as
+     *  on the horizontal path. */
+    private val minTextPx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_SP,
+        Prefs.OVERLAY_MIN_TEXT_SP_DEFAULT.toFloat(),
+        context.resources.displayMetrics,
+    )
     private val maxTextPx =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 200f, context.resources.displayMetrics)
 

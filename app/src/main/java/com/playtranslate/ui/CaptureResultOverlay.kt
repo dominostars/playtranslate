@@ -62,8 +62,6 @@ import com.playtranslate.RegionEntry
 import com.playtranslate.language.OcrBackend
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
-import com.playtranslate.language.stackableTargetScript
-import com.playtranslate.language.targetSupportsVerticalText
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.model.TextSegments
@@ -1277,12 +1275,31 @@ class CaptureResultOverlay(
             return false
         }
         if (CaptureService.instance?.isLive == true) return false
+        val v = chipsViewFor(OverlayRenderConfig.from(prefs))
+        v.animate().cancel()
+        v.alpha = 1f
+        v.setBoxes(
+            data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH,
+            growthLimits = data.growthLimits,
+        )
+        boxesShown = true
+        return true
+    }
+
+    /** The chips view for [config], placed by [syncChipsOrder]. The view is
+     *  built once per sheet, but its render config is fixed at construction:
+     *  a setting changed since (the settings screen can sit beside the sheet
+     *  on another display) replaces it, as the live overlay's reuse guard
+     *  does. The one path both [showChips] and [updateChips] take. */
+    private fun chipsViewFor(config: OverlayRenderConfig): TranslationOverlayView {
+        chipsView?.takeIf { it.renderConfig != config }?.let { stale ->
+            root.removeView(stale)
+            chipsView = null
+        }
         val v = chipsView ?: TranslationOverlayView(
             android.view.ContextThemeWrapper(ctx, android.R.style.Theme_DeviceDefault),
             oneShot = true,
-            verticalTextTarget = targetSupportsVerticalText(prefs.targetLang),
-            verticalTextStackable = stackableTargetScript(prefs.targetLang),
-            verticalGrowEnabled = prefs.verticalTextGrow,
+            renderConfig = config,
         ).also {
             chipsView = it
             // Every chip layout (each rebuild: the skeletons, the translated
@@ -1291,11 +1308,7 @@ class CaptureResultOverlay(
             root.addView(it, root.indexOfChild(chipsAnchor()) + 1, FrameLayout.LayoutParams(MATCH, MATCH))
         }
         syncChipsOrder()
-        v.animate().cancel()
-        v.alpha = 1f
-        v.setBoxes(data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH)
-        boxesShown = true
-        return true
+        return v
     }
 
     /** The root child the boxes sit directly above for the current
@@ -1316,16 +1329,21 @@ class CaptureResultOverlay(
         root.addView(v, root.indexOfChild(anchor) + 1)
     }
 
-    /** Swap the boxes in place — the skeleton → translated promotion when Done
-     *  lands while slivered. No-op unless the boxes are up. */
+    /** Swap the boxes in place: the skeleton → translated promotion when Done
+     *  lands while slivered. No-op unless the boxes are up. A render setting
+     *  changed since they went up replaces the view ([chipsViewFor]); the
+     *  fresh one starts at alpha 1, right since the boxes were up. */
     private fun updateChips(data: OneShotOverlayData) {
         boxPresenter?.let {
             it.update(data)
             return
         }
-        val v = chipsView ?: return
-        if (v.alpha == 0f) return
-        v.setBoxes(data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH)
+        val shown = chipsView ?: return
+        if (shown.alpha == 0f) return
+        chipsViewFor(OverlayRenderConfig.from(prefs)).setBoxes(
+            data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH,
+            growthLimits = data.growthLimits,
+        )
     }
 
     /** Fade the boxes out. The view stays attached (alpha 0) for cheap re-shows;

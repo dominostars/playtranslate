@@ -23,9 +23,8 @@ import com.playtranslate.camera.tracker.Homography
 import com.playtranslate.cancelledStateOrNull
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
-import com.playtranslate.language.stackableTargetScript
-import com.playtranslate.language.targetSupportsVerticalText
 import com.playtranslate.ui.CaptureResultOverlay
+import com.playtranslate.ui.OverlayRenderConfig
 import com.playtranslate.ui.TextBox
 import com.playtranslate.ui.noTextStatusMessage
 import java.util.concurrent.atomic.AtomicLong
@@ -457,7 +456,7 @@ class ImageImportSession(
         // without a screenshot.
         if (replacedPath != screenshotPath) deleteQuiet(replacedPath)
 
-        val overlayData = com.playtranslate.OneShotOverlayData(emptyList(), 0, 0, auW, auH)
+        val overlayData = com.playtranslate.OneShotOverlayData(emptyList(), 0, 0, auW, auH, auW, auH, emptyList())
         state.value = CaptureState.Translating(originalText, segments, provenance, overlayData)
 
         val perGroup = translator.translateDetailed(groups.map { it.text })
@@ -588,12 +587,7 @@ class ImageImportSession(
     private suspend fun showRegions(boxes: List<TextBox>, auW: Int, auH: Int, epoch: Int) {
         withContext(Dispatchers.Main) {
             if (!displayEpoch.isCurrent(epoch)) return@withContext
-            val rasterizer = OverlayRasterizer(
-                context,
-                verticalTextTarget = targetSupportsVerticalText(prefs.targetLang),
-                verticalTextStackable = stackableTargetScript(prefs.targetLang),
-                verticalGrowEnabled = prefs.verticalTextGrow,
-            )
+            val rasterizer = OverlayRasterizer(context, OverlayRenderConfig.from(prefs))
             val regions = rasterizer.rasterize(
                 boxes, auW, auH,
                 trackKeys = boxes.map { -1 },
