@@ -1011,6 +1011,15 @@
     <string name="icon_action_open_quick_menu">Open the quick menu</string>
     <!-- Tap: the one-shot capture the quick menu's Capture button runs. -->
     <string name="icon_action_capture_screen">Capture screen</string>
+    <!-- Hold or Tap, offered only for a source language with furigana:
+         while auto-translate runs, switches its overlays between the
+         translation and the furigana (the kana readings over the
+         Japanese text); while it's off, starts it. "Translation" and
+         "furigana" are the two overlay modes, lowercase mid-sentence. -->
+    <string name="icon_action_swap_furigana">Swap between translation and furigana</string>
+    <!-- The same action for a Chinese source, whose reading hint is
+         pinyin (the romanized readings over the Chinese text). -->
+    <string name="icon_action_swap_pinyin">Swap between translation and pinyin</string>
 
     <!-- Alert shown on leaving the picker page while no gesture is bound
          to "Open the quick menu". The confirm button leaves with the

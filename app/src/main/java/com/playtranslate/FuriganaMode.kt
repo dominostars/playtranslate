@@ -38,6 +38,11 @@ private const val STALE_REF_REFRESH_FRAMES = 20
  *  evolving frame refreshes it ([LiveCaptureSource.pokeFastPoll]). */
 private const val FAST_POLL_WINDOW_MS = 3_000L
 
+/** How often a loop start held off by a pause re-checks it: the interval the
+ *  other live modes' cycles poll [CaptureService.livePaused] at while
+ *  paused. */
+private const val PAUSE_POLL_MS = 100L
+
 /**
  * Should this frame's text be OFFERED to the panel? Stateless — computed
  * from the same (previous, current) pair the mode already classifies frames
@@ -82,10 +87,14 @@ internal fun panelOfferEligible(prevText: String?, frameText: String, langCode: 
  */
 /**
  * @param service the enclosing capture service (for state access and coordinator calls)
+ * @param liveSource the frame loop's source, read at each use: the active
+ *  backend's. A parameter only so a JVM test can hand the mode a fake loop;
+ *  production passes nothing.
  */
 class FuriganaMode(
     private val service: CaptureService,
     private val displayId: Int,
+    private val liveSource: () -> LiveCaptureSource? = { CaptureBackendResolver.activeLiveCaptureSource },
 ) : LiveMode {
 
     override val flavor: OverlayFlavor = OverlayFlavor.FURIGANA
@@ -139,7 +148,7 @@ class FuriganaMode(
      *  frames before any hold exists. */
     private fun pokeIfRevealInFlight() {
         if (heldFrontierTexts.isNotEmpty()) {
-            CaptureBackendResolver.activeLiveCaptureSource
+            liveSource()
                 ?.pokeFastPoll(displayId, FAST_POLL_WINDOW_MS)
         }
     }
@@ -159,7 +168,7 @@ class FuriganaMode(
     // ── LiveMode interface ────────────────────────────────────────────────
 
     override fun start() {
-        val source = CaptureBackendResolver.activeLiveCaptureSource
+        val source = liveSource()
         if (source == null) {
             DetectionLog.log("ERROR: no live capture source, can't start furigana loop")
             return
@@ -177,7 +186,7 @@ class FuriganaMode(
         clearState()
         scope.cancel()
         CaptureBackendResolver.active().stopInputMonitoring(displayId)
-        CaptureBackendResolver.activeLiveCaptureSource?.stopLoop(displayId)
+        liveSource()?.stopLoop(displayId)
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
     }
 
@@ -186,7 +195,7 @@ class FuriganaMode(
         rawOcrJob?.cancel()
         restartJob?.cancel()
         clearState()
-        val source = CaptureBackendResolver.activeLiveCaptureSource ?: return
+        val source = liveSource() ?: return
         if (source.isLoopRunning(displayId)) {
             source.requestCleanCapture(displayId)
         } else {
@@ -204,15 +213,20 @@ class FuriganaMode(
             // mid-pass. Idempotent — restarts (dismiss, refresh) pass
             // straight through once the warm-up has settled.
             service.awaitFirstCycleClear()
-            // A hold can arrive while the gate is parked, and its global
-            // stopAllLoops only stops loops that EXIST — a start that hasn't
-            // fired yet isn't one of them. Same rule as the dismiss-restart
-            // guard below: never start into a hold-preview or under the
-            // rescue alert; hotkeyHoldEnd's refresh() (or the alert handlers'
-            // refreshLiveOverlay) restarts the loop cleanly.
+            // Never start into a pause (a hold preview, the rescue alert, the
+            // floating menu, the region editor): a hold's global stopAllLoops
+            // only stops loops that EXIST, and a start that hasn't fired yet
+            // isn't one of them. Wait the pause out rather than give up,
+            // polling it as the other live modes' cycles do. Giving up left
+            // the loop to a refresh from whoever ended the pause, and not all
+            // of them refresh (a menu closed by any row but a tap outside,
+            // the region editor), so a mode built during a pause (the menu's
+            // Overlays row, a swap or a hotkey switch from the other display)
+            // sat with no loop. A refresh (a hold's end, the alert's
+            // handlers) cancels this wait through startLoop and starts afresh.
             if (service.livePaused) {
-                DetectionLog.log("furigana startLoop skipped (livePaused)")
-                return@launch
+                DetectionLog.log("furigana startLoop waiting (livePaused)")
+                while (service.livePaused) delay(PAUSE_POLL_MS)
             }
             source.startLoop(displayId, service.serviceScope,
                 onCleanFrame = ::handleCleanFrame,
@@ -230,12 +244,12 @@ class FuriganaMode(
     override fun onDisplayRotated() = hideAndRestartAfter(LiveMode.ROTATION_SETTLE_MS)
 
     private fun hideAndRestartAfter(delayMs: Long) {
-        val source = CaptureBackendResolver.activeLiveCaptureSource ?: return
+        val source = liveSource() ?: return
         cleanProcessingJob?.cancel()
         rawOcrJob?.cancel()
-        // A gated start still parked in awaitFirstCycleClear has no loop for
-        // stopLoop below to stop — cancel it, or it would fire into the
-        // dismiss interval (or a hold) the restart guard exists to protect.
+        // A start still parked in awaitFirstCycleClear, or waiting out a
+        // pause, has no loop for stopLoop below to stop — cancel it, or it
+        // would fire into the dismiss interval the restart below waits out.
         startLoopJob?.cancel()
         source.stopLoop(displayId)
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
@@ -245,13 +259,9 @@ class FuriganaMode(
             delay(delayMs)
             // A hotkey combo routes through onKeyEvent → onGameInput → here
             // BEFORE checkHotkeyCombos sets holdActive, so we can't gate the
-            // scheduling itself. Instead, skip the restart if a hold-preview
-            // is now in progress — hotkeyHoldEnd's refresh() will restart the
-            // loop cleanly on release.
-            if (service.livePaused) {
-                DetectionLog.log("dismiss restart skipped (livePaused)")
-                return@launch
-            }
+            // scheduling itself. startLoop waits out a hold-preview now in
+            // progress (hotkeyHoldEnd's refresh() restarts the loop on
+            // release) and any other pause.
             startLoop(source)
         }
     }
@@ -276,7 +286,7 @@ class FuriganaMode(
                 processCleanFrame(raw, frame.includesSystemUi, frame.includesOwnOverlays)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 if (service.isLive) {
-                    CaptureBackendResolver.activeLiveCaptureSource?.requestCleanCapture(displayId)
+                    liveSource()?.requestCleanCapture(displayId)
                 }
                 throw e
             }
@@ -373,7 +383,7 @@ class FuriganaMode(
         // away instead of a full user interval later. Self-expiring window
         // — pacing decays on its own once the reveal stops refreshing it.
         if (frameEvolving || heldFrontierTexts.isNotEmpty()) {
-            CaptureBackendResolver.activeLiveCaptureSource
+            liveSource()
                 ?.pokeFastPoll(displayId, FAST_POLL_WINDOW_MS)
         }
 
@@ -576,7 +586,7 @@ class FuriganaMode(
                 emptyRectsStallCount = 0
                 clearState()
                 CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
-                CaptureBackendResolver.activeLiveCaptureSource?.requestCleanCapture(displayId)
+                liveSource()?.requestCleanCapture(displayId)
             }
             return
         }
@@ -589,7 +599,7 @@ class FuriganaMode(
         if (bitmap.width != ref.width || bitmap.height != ref.height) {
             clearState()
             CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
-            CaptureBackendResolver.activeLiveCaptureSource?.requestCleanCapture(displayId)
+            liveSource()?.requestCleanCapture(displayId)
             bitmap.recycle()
             return
         }
@@ -718,7 +728,7 @@ class FuriganaMode(
                             CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
                         }
 
-                        CaptureBackendResolver.activeLiveCaptureSource?.requestCleanCapture(displayId)
+                        liveSource()?.requestCleanCapture(displayId)
                     } else {
                         // No change detected (settled repeat, jitter, or a
                         // kana-only shift below the kanji gate). Settled
@@ -740,7 +750,7 @@ class FuriganaMode(
                             // Force rebuild path in processCleanFrame. Don't clear cleanRefBitmap
                             // here — see race comment above.
                             lastOcrText = null
-                            CaptureBackendResolver.activeLiveCaptureSource?.requestCleanCapture(displayId)
+                            liveSource()?.requestCleanCapture(displayId)
                         }
                     }
                 } else {

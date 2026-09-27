@@ -2014,7 +2014,8 @@ class CaptureService : Service() {
      *     `holdBehavior` / `isInAppOnly` see the consistent populated map
      *     and the right flavor mix synchronously,
      *  4. start the new modes,
-     *  5. flash the region indicator on each newly-installed display.
+     *  5. flash the region indicator on each newly-installed display,
+     *     unless live mode is paused ([livePaused]).
      *
      * The display listener is registered on empty→non-empty and
      * unregistered on non-empty→empty (it's only useful while live).
@@ -2146,10 +2147,16 @@ class CaptureService : Service() {
         //    newInstances are no longer in the map; don't start them — that
         //    would leak an untracked, running LiveMode. Identity check is fine
         //    because LiveMode subclasses don't override equals.
+        // 5. The region flash marks a display starting to capture. While live
+        //    mode is paused (the floating menu, a hold, the rescue alert) the
+        //    modes start without capturing, and a flash would draw over
+        //    whatever paused them: the menu's Overlays row rebuilds under the
+        //    menu, and a swap on one display can rebuild under the other's.
+        val flash = !livePaused
         for ((id, mode) in newInstances) {
             if (liveModes[id] === mode) {
                 mode.start()
-                flashRegionIndicator(id)
+                if (flash) flashRegionIndicator(id)
             }
         }
 

@@ -8,6 +8,7 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.model.TranslationLangContext
 import com.playtranslate.security.SecretCipher
 import com.playtranslate.security.SecretCodec
@@ -1384,25 +1385,35 @@ class Prefs internal constructor(
 
     /** What the icon's drag / hold / tap gestures do; see [IconGestureBindings].
      *  Each is stored by enum name and reads as its gesture's default when
-     *  unset or unknown. The icon's dispatch reads these per gesture, so a
-     *  change on the picker page applies to the next touch of the icon
-     *  already on screen; the Settings cell reads them on resume. */
+     *  unset or unknown, or when the current source language doesn't offer
+     *  it (the swap without a reading hint), the stored choice kept for a
+     *  language that does. The icon's dispatch reads these per gesture, so a
+     *  change on the picker page, or of the source language, applies to the
+     *  next touch of the icon already on screen; the Settings cell reads
+     *  them on resume. */
     var iconDragAction: DragAction
-        get() = enumPref(KEY_ICON_DRAG_ACTION, DragAction.entries, DragAction.DEFAULT)
+        get() = iconGestureBindings().drag
         set(v) = sp.edit { putString(KEY_ICON_DRAG_ACTION, v.name) }
 
     var iconHoldAction: HoldAction
-        get() = enumPref(KEY_ICON_HOLD_ACTION, HoldAction.entries, HoldAction.DEFAULT)
+        get() = iconGestureBindings().hold
         set(v) = sp.edit { putString(KEY_ICON_HOLD_ACTION, v.name) }
 
     var iconTapAction: TapAction
-        get() = enumPref(KEY_ICON_TAP_ACTION, TapAction.entries, TapAction.DEFAULT)
+        get() = iconGestureBindings().tap
         set(v) = sp.edit { putString(KEY_ICON_TAP_ACTION, v.name) }
 
-    /** The three bindings as one snapshot: what the Settings cell and the
-     *  picker page render, and where the quick-menu reachability check lives. */
-    fun iconGestureBindings(): IconGestureBindings =
-        IconGestureBindings(iconDragAction, iconHoldAction, iconTapAction)
+    /** The three bindings as they act on the current source language, with
+     *  its reading hint, as one snapshot: what the Settings cell and the
+     *  picker page render, and where the quick-menu reachability check
+     *  lives. The single read path, so no reader can skip the language
+     *  rule ([IconGestureBindings.resolve]). */
+    fun iconGestureBindings(): IconGestureBindings = IconGestureBindings.resolve(
+        drag = enumPref(KEY_ICON_DRAG_ACTION, DragAction.entries, DragAction.DEFAULT),
+        hold = enumPref(KEY_ICON_HOLD_ACTION, HoldAction.entries, HoldAction.DEFAULT),
+        tap = enumPref(KEY_ICON_TAP_ACTION, TapAction.entries, TapAction.DEFAULT),
+        hint = SourceLanguageProfiles[sourceLangId].hintTextKind,
+    )
 
     /** Set to true once StatusBarManager.requestAddTileService reports the
      *  PlayTranslate tile is added (or already added). Drives whether the
@@ -1781,9 +1792,11 @@ class Prefs internal constructor(
         const val KEY_ICON_DRAG_ACTION        = "icon_drag_action"
         const val KEY_ICON_HOLD_ACTION        = "icon_hold_action"
         const val KEY_ICON_TAP_ACTION         = "icon_tap_action"
-        /** The three binding keys together, for [observe]. */
+        /** Every key [iconGestureBindings] reads, for [observe]: the three
+         *  bindings, and the source language, whose reading hint decides
+         *  whether the swap is offered and names it. */
         val KEYS_ICON_GESTURE_ACTIONS =
-            arrayOf(KEY_ICON_DRAG_ACTION, KEY_ICON_HOLD_ACTION, KEY_ICON_TAP_ACTION)
+            arrayOf(KEY_ICON_DRAG_ACTION, KEY_ICON_HOLD_ACTION, KEY_ICON_TAP_ACTION, KEY_SOURCE_LANG)
         private const val KEY_OVERLAY_ICON_EDGE      = "overlay_icon_edge"
         private const val KEY_OVERLAY_ICON_FRACTION  = "overlay_icon_fraction"
         private const val KEY_SUPPRESS_TRANSITION            = "suppress_next_transition"

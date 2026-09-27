@@ -1301,16 +1301,18 @@ class OverlayUiController(
             }
             // Gesture → action, from the "On the floating icon" bindings
             // (IconGestureBindings.kt). Read at each gesture rather than at
-            // install, so a change on the picker page applies to the next
-            // touch of this same icon; each `when` is exhaustive over its
-            // gesture's candidates, so a new one cannot compile until it is
-            // wired here.
+            // install, so a change on the picker page, or of the source
+            // language (a swap binding acts as its gesture's default on a
+            // language without a reading hint), applies to the next touch of
+            // this same icon; each `when` is exhaustive over its gesture's
+            // candidates, so a new one cannot compile until it is wired here.
             icon.onTap = {
                 when (prefs.iconTapAction) {
                     TapAction.OPEN_QUICK_MENU -> showFloatingMenu(display, icon)
                     // The quick menu's Capture button without the menu: a
                     // fresh one-shot every tap, replacing any showing result.
                     TapAction.CAPTURE_SCREEN -> captureCurrentRegionForDisplay(displayId)
+                    TapAction.SWAP_OVERLAY_MODE -> swapOverlayModeOrStartLive()
                 }
             }
             icon.onDragStart = {
@@ -1348,14 +1350,17 @@ class OverlayUiController(
                 when (action) {
                     HoldAction.SHOW_TRANSLATIONS -> CaptureService.instance?.holdStart(displayId)
                     HoldAction.OPEN_QUICK_MENU -> showFloatingMenu(display, icon)
+                    HoldAction.SWAP_OVERLAY_MODE -> swapOverlayModeOrStartLive()
                 }
             }
             icon.onHoldEnd = {
                 when (heldAction ?: prefs.iconHoldAction) {
                     HoldAction.SHOW_TRANSLATIONS -> CaptureService.instance?.holdEnd()
                     // The menu opened at the hold threshold and stays up; the
-                    // lift ends the gesture, not the menu.
-                    HoldAction.OPEN_QUICK_MENU -> Unit
+                    // lift ends the gesture, not the menu. Likewise the swap
+                    // happened at the threshold. A lift with no start latched
+                    // (the starved hold above) therefore does neither.
+                    HoldAction.OPEN_QUICK_MENU, HoldAction.SWAP_OVERLAY_MODE -> Unit
                 }
                 heldAction = null
             }
@@ -1368,6 +1373,10 @@ class OverlayUiController(
                     // touch stream, so the menu's tap-outside dismissal never
                     // saw it). Close the menu first.
                     HoldAction.OPEN_QUICK_MENU -> dismissFloatingMenu()
+                    // The swap stands: the drag that follows pauses a running
+                    // auto-translate and resumes it afterwards in the mode the
+                    // swap left, as any drag does.
+                    HoldAction.SWAP_OVERLAY_MODE -> Unit
                 }
                 heldAction = null
             }
@@ -1786,9 +1795,18 @@ class OverlayUiController(
             menu.setMangaOcrValue(mangaOcrStateLabel(on))
         }
         menu.onCycleOverlayMode = {
-            val modes = availableOverlayModes(prefs.sourceLangId)
-            val next = modes[(modes.indexOf(prefs.overlayMode) + 1) % modes.size]
-            prefs.overlayMode = next
+            val next = nextOverlayMode(prefs)
+            // A running session switches with the row, as it does for the
+            // icon's swap and the tap hotkeys, so the saved mode is always the
+            // one on screen: those decide from it. The rebuild happens while
+            // the menu keeps live mode paused, so nothing captures until the
+            // menu closes, whichever way it closes.
+            val svc = CaptureService.instance
+            if (svc?.isLive == true) {
+                switchLiveOverlayMode(svc, next, "menu_overlays_row")
+            } else {
+                prefs.overlayMode = next
+            }
             menu.setOverlayModeValue(overlayModeLabel(next, hintKind))
             // Keep the auto-translate button's hint label in sync (Auto Furigana
             // / Auto Pinyin / Auto Translate); it's hidden while the panel is
@@ -1831,11 +1849,7 @@ class OverlayUiController(
             if (CaptureService.instance?.isLive == true) {
                 stopLiveRouted()
             } else {
-                if (Prefs.shouldUseInAppOnlyMode(context)) {
-                    sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
-                } else {
-                    startLiveRouted()
-                }
+                startLiveFromOverlay()
             }
         }
         menu.activeRegion = CaptureService.instance?.activeRegionForDisplay(display.displayId)
@@ -1915,6 +1929,15 @@ class OverlayUiController(
         if (SourceLanguageProfiles[id].hintTextKind == HintTextKind.NONE)
             listOf(OverlayMode.TRANSLATION)
         else listOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA)
+
+    /** The overlay mode after [prefs]'s current one among those its source
+     *  language offers: the other one on a language with a reading hint,
+     *  Translation again on one without. The floating menu's Overlays row
+     *  and the icon's swap both switch to it. */
+    private fun nextOverlayMode(prefs: Prefs): OverlayMode {
+        val modes = availableOverlayModes(prefs.sourceLangId)
+        return modes[(modes.indexOf(prefs.overlayMode) + 1) % modes.size]
+    }
 
     /** User-facing name for an overlay [mode]. */
     private fun overlayModeLabel(mode: OverlayMode, hintKind: HintTextKind): String =
@@ -2098,9 +2121,8 @@ class OverlayUiController(
      *  - not live → start the session in [mode].
      *
      * Start/stop reuse [onToggleLive]'s exact single- vs dual-screen /
-     * InAppOnly routing. The in-place switch sets [Prefs.overlayMode] and
-     * reconciles: [CaptureService.setLiveDisplays]'s flavor-mismatch detector
-     * rebuilds each per-display mode instance for the new overlay flavor.
+     * InAppOnly routing ([startLiveFromOverlay], [stopLiveRouted]); the
+     * in-place switch is [switchLiveOverlayMode].
      */
     fun toggleAutoMode(mode: OverlayMode) {
         val prefs = Prefs(context)
@@ -2112,31 +2134,78 @@ class OverlayUiController(
             if (prefs.overlayMode == mode) {
                 stopLiveRouted()
             } else {
-                prefs.overlayMode = mode
-                if (svc.isInAppOnly) {
-                    // In-App Only has no game-screen overlay to swap, and its
-                    // result panel renders the same regardless of overlay mode,
-                    // so reconcileLiveModes (which rebuilds only on a flavor
-                    // change) deliberately no-ops for it. The mode still governs
-                    // hold one-shots and any later game-overlay surface, so the
-                    // pref write above is the real switch; refresh the running
-                    // poll cycle so it isn't left sitting on a stale result.
-                    svc.refreshLiveOverlay()
-                } else {
-                    // Game-overlay surface: rebuild the per-display mode instance
-                    // for the new flavor (Furigana ⇄ Translation).
-                    svc.reconcileLiveModes("hotkey_mode_switch")
-                }
+                switchLiveOverlayMode(svc, mode, "hotkey_mode_switch")
             }
         } else {
             // Start in this hotkey's mode. The pref write is committed before
             // start/route reads it (same-process, synchronous read-after-write).
             prefs.overlayMode = mode
-            if (Prefs.shouldUseInAppOnlyMode(context)) {
-                sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
-            } else {
-                startLiveRouted()
-            }
+            startLiveFromOverlay()
+        }
+    }
+
+    /**
+     * The icon's swap gesture ([HoldAction.SWAP_OVERLAY_MODE],
+     * [TapAction.SWAP_OVERLAY_MODE]): with auto-translate running, switch it
+     * in place to the other overlay mode (Translation ⇄ Furigana / Pinyin),
+     * as a tap hotkey for that mode does; with it off, start it in the mode
+     * already selected. Bound only on a source language with a reading hint
+     * (elsewhere the gesture acts as its default, [IconGestureBindings.resolve]),
+     * so there is another mode to switch to.
+     */
+    private fun swapOverlayModeOrStartLive() {
+        // Auto-translate becomes the most-recently-used primary, mirroring the
+        // floating menu's Auto button.
+        captureIsPreferredPrimary = false
+        val svc = CaptureService.instance
+        if (svc?.isLive == true) {
+            switchLiveOverlayMode(svc, nextOverlayMode(Prefs(context)), "icon_swap")
+        } else {
+            startLiveFromOverlay()
+        }
+    }
+
+    /**
+     * Switch the running auto-translate session to overlay [mode] in place,
+     * for the overlay controls that change the mode mid-session (the floating
+     * menu's Overlays row, the tap hotkeys, the icon's swap), so the saved
+     * mode stays the one running; in the app, the long-press menu and a
+     * source-language change restart the session, and the Capture and
+     * overlay page stops it. The session goes on here: no stop and start,
+     * so its History live card and LLM context carry over, which a restart
+     * would replace. The pref write is the switch;
+     * [CaptureService.reconcileLiveModes] then rebuilds each per-display mode
+     * instance through [CaptureService.setLiveDisplays]'s flavor-mismatch
+     * detector. [reason] tags the reconcile's log line.
+     */
+    private fun switchLiveOverlayMode(svc: CaptureService, mode: OverlayMode, reason: String) {
+        Prefs(context).overlayMode = mode
+        if (svc.isInAppOnly) {
+            // In-App Only has no game-screen overlay to swap, and its
+            // result panel renders the same regardless of overlay mode,
+            // so reconcileLiveModes (which rebuilds only on a flavor
+            // change) deliberately no-ops for it. The mode still governs
+            // hold one-shots and any later game-overlay surface, so the
+            // pref write above is the real switch; refresh the running
+            // poll cycle so it isn't left sitting on a stale result.
+            svc.refreshLiveOverlay()
+        } else {
+            // Game-overlay surface: rebuild the per-display mode instance
+            // for the new flavor (Furigana ⇄ Translation).
+            svc.reconcileLiveModes(reason)
+        }
+    }
+
+    /** Start auto-translate from an overlay control (the floating menu's
+     *  Auto button, a tap hotkey, the icon's swap) in the overlay mode
+     *  already selected. In-App Only shows its results in the app, so that
+     *  start is MainActivity's ([MainActivity.ACTION_START_LIVE]); any other
+     *  goes through [startLiveRouted]. */
+    private fun startLiveFromOverlay() {
+        if (Prefs.shouldUseInAppOnlyMode(context)) {
+            sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
+        } else {
+            startLiveRouted()
         }
     }
 

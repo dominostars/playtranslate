@@ -15,12 +15,16 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 /**
- * Floating-icon gesture picker state: the three bindings, projected from
- * [Prefs]. Same shape as [HotkeysSettingsViewModel]: the setters write
- * through to prefs and the new value returns via the observed flow, so prefs
- * stay the source of truth and a row tap re-renders through [state]. The
- * leave guard reads [IconGestureBindings.quickMenuReachable] off the same
- * snapshot the rows show.
+ * Floating-icon gesture picker state: the three bindings as they act on the
+ * current source language, with its reading hint, projected from [Prefs].
+ * Same shape as [HotkeysSettingsViewModel]: the setters write through to
+ * prefs and the new value returns via the observed flow, so prefs stay the
+ * source of truth and a row tap re-renders through [state]. The observed
+ * keys include the source language, so a language changed while the page is
+ * open (dual-screen: from the floating menu on the other display)
+ * re-renders it too. The leave guard reads
+ * [IconGestureBindings.quickMenuReachable] off the same snapshot the rows
+ * show.
  */
 class IconGesturesSettingsViewModel(app: Application) : AndroidViewModel(app) {
 

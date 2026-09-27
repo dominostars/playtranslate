@@ -18,13 +18,15 @@ import com.playtranslate.IconAction
 import com.playtranslate.IconGestureBindings
 import com.playtranslate.R
 import com.playtranslate.TapAction
+import com.playtranslate.language.HintTextKind
 import com.playtranslate.themeColor
 import kotlinx.coroutines.launch
 
 /**
  * Floating-icon gesture picker: a section per gesture (Drag / Hold / Tap),
  * each a card of single-choice rows built from that gesture's candidate
- * enum, the bound one checked. A row tap writes the binding through
+ * enum, less any the source language doesn't offer (the swap without a
+ * reading hint), the bound one checked. A row tap writes the binding through
  * [IconGesturesSettingsViewModel] and the section re-renders from the flow;
  * the icon reads the binding on its next touch, so there is nothing to save.
  *
@@ -70,29 +72,33 @@ class IconGesturesSettingsActivity : SettingsSubPageActivity() {
     }
 
     private fun render(bindings: IconGestureBindings) {
-        renderSection(optionsDrag, DragAction.entries, bindings.drag, vm::setDragAction)
-        renderSection(optionsHold, HoldAction.entries, bindings.hold, vm::setHoldAction)
-        renderSection(optionsTap, TapAction.entries, bindings.tap, vm::setTapAction)
+        renderSection(optionsDrag, DragAction.entries, bindings.drag, bindings.hint, vm::setDragAction)
+        renderSection(optionsHold, HoldAction.entries, bindings.hold, bindings.hint, vm::setHoldAction)
+        renderSection(optionsTap, TapAction.entries, bindings.tap, bindings.hint, vm::setTapAction)
     }
 
-    /** Rebuild [container] as one choice row per candidate, [bound] checked.
-     *  Rebuilt per render rather than diffed: two rows at most per section,
-     *  and no row state to keep in step with the flow. */
+    /** Rebuild [container] as one choice row per candidate the source
+     *  language offers ([hint]: no swap row without a reading hint), [bound]
+     *  checked. [bound] is always one of those rows: a stored swap reads as
+     *  its gesture's default where the language doesn't offer it. Rebuilt
+     *  per render rather than diffed: three rows at most per section, and no
+     *  row state to keep in step with the flow. */
     private fun <A : IconAction> renderSection(
         container: ViewGroup,
         candidates: List<A>,
         bound: A,
+        hint: HintTextKind,
         onPick: (A) -> Unit,
     ) {
         container.removeAllViews()
-        candidates.forEachIndexed { index, action ->
+        candidates.filter { it.isOfferedOn(hint) }.forEachIndexed { index, action ->
             if (index > 0) {
                 container.addView(
                     layoutInflater.inflate(R.layout.settings_row_divider, container, false)
                 )
             }
             val row = layoutInflater.inflate(R.layout.settings_row_choice, container, false)
-            row.findViewById<TextView>(R.id.tvRowTitle).setText(action.titleRes)
+            row.findViewById<TextView>(R.id.tvRowTitle).setText(action.titleRes(hint))
             row.findViewById<TextView>(R.id.tvRowSubtitle).isVisible = false
             row.findViewById<ImageView>(R.id.ivCheck).isVisible = action == bound
             row.setOnClickListener { onPick(action) }

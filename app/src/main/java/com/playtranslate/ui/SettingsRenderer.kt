@@ -459,11 +459,18 @@ class SettingsRenderer(
     }
 
     /** Bind one gesture line: the icon + gesture word in [verbColor], the
-     *  bound [action]'s title in [baseColor]. */
-    private fun bindGestureLine(line: GestureLine, action: IconAction, verbColor: Int, baseColor: Int) {
+     *  bound [action]'s title on a source language whose reading hint is
+     *  [hint] in [baseColor]. */
+    private fun bindGestureLine(
+        line: GestureLine,
+        action: IconAction,
+        hint: HintTextKind,
+        verbColor: Int,
+        baseColor: Int,
+    ) {
         line.icon.imageTintList = ColorStateList.valueOf(verbColor)
         line.tvGesture.setTextColor(verbColor)
-        line.tvAction.setText(action.titleRes)
+        line.tvAction.setText(action.titleRes(hint))
         line.tvAction.setTextColor(baseColor)
     }
 
@@ -625,13 +632,17 @@ class SettingsRenderer(
         tvOverlayIconTitle.setTextColor(titleColor)
         ivOverlayIconChevron.imageTintList = ColorStateList.valueOf(titleColor)
         // The bindings are re-read here rather than observed: the picker page
-        // is its own Activity, so the sheet's resume, which already funnels
-        // into this refresh, is the catch-up point, the same contract as the
-        // rest of the lifecycle-driven cell.
+        // is its own Activity, and so is the language picker (the source
+        // language's reading hint decides whether a swap binding applies and
+        // names it), so the sheet's resume, which already funnels into this
+        // refresh, is the catch-up point, the same contract as the rest of
+        // the lifecycle-driven cell. One case waits past it: on dual-screen a
+        // source language picked from the floating menu while this page stays
+        // resumed on the other display shows here at the next resume.
         val bindings = prefs.iconGestureBindings()
-        bindGestureLine(lineDrag, bindings.drag, verbColor, baseColor)
-        bindGestureLine(lineHold, bindings.hold, verbColor, baseColor)
-        bindGestureLine(lineTap, bindings.tap, verbColor, baseColor)
+        bindGestureLine(lineDrag, bindings.drag, bindings.hint, verbColor, baseColor)
+        bindGestureLine(lineHold, bindings.hold, bindings.hint, verbColor, baseColor)
+        bindGestureLine(lineTap, bindings.tap, bindings.hint, verbColor, baseColor)
         overlayIconPreviewSlot.alpha = if (iconLit) 1f else 0.5f
         if (!showPowerCell) return
         styleCaptureButton(btnCaptureLifecycle, active)
